@@ -1,0 +1,636 @@
+/*
+
+This CSS file will be included with your plugin, and
+available in the app when your plugin is enabled.
+
+If your plugin does not need CSS, delete this file.
+
+*/
+
+.sts-card {
+	background-color: var(--background-modifier-hover);
+	border-radius: 8px;
+	padding: 1rem;
+	margin-bottom: 1rem;
+	box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+	/* Existing styles for a card layout, suitable for modals or custom views */
+}
+
+.sts-header {
+	font-size: 1.2rem;
+	font-weight: bold;
+	margin-bottom: 0.5rem;
+}
+
+.sts-label {
+	display: block;
+	font-weight: 600;
+	margin-top: 0.75rem;
+}
+
+.sts-dashboard {
+	display: flex;
+	flex-direction: column;
+	padding: 1rem;
+}
+
+.sts-button {
+	padding: 0.5rem 1rem;
+	border-radius: 4px;
+	background-color: var(--interactive-accent);
+	color: var(--text-on-accent);
+	cursor: pointer;
+	margin-bottom: 0.5rem;
+}
+
+.sts-button:hover {
+	background-color: var(--interactive-accent-hover);
+}
+
+.sts-modal-content {
+	padding: 1rem;
+	display: flex;
+	flex-direction: column;
+	gap: 1rem;
+	/* Ensure a clean modal layout for e.g. CharacterModal, LocationModal */
+}
+
+.sts-modal-header {
+	font-size: 1.25rem;
+	font-weight: bold;
+	margin-bottom: 0.5rem;
+}
+
+.sts-ribbon-icon {
+	/* Optional custom styling for the plugin’s ribbon icon. */
+}
+
+/* General Plugin Styles */
+.storyteller-suite-ribbon-class {
+  color: var(--text-accent); /* Example: Make icon use accent color */
+}
+
+/* Character Modal Styles */
+.mod.storyteller-character-modal {
+  /* Make modal slightly wider */
+  width: 600px;
+  max-width: 80%;
+}
+
+.storyteller-character-modal .modal-content {
+  padding: var(--size-4-4) var(--size-4-8); /* Consistent padding */
+}
+
+.storyteller-character-modal h2 {
+  margin-bottom: var(--size-4-6);
+  text-align: center;
+  color: var(--text-accent);
+}
+
+.storyteller-character-modal h3 {
+    margin-top: var(--size-4-6);
+    margin-bottom: var(--size-4-2);
+    border-bottom: 1px solid var(--background-modifier-border);
+    padding-bottom: var(--size-4-1);
+    color: var(--text-muted);
+}
+
+/* Style settings within the modal */
+.storyteller-character-modal .setting-item {
+  padding: var(--size-4-2) 0;
+  border-bottom: 1px solid var(--background-modifier-border-hover); /* Subtle separator */
+}
+.storyteller-character-modal .setting-item:last-child {
+    border-bottom: none;
+}
+
+/* Input field enhancements */
+.storyteller-character-modal .setting-item-control input[type="text"],
+.storyteller-character-modal .setting-item-control textarea {
+  width: 100%; /* Make inputs fill control area */
+  border: 1px solid var(--background-modifier-border);
+  padding: var(--size-4-2);
+  border-radius: var(--radius-s);
+}
+.storyteller-character-modal .setting-item-control input[type="text"]:focus,
+.storyteller-character-modal .setting-item-control textarea:focus {
+    border-color: var(--interactive-accent);
+    box-shadow: 0 0 0 1px var(--interactive-accent);
+}
+
+/* Larger text input for name */
+.storyteller-modal-input-large {
+    font-size: var(--font-ui-large);
+    padding: var(--size-4-3);
+}
+
+/* Textarea styling */
+.storyteller-modal-textarea {
+    min-height: 80px; /* Minimum height */
+    resize: vertical; /* Allow vertical resize */
+}
+
+/* Vertical layout for description/backstory */
+.storyteller-modal-setting-vertical .setting-item-info {
+    width: 100%;
+    margin-bottom: var(--size-4-1);
+}
+.storyteller-modal-setting-vertical .setting-item-control {
+    width: 100%;
+}
+
+/* Custom Fields Styling */
+.storyteller-custom-fields-container .setting-item {
+    padding: var(--size-4-1) 0; /* Less padding for custom fields */
+}
+.storyteller-custom-field-name {
+    flex: 1 1 30%; /* Allow name to take up some space */
+    font-style: italic;
+    color: var(--text-faint);
+}
+.storyteller-custom-field-control {
+    flex: 1 1 70%; /* Allow control to take up more space */
+    display: flex;
+    align-items: center;
+}
+.storyteller-custom-field-control input[type="text"] {
+    flex-grow: 1; /* Input takes available space */
+    margin-right: var(--size-4-2); /* Space before delete button */
+}
+
+/* Button styling */
+.storyteller-character-modal .setting-item .button.mod-cta {
+  background-color: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
+.storyteller-character-modal .setting-item .button.mod-cta:hover {
+  background-color: var(--interactive-accent-hover);
+}
+
+/* --- General Modal Styling --- */
+.mod.storyteller-character-modal,
+.mod.storyteller-location-modal,
+.mod.storyteller-event-modal,
+.mod.storyteller-image-detail-modal,
+.mod.storyteller-list-modal,
+.mod.storyteller-dashboard-modal,
+.mod.storyteller-gallery-modal {
+  width: 700px; /* Wider default */
+  max-width: 90%;
+}
+
+.storyteller-character-modal .modal-content,
+.storyteller-location-modal .modal-content,
+.storyteller-event-modal .modal-content,
+.storyteller-image-detail-modal .modal-content,
+.storyteller-list-modal .modal-content,
+.storyteller-dashboard-modal .modal-content,
+.storyteller-gallery-modal .modal-content {
+  padding: var(--size-4-5) var(--size-4-8);
+}
+
+/* Modal Headers */
+.storyteller-character-modal h2,
+.storyteller-location-modal h2,
+.storyteller-event-modal h2,
+.storyteller-image-detail-modal h2,
+.storyteller-list-modal h2,
+.storyteller-dashboard-modal h2,
+.storyteller-gallery-modal h2 {
+  margin-bottom: var(--size-4-6);
+  padding-bottom: var(--size-4-2);
+  text-align: center;
+  color: var(--text-accent);
+  border-bottom: 1px solid var(--background-modifier-border);
+  font-size: var(--font-ui-large);
+}
+
+.storyteller-character-modal h3,
+.storyteller-location-modal h3,
+.storyteller-event-modal h3,
+.storyteller-image-detail-modal h3 {
+    margin-top: var(--size-4-6);
+    margin-bottom: var(--size-4-2);
+    border-bottom: 1px solid var(--background-modifier-border);
+    padding-bottom: var(--size-4-1);
+    color: var(--text-muted);
+    font-size: var(--font-ui-medium);
+    font-weight: 600;
+}
+
+/* Modal Settings Items */
+.storyteller-character-modal .setting-item,
+.storyteller-location-modal .setting-item,
+.storyteller-event-modal .setting-item,
+.storyteller-image-detail-modal .setting-item,
+.storyteller-list-modal .setting-item, /* For search/add buttons */
+.storyteller-dashboard-modal .setting-item,
+.storyteller-gallery-modal .setting-item /* For controls */
+ {
+  padding: var(--size-4-3) 0; /* Increased padding */
+  border-bottom: 1px solid var(--background-modifier-border-hover);
+}
+.storyteller-character-modal .setting-item:last-child,
+.storyteller-location-modal .setting-item:last-child,
+.storyteller-gallery-modal .setting-item:last-child {
+    border-bottom: none;
+}
+
+/* Input field enhancements */
+.storyteller-character-modal input[type="text"],
+.storyteller-location-modal input[type="text"],
+.storyteller-event-modal input[type="text"],
+.storyteller-image-detail-modal input[type="text"],
+.storyteller-list-modal input[type="text"], /* Search */
+.storyteller-gallery-modal input[type="text"], /* Filter */
+.storyteller-character-modal textarea,
+.storyteller-location-modal textarea,
+.storyteller-event-modal textarea,
+.storyteller-image-detail-modal textarea {
+  width: 100%;
+  border: 1px solid var(--background-modifier-border);
+  background-color: var(--background-secondary); /* Slightly different background */
+  padding: var(--size-4-2) var(--size-4-3);
+  border-radius: var(--radius-m); /* Medium radius */
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.storyteller-character-modal input[type="text"]:focus,
+.storyteller-image-detail-modal textarea:focus {
+    border-color: var(--interactive-accent);
+    box-shadow: 0 0 0 2px var(--interactive-accent-translucent); /* Softer focus */
+    background-color: var(--background-primary);
+}
+
+/* Larger text input for name */
+.storyteller-modal-input-large {
+    font-size: var(--font-ui-large);
+    padding: var(--size-4-3);
+    font-weight: 600;
+}
+
+/* Textarea styling */
+.storyteller-modal-textarea {
+    min-height: 80px;
+    resize: vertical;
+    line-height: var(--line-height-normal);
+}
+
+/* Vertical layout for description/backstory etc. */
+.storyteller-modal-setting-vertical .setting-item-info {
+    width: 100%;
+    margin-bottom: var(--size-4-1);
+    font-weight: 500; /* Slightly bolder label */
+}
+.storyteller-modal-setting-vertical .setting-item-control {
+    width: 100%;
+}
+
+/* Custom Fields Styling (Apply to all relevant modals) */
+.storyteller-custom-fields-container .setting-item {
+    padding: var(--size-4-1) 0;
+}
+.storyteller-custom-field-name {
+    flex: 0 0 150px; /* Fixed width for name */
+    font-style: normal; /* Remove italic */
+    color: var(--text-muted);
+    padding-right: var(--size-4-2);
+}
+.storyteller-custom-field-control {
+    flex-grow: 1;
+    display: flex;
+    align-items: center;
+}
+.storyteller-custom-field-control input[type="text"] {
+    flex-grow: 1;
+    margin-right: var(--size-4-2);
+}
+.storyteller-custom-field-control .button { /* Style delete button */
+    padding: var(--size-4-1);
+    min-width: auto;
+    height: auto;
+    color: var(--text-muted);
+}
+.storyteller-custom-field-control .button:hover {
+    color: var(--text-error);
+}
+
+/* Button styling */
+.setting-item .button.mod-cta {
+  background-color: var(--interactive-accent);
+  color: var(--text-on-accent);
+  font-weight: 600;
+  padding: var(--size-4-2) var(--size-4-4);
+  border-radius: var(--radius-m);
+}
+.setting-item .button.mod-cta:hover {
+  background-color: var(--interactive-accent-hover);
+}
+.setting-item .button.mod-warning {
+    color: var(--text-on-accent);
+    background-color: var(--interactive-warning);
+}
+.setting-item .button.mod-warning:hover {
+    background-color: var(--interactive-warning-hover);
+}
+.setting-item .button { /* General button style in settings */
+    margin-left: var(--size-4-2);
+}
+
+/* --- List Modal Styles --- */
+.storyteller-list-modal .setting-item { /* Search bar */
+    border-bottom: 1px solid var(--background-modifier-border);
+    padding-bottom: var(--size-4-3);
+    margin-bottom: var(--size-4-3);
+}
+.storyteller-list-container {
+    max-height: 60vh; /* Limit height and allow scrolling */
+    overflow-y: auto;
+    margin-bottom: var(--size-4-4);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: var(--radius-m);
+    padding: var(--size-4-2); /* Add some padding around the list itself */
+}
+.storyteller-list-item {
+    display: flex;
+    align-items: center;
+    padding: var(--size-4-4); /* Slightly more padding */
+    border-bottom: 1px solid var(--background-modifier-border-hover);
+    transition: background-color 0.1s ease, box-shadow 0.2s ease, border-color 0.2s ease; /* Added transitions */
+    gap: var(--size-4-4); /* Increased gap */
+    /* Card Styling */
+    background-color: var(--background-secondary); /* Subtle background */
+    border-radius: var(--radius-m); /* Rounded corners */
+    margin-bottom: var(--size-4-3); /* Space between cards */
+    box-shadow: 0 1px 3px var(--shadow-elevation-sm); /* Subtle shadow */
+    border: 1px solid transparent; /* Prepare for hover border */
+}
+.storyteller-list-item:last-child {
+    border-bottom: none; /* Remove bottom border for last item */
+    margin-bottom: 0; /* No margin for last item if needed */
+}
+.storyteller-list-item:hover {
+    background-color: var(--background-modifier-hover);
+    box-shadow: 0 3px 8px var(--shadow-elevation-md); /* Enhanced shadow on hover */
+    border-color: var(--interactive-accent-translucent); /* Accent border on hover */
+}
+
+.storyteller-list-item-info {
+    flex-grow: 1;
+    min-width: 0;
+}
+
+.storyteller-list-item-info strong {
+    font-size: var(--font-ui-medium);
+    font-weight: 600;
+    color: var(--text-accent); /* Make name stand out */
+    display: block; /* Ensure it takes its own line if needed */
+    margin-bottom: var(--size-4-1); /* Space below name */
+}
+
+.storyteller-list-item-info p {
+    font-size: var(--font-ui-small);
+    color: var(--text-muted);
+    line-height: 1.4; /* Slightly increased line height */
+    margin-bottom: var(--size-4-2); /* Space below description */
+}
+
+/* --- Styles for Extra Info Line --- */
+.storyteller-list-item-extra {
+    font-size: var(--font-ui-smaller);
+    color: var(--text-faint);
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--size-4-2);
+}
+
+.storyteller-list-item-extra span {
+    padding: var(--size-4-0) var(--size-4-2); /* Padding for tags */
+    border-radius: var(--radius-s);
+    background-color: var(--background-modifier-border); /* Tag background */
+    color: var(--text-muted); /* Tag text color */
+    white-space: nowrap; /* Prevent tags from breaking mid-word */
+}
+
+/* Example: Styling for status tags */
+.storyteller-list-item-status {
+    /* background-color: var(--background-modifier-accent-hover); */
+    /* color: var(--text-accent); */
+    font-weight: 500;
+}
+
+/* --- Character List Item Specific Styles --- */
+.storyteller-character-item {
+    /* Adjust padding if needed */
+}
+
+.storyteller-list-item-pfp {
+    flex-shrink: 0; /* Prevent image container from shrinking */
+    width: 50px; /* Adjust size as needed */
+    height: 50px;
+    border-radius: 50%; /* Make it round */
+    overflow: hidden; /* Clip image to circle */
+    background-color: var(--background-modifier-border); /* Placeholder background */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: var(--font-ui-large);
+    font-weight: 600;
+    color: var(--text-muted);
+}
+
+.storyteller-list-item-pfp img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover; /* Cover the area */
+}
+
+.storyteller-pfp-placeholder {
+    /* Styles for the text placeholder */
+}
+
+/* --- Timeline Specific --- */
+.storyteller-timeline-date {
+    color: var(--text-faint);
+    font-size: var(--font-ui-smaller);
+}
+
+/* --- Dashboard Modal --- */
+.storyteller-dashboard-modal .setting-item-info {
+    flex-grow: 0; /* Don't let info push buttons */
+}
+.storyteller-dashboard-modal .setting-item-control {
+    justify-content: flex-end; /* Align buttons right */
+}
+.storyteller-dashboard-modal .setting-item-description {
+    width: 100%; /* Ensure description takes full width below name */
+    margin-top: var(--size-4-1);
+}
+
+/* --- Gallery Modal --- */
+.storyteller-gallery-modal {
+    width: 80vw; /* Much wider */
+    max-width: 1200px;
+}
+.storyteller-gallery-controls .setting-item {
+    border-bottom: 1px solid var(--background-modifier-border);
+    padding-bottom: var(--size-4-3);
+    margin-bottom: var(--size-4-3);
+}
+.storyteller-gallery-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); /* Responsive grid */
+    gap: var(--size-4-4);
+    max-height: 70vh;
+    overflow-y: auto;
+    padding: var(--size-4-1); /* Padding for scrollbar */
+}
+.storyteller-gallery-item {
+    position: relative;
+    overflow: hidden;
+    border-radius: var(--radius-m);
+    cursor: pointer;
+    border: 1px solid var(--background-modifier-border);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    height: 150px; /* Set fixed height on the container */
+    background-color: var(--background-secondary); /* Add a background for letterboxing */
+}
+.storyteller-gallery-item:hover {
+    transform: scale(1.03);
+    box-shadow: 0 4px 10px var(--shadow-elevation-lg);
+    border-color: var(--interactive-accent);
+}
+.storyteller-gallery-item img {
+    display: block;
+    width: 100%;
+    height: 100%; /* Make image fill the container height */
+    object-fit: cover; /* Cover the area, crop if needed */
+}
+
+/* --- Image Detail Modal --- */
+.storyteller-image-detail-modal {
+    width: 800px;
+}
+.storyteller-image-detail-container {
+    display: flex;
+    gap: var(--size-4-6);
+}
+.storyteller-image-preview {
+    flex: 0 0 300px; /* Fixed width for preview */
+    text-align: center;
+}
+.storyteller-image-preview img {
+    max-width: 100%;
+    max-height: 300px;
+    object-fit: contain;
+    border-radius: var(--radius-m);
+    border: 1px solid var(--background-modifier-border);
+    margin-bottom: var(--size-4-2);
+}
+.storyteller-image-preview p { /* File path */
+    font-size: var(--font-ui-small);
+    color: var(--text-faint);
+    word-break: break-all;
+}
+.storyteller-image-form {
+    flex-grow: 1;
+}
+.storyteller-modal-actions { /* Container for save/delete buttons */
+    margin-top: var(--size-4-6);
+    padding-top: var(--size-4-4);
+    border-top: 1px solid var(--background-modifier-border);
+}
+.storyteller-modal-actions .setting-item {
+    border: none;
+    padding: 0;
+    justify-content: flex-end; /* Align buttons right */
+}
+
+/* --- Dashboard View Styles --- */
+.storyteller-dashboard-view-container {
+    padding: var(--size-4-4) var(--size-4-6);
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.storyteller-dashboard-view-container h2 {
+    text-align: center;
+    margin-bottom: var(--size-4-4);
+    color: var(--text-accent);
+    border-bottom: 1px solid var(--background-modifier-border);
+    padding-bottom: var(--size-4-2);
+}
+
+/* Tab Headers */
+.storyteller-dashboard-tabs {
+    display: flex;
+    border-bottom: 2px solid var(--background-modifier-border);
+    margin-bottom: var(--size-4-4);
+}
+
+.storyteller-tab-header {
+    padding: var(--size-4-2) var(--size-4-4);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px; /* Overlap the container border */
+    color: var(--text-muted);
+    transition: color 0.2s ease, border-color 0.2s ease;
+    font-weight: 500;
+}
+
+.storyteller-tab-header:hover {
+    color: var(--text-normal);
+}
+
+.storyteller-tab-header.active {
+    color: var(--text-accent);
+    border-bottom-color: var(--text-accent);
+    font-weight: 600;
+}
+
+/* Tab Content Area */
+.storyteller-dashboard-content {
+    flex-grow: 1; /* Take remaining vertical space */
+    overflow-y: auto; /* Allow content scrolling */
+    display: flex; /* Use flex for content layout */
+    flex-direction: column;
+}
+
+/* Controls within the view (Filter + Add Button) */
+.storyteller-view-controls .setting-item {
+    padding: var(--size-4-2) 0;
+    border-bottom: 1px solid var(--background-modifier-border);
+    margin-bottom: var(--size-4-3);
+}
+.storyteller-view-controls .setting-item-info {
+    /* Adjust label styling if needed */
+    font-weight: 600;
+}
+.storyteller-view-controls .setting-item-control {
+    /* Ensure controls align well */
+}
+
+/* List Container within View */
+.storyteller-dashboard-content .storyteller-list-container {
+    /* Remove max-height and border from modal style */
+    max-height: none;
+    overflow-y: visible;
+    border: none;
+    margin-bottom: 0; /* Remove bottom margin */
+    flex-grow: 1; /* Allow list to fill space if needed */
+}
+
+/* Gallery Grid within View */
+.storyteller-dashboard-content .storyteller-gallery-grid {
+    /* Remove max-height from modal style */
+    max-height: none;
+    overflow-y: visible;
+    padding: var(--size-4-1);
+    flex-grow: 1; /* Allow grid to fill space */
+}
+
+/* Adjust list item styles slightly for view context if needed */
+.storyteller-dashboard-content .storyteller-list-item {
+    /* Remove specific padding override if general style is good */
+}
