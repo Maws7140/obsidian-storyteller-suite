@@ -6,6 +6,7 @@ available in the app when your plugin is enabled.
 If your plugin does not need CSS, delete this file.
 
 */
+<<<<<<< HEAD
 
 .sts-card {
 	background-color: var(--background-modifier-hover);
@@ -634,3 +635,5 @@ If your plugin does not need CSS, delete this file.
 .storyteller-dashboard-content .storyteller-list-item {
     /* Remove specific padding override if general style is good */
 }
+=======
+>>>>>>> e53eea3b6a77dd5be464eafbf9136e460df3ac21
