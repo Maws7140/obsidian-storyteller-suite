@@ -1,8 +1,8 @@
 import { App, Modal, Setting, Notice, TextAreaComponent, TextComponent, ButtonComponent } from 'obsidian';
-import { Location } from '../types'; // Assumes Location type has charactersPresent?: string[], eventsHere?: string[], subLocations?: string[]
+import { Location } from '../types'; // Assumes Location type no longer has charactersPresent, eventsHere, subLocations
 import StorytellerSuitePlugin from '../main';
 import { GalleryImageSuggestModal } from './GalleryImageSuggestModal';
-// Placeholder imports for suggesters - these would need to be created
+// Placeholder imports for suggesters - these would need to be removed or updated if used elsewhere
 // import { CharacterSuggestModal } from './CharacterSuggestModal';
 // import { EventSuggestModal } from './EventSuggestModal';
 // import { LocationSuggestModal } from './LocationSuggestModal';
@@ -21,13 +21,15 @@ export class LocationModal extends Modal {
         super(app);
         this.plugin = plugin;
         this.isNew = location === null;
+        // Remove charactersPresent, eventsHere, subLocations from initialization
         const initialLocation = location ? { ...location } : {
             name: '', description: '', history: '', locationType: undefined, region: undefined, status: undefined, profileImagePath: undefined,
-            charactersPresent: [], eventsHere: [], subLocations: [], // Initialize link arrays
+            // REMOVED: charactersPresent: [], eventsHere: [], subLocations: [], // Initialize link arrays
             customFields: {}
         };
         if (!initialLocation.customFields) initialLocation.customFields = {};
-        if (!initialLocation.subLocations) initialLocation.subLocations = [];
+        // REMOVED: Check for subLocations removed
+        // if (!initialLocation.subLocations) initialLocation.subLocations = [];
 
         this.location = initialLocation;
         this.onSubmit = onSubmit;
@@ -49,15 +51,6 @@ export class LocationModal extends Modal {
                 .setValue(this.location.name)
                 .onChange(value => { this.location.name = value; })
                 .inputEl.addClass('storyteller-modal-input-large'));
-
-        // --- Map/Image ---
-        new Setting(contentEl)
-            .setName('Map/Image')
-            .setDesc('Path or URL to the map/image.')
-            .addText(text => text
-                .setPlaceholder('e.g., Assets/Maps/region.png or https://...')
-                .setValue(this.location.mapImage || '')
-                .onChange(value => { this.location.mapImage = value || undefined; }));
 
         // --- Description ---
         new Setting(contentEl)
@@ -136,48 +129,50 @@ export class LocationModal extends Modal {
                     imagePathDesc.setText(`Current: ${this.location.profileImagePath || 'None'}`);
                 }));
 
-        // --- Links ---
-        contentEl.createEl('h3', { text: 'Links' });
+        // REMOVED: Links Header
+        // contentEl.createEl('h3', { text: 'Links' });
 
-        // --- Characters Present ---
-        const charactersSetting = new Setting(contentEl)
-            .setName('Characters Present')
-            .setDesc('Manage linked characters currently at this location.');
-        const charactersListEl = charactersSetting.controlEl.createDiv('storyteller-modal-list');
-        charactersSetting.addButton(button => button
-            .setButtonText('Add Character')
-            .setTooltip('Select character(s) present')
-            .setCta()
-            .onClick(async () => {
-                new Notice('Character suggester not yet implemented.');
-            }));
+        // REMOVED: Characters Present Section
+        // const charactersSetting = new Setting(contentEl)
+        //     .setName('Characters Present')
+        //     .setDesc('Manage linked characters currently at this location.');
+        // const charactersListEl = charactersSetting.controlEl.createDiv('storyteller-modal-list');
+        // this.renderList(charactersListEl, this.location.charactersPresent || [], 'character'); // REMOVED: 'character' type might be invalid now
+        // charactersSetting.addButton(button => button
+        //     .setButtonText('Add Character')
+        //     .setTooltip('Select character(s) present')
+        //     .setCta()
+        //     .onClick(async () => {
+        //         new Notice('Character suggester not yet implemented.');
+        //     }));
 
-        // --- Events Here ---
-        const eventsSetting = new Setting(contentEl)
-            .setName('Events Here')
-            .setDesc('Manage linked events that occurred at this location.');
-        const eventsListEl = eventsSetting.controlEl.createDiv('storyteller-modal-list');
-        eventsSetting.addButton(button => button
-            .setButtonText('Add Event')
-            .setTooltip('Select event(s) at this location')
-            .setCta()
-            .onClick(async () => {
-                new Notice('Event suggester not yet implemented.');
-            }));
+        // REMOVED: Events Here Section
+        // const eventsSetting = new Setting(contentEl)
+        //     .setName('Events Here')
+        //     .setDesc('Manage linked events that occurred at this location.');
+        // const eventsListEl = eventsSetting.controlEl.createDiv('storyteller-modal-list');
+        // this.renderList(eventsListEl, this.location.eventsHere || [], 'event'); // REMOVED: 'event' type might be invalid now
+        // eventsSetting.addButton(button => button
+        //     .setButtonText('Add Event')
+        //     .setTooltip('Select event(s) at this location')
+        //     .setCta()
+        //     .onClick(async () => {
+        //         new Notice('Event suggester not yet implemented.');
+        //     }));
 
-        // --- Sub-Locations ---
-        const subLocationsSetting = new Setting(contentEl)
-            .setName('Sub-Locations')
-            .setDesc('Manage linked locations contained within this one.');
-        const subLocationsListEl = subLocationsSetting.controlEl.createDiv('storyteller-modal-list');
-        this.renderList(subLocationsListEl, this.location.subLocations || [], 'sublocation');
-        subLocationsSetting.addButton(button => button
-            .setButtonText('Add Sub-Location')
-            .setTooltip('Select sub-location(s)')
-            .setCta()
-            .onClick(async () => {
-                new Notice('Location suggester for sub-locations not yet implemented.');
-            }));
+        // REMOVED: Sub-Locations Section
+        // const subLocationsSetting = new Setting(contentEl)
+        //     .setName('Sub-Locations')
+        //     .setDesc('Manage linked locations contained within this one.');
+        // const subLocationsListEl = subLocationsSetting.controlEl.createDiv('storyteller-modal-list');
+        // this.renderList(subLocationsListEl, this.location.subLocations || [], 'sublocation'); // REMOVED: 'sublocation' type might be invalid now
+        // subLocationsSetting.addButton(button => button
+        //     .setButtonText('Add Sub-Location')
+        //     .setTooltip('Select sub-location(s)')
+        //     .setCta()
+        //     .onClick(async () => {
+        //         new Notice('Location suggester for sub-locations not yet implemented.');
+        //     }));
 
         // --- Custom Fields ---
         contentEl.createEl('h3', { text: 'Custom Fields' });
@@ -247,26 +242,30 @@ export class LocationModal extends Modal {
             }));
     }
 
-    renderList(container: HTMLElement, items: string[], type: 'character' | 'event' | 'sublocation' | 'location' | 'relationship' | 'image') {
-        container.empty();
-        if (!items || items.length === 0) {
-            container.createEl('span', { text: 'None', cls: 'storyteller-modal-list-empty' });
-            return;
-        }
-        items.forEach((item, index) => {
-            const displayItem = item;
-            const itemEl = container.createDiv('storyteller-modal-list-item');
-            itemEl.createSpan({ text: displayItem });
-            new ButtonComponent(itemEl)
-                .setClass('storyteller-modal-list-remove')
-                .setTooltip(`Remove ${displayItem}`)
-                .setIcon('cross')
-                .onClick(() => {
-                    if (type === 'character') 
-                    this.renderList(container, items, type);
-                });
-        });
-    }
+    // REMOVED: renderList function as it's no longer used for locations
+    // renderList(container: HTMLElement, items: string[]) { // REMOVED type parameter
+    //     container.empty();
+    //     if (!items || items.length === 0) {
+    //         container.createEl('span', { text: 'None', cls: 'storyteller-modal-list-empty' });
+    //         return;
+    //     }
+    //     items.forEach((item, index) => {
+    //         const displayItem = item;
+    //         const itemEl = container.createDiv('storyteller-modal-list-item');
+    //         itemEl.createSpan({ text: displayItem });
+    //         new ButtonComponent(itemEl)
+    //             .setClass('storyteller-modal-list-remove')
+    //             .setTooltip(`Remove ${displayItem}`)
+    //             .setIcon('cross')
+    //             .onClick(() => {
+    //                 // REMOVED: Logic for removing items based on type
+    //                 // Find the correct array and splice
+    //                 // e.g., if (type === 'sublocation') this.location.subLocations?.splice(index, 1);
+    //                 // this.renderList(container, items); // Refresh list (using potentially updated items array)
+    //             });
+    //     });
+    // }
+
 
     renderCustomFields(container: HTMLElement, fields: { [key: string]: any }) {
         container.empty();
@@ -287,8 +286,10 @@ export class LocationModal extends Modal {
                         if (newKey && newKey !== key && !fields.hasOwnProperty(newKey)) {
                             fields[newKey] = fields[key];
                             delete fields[key];
+                            // No need to re-render immediately, just update the object
                         } else if (newKey !== key) {
-                            text.setValue(key);
+                            // Prevent duplicate or empty keys
+                            text.setValue(key); // Revert change
                             new Notice("Custom field name must be unique and not empty.");
                         }
                     }))
@@ -304,7 +305,7 @@ export class LocationModal extends Modal {
                     .setClass('mod-warning')
                     .onClick(() => {
                         delete fields[key];
-                        this.renderCustomFields(container, fields);
+                        this.renderCustomFields(container, fields); // Re-render after deletion
                     }));
             fieldSetting.controlEl.addClass('storyteller-custom-field-row');
         });

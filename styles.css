@@ -6,7 +6,6 @@ available in the app when your plugin is enabled.
 If your plugin does not need CSS, delete this file.
 
 */
-<<<<<<< HEAD
 
 .sts-card {
 	background-color: var(--background-modifier-hover);
@@ -480,33 +479,55 @@ If your plugin does not need CSS, delete this file.
 }
 .storyteller-gallery-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); /* Responsive grid */
-    gap: var(--size-4-4);
-    max-height: 70vh;
-    overflow-y: auto;
-    padding: var(--size-4-1); /* Padding for scrollbar */
-}
-.storyteller-gallery-item {
-    position: relative;
-    overflow: hidden;
-    border-radius: var(--radius-m);
-    cursor: pointer;
+    /* Adjust minmax values for desired item size */
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    row-gap: 5px;    /* Set vertical gap between rows */
+    column-gap: 15px;
+    padding: 10px 0; /* Padding above/below grid */
+  }
+  
+  .storyteller-gallery-item {
+    /* Keep existing properties: */
     border: 1px solid var(--background-modifier-border);
-    transition: transform 0.2s ease, box-shadow 0.2s ease;
-    height: 150px; /* Set fixed height on the container */
-    background-color: var(--background-secondary); /* Add a background for letterboxing */
-}
-.storyteller-gallery-item:hover {
+    border-radius: var(--radius-m);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    cursor: pointer;
+    background-color: var(--background-secondary);
+    transition: transform 0.1s ease-in-out, box-shadow 0.1s ease-in-out;
+  
+    /* --- ADD THIS LINE --- */
+    align-self: start; /* Prevent item stretching vertically in the grid row */
+  }
+  
+  .storyteller-gallery-item:hover,
+  .storyteller-gallery-item:focus-within { /* Style when focused too */
     transform: scale(1.03);
-    box-shadow: 0 4px 10px var(--shadow-elevation-lg);
+    box-shadow: 0 0 5px var(--interactive-accent);
     border-color: var(--interactive-accent);
-}
-.storyteller-gallery-item img {
-    display: block;
+    outline: none; /* Remove default focus outline if styling focus */
+  }
+  
+  .storyteller-gallery-item-image {
     width: 100%;
-    height: 100%; /* Make image fill the container height */
-    object-fit: cover; /* Cover the area, crop if needed */
-}
+    height: 120px; /* Give images a fixed height */
+    object-fit: cover; /* Cover the area, cropping if necessary */
+    display: block; /* Removes potential extra space below */
+    background-color: var(--background-secondary-alt); /* Placeholder bg */
+  }
+  
+  .storyteller-gallery-item-title {
+    padding: var(--size-4-1) var(--size-4-2); /* Small padding */
+    font-size: var(--font-ui-small);
+    text-align: center;
+    white-space: nowrap; /* Prevent title wrapping */
+    overflow: hidden; /* Hide overflow */
+    text-overflow: ellipsis; /* Show ... for overflow */
+    flex-shrink: 0; /* Prevent title from shrinking */
+    /* Optional: Set min-height to prevent layout shift if title is empty */
+    min-height: calc(var(--font-ui-small) + 2 * var(--size-4-1) + 2px);
+  }
 
 /* --- Image Detail Modal --- */
 .storyteller-image-detail-modal {
@@ -635,5 +656,3 @@ If your plugin does not need CSS, delete this file.
 .storyteller-dashboard-content .storyteller-list-item {
     /* Remove specific padding override if general style is good */
 }
-=======
->>>>>>> e53eea3b6a77dd5be464eafbf9136e460df3ac21

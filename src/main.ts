@@ -318,6 +318,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		const fileName = `${location.name.replace(/[\\/:"*?<>|]+/g, '')}.md`;
 		const filePath = normalizePath(`${folderPath}/${fileName}`);
 
+        // REMOVED: characters, events, subLocations from destructuring
 		const { filePath: currentFilePath, history, description, locationType, region, status, profileImagePath, ...frontmatterData } = location;
 		const finalFrontmatter: Record<string, any> = { ...frontmatterData };
 		if (locationType) finalFrontmatter.locationType = locationType;
@@ -326,10 +327,14 @@ export default class StorytellerSuitePlugin extends Plugin {
 		if (profileImagePath) finalFrontmatter.profileImagePath = profileImagePath;
 
 		Object.keys(finalFrontmatter).forEach(key => {
-			const k = key as keyof typeof frontmatterData;
-			if (finalFrontmatter[k] === null || finalFrontmatter[k] === undefined || (Array.isArray(finalFrontmatter[k]) && (finalFrontmatter[k] as any[]).length === 0)) {
-				delete finalFrontmatter[k];
-			}
+			const k = key as keyof typeof frontmatterData; // Corrected type reference
+            // Check if k exists in finalFrontmatter before accessing
+			if (finalFrontmatter.hasOwnProperty(k)) {
+                const value = finalFrontmatter[k];
+                if (value === null || value === undefined || (Array.isArray(value) && value.length === 0)) {
+				    delete finalFrontmatter[k];
+			    }
+            }
 		});
 		if (finalFrontmatter.customFields && Object.keys(finalFrontmatter.customFields).length === 0) {
 			delete finalFrontmatter.customFields;
@@ -340,9 +345,10 @@ export default class StorytellerSuitePlugin extends Plugin {
 		let fileContent = `---\n${frontmatterString}---\n\n`;
 		if (description) fileContent += `## Description\n${description.trim()}\n\n`;
 		if (history) fileContent += `## History\n${history.trim()}\n\n`;
-		fileContent += `## Characters Present\n${(location.characters || []).map(c => `- [[${c}]]`).join('\n')}\n\n`;
-		fileContent += `## Events Here\n${(location.events || []).map(e => `- [[${e}]]`).join('\n')}\n\n`;
-		fileContent += `## Sub-Locations\n${(location.subLocations || []).map(s => `- [[${s}]]`).join('\n')}\n\n`;
+		// REMOVED: Lines adding Characters Present, Events Here, Sub-Locations
+		// fileContent += `## Characters Present\n${(location.characters || []).map(c => `- [[${c}]]`).join('\n')}\n\n`;
+		// fileContent += `## Events Here\n${(location.events || []).map(e => `- [[${e}]]`).join('\n')}\n\n`;
+		// fileContent += `## Sub-Locations\n${(location.subLocations || []).map(s => `- [[${s}]]`).join('\n')}\n\n`;
 
 		const existingFile = this.app.vault.getAbstractFileByPath(filePath);
 		if (existingFile && existingFile instanceof TFile) {
@@ -391,43 +397,83 @@ export default class StorytellerSuitePlugin extends Plugin {
 	async saveEvent(event: Event): Promise<void> {
 		await this.ensureEventFolder();
 		const folderPath = this.settings.eventFolder;
-		const fileName = `${event.name.replace(/[\\/:"*?<>|]+/g, '')}.md`;
+		// Ensure event name is valid for filename
+		const safeName = event.name?.replace(/[\\/:"*?<>|#^\[\]]+/g, '') || 'Unnamed Event'; // Added fallback and expanded invalid chars
+        const fileName = `${safeName}.md`;
 		const filePath = normalizePath(`${folderPath}/${fileName}`);
 
-		const { filePath: currentFilePath, description, outcome, status, profileImagePath, ...frontmatterData } = event;
-		const finalFrontmatter: Record<string, any> = { ...frontmatterData };
-		if (status) finalFrontmatter.status = status;
-		if (profileImagePath) finalFrontmatter.profileImagePath = profileImagePath;
+		// *** MODIFICATION START ***
+        // Destructure fields that should NOT be in frontmatter:
+        // - filePath: Internal reference
+        // - description, outcome: Handled in body content
+        // - profileImagePath, images: Explicitly excluded by user request
+		const {
+            filePath: currentFilePath,
+            description,
+            outcome,
+            profileImagePath, // Destructure to exclude from frontmatterData
+            images,          // Destructure to exclude from frontmatterData
+            ...frontmatterData // Keep the rest (name, dateTime, location, characters, status, customFields)
+        } = event;
 
+        // Create the final frontmatter object from the remaining data
+		const finalFrontmatter: Record<string, any> = { ...frontmatterData };
+
+        // Clean up empty/null values from finalFrontmatter
+        // Note: profileImagePath and images are already excluded
 		Object.keys(finalFrontmatter).forEach(key => {
-			const k = key as keyof typeof frontmatterData;
-			if (finalFrontmatter[k] === null || finalFrontmatter[k] === undefined || (Array.isArray(finalFrontmatter[k]) && (finalFrontmatter[k] as any[]).length === 0)) {
+			const k = key as keyof typeof finalFrontmatter;
+            const value = finalFrontmatter[k];
+			if (value === null || value === undefined || (Array.isArray(value) && value.length === 0)) {
 				delete finalFrontmatter[k];
 			}
-			if (k === 'location' && !finalFrontmatter[k]) delete finalFrontmatter[k];
+            // Ensure location field is kept even if empty string, but removed if null/undefined
+			if (k === 'location' && value === undefined) delete finalFrontmatter[k];
 		});
+        // Remove empty customFields object
 		if (finalFrontmatter.customFields && Object.keys(finalFrontmatter.customFields).length === 0) {
 			delete finalFrontmatter.customFields;
 		}
+        // *** MODIFICATION END ***
 
 		const frontmatterString = Object.keys(finalFrontmatter).length > 0 ? stringifyYaml(finalFrontmatter) : '';
 
+        // --- Construct Body Content (KEEPING original sections) ---
 		let fileContent = `---\n${frontmatterString}---\n\n`;
 		if (description) fileContent += `## Description\n${description.trim()}\n\n`;
 		if (outcome) fileContent += `## Outcome\n${outcome.trim()}\n\n`;
-		fileContent += `## Characters Involved\n${(event.characters || []).map(c => `- [[${c}]]`).join('\n')}\n\n`;
-		if (event.location) fileContent += `## Location\n- [[${event.location}]]\n\n`;
-		fileContent += `## Associated Images\n${(event.images || []).map(i => `- [[${i}]]`).join('\n')}\n\n`;
+        // Keep Characters section - uses data from frontmatterData
+		fileContent += `## Characters Involved\n${(finalFrontmatter.characters || []).map((c: string) => `- [[${c}]]`).join('\n')}\n\n`;
+        // Keep Location section - uses data from frontmatterData
+		if (finalFrontmatter.location) fileContent += `## Location\n- [[${finalFrontmatter.location}]]\n\n`;
+        // Keep Associated Images section - uses the 'images' variable we destructured earlier
+		fileContent += `## Associated Images\n${(images || []).map(i => `- [[${i}]]`).join('\n')}\n\n`;
 
+		// --- Save File ---
 		const existingFile = this.app.vault.getAbstractFileByPath(filePath);
 		if (existingFile && existingFile instanceof TFile) {
-			await this.app.vault.modify(existingFile, fileContent);
+			// Handle potential file rename if name changed
+            if (existingFile.path !== filePath) {
+                console.log(`Renaming event file from ${existingFile.path} to ${filePath}`);
+                await this.app.fileManager.renameFile(existingFile, filePath);
+                // Need to re-get the file reference after rename
+                const renamedFile = this.app.vault.getAbstractFileByPath(filePath);
+                if (renamedFile instanceof TFile) {
+                    await this.app.vault.modify(renamedFile, fileContent);
+                } else {
+                     console.error(`Error finding event file after rename: ${filePath}`);
+                     new Notice(`Error saving renamed event file: ${fileName}`);
+                     return; // Avoid further errors
+                }
+            } else {
+			    await this.app.vault.modify(existingFile, fileContent);
+            }
 			console.log(`Updated event file: ${filePath}`);
 		} else {
-			await this.app.vault.create(filePath, fileContent);
+			const newFile = await this.app.vault.create(filePath, fileContent);
 			console.log(`Created event file: ${filePath}`);
 		}
-		this.app.metadataCache.trigger("dataview:refresh-views");
+		this.app.metadataCache.trigger("dataview:refresh-views"); // Refresh Dataview if used
 	}
 
 	async listEvents(): Promise<Event[]> {
