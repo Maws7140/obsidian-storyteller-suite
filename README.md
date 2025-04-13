@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # Storyteller Suite
 
 A comprehensive suite for managing characters, locations, events, and galleries for your stories within Obsidian.
