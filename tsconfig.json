@@ -19,9 +19,13 @@
     ]
   },
   "include": [
+<<<<<<< HEAD
     "src/**/*.ts"
   ],
   "exclude": [
     "node_modules"
+=======
+    "**/*.ts"
+>>>>>>> e53eea3b6a77dd5be464eafbf9136e460df3ac21
   ]
 }
