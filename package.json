@@ -1,19 +1,11 @@
 {
-<<<<<<< HEAD
 	"name": "storyteller-suite",
-=======
-	"name": "obsidian-sample-plugin",
->>>>>>> e53eea3b6a77dd5be464eafbf9136e460df3ac21
 	"version": "1.0.0",
 	"description": "This is a sample plugin for Obsidian (https://obsidian.md)",
 	"main": "main.js",
 	"scripts": {
 		"dev": "node esbuild.config.mjs",
-<<<<<<< HEAD
 		"build": "tsc -p tsconfig.json --noEmit && node esbuild.config.mjs production",
-=======
-		"build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
->>>>>>> e53eea3b6a77dd5be464eafbf9136e460df3ac21
 		"version": "node version-bump.mjs && git add manifest.json versions.json"
 	},
 	"keywords": [],

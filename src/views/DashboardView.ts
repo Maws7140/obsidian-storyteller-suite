@@ -42,9 +42,42 @@ export class DashboardView extends ItemView {
         container.empty();
         container.addClass('storyteller-dashboard-view-container'); // Add a class for styling
 
-        container.createEl("h2", { text: "Storyteller Suite" });
+        // --- Create a Header Container ---
+        const headerContainer = container.createDiv('storyteller-dashboard-header');
+        headerContainer.style.display = 'flex'; // Use flexbox
+        headerContainer.style.justifyContent = 'space-between'; // Space title and link
+        headerContainer.style.alignItems = 'center'; // Align items vertically
+        headerContainer.style.marginBottom = 'var(--size-4-4)'; // Add some space below
 
-        // --- Tab Headers ---
+        // --- Title (inside the header container) ---
+        headerContainer.createEl("h2", {
+             text: "Storyteller Suite",
+             cls: 'storyteller-dashboard-title' // Add class for potential styling
+        });
+        // Adjust styles for title if needed (remove default margins)
+        const titleEl = headerContainer.querySelector('.storyteller-dashboard-title');
+        if (titleEl instanceof HTMLElement) {
+             titleEl.style.margin = '0';
+        }
+
+
+        // --- Ko-fi Link (inside the header container) ---
+        const kofiLink = headerContainer.createEl('a');
+        kofiLink.href = 'https://ko-fi.com/kingmaws'; // <<< --- REPLACE WITH YOUR ACTUAL KO-FI URL
+        kofiLink.target = '_blank'; // Open in new tab
+        kofiLink.rel = 'noopener noreferrer'; // Security best practice
+        kofiLink.addClass('storyteller-kofi-link'); // Add class for styling
+        kofiLink.style.marginLeft = 'var(--size-4-4)'; // Add space to the left
+
+        // Option 1: Use an icon (requires Obsidian icon font or custom CSS)
+        // import { setIcon } from 'obsidian'; // Make sure setIcon is imported at the top
+        // setIcon(kofiLink, 'coffee'); // Use 'coffee' or another relevant icon
+        // kofiLink.ariaLabel = "Support on Ko-fi"; // Accessibility
+
+        // Option 2: Use text
+        kofiLink.setText('Support on Ko-fi'); // Or shorter text like "Donate"
+
+        // --- Tab Headers (Now added AFTER the header container) ---
         this.tabHeaderContainer = container.createDiv('storyteller-dashboard-tabs');
 
         // --- Tab Content ---
@@ -60,21 +93,22 @@ export class DashboardView extends ItemView {
 
         // --- Create Tab Headers ---
         tabs.forEach((tab, index) => {
-            const header = this.tabHeaderContainer.createEl('div', {
-                text: tab.label,
-                cls: 'storyteller-tab-header' + (index === 0 ? ' active' : '') // Activate first tab
-            });
-            header.dataset.tabId = tab.id; // Store tab id
+            // ...(rest of tab header creation code remains the same)...
+             const header = this.tabHeaderContainer.createEl('div', {
+                 text: tab.label,
+                 cls: 'storyteller-tab-header' + (index === 0 ? ' active' : '') // Activate first tab
+             });
+             header.dataset.tabId = tab.id; // Store tab id
 
-            header.addEventListener('click', async () => {
-                // Deactivate others
-                this.tabHeaderContainer.querySelectorAll('.storyteller-tab-header').forEach(h => h.removeClass('active'));
-                // Activate clicked
-                header.addClass('active');
-                // Render content
-                this.currentFilter = ''; // Reset filter on tab switch
-                await tab.renderFn(this.tabContentContainer);
-            });
+             header.addEventListener('click', async () => {
+                 // Deactivate others
+                 this.tabHeaderContainer.querySelectorAll('.storyteller-tab-header').forEach(h => h.removeClass('active'));
+                 // Activate clicked
+                 header.addClass('active');
+                 // Render content
+                 this.currentFilter = ''; // Reset filter on tab switch
+                 await tab.renderFn(this.tabContentContainer);
+             });
         });
 
         // --- Initial Content Render ---
@@ -447,17 +481,40 @@ export class DashboardView extends ItemView {
     }
 
     renderGalleryGrid(images: any[], gridContainer: HTMLElement, refreshCallback: () => Promise<void>) {
+        // Apply grid styling class to the container (ensure CSS exists for this class)
+        gridContainer.addClass('storyteller-gallery-grid'); // Added this line
+
         images.forEach(image => {
+            // --- Item Wrapper ---
             const imgWrapper = gridContainer.createDiv('storyteller-gallery-item');
-            const imgEl = imgWrapper.createEl('img');
+            imgWrapper.setAttribute('role', 'button'); // Make it behave like a button for accessibility
+            imgWrapper.setAttribute('tabindex', '0'); // Make it focusable
+
+            // --- Image Element ---
+            const imgEl = imgWrapper.createEl('img', { cls: 'storyteller-gallery-item-image' }); // Add class for styling
             const resourcePath = this.app.vault.adapter.getResourcePath(image.filePath);
             imgEl.src = resourcePath;
-            imgEl.alt = image.title || image.filePath;
-            imgEl.title = image.title || image.filePath; // Tooltip
+            imgEl.alt = image.title || image.filePath.split('/').pop() || 'Gallery image'; // Provide alt text
+            imgEl.loading = 'lazy'; // Improve performance for many images
 
-            imgWrapper.addEventListener('click', () => {
-                // Open detail modal, passing the refresh callback
+            // --- Title Element ---
+            const titleEl = imgWrapper.createDiv('storyteller-gallery-item-title'); // Create div for title
+            // Use title if available, otherwise fallback to filename
+            const titleText = image.title || image.filePath.split('/').pop() || '';
+            titleEl.setText(titleText);
+            titleEl.setAttribute('title', titleText); // Add full text as tooltip
+
+            // --- Click Handler ---
+            // Use keydown for accessibility as well
+            const openDetailModal = () => {
                 new ImageDetailModal(this.app, this.plugin, image, false, refreshCallback).open();
+            };
+            imgWrapper.addEventListener('click', openDetailModal);
+            imgWrapper.addEventListener('keydown', (event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault(); // Prevent default spacebar scroll
+                    openDetailModal();
+                }
             });
         });
     }

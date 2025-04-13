@@ -16,12 +16,11 @@ export interface Character {
 
 export interface Location {
     name: string;
-    mapImage?: string; // Path or URL to the map/image
     description?: string;
     history?: string;
-    characters?: string[]; // Links/Names of characters present
-    events?: string[]; // Links/Names of events that occurred here
-    subLocations?: string[]; // Links/Names of sub-location notes
+    // REMOVED: characters?: string[]; // Links/Names of characters present
+    // REMOVED: events?: string[]; // Links/Names of events that occurred here
+    // REMOVED: subLocations?: string[]; // Links/Names of sub-location notes
     customFields?: Record<string, string>;
     filePath?: string;
     locationType?: string; // e.g., City, Forest, Tavern

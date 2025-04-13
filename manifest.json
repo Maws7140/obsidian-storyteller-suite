@@ -1,22 +1,11 @@
 {
-<<<<<<< HEAD
 	"id": "storyteller-suite",
 	"name": "Storyteller Suite",
 	"version": "1.0.0",
 	"minAppVersion": "1.0.0",
 	"description": "A comprehensive suite for managing characters, locations, events, and galleries for your stories within Obsidian.",
-	"author": "Your Name",
-	"authorUrl": "https://your-website.com",
-	"fundingUrl": "https://your-funding-link.com",
-=======
-	"id": "sample-plugin",
-	"name": "Sample Plugin",
-	"version": "1.0.0",
-	"minAppVersion": "0.15.0",
-	"description": "Demonstrates some of the capabilities of the Obsidian API.",
-	"author": "Obsidian",
-	"authorUrl": "https://obsidian.md",
-	"fundingUrl": "https://obsidian.md/pricing",
->>>>>>> e53eea3b6a77dd5be464eafbf9136e460df3ac21
+	"author": "Maws",
+	"authorUrl": "",
+	"fundingUrl": "https://ko-fi.com/kingmaws",
 	"isDesktopOnly": false
 }
