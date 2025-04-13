@@ -41,11 +41,7 @@ A comprehensive suite for managing characters, locations, events, and galleries 
 
 If you find this plugin helpful, consider supporting its development!
 
-```json
-{
-    "fundingUrl": {
-        "Buy Me a Coffee": "https://ko-fi.com/kingmaws",
-    }
-}
-```
+
+"Buy Me a Coffee": "https://ko-fi.com/kingmaws",
+
 
