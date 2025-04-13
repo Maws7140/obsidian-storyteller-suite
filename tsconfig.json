@@ -19,13 +19,9 @@
     ]
   },
   "include": [
-<<<<<<< HEAD
-    "src/**/*.ts"
+    "src/**/*.ts" // <--- Tell TS to include all .ts files in src
   ],
   "exclude": [
-    "node_modules"
-=======
-    "**/*.ts"
->>>>>>> e53eea3b6a77dd5be464eafbf9136e460df3ac21
+    "node_modules" // <--- Only exclude node_modules (and maybe build output folders if needed)
   ]
 }
