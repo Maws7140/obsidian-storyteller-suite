@@ -24,13 +24,13 @@ A comprehensive suite for managing characters, locations, events, and galleries 
     *   Assign images as profile pictures (Characters), representative images (Locations, Events), or link multiple images to Events.
     *   Add captions and tags to gallery images.
 *   **Custom Fields:** Add your own specific key-value data points to Characters, Locations, and Events for maximum flexibility.
-*   **Markdown-Based:** All data is stored as standard Markdown files with YAML frontmatter within your Obsidian vault, ensuring data longevity and interoperability.
+*   **Markdown-Based:** All data is stored as standard Markdown files with YAML frontmatter within your vault, ensuring data longevity and interoperability.
 *   **Visual Interface:** Modern, card-based display in the dashboard for quick visual reference, including images and key details.
 
 ## How to Use
 
-*   Install the plugin via the Obsidian Community Plugins browser.
-*   Enable the plugin in your Obsidian settings under "Community plugins".
+*   Install the plugin via the Community Plugins browser.
+*   Enable the plugin in your settings under "Community plugins".
 *   Click the 'Book' icon in the ribbon or use the command "Open Storyteller Suite Dashboard" to open the main view.
 *   Use the tabs at the top of the dashboard to navigate between Characters, Locations, Events, and Gallery.
 *   Use the "Filter" input and "+ Add New" button within each tab to manage your entries.
