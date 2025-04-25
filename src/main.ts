@@ -1,4 +1,6 @@
-import { App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting, TFile, TFolder, normalizePath, stringifyYaml, parseYaml, FrontMatterCache, WorkspaceLeaf } from 'obsidian'; // Added WorkspaceLeaf
+/* eslint-disable no-mixed-spaces-and-tabs */
+/* eslint-disable @typescript-eslint/no-unused-vars */
+import { App, Notice, Plugin, TFile, TFolder, normalizePath, stringifyYaml, WorkspaceLeaf } from 'obsidian'; // Added WorkspaceLeaf
 import { CharacterModal } from './modals/CharacterModal';
 import { Character, Location, Event, GalleryImage, GalleryData } from './types';
 import { CharacterListModal } from './modals/CharacterListModal';
@@ -45,11 +47,12 @@ export default class StorytellerSuitePlugin extends Plugin {
 		}).addClass('storyteller-suite-ribbon-class');
 
 		// --- Dashboard Command ---
+		// Fix dashboard command naming
 		this.addCommand({
-			id: 'open-storyteller-suite-dashboard',
-			name: 'Open Storyteller Suite Dashboard',
+			id: 'open-dashboard-view',
+			name: 'Open Dashboard',
 			callback: () => {
-				this.activateView(); // Activate view instead of opening modal
+				this.activateView();
 			}
 		});
 
@@ -134,8 +137,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 	}
 
 	onunload() {
-		console.log('Unloading Storyteller Suite Plugin');
-		this.app.workspace.detachLeavesOfType(VIEW_TYPE_DASHBOARD); // Clean up view on unload
+		// Removed manual leaf detachment (handled by Obsidian)
 	}
 
 	// --- Helper to Activate View ---
@@ -179,7 +181,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		const folder = this.app.vault.getAbstractFileByPath(normalizedPath);
 		if (!folder) {
 			await this.app.vault.createFolder(normalizedPath);
-			console.log(`Created folder: ${normalizedPath}`);
+			// console.log(`Created folder: ${normalizedPath}`);
 		} else if (!(folder instanceof TFolder)) {
 			const errorMsg = `Error: Path ${normalizedPath} exists but is not a folder. Check Storyteller Suite settings.`;
 			new Notice(errorMsg);
@@ -270,10 +272,10 @@ export default class StorytellerSuitePlugin extends Plugin {
 		const existingFile = this.app.vault.getAbstractFileByPath(filePath);
 		if (existingFile && existingFile instanceof TFile) {
 			await this.app.vault.modify(existingFile, fileContent);
-			console.log(`Updated character file: ${filePath}`);
+			// console.log(`Updated character file: ${filePath}`);
 		} else {
 			const newFile = await this.app.vault.create(filePath, fileContent);
-			console.log(`Created character file: ${filePath}`);
+			// console.log(`Created character file: ${filePath}`);
 		}
 		this.app.metadataCache.trigger("dataview:refresh-views");
 	}
@@ -281,8 +283,12 @@ export default class StorytellerSuitePlugin extends Plugin {
 	async listCharacters(): Promise<Character[]> {
 		await this.ensureCharacterFolder();
 		const folderPath = this.settings.characterFolder;
-		const folder = this.app.vault.getAbstractFileByPath(folderPath) as TFolder;
-		const files = folder.children.filter(file => file instanceof TFile && file.extension === 'md') as TFile[];
+		const f = this.app.vault.getAbstractFileByPath(folderPath);
+		if (!(f instanceof TFolder)) {
+			new Notice(`Character folder not found: ${folderPath}`);
+			return [];
+		}
+		const files = f.children.filter(file => file instanceof TFile && file.extension === 'md') as TFile[];
 
 		const characters: Character[] = [];
 		for (const file of files) {
@@ -299,11 +305,9 @@ export default class StorytellerSuitePlugin extends Plugin {
 		if (file instanceof TFile) {
 			await this.app.vault.trash(file, true);
 			new Notice(`Character file "${file.basename}" moved to trash.`);
-			console.log(`Deleted character file: ${filePath}`);
 			this.app.metadataCache.trigger("dataview:refresh-views");
 		} else {
 			new Notice(`Error: Could not find character file to delete at ${filePath}`);
-			console.error(`Error deleting character file: ${filePath} not found or not a file.`);
 		}
 	}
 
@@ -353,10 +357,10 @@ export default class StorytellerSuitePlugin extends Plugin {
 		const existingFile = this.app.vault.getAbstractFileByPath(filePath);
 		if (existingFile && existingFile instanceof TFile) {
 			await this.app.vault.modify(existingFile, fileContent);
-			console.log(`Updated location file: ${filePath}`);
+			// console.log(`Updated location file: ${filePath}`);
 		} else {
 			await this.app.vault.create(filePath, fileContent);
-			console.log(`Created location file: ${filePath}`);
+			// console.log(`Created location file: ${filePath}`);
 		}
 		this.app.metadataCache.trigger("dataview:refresh-views");
 	}
@@ -364,8 +368,12 @@ export default class StorytellerSuitePlugin extends Plugin {
 	async listLocations(): Promise<Location[]> {
 		await this.ensureLocationFolder();
 		const folderPath = this.settings.locationFolder;
-		const folder = this.app.vault.getAbstractFileByPath(folderPath) as TFolder;
-		const files = folder.children.filter(file => file instanceof TFile && file.extension === 'md') as TFile[];
+		const f = this.app.vault.getAbstractFileByPath(folderPath);
+		if (!(f instanceof TFolder)) {
+			new Notice(`Location folder not found: ${folderPath}`);
+			return [];
+		}
+		const files = f.children.filter(file => file instanceof TFile && file.extension === 'md') as TFile[];
 
 		const locations: Location[] = [];
 		for (const file of files) {
@@ -382,7 +390,6 @@ export default class StorytellerSuitePlugin extends Plugin {
 		if (file instanceof TFile) {
 			await this.app.vault.trash(file, true);
 			new Notice(`Location file "${file.basename}" moved to trash.`);
-			console.log(`Deleted location file: ${filePath}`);
 			this.app.metadataCache.trigger("dataview:refresh-views");
 		} else {
 			new Notice(`Error: Could not find location file to delete at ${filePath}`);
@@ -398,6 +405,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		await this.ensureEventFolder();
 		const folderPath = this.settings.eventFolder;
 		// Ensure event name is valid for filename
+		// eslint-disable-next-line no-useless-escape
 		const safeName = event.name?.replace(/[\\/:"*?<>|#^\[\]]+/g, '') || 'Unnamed Event'; // Added fallback and expanded invalid chars
         const fileName = `${safeName}.md`;
 		const filePath = normalizePath(`${folderPath}/${fileName}`);
@@ -468,10 +476,10 @@ export default class StorytellerSuitePlugin extends Plugin {
             } else {
 			    await this.app.vault.modify(existingFile, fileContent);
             }
-			console.log(`Updated event file: ${filePath}`);
+			// console.log(`Updated event file: ${filePath}`);
 		} else {
 			const newFile = await this.app.vault.create(filePath, fileContent);
-			console.log(`Created event file: ${filePath}`);
+			// console.log(`Created event file: ${filePath}`);
 		}
 		this.app.metadataCache.trigger("dataview:refresh-views"); // Refresh Dataview if used
 	}
@@ -479,8 +487,12 @@ export default class StorytellerSuitePlugin extends Plugin {
 	async listEvents(): Promise<Event[]> {
 		await this.ensureEventFolder();
 		const folderPath = this.settings.eventFolder;
-		const folder = this.app.vault.getAbstractFileByPath(folderPath) as TFolder;
-		const files = folder.children.filter(file => file instanceof TFile && file.extension === 'md') as TFile[];
+		const f = this.app.vault.getAbstractFileByPath(folderPath);
+		if (!(f instanceof TFolder)) {
+			new Notice(`Event folder not found: ${folderPath}`);
+			return [];
+		}
+		const files = f.children.filter(file => file instanceof TFile && file.extension === 'md') as TFile[];
 
 		const events: Event[] = [];
 		for (const file of files) {
@@ -507,7 +519,6 @@ export default class StorytellerSuitePlugin extends Plugin {
 		if (file instanceof TFile) {
 			await this.app.vault.trash(file, true);
 			new Notice(`Event file "${file.basename}" moved to trash.`);
-			console.log(`Deleted event file: ${filePath}`);
 			this.app.metadataCache.trigger("dataview:refresh-views");
 		} else {
 			new Notice(`Error: Could not find event file to delete at ${filePath}`);

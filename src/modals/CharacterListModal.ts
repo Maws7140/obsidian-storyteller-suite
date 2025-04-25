@@ -1,4 +1,5 @@
-import { App, Modal, Setting, Notice, ButtonComponent } from 'obsidian';
+/* eslint-disable @typescript-eslint/no-unused-vars */
+import { App, Modal, Setting, Notice, ButtonComponent, TFile } from 'obsidian';
 import { Character } from '../types';
 import StorytellerSuitePlugin from '../main';
 import { CharacterModal } from './CharacterModal'; // Import edit modal
@@ -111,16 +112,18 @@ export class CharacterListModal extends Modal {
                 .setIcon('go-to-file')
                 .setTooltip('Open Note')
                 .onClick(() => {
-                    if (character.filePath) {
-                        const file = this.app.vault.getAbstractFileByPath(character.filePath);
-                        if (file) {
-                            this.app.workspace.getLeaf(false).openFile(file as any);
-                            this.close();
-                        } else {
-                            new Notice('Could not find the note file.');
-                        }
-                    }
-                });
+                if (!character.filePath) {
+                  new Notice('Error: Cannot open character note without file path.');
+                  return;
+                }
+                const file = this.app.vault.getAbstractFileByPath(character.filePath);
+                if (file instanceof TFile) {
+                    this.app.workspace.getLeaf(false).openFile(file);
+                    this.close();
+                } else {
+                    new Notice('Could not find the note file.');
+                }
+            });
         });
     }
 

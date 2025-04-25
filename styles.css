@@ -656,3 +656,16 @@ If your plugin does not need CSS, delete this file.
 .storyteller-dashboard-content .storyteller-list-item {
     /* Remove specific padding override if general style is good */
 }
+
+/* Dashboard header & title */
+.storyteller-dashboard-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--size-4-4);
+}
+.storyteller-dashboard-title { margin: 0; }
+.storyteller-kofi-link { margin-left: var(--size-4-4); }
+
+/* Utility class to hide elements */
+.storyteller-hidden { display: none !important; }

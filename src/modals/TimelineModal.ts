@@ -1,4 +1,4 @@
-import { App, Modal, Setting, Notice, ButtonComponent } from 'obsidian';
+import { App, Modal, Setting, Notice, ButtonComponent, TFile } from 'obsidian';
 import { Event } from '../types';
 import StorytellerSuitePlugin from '../main';
 import { EventModal } from './EventModal';
@@ -110,8 +110,8 @@ export class TimelineModal extends Modal {
                .onClick(() => {
                    if (event.filePath) {
                        const file = this.app.vault.getAbstractFileByPath(event.filePath);
-                       if (file) {
-                           this.app.workspace.getLeaf(false).openFile(file as any);
+                       if (file instanceof TFile) {
+                           this.app.workspace.getLeaf(false).openFile(file);
                            this.close();
                        } else {
                            new Notice('Could not find the note file.');
