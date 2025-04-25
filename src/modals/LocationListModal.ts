@@ -1,4 +1,4 @@
-import { App, Modal, Setting, Notice, ButtonComponent } from 'obsidian';
+import { App, Modal, Setting, Notice, ButtonComponent, TFile } from 'obsidian';
 import { Location } from '../types';
 import StorytellerSuitePlugin from '../main';
 import { LocationModal } from './LocationModal';
@@ -101,16 +101,18 @@ export class LocationListModal extends Modal {
                .setIcon('go-to-file')
                .setTooltip('Open Note')
                .onClick(() => {
-                   if (location.filePath) {
-                       const file = this.app.vault.getAbstractFileByPath(location.filePath);
-                       if (file) {
-                           this.app.workspace.getLeaf(false).openFile(file as any);
-                           this.close();
-                       } else {
-                           new Notice('Could not find the note file.');
-                       }
-                   }
-               });
+                if (!location.filePath) {
+                  new Notice('Error: Cannot open location note without file path.');
+                  return;
+                }
+                const file = this.app.vault.getAbstractFileByPath(location.filePath);
+                if (file instanceof TFile) {
+                    this.app.workspace.getLeaf(false).openFile(file);
+                    this.close();
+                } else {
+                    new Notice('Could not find the note file.');
+                }
+            });
         });
     }
 

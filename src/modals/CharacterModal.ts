@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 import { App, Modal, Setting, Notice, TextAreaComponent, TextComponent, ButtonComponent } from 'obsidian';
 import { Character } from '../types'; // Assumes Character type has relationships?: string[], associatedLocations?: string[], associatedEvents?: string[]
 import StorytellerSuitePlugin from '../main';
@@ -63,8 +64,7 @@ export class CharacterModal extends Modal {
             .setDesc('')
             .then(setting => {
                 imagePathDesc = setting.descEl.createEl('small', { text: `Current: ${this.character.profileImagePath || 'None'}` });
-                setting.descEl.style.width = '100%';
-                setting.descEl.style.marginBottom = 'var(--size-4-1)';
+                setting.descEl.addClass('storyteller-modal-setting-vertical');
             })
             .addButton(button => button
                 .setButtonText('Select')

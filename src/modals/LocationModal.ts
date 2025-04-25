@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 import { App, Modal, Setting, Notice, TextAreaComponent, TextComponent, ButtonComponent } from 'obsidian';
 import { Location } from '../types'; // Assumes Location type no longer has charactersPresent, eventsHere, subLocations
 import StorytellerSuitePlugin from '../main';
@@ -107,8 +108,7 @@ export class LocationModal extends Modal {
             .setDesc('')
             .then(setting => {
                 imagePathDesc = setting.descEl.createEl('small', { text: `Current: ${this.location.profileImagePath || 'None'}` });
-                setting.descEl.style.width = '100%';
-                setting.descEl.style.marginBottom = 'var(--size-4-1)';
+                setting.descEl.addClass('storyteller-modal-setting-vertical');
             })
             .addButton(button => button
                 .setButtonText('Select')

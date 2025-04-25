@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-inferrable-types */
+/* eslint-disable @typescript-eslint/no-unused-vars */
 import { ItemView, WorkspaceLeaf, Setting, Notice, App, ButtonComponent, TFile, normalizePath } from 'obsidian'; // Added normalizePath
 import StorytellerSuitePlugin from '../main';
 // Import necessary modals for button actions (Edit/Create/Detail)
@@ -17,6 +19,7 @@ export class DashboardView extends ItemView {
     plugin: StorytellerSuitePlugin;
     tabContentContainer: HTMLElement;
     tabHeaderContainer: HTMLElement;
+    // eslint-disable-next-line @typescript-eslint/no-inferrable-types
     currentFilter: string = ''; // Store filter state
     fileInput: HTMLInputElement | null = null; // Store file input reference
 
@@ -44,22 +47,12 @@ export class DashboardView extends ItemView {
 
         // --- Create a Header Container ---
         const headerContainer = container.createDiv('storyteller-dashboard-header');
-        headerContainer.style.display = 'flex'; // Use flexbox
-        headerContainer.style.justifyContent = 'space-between'; // Space title and link
-        headerContainer.style.alignItems = 'center'; // Align items vertically
-        headerContainer.style.marginBottom = 'var(--size-4-4)'; // Add some space below
 
         // --- Title (inside the header container) ---
         headerContainer.createEl("h2", {
              text: "Storyteller Suite",
              cls: 'storyteller-dashboard-title' // Add class for potential styling
         });
-        // Adjust styles for title if needed (remove default margins)
-        const titleEl = headerContainer.querySelector('.storyteller-dashboard-title');
-        if (titleEl instanceof HTMLElement) {
-             titleEl.style.margin = '0';
-        }
-
 
         // --- Ko-fi Link (inside the header container) ---
         const kofiLink = headerContainer.createEl('a');
@@ -67,7 +60,6 @@ export class DashboardView extends ItemView {
         kofiLink.target = '_blank'; // Open in new tab
         kofiLink.rel = 'noopener noreferrer'; // Security best practice
         kofiLink.addClass('storyteller-kofi-link'); // Add class for styling
-        kofiLink.style.marginLeft = 'var(--size-4-4)'; // Add space to the left
 
         // Option 1: Use an icon (requires Obsidian icon font or custom CSS)
         // import { setIcon } from 'obsidian'; // Make sure setIcon is imported at the top
@@ -93,7 +85,6 @@ export class DashboardView extends ItemView {
 
         // --- Create Tab Headers ---
         tabs.forEach((tab, index) => {
-            // ...(rest of tab header creation code remains the same)...
              const header = this.tabHeaderContainer.createEl('div', {
                  text: tab.label,
                  cls: 'storyteller-tab-header' + (index === 0 ? ' active' : '') // Activate first tab
@@ -197,8 +188,7 @@ export class DashboardView extends ItemView {
             // --- Upload Image Logic ---
             if (!this.fileInput) {
                 // Create file input element if it doesn't exist
-                this.fileInput = container.createEl('input', { type: 'file' });
-                this.fileInput.style.display = 'none'; // Hide the actual input
+                this.fileInput = container.createEl('input', { type: 'file', cls: 'storyteller-hidden' });
                 this.fileInput.accept = 'image/*'; // Accept only image files
 
                 this.fileInput.onchange = async (e) => {
