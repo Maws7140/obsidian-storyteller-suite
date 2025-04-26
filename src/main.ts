@@ -194,30 +194,30 @@ export default class StorytellerSuitePlugin extends Plugin {
 	async parseFile<T>(file: TFile, typeDefaults: Partial<T>): Promise<T | null> {
 		try {
 			const fileCache = this.app.metadataCache.getFileCache(file);
-			const frontmatter = fileCache?.frontmatter;
+			const frontmatter = fileCache?.frontmatter as Record<string, unknown> | undefined;
 			const content = await this.app.vault.cachedRead(file);
-
 			const descriptionMatch = content.match(/## Description\n([\s\S]*?)\n##/);
 			const backstoryMatch = content.match(/## Backstory\n([\s\S]*?)\n##/);
 			const historyMatch = content.match(/## History\n([\s\S]*?)\n##/);
 
-			const data: Partial<T> = {
-				...typeDefaults,
-				...(frontmatter as Partial<T>), // This should now include profileImagePath if present
+			// Use unknown map to avoid global any casts
+			const data: Record<string, unknown> = {
+				...typeDefaults as unknown as Record<string, unknown>,
+				...frontmatter,
 				filePath: file.path,
 			};
 
 			if ('description' in typeDefaults && descriptionMatch?.[1]) {
-				(data as any).description = descriptionMatch[1].trim();
+				data['description'] = descriptionMatch[1].trim();
 			}
 			if ('backstory' in typeDefaults && backstoryMatch?.[1]) {
-				(data as any).backstory = backstoryMatch[1].trim();
+				data['backstory'] = backstoryMatch[1].trim();
 			}
 			if ('history' in typeDefaults && historyMatch?.[1]) {
-				(data as any).history = historyMatch[1].trim();
+				data['history'] = historyMatch[1].trim();
 			}
 
-			if (!(data as any).name) {
+			if (!data['name']) {
 				console.warn(`File ${file.path} is missing a name in frontmatter.`);
 				return null;
 			}
@@ -288,7 +288,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 			new Notice(`Character folder not found: ${folderPath}`);
 			return [];
 		}
-		const files = f.children.filter(file => file instanceof TFile && file.extension === 'md') as TFile[];
+		const files = f.children.filter((file): file is TFile => file instanceof TFile && file.extension === 'md');
 
 		const characters: Character[] = [];
 		for (const file of files) {
@@ -332,13 +332,13 @@ export default class StorytellerSuitePlugin extends Plugin {
 
 		Object.keys(finalFrontmatter).forEach(key => {
 			const k = key as keyof typeof frontmatterData; // Corrected type reference
-            // Check if k exists in finalFrontmatter before accessing
+			// Check if k exists in finalFrontmatter before accessing
 			if (finalFrontmatter.hasOwnProperty(k)) {
-                const value = finalFrontmatter[k];
-                if (value === null || value === undefined || (Array.isArray(value) && value.length === 0)) {
-				    delete finalFrontmatter[k];
-			    }
-            }
+				const value = finalFrontmatter[k];
+				if (value === null || value === undefined || (Array.isArray(value) && value.length === 0)) {
+					delete finalFrontmatter[k];
+				}
+			}
 		});
 		if (finalFrontmatter.customFields && Object.keys(finalFrontmatter.customFields).length === 0) {
 			delete finalFrontmatter.customFields;
@@ -373,7 +373,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 			new Notice(`Location folder not found: ${folderPath}`);
 			return [];
 		}
-		const files = f.children.filter(file => file instanceof TFile && file.extension === 'md') as TFile[];
+		const files = f.children.filter((file): file is TFile => file instanceof TFile && file.extension === 'md');
 
 		const locations: Location[] = [];
 		for (const file of files) {
@@ -492,7 +492,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 			new Notice(`Event folder not found: ${folderPath}`);
 			return [];
 		}
-		const files = f.children.filter(file => file instanceof TFile && file.extension === 'md') as TFile[];
+		const files = f.children.filter((file): file is TFile => file instanceof TFile && file.extension === 'md');
 
 		const events: Event[] = [];
 		for (const file of files) {
