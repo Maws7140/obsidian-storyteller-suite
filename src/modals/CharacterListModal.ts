@@ -116,7 +116,7 @@ export class CharacterListModal extends Modal {
                   new Notice('Error: Cannot open character note without file path.');
                   return;
                 }
-                const file = this.app.vault.getAbstractFileByPath(character.filePath);
+                const file = this.app.vault.getAbstractFileByPath(character.filePath!);
                 if (file instanceof TFile) {
                     this.app.workspace.getLeaf(false).openFile(file);
                     this.close();

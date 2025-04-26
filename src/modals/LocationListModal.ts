@@ -105,7 +105,7 @@ export class LocationListModal extends Modal {
                   new Notice('Error: Cannot open location note without file path.');
                   return;
                 }
-                const file = this.app.vault.getAbstractFileByPath(location.filePath);
+                const file = this.app.vault.getAbstractFileByPath(location.filePath!);
                 if (file instanceof TFile) {
                     this.app.workspace.getLeaf(false).openFile(file);
                     this.close();
