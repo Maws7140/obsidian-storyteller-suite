@@ -27,9 +27,9 @@ A comprehensive suite for managing characters, locations, events, and galleries 
 *   **Markdown-Based:** All data is stored as standard Markdown files with YAML frontmatter within your vault, ensuring data longevity and interoperability.
 *   **Visual Interface:** Modern, card-based display in the dashboard for quick visual reference, including images and key details.
 
-![Screenshot 1](https://raw.githubusercontent.com/SamW7140/obsidian-storyteller-suite/screenshots/screenshot1.png)
-![Screenshot 2](https://raw.githubusercontent.com/SamW7140/obsidian-storyteller-suite/screenshots/screenshot2.png)
-![Screenshot 3](https://raw.githubusercontent.com/SamW7140/obsidian-storyteller-suite/screenshots/screenshot3.png)
+![Screenshot 1](https://raw.githubusercontent.com/SamW7140/obsidian-storyteller-suite/main/screenshots/Screenshot1.png)
+![Screenshot 2](https://raw.githubusercontent.com/SamW7140/obsidian-storyteller-suite/main/screenshots/Screenshot2.png)
+![Screenshot 3](https://raw.githubusercontent.com/SamW7140/obsidian-storyteller-suite/main/screenshots/Screenshot3.png)
 
 
 ## How to Use
