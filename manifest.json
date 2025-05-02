@@ -3,9 +3,9 @@
 	"name": "Storyteller Suite",
 	"version": "1.0.2",
 	"minAppVersion": "1.0.0",
-	"description": "A comprehensive suite for managing characters, locations, events, and galleries for your stories within Obsidian.",
+	"description": "A comprehensive suite for managing characters, locations, events, and galleries for your novels.",
 	"author": "Maws",
 	"authorUrl": "",
 	"fundingUrl": "https://ko-fi.com/kingmaws",
-	"isDesktopOnly": false
+	"isDesktopOnly": true
 }
