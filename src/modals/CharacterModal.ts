@@ -42,7 +42,7 @@ export class CharacterModal extends Modal {
     onOpen() {
         const { contentEl } = this;
         contentEl.empty();
-        contentEl.createEl('h2', { text: this.isNew ? 'Create New Character' : `Edit ${this.character.name}` });
+        contentEl.createEl('h2', { text: this.isNew ? 'Create new character' : `Edit ${this.character.name}` });
 
         // --- Name ---
         new Setting(contentEl)
@@ -60,7 +60,7 @@ export class CharacterModal extends Modal {
         // --- Profile Image ---
         let imagePathDesc: HTMLElement;
         new Setting(contentEl)
-            .setName('Profile Image')
+            .setName('Profile image')
             .setDesc('')
             .then(setting => {
                 imagePathDesc = setting.descEl.createEl('small', { text: `Current: ${this.character.profileImagePath || 'None'}` });
@@ -68,7 +68,7 @@ export class CharacterModal extends Modal {
             })
             .addButton(button => button
                 .setButtonText('Select')
-                .setTooltip('Select from Gallery')
+                .setTooltip('Select from gallery')
                 .onClick(() => {
                     new GalleryImageSuggestModal(this.app, this.plugin, (selectedImage) => {
                         const path = selectedImage ? selectedImage.filePath : '';
@@ -78,7 +78,7 @@ export class CharacterModal extends Modal {
                 }))
             .addButton(button => button
                 .setIcon('cross')
-                .setTooltip('Clear Image')
+                .setTooltip('Clear image')
                 .setClass('mod-warning')
                 .onClick(() => {
                     this.character.profileImagePath = undefined;
@@ -144,13 +144,13 @@ export class CharacterModal extends Modal {
 
 
         // --- Custom Fields ---
-        contentEl.createEl('h3', { text: 'Custom Fields' });
+        contentEl.createEl('h3', { text: 'Custom fields' });
         const customFieldsContainer = contentEl.createDiv('storyteller-custom-fields-container');
         this.renderCustomFields(customFieldsContainer, this.character.customFields || {});
 
         new Setting(contentEl)
             .addButton(button => button
-                .setButtonText('Add Custom Field')
+                .setButtonText('Add custom field')
                 .setIcon('plus')
                 .onClick(() => {
                     if (!this.character.customFields) {
@@ -167,7 +167,7 @@ export class CharacterModal extends Modal {
 
         if (!this.isNew && this.onDelete) {
             buttonsSetting.addButton(button => button
-                .setButtonText('Delete Character')
+                .setButtonText('Delete character')
                 .setClass('mod-warning')
                 .onClick(async () => {
                     if (confirm(`Are you sure you want to delete "${this.character.name}"?`)) {
@@ -194,7 +194,7 @@ export class CharacterModal extends Modal {
             }));
 
         buttonsSetting.addButton(button => button
-            .setButtonText(this.isNew ? 'Create Character' : 'Save Changes')
+            .setButtonText(this.isNew ? 'Create character' : 'Save changes')
             .setCta()
             .onClick(async () => {
                 if (!this.character.name?.trim()) {

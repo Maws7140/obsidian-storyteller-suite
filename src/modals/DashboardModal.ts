@@ -14,13 +14,13 @@ export class DashboardModal extends Modal {
     onOpen() {
         const { contentEl } = this;
         contentEl.empty();
-        contentEl.createEl('h2', { text: 'Storyteller Suite Dashboard' });
+        contentEl.createEl('h2', { text: 'Storyteller Suite dashboard' });
 
         new Setting(contentEl)
             .setName('Characters')
             .setDesc('Manage your story characters.')
             .addButton(button => button
-                .setButtonText('View Characters')
+                .setButtonText('View characters')
                 .setCta()
                 .onClick(async () => {
                     this.close();
@@ -28,7 +28,7 @@ export class DashboardModal extends Modal {
                     new (await import('./CharacterListModal')).CharacterListModal(this.app, this.plugin, characters).open();
                 }))
             .addButton(button => button
-                .setButtonText('Create New')
+                .setButtonText('Create new')
                 .onClick(async () => {
                     this.close();
                     new (await import('./CharacterModal')).CharacterModal(this.app, this.plugin, null, async (char: Character) => {
@@ -41,7 +41,7 @@ export class DashboardModal extends Modal {
             .setName('Locations')
             .setDesc('Manage your story locations.')
             .addButton(button => button
-                .setButtonText('View Locations')
+                .setButtonText('View locations')
                 .setCta()
                 .onClick(async () => {
                     this.close();
@@ -49,7 +49,7 @@ export class DashboardModal extends Modal {
                     new (await import('./LocationListModal')).LocationListModal(this.app, this.plugin, locations).open();
                 }))
             .addButton(button => button
-                .setButtonText('Create New')
+                .setButtonText('Create new')
                 .onClick(async () => {
                     this.close();
                     new (await import('./LocationModal')).LocationModal(this.app, this.plugin, null, async (loc: Location) => {
@@ -62,7 +62,7 @@ export class DashboardModal extends Modal {
             .setName('Events / Timeline')
             .setDesc('Manage your story events.')
             .addButton(button => button
-                .setButtonText('View Timeline')
+                .setButtonText('View timeline')
                 .setCta()
                 .onClick(async () => {
                     this.close();
@@ -70,7 +70,7 @@ export class DashboardModal extends Modal {
                     new (await import('./TimelineModal')).TimelineModal(this.app, this.plugin, events).open();
                 }))
             .addButton(button => button
-                .setButtonText('Create New')
+                .setButtonText('Create new')
                 .onClick(async () => {
                     this.close();
                     new (await import('./EventModal')).EventModal(this.app, this.plugin, null, async (evt: Event) => {
@@ -83,7 +83,7 @@ export class DashboardModal extends Modal {
             .setName('Gallery')
             .setDesc('Manage your story images.')
             .addButton(button => button
-                .setButtonText('Open Gallery')
+                .setButtonText('Open gallery')
                 .setCta()
                 .onClick(async () => {
                     this.close();

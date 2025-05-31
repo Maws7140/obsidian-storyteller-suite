@@ -1,43 +1,38 @@
-import { App, Modal, Setting, Notice, TextAreaComponent } from 'obsidian';
+import { App, Modal, Setting, Notice } from 'obsidian';
 import { GalleryImage } from '../types';
 import StorytellerSuitePlugin from '../main';
 
 export class ImageDetailModal extends Modal {
     plugin: StorytellerSuitePlugin;
-    image: GalleryImage; // Use a deep copy for editing
+    image: GalleryImage;
     isNew: boolean;
-    onSaveCallback?: () => Promise<void>; // Optional callback
+    onSaveCallback?: () => Promise<void>; // Add callback param
 
-    constructor(app: App, plugin: StorytellerSuitePlugin, image: GalleryImage, isNew: boolean, onSaveCallback?: () => Promise<void>) { // Add callback param
+    constructor(app: App, plugin: StorytellerSuitePlugin, image: GalleryImage, isNew: boolean, onSaveCallback?: () => Promise<void>) {
         super(app);
         this.plugin = plugin;
         this.image = { ...image }; // Create a shallow copy for editing
-        // Deep copy arrays if they exist
-        this.image.tags = [...(image.tags || [])];
-        this.image.linkedCharacters = [...(image.linkedCharacters || [])];
-        this.image.linkedLocations = [...(image.linkedLocations || [])];
-        this.image.linkedEvents = [...(image.linkedEvents || [])];
         this.isNew = isNew;
-        this.onSaveCallback = onSaveCallback; // Store the callback
+        this.onSaveCallback = onSaveCallback;
         this.modalEl.addClass('storyteller-image-detail-modal');
     }
 
     onOpen() {
         const { contentEl } = this;
         contentEl.empty();
-        contentEl.createEl('h2', { text: this.isNew ? 'Add Image Details' : 'Edit Image Details' });
+        contentEl.createEl('h2', { text: this.isNew ? 'Add image details' : 'Edit image details' });
 
         const mainContainer = contentEl.createDiv('storyteller-image-detail-container');
 
         // --- Image Preview ---
         const previewEl = mainContainer.createDiv('storyteller-image-preview');
-        const img = previewEl.createEl('img');
+        const imgEl = previewEl.createEl('img');
         const resourcePath = this.app.vault.adapter.getResourcePath(this.image.filePath);
-        img.src = resourcePath;
-        img.alt = this.image.filePath;
+        imgEl.src = resourcePath;
+        imgEl.alt = this.image.title || this.image.filePath;
         previewEl.createEl('p', { text: this.image.filePath }); // Show file path
 
-        // --- Details Form ---
+        // --- Form Fields ---
         const formEl = mainContainer.createDiv('storyteller-image-form');
 
         new Setting(formEl)
@@ -54,7 +49,6 @@ export class ImageDetailModal extends Modal {
 
         new Setting(formEl)
             .setName('Description')
-            .setClass('storyteller-modal-setting-vertical')
             .addTextArea(text => {
                 text.setValue(this.image.description || '')
                     .onChange(value => { this.image.description = value || undefined; });
@@ -64,58 +58,66 @@ export class ImageDetailModal extends Modal {
         new Setting(formEl)
             .setName('Tags')
             .setDesc('Comma-separated tags.')
-            .addTextArea(text => text
+            .addText(text => text
                 .setValue((this.image.tags || []).join(', '))
-                .onChange(value => { this.image.tags = value.split(',').map(t => t.trim()).filter(t => t.length > 0); }));
+                .onChange(value => {
+                    this.image.tags = value.split(',').map(t => t.trim()).filter(t => t.length > 0);
+                }));
 
-        // --- Links ---
         formEl.createEl('h3', { text: 'Links' });
+
         new Setting(formEl)
             .setName('Characters')
-            .setDesc('Comma-separated names/links.')
-            .addTextArea(text => text
+            .setDesc('Comma-separated character names.')
+            .addText(text => text
                 .setValue((this.image.linkedCharacters || []).join(', '))
-                .onChange(value => { this.image.linkedCharacters = value.split(',').map(t => t.trim()).filter(t => t.length > 0); }));
+                .onChange(value => {
+                    this.image.linkedCharacters = value.split(',').map(s => s.trim()).filter(s => s.length > 0);
+                }));
 
         new Setting(formEl)
             .setName('Locations')
-            .setDesc('Comma-separated names/links.')
-            .addTextArea(text => text
+            .setDesc('Comma-separated location names.')
+            .addText(text => text
                 .setValue((this.image.linkedLocations || []).join(', '))
-                .onChange(value => { this.image.linkedLocations = value.split(',').map(t => t.trim()).filter(t => t.length > 0); }));
+                .onChange(value => {
+                    this.image.linkedLocations = value.split(',').map(s => s.trim()).filter(s => s.length > 0);
+                }));
 
         new Setting(formEl)
             .setName('Events')
-            .setDesc('Comma-separated names/links.')
-            .addTextArea(text => text
+            .setDesc('Comma-separated event names.')
+            .addText(text => text
                 .setValue((this.image.linkedEvents || []).join(', '))
-                .onChange(value => { this.image.linkedEvents = value.split(',').map(t => t.trim()).filter(t => t.length > 0); }));
+                .onChange(value => {
+                    this.image.linkedEvents = value.split(',').map(s => s.trim()).filter(s => s.length > 0);
+                }));
 
-        // --- Actions ---
-        const actionsEl = contentEl.createDiv('storyteller-modal-actions');
-        new Setting(actionsEl)
+        // Action Buttons
+        new Setting(formEl)
+            .setClass('storyteller-modal-buttons')
             .addButton(button => button
-                .setButtonText('Save Details')
+                .setButtonText('Save details')
                 .setCta()
                 .onClick(async () => {
-                    await this.plugin.updateGalleryImage(this.image); // Update uses ID match
-                    this.close();
-                    // Call the callback if it exists
+                    await this.plugin.updateGalleryImage(this.image);
+                    new Notice(`Image details for "${this.image.filePath}" saved.`);
                     if (this.onSaveCallback) {
                         await this.onSaveCallback();
                     }
+                    this.close();
                 }))
             .addButton(button => button
-                .setButtonText('Remove from Gallery')
+                .setButtonText('Remove from gallery')
                 .setClass('mod-warning')
                 .onClick(async () => {
                     if (confirm(`Are you sure you want to remove "${this.image.filePath}" from the gallery? This does not delete the file itself.`)) {
                         await this.plugin.deleteGalleryImage(this.image.id);
-                        this.close();
-                        // Call the callback if it exists
+                        new Notice(`Image "${this.image.filePath}" removed from gallery.`);
                         if (this.onSaveCallback) {
                             await this.onSaveCallback();
                         }
+                        this.close();
                     }
                 }));
     }

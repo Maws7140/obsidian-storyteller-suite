@@ -41,67 +41,71 @@ export class LocationModal extends Modal {
     onOpen() {
         const { contentEl } = this;
         contentEl.empty();
-        contentEl.createEl('h2', { text: this.isNew ? 'Create New Location' : `Edit ${this.location.name}` });
+        contentEl.createEl('h2', { text: this.isNew ? 'Create new location' : `Edit ${this.location.name}` });
 
-        // --- Name ---
+        // --- Basic Fields ---
         new Setting(contentEl)
             .setName('Name')
             .setDesc('The location\'s name.')
             .addText(text => text
                 .setPlaceholder('Enter location name')
                 .setValue(this.location.name)
-                .onChange(value => { this.location.name = value; })
-                .inputEl.addClass('storyteller-modal-input-large'));
+                .onChange(value => {
+                    this.location.name = value;
+                })
+                .inputEl.addClass('storyteller-modal-input-large')
+            );
 
-        // --- Description ---
         new Setting(contentEl)
             .setName('Description')
             .setClass('storyteller-modal-setting-vertical')
             .addTextArea(text => {
-                text.setPlaceholder('A brief description of the location...')
+                text
+                    .setPlaceholder('A brief description of the location...')
                     .setValue(this.location.description || '')
-                    .onChange(value => { this.location.description = value || undefined; });
+                    .onChange(value => {
+                        this.location.description = value || undefined;
+                    });
                 text.inputEl.rows = 4;
                 text.inputEl.addClass('storyteller-modal-textarea');
             });
 
-        // --- History ---
         new Setting(contentEl)
             .setName('History')
             .setClass('storyteller-modal-setting-vertical')
             .addTextArea(text => {
-                text.setPlaceholder('The location\'s history...')
+                text
+                    .setPlaceholder('The location\'s history and past events...')
                     .setValue(this.location.history || '')
-                    .onChange(value => { this.location.history = value || undefined; });
-                text.inputEl.rows = 6;
+                    .onChange(value => {
+                        this.location.history = value || undefined;
+                    });
+                text.inputEl.rows = 4;
                 text.inputEl.addClass('storyteller-modal-textarea');
             });
 
-        // --- Location Type ---
         new Setting(contentEl)
             .setName('Type')
-            .setDesc('e.g., City, Forest, Tavern, Ruin')
+            .setDesc('e.g., City, Forest, Castle, Tavern')
             .addText(text => text
                 .setValue(this.location.locationType || '')
                 .onChange(value => { this.location.locationType = value || undefined; }));
 
-        // --- Region ---
         new Setting(contentEl)
             .setName('Region')
-            .setDesc('The parent region or area this location belongs to.')
+            .setDesc('Broader geographic area.')
             .addText(text => text
                 .setValue(this.location.region || '')
                 .onChange(value => { this.location.region = value || undefined; }));
 
-        // --- Status ---
         new Setting(contentEl)
             .setName('Status')
-            .setDesc('e.g., Populated, Abandoned, Contested')
+            .setDesc('e.g., Active, Ruins, Abandoned')
             .addText(text => text
                 .setValue(this.location.status || '')
                 .onChange(value => { this.location.status = value || undefined; }));
 
-        // --- Representative Image ---
+        // --- Profile Image ---
         let imagePathDesc: HTMLElement;
         new Setting(contentEl)
             .setName('Image')
@@ -112,7 +116,7 @@ export class LocationModal extends Modal {
             })
             .addButton(button => button
                 .setButtonText('Select')
-                .setTooltip('Select from Gallery')
+                .setTooltip('Select from gallery')
                 .onClick(() => {
                     new GalleryImageSuggestModal(this.app, this.plugin, (selectedImage) => {
                         const path = selectedImage ? selectedImage.filePath : '';
@@ -122,7 +126,7 @@ export class LocationModal extends Modal {
                 }))
             .addButton(button => button
                 .setIcon('cross')
-                .setTooltip('Clear Image')
+                .setTooltip('Clear image')
                 .setClass('mod-warning')
                 .onClick(() => {
                     this.location.profileImagePath = undefined;
@@ -175,13 +179,13 @@ export class LocationModal extends Modal {
         //     }));
 
         // --- Custom Fields ---
-        contentEl.createEl('h3', { text: 'Custom Fields' });
+        contentEl.createEl('h3', { text: 'Custom fields' });
         const customFieldsContainer = contentEl.createDiv('storyteller-custom-fields-container');
         this.renderCustomFields(customFieldsContainer, this.location.customFields || {});
 
         new Setting(contentEl)
             .addButton(button => button
-                .setButtonText('Add Custom Field')
+                .setButtonText('Add custom field')
                 .setIcon('plus')
                 .onClick(() => {
                     if (!this.location.customFields) {
@@ -198,7 +202,7 @@ export class LocationModal extends Modal {
 
         if (!this.isNew && this.onDelete) {
             buttonsSetting.addButton(button => button
-                .setButtonText('Delete Location')
+                .setButtonText('Delete location')
                 .setClass('mod-warning')
                 .onClick(async () => {
                     if (confirm(`Are you sure you want to delete "${this.location.name}"?`)) {
@@ -225,7 +229,7 @@ export class LocationModal extends Modal {
             }));
 
         buttonsSetting.addButton(button => button
-            .setButtonText(this.isNew ? 'Create Location' : 'Save Changes')
+            .setButtonText(this.isNew ? 'Create location' : 'Save changes')
             .setCta()
             .onClick(async () => {
                 if (!this.location.name?.trim()) {
