@@ -263,23 +263,20 @@ export class DashboardView extends ItemView {
     }
 
     // --- Header Controls (Filter + Add Button) ---
-    renderHeaderControls(container: HTMLElement, title: string, refreshFn: (container: HTMLElement) => Promise<void>, addFn: () => void, addButtonText: string = 'Create New') {
-        const controlsEl = container.createDiv('storyteller-view-controls');
-        new Setting(controlsEl)
+    private renderHeaderControls(container: HTMLElement, title: string, filterFn: (filter: string) => Promise<void>, addFn: () => void, addButtonText: string = 'Create new') {
+        // --- Header Controls (Filter + Add Button) ---
+        new Setting(container)
             .setName(`Filter ${title}`)
             .setDesc('') // Keep desc empty or remove if not needed
-            .addText(text => {
-                text.setPlaceholder('Filter...')
-                    .setValue(this.currentFilter)
-                    .onChange(async (value) => {
-                        this.currentFilter = value.toLowerCase();
-                        await refreshFn(container); // Refresh the current view's content
-                    });
-            })
+            .addText(text => text
+                .setPlaceholder(`Search ${title.toLowerCase()}...`)
+                .onChange(async (value) => {
+                    await filterFn(value.toLowerCase());
+                }))
             .addButton(button => button
                 .setButtonText(addButtonText)
                 .setCta()
-                .onClick(() => addFn()));
+                .onClick(addFn));
     }
 
     // --- List/Grid Rendering Helpers (Adapted from Modals) ---
@@ -529,7 +526,7 @@ export class DashboardView extends ItemView {
         if (!filePath) return;
         new ButtonComponent(container)
            .setIcon('go-to-file')
-           .setTooltip('Open Note')
+           .setTooltip('Open note')
            .onClick(() => {
                const file = this.app.vault.getAbstractFileByPath(filePath);
                if (file instanceof TFile) {

@@ -47,7 +47,7 @@ export class GalleryModal extends Modal {
     onOpen() {
         const { contentEl } = this;
         contentEl.empty();
-        contentEl.createEl('h2', { text: 'Image Gallery' });
+        contentEl.createEl('h2', { text: 'Image gallery' });
 
         // Store the container element
         this.gridContainer = contentEl.createDiv('storyteller-gallery-grid');
@@ -62,27 +62,30 @@ export class GalleryModal extends Modal {
                     .onChange(value => this.renderGrid(value.toLowerCase(), this.gridContainer));
             })
             .addButton(button => button
-                .setButtonText('Add Image')
+                .setButtonText('Add image')
                 .setCta()
                 .onClick(() => {
-                    // Use a suggester to pick an image file
-                    new ImageSuggestModal(this.app, this.plugin, async (file) => {
-                        // Check if image already exists (by path)
-                        if (this.plugin.getGalleryImages().some(img => img.filePath === file.path)) {
-                            new Notice(`Image "${file.path}" is already in the gallery.`);
-                            return;
-                        }
-                        // Add basic image data
-                        const newImageData = await this.plugin.addGalleryImage({ filePath: file.path, title: file.basename });
+                    new ImageSuggestModal(this.app, this.plugin, async (selectedFile: TFile) => {
+                        // Add basic image data with required ID
+                        const imageData: Omit<GalleryImage, 'id'> = { filePath: selectedFile.path };
+                        // Use the plugin's addGalleryImage method to create with ID
+                        const newImage = await this.plugin.addGalleryImage(imageData);
                         // Open detail modal to add more info
-                        this.close();
-                        new ImageDetailModal(this.app, this.plugin, newImageData, true).open();
+                        new ImageDetailModal(this.app, this.plugin, newImage, false, async () => {
+                            await this.refreshGallery();
+                        }).open();
                     }).open();
                 }));
 
 
         // --- Image Grid ---
         // Render using the stored container
+        this.renderGrid('', this.gridContainer);
+    }
+
+    async refreshGallery() {
+        // Reload images from plugin and re-render
+        this.images = this.plugin.getGalleryImages();
         this.renderGrid('', this.gridContainer);
     }
 
@@ -118,7 +121,9 @@ export class GalleryModal extends Modal {
             // Add click handler to open detail modal
             imgWrapper.addEventListener('click', () => {
                 this.close();
-                new ImageDetailModal(this.app, this.plugin, image, false).open();
+                new ImageDetailModal(this.app, this.plugin, image, false, async () => {
+                    await this.refreshGallery();
+                }).open();
             });
         });
     }

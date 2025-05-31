@@ -23,8 +23,7 @@ export class LocationListModal extends Modal {
         // Store the container element
         this.listContainer = contentEl.createDiv('storyteller-list-container');
 
-        // Search Input
-        new Setting(contentEl)
+        const searchInput = new Setting(contentEl)
             .setName('Search')
             .addText(text => {
                 text.setPlaceholder('Filter locations...')
@@ -32,19 +31,20 @@ export class LocationListModal extends Modal {
                     .onChange(value => this.renderList(value.toLowerCase(), this.listContainer));
             });
 
-        // Render using the stored container
+        // Initial render using the stored container
         this.renderList('', this.listContainer);
 
         // Add New button
         new Setting(contentEl)
             .addButton(button => button
-                .setButtonText('Create New Location')
+                .setButtonText('Create new location')
                 .setCta()
                 .onClick(() => {
-                    this.close();
-                    new LocationModal(this.app, this.plugin, null, async (locData: Location) => {
-                        await this.plugin.saveLocation(locData);
-                        new Notice(`Location "${locData.name}" created.`);
+                    this.close(); // Close list modal
+                    new LocationModal(this.app, this.plugin, null, async (locationData: Location) => {
+                        await this.plugin.saveLocation(locationData);
+                        new Notice(`Location "${locationData.name}" created.`);
+                        // Optionally reopen list modal or dashboard
                     }).open();
                 }));
     }
@@ -74,21 +74,25 @@ export class LocationListModal extends Modal {
                 .setIcon('pencil')
                 .setTooltip('Edit')
                 .onClick(() => {
+                    // Close this modal and open the edit modal
                     this.close();
                     new LocationModal(this.app, this.plugin, location, async (updatedData: Location) => {
                         await this.plugin.saveLocation(updatedData);
                         new Notice(`Location "${updatedData.name}" updated.`);
+                        // Optionally reopen list modal
                     }).open();
                 });
 
             new ButtonComponent(actionsEl) // Delete
                 .setIcon('trash')
                 .setTooltip('Delete')
-                .setClass('mod-warning')
+                .setClass('mod-warning') // Add warning class for visual cue
                 .onClick(async () => {
+                    // Simple confirmation for now
                     if (confirm(`Are you sure you want to delete "${location.name}"?`)) {
                         if (location.filePath) {
                             await this.plugin.deleteLocation(location.filePath);
+                            // Refresh the list in the modal
                             this.locations = this.locations.filter(l => l.filePath !== location.filePath);
                             this.renderList(filter, container);
                         } else {
@@ -99,7 +103,7 @@ export class LocationListModal extends Modal {
 
             new ButtonComponent(actionsEl) // Open Note
                .setIcon('go-to-file')
-               .setTooltip('Open Note')
+               .setTooltip('Open note')
                .onClick(() => {
                 if (!location.filePath) {
                   new Notice('Error: Cannot open location note without file path.');
