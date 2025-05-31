@@ -44,7 +44,7 @@ export class EventModal extends Modal {
     onOpen() {
         const { contentEl } = this;
         contentEl.empty();
-        contentEl.createEl('h2', { text: this.isNew ? 'Create New Event' : `Edit ${this.event.name}` });
+        contentEl.createEl('h2', { text: this.isNew ? 'Create new event' : `Edit ${this.event.name}` });
 
         // --- Standard Fields (Name, DateTime, Description, etc.) ---
         new Setting(contentEl)
@@ -103,7 +103,7 @@ export class EventModal extends Modal {
             })
             .addButton(button => button
                 .setButtonText('Select')
-                .setTooltip('Select from Gallery')
+                .setTooltip('Select from gallery')
                 .onClick(() => {
                     new GalleryImageSuggestModal(this.app, this.plugin, (selectedImage) => {
                         const path = selectedImage ? selectedImage.filePath : '';
@@ -113,7 +113,7 @@ export class EventModal extends Modal {
                 }))
             .addButton(button => button
                 .setIcon('cross')
-                .setTooltip('Clear Image')
+                .setTooltip('Clear image')
                 .setClass('mod-warning')
                 .onClick(() => {
                     this.event.profileImagePath = undefined;
@@ -125,13 +125,13 @@ export class EventModal extends Modal {
 
         // --- Characters ---
         const charactersSetting = new Setting(contentEl)
-            .setName('Characters Involved')
+            .setName('Characters involved')
             .setDesc('Manage linked characters.');
         // Store the list container element
         this.charactersListEl = charactersSetting.controlEl.createDiv('storyteller-modal-list');
         this.renderList(this.charactersListEl, this.event.characters || [], 'character'); // Initial render
         charactersSetting.addButton(button => button
-            .setButtonText('Add Character')
+            .setButtonText('Add character')
             .setTooltip('Select character to link') // Changed tooltip to singular
             .setCta()
             .onClick(() => { // Removed async as suggester handles await internally
@@ -191,13 +191,13 @@ export class EventModal extends Modal {
 
         // --- Associated Images ---
         const imagesSetting = new Setting(contentEl)
-            .setName('Associated Images')
+            .setName('Associated images')
             .setDesc('Manage linked gallery images.');
         // Store the list container element
         this.imagesListEl = imagesSetting.controlEl.createDiv('storyteller-modal-list');
         this.renderList(this.imagesListEl, this.event.images || [], 'image'); // Initial render
         imagesSetting.addButton(button => button
-            .setButtonText('Add Image') // Changed to singular as we add one by one
+            .setButtonText('Add image') // Changed to singular as we add one by one
             .setTooltip('Select image from gallery') // Changed tooltip
             .setCta()
             .onClick(() => {
@@ -223,13 +223,13 @@ export class EventModal extends Modal {
             }));
 
         // --- Custom Fields ---
-        contentEl.createEl('h3', { text: 'Custom Fields' });
+        contentEl.createEl('h3', { text: 'Custom fields' });
         const customFieldsContainer = contentEl.createDiv('storyteller-custom-fields-container');
         this.renderCustomFields(customFieldsContainer, this.event.customFields || {});
 
         new Setting(contentEl)
             .addButton(button => button
-                .setButtonText('Add Custom Field')
+                .setButtonText('Add custom field')
                 .setIcon('plus')
                 .onClick(() => {
                     if (!this.event.customFields) {
@@ -246,7 +246,7 @@ export class EventModal extends Modal {
 
         if (!this.isNew && this.onDelete) {
             buttonsSetting.addButton(button => button
-                .setButtonText('Delete Event')
+                .setButtonText('Delete event')
                 .setClass('mod-warning')
                 .onClick(async () => {
                     // Added confirmation dialog
@@ -275,7 +275,7 @@ export class EventModal extends Modal {
             }));
 
         buttonsSetting.addButton(button => button
-            .setButtonText(this.isNew ? 'Create Event' : 'Save Changes')
+            .setButtonText(this.isNew ? 'Create event' : 'Save changes')
             .setCta()
             .onClick(async () => {
                 if (!this.event.name?.trim()) {
@@ -303,14 +303,14 @@ export class EventModal extends Modal {
 
         // Update Select/Change button text
         if (this.selectLocationButton) {
-            this.selectLocationButton.setButtonText(this.event.location ? 'Change Location' : 'Select Location');
+            this.selectLocationButton.setButtonText(this.event.location ? 'Change location' : 'Select location');
         }
 
         // Add clear button if location is set and button doesn't exist
         if (this.event.location && !existingClearButton) {
             this.locationSetting.addButton(button => button
                 .setIcon('cross')
-                .setTooltip('Clear Location (set to None)')
+                .setTooltip('Clear location (set to none)')
                 .setClass('mod-warning')
                 .setClass('storyteller-clear-location-button') // Add class for identification
                 .onClick(() => {

@@ -38,7 +38,7 @@ export class CharacterListModal extends Modal {
         // Add New button at the bottom
         new Setting(contentEl)
             .addButton(button => button
-                .setButtonText('Create New Character')
+                .setButtonText('Create new character')
                 .setCta()
                 .onClick(() => {
                     this.close(); // Close list modal
@@ -110,7 +110,7 @@ export class CharacterListModal extends Modal {
              // Optional: Button to open the note directly
              new ButtonComponent(actionsEl)
                 .setIcon('go-to-file')
-                .setTooltip('Open Note')
+                .setTooltip('Open note')
                 .onClick(() => {
                 if (!character.filePath) {
                   new Notice('Error: Cannot open character note without file path.');

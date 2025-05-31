@@ -22,10 +22,9 @@ export class TimelineModal extends Modal {
         contentEl.createEl('h2', { text: 'Timeline' });
 
         // Store the container element
-        this.listContainer = contentEl.createDiv('storyteller-list-container');
+        this.listContainer = contentEl.createDiv('storyteller-list-container storyteller-timeline-container');
 
-        // Search/Filter Input
-        new Setting(contentEl)
+        const searchInput = new Setting(contentEl)
             .setName('Search')
             .addText(text => {
                 text.setPlaceholder('Filter events...')
@@ -33,19 +32,20 @@ export class TimelineModal extends Modal {
                     .onChange(value => this.renderList(value.toLowerCase(), this.listContainer));
             });
 
-        // Render using the stored container
+        // Initial render using the stored container
         this.renderList('', this.listContainer);
 
         // Add New button
         new Setting(contentEl)
             .addButton(button => button
-                .setButtonText('Create New Event')
+                .setButtonText('Create new event')
                 .setCta()
                 .onClick(() => {
-                    this.close();
+                    this.close(); // Close list modal
                     new EventModal(this.app, this.plugin, null, async (eventData: Event) => {
                         await this.plugin.saveEvent(eventData);
                         new Notice(`Event "${eventData.name}" created.`);
+                        // Optionally reopen list modal or dashboard
                     }).open();
                 }));
     }
@@ -81,21 +81,25 @@ export class TimelineModal extends Modal {
                 .setIcon('pencil')
                 .setTooltip('Edit')
                 .onClick(() => {
+                    // Close this modal and open the edit modal
                     this.close();
                     new EventModal(this.app, this.plugin, event, async (updatedData: Event) => {
                         await this.plugin.saveEvent(updatedData);
                         new Notice(`Event "${updatedData.name}" updated.`);
+                        // Optionally reopen list modal
                     }).open();
                 });
 
             new ButtonComponent(actionsEl) // Delete
                 .setIcon('trash')
                 .setTooltip('Delete')
-                .setClass('mod-warning')
+                .setClass('mod-warning') // Add warning class for visual cue
                 .onClick(async () => {
+                    // Simple confirmation for now
                     if (confirm(`Are you sure you want to delete "${event.name}"?`)) {
                         if (event.filePath) {
                             await this.plugin.deleteEvent(event.filePath);
+                            // Refresh the list in the modal
                             this.events = this.events.filter(e => e.filePath !== event.filePath);
                             this.renderList(filter, container);
                         } else {
@@ -106,7 +110,7 @@ export class TimelineModal extends Modal {
 
             new ButtonComponent(actionsEl) // Open Note
                .setIcon('go-to-file')
-               .setTooltip('Open Note')
+               .setTooltip('Open note')
                .onClick(() => {
                    if (event.filePath) {
                        const file = this.app.vault.getAbstractFileByPath(event.filePath);
