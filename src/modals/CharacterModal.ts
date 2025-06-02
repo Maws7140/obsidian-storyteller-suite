@@ -249,7 +249,7 @@ export class CharacterModal extends Modal {
             const fieldSetting = new Setting(container)
                 .addText(text => text
                     .setValue(key)
-                    .setPlaceholder('Field Name')
+                    .setPlaceholder('Field name')
                     .onChange(newKey => {
                         if (newKey && newKey !== key && !fields.hasOwnProperty(newKey)) {
                             fields[newKey] = fields[key];
@@ -261,7 +261,7 @@ export class CharacterModal extends Modal {
                     }))
                 .addText(text => text
                     .setValue(fields[key]?.toString() || '')
-                    .setPlaceholder('Field Value')
+                    .setPlaceholder('Field value')
                     .onChange(value => {
                         fields[key] = value;
                     }))

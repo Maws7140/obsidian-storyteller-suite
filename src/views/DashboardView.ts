@@ -13,33 +13,68 @@ import { ImageDetailModal } from '../modals/ImageDetailModal';
 // import { ImageSuggestModal } from '../modals/GalleryModal';
 import { Character, Location, Event } from '../types'; // Import types
 
+/** Unique identifier for the dashboard view type in Obsidian's workspace */
 export const VIEW_TYPE_DASHBOARD = "storyteller-dashboard-view";
 
+/**
+ * Main dashboard view class providing a tabbed interface for story management
+ * This view integrates all storytelling entities (characters, locations, events, gallery)
+ * into a single, unified interface within Obsidian's sidebar
+ */
 export class DashboardView extends ItemView {
+    /** Reference to the main plugin instance */
     plugin: StorytellerSuitePlugin;
+    
+    /** Container element for tab content area */
     tabContentContainer: HTMLElement;
+    
+    /** Container element for tab headers */
     tabHeaderContainer: HTMLElement;
-    // eslint-disable-next-line @typescript-eslint/no-inferrable-types
-    currentFilter: string = ''; // Store filter state
-    fileInput: HTMLInputElement | null = null; // Store file input reference
+    
+    /** Current filter text applied to entity lists */
+    currentFilter: string = '';
+    
+    /** File input element reference for gallery image uploads */
+    fileInput: HTMLInputElement | null = null;
 
+    /**
+     * Constructor for the dashboard view
+     * @param leaf The workspace leaf that will contain this view
+     * @param plugin Reference to the main plugin instance
+     */
     constructor(leaf: WorkspaceLeaf, plugin: StorytellerSuitePlugin) {
         super(leaf);
         this.plugin = plugin;
     }
 
+    /**
+     * Get the unique identifier for this view type
+     * Required by Obsidian's view system
+     */
     getViewType() {
         return VIEW_TYPE_DASHBOARD;
     }
 
+    /**
+     * Get the display text for this view (shown in tab title)
+     * Required by Obsidian's view system
+     */
     getDisplayText() {
         return "Storyteller Dashboard";
     }
 
+    /**
+     * Get the icon identifier for this view
+     * Used in the view tab and sidebar
+     */
     getIcon() {
         return "book-open"; // Icon for the view tab
     }
 
+    /**
+     * Initialize and render the dashboard view
+     * Called when the view is first opened or needs to be rebuilt
+     */
     async onOpen() {
         const container = this.containerEl.children[1]; // View content container
         container.empty();
@@ -108,6 +143,11 @@ export class DashboardView extends ItemView {
 
     // --- Render Functions for Tab Content ---
 
+    /**
+     * Render the Characters tab content
+     * Shows character list with filtering and management controls
+     * @param container The container element to render content into
+     */
     async renderCharactersContent(container: HTMLElement) {
         container.empty();
         this.renderHeaderControls(container, 'Characters', this.renderCharactersContent.bind(this), () => {
@@ -132,6 +172,11 @@ export class DashboardView extends ItemView {
         this.renderCharacterList(characters, listContainer, container);
     }
 
+    /**
+     * Render the Locations tab content
+     * Shows location list with filtering and management controls
+     * @param container The container element to render content into
+     */
     async renderLocationsContent(container: HTMLElement) {
         container.empty();
         this.renderHeaderControls(container, 'Locations', this.renderLocationsContent.bind(this), () => {
@@ -155,13 +200,18 @@ export class DashboardView extends ItemView {
         this.renderLocationList(locations, listContainer, container);
     }
 
+    /**
+     * Render the Events/Timeline tab content
+     * Shows event list with filtering and management controls
+     * @param container The container element to render content into
+     */
     async renderEventsContent(container: HTMLElement) {
         container.empty();
-        this.renderHeaderControls(container, 'Events / Timeline', this.renderEventsContent.bind(this), () => {
-            new EventModal(this.app, this.plugin, null, async (evt: Event) => {
-                await this.plugin.saveEvent(evt);
-                new Notice(`Event "${evt.name}" created.`);
-                await this.renderEventsContent(container); // Refresh list
+        this.renderHeaderControls(container, 'Events/timeline', this.renderEventsContent.bind(this), () => {
+            new EventModal(this.app, this.plugin, null, async (eventData: Event) => {
+                await this.plugin.saveEvent(eventData);
+                new Notice(`Event "${eventData.name}" created.`);
+                await this.renderEventsContent(container); // Refresh after creation
             }).open();
         });
 
@@ -180,6 +230,11 @@ export class DashboardView extends ItemView {
         this.renderEventList(events, listContainer, container);
     }
 
+    /**
+     * Render the Gallery tab content
+     * Shows image gallery with upload functionality
+     * @param container The container element to render content into
+     */
     async renderGalleryContent(container: HTMLElement) {
         container.empty();
         const refreshCallback = this.renderGalleryContent.bind(this, container); // Define callback
@@ -266,7 +321,7 @@ export class DashboardView extends ItemView {
     private renderHeaderControls(container: HTMLElement, title: string, filterFn: (filter: string) => Promise<void>, addFn: () => void, addButtonText: string = 'Create new') {
         // --- Header Controls (Filter + Add Button) ---
         new Setting(container)
-            .setName(`Filter ${title}`)
+            .setName(`Filter ${title.toLowerCase()}`)
             .setDesc('') // Keep desc empty or remove if not needed
             .addText(text => text
                 .setPlaceholder(`Search ${title.toLowerCase()}...`)

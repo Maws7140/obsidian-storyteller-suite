@@ -1,61 +1,164 @@
+/**
+ * TypeScript type definitions for Storyteller Suite plugin
+ * These interfaces define the data structures used throughout the plugin
+ */
+
+/**
+ * Character entity representing a person, creature, or significant figure in the story
+ * Characters are stored as markdown files with frontmatter in the character folder
+ */
 export interface Character {
-    id?: string; // Optional unique ID
-    filePath?: string; // Path to the markdown file
+    /** Optional unique identifier for the character */
+    id?: string;
+    
+    /** File system path to the character's markdown file */
+    filePath?: string;
+    
+    /** Display name of the character (required) */
     name: string;
-    profileImagePath?: string; // Path to profile image in vault
+    
+    /** Path to the character's profile image within the vault */
+    profileImagePath?: string;
+    
+    /** Main description of the character (stored in markdown body) */
     description?: string;
+    
+    /** Array of character traits, personality attributes, or abilities */
     traits?: string[];
+    
+    /** Character's background story (stored in markdown body) */
     backstory?: string;
-    relationships?: string[]; // Links/Names of related character notes
-    locations?: string[]; // Links/Names of related location notes
-    events?: string[]; // Links/Names of related event notes
+    
+    /** Names/links of related characters (relationships, family, etc.) */
+    relationships?: string[];
+    
+    /** Names/links of locations associated with this character */
+    locations?: string[];
+    
+    /** Names/links of events this character was involved in */
+    events?: string[];
+    
+    /** User-defined custom fields for additional character data */
     customFields?: Record<string, string>;
-    status?: string; // e.g., Alive, Deceased, Missing
-    affiliation?: string; // e.g., Guild Name, Kingdom, Faction
+    
+    /** Current status of the character (e.g., "Alive", "Deceased", "Missing") */
+    status?: string;
+    
+    /** Character's allegiance, group, or faction (e.g., "Guild Name", "Kingdom") */
+    affiliation?: string;
 }
 
+/**
+ * Location entity representing a place, area, or geographical feature in the story
+ * Locations are stored as markdown files with frontmatter in the location folder
+ */
 export interface Location {
+    /** Display name of the location (required) */
     name: string;
+    
+    /** Main description of the location (stored in markdown body) */
     description?: string;
+    
+    /** Historical information about the location (stored in markdown body) */
     history?: string;
-    // REMOVED: characters?: string[]; // Links/Names of characters present
-    // REMOVED: events?: string[]; // Links/Names of events that occurred here
-    // REMOVED: subLocations?: string[]; // Links/Names of sub-location notes
+    
+    /** User-defined custom fields for additional location data */
     customFields?: Record<string, string>;
+    
+    /** File system path to the location's markdown file */
     filePath?: string;
-    locationType?: string; // e.g., City, Forest, Tavern
-    region?: string; // Parent region/area
-    status?: string; // e.g., Populated, Abandoned
-    profileImagePath?: string; // Path to representative image in vault
+    
+    /** Type or category of location (e.g., "City", "Forest", "Tavern") */
+    locationType?: string;
+    
+    /** Parent region, area, or broader geographical context */
+    region?: string;
+    
+    /** Current state of the location (e.g., "Populated", "Abandoned", "Under Siege") */
+    status?: string;
+    
+    /** Path to a representative image of the location within the vault */
+    profileImagePath?: string;
 }
 
+/**
+ * Event entity representing a significant occurrence, plot point, or happening in the story
+ * Events are stored as markdown files with frontmatter in the event folder
+ */
 export interface Event {
+    /** Display name of the event (required) */
     name: string;
-    dateTime?: string; // Date/Time string (consider using a library later for complex sorting)
+    
+    /** Date and/or time when the event occurred (string format for flexibility) */
+    dateTime?: string;
+    
+    /** Main description of what happened (stored in markdown body) */
     description?: string;
-    characters?: string[]; // Links/Names of characters involved
-    location?: string; // Link/Name of the location
+    
+    /** Names/links of characters who were involved in or affected by this event */
+    characters?: string[];
+    
+    /** Name/link of the primary location where this event took place */
+    location?: string;
+    
+    /** Results, consequences, or resolution of the event (stored in markdown body) */
     outcome?: string;
-    images?: string[]; // Links/Paths to associated images
+    
+    /** Paths/links to images associated with this event */
+    images?: string[];
+    
+    /** User-defined custom fields for additional event data */
     customFields?: Record<string, string>;
+    
+    /** File system path to the event's markdown file */
     filePath?: string;
-    status?: string; // e.g., Upcoming, Completed, Ongoing
-    profileImagePath?: string; // Path to representative image in vault
+    
+    /** Current status of the event (e.g., "Upcoming", "Completed", "Ongoing") */
+    status?: string;
+    
+    /** Path to a representative image of the event within the vault */
+    profileImagePath?: string;
 }
 
-// Using a simpler structure for Gallery, stored in plugin data (JSON)
+/**
+ * Gallery image metadata stored in plugin settings
+ * Represents an image file in the vault with associated storytelling metadata
+ * The actual image files remain in their original vault locations
+ */
 export interface GalleryImage {
-    id: string; // Unique ID (e.g., timestamp or UUID)
-    filePath: string; // Path to the image file within the vault
+    /** Unique identifier for this gallery entry (generated automatically) */
+    id: string;
+    
+    /** File system path to the actual image file within the vault */
+    filePath: string;
+    
+    /** Display title for the image */
     title?: string;
+    
+    /** Short caption or subtitle for the image */
     caption?: string;
+    
+    /** Detailed description of the image content */
     description?: string;
-    linkedCharacters?: string[]; // Links/Names
-    linkedLocations?: string[]; // Links/Names
-    linkedEvents?: string[]; // Links/Names
+    
+    /** Names/links of characters depicted or associated with this image */
+    linkedCharacters?: string[];
+    
+    /** Names/links of locations depicted or associated with this image */
+    linkedLocations?: string[];
+    
+    /** Names/links of events depicted or associated with this image */
+    linkedEvents?: string[];
+    
+    /** User-defined tags for categorizing and searching images */
     tags?: string[];
 }
 
+/**
+ * Gallery data structure stored in plugin settings
+ * Contains all gallery image metadata - not the actual image files
+ */
 export interface GalleryData {
+    /** Array of all gallery image metadata entries */
     images: GalleryImage[];
 }
