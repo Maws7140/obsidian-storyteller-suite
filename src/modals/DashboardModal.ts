@@ -59,7 +59,7 @@ export class DashboardModal extends Modal {
                 }));
 
         new Setting(contentEl)
-            .setName('Events / Timeline')
+            .setName('Events/timeline')
             .setDesc('Manage your story events.')
             .addButton(button => button
                 .setButtonText('View timeline')

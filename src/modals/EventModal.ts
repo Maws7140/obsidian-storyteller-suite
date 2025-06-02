@@ -57,7 +57,7 @@ export class EventModal extends Modal {
                 .inputEl.addClass('storyteller-modal-input-large'));
 
         new Setting(contentEl)
-            .setName('Date/Time')
+            .setName('Date/time')
             .setDesc('When the event occurred (e.g., YYYY-MM-DD HH:MM or descriptive).')
             .addText(text => text
                 .setPlaceholder('Enter date/time')
@@ -88,7 +88,7 @@ export class EventModal extends Modal {
 
         new Setting(contentEl)
             .setName('Status')
-            .setDesc('e.g., Upcoming, Completed, Ongoing, Key Plot Point')
+            .setDesc('e.g., Upcoming, Completed, Ongoing, key plot point')
             .addText(text => text
                 .setValue(this.event.status || '')
                 .onChange(value => { this.event.status = value || undefined; }));
@@ -368,7 +368,7 @@ export class EventModal extends Modal {
             const fieldSetting = new Setting(container)
                 .addText(text => text
                     .setValue(key)
-                    .setPlaceholder('Field Name')
+                    .setPlaceholder('Field name')
                     .onChange(newKey => {
                         if (newKey && newKey !== key && !fields.hasOwnProperty(newKey)) {
                             fields[newKey] = fields[key];
@@ -382,7 +382,7 @@ export class EventModal extends Modal {
                     }))
                 .addText(text => text
                     .setValue(fields[key]?.toString() || '')
-                    .setPlaceholder('Field Value')
+                    .setPlaceholder('Field value')
                     .onChange(value => {
                         fields[key] = value;
                     }))
