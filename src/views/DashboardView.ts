@@ -60,7 +60,7 @@ export class DashboardView extends ItemView {
      * Required by Obsidian's view system
      */
     getDisplayText() {
-        return "Storyteller Dashboard";
+        return "Storyteller dashboard";
     }
 
     /**
@@ -85,7 +85,7 @@ export class DashboardView extends ItemView {
 
         // --- Title (inside the header container) ---
         headerContainer.createEl("h2", {
-             text: "Storyteller Suite",
+             text: "Storyteller suite",
              cls: 'storyteller-dashboard-title' // Add class for potential styling
         });
 

@@ -58,7 +58,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		);
 
 		// Add ribbon icon for quick access to dashboard
-		this.addRibbonIcon('book-open', 'Open Storyteller Dashboard', () => {
+		this.addRibbonIcon('book-open', 'Open storyteller dashboard', () => {
 			this.activateView();
 		}).addClass('storyteller-suite-ribbon-class');
 
@@ -85,7 +85,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		// Dashboard command
 		this.addCommand({
 			id: 'open-dashboard-view',
-			name: 'Open Dashboard',
+			name: 'Open dashboard',
 			callback: () => {
 				this.activateView();
 			}
@@ -94,7 +94,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		// Character management commands
 		this.addCommand({
 			id: 'create-new-character',
-			name: 'Create New Character',
+			name: 'Create new character',
 			callback: () => {
 				new CharacterModal(this.app, this, null, async (characterData: Character) => {
 					await this.saveCharacter(characterData);
@@ -105,7 +105,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 
 		this.addCommand({
 			id: 'view-characters',
-			name: 'View Characters',
+			name: 'View characters',
 			callback: async () => {
 				const characters = await this.listCharacters();
 				new CharacterListModal(this.app, this, characters).open();
@@ -115,7 +115,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		// Location management commands
 		this.addCommand({
 			id: 'create-new-location',
-			name: 'Create New Location',
+			name: 'Create new location',
 			callback: () => {
 				new LocationModal(this.app, this, null, async (locationData: Location) => {
 					await this.saveLocation(locationData);
@@ -126,7 +126,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 
 		this.addCommand({
 			id: 'view-locations',
-			name: 'View Locations',
+			name: 'View locations',
 			callback: async () => {
 				const locations = await this.listLocations();
 				new LocationListModal(this.app, this, locations).open();
@@ -136,7 +136,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		// Event management commands
 		this.addCommand({
 			id: 'create-new-event',
-			name: 'Create New Event',
+			name: 'Create new event',
 			callback: () => {
 				new EventModal(this.app, this, null, async (eventData: Event) => {
 					await this.saveEvent(eventData);
@@ -147,7 +147,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 
 		this.addCommand({
 			id: 'view-timeline',
-			name: 'View Timeline',
+			name: 'View timeline',
 			callback: async () => {
 				const events = await this.listEvents();
 				new TimelineModal(this.app, this, events).open();
@@ -157,7 +157,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		// Gallery management command
 		this.addCommand({
 			id: 'open-gallery',
-			name: 'Open Gallery',
+			name: 'Open gallery',
 			callback: () => {
 				new GalleryModal(this.app, this).open();
 			}
