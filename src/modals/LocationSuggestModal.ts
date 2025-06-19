@@ -34,7 +34,7 @@ export class LocationSuggestModal extends FuzzySuggestModal<Location> {
 	}
 
 	getItemText(item: Location): string {
-        return item.name || 'Unnamed Location';
+        return item.name || 'Unnamed location';
 	}
 
 	onChooseItem(item: Location, evt: MouseEvent | KeyboardEvent): void {
