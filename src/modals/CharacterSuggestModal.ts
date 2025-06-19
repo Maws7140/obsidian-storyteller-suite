@@ -34,7 +34,7 @@ export class CharacterSuggestModal extends FuzzySuggestModal<Character> {
 	}
 
 	getItemText(item: Character): string {
-		return item.name || 'Unnamed Character';
+		return item.name || 'Unnamed character';
 	}
 
 	onChooseItem(item: Character, evt: MouseEvent | KeyboardEvent): void {

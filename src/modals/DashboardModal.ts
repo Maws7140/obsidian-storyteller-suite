@@ -14,7 +14,7 @@ export class DashboardModal extends Modal {
     onOpen() {
         const { contentEl } = this;
         contentEl.empty();
-        contentEl.createEl('h2', { text: 'Storyteller Suite dashboard' });
+        contentEl.createEl('h2', { text: 'Storyteller suite dashboard' });
 
         new Setting(contentEl)
             .setName('Characters')
