@@ -1,9 +1,10 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { App, Modal, Setting, Notice, TextAreaComponent, TextComponent, ButtonComponent } from 'obsidian';
 import { Location } from '../types'; // Assumes Location type no longer has charactersPresent, eventsHere, subLocations
+import { Group } from '../types';
 import StorytellerSuitePlugin from '../main';
 import { GalleryImageSuggestModal } from './GalleryImageSuggestModal';
-// Placeholder imports for suggesters - these would need to be removed or updated if used elsewhere
+// Placeholder imports for suggesters -
 // import { CharacterSuggestModal } from './CharacterSuggestModal';
 // import { EventSuggestModal } from './EventSuggestModal';
 // import { LocationSuggestModal } from './LocationSuggestModal';
@@ -17,6 +18,8 @@ export class LocationModal extends Modal {
     onSubmit: LocationModalSubmitCallback;
     onDelete?: LocationModalDeleteCallback;
     isNew: boolean;
+    private _groupRefreshInterval: number | null = null;
+    private groupSelectorContainer: HTMLElement | null = null;
 
     constructor(app: App, plugin: StorytellerSuitePlugin, location: Location | null, onSubmit: LocationModalSubmitCallback, onDelete?: LocationModalDeleteCallback) {
         super(app);
@@ -25,10 +28,12 @@ export class LocationModal extends Modal {
         // Remove charactersPresent, eventsHere, subLocations from initialization
         const initialLocation = location ? { ...location } : {
             name: '', description: '', history: '', locationType: undefined, region: undefined, status: undefined, profileImagePath: undefined,
-            // REMOVED: charactersPresent: [], eventsHere: [], subLocations: [], // Initialize link arrays
-            customFields: {}
+            customFields: {},
+            filePath: undefined
         };
         if (!initialLocation.customFields) initialLocation.customFields = {};
+        // Preserve filePath if editing
+        if (location && location.filePath) initialLocation.filePath = location.filePath;
         // REMOVED: Check for subLocations removed
         // if (!initialLocation.subLocations) initialLocation.subLocations = [];
 
@@ -125,6 +130,45 @@ export class LocationModal extends Modal {
                     }).open();
                 }))
             .addButton(button => button
+                .setButtonText('Upload')
+                .setTooltip('Upload new image')
+                .onClick(async () => {
+                    const fileInput = document.createElement('input');
+                    fileInput.type = 'file';
+                    fileInput.accept = 'image/*';
+                    fileInput.onchange = async () => {
+                        const file = fileInput.files?.[0];
+                        if (file) {
+                            try {
+                                // Ensure upload folder exists
+                                await this.plugin.ensureFolder(this.plugin.settings.galleryUploadFolder);
+                                
+                                // Create unique filename
+                                const timestamp = Date.now();
+                                const sanitizedName = file.name.replace(/[^\w\s.-]/g, '').replace(/\s+/g, '_');
+                                const fileName = `${timestamp}_${sanitizedName}`;
+                                const filePath = `${this.plugin.settings.galleryUploadFolder}/${fileName}`;
+                                
+                                // Read file as array buffer
+                                const arrayBuffer = await file.arrayBuffer();
+                                
+                                // Save to vault
+                                await this.app.vault.createBinary(filePath, arrayBuffer);
+                                
+                                // Update location and UI
+                                this.location.profileImagePath = filePath;
+                                imagePathDesc.setText(`Current: ${filePath}`);
+                                
+                                new Notice(`Image uploaded: ${fileName}`);
+                            } catch (error) {
+                                console.error('Error uploading image:', error);
+                                new Notice('Error uploading image. Please try again.');
+                            }
+                        }
+                    };
+                    fileInput.click();
+                }))
+            .addButton(button => button
                 .setIcon('cross')
                 .setTooltip('Clear image')
                 .setClass('mod-warning')
@@ -133,50 +177,7 @@ export class LocationModal extends Modal {
                     imagePathDesc.setText(`Current: ${this.location.profileImagePath || 'None'}`);
                 }));
 
-        // REMOVED: Links Header
-        // contentEl.createEl('h3', { text: 'Links' });
-
-        // REMOVED: Characters Present Section
-        // const charactersSetting = new Setting(contentEl)
-        //     .setName('Characters Present')
-        //     .setDesc('Manage linked characters currently at this location.');
-        // const charactersListEl = charactersSetting.controlEl.createDiv('storyteller-modal-list');
-        // this.renderList(charactersListEl, this.location.charactersPresent || [], 'character'); // REMOVED: 'character' type might be invalid now
-        // charactersSetting.addButton(button => button
-        //     .setButtonText('Add Character')
-        //     .setTooltip('Select character(s) present')
-        //     .setCta()
-        //     .onClick(async () => {
-        //         new Notice('Character suggester not yet implemented.');
-        //     }));
-
-        // REMOVED: Events Here Section
-        // const eventsSetting = new Setting(contentEl)
-        //     .setName('Events Here')
-        //     .setDesc('Manage linked events that occurred at this location.');
-        // const eventsListEl = eventsSetting.controlEl.createDiv('storyteller-modal-list');
-        // this.renderList(eventsListEl, this.location.eventsHere || [], 'event'); // REMOVED: 'event' type might be invalid now
-        // eventsSetting.addButton(button => button
-        //     .setButtonText('Add Event')
-        //     .setTooltip('Select event(s) at this location')
-        //     .setCta()
-        //     .onClick(async () => {
-        //         new Notice('Event suggester not yet implemented.');
-        //     }));
-
-        // REMOVED: Sub-Locations Section
-        // const subLocationsSetting = new Setting(contentEl)
-        //     .setName('Sub-Locations')
-        //     .setDesc('Manage linked locations contained within this one.');
-        // const subLocationsListEl = subLocationsSetting.controlEl.createDiv('storyteller-modal-list');
-        // this.renderList(subLocationsListEl, this.location.subLocations || [], 'sublocation'); // REMOVED: 'sublocation' type might be invalid now
-        // subLocationsSetting.addButton(button => button
-        //     .setButtonText('Add Sub-Location')
-        //     .setTooltip('Select sub-location(s)')
-        //     .setCta()
-        //     .onClick(async () => {
-        //         new Notice('Location suggester for sub-locations not yet implemented.');
-        //     }));
+        
 
         // --- Custom Fields ---
         contentEl.createEl('h3', { text: 'Custom fields' });
@@ -196,6 +197,16 @@ export class LocationModal extends Modal {
                     fields[newKey] = '';
                     this.renderCustomFields(customFieldsContainer, fields);
                 }));
+
+        // --- Groups ---
+        this.groupSelectorContainer = contentEl.createDiv('storyteller-group-selector-container');
+        this.renderGroupSelector(this.groupSelectorContainer);
+        // --- Real-time group refresh ---
+        this._groupRefreshInterval = window.setInterval(() => {
+            if (this.modalEl.isShown() && this.groupSelectorContainer) {
+                this.renderGroupSelector(this.groupSelectorContainer);
+            }
+        }, 2000);
 
         // --- Action Buttons ---
         const buttonsSetting = new Setting(contentEl).setClass('storyteller-modal-buttons');
@@ -246,29 +257,7 @@ export class LocationModal extends Modal {
             }));
     }
 
-    // REMOVED: renderList function as it's no longer used for locations
-    // renderList(container: HTMLElement, items: string[]) { // REMOVED type parameter
-    //     container.empty();
-    //     if (!items || items.length === 0) {
-    //         container.createEl('span', { text: 'None', cls: 'storyteller-modal-list-empty' });
-    //         return;
-    //     }
-    //     items.forEach((item, index) => {
-    //         const displayItem = item;
-    //         const itemEl = container.createDiv('storyteller-modal-list-item');
-    //         itemEl.createSpan({ text: displayItem });
-    //         new ButtonComponent(itemEl)
-    //             .setClass('storyteller-modal-list-remove')
-    //             .setTooltip(`Remove ${displayItem}`)
-    //             .setIcon('cross')
-    //             .onClick(() => {
-    //                 // REMOVED: Logic for removing items based on type
-    //                 // Find the correct array and splice
-    //                 // e.g., if (type === 'sublocation') this.location.subLocations?.splice(index, 1);
-    //                 // this.renderList(container, items); // Refresh list (using potentially updated items array)
-    //             });
-    //     });
-    // }
+    
 
 
     renderCustomFields(container: HTMLElement, fields: { [key: string]: any }) {
@@ -315,7 +304,49 @@ export class LocationModal extends Modal {
         });
     }
 
+    renderGroupSelector(container: HTMLElement) {
+        container.empty();
+        // Add a multi-select for groups
+        const allGroups = this.plugin.getGroups();
+        const selectedGroupIds = new Set(this.location.groups || []);
+        new Setting(container)
+            .setName('Groups')
+            .setDesc('Assign this location to one or more groups.')
+            .addDropdown(dropdown => {
+                dropdown.addOption('', '-- Select group --');
+                allGroups.forEach(group => {
+                    dropdown.addOption(group.id, group.name);
+                });
+                dropdown.setValue('');
+                dropdown.onChange(async (value) => {
+                    if (value && !selectedGroupIds.has(value)) {
+                        selectedGroupIds.add(value);
+                        this.location.groups = Array.from(selectedGroupIds);
+                        await this.plugin.addMemberToGroup(value, 'location', this.location.id || this.location.name);
+                        this.renderGroupSelector(container); // Re-render to update UI
+                    }
+                });
+            });
+        // Show selected groups with remove buttons
+        if (selectedGroupIds.size > 0) {
+            const selectedDiv = container.createDiv('selected-groups');
+            allGroups.filter(g => selectedGroupIds.has(g.id)).forEach(group => {
+                const tag = selectedDiv.createSpan({ text: group.name, cls: 'group-tag' });
+                const removeBtn = tag.createSpan({ text: ' ×', cls: 'remove-group-btn' });
+                removeBtn.onclick = async () => {
+                    selectedGroupIds.delete(group.id);
+                    this.location.groups = Array.from(selectedGroupIds);
+                    await this.plugin.removeMemberFromGroup(group.id, 'location', this.location.id || this.location.name);
+                    this.renderGroupSelector(container);
+                };
+            });
+        }
+    }
+
     onClose() {
         this.contentEl.empty();
+        if (this._groupRefreshInterval) {
+            clearInterval(this._groupRefreshInterval);
+        }
     }
 }
