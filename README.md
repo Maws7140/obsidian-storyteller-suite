@@ -31,12 +31,6 @@ A comprehensive suite for managing characters, locations, events, and galleries 
 
 The Storyteller Suite plugin now supports **Groups**—collections of characters, events, and locations that can be managed together. Groups are shared across all entity types and can be used to organize your story world by factions, teams, timelines, or any custom grouping.
 
-
-![Screenshot 1](https://raw.githubusercontent.com/SamW7140/obsidian-storyteller-suite/master/screenshots/Screenshot1.png)
-![Screenshot 2](https://raw.githubusercontent.com/SamW7140/obsidian-storyteller-suite/master/screenshots/Screenshot2.png)
-![Screenshot 3](https://raw.githubusercontent.com/SamW7140/obsidian-storyteller-suite/master/screenshots/Screenshot3.png)
-
-
 ## How to Use
 
 *   Install the plugin via the Community Plugins browser.
@@ -62,6 +56,14 @@ The Storyteller Suite plugin now supports **Groups**—collections of characters
 - Group names must be unique (case-insensitive).
 - Deleting a group removes it from all members.
 - All group operations provide clear feedback via notices.
+
+
+![Screenshot 1](https://raw.githubusercontent.com/SamW7140/obsidian-storyteller-suite/master/screenshots/Screenshot1.png)
+![Screenshot 2](https://raw.githubusercontent.com/SamW7140/obsidian-storyteller-suite/master/screenshots/Screenshot2.png)
+![Screenshot 3](https://raw.githubusercontent.com/SamW7140/obsidian-storyteller-suite/master/screenshots/Screenshot3.png)
+
+
+
 
 ## Funding / Support
 
