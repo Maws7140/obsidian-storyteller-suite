@@ -704,6 +704,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 
 		// Build frontmatter object
 		const finalFrontmatter: Record<string, any> = { ...frontmatterData };
+		if (profileImagePath) finalFrontmatter.profileImagePath = profileImagePath;
 
 		// Clean up empty values from frontmatter
 		Object.keys(finalFrontmatter).forEach(key => {
