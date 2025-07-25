@@ -913,6 +913,36 @@ export class DashboardView extends ItemView {
                 infoEl.createEl('p', { text: event.description.substring(0, 100) + (event.description.length > 100 ? '...' : '') });
             }
 
+            // --- Associated Images Thumbnails ---
+            if (event.images && Array.isArray(event.images) && event.images.length > 0) {
+                const imagesRow = infoEl.createDiv('storyteller-event-images-row');
+                event.images.forEach(imagePath => {
+                    try {
+                        const thumb = imagesRow.createEl('img', { cls: 'storyteller-event-image-thumb' });
+                        const resourcePath = this.app.vault.adapter.getResourcePath(imagePath);
+                        thumb.src = resourcePath;
+                        thumb.alt = event.name + ' image';
+                        thumb.loading = 'lazy';
+                        thumb.style.maxWidth = '48px';
+                        thumb.style.maxHeight = '48px';
+                        thumb.style.marginRight = '4px';
+                        thumb.style.cursor = 'pointer';
+                        thumb.addEventListener('click', () => {
+                            // Open in modal (ImageDetailModal)
+                            new ImageDetailModal(
+                                this.app,
+                                this.plugin,
+                                { id: imagePath, filePath: imagePath },
+                                false,
+                                () => Promise.resolve()
+                            ).open();
+                        });
+                    } catch (e) {
+                        imagesRow.createSpan({ text: '?', title: 'Error loading image' });
+                    }
+                });
+            }
+
             // --- Add Extra Info ---
             const extraInfoEl = infoEl.createDiv('storyteller-list-item-extra');
             if (event.status) {
