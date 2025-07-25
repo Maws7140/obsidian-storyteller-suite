@@ -46,15 +46,8 @@ The Storyteller Suite plugin now supports **Groups**—collections of characters
 *   Use the "Filter" input and "+ Add New" button within each tab to manage your entries.
 *   Data is saved in folders specified in the (future) settings (defaults to `StorytellerSuite/Characters`, `StorytellerSuite/Locations`, etc.).
 
-## Funding / Support
-
-If you find this plugin helpful, consider supporting its development!
-
-"Buy Me a Coffee": "https://ko-fi.com/kingmaws",
-
-
-
 ### What You Can Do
+
 - **Create, edit, and delete groups** from the Dashboard's Groups tab.
 - **Edit group details** (name, description, color) in a dedicated modal.
 - **Assign or remove members** (characters, events, locations) to/from groups using dropdown selectors.
@@ -63,16 +56,21 @@ If you find this plugin helpful, consider supporting its development!
 - **Real-time sync**: If groups are changed elsewhere, open modals will update their group selectors automatically.
 - **Error handling**: Duplicate group names are prevented, and user feedback is provided for all group operations.
 
-### How to Use
-1. Go to the **Dashboard** and select the **Groups** tab.
-2. Click **Create new group** to open the GroupModal. Enter a name, description, and color, then add members.
-3. To edit a group, click the **Edit** button next to the group in the list.
-4. To assign a character, event, or location to a group, open its modal and use the Groups dropdown.
-5. Changes to groups are reflected in all relevant modals in real time.
 
 ### Edge Cases & Feedback
+
 - Group names must be unique (case-insensitive).
 - Deleting a group removes it from all members.
 - All group operations provide clear feedback via notices.
+
+## Funding / Support
+
+If you find this plugin helpful, consider supporting its development!
+
+"Buy Me a Coffee": "https://ko-fi.com/kingmaws",
+
+
+
+
 
 
