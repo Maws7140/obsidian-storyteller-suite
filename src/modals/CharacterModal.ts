@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { App, Modal, Setting, Notice, TextAreaComponent, TextComponent, ButtonComponent } from 'obsidian';
-import { Character } from '../types'; // Assumes Character type has relationships?: string[], associatedLocations?: string[], associatedEvents?: string[]
+import { Character, Group } from '../types'; // Assumes Character type has relationships?: string[], associatedLocations?: string[], associatedEvents?: string[]
 import StorytellerSuitePlugin from '../main';
 import { GalleryImageSuggestModal } from './GalleryImageSuggestModal';
 // Placeholder imports for suggesters - these would need to be created
@@ -17,6 +17,8 @@ export class CharacterModal extends Modal {
     onSubmit: CharacterModalSubmitCallback;
     onDelete?: CharacterModalDeleteCallback;
     isNew: boolean;
+    private _groupRefreshInterval: number | null = null;
+    private groupSelectorContainer: HTMLElement | null = null;
 
     constructor(app: App, plugin: StorytellerSuitePlugin, character: Character | null, onSubmit: CharacterModalSubmitCallback, onDelete?: CharacterModalDeleteCallback) {
         super(app);
@@ -26,13 +28,13 @@ export class CharacterModal extends Modal {
         const initialCharacter = character ? { ...character } : {
             name: '', description: '', backstory: '', profileImagePath: undefined,
             relationships: [], associatedLocations: [], associatedEvents: [], // Initialize link arrays
-            customFields: {}
+            customFields: {},
+            filePath: undefined
         };
         if (!initialCharacter.customFields) initialCharacter.customFields = {};
         if (!initialCharacter.relationships) initialCharacter.relationships = [];
-        
-        
-
+        // Preserve filePath if editing
+        if (character && character.filePath) initialCharacter.filePath = character.filePath;
         this.character = initialCharacter;
         this.onSubmit = onSubmit;
         this.onDelete = onDelete;
@@ -75,6 +77,45 @@ export class CharacterModal extends Modal {
                         this.character.profileImagePath = path || undefined;
                         imagePathDesc.setText(`Current: ${this.character.profileImagePath || 'None'}`);
                     }).open();
+                }))
+            .addButton(button => button
+                .setButtonText('Upload')
+                .setTooltip('Upload new image')
+                .onClick(async () => {
+                    const fileInput = document.createElement('input');
+                    fileInput.type = 'file';
+                    fileInput.accept = 'image/*';
+                    fileInput.onchange = async () => {
+                        const file = fileInput.files?.[0];
+                        if (file) {
+                            try {
+                                // Ensure upload folder exists
+                                await this.plugin.ensureFolder(this.plugin.settings.galleryUploadFolder);
+                                
+                                // Create unique filename
+                                const timestamp = Date.now();
+                                const sanitizedName = file.name.replace(/[^\w\s.-]/g, '').replace(/\s+/g, '_');
+                                const fileName = `${timestamp}_${sanitizedName}`;
+                                const filePath = `${this.plugin.settings.galleryUploadFolder}/${fileName}`;
+                                
+                                // Read file as array buffer
+                                const arrayBuffer = await file.arrayBuffer();
+                                
+                                // Save to vault
+                                await this.app.vault.createBinary(filePath, arrayBuffer);
+                                
+                                // Update character and UI
+                                this.character.profileImagePath = filePath;
+                                imagePathDesc.setText(`Current: ${filePath}`);
+                                
+                                new Notice(`Image uploaded: ${fileName}`);
+                            } catch (error) {
+                                console.error('Error uploading image:', error);
+                                new Notice('Error uploading image. Please try again.');
+                            }
+                        }
+                    };
+                    fileInput.click();
                 }))
             .addButton(button => button
                 .setIcon('cross')
@@ -142,11 +183,21 @@ export class CharacterModal extends Modal {
                 .setValue(this.character.affiliation || '')
                 .onChange(value => { this.character.affiliation = value || undefined; }));
 
+        // --- Groups ---
+        this.groupSelectorContainer = contentEl.createDiv('storyteller-group-selector-container');
+        this.renderGroupSelector(this.groupSelectorContainer);
 
         // --- Custom Fields ---
         contentEl.createEl('h3', { text: 'Custom fields' });
         const customFieldsContainer = contentEl.createDiv('storyteller-custom-fields-container');
         this.renderCustomFields(customFieldsContainer, this.character.customFields || {});
+
+        // --- Real-time group refresh ---
+        this._groupRefreshInterval = window.setInterval(() => {
+            if (this.modalEl.isShown() && this.groupSelectorContainer) {
+                this.renderGroupSelector(this.groupSelectorContainer);
+            }
+        }, 2000);
 
         new Setting(contentEl)
             .addButton(button => button
@@ -277,7 +328,49 @@ export class CharacterModal extends Modal {
         });
     }
 
+    renderGroupSelector(container: HTMLElement) {
+        container.empty();
+        // Add a multi-select for groups
+        const allGroups = this.plugin.getGroups();
+        const selectedGroupIds = new Set(this.character.groups || []);
+        new Setting(container)
+            .setName('Groups')
+            .setDesc('Assign this character to one or more groups.')
+            .addDropdown(dropdown => {
+                dropdown.addOption('', '-- Select group --');
+                allGroups.forEach(group => {
+                    dropdown.addOption(group.id, group.name);
+                });
+                dropdown.setValue('');
+                dropdown.onChange(async (value) => {
+                    if (value && !selectedGroupIds.has(value)) {
+                        selectedGroupIds.add(value);
+                        this.character.groups = Array.from(selectedGroupIds);
+                        await this.plugin.addMemberToGroup(value, 'character', this.character.id || this.character.name);
+                        this.renderGroupSelector(container); // Re-render to update UI
+                    }
+                });
+            });
+        // Show selected groups with remove buttons
+        if (selectedGroupIds.size > 0) {
+            const selectedDiv = container.createDiv('selected-groups');
+            allGroups.filter(g => selectedGroupIds.has(g.id)).forEach(group => {
+                const tag = selectedDiv.createSpan({ text: group.name, cls: 'group-tag' });
+                const removeBtn = tag.createSpan({ text: ' ×', cls: 'remove-group-btn' });
+                removeBtn.onclick = async () => {
+                    selectedGroupIds.delete(group.id);
+                    this.character.groups = Array.from(selectedGroupIds);
+                    await this.plugin.removeMemberFromGroup(group.id, 'character', this.character.id || this.character.name);
+                    this.renderGroupSelector(container);
+                };
+            });
+        }
+    }
+
     onClose() {
         this.contentEl.empty();
+        if (this._groupRefreshInterval) {
+            clearInterval(this._groupRefreshInterval);
+        }
     }
 }

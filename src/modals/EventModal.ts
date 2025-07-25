@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { App, Modal, Setting, Notice, TextAreaComponent, TextComponent, ButtonComponent } from 'obsidian';
-import { Event, GalleryImage, Character, Location } from '../types'; // Added Character, Location
+import { Event, GalleryImage, Character, Location, Group } from '../types'; // Added Character, Location, Group
 import StorytellerSuitePlugin from '../main';
 import { GalleryImageSuggestModal } from './GalleryImageSuggestModal';
 // Import the new suggesters
@@ -18,6 +18,8 @@ export class EventModal extends Modal {
     onSubmit: EventModalSubmitCallback;
     onDelete?: EventModalDeleteCallback;
     isNew: boolean;
+    private _groupRefreshInterval: number | null = null;
+    private groupSelectorContainer: HTMLElement | null = null;
 
     // Elements to update dynamically
     charactersListEl: HTMLElement;
@@ -29,11 +31,12 @@ export class EventModal extends Modal {
         super(app);
         this.plugin = plugin;
         this.isNew = event === null;
-        const initialEvent = event ? { ...event } : { name: '', dateTime: '', description: '', outcome: '', status: undefined, profileImagePath: undefined, characters: [], location: undefined, images: [], customFields: {} };
+        const initialEvent = event ? { ...event } : { name: '', dateTime: '', description: '', outcome: '', status: undefined, profileImagePath: undefined, characters: [], location: undefined, images: [], customFields: {}, groups: [] };
         if (!initialEvent.customFields) initialEvent.customFields = {};
         // Ensure link arrays are initialized
         if (!initialEvent.characters) initialEvent.characters = [];
         if (!initialEvent.images) initialEvent.images = [];
+        if (!initialEvent.groups) initialEvent.groups = [];
 
         this.event = initialEvent;
         this.onSubmit = onSubmit;
@@ -110,6 +113,45 @@ export class EventModal extends Modal {
                         this.event.profileImagePath = path || undefined;
                         imagePathDesc.setText(`Current: ${this.event.profileImagePath || 'None'}`);
                     }).open();
+                }))
+            .addButton(button => button
+                .setButtonText('Upload')
+                .setTooltip('Upload new image')
+                .onClick(async () => {
+                    const fileInput = document.createElement('input');
+                    fileInput.type = 'file';
+                    fileInput.accept = 'image/*';
+                    fileInput.onchange = async () => {
+                        const file = fileInput.files?.[0];
+                        if (file) {
+                            try {
+                                // Ensure upload folder exists
+                                await this.plugin.ensureFolder(this.plugin.settings.galleryUploadFolder);
+                                
+                                // Create unique filename
+                                const timestamp = Date.now();
+                                const sanitizedName = file.name.replace(/[^\w\s.-]/g, '').replace(/\s+/g, '_');
+                                const fileName = `${timestamp}_${sanitizedName}`;
+                                const filePath = `${this.plugin.settings.galleryUploadFolder}/${fileName}`;
+                                
+                                // Read file as array buffer
+                                const arrayBuffer = await file.arrayBuffer();
+                                
+                                // Save to vault
+                                await this.app.vault.createBinary(filePath, arrayBuffer);
+                                
+                                // Update event and UI
+                                this.event.profileImagePath = filePath;
+                                imagePathDesc.setText(`Current: ${filePath}`);
+                                
+                                new Notice(`Image uploaded: ${fileName}`);
+                            } catch (error) {
+                                console.error('Error uploading image:', error);
+                                new Notice('Error uploading image. Please try again.');
+                            }
+                        }
+                    };
+                    fileInput.click();
                 }))
             .addButton(button => button
                 .setIcon('cross')
@@ -240,6 +282,17 @@ export class EventModal extends Modal {
                     fields[newKey] = '';
                     this.renderCustomFields(customFieldsContainer, fields);
                 }));
+
+        // --- Groups ---
+        contentEl.createEl('h3', { text: 'Groups' });
+        this.groupSelectorContainer = contentEl.createDiv('storyteller-group-selector-container');
+        this.renderGroupSelector(this.groupSelectorContainer);
+        // --- Real-time group refresh ---
+        this._groupRefreshInterval = window.setInterval(() => {
+            if (this.modalEl.isShown() && this.groupSelectorContainer) {
+                this.renderGroupSelector(this.groupSelectorContainer);
+            }
+        }, 2000);
 
         // --- Action Buttons ---
         const buttonsSetting = new Setting(contentEl).setClass('storyteller-modal-buttons');
@@ -399,7 +452,49 @@ export class EventModal extends Modal {
         });
     }
 
+    renderGroupSelector(container: HTMLElement) {
+        container.empty();
+        // Add a multi-select for groups
+        const allGroups = this.plugin.getGroups();
+        const selectedGroupIds = new Set(this.event.groups || []);
+        new Setting(container)
+            .setName('Groups')
+            .setDesc('Assign this event to one or more groups.')
+            .addDropdown(dropdown => {
+                dropdown.addOption('', '-- Select group --');
+                allGroups.forEach(group => {
+                    dropdown.addOption(group.id, group.name);
+                });
+                dropdown.setValue('');
+                dropdown.onChange(async (value) => {
+                    if (value && !selectedGroupIds.has(value)) {
+                        selectedGroupIds.add(value);
+                        this.event.groups = Array.from(selectedGroupIds);
+                        await this.plugin.addMemberToGroup(value, 'event', this.event.id || this.event.name);
+                        this.renderGroupSelector(container); // Re-render to update UI
+                    }
+                });
+            });
+        // Show selected groups with remove buttons
+        if (selectedGroupIds.size > 0) {
+            const selectedDiv = container.createDiv('selected-groups');
+            allGroups.filter(g => selectedGroupIds.has(g.id)).forEach(group => {
+                const tag = selectedDiv.createSpan({ text: group.name, cls: 'group-tag' });
+                const removeBtn = tag.createSpan({ text: ' ×', cls: 'remove-group-btn' });
+                removeBtn.onclick = async () => {
+                    selectedGroupIds.delete(group.id);
+                    this.event.groups = Array.from(selectedGroupIds);
+                    await this.plugin.removeMemberFromGroup(group.id, 'event', this.event.id || this.event.name);
+                    this.renderGroupSelector(container);
+                };
+            });
+        }
+    }
+
     onClose() {
         this.contentEl.empty();
+        if (this._groupRefreshInterval) {
+            clearInterval(this._groupRefreshInterval);
+        }
     }
 }

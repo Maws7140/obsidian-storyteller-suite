@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-inferrable-types */
 /* eslint-disable @typescript-eslint/no-unused-vars */
-import { ItemView, WorkspaceLeaf, Setting, Notice, App, ButtonComponent, TFile, normalizePath } from 'obsidian'; // Added normalizePath
+import { ItemView, WorkspaceLeaf, Setting, Notice, App, ButtonComponent, TFile, normalizePath, debounce } from 'obsidian'; // Added normalizePath, debounce
 import StorytellerSuitePlugin from '../main';
 // Import necessary modals for button actions (Edit/Create/Detail)
 import { CharacterModal } from '../modals/CharacterModal';
@@ -11,7 +11,9 @@ import { EventModal } from '../modals/EventModal';
 import { ImageDetailModal } from '../modals/ImageDetailModal';
 // Remove ImageSuggestModal import as we replace its usage
 // import { ImageSuggestModal } from '../modals/GalleryModal';
-import { Character, Location, Event } from '../types'; // Import types
+import { Character, Location, Event, Group } from '../types'; // Import types
+import { NewStoryModal } from '../modals/NewStoryModal';
+import { GroupModal } from '../modals/GroupModal';
 
 /** Unique identifier for the dashboard view type in Obsidian's workspace */
 export const VIEW_TYPE_DASHBOARD = "storyteller-dashboard-view";
@@ -37,6 +39,14 @@ export class DashboardView extends ItemView {
     /** File input element reference for gallery image uploads */
     fileInput: HTMLInputElement | null = null;
 
+    /** Currently active tab ID for automatic refresh */
+    activeTabId: string = 'characters';
+
+    /** Tab configuration mapping */
+    tabs: Array<{ id: string; label: string; renderFn: (container: HTMLElement) => Promise<void> }>;
+
+    private debouncedRefreshActiveTab: () => void; // Declare property for debounce
+
     /**
      * Constructor for the dashboard view
      * @param leaf The workspace leaf that will contain this view
@@ -45,6 +55,18 @@ export class DashboardView extends ItemView {
     constructor(leaf: WorkspaceLeaf, plugin: StorytellerSuitePlugin) {
         super(leaf);
         this.plugin = plugin;
+
+        // Initialize tab configuration
+        this.tabs = [
+            { id: 'characters', label: 'Characters', renderFn: this.renderCharactersContent.bind(this) },
+            { id: 'locations', label: 'Locations', renderFn: this.renderLocationsContent.bind(this) },
+            { id: 'events', label: 'Timeline', renderFn: this.renderEventsContent.bind(this) },
+            { id: 'gallery', label: 'Gallery', renderFn: this.renderGalleryContent.bind(this) },
+            { id: 'groups', label: 'Groups', renderFn: this.renderGroupsContent.bind(this) }, // NEW TAB
+        ];
+
+        // Debounce refreshActiveTab to avoid rapid multiple renders
+        this.debouncedRefreshActiveTab = debounce(this.refreshActiveTab.bind(this), 200, true);
     }
 
     /**
@@ -71,6 +93,106 @@ export class DashboardView extends ItemView {
         return "book-open"; // Icon for the view tab
     }
 
+
+
+    /**
+     * Register vault event listeners to automatically refresh active tab when files change
+     */
+    private registerVaultEventListeners() {
+        console.log('Storyteller Suite: Registering vault event listeners');
+        
+        // Listen for file creation events
+        this.registerEvent(this.app.vault.on('create', (file) => {
+            console.log('Storyteller Suite: File created:', file.path);
+            if (this.isRelevantFile(file.path)) {
+                console.log('Storyteller Suite: Relevant file created, refreshing active tab');
+                this.debouncedRefreshActiveTab();
+            }
+        }));
+
+        // Listen for file modification events  
+        this.registerEvent(this.app.vault.on('modify', (file) => {
+            console.log('Storyteller Suite: File modified:', file.path);
+            if (this.isRelevantFile(file.path)) {
+                console.log('Storyteller Suite: Relevant file modified, refreshing active tab');
+                this.debouncedRefreshActiveTab();
+            }
+        }));
+
+        // Listen for file deletion events
+        this.registerEvent(this.app.vault.on('delete', (file) => {
+            console.log('Storyteller Suite: File deleted:', file.path);
+            if (this.isRelevantFile(file.path)) {
+                console.log('Storyteller Suite: Relevant file deleted, refreshing active tab');
+                this.debouncedRefreshActiveTab();
+            }
+        }));
+
+        // Listen for file rename events
+        this.registerEvent(this.app.vault.on('rename', (file, oldPath) => {
+            console.log('Storyteller Suite: File renamed from:', oldPath, 'to:', file.path);
+            if (this.isRelevantFile(file.path) || this.isRelevantFile(oldPath)) {
+                console.log('Storyteller Suite: Relevant file renamed, refreshing active tab');
+                this.debouncedRefreshActiveTab();
+            }
+        }));
+
+        // Listen for metadata changes (fires after Obsidian has processed the file)
+        this.registerEvent(
+            this.app.metadataCache.on('changed', (file) => {
+                if (this.isRelevantFile(file.path)) {
+                    console.log('Storyteller Suite: Metadata changed for relevant file, refreshing active tab');
+                    this.debouncedRefreshActiveTab();
+                }
+            })
+        );
+    }
+
+    /**
+     * Check if a file path is relevant to the storyteller plugin (characters, locations, events)
+     * @param filePath The file path to check
+     */
+    private isRelevantFile(filePath: string): boolean {
+        // Use the active story's folders
+        try {
+            const charFolder = this.plugin.getEntityFolder('character');
+            const locFolder = this.plugin.getEntityFolder('location');
+            const evtFolder = this.plugin.getEntityFolder('event');
+            const isRelevant = filePath.startsWith(charFolder + '/') ||
+                filePath.startsWith(locFolder + '/') ||
+                filePath.startsWith(evtFolder + '/') ||
+                filePath.startsWith(this.plugin.settings.galleryUploadFolder + '/');
+            return isRelevant;
+        } catch {
+            return false;
+        }
+    }
+
+    /**
+     * Refresh the currently active tab
+     */
+    private async refreshActiveTab() {
+        console.log('Storyteller Suite: Refreshing active tab:', this.activeTabId);
+        
+        if (!this.tabContentContainer) {
+            console.log('Storyteller Suite: No tab content container, skipping refresh');
+            return;
+        }
+        
+        const activeTab = this.tabs.find(tab => tab.id === this.activeTabId);
+        if (activeTab) {
+            try {
+                console.log('Storyteller Suite: Found active tab, calling render function');
+                await activeTab.renderFn(this.tabContentContainer);
+                console.log('Storyteller Suite: Successfully refreshed active tab');
+            } catch (error) {
+                console.error(`Storyteller Suite: Error refreshing active tab ${this.activeTabId}:`, error);
+            }
+        } else {
+            console.log('Storyteller Suite: No active tab found for ID:', this.activeTabId);
+        }
+    }
+
     /**
      * Initialize and render the dashboard view
      * Called when the view is first opened or needs to be rebuilt
@@ -84,58 +206,120 @@ export class DashboardView extends ItemView {
         const headerContainer = container.createDiv('storyteller-dashboard-header');
 
         // --- Title (inside the header container) ---
-        headerContainer.createEl("h2", {
-             text: "Storyteller suite",
-             cls: 'storyteller-dashboard-title' // Add class for potential styling
+        const titleEl = headerContainer.createEl('h2', {
+            cls: 'storyteller-dashboard-title'
         });
 
-        // --- Ko-fi Link (inside the header container) ---
-        const kofiLink = headerContainer.createEl('a');
-        kofiLink.href = 'https://ko-fi.com/kingmaws'; // <<< --- REPLACE WITH YOUR ACTUAL KO-FI URL
-        kofiLink.target = '_blank'; // Open in new tab
-        kofiLink.rel = 'noopener noreferrer'; // Security best practice
-        kofiLink.addClass('storyteller-kofi-link'); // Add class for styling
+        titleEl.append('Storyteller suite');
 
-        // Option 1: Use an icon (requires Obsidian icon font or custom CSS)
-        // import { setIcon } from 'obsidian'; // Make sure setIcon is imported at the top
-        // setIcon(kofiLink, 'coffee'); // Use 'coffee' or another relevant icon
-        // kofiLink.ariaLabel = "Support on Ko-fi"; // Accessibility
+        // --- Group for selector and button ---
+        const selectorButtonGroup = headerContainer.createDiv('storyteller-selector-button-group');
+        selectorButtonGroup.style.display = 'flex';
+        selectorButtonGroup.style.alignItems = 'center';
+        selectorButtonGroup.style.gap = '0.5em';
 
-        // Option 2: Use text
-        kofiLink.setText('Support on Ko-fi'); // Or shorter text like "Donate"
+        // --- Story Selector Dropdown ---
+        const storySelector = selectorButtonGroup.createEl('select', { cls: 'storyteller-story-selector' });
+        storySelector.id = 'storyteller-story-selector';
+        this.plugin.settings.stories.forEach(story => {
+            const option = storySelector.createEl('option', { text: story.name });
+            option.value = story.id;
+            if (story.id === this.plugin.settings.activeStoryId) option.selected = true;
+        });
+        storySelector.onchange = async (e) => {
+            const id = (e.target as HTMLSelectElement).value;
+            await this.plugin.setActiveStory(id);
+            this.onOpen();
+        };
+
+        const newStoryBtn = selectorButtonGroup.createEl('button', { text: '+ New story', cls: 'storyteller-new-story-btn' });
+        newStoryBtn.onclick = () => {
+            new NewStoryModal(
+                this.app,
+                this.plugin.settings.stories.map(s => s.name),
+                async (name, description) => {
+                    const story = await this.plugin.createStory(name, description);
+                    await this.plugin.setActiveStory(story.id);
+                    // @ts-ignore
+                    new window.Notice(`Story "${name}" created and activated.`);
+                    this.onOpen();
+                }
+            ).open();
+        };
 
         // --- Tab Headers (Now added AFTER the header container) ---
-        this.tabHeaderContainer = container.createDiv('storyteller-dashboard-tabs');
+        this.tabHeaderContainer = container.createDiv('storyteller-dashboard-tabs my-plugin-scrollable-tabs');
+        this.tabHeaderContainer.setAttr('role', 'tablist');
+        this.tabHeaderContainer.tabIndex = 0; // Make tablist focusable for keyboard navigation
+
+        // Mouse wheel horizontal scroll support (improved for natural direction and smoothness)
+        this.tabHeaderContainer.addEventListener('wheel', (e: WheelEvent) => {
+            // Use both axes, and a multiplier for deltaY for natural feel
+            const scrollAmount = e.deltaX + e.deltaY * 2;
+            if (scrollAmount !== 0) {
+                e.preventDefault();
+                this.tabHeaderContainer.scrollLeft += scrollAmount;
+            }
+        }, { passive: false });
+
+        // Keyboard navigation for tabs (left/right arrow)
+        this.tabHeaderContainer.addEventListener('keydown', (e: KeyboardEvent) => {
+            const tabs = Array.from(this.tabHeaderContainer.querySelectorAll('.storyteller-tab-header'));
+            const activeIdx = tabs.findIndex((el) => el.classList.contains('active'));
+            if (e.key === 'ArrowRight') {
+                e.preventDefault();
+                const nextIdx = (activeIdx + 1) % tabs.length;
+                (tabs[nextIdx] as HTMLElement).focus();
+                (tabs[nextIdx] as HTMLElement).click();
+            } else if (e.key === 'ArrowLeft') {
+                e.preventDefault();
+                const prevIdx = (activeIdx - 1 + tabs.length) % tabs.length;
+                (tabs[prevIdx] as HTMLElement).focus();
+                (tabs[prevIdx] as HTMLElement).click();
+            }
+        });
 
         // --- Tab Content ---
         this.tabContentContainer = container.createDiv('storyteller-dashboard-content');
 
-        // --- Define Tabs ---
-        const tabs = [
-            { id: 'characters', label: 'Characters', renderFn: this.renderCharactersContent.bind(this) },
-            { id: 'locations', label: 'Locations', renderFn: this.renderLocationsContent.bind(this) },
-            { id: 'events', label: 'Timeline', renderFn: this.renderEventsContent.bind(this) },
-            { id: 'gallery', label: 'Gallery', renderFn: this.renderGalleryContent.bind(this) },
-        ];
-
         // --- Create Tab Headers ---
-        tabs.forEach((tab, index) => {
+        this.tabs.forEach((tab, index) => {
              const header = this.tabHeaderContainer.createEl('div', {
                  text: tab.label,
                  cls: 'storyteller-tab-header' + (index === 0 ? ' active' : '') // Activate first tab
              });
              header.dataset.tabId = tab.id; // Store tab id
+             header.setAttr('role', 'tab');
+             header.setAttr('tabindex', index === 0 ? '0' : '-1');
+             if (index === 0) header.setAttr('aria-selected', 'true');
+             else header.setAttr('aria-selected', 'false');
 
              header.addEventListener('click', async () => {
                  // Deactivate others
-                 this.tabHeaderContainer.querySelectorAll('.storyteller-tab-header').forEach(h => h.removeClass('active'));
+                 this.tabHeaderContainer.querySelectorAll('.storyteller-tab-header').forEach(h => {
+                     h.removeClass('active');
+                     h.setAttr('aria-selected', 'false');
+                     h.setAttr('tabindex', '-1');
+                 });
                  // Activate clicked
                  header.addClass('active');
+                 header.setAttr('aria-selected', 'true');
+                 header.setAttr('tabindex', '0');
+                 // Update active tab tracking
+                 this.activeTabId = tab.id;
                  // Render content
                  this.currentFilter = ''; // Reset filter on tab switch
                  await tab.renderFn(this.tabContentContainer);
              });
         });
+
+        // --- Register Vault Event Listeners for Auto-refresh ---
+        this.registerVaultEventListeners();
+
+        // --- Register Workspace Resize Event Listener ---
+        this.registerEvent(this.app.workspace.on('resize', () => {
+            this.debouncedRefreshActiveTab();
+        }));
 
         // --- Initial Content Render ---
         await this.renderCharactersContent(this.tabContentContainer); // Render the first tab initially
@@ -150,13 +334,30 @@ export class DashboardView extends ItemView {
      */
     async renderCharactersContent(container: HTMLElement) {
         container.empty();
-        this.renderHeaderControls(container, 'Characters', this.renderCharactersContent.bind(this), () => {
+        this.renderHeaderControls(container, 'Characters', async (filter: string) => {
+            this.currentFilter = filter;
+            await this.renderCharactersList(container);
+        }, () => {
             new CharacterModal(this.app, this.plugin, null, async (char: Character) => {
                 await this.plugin.saveCharacter(char);
                 new Notice(`Character "${char.name}" created.`);
-                await this.renderCharactersContent(container); // Refresh list
+                // Manual refresh removed - automatic vault event refresh will handle this
             }).open();
         });
+
+        await this.renderCharactersList(container);
+    }
+
+    /**
+     * Render just the characters list (without header controls)
+     * Used by filter function to avoid infinite recursion
+     */
+    private async renderCharactersList(container: HTMLElement) {
+        // Clear existing list container if it exists
+        const existingListContainer = container.querySelector('.storyteller-list-container');
+        if (existingListContainer) {
+            existingListContainer.remove();
+        }
 
         const characters = (await this.plugin.listCharacters()).filter(char =>
             char.name.toLowerCase().includes(this.currentFilter) ||
@@ -166,7 +367,9 @@ export class DashboardView extends ItemView {
 
         const listContainer = container.createDiv('storyteller-list-container');
         if (characters.length === 0) {
-            listContainer.createEl('p', { text: 'No characters found.' + (this.currentFilter ? ' Matching filter.' : '') });
+            const emptyMsg = listContainer.createEl('p', { text: 'No characters found. Click "Create new" to add your first character.', cls: 'storyteller-empty-state' });
+            emptyMsg.style.color = 'var(--text-muted)';
+            emptyMsg.style.fontStyle = 'italic';
             return;
         }
         this.renderCharacterList(characters, listContainer, container);
@@ -179,13 +382,30 @@ export class DashboardView extends ItemView {
      */
     async renderLocationsContent(container: HTMLElement) {
         container.empty();
-        this.renderHeaderControls(container, 'Locations', this.renderLocationsContent.bind(this), () => {
+        this.renderHeaderControls(container, 'Locations', async (filter: string) => {
+            this.currentFilter = filter;
+            await this.renderLocationsList(container);
+        }, () => {
             new LocationModal(this.app, this.plugin, null, async (loc: Location) => {
                 await this.plugin.saveLocation(loc);
                 new Notice(`Location "${loc.name}" created.`);
-                await this.renderLocationsContent(container); // Refresh list
+                // Manual refresh removed - automatic vault event refresh will handle this
             }).open();
         });
+
+        await this.renderLocationsList(container);
+    }
+
+    /**
+     * Render just the locations list (without header controls)
+     * Used by filter function to avoid infinite recursion
+     */
+    private async renderLocationsList(container: HTMLElement) {
+        // Clear existing list container if it exists
+        const existingListContainer = container.querySelector('.storyteller-list-container');
+        if (existingListContainer) {
+            existingListContainer.remove();
+        }
 
         const locations = (await this.plugin.listLocations()).filter(loc =>
             loc.name.toLowerCase().includes(this.currentFilter) ||
@@ -207,13 +427,30 @@ export class DashboardView extends ItemView {
      */
     async renderEventsContent(container: HTMLElement) {
         container.empty();
-        this.renderHeaderControls(container, 'Events/timeline', this.renderEventsContent.bind(this), () => {
+        this.renderHeaderControls(container, 'Events/timeline', async (filter: string) => {
+            this.currentFilter = filter;
+            await this.renderEventsList(container);
+        }, () => {
             new EventModal(this.app, this.plugin, null, async (eventData: Event) => {
                 await this.plugin.saveEvent(eventData);
                 new Notice(`Event "${eventData.name}" created.`);
-                await this.renderEventsContent(container); // Refresh after creation
+                // Manual refresh removed - automatic vault event refresh will handle this
             }).open();
         });
+
+        await this.renderEventsList(container);
+    }
+
+    /**
+     * Render just the events list (without header controls)
+     * Used by filter function to avoid infinite recursion
+     */
+    private async renderEventsList(container: HTMLElement) {
+        // Clear existing list container if it exists
+        const existingListContainer = container.querySelector('.storyteller-list-container');
+        if (existingListContainer) {
+            existingListContainer.remove();
+        }
 
         const events = (await this.plugin.listEvents()).filter(evt =>
             evt.name.toLowerCase().includes(this.currentFilter) ||
@@ -237,9 +474,15 @@ export class DashboardView extends ItemView {
      */
     async renderGalleryContent(container: HTMLElement) {
         container.empty();
-        const refreshCallback = this.renderGalleryContent.bind(this, container); // Define callback
+        const filterCallback = async (filter: string) => {
+            this.currentFilter = filter;
+            await this.renderGalleryList(container);
+        };
+        const refreshCallback = async () => {
+            await this.renderGalleryContent(container);
+        };
 
-        this.renderHeaderControls(container, 'Gallery', refreshCallback, () => {
+        this.renderHeaderControls(container, 'Gallery', filterCallback, () => {
             // --- Upload Image Logic ---
             if (!this.fileInput) {
                 // Create file input element if it doesn't exist
@@ -297,6 +540,20 @@ export class DashboardView extends ItemView {
             this.fileInput.click();
         }, "Upload Image"); // Change button text
 
+        await this.renderGalleryList(container);
+    }
+
+    /**
+     * Render just the gallery list (without header controls)
+     * Used by filter function to avoid infinite recursion
+     */
+    private async renderGalleryList(container: HTMLElement) {
+        // Clear existing gallery grid if it exists
+        const existingGridContainer = container.querySelector('.storyteller-gallery-grid');
+        if (existingGridContainer) {
+            existingGridContainer.remove();
+        }
+
         const images = this.plugin.getGalleryImages().filter(img =>
             img.filePath.toLowerCase().includes(this.currentFilter) ||
             (img.title || '').toLowerCase().includes(this.currentFilter) ||
@@ -314,19 +571,185 @@ export class DashboardView extends ItemView {
             return;
         }
         // Pass refreshCallback to renderGalleryGrid
+        const refreshCallback = async () => {
+            await this.renderGalleryContent(container);
+        };
         this.renderGalleryGrid(images, gridContainer, refreshCallback);
+    }
+
+    /**
+     * Render the Groups tab content
+     * Shows group list and allows creating new groups
+     * @param container The container element to render content into
+     */
+    async renderGroupsContent(container: HTMLElement) {
+        container.empty();
+        // Header and create group button
+        new Setting(container)
+            .setName('Groups')
+            .setDesc('Manage your groups. Shared across all entity types.')
+            .addButton(button => button
+                .setButtonText('Create new group')
+                .setCta()
+                .onClick(() => {
+                    new GroupModal(
+                        this.app,
+                        this.plugin,
+                        null,
+                        async () => { await this.renderGroupsContent(container); },
+                        async (groupId) => {
+                            await this.plugin.deleteGroup(groupId);
+                            await this.renderGroupsContent(container);
+                        }
+                    ).open();
+                })
+            );
+        // --- Persistent Filter Bar and Group List Containers ---
+        let filterBar = container.querySelector('.storyteller-group-filter-bar') as HTMLElement;
+        let groupListContainer = container.querySelector('.storyteller-group-list-container') as HTMLElement;
+        if (!filterBar) {
+            filterBar = container.createDiv('storyteller-group-filter-bar');
+            // Only create filter input once
+            new Setting(filterBar)
+                .setName('Filter groups')
+                .setDesc('Search by group name or description.')
+                .addText(text => {
+                    text.setPlaceholder('Search groups...')
+                        .setValue(this.currentFilter)
+                        .onChange(async (value) => {
+                            this.currentFilter = value;
+                            // Only re-render the group list, not the filter input
+                            this.renderGroupsList(groupListContainer);
+                        });
+                    text.inputEl.setAttribute('aria-label', 'Filter groups');
+                });
+        }
+        if (!groupListContainer) {
+            groupListContainer = container.createDiv('storyteller-group-list-container');
+        }
+        // Always render the group list (but only clear/re-render this part)
+        this.renderGroupsList(groupListContainer);
+    }
+
+    // New helper to render just the group list (filtered)
+    renderGroupsList(container: HTMLElement) {
+        container.empty();
+        const groups = this.plugin.getGroups().filter(group => {
+            const filter = this.currentFilter.toLowerCase();
+            return (
+                group.name.toLowerCase().includes(filter) ||
+                (group.description && group.description.toLowerCase().includes(filter))
+            );
+        });
+        if (groups.length === 0) {
+            container.createEl('p', { text: 'No groups found.' });
+            return;
+        }
+        groups.forEach((group, idx) => {
+            // Collapsible card state: expanded by default if filter is active, else collapsed
+            const isExpanded = !!this.currentFilter || false;
+            const groupCard = container.createDiv('storyteller-group-card sts-card');
+            groupCard.setAttr('tabindex', '0'); // Make card focusable
+            // Header row with expand/collapse button, group info, and actions
+            const groupHeader = groupCard.createDiv('storyteller-group-header');
+            // Expand/collapse button
+            const toggleBtn = groupHeader.createEl('button', {
+                cls: 'storyteller-group-toggle-btn',
+                text: isExpanded ? '▼' : '►',
+            });
+            toggleBtn.setAttr('aria-label', isExpanded ? 'Collapse group' : 'Expand group');
+            toggleBtn.setAttr('aria-expanded', isExpanded ? 'true' : 'false');
+            // Group info
+            const infoDiv = groupHeader.createDiv('storyteller-group-info');
+            infoDiv.createEl('strong', { text: group.name });
+            if (group.description) {
+                infoDiv.createEl('span', { text: group.description, cls: 'storyteller-group-desc' });
+            }
+            // Actions (Edit button)
+            const actionsDiv = groupHeader.createDiv('storyteller-group-actions');
+            const editBtn = actionsDiv.createEl('button', { text: 'Edit', cls: 'mod-cta storyteller-group-edit-btn' });
+            editBtn.onclick = () => {
+                new GroupModal(
+                    this.app,
+                    this.plugin,
+                    group,
+                    async () => { this.renderGroupsList(container); },
+                    async (groupId) => {
+                        await this.plugin.deleteGroup(groupId);
+                        this.renderGroupsList(container);
+                    }
+                ).open();
+            };
+            // Collapsible content (members)
+            const membersSection = groupCard.createDiv('storyteller-group-members');
+            if (!isExpanded) membersSection.addClass('collapsed');
+            // Group members by type
+            const grouped = {
+                character: group.members.filter(m => m.type === 'character'),
+                location: group.members.filter(m => m.type === 'location'),
+                event: group.members.filter(m => m.type === 'event'),
+            };
+            const typeLabels = {
+                character: 'Characters',
+                location: 'Locations',
+                event: 'Events',
+            };
+            const typeIcons = {
+                character: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-user"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`,
+                location: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-map-pin"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0Z"/><circle cx="12" cy="10" r="3"/></svg>`,
+                event: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-calendar"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/></svg>`,
+            };
+            (['character', 'location', 'event'] as const).forEach(type => {
+                if (grouped[type].length > 0) {
+                    // Section header
+                    const header = membersSection.createDiv('storyteller-group-entity-header');
+                    header.setAttr('role', 'heading');
+                    header.setAttr('aria-level', '4');
+                    header.innerHTML = `<span class="storyteller-group-entity-icon">${typeIcons[type]}</span> <span>${typeLabels[type]}</span>`;
+                    // Sublist
+                    const list = membersSection.createEl('ul', { cls: 'storyteller-group-entity-list' });
+                    grouped[type].forEach(member => {
+                        const li = list.createEl('li', { cls: 'storyteller-group-entity-item' });
+                        li.textContent = member.id;
+                    });
+                }
+            });
+            if (group.members.length === 0) {
+                membersSection.createEl('em', { text: 'No members.' });
+            }
+            // Toggle expand/collapse
+            let expanded = isExpanded;
+            const updateCollapse = () => {
+                expanded = !expanded;
+                toggleBtn.textContent = expanded ? '▼' : '►';
+                toggleBtn.setAttr('aria-label', expanded ? 'Collapse group' : 'Expand group');
+                toggleBtn.setAttr('aria-expanded', expanded ? 'true' : 'false');
+                membersSection.toggleClass('collapsed', !expanded);
+            };
+            toggleBtn.onclick = updateCollapse;
+            toggleBtn.onkeydown = (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    updateCollapse();
+                }
+            };
+        });
     }
 
     // --- Header Controls (Filter + Add Button) ---
     private renderHeaderControls(container: HTMLElement, title: string, filterFn: (filter: string) => Promise<void>, addFn: () => void, addButtonText: string = 'Create new') {
-        // --- Header Controls (Filter + Add Button) ---
-        new Setting(container)
+        const controlsGroup = container.createDiv('storyteller-controls-group');
+        controlsGroup.style.display = 'flex';
+        controlsGroup.style.alignItems = 'center';
+        controlsGroup.style.gap = '0.5em';
+        new Setting(controlsGroup)
             .setName(`Filter ${title.toLowerCase()}`)
-            .setDesc('') // Keep desc empty or remove if not needed
+            .setDesc('')
             .addText(text => text
                 .setPlaceholder(`Search ${title.toLowerCase()}...`)
                 .onChange(async (value) => {
-                    await filterFn(value.toLowerCase());
+                    this.currentFilter = value.toLowerCase();
+                    await filterFn(this.currentFilter);
                 }))
             .addButton(button => button
                 .setButtonText(addButtonText)
@@ -378,14 +801,14 @@ export class DashboardView extends ItemView {
                 new CharacterModal(this.app, this.plugin, character, async (updatedData: Character) => {
                     await this.plugin.saveCharacter(updatedData);
                     new Notice(`Character "${updatedData.name}" updated.`);
-                    await this.renderCharactersContent(viewContainer); // Refresh list
+                    // Manual refresh removed - automatic vault event refresh will handle this
                 }).open();
             });
             this.addDeleteButton(actionsEl, async () => {
                 if (confirm(`Are you sure you want to delete "${character.name}"? This will move the file to system trash.`)) {
                     if (character.filePath) {
                         await this.plugin.deleteCharacter(character.filePath);
-                        await this.renderCharactersContent(viewContainer); // Refresh list
+                        // Manual refresh removed - automatic vault event refresh will handle this
                     } else {
                         new Notice('Error: Cannot delete character without file path.');
                     }
@@ -442,14 +865,14 @@ export class DashboardView extends ItemView {
                 new LocationModal(this.app, this.plugin, location, async (updatedData) => {
                     await this.plugin.saveLocation(updatedData);
                     new Notice(`Location "${updatedData.name}" updated.`);
-                    await this.renderLocationsContent(viewContainer); // Refresh list
+                    // Manual refresh removed - automatic vault event refresh will handle this
                 }).open();
             });
             this.addDeleteButton(actionsEl, async () => {
                 if (confirm(`Are you sure you want to delete "${location.name}"?`)) {
                     if (location.filePath) {
                         await this.plugin.deleteLocation(location.filePath);
-                        await this.renderLocationsContent(viewContainer); // Refresh list
+                        // Manual refresh removed - automatic vault event refresh will handle this
                     } else {
                         new Notice('Error: Cannot delete location without file path.');
                     }
@@ -505,14 +928,14 @@ export class DashboardView extends ItemView {
                 new EventModal(this.app, this.plugin, event, async (updatedData) => {
                     await this.plugin.saveEvent(updatedData);
                     new Notice(`Event "${updatedData.name}" updated.`);
-                    await this.renderEventsContent(viewContainer); // Refresh list
+                    // Manual refresh removed - automatic vault event refresh will handle this
                 }).open();
             });
             this.addDeleteButton(actionsEl, async () => {
                 if (confirm(`Are you sure you want to delete "${event.name}"?`)) {
                     if (event.filePath) {
                         await this.plugin.deleteEvent(event.filePath);
-                        await this.renderEventsContent(viewContainer); // Refresh list
+                        // Manual refresh removed - automatic vault event refresh will handle this
                     } else {
                         new Notice('Error: Cannot delete event without file path.');
                     }
@@ -596,5 +1019,6 @@ export class DashboardView extends ItemView {
         // Clean up file input if it exists
         this.fileInput?.remove();
         this.fileInput = null;
+        // Event listeners are automatically cleaned up by registerEvent()
     }
 }

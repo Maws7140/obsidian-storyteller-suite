@@ -1,4 +1,4 @@
-import { App, FuzzySuggestModal, Notice } from 'obsidian';
+import { App, FuzzySuggestModal, Notice, prepareFuzzySearch, FuzzyMatch } from 'obsidian';
 import { Character } from '../types';
 import StorytellerSuitePlugin from '../main';
 
@@ -27,6 +27,25 @@ export class CharacterSuggestModal extends FuzzySuggestModal<Character> {
         // Note: We don't explicitly refresh the suggestions here,
         // as FuzzySuggestModal typically calls getItems after onOpen/when input changes.
     }
+
+	// Override getSuggestions to show all items when query is empty
+	getSuggestions(query: string): FuzzyMatch<Character>[] {
+		if (!query) {
+			// Return all items as FuzzyMatch with a dummy match
+			return this.characters.map((c) => ({
+				item: c,
+				match: { score: 0, matches: [] }
+			}));
+		}
+		const fuzzy = prepareFuzzySearch(query);
+		return this.characters
+			.map((c) => {
+				const match = fuzzy(this.getItemText(c));
+				if (match) return { item: c, match } as FuzzyMatch<Character>;
+				return null;
+			})
+			.filter((fm): fm is FuzzyMatch<Character> => !!fm);
+	}
 
 	// getItems is now synchronous and returns the pre-fetched list
 	getItems(): Character[] {

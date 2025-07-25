@@ -46,6 +46,9 @@ export interface Character {
     
     /** Character's allegiance, group, or faction (e.g., "Guild Name", "Kingdom") */
     affiliation?: string;
+    
+    /** Array of group ids this character belongs to */
+    groups?: string[];
 }
 
 /**
@@ -53,6 +56,9 @@ export interface Character {
  * Locations are stored as markdown files with frontmatter in the location folder
  */
 export interface Location {
+    /** Optional unique identifier for the location */
+    id?: string;
+    
     /** Display name of the location (required) */
     name: string;
     
@@ -79,6 +85,9 @@ export interface Location {
     
     /** Path to a representative image of the location within the vault */
     profileImagePath?: string;
+    
+    /** Array of group ids this location belongs to */
+    groups?: string[];
 }
 
 /**
@@ -86,6 +95,9 @@ export interface Location {
  * Events are stored as markdown files with frontmatter in the event folder
  */
 export interface Event {
+    /** Optional unique identifier for the event */
+    id?: string;
+    
     /** Display name of the event (required) */
     name: string;
     
@@ -118,6 +130,28 @@ export interface Event {
     
     /** Path to a representative image of the event within the vault */
     profileImagePath?: string;
+    
+    /** Array of group ids this event belongs to */
+    groups?: string[];
+}
+
+/**
+ * Group entity representing a user-defined collection of characters, events, and locations
+ * Groups are specific to a story and can contain any mix of members from that story
+ */
+export interface Group {
+    /** Unique identifier for the group */
+    id: string;
+    /** ID of the story this group belongs to */
+    storyId: string;
+    /** Display name of the group (required) */
+    name: string;
+    /** Optional description of the group */
+    description?: string;
+    /** Optional color for the group (for UI) */
+    color?: string;
+    /** Array of group members, each with type and id */
+    members: Array<{ type: 'character' | 'event' | 'location'; id: string }>;
 }
 
 /**
@@ -161,4 +195,19 @@ export interface GalleryImage {
 export interface GalleryData {
     /** Array of all gallery image metadata entries */
     images: GalleryImage[];
+}
+
+/**
+ * Story entity representing a collection of characters, locations, and events
+ * Each story is isolated and has its own folders for entities
+ */
+export interface Story {
+    /** Unique identifier for the story (generated automatically) */
+    id: string;
+    /** Display name of the story (required) */
+    name: string;
+    /** ISO string of creation date */
+    created: string;
+    /** Optional description of the story */
+    description?: string;
 }
