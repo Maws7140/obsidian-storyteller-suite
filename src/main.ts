@@ -369,10 +369,13 @@ export default class StorytellerSuitePlugin extends Plugin {
 			// Read file content for markdown sections
 			const content = await this.app.vault.cachedRead(file);
 			
-			// Extract common markdown sections using regex
-			const descriptionMatch = content.match(/## Description\n([\s\S]*?)\n##/);
-			const backstoryMatch = content.match(/## Backstory\n([\s\S]*?)\n##/);
-			const historyMatch = content.match(/## History\n([\s\S]*?)\n##/);
+			// Extract common markdown sections using regex with proper end-of-file handling
+			const descriptionMatch = content.match(/## Description\n([\s\S]*?)(?=\n##|\n$)/);
+			const backstoryMatch = content.match(/## Backstory\n([\s\S]*?)(?=\n##|\n$)/);
+			const historyMatch = content.match(/## History\n([\s\S]*?)(?=\n##|\n$)/);
+			const relationshipsMatch = content.match(/## Relationships\n([\s\S]*?)(?=\n##|\n$)/);
+			const locationsMatch = content.match(/## Locations\n([\s\S]*?)(?=\n##|\n$)/);
+			const eventsMatch = content.match(/## Events\n([\s\S]*?)(?=\n##|\n$)/);
 
 			// Combine frontmatter and defaults with file path
 			const data: Record<string, unknown> = {
@@ -381,15 +384,45 @@ export default class StorytellerSuitePlugin extends Plugin {
 				filePath: file.path,
 			};
 
-			// Add extracted markdown content to data
-			if ('description' in typeDefaults && descriptionMatch?.[1]) {
+			// Add extracted markdown content to data - always extract for characters
+			if (descriptionMatch?.[1]) {
 				data['description'] = descriptionMatch[1].trim();
 			}
-			if ('backstory' in typeDefaults && backstoryMatch?.[1]) {
+			if (backstoryMatch?.[1]) {
 				data['backstory'] = backstoryMatch[1].trim();
 			}
-			if ('history' in typeDefaults && historyMatch?.[1]) {
+			if (historyMatch?.[1]) {
 				data['history'] = historyMatch[1].trim();
+			}
+			if (relationshipsMatch?.[1]) {
+				// Parse relationships as array of character names
+				const relationshipsText = relationshipsMatch[1].trim();
+				const relationships = relationshipsText
+					.split('\n')
+					.map(line => line.trim())
+					.filter(line => line.startsWith('- [[') && line.endsWith(']]'))
+					.map(line => line.replace(/^- \[\[(.*?)\]\]$/, '$1'));
+				data['relationships'] = relationships;
+			}
+			if (locationsMatch?.[1]) {
+				// Parse locations as array of location names
+				const locationsText = locationsMatch[1].trim();
+				const locations = locationsText
+					.split('\n')
+					.map(line => line.trim())
+					.filter(line => line.startsWith('- [[') && line.endsWith(']]'))
+					.map(line => line.replace(/^- \[\[(.*?)\]\]$/, '$1'));
+				data['locations'] = locations;
+			}
+			if (eventsMatch?.[1]) {
+				// Parse events as array of event names
+				const eventsText = eventsMatch[1].trim();
+				const events = eventsText
+					.split('\n')
+					.map(line => line.trim())
+					.filter(line => line.startsWith('- [[') && line.endsWith(']]'))
+					.map(line => line.replace(/^- \[\[(.*?)\]\]$/, '$1'));
+				data['events'] = events;
 			}
 
 			// Validate required name field
