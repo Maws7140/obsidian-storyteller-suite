@@ -456,16 +456,6 @@ export default class StorytellerSuitePlugin extends Plugin {
 		// Generate YAML frontmatter string
 		const frontmatterString = Object.keys(finalFrontmatter).length > 0 ? stringifyYaml(finalFrontmatter) : '';
 
-		// Build file content with frontmatter and markdown sections
-		let fileContent = `---\n${frontmatterString}---\n\n`;
-		if (description) fileContent += `## Description\n${description.trim()}\n\n`;
-		if (backstory) fileContent += `## Backstory\n${backstory.trim()}\n\n`;
-		
-		// Add relationship and connection sections
-		fileContent += `## Relationships\n${(character.relationships || []).map(r => `- [[${r}]]`).join('\n')}\n\n`;
-		fileContent += `## Locations\n${(character.locations || []).map(l => `- [[${l}]]`).join('\n')}\n\n`;
-		fileContent += `## Events\n${(character.events || []).map(e => `- [[${e}]]`).join('\n')}\n\n`;
-
 		// Handle renaming if filePath is present and name changed
 		let finalFilePath = filePath;
 		if (currentFilePath && currentFilePath !== filePath) {
@@ -475,13 +465,79 @@ export default class StorytellerSuitePlugin extends Plugin {
 				finalFilePath = filePath;
 			}
 		}
-		// Save or update the file
+
+		// Check if file exists and read existing content for preservation
 		const existingFile = this.app.vault.getAbstractFileByPath(finalFilePath);
+		let existingContent = '';
+		const existingSections: Record<string, string> = {};
+		
+		if (existingFile && existingFile instanceof TFile) {
+			try {
+				existingContent = await this.app.vault.cachedRead(existingFile);
+				
+				// Parse existing markdown sections to preserve user content
+				const descriptionMatch = existingContent.match(/## Description\n([\s\S]*?)(?=\n##|\n$)/);
+				const backstoryMatch = existingContent.match(/## Backstory\n([\s\S]*?)(?=\n##|\n$)/);
+				const relationshipsMatch = existingContent.match(/## Relationships\n([\s\S]*?)(?=\n##|\n$)/);
+				const locationsMatch = existingContent.match(/## Locations\n([\s\S]*?)(?=\n##|\n$)/);
+				const eventsMatch = existingContent.match(/## Events\n([\s\S]*?)(?=\n##|\n$)/);
+				
+				if (descriptionMatch?.[1]) existingSections.description = descriptionMatch[1].trim();
+				if (backstoryMatch?.[1]) existingSections.backstory = backstoryMatch[1].trim();
+				if (relationshipsMatch?.[1]) existingSections.relationships = relationshipsMatch[1].trim();
+				if (locationsMatch?.[1]) existingSections.locations = locationsMatch[1].trim();
+				if (eventsMatch?.[1]) existingSections.events = eventsMatch[1].trim();
+			} catch (error) {
+				console.warn(`Error reading existing character file: ${error}`);
+			}
+		}
+
+		// Build file content with frontmatter and markdown sections
+		let fileContent = `---\n${frontmatterString}---\n\n`;
+		
+		// Preserve existing content or use new content
+		if (description) {
+			fileContent += `## Description\n${description.trim()}\n\n`;
+		} else if (existingSections.description) {
+			fileContent += `## Description\n${existingSections.description}\n\n`;
+		}
+		
+		if (backstory) {
+			fileContent += `## Backstory\n${backstory.trim()}\n\n`;
+		} else if (existingSections.backstory) {
+			fileContent += `## Backstory\n${existingSections.backstory}\n\n`;
+		}
+		
+		// Preserve existing relationships, locations, and events if not being updated
+		const relationshipsContent = (character.relationships || []).map(r => `- [[${r}]]`).join('\n');
+		const locationsContent = (character.locations || []).map(l => `- [[${l}]]`).join('\n');
+		const eventsContent = (character.events || []).map(e => `- [[${e}]]`).join('\n');
+		
+		if (relationshipsContent) {
+			fileContent += `## Relationships\n${relationshipsContent}\n\n`;
+		} else if (existingSections.relationships) {
+			fileContent += `## Relationships\n${existingSections.relationships}\n\n`;
+		}
+		
+		if (locationsContent) {
+			fileContent += `## Locations\n${locationsContent}\n\n`;
+		} else if (existingSections.locations) {
+			fileContent += `## Locations\n${existingSections.locations}\n\n`;
+		}
+		
+		if (eventsContent) {
+			fileContent += `## Events\n${eventsContent}\n\n`;
+		} else if (existingSections.events) {
+			fileContent += `## Events\n${existingSections.events}\n\n`;
+		}
+
+		// Save or update the file
 		if (existingFile && existingFile instanceof TFile) {
 			await this.app.vault.modify(existingFile, fileContent);
 		} else {
 			await this.app.vault.create(finalFilePath, fileContent);
 		}
+		
 		// Update the filePath in the character object
 		character.filePath = finalFilePath;
 		// Trigger dataview refresh for plugins that depend on this data
@@ -591,11 +647,6 @@ export default class StorytellerSuitePlugin extends Plugin {
 		// Generate YAML frontmatter string
 		const frontmatterString = Object.keys(finalFrontmatter).length > 0 ? stringifyYaml(finalFrontmatter) : '';
 
-		// Build file content with frontmatter and markdown sections
-		let fileContent = `---\n${frontmatterString}---\n\n`;
-		if (description) fileContent += `## Description\n${description.trim()}\n\n`;
-		if (history) fileContent += `## History\n${history.trim()}\n\n`;
-
 		// Handle renaming if filePath is present and name changed
 		let finalFilePath = filePath;
 		if (currentFilePath && currentFilePath !== filePath) {
@@ -605,13 +656,50 @@ export default class StorytellerSuitePlugin extends Plugin {
 				finalFilePath = filePath;
 			}
 		}
-		// Save or update the file
+
+		// Check if file exists and read existing content for preservation
 		const existingFile = this.app.vault.getAbstractFileByPath(finalFilePath);
+		let existingContent = '';
+		const existingSections: Record<string, string> = {};
+		
+		if (existingFile && existingFile instanceof TFile) {
+			try {
+				existingContent = await this.app.vault.cachedRead(existingFile);
+				
+				// Parse existing markdown sections to preserve user content
+				const descriptionMatch = existingContent.match(/## Description\n([\s\S]*?)(?=\n##|\n$)/);
+				const historyMatch = existingContent.match(/## History\n([\s\S]*?)(?=\n##|\n$)/);
+				
+				if (descriptionMatch?.[1]) existingSections.description = descriptionMatch[1].trim();
+				if (historyMatch?.[1]) existingSections.history = historyMatch[1].trim();
+			} catch (error) {
+				console.warn(`Error reading existing location file: ${error}`);
+			}
+		}
+
+		// Build file content with frontmatter and markdown sections
+		let fileContent = `---\n${frontmatterString}---\n\n`;
+		
+		// Preserve existing content or use new content
+		if (description) {
+			fileContent += `## Description\n${description.trim()}\n\n`;
+		} else if (existingSections.description) {
+			fileContent += `## Description\n${existingSections.description}\n\n`;
+		}
+		
+		if (history) {
+			fileContent += `## History\n${history.trim()}\n\n`;
+		} else if (existingSections.history) {
+			fileContent += `## History\n${existingSections.history}\n\n`;
+		}
+
+		// Save or update the file
 		if (existingFile && existingFile instanceof TFile) {
 			await this.app.vault.modify(existingFile, fileContent);
 		} else {
 			await this.app.vault.create(finalFilePath, fileContent);
 		}
+		
 		// Update the filePath in the location object
 		location.filePath = finalFilePath;
 		this.app.metadataCache.trigger("dataview:refresh-views");
@@ -725,40 +813,86 @@ export default class StorytellerSuitePlugin extends Plugin {
 		// Generate YAML frontmatter string
 		const frontmatterString = Object.keys(finalFrontmatter).length > 0 ? stringifyYaml(finalFrontmatter) : '';
 
+		// Handle renaming if filePath is present and name changed
+		let finalFilePath = filePath;
+		if (currentFilePath && currentFilePath !== filePath) {
+			const existingFile = this.app.vault.getAbstractFileByPath(currentFilePath);
+			if (existingFile && existingFile instanceof TFile) {
+				await this.app.fileManager.renameFile(existingFile, filePath);
+				finalFilePath = filePath;
+			}
+		}
+
+		// Check if file exists and read existing content for preservation
+		const existingFile = this.app.vault.getAbstractFileByPath(finalFilePath);
+		let existingContent = '';
+		const existingSections: Record<string, string> = {};
+		
+		if (existingFile && existingFile instanceof TFile) {
+			try {
+				existingContent = await this.app.vault.cachedRead(existingFile);
+				
+				// Parse existing markdown sections to preserve user content
+				const descriptionMatch = existingContent.match(/## Description\n([\s\S]*?)(?=\n##|\n$)/);
+				const outcomeMatch = existingContent.match(/## Outcome\n([\s\S]*?)(?=\n##|\n$)/);
+				const charactersMatch = existingContent.match(/## Characters Involved\n([\s\S]*?)(?=\n##|\n$)/);
+				const locationMatch = existingContent.match(/## Location\n([\s\S]*?)(?=\n##|\n$)/);
+				const imagesMatch = existingContent.match(/## Associated Images\n([\s\S]*?)(?=\n##|\n$)/);
+				
+				if (descriptionMatch?.[1]) existingSections.description = descriptionMatch[1].trim();
+				if (outcomeMatch?.[1]) existingSections.outcome = outcomeMatch[1].trim();
+				if (charactersMatch?.[1]) existingSections.characters = charactersMatch[1].trim();
+				if (locationMatch?.[1]) existingSections.location = locationMatch[1].trim();
+				if (imagesMatch?.[1]) existingSections.images = imagesMatch[1].trim();
+			} catch (error) {
+				console.warn(`Error reading existing event file: ${error}`);
+			}
+		}
+
 		// Build file content with frontmatter and markdown sections
 		let fileContent = `---\n${frontmatterString}---\n\n`;
-		if (description) fileContent += `## Description\n${description.trim()}\n\n`;
-		if (outcome) fileContent += `## Outcome\n${outcome.trim()}\n\n`;
 		
-		// Add relationship and connection sections
-		fileContent += `## Characters Involved\n${(finalFrontmatter.characters || []).map((c: string) => `- [[${c}]]`).join('\n')}\n\n`;
-		if (finalFrontmatter.location) fileContent += `## Location\n- [[${finalFrontmatter.location}]]\n\n`;
-		fileContent += `## Associated Images\n${(images || []).map(i => `- [[${i}]]`).join('\n')}\n\n`;
+		// Preserve existing content or use new content
+		if (description) {
+			fileContent += `## Description\n${description.trim()}\n\n`;
+		} else if (existingSections.description) {
+			fileContent += `## Description\n${existingSections.description}\n\n`;
+		}
+		
+		if (outcome) {
+			fileContent += `## Outcome\n${outcome.trim()}\n\n`;
+		} else if (existingSections.outcome) {
+			fileContent += `## Outcome\n${existingSections.outcome}\n\n`;
+		}
+		
+		// Preserve existing sections if not being updated
+		const charactersContent = (finalFrontmatter.characters || []).map((c: string) => `- [[${c}]]`).join('\n');
+		const locationContent = finalFrontmatter.location ? `- [[${finalFrontmatter.location}]]` : '';
+		const imagesContent = (images || []).map(i => `- [[${i}]]`).join('\n');
+		
+		if (charactersContent) {
+			fileContent += `## Characters Involved\n${charactersContent}\n\n`;
+		} else if (existingSections.characters) {
+			fileContent += `## Characters Involved\n${existingSections.characters}\n\n`;
+		}
+		
+		if (locationContent) {
+			fileContent += `## Location\n${locationContent}\n\n`;
+		} else if (existingSections.location) {
+			fileContent += `## Location\n${existingSections.location}\n\n`;
+		}
+		
+		if (imagesContent) {
+			fileContent += `## Associated Images\n${imagesContent}\n\n`;
+		} else if (existingSections.images) {
+			fileContent += `## Associated Images\n${existingSections.images}\n\n`;
+		}
 
-		// Save or update the file (handle potential renames)
-		const existingFile = this.app.vault.getAbstractFileByPath(filePath);
+		// Save or update the file
 		if (existingFile && existingFile instanceof TFile) {
-			// Check if file needs to be renamed (name changed)
-			if (existingFile.path !== filePath) {
-				console.log(`Renaming event file from ${existingFile.path} to ${filePath}`);
-				await this.app.fileManager.renameFile(existingFile, filePath);
-				
-				// Get renamed file reference and update content
-				const renamedFile = this.app.vault.getAbstractFileByPath(filePath);
-				if (renamedFile instanceof TFile) {
-					await this.app.vault.modify(renamedFile, fileContent);
-				} else {
-					console.error(`Error finding event file after rename: ${filePath}`);
-					new Notice(`Error saving renamed event file: ${fileName}`);
-					return;
-				}
-			} else {
-				// File name unchanged, just update content
-				await this.app.vault.modify(existingFile, fileContent);
-			}
+			await this.app.vault.modify(existingFile, fileContent);
 		} else {
-			// Create new file
-			await this.app.vault.create(filePath, fileContent);
+			await this.app.vault.create(finalFilePath, fileContent);
 		}
 		
 		// Trigger dataview refresh for plugins that depend on this data

@@ -1,44 +1,29 @@
 # Storyteller Suite
 
-A comprehensive suite for managing characters, locations, events, and galleries for your stories.
+A comprehensive suite for managing storytelling elements including characters, locations, events, and more.
 
 ## Features
 
-*   **Unified Dashboard:** Access and manage all your story elements from a dedicated view pane in the right sidebar.
-*   **Tabbed Navigation:** Easily switch between Characters, Locations, Events, and Gallery within the dashboard.
-*   **Character Management:**
-    *   Create, view, edit, and delete characters.
-    *   Track: Name, Description, Backstory, Profile Picture, Status (e.g., Alive, Deceased), Affiliation (e.g., Faction, Kingdom), Relationships, Associated Locations & Events, and Custom Fields.
-    *   Filterable list view.
-*   **Location Management:**
-    *   Create, view, edit, and delete locations.
-    *   Track: Name, Description, History, Representative Image, Type (e.g., City, Forest), Region, Status (e.g., Populated, Abandoned), Characters Present, Events Here, Sub-Locations, and Custom Fields.
-    *   Filterable list view.
-*   **Event Management / Timeline:**
-    *   Create, view, edit, and delete events.
-    *   Track: Name, Date/Time, Description, Outcome, Representative Image, Status (e.g., Completed, Ongoing), Characters Involved, Location, Associated Gallery Images, and Custom Fields.
-    *   View events chronologically in a filterable timeline.
-*   **Integrated Gallery:**
-    *   Manage a central gallery of images for your story.
-    *   Upload new images directly.
-    *   Assign images as profile pictures (Characters), representative images (Locations, Events), or link multiple images to Events.
-    *   Add captions and tags to gallery images.
-*   **Custom Fields:** Add your own specific key-value data points to Characters, Locations, and Events for maximum flexibility.
-*   **Markdown-Based:** All data is stored as standard Markdown files with YAML frontmatter within your vault, ensuring data longevity and interoperability.
-*   **Visual Interface:** Modern, card-based display in the dashboard for quick visual reference, including images and key details.
+- **Character Management**: Create and manage detailed character profiles with descriptions, backstories, relationships, and custom fields
 
-## Groups Feature
+- **Location Tracking**: Organize story locations with descriptions, history, and custom metadata
 
-The Storyteller Suite plugin now supports **Groups**—collections of characters, events, and locations that can be managed together. Groups are shared across all entity types and can be used to organize your story world by factions, teams, timelines, or any custom grouping.
+- **Event Timeline**: Track story events with dates, outcomes, and character involvement
+
+- **Gallery System**: Manage story-related images with metadata and linking
+
+- **Group Organization**: Create custom groups to organize characters, locations, and events
+
+- **Multi-Story Support**: Manage multiple stories with isolated data folders
+
+- **Dashboard Interface**: Unified view for all storytelling elements
 
 ## How to Use
 
-*   Install the plugin via the Community Plugins browser.
-*   Enable the plugin in your settings under "Community plugins".
-*   Click the 'Book' icon in the ribbon or use the command "Open Storyteller Suite Dashboard" to open the main view.
-*   Use the tabs at the top of the dashboard to navigate between Characters, Locations, Events, and Gallery.
-*   Use the "Filter" input and "+ Add New" button within each tab to manage your entries.
-*   Data is saved in folders specified in the (future) settings (defaults to `StorytellerSuite/Characters`, `StorytellerSuite/Locations`, etc.).
+1. Download the latest release
+2. Extract the files to your Obsidian plugins folder
+3. Enable the plugin in Obsidian settings
+4. Access via the ribbon icon or command palette
 
 ### What You Can Do
 
@@ -50,19 +35,21 @@ The Storyteller Suite plugin now supports **Groups**—collections of characters
 - **Real-time sync**: If groups are changed elsewhere, open modals will update their group selectors automatically.
 - **Error handling**: Duplicate group names are prevented, and user feedback is provided for all group operations.
 
-
-### Edge Cases & Feedback
-
-- Group names must be unique (case-insensitive).
-- Deleting a group removes it from all members.
-- All group operations provide clear feedback via notices.
-
-
 ![Screenshot 1](https://raw.githubusercontent.com/SamW7140/obsidian-storyteller-suite/master/screenshots/Screenshot1.png)
 ![Screenshot 2](https://raw.githubusercontent.com/SamW7140/obsidian-storyteller-suite/master/screenshots/Screenshot2.png)
 ![Screenshot 3](https://raw.githubusercontent.com/SamW7140/obsidian-storyteller-suite/master/screenshots/Screenshot3.png)
 
+## Data Structure
 
+All data is stored as markdown files with YAML frontmatter:
+
+- Characters: `StorytellerSuite/Stories/[StoryName]/Characters/`
+
+- Locations: `StorytellerSuite/Stories/[StoryName]/Locations/`
+
+- Events: `StorytellerSuite/Stories/[StoryName]/Events/`
+
+- Images: User-defined upload folder
 
 
 ## Funding / Support
@@ -70,9 +57,4 @@ The Storyteller Suite plugin now supports **Groups**—collections of characters
 If you find this plugin helpful, consider supporting its development!
 
 "Buy Me a Coffee": "https://ko-fi.com/kingmaws",
-
-
-
-
-
 
