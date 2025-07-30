@@ -1267,6 +1267,8 @@ export default class StorytellerSuitePlugin extends Plugin {
 		const loaded = await this.loadData();
 		this.settings = Object.assign({}, DEFAULT_SETTINGS, loaded);
 
+		let settingsUpdated = false;
+
 		// MIGRATION: If no stories exist but old folders/data exist, migrate
 		if ((!this.settings.stories || this.settings.stories.length === 0)) {
 			// Try to detect old folders with data
@@ -1298,9 +1300,42 @@ export default class StorytellerSuitePlugin extends Plugin {
 				await moveFiles(oldLocationFolder, 'location');
 				await moveFiles(oldEventFolder, 'event');
 				this.settings.activeStoryId = story.id;
-				await this.saveSettings();
+				settingsUpdated = true;
 			}
 		}
+
+		// DISCOVERY: If no stories are configured, scan the filesystem for them
+        if (this.settings.stories.length === 0) {
+            console.log('Storyteller Suite: No stories configured. Scanning filesystem for existing stories...');
+            const baseStoriesPath = 'StorytellerSuite/Stories';
+            const storiesFolder = this.app.vault.getAbstractFileByPath(normalizePath(baseStoriesPath));
+
+            if (storiesFolder instanceof TFolder) {
+                const discoveredStories: Story[] = [];
+                const subFolders = storiesFolder.children.filter(child => child instanceof TFolder) as TFolder[];
+
+                for (const storyFolder of subFolders) {
+                    const storyName = storyFolder.name;
+                    // Check if a story with this name already exists (though it shouldn't at this point)
+                    if (!this.settings.stories.some(s => s.name === storyName)) {
+                        const id = Date.now().toString(36) + Math.random().toString(36).substr(2, 6);
+                        const created = new Date().toISOString();
+                        const story: Story = { id, name: storyName, created, description: 'Discovered from filesystem' };
+                        discoveredStories.push(story);
+                    }
+                }
+
+                if (discoveredStories.length > 0) {
+                    this.settings.stories.push(...discoveredStories);
+                    // Set the first discovered story as active
+                    if (!this.settings.activeStoryId) {
+                        this.settings.activeStoryId = discoveredStories[0].id;
+                    }
+                    settingsUpdated = true;
+                    new Notice(`Storyteller: Auto-detected and imported ${discoveredStories.length} existing story folder(s).`);
+                }
+            }
+        }
 		
 		// MIGRATION: Handle existing groups that don't have storyId
 		if (this.settings.groups && this.settings.groups.length > 0) {
@@ -1314,7 +1349,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 					for (const group of groupsWithoutStoryId) {
 						(group as any).storyId = targetStoryId;
 					}
-					await this.saveSettings();
+					settingsUpdated = true;
 				}
 			}
 		}
@@ -1322,12 +1357,19 @@ export default class StorytellerSuitePlugin extends Plugin {
 		// Ensure backward compatibility for new settings
 		if (!this.settings.galleryUploadFolder) {
 			this.settings.galleryUploadFolder = DEFAULT_SETTINGS.galleryUploadFolder;
+			settingsUpdated = true;
 		}
 		if (!this.settings.galleryData) {
 			this.settings.galleryData = DEFAULT_SETTINGS.galleryData;
+			settingsUpdated = true;
 		}
 		if (!this.settings.groups) {
 			this.settings.groups = [];
+			settingsUpdated = true;
+		}
+
+		if(settingsUpdated){
+			await this.saveSettings();
 		}
 	}
 
