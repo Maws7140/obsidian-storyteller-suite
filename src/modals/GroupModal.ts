@@ -1,9 +1,10 @@
 import { App, Modal, Setting, Notice, ButtonComponent } from 'obsidian';
-import { Group, Character, Location, Event } from '../types';
+import { Group, Character, Location, Event, PlotItem } from '../types';
 import StorytellerSuitePlugin from '../main';
 import { CharacterSuggestModal } from './CharacterSuggestModal';
 import { LocationSuggestModal } from './LocationSuggestModal';
 import { EventSuggestModal } from './EventSuggestModal';
+import { PlotItemSuggestModal } from './PlotItemSuggestModal';
 
 export type GroupModalSubmitCallback = (group: Group) => Promise<void>;
 export type GroupModalDeleteCallback = (groupId: string) => Promise<void>;
@@ -19,6 +20,7 @@ export class GroupModal extends Modal {
     allCharacters: Character[] = [];
     allLocations: Location[] = [];
     allEvents: Event[] = [];
+    allPlotItems: PlotItem[] = [];
 
     constructor(app: App, plugin: StorytellerSuitePlugin, group: Group | null, onSubmit: GroupModalSubmitCallback, onDelete?: GroupModalDeleteCallback) {
         super(app);
@@ -29,13 +31,13 @@ export class GroupModal extends Modal {
         } else {
             const activeStory = this.plugin.getActiveStory();
             if (!activeStory) throw new Error('No active story selected');
-            this.group = { 
-                id: '', 
+            this.group = {
+                id: '',
                 storyId: activeStory.id,
-                name: '', 
-                description: '', 
-                color: '', 
-                members: [] 
+                name: '',
+                description: '',
+                color: '',
+                members: []
             };
         }
         this.onSubmit = onSubmit;
@@ -136,10 +138,11 @@ export class GroupModal extends Modal {
         this.allCharacters = await this.plugin.listCharacters();
         this.allLocations = await this.plugin.listLocations();
         this.allEvents = await this.plugin.listEvents();
+        this.allPlotItems = await this.plugin.listPlotItems();
     }
 
     renderMemberSelectors(container: HTMLElement) {
-        const isMember = (type: 'character' | 'location' | 'event', id: string) =>
+        const isMember = (type: 'character' | 'location' | 'event' | 'item', id: string) =>
             this.group.members.some(m => m.type === type && m.id === id);
 
         // --- Characters Multi-Select ---
@@ -231,7 +234,37 @@ export class GroupModal extends Modal {
                     }).open();
                 });
         });
+
+        // --- Items Multi-Select ---
+        const itemSetting = new Setting(container).setName('Items');
+        const itemTagContainer = itemSetting.controlEl.createDiv('group-tag-list');
+        this.group.members.filter(m => m.type === 'item').forEach(member => {
+            const item = this.allPlotItems.find(i => (i.id || i.name) === member.id);
+            if (item) {
+                const tag = itemTagContainer.createSpan({ text: item.name, cls: 'group-tag' });
+                const removeBtn = tag.createSpan({ text: ' ×', cls: 'remove-group-btn' });
+                removeBtn.onclick = async () => {
+                    this.group.members = this.group.members.filter(m => !(m.type === 'item' && m.id === member.id));
+                    await this.plugin.removeMemberFromGroup(this.group.id, 'item', member.id);
+                    this.onOpen();
+                };
+            }
+        });
+        itemSetting.addButton(btn => {
+            btn.setButtonText('Add item').setCta().onClick(() => {
+                new PlotItemSuggestModal(this.app, this.plugin, (selectedItem) => {
+                    const itemId = selectedItem.id || selectedItem.name;
+                    if (selectedItem && !this.group.members.some(m => m.type === 'item' && m.id === itemId)) {
+                        this.group.members.push({ type: 'item', id: itemId });
+                        this.plugin.addMemberToGroup(this.group.id, 'item', itemId);
+                        this.onOpen();
+                    }
+                }).open();
+            });
+        });
     }
+
+    // THIS is where the extra '}' was, which I removed.
 
     async syncMembers() {
         // Ensure plugin group members match modal state
@@ -254,4 +287,4 @@ export class GroupModal extends Modal {
     onClose() {
         this.contentEl.empty();
     }
-} 
+}

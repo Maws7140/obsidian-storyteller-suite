@@ -4,6 +4,52 @@
  */
 
 /**
+ * PlotItem entity representing an important object or artifact in the story.
+ * These are stored as markdown files with frontmatter in the item folder.
+ */
+export interface PlotItem {
+    /** Optional unique identifier for the item */
+    id?: string;
+    
+    /** File system path to the item's markdown file */
+    filePath?: string;
+
+    /** Display name of the item (e.g., "The Dragon's Tooth Dagger") */
+    name: string;
+
+    /** Path to a representative image of the item within the vault */
+    profileImagePath?: string;
+
+    /** A simple boolean to flag this as plot-critical. This is the "bookmark" */
+    isPlotCritical: boolean;
+
+    /** Visual description of the item (stored in markdown body) */
+    description?: string;
+
+    /** The origin, past events, and lore associated with the item (stored in markdown body) */
+    history?: string;
+
+    /** Link to the Character who currently possesses the item */
+    currentOwner?: string;
+
+    /** Links to Characters who previously owned the item */
+    pastOwners?: string[];
+
+    /** Link to the Location where the item currently is */
+    currentLocation?: string;
+
+    /** Links to Events where this item played a significant role */
+    associatedEvents?: string[];
+
+    /** User-defined custom fields for additional item data */
+    customFields?: Record<string, string>;
+    
+    /** Array of group ids this item belongs to */
+    groups?: string[];
+}
+
+
+/**
  * Character entity representing a person, creature, or significant figure in the story
  * Characters are stored as markdown files with frontmatter in the character folder
  */
@@ -151,7 +197,7 @@ export interface Group {
     /** Optional color for the group (for UI) */
     color?: string;
     /** Array of group members, each with type and id */
-    members: Array<{ type: 'character' | 'event' | 'location'; id: string }>;
+    members: Array<{ type: 'character' | 'event' | 'location' | 'item'; id: string }>;
 }
 
 /**
