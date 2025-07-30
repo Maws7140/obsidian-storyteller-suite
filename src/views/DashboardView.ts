@@ -6,12 +6,13 @@ import StorytellerSuitePlugin from '../main';
 import { CharacterModal } from '../modals/CharacterModal';
 import { LocationModal } from '../modals/LocationModal';
 import { EventModal } from '../modals/EventModal';
+import { PlotItemModal } from '../modals/PlotItemModal';
 // Remove GalleryModal import if no longer needed directly
 // import { GalleryModal } from '../modals/GalleryModal';
 import { ImageDetailModal } from '../modals/ImageDetailModal';
 // Remove ImageSuggestModal import as we replace its usage
 // import { ImageSuggestModal } from '../modals/GalleryModal';
-import { Character, Location, Event, Group } from '../types'; // Import types
+import { Character, Location, Event, Group, PlotItem } from '../types'; // Import types
 import { NewStoryModal } from '../modals/NewStoryModal';
 import { GroupModal } from '../modals/GroupModal';
 
@@ -61,11 +62,11 @@ export class DashboardView extends ItemView {
             { id: 'characters', label: 'Characters', renderFn: this.renderCharactersContent.bind(this) },
             { id: 'locations', label: 'Locations', renderFn: this.renderLocationsContent.bind(this) },
             { id: 'events', label: 'Timeline', renderFn: this.renderEventsContent.bind(this) },
+            { id: 'items', label: 'Items', renderFn: this.renderItemsContent.bind(this) }, // NEW TAB
             { id: 'gallery', label: 'Gallery', renderFn: this.renderGalleryContent.bind(this) },
-            { id: 'groups', label: 'Groups', renderFn: this.renderGroupsContent.bind(this) }, // NEW TAB
+            { id: 'groups', label: 'Groups', renderFn: this.renderGroupsContent.bind(this) },
         ];
 
-        // Debounce refreshActiveTab to avoid rapid multiple renders
         this.debouncedRefreshActiveTab = debounce(this.refreshActiveTab.bind(this), 200, true);
     }
 
@@ -153,14 +154,16 @@ export class DashboardView extends ItemView {
      * @param filePath The file path to check
      */
     private isRelevantFile(filePath: string): boolean {
-        // Use the active story's folders
         try {
             const charFolder = this.plugin.getEntityFolder('character');
             const locFolder = this.plugin.getEntityFolder('location');
             const evtFolder = this.plugin.getEntityFolder('event');
+            const itemFolder = this.plugin.getEntityFolder('item'); // ADDED THIS LINE
+            
             const isRelevant = filePath.startsWith(charFolder + '/') ||
                 filePath.startsWith(locFolder + '/') ||
                 filePath.startsWith(evtFolder + '/') ||
+                filePath.startsWith(itemFolder + '/') || // ADDED THIS LINE
                 filePath.startsWith(this.plugin.settings.galleryUploadFolder + '/');
             return isRelevant;
         } catch {
@@ -466,6 +469,125 @@ export class DashboardView extends ItemView {
         }
         this.renderEventList(events, listContainer, container);
     }
+    /**
+     * Render the Items tab content
+     * Shows plot item list with filtering and management controls
+     * @param container The container element to render content into
+     */
+    async renderItemsContent(container: HTMLElement) {
+        container.empty();
+        let showPlotCriticalOnly = false; // State for the filter toggle
+
+        const controlsGroup = container.createDiv('storyteller-controls-group');
+        const filterSetting = new Setting(controlsGroup)
+            .setName('Filter Items')
+            .addText(text => text
+                .setPlaceholder('Search items...')
+                .onChange(async (value) => {
+                    this.currentFilter = value.toLowerCase();
+                    await this.renderItemsList(container, showPlotCriticalOnly);
+                }));
+
+        // "Plot Critical Only" Toggle Button
+        new Setting(controlsGroup)
+            .setName('Plot Critical')
+            .setDesc('Show only bookmarked items.')
+            .addToggle(toggle => {
+                toggle.setValue(showPlotCriticalOnly)
+                    .onChange(async (value) => {
+                        showPlotCriticalOnly = value;
+                        await this.renderItemsList(container, showPlotCriticalOnly);
+                    });
+            });
+
+        new Setting(controlsGroup)
+            .addButton(button => button
+                .setButtonText('Create new')
+                .setCta()
+                .onClick(() => {
+                    new PlotItemModal(this.app, this.plugin, null, async (item: PlotItem) => {
+                        await this.plugin.savePlotItem(item);
+                        new Notice(`Item "${item.name}" created.`);
+                    }).open();
+                }));
+
+        await this.renderItemsList(container, showPlotCriticalOnly);
+    }
+
+    /**
+     * Render just the items list (without header controls)
+     */
+    private async renderItemsList(container: HTMLElement, plotCriticalOnly: boolean) {
+        const existingListContainer = container.querySelector('.storyteller-list-container');
+        if (existingListContainer) {
+            existingListContainer.remove();
+        }
+
+        let items = await this.plugin.listPlotItems();
+
+        if (plotCriticalOnly) {
+            items = items.filter(item => item.isPlotCritical);
+        }
+
+        items = items.filter(item =>
+            item.name.toLowerCase().includes(this.currentFilter) ||
+            (item.description || '').toLowerCase().includes(this.currentFilter)
+        );
+
+        const listContainer = container.createDiv('storyteller-list-container');
+        if (items.length === 0) {
+            listContainer.createEl('p', { text: 'No items found.' });
+            return;
+        }
+
+        items.forEach(item => {
+            const itemEl = listContainer.createDiv('storyteller-list-item');
+
+            const pfpContainer = itemEl.createDiv('storyteller-list-item-pfp');
+            if (item.profileImagePath) {
+                const imgEl = pfpContainer.createEl('img');
+                imgEl.src = this.app.vault.adapter.getResourcePath(item.profileImagePath);
+                imgEl.alt = item.name;
+            } else {
+                pfpContainer.setText(item.isPlotCritical ? '★' : '●');
+            }
+
+            const infoEl = itemEl.createDiv('storyteller-list-item-info');
+            const titleEl = infoEl.createEl('strong', { text: item.name });
+            if(item.isPlotCritical) {
+                titleEl.setText(`★ ${item.name}`);
+                titleEl.style.color = 'var(--text-accent)';
+            }
+            if (item.description) {
+                infoEl.createEl('p', { text: item.description.substring(0, 80) + '...' });
+            }
+
+            const extraInfoEl = infoEl.createDiv('storyteller-list-item-extra');
+            if (item.currentOwner) {
+                extraInfoEl.createSpan({ text: `Owner: ${item.currentOwner}` });
+            }
+             if (item.currentLocation) {
+                if(item.currentOwner) extraInfoEl.appendText(' • ');
+                extraInfoEl.createSpan({ text: `Location: ${item.currentLocation}` });
+            }
+
+            const actionsEl = itemEl.createDiv('storyteller-list-item-actions');
+            this.addEditButton(actionsEl, () => {
+                new PlotItemModal(this.app, this.plugin, item, async (updatedData: PlotItem) => {
+                    await this.plugin.savePlotItem(updatedData);
+                    new Notice(`Item "${updatedData.name}" updated.`);
+                }).open();
+            });
+            this.addDeleteButton(actionsEl, async () => {
+                if (confirm(`Are you sure you want to delete "${item.name}"?`)) {
+                    if (item.filePath) {
+                        await this.plugin.deletePlotItem(item.filePath);
+                    }
+                }
+            });
+            this.addOpenFileButton(actionsEl, item.filePath);
+        });
+    }
 
     /**
      * Render the Gallery tab content
@@ -683,23 +805,28 @@ export class DashboardView extends ItemView {
             // Collapsible content (members)
             const membersSection = groupCard.createDiv('storyteller-group-members');
             if (!isExpanded) membersSection.addClass('collapsed');
+            
             // Group members by type
             const grouped = {
                 character: group.members.filter(m => m.type === 'character'),
                 location: group.members.filter(m => m.type === 'location'),
                 event: group.members.filter(m => m.type === 'event'),
+                item: group.members.filter(m => m.type === 'item'), // ADDED
             };
             const typeLabels = {
                 character: 'Characters',
                 location: 'Locations',
                 event: 'Events',
+                item: 'Items', // ADDED
             };
             const typeIcons = {
-                character: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-user"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`,
-                location: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-map-pin"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0Z"/><circle cx="12" cy="10" r="3"/></svg>`,
-                event: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-calendar"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/></svg>`,
+                character: `<svg ...>`, // existing
+                location: `<svg ...>`, // existing
+                event: `<svg ...>`,   // existing
+                item: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-gem"><path d="M6 3h12l4 6-10 13L2 9Z"/><path d="M12 22V9"/><path d="m3.5 8.5 17 0"/></svg>`, // ADDED
             };
-            (['character', 'location', 'event'] as const).forEach(type => {
+            
+            (['character', 'location', 'event', 'item'] as const).forEach(type => { // ADDED 'item'
                 if (grouped[type].length > 0) {
                     // Section header
                     const header = membersSection.createDiv('storyteller-group-entity-header');
