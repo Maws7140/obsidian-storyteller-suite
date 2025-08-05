@@ -12,7 +12,7 @@ import { PlotItemModal } from '../modals/PlotItemModal';
 import { ImageDetailModal } from '../modals/ImageDetailModal';
 // Remove ImageSuggestModal import as we replace its usage
 // import { ImageSuggestModal } from '../modals/GalleryModal';
-import { Character, Location, Event, Group, PlotItem } from '../types'; // Import types
+import { Character, Location, Event, Group, PlotItem, GalleryImage } from '../types'; // Import types
 import { NewStoryModal } from '../modals/NewStoryModal';
 import { GroupModal } from '../modals/GroupModal';
 
@@ -47,6 +47,21 @@ export class DashboardView extends ItemView {
     tabs: Array<{ id: string; label: string; renderFn: (container: HTMLElement) => Promise<void> }>;
 
     private debouncedRefreshActiveTab: () => void; // Declare property for debounce
+
+    /**
+     * Helper method to get the appropriate image source path
+     * Handles both external URLs and local vault paths
+     * @param imagePath The image path (URL or vault path)
+     * @returns The appropriate src for img element
+     */
+    private getImageSrc(imagePath: string): string {
+        // Check if it's an external URL
+        if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
+            return imagePath;
+        }
+        // Otherwise, treat it as a vault path
+        return this.app.vault.adapter.getResourcePath(imagePath);
+    }
 
     /**
      * Constructor for the dashboard view
@@ -528,7 +543,7 @@ export class DashboardView extends ItemView {
             const pfpContainer = itemEl.createDiv('storyteller-list-item-pfp');
             if (item.profileImagePath) {
                 const imgEl = pfpContainer.createEl('img');
-                imgEl.src = this.app.vault.adapter.getResourcePath(item.profileImagePath);
+                imgEl.src = this.getImageSrc(item.profileImagePath);
                 imgEl.alt = item.name;
             } else {
                 pfpContainer.setText(item.isPlotCritical ? '★' : '●');
@@ -877,8 +892,7 @@ export class DashboardView extends ItemView {
             if (character.profileImagePath) {
                 const imgEl = imgContainer.createEl('img');
                 try {
-                    const resourcePath = this.app.vault.adapter.getResourcePath(character.profileImagePath);
-                    imgEl.src = resourcePath;
+                    imgEl.src = this.getImageSrc(character.profileImagePath);
                     imgEl.alt = character.name;
                 } catch (e) {
                     console.error(`Error loading profile image for ${character.name}: ${character.profileImagePath}`, e);
@@ -936,8 +950,7 @@ export class DashboardView extends ItemView {
             if (location.profileImagePath) {
                 const imgEl = pfpContainer.createEl('img');
                 try {
-                    const resourcePath = this.app.vault.adapter.getResourcePath(location.profileImagePath);
-                    imgEl.src = resourcePath;
+                    imgEl.src = this.getImageSrc(location.profileImagePath);
                     imgEl.alt = location.name;
                 } catch (e) {
                     console.error(`Error loading image for ${location.name}: ${location.profileImagePath}`, e);
@@ -1000,8 +1013,7 @@ export class DashboardView extends ItemView {
             if (event.profileImagePath) {
                 const imgEl = pfpContainer.createEl('img');
                 try {
-                    const resourcePath = this.app.vault.adapter.getResourcePath(event.profileImagePath);
-                    imgEl.src = resourcePath;
+                    imgEl.src = this.getImageSrc(event.profileImagePath);
                     imgEl.alt = event.name;
                 } catch (e) {
                     console.error(`Error loading image for ${event.name}: ${event.profileImagePath}`, e);
@@ -1028,8 +1040,7 @@ export class DashboardView extends ItemView {
                 event.images.forEach(imagePath => {
                     try {
                         const thumb = imagesRow.createEl('img', { cls: 'storyteller-event-image-thumb' });
-                        const resourcePath = this.app.vault.adapter.getResourcePath(imagePath);
-                        thumb.src = resourcePath;
+                        thumb.src = this.getImageSrc(imagePath);
                         thumb.alt = event.name + ' image';
                         thumb.loading = 'lazy';
                         thumb.style.maxWidth = '48px';
@@ -1084,7 +1095,7 @@ export class DashboardView extends ItemView {
         });
     }
 
-    renderGalleryGrid(images: any[], gridContainer: HTMLElement, refreshCallback: () => Promise<void>) {
+    renderGalleryGrid(images: GalleryImage[], gridContainer: HTMLElement, refreshCallback: () => Promise<void>) {
         // Apply grid styling class to the container (ensure CSS exists for this class)
         gridContainer.addClass('storyteller-gallery-grid'); // Added this line
 
@@ -1096,8 +1107,7 @@ export class DashboardView extends ItemView {
 
             // --- Image Element ---
             const imgEl = imgWrapper.createEl('img', { cls: 'storyteller-gallery-item-image' }); // Add class for styling
-            const resourcePath = this.app.vault.adapter.getResourcePath(image.filePath);
-            imgEl.src = resourcePath;
+            imgEl.src = this.getImageSrc(image.filePath);
             imgEl.alt = image.title || image.filePath.split('/').pop() || 'Gallery image'; // Provide alt text
             imgEl.loading = 'lazy'; // Improve performance for many images
 
