@@ -17,6 +17,21 @@ export class ImageDetailModal extends Modal {
         this.modalEl.addClass('storyteller-image-detail-modal');
     }
 
+    /**
+     * Helper method to get the appropriate image source path
+     * Handles both external URLs and local vault paths
+     * @param imagePath The image path (URL or vault path)
+     * @returns The appropriate src for img element
+     */
+    private getImageSrc(imagePath: string): string {
+        // Check if it's an external URL
+        if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
+            return imagePath;
+        }
+        // Otherwise, treat it as a vault path
+        return this.app.vault.adapter.getResourcePath(imagePath);
+    }
+
     onOpen() {
         const { contentEl } = this;
         contentEl.empty();
@@ -27,8 +42,7 @@ export class ImageDetailModal extends Modal {
         // --- Image Preview ---
         const previewEl = mainContainer.createDiv('storyteller-image-preview');
         const imgEl = previewEl.createEl('img');
-        const resourcePath = this.app.vault.adapter.getResourcePath(this.image.filePath);
-        imgEl.src = resourcePath;
+        imgEl.src = this.getImageSrc(this.image.filePath);
         imgEl.alt = this.image.title || this.image.filePath;
         previewEl.createEl('p', { text: this.image.filePath }); // Show file path
 

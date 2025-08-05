@@ -1,4 +1,4 @@
-import { App, Modal, Setting, Notice, TFile, SuggestModal, FuzzySuggestModal } from 'obsidian';
+import { App, Modal, Setting, TFile, FuzzySuggestModal } from 'obsidian';
 import { GalleryImage } from '../types';
 import StorytellerSuitePlugin from '../main';
 import { ImageDetailModal } from './ImageDetailModal';
@@ -42,6 +42,21 @@ export class GalleryModal extends Modal {
         this.plugin = plugin;
         this.images = plugin.getGalleryImages(); // Get current images
         this.modalEl.addClass('storyteller-gallery-modal'); // Specific class
+    }
+
+    /**
+     * Helper method to get the appropriate image source path
+     * Handles both external URLs and local vault paths
+     * @param imagePath The image path (URL or vault path)
+     * @returns The appropriate src for img element
+     */
+    private getImageSrc(imagePath: string): string {
+        // Check if it's an external URL
+        if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
+            return imagePath;
+        }
+        // Otherwise, treat it as a vault path
+        return this.app.vault.adapter.getResourcePath(imagePath);
     }
 
     onOpen() {
@@ -112,9 +127,8 @@ export class GalleryModal extends Modal {
             const imgWrapper = container.createDiv('storyteller-gallery-item');
             const imgEl = imgWrapper.createEl('img');
 
-            // Use Obsidian's resource path generation
-            const resourcePath = this.app.vault.adapter.getResourcePath(image.filePath);
-            imgEl.src = resourcePath;
+            // Use helper method for proper path handling
+            imgEl.src = this.getImageSrc(image.filePath);
             imgEl.alt = image.title || image.filePath;
             imgEl.title = image.title || image.filePath; // Tooltip
 
