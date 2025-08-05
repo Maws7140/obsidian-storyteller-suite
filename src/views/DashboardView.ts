@@ -100,40 +100,30 @@ export class DashboardView extends ItemView {
      * Register vault event listeners to automatically refresh active tab when files change
      */
     private registerVaultEventListeners() {
-        console.log('Storyteller Suite: Registering vault event listeners');
-        
         // Listen for file creation events
         this.registerEvent(this.app.vault.on('create', (file) => {
-            console.log('Storyteller Suite: File created:', file.path);
             if (this.isRelevantFile(file.path)) {
-                console.log('Storyteller Suite: Relevant file created, refreshing active tab');
                 this.debouncedRefreshActiveTab();
             }
         }));
 
         // Listen for file modification events  
         this.registerEvent(this.app.vault.on('modify', (file) => {
-            console.log('Storyteller Suite: File modified:', file.path);
             if (this.isRelevantFile(file.path)) {
-                console.log('Storyteller Suite: Relevant file modified, refreshing active tab');
                 this.debouncedRefreshActiveTab();
             }
         }));
 
         // Listen for file deletion events
         this.registerEvent(this.app.vault.on('delete', (file) => {
-            console.log('Storyteller Suite: File deleted:', file.path);
             if (this.isRelevantFile(file.path)) {
-                console.log('Storyteller Suite: Relevant file deleted, refreshing active tab');
                 this.debouncedRefreshActiveTab();
             }
         }));
 
         // Listen for file rename events
         this.registerEvent(this.app.vault.on('rename', (file, oldPath) => {
-            console.log('Storyteller Suite: File renamed from:', oldPath, 'to:', file.path);
             if (this.isRelevantFile(file.path) || this.isRelevantFile(oldPath)) {
-                console.log('Storyteller Suite: Relevant file renamed, refreshing active tab');
                 this.debouncedRefreshActiveTab();
             }
         }));
@@ -142,7 +132,6 @@ export class DashboardView extends ItemView {
         this.registerEvent(
             this.app.metadataCache.on('changed', (file) => {
                 if (this.isRelevantFile(file.path)) {
-                    console.log('Storyteller Suite: Metadata changed for relevant file, refreshing active tab');
                     this.debouncedRefreshActiveTab();
                 }
             })
@@ -175,24 +164,17 @@ export class DashboardView extends ItemView {
      * Refresh the currently active tab
      */
     private async refreshActiveTab() {
-        console.log('Storyteller Suite: Refreshing active tab:', this.activeTabId);
-        
         if (!this.tabContentContainer) {
-            console.log('Storyteller Suite: No tab content container, skipping refresh');
             return;
         }
         
         const activeTab = this.tabs.find(tab => tab.id === this.activeTabId);
         if (activeTab) {
             try {
-                console.log('Storyteller Suite: Found active tab, calling render function');
                 await activeTab.renderFn(this.tabContentContainer);
-                console.log('Storyteller Suite: Successfully refreshed active tab');
             } catch (error) {
                 console.error(`Storyteller Suite: Error refreshing active tab ${this.activeTabId}:`, error);
             }
-        } else {
-            console.log('Storyteller Suite: No active tab found for ID:', this.activeTabId);
         }
     }
 
