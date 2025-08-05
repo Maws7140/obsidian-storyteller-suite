@@ -24,14 +24,20 @@ export class ImageDetailModal extends Modal {
      * @returns The appropriate src for img element
      */
     private getImageSrc(imagePath: string): string {
-        // Check if it's an external URL
-        if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
+        // External URL? ─ allow http(s), protocol‐relative (“//…”) or data URIs
+        if (/^(https?:)?\/\//i.test(imagePath) || imagePath.startsWith('data:')) {
             return imagePath;
         }
-        // Otherwise, treat it as a vault path
-        return this.app.vault.adapter.getResourcePath(imagePath);
-    }
 
+        // Local vault file – resolve to TFile and use Vault API
+        const file = this.app.vault.getAbstractFileByPath(imagePath);
+        if (file instanceof this.app.vault.constructor.TFile) {
+            return this.app.vault.getResourcePath(file);
+        }
+
+        // Fallback – return original path so errors can be handled upstream
+        return imagePath;
+    }
     onOpen() {
         const { contentEl } = this;
         contentEl.empty();

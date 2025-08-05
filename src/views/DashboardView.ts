@@ -50,13 +50,18 @@ export class DashboardView extends ItemView {
 
     /**
      * Helper method to get the appropriate image source path
-     * Handles both external URLs and local vault paths
+     * Handles external URLs, data URIs, app/obsidian protocols, and local vault paths
      * @param imagePath The image path (URL or vault path)
      * @returns The appropriate src for img element
      */
     private getImageSrc(imagePath: string): string {
-        // Check if it's an external URL
-        if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
+        // Check if it's an external URL, data URI, or special protocol
+        if (imagePath.startsWith('http://') || 
+            imagePath.startsWith('https://') ||
+            imagePath.startsWith('data:') ||
+            imagePath.startsWith('app://') ||
+            imagePath.startsWith('obsidian://') ||
+            imagePath.startsWith('//')) {
             return imagePath;
         }
         // Otherwise, treat it as a vault path
