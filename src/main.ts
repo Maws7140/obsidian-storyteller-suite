@@ -1401,7 +1401,6 @@ export default class StorytellerSuitePlugin extends Plugin {
 
 		// DISCOVERY: If no stories are configured, scan the filesystem for them
         if (this.settings.stories.length === 0) {
-            console.log('Storyteller Suite: No stories configured. Scanning filesystem for existing stories...');
             const baseStoriesPath = 'StorytellerSuite/Stories';
             const storiesFolder = this.app.vault.getAbstractFileByPath(normalizePath(baseStoriesPath));
 
