@@ -1,5 +1,7 @@
 import { App, PluginSettingTab, Setting } from 'obsidian';
 import StorytellerSuitePlugin from './main';
+import { NewStoryModal } from './modals/NewStoryModal';
+import { EditStoryModal } from './modals/EditStoryModal';
 
 export class StorytellerSuiteSettingTab extends PluginSettingTab {
     plugin: StorytellerSuitePlugin;
@@ -36,14 +38,18 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                 )
                 .addExtraButton(btn => btn
                     .setIcon('pencil')
-                    .setTooltip('Rename')
+                    .setTooltip('Edit Story')
                     .onClick(async () => {
-                        const newName = prompt('Rename story:', story.name);
-                        if (newName && newName !== story.name) {
-                            story.name = newName;
-                            await this.plugin.saveSettings();
-                            this.display();
-                        }
+                        const existingNames = this.plugin.settings.stories.map(s => s.name);
+                        new EditStoryModal(
+                            this.app,
+                            story,
+                            existingNames,
+                            async (name: string, description?: string) => {
+                                await this.plugin.updateStory(story.id, name, description);
+                                this.display();
+                            }
+                        ).open();
                     })
                 )
                 .addExtraButton(btn => btn
@@ -68,11 +74,15 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                 .setButtonText('Create New Story')
                 .setCta()
                 .onClick(async () => {
-                    const name = prompt('Enter story name:');
-                    if (name) {
-                        await this.plugin.createStory(name);
-                        this.display();
-                    }
+                    const existingNames = this.plugin.settings.stories.map(s => s.name);
+                    new NewStoryModal(
+                        this.app, 
+                        existingNames, 
+                        async (name: string, description?: string) => {
+                            await this.plugin.createStory(name, description);
+                            this.display();
+                        }
+                    ).open();
                 })
             );
 

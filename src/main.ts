@@ -102,6 +102,20 @@ export default class StorytellerSuitePlugin extends Plugin {
 	}
 
 	/**
+	 * Update an existing story's name and description
+	 */
+	async updateStory(storyId: string, name: string, description?: string): Promise<void> {
+		const story = this.settings.stories.find(s => s.id === storyId);
+		if (story) {
+			story.name = name;
+			story.description = description;
+			await this.saveSettings();
+		} else {
+			throw new Error('Story not found');
+		}
+	}
+
+	/**
 	 * Plugin initialization - called when the plugin is loaded
 	 * Registers views, commands, and UI elements
 	 */
