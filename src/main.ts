@@ -542,15 +542,50 @@ export default class StorytellerSuitePlugin extends Plugin {
 			// Read file content for markdown sections
 			const content = await this.app.vault.cachedRead(file);
 			
-			// Parse ALL sections dynamically using improved regex pattern
+			// Parse ALL sections dynamically using robust regex pattern for backward compatibility
 			const allSections: Record<string, string> = {};
-			const sectionMatches = content.matchAll(/## ([^\n]+)\n([\s\S]*?)(?=\n## |$)/g);
 			
-			for (const match of sectionMatches) {
+			// Primary regex: More flexible pattern to handle various formatting from older files
+			const primaryMatches = content.matchAll(/^##\s*([^\n\r]+?)\s*[\n\r]+([\s\S]*?)(?=\n\s*##\s|$)/gm);
+			
+			for (const match of primaryMatches) {
 				const sectionName = match[1].trim();
 				const sectionContent = match[2].trim();
-				if (sectionContent) {
+				if (sectionName && sectionContent) {
 					allSections[sectionName] = sectionContent;
+				}
+			}
+			
+			// Fallback parsing for edge cases where primary regex might miss sections
+			if (Object.keys(allSections).length === 0 && content.includes('##')) {
+				console.warn(`Primary regex failed for file ${file.path}, attempting fallback parsing`);
+				// Fallback: Split by ## and try to reconstruct sections
+				const lines = content.split('\n');
+				let currentSection = '';
+				let currentContent: string[] = [];
+				
+				for (const line of lines) {
+					if (line.startsWith('##')) {
+						// Save previous section if exists
+						if (currentSection && currentContent.length > 0) {
+							const content = currentContent.join('\n').trim();
+							if (content) {
+								allSections[currentSection] = content;
+							}
+						}
+						// Start new section
+						currentSection = line.replace(/^##\s*/, '').trim();
+						currentContent = [];
+					} else if (currentSection) {
+						currentContent.push(line);
+					}
+				}
+				// Save final section
+				if (currentSection && currentContent.length > 0) {
+					const content = currentContent.join('\n').trim();
+					if (content) {
+						allSections[currentSection] = content;
+					}
 				}
 			}
 
@@ -684,13 +719,47 @@ export default class StorytellerSuitePlugin extends Plugin {
 				existingContent = await this.app.vault.cachedRead(existingFile);
 				
 				// Parse ALL existing markdown sections dynamically to preserve user content
-				// Use corrected regex pattern that captures all sections including final ones
-				const allSectionMatches = existingContent.matchAll(/## ([^\n]+)\n([\s\S]*?)(?=\n## |$)/g);
-				for (const match of allSectionMatches) {
+				// Use robust regex pattern for backward compatibility with older file formats
+				const primaryMatches = existingContent.matchAll(/^##\s*([^\n\r]+?)\s*[\n\r]+([\s\S]*?)(?=\n\s*##\s|$)/gm);
+				
+				for (const match of primaryMatches) {
 					const sectionName = match[1].trim();
 					const sectionContent = match[2].trim();
-					if (sectionContent) {
+					if (sectionName && sectionContent) {
 						customSections[sectionName] = sectionContent;
+					}
+				}
+				
+				// Fallback parsing for edge cases where primary regex might miss sections
+				if (Object.keys(customSections).length === 0 && existingContent.includes('##')) {
+					console.warn(`Primary regex failed for character file ${finalFilePath}, attempting fallback parsing`);
+					// Fallback: Split by ## and try to reconstruct sections
+					const lines = existingContent.split('\n');
+					let currentSection = '';
+					let currentContent: string[] = [];
+					
+					for (const line of lines) {
+						if (line.startsWith('##')) {
+							// Save previous section if exists
+							if (currentSection && currentContent.length > 0) {
+								const content = currentContent.join('\n').trim();
+								if (content) {
+									customSections[currentSection] = content;
+								}
+							}
+							// Start new section
+							currentSection = line.replace(/^##\s*/, '').trim();
+							currentContent = [];
+						} else if (currentSection) {
+							currentContent.push(line);
+						}
+					}
+					// Save final section
+					if (currentSection && currentContent.length > 0) {
+						const content = currentContent.join('\n').trim();
+						if (content) {
+							customSections[currentSection] = content;
+						}
 					}
 				}
 			} catch (error) {
@@ -880,13 +949,47 @@ export default class StorytellerSuitePlugin extends Plugin {
 				existingContent = await this.app.vault.cachedRead(existingFile);
 				
 				// Parse ALL existing markdown sections dynamically to preserve user content
-				// Use corrected regex pattern that captures all sections including final ones
-				const allSectionMatches = existingContent.matchAll(/## ([^\n]+)\n([\s\S]*?)(?=\n## |$)/g);
-				for (const match of allSectionMatches) {
+				// Use robust regex pattern for backward compatibility with older file formats
+				const primaryMatches = existingContent.matchAll(/^##\s*([^\n\r]+?)\s*[\n\r]+([\s\S]*?)(?=\n\s*##\s|$)/gm);
+				
+				for (const match of primaryMatches) {
 					const sectionName = match[1].trim();
 					const sectionContent = match[2].trim();
-					if (sectionContent) {
+					if (sectionName && sectionContent) {
 						customSections[sectionName] = sectionContent;
+					}
+				}
+				
+				// Fallback parsing for edge cases where primary regex might miss sections
+				if (Object.keys(customSections).length === 0 && existingContent.includes('##')) {
+					console.warn(`Primary regex failed for location file ${finalFilePath}, attempting fallback parsing`);
+					// Fallback: Split by ## and try to reconstruct sections
+					const lines = existingContent.split('\n');
+					let currentSection = '';
+					let currentContent: string[] = [];
+					
+					for (const line of lines) {
+						if (line.startsWith('##')) {
+							// Save previous section if exists
+							if (currentSection && currentContent.length > 0) {
+								const content = currentContent.join('\n').trim();
+								if (content) {
+									customSections[currentSection] = content;
+								}
+							}
+							// Start new section
+							currentSection = line.replace(/^##\s*/, '').trim();
+							currentContent = [];
+						} else if (currentSection) {
+							currentContent.push(line);
+						}
+					}
+					// Save final section
+					if (currentSection && currentContent.length > 0) {
+						const content = currentContent.join('\n').trim();
+						if (content) {
+							customSections[currentSection] = content;
+						}
 					}
 				}
 			} catch (error) {
@@ -1051,13 +1154,47 @@ export default class StorytellerSuitePlugin extends Plugin {
 				existingContent = await this.app.vault.cachedRead(existingFile);
 				
 				// Parse ALL existing markdown sections dynamically to preserve user content
-				// Use corrected regex pattern that captures all sections including final ones
-				const allSectionMatches = existingContent.matchAll(/## ([^\n]+)\n([\s\S]*?)(?=\n## |$)/g);
-				for (const match of allSectionMatches) {
+				// Use robust regex pattern for backward compatibility with older file formats
+				const primaryMatches = existingContent.matchAll(/^##\s*([^\n\r]+?)\s*[\n\r]+([\s\S]*?)(?=\n\s*##\s|$)/gm);
+				
+				for (const match of primaryMatches) {
 					const sectionName = match[1].trim();
 					const sectionContent = match[2].trim();
-					if (sectionContent) {
+					if (sectionName && sectionContent) {
 						customSections[sectionName] = sectionContent;
+					}
+				}
+				
+				// Fallback parsing for edge cases where primary regex might miss sections
+				if (Object.keys(customSections).length === 0 && existingContent.includes('##')) {
+					console.warn(`Primary regex failed for event file ${finalFilePath}, attempting fallback parsing`);
+					// Fallback: Split by ## and try to reconstruct sections
+					const lines = existingContent.split('\n');
+					let currentSection = '';
+					let currentContent: string[] = [];
+					
+					for (const line of lines) {
+						if (line.startsWith('##')) {
+							// Save previous section if exists
+							if (currentSection && currentContent.length > 0) {
+								const content = currentContent.join('\n').trim();
+								if (content) {
+									customSections[currentSection] = content;
+								}
+							}
+							// Start new section
+							currentSection = line.replace(/^##\s*/, '').trim();
+							currentContent = [];
+						} else if (currentSection) {
+							currentContent.push(line);
+						}
+					}
+					// Save final section
+					if (currentSection && currentContent.length > 0) {
+						const content = currentContent.join('\n').trim();
+						if (content) {
+							customSections[currentSection] = content;
+						}
 					}
 				}
 			} catch (error) {
@@ -1208,13 +1345,47 @@ export default class StorytellerSuitePlugin extends Plugin {
 				existingContent = await this.app.vault.cachedRead(existingFile);
 				
 				// Parse ALL existing markdown sections dynamically to preserve user content
-				// Use corrected regex pattern that captures all sections including final ones
-				const allSectionMatches = existingContent.matchAll(/## ([^\n]+)\n([\s\S]*?)(?=\n## |$)/g);
-				for (const match of allSectionMatches) {
+				// Use robust regex pattern for backward compatibility with older file formats
+				const primaryMatches = existingContent.matchAll(/^##\s*([^\n\r]+?)\s*[\n\r]+([\s\S]*?)(?=\n\s*##\s|$)/gm);
+				
+				for (const match of primaryMatches) {
 					const sectionName = match[1].trim();
 					const sectionContent = match[2].trim();
-					if (sectionContent) {
+					if (sectionName && sectionContent) {
 						customSections[sectionName] = sectionContent;
+					}
+				}
+				
+				// Fallback parsing for edge cases where primary regex might miss sections
+				if (Object.keys(customSections).length === 0 && existingContent.includes('##')) {
+					console.warn(`Primary regex failed for item file ${finalFilePath}, attempting fallback parsing`);
+					// Fallback: Split by ## and try to reconstruct sections
+					const lines = existingContent.split('\n');
+					let currentSection = '';
+					let currentContent: string[] = [];
+					
+					for (const line of lines) {
+						if (line.startsWith('##')) {
+							// Save previous section if exists
+							if (currentSection && currentContent.length > 0) {
+								const content = currentContent.join('\n').trim();
+								if (content) {
+									customSections[currentSection] = content;
+								}
+							}
+							// Start new section
+							currentSection = line.replace(/^##\s*/, '').trim();
+							currentContent = [];
+						} else if (currentSection) {
+							currentContent.push(line);
+						}
+					}
+					// Save final section
+					if (currentSection && currentContent.length > 0) {
+						const content = currentContent.join('\n').trim();
+						if (content) {
+							customSections[currentSection] = content;
+						}
 					}
 				}
 			} catch (error) {
