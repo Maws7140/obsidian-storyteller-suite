@@ -394,7 +394,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 
 	/**
 	 * Generic file parser for storytelling entity files
-	 * Extracts frontmatter and markdown content sections
+	 * Extracts frontmatter and ALL markdown content sections dynamically
 	 * @param file The file to parse
 	 * @param typeDefaults Default values for the entity type
 	 * @returns Parsed entity data or null if parsing fails
@@ -408,34 +408,35 @@ export default class StorytellerSuitePlugin extends Plugin {
 			// Read file content for markdown sections
 			const content = await this.app.vault.cachedRead(file);
 			
-			// Extract common markdown sections using regex with proper end-of-file handling
-			const descriptionMatch = content.match(/## Description\n([\s\S]*?)(?=\n##|\n$)/);
-			const backstoryMatch = content.match(/## Backstory\n([\s\S]*?)(?=\n##|\n$)/);
-			const historyMatch = content.match(/## History\n([\s\S]*?)(?=\n##|\n$)/);
-			const relationshipsMatch = content.match(/## Relationships\n([\s\S]*?)(?=\n##|\n$)/);
-			const locationsMatch = content.match(/## Locations\n([\s\S]*?)(?=\n##|\n$)/);
-			const eventsMatch = content.match(/## Events\n([\s\S]*?)(?=\n##|\n$)/);
+			// Parse ALL sections dynamically using improved regex pattern
+			const allSections: Record<string, string> = {};
+			const sectionMatches = content.matchAll(/## ([^\n]+)\n([\s\S]*?)(?=\n## |$)/g);
+			
+			for (const match of sectionMatches) {
+				const sectionName = match[1].trim();
+				const sectionContent = match[2].trim();
+				if (sectionContent) {
+					allSections[sectionName] = sectionContent;
+				}
+			}
 
-			// Combine frontmatter and defaults with file path
+			// Combine frontmatter and defaults with file path and ALL sections
 			const data: Record<string, unknown> = {
 				...typeDefaults as unknown as Record<string, unknown>,
 				...frontmatter,
 				filePath: file.path,
+				// Include all parsed sections
+				...allSections
 			};
 
-			// Add extracted markdown content to data - always extract for characters
-			if (descriptionMatch?.[1]) {
-				data['description'] = descriptionMatch[1].trim();
-			}
-			if (backstoryMatch?.[1]) {
-				data['backstory'] = backstoryMatch[1].trim();
-			}
-			if (historyMatch?.[1]) {
-				data['history'] = historyMatch[1].trim();
-			}
-			if (relationshipsMatch?.[1]) {
-				// Parse relationships as array of character names
-				const relationshipsText = relationshipsMatch[1].trim();
+			// Ensure specific fields are available for backward compatibility and UI
+			if (allSections['Description']) data['description'] = allSections['Description'];
+			if (allSections['Backstory']) data['backstory'] = allSections['Backstory'];
+			if (allSections['History']) data['history'] = allSections['History'];
+			
+			// Parse relationship arrays from sections if they exist
+			if (allSections['Relationships']) {
+				const relationshipsText = allSections['Relationships'];
 				const relationships = relationshipsText
 					.split('\n')
 					.map(line => line.trim())
@@ -443,9 +444,9 @@ export default class StorytellerSuitePlugin extends Plugin {
 					.map(line => line.replace(/^- \[\[(.*?)\]\]$/, '$1'));
 				data['relationships'] = relationships;
 			}
-			if (locationsMatch?.[1]) {
-				// Parse locations as array of location names
-				const locationsText = locationsMatch[1].trim();
+			
+			if (allSections['Locations']) {
+				const locationsText = allSections['Locations'];
 				const locations = locationsText
 					.split('\n')
 					.map(line => line.trim())
@@ -453,9 +454,9 @@ export default class StorytellerSuitePlugin extends Plugin {
 					.map(line => line.replace(/^- \[\[(.*?)\]\]$/, '$1'));
 				data['locations'] = locations;
 			}
-			if (eventsMatch?.[1]) {
-				// Parse events as array of event names
-				const eventsText = eventsMatch[1].trim();
+			
+			if (allSections['Events']) {
+				const eventsText = allSections['Events'];
 				const events = eventsText
 					.split('\n')
 					.map(line => line.trim())
@@ -542,23 +543,22 @@ export default class StorytellerSuitePlugin extends Plugin {
 		const existingFile = this.app.vault.getAbstractFileByPath(finalFilePath);
 		let existingContent = '';
 		const existingSections: Record<string, string> = {};
+		let customSections: Record<string, string> = {};
 		
 		if (existingFile && existingFile instanceof TFile) {
 			try {
 				existingContent = await this.app.vault.cachedRead(existingFile);
 				
-				// Parse existing markdown sections to preserve user content
-				const descriptionMatch = existingContent.match(/## Description\n([\s\S]*?)(?=\n##|\n$)/);
-				const backstoryMatch = existingContent.match(/## Backstory\n([\s\S]*?)(?=\n##|\n$)/);
-				const relationshipsMatch = existingContent.match(/## Relationships\n([\s\S]*?)(?=\n##|\n$)/);
-				const locationsMatch = existingContent.match(/## Locations\n([\s\S]*?)(?=\n##|\n$)/);
-				const eventsMatch = existingContent.match(/## Events\n([\s\S]*?)(?=\n##|\n$)/);
-				
-				if (descriptionMatch?.[1]) existingSections.description = descriptionMatch[1].trim();
-				if (backstoryMatch?.[1]) existingSections.backstory = backstoryMatch[1].trim();
-				if (relationshipsMatch?.[1]) existingSections.relationships = relationshipsMatch[1].trim();
-				if (locationsMatch?.[1]) existingSections.locations = locationsMatch[1].trim();
-				if (eventsMatch?.[1]) existingSections.events = eventsMatch[1].trim();
+				// Parse ALL existing markdown sections dynamically to preserve user content
+				// Use corrected regex pattern that captures all sections including final ones
+				const allSectionMatches = existingContent.matchAll(/## ([^\n]+)\n([\s\S]*?)(?=\n## |$)/g);
+				for (const match of allSectionMatches) {
+					const sectionName = match[1].trim();
+					const sectionContent = match[2].trim();
+					if (sectionContent) {
+						customSections[sectionName] = sectionContent;
+					}
+				}
 			} catch (error) {
 				console.warn(`Error reading existing character file: ${error}`);
 			}
@@ -567,40 +567,53 @@ export default class StorytellerSuitePlugin extends Plugin {
 		// Build file content with frontmatter and markdown sections
 		let fileContent = `---\n${frontmatterString}---\n\n`;
 		
-		// Preserve existing content or use new content
+		// Handle sections dynamically - preserve ALL user sections
+		// Priority order: new content from character object, then existing content, then generate from arrays
+		
+		// Description section
 		if (description) {
 			fileContent += `## Description\n${description.trim()}\n\n`;
-		} else if (existingSections.description) {
-			fileContent += `## Description\n${existingSections.description}\n\n`;
+		} else if (customSections['Description']) {
+			fileContent += `## Description\n${customSections['Description']}\n\n`;
 		}
 		
+		// Backstory section
 		if (backstory) {
 			fileContent += `## Backstory\n${backstory.trim()}\n\n`;
-		} else if (existingSections.backstory) {
-			fileContent += `## Backstory\n${existingSections.backstory}\n\n`;
+		} else if (customSections['Backstory']) {
+			fileContent += `## Backstory\n${customSections['Backstory']}\n\n`;
 		}
 		
-		// Preserve existing relationships, locations, and events if not being updated
+		// Relationships section
 		const relationshipsContent = (character.relationships || []).map(r => `- [[${r}]]`).join('\n');
-		const locationsContent = (character.locations || []).map(l => `- [[${l}]]`).join('\n');
-		const eventsContent = (character.events || []).map(e => `- [[${e}]]`).join('\n');
-		
 		if (relationshipsContent) {
 			fileContent += `## Relationships\n${relationshipsContent}\n\n`;
-		} else if (existingSections.relationships) {
-			fileContent += `## Relationships\n${existingSections.relationships}\n\n`;
+		} else if (customSections['Relationships']) {
+			fileContent += `## Relationships\n${customSections['Relationships']}\n\n`;
 		}
 		
+		// Locations section
+		const locationsContent = (character.locations || []).map(l => `- [[${l}]]`).join('\n');
 		if (locationsContent) {
 			fileContent += `## Locations\n${locationsContent}\n\n`;
-		} else if (existingSections.locations) {
-			fileContent += `## Locations\n${existingSections.locations}\n\n`;
+		} else if (customSections['Locations']) {
+			fileContent += `## Locations\n${customSections['Locations']}\n\n`;
 		}
 		
+		// Events section
+		const eventsContent = (character.events || []).map(e => `- [[${e}]]`).join('\n');
 		if (eventsContent) {
 			fileContent += `## Events\n${eventsContent}\n\n`;
-		} else if (existingSections.events) {
-			fileContent += `## Events\n${existingSections.events}\n\n`;
+		} else if (customSections['Events']) {
+			fileContent += `## Events\n${customSections['Events']}\n\n`;
+		}
+
+		// Add ALL other sections that users have created (unlimited sections support!)
+		const handledSections = ['Description', 'Backstory', 'Relationships', 'Locations', 'Events'];
+		for (const [sectionName, sectionContent] of Object.entries(customSections)) {
+			if (!handledSections.includes(sectionName) && sectionContent.trim()) {
+				fileContent += `## ${sectionName}\n${sectionContent}\n\n`;
+			}
 		}
 
 		// Save or update the file

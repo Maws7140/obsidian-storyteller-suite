@@ -1,4 +1,4 @@
-import { App, Modal, Setting, Notice } from 'obsidian';
+import { App, Modal, Setting, Notice, TFile } from 'obsidian';
 import { GalleryImage } from '../types';
 import StorytellerSuitePlugin from '../main';
 
@@ -31,8 +31,8 @@ export class ImageDetailModal extends Modal {
 
         // Local vault file – resolve to TFile and use Vault API
         const file = this.app.vault.getAbstractFileByPath(imagePath);
-        if (file instanceof this.app.vault.constructor.TFile) {
-            return this.app.vault.getResourcePath(file);
+        if (file && 'stat' in file) { // Check if it's a TFile by checking for a TFile-specific property
+            return this.app.vault.getResourcePath(file as TFile);
         }
 
         // Fallback – return original path so errors can be handled upstream
