@@ -177,27 +177,14 @@ export default class StorytellerSuitePlugin extends Plugin {
 		logPrefix?: string;
 		showDetailedLogs?: boolean;
 	} = {}): Promise<{ newStories: Story[]; totalStories: number; error?: string }> {
-		const { isInitialDiscovery = false, logPrefix = 'Storyteller Suite', showDetailedLogs = false } = options;
+		const { isInitialDiscovery = false, logPrefix = 'Storyteller Suite' } = options;
 		
 		const baseStoriesPath = 'StorytellerSuite/Stories';
 		const storiesFolder = this.app.vault.getAbstractFileByPath(normalizePath(baseStoriesPath));
-		
-		if (showDetailedLogs) {
-			console.log(`${logPrefix}: Checking path:`, baseStoriesPath);
-			console.log(`${logPrefix}: Stories folder found:`, storiesFolder !== null);
-		}
 
 		if (storiesFolder instanceof TFolder) {
-			if (showDetailedLogs) {
-				console.log(`${logPrefix}: Stories folder is valid, scanning subfolders...`);
-			}
-			
 			const newStories: Story[] = [];
 			const subFolders = storiesFolder.children.filter(child => child instanceof TFolder) as TFolder[];
-			
-			if (showDetailedLogs) {
-				console.log(`${logPrefix}: Found`, subFolders.length, 'subfolders:', subFolders.map(f => f.name));
-			}
 
 			for (const storyFolder of subFolders) {
 				const storyName = storyFolder.name;
@@ -207,12 +194,6 @@ export default class StorytellerSuitePlugin extends Plugin {
 					const created = new Date().toISOString();
 					const story: Story = { id, name: storyName, created, description: 'Discovered from filesystem' };
 					newStories.push(story);
-					
-					if (showDetailedLogs) {
-						console.log(`${logPrefix}: Will add new story:`, storyName);
-					}
-				} else if (showDetailedLogs) {
-					console.log(`${logPrefix}: Story already configured:`, storyName);
 				}
 			}
 
@@ -222,28 +203,17 @@ export default class StorytellerSuitePlugin extends Plugin {
 				// Set the first discovered story as active if no active story is set (initial discovery only)
 				if (isInitialDiscovery && !this.settings.activeStoryId && this.settings.stories.length > 0) {
 					this.settings.activeStoryId = this.settings.stories[0].id;
-					console.log(`${logPrefix}: Set active story to:`, this.settings.stories[0].name);
 				}
 				
 				await this.saveSettings();
-				console.log(`${logPrefix}: Successfully discovered ${newStories.length} new stories:`, newStories.map(s => s.name));
-			} else {
-				console.log(`${logPrefix}: No new story folders found to add`);
-			}
-			
-			if (showDetailedLogs) {
-				console.log(`${logPrefix}: Total configured stories now:`, this.settings.stories.length);
-				console.log(`${logPrefix}: All configured stories:`, this.settings.stories.map(s => s.name));
 			}
 			
 			return { newStories, totalStories: this.settings.stories.length };
 		} else if (storiesFolder === null) {
 			const message = `Stories folder does not exist at ${baseStoriesPath}`;
-			console.log(`${logPrefix}: ${message}`);
 			return { newStories: [], totalStories: this.settings.stories.length, error: message };
 		} else {
 			const message = `Path exists but is not a folder: ${baseStoriesPath}`;
-			console.log(`${logPrefix}: ${message}`);
 			return { newStories: [], totalStories: this.settings.stories.length, error: message };
 		}
 	}
@@ -254,13 +224,9 @@ export default class StorytellerSuitePlugin extends Plugin {
 	 */
 	async discoverExistingStories(): Promise<void> {
 		try {
-			console.log('Storyteller Suite: Starting story discovery...');
-			console.log('Storyteller Suite: Current stories:', this.settings.stories.length);
-			
 			const result = await this.performStoryDiscovery({
 				isInitialDiscovery: true,
-				logPrefix: 'Storyteller Suite',
-				showDetailedLogs: true
+				logPrefix: 'Storyteller Suite'
 			});
 			
 			if (result.newStories.length > 0) {
@@ -278,12 +244,9 @@ export default class StorytellerSuitePlugin extends Plugin {
 	 */
 	async refreshStoryDiscovery(): Promise<void> {
 		try {
-			console.log('Storyteller Suite: Manual refresh of story discovery...');
-			
 			const result = await this.performStoryDiscovery({
 				isInitialDiscovery: false,
-				logPrefix: 'Storyteller Suite',
-				showDetailedLogs: false
+				logPrefix: 'Storyteller Suite'
 			});
 			
 			if (result.error) {
