@@ -215,7 +215,7 @@ export class DashboardView extends ItemView {
             cls: 'storyteller-dashboard-title'
         });
 
-        titleEl.append('Storyteller suite');
+        titleEl.append('Storyteller Suite');
 
         // --- Group for selector and button ---
         const selectorButtonGroup = headerContainer.createDiv('storyteller-selector-button-group');

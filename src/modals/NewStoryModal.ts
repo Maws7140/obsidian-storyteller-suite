@@ -21,7 +21,7 @@ export class NewStoryModal extends Modal {
     onOpen() {
         const { contentEl } = this;
         contentEl.empty();
-        contentEl.createEl('h2', { text: 'Create New Story' });
+        contentEl.createEl('h2', { text: 'Create new story' });
 
         // Name input
         new Setting(contentEl)

@@ -48,7 +48,7 @@ export class PlotItemModal extends Modal {
     onOpen() {
         const { contentEl } = this;
         contentEl.empty();
-        contentEl.createEl('h2', { text: this.isNew ? 'Create New Plot Item' : `Edit ${this.item.name}` });
+        contentEl.createEl('h2', { text: this.isNew ? 'Create new plot item' : `Edit ${this.item.name}` });
 
         new Setting(contentEl)
             .setName('Name')

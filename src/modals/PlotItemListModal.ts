@@ -20,7 +20,7 @@ export class PlotItemListModal extends Modal {
     onOpen() {
         const { contentEl } = this;
         contentEl.empty();
-        contentEl.createEl('h2', { text: 'Plot Items' });
+        contentEl.createEl('h2', { text: 'Plot items' });
 
         this.listContainer = contentEl.createDiv('storyteller-list-container');
 
