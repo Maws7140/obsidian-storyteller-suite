@@ -159,6 +159,118 @@ export default class StorytellerSuitePlugin extends Plugin {
 
 		// Add settings tab for user configuration
 		this.addSettingTab(new StorytellerSuiteSettingTab(this.app, this));
+
+		// Perform story discovery after workspace is ready
+		this.app.workspace.onLayoutReady(() => {
+			this.discoverExistingStories();
+		});
+	}
+
+	/**
+	 * Discover and import existing story folders from the vault
+	 * Called after workspace is ready to ensure file system is available
+	 */
+	async discoverExistingStories(): Promise<void> {
+		try {
+			console.log('Storyteller Suite: Starting story discovery...');
+			console.log('Storyteller Suite: Current stories:', this.settings.stories.length);
+			
+			const baseStoriesPath = 'StorytellerSuite/Stories';
+			const storiesFolder = this.app.vault.getAbstractFileByPath(normalizePath(baseStoriesPath));
+			
+			console.log('Storyteller Suite: Checking path:', baseStoriesPath);
+			console.log('Storyteller Suite: Stories folder found:', storiesFolder !== null);
+
+			if (storiesFolder instanceof TFolder) {
+				console.log('Storyteller Suite: Stories folder is valid, scanning subfolders...');
+				const newStories: Story[] = [];
+				const subFolders = storiesFolder.children.filter(child => child instanceof TFolder) as TFolder[];
+				
+				console.log('Storyteller Suite: Found', subFolders.length, 'subfolders:', subFolders.map(f => f.name));
+
+				for (const storyFolder of subFolders) {
+					const storyName = storyFolder.name;
+					// Only add stories that don't already exist
+					if (!this.settings.stories.some(s => s.name === storyName)) {
+						const id = Date.now().toString(36) + Math.random().toString(36).substr(2, 6);
+						const created = new Date().toISOString();
+						const story: Story = { id, name: storyName, created, description: 'Discovered from filesystem' };
+						newStories.push(story);
+						console.log('Storyteller Suite: Will add new story:', storyName);
+					} else {
+						console.log('Storyteller Suite: Story already configured:', storyName);
+					}
+				}
+
+				if (newStories.length > 0) {
+					this.settings.stories.push(...newStories);
+					// Set the first discovered story as active if no active story is set
+					if (!this.settings.activeStoryId && this.settings.stories.length > 0) {
+						this.settings.activeStoryId = this.settings.stories[0].id;
+						console.log('Storyteller Suite: Set active story to:', this.settings.stories[0].name);
+					}
+					await this.saveSettings();
+					new Notice(`Storyteller: Auto-detected and imported ${newStories.length} new story folder(s).`);
+					console.log(`Storyteller Suite: Successfully discovered ${newStories.length} new stories:`, newStories.map(s => s.name));
+				} else {
+					console.log('Storyteller Suite: No new story folders found to add');
+				}
+				
+				console.log('Storyteller Suite: Total configured stories now:', this.settings.stories.length);
+				console.log('Storyteller Suite: All configured stories:', this.settings.stories.map(s => s.name));
+			} else if (storiesFolder === null) {
+				console.log('Storyteller Suite: Stories folder does not exist at', baseStoriesPath);
+			} else {
+				console.log('Storyteller Suite: Path exists but is not a folder:', baseStoriesPath);
+			}
+		} catch (error) {
+			console.error('Storyteller Suite: Error during story discovery:', error);
+			new Notice(`Storyteller Suite: Error discovering stories: ${error.message}`);
+		}
+	}
+
+	/**
+	 * Manually refresh story discovery - can be called by user
+	 * This will scan for new story folders and add them to the configuration
+	 */
+	async refreshStoryDiscovery(): Promise<void> {
+		try {
+			console.log('Storyteller Suite: Manual refresh of story discovery...');
+			
+			const baseStoriesPath = 'StorytellerSuite/Stories';
+			const storiesFolder = this.app.vault.getAbstractFileByPath(normalizePath(baseStoriesPath));
+
+			if (storiesFolder instanceof TFolder) {
+				const newStories: Story[] = [];
+				const subFolders = storiesFolder.children.filter(child => child instanceof TFolder) as TFolder[];
+
+				for (const storyFolder of subFolders) {
+					const storyName = storyFolder.name;
+					// Only add stories that don't already exist
+					if (!this.settings.stories.some(s => s.name === storyName)) {
+						const id = Date.now().toString(36) + Math.random().toString(36).substr(2, 6);
+						const created = new Date().toISOString();
+						const story: Story = { id, name: storyName, created, description: 'Discovered from filesystem' };
+						newStories.push(story);
+					}
+				}
+
+				if (newStories.length > 0) {
+					this.settings.stories.push(...newStories);
+					await this.saveSettings();
+					new Notice(`Storyteller: Found and imported ${newStories.length} new story folder(s).`);
+					console.log(`Storyteller Suite: Refreshed discovery found ${newStories.length} new stories:`, newStories.map(s => s.name));
+				} else {
+					new Notice('Storyteller: No new story folders found.');
+					console.log('Storyteller Suite: No new story folders found during refresh');
+				}
+			} else {
+				new Notice(`Storyteller: Stories folder does not exist at ${baseStoriesPath}`);
+			}
+		} catch (error) {
+			console.error('Storyteller Suite: Error during story refresh:', error);
+			new Notice(`Storyteller Suite: Error refreshing stories: ${error.message}`);
+		}
 	}
 
 	/**
@@ -200,6 +312,15 @@ export default class StorytellerSuitePlugin extends Plugin {
 						this.activateView();
 					}
 				).open();
+			}
+		});
+
+		// --- Story Discovery Command ---
+		this.addCommand({
+			id: 'refresh-story-discovery',
+			name: 'Refresh story discovery',
+			callback: async () => {
+				await this.refreshStoryDiscovery();
 			}
 		});
 
@@ -1541,37 +1662,8 @@ export default class StorytellerSuitePlugin extends Plugin {
 			}
 		}
 
-		// DISCOVERY: If no stories are configured, scan the filesystem for them
-        if (this.settings.stories.length === 0) {
-            const baseStoriesPath = 'StorytellerSuite/Stories';
-            const storiesFolder = this.app.vault.getAbstractFileByPath(normalizePath(baseStoriesPath));
-
-            if (storiesFolder instanceof TFolder) {
-                const discoveredStories: Story[] = [];
-                const subFolders = storiesFolder.children.filter(child => child instanceof TFolder) as TFolder[];
-
-                for (const storyFolder of subFolders) {
-                    const storyName = storyFolder.name;
-                    // Check if a story with this name already exists (though it shouldn't at this point)
-                    if (!this.settings.stories.some(s => s.name === storyName)) {
-                        const id = Date.now().toString(36) + Math.random().toString(36).substr(2, 6);
-                        const created = new Date().toISOString();
-                        const story: Story = { id, name: storyName, created, description: 'Discovered from filesystem' };
-                        discoveredStories.push(story);
-                    }
-                }
-
-                if (discoveredStories.length > 0) {
-                    this.settings.stories.push(...discoveredStories);
-                    // Set the first discovered story as active
-                    if (!this.settings.activeStoryId) {
-                        this.settings.activeStoryId = discoveredStories[0].id;
-                    }
-                    settingsUpdated = true;
-                    new Notice(`Storyteller: Auto-detected and imported ${discoveredStories.length} existing story folder(s).`);
-                }
-            }
-        }
+		// Note: Story discovery now happens after workspace is ready (see discoverExistingStories method)
+		// This ensures the vault file system is fully available before scanning for folders
 		
 		// MIGRATION: Handle existing groups that don't have storyId
 		if (this.settings.groups && this.settings.groups.length > 0) {
