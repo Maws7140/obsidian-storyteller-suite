@@ -739,17 +739,22 @@ export default class StorytellerSuitePlugin extends Plugin {
 		const existingFile = this.app.vault.getAbstractFileByPath(finalFilePath);
 		let existingContent = '';
 		const existingSections: Record<string, string> = {};
+		let customSections: Record<string, string> = {};
 		
 		if (existingFile && existingFile instanceof TFile) {
 			try {
 				existingContent = await this.app.vault.cachedRead(existingFile);
 				
-				// Parse existing markdown sections to preserve user content
-				const descriptionMatch = existingContent.match(/## Description\n([\s\S]*?)(?=\n##|\n$)/);
-				const historyMatch = existingContent.match(/## History\n([\s\S]*?)(?=\n##|\n$)/);
-				
-				if (descriptionMatch?.[1]) existingSections.description = descriptionMatch[1].trim();
-				if (historyMatch?.[1]) existingSections.history = historyMatch[1].trim();
+				// Parse ALL existing markdown sections dynamically to preserve user content
+				// Use corrected regex pattern that captures all sections including final ones
+				const allSectionMatches = existingContent.matchAll(/## ([^\n]+)\n([\s\S]*?)(?=\n## |$)/g);
+				for (const match of allSectionMatches) {
+					const sectionName = match[1].trim();
+					const sectionContent = match[2].trim();
+					if (sectionContent) {
+						customSections[sectionName] = sectionContent;
+					}
+				}
 			} catch (error) {
 				console.warn(`Error reading existing location file: ${error}`);
 			}
@@ -758,17 +763,29 @@ export default class StorytellerSuitePlugin extends Plugin {
 		// Build file content with frontmatter and markdown sections
 		let fileContent = `---\n${frontmatterString}---\n\n`;
 		
-		// Preserve existing content or use new content
+		// Handle sections dynamically - preserve ALL user sections
+		// Priority order: new content from location object, then existing content, then generate from arrays
+		
+		// Description section
 		if (description) {
 			fileContent += `## Description\n${description.trim()}\n\n`;
-		} else if (existingSections.description) {
-			fileContent += `## Description\n${existingSections.description}\n\n`;
+		} else if (customSections['Description']) {
+			fileContent += `## Description\n${customSections['Description']}\n\n`;
 		}
 		
+		// History section
 		if (history) {
 			fileContent += `## History\n${history.trim()}\n\n`;
-		} else if (existingSections.history) {
-			fileContent += `## History\n${existingSections.history}\n\n`;
+		} else if (customSections['History']) {
+			fileContent += `## History\n${customSections['History']}\n\n`;
+		}
+
+		// Add ALL other sections that users have created (unlimited sections support!)
+		const handledSections = ['Description', 'History'];
+		for (const [sectionName, sectionContent] of Object.entries(customSections)) {
+			if (!handledSections.includes(sectionName) && sectionContent.trim()) {
+				fileContent += `## ${sectionName}\n${sectionContent}\n\n`;
+			}
 		}
 
 		// Save or update the file
@@ -890,18 +907,64 @@ export default class StorytellerSuitePlugin extends Plugin {
 			}
 		}
 
+		// Check if file exists and read existing content for preservation
 		const existingFile = this.app.vault.getAbstractFileByPath(finalFilePath);
+		let existingContent = '';
+		const customSections: Record<string, string> = {};
+		
+		if (existingFile && existingFile instanceof TFile) {
+			try {
+				existingContent = await this.app.vault.cachedRead(existingFile);
+				
+				// Parse ALL existing markdown sections dynamically to preserve user content
+				// Use corrected regex pattern that captures all sections including final ones
+				const allSectionMatches = existingContent.matchAll(/## ([^\n]+)\n([\s\S]*?)(?=\n## |$)/g);
+				for (const match of allSectionMatches) {
+					const sectionName = match[1].trim();
+					const sectionContent = match[2].trim();
+					if (sectionContent) {
+						customSections[sectionName] = sectionContent;
+					}
+				}
+			} catch (error) {
+				console.warn(`Error reading existing event file: ${error}`);
+			}
+		}
+
+		// Build file content with frontmatter and markdown sections
 		let fileContent = `---\n${frontmatterString}---\n\n`;
+		
+		// Handle sections dynamically - preserve ALL user sections
+		// Priority order: new content from event object, then existing content, then generate from arrays
+		
+		// Description section
 		if (description) {
 			fileContent += `## Description\n${description.trim()}\n\n`;
-		}
-		if (outcome) {
-			fileContent += `## Outcome\n${outcome.trim()}\n\n`;
+		} else if (customSections['Description']) {
+			fileContent += `## Description\n${customSections['Description']}\n\n`;
 		}
 		
+		// Outcome section
+		if (outcome) {
+			fileContent += `## Outcome\n${outcome.trim()}\n\n`;
+		} else if (customSections['Outcome']) {
+			fileContent += `## Outcome\n${customSections['Outcome']}\n\n`;
+		}
+		
+		// Characters Involved section
 		const charactersContent = (finalFrontmatter.characters || []).map((c: string) => `- [[${c}]]`).join('\n');
 		if (charactersContent) {
 			fileContent += `## Characters Involved\n${charactersContent}\n\n`;
+		} else if (customSections['Characters Involved']) {
+			fileContent += `## Characters Involved\n${customSections['Characters Involved']}\n\n`;
+		}
+
+		// Add ALL other sections that users have created (unlimited sections support!)
+		const handledSections = ['Description', 'Outcome', 'Characters Involved'];
+		for (const [sectionName, sectionContent] of Object.entries(customSections)) {
+			if (!handledSections.includes(sectionName) && sectionContent.trim()) {
+				fileContent += `## ${sectionName}\n${sectionContent}\n\n`;
+			}
 		}
 
 		if (existingFile && existingFile instanceof TFile) {
@@ -997,19 +1060,64 @@ export default class StorytellerSuitePlugin extends Plugin {
 			const existingFile = this.app.vault.getAbstractFileByPath(currentFilePath);
 			if (existingFile instanceof TFile) {
 				await this.app.fileManager.renameFile(existingFile, filePath);
+				finalFilePath = filePath;
 			}
 		}
 
-		let fileContent = `---\n${frontmatterString}---\n\n`;
-		if (description) {
-			fileContent += `## Description\n${description.trim()}\n\n`;
-		}
-		if (history) {
-			fileContent += `## History\n${history.trim()}\n\n`;
+		// Check if file exists and read existing content for preservation
+		const existingFile = this.app.vault.getAbstractFileByPath(finalFilePath);
+		let existingContent = '';
+		const customSections: Record<string, string> = {};
+		
+		if (existingFile && existingFile instanceof TFile) {
+			try {
+				existingContent = await this.app.vault.cachedRead(existingFile);
+				
+				// Parse ALL existing markdown sections dynamically to preserve user content
+				// Use corrected regex pattern that captures all sections including final ones
+				const allSectionMatches = existingContent.matchAll(/## ([^\n]+)\n([\s\S]*?)(?=\n## |$)/g);
+				for (const match of allSectionMatches) {
+					const sectionName = match[1].trim();
+					const sectionContent = match[2].trim();
+					if (sectionContent) {
+						customSections[sectionName] = sectionContent;
+					}
+				}
+			} catch (error) {
+				console.warn(`Error reading existing item file: ${error}`);
+			}
 		}
 
-		const existingFile = this.app.vault.getAbstractFileByPath(finalFilePath);
-		if (existingFile instanceof TFile) {
+		// Build file content with frontmatter and markdown sections
+		let fileContent = `---\n${frontmatterString}---\n\n`;
+		
+		// Handle sections dynamically - preserve ALL user sections
+		// Priority order: new content from item object, then existing content, then generate from arrays
+		
+		// Description section
+		if (description) {
+			fileContent += `## Description\n${description.trim()}\n\n`;
+		} else if (customSections['Description']) {
+			fileContent += `## Description\n${customSections['Description']}\n\n`;
+		}
+		
+		// History section
+		if (history) {
+			fileContent += `## History\n${history.trim()}\n\n`;
+		} else if (customSections['History']) {
+			fileContent += `## History\n${customSections['History']}\n\n`;
+		}
+
+		// Add ALL other sections that users have created (unlimited sections support!)
+		const handledSections = ['Description', 'History'];
+		for (const [sectionName, sectionContent] of Object.entries(customSections)) {
+			if (!handledSections.includes(sectionName) && sectionContent.trim()) {
+				fileContent += `## ${sectionName}\n${sectionContent}\n\n`;
+			}
+		}
+
+		// Save or update the file
+		if (existingFile && existingFile instanceof TFile) {
 			await this.app.vault.modify(existingFile, fileContent);
 		} else {
 			await this.app.vault.create(finalFilePath, fileContent);
