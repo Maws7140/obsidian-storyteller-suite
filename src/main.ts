@@ -28,6 +28,8 @@ interface StorytellerSuiteSettings {
     galleryData: GalleryData; // Store gallery metadata here
     /** Array of all user-defined groups (story-specific) */
     groups: Group[];
+    /** Whether to show the tutorial section in settings */
+    showTutorial: boolean;
 }
 
 /**
@@ -38,7 +40,8 @@ const DEFAULT_SETTINGS: StorytellerSuiteSettings = {
     activeStoryId: '',
     galleryUploadFolder: 'StorytellerSuite/GalleryUploads',
     galleryData: { images: [] },
-    groups: []
+    groups: [],
+    showTutorial: true
 }
 
 /**
@@ -287,7 +290,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		// --- Create New Story Command ---
 		this.addCommand({
 			id: 'create-new-story',
-			name: 'Create New Story',
+			name: 'Create new story',
 			callback: () => {
 				new NewStoryModal(
 					this.app,

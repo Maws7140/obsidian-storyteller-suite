@@ -25,18 +25,30 @@ A comprehensive suite for managing storytelling elements including characters, l
 3. Enable the plugin in Obsidian settings
 4. Access via the ribbon icon or command palette
 
-### What You Can Do
+### Getting Started
 
-- **Create, edit, and delete groups** from the Dashboard's Groups tab.
-- **Edit group details** (name, description, color) in a dedicated modal.
-- **Assign or remove members** (characters, events, locations) to/from groups using dropdown selectors.
-- **See group membership** in the group modal and in each entity's modal.
-- **Assign groups to characters, events, and locations** from their respective modals.
-- **Real-time sync**: If groups are changed elsewhere, open modals will update their group selectors automatically.
-- **Error handling**: Duplicate group names are prevented, and user feedback is provided for all group operations.
+New to the plugin? Check out the **built-in tutorial** in the plugin settings! It provides a comprehensive guide covering:
+
+- How to access the dashboard and use the ribbon icon
+- Story management and folder structure
+- Character creation and management
+- Location tracking and organization  
+- Event timeline management
+- Plot item tracking
+- Gallery and image management
+- Group organization features
+- All available keyboard shortcuts and commands
+- File structure and Obsidian integration tips
+
+**To access the tutorial:** Go to Settings → Community Plugins → Storyteller Suite → Configure
+
+You can hide the tutorial section at any time using the "Show tutorial section" toggle in the settings.
+
 
 ![Screenshot 1](https://raw.githubusercontent.com/SamW7140/obsidian-storyteller-suite/master/screenshots/Screenshot1.png)
+
 ![Screenshot 2](https://raw.githubusercontent.com/SamW7140/obsidian-storyteller-suite/master/screenshots/Screenshot2.png)
+
 ![Screenshot 3](https://raw.githubusercontent.com/SamW7140/obsidian-storyteller-suite/master/screenshots/Screenshot3.png)
 
 ## Data Structure

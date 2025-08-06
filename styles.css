@@ -1141,3 +1141,76 @@ body.mod-rtl .storyteller-group-members {
     max-width: 100%;
   }
 }
+
+/* Tutorial section styles */
+.storyteller-tutorial-section {
+  position: relative;
+}
+
+.storyteller-tutorial-section .setting-item-name {
+  user-select: none;
+  font-weight: 500;
+  transition: color 0.2s ease;
+}
+
+.storyteller-tutorial-section:hover .setting-item-name {
+  color: var(--interactive-accent);
+}
+
+.storyteller-tutorial-section .setting-item-info {
+  cursor: pointer;
+}
+
+/* Style for tutorial content */
+.storyteller-tutorial-section ul {
+  margin: 0.5em 0;
+  padding-left: 1.5em;
+}
+
+.storyteller-tutorial-section li {
+  margin-bottom: 0.3em;
+  line-height: 1.4;
+}
+
+.storyteller-tutorial-section p {
+  margin: 0.5em 0;
+}
+
+.storyteller-tutorial-section strong {
+  color: var(--text-accent);
+  font-weight: 600;
+}
+
+.storyteller-tutorial-section kbd {
+  background: var(--background-modifier-border);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 3px;
+  padding: 0.1em 0.3em;
+  font-size: 0.85em;
+  font-family: var(--font-monospace);
+}
+
+.storyteller-tutorial-section code {
+  background: var(--code-background);
+  color: var(--code-normal);
+  padding: 0.1em 0.3em;
+  border-radius: 3px;
+  font-family: var(--font-monospace);
+  font-size: 0.85em;
+}
+
+.storyteller-tutorial-section pre {
+  background: var(--code-background);
+  color: var(--code-normal);
+  padding: 1em;
+  border-radius: 5px;
+  overflow-x: auto;
+  margin: 0.5em 0;
+}
+
+.storyteller-tutorial-section pre code {
+  background: none;
+  padding: 0;
+  font-size: 0.8em;
+  line-height: 1.3;
+}
