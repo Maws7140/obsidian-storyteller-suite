@@ -106,13 +106,34 @@ export default class StorytellerSuitePlugin extends Plugin {
 	 */
 	async updateStory(storyId: string, name: string, description?: string): Promise<void> {
 		const story = this.settings.stories.find(s => s.id === storyId);
-		if (story) {
-			story.name = name;
-			story.description = description;
-			await this.saveSettings();
-		} else {
+		if (!story) {
 			throw new Error('Story not found');
 		}
+		
+		const oldName = story.name;
+		
+		// If the name changed, we need to rename the story folders
+		if (oldName !== name) {
+			const oldStoryPath = `StorytellerSuite/Stories/${oldName}`;
+			const newStoryPath = `StorytellerSuite/Stories/${name}`;
+			
+			// Check if the old story folder exists
+			const oldFolder = this.app.vault.getAbstractFileByPath(oldStoryPath);
+			if (oldFolder && oldFolder instanceof TFolder) {
+				try {
+					// Rename the story folder
+					await this.app.fileManager.renameFile(oldFolder, newStoryPath);
+				} catch (error) {
+					console.error(`Error renaming story folder from ${oldStoryPath} to ${newStoryPath}:`, error);
+					throw new Error(`Failed to rename story folder: ${error}`);
+				}
+			}
+		}
+		
+		// Update the story name and description in memory
+		story.name = name;
+		story.description = description;
+		await this.saveSettings();
 	}
 
 	/**
