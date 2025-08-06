@@ -18,14 +18,12 @@ A comprehensive suite for managing storytelling elements including characters, l
 
 - **Dashboard Interface**: Unified view for all storytelling elements
 
-## How to Use
+### Getting Started
 
 1. Download the latest release
 2. Extract the files to your Obsidian plugins folder
 3. Enable the plugin in Obsidian settings
 4. Access via the ribbon icon or command palette
-
-### Getting Started
 
 New to the plugin? Check out the **built-in tutorial** in the plugin settings! It provides a comprehensive guide covering:
 
