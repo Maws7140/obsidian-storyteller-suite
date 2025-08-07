@@ -16,6 +16,7 @@ import { StorytellerSuiteSettingTab } from './StorytellerSuiteSettingTab';
 import { NewStoryModal } from './modals/NewStoryModal';
 import { PlotItemModal } from './modals/PlotItemModal';
 import { PlotItemListModal } from './modals/PlotItemListModal';
+import { PlatformUtils } from './utils/PlatformUtils';
 
 /**
  * Plugin settings interface defining all configurable options
@@ -141,10 +142,13 @@ export default class StorytellerSuitePlugin extends Plugin {
 
 	/**
 	 * Plugin initialization - called when the plugin is loaded
-	 * Registers views, commands, and UI elements
+	 * Registers views, commands, UI elements, and mobile adaptations
 	 */
 	async onload() {
 		await this.loadSettings();
+
+		// Apply mobile CSS classes to the document body
+		this.applyMobilePlatformClasses();
 
 		// Register the main dashboard view with Obsidian's workspace
 		this.registerView(
@@ -1869,6 +1873,28 @@ export default class StorytellerSuitePlugin extends Plugin {
 	 */
 	async saveSettings() {
 		await this.saveData(this.settings);
+	}
+
+	/**
+	 * Applies mobile-specific CSS classes to the document body
+	 * This allows for platform-specific styling throughout the app
+	 */
+	private applyMobilePlatformClasses(): void {
+		const body = document.body;
+		const mobileClasses = PlatformUtils.getMobileCssClasses();
+		
+		// Remove any existing platform classes first
+		body.classList.remove('is-mobile', 'is-ios', 'is-android', 'is-desktop');
+		
+		// Add current platform classes
+		mobileClasses.forEach(className => {
+			body.classList.add(className);
+		});
+
+		// Add Storyteller Suite specific mobile class
+		if (PlatformUtils.isMobile()) {
+			body.classList.add('storyteller-mobile-enabled');
+		}
 	}
 }
 

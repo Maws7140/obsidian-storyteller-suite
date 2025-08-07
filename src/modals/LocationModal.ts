@@ -1,9 +1,10 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
-import { App, Modal, Setting, Notice, TextAreaComponent, TextComponent, ButtonComponent } from 'obsidian';
+import { App, Setting, Notice, TextAreaComponent, TextComponent, ButtonComponent } from 'obsidian';
 import { Location } from '../types'; // Assumes Location type no longer has charactersPresent, eventsHere, subLocations
 import { Group } from '../types';
 import StorytellerSuitePlugin from '../main';
 import { GalleryImageSuggestModal } from './GalleryImageSuggestModal';
+import { ResponsiveModal } from './ResponsiveModal';
 // Placeholder imports for suggesters -
 // import { CharacterSuggestModal } from './CharacterSuggestModal';
 // import { EventSuggestModal } from './EventSuggestModal';
@@ -12,7 +13,7 @@ import { GalleryImageSuggestModal } from './GalleryImageSuggestModal';
 export type LocationModalSubmitCallback = (location: Location) => Promise<void>;
 export type LocationModalDeleteCallback = (location: Location) => Promise<void>;
 
-export class LocationModal extends Modal {
+export class LocationModal extends ResponsiveModal {
     location: Location;
     plugin: StorytellerSuitePlugin;
     onSubmit: LocationModalSubmitCallback;
@@ -44,6 +45,8 @@ export class LocationModal extends Modal {
     }
 
     onOpen() {
+        super.onOpen(); // Call ResponsiveModal's mobile optimizations
+        
         const { contentEl } = this;
         contentEl.empty();
         contentEl.createEl('h2', { text: this.isNew ? 'Create new location' : `Edit ${this.location.name}` });
@@ -260,7 +263,7 @@ export class LocationModal extends Modal {
     
 
 
-    renderCustomFields(container: HTMLElement, fields: { [key: string]: any }) {
+    renderCustomFields(container: HTMLElement, fields: Record<string, string>) {
         container.empty();
         fields = fields || {};
         const keys = Object.keys(fields);
