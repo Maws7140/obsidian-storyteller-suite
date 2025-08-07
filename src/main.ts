@@ -544,16 +544,16 @@ export default class StorytellerSuitePlugin extends Plugin {
 			// Get cached frontmatter from Obsidian's metadata cache
 			const fileCache = this.app.metadataCache.getFileCache(file);
 			const frontmatter = fileCache?.frontmatter as Record<string, unknown> | undefined;
-			
+
 			// Read file content for markdown sections
 			const content = await this.app.vault.cachedRead(file);
-			
+
 			// Parse ALL sections dynamically using robust regex pattern for backward compatibility
 			const allSections: Record<string, string> = {};
-			
+
 			// Primary regex: More flexible pattern to handle various formatting from older files
 			const primaryMatches = content.matchAll(/^##\s*([^\n\r]+?)\s*[\n\r]+([\s\S]*?)(?=\n\s*##\s|$)/gm);
-			
+
 			for (const match of primaryMatches) {
 				const sectionName = match[1].trim();
 				const sectionContent = match[2].trim();
@@ -561,7 +561,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 					allSections[sectionName] = sectionContent;
 				}
 			}
-			
+
 			// Fallback parsing for edge cases where primary regex might miss sections
 			if (Object.keys(allSections).length === 0 && content.includes('##')) {
 				console.warn(`Primary regex failed for file ${file.path}, attempting fallback parsing`);
@@ -569,14 +569,14 @@ export default class StorytellerSuitePlugin extends Plugin {
 				const lines = content.split('\n');
 				let currentSection = '';
 				let currentContent: string[] = [];
-				
+
 				for (const line of lines) {
 					if (line.startsWith('##')) {
 						// Save previous section if exists
 						if (currentSection && currentContent.length > 0) {
-							const content = currentContent.join('\n').trim();
-							if (content) {
-								allSections[currentSection] = content;
+							const sect = currentContent.join('\n').trim();
+							if (sect) {
+								allSections[currentSection] = sect;
 							}
 						}
 						// Start new section
@@ -588,28 +588,28 @@ export default class StorytellerSuitePlugin extends Plugin {
 				}
 				// Save final section
 				if (currentSection && currentContent.length > 0) {
-					const content = currentContent.join('\n').trim();
-					if (content) {
-						allSections[currentSection] = content;
+					const sect = currentContent.join('\n').trim();
+					if (sect) {
+						allSections[currentSection] = sect;
 					}
 				}
 			}
 
-			// Combine frontmatter and defaults with file path and ALL sections
+			// Combine frontmatter and defaults with file path
+			// IMPORTANT: Do NOT spread allSections into top-level props to avoid leaking into YAML later.
 			const data: Record<string, unknown> = {
 				...typeDefaults as unknown as Record<string, unknown>,
 				...frontmatter,
-				filePath: file.path,
-				// Include all parsed sections
-				...allSections
+				filePath: file.path
 			};
 
-			// Ensure specific fields are available for backward compatibility and UI
+			// Map well-known sections into lowercase fields used by UI
 			if (allSections['Description']) data['description'] = allSections['Description'];
 			if (allSections['Backstory']) data['backstory'] = allSections['Backstory'];
 			if (allSections['History']) data['history'] = allSections['History'];
-			
-			// Parse relationship arrays from sections if they exist
+			if (allSections['Outcome']) data['outcome'] = allSections['Outcome'];
+
+			// Parse relationship-style lists from sections (kept as data fields, not YAML additions)
 			if (allSections['Relationships']) {
 				const relationshipsText = allSections['Relationships'];
 				const relationships = relationshipsText
@@ -619,7 +619,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 					.map(line => line.replace(/^- \[\[(.*?)\]\]$/, '$1'));
 				data['relationships'] = relationships;
 			}
-			
+
 			if (allSections['Locations']) {
 				const locationsText = allSections['Locations'];
 				const locations = locationsText
@@ -629,7 +629,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 					.map(line => line.replace(/^- \[\[(.*?)\]\]$/, '$1'));
 				data['locations'] = locations;
 			}
-			
+
 			if (allSections['Events']) {
 				const eventsText = allSections['Events'];
 				const events = eventsText
@@ -639,6 +639,10 @@ export default class StorytellerSuitePlugin extends Plugin {
 					.map(line => line.replace(/^- \[\[(.*?)\]\]$/, '$1'));
 				data['events'] = events;
 			}
+
+			// Preserve arbitrary user-defined sections in a dedicated 'sections' map
+			// This MUST NOT be merged into YAML on save.
+			(data as any).sections = allSections;
 
 			// Validate required name field
 			if (!data['name']) {
@@ -667,6 +671,78 @@ export default class StorytellerSuitePlugin extends Plugin {
 	}
 
 	/**
+	 * Build sanitized YAML frontmatter for each entity type.
+	 * Only whitelisted keys are allowed and multi-line strings are excluded.
+	 */
+	private buildFrontmatterForCharacter(src: any): Record<string, any> {
+		const whitelist = new Set([
+			'id', 'name', 'traits', 'relationships', 'locations', 'events',
+			'status', 'affiliation', 'groups', 'profileImagePath', 'customFields'
+		]);
+		const out: Record<string, any> = {};
+		for (const [k, v] of Object.entries(src || {})) {
+			if (!whitelist.has(k)) continue;
+			if (typeof v === 'string' && v.includes('\n')) continue;
+			if (v === null || v === undefined) continue;
+			if (Array.isArray(v) && v.length === 0) continue;
+			if (k === 'customFields' && typeof v === 'object' && v && Object.keys(v as any).length === 0) continue;
+			out[k] = v;
+		}
+		return out;
+	}
+
+	private buildFrontmatterForLocation(src: any): Record<string, any> {
+		const whitelist = new Set([
+			'id', 'name', 'locationType', 'region', 'status',
+			'groups', 'profileImagePath', 'customFields'
+		]);
+		const out: Record<string, any> = {};
+		for (const [k, v] of Object.entries(src || {})) {
+			if (!whitelist.has(k)) continue;
+			if (typeof v === 'string' && v.includes('\n')) continue;
+			if (v === null || v === undefined) continue;
+			if (Array.isArray(v) && v.length === 0) continue;
+			if (k === 'customFields' && typeof v === 'object' && v && Object.keys(v as any).length === 0) continue;
+			out[k] = v;
+		}
+		return out;
+	}
+
+	private buildFrontmatterForEvent(src: any): Record<string, any> {
+		const whitelist = new Set([
+			'id', 'name', 'dateTime', 'characters', 'location', 'status',
+			'groups', 'profileImagePath', 'customFields'
+		]);
+		const out: Record<string, any> = {};
+		for (const [k, v] of Object.entries(src || {})) {
+			if (!whitelist.has(k)) continue;
+			if (typeof v === 'string' && v.includes('\n')) continue;
+			if (v === null || v === undefined) continue;
+			if (Array.isArray(v) && v.length === 0) continue;
+			if (k === 'customFields' && typeof v === 'object' && v && Object.keys(v as any).length === 0) continue;
+			out[k] = v;
+		}
+		return out;
+	}
+
+	private buildFrontmatterForItem(src: any): Record<string, any> {
+		const whitelist = new Set([
+			'id', 'name', 'isPlotCritical', 'currentOwner', 'pastOwners',
+			'currentLocation', 'associatedEvents', 'groups', 'profileImagePath', 'customFields'
+		]);
+		const out: Record<string, any> = {};
+		for (const [k, v] of Object.entries(src || {})) {
+			if (!whitelist.has(k)) continue;
+			if (typeof v === 'string' && v.includes('\n')) continue;
+			if (v === null || v === undefined) continue;
+			if (Array.isArray(v) && v.length === 0) continue;
+			if (k === 'customFields' && typeof v === 'object' && v && Object.keys(v as any).length === 0) continue;
+			out[k] = v;
+		}
+		return out;
+	}
+
+	/**
 	 * Save a character to the vault as a markdown file (in the active story)
 	 * Creates frontmatter from character properties and adds markdown sections
 	 * @param character The character data to save
@@ -679,29 +755,11 @@ export default class StorytellerSuitePlugin extends Plugin {
 		const fileName = `${character.name.replace(/[\\/:"*?<>|]+/g, '')}.md`;
 		const filePath = normalizePath(`${folderPath}/${fileName}`);
 
-		// Separate content fields from frontmatter fields
-		const { filePath: currentFilePath, backstory, description, profileImagePath, status, affiliation, ...frontmatterData } = character;
+		// Separate content fields from frontmatter fields (do not let sections leak)
+		const { filePath: currentFilePath, backstory, description, ...rest } = character;
 
-		// Build frontmatter with optional fields
-		const finalFrontmatter: Record<string, any> = { ...frontmatterData };
-		if (profileImagePath) finalFrontmatter.profileImagePath = profileImagePath;
-		if (status) finalFrontmatter.status = status;
-		if (affiliation) finalFrontmatter.affiliation = affiliation;
-
-		// Clean up empty values from frontmatter
-		Object.keys(finalFrontmatter).forEach(key => {
-			const k = key as keyof typeof finalFrontmatter;
-			if (finalFrontmatter[k] === null || finalFrontmatter[k] === undefined || (Array.isArray(finalFrontmatter[k]) && (finalFrontmatter[k] as any[]).length === 0)) {
-				delete finalFrontmatter[k];
-			}
-		});
-		
-		// Remove empty customFields object
-		if (finalFrontmatter.customFields && Object.keys(finalFrontmatter.customFields).length === 0) {
-			delete finalFrontmatter.customFields;
-		}
-
-		// Generate YAML frontmatter string
+		// Build frontmatter strictly from whitelist
+		const finalFrontmatter = this.buildFrontmatterForCharacter(rest);
 		const frontmatterString = Object.keys(finalFrontmatter).length > 0 ? stringifyYaml(finalFrontmatter) : '';
 
 		// Handle renaming if filePath is present and name changed
@@ -905,33 +963,11 @@ export default class StorytellerSuitePlugin extends Plugin {
 		const fileName = `${location.name.replace(/[\\/:"*?<>|]+/g, '')}.md`;
 		const filePath = normalizePath(`${folderPath}/${fileName}`);
 
-		// Separate content fields from frontmatter fields
-		const { filePath: currentFilePath, history, description, locationType, region, status, profileImagePath, ...frontmatterData } = location;
-		
-		// Build frontmatter with optional fields
-		const finalFrontmatter: Record<string, any> = { ...frontmatterData };
-		if (locationType) finalFrontmatter.locationType = locationType;
-		if (region) finalFrontmatter.region = region;
-		if (status) finalFrontmatter.status = status;
-		if (profileImagePath) finalFrontmatter.profileImagePath = profileImagePath;
+		// Separate content fields from frontmatter fields (do not let sections leak)
+		const { filePath: currentFilePath, history, description, ...rest } = location;
 
-		// Clean up empty values from frontmatter
-		Object.keys(finalFrontmatter).forEach(key => {
-			const k = key as keyof typeof frontmatterData;
-			if (finalFrontmatter.hasOwnProperty(k)) {
-				const value = finalFrontmatter[k];
-				if (value === null || value === undefined || (Array.isArray(value) && value.length === 0)) {
-					delete finalFrontmatter[k];
-				}
-			}
-		});
-		
-		// Remove empty customFields object
-		if (finalFrontmatter.customFields && Object.keys(finalFrontmatter.customFields).length === 0) {
-			delete finalFrontmatter.customFields;
-		}
-
-		// Generate YAML frontmatter string
+		// Build frontmatter strictly from whitelist
+		const finalFrontmatter = this.buildFrontmatterForLocation(rest);
 		const frontmatterString = Object.keys(finalFrontmatter).length > 0 ? stringifyYaml(finalFrontmatter) : '';
 
 		// Handle renaming if filePath is present and name changed
@@ -948,7 +984,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		const existingFile = this.app.vault.getAbstractFileByPath(finalFilePath);
 		let existingContent = '';
 		const existingSections: Record<string, string> = {};
-		let customSections: Record<string, string> = {};
+		const customSections: Record<string, string> = {};
 		
 		if (existingFile && existingFile instanceof TFile) {
 			try {
@@ -1111,34 +1147,11 @@ export default class StorytellerSuitePlugin extends Plugin {
 		const fileName = `${safeName}.md`;
 		const filePath = normalizePath(`${folderPath}/${fileName}`);
 
-		// Separate content fields from frontmatter fields
-		const {
-			filePath: currentFilePath,
-			description,
-			outcome,
-			profileImagePath,
-			images,
-			...frontmatterData
-		} = event;
+		// Separate content fields from frontmatter fields (do not let sections leak)
+		const { filePath: currentFilePath, description, outcome, images, ...rest } = event;
 
-		// Build frontmatter object
-		const finalFrontmatter: Record<string, any> = { ...frontmatterData };
-		if (profileImagePath) finalFrontmatter.profileImagePath = profileImagePath;
-
-		// Clean up empty values from frontmatter
-		Object.keys(finalFrontmatter).forEach(key => {
-			const k = key as keyof typeof finalFrontmatter;
-			const value = finalFrontmatter[k];
-			if (value === null || value === undefined || (Array.isArray(value) && value.length === 0)) {
-				delete finalFrontmatter[k];
-			}
-			if (k === 'location' && value === undefined) delete finalFrontmatter[k];
-		});
-		
-		if (finalFrontmatter.customFields && Object.keys(finalFrontmatter.customFields).length === 0) {
-			delete finalFrontmatter.customFields;
-		}
-
+		// Build frontmatter strictly from whitelist
+		const finalFrontmatter = this.buildFrontmatterForEvent(rest);
 		const frontmatterString = Object.keys(finalFrontmatter).length > 0 ? stringifyYaml(finalFrontmatter) : '';
 
 		let finalFilePath = filePath;
@@ -1326,10 +1339,9 @@ export default class StorytellerSuitePlugin extends Plugin {
 		const fileName = `${item.name.replace(/[\\/:"*?<>|]+/g, '')}.md`;
 		const filePath = normalizePath(`${folderPath}/${fileName}`);
 
-		const { filePath: currentFilePath, description, history, ...frontmatterData } = item;
+		const { filePath: currentFilePath, description, history, ...rest } = item;
 
-		const finalFrontmatter: Record<string, any> = { ...frontmatterData };
-
+		const finalFrontmatter = this.buildFrontmatterForItem(rest);
 		const frontmatterString = Object.keys(finalFrontmatter).length > 0 ? stringifyYaml(finalFrontmatter) : '';
 
 		let finalFilePath = filePath;
