@@ -1,8 +1,10 @@
-import { App, Modal, Setting, Notice } from 'obsidian'; // Import Notice
+import { App, Setting, Notice } from 'obsidian'; // Import Notice
 import StorytellerSuitePlugin from '../main'; // Import the plugin class
 import { Character, Location, Event } from '../types'; // Import types
+import { ResponsiveModal } from './ResponsiveModal';
+import { PlatformUtils } from '../utils/PlatformUtils';
 
-export class DashboardModal extends Modal {
+export class DashboardModal extends ResponsiveModal {
     plugin: StorytellerSuitePlugin;
 
     constructor(app: App, plugin: StorytellerSuitePlugin) {
@@ -12,6 +14,8 @@ export class DashboardModal extends Modal {
     }
 
     onOpen() {
+        super.onOpen(); // Call ResponsiveModal's mobile optimizations
+        
         const { contentEl } = this;
         contentEl.empty();
         contentEl.createEl('h2', { text: 'Storyteller Suite dashboard' });
