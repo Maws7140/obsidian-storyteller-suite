@@ -2,6 +2,7 @@ import { App, PluginSettingTab, Setting } from 'obsidian';
 import StorytellerSuitePlugin from './main';
 import { NewStoryModal } from './modals/NewStoryModal';
 import { EditStoryModal } from './modals/EditStoryModal';
+import { FolderSuggestModal } from './modals/FolderSuggestModal';
 
 export class StorytellerSuiteSettingTab extends PluginSettingTab {
     plugin: StorytellerSuitePlugin;
@@ -95,14 +96,46 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
         new Setting(containerEl)
             .setName('Gallery upload folder')
             .setDesc('Folder where uploaded gallery images will be stored')
-            .addText(text => text
-                .setPlaceholder('StorytellerSuite/GalleryUploads')
-                .setValue(this.plugin.settings.galleryUploadFolder)
-                .onChange(async (value) => {
-                    this.plugin.settings.galleryUploadFolder = value;
-                    await this.plugin.saveSettings();
-                })
-            );
+            .addText(text => {
+                const comp = text
+                    .setPlaceholder('StorytellerSuite/GalleryUploads')
+                    .setValue(this.plugin.settings.galleryUploadFolder)
+                    .onChange(async (value) => {
+                        this.plugin.settings.galleryUploadFolder = value;
+                        await this.plugin.saveSettings();
+                    });
+                let suppress = false;
+                const openSuggest = () => {
+                    if (suppress) return;
+                    // open suggester deliberately; do not re-render settings while open
+                    const modal = new FolderSuggestModal(
+                        this.app,
+                        async (folderPath) => {
+                            this.plugin.settings.galleryUploadFolder = folderPath;
+                            comp.setValue(folderPath);
+                            await this.plugin.saveSettings();
+                        },
+                        () => {
+                            // restore focus after close
+                            suppress = true;
+                            setTimeout(() => { suppress = false; }, 300);
+                            setTimeout(() => comp.inputEl.focus(), 0);
+                        }
+                    );
+                    modal.open();
+                };
+                // Open suggester on explicit intent only
+                comp.inputEl.addEventListener('keydown', (e: KeyboardEvent) => {
+                    if (e.key === 'ArrowDown' || (e.ctrlKey && e.key.toLowerCase() === ' ')) {
+                        e.preventDefault();
+                        openSuggest();
+                    }
+                });
+                // Also open on click/focus for convenience
+                comp.inputEl.addEventListener('focus', openSuggest);
+                comp.inputEl.addEventListener('click', openSuggest);
+                return comp;
+            });
 
         // --- Custom Folders & One Story Mode ---
         new Setting(containerEl)
@@ -121,50 +154,162 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
             new Setting(containerEl)
                 .setName('Characters folder')
                 .setDesc('Path for character markdown files')
-                .addText(text => text
-                    .setPlaceholder('MyStory/Characters')
-                    .setValue(this.plugin.settings.characterFolderPath || '')
-                    .onChange(async (value) => {
-                        this.plugin.settings.characterFolderPath = value;
-                        await this.plugin.saveSettings();
-                    })
-                );
+                .addText(text => {
+                    const comp = text
+                        .setPlaceholder('MyStory/Characters')
+                        .setValue(this.plugin.settings.characterFolderPath || '')
+                        .onChange(async (value) => {
+                            this.plugin.settings.characterFolderPath = value;
+                            await this.plugin.saveSettings();
+                        });
+                    let suppress = false;
+                    const openSuggest = () => {
+                        if (suppress) return;
+                        const modal = new FolderSuggestModal(
+                            this.app,
+                            async (folderPath) => {
+                                this.plugin.settings.characterFolderPath = folderPath;
+                                comp.setValue(folderPath);
+                                await this.plugin.saveSettings();
+                            },
+                            () => {
+                                suppress = true;
+                                setTimeout(() => { suppress = false; }, 300);
+                                setTimeout(() => comp.inputEl.focus(), 0);
+                            }
+                        );
+                        modal.open();
+                    };
+                    comp.inputEl.addEventListener('keydown', (e: KeyboardEvent) => {
+                        if (e.key === 'ArrowDown' || (e.ctrlKey && e.key.toLowerCase() === ' ')) {
+                            e.preventDefault();
+                            openSuggest();
+                        }
+                    });
+                    comp.inputEl.addEventListener('focus', openSuggest);
+                    comp.inputEl.addEventListener('click', openSuggest);
+                    return comp;
+                });
 
             new Setting(containerEl)
                 .setName('Locations folder')
                 .setDesc('Path for location markdown files')
-                .addText(text => text
-                    .setPlaceholder('MyStory/Locations')
-                    .setValue(this.plugin.settings.locationFolderPath || '')
-                    .onChange(async (value) => {
-                        this.plugin.settings.locationFolderPath = value;
-                        await this.plugin.saveSettings();
-                    })
-                );
+                .addText(text => {
+                    const comp = text
+                        .setPlaceholder('MyStory/Locations')
+                        .setValue(this.plugin.settings.locationFolderPath || '')
+                        .onChange(async (value) => {
+                            this.plugin.settings.locationFolderPath = value;
+                            await this.plugin.saveSettings();
+                        });
+                    let suppress = false;
+                    const openSuggest = () => {
+                        if (suppress) return;
+                        const modal = new FolderSuggestModal(
+                            this.app,
+                            async (folderPath) => {
+                                this.plugin.settings.locationFolderPath = folderPath;
+                                comp.setValue(folderPath);
+                                await this.plugin.saveSettings();
+                            },
+                            () => {
+                                suppress = true;
+                                setTimeout(() => { suppress = false; }, 300);
+                                setTimeout(() => comp.inputEl.focus(), 0);
+                            }
+                        );
+                        modal.open();
+                    };
+                    comp.inputEl.addEventListener('keydown', (e: KeyboardEvent) => {
+                        if (e.key === 'ArrowDown' || (e.ctrlKey && e.key.toLowerCase() === ' ')) {
+                            e.preventDefault();
+                            openSuggest();
+                        }
+                    });
+                    comp.inputEl.addEventListener('focus', openSuggest);
+                    comp.inputEl.addEventListener('click', openSuggest);
+                    return comp;
+                });
 
             new Setting(containerEl)
                 .setName('Events folder')
                 .setDesc('Path for event markdown files')
-                .addText(text => text
-                    .setPlaceholder('MyStory/Events')
-                    .setValue(this.plugin.settings.eventFolderPath || '')
-                    .onChange(async (value) => {
-                        this.plugin.settings.eventFolderPath = value;
-                        await this.plugin.saveSettings();
-                    })
-                );
+                .addText(text => {
+                    const comp = text
+                        .setPlaceholder('MyStory/Events')
+                        .setValue(this.plugin.settings.eventFolderPath || '')
+                        .onChange(async (value) => {
+                            this.plugin.settings.eventFolderPath = value;
+                            await this.plugin.saveSettings();
+                        });
+                    let suppress = false;
+                    const openSuggest = () => {
+                        if (suppress) return;
+                        const modal = new FolderSuggestModal(
+                            this.app,
+                            async (folderPath) => {
+                                this.plugin.settings.eventFolderPath = folderPath;
+                                comp.setValue(folderPath);
+                                await this.plugin.saveSettings();
+                            },
+                            () => {
+                                suppress = true;
+                                setTimeout(() => { suppress = false; }, 300);
+                                setTimeout(() => comp.inputEl.focus(), 0);
+                            }
+                        );
+                        modal.open();
+                    };
+                    comp.inputEl.addEventListener('keydown', (e: KeyboardEvent) => {
+                        if (e.key === 'ArrowDown' || (e.ctrlKey && e.key.toLowerCase() === ' ')) {
+                            e.preventDefault();
+                            openSuggest();
+                        }
+                    });
+                    comp.inputEl.addEventListener('focus', openSuggest);
+                    comp.inputEl.addEventListener('click', openSuggest);
+                    return comp;
+                });
 
             new Setting(containerEl)
                 .setName('Items folder')
                 .setDesc('Path for item markdown files')
-                .addText(text => text
-                    .setPlaceholder('MyStory/Items')
-                    .setValue(this.plugin.settings.itemFolderPath || '')
-                    .onChange(async (value) => {
-                        this.plugin.settings.itemFolderPath = value;
-                        await this.plugin.saveSettings();
-                    })
-                );
+                .addText(text => {
+                    const comp = text
+                        .setPlaceholder('MyStory/Items')
+                        .setValue(this.plugin.settings.itemFolderPath || '')
+                        .onChange(async (value) => {
+                            this.plugin.settings.itemFolderPath = value;
+                            await this.plugin.saveSettings();
+                        });
+                    let suppress = false;
+                    const openSuggest = () => {
+                        if (suppress) return;
+                        const modal = new FolderSuggestModal(
+                            this.app,
+                            async (folderPath) => {
+                                this.plugin.settings.itemFolderPath = folderPath;
+                                comp.setValue(folderPath);
+                                await this.plugin.saveSettings();
+                            },
+                            () => {
+                                suppress = true;
+                                setTimeout(() => { suppress = false; }, 300);
+                                setTimeout(() => comp.inputEl.focus(), 0);
+                            }
+                        );
+                        modal.open();
+                    };
+                    comp.inputEl.addEventListener('keydown', (e: KeyboardEvent) => {
+                        if (e.key === 'ArrowDown' || (e.ctrlKey && e.key.toLowerCase() === ' ')) {
+                            e.preventDefault();
+                            openSuggest();
+                        }
+                    });
+                    comp.inputEl.addEventListener('focus', openSuggest);
+                    comp.inputEl.addEventListener('click', openSuggest);
+                    return comp;
+                });
         }
 
         new Setting(containerEl)
@@ -183,14 +328,43 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
             new Setting(containerEl)
                 .setName('One Story base folder')
                 .setDesc('Base folder for Characters/Locations/Events/Items')
-                .addText(text => text
-                    .setPlaceholder('StorytellerSuite')
-                    .setValue(this.plugin.settings.oneStoryBaseFolder || 'StorytellerSuite')
-                    .onChange(async (value) => {
-                        this.plugin.settings.oneStoryBaseFolder = value || 'StorytellerSuite';
-                        await this.plugin.saveSettings();
-                    })
-                );
+                .addText(text => {
+                    const comp = text
+                        .setPlaceholder('StorytellerSuite')
+                        .setValue(this.plugin.settings.oneStoryBaseFolder || 'StorytellerSuite')
+                        .onChange(async (value) => {
+                            this.plugin.settings.oneStoryBaseFolder = value || 'StorytellerSuite';
+                            await this.plugin.saveSettings();
+                        });
+                    let suppress = false;
+                    const openSuggest = () => {
+                        if (suppress) return;
+                        const modal = new FolderSuggestModal(
+                            this.app,
+                            async (folderPath) => {
+                                const chosen = folderPath || 'StorytellerSuite';
+                                this.plugin.settings.oneStoryBaseFolder = chosen;
+                                comp.setValue(chosen);
+                                await this.plugin.saveSettings();
+                            },
+                            () => {
+                                suppress = true;
+                                setTimeout(() => { suppress = false; }, 300);
+                                setTimeout(() => comp.inputEl.focus(), 0);
+                            }
+                        );
+                        modal.open();
+                    };
+                    comp.inputEl.addEventListener('keydown', (e: KeyboardEvent) => {
+                        if (e.key === 'ArrowDown' || (e.ctrlKey && e.key.toLowerCase() === ' ')) {
+                            e.preventDefault();
+                            openSuggest();
+                        }
+                    });
+                    comp.inputEl.addEventListener('focus', openSuggest);
+                    comp.inputEl.addEventListener('click', openSuggest);
+                    return comp;
+                });
         }
 
         // --- Tutorial Settings ---
@@ -270,17 +444,18 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
         this.addTutorialCollapsible(containerEl, 'Story management', 
             `<p><strong>Creating Your First Story:</strong></p>
             <ul>
-                <li>Use the <strong>"Create New Story"</strong> button below</li>
+                <li>Use the <strong>"Create New Story"</strong> button below (hidden when <em>One Story Mode</em> is enabled)</li>
                 <li>Or from Command Palette: "Storyteller: Create New Story"</li>
                 <li>Give your story a name and description</li>
-                <li>The plugin automatically creates folder structure: <code>StorytellerSuite/Stories/YourStoryName/</code></li>
+                <li>By default, the plugin creates folders at <code>StorytellerSuite/Stories/YourStoryName/</code></li>
             </ul>
             <p><strong>Managing Stories:</strong></p>
             <ul>
                 <li>Switch between stories using the <strong>"Set Active"</strong> button</li>
                 <li>Edit story details with the pencil icon</li>
                 <li>Delete stories with the trash icon (this only removes from plugin, not your files)</li>
-            </ul>`);
+            </ul>
+            <p><strong>One Story Mode:</strong> When enabled in settings, the interface is simplified to a single-story layout and the <em>New story</em> button is hidden. Content is organized under a single base folder.</p>`);
 
         this.addTutorialCollapsible(containerEl, 'Character management', 
             `<p><strong>Creating Characters:</strong></p>
@@ -382,7 +557,8 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
 
         this.addTutorialCollapsible(containerEl, 'File structure and integration', 
             `<p><strong>How Your Files Are Organized:</strong></p>
-            <pre><code>StorytellerSuite/
+            <pre><code>Default (multi-story):
+StorytellerSuite/
 ├── Stories/
 │   └── YourStoryName/
 │       ├── Characters/     (character .md files)
@@ -390,6 +566,19 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
 │       ├── Events/         (event .md files)
 │       └── Items/          (plot item .md files)
 └── GalleryUploads/         (uploaded images)
+
+One Story Mode (flattened):
+[Base]/
+├── Characters/
+├── Locations/
+├── Events/
+└── Items/
+
+Custom Folders:
+Characters: [your path]
+Locations:  [your path]
+Events:     [your path]
+Items:      [your path]
 </code></pre>
             <p><strong>Obsidian Integration:</strong></p>
             <ul>
@@ -398,7 +587,8 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                 <li>Use <strong>[[wiki links]]</strong> to connect characters, locations, events</li>
                 <li>Files are <strong>readable and editable</strong> even without the plugin</li>
                 <li><strong>Backup safe:</strong> Your data is never locked in a proprietary format</li>
-            </ul>`);
+            </ul>
+            <p><strong>Tip:</strong> Configure these modes in Settings → Storyteller Suite under <em>Use custom entity folders</em> and <em>One Story Mode</em>. The <em>New story</em> button is hidden automatically in One Story Mode.</p>`);
     }
 
     /**

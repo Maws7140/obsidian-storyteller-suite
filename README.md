@@ -18,6 +18,8 @@ A comprehensive suite for managing storytelling elements including characters, l
 
 - **Dashboard Interface**: Unified view for all storytelling elements
 
+- **Custom Folders & One Story Mode**: Use your own folder structure for characters/locations/events/items, or enable a flat, single-story layout
+
 ### Getting Started
 
 1. Download the latest release
@@ -51,15 +53,24 @@ You can hide the tutorial section at any time using the "Show tutorial section" 
 
 ## Data Structure
 
-All data is stored as markdown files with YAML frontmatter:
+All data is stored as markdown files with YAML frontmatter. By default (multi-story):
 
 - Characters: `StorytellerSuite/Stories/[StoryName]/Characters/`
-
 - Locations: `StorytellerSuite/Stories/[StoryName]/Locations/`
-
 - Events: `StorytellerSuite/Stories/[StoryName]/Events/`
+- Items: `StorytellerSuite/Stories/[StoryName]/Items/`
+- Images: User-defined upload folder (default `StorytellerSuite/GalleryUploads`)
 
-- Images: User-defined upload folder
+You can customize this behavior in Settings → Storyteller Suite:
+
+- Enable “Use custom entity folders” to specify your own folders for characters, locations, events, and items (no automatic story nesting).
+- Enable “One Story Mode” to flatten the structure under a single base folder (default `StorytellerSuite`):
+  - Characters: `[Base]/Characters/`
+  - Locations: `[Base]/Locations/`
+  - Events: `[Base]/Events/`
+  - Items: `[Base]/Items/`
+
+Note: In One Story Mode, the dashboard’s “New story” button is hidden for consistency. In normal mode, multi-story management works as before.
 
 
 ## Funding / Support
