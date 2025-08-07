@@ -1,6 +1,7 @@
 /* eslint-disable no-mixed-spaces-and-tabs */
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { App, Notice, Plugin, TFile, TFolder, normalizePath, stringifyYaml, WorkspaceLeaf } from 'obsidian';
+import { parseEventDate, toMillis } from './utils/DateParsing';
 import { CharacterModal } from './modals/CharacterModal';
 import { Character, Location, Event, GalleryImage, GalleryData, Story, Group, PlotItem } from './types';
 import { CharacterListModal } from './modals/CharacterListModal';
@@ -42,6 +43,8 @@ import { PlatformUtils } from './utils/PlatformUtils';
     enableOneStoryMode?: boolean;
     /** Base folder used when one-story mode is enabled (defaults to 'StorytellerSuite') */
     oneStoryBaseFolder?: string;
+     /** Optional override for "today" used in timeline and relative parsing (ISO string yyyy-MM-dd or full ISO) */
+     customTodayISO?: string;
 }
 
 /**
@@ -60,7 +63,8 @@ import { PlatformUtils } from './utils/PlatformUtils';
     eventFolderPath: '',
     itemFolderPath: '',
     enableOneStoryMode: false,
-    oneStoryBaseFolder: 'StorytellerSuite'
+    oneStoryBaseFolder: 'StorytellerSuite',
+    customTodayISO: undefined
 }
 
 /**
@@ -70,6 +74,16 @@ import { PlatformUtils } from './utils/PlatformUtils';
  */
 export default class StorytellerSuitePlugin extends Plugin {
 	settings: StorytellerSuiteSettings;
+
+    /** Get the Date object for the plugin's notion of "today" (custom override or system). */
+    getReferenceTodayDate(): Date {
+        const iso = this.settings.customTodayISO;
+        if (iso) {
+            const parsed = new Date(iso);
+            if (!isNaN(parsed.getTime())) return parsed;
+        }
+        return new Date();
+    }
 
 	/**
 	 * Helper: Get the currently active story object
@@ -1322,7 +1336,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 	 * Load all events from the event folder
 	 * @returns Array of event objects sorted by date/time, then by name
 	 */
-	async listEvents(): Promise<Event[]> {
+    async listEvents(): Promise<Event[]> {
 		await this.ensureEventFolder();
 		const folderPath = this.getEntityFolder('event');
 		
@@ -1340,17 +1354,18 @@ export default class StorytellerSuitePlugin extends Plugin {
 			}
 		}
 		
-		return events.sort((a, b) => {
-			if (a.dateTime && b.dateTime) {
-				return a.dateTime.localeCompare(b.dateTime);
-			} else if (a.dateTime) {
-				return -1;
-			} else if (b.dateTime) {
-				return 1;
-			} else {
-				return a.name.localeCompare(b.name);
-			}
-		});
+        // Robust chronological sort using parsed times; unresolved go last
+        const referenceDate = this.getReferenceTodayDate();
+        return events.sort((a, b) => {
+            const pa = a.dateTime ? parseEventDate(a.dateTime, { referenceDate }) : { error: 'empty' };
+            const pb = b.dateTime ? parseEventDate(b.dateTime, { referenceDate }) : { error: 'empty' };
+            const ma = toMillis((pa as any).start);
+            const mb = toMillis((pb as any).start);
+            if (ma != null && mb != null) return ma - mb;
+            if (ma != null) return -1;
+            if (mb != null) return 1;
+            return a.name.localeCompare(b.name);
+        });
 	}
 
 	/**

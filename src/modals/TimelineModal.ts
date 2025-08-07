@@ -2,18 +2,28 @@ import { App, Modal, Setting, Notice, ButtonComponent, TFile } from 'obsidian';
 import { Event } from '../types';
 import StorytellerSuitePlugin from '../main';
 import { EventModal } from './EventModal';
+import { parseEventDate, toMillis, toDisplay } from '../utils/DateParsing';
+// @ts-ignore: vis-timeline is bundled dependency
+// Use any typing to avoid complex vis types clashing with TS config
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const VisStandalone = require('vis-timeline/standalone');
+const Timeline: any = VisStandalone.Timeline;
+const DataSet: any = VisStandalone.DataSet;
 
 export class TimelineModal extends Modal {
     plugin: StorytellerSuitePlugin;
     events: Event[];
-    listContainer: HTMLElement; // Store container reference
+    // Removed fallback list to keep timeline-only UI
+    timelineContainer: HTMLElement;
+    timeline: any;
 
     constructor(app: App, plugin: StorytellerSuitePlugin, events: Event[]) {
         super(app);
         this.plugin = plugin;
         // Ensure events are sorted (main.ts listEvents should handle this)
         this.events = events;
-        this.modalEl.addClass('storyteller-list-modal storyteller-timeline-modal'); // Add specific class
+        this.modalEl.addClass('storyteller-list-modal');
+        this.modalEl.addClass('storyteller-timeline-modal');
     }
 
     onOpen() {
@@ -21,19 +31,29 @@ export class TimelineModal extends Modal {
         contentEl.empty();
         contentEl.createEl('h2', { text: 'Timeline' });
 
-        // Store the container element
-        this.listContainer = contentEl.createDiv('storyteller-list-container storyteller-timeline-container');
+        // Controls
+        const controls = new Setting(contentEl)
+            .setName('Controls')
+            .addButton(b => b.setButtonText('Fit').onClick(() => { if (this.timeline) this.timeline.fit(); }))
+            .addButton(b => b.setButtonText('Today').onClick(() => {
+                if (this.timeline) {
+                    const ref = this.plugin.getReferenceTodayDate();
+                    this.timeline.moveTo(ref);
+                }
+            }));
 
-        const searchInput = new Setting(contentEl)
-            .setName('Search')
-            .addText(text => {
-                text.setPlaceholder('Filter events...')
-                    // Pass the container to renderList
-                    .onChange(value => this.renderList(value.toLowerCase(), this.listContainer));
-            });
+        // (Search/filter removed per request)
 
-        // Initial render using the stored container
-        this.renderList('', this.listContainer);
+        // Timeline container
+        this.timelineContainer = contentEl.createDiv();
+        this.timelineContainer.style.height = '380px';
+        this.timelineContainer.style.marginBottom = '0.75rem';
+
+        // No secondary list below the timeline
+
+        // Build timeline now
+        this.renderTimeline();
+        // No secondary list render
 
         // Add New button
         new Setting(contentEl)
@@ -50,78 +70,56 @@ export class TimelineModal extends Modal {
                 }));
     }
 
-    renderList(filter: string, container: HTMLElement) {
-        container.empty();
-        const filtered = this.events.filter(evt =>
-            evt.name.toLowerCase().includes(filter) ||
-            (evt.description || '').toLowerCase().includes(filter) ||
-            (evt.dateTime || '').toLowerCase().includes(filter) ||
-            (evt.location || '').toLowerCase().includes(filter)
-        );
+    // List UI removed
 
-        if (filtered.length === 0) {
-            container.createEl('p', { text: 'No events found.' + (filter ? ' Matching filter.' : '') });
-            return;
+    private renderTimeline() {
+        const items = new DataSet();
+        const referenceDate = this.plugin.getReferenceTodayDate();
+        this.events.forEach((evt, idx) => {
+            const parsed = evt.dateTime ? parseEventDate(evt.dateTime, { referenceDate }) : { error: 'empty' };
+            const startMs = toMillis((parsed as any).start);
+            const endMs = toMillis((parsed as any).end);
+            if (startMs != null) {
+                items.add({
+                    id: idx,
+                    content: evt.name,
+                    start: new Date(startMs),
+                    end: endMs != null ? new Date(endMs) : undefined,
+                    title: evt.dateTime ? toDisplay((parsed as any).start) : '',
+                    type: endMs != null ? 'range' : 'box'
+                });
+            }
+        });
+
+        // Minimal options
+        const options = {
+            stack: true,
+            zoomKey: 'ctrlKey',
+            multiselect: true,
+            orientation: 'bottom' as const,
+        };
+
+        this.timeline = new Timeline(this.timelineContainer, items, options);
+        // Place a custom current time bar based on reference date
+        if (this.timeline && referenceDate) {
+            try {
+                // vis timeline API: setCurrentTime
+                if (typeof this.timeline.setCurrentTime === 'function') {
+                    this.timeline.setCurrentTime(referenceDate);
+                }
+            } catch {}
         }
 
-        // Simple list view for now
-        filtered.forEach(event => {
-            const itemEl = container.createDiv('storyteller-list-item');
-            const infoEl = itemEl.createDiv('storyteller-list-item-info');
-            infoEl.createEl('strong', { text: event.name });
-            if (event.dateTime) {
-                infoEl.createEl('span', { text: ` (${event.dateTime})`, cls: 'storyteller-timeline-date' });
+        this.timeline.on('doubleClick', (props: any) => {
+            if (props.item != null) {
+                const idx = props.item as number;
+                const event = this.events[idx];
+                this.close();
+                new EventModal(this.app, this.plugin, event, async (updatedData: Event) => {
+                    await this.plugin.saveEvent(updatedData);
+                    new Notice(`Event "${updatedData.name}" updated.`);
+                }).open();
             }
-            if (event.description) {
-                infoEl.createEl('p', { text: event.description.substring(0, 100) + (event.description.length > 100 ? '...' : '') });
-            }
-
-            const actionsEl = itemEl.createDiv('storyteller-list-item-actions');
-            new ButtonComponent(actionsEl) // Edit
-                .setIcon('pencil')
-                .setTooltip('Edit')
-                .onClick(() => {
-                    // Close this modal and open the edit modal
-                    this.close();
-                    new EventModal(this.app, this.plugin, event, async (updatedData: Event) => {
-                        await this.plugin.saveEvent(updatedData);
-                        new Notice(`Event "${updatedData.name}" updated.`);
-                        // Optionally reopen list modal
-                    }).open();
-                });
-
-            new ButtonComponent(actionsEl) // Delete
-                .setIcon('trash')
-                .setTooltip('Delete')
-                .setClass('mod-warning') // Add warning class for visual cue
-                .onClick(async () => {
-                    // Simple confirmation for now
-                    if (confirm(`Are you sure you want to delete "${event.name}"?`)) {
-                        if (event.filePath) {
-                            await this.plugin.deleteEvent(event.filePath);
-                            // Refresh the list in the modal
-                            this.events = this.events.filter(e => e.filePath !== event.filePath);
-                            this.renderList(filter, container);
-                        } else {
-                            new Notice('Error: Cannot delete event without file path.');
-                        }
-                    }
-                });
-
-            new ButtonComponent(actionsEl) // Open Note
-               .setIcon('go-to-file')
-               .setTooltip('Open note')
-               .onClick(() => {
-                   if (event.filePath) {
-                       const file = this.app.vault.getAbstractFileByPath(event.filePath);
-                       if (file instanceof TFile) {
-                           this.app.workspace.getLeaf(false).openFile(file);
-                           this.close();
-                       } else {
-                           new Notice('Could not find the note file.');
-                       }
-                   }
-               });
         });
     }
 

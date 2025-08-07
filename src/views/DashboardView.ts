@@ -582,8 +582,16 @@ export class DashboardView extends ItemView {
             new EventModal(this.app, this.plugin, null, async (eventData: Event) => {
                 await this.plugin.saveEvent(eventData);
                 new Notice(`Event "${eventData.name}" created.`);
-                // Manual refresh removed - automatic vault event refresh will handle this
             }).open();
+        }, 'Create new', (setting: Setting) => {
+            setting.addButton(button => button
+                .setButtonText('View timeline')
+                .setCta()
+                .onClick(async () => {
+                    const events = await this.plugin.listEvents();
+                    const { TimelineModal } = await import('../modals/TimelineModal');
+                    new TimelineModal(this.app as unknown as App, this.plugin, events).open();
+                }));
         });
 
         await this.renderEventsList(container);
@@ -1009,13 +1017,13 @@ export class DashboardView extends ItemView {
     }
 
     // --- Header Controls (Filter + Add Button) ---
-    private renderHeaderControls(container: HTMLElement, title: string, filterFn: (filter: string) => Promise<void>, addFn: () => void, addButtonText: string = 'Create new') {
+    private renderHeaderControls(container: HTMLElement, title: string, filterFn: (filter: string) => Promise<void>, addFn: () => void, addButtonText: string = 'Create new', extendButtons?: (s: Setting) => void) {
         const controlsGroup = container.createDiv('storyteller-controls-group');
         controlsGroup.style.display = 'flex';
         controlsGroup.style.alignItems = 'center';
         controlsGroup.style.gap = '0.5em';
         
-        new Setting(controlsGroup)
+        const headerSetting = new Setting(controlsGroup)
             .setName(`Filter ${title.toLowerCase()}`)
             .setDesc('')
             .addText(text => {
@@ -1133,11 +1141,16 @@ export class DashboardView extends ItemView {
                 }
                 
                 return component;
-            })
+            });
+        headerSetting
             .addButton(button => button
                 .setButtonText(addButtonText)
                 .setCta()
                 .onClick(addFn));
+
+        if (extendButtons) {
+            extendButtons(headerSetting);
+        }
     }
 
     // --- List/Grid Rendering Helpers (Adapted from Modals) ---

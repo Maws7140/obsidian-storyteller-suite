@@ -824,6 +824,10 @@ If your plugin does not need CSS, delete this file.
     color: var(--text-faint);
     font-size: var(--font-ui-smaller);
 }
+.storyteller-timeline-container {
+  /* Ensure reasonable max height inside modals */
+  max-height: 60vh;
+}
 
 /* --- Dashboard Modal --- */
 .storyteller-dashboard-modal .setting-item-info {
@@ -1084,6 +1088,7 @@ If your plugin does not need CSS, delete this file.
   /* Mobile touch optimization */
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none;
   user-select: none;
   
   /* Mobile-specific adjustments */
@@ -1151,6 +1156,14 @@ If your plugin does not need CSS, delete this file.
   gap: 0.5em;
   margin-bottom: 0.5em;
 }
+.storyteller-controls-group .setting-item {
+  border-bottom: none;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+.storyteller-controls-group .setting-item-control .button.mod-cta {
+  margin-left: 0.25rem;
+}
 .storyteller-empty-state {
   color: var(--text-muted);
   font-style: italic;
@@ -1201,6 +1214,9 @@ If your plugin does not need CSS, delete this file.
 }
 .storyteller-view-controls .setting-item-control {
     /* Ensure controls align well */
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
 }
 
 /* List Container within View */
@@ -1535,6 +1551,7 @@ body.mod-rtl .storyteller-group-members {
 }
 
 .storyteller-tutorial-section .setting-item-name {
+  -webkit-user-select: none;
   user-select: none;
   font-weight: 500;
   transition: color 0.2s ease;
