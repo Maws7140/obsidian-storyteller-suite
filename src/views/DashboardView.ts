@@ -15,6 +15,7 @@ import { ImageDetailModal } from '../modals/ImageDetailModal';
 import { Character, Location, Event, Group, PlotItem, GalleryImage } from '../types'; // Import types
 import { NewStoryModal } from '../modals/NewStoryModal';
 import { GroupModal } from '../modals/GroupModal';
+import { PlatformUtils } from '../utils/PlatformUtils';
 
 /** Unique identifier for the dashboard view type in Obsidian's workspace */
 export const VIEW_TYPE_DASHBOARD = "storyteller-dashboard-view";
@@ -207,6 +208,17 @@ export class DashboardView extends ItemView {
         container.empty();
         container.addClass('storyteller-dashboard-view-container'); // Add a class for styling
 
+        // Apply mobile-specific classes
+        const mobileClasses = PlatformUtils.getMobileCssClasses();
+        mobileClasses.forEach(className => {
+            container.addClass(className);
+        });
+
+        // Add mobile-responsive class
+        if (PlatformUtils.isMobile()) {
+            container.addClass('mobile-dashboard');
+        }
+
         // --- Create a Header Container ---
         const headerContainer = container.createDiv('storyteller-dashboard-header');
 
@@ -217,15 +229,34 @@ export class DashboardView extends ItemView {
 
         titleEl.append('Storyteller Suite');
 
-        // --- Group for selector and button ---
+        // --- Group for selector and button (mobile-optimized layout) ---
         const selectorButtonGroup = headerContainer.createDiv('storyteller-selector-button-group');
-        selectorButtonGroup.style.display = 'flex';
-        selectorButtonGroup.style.alignItems = 'center';
-        selectorButtonGroup.style.gap = '0.5em';
+        
+        if (PlatformUtils.isMobile() && !PlatformUtils.isTablet()) {
+            // Stack vertically on mobile phones
+            selectorButtonGroup.style.display = 'flex';
+            selectorButtonGroup.style.flexDirection = 'column';
+            selectorButtonGroup.style.gap = '0.75rem';
+            selectorButtonGroup.style.width = '100%';
+        } else {
+            // Horizontal layout for desktop and tablets
+            selectorButtonGroup.style.display = 'flex';
+            selectorButtonGroup.style.alignItems = 'center';
+            selectorButtonGroup.style.gap = '0.5em';
+        }
 
-        // --- Story Selector Dropdown ---
+        // --- Story Selector Dropdown (mobile-optimized) ---
         const storySelector = selectorButtonGroup.createEl('select', { cls: 'storyteller-story-selector' });
         storySelector.id = 'storyteller-story-selector';
+        
+        // Mobile-specific styling for the selector
+        if (PlatformUtils.isMobile()) {
+            const touchTargetSize = PlatformUtils.getTouchTargetSize();
+            storySelector.style.minHeight = `${touchTargetSize}px`;
+            storySelector.style.fontSize = `${1.1 * PlatformUtils.getFontScaling()}rem`;
+            storySelector.style.width = '100%';
+        }
+        
         this.plugin.settings.stories.forEach(story => {
             const option = storySelector.createEl('option', { text: story.name });
             option.value = story.id;

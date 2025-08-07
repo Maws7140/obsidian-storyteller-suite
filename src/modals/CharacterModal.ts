@@ -1,8 +1,10 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
-import { App, Modal, Setting, Notice, TextAreaComponent, TextComponent, ButtonComponent } from 'obsidian';
+import { App, Setting, Notice, TextAreaComponent, TextComponent, ButtonComponent } from 'obsidian';
 import { Character, Group } from '../types'; // Assumes Character type has relationships?: string[], associatedLocations?: string[], associatedEvents?: string[]
 import StorytellerSuitePlugin from '../main';
 import { GalleryImageSuggestModal } from './GalleryImageSuggestModal';
+import { ResponsiveModal } from './ResponsiveModal';
+import { PlatformUtils } from '../utils/PlatformUtils';
 // Placeholder imports for suggesters - these would need to be created
 // import { CharacterSuggestModal } from './CharacterSuggestModal';
 // import { LocationSuggestModal } from './LocationSuggestModal';
@@ -11,7 +13,7 @@ import { GalleryImageSuggestModal } from './GalleryImageSuggestModal';
 export type CharacterModalSubmitCallback = (character: Character) => Promise<void>;
 export type CharacterModalDeleteCallback = (character: Character) => Promise<void>;
 
-export class CharacterModal extends Modal {
+export class CharacterModal extends ResponsiveModal {
     character: Character;
     plugin: StorytellerSuitePlugin;
     onSubmit: CharacterModalSubmitCallback;
@@ -42,6 +44,8 @@ export class CharacterModal extends Modal {
     }
 
     onOpen() {
+        super.onOpen(); // Call the parent's mobile optimizations
+        
         const { contentEl } = this;
         contentEl.empty();
         contentEl.createEl('h2', { text: this.isNew ? 'Create new character' : `Edit ${this.character.name}` });
@@ -286,7 +290,7 @@ export class CharacterModal extends Modal {
         });
     }
 
-    renderCustomFields(container: HTMLElement, fields: { [key: string]: any }) {
+    renderCustomFields(container: HTMLElement, fields: Record<string, string>) {
         container.empty();
         fields = fields || {};
         const keys = Object.keys(fields);
