@@ -217,6 +217,22 @@ If your plugin does not need CSS, delete this file.
         padding: 0.5rem 0;
     }
     
+    /* Mobile tab navigation improvements */
+    .my-plugin-scrollable-tabs {
+        min-height: 48px; /* Larger touch target for mobile */
+        padding: 4px 0;
+    }
+    
+    .storyteller-tab-header {
+        min-height: 44px; /* Apple HIG standard touch target */
+        padding: 0.75em 1.5em; /* Larger padding for mobile */
+        font-size: 1.1rem; /* Slightly larger text */
+        min-width: 80px; /* Ensure minimum touch target width */
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    
     /* Card layouts become single column */
     .entity-grid {
         grid-template-columns: 1fr !important;
@@ -236,10 +252,40 @@ If your plugin does not need CSS, delete this file.
         line-height: 1.3;
     }
     
-    /* Mobile search and filter */
+    /* Mobile search and filter improvements */
     .search-input {
         font-size: 1.1rem;
         min-height: var(--touch-target-size);
+        /* Prevent zoom on iOS */
+        transform-origin: 0 0;
+        /* Improve touch interaction */
+        touch-action: manipulation;
+        /* Ensure proper focus behavior */
+        outline: none;
+        -webkit-appearance: none;
+        appearance: none;
+    }
+    
+    .search-input:focus {
+        /* Enhanced focus styling for mobile */
+        border-color: var(--interactive-accent);
+        box-shadow: 0 0 0 2px var(--interactive-accent-translucent);
+        /* Prevent zoom on focus */
+        font-size: 1.1rem !important;
+    }
+    
+    /* Optimize search input containers for mobile */
+    .storyteller-controls-group .setting-item {
+        margin-bottom: 1rem;
+    }
+    
+    .storyteller-controls-group .setting-item-control {
+        width: 100%;
+    }
+    
+    .storyteller-controls-group .setting-item-control input[type="text"] {
+        width: 100%;
+        margin-bottom: 0.5rem;
     }
     
     /* Mobile form layouts */
@@ -970,6 +1016,11 @@ If your plugin does not need CSS, delete this file.
   margin-bottom: -2px;
   transition: color 0.18s, border-color 0.18s, background 0.18s;
   outline: none;
+  
+  /* Mobile touch optimization */
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
 }
 
 .storyteller-tab-header:focus-visible {
@@ -1166,6 +1217,14 @@ If your plugin does not need CSS, delete this file.
   scrollbar-color: var(--background-modifier-border) var(--background-secondary);
   background: var(--background-secondary);
   border-bottom: 1.5px solid var(--background-modifier-border);
+  
+  /* Mobile touch scrolling support */
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  scroll-behavior: smooth;
+  
+  /* Improved touch targets for mobile */
+  touch-action: pan-x;
 }
 .my-plugin-scrollable-tabs::-webkit-scrollbar {
   height: 10px;

@@ -48,6 +48,12 @@ export class DashboardView extends ItemView {
     tabs: Array<{ id: string; label: string; renderFn: (container: HTMLElement) => Promise<void> }>;
 
     private debouncedRefreshActiveTab: () => void; // Declare property for debounce
+    
+    /** Search input reference for focus preservation */
+    private currentSearchInput: HTMLInputElement | null = null;
+    
+    /** Debounced search function */
+    private debouncedSearch: ((filterFn: (filter: string) => Promise<void>) => void) | null = null;
 
     /**
      * Helper method to get the appropriate image source path
@@ -89,6 +95,24 @@ export class DashboardView extends ItemView {
         ];
 
         this.debouncedRefreshActiveTab = debounce(this.refreshActiveTab.bind(this), 200, true);
+        
+        // Initialize debounced search for mobile optimization
+        this.debouncedSearch = debounce(async (filterFn: (filter: string) => Promise<void>) => {
+            try {
+                await filterFn(this.currentFilter);
+                // Restore focus to search input on mobile after re-render
+                if (PlatformUtils.isMobile() && this.currentSearchInput && document.activeElement !== this.currentSearchInput) {
+                    // Small delay to ensure DOM is ready
+                    setTimeout(() => {
+                        if (this.currentSearchInput) {
+                            this.currentSearchInput.focus();
+                        }
+                    }, 50);
+                }
+            } catch (error) {
+                console.error('Storyteller Suite: Error in debounced search:', error);
+            }
+        }, PlatformUtils.getSearchDebounceDelay());
     }
 
     /**
@@ -343,8 +367,10 @@ export class DashboardView extends ItemView {
                  header.setAttr('tabindex', '0');
                  // Update active tab tracking
                  this.activeTabId = tab.id;
+                 // Reset filter and clear search input reference on tab switch
+                 this.currentFilter = '';
+                 this.currentSearchInput = null;
                  // Render content
-                 this.currentFilter = ''; // Reset filter on tab switch
                  await tab.renderFn(this.tabContentContainer);
              });
         });
@@ -902,15 +928,78 @@ export class DashboardView extends ItemView {
         controlsGroup.style.display = 'flex';
         controlsGroup.style.alignItems = 'center';
         controlsGroup.style.gap = '0.5em';
+        
         new Setting(controlsGroup)
             .setName(`Filter ${title.toLowerCase()}`)
             .setDesc('')
-            .addText(text => text
-                .setPlaceholder(`Search ${title.toLowerCase()}...`)
-                .onChange(async (value) => {
-                    this.currentFilter = value.toLowerCase();
-                    await filterFn(this.currentFilter);
-                }))
+            .addText(text => {
+                const component = text
+                    .setPlaceholder(`Search ${title.toLowerCase()}...`)
+                    .onChange(async (value) => {
+                        this.currentFilter = value.toLowerCase();
+                        
+                        // Use debounced search to prevent keyboard hiding on mobile
+                        if (this.debouncedSearch) {
+                            this.debouncedSearch(filterFn);
+                        } else {
+                            // Fallback for immediate execution if debounce not available
+                            await filterFn(this.currentFilter);
+                        }
+                    });
+                
+                // Store reference to the input element for focus preservation
+                this.currentSearchInput = component.inputEl;
+                
+                // Add mobile-specific attributes to prevent keyboard issues
+                if (PlatformUtils.isMobile()) {
+                    component.inputEl.autocomplete = 'off';
+                    component.inputEl.setAttribute('autocorrect', 'off');
+                    component.inputEl.setAttribute('autocapitalize', 'none');
+                    component.inputEl.spellcheck = false;
+                    
+                    // Add mobile-friendly CSS classes
+                    component.inputEl.addClass('mobile-input');
+                    component.inputEl.addClass('search-input');
+                    
+                    // Prevent zoom on iOS
+                    if (PlatformUtils.isIOS()) {
+                        component.inputEl.style.fontSize = '1.1rem';
+                    }
+                    
+                    // Add additional mobile-specific event handling
+                    component.inputEl.addEventListener('focus', () => {
+                        // Ensure the input stays focused on mobile
+                        if (PlatformUtils.isMobile()) {
+                            // Prevent the input from losing focus due to layout changes
+                            component.inputEl.scrollIntoView({ 
+                                behavior: 'smooth', 
+                                block: 'center',
+                                inline: 'nearest'
+                            });
+                        }
+                    });
+                    
+                    // Prevent input from losing focus on mobile during search
+                    component.inputEl.addEventListener('blur', (e) => {
+                        if (PlatformUtils.isMobile() && document.activeElement !== component.inputEl) {
+                            // Small delay before attempting to restore focus
+                            setTimeout(() => {
+                                if (this.currentSearchInput === component.inputEl && 
+                                    document.activeElement !== component.inputEl &&
+                                    component.inputEl.isConnected) {
+                                    try {
+                                        component.inputEl.focus();
+                                    } catch (error) {
+                                        // Ignore focus errors
+                                    }
+                                }
+                            }, 10);
+                        }
+                    });
+                }
+                
+                return component;
+            })
             .addButton(button => button
                 .setButtonText(addButtonText)
                 .setCta()
