@@ -351,20 +351,22 @@ export class DashboardView extends ItemView {
             this.onOpen();
         };
 
-        const newStoryBtn = selectorButtonGroup.createEl('button', { text: '+ New story', cls: 'storyteller-new-story-btn' });
-        newStoryBtn.onclick = () => {
-            new NewStoryModal(
-                this.app,
-                this.plugin.settings.stories.map(s => s.name),
-                async (name, description) => {
-                    const story = await this.plugin.createStory(name, description);
-                    await this.plugin.setActiveStory(story.id);
-                    // @ts-ignore
-                    new window.Notice(`Story "${name}" created and activated.`);
-                    this.onOpen();
-                }
-            ).open();
-        };
+        if (!this.plugin.settings.enableOneStoryMode) {
+            const newStoryBtn = selectorButtonGroup.createEl('button', { text: '+ New story', cls: 'storyteller-new-story-btn' });
+            newStoryBtn.onclick = () => {
+                new NewStoryModal(
+                    this.app,
+                    this.plugin.settings.stories.map(s => s.name),
+                    async (name, description) => {
+                        const story = await this.plugin.createStory(name, description);
+                        await this.plugin.setActiveStory(story.id);
+                        // @ts-ignore
+                        new window.Notice(`Story "${name}" created and activated.`);
+                        this.onOpen();
+                    }
+                ).open();
+            };
+        }
 
         // --- Tab Headers (Now added AFTER the header container) ---
         this.tabHeaderContainer = container.createDiv('storyteller-dashboard-tabs');

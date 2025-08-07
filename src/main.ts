@@ -22,7 +22,7 @@ import { PlatformUtils } from './utils/PlatformUtils';
  * Plugin settings interface defining all configurable options
  * These settings are persisted in Obsidian's data.json file
  */
-interface StorytellerSuiteSettings {
+ interface StorytellerSuiteSettings {
     stories: Story[]; // List of all stories
     activeStoryId: string; // Currently selected story
     galleryUploadFolder: string; // New setting for uploads
@@ -31,18 +31,36 @@ interface StorytellerSuiteSettings {
     groups: Group[];
     /** Whether to show the tutorial section in settings */
     showTutorial: boolean;
+    /** When true, use user-provided folders instead of generated story folders */
+    enableCustomEntityFolders?: boolean;
+    /** Optional per-entity custom folders (used when enableCustomEntityFolders is true) */
+    characterFolderPath?: string;
+    locationFolderPath?: string;
+    eventFolderPath?: string;
+    itemFolderPath?: string;
+    /** When true, avoid nested Stories/StoryName structure and use a single base */
+    enableOneStoryMode?: boolean;
+    /** Base folder used when one-story mode is enabled (defaults to 'StorytellerSuite') */
+    oneStoryBaseFolder?: string;
 }
 
 /**
  * Default plugin settings - used on first install or when settings are missing
  */
-const DEFAULT_SETTINGS: StorytellerSuiteSettings = {
+ const DEFAULT_SETTINGS: StorytellerSuiteSettings = {
     stories: [],
     activeStoryId: '',
     galleryUploadFolder: 'StorytellerSuite/GalleryUploads',
     galleryData: { images: [] },
     groups: [],
-    showTutorial: true
+    showTutorial: true,
+    enableCustomEntityFolders: false,
+    characterFolderPath: '',
+    locationFolderPath: '',
+    eventFolderPath: '',
+    itemFolderPath: '',
+    enableOneStoryMode: false,
+    oneStoryBaseFolder: 'StorytellerSuite'
 }
 
 /**
@@ -63,21 +81,40 @@ export default class StorytellerSuitePlugin extends Plugin {
 	/**
 	 * Helper: Get the folder path for a given entity type in the active story
 	 */
-	getEntityFolder(type: 'character' | 'location' | 'event' | 'item'): string { // Add 'item'
-		const story = this.getActiveStory();
-		if (!story) throw new Error('No active story selected.');
-		const base = `StorytellerSuite/Stories/${story.name}`;
-		if (type === 'character') return `${base}/Characters`;
-		if (type === 'location') return `${base}/Locations`;
-		if (type === 'event') return `${base}/Events`;
+    getEntityFolder(type: 'character' | 'location' | 'event' | 'item'): string { // Add 'item'
+        // 1) If user enabled fully custom folders, return those directly (no story nesting)
+        if (this.settings.enableCustomEntityFolders) {
+            if (type === 'character' && this.settings.characterFolderPath) return this.settings.characterFolderPath;
+            if (type === 'location' && this.settings.locationFolderPath) return this.settings.locationFolderPath;
+            if (type === 'event' && this.settings.eventFolderPath) return this.settings.eventFolderPath;
+            if (type === 'item' && this.settings.itemFolderPath) return this.settings.itemFolderPath;
+        }
+
+        // 2) If one-story mode is enabled (and no specific custom folder provided above),
+        //    build paths under the configured base without Stories/StoryName nesting
+        if (this.settings.enableOneStoryMode) {
+            const base = this.settings.oneStoryBaseFolder || 'StorytellerSuite';
+            if (type === 'character') return `${base}/Characters`;
+            if (type === 'location') return `${base}/Locations`;
+            if (type === 'event') return `${base}/Events`;
+            if (type === 'item') return `${base}/Items`;
+        }
+
+        // 3) Default: Multi-story structure
+        const story = this.getActiveStory();
+        if (!story) throw new Error('No active story selected.');
+        const base = `StorytellerSuite/Stories/${story.name}`;
+        if (type === 'character') return `${base}/Characters`;
+        if (type === 'location') return `${base}/Locations`;
+        if (type === 'event') return `${base}/Events`;
         if (type === 'item') return `${base}/Items`; // New case
-		throw new Error('Unknown entity type');
-	}
+        throw new Error('Unknown entity type');
+    }
 
 	/**
 	 * Create a new story, add it to settings, and set as active
 	 */
-	async createStory(name: string, description?: string): Promise<Story> {
+    async createStory(name: string, description?: string): Promise<Story> {
 		// Generate unique id
 		const id = Date.now().toString(36) + Math.random().toString(36).substr(2, 6);
 		const created = new Date().toISOString();
@@ -85,11 +122,24 @@ export default class StorytellerSuitePlugin extends Plugin {
 		this.settings.stories.push(story);
 		this.settings.activeStoryId = id;
 		await this.saveSettings();
-		// Ensure folders for this story exist
-		await this.ensureFolder(`StorytellerSuite/Stories/${name}/Characters`);
-		await this.ensureFolder(`StorytellerSuite/Stories/${name}/Locations`);
-		await this.ensureFolder(`StorytellerSuite/Stories/${name}/Events`);
-        await this.ensureFolder(`StorytellerSuite/Stories/${name}/Items`); // Add this line
+        // Ensure folders for this story exist. Respect custom folders / one-story mode.
+        if (this.settings.enableCustomEntityFolders) {
+            if (this.settings.characterFolderPath) await this.ensureFolder(this.settings.characterFolderPath);
+            if (this.settings.locationFolderPath) await this.ensureFolder(this.settings.locationFolderPath);
+            if (this.settings.eventFolderPath) await this.ensureFolder(this.settings.eventFolderPath);
+            if (this.settings.itemFolderPath) await this.ensureFolder(this.settings.itemFolderPath);
+        } else if (this.settings.enableOneStoryMode) {
+            const base = this.settings.oneStoryBaseFolder || 'StorytellerSuite';
+            await this.ensureFolder(`${base}/Characters`);
+            await this.ensureFolder(`${base}/Locations`);
+            await this.ensureFolder(`${base}/Events`);
+            await this.ensureFolder(`${base}/Items`);
+        } else {
+            await this.ensureFolder(`StorytellerSuite/Stories/${name}/Characters`);
+            await this.ensureFolder(`StorytellerSuite/Stories/${name}/Locations`);
+            await this.ensureFolder(`StorytellerSuite/Stories/${name}/Events`);
+            await this.ensureFolder(`StorytellerSuite/Stories/${name}/Items`);
+        }
 		return story;
 	}
 
@@ -184,9 +234,11 @@ export default class StorytellerSuitePlugin extends Plugin {
 		logPrefix?: string;
 		showDetailedLogs?: boolean;
 	} = {}): Promise<{ newStories: Story[]; totalStories: number; error?: string }> {
-		const { isInitialDiscovery = false, logPrefix = 'Storyteller Suite' } = options;
+        const { isInitialDiscovery = false, logPrefix = 'Storyteller Suite' } = options;
 		
-		const baseStoriesPath = 'StorytellerSuite/Stories';
+        // In one-story mode users may not have a Stories/ folder at all.
+        // Keep discovery logic as-is so it remains a no-op in that case.
+        const baseStoriesPath = 'StorytellerSuite/Stories';
 		const storiesFolder = this.app.vault.getAbstractFileByPath(normalizePath(baseStoriesPath));
 
 		if (storiesFolder instanceof TFolder) {
@@ -1864,7 +1916,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		}
 		
 		// Ensure backward compatibility for new settings
-		if (!this.settings.galleryUploadFolder) {
+        if (!this.settings.galleryUploadFolder) {
 			this.settings.galleryUploadFolder = DEFAULT_SETTINGS.galleryUploadFolder;
 			settingsUpdated = true;
 		}
@@ -1872,6 +1924,23 @@ export default class StorytellerSuitePlugin extends Plugin {
 			this.settings.galleryData = DEFAULT_SETTINGS.galleryData;
 			settingsUpdated = true;
 		}
+        // Defaults for newly added settings (backward-compatible)
+        if (this.settings.enableCustomEntityFolders === undefined) {
+            this.settings.enableCustomEntityFolders = DEFAULT_SETTINGS.enableCustomEntityFolders;
+            settingsUpdated = true;
+        }
+        if (this.settings.enableOneStoryMode === undefined) {
+            this.settings.enableOneStoryMode = DEFAULT_SETTINGS.enableOneStoryMode;
+            settingsUpdated = true;
+        }
+        if (!('oneStoryBaseFolder' in this.settings) || !this.settings.oneStoryBaseFolder) {
+            this.settings.oneStoryBaseFolder = DEFAULT_SETTINGS.oneStoryBaseFolder;
+            settingsUpdated = true;
+        }
+        if (!('characterFolderPath' in this.settings)) { this.settings.characterFolderPath = DEFAULT_SETTINGS.characterFolderPath; settingsUpdated = true; }
+        if (!('locationFolderPath' in this.settings)) { this.settings.locationFolderPath = DEFAULT_SETTINGS.locationFolderPath; settingsUpdated = true; }
+        if (!('eventFolderPath' in this.settings)) { this.settings.eventFolderPath = DEFAULT_SETTINGS.eventFolderPath; settingsUpdated = true; }
+        if (!('itemFolderPath' in this.settings)) { this.settings.itemFolderPath = DEFAULT_SETTINGS.itemFolderPath; settingsUpdated = true; }
 		if (!this.settings.groups) {
 			this.settings.groups = [];
 			settingsUpdated = true;
