@@ -63,8 +63,6 @@ export abstract class ResponsiveModal extends Modal {
 
         // Add touch-friendly scrolling
         if (PlatformUtils.isMobile()) {
-            // Use CSS property for WebKit touch scrolling
-            contentEl.style.setProperty('-webkit-overflow-scrolling', 'touch');
             contentEl.style.overflowY = 'auto';
         }
 
@@ -241,7 +239,7 @@ export abstract class ResponsiveModal extends Modal {
         if (!PlatformUtils.shouldUseHapticFeedback()) return;
 
         // Use the navigator.vibrate API if available (Android)
-        if ('vibrate' in navigator) {
+        if ('vibrate' in navigator && typeof navigator.vibrate === 'function') {
             const duration = type === 'light' ? 10 : type === 'medium' ? 20 : 50;
             navigator.vibrate(duration);
         }

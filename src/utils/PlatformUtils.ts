@@ -115,18 +115,39 @@ export class PlatformUtils {
 
     /**
      * Checks if the current screen is likely a tablet vs phone
-     * This is a heuristic based on screen dimensions
+     * This is a heuristic based on actual viewport dimensions and pixel density
      * @returns true if screen appears to be tablet-sized
      */
     static isTablet(): boolean {
         if (!this.isMobile()) return false;
         
-        // Simple heuristic: tablets typically have larger screens
-        const minDimension = Math.min(window.screen.width, window.screen.height);
-        const maxDimension = Math.max(window.screen.width, window.screen.height);
+        // Get actual viewport dimensions accounting for device pixel ratio
+        const actualWidth = window.innerWidth * (window.devicePixelRatio || 1);
+        const actualHeight = window.innerHeight * (window.devicePixelRatio || 1);
+        const minDimension = Math.min(actualWidth, actualHeight);
+        const maxDimension = Math.max(actualWidth, actualHeight);
         
-        // Tablet if minimum dimension > 768px or aspect ratio suggests tablet
-        return minDimension > 768 || (maxDimension / minDimension) < 1.6;
+        // Adjust threshold based on pixel density - higher DPI devices need higher thresholds
+        const pixelRatio = window.devicePixelRatio || 1;
+        const baseThreshold = 768;
+        const adjustedThreshold = baseThreshold * Math.max(1, pixelRatio * 0.8);
+        
+        // Tablet if minimum dimension exceeds adjusted threshold
+        const sizeCheck = minDimension > adjustedThreshold;
+        
+        // Refined aspect ratio check - tablets typically have more square-like ratios
+        // Most phones have aspect ratios > 1.8, tablets are usually between 1.2-1.7
+        const aspectRatio = maxDimension / minDimension;
+        const aspectCheck = aspectRatio >= 1.2 && aspectRatio <= 1.8;
+        
+        // Also check for common tablet breakpoints (in CSS pixels)
+        const cssWidth = window.innerWidth;
+        const cssHeight = window.innerHeight;
+        const cssMinDimension = Math.min(cssWidth, cssHeight);
+        const commonTabletCheck = cssMinDimension >= 600; // Common tablet breakpoint
+        
+        // Consider it a tablet if it passes size check AND (aspect ratio check OR common breakpoint)
+        return sizeCheck && (aspectCheck || commonTabletCheck);
     }
 
     /**
