@@ -45,6 +45,12 @@ import { PlatformUtils } from './utils/PlatformUtils';
     oneStoryBaseFolder?: string;
      /** Optional override for "today" used in timeline and relative parsing (ISO string yyyy-MM-dd or full ISO) */
      customTodayISO?: string;
+     /** Timeline defaults */
+     defaultTimelineGroupMode?: 'none' | 'location' | 'group';
+     defaultTimelineZoomPreset?: 'none' | 'decade' | 'century' | 'fit';
+     defaultTimelineStack?: boolean;
+     defaultTimelineDensity?: number; // 0..100
+     showTimelineLegend?: boolean;
 }
 
 /**
@@ -64,7 +70,12 @@ import { PlatformUtils } from './utils/PlatformUtils';
     itemFolderPath: '',
     enableOneStoryMode: false,
     oneStoryBaseFolder: 'StorytellerSuite',
-    customTodayISO: undefined
+    customTodayISO: undefined,
+    defaultTimelineGroupMode: 'none',
+    defaultTimelineZoomPreset: 'none',
+    defaultTimelineStack: true,
+    defaultTimelineDensity: 50,
+    showTimelineLegend: true
 }
 
 /**
