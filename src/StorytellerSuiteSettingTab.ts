@@ -104,6 +104,95 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                 })
             );
 
+        // --- Custom Folders & One Story Mode ---
+        new Setting(containerEl)
+            .setName('Use custom entity folders')
+            .setDesc('When enabled, use the folder paths below for Characters, Locations, Events, and Items instead of auto-generated story folders.')
+            .addToggle(toggle => toggle
+                .setValue(!!this.plugin.settings.enableCustomEntityFolders)
+                .onChange(async (value) => {
+                    this.plugin.settings.enableCustomEntityFolders = value;
+                    await this.plugin.saveSettings();
+                    this.display();
+                })
+            );
+
+        if (this.plugin.settings.enableCustomEntityFolders) {
+            new Setting(containerEl)
+                .setName('Characters folder')
+                .setDesc('Path for character markdown files')
+                .addText(text => text
+                    .setPlaceholder('MyStory/Characters')
+                    .setValue(this.plugin.settings.characterFolderPath || '')
+                    .onChange(async (value) => {
+                        this.plugin.settings.characterFolderPath = value;
+                        await this.plugin.saveSettings();
+                    })
+                );
+
+            new Setting(containerEl)
+                .setName('Locations folder')
+                .setDesc('Path for location markdown files')
+                .addText(text => text
+                    .setPlaceholder('MyStory/Locations')
+                    .setValue(this.plugin.settings.locationFolderPath || '')
+                    .onChange(async (value) => {
+                        this.plugin.settings.locationFolderPath = value;
+                        await this.plugin.saveSettings();
+                    })
+                );
+
+            new Setting(containerEl)
+                .setName('Events folder')
+                .setDesc('Path for event markdown files')
+                .addText(text => text
+                    .setPlaceholder('MyStory/Events')
+                    .setValue(this.plugin.settings.eventFolderPath || '')
+                    .onChange(async (value) => {
+                        this.plugin.settings.eventFolderPath = value;
+                        await this.plugin.saveSettings();
+                    })
+                );
+
+            new Setting(containerEl)
+                .setName('Items folder')
+                .setDesc('Path for item markdown files')
+                .addText(text => text
+                    .setPlaceholder('MyStory/Items')
+                    .setValue(this.plugin.settings.itemFolderPath || '')
+                    .onChange(async (value) => {
+                        this.plugin.settings.itemFolderPath = value;
+                        await this.plugin.saveSettings();
+                    })
+                );
+        }
+
+        new Setting(containerEl)
+            .setName('One Story Mode')
+            .setDesc('Flatten the folder structure to a single story. When enabled (and custom folders disabled), content goes under a single base folder without Stories/StoryName.')
+            .addToggle(toggle => toggle
+                .setValue(!!this.plugin.settings.enableOneStoryMode)
+                .onChange(async (value) => {
+                    this.plugin.settings.enableOneStoryMode = value;
+                    await this.plugin.saveSettings();
+                    this.display();
+                })
+            );
+
+        if (!this.plugin.settings.enableCustomEntityFolders && this.plugin.settings.enableOneStoryMode) {
+            new Setting(containerEl)
+                .setName('One Story base folder')
+                .setDesc('Base folder for Characters/Locations/Events/Items')
+                .addText(text => text
+                    .setPlaceholder('StorytellerSuite')
+                    .setValue(this.plugin.settings.oneStoryBaseFolder || 'StorytellerSuite')
+                    .onChange(async (value) => {
+                        this.plugin.settings.oneStoryBaseFolder = value || 'StorytellerSuite';
+                        await this.plugin.saveSettings();
+                    })
+                );
+        }
+
         // --- Tutorial Settings ---
         new Setting(containerEl)
             .setName('Show tutorial section')
