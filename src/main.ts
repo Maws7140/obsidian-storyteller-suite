@@ -275,6 +275,8 @@ export default class StorytellerSuitePlugin extends Plugin {
 	 */
 	onunload() {
 		// Manual cleanup not needed - Obsidian handles view management
+		// Clean up mobile platform classes to prevent class leakage
+		this.removeMobilePlatformClasses();
 	}
 
 	/**
@@ -1881,6 +1883,11 @@ export default class StorytellerSuitePlugin extends Plugin {
 	 */
 	private applyMobilePlatformClasses(): void {
 		const body = document.body;
+		if (!body) {
+			console.warn('Storyteller Suite: document.body is null, cannot apply mobile platform classes');
+			return;
+		}
+
 		const mobileClasses = PlatformUtils.getMobileCssClasses();
 		
 		// Remove any existing platform classes first
@@ -1895,6 +1902,21 @@ export default class StorytellerSuitePlugin extends Plugin {
 		if (PlatformUtils.isMobile()) {
 			body.classList.add('storyteller-mobile-enabled');
 		}
+	}
+
+	/**
+	 * Removes mobile-specific CSS classes from the document body
+	 * Used during plugin cleanup to prevent class leakage
+	 */
+	private removeMobilePlatformClasses(): void {
+		const body = document.body;
+		if (!body) {
+			console.warn('Storyteller Suite: document.body is null, cannot remove mobile platform classes');
+			return;
+		}
+
+		// Remove all platform-specific classes
+		body.classList.remove('is-mobile', 'is-ios', 'is-android', 'is-desktop', 'storyteller-mobile-enabled');
 	}
 }
 

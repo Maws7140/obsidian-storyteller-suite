@@ -47,27 +47,27 @@ If your plugin does not need CSS, delete this file.
 
 /* Base responsive modal styling */
 .storyteller-responsive-modal {
-    transition: all 0.2s ease-in-out;
+    transition: opacity 0.2s ease-in-out, transform 0.2s ease-in-out, background-color 0.2s ease-in-out;
 }
 
 /* Mobile fullscreen modals */
-.mobile-fullscreen {
-    position: fixed !important;
-    top: 0 !important;
-    left: 0 !important;
-    right: 0 !important;
-    bottom: 0 !important;
-    width: 100vw !important;
-    height: 100vh !important;
-    max-width: none !important;
-    max-height: none !important;
-    border-radius: 0 !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    transform: none !important;
+.storyteller-modal.mobile-fullscreen {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100vw;
+    height: 100vh;
+    max-width: none;
+    max-height: none;
+    border-radius: 0;
+    margin: 0;
+    padding: 0;
+    transform: none;
 }
 
-.mobile-fullscreen .modal-content {
+.storyteller-modal.mobile-fullscreen .modal-content {
     height: 100%;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
@@ -185,18 +185,27 @@ If your plugin does not need CSS, delete this file.
 @media (max-width: 768px) {
     /* Mobile styles */
     
-    /* Make all modals full screen on mobile */
-    .modal:not(.mobile-fullscreen) {
-        position: fixed !important;
-        top: 0 !important;
-        left: 0 !important;
-        right: 0 !important;
-        bottom: 0 !important;
-        width: 100vw !important;
-        height: 100vh !important;
-        max-width: none !important;
-        max-height: none !important;
-        border-radius: 0 !important;
+    /* Make only Storyteller Suite modals full screen on mobile */
+    .storyteller-character-modal,
+    .storyteller-location-modal,
+    .storyteller-event-modal,
+    .storyteller-image-detail-modal,
+    .storyteller-list-modal,
+    .storyteller-dashboard-modal,
+    .storyteller-gallery-modal {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        width: 100vw;
+        height: 100vh;
+        max-width: none;
+        max-height: none;
+        border-radius: 0;
+        margin: 0;
+        padding: 0;
+        transform: none;
     }
     
     /* Mobile dashboard optimizations */
