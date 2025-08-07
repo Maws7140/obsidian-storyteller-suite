@@ -137,6 +137,50 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                 return comp;
             });
 
+        // --- Timeline & Parsing ---
+        new Setting(containerEl)
+            .setName('Timeline and parsing')
+            .setHeading();
+
+        new Setting(containerEl)
+            .setName('Forward-date bias for natural language parsing')
+            .setDesc('Prefer future interpretation for relative dates (e.g., "Friday")')
+            .addToggle(toggle => toggle
+                .setValue(false)
+                .onChange(async (value) => {
+                    // Reserved for future persistence if we store parsing settings
+                    // this.plugin.settings.forwardDate = value;
+                    await this.plugin.saveSettings();
+                }));
+
+        new Setting(containerEl)
+            .setName('Custom today (timeline reference)')
+            .setDesc('Optional ISO date used for the Today button and relative parsing (e.g., 2024-01-15). Leave empty to use system today.')
+            .addText(text => text
+                .setPlaceholder('YYYY-MM-DD or full ISO')
+                .setValue(this.plugin.settings.customTodayISO || '')
+                .onChange(async (value) => {
+                    const trimmed = value.trim();
+                    this.plugin.settings.customTodayISO = trimmed || undefined;
+                    await this.plugin.saveSettings();
+                }))
+            .addExtraButton(btn => btn
+                .setIcon('reset')
+                .setTooltip('Clear custom today')
+                .onClick(async () => {
+                    this.plugin.settings.customTodayISO = undefined;
+                    await this.plugin.saveSettings();
+                    this.display();
+                }));
+
+        new Setting(containerEl)
+            .setName('Timeline default height')
+            .setDesc('Adjust the height of the timeline modal')
+            .addText(text => text
+                .setPlaceholder('e.g., 380px')
+                .setValue('380px')
+                .onChange(async () => { /* no-op stub; future setting */ }));
+
         // --- Custom Folders & One Story Mode ---
         new Setting(containerEl)
             .setName('Use custom entity folders')
