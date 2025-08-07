@@ -173,6 +173,41 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                     this.display();
                 }));
 
+        // Timeline defaults
+        new Setting(containerEl)
+            .setName('Default timeline grouping')
+            .addDropdown(dd => dd
+                .addOptions({ none: 'No grouping', location: 'By location', group: 'By group' })
+                .setValue(this.plugin.settings.defaultTimelineGroupMode || 'none')
+                .onChange(async (v) => { this.plugin.settings.defaultTimelineGroupMode = v as any; await this.plugin.saveSettings(); }));
+
+        new Setting(containerEl)
+            .setName('Default zoom preset')
+            .addDropdown(dd => dd
+                .addOptions({ none: 'None', fit: 'Fit', decade: 'Decade', century: 'Century' })
+                .setValue(this.plugin.settings.defaultTimelineZoomPreset || 'none')
+                .onChange(async (v) => { this.plugin.settings.defaultTimelineZoomPreset = v as any; await this.plugin.saveSettings(); }));
+
+        new Setting(containerEl)
+            .setName('Default stacking')
+            .addToggle(t => t
+                .setValue(this.plugin.settings.defaultTimelineStack ?? true)
+                .onChange(async (v) => { this.plugin.settings.defaultTimelineStack = v; await this.plugin.saveSettings(); }));
+
+        new Setting(containerEl)
+            .setName('Default density')
+            .addSlider(sl => sl
+                .setLimits(0, 100, 5)
+                .setValue(this.plugin.settings.defaultTimelineDensity ?? 50)
+                .setDynamicTooltip()
+                .onChange(async (v) => { this.plugin.settings.defaultTimelineDensity = v; await this.plugin.saveSettings(); }));
+
+        new Setting(containerEl)
+            .setName('Show legend by default')
+            .addToggle(t => t
+                .setValue(this.plugin.settings.showTimelineLegend ?? true)
+                .onChange(async (v) => { this.plugin.settings.showTimelineLegend = v; await this.plugin.saveSettings(); }));
+
         new Setting(containerEl)
             .setName('Timeline default height')
             .setDesc('Adjust the height of the timeline modal')
