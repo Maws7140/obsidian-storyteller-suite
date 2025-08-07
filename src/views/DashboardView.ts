@@ -61,6 +61,9 @@ export class DashboardView extends ItemView {
     /** Timer to reset typing state */
     private typingTimer: number | null = null;
 
+    /** Timer for clearing search input dismissal flag */
+    private dismissalTimer: number | null = null;
+
     /**
      * Helper method to mark search input dismissal intent
      * Sets a temporary attribute to indicate user requested keyboard dismissal
@@ -68,11 +71,19 @@ export class DashboardView extends ItemView {
     private markSearchInputDismissal() {
         if (this.currentSearchInput) {
             this.currentSearchInput.setAttribute('data-user-dismissed', 'true');
-            // Clear the flag after a short delay to allow normal interaction
-            setTimeout(() => {
+            
+            // Clear any existing dismissal timer to prevent overlapping timers
+            if (this.dismissalTimer) {
+                clearTimeout(this.dismissalTimer);
+            }
+            
+            // Clear the flag after 500ms - this delay allows normal interaction
+            // to resume while preventing immediate refocus during user-initiated dismissal
+            this.dismissalTimer = window.setTimeout(() => {
                 if (this.currentSearchInput) {
                     this.currentSearchInput.removeAttribute('data-user-dismissed');
                 }
+                this.dismissalTimer = null;
             }, 500);
         }
     }
@@ -360,39 +371,6 @@ export class DashboardView extends ItemView {
         this.tabHeaderContainer.setAttr('role', 'tablist');
         this.tabHeaderContainer.tabIndex = 0; // Make tablist focusable for keyboard navigation
 
-        // Debug horizontal scroll on mobile
-        if (PlatformUtils.isMobile()) {
-            // Add debug logging after a short delay to allow DOM to settle
-            setTimeout(() => {
-                const tabsContainer = this.tabHeaderContainer;
-                if (tabsContainer) {
-                    const scrollWidth = tabsContainer.scrollWidth;
-                    const clientWidth = tabsContainer.clientWidth;
-                    const computedStyle = window.getComputedStyle(tabsContainer);
-                    const tabHeaders = tabsContainer.querySelectorAll('.storyteller-tab-header');
-                    
-                    console.log(`Storyteller Suite - Tab Debug:`, {
-                        scrollWidth,
-                        clientWidth,
-                        isOverflowing: scrollWidth > clientWidth,
-                        tabCount: this.tabs.length,
-                        canScrollHorizontally: scrollWidth > clientWidth,
-                        containerStyles: {
-                            display: computedStyle.display,
-                            flexWrap: computedStyle.flexWrap,
-                            overflowX: computedStyle.overflowX,
-                            width: computedStyle.width
-                        },
-                        firstTabStyles: tabHeaders.length > 0 ? {
-                            flex: window.getComputedStyle(tabHeaders[0]).flex,
-                            flexShrink: window.getComputedStyle(tabHeaders[0]).flexShrink,
-                            minWidth: window.getComputedStyle(tabHeaders[0]).minWidth
-                        } : null
-                    });
-                }
-            }, 100);
-        }
-
         // Mouse wheel horizontal scroll support (desktop only - let mobile use native touch scrolling)
         if (!PlatformUtils.isMobile()) {
             this.tabHeaderContainer.addEventListener('wheel', (e: WheelEvent) => {
@@ -469,13 +447,22 @@ export class DashboardView extends ItemView {
         // --- Register Global Click Handler for Mobile Keyboard Dismissal ---
         if (PlatformUtils.isMobile()) {
             this.registerDomEvent(document, 'click', (e: MouseEvent) => {
-                // If user taps outside any search input, allow keyboard dismissal
-                if (this.currentSearchInput && 
-                    e.target !== this.currentSearchInput && 
-                    !this.currentSearchInput.contains(e.target as Node)) {
-                    // Mark as user-requested dismissal and remove focus
-                    this.markSearchInputDismissal();
-                    this.currentSearchInput.blur();
+                try {
+                    // Type guard: ensure e.target is a Node before proceeding
+                    if (!e.target || !(e.target instanceof Node)) {
+                        return;
+                    }
+
+                    // If user taps outside any search input, allow keyboard dismissal
+                    if (this.currentSearchInput && 
+                        e.target !== this.currentSearchInput && 
+                        !this.currentSearchInput.contains(e.target)) {
+                        // Mark as user-requested dismissal and remove focus
+                        this.markSearchInputDismissal();
+                        this.currentSearchInput.blur();
+                    }
+                } catch (error) {
+                    console.error('Storyteller Suite: Error in mobile keyboard dismissal handler:', error);
                 }
             });
         }
@@ -1443,6 +1430,12 @@ export class DashboardView extends ItemView {
         if (this.typingTimer) {
             clearTimeout(this.typingTimer);
             this.typingTimer = null;
+        }
+        
+        // Clean up dismissal timer
+        if (this.dismissalTimer) {
+            clearTimeout(this.dismissalTimer);
+            this.dismissalTimer = null;
         }
         
         // Reset typing state
