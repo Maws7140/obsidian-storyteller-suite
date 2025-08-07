@@ -829,6 +829,114 @@ If your plugin does not need CSS, delete this file.
   max-height: 60vh;
 }
 
+/* Modernize vis timeline look within plugin modal */
+.storyteller-timeline-modal .vis-timeline {
+  border-radius: 8px;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-primary);
+}
+.storyteller-timeline-modal .vis-item {
+  border-radius: 6px;
+  border-width: 1px;
+  padding: 2px 8px;
+  color: var(--text-normal);
+  background: var(--background-secondary);
+  border-color: var(--interactive-accent);
+  transition: transform 120ms ease, box-shadow 120ms ease, background 120ms ease;
+}
+.storyteller-timeline-modal .vis-item.is-approx {
+  border-style: dashed;
+  opacity: 0.85;
+}
+.storyteller-timeline-modal .vis-item:hover,
+.storyteller-timeline-modal .vis-item.vis-selected {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(0,0,0,0.25);
+}
+.storyteller-timeline-modal .vis-range {
+  border-radius: 6px;
+}
+.storyteller-timeline-modal .vis-grid.vis-odd,
+.storyteller-timeline-modal .vis-grid.vis-even {
+  border-color: var(--background-modifier-border);
+}
+.storyteller-timeline-modal .vis-time-axis .vis-text {
+  color: var(--text-muted);
+}
+.storyteller-timeline-modal .vis-current-time {
+  background-color: var(--interactive-accent);
+}
+
+/* Toolbar and legend */
+.storyteller-timeline-toolbar .setting-item-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.storyteller-timeline-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 6px;
+}
+.storyteller-timeline-toolbar.setting-item {
+  border: 0;
+  margin: 0 0 6px 0;
+  padding: 0;
+}
+.storyteller-timeline-toolbar .setting-item-info {
+  display: none; /* remove empty label column so controls can center */
+}
+.storyteller-timeline-toolbar .setting-item-control {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: center; /* center controls horizontally */
+  width: 100%;
+}
+.storyteller-timeline-toolbar select {
+  max-width: 160px;
+}
+.storyteller-timeline-toolbar input[type="range"] {
+  width: 140px;
+}
+.storyteller-timeline-toolbar .button {
+  padding: 2px 10px;
+}
+.storyteller-timeline-details {
+  display: block;
+  margin-top: 8px;
+  border-top: 1px solid var(--background-modifier-border);
+  padding-top: 8px;
+}
+.storyteller-timeline-detail-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.storyteller-timeline-detail-actions .button {
+  margin-left: 6px;
+}
+.storyteller-legend-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-muted);
+  background: var(--background-secondary);
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+.storyteller-legend-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border: 1px solid currentColor;
+  border-radius: 2px;
+}
+
 /* --- Dashboard Modal --- */
 .storyteller-dashboard-modal .setting-item-info {
     flex-grow: 0; /* Don't let info push buttons */
