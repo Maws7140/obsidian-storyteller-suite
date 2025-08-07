@@ -55,6 +55,12 @@ export class DashboardView extends ItemView {
     /** Debounced search function */
     private debouncedSearch: ((filterFn: (filter: string) => Promise<void>) => void) | null = null;
 
+    /** Flag to track if user is actively typing (mobile optimization) */
+    private isUserTyping: boolean = false;
+
+    /** Timer to reset typing state */
+    private typingTimer: number | null = null;
+
     /**
      * Helper method to get the appropriate image source path
      * Handles external URLs, data URIs, app/obsidian protocols, and local vault paths
@@ -206,17 +212,43 @@ export class DashboardView extends ItemView {
     }
 
     /**
-     * Refresh the currently active tab
+     * Refresh the currently active tab (with mobile typing protection)
+     * Prevents refresh while user is actively typing on mobile to avoid keyboard dismissal
      */
     private async refreshActiveTab() {
         if (!this.tabContentContainer) {
             return;
         }
         
+        // On mobile, don't refresh while user is actively typing to prevent keyboard dismissal
+        if (PlatformUtils.isMobile() && this.isUserTyping) {
+            console.log('Storyteller Suite: Skipping refresh while user is typing on mobile');
+            return;
+        }
+        
+        // Preserve search input state before refresh
+        const searchInputValue = this.currentSearchInput?.value || '';
+        const searchInputWasFocused = document.activeElement === this.currentSearchInput;
+        
         const activeTab = this.tabs.find(tab => tab.id === this.activeTabId);
         if (activeTab) {
             try {
                 await activeTab.renderFn(this.tabContentContainer);
+                
+                // Restore search input state after refresh (mobile optimization)
+                if (PlatformUtils.isMobile() && (searchInputValue || searchInputWasFocused)) {
+                    setTimeout(() => {
+                        if (this.currentSearchInput) {
+                            if (searchInputValue) {
+                                this.currentSearchInput.value = searchInputValue;
+                                this.currentFilter = searchInputValue.toLowerCase();
+                            }
+                            if (searchInputWasFocused) {
+                                this.currentSearchInput.focus();
+                            }
+                        }
+                    }, 100);
+                }
             } catch (error) {
                 console.error(`Storyteller Suite: Error refreshing active tab ${this.activeTabId}:`, error);
             }
@@ -312,15 +344,17 @@ export class DashboardView extends ItemView {
         this.tabHeaderContainer.setAttr('role', 'tablist');
         this.tabHeaderContainer.tabIndex = 0; // Make tablist focusable for keyboard navigation
 
-        // Mouse wheel horizontal scroll support (improved for natural direction and smoothness)
-        this.tabHeaderContainer.addEventListener('wheel', (e: WheelEvent) => {
-            // Use both axes, and a multiplier for deltaY for natural feel
-            const scrollAmount = e.deltaX + e.deltaY * 2;
-            if (scrollAmount !== 0) {
-                e.preventDefault();
-                this.tabHeaderContainer.scrollLeft += scrollAmount;
-            }
-        }, { passive: false });
+        // Mouse wheel horizontal scroll support (desktop only - let mobile use native touch scrolling)
+        if (!PlatformUtils.isMobile()) {
+            this.tabHeaderContainer.addEventListener('wheel', (e: WheelEvent) => {
+                // Use both axes, and a multiplier for deltaY for natural feel
+                const scrollAmount = e.deltaX + e.deltaY * 2;
+                if (scrollAmount !== 0) {
+                    e.preventDefault();
+                    this.tabHeaderContainer.scrollLeft += scrollAmount;
+                }
+            }, { passive: false });
+        }
 
         // Keyboard navigation for tabs (left/right arrow)
         this.tabHeaderContainer.addEventListener('keydown', (e: KeyboardEvent) => {
@@ -966,7 +1000,32 @@ export class DashboardView extends ItemView {
                         component.inputEl.style.fontSize = '1.1rem';
                     }
                     
-                    // Add additional mobile-specific event handling
+                    // Add typing detection to prevent auto-refresh while typing
+                    const startTyping = () => {
+                        this.isUserTyping = true;
+                        if (this.typingTimer) {
+                            clearTimeout(this.typingTimer);
+                        }
+                        // User stops typing after 2 seconds of inactivity
+                        this.typingTimer = window.setTimeout(() => {
+                            this.isUserTyping = false;
+                        }, 2000);
+                    };
+                    
+                    component.inputEl.addEventListener('input', startTyping);
+                    component.inputEl.addEventListener('keydown', startTyping);
+                    component.inputEl.addEventListener('focus', startTyping);
+                    
+                    component.inputEl.addEventListener('blur', () => {
+                        // User stopped typing when they leave the input
+                        this.isUserTyping = false;
+                        if (this.typingTimer) {
+                            clearTimeout(this.typingTimer);
+                            this.typingTimer = null;
+                        }
+                    });
+                    
+                    // Additional mobile-specific event handling
                     component.inputEl.addEventListener('focus', () => {
                         // Ensure the input stays focused on mobile
                         if (PlatformUtils.isMobile()) {
@@ -1293,6 +1352,17 @@ export class DashboardView extends ItemView {
         // Clean up file input if it exists
         this.fileInput?.remove();
         this.fileInput = null;
+        
+        // Clean up typing timer
+        if (this.typingTimer) {
+            clearTimeout(this.typingTimer);
+            this.typingTimer = null;
+        }
+        
+        // Reset typing state
+        this.isUserTyping = false;
+        this.currentSearchInput = null;
+        
         // Event listeners are automatically cleaned up by registerEvent()
     }
 }

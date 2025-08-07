@@ -26,6 +26,19 @@ If your plugin does not need CSS, delete this file.
     --platform-type: mobile;
 }
 
+/* Enhanced mobile-specific navigation */
+.is-mobile .my-plugin-scrollable-tabs {
+    /* More aggressive scroll snapping on mobile for better UX */
+    scroll-snap-type: x mandatory;
+    scroll-padding-inline: 1rem;
+}
+
+.is-mobile .storyteller-tab-header {
+    /* Ensure all tabs snap properly on mobile */
+    scroll-snap-align: center;
+    scroll-snap-stop: always;
+}
+
 .is-ios {
     /* iOS-specific styles */
     --platform-type: ios;
@@ -221,6 +234,13 @@ If your plugin does not need CSS, delete this file.
     .my-plugin-scrollable-tabs {
         min-height: 48px; /* Larger touch target for mobile */
         padding: 4px 0;
+        /* Enhanced mobile touch scrolling */
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior-x: contain;
+        overscroll-behavior-y: auto;
+        scroll-behavior: smooth;
+        /* Add scroll snapping for better mobile UX */
+        scroll-snap-type: x mandatory;
     }
     
     .storyteller-tab-header {
@@ -231,6 +251,10 @@ If your plugin does not need CSS, delete this file.
         display: flex;
         align-items: center;
         justify-content: center;
+        /* Add scroll snap alignment for mobile */
+        scroll-snap-align: start;
+        /* Ensure proper touch targets */
+        touch-action: manipulation;
     }
     
     /* Card layouts become single column */
@@ -264,6 +288,11 @@ If your plugin does not need CSS, delete this file.
         outline: none;
         -webkit-appearance: none;
         appearance: none;
+        /* Mobile stability improvements */
+        -webkit-user-select: text;
+        user-select: text;
+        /* Prevent input field jumping */
+        box-sizing: border-box;
     }
     
     .search-input:focus {
@@ -272,6 +301,8 @@ If your plugin does not need CSS, delete this file.
         box-shadow: 0 0 0 2px var(--interactive-accent-translucent);
         /* Prevent zoom on focus */
         font-size: 1.1rem !important;
+        /* Maintain stable layout */
+        transform: none;
     }
     
     /* Optimize search input containers for mobile */
@@ -974,6 +1005,13 @@ If your plugin does not need CSS, delete this file.
   scrollbar-width: auto;
   scrollbar-color: var(--background-modifier-border) var(--background-secondary);
   min-height: 3em;
+  
+  /* Enhanced mobile scrolling behavior */
+  overscroll-behavior-x: contain;
+  overscroll-behavior-y: auto;
+  scroll-behavior: smooth;
+  touch-action: pan-x;
+  scroll-snap-type: x proximity;
 }
 
 .storyteller-dashboard-tabs::-webkit-scrollbar {
@@ -1218,13 +1256,15 @@ If your plugin does not need CSS, delete this file.
   background: var(--background-secondary);
   border-bottom: 1.5px solid var(--background-modifier-border);
   
-  /* Mobile touch scrolling support */
+  /* Enhanced mobile touch scrolling support */
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-x: contain;
+  overscroll-behavior-y: auto;
   scroll-behavior: smooth;
   
-  /* Improved touch targets for mobile */
+  /* Improved touch targets and scroll snapping for mobile */
   touch-action: pan-x;
+  scroll-snap-type: x mandatory;
 }
 .my-plugin-scrollable-tabs::-webkit-scrollbar {
   height: 10px;
