@@ -27,7 +27,7 @@ If your plugin does not need CSS, delete this file.
 }
 
 /* Enhanced mobile-specific navigation */
-.is-mobile .my-plugin-scrollable-tabs {
+.is-mobile .storyteller-dashboard-tabs {
     /* More aggressive scroll snapping on mobile for better UX */
     scroll-snap-type: x mandatory;
     scroll-padding-inline: 1rem;
@@ -231,9 +231,9 @@ If your plugin does not need CSS, delete this file.
     }
     
     /* Mobile tab navigation improvements */
-    .my-plugin-scrollable-tabs {
+    .storyteller-dashboard-tabs {
         min-height: 48px; /* Larger touch target for mobile */
-        padding: 4px 0;
+        padding: 4px 1em;
         /* Enhanced mobile touch scrolling */
         -webkit-overflow-scrolling: touch;
         overscroll-behavior-x: contain;
@@ -241,13 +241,21 @@ If your plugin does not need CSS, delete this file.
         scroll-behavior: smooth;
         /* Add scroll snapping for better mobile UX */
         scroll-snap-type: x mandatory;
+
+        /* Hide visual scrollbars on mobile while preserving swipe */
+        scrollbar-width: none; /* Firefox */
+    }
+    .storyteller-dashboard-tabs::-webkit-scrollbar {
+        height: 0; /* WebKit-based browsers */
+        width: 0;
+        background: transparent;
     }
     
     .storyteller-tab-header {
         min-height: 44px; /* Apple HIG standard touch target */
         padding: 0.75em 1.5em; /* Larger padding for mobile */
         font-size: 1.1rem; /* Slightly larger text */
-        min-width: 80px; /* Ensure minimum touch target width */
+        min-width: 140px; /* INCREASED - Ensure minimum touch target width AND force overflow */
         display: flex;
         align-items: center;
         justify-content: center;
@@ -255,6 +263,9 @@ If your plugin does not need CSS, delete this file.
         scroll-snap-align: start;
         /* Ensure proper touch targets */
         touch-action: manipulation;
+        /* Ensure flex properties are maintained on mobile */
+        flex: 0 0 auto;
+        flex-shrink: 0;
     }
     
     /* Card layouts become single column */
@@ -984,13 +995,15 @@ If your plugin does not need CSS, delete this file.
 .storyteller-dashboard-tabs {
   display: flex;
   flex-direction: row;
-  flex-wrap: nowrap;
-  overflow-x: auto !important;
+  flex-wrap: nowrap; /* Explicit nowrap to prevent wrapping */
+  overflow-x: auto;
+  overflow-y: hidden;
   -webkit-overflow-scrolling: touch;
   position: relative;
   white-space: nowrap;
   background: var(--background-secondary);
-  border-bottom: 1.5px solid var(--background-modifier-border);
+  /* Use integer pixel to avoid hairline artifacts during scroll */
+  border-bottom: 2px solid var(--background-modifier-border);
   gap: 0.5em;
   padding: 0.25em 1em 0.25em 1em;
   scrollbar-width: thin;
@@ -998,12 +1011,6 @@ If your plugin does not need CSS, delete this file.
   box-sizing: border-box;
   max-width: 100%;
   width: 100%;
-  min-height: 2.5em;
-  cursor: grab;
-  pointer-events: auto;
-  overflow-x: scroll !important;
-  scrollbar-width: auto;
-  scrollbar-color: var(--background-modifier-border) var(--background-secondary);
   min-height: 3em;
   
   /* Enhanced mobile scrolling behavior */
@@ -1012,6 +1019,14 @@ If your plugin does not need CSS, delete this file.
   scroll-behavior: smooth;
   touch-action: pan-x;
   scroll-snap-type: x proximity;
+
+  /* Stabilize compositor/text during motion */
+  will-change: scroll-position;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+
+  /* Ensure proper scrollbar styling */
+  scrollbar-color: var(--background-modifier-border) var(--background-secondary);
 }
 
 .storyteller-dashboard-tabs::-webkit-scrollbar {
@@ -1032,16 +1047,21 @@ If your plugin does not need CSS, delete this file.
   position: absolute;
   right: 0;
   top: 0;
-  width: 2em;
+  /* Narrow gradient to reduce seam prominence */
+  width: 1em;
   height: 100%;
   pointer-events: none;
-  background: linear-gradient(to left, var(--background-secondary), transparent 80%);
+  /* Softer gradient to avoid visible step at edge */
+  background: linear-gradient(to left, color-mix(in srgb, var(--background-secondary) 95%, transparent), transparent 70%);
   display: block;
 }
 
 .storyteller-tab-header {
   flex: 0 0 auto;
-  display: inline-block;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 140px; /* Ensure minimum width for overflow on mobile - MATCHED TO MOBILE BREAKPOINT */
   padding: 0.5em 1.2em;
   cursor: pointer;
   border-radius: var(--radius-m) var(--radius-m) 0 0;
@@ -1051,14 +1071,35 @@ If your plugin does not need CSS, delete this file.
   font-family: var(--font-interface);
   font-size: 1em;
   font-weight: 500;
-  margin-bottom: -2px;
+  /* Avoid negative margin stacking artifacts with container border */
+  margin-bottom: 0;
   transition: color 0.18s, border-color 0.18s, background 0.18s;
   outline: none;
+  white-space: nowrap;
+
+  /* Rendering/compositing stability */
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
   
   /* Mobile touch optimization */
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
   user-select: none;
+  
+  /* Mobile-specific adjustments */
+  scroll-snap-align: center;
+}
+
+/* Mobile-specific tab header sizing */
+@media (max-width: 768px) {
+  .storyteller-tab-header {
+    min-width: 140px; /* MATCH mobile breakpoint - force overflow on mobile */
+    padding: 0.5em 1em;
+    font-size: 0.9em;
+    /* Ensure flex properties are explicitly set */
+    flex: 0 0 auto;
+    flex-shrink: 0;
+  }
 }
 
 .storyteller-tab-header:focus-visible {
@@ -1213,7 +1254,6 @@ If your plugin does not need CSS, delete this file.
 .storyteller-dashboard-view-container,
 .storyteller-dashboard-content,
 .storyteller-dashboard-header,
-.storyteller-dashboard-tabs,
 .storyteller-dashboard-content .storyteller-list-container,
 .storyteller-dashboard-content .storyteller-gallery-grid {
   overflow-x: hidden !important;
@@ -1241,38 +1281,6 @@ If your plugin does not need CSS, delete this file.
   min-width: 0;
   max-width: 100%;
   box-sizing: border-box;
-}
-
-.my-plugin-scrollable-tabs {
-  display: flex;
-  flex-direction: row;
-  flex-wrap: nowrap;
-  white-space: nowrap;
-  overflow-x: auto;
-  min-height: 3em;
-  width: 100%;
-  scrollbar-width: thin;
-  scrollbar-color: var(--background-modifier-border) var(--background-secondary);
-  background: var(--background-secondary);
-  border-bottom: 1.5px solid var(--background-modifier-border);
-  
-  /* Enhanced mobile touch scrolling support */
-  -webkit-overflow-scrolling: touch;
-  overscroll-behavior-x: contain;
-  overscroll-behavior-y: auto;
-  scroll-behavior: smooth;
-  
-  /* Improved touch targets and scroll snapping for mobile */
-  touch-action: pan-x;
-  scroll-snap-type: x mandatory;
-}
-.my-plugin-scrollable-tabs::-webkit-scrollbar {
-  height: 10px;
-  background: var(--background-secondary);
-}
-.my-plugin-scrollable-tabs::-webkit-scrollbar-thumb {
-  background: var(--background-modifier-border);
-  border-radius: 5px;
 }
 
 /* --- Groups Tab Card Layout --- */

@@ -62,6 +62,22 @@ export class DashboardView extends ItemView {
     private typingTimer: number | null = null;
 
     /**
+     * Helper method to mark search input dismissal intent
+     * Sets a temporary attribute to indicate user requested keyboard dismissal
+     */
+    private markSearchInputDismissal() {
+        if (this.currentSearchInput) {
+            this.currentSearchInput.setAttribute('data-user-dismissed', 'true');
+            // Clear the flag after a short delay to allow normal interaction
+            setTimeout(() => {
+                if (this.currentSearchInput) {
+                    this.currentSearchInput.removeAttribute('data-user-dismissed');
+                }
+            }, 500);
+        }
+    }
+
+    /**
      * Helper method to get the appropriate image source path
      * Handles external URLs, data URIs, app/obsidian protocols, and local vault paths
      * @param imagePath The image path (URL or vault path)
@@ -340,9 +356,42 @@ export class DashboardView extends ItemView {
         };
 
         // --- Tab Headers (Now added AFTER the header container) ---
-        this.tabHeaderContainer = container.createDiv('storyteller-dashboard-tabs my-plugin-scrollable-tabs');
+        this.tabHeaderContainer = container.createDiv('storyteller-dashboard-tabs');
         this.tabHeaderContainer.setAttr('role', 'tablist');
         this.tabHeaderContainer.tabIndex = 0; // Make tablist focusable for keyboard navigation
+
+        // Debug horizontal scroll on mobile
+        if (PlatformUtils.isMobile()) {
+            // Add debug logging after a short delay to allow DOM to settle
+            setTimeout(() => {
+                const tabsContainer = this.tabHeaderContainer;
+                if (tabsContainer) {
+                    const scrollWidth = tabsContainer.scrollWidth;
+                    const clientWidth = tabsContainer.clientWidth;
+                    const computedStyle = window.getComputedStyle(tabsContainer);
+                    const tabHeaders = tabsContainer.querySelectorAll('.storyteller-tab-header');
+                    
+                    console.log(`Storyteller Suite - Tab Debug:`, {
+                        scrollWidth,
+                        clientWidth,
+                        isOverflowing: scrollWidth > clientWidth,
+                        tabCount: this.tabs.length,
+                        canScrollHorizontally: scrollWidth > clientWidth,
+                        containerStyles: {
+                            display: computedStyle.display,
+                            flexWrap: computedStyle.flexWrap,
+                            overflowX: computedStyle.overflowX,
+                            width: computedStyle.width
+                        },
+                        firstTabStyles: tabHeaders.length > 0 ? {
+                            flex: window.getComputedStyle(tabHeaders[0]).flex,
+                            flexShrink: window.getComputedStyle(tabHeaders[0]).flexShrink,
+                            minWidth: window.getComputedStyle(tabHeaders[0]).minWidth
+                        } : null
+                    });
+                }
+            }, 100);
+        }
 
         // Mouse wheel horizontal scroll support (desktop only - let mobile use native touch scrolling)
         if (!PlatformUtils.isMobile()) {
@@ -416,6 +465,20 @@ export class DashboardView extends ItemView {
         this.registerEvent(this.app.workspace.on('resize', () => {
             this.debouncedRefreshActiveTab();
         }));
+
+        // --- Register Global Click Handler for Mobile Keyboard Dismissal ---
+        if (PlatformUtils.isMobile()) {
+            this.registerDomEvent(document, 'click', (e: MouseEvent) => {
+                // If user taps outside any search input, allow keyboard dismissal
+                if (this.currentSearchInput && 
+                    e.target !== this.currentSearchInput && 
+                    !this.currentSearchInput.contains(e.target as Node)) {
+                    // Mark as user-requested dismissal and remove focus
+                    this.markSearchInputDismissal();
+                    this.currentSearchInput.blur();
+                }
+            });
+        }
 
         // --- Initial Content Render ---
         await this.renderCharactersContent(this.tabContentContainer); // Render the first tab initially
@@ -1003,6 +1066,8 @@ export class DashboardView extends ItemView {
                     // Add typing detection to prevent auto-refresh while typing
                     const startTyping = () => {
                         this.isUserTyping = true;
+                        // Reset dismissal flag when user types
+                        component.inputEl.removeAttribute('data-user-dismissed');
                         if (this.typingTimer) {
                             clearTimeout(this.typingTimer);
                         }
@@ -1013,8 +1078,19 @@ export class DashboardView extends ItemView {
                     };
                     
                     component.inputEl.addEventListener('input', startTyping);
-                    component.inputEl.addEventListener('keydown', startTyping);
                     component.inputEl.addEventListener('focus', startTyping);
+                    
+                    // Handle keyboard events including Enter key for dismissal
+                    component.inputEl.addEventListener('keydown', (e: KeyboardEvent) => {
+                        startTyping(); // Still track typing for auto-refresh prevention
+                        
+                        // Allow Enter key to dismiss keyboard on mobile
+                        if (e.key === 'Enter' && PlatformUtils.isMobile()) {
+                            this.markSearchInputDismissal();
+                            component.inputEl.blur(); // Dismiss keyboard
+                            e.preventDefault(); // Prevent any default form submission
+                        }
+                    });
                     
                     component.inputEl.addEventListener('blur', () => {
                         // User stopped typing when they leave the input
@@ -1027,6 +1103,9 @@ export class DashboardView extends ItemView {
                     
                     // Additional mobile-specific event handling
                     component.inputEl.addEventListener('focus', () => {
+                        // Reset dismissal flag when user focuses again
+                        component.inputEl.removeAttribute('data-user-dismissed');
+                        
                         // Ensure the input stays focused on mobile
                         if (PlatformUtils.isMobile()) {
                             // Prevent the input from losing focus due to layout changes
@@ -1038,12 +1117,19 @@ export class DashboardView extends ItemView {
                         }
                     });
                     
-                    // Prevent input from losing focus on mobile during search
+                    // Improved blur handling - only restore focus if NOT user-initiated
                     component.inputEl.addEventListener('blur', (e) => {
-                        if (PlatformUtils.isMobile() && document.activeElement !== component.inputEl) {
+                        const userDismissed = component.inputEl.hasAttribute('data-user-dismissed');
+                        
+                        if (PlatformUtils.isMobile() && 
+                            !userDismissed && // Respect user's dismissal intent
+                            document.activeElement !== component.inputEl) {
+                            
                             // Small delay before attempting to restore focus
                             setTimeout(() => {
+                                const stillUserDismissed = component.inputEl.hasAttribute('data-user-dismissed');
                                 if (this.currentSearchInput === component.inputEl && 
+                                    !stillUserDismissed && // Double-check dismissal flag
                                     document.activeElement !== component.inputEl &&
                                     component.inputEl.isConnected) {
                                     try {
