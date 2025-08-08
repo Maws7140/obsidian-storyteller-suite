@@ -1773,86 +1773,86 @@ export default class StorytellerSuitePlugin extends Plugin {
 	/**
 	 * Add a group id to an entity's groups array
 	 */
-	private async addGroupIdToEntity(type: 'character' | 'event' | 'location' | 'item', id: string, groupId: string): Promise<void> {
-		if (type === 'character') {
-			const characters = await this.listCharacters();
-			const character = characters.find(c => c.id === id);
-			if (character) {
-				if (!character.groups) character.groups = [];
-				if (!character.groups.includes(groupId)) {
-					character.groups.push(groupId);
-					await this.saveCharacter(character);
-				}
-			}
-		} else if (type === 'location') {
-			const locations = await this.listLocations();
-			const location = locations.find(l => l.id === id);
-			if (location) {
-				if (!location.groups) location.groups = [];
-				if (!location.groups.includes(groupId)) {
-					location.groups.push(groupId);
-					await this.saveLocation(location);
-				}
-			}
-		} else if (type === 'event') {
-			const events = await this.listEvents();
-			const event = events.find(e => e.id === id);
-			if (event) {
-				if (!event.groups) event.groups = [];
-				if (!event.groups.includes(groupId)) {
-					event.groups.push(groupId);
-					await this.saveEvent(event);
-				}
-			}
-		}
-		else if (type === 'item') {
-			const items = await this.listPlotItems();
-			const item = items.find(i => (i.id || i.name) === id);
-			if (item) {
-				if (!item.groups) item.groups = [];
-				if (!item.groups.includes(groupId)) {
-					item.groups.push(groupId);
-					await this.savePlotItem(item);
-				}
-			}
-		}
-	}
+    private async addGroupIdToEntity(type: 'character' | 'event' | 'location' | 'item', id: string, groupId: string): Promise<void> {
+        if (type === 'character') {
+            const characters = await this.listCharacters();
+            const character = characters.find(c => (c.id || c.name) === id);
+            if (character) {
+                if (!character.groups) character.groups = [];
+                if (!character.groups.includes(groupId)) {
+                    character.groups.push(groupId);
+                    await this.saveCharacter(character);
+                }
+            }
+        } else if (type === 'location') {
+            const locations = await this.listLocations();
+            const location = locations.find(l => (l.id || l.name) === id);
+            if (location) {
+                if (!location.groups) location.groups = [];
+                if (!location.groups.includes(groupId)) {
+                    location.groups.push(groupId);
+                    await this.saveLocation(location);
+                }
+            }
+        } else if (type === 'event') {
+            const events = await this.listEvents();
+            const event = events.find(e => (e.id || e.name) === id);
+            if (event) {
+                if (!event.groups) event.groups = [];
+                if (!event.groups.includes(groupId)) {
+                    event.groups.push(groupId);
+                    await this.saveEvent(event);
+                }
+            }
+        }
+        else if (type === 'item') {
+            const items = await this.listPlotItems();
+            const item = items.find(i => (i.id || i.name) === id);
+            if (item) {
+                if (!item.groups) item.groups = [];
+                if (!item.groups.includes(groupId)) {
+                    item.groups.push(groupId);
+                    await this.savePlotItem(item);
+                }
+            }
+        }
+    }
 
 	/**
 	 * Remove a group id from an entity's groups array
 	 */
-	private async removeGroupIdFromEntity(type: 'character' | 'event' | 'location' | 'item', id: string, groupId: string): Promise<void> {
-		if (type === 'character') {
-			const characters = await this.listCharacters();
-			const character = characters.find(c => c.id === id);
-			if (character && character.groups && character.groups.includes(groupId)) {
-				character.groups = character.groups.filter(gid => gid !== groupId);
-				await this.saveCharacter(character);
-			}
-		} else if (type === 'location') {
-			const locations = await this.listLocations();
-			const location = locations.find(l => l.id === id);
-			if (location && location.groups && location.groups.includes(groupId)) {
-				location.groups = location.groups.filter(gid => gid !== groupId);
-				await this.saveLocation(location);
-			}
-		} else if (type === 'event') {
-			const events = await this.listEvents();
-			const event = events.find(e => e.id === id);
-			if (event && event.groups && event.groups.includes(groupId)) {
-				event.groups = event.groups.filter(gid => gid !== groupId);
-				await this.saveEvent(event);
-			}
-		}
-		 else if (type === 'item') {
-			const items = await this.listPlotItems();
-			const item = items.find(i => (i.id || i.name) === id);
-			if (item && item.groups && item.groups.includes(groupId)) {
-				item.groups = item.groups.filter(gid => gid !== groupId);
-				await this.savePlotItem(item);
-			}
-		}
-	}
+    private async removeGroupIdFromEntity(type: 'character' | 'event' | 'location' | 'item', id: string, groupId: string): Promise<void> {
+        if (type === 'character') {
+            const characters = await this.listCharacters();
+            const character = characters.find(c => (c.id || c.name) === id);
+            if (character && character.groups && character.groups.includes(groupId)) {
+                character.groups = character.groups.filter(gid => gid !== groupId);
+                await this.saveCharacter(character);
+            }
+        } else if (type === 'location') {
+            const locations = await this.listLocations();
+            const location = locations.find(l => (l.id || l.name) === id);
+            if (location && location.groups && location.groups.includes(groupId)) {
+                location.groups = location.groups.filter(gid => gid !== groupId);
+                await this.saveLocation(location);
+            }
+        } else if (type === 'event') {
+            const events = await this.listEvents();
+            const event = events.find(e => (e.id || e.name) === id);
+            if (event && event.groups && event.groups.includes(groupId)) {
+                event.groups = event.groups.filter(gid => gid !== groupId);
+                await this.saveEvent(event);
+            }
+        }
+         else if (type === 'item') {
+            const items = await this.listPlotItems();
+            const item = items.find(i => (i.id || i.name) === id);
+            if (item && item.groups && item.groups.includes(groupId)) {
+                item.groups = item.groups.filter(gid => gid !== groupId);
+                await this.savePlotItem(item);
+            }
+        }
+    }
 
 	/**
 	 * Settings Management

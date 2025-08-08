@@ -454,41 +454,49 @@ export class EventModal extends Modal {
 
     renderGroupSelector(container: HTMLElement) {
         container.empty();
-        // Add a multi-select for groups
         const allGroups = this.plugin.getGroups();
-        const selectedGroupIds = new Set(this.event.groups || []);
-        new Setting(container)
-            .setName('Groups')
-            .setDesc('Assign this event to one or more groups.')
-            .addDropdown(dropdown => {
-                dropdown.addOption('', '-- Select group --');
-                allGroups.forEach(group => {
-                    dropdown.addOption(group.id, group.name);
+        const syncSelection = async (): Promise<Set<string>> => {
+            const identifier = this.event.id || this.event.name;
+            const freshList = await this.plugin.listEvents();
+            const fresh = freshList.find(e => (e.id || e.name) === identifier);
+            const current = new Set((fresh?.groups || this.event.groups || []) as string[]);
+            this.event.groups = Array.from(current);
+            return current;
+        };
+        (async () => {
+            const selectedGroupIds = await syncSelection();
+            new Setting(container)
+                .setName('Groups')
+                .setDesc('Assign this event to one or more groups.')
+                .addDropdown(dropdown => {
+                    dropdown.addOption('', '-- Select group --');
+                    allGroups.forEach(group => {
+                        dropdown.addOption(group.id, group.name);
+                    });
+                    dropdown.setValue('');
+                    dropdown.onChange(async (value) => {
+                        if (value && !selectedGroupIds.has(value)) {
+                            selectedGroupIds.add(value);
+                            this.event.groups = Array.from(selectedGroupIds);
+                            await this.plugin.addMemberToGroup(value, 'event', this.event.id || this.event.name);
+                            this.renderGroupSelector(container);
+                        }
+                    });
                 });
-                dropdown.setValue('');
-                dropdown.onChange(async (value) => {
-                    if (value && !selectedGroupIds.has(value)) {
-                        selectedGroupIds.add(value);
+            if (selectedGroupIds.size > 0) {
+                const selectedDiv = container.createDiv('selected-groups');
+                allGroups.filter(g => selectedGroupIds.has(g.id)).forEach(group => {
+                    const tag = selectedDiv.createSpan({ text: group.name, cls: 'group-tag' });
+                    const removeBtn = tag.createSpan({ text: ' ×', cls: 'remove-group-btn' });
+                    removeBtn.onclick = async () => {
+                        selectedGroupIds.delete(group.id);
                         this.event.groups = Array.from(selectedGroupIds);
-                        await this.plugin.addMemberToGroup(value, 'event', this.event.id || this.event.name);
-                        this.renderGroupSelector(container); // Re-render to update UI
-                    }
+                        await this.plugin.removeMemberFromGroup(group.id, 'event', this.event.id || this.event.name);
+                        this.renderGroupSelector(container);
+                    };
                 });
-            });
-        // Show selected groups with remove buttons
-        if (selectedGroupIds.size > 0) {
-            const selectedDiv = container.createDiv('selected-groups');
-            allGroups.filter(g => selectedGroupIds.has(g.id)).forEach(group => {
-                const tag = selectedDiv.createSpan({ text: group.name, cls: 'group-tag' });
-                const removeBtn = tag.createSpan({ text: ' ×', cls: 'remove-group-btn' });
-                removeBtn.onclick = async () => {
-                    selectedGroupIds.delete(group.id);
-                    this.event.groups = Array.from(selectedGroupIds);
-                    await this.plugin.removeMemberFromGroup(group.id, 'event', this.event.id || this.event.name);
-                    this.renderGroupSelector(container);
-                };
-            });
-        }
+            }
+        })();
     }
 
     onClose() {

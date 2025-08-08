@@ -228,41 +228,48 @@ export class PlotItemModal extends Modal {
     renderGroupSelector(container: HTMLElement) {
         container.empty();
         const allGroups = this.plugin.getGroups();
-        const selectedGroupIds = new Set(this.item.groups || []);
-
-        new Setting(container)
-            .setName('Groups')
-            .setDesc('Assign this item to one or more groups.')
-            .addDropdown(dropdown => {
-                dropdown.addOption('', '-- Select group --');
-                allGroups.forEach(group => dropdown.addOption(group.id, group.name));
-                dropdown.setValue('');
-                dropdown.onChange(async (value) => {
-                    if (value && !selectedGroupIds.has(value)) {
-                        selectedGroupIds.add(value);
-                        this.item.groups = Array.from(selectedGroupIds);
-                        // Using name as fallback ID for items created before IDs were standard
-                        const itemId = this.item.id || this.item.name;
-                        await this.plugin.addMemberToGroup(value, 'item', itemId);
-                        this.renderGroupSelector(container);
-                    }
+        const syncSelection = async (): Promise<Set<string>> => {
+            const identifier = this.item.id || this.item.name;
+            const freshList = await this.plugin.listPlotItems();
+            const fresh = freshList.find(i => (i.id || i.name) === identifier);
+            const current = new Set((fresh?.groups || this.item.groups || []) as string[]);
+            this.item.groups = Array.from(current);
+            return current;
+        };
+        (async () => {
+            const selectedGroupIds = await syncSelection();
+            new Setting(container)
+                .setName('Groups')
+                .setDesc('Assign this item to one or more groups.')
+                .addDropdown(dropdown => {
+                    dropdown.addOption('', '-- Select group --');
+                    allGroups.forEach(group => dropdown.addOption(group.id, group.name));
+                    dropdown.setValue('');
+                    dropdown.onChange(async (value) => {
+                        if (value && !selectedGroupIds.has(value)) {
+                            selectedGroupIds.add(value);
+                            this.item.groups = Array.from(selectedGroupIds);
+                            const itemId = this.item.id || this.item.name;
+                            await this.plugin.addMemberToGroup(value, 'item', itemId);
+                            this.renderGroupSelector(container);
+                        }
+                    });
                 });
-            });
-
-        if (selectedGroupIds.size > 0) {
-            const selectedDiv = container.createDiv('selected-groups');
-            allGroups.filter(g => selectedGroupIds.has(g.id)).forEach(group => {
-                const tag = selectedDiv.createSpan({ text: group.name, cls: 'group-tag' });
-                const removeBtn = tag.createSpan({ text: ' ×', cls: 'remove-group-btn' });
-                removeBtn.onclick = async () => {
-                    selectedGroupIds.delete(group.id);
-                    this.item.groups = Array.from(selectedGroupIds);
-                    const itemId = this.item.id || this.item.name;
-                    await this.plugin.removeMemberFromGroup(group.id, 'item', itemId);
-                    this.renderGroupSelector(container);
-                };
-            });
-        }
+            if (selectedGroupIds.size > 0) {
+                const selectedDiv = container.createDiv('selected-groups');
+                allGroups.filter(g => selectedGroupIds.has(g.id)).forEach(group => {
+                    const tag = selectedDiv.createSpan({ text: group.name, cls: 'group-tag' });
+                    const removeBtn = tag.createSpan({ text: ' ×', cls: 'remove-group-btn' });
+                    removeBtn.onclick = async () => {
+                        selectedGroupIds.delete(group.id);
+                        this.item.groups = Array.from(selectedGroupIds);
+                        const itemId = this.item.id || this.item.name;
+                        await this.plugin.removeMemberFromGroup(group.id, 'item', itemId);
+                        this.renderGroupSelector(container);
+                    };
+                });
+            }
+        })();
     }
 
     onClose() {
