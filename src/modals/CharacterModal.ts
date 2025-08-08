@@ -334,41 +334,52 @@ export class CharacterModal extends ResponsiveModal {
 
     renderGroupSelector(container: HTMLElement) {
         container.empty();
-        // Add a multi-select for groups
+        // Derive current selection by reading the entity's saved groups from disk for truth
+        // so that updates made from the Groups tab reflect immediately here.
         const allGroups = this.plugin.getGroups();
-        const selectedGroupIds = new Set(this.character.groups || []);
-        new Setting(container)
-            .setName('Groups')
-            .setDesc('Assign this character to one or more groups.')
-            .addDropdown(dropdown => {
-                dropdown.addOption('', '-- Select group --');
-                allGroups.forEach(group => {
-                    dropdown.addOption(group.id, group.name);
+        const syncSelection = async (): Promise<Set<string>> => {
+            const identifier = this.character.id || this.character.name;
+            const freshList = await this.plugin.listCharacters();
+            const fresh = freshList.find(c => (c.id || c.name) === identifier);
+            const current = new Set((fresh?.groups || this.character.groups || []) as string[]);
+            // keep in-memory model in sync so saving the modal preserves selection
+            this.character.groups = Array.from(current);
+            return current;
+        };
+        (async () => {
+            const selectedGroupIds = await syncSelection();
+            new Setting(container)
+                .setName('Groups')
+                .setDesc('Assign this character to one or more groups.')
+                .addDropdown(dropdown => {
+                    dropdown.addOption('', '-- Select group --');
+                    allGroups.forEach(group => {
+                        dropdown.addOption(group.id, group.name);
+                    });
+                    dropdown.setValue('');
+                    dropdown.onChange(async (value) => {
+                        if (value && !selectedGroupIds.has(value)) {
+                            selectedGroupIds.add(value);
+                            this.character.groups = Array.from(selectedGroupIds);
+                            await this.plugin.addMemberToGroup(value, 'character', this.character.id || this.character.name);
+                            this.renderGroupSelector(container);
+                        }
+                    });
                 });
-                dropdown.setValue('');
-                dropdown.onChange(async (value) => {
-                    if (value && !selectedGroupIds.has(value)) {
-                        selectedGroupIds.add(value);
+            if (selectedGroupIds.size > 0) {
+                const selectedDiv = container.createDiv('selected-groups');
+                allGroups.filter(g => selectedGroupIds.has(g.id)).forEach(group => {
+                    const tag = selectedDiv.createSpan({ text: group.name, cls: 'group-tag' });
+                    const removeBtn = tag.createSpan({ text: ' ×', cls: 'remove-group-btn' });
+                    removeBtn.onclick = async () => {
+                        selectedGroupIds.delete(group.id);
                         this.character.groups = Array.from(selectedGroupIds);
-                        await this.plugin.addMemberToGroup(value, 'character', this.character.id || this.character.name);
-                        this.renderGroupSelector(container); // Re-render to update UI
-                    }
+                        await this.plugin.removeMemberFromGroup(group.id, 'character', this.character.id || this.character.name);
+                        this.renderGroupSelector(container);
+                    };
                 });
-            });
-        // Show selected groups with remove buttons
-        if (selectedGroupIds.size > 0) {
-            const selectedDiv = container.createDiv('selected-groups');
-            allGroups.filter(g => selectedGroupIds.has(g.id)).forEach(group => {
-                const tag = selectedDiv.createSpan({ text: group.name, cls: 'group-tag' });
-                const removeBtn = tag.createSpan({ text: ' ×', cls: 'remove-group-btn' });
-                removeBtn.onclick = async () => {
-                    selectedGroupIds.delete(group.id);
-                    this.character.groups = Array.from(selectedGroupIds);
-                    await this.plugin.removeMemberFromGroup(group.id, 'character', this.character.id || this.character.name);
-                    this.renderGroupSelector(container);
-                };
-            });
-        }
+            }
+        })();
     }
 
     onClose() {
