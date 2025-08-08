@@ -1,4 +1,4 @@
-import { App, Modal, Setting, TFile, FuzzySuggestModal } from 'obsidian';
+import { App, Modal, Setting, TFile, FuzzySuggestModal, prepareFuzzySearch, FuzzyMatch } from 'obsidian';
 import { GalleryImage } from '../types';
 import StorytellerSuitePlugin from '../main';
 import { ImageDetailModal } from './ImageDetailModal';
@@ -13,6 +13,40 @@ export class ImageSuggestModal extends FuzzySuggestModal<TFile> { // Added expor
         this.plugin = plugin;
         this.onChoose = onChoose;
         this.setPlaceholder("Select an image file...");
+    }
+
+    async onOpen() {
+        super.onOpen();
+        // Force-refresh suggestions so initial list shows without typing
+        setTimeout(() => {
+            if (this.inputEl) {
+                try { (this as any).setQuery?.(''); } catch {}
+                try { this.inputEl.dispatchEvent(new window.Event('input')); } catch {}
+            }
+            try { (this as any).onInputChanged?.(); } catch {}
+        }, 0);
+        setTimeout(() => {
+            if (this.inputEl) {
+                try { (this as any).setQuery?.(''); } catch {}
+                try { this.inputEl.dispatchEvent(new window.Event('input')); } catch {}
+            }
+            try { (this as any).onInputChanged?.(); } catch {}
+        }, 50);
+    }
+
+    // Show all files initially; fuzzy-match when there is a query
+    getSuggestions(query: string): FuzzyMatch<TFile>[] {
+        const items = this.getItems();
+        if (!query) {
+            return items.map((f) => ({ item: f, match: { score: 0, matches: [] } }));
+        }
+        const fuzzy = prepareFuzzySearch(query);
+        return items
+            .map((f) => {
+                const match = fuzzy(this.getItemText(f));
+                return match ? ({ item: f, match } as FuzzyMatch<TFile>) : null;
+            })
+            .filter((fm): fm is FuzzyMatch<TFile> => !!fm);
     }
 
     getItems(): TFile[] {

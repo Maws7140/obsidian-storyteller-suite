@@ -1,4 +1,4 @@
-import { App, FuzzySuggestModal, Notice } from 'obsidian';
+import { App, FuzzySuggestModal, Notice, prepareFuzzySearch, FuzzyMatch } from 'obsidian';
 import { Location } from '../types';
 import StorytellerSuitePlugin from '../main';
 
@@ -25,7 +25,36 @@ export class LocationSuggestModal extends FuzzySuggestModal<Location> {
             new Notice("Error loading locations. Check console.");
             this.locations = []; // Ensure it's an empty array on error
         }
-         // Note: We don't explicitly refresh the suggestions here.
+        // Force-refresh suggestions so initial list shows without typing
+        setTimeout(() => {
+            if (this.inputEl) {
+                try { (this as any).setQuery?.(''); } catch {}
+                try { this.inputEl.dispatchEvent(new window.Event('input')); } catch {}
+            }
+            try { (this as any).onInputChanged?.(); } catch {}
+        }, 0);
+        setTimeout(() => {
+            if (this.inputEl) {
+                try { (this as any).setQuery?.(''); } catch {}
+                try { this.inputEl.dispatchEvent(new window.Event('input')); } catch {}
+            }
+            try { (this as any).onInputChanged?.(); } catch {}
+        }, 50);
+    }
+
+    // Show all items initially; fuzzy-match when there is a query
+    getSuggestions(query: string): FuzzyMatch<Location>[] {
+        const items = this.getItems();
+        if (!query) {
+            return items.map((loc) => ({ item: loc, match: { score: 0, matches: [] } }));
+        }
+        const fuzzy = prepareFuzzySearch(query);
+        return items
+            .map((loc) => {
+                const match = fuzzy(this.getItemText(loc));
+                return match ? ({ item: loc, match } as FuzzyMatch<Location>) : null;
+            })
+            .filter((fm): fm is FuzzyMatch<Location> => !!fm);
     }
 
 	// getItems is now synchronous and returns the pre-fetched list
