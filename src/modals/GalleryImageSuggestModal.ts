@@ -1,4 +1,4 @@
-import { App, FuzzySuggestModal } from 'obsidian';
+import { App, FuzzySuggestModal, prepareFuzzySearch, FuzzyMatch } from 'obsidian';
 import { GalleryImage } from '../types';
 import StorytellerSuitePlugin from '../main';
 
@@ -13,6 +13,41 @@ export class GalleryImageSuggestModal extends FuzzySuggestModal<GalleryImage> {
         this.setPlaceholder("Select an image from the gallery...");
         // Add instruction for clearing
         this.setInstructions([{ command: 'Shift + Enter', purpose: 'Clear selection' }]);
+    }
+
+    async onOpen() {
+        super.onOpen();
+        // Force-refresh suggestions so initial list shows without typing
+        setTimeout(() => {
+            if (this.inputEl) {
+                try { (this as any).setQuery?.(''); } catch {}
+                try { this.inputEl.dispatchEvent(new window.Event('input')); } catch {}
+            }
+            try { (this as any).onInputChanged?.(); } catch {}
+        }, 0);
+        setTimeout(() => {
+            if (this.inputEl) {
+                try { (this as any).setQuery?.(''); } catch {}
+                try { this.inputEl.dispatchEvent(new window.Event('input')); } catch {}
+            }
+            try { (this as any).onInputChanged?.(); } catch {}
+        }, 50);
+    }
+
+    // Show all items initially; fuzzy-match when there is a query
+    getSuggestions(query: string): FuzzyMatch<GalleryImage>[] {
+        const items = this.getItems();
+        if (!query) {
+            return items.map((img) => ({ item: img, match: { score: 0, matches: [] } }));
+        }
+        const fuzzy = prepareFuzzySearch(query);
+        return items
+            .map((img) => {
+                const text = this.getItemText(img);
+                const match = fuzzy(text);
+                return match ? ({ item: img, match } as FuzzyMatch<GalleryImage>) : null;
+            })
+            .filter((fm): fm is FuzzyMatch<GalleryImage> => !!fm);
     }
 
     getItems(): GalleryImage[] {

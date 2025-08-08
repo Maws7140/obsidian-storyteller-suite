@@ -24,8 +24,22 @@ export class CharacterSuggestModal extends FuzzySuggestModal<Character> {
             new Notice("Error loading characters. Check console.");
             this.characters = []; // Ensure it's an empty array on error
         }
-        // Note: We don't explicitly refresh the suggestions here,
-        // as FuzzySuggestModal typically calls getItems after onOpen/when input changes.
+        // Force-refresh suggestions so initial list shows without typing
+        setTimeout(() => {
+            if (this.inputEl) {
+                try { (this as any).setQuery?.(''); } catch {}
+                try { this.inputEl.dispatchEvent(new window.Event('input')); } catch {}
+            }
+            try { (this as any).onInputChanged?.(); } catch {}
+        }, 0);
+        // Safety: run a second refresh shortly after in case layout wasn't ready
+        setTimeout(() => {
+            if (this.inputEl) {
+                try { (this as any).setQuery?.(''); } catch {}
+                try { this.inputEl.dispatchEvent(new window.Event('input')); } catch {}
+            }
+            try { (this as any).onInputChanged?.(); } catch {}
+        }, 50);
     }
 
 	// Override getSuggestions to show all items when query is empty
