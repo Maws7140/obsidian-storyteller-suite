@@ -48,6 +48,99 @@ export interface PlotItem {
     groups?: string[];
 }
 
+/**
+ * Reference entity representing miscellaneous references for a story
+ * Examples: language notes, prophecy lists, random inspiration, etc.
+ * Stored as markdown files with frontmatter in the reference folder
+ */
+export interface Reference {
+    /** Optional unique identifier for the reference */
+    id?: string;
+
+    /** File system path to the reference markdown file */
+    filePath?: string;
+
+    /** Display name of the reference (required) */
+    name: string;
+
+    /** Category of the reference (e.g., Language, Prophecy, Inspiration, Misc) */
+    category?: string;
+
+    /** Optional tags for filtering/search */
+    tags?: string[];
+
+    /** Optional representative image path within the vault */
+    profileImagePath?: string;
+
+    /** Main free-form content (stored in markdown body under `## Content`) */
+    content?: string;
+}
+
+/**
+ * Chapter entity representing an ordered unit in a story
+ * Stores links to existing entities (characters/locations/events/items/groups)
+ */
+export interface Chapter {
+    /** Optional unique identifier */
+    id?: string;
+
+    /** File system path to the chapter markdown file */
+    filePath?: string;
+
+    /** Display title of the chapter (required) */
+    name: string;
+
+    /** Chapter number for ordering */
+    number?: number;
+
+    /** Optional tags for filtering/search */
+    tags?: string[];
+
+    /** Optional representative image path within the vault */
+    profileImagePath?: string;
+
+    /** Short synopsis (stored under `## Summary`) */
+    summary?: string;
+
+    /** Linked entities by name (or id for groups) */
+    linkedCharacters?: string[];
+    linkedLocations?: string[];
+    linkedEvents?: string[];
+    linkedItems?: string[];
+    /** Groups are internal to settings, we link by id for stability */
+    linkedGroups?: string[];
+}
+
+/**
+ * Scene entity representing a granular narrative unit.
+ * Can be standalone or attached to a Chapter.
+ */
+export interface Scene {
+    id?: string;
+    filePath?: string;
+    name: string;
+    /** Optional link to a Chapter by id (undefined when unassigned) */
+    chapterId?: string;
+    /** Optional mirror for display/update convenience */
+    chapterName?: string;
+    /** Workflow status */
+    status?: string; // Draft | Outline | WIP | Revised | Final | ...
+    /** Ordering within a chapter */
+    priority?: number;
+    tags?: string[];
+    profileImagePath?: string;
+    /** Main prose */
+    content?: string;
+    /** Optional beat list */
+    beats?: string[];
+    /** Linked entities by name (groups by id) */
+    linkedCharacters?: string[];
+    linkedLocations?: string[];
+    linkedEvents?: string[];
+    linkedItems?: string[];
+    linkedGroups?: string[];
+}
+
 
 /**
  * Character entity representing a person, creature, or significant figure in the story

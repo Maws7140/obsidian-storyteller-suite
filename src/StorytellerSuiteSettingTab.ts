@@ -389,6 +389,125 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                     comp.inputEl.addEventListener('click', openSuggest);
                     return comp;
                 });
+
+            new Setting(containerEl)
+                .setName('References folder')
+                .setDesc('Path for reference markdown files')
+                .addText(text => {
+                    const comp = text
+                        .setPlaceholder('MyStory/References')
+                        .setValue(this.plugin.settings.referenceFolderPath || '')
+                        .onChange(async (value) => {
+                            this.plugin.settings.referenceFolderPath = value;
+                            await this.plugin.saveSettings();
+                        });
+                    let suppress = false;
+                    const openSuggest = () => {
+                        if (suppress) return;
+                        const modal = new FolderSuggestModal(
+                            this.app,
+                            async (folderPath) => {
+                                this.plugin.settings.referenceFolderPath = folderPath;
+                                comp.setValue(folderPath);
+                                await this.plugin.saveSettings();
+                            },
+                            () => {
+                                suppress = true;
+                                setTimeout(() => { suppress = false; }, 300);
+                                setTimeout(() => comp.inputEl.focus(), 0);
+                            }
+                        );
+                        modal.open();
+                    };
+                    comp.inputEl.addEventListener('keydown', (e: KeyboardEvent) => {
+                        if (e.key === 'ArrowDown' || (e.ctrlKey && e.key.toLowerCase() === ' ')) {
+                            e.preventDefault();
+                            openSuggest();
+                        }
+                    });
+                    comp.inputEl.addEventListener('focus', openSuggest);
+                    comp.inputEl.addEventListener('click', openSuggest);
+                    return comp;
+                });
+
+            new Setting(containerEl)
+                .setName('Scenes folder')
+                .setDesc('Path for scene markdown files')
+                .addText(text => {
+                    const comp = text
+                        .setPlaceholder('MyStory/Scenes')
+                        .setValue(this.plugin.settings.sceneFolderPath || '')
+                        .onChange(async (value) => {
+                            this.plugin.settings.sceneFolderPath = value;
+                            await this.plugin.saveSettings();
+                        });
+                    let suppress = false;
+                    const openSuggest = () => {
+                        if (suppress) return;
+                        const modal = new FolderSuggestModal(
+                            this.app,
+                            async (folderPath) => {
+                                this.plugin.settings.sceneFolderPath = folderPath;
+                                comp.setValue(folderPath);
+                                await this.plugin.saveSettings();
+                            },
+                            () => {
+                                suppress = true;
+                                setTimeout(() => { suppress = false; }, 300);
+                                setTimeout(() => comp.inputEl.focus(), 0);
+                            }
+                        );
+                        modal.open();
+                    };
+                    comp.inputEl.addEventListener('keydown', (e: KeyboardEvent) => {
+                        if (e.key === 'ArrowDown' || (e.ctrlKey && e.key.toLowerCase() === ' ')) {
+                            e.preventDefault();
+                            openSuggest();
+                        }
+                    });
+                    comp.inputEl.addEventListener('focus', openSuggest);
+                    comp.inputEl.addEventListener('click', openSuggest);
+                    return comp;
+                });
+            new Setting(containerEl)
+                .setName('Chapters folder')
+                .setDesc('Path for chapter markdown files')
+                .addText(text => {
+                    const comp = text
+                        .setPlaceholder('MyStory/Chapters')
+                        .setValue(this.plugin.settings.chapterFolderPath || '')
+                        .onChange(async (value) => {
+                            this.plugin.settings.chapterFolderPath = value;
+                            await this.plugin.saveSettings();
+                        });
+                    let suppress = false;
+                    const openSuggest = () => {
+                        if (suppress) return;
+                        const modal = new FolderSuggestModal(
+                            this.app,
+                            async (folderPath) => {
+                                this.plugin.settings.chapterFolderPath = folderPath;
+                                comp.setValue(folderPath);
+                                await this.plugin.saveSettings();
+                            },
+                            () => {
+                                suppress = true;
+                                setTimeout(() => { suppress = false; }, 300);
+                                setTimeout(() => comp.inputEl.focus(), 0);
+                            }
+                        );
+                        modal.open();
+                    };
+                    comp.inputEl.addEventListener('keydown', (e: KeyboardEvent) => {
+                        if (e.key === 'ArrowDown' || (e.ctrlKey && e.key.toLowerCase() === ' ')) {
+                            e.preventDefault();
+                            openSuggest();
+                        }
+                    });
+                    comp.inputEl.addEventListener('focus', openSuggest);
+                    comp.inputEl.addEventListener('click', openSuggest);
+                    return comp;
+                });
         }
 
         new Setting(containerEl)
@@ -406,7 +525,7 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
         if (!this.plugin.settings.enableCustomEntityFolders && this.plugin.settings.enableOneStoryMode) {
             new Setting(containerEl)
                 .setName('One Story base folder')
-                .setDesc('Base folder for Characters/Locations/Events/Items')
+                .setDesc('Base folder for Characters/Locations/Events/Items/References/Chapters')
                 .addText(text => {
                     const comp = text
                         .setPlaceholder('StorytellerSuite')
