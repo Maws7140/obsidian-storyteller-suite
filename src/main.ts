@@ -3,7 +3,7 @@
 import { App, Notice, Plugin, TFile, TFolder, normalizePath, stringifyYaml, WorkspaceLeaf } from 'obsidian';
 import { parseEventDate, toMillis } from './utils/DateParsing';
 import { CharacterModal } from './modals/CharacterModal';
-import { Character, Location, Event, GalleryImage, GalleryData, Story, Group, PlotItem } from './types';
+import { Character, Location, Event, GalleryImage, GalleryData, Story, Group, PlotItem, Reference, Chapter, Scene } from './types';
 import { CharacterListModal } from './modals/CharacterListModal';
 import { LocationModal } from './modals/LocationModal';
 import { LocationListModal } from './modals/LocationListModal';
@@ -39,6 +39,9 @@ import { PlatformUtils } from './utils/PlatformUtils';
     locationFolderPath?: string;
     eventFolderPath?: string;
     itemFolderPath?: string;
+    referenceFolderPath?: string;
+    chapterFolderPath?: string;
+    sceneFolderPath?: string;
     /** When true, avoid nested Stories/StoryName structure and use a single base */
     enableOneStoryMode?: boolean;
     /** Base folder used when one-story mode is enabled (defaults to 'StorytellerSuite') */
@@ -68,6 +71,9 @@ import { PlatformUtils } from './utils/PlatformUtils';
     locationFolderPath: '',
     eventFolderPath: '',
     itemFolderPath: '',
+    referenceFolderPath: '',
+    chapterFolderPath: '',
+    sceneFolderPath: '',
     enableOneStoryMode: false,
     oneStoryBaseFolder: 'StorytellerSuite',
     customTodayISO: undefined,
@@ -106,13 +112,16 @@ export default class StorytellerSuitePlugin extends Plugin {
 	/**
 	 * Helper: Get the folder path for a given entity type in the active story
 	 */
-    getEntityFolder(type: 'character' | 'location' | 'event' | 'item'): string { // Add 'item'
+    getEntityFolder(type: 'character' | 'location' | 'event' | 'item' | 'reference' | 'chapter' | 'scene'): string { // include 'scene'
         // 1) If user enabled fully custom folders, return those directly (no story nesting)
         if (this.settings.enableCustomEntityFolders) {
             if (type === 'character' && this.settings.characterFolderPath) return this.settings.characterFolderPath;
             if (type === 'location' && this.settings.locationFolderPath) return this.settings.locationFolderPath;
             if (type === 'event' && this.settings.eventFolderPath) return this.settings.eventFolderPath;
             if (type === 'item' && this.settings.itemFolderPath) return this.settings.itemFolderPath;
+            if (type === 'reference' && this.settings.referenceFolderPath) return this.settings.referenceFolderPath;
+            if (type === 'chapter' && this.settings.chapterFolderPath) return this.settings.chapterFolderPath;
+            if (type === 'scene' && this.settings.sceneFolderPath) return this.settings.sceneFolderPath;
         }
 
         // 2) If one-story mode is enabled (and no specific custom folder provided above),
@@ -123,6 +132,9 @@ export default class StorytellerSuitePlugin extends Plugin {
             if (type === 'location') return `${base}/Locations`;
             if (type === 'event') return `${base}/Events`;
             if (type === 'item') return `${base}/Items`;
+            if (type === 'reference') return `${base}/References`;
+            if (type === 'chapter') return `${base}/Chapters`;
+            if (type === 'scene') return `${base}/Scenes`;
         }
 
         // 3) Default: Multi-story structure
@@ -133,6 +145,9 @@ export default class StorytellerSuitePlugin extends Plugin {
         if (type === 'location') return `${base}/Locations`;
         if (type === 'event') return `${base}/Events`;
         if (type === 'item') return `${base}/Items`; // New case
+        if (type === 'reference') return `${base}/References`;
+        if (type === 'chapter') return `${base}/Chapters`;
+        if (type === 'scene') return `${base}/Scenes`;
         throw new Error('Unknown entity type');
     }
 
@@ -159,11 +174,17 @@ export default class StorytellerSuitePlugin extends Plugin {
             await this.ensureFolder(`${base}/Locations`);
             await this.ensureFolder(`${base}/Events`);
             await this.ensureFolder(`${base}/Items`);
+            await this.ensureFolder(`${base}/References`);
+            await this.ensureFolder(`${base}/Chapters`);
+            await this.ensureFolder(`${base}/Scenes`);
         } else {
             await this.ensureFolder(`StorytellerSuite/Stories/${name}/Characters`);
             await this.ensureFolder(`StorytellerSuite/Stories/${name}/Locations`);
             await this.ensureFolder(`StorytellerSuite/Stories/${name}/Events`);
             await this.ensureFolder(`StorytellerSuite/Stories/${name}/Items`);
+            await this.ensureFolder(`StorytellerSuite/Stories/${name}/References`);
+            await this.ensureFolder(`StorytellerSuite/Stories/${name}/Chapters`);
+            await this.ensureFolder(`StorytellerSuite/Stories/${name}/Scenes`);
         }
 		return story;
 	}
@@ -489,6 +510,93 @@ export default class StorytellerSuitePlugin extends Plugin {
 			name: 'Open gallery',
 			callback: () => {
 				new GalleryModal(this.app, this).open();
+			}
+		});
+
+		// Reference management commands
+		this.addCommand({
+			id: 'create-new-reference',
+			name: 'Create new reference',
+			callback: () => {
+				import('./modals/ReferenceModal').then(({ ReferenceModal }) => {
+					new ReferenceModal(this.app, this, null, async (ref: Reference) => {
+						await this.saveReference(ref);
+						new Notice(`Reference "${ref.name}" created.`);
+					}).open();
+				});
+			}
+		});
+		this.addCommand({
+			id: 'view-references',
+			name: 'View references',
+			callback: async () => {
+				await this.activateView();
+				setTimeout(() => {
+					const leaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_DASHBOARD);
+					const view = (leaves[0]?.view as any);
+					if (view && typeof view === 'object' && 'tabHeaderContainer' in view) {
+						const header = view.tabHeaderContainer?.querySelector('[data-tab-id="references"]') as HTMLElement;
+						header?.click();
+					}
+				}, 50);
+			}
+		});
+
+		// Chapter management commands
+		this.addCommand({
+			id: 'create-new-chapter',
+			name: 'Create new chapter',
+			callback: () => {
+				import('./modals/ChapterModal').then(({ ChapterModal }) => {
+					new ChapterModal(this.app, this, null, async (ch: Chapter) => {
+						await this.saveChapter(ch);
+						new Notice(`Chapter "${ch.name}" created.`);
+					}).open();
+				});
+			}
+		});
+		this.addCommand({
+			id: 'view-chapters',
+			name: 'View chapters',
+			callback: async () => {
+				await this.activateView();
+				setTimeout(() => {
+					const leaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_DASHBOARD);
+					const view = (leaves[0]?.view as any);
+					if (view && typeof view === 'object' && 'tabHeaderContainer' in view) {
+						const header = view.tabHeaderContainer?.querySelector('[data-tab-id="chapters"]') as HTMLElement;
+						header?.click();
+					}
+				}, 50);
+			}
+		});
+
+		// Scene management commands
+		this.addCommand({
+			id: 'create-new-scene',
+			name: 'Create new scene',
+			callback: () => {
+				import('./modals/SceneModal').then(({ SceneModal }) => {
+					new SceneModal(this.app, this, null, async (sc: Scene) => {
+						await this.saveScene(sc);
+						new Notice(`Scene "${sc.name}" created.`);
+					}).open();
+				});
+			}
+		});
+		this.addCommand({
+			id: 'view-scenes',
+			name: 'View scenes',
+			callback: async () => {
+				await this.activateView();
+				setTimeout(() => {
+					const leaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_DASHBOARD);
+					const view = (leaves[0]?.view as any);
+					if (view && typeof view === 'object' && 'tabHeaderContainer' in view) {
+						const header = view.tabHeaderContainer?.querySelector('[data-tab-id="scenes"]') as HTMLElement;
+						header?.click();
+					}
+				}, 50);
 			}
 		});
 
@@ -1406,6 +1514,11 @@ export default class StorytellerSuitePlugin extends Plugin {
 		await this.ensureFolder(this.getEntityFolder('item'));
 	}
 
+	/** Ensure the reference folder exists for the active story */
+	async ensureReferenceFolder(): Promise<void> {
+		await this.ensureFolder(this.getEntityFolder('reference'));
+	}
+
 	/**
 	 * Save a plot item to the vault as a markdown file
 	 * @param item The plot item data to save
@@ -1565,6 +1678,366 @@ export default class StorytellerSuitePlugin extends Plugin {
 			new Notice(`Error: Could not find item file to delete at ${filePath}`);
 		}
 	}
+
+	/**
+	 * Reference Data Management
+	 */
+
+	/** Save a reference to the vault as a markdown file */
+	async saveReference(reference: Reference): Promise<void> {
+		await this.ensureReferenceFolder();
+		const folderPath = this.getEntityFolder('reference');
+
+		const fileName = `${(reference.name || 'Untitled').replace(/[\\/:"*?<>|]+/g, '')}.md`;
+		const filePath = normalizePath(`${folderPath}/${fileName}`);
+
+		const { filePath: currentFilePath, content, ...rest } = reference as any;
+
+		// Build frontmatter strictly from whitelist
+		const whitelist = new Set(['id', 'name', 'category', 'tags', 'profileImagePath']);
+		const fm: Record<string, any> = {};
+		for (const [k, v] of Object.entries(rest || {})) {
+			if (!whitelist.has(k)) continue;
+			if (typeof v === 'string' && v.includes('\n')) continue;
+			if (v === null || v === undefined) continue;
+			if (Array.isArray(v) && v.length === 0) continue;
+			fm[k] = v;
+		}
+		const frontmatterString = Object.keys(fm).length > 0 ? stringifyYaml(fm) : '';
+
+		// Handle rename
+		let finalFilePath = filePath;
+		if (currentFilePath && currentFilePath !== filePath) {
+			const existing = this.app.vault.getAbstractFileByPath(currentFilePath);
+			if (existing && existing instanceof TFile) {
+				await this.app.fileManager.renameFile(existing, filePath);
+				finalFilePath = filePath;
+			}
+		}
+
+		const existingFile = this.app.vault.getAbstractFileByPath(finalFilePath);
+		const customSections: Record<string, string> = {};
+		if (existingFile && existingFile instanceof TFile) {
+			try {
+				const existingContent = await this.app.vault.cachedRead(existingFile);
+				const primaryMatches = existingContent.matchAll(/^##\s*([^\n\r]+?)\s*[\n\r]+([\s\S]*?)(?=\n\s*##\s|$)/gm);
+				for (const match of primaryMatches) {
+					const sectionName = match[1].trim();
+					const sectionContent = match[2].trim();
+					if (sectionName && sectionContent) customSections[sectionName] = sectionContent;
+				}
+			} catch (e) {
+				console.warn('Error reading existing reference file', e);
+			}
+		}
+
+		// Build body
+		let fileContent = `---\n${frontmatterString}---\n\n`;
+
+		if (content) {
+			fileContent += `## Content\n${(content as string).trim()}\n\n`;
+		} else if (customSections['Content']) {
+			fileContent += `## Content\n${customSections['Content']}\n\n`;
+		}
+
+		const handled = ['Content'];
+		for (const [sectionName, sectionContent] of Object.entries(customSections)) {
+			if (!handled.includes(sectionName) && sectionContent.trim()) {
+				fileContent += `## ${sectionName}\n${sectionContent}\n\n`;
+			}
+		}
+
+		if (existingFile && existingFile instanceof TFile) {
+			await this.app.vault.modify(existingFile, fileContent);
+		} else {
+			await this.app.vault.create(finalFilePath, fileContent);
+		}
+		reference.filePath = finalFilePath;
+		this.app.metadataCache.trigger('dataview:refresh-views');
+	}
+
+	/** List all references */
+	async listReferences(): Promise<Reference[]> {
+		await this.ensureReferenceFolder();
+		const folderPath = this.getEntityFolder('reference');
+		const allFiles = this.app.vault.getMarkdownFiles();
+		const files = allFiles.filter(f => f.path.startsWith(folderPath + '/') && f.extension === 'md');
+		const refs: Reference[] = [];
+		for (const file of files) {
+			const data = await this.parseFile<Reference>(file, { name: '' });
+			if (data) {
+				const anyData = data as any;
+				if (anyData.sections && anyData.sections['Content']) {
+					data.content = anyData.sections['Content'];
+				}
+				refs.push(data);
+			}
+		}
+		return refs.sort((a, b) => a.name.localeCompare(b.name));
+	}
+
+	/** Delete a reference file */
+	async deleteReference(filePath: string): Promise<void> {
+		const file = this.app.vault.getAbstractFileByPath(normalizePath(filePath));
+		if (file instanceof TFile) {
+			await this.app.vault.trash(file, true);
+			new Notice(`Reference file "${file.basename}" moved to trash.`);
+			this.app.metadataCache.trigger('dataview:refresh-views');
+		} else {
+			new Notice(`Error: Could not find reference file to delete at ${filePath}`);
+		}
+	}
+
+    /**
+     * Chapter Data Management
+     */
+
+    async ensureChapterFolder(): Promise<void> {
+        await this.ensureFolder(this.getEntityFolder('chapter'));
+    }
+
+    /** Save a chapter to the vault as a markdown file */
+    async saveChapter(chapter: Chapter): Promise<void> {
+        await this.ensureChapterFolder();
+        const folderPath = this.getEntityFolder('chapter');
+        const safeName = (chapter.name || 'Untitled').replace(/[\\/:"*?<>|]+/g, '');
+        const fileName = `${safeName}.md`;
+        const filePath = normalizePath(`${folderPath}/${fileName}`);
+
+        // Ensure chapter has a stable id for linking
+        if (!chapter.id) {
+            chapter.id = Date.now().toString(36) + Math.random().toString(36).substr(2, 6);
+        }
+
+        const { filePath: currentFilePath, summary, linkedCharacters, linkedLocations, linkedEvents, linkedItems, linkedGroups, ...rest } = chapter as any;
+
+        // Whitelist frontmatter
+        const whitelist = new Set(['id', 'name', 'number', 'tags', 'profileImagePath', 'linkedCharacters', 'linkedLocations', 'linkedEvents', 'linkedItems', 'linkedGroups']);
+        const fm: Record<string, any> = {};
+        for (const [k, v] of Object.entries({ ...rest, linkedCharacters, linkedLocations, linkedEvents, linkedItems, linkedGroups } as Record<string, unknown>)) {
+            if (!whitelist.has(k)) continue;
+            if (typeof v === 'string' && v.includes('\n')) continue;
+            if (v === null || v === undefined) continue;
+            if (Array.isArray(v) && v.length === 0) continue;
+            fm[k] = v;
+        }
+        const frontmatterString = Object.keys(fm).length > 0 ? stringifyYaml(fm) : '';
+
+        // Rename if needed
+        let finalFilePath = filePath;
+        if (currentFilePath && currentFilePath !== filePath) {
+            const existing = this.app.vault.getAbstractFileByPath(currentFilePath);
+            if (existing && existing instanceof TFile) {
+                await this.app.fileManager.renameFile(existing, filePath);
+                finalFilePath = filePath;
+            }
+        }
+
+        const existingFile = this.app.vault.getAbstractFileByPath(finalFilePath);
+        const customSections: Record<string, string> = {};
+        if (existingFile && existingFile instanceof TFile) {
+            try {
+                const existingContent = await this.app.vault.cachedRead(existingFile);
+                const primaryMatches = existingContent.matchAll(/^##\s*([^\n\r]+?)\s*[\n\r]+([\s\S]*?)(?=\n\s*##\s|$)/gm);
+                for (const match of primaryMatches) {
+                    const sectionName = match[1].trim();
+                    const sectionContent = match[2].trim();
+                    if (sectionName && sectionContent) customSections[sectionName] = sectionContent;
+                }
+            } catch (e) {
+                console.warn('Error reading existing chapter file', e);
+            }
+        }
+
+        let fileContent = `---\n${frontmatterString}---\n\n`;
+        if (summary) {
+            fileContent += `## Summary\n${(summary as string).trim()}\n\n`;
+        } else if (customSections['Summary']) {
+            fileContent += `## Summary\n${customSections['Summary']}\n\n`;
+        }
+        const handled = ['Summary'];
+        for (const [sectionName, sectionContent] of Object.entries(customSections)) {
+            if (!handled.includes(sectionName) && sectionContent.trim()) {
+                fileContent += `## ${sectionName}\n${sectionContent}\n\n`;
+            }
+        }
+
+        if (existingFile && existingFile instanceof TFile) {
+            await this.app.vault.modify(existingFile, fileContent);
+        } else {
+            await this.app.vault.create(finalFilePath, fileContent);
+        }
+        chapter.filePath = finalFilePath;
+        this.app.metadataCache.trigger('dataview:refresh-views');
+    }
+
+    /** List all chapters (sorted by number then name) */
+    async listChapters(): Promise<Chapter[]> {
+        await this.ensureChapterFolder();
+        const folderPath = this.getEntityFolder('chapter');
+        const allFiles = this.app.vault.getMarkdownFiles();
+        const files = allFiles.filter(f => f.path.startsWith(folderPath + '/') && f.extension === 'md');
+        const chapters: Chapter[] = [];
+        for (const file of files) {
+            const data = await this.parseFile<Chapter>(file, { name: '' });
+            if (data) {
+                const anyData = data as any;
+                if (anyData.sections && anyData.sections['Summary']) data.summary = anyData.sections['Summary'];
+                chapters.push(data);
+            }
+        }
+        return chapters.sort((a, b) => {
+            const na = a.number ?? Number.MAX_SAFE_INTEGER;
+            const nb = b.number ?? Number.MAX_SAFE_INTEGER;
+            if (na !== nb) return na - nb;
+            return a.name.localeCompare(b.name);
+        });
+    }
+
+    /** Delete a chapter file */
+    async deleteChapter(filePath: string): Promise<void> {
+        const file = this.app.vault.getAbstractFileByPath(normalizePath(filePath));
+        if (file instanceof TFile) {
+            await this.app.vault.trash(file, true);
+            new Notice(`Chapter file "${file.basename}" moved to trash.`);
+            this.app.metadataCache.trigger('dataview:refresh-views');
+        } else {
+            new Notice(`Error: Could not find chapter file to delete at ${filePath}`);
+        }
+    }
+
+    /**
+     * Scene Data Management
+     */
+
+    async ensureSceneFolder(): Promise<void> {
+        await this.ensureFolder(this.getEntityFolder('scene'));
+    }
+
+    async saveScene(scene: Scene): Promise<void> {
+        // Normalize chapterName for display if id is present
+        if (scene.chapterId && !scene.chapterName) {
+            const chapters = await this.listChapters();
+            const picked = chapters.find(c => c.id === scene.chapterId);
+            if (picked) scene.chapterName = picked.name;
+        }
+        await this.ensureSceneFolder();
+        const folderPath = this.getEntityFolder('scene');
+        const fileName = `${(scene.name || 'Untitled').replace(/[\\/:"*?<>|]+/g, '')}.md`;
+        const filePath = normalizePath(`${folderPath}/${fileName}`);
+
+        const { filePath: currentFilePath, content, beats, linkedCharacters, linkedLocations, linkedEvents, linkedItems, linkedGroups, ...rest } = scene as any;
+        const whitelist = new Set(['id','name','chapterId','chapterName','status','priority','tags','profileImagePath','linkedCharacters','linkedLocations','linkedEvents','linkedItems','linkedGroups']);
+        const fm: Record<string, any> = {};
+        for (const [k, v] of Object.entries({ ...rest, linkedCharacters, linkedLocations, linkedEvents, linkedItems, linkedGroups } as Record<string, unknown>)) {
+            if (!whitelist.has(k)) continue;
+            if (typeof v === 'string' && v.includes('\n')) continue;
+            if (v === null || v === undefined) continue;
+            if (Array.isArray(v) && v.length === 0) continue;
+            fm[k] = v;
+        }
+        const frontmatterString = Object.keys(fm).length > 0 ? stringifyYaml(fm) : '';
+
+        // Rename if needed
+        let finalFilePath = filePath;
+        if (currentFilePath && currentFilePath !== filePath) {
+            const existing = this.app.vault.getAbstractFileByPath(currentFilePath);
+            if (existing && existing instanceof TFile) {
+                await this.app.fileManager.renameFile(existing, filePath);
+                finalFilePath = filePath;
+            }
+        }
+
+        const existingFile = this.app.vault.getAbstractFileByPath(finalFilePath);
+        const customSections: Record<string, string> = {};
+        if (existingFile && existingFile instanceof TFile) {
+            try {
+                const existingContent = await this.app.vault.cachedRead(existingFile);
+                const primaryMatches = existingContent.matchAll(/^##\s*([^\n\r]+?)\s*[\n\r]+([\s\S]*?)(?=\n\s*##\s|$)/gm);
+                for (const match of primaryMatches) {
+                    const sectionName = match[1].trim();
+                    const sectionContent = match[2].trim();
+                    if (sectionName && sectionContent) customSections[sectionName] = sectionContent;
+                }
+            } catch (e) {
+                console.warn('Error reading existing scene file', e);
+            }
+        }
+
+        let fileContent = `---\n${frontmatterString}---\n\n`;
+        if (content) fileContent += `## Content\n${(content as string).trim()}\n\n`;
+        else if (customSections['Content']) fileContent += `## Content\n${customSections['Content']}\n\n`;
+
+        const beatsBlock = (beats && Array.isArray(beats) ? beats as string[] : undefined);
+        if (beatsBlock && beatsBlock.length > 0) {
+            fileContent += `## Beat Sheet\n` + beatsBlock.map(b => `- ${b}`).join('\n') + `\n\n`;
+        } else if (customSections['Beat Sheet']) {
+            fileContent += `## Beat Sheet\n${customSections['Beat Sheet']}\n\n`;
+        }
+
+        const handled = ['Content','Beat Sheet'];
+        for (const [sectionName, sectionContent] of Object.entries(customSections)) {
+            if (!handled.includes(sectionName) && sectionContent.trim()) {
+                fileContent += `## ${sectionName}\n${sectionContent}\n\n`;
+            }
+        }
+
+        if (existingFile && existingFile instanceof TFile) {
+            await this.app.vault.modify(existingFile, fileContent);
+        } else {
+            await this.app.vault.create(finalFilePath, fileContent);
+        }
+        scene.filePath = finalFilePath;
+        // Keep display name in sync post-save when chapterId is set
+        if (scene.chapterId && !scene.chapterName) {
+            const chapters = await this.listChapters();
+            const picked = chapters.find(c => c.id === scene.chapterId);
+            if (picked) scene.chapterName = picked.name;
+        }
+        this.app.metadataCache.trigger('dataview:refresh-views');
+    }
+
+    async listScenes(): Promise<Scene[]> {
+        await this.ensureSceneFolder();
+        const folderPath = this.getEntityFolder('scene');
+        const allFiles = this.app.vault.getMarkdownFiles();
+        const files = allFiles.filter(f => f.path.startsWith(folderPath + '/') && f.extension === 'md');
+        const scenes: Scene[] = [];
+        for (const file of files) {
+            const data = await this.parseFile<Scene>(file, { name: '' });
+            if (data) {
+                const anyData = data as any;
+                if (anyData.sections && anyData.sections['Content']) data.content = anyData.sections['Content'];
+                if (anyData.sections && anyData.sections['Beat Sheet']) {
+                    const raw = anyData.sections['Beat Sheet'] as string;
+                    const beats = raw.split('\n').map(l => l.replace(/^\-\s*/, '').trim()).filter(Boolean);
+                    data.beats = beats.length ? beats : undefined;
+                }
+                scenes.push(data);
+            }
+        }
+        // Sort: chapter -> priority -> name
+        return scenes.sort((a, b) => {
+            const ca = a.chapterId ? 0 : 1;
+            const cb = b.chapterId ? 0 : 1;
+            if (ca !== cb) return ca - cb;
+            const pa = a.priority ?? Number.MAX_SAFE_INTEGER;
+            const pb = b.priority ?? Number.MAX_SAFE_INTEGER;
+            if (pa !== pb) return pa - pb;
+            return a.name.localeCompare(b.name);
+        });
+    }
+
+    async deleteScene(filePath: string): Promise<void> {
+        const file = this.app.vault.getAbstractFileByPath(normalizePath(filePath));
+        if (file instanceof TFile) {
+            await this.app.vault.trash(file, true);
+            new Notice(`Scene file "${file.basename}" moved to trash.`);
+            this.app.metadataCache.trigger('dataview:refresh-views');
+        } else {
+            new Notice(`Error: Could not find scene file to delete at ${filePath}`);
+        }
+    }
     
 	/**
 	 * Gallery Data Management
@@ -1870,10 +2343,16 @@ export default class StorytellerSuitePlugin extends Plugin {
             const locFolder = this.getEntityFolder('location');
             const evtFolder = this.getEntityFolder('event');
             const itemFolder = this.getEntityFolder('item'); // Add this
+            const refFolder = this.getEntityFolder('reference');
+            const chapterFolder = this.getEntityFolder('chapter');
+            const sceneFolder = this.getEntityFolder('scene');
             return filePath.startsWith(charFolder + '/') ||
                 filePath.startsWith(locFolder + '/') ||
                 filePath.startsWith(evtFolder + '/') ||
                 filePath.startsWith(itemFolder + '/') || // Add this
+                filePath.startsWith(refFolder + '/') ||
+                filePath.startsWith(chapterFolder + '/') ||
+                filePath.startsWith(sceneFolder + '/') ||
                 filePath.startsWith(this.settings.galleryUploadFolder + '/');
         } catch {
             return false;
@@ -1967,6 +2446,9 @@ export default class StorytellerSuitePlugin extends Plugin {
         if (!('locationFolderPath' in this.settings)) { this.settings.locationFolderPath = DEFAULT_SETTINGS.locationFolderPath; settingsUpdated = true; }
         if (!('eventFolderPath' in this.settings)) { this.settings.eventFolderPath = DEFAULT_SETTINGS.eventFolderPath; settingsUpdated = true; }
         if (!('itemFolderPath' in this.settings)) { this.settings.itemFolderPath = DEFAULT_SETTINGS.itemFolderPath; settingsUpdated = true; }
+        if (!('referenceFolderPath' in this.settings)) { (this.settings as any).referenceFolderPath = DEFAULT_SETTINGS.referenceFolderPath as any; settingsUpdated = true; }
+        if (!('chapterFolderPath' in this.settings)) { (this.settings as any).chapterFolderPath = DEFAULT_SETTINGS.chapterFolderPath as any; settingsUpdated = true; }
+        if (!('sceneFolderPath' in this.settings)) { (this.settings as any).sceneFolderPath = DEFAULT_SETTINGS.sceneFolderPath as any; settingsUpdated = true; }
 		if (!this.settings.groups) {
 			this.settings.groups = [];
 			settingsUpdated = true;

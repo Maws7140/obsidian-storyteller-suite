@@ -125,6 +125,9 @@ export class DashboardView extends ItemView {
             { id: 'items', label: 'Items', renderFn: this.renderItemsContent.bind(this) }, // NEW TAB
             { id: 'gallery', label: 'Gallery', renderFn: this.renderGalleryContent.bind(this) },
             { id: 'groups', label: 'Groups', renderFn: this.renderGroupsContent.bind(this) },
+            { id: 'references', label: 'Reference', renderFn: this.renderReferencesContent.bind(this) },
+            { id: 'chapters', label: 'Chapters', renderFn: this.renderChaptersContent.bind(this) },
+            { id: 'scenes', label: 'Scenes', renderFn: this.renderScenesContent.bind(this) },
         ];
 
         this.debouncedRefreshActiveTab = debounce(this.refreshActiveTab.bind(this), 200, true);
@@ -226,11 +229,17 @@ export class DashboardView extends ItemView {
             const locFolder = this.plugin.getEntityFolder('location');
             const evtFolder = this.plugin.getEntityFolder('event');
             const itemFolder = this.plugin.getEntityFolder('item'); // ADDED THIS LINE
+            const refFolder = this.plugin.getEntityFolder('reference');
+            const chapterFolder = this.plugin.getEntityFolder('chapter');
+            const sceneFolder = this.plugin.getEntityFolder('scene');
             
             const isRelevant = filePath.startsWith(charFolder + '/') ||
                 filePath.startsWith(locFolder + '/') ||
                 filePath.startsWith(evtFolder + '/') ||
                 filePath.startsWith(itemFolder + '/') || // ADDED THIS LINE
+                filePath.startsWith(refFolder + '/') ||
+                filePath.startsWith(chapterFolder + '/') ||
+                filePath.startsWith(sceneFolder + '/') ||
                 filePath.startsWith(this.plugin.settings.galleryUploadFolder + '/');
             return isRelevant;
         } catch {
@@ -1154,6 +1163,291 @@ export class DashboardView extends ItemView {
     }
 
     // --- List/Grid Rendering Helpers (Adapted from Modals) ---
+
+    /** Render the Reference tab content */
+    async renderReferencesContent(container: HTMLElement) {
+        container.empty();
+        this.renderHeaderControls(container, 'References', async (filter: string) => {
+            this.currentFilter = filter;
+            await this.renderReferencesList(container);
+        }, () => {
+            import('../modals/ReferenceModal').then(({ ReferenceModal }) => {
+                new ReferenceModal(this.app, this.plugin, null, async (ref) => {
+                    await this.plugin.saveReference(ref);
+                    new Notice(`Reference "${ref.name}" created.`);
+                }).open();
+            });
+        }, 'Create new');
+
+        await this.renderReferencesList(container);
+    }
+
+    /** Render just the references list (without header controls) */
+    private async renderReferencesList(container: HTMLElement) {
+        const existingListContainer = container.querySelector('.storyteller-list-container');
+        if (existingListContainer) existingListContainer.remove();
+
+        const references = (await this.plugin.listReferences()).filter(ref =>
+            ref.name.toLowerCase().includes(this.currentFilter) ||
+            (ref.category || '').toLowerCase().includes(this.currentFilter) ||
+            (ref.content || '').toLowerCase().includes(this.currentFilter) ||
+            (ref.tags || []).join(' ').toLowerCase().includes(this.currentFilter)
+        );
+
+        const listContainer = container.createDiv('storyteller-list-container');
+        if (references.length === 0) {
+            const emptyMsg = listContainer.createEl('p', { text: 'No references found.' + (this.currentFilter ? ' Matching filter.' : '') });
+            emptyMsg.addClass('storyteller-empty-state');
+            return;
+        }
+
+        references.forEach(ref => {
+            const itemEl = listContainer.createDiv('storyteller-list-item');
+
+            const pfpContainer = itemEl.createDiv('storyteller-list-item-pfp');
+            if (ref.profileImagePath) {
+                const imgEl = pfpContainer.createEl('img');
+                try {
+                    imgEl.src = this.getImageSrc(ref.profileImagePath);
+                    imgEl.alt = ref.name;
+                } catch (e) {
+                    pfpContainer.createSpan({ text: '?' });
+                }
+            } else {
+                pfpContainer.createDiv({ cls: 'storyteller-pfp-placeholder', text: ref.name.substring(0, 1) });
+            }
+
+            const infoEl = itemEl.createDiv('storyteller-list-item-info');
+            const titleEl = infoEl.createEl('strong', { text: ref.name });
+            if (ref.category) {
+                infoEl.createEl('span', { text: ` (${ref.category})`, cls: 'storyteller-list-item-status' });
+            }
+            if (ref.content) {
+                const preview = ref.content.length > 120 ? ref.content.substring(0, 120) + '…' : ref.content;
+                infoEl.createEl('p', { text: preview });
+            }
+            if (ref.tags && ref.tags.length > 0) {
+                const tagsRow = infoEl.createDiv('storyteller-list-item-extra');
+                tagsRow.createSpan({ text: ref.tags.map(t => `#${t}`).join(' ') });
+            }
+
+            const actionsEl = itemEl.createDiv('storyteller-list-item-actions');
+            this.addEditButton(actionsEl, () => {
+                import('../modals/ReferenceModal').then(({ ReferenceModal }) => {
+                    new ReferenceModal(this.app, this.plugin, ref, async (updated) => {
+                        await this.plugin.saveReference(updated);
+                        new Notice(`Reference "${updated.name}" updated.`);
+                    }, async (toDelete) => {
+                        if (toDelete.filePath) await this.plugin.deleteReference(toDelete.filePath);
+                    }).open();
+                });
+            });
+            this.addDeleteButton(actionsEl, async () => {
+                if (ref.filePath && confirm(`Delete reference "${ref.name}"?`)) {
+                    await this.plugin.deleteReference(ref.filePath);
+                }
+            });
+            this.addOpenFileButton(actionsEl, ref.filePath);
+        });
+    }
+
+    /** Render the Chapters tab content */
+    async renderChaptersContent(container: HTMLElement) {
+        container.empty();
+        this.renderHeaderControls(container, 'Chapters', async (filter: string) => {
+            this.currentFilter = filter;
+            await this.renderChaptersList(container);
+        }, () => {
+            import('../modals/ChapterModal').then(({ ChapterModal }) => {
+                new ChapterModal(this.app, this.plugin, null, async (ch) => {
+                    await this.plugin.saveChapter(ch);
+                    new Notice(`Chapter "${ch.name}" created.`);
+                }).open();
+            });
+        }, 'Create new');
+
+        await this.renderChaptersList(container);
+    }
+
+    /** Render just the chapters list (without header controls) */
+    private async renderChaptersList(container: HTMLElement) {
+        const existingListContainer = container.querySelector('.storyteller-list-container');
+        if (existingListContainer) existingListContainer.remove();
+
+        const chapters = (await this.plugin.listChapters()).filter(ch =>
+            ch.name.toLowerCase().includes(this.currentFilter) ||
+            ('' + (ch.number ?? '')).toLowerCase().includes(this.currentFilter) ||
+            (ch.summary || '').toLowerCase().includes(this.currentFilter) ||
+            (ch.tags || []).join(' ').toLowerCase().includes(this.currentFilter)
+        );
+
+        const listContainer = container.createDiv('storyteller-list-container');
+        if (chapters.length === 0) {
+            listContainer.createEl('p', { text: 'No chapters found.' + (this.currentFilter ? ' Matching filter.' : '') });
+            return;
+        }
+
+        chapters.forEach(ch => {
+            const itemEl = listContainer.createDiv('storyteller-list-item');
+
+            const pfpContainer = itemEl.createDiv('storyteller-list-item-pfp');
+            if (ch.profileImagePath) {
+                const imgEl = pfpContainer.createEl('img');
+                try {
+                    imgEl.src = this.getImageSrc(ch.profileImagePath);
+                    imgEl.alt = ch.name;
+                } catch (e) {
+                    pfpContainer.createSpan({ text: '?' });
+                }
+            } else {
+                const badge = pfpContainer.createDiv({ cls: 'storyteller-pfp-placeholder', text: (ch.number ?? '?').toString() });
+                badge.title = 'Chapter number';
+            }
+
+            const infoEl = itemEl.createDiv('storyteller-list-item-info');
+            const title = ch.number != null ? `${ch.number}. ${ch.name}` : ch.name;
+            infoEl.createEl('strong', { text: title });
+            if (ch.summary) {
+                const preview = ch.summary.length > 120 ? ch.summary.substring(0, 120) + '…' : ch.summary;
+                infoEl.createEl('p', { text: preview });
+            }
+            if (ch.tags && ch.tags.length > 0) {
+                const tagsRow = infoEl.createDiv('storyteller-list-item-extra');
+                tagsRow.createSpan({ text: ch.tags.map(t => `#${t}`).join(' ') });
+            }
+
+            const actionsEl = itemEl.createDiv('storyteller-list-item-actions');
+            this.addEditButton(actionsEl, () => {
+                import('../modals/ChapterModal').then(({ ChapterModal }) => {
+                    new ChapterModal(this.app, this.plugin, ch, async (updated) => {
+                        await this.plugin.saveChapter(updated);
+                        new Notice(`Chapter "${updated.name}" updated.`);
+                    }, async (toDelete) => {
+                        if (toDelete.filePath) await this.plugin.deleteChapter(toDelete.filePath);
+                    }).open();
+                });
+            });
+            this.addDeleteButton(actionsEl, async () => {
+                if (ch.filePath && confirm(`Delete chapter "${ch.name}"?`)) {
+                    await this.plugin.deleteChapter(ch.filePath);
+                }
+            });
+            this.addOpenFileButton(actionsEl, ch.filePath);
+        });
+    }
+
+    /** Render the Scenes tab content */
+    async renderScenesContent(container: HTMLElement) {
+        container.empty();
+        this.renderHeaderControls(container, 'Scenes', async (filter: string) => {
+            this.currentFilter = filter;
+            await this.renderScenesList(container);
+        }, () => {
+            import('../modals/SceneModal').then(({ SceneModal }) => {
+                new SceneModal(this.app, this.plugin, null, async (sc) => {
+                    await this.plugin.saveScene(sc);
+                    new Notice(`Scene "${sc.name}" created.`);
+                }).open();
+            });
+        }, 'Create new');
+
+        await this.renderScenesList(container);
+    }
+
+    /** Render just the scenes list */
+    private async renderScenesList(container: HTMLElement) {
+        const existingListContainer = container.querySelector('.storyteller-list-container');
+        if (existingListContainer) existingListContainer.remove();
+
+        const scenes = (await this.plugin.listScenes()).filter(sc =>
+            sc.name.toLowerCase().includes(this.currentFilter) ||
+            (sc.content || '').toLowerCase().includes(this.currentFilter) ||
+            (sc.status || '').toLowerCase().includes(this.currentFilter) ||
+            (sc.chapterName || '').toLowerCase().includes(this.currentFilter) ||
+            (sc.tags || []).join(' ').toLowerCase().includes(this.currentFilter)
+        );
+
+        // Preload chapters once for inline assignment controls
+        const chapters = await this.plugin.listChapters();
+
+        const listContainer = container.createDiv('storyteller-list-container');
+        if (scenes.length === 0) {
+            listContainer.createEl('p', { text: 'No scenes found.' + (this.currentFilter ? ' Matching filter.' : '') });
+            return;
+        }
+
+        scenes.forEach(sc => {
+            const itemEl = listContainer.createDiv('storyteller-list-item');
+
+            const pfpContainer = itemEl.createDiv('storyteller-list-item-pfp');
+            if (sc.profileImagePath) {
+                const imgEl = pfpContainer.createEl('img');
+                try {
+                    imgEl.src = this.getImageSrc(sc.profileImagePath);
+                    imgEl.alt = sc.name;
+                } catch (e) {
+                    pfpContainer.createSpan({ text: '?' });
+                }
+            } else {
+                pfpContainer.createDiv({ cls: 'storyteller-pfp-placeholder', text: sc.name.substring(0,1) });
+            }
+
+            const infoEl = itemEl.createDiv('storyteller-list-item-info');
+            const titleEl = infoEl.createEl('strong', { text: sc.name });
+            const meta = infoEl.createDiv('storyteller-list-item-extra');
+            if (sc.chapterName) meta.createSpan({ text: `Chapter: ${sc.chapterName}` }); else meta.createSpan({ text: 'Unassigned' });
+            if (sc.status) meta.createSpan({ text: ` • ${sc.status}` });
+            if (sc.content) {
+                const preview = sc.content.length > 120 ? sc.content.substring(0, 120) + '…' : sc.content;
+                infoEl.createEl('p', { text: preview });
+            }
+            if (sc.tags && sc.tags.length > 0) {
+                const tagsRow = infoEl.createDiv('storyteller-list-item-extra');
+                tagsRow.createSpan({ text: sc.tags.map(t => `#${t}`).join(' ') });
+            }
+
+            // Go to chapter button (replaces dropdown)
+            const chapterForScene = sc.chapterId
+                ? chapters.find(c => c.id === sc.chapterId)
+                : (sc.chapterName ? chapters.find(c => c.name === sc.chapterName) : undefined);
+            if (chapterForScene) {
+                const goBtn = new ButtonComponent(itemEl.createDiv('storyteller-scene-go-chapter'))
+                    .setIcon('arrow-right')
+                    .setTooltip('Go to chapter')
+                    .onClick(() => {
+                        if (chapterForScene.filePath) {
+                            const file = this.app.vault.getAbstractFileByPath(chapterForScene.filePath);
+                            if (file instanceof TFile) {
+                                this.app.workspace.getLeaf(false).openFile(file);
+                                return;
+                            }
+                        }
+                        // Fallback: switch to Chapters tab
+                        const header = this.tabHeaderContainer?.querySelector('[data-tab-id="chapters"]') as HTMLElement;
+                        header?.click();
+                    });
+                goBtn.buttonEl.classList.add('mod-cta');
+            }
+
+            const actionsEl = itemEl.createDiv('storyteller-list-item-actions');
+            this.addEditButton(actionsEl, () => {
+                import('../modals/SceneModal').then(({ SceneModal }) => {
+                    new SceneModal(this.app, this.plugin, sc, async (updated) => {
+                        await this.plugin.saveScene(updated);
+                        new Notice(`Scene "${updated.name}" updated.`);
+                    }, async (toDelete) => {
+                        if (toDelete.filePath) await this.plugin.deleteScene(toDelete.filePath);
+                    }).open();
+                });
+            });
+            this.addDeleteButton(actionsEl, async () => {
+                if (sc.filePath && confirm(`Delete scene "${sc.name}"?`)) {
+                    await this.plugin.deleteScene(sc.filePath);
+                }
+            });
+            this.addOpenFileButton(actionsEl, sc.filePath);
+        });
+    }
 
     renderCharacterList(characters: Character[], listContainer: HTMLElement, viewContainer: HTMLElement) {
         characters.forEach(character => {
