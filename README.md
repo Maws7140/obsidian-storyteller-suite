@@ -4,21 +4,29 @@ A comprehensive suite for managing storytelling elements including characters, l
 
 ## Features
 
-- **Character Management**: Create and manage detailed character profiles with descriptions, backstories, relationships, and custom fields
+- **Character Management**: Create and manage detailed character profiles with descriptions, backstories, relationships, custom fields, tags, and profile images
 
-- **Location Tracking**: Organize story locations with descriptions, history, and custom metadata
+- **Location Tracking**: Organize locations with descriptions, history, custom metadata, tags, and profile images
 
-- **Event Timeline**: Track story events with dates, outcomes, and character involvement
+- **Event Timeline**: Track events with dates, outcomes, involvement, tags, and profile images; open a timeline view from the command palette
 
-- **Gallery System**: Manage story-related images with metadata and linking
+- **Plot Items (New)**: Track items/artifacts with owners, locations, associated events, custom fields, profile images, and a plot-critical bookmark flag
 
-- **Group Organization**: Create custom groups to organize characters, locations, and events
+- **References (New)**: Maintain miscellaneous notes with categories, tags, and optional profile images; quick create/view from the command palette
+
+- **Chapters & Scenes (New)**: Structure your narrative with chapters (number, summary, tags, image) and scenes (status, priority, beats, tags, image). Link chapters/scenes to characters, locations, events, items, and groups
+
+- **Gallery System**: Manage images with titles, captions, descriptions, tags; link images to entities; upload via drag-and-drop or file picker; use images as profile pictures for entities
+
+- **Groups (Expanded)**: Create groups with color, description, tags, and a profile image. Groups can include characters, locations, events, and items
+
+- **Dashboard Interface**: Unified view for all entities with filtering/search across names, tags, and key fields
+
+- **Command Palette Actions**: Create and view commands available for every entity type, plus story utilities (open dashboard, refresh story discovery)
 
 - **Multi-Story Support**: Manage multiple stories with isolated data folders
 
-- **Dashboard Interface**: Unified view for all storytelling elements
-
-- **Custom Folders & One Story Mode**: Use your own folder structure for characters/locations/events/items, or enable a flat, single-story layout
+- **Custom Folders & One Story Mode**: Use your own folder structure for characters/locations/events/items/references/chapters/scenes, or enable a flat, single-story layout
 
 ### Getting Started
 
@@ -59,16 +67,22 @@ All data is stored as markdown files with YAML frontmatter. By default (multi-st
 - Locations: `StorytellerSuite/Stories/[StoryName]/Locations/`
 - Events: `StorytellerSuite/Stories/[StoryName]/Events/`
 - Items: `StorytellerSuite/Stories/[StoryName]/Items/`
+- References: `StorytellerSuite/Stories/[StoryName]/References/`
+- Chapters: `StorytellerSuite/Stories/[StoryName]/Chapters/`
+- Scenes: `StorytellerSuite/Stories/[StoryName]/Scenes/`
 - Images: User-defined upload folder (default `StorytellerSuite/GalleryUploads`)
 
 You can customize this behavior in Settings → Storyteller Suite:
 
-- Enable “Use custom entity folders” to specify your own folders for characters, locations, events, and items (no automatic story nesting).
+- Enable “Use custom entity folders” to specify your own folders for characters, locations, events, items, references, chapters, and scenes (no automatic story nesting).
 - Enable “One Story Mode” to flatten the structure under a single base folder (default `StorytellerSuite`):
   - Characters: `[Base]/Characters/`
   - Locations: `[Base]/Locations/`
   - Events: `[Base]/Events/`
   - Items: `[Base]/Items/`
+  - References: `[Base]/References/`
+  - Chapters: `[Base]/Chapters/`
+  - Scenes: `[Base]/Scenes/`
 
 Note: In One Story Mode, the dashboard’s “New story” button is hidden for consistency. In normal mode, multi-story management works as before.
 

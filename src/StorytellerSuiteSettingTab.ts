@@ -92,6 +92,25 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                 })
             );
 
+        // Manual story discovery refresh
+        new Setting(containerEl)
+            .setName('Story discovery')
+            .setDesc('Scan your vault for existing Storyteller stories and import them. Useful after moving folders or changing structure.')
+            .addButton(btn => btn
+                .setButtonText('Refresh discovery')
+                .setTooltip('Scan StorytellerSuite/Stories for new story folders')
+                .onClick(async () => {
+                    btn.setDisabled(true);
+                    try {
+                        await this.plugin.refreshStoryDiscovery();
+                    } finally {
+                        btn.setDisabled(false);
+                        // Refresh the settings pane in case the stories list changed
+                        this.display();
+                    }
+                })
+            );
+
         // --- Gallery Upload Folder ---
         new Setting(containerEl)
             .setName('Gallery upload folder')
@@ -225,11 +244,53 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                 .onChange(async (value) => {
                     this.plugin.settings.enableCustomEntityFolders = value;
                     await this.plugin.saveSettings();
+                    // When toggled on, ensure and scan configured custom folders
+                    if (value) {
+                        // Offer auto-detection first to smooth migration
+                        await this.plugin.autoDetectCustomEntityFolders();
+                        await this.plugin.refreshCustomFolderDiscovery();
+                    }
                     this.display();
                 })
             );
 
         if (this.plugin.settings.enableCustomEntityFolders) {
+            // Rescan custom folders on demand
+            new Setting(containerEl)
+                .setName('Custom folder discovery')
+                .setDesc('Ensure configured folders exist and rescan for entity files (updates dashboard & Dataview).')
+                .addButton(btn => btn
+                    .setButtonText('Rescan custom folders')
+                    .setTooltip('Ensure and rescan now')
+                    .onClick(async () => {
+                        btn.setDisabled(true);
+                        try {
+                            await this.plugin.refreshCustomFolderDiscovery();
+                        } finally {
+                            btn.setDisabled(false);
+                            this.display();
+                        }
+                    })
+                );
+
+            // Auto-detect folders button
+            new Setting(containerEl)
+                .setName('Auto-detect story root')
+                .setDesc('Try to detect a parent folder outside StorytellerSuite containing Characters/Locations/etc, and fill paths automatically.')
+                .addButton(btn => btn
+                    .setButtonText('Detect folders')
+                    .setTooltip('Find common subfolders and set paths')
+                    .onClick(async () => {
+                        btn.setDisabled(true);
+                        try {
+                            await this.plugin.autoDetectCustomEntityFolders();
+                            await this.plugin.refreshCustomFolderDiscovery();
+                        } finally {
+                            btn.setDisabled(false);
+                            this.display();
+                        }
+                    })
+                );
             new Setting(containerEl)
                 .setName('Characters folder')
                 .setDesc('Path for character markdown files')

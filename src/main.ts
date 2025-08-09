@@ -368,6 +368,139 @@ export default class StorytellerSuitePlugin extends Plugin {
 	}
 
 	/**
+	 * Ensure custom entity folders exist and trigger a rescan of entities
+	 * Useful after toggling custom-folder mode or changing folder paths
+	 */
+	async refreshCustomFolderDiscovery(): Promise<void> {
+		if (!this.settings.enableCustomEntityFolders) {
+			return;
+		}
+		try {
+			// Ensure each configured folder exists
+			const foldersEnsured: string[] = [];
+			const ensureIf = async (path?: string) => {
+				if (path && path.trim().length > 0) {
+					await this.ensureFolder(path);
+					foldersEnsured.push(path);
+				}
+			};
+			await ensureIf(this.settings.characterFolderPath);
+			await ensureIf(this.settings.locationFolderPath);
+			await ensureIf(this.settings.eventFolderPath);
+			await ensureIf(this.settings.itemFolderPath);
+			await ensureIf(this.settings.referenceFolderPath);
+			await ensureIf(this.settings.chapterFolderPath);
+			await ensureIf(this.settings.sceneFolderPath);
+
+			// Count markdown files in each folder to provide feedback
+        const countMd = (base: string | undefined): number => {
+            if (!base) return 0;
+            const files = this.app.vault.getMarkdownFiles();
+            const prefix = normalizePath(base) + '/';
+            return files.filter(f => f.path.startsWith(prefix)).length;
+        };
+			const counts = {
+				characters: countMd(this.settings.characterFolderPath),
+				locations: countMd(this.settings.locationFolderPath),
+				events: countMd(this.settings.eventFolderPath),
+				items: countMd(this.settings.itemFolderPath),
+				references: countMd(this.settings.referenceFolderPath),
+				chapters: countMd(this.settings.chapterFolderPath),
+				scenes: countMd(this.settings.sceneFolderPath),
+			};
+
+			// Nudge Dataview and our dashboard to update
+			this.app.metadataCache.trigger('dataview:refresh-views');
+			this.refreshDashboardActiveTab();
+
+			new Notice(
+				`Storyteller: Custom folders scanned. ` +
+				`Chars ${counts.characters}, Locs ${counts.locations}, Events ${counts.events}, Items ${counts.items}, ` +
+				`Refs ${counts.references}, Chaps ${counts.chapters}, Scenes ${counts.scenes}.`
+			);
+		} catch (error) {
+			console.error('Storyteller Suite: Error during custom folder refresh:', error);
+			new Notice(`Storyteller Suite: Error scanning custom folders: ${error.message}`);
+		}
+	}
+
+	/**
+	 * Heuristically detect an existing folder structure in the vault and
+	 * populate custom entity folder settings accordingly.
+	 * Looks for a parent folder that contains typical subfolders like
+	 * Characters, Locations, Events, Items, References, Chapters, Scenes.
+	 */
+	async autoDetectCustomEntityFolders(): Promise<void> {
+		// Build a map of folder -> immediate child folder names
+		const all = this.app.vault.getAllLoadedFiles();
+		const folderChildren: Map<string, Set<string>> = new Map();
+		for (const af of all) {
+			if (af instanceof TFolder) {
+				const parent = af.parent;
+				if (parent) {
+					const set = folderChildren.get(parent.path) ?? new Set<string>();
+					set.add(af.name);
+					folderChildren.set(parent.path, set);
+				}
+			}
+		}
+
+		// Candidate names we care about
+		const targetNames = ['Characters','Locations','Events','Items','References','Chapters','Scenes'];
+		let bestParent: string | null = null;
+		let bestScore = 0;
+		for (const [parentPath, children] of folderChildren.entries()) {
+			let score = 0;
+			for (const name of targetNames) {
+				if (children.has(name)) score++;
+			}
+			if (score > bestScore) {
+				bestScore = score;
+				bestParent = parentPath;
+			}
+		}
+
+		if (!bestParent || bestScore === 0) {
+			new Notice('Storyteller: Could not auto-detect a story root. Please set folders manually.');
+			return;
+		}
+
+		const maybe = (sub: string): string | undefined => {
+			const child = this.app.vault.getFolderByPath(`${bestParent}/${sub}`);
+			return child ? `${bestParent}/${sub}` : undefined;
+		};
+
+		// Populate settings if folders exist
+		const updates: Partial<StorytellerSuiteSettings> = {};
+		updates.characterFolderPath = maybe('Characters') ?? this.settings.characterFolderPath;
+		updates.locationFolderPath = maybe('Locations') ?? this.settings.locationFolderPath;
+		updates.eventFolderPath = maybe('Events') ?? this.settings.eventFolderPath;
+		updates.itemFolderPath = maybe('Items') ?? this.settings.itemFolderPath;
+		updates.referenceFolderPath = maybe('References') ?? this.settings.referenceFolderPath;
+		updates.chapterFolderPath = maybe('Chapters') ?? this.settings.chapterFolderPath;
+		updates.sceneFolderPath = maybe('Scenes') ?? this.settings.sceneFolderPath;
+
+		this.settings = { ...this.settings, ...updates } as StorytellerSuiteSettings;
+		await this.saveSettings();
+
+		// Provide feedback
+		new Notice(`Storyteller: Auto-detected custom folders under "${bestParent}" (matches: ${bestScore}).`);
+	}
+
+	/** Refresh the dashboard view's active tab, if open */
+	refreshDashboardActiveTab(): void {
+		try {
+			const leaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_DASHBOARD);
+			const view: any = leaves[0]?.view;
+			if (view && typeof view.refreshActiveTab === 'function') {
+				view.refreshActiveTab();
+			}
+		} catch (_) {
+			// no-op
+		}
+	}
+
+	/**
 	 * Plugin cleanup - called when the plugin is unloaded
 	 * Obsidian automatically handles view cleanup
 	 */
@@ -867,7 +1000,10 @@ export default class StorytellerSuitePlugin extends Plugin {
 	 * Ensure the character folder exists for the active story
 	 */
 	async ensureCharacterFolder(): Promise<void> {
-		await this.ensureFolder(this.getEntityFolder('character'));
+    if (this.settings.enableCustomEntityFolders && !this.settings.characterFolderPath) {
+        return;
+    }
+    await this.ensureFolder(this.getEntityFolder('character'));
 	}
 
 	/**
@@ -1101,15 +1237,19 @@ export default class StorytellerSuitePlugin extends Plugin {
 	 * @returns Array of character objects sorted by name
 	 */
 	async listCharacters(): Promise<Character[]> {
-		await this.ensureCharacterFolder();
-		const folderPath = this.getEntityFolder('character');
-		
-		// Use vault.getMarkdownFiles() instead of folder.children for immediate file detection
-		const allFiles = this.app.vault.getMarkdownFiles();
-		const files = allFiles.filter(file => 
-			file.path.startsWith(folderPath + '/') && 
-			file.extension === 'md'
-		);
+    await this.ensureCharacterFolder();
+    if (this.settings.enableCustomEntityFolders && !this.settings.characterFolderPath) {
+        return [];
+    }
+    const folderPath = this.getEntityFolder('character');
+        
+        // Use vault.getMarkdownFiles() instead of folder.children for immediate file detection
+        const allFiles = this.app.vault.getMarkdownFiles();
+        const prefix = normalizePath(folderPath) + '/';
+        const files = allFiles.filter(file => 
+            file.path.startsWith(prefix) && 
+            file.extension === 'md'
+        );
 		
 		// Parse each character file
 		const characters: Character[] = [];
@@ -1148,7 +1288,10 @@ export default class StorytellerSuitePlugin extends Plugin {
 	 * Ensure the location folder exists for the active story
 	 */
 	async ensureLocationFolder(): Promise<void> {
-		await this.ensureFolder(this.getEntityFolder('location'));
+    if (this.settings.enableCustomEntityFolders && !this.settings.locationFolderPath) {
+        return;
+    }
+    await this.ensureFolder(this.getEntityFolder('location'));
 	}
 
 	/**
@@ -1284,15 +1427,19 @@ export default class StorytellerSuitePlugin extends Plugin {
 	 * @returns Array of location objects sorted by name
 	 */
 	async listLocations(): Promise<Location[]> {
-		await this.ensureLocationFolder();
-		const folderPath = this.getEntityFolder('location');
-		
-		// Use vault.getMarkdownFiles() instead of folder.children for immediate file detection
-		const allFiles = this.app.vault.getMarkdownFiles();
-		const files = allFiles.filter(file => 
-			file.path.startsWith(folderPath + '/') && 
-			file.extension === 'md'
-		);
+    await this.ensureLocationFolder();
+    if (this.settings.enableCustomEntityFolders && !this.settings.locationFolderPath) {
+        return [];
+    }
+    const folderPath = this.getEntityFolder('location');
+        
+        // Use vault.getMarkdownFiles() instead of folder.children for immediate file detection
+        const allFiles = this.app.vault.getMarkdownFiles();
+        const prefix = normalizePath(folderPath) + '/';
+        const files = allFiles.filter(file => 
+            file.path.startsWith(prefix) && 
+            file.extension === 'md'
+        );
 		
 		// Parse each location file
 		const locations: Location[] = [];
@@ -1331,7 +1478,10 @@ export default class StorytellerSuitePlugin extends Plugin {
 	 * Ensure the event folder exists for the active story
 	 */
 	async ensureEventFolder(): Promise<void> {
-		await this.ensureFolder(this.getEntityFolder('event'));
+    if (this.settings.enableCustomEntityFolders && !this.settings.eventFolderPath) {
+        return;
+    }
+    await this.ensureFolder(this.getEntityFolder('event'));
 	}
 
 	/**
@@ -1471,14 +1621,18 @@ export default class StorytellerSuitePlugin extends Plugin {
 	 * @returns Array of event objects sorted by date/time, then by name
 	 */
     async listEvents(): Promise<Event[]> {
-		await this.ensureEventFolder();
-		const folderPath = this.getEntityFolder('event');
-		
-		const allFiles = this.app.vault.getMarkdownFiles();
-		const files = allFiles.filter(file => 
-			file.path.startsWith(folderPath + '/') && 
-			file.extension === 'md'
-		);
+    await this.ensureEventFolder();
+    if (this.settings.enableCustomEntityFolders && !this.settings.eventFolderPath) {
+        return [];
+    }
+    const folderPath = this.getEntityFolder('event');
+        
+        const allFiles = this.app.vault.getMarkdownFiles();
+        const prefix = normalizePath(folderPath) + '/';
+        const files = allFiles.filter(file => 
+            file.path.startsWith(prefix) && 
+            file.extension === 'md'
+        );
 		
 		const events: Event[] = [];
 		for (const file of files) {
@@ -1526,12 +1680,18 @@ export default class StorytellerSuitePlugin extends Plugin {
 	 * Ensure the item folder exists for the active story
 	 */
 	async ensureItemFolder(): Promise<void> {
-		await this.ensureFolder(this.getEntityFolder('item'));
+    if (this.settings.enableCustomEntityFolders && !this.settings.itemFolderPath) {
+        return;
+    }
+    await this.ensureFolder(this.getEntityFolder('item'));
 	}
 
 	/** Ensure the reference folder exists for the active story */
 	async ensureReferenceFolder(): Promise<void> {
-		await this.ensureFolder(this.getEntityFolder('reference'));
+    if (this.settings.enableCustomEntityFolders && !this.settings.referenceFolderPath) {
+        return;
+    }
+    await this.ensureFolder(this.getEntityFolder('reference'));
 	}
 
 	/**
@@ -1661,11 +1821,15 @@ export default class StorytellerSuitePlugin extends Plugin {
 	 * @returns Array of plot item objects sorted by name
 	 */
 	async listPlotItems(): Promise<PlotItem[]> {
-		await this.ensureItemFolder();
-		const folderPath = this.getEntityFolder('item');
+    await this.ensureItemFolder();
+    if (this.settings.enableCustomEntityFolders && !this.settings.itemFolderPath) {
+        return [];
+    }
+    const folderPath = this.getEntityFolder('item');
 		const allFiles = this.app.vault.getMarkdownFiles();
-		const files = allFiles.filter(file => 
-			file.path.startsWith(folderPath + '/') && 
+        const prefix = normalizePath(folderPath) + '/';
+        const files = allFiles.filter(file => 
+            file.path.startsWith(prefix) && 
 			file.extension === 'md'
 		);
 
@@ -1773,10 +1937,14 @@ export default class StorytellerSuitePlugin extends Plugin {
 
 	/** List all references */
 	async listReferences(): Promise<Reference[]> {
-		await this.ensureReferenceFolder();
-		const folderPath = this.getEntityFolder('reference');
-		const allFiles = this.app.vault.getMarkdownFiles();
-		const files = allFiles.filter(f => f.path.startsWith(folderPath + '/') && f.extension === 'md');
+    await this.ensureReferenceFolder();
+    if (this.settings.enableCustomEntityFolders && !this.settings.referenceFolderPath) {
+        return [];
+    }
+    const folderPath = this.getEntityFolder('reference');
+        const allFiles = this.app.vault.getMarkdownFiles();
+        const prefix = normalizePath(folderPath) + '/';
+        const files = allFiles.filter(f => f.path.startsWith(prefix) && f.extension === 'md');
 		const refs: Reference[] = [];
 		for (const file of files) {
 			const data = await this.parseFile<Reference>(file, { name: '' });
@@ -1891,7 +2059,8 @@ export default class StorytellerSuitePlugin extends Plugin {
         await this.ensureChapterFolder();
         const folderPath = this.getEntityFolder('chapter');
         const allFiles = this.app.vault.getMarkdownFiles();
-        const files = allFiles.filter(f => f.path.startsWith(folderPath + '/') && f.extension === 'md');
+        const prefix = normalizePath(folderPath) + '/';
+        const files = allFiles.filter(f => f.path.startsWith(prefix) && f.extension === 'md');
         const chapters: Chapter[] = [];
         for (const file of files) {
             const data = await this.parseFile<Chapter>(file, { name: '' });
