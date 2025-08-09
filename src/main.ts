@@ -2266,7 +2266,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 	/**
 	 * Add a group id to an entity's groups array
 	 */
-    private async addGroupIdToEntity(type: 'character' | 'event' | 'location' | 'item', id: string, groupId: string): Promise<void> {
+    async addGroupIdToEntity(type: 'character' | 'event' | 'location' | 'item', id: string, groupId: string): Promise<void> {
         if (type === 'character') {
             const characters = await this.listCharacters();
             const character = characters.find(c => (c.id || c.name) === id);
