@@ -1,6 +1,7 @@
 import { App, Modal, Setting, Notice, ButtonComponent } from 'obsidian';
 import { Group, Character, Location, Event, PlotItem } from '../types';
 import StorytellerSuitePlugin from '../main';
+import { GalleryImageSuggestModal } from './GalleryImageSuggestModal';
 import { CharacterSuggestModal } from './CharacterSuggestModal';
 import { LocationSuggestModal } from './LocationSuggestModal';
 import { EventSuggestModal } from './EventSuggestModal';
@@ -77,6 +78,68 @@ export class GroupModal extends Modal {
                 .onChange(value => { this.group.color = value; })
             );
 
+        // --- Tags ---
+        new Setting(contentEl)
+            .setName('Tags')
+            .setDesc('Comma-separated tags')
+            .addText(text => text
+                .setPlaceholder('e.g., royal, faction, allied')
+                .setValue((this.group.tags || []).join(', '))
+                .onChange(value => { this.group.tags = value.split(',').map(t => t.trim()).filter(Boolean); })
+            );
+
+        // --- Profile Image ---
+        let imagePathDesc: HTMLElement | null = null;
+        new Setting(contentEl)
+            .setName('Profile image')
+            .then(s => {
+                imagePathDesc = s.descEl.createEl('small', { text: `Current: ${this.group.profileImagePath || 'None'}` });
+                s.descEl.addClass('storyteller-modal-setting-vertical');
+            })
+            .addButton(btn => btn
+                .setButtonText('Select')
+                .setTooltip('Select from gallery')
+                .onClick(() => {
+                    new GalleryImageSuggestModal(this.app, this.plugin, (img) => {
+                        this.group.profileImagePath = img?.filePath;
+                        if (imagePathDesc) imagePathDesc.setText(`Current: ${this.group.profileImagePath || 'None'}`);
+                    }).open();
+                }))
+            .addButton(btn => btn
+                .setButtonText('Upload')
+                .setTooltip('Upload new image')
+                .onClick(async () => {
+                    const input = document.createElement('input');
+                    input.type = 'file';
+                    input.accept = 'image/*';
+                    input.onchange = async () => {
+                        const file = input.files?.[0];
+                        if (!file) return;
+                        try {
+                            await this.plugin.ensureFolder(this.plugin.settings.galleryUploadFolder);
+                            const name = file.name.replace(/[\\/:"*?<>|#^[\]]+/g, '').replace(/\s+/g, '_');
+                            const filePath = `${this.plugin.settings.galleryUploadFolder}/${Date.now()}_${name}`;
+                            const buf = await file.arrayBuffer();
+                            await this.app.vault.createBinary(filePath, buf);
+                            this.group.profileImagePath = filePath;
+                            if (imagePathDesc) imagePathDesc.setText(`Current: ${filePath}`);
+                            new Notice('Image uploaded');
+                        } catch (e) {
+                            console.error('Upload failed', e);
+                            new Notice('Error uploading image');
+                        }
+                    };
+                    input.click();
+                }))
+            .addButton(btn => btn
+                .setIcon('cross')
+                .setTooltip('Clear image')
+                .setClass('mod-warning')
+                .onClick(() => {
+                    this.group.profileImagePath = undefined;
+                    if (imagePathDesc) imagePathDesc.setText(`Current: ${this.group.profileImagePath || 'None'}`);
+                }));
+
         // --- Members ---
         contentEl.createEl('h3', { text: 'Members' });
         await this.loadAllEntities();
@@ -103,6 +166,16 @@ export class GroupModal extends Modal {
                 if (this.isNew) {
                     const newGroup = await this.plugin.createGroup(this.group.name, this.group.description, this.group.color);
                     this.group.id = newGroup.id;
+                    // Immediately persist tags/image for the new group
+                    await this.plugin.updateGroup(this.group.id, { description: this.group.description, color: this.group.color, name: this.group.name } as any);
+                    // Manually merge non-core fields and save
+                    const found = this.plugin.getGroups().find(g => g.id === this.group.id);
+                    if (found) {
+                        (found as any).tags = this.group.tags || [];
+                        (found as any).profileImagePath = this.group.profileImagePath;
+                        await this.plugin.saveSettings();
+                        this.plugin.emitGroupsChanged?.();
+                    }
                     // Add all members to the new group
                     for (const member of this.group.members) {
                         await this.plugin.addMemberToGroup(newGroup.id, member.type, member.id);
@@ -113,6 +186,14 @@ export class GroupModal extends Modal {
                         description: this.group.description,
                         color: this.group.color
                     });
+                    // Persist tags and image on edit
+                    const found = this.plugin.getGroups().find(g => g.id === this.group.id);
+                    if (found) {
+                        (found as any).tags = this.group.tags || [];
+                        (found as any).profileImagePath = this.group.profileImagePath;
+                        await this.plugin.saveSettings();
+                        this.plugin.emitGroupsChanged?.();
+                    }
                     // Update members
                     await this.syncMembers();
                 }
