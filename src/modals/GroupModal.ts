@@ -180,6 +180,10 @@ export class GroupModal extends Modal {
                     for (const member of this.group.members) {
                         await this.plugin.addMemberToGroup(newGroup.id, member.type, member.id);
                     }
+                    // Idempotent repair: ensure entity YAML contains the new group id
+                    for (const member of this.group.members) {
+                        await this.plugin.addGroupIdToEntity?.(member.type as any, member.id, this.group.id);
+                    }
                 } else {
                     await this.plugin.updateGroup(this.group.id, {
                         name: this.group.name,
@@ -196,6 +200,10 @@ export class GroupModal extends Modal {
                     }
                     // Update members
                     await this.syncMembers();
+                    // Idempotent repair: re-assert group id on all current members in case YAML was missing
+                    for (const member of this.group.members) {
+                        await this.plugin.addGroupIdToEntity?.(member.type as any, member.id, this.group.id);
+                    }
                 }
                 if (this.onSubmit) await this.onSubmit(this.group);
                 this.close();
