@@ -1434,9 +1434,9 @@ If your plugin does not need CSS, delete this file.
 .storyteller-group-info {
   display: flex;
   flex-direction: row;
-  align-items: baseline;
+  align-items: center;
   gap: 0.5rem;
-  font-size: 1.1rem;
+  font-size: 1.05rem;
   font-weight: 600;
 }
 .storyteller-group-info strong {
@@ -1466,7 +1466,8 @@ If your plugin does not need CSS, delete this file.
 }
 
 .storyteller-group-members {
-  margin-inline-start: 1.5rem;
+  margin-inline-start: 0.25rem;
+  padding-inline: 0.25rem 0.5rem;
   color: var(--text-muted);
   font-size: 0.98rem;
 }
@@ -1515,30 +1516,64 @@ body.mod-rtl .storyteller-group-members {
 
 /* --- Group Entity Section Headers and Sublists --- */
 .storyteller-group-entity-header {
-  font-size: 1.05rem;
+  font-size: 1.0rem;
   font-weight: 700;
   color: var(--text-accent);
-  margin-top: 0.7rem;
-  margin-bottom: 0.2rem;
+  margin: 0.25rem 0 0.15rem 0;
   display: flex;
   align-items: center;
   gap: 0.4em;
 }
-.storyteller-group-entity-icon {
-  font-size: 1.1em;
-  vertical-align: middle;
-  opacity: 0.85;
-}
+.storyteller-group-entity-icon { font-size: 1.1em; }
 .storyteller-group-entity-list {
-  margin: 0 0 0.2rem 1.2rem;
+  margin: 0;
   padding: 0;
-  list-style-type: disc;
+  list-style: none;
 }
 .storyteller-group-entity-item {
   color: var(--text-normal);
-  margin-block: 0.1rem;
+  margin-block: 0.15rem;
   font-size: 0.98rem;
 }
+
+/* New: two-column responsive layout for group sections */
+.storyteller-group-section {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.25rem;
+}
+/* Balanced two-column layout only for sections, not the whole members wrapper */
+.storyteller-group-members { display: block; }
+.storyteller-group-section {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  column-gap: 2rem;
+  row-gap: 0.25rem;
+}
+@media (max-width: 560px) {
+  .storyteller-group-section { grid-template-columns: 1fr; }
+}
+
+/* Tidy toggle + header alignment */
+.storyteller-group-header {
+  align-items: center;
+}
+.storyteller-group-toggle-btn { order: 0; }
+.storyteller-group-info { flex: 1; order: 1; }
+.storyteller-group-actions { order: 2; }
+
+/* Group avatar */
+.storyteller-group-pfp {
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  object-fit: cover;
+  border: 1px solid var(--background-modifier-border);
+}
+
+/* Clickable list items */
+.storyteller-group-entity-item.is-link { cursor: pointer; color: var(--text-accent); }
+.storyteller-group-entity-item.is-link:hover { text-decoration: underline; }
 
 /* Responsive tweaks for very narrow sidebars */
 @media (max-width: 400px) {
