@@ -289,6 +289,10 @@ export interface Group {
     description?: string;
     /** Optional color for the group (for UI) */
     color?: string;
+    /** Optional tags for filtering/search */
+    tags?: string[];
+    /** Optional representative image path within the vault */
+    profileImagePath?: string;
     /** Array of group members, each with type and id */
     members: Array<{ type: 'character' | 'event' | 'location' | 'item'; id: string }>;
 }

@@ -612,6 +612,21 @@ export default class StorytellerSuitePlugin extends Plugin {
 				}
 			}
 		});
+    this.addCommand({
+      id: 'view-groups',
+      name: 'View groups',
+      callback: async () => {
+        await this.activateView();
+        setTimeout(() => {
+          const leaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_DASHBOARD);
+          const view = (leaves[0]?.view as any);
+          if (view && typeof view === 'object' && 'tabHeaderContainer' in view) {
+            const header = view.tabHeaderContainer?.querySelector('[data-tab-id="groups"]') as HTMLElement;
+            header?.click();
+          }
+        }, 50);
+      }
+    });
 		this.addCommand({
 			id: 'rename-group',
 			name: 'Rename group',
@@ -2127,6 +2142,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		const group: Group = { id, storyId: activeStory.id, name, description, color, members: [] };
 		this.settings.groups.push(group);
 		await this.saveSettings();
+		this.emitGroupsChanged();
 		return group;
 	}
 
@@ -2143,6 +2159,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		if (updates.description !== undefined) group.description = updates.description;
 		if (updates.color !== undefined) group.color = updates.color;
 		await this.saveSettings();
+		this.emitGroupsChanged();
 	}
 
 	/**
@@ -2161,6 +2178,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		// Remove group id from all member entities
 		await this.removeGroupIdFromAllEntities(id);
 		await this.saveSettings();
+		this.emitGroupsChanged();
 	}
 
 	/**
@@ -2188,6 +2206,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		// Update the entity's groups array
 		await this.addGroupIdToEntity(memberType, memberId, groupId);
 		await this.saveSettings();
+		this.emitGroupsChanged();
 	}
 
 	/**
@@ -2203,6 +2222,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		// Update the entity's groups array
 		await this.removeGroupIdFromEntity(memberType, memberId, groupId);
 		await this.saveSettings();
+		this.emitGroupsChanged();
 	}
 
 	/**
@@ -2449,15 +2469,39 @@ export default class StorytellerSuitePlugin extends Plugin {
         if (!('referenceFolderPath' in this.settings)) { (this.settings as any).referenceFolderPath = DEFAULT_SETTINGS.referenceFolderPath as any; settingsUpdated = true; }
         if (!('chapterFolderPath' in this.settings)) { (this.settings as any).chapterFolderPath = DEFAULT_SETTINGS.chapterFolderPath as any; settingsUpdated = true; }
         if (!('sceneFolderPath' in this.settings)) { (this.settings as any).sceneFolderPath = DEFAULT_SETTINGS.sceneFolderPath as any; settingsUpdated = true; }
-		if (!this.settings.groups) {
-			this.settings.groups = [];
-			settingsUpdated = true;
-		}
+        if (!this.settings.groups) {
+            this.settings.groups = [];
+            settingsUpdated = true;
+        }
+        // Ensure new optional fields exist on groups for backward compatibility
+        if (this.settings.groups.length > 0) {
+            for (const g of this.settings.groups) {
+                if (!('tags' in (g as any))) (g as any).tags = [];
+                // profileImagePath may be undefined; leave as-is if missing
+            }
+        }
 
 		if(settingsUpdated){
 			await this.saveSettings();
 		}
+
 	}
+
+  /**
+   * Lightweight event to notify views when groups have changed without relying on vault events
+   */
+  emitGroupsChanged(): void {
+    try {
+      // Ping the dashboard view to refresh if the groups tab is active
+      const leaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_DASHBOARD);
+      const view: any = leaves[0]?.view;
+      if (view && view.activeTabId === 'groups' && typeof view.refreshActiveTab === 'function') {
+        view.refreshActiveTab();
+      }
+    } catch (e) {
+      // no-op
+    }
+  }
 
 	/**
 	 * Save current plugin settings to Obsidian's data store
