@@ -337,30 +337,73 @@ export class DashboardView extends ItemView {
             selectorButtonGroup.style.gap = '0.5em';
         }
 
-        // --- Story Selector Dropdown (mobile-optimized) ---
+        // --- Story Selector or Custom Folders Indicator (mobile-optimized) ---
         const storySelector = selectorButtonGroup.createEl('select', { cls: 'storyteller-story-selector' });
         storySelector.id = 'storyteller-story-selector';
-        
-        // Mobile-specific styling for the selector
+
         if (PlatformUtils.isMobile()) {
             const touchTargetSize = PlatformUtils.getTouchTargetSize();
             storySelector.style.minHeight = `${touchTargetSize}px`;
             storySelector.style.fontSize = `${1.1 * PlatformUtils.getFontScaling()}rem`;
             storySelector.style.width = '100%';
         }
-        
-        this.plugin.settings.stories.forEach(story => {
-            const option = storySelector.createEl('option', { text: story.name });
-            option.value = story.id;
-            if (story.id === this.plugin.settings.activeStoryId) option.selected = true;
-        });
-        storySelector.onchange = async (e) => {
-            const id = (e.target as HTMLSelectElement).value;
-            await this.plugin.setActiveStory(id);
-            this.onOpen();
-        };
 
-        if (!this.plugin.settings.enableOneStoryMode) {
+        if (this.plugin.settings.enableCustomEntityFolders) {
+            // In custom folder mode, show the parent folder that contains the entities
+            storySelector.disabled = true;
+
+            const paths: Array<string | undefined> = [
+                this.plugin.settings.characterFolderPath,
+                this.plugin.settings.locationFolderPath,
+                this.plugin.settings.eventFolderPath,
+                this.plugin.settings.itemFolderPath,
+                this.plugin.settings.referenceFolderPath,
+                this.plugin.settings.chapterFolderPath,
+                this.plugin.settings.sceneFolderPath,
+            ];
+            const definedPaths = paths.filter((p): p is string => !!p);
+
+            const parentSegments: string[][] = definedPaths.map(p => {
+                const segs = normalizePath(p).split('/');
+                segs.pop(); // remove leaf folder (e.g., Characters)
+                return segs;
+            });
+
+            const common = parentSegments.length > 0
+                ? parentSegments.reduce((acc, cur) => {
+                    let i = 0;
+                    while (i < acc.length && i < cur.length && acc[i] === cur[i]) i++;
+                    return acc.slice(0, i);
+                }, parentSegments[0])
+                : [];
+
+            // Determine a friendly label based on the common parent, or fall back to first parent
+            const chosenParent = (common.length > 0)
+                ? common
+                : (parentSegments[0] || []);
+            const parentName = chosenParent.length > 0 ? chosenParent[chosenParent.length - 1] : 'Custom';
+            const parentPath = chosenParent.join('/');
+
+            const label = parentName || 'Custom';
+            const opt = storySelector.createEl('option', { text: label });
+            opt.value = '';
+            opt.selected = true;
+            if (parentPath) opt.title = parentPath;
+        } else {
+            // Populate stories normally
+            this.plugin.settings.stories.forEach(story => {
+                const option = storySelector.createEl('option', { text: story.name });
+                option.value = story.id;
+                if (story.id === this.plugin.settings.activeStoryId) option.selected = true;
+            });
+            storySelector.onchange = async (e) => {
+                const id = (e.target as HTMLSelectElement).value;
+                await this.plugin.setActiveStory(id);
+                this.onOpen();
+            };
+        }
+
+        if (!this.plugin.settings.enableOneStoryMode && !this.plugin.settings.enableCustomEntityFolders) {
             const newStoryBtn = selectorButtonGroup.createEl('button', { text: '+ New story', cls: 'storyteller-new-story-btn' });
             newStoryBtn.onclick = () => {
                 new NewStoryModal(
