@@ -6,6 +6,7 @@ import { CharacterSuggestModal } from './CharacterSuggestModal';
 import { LocationSuggestModal } from './LocationSuggestModal';
 import { EventSuggestModal } from './EventSuggestModal';
 import { GalleryImageSuggestModal } from './GalleryImageSuggestModal';
+import { GroupSuggestModal } from './GroupSuggestModal';
 
 export type SceneModalSubmitCallback = (sc: Scene) => Promise<void>;
 export type SceneModalDeleteCallback = (sc: Scene) => Promise<void>;
@@ -244,17 +245,11 @@ export class SceneModal extends Modal {
             .setName('Groups')
             .setDesc((this.scene.linkedGroups || []).length ? (this.scene.linkedGroups || []).join(', ') : 'None')
             .addButton(btn => btn.setButtonText('Add').onClick(() => {
-                const groups = this.plugin.getGroups();
-                const options = groups.map(g => g.name).join('\n');
-                const pick = prompt('Type group name to add:\n' + options);
-                const matched = groups.find(g => g.name.trim().toLowerCase() === (pick || '').trim().toLowerCase());
-                if (matched) {
+                new GroupSuggestModal(this.app, this.plugin, (g) => {
                     if (!this.scene.linkedGroups) this.scene.linkedGroups = [];
-                    if (!this.scene.linkedGroups.includes(matched.id)) this.scene.linkedGroups.push(matched.id);
+                    if (!this.scene.linkedGroups.includes(g.id)) this.scene.linkedGroups.push(g.id);
                     this.onOpen();
-                } else if (pick) {
-                    new Notice('Group not found');
-                }
+                }).open();
             }))
             .addButton(btn => btn.setButtonText('Clear').onClick(() => {
                 this.scene.linkedGroups = [];

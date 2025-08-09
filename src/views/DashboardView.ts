@@ -912,11 +912,11 @@ export class DashboardView extends ItemView {
             groupListContainer = container.createDiv('storyteller-group-list-container');
         }
         // Always render the group list (but only clear/re-render this part)
-        this.renderGroupsList(groupListContainer);
+        await this.renderGroupsList(groupListContainer);
     }
 
     // New helper to render just the group list (filtered)
-    renderGroupsList(container: HTMLElement) {
+    async renderGroupsList(container: HTMLElement) {
         container.empty();
         const groups = this.plugin.getGroups().filter(group => {
             const filter = this.currentFilter.toLowerCase();
@@ -929,6 +929,11 @@ export class DashboardView extends ItemView {
             container.createEl('p', { text: 'No groups found.' });
             return;
         }
+        const allCharacters = await this.plugin.listCharacters();
+        const allLocations = await this.plugin.listLocations();
+        const allEvents = await this.plugin.listEvents();
+        const allItems = await this.plugin.listPlotItems();
+
         groups.forEach((group, idx) => {
             // Collapsible card state: expanded by default if filter is active, else collapsed
             const isExpanded = !!this.currentFilter || false;
@@ -945,9 +950,17 @@ export class DashboardView extends ItemView {
             toggleBtn.setAttr('aria-expanded', isExpanded ? 'true' : 'false');
             // Group info
             const infoDiv = groupHeader.createDiv('storyteller-group-info');
+            if (group.profileImagePath) {
+                const img = infoDiv.createEl('img', { cls: 'storyteller-group-pfp' });
+                try { img.src = this.getImageSrc(group.profileImagePath); } catch (e) { /* ignore */ }
+            }
             infoDiv.createEl('strong', { text: group.name });
             if (group.description) {
                 infoDiv.createEl('span', { text: group.description, cls: 'storyteller-group-desc' });
+            }
+            if (group.tags && group.tags.length > 0) {
+                const tagsRow = infoDiv.createDiv('storyteller-group-tags');
+                tagsRow.createSpan({ text: (group.tags || []).map(t => `#${t}`).join(' ') });
             }
             // Actions (Edit button)
             const actionsDiv = groupHeader.createDiv('storyteller-group-actions');
@@ -973,8 +986,8 @@ export class DashboardView extends ItemView {
                 character: group.members.filter(m => m.type === 'character'),
                 location: group.members.filter(m => m.type === 'location'),
                 event: group.members.filter(m => m.type === 'event'),
-                item: group.members.filter(m => m.type === 'item'), // ADDED
-            };
+                item: group.members.filter(m => m.type === 'item'),
+            } as const;
             const typeLabels = {
                 character: 'Characters',
                 location: 'Locations',
@@ -988,7 +1001,7 @@ export class DashboardView extends ItemView {
                 item: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-gem"><path d="M6 3h12l4 6-10 13L2 9Z"/><path d="M12 22V9"/><path d="m3.5 8.5 17 0"/></svg>`, // ADDED
             };
             
-            (['character', 'location', 'event', 'item'] as const).forEach(type => { // ADDED 'item'
+            (['character', 'location', 'event', 'item'] as const).forEach(type => {
                 if (grouped[type].length > 0) {
                     // Section header
                     const header = membersSection.createDiv('storyteller-group-entity-header');
@@ -999,7 +1012,31 @@ export class DashboardView extends ItemView {
                     const list = membersSection.createEl('ul', { cls: 'storyteller-group-entity-list' });
                     grouped[type].forEach(member => {
                         const li = list.createEl('li', { cls: 'storyteller-group-entity-item' });
-                        li.textContent = member.id;
+                        // Resolve display name
+                        let displayName = member.id;
+                        let filePath: string | undefined;
+                        if (type === 'character') {
+                            const c = allCharacters.find(c => (c.id || c.name) === member.id);
+                            if (c) { displayName = c.name; filePath = c.filePath; }
+                        } else if (type === 'location') {
+                            const l = allLocations.find(l => (l.id || l.name) === member.id);
+                            if (l) { displayName = l.name; filePath = l.filePath; }
+                        } else if (type === 'event') {
+                            const e = allEvents.find(e => (e.id || e.name) === member.id);
+                            if (e) { displayName = e.name; filePath = e.filePath; }
+                        } else if (type === 'item') {
+                            const i = allItems.find(i => (i.id || i.name) === member.id);
+                            if (i) { displayName = i.name; filePath = i.filePath; }
+                        }
+                        li.textContent = displayName;
+                        if (filePath) {
+                            li.classList.add('is-link');
+                            li.addEventListener('click', () => {
+                                const path = filePath as string;
+                                const file = this.app.vault.getAbstractFileByPath(path);
+                                if (file instanceof TFile) this.app.workspace.getLeaf(false).openFile(file);
+                            });
+                        }
                     });
                 }
             });
