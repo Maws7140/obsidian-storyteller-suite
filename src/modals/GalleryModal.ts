@@ -86,7 +86,9 @@ export class GalleryModal extends Modal {
      */
     private getImageSrc(imagePath: string): string {
         // Check if it's an external URL
-        if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
+        if (imagePath.startsWith('http://') || imagePath.startsWith('https://') || imagePath.startsWith('//')) {
+            const allow = this.plugin.settings.allowRemoteImages ?? false;
+            if (!allow) return '';
             return imagePath;
         }
         // Otherwise, treat it as a vault path

@@ -238,7 +238,7 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
         // --- Custom Folders & One Story Mode ---
         new Setting(containerEl)
             .setName('Use custom entity folders')
-            .setDesc('When enabled, use the folder paths below for Characters, Locations, Events, and Items instead of auto-generated story folders.')
+            .setDesc('When enabled, use the folder paths below. You can include {storyName}, {storySlug}, or {storyId} to make per-story folders (e.g., Creative/Writing/{storyName}/Characters).')
             .addToggle(toggle => toggle
                 .setValue(!!this.plugin.settings.enableCustomEntityFolders)
                 .onChange(async (value) => {
@@ -248,52 +248,94 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                     if (value) {
                         // Offer auto-detection first to smooth migration
                         await this.plugin.autoDetectCustomEntityFolders();
-                        await this.plugin.refreshCustomFolderDiscovery();
+                        // If any template contains {story*} and no active story, guide the user
+                        const hasStoryPlaceholder =
+                            (this.plugin.settings.storyRootFolderTemplate || '').match(/\{story(Name|Slug|Id)\}/i) ||
+                            (this.plugin.settings.characterFolderPath || '').match(/\{story(Name|Slug|Id)\}/i) ||
+                            (this.plugin.settings.locationFolderPath || '').match(/\{story(Name|Slug|Id)\}/i) ||
+                            (this.plugin.settings.eventFolderPath || '').match(/\{story(Name|Slug|Id)\}/i) ||
+                            (this.plugin.settings.itemFolderPath || '').match(/\{story(Name|Slug|Id)\}/i) ||
+                            (this.plugin.settings.referenceFolderPath || '').match(/\{story(Name|Slug|Id)\}/i) ||
+                            (this.plugin.settings.chapterFolderPath || '').match(/\{story(Name|Slug|Id)\}/i) ||
+                            (this.plugin.settings.sceneFolderPath || '').match(/\{story(Name|Slug|Id)\}/i);
+                        if (hasStoryPlaceholder && !this.plugin.settings.activeStoryId) {
+                            const banner = containerEl.createDiv({ cls: 'mod-warning' });
+                            banner.style.marginTop = '8px';
+                            banner.setText('Custom folders use {story*} placeholders. Select or create an active story, then click "Rescan custom folders".');
+                        } else {
+                            await this.plugin.refreshCustomFolderDiscovery();
+                        }
                     }
                     this.display();
                 })
             );
 
         if (this.plugin.settings.enableCustomEntityFolders) {
-            // Rescan custom folders on demand
+            // Preview resolved folders
             new Setting(containerEl)
-                .setName('Custom folder discovery')
-                .setDesc('Ensure configured folders exist and rescan for entity files (updates dashboard & Dataview).')
+                .setName('Preview resolved folders')
+                .setDesc('See each entity’s resolved folder path based on current settings and active story')
                 .addButton(btn => btn
-                    .setButtonText('Rescan custom folders')
-                    .setTooltip('Ensure and rescan now')
+                    .setButtonText('Preview')
                     .onClick(async () => {
-                        btn.setDisabled(true);
-                        try {
-                            await this.plugin.refreshCustomFolderDiscovery();
-                        } finally {
-                            btn.setDisabled(false);
-                            this.display();
+                        const resolver = (this.plugin as any).buildResolver?.() || null;
+                        if (!resolver) return;
+                        const results = resolver.resolveAll();
+                        const table = containerEl.createEl('pre');
+                        const lines: string[] = [];
+                        for (const [k, v] of Object.entries(results as Record<string, { path?: string; error?: string }>)) {
+                            const val = v.path || v.error || '—';
+                            lines.push(`${k.padEnd(10)}: ${val}`);
                         }
-                    })
-                );
+                        table.setText(lines.join('\n'));
+                    }));
+            // Optional story root template
+            new Setting(containerEl)
+                .setName('Story root folder (optional)')
+                .setDesc('Base path template for all entities. Supports {storyName}, {storySlug}, {storyId}. Example: Creative/Writing/{storyName}')
+                .addText(text => {
+                    const comp = text
+                        .setPlaceholder('Creative/Writing/{storyName}')
+                        .setValue(this.plugin.settings.storyRootFolderTemplate || '')
+                        .onChange(async (value) => {
+                            this.plugin.settings.storyRootFolderTemplate = value;
+                            await this.plugin.saveSettings();
+                        });
+                    let suppress = false;
+                    const openSuggest = () => {
+                        if (suppress) return;
+                        const modal = new FolderSuggestModal(
+                            this.app,
+                            async (folderPath) => {
+                                this.plugin.settings.storyRootFolderTemplate = folderPath;
+                                comp.setValue(folderPath);
+                                await this.plugin.saveSettings();
+                            },
+                            () => {
+                                suppress = true;
+                                setTimeout(() => { suppress = false; }, 300);
+                                setTimeout(() => comp.inputEl.focus(), 0);
+                            }
+                        );
+                        modal.open();
+                    };
+                    comp.inputEl.addEventListener('keydown', (e: KeyboardEvent) => {
+                        if (e.key === 'ArrowDown' || (e.ctrlKey && e.key.toLowerCase() === ' ')) {
+                            e.preventDefault();
+                            openSuggest();
+                        }
+                    });
+                    comp.inputEl.addEventListener('focus', openSuggest);
+                    comp.inputEl.addEventListener('click', openSuggest);
+                    return comp;
+                });
+            // NOTE: The explicit "Rescan custom folders" control is intentionally hidden.
+            // Custom folders are ensured lazily when needed, and users can use the preview below to validate paths.
 
-            // Auto-detect folders button
-            new Setting(containerEl)
-                .setName('Auto-detect story root')
-                .setDesc('Try to detect a parent folder outside StorytellerSuite containing Characters/Locations/etc, and fill paths automatically.')
-                .addButton(btn => btn
-                    .setButtonText('Detect folders')
-                    .setTooltip('Find common subfolders and set paths')
-                    .onClick(async () => {
-                        btn.setDisabled(true);
-                        try {
-                            await this.plugin.autoDetectCustomEntityFolders();
-                            await this.plugin.refreshCustomFolderDiscovery();
-                        } finally {
-                            btn.setDisabled(false);
-                            this.display();
-                        }
-                    })
-                );
+            // NOTE: The explicit "Detect folders" control is intentionally hidden to avoid disrupting manual setups.
             new Setting(containerEl)
                 .setName('Characters folder')
-                .setDesc('Path for character markdown files')
+                .setDesc('Path for character markdown files (placeholders allowed: {storyName}, {storySlug}, {storyId})')
                 .addText(text => {
                     const comp = text
                         .setPlaceholder('MyStory/Characters')
@@ -333,7 +375,7 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
 
             new Setting(containerEl)
                 .setName('Locations folder')
-                .setDesc('Path for location markdown files')
+                .setDesc('Path for location markdown files (placeholders allowed: {storyName}, {storySlug}, {storyId})')
                 .addText(text => {
                     const comp = text
                         .setPlaceholder('MyStory/Locations')
@@ -373,7 +415,7 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
 
             new Setting(containerEl)
                 .setName('Events folder')
-                .setDesc('Path for event markdown files')
+                .setDesc('Path for event markdown files (placeholders allowed: {storyName}, {storySlug}, {storyId})')
                 .addText(text => {
                     const comp = text
                         .setPlaceholder('MyStory/Events')
@@ -413,7 +455,7 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
 
             new Setting(containerEl)
                 .setName('Items folder')
-                .setDesc('Path for item markdown files')
+                .setDesc('Path for item markdown files (placeholders allowed: {storyName}, {storySlug}, {storyId})')
                 .addText(text => {
                     const comp = text
                         .setPlaceholder('MyStory/Items')
@@ -453,7 +495,7 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
 
             new Setting(containerEl)
                 .setName('References folder')
-                .setDesc('Path for reference markdown files')
+                .setDesc('Path for reference markdown files (placeholders allowed: {storyName}, {storySlug}, {storyId})')
                 .addText(text => {
                     const comp = text
                         .setPlaceholder('MyStory/References')
@@ -493,7 +535,7 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
 
             new Setting(containerEl)
                 .setName('Scenes folder')
-                .setDesc('Path for scene markdown files')
+                .setDesc('Path for scene markdown files (placeholders allowed: {storyName}, {storySlug}, {storyId})')
                 .addText(text => {
                     const comp = text
                         .setPlaceholder('MyStory/Scenes')
@@ -532,7 +574,7 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                 });
             new Setting(containerEl)
                 .setName('Chapters folder')
-                .setDesc('Path for chapter markdown files')
+                .setDesc('Path for chapter markdown files (placeholders allowed: {storyName}, {storySlug}, {storyId})')
                 .addText(text => {
                     const comp = text
                         .setPlaceholder('MyStory/Chapters')
@@ -639,6 +681,9 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                 })
             );
 
+        // Privacy / Remote images
+        // NOTE: Remote images are enabled by default and this toggle is intentionally hidden to reduce settings noise.
+
         new Setting(containerEl)
             .setName('Support')
             .setHeading();
@@ -714,6 +759,7 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                 <li>Edit story details with the pencil icon</li>
                 <li>Delete stories with the trash icon (this only removes from plugin, not your files)</li>
             </ul>
+            <p><strong>Immediate activation tip:</strong> Creating a story from <em>Settings</em> updates the settings list immediately, but the dashboard's story dropdown may not refresh until you reopen the dashboard. For instant activation and UI refresh, use the dashboard/command palette action <em>"Storyteller: Create New Story"</em>, or close/reopen the dashboard via <em>"Storyteller: Open dashboard"</em>.</p>
             <p><strong>One Story Mode:</strong> When enabled in settings, the interface is simplified to a single-story layout and the <em>New story</em> button is hidden. Content is organized under a single base folder.</p>`);
 
         this.addTutorialCollapsible(containerEl, 'Character management', 
@@ -800,6 +846,18 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                 <li>Import existing story folders without losing data</li>
                 <li>Useful when moving stories between vaults</li>
             </ul>`);
+
+        // New: Recommended workflow for custom folders
+        this.addTutorialCollapsible(containerEl, 'Custom folders: recommended manual workflow',
+            `<p><strong>Simple, reliable setup for custom folders:</strong></p>
+            <ol>
+                <li><strong>Create your story folder and subfolders manually</strong> in your vault (e.g., <code>Creative/Writing/My_Story/Characters</code>, <code>Locations</code>, <code>Events</code>, etc.).</li>
+                <li>In Settings → Storyteller Suite → enable <strong>Use custom entity folders</strong>. Optionally set a <strong>Story root folder</strong> template for convenience.</li>
+                <li>Open the dashboard and use <strong>"Create new story"</strong>. After creation, <strong>refresh/activate</strong> the dashboard. The plugin will recognize your manual story folder as the active story.</li>
+                <li>Use <strong>Preview resolved folders</strong> in settings to confirm the exact paths the plugin will use.</li>
+            </ol>
+            <p><strong>Switching stories in custom-folder mode:</strong> Use the <em>story dropdown at the top of the dashboard</em> to change the active story. Then go to <em>Settings → Storyteller Suite</em> and <strong>manually assign per‑entity folders</strong> for that story . Sorry I know this is a bit janky.</p>
+            `);
 
         this.addTutorialCollapsible(containerEl, 'Keyboard shortcuts and commands', 
             `<p><strong>All Available Commands (via Ctrl/Cmd + P):</strong></p>
