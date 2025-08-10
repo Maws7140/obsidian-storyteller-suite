@@ -183,4 +183,10 @@ export class PlatformUtils {
     static shouldUseHapticFeedback(): boolean {
         return this.isMobile(); // Both iOS and Android support haptic feedback
     }
+
+  /** Whether remote images (http/https) should be allowed based on plugin settings. Default false. */
+  static allowRemoteImages(getSetting: () => boolean | undefined): boolean {
+    const val = getSetting();
+    return !!val;
+  }
 }

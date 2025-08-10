@@ -86,6 +86,11 @@ You can customize this behavior in Settings → Storyteller Suite:
 
 Note: In One Story Mode, the dashboard’s “New story” button is hidden for consistency. In normal mode, multi-story management works as before.
 
+## Privacy & Images
+
+- Remote images (http/https) are blocked by default in dashboard/gallery rendering. Toggle this via Settings → Storyteller Suite → "Allow remote images".
+- Import images into your vault (e.g., the configured Gallery upload folder) to avoid external requests and ensure portability.
+
 
 ## Funding / Support
 

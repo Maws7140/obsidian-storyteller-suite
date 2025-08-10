@@ -2,6 +2,10 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { App, Notice, Plugin, TFile, TFolder, normalizePath, stringifyYaml, WorkspaceLeaf } from 'obsidian';
 import { parseEventDate, toMillis } from './utils/DateParsing';
+import { buildFrontmatter } from './yaml/EntitySections';
+import { FolderResolver, FolderResolverOptions } from './folders/FolderResolver';
+import { PromptModal } from './modals/ui/PromptModal';
+import { ConfirmModal } from './modals/ui/ConfirmModal';
 import { CharacterModal } from './modals/CharacterModal';
 import { Character, Location, Event, GalleryImage, GalleryData, Story, Group, PlotItem, Reference, Chapter, Scene } from './types';
 import { CharacterListModal } from './modals/CharacterListModal';
@@ -35,6 +39,8 @@ import { PlatformUtils } from './utils/PlatformUtils';
     /** When true, use user-provided folders instead of generated story folders */
     enableCustomEntityFolders?: boolean;
     /** Optional per-entity custom folders (used when enableCustomEntityFolders is true) */
+    /** Optional story root folder template. Supports {storyName}, {storySlug}, {storyId} */
+    storyRootFolderTemplate?: string;
     characterFolderPath?: string;
     locationFolderPath?: string;
     eventFolderPath?: string;
@@ -54,6 +60,8 @@ import { PlatformUtils } from './utils/PlatformUtils';
      defaultTimelineStack?: boolean;
      defaultTimelineDensity?: number; // 0..100
      showTimelineLegend?: boolean;
+     /** When false (default), block external http/https images. */
+     allowRemoteImages?: boolean;
 }
 
 /**
@@ -67,6 +75,7 @@ import { PlatformUtils } from './utils/PlatformUtils';
     groups: [],
     showTutorial: true,
     enableCustomEntityFolders: false,
+    storyRootFolderTemplate: '',
     characterFolderPath: '',
     locationFolderPath: '',
     eventFolderPath: '',
@@ -81,7 +90,8 @@ import { PlatformUtils } from './utils/PlatformUtils';
     defaultTimelineZoomPreset: 'none',
     defaultTimelineStack: true,
     defaultTimelineDensity: 50,
-    showTimelineLegend: true
+    showTimelineLegend: true,
+    allowRemoteImages: true
 }
 
 /**
@@ -90,7 +100,42 @@ import { PlatformUtils } from './utils/PlatformUtils';
  * a unified dashboard interface for story management
  */
 export default class StorytellerSuitePlugin extends Plugin {
+    /** Build a resolver using current settings */
+    private buildResolver(): FolderResolver {
+        const options: FolderResolverOptions = {
+            enableCustomEntityFolders: this.settings.enableCustomEntityFolders,
+            storyRootFolderTemplate: this.settings.storyRootFolderTemplate,
+            characterFolderPath: this.settings.characterFolderPath,
+            locationFolderPath: this.settings.locationFolderPath,
+            eventFolderPath: this.settings.eventFolderPath,
+            itemFolderPath: this.settings.itemFolderPath,
+            referenceFolderPath: this.settings.referenceFolderPath,
+            chapterFolderPath: this.settings.chapterFolderPath,
+            sceneFolderPath: this.settings.sceneFolderPath,
+            enableOneStoryMode: this.settings.enableOneStoryMode,
+            oneStoryBaseFolder: this.settings.oneStoryBaseFolder,
+        };
+        return new FolderResolver(options, () => this.getActiveStory());
+    }
+
+    /** Resolve all folders; if any error, return a summary message for the user. */
+    private resolveAllEntityFoldersOrExplain(): { ok: boolean; results: ReturnType<FolderResolver['resolveAll']>; message?: string } {
+        const resolver = this.buildResolver();
+        const results = resolver.resolveAll();
+        const errors: string[] = [];
+        for (const [k, v] of Object.entries(results)) {
+            if ((v as any).error) errors.push(`${k}: ${(v as any).error}`);
+        }
+        if (errors.length > 0) {
+            const message = errors.some(e => e.includes('No active story'))
+                ? 'Custom folders reference {story*}, but no active story is selected. Select or create an active story, then rescan.'
+                : `Could not resolve some folders:\n${errors.join('\n')}`;
+            return { ok: false, results, message };
+        }
+        return { ok: true, results };
+    }
 	settings: StorytellerSuiteSettings;
+    private folderResolver: FolderResolver | null = null;
 
     /** Get the Date object for the plugin's notion of "today" (custom override or system). */
     getReferenceTodayDate(): Date {
@@ -113,42 +158,20 @@ export default class StorytellerSuitePlugin extends Plugin {
 	 * Helper: Get the folder path for a given entity type in the active story
 	 */
     getEntityFolder(type: 'character' | 'location' | 'event' | 'item' | 'reference' | 'chapter' | 'scene'): string { // include 'scene'
-        // 1) If user enabled fully custom folders, return those directly (no story nesting)
-        if (this.settings.enableCustomEntityFolders) {
-            if (type === 'character' && this.settings.characterFolderPath) return this.settings.characterFolderPath;
-            if (type === 'location' && this.settings.locationFolderPath) return this.settings.locationFolderPath;
-            if (type === 'event' && this.settings.eventFolderPath) return this.settings.eventFolderPath;
-            if (type === 'item' && this.settings.itemFolderPath) return this.settings.itemFolderPath;
-            if (type === 'reference' && this.settings.referenceFolderPath) return this.settings.referenceFolderPath;
-            if (type === 'chapter' && this.settings.chapterFolderPath) return this.settings.chapterFolderPath;
-            if (type === 'scene' && this.settings.sceneFolderPath) return this.settings.sceneFolderPath;
-        }
+        const resolver = this.buildResolver();
+        return resolver.getEntityFolder(type);
+    }
 
-        // 2) If one-story mode is enabled (and no specific custom folder provided above),
-        //    build paths under the configured base without Stories/StoryName nesting
-        if (this.settings.enableOneStoryMode) {
-            const base = this.settings.oneStoryBaseFolder || 'StorytellerSuite';
-            if (type === 'character') return `${base}/Characters`;
-            if (type === 'location') return `${base}/Locations`;
-            if (type === 'event') return `${base}/Events`;
-            if (type === 'item') return `${base}/Items`;
-            if (type === 'reference') return `${base}/References`;
-            if (type === 'chapter') return `${base}/Chapters`;
-            if (type === 'scene') return `${base}/Scenes`;
-        }
-
-        // 3) Default: Multi-story structure
-        const story = this.getActiveStory();
-        if (!story) throw new Error('No active story selected.');
-        const base = `StorytellerSuite/Stories/${story.name}`;
-        if (type === 'character') return `${base}/Characters`;
-        if (type === 'location') return `${base}/Locations`;
-        if (type === 'event') return `${base}/Events`;
-        if (type === 'item') return `${base}/Items`; // New case
-        if (type === 'reference') return `${base}/References`;
-        if (type === 'chapter') return `${base}/Chapters`;
-        if (type === 'scene') return `${base}/Scenes`;
-        throw new Error('Unknown entity type');
+    /**
+     * Produce a filesystem-safe folder name for a story
+     */
+    private slugifyFolderName(name: string): string {
+        if (!name) return '';
+        return name
+            .replace(/[\\/:"*?<>|#^[\]{}]+/g, '') // remove invalid path chars
+            .trim()
+            .replace(/\s+/g, ' ')
+            .replace(/\s/g, '_');
     }
 
 	/**
@@ -164,10 +187,14 @@ export default class StorytellerSuitePlugin extends Plugin {
 		await this.saveSettings();
         // Ensure folders for this story exist. Respect custom folders / one-story mode.
         if (this.settings.enableCustomEntityFolders) {
-            if (this.settings.characterFolderPath) await this.ensureFolder(this.settings.characterFolderPath);
-            if (this.settings.locationFolderPath) await this.ensureFolder(this.settings.locationFolderPath);
-            if (this.settings.eventFolderPath) await this.ensureFolder(this.settings.eventFolderPath);
-            if (this.settings.itemFolderPath) await this.ensureFolder(this.settings.itemFolderPath);
+            // Use getEntityFolder so placeholders and root fallback are applied
+            await this.ensureFolder(this.getEntityFolder('character'));
+            await this.ensureFolder(this.getEntityFolder('location'));
+            await this.ensureFolder(this.getEntityFolder('event'));
+            await this.ensureFolder(this.getEntityFolder('item'));
+            await this.ensureFolder(this.getEntityFolder('reference'));
+            await this.ensureFolder(this.getEntityFolder('chapter'));
+            await this.ensureFolder(this.getEntityFolder('scene'));
         } else if (this.settings.enableOneStoryMode) {
             const base = this.settings.oneStoryBaseFolder || 'StorytellerSuite';
             await this.ensureFolder(`${base}/Characters`);
@@ -375,39 +402,35 @@ export default class StorytellerSuitePlugin extends Plugin {
 		if (!this.settings.enableCustomEntityFolders) {
 			return;
 		}
-		try {
-			// Ensure each configured folder exists
-			const foldersEnsured: string[] = [];
-			const ensureIf = async (path?: string) => {
-				if (path && path.trim().length > 0) {
-					await this.ensureFolder(path);
-					foldersEnsured.push(path);
-				}
-			};
-			await ensureIf(this.settings.characterFolderPath);
-			await ensureIf(this.settings.locationFolderPath);
-			await ensureIf(this.settings.eventFolderPath);
-			await ensureIf(this.settings.itemFolderPath);
-			await ensureIf(this.settings.referenceFolderPath);
-			await ensureIf(this.settings.chapterFolderPath);
-			await ensureIf(this.settings.sceneFolderPath);
+    try {
+            // Resolve all entity folders first; abort with guidance if unresolved
+            const resolved = this.resolveAllEntityFoldersOrExplain();
+            if (!resolved.ok) {
+                new Notice(resolved.message || 'Unable to resolve custom folders. Select or create an active story and try again.');
+                return;
+            }
+            for (const v of Object.values(resolved.results)) {
+                const path = (v as any).path as string;
+                if (path) await this.ensureFolder(path);
+            }
 
 			// Count markdown files in each folder to provide feedback
-        const countMd = (base: string | undefined): number => {
-            if (!base) return 0;
-            const files = this.app.vault.getMarkdownFiles();
-            const prefix = normalizePath(base) + '/';
-            return files.filter(f => f.path.startsWith(prefix)).length;
-        };
-			const counts = {
-				characters: countMd(this.settings.characterFolderPath),
-				locations: countMd(this.settings.locationFolderPath),
-				events: countMd(this.settings.eventFolderPath),
-				items: countMd(this.settings.itemFolderPath),
-				references: countMd(this.settings.referenceFolderPath),
-				chapters: countMd(this.settings.chapterFolderPath),
-				scenes: countMd(this.settings.sceneFolderPath),
-			};
+            const countMdResolved = (base?: string): number => {
+                if (!base) return 0;
+                const files = this.app.vault.getMarkdownFiles();
+                const prefix = normalizePath(base) + '/';
+                return files.filter(f => f.path.startsWith(prefix)).length;
+            };
+            const r = resolved.results as any;
+            const counts = {
+                characters: countMdResolved(r.character.path),
+                locations: countMdResolved(r.location.path),
+                events: countMdResolved(r.event.path),
+                items: countMdResolved(r.item.path),
+                references: countMdResolved(r.reference.path),
+                chapters: countMdResolved(r.chapter.path),
+                scenes: countMdResolved(r.scene.path),
+            };
 
 			// Nudge Dataview and our dashboard to update
 			this.app.metadataCache.trigger('dataview:refresh-views');
@@ -535,8 +558,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 					async (name, description) => {
 						const story = await this.createStory(name, description);
 						await this.setActiveStory(story.id);
-						// @ts-ignore
-						new window.Notice(`Story "${name}" created and activated.`);
+                        new Notice(`Story "${name}" created and activated.`);
 						// Optionally, open dashboard
 						this.activateView();
 					}
@@ -740,8 +762,9 @@ export default class StorytellerSuitePlugin extends Plugin {
 			callback: async () => {
 				const name = prompt('Enter group name:');
 				if (name && name.trim()) {
-					await this.createGroup(name.trim());
-					new Notice(`Group "${name.trim()}" created.`);
+                    const trimmed = name.trim();
+                    await this.createGroup(trimmed);
+                    new Notice(`Group "${trimmed}" created.`);
 				}
 			}
 		});
@@ -763,45 +786,60 @@ export default class StorytellerSuitePlugin extends Plugin {
 		this.addCommand({
 			id: 'rename-group',
 			name: 'Rename group',
-			callback: async () => {
-				const groups = this.getGroups();
-				if (groups.length === 0) {
-					new Notice('No groups to rename.');
-					return;
-				}
-				const groupName = prompt('Enter the name of the group to rename:');
-				const group = groups.find(g => g.name === groupName);
-				if (!group) {
-					new Notice('Group not found.');
-					return;
-				}
-				const newName = prompt('Enter new group name:', group.name);
-				if (newName && newName.trim()) {
-					await this.updateGroup(group.id, { name: newName.trim() });
-					new Notice(`Group renamed to "${newName.trim()}".`);
-				}
-			}
+            callback: async () => {
+                const groups = this.getGroups();
+                if (groups.length === 0) {
+                    new Notice('No groups to rename.');
+                    return;
+                }
+                new PromptModal(this.app, {
+                    title: 'Rename group',
+                    label: 'Enter the name of the group to rename',
+                    validator: (val) => !val.trim() ? 'Required' : null,
+                    onSubmit: async (groupName) => {
+                        const group = groups.find(g => g.name === groupName.trim());
+                        if (!group) { new Notice('Group not found.'); return; }
+                        new PromptModal(this.app, {
+                            title: 'New name',
+                            label: 'Enter new group name',
+                            defaultValue: group.name,
+                            validator: (v) => !v.trim() ? 'Required' : null,
+                            onSubmit: async (newName) => {
+                                await this.updateGroup(group.id, { name: newName.trim() });
+                                new Notice(`Group renamed to "${newName.trim()}".`);
+                            }
+                        }).open();
+                    }
+                }).open();
+            }
 		});
 		this.addCommand({
 			id: 'delete-group',
 			name: 'Delete group',
-			callback: async () => {
-				const groups = this.getGroups();
-				if (groups.length === 0) {
-					new Notice('No groups to delete.');
-					return;
-				}
-				const groupName = prompt('Enter the name of the group to delete:');
-				const group = groups.find(g => g.name === groupName);
-				if (!group) {
-					new Notice('Group not found.');
-					return;
-				}
-				if (confirm(`Are you sure you want to delete group "${group.name}"?`)) {
-					await this.deleteGroup(group.id);
-					new Notice(`Group "${group.name}" deleted.`);
-				}
-			}
+            callback: async () => {
+                const groups = this.getGroups();
+                if (groups.length === 0) {
+                    new Notice('No groups to delete.');
+                    return;
+                }
+                new PromptModal(this.app, {
+                    title: 'Delete group',
+                    label: 'Enter the name of the group to delete',
+                    validator: (v) => !v.trim() ? 'Required' : null,
+                    onSubmit: (groupName) => {
+                        const group = groups.find(g => g.name === groupName.trim());
+                        if (!group) { new Notice('Group not found.'); return; }
+                        new ConfirmModal(this.app, {
+                            title: 'Confirm delete',
+                            body: `Are you sure you want to delete group "${group.name}"?`,
+                            onConfirm: async () => {
+                                await this.deleteGroup(group.id);
+                                new Notice(`Group "${group.name}" deleted.`);
+                            }
+                        }).open();
+                    }
+                }).open();
+            }
 		});
 	}
 
@@ -850,20 +888,24 @@ export default class StorytellerSuitePlugin extends Plugin {
 	 * @param folderPath The path of the folder to ensure exists
 	 * @throws Error if the path exists but is not a folder
 	 */
-	async ensureFolder(folderPath: string): Promise<void> {
-		const normalizedPath = normalizePath(folderPath);
-		const folder = this.app.vault.getAbstractFileByPath(normalizedPath);
-		if (!folder) {
-			// Create the folder if it doesn't exist
-			await this.app.vault.createFolder(normalizedPath);
-		} else if (!(folder instanceof TFolder)) {
-			// Path exists but is a file, not a folder - this is an error
-			const errorMsg = `Error: Path ${normalizedPath} exists but is not a folder. Check Storyteller Suite settings.`;
-			new Notice(errorMsg);
-			console.error(errorMsg);
-			throw new Error(errorMsg);
-		}
-	}
+    async ensureFolder(folderPath: string): Promise<void> {
+        const normalizedPath = normalizePath(folderPath);
+        // Create missing parent segments one by one (mkdir -p behavior)
+        const segments = normalizedPath.split('/').filter(Boolean);
+        let current = '';
+        for (const seg of segments) {
+            current = current ? `${current}/${seg}` : seg;
+            const af = this.app.vault.getAbstractFileByPath(current);
+            if (!af) {
+                await this.app.vault.createFolder(current);
+            } else if (!(af instanceof TFolder)) {
+                const errorMsg = `Error: Path ${current} exists but is not a folder. Check Storyteller Suite settings.`;
+                new Notice(errorMsg);
+                console.error(errorMsg);
+                throw new Error(errorMsg);
+            }
+        }
+    }
 
 	/**
 	 * Generic file parser for storytelling entity files
@@ -872,7 +914,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 	 * @param typeDefaults Default values for the entity type
 	 * @returns Parsed entity data or null if parsing fails
 	 */
-	async parseFile<T>(file: TFile, typeDefaults: Partial<T>): Promise<T | null> {
+    async parseFile<T>(file: TFile, typeDefaults: Partial<T>): Promise<T | null> {
 		try {
 			// Get cached frontmatter from Obsidian's metadata cache
 			const fileCache = this.app.metadataCache.getFileCache(file);
@@ -880,53 +922,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 
 			// Read file content for markdown sections
 			const content = await this.app.vault.cachedRead(file);
-
-			// Parse ALL sections dynamically using robust regex pattern for backward compatibility
-			const allSections: Record<string, string> = {};
-
-			// Primary regex: More flexible pattern to handle various formatting from older files
-			const primaryMatches = content.matchAll(/^##\s*([^\n\r]+?)\s*[\n\r]+([\s\S]*?)(?=\n\s*##\s|$)/gm);
-
-			for (const match of primaryMatches) {
-				const sectionName = match[1].trim();
-				const sectionContent = match[2].trim();
-				if (sectionName && sectionContent) {
-					allSections[sectionName] = sectionContent;
-				}
-			}
-
-			// Fallback parsing for edge cases where primary regex might miss sections
-			if (Object.keys(allSections).length === 0 && content.includes('##')) {
-				console.warn(`Primary regex failed for file ${file.path}, attempting fallback parsing`);
-				// Fallback: Split by ## and try to reconstruct sections
-				const lines = content.split('\n');
-				let currentSection = '';
-				let currentContent: string[] = [];
-
-				for (const line of lines) {
-					if (line.startsWith('##')) {
-						// Save previous section if exists
-						if (currentSection && currentContent.length > 0) {
-							const sect = currentContent.join('\n').trim();
-							if (sect) {
-								allSections[currentSection] = sect;
-							}
-						}
-						// Start new section
-						currentSection = line.replace(/^##\s*/, '').trim();
-						currentContent = [];
-					} else if (currentSection) {
-						currentContent.push(line);
-					}
-				}
-				// Save final section
-				if (currentSection && currentContent.length > 0) {
-					const sect = currentContent.join('\n').trim();
-					if (sect) {
-						allSections[currentSection] = sect;
-					}
-				}
-			}
+            const allSections = (await import('./yaml/EntitySections')).parseSectionsFromMarkdown(content);
 
 			// Combine frontmatter and defaults with file path
 			// IMPORTANT: Do NOT spread allSections into top-level props to avoid leaking into YAML later.
@@ -1000,9 +996,6 @@ export default class StorytellerSuitePlugin extends Plugin {
 	 * Ensure the character folder exists for the active story
 	 */
 	async ensureCharacterFolder(): Promise<void> {
-    if (this.settings.enableCustomEntityFolders && !this.settings.characterFolderPath) {
-        return;
-    }
     await this.ensureFolder(this.getEntityFolder('character'));
 	}
 
@@ -1010,73 +1003,21 @@ export default class StorytellerSuitePlugin extends Plugin {
 	 * Build sanitized YAML frontmatter for each entity type.
 	 * Only whitelisted keys are allowed and multi-line strings are excluded.
 	 */
-	private buildFrontmatterForCharacter(src: any): Record<string, any> {
-		const whitelist = new Set([
-			'id', 'name', 'traits', 'relationships', 'locations', 'events',
-			'status', 'affiliation', 'groups', 'profileImagePath', 'customFields'
-		]);
-		const out: Record<string, any> = {};
-		for (const [k, v] of Object.entries(src || {})) {
-			if (!whitelist.has(k)) continue;
-			if (typeof v === 'string' && v.includes('\n')) continue;
-			if (v === null || v === undefined) continue;
-			if (Array.isArray(v) && v.length === 0) continue;
-			if (k === 'customFields' && typeof v === 'object' && v && Object.keys(v as any).length === 0) continue;
-			out[k] = v;
-		}
-		return out;
-	}
+    private buildFrontmatterForCharacter(src: any): Record<string, any> {
+        return buildFrontmatter('character', src) as Record<string, any>;
+    }
 
-	private buildFrontmatterForLocation(src: any): Record<string, any> {
-		const whitelist = new Set([
-			'id', 'name', 'locationType', 'region', 'status',
-			'groups', 'profileImagePath', 'customFields'
-		]);
-		const out: Record<string, any> = {};
-		for (const [k, v] of Object.entries(src || {})) {
-			if (!whitelist.has(k)) continue;
-			if (typeof v === 'string' && v.includes('\n')) continue;
-			if (v === null || v === undefined) continue;
-			if (Array.isArray(v) && v.length === 0) continue;
-			if (k === 'customFields' && typeof v === 'object' && v && Object.keys(v as any).length === 0) continue;
-			out[k] = v;
-		}
-		return out;
-	}
+    private buildFrontmatterForLocation(src: any): Record<string, any> {
+        return buildFrontmatter('location', src) as Record<string, any>;
+    }
 
-	private buildFrontmatterForEvent(src: any): Record<string, any> {
-		const whitelist = new Set([
-			'id', 'name', 'dateTime', 'characters', 'location', 'status',
-			'groups', 'profileImagePath', 'customFields'
-		]);
-		const out: Record<string, any> = {};
-		for (const [k, v] of Object.entries(src || {})) {
-			if (!whitelist.has(k)) continue;
-			if (typeof v === 'string' && v.includes('\n')) continue;
-			if (v === null || v === undefined) continue;
-			if (Array.isArray(v) && v.length === 0) continue;
-			if (k === 'customFields' && typeof v === 'object' && v && Object.keys(v as any).length === 0) continue;
-			out[k] = v;
-		}
-		return out;
-	}
+    private buildFrontmatterForEvent(src: any): Record<string, any> {
+        return buildFrontmatter('event', src) as Record<string, any>;
+    }
 
-	private buildFrontmatterForItem(src: any): Record<string, any> {
-		const whitelist = new Set([
-			'id', 'name', 'isPlotCritical', 'currentOwner', 'pastOwners',
-			'currentLocation', 'associatedEvents', 'groups', 'profileImagePath', 'customFields'
-		]);
-		const out: Record<string, any> = {};
-		for (const [k, v] of Object.entries(src || {})) {
-			if (!whitelist.has(k)) continue;
-			if (typeof v === 'string' && v.includes('\n')) continue;
-			if (v === null || v === undefined) continue;
-			if (Array.isArray(v) && v.length === 0) continue;
-			if (k === 'customFields' && typeof v === 'object' && v && Object.keys(v as any).length === 0) continue;
-			out[k] = v;
-		}
-		return out;
-	}
+    private buildFrontmatterForItem(src: any): Record<string, any> {
+        return buildFrontmatter('item', src) as Record<string, any>;
+    }
 
 	/**
 	 * Save a character to the vault as a markdown file (in the active story)
@@ -1238,9 +1179,6 @@ export default class StorytellerSuitePlugin extends Plugin {
 	 */
 	async listCharacters(): Promise<Character[]> {
     await this.ensureCharacterFolder();
-    if (this.settings.enableCustomEntityFolders && !this.settings.characterFolderPath) {
-        return [];
-    }
     const folderPath = this.getEntityFolder('character');
         
         // Use vault.getMarkdownFiles() instead of folder.children for immediate file detection
@@ -1288,9 +1226,6 @@ export default class StorytellerSuitePlugin extends Plugin {
 	 * Ensure the location folder exists for the active story
 	 */
 	async ensureLocationFolder(): Promise<void> {
-    if (this.settings.enableCustomEntityFolders && !this.settings.locationFolderPath) {
-        return;
-    }
     await this.ensureFolder(this.getEntityFolder('location'));
 	}
 
@@ -1428,9 +1363,6 @@ export default class StorytellerSuitePlugin extends Plugin {
 	 */
 	async listLocations(): Promise<Location[]> {
     await this.ensureLocationFolder();
-    if (this.settings.enableCustomEntityFolders && !this.settings.locationFolderPath) {
-        return [];
-    }
     const folderPath = this.getEntityFolder('location');
         
         // Use vault.getMarkdownFiles() instead of folder.children for immediate file detection
@@ -1478,9 +1410,6 @@ export default class StorytellerSuitePlugin extends Plugin {
 	 * Ensure the event folder exists for the active story
 	 */
 	async ensureEventFolder(): Promise<void> {
-    if (this.settings.enableCustomEntityFolders && !this.settings.eventFolderPath) {
-        return;
-    }
     await this.ensureFolder(this.getEntityFolder('event'));
 	}
 
@@ -1622,9 +1551,6 @@ export default class StorytellerSuitePlugin extends Plugin {
 	 */
     async listEvents(): Promise<Event[]> {
     await this.ensureEventFolder();
-    if (this.settings.enableCustomEntityFolders && !this.settings.eventFolderPath) {
-        return [];
-    }
     const folderPath = this.getEntityFolder('event');
         
         const allFiles = this.app.vault.getMarkdownFiles();
@@ -1680,17 +1606,11 @@ export default class StorytellerSuitePlugin extends Plugin {
 	 * Ensure the item folder exists for the active story
 	 */
 	async ensureItemFolder(): Promise<void> {
-    if (this.settings.enableCustomEntityFolders && !this.settings.itemFolderPath) {
-        return;
-    }
     await this.ensureFolder(this.getEntityFolder('item'));
 	}
 
 	/** Ensure the reference folder exists for the active story */
 	async ensureReferenceFolder(): Promise<void> {
-    if (this.settings.enableCustomEntityFolders && !this.settings.referenceFolderPath) {
-        return;
-    }
     await this.ensureFolder(this.getEntityFolder('reference'));
 	}
 
@@ -1822,9 +1742,6 @@ export default class StorytellerSuitePlugin extends Plugin {
 	 */
 	async listPlotItems(): Promise<PlotItem[]> {
     await this.ensureItemFolder();
-    if (this.settings.enableCustomEntityFolders && !this.settings.itemFolderPath) {
-        return [];
-    }
     const folderPath = this.getEntityFolder('item');
 		const allFiles = this.app.vault.getMarkdownFiles();
         const prefix = normalizePath(folderPath) + '/';
@@ -1938,9 +1855,6 @@ export default class StorytellerSuitePlugin extends Plugin {
 	/** List all references */
 	async listReferences(): Promise<Reference[]> {
     await this.ensureReferenceFolder();
-    if (this.settings.enableCustomEntityFolders && !this.settings.referenceFolderPath) {
-        return [];
-    }
     const folderPath = this.getEntityFolder('reference');
         const allFiles = this.app.vault.getMarkdownFiles();
         const prefix = normalizePath(folderPath) + '/';
