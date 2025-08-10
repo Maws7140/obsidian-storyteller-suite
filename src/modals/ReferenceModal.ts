@@ -76,6 +76,36 @@ export class ReferenceModal extends Modal {
                 })
             )
             .addButton(btn => btn
+                .setButtonText('Upload')
+                .setTooltip('Upload new image')
+                .onClick(async () => {
+                    const input = document.createElement('input');
+                    input.type = 'file';
+                    input.accept = 'image/*';
+                    input.onchange = async () => {
+                        const file = input.files?.[0];
+                        if (!file) return;
+                        try {
+                            const uploadFolder = this.plugin.settings.galleryUploadFolder;
+                            await this.plugin.ensureFolder(uploadFolder);
+                            const timestamp = Date.now();
+                            const sanitizedName = file.name.replace(/[^\w\s.-]/g, '').replace(/\s+/g, '_');
+                            const fileName = `${timestamp}_${sanitizedName}`;
+                            const filePath = `${uploadFolder}/${fileName}`;
+                            const arrayBuffer = await file.arrayBuffer();
+                            await this.app.vault.createBinary(filePath, arrayBuffer);
+                            this.refData.profileImagePath = filePath;
+                            if (imageDescEl) imageDescEl.setText(`Current: ${filePath}`);
+                            new Notice(`Image uploaded: ${fileName}`);
+                        } catch (e) {
+                            console.error('Upload failed', e);
+                            new Notice('Error uploading image');
+                        }
+                    };
+                    input.click();
+                })
+            )
+            .addButton(btn => btn
                 .setIcon('cross')
                 .setClass('mod-warning')
                 .setTooltip('Clear image')
