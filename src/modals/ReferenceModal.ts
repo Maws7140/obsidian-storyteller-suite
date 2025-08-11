@@ -3,6 +3,8 @@ import { App, Modal, Notice, Setting, TextAreaComponent } from 'obsidian';
 import StorytellerSuitePlugin from '../main';
 import { Reference } from '../types';
 import { GalleryImageSuggestModal } from './GalleryImageSuggestModal';
+import { PromptModal } from './ui/PromptModal';
+import { getWhitelistKeys } from '../yaml/EntitySections';
 
 export type ReferenceModalSubmitCallback = (ref: Reference) => Promise<void>;
 export type ReferenceModalDeleteCallback = (ref: Reference) => Promise<void>;
@@ -124,6 +126,41 @@ export class ReferenceModal extends Modal {
                   .onChange(v => this.refData.content = v || undefined);
                 ta.inputEl.rows = 12;
             });
+
+        // Custom fields (add only)
+        contentEl.createEl('h3', { text: 'Custom fields' });
+        new Setting(contentEl)
+            .addButton(btn => btn
+                .setButtonText('Add custom field')
+                .setIcon('plus')
+                .onClick(() => {
+                    const reserved = new Set<string>([...getWhitelistKeys('reference'), 'customFields', 'filePath', 'id', 'sections']);
+                    const anyRef = this.refData as any;
+                    if (!anyRef.customFields) anyRef.customFields = {} as Record<string, string>;
+                    const fields = anyRef.customFields as Record<string, string>;
+                    const askValue = (key: string) => {
+                        new PromptModal(this.app, {
+                            title: 'Custom field value',
+                            label: `Value for "${key}"`,
+                            defaultValue: '',
+                            onSubmit: (val: string) => { fields[key] = val; }
+                        }).open();
+                    };
+                    new PromptModal(this.app, {
+                        title: 'New custom field',
+                        label: 'Field name',
+                        defaultValue: '',
+                        validator: (value: string) => {
+                            const trimmed = value.trim();
+                            if (!trimmed) return 'Field name cannot be empty';
+                            if (reserved.has(trimmed)) return 'That name is reserved';
+                            const exists = Object.keys(fields).some(k => k.toLowerCase() === trimmed.toLowerCase());
+                            if (exists) return 'A field with that name already exists';
+                            return null;
+                        },
+                        onSubmit: (name: string) => askValue(name.trim())
+                    }).open();
+                }));
 
         const buttons = new Setting(contentEl).setClass('storyteller-modal-buttons');
         if (!this.isNew && this.onDelete) {

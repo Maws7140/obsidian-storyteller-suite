@@ -145,6 +145,17 @@ export default class StorytellerSuitePlugin extends Plugin {
         if (!entity) return entity;
         const whitelist = getWhitelistKeys(entityType);
         const reserved = new Set<string>([...whitelist, 'customFields', 'filePath', 'sections', 'id']);
+        // Preserve derived section fields so they are not swept into customFields
+        const derivedByType: Record<string, string[]> = {
+            character: ['description', 'backstory'],
+            location: ['description', 'history'],
+            event: ['description', 'outcome'],
+            item: ['description', 'history'],
+            reference: ['content'],
+            chapter: ['summary'],
+            scene: ['content']
+        };
+        for (const k of (derivedByType[entityType] || [])) reserved.add(k);
         const mode = this.settings.customFieldsMode ?? 'flatten';
 
         const src: Record<string, unknown> = entity as unknown as Record<string, unknown>;
@@ -1052,7 +1063,11 @@ export default class StorytellerSuitePlugin extends Plugin {
 	 * @param typeDefaults Default values for the entity type
 	 * @returns Parsed entity data or null if parsing fails
 	 */
-    async parseFile<T>(file: TFile, typeDefaults: Partial<T>): Promise<T | null> {
+    async parseFile<T>(
+        file: TFile,
+        typeDefaults: Partial<T>,
+        entityType: 'character' | 'location' | 'event' | 'item' | 'reference' | 'chapter' | 'scene'
+    ): Promise<T | null> {
 		try {
 			// Get cached frontmatter from Obsidian's metadata cache
 			const fileCache = this.app.metadataCache.getFileCache(file);
@@ -1070,11 +1085,42 @@ export default class StorytellerSuitePlugin extends Plugin {
 				filePath: file.path
 			};
 
-			// Map well-known sections into lowercase fields used by UI
-			if (allSections['Description']) data['description'] = allSections['Description'];
-			if (allSections['Backstory']) data['backstory'] = allSections['Backstory'];
-			if (allSections['History']) data['history'] = allSections['History'];
-			if (allSections['Outcome']) data['outcome'] = allSections['Outcome'];
+            // Map well-known sections into lowercase fields used by UI
+            if (allSections['Description']) data['description'] = allSections['Description'];
+            if (allSections['Backstory']) data['backstory'] = allSections['Backstory'];
+            if (allSections['History']) data['history'] = allSections['History'];
+            if (allSections['Outcome']) data['outcome'] = allSections['Outcome'];
+
+            // Entity-type specific mappings
+            if (entityType === 'reference') {
+                if (allSections['Content']) data['content'] = allSections['Content'];
+            } else if (entityType === 'chapter') {
+                if (allSections['Summary']) data['summary'] = allSections['Summary'];
+            } else if (entityType === 'scene') {
+                if (allSections['Content']) data['content'] = allSections['Content'];
+                if (allSections['Beat Sheet']) {
+                    const raw = allSections['Beat Sheet'] as string;
+                    const beats = raw
+                        .split('\n')
+                        .map(line => line.replace(/^\-\s*/, '').trim())
+                        .filter(Boolean);
+                    if (beats.length > 0) data['beats'] = beats;
+                }
+            } else if (entityType === 'item') {
+                // Backward-compatibility: some older notes used "History / Lore" as heading
+                if (!data['history'] && allSections['History / Lore']) data['history'] = allSections['History / Lore'];
+            } else if (entityType === 'event') {
+                // Support parsing Characters Involved from markdown section if present
+                if (allSections['Characters Involved']) {
+                    const charactersText = allSections['Characters Involved'];
+                    const characters = charactersText
+                        .split('\n')
+                        .map(line => line.trim())
+                        .filter(line => line.startsWith('- [[') && line.endsWith(']]'))
+                        .map(line => line.replace(/^\- \[\[(.*?)\]\]$/, '$1'));
+                    if (characters.length > 0) data['characters'] = characters;
+                }
+            }
 
 			// Parse relationship-style lists from sections (kept as data fields, not YAML additions)
 			if (allSections['Relationships']) {
@@ -1107,9 +1153,8 @@ export default class StorytellerSuitePlugin extends Plugin {
 				data['events'] = events;
 			}
 
-			// Preserve arbitrary user-defined sections in a dedicated 'sections' map
-			// This MUST NOT be merged into YAML on save.
-			(data as any).sections = allSections;
+            // Do not carry forward a raw sections map on the entity; only mapped fields are kept
+            if ((data as any).sections) delete (data as any).sections;
 
 			// Validate required name field
 			if (!data['name']) {
@@ -1179,7 +1224,8 @@ export default class StorytellerSuitePlugin extends Plugin {
 		const filePath = normalizePath(`${folderPath}/${fileName}`);
 
 		// Separate content fields from frontmatter fields (do not let sections leak)
-		const { filePath: currentFilePath, backstory, description, ...rest } = character;
+        const { filePath: currentFilePath, backstory, description, ...rest } = character as any;
+        if ((rest as any).sections) delete (rest as any).sections;
 
 		// Build frontmatter strictly from whitelist
 		const finalFrontmatter = this.buildFrontmatterForCharacter(rest);
@@ -1337,8 +1383,8 @@ export default class StorytellerSuitePlugin extends Plugin {
 		
 		// Parse each character file
 		const characters: Character[] = [];
-		for (const file of files) {
-            let charData = await this.parseFile<Character>(file, { name: '' });
+        for (const file of files) {
+            let charData = await this.parseFile<Character>(file, { name: '' }, 'character');
             if (charData) charData = this.normalizeEntityCustomFields('character', charData);
             const charResult = charData;
             if (charResult) {
@@ -1390,7 +1436,8 @@ export default class StorytellerSuitePlugin extends Plugin {
 		const filePath = normalizePath(`${folderPath}/${fileName}`);
 
 		// Separate content fields from frontmatter fields (do not let sections leak)
-		const { filePath: currentFilePath, history, description, ...rest } = location;
+        const { filePath: currentFilePath, history, description, ...rest } = location as any;
+        if ((rest as any).sections) delete (rest as any).sections;
 
 		// Build frontmatter strictly from whitelist
 		const finalFrontmatter = this.buildFrontmatterForLocation(rest);
@@ -1523,8 +1570,8 @@ export default class StorytellerSuitePlugin extends Plugin {
 		
 		// Parse each location file
 		const locations: Location[] = [];
-		for (const file of files) {
-            let locData = await this.parseFile<Location>(file, { name: '' });
+        for (const file of files) {
+            let locData = await this.parseFile<Location>(file, { name: '' }, 'location');
             if (locData) locData = this.normalizeEntityCustomFields('location', locData);
             if (locData) {
                 locations.push(locData);
@@ -1576,7 +1623,8 @@ export default class StorytellerSuitePlugin extends Plugin {
 		const filePath = normalizePath(`${folderPath}/${fileName}`);
 
 		// Separate content fields from frontmatter fields (do not let sections leak)
-		const { filePath: currentFilePath, description, outcome, images, ...rest } = event;
+        const { filePath: currentFilePath, description, outcome, images, ...rest } = event as any;
+        if ((rest as any).sections) delete (rest as any).sections;
 
 		// Build frontmatter strictly from whitelist
 		const finalFrontmatter = this.buildFrontmatterForEvent(rest);
@@ -1710,8 +1758,8 @@ export default class StorytellerSuitePlugin extends Plugin {
         );
 		
 		const events: Event[] = [];
-		for (const file of files) {
-            let eventData = await this.parseFile<Event>(file, { name: '' });
+        for (const file of files) {
+            let eventData = await this.parseFile<Event>(file, { name: '' }, 'event');
             if (eventData) eventData = this.normalizeEntityCustomFields('event', eventData);
             if (eventData) {
                 events.push(eventData);
@@ -1775,7 +1823,8 @@ export default class StorytellerSuitePlugin extends Plugin {
 		const fileName = `${item.name.replace(/[\\/:"*?<>|]+/g, '')}.md`;
 		const filePath = normalizePath(`${folderPath}/${fileName}`);
 
-		const { filePath: currentFilePath, description, history, ...rest } = item;
+        const { filePath: currentFilePath, description, history, ...rest } = item as any;
+        if ((rest as any).sections) delete (rest as any).sections;
 
 		const finalFrontmatter = this.buildFrontmatterForItem(rest);
 		const frontmatterString = Object.keys(finalFrontmatter).length > 0 ? stringifyYaml(finalFrontmatter) : '';
@@ -1901,8 +1950,8 @@ export default class StorytellerSuitePlugin extends Plugin {
 		);
 
 		const items: PlotItem[] = [];
-		for (const file of files) {
-            let itemData = await this.parseFile<PlotItem>(file, { name: '', isPlotCritical: false });
+        for (const file of files) {
+            let itemData = await this.parseFile<PlotItem>(file, { name: '', isPlotCritical: false }, 'item');
             if (itemData) itemData = this.normalizeEntityCustomFields('item', itemData);
             if (itemData) {
                 items.push(itemData);
@@ -1938,7 +1987,8 @@ export default class StorytellerSuitePlugin extends Plugin {
 		const fileName = `${(reference.name || 'Untitled').replace(/[\\/:"*?<>|]+/g, '')}.md`;
 		const filePath = normalizePath(`${folderPath}/${fileName}`);
 
-		const { filePath: currentFilePath, content, ...rest } = reference as any;
+        const { filePath: currentFilePath, content, ...rest } = reference as any;
+        if ((rest as any).sections) delete (rest as any).sections;
 
         // Build frontmatter (preserve any custom fields)
         const preserveRef = new Set<string>(Object.keys(rest || {}));
@@ -2005,16 +2055,10 @@ export default class StorytellerSuitePlugin extends Plugin {
         const prefix = normalizePath(folderPath) + '/';
         const files = allFiles.filter(f => f.path.startsWith(prefix) && f.extension === 'md');
 		const refs: Reference[] = [];
-		for (const file of files) {
-			const data = await this.parseFile<Reference>(file, { name: '' });
-			if (data) {
-				const anyData = data as any;
-				if (anyData.sections && anyData.sections['Content']) {
-					data.content = anyData.sections['Content'];
-				}
-				refs.push(data);
-			}
-		}
+        for (const file of files) {
+            const data = await this.parseFile<Reference>(file, { name: '' }, 'reference');
+            if (data) refs.push(data);
+        }
 		return refs.sort((a, b) => a.name.localeCompare(b.name));
 	}
 
@@ -2052,6 +2096,7 @@ export default class StorytellerSuitePlugin extends Plugin {
         }
 
         const { filePath: currentFilePath, summary, linkedCharacters, linkedLocations, linkedEvents, linkedItems, linkedGroups, ...rest } = chapter as any;
+        if ((rest as any).sections) delete (rest as any).sections;
 
         // Build frontmatter (preserve any custom fields)
         const chapterSrc = { ...rest, linkedCharacters, linkedLocations, linkedEvents, linkedItems, linkedGroups } as Record<string, unknown>;
@@ -2117,12 +2162,8 @@ export default class StorytellerSuitePlugin extends Plugin {
         const files = allFiles.filter(f => f.path.startsWith(prefix) && f.extension === 'md');
         const chapters: Chapter[] = [];
         for (const file of files) {
-            const data = await this.parseFile<Chapter>(file, { name: '' });
-            if (data) {
-                const anyData = data as any;
-                if (anyData.sections && anyData.sections['Summary']) data.summary = anyData.sections['Summary'];
-                chapters.push(data);
-            }
+            const data = await this.parseFile<Chapter>(file, { name: '' }, 'chapter');
+            if (data) chapters.push(data);
         }
         return chapters.sort((a, b) => {
             const na = a.number ?? Number.MAX_SAFE_INTEGER;
@@ -2165,6 +2206,7 @@ export default class StorytellerSuitePlugin extends Plugin {
         const filePath = normalizePath(`${folderPath}/${fileName}`);
 
         const { filePath: currentFilePath, content, beats, linkedCharacters, linkedLocations, linkedEvents, linkedItems, linkedGroups, ...rest } = scene as any;
+        if ((rest as any).sections) delete (rest as any).sections;
         const sceneSrc = { ...rest, linkedCharacters, linkedLocations, linkedEvents, linkedItems, linkedGroups } as Record<string, unknown>;
         const preserveScene = new Set<string>(Object.keys(sceneSrc));
         const mode = this.settings.customFieldsMode ?? 'flatten';
@@ -2237,17 +2279,8 @@ export default class StorytellerSuitePlugin extends Plugin {
         const files = allFiles.filter(f => f.path.startsWith(folderPath + '/') && f.extension === 'md');
         const scenes: Scene[] = [];
         for (const file of files) {
-            const data = await this.parseFile<Scene>(file, { name: '' });
-            if (data) {
-                const anyData = data as any;
-                if (anyData.sections && anyData.sections['Content']) data.content = anyData.sections['Content'];
-                if (anyData.sections && anyData.sections['Beat Sheet']) {
-                    const raw = anyData.sections['Beat Sheet'] as string;
-                    const beats = raw.split('\n').map(l => l.replace(/^\-\s*/, '').trim()).filter(Boolean);
-                    data.beats = beats.length ? beats : undefined;
-                }
-                scenes.push(data);
-            }
+            const data = await this.parseFile<Scene>(file, { name: '' }, 'scene');
+            if (data) scenes.push(data);
         }
         // Sort: chapter -> priority -> name
         return scenes.sort((a, b) => {

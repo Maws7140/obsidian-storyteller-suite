@@ -4,6 +4,7 @@ import { Event, GalleryImage, Character, Location, Group } from '../types'; // A
 import StorytellerSuitePlugin from '../main';
 import { getWhitelistKeys } from '../yaml/EntitySections';
 import { GalleryImageSuggestModal } from './GalleryImageSuggestModal';
+import { PromptModal } from './ui/PromptModal';
 // Import the new suggesters
 import { CharacterSuggestModal } from './CharacterSuggestModal';
 import { LocationSuggestModal } from './LocationSuggestModal';
@@ -268,20 +269,38 @@ export class EventModal extends Modal {
         // --- Custom Fields ---
         contentEl.createEl('h3', { text: 'Custom fields' });
         const customFieldsContainer = contentEl.createDiv('storyteller-custom-fields-container');
-        this.renderCustomFields(customFieldsContainer, this.event.customFields || {});
+        // Do not render existing custom fields in the modal to reduce redundancy
 
         new Setting(contentEl)
             .addButton(button => button
                 .setButtonText('Add custom field')
                 .setIcon('plus')
                 .onClick(() => {
-                    if (!this.event.customFields) {
-                        this.event.customFields = {};
-                    }
+                    if (!this.event.customFields) this.event.customFields = {};
                     const fields = this.event.customFields;
-                    const newKey = `field_${Object.keys(fields).length + 1}`;
-                    fields[newKey] = '';
-                    this.renderCustomFields(customFieldsContainer, fields);
+                    const reserved = new Set<string>([...getWhitelistKeys('event'), 'customFields', 'filePath', 'id', 'sections']);
+                    const askValue = (key: string) => {
+                        new PromptModal(this.app, {
+                            title: 'Custom field value',
+                            label: `Value for "${key}"`,
+                            defaultValue: '',
+                            onSubmit: (val: string) => { fields[key] = val; }
+                        }).open();
+                    };
+                    new PromptModal(this.app, {
+                        title: 'New custom field',
+                        label: 'Field name',
+                        defaultValue: '',
+                        validator: (value: string) => {
+                            const trimmed = value.trim();
+                            if (!trimmed) return 'Field name cannot be empty';
+                            if (reserved.has(trimmed)) return 'That name is reserved';
+                            const exists = Object.keys(fields).some(k => k.toLowerCase() === trimmed.toLowerCase());
+                            if (exists) return 'A field with that name already exists';
+                            return null;
+                        },
+                        onSubmit: (name: string) => askValue(name.trim())
+                    }).open();
                 }));
 
         // --- Groups ---
