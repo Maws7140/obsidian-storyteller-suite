@@ -1618,11 +1618,13 @@ body.mod-rtl .storyteller-group-members {
   display: flex;
   align-items: center;
   gap: 0.5em;
-  flex-wrap: nowrap;
-  min-width: 160px;
+  flex-wrap: wrap; /* allow selector + button to wrap */
+  min-width: 0;
   max-width: 100%;
-  flex: 0 1 auto;
+  flex: 1 1 auto;
 }
+.storyteller-selector-button-group .storyteller-story-selector { flex: 0 0 auto; min-width: 0; width: max-content; }
+.storyteller-selector-button-group .storyteller-new-story-btn { flex: 0 0 auto; }
 
 /* Update header to use new group and improve flex behavior */
 .storyteller-dashboard-header {
@@ -1661,11 +1663,12 @@ body.mod-rtl .storyteller-group-members {
   border-radius: var(--radius-s);
   font-family: var(--font-interface);
   font-size: 1em;
-  padding: 0.3em 1em 0.3em 0.5em;
+  padding: 0.3em 0.8em 0.3em 0.5em;
   outline: none;
   transition: border-color 0.18s;
-  min-width: 80px;
-  max-width: 200px;
+  min-width: 0;
+  max-width: none;
+  width: max-content; /* fit to text */
   text-overflow: ellipsis;
   overflow: hidden;
 }
@@ -1673,7 +1676,7 @@ body.mod-rtl .storyteller-group-members {
 .storyteller-selector-button-group .storyteller-new-story-btn {
   flex-shrink: 0;
   min-width: 0;
-  max-width: 100%;
+  max-width: none;
   white-space: nowrap;
   background: var(--interactive-accent);
   color: var(--text-on-accent);
@@ -1682,7 +1685,7 @@ body.mod-rtl .storyteller-group-members {
   font-family: var(--font-interface);
   font-size: 1em;
   font-weight: 500;
-  padding: 0.4em 1.2em;
+  padding: 0.3em 0.8em;
   cursor: pointer;
   transition: background 0.18s;
   margin-left: 0.5em;
@@ -1694,10 +1697,9 @@ body.mod-rtl .storyteller-group-members {
     align-items: stretch;
     gap: 0.5em;
   }
-  .storyteller-dashboard-title {
-    max-width: 100%;
-    font-size: 1.1em;
-  }
+  .storyteller-dashboard-title { flex: 1 1 100%; max-width: 100%; font-size: 1.1em; }
+  .storyteller-selector-button-group { width: 100%; }
+  .storyteller-selector-button-group .storyteller-new-story-btn { margin-top: 0.4em; }
   .storyteller-selector-button-group {
     flex-direction: row;
     justify-content: flex-start;
