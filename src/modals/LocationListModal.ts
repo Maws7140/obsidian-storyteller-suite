@@ -36,17 +36,26 @@ export class LocationListModal extends Modal {
 
         // Add New button
         new Setting(contentEl)
-            .addButton(button => button
-                .setButtonText('Create new location')
-                .setCta()
-                .onClick(() => {
-                    this.close(); // Close list modal
-                    new LocationModal(this.app, this.plugin, null, async (locationData: Location) => {
-                        await this.plugin.saveLocation(locationData);
-                        new Notice(`Location "${locationData.name}" created.`);
-                        // Optionally reopen list modal or dashboard
-                    }).open();
-                }));
+            .addButton(button => {
+                const hasActiveStory = !!this.plugin.getActiveStory();
+                button
+                    .setButtonText('Create new location')
+                    .setCta()
+                    .onClick(() => {
+                        if (!this.plugin.getActiveStory()) {
+                            new Notice('Select or create a story first.');
+                            return;
+                        }
+                        this.close();
+                        new LocationModal(this.app, this.plugin, null, async (locationData: Location) => {
+                            await this.plugin.saveLocation(locationData);
+                            new Notice(`Location "${locationData.name}" created.`);
+                        }).open();
+                    });
+                if (!hasActiveStory) {
+                    button.setDisabled(true).setTooltip('Select or create a story first.');
+                }
+            });
     }
 
     renderList(filter: string, container: HTMLElement) {

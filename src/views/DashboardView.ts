@@ -671,15 +671,25 @@ export class DashboardView extends ItemView {
             });
 
         new Setting(controlsGroup)
-            .addButton(button => button
-                .setButtonText('Create new')
-                .setCta()
-                .onClick(() => {
-                    new PlotItemModal(this.app, this.plugin, null, async (item: PlotItem) => {
-                        await this.plugin.savePlotItem(item);
-                        new Notice(`Item "${item.name}" created.`);
-                    }).open();
-                }));
+            .addButton(button => {
+                const hasActiveStory = !!this.plugin.getActiveStory();
+                button
+                    .setButtonText('Create new')
+                    .setCta()
+                    .onClick(() => {
+                        if (!this.plugin.getActiveStory()) {
+                            new Notice('Select or create a story first.');
+                            return;
+                        }
+                        new PlotItemModal(this.app, this.plugin, null, async (item: PlotItem) => {
+                            await this.plugin.savePlotItem(item);
+                            new Notice(`Item "${item.name}" created.`);
+                        }).open();
+                    });
+                if (!hasActiveStory) {
+                    button.setDisabled(true).setTooltip('Select or create a story first.');
+                }
+            });
 
         await this.renderItemsList(container, showPlotCriticalOnly);
     }
@@ -880,22 +890,31 @@ export class DashboardView extends ItemView {
         new Setting(container)
             .setName('Groups')
             .setDesc('Manage your groups. Shared across all entity types.')
-            .addButton(button => button
-                .setButtonText('Create new group')
-                .setCta()
-                .onClick(() => {
-                    new GroupModal(
-                        this.app,
-                        this.plugin,
-                        null,
-                        async () => { await this.renderGroupsContent(container); },
-                        async (groupId) => {
-                            await this.plugin.deleteGroup(groupId);
-                            await this.renderGroupsContent(container);
+            .addButton(button => {
+                const hasActiveStory = !!this.plugin.getActiveStory();
+                button
+                    .setButtonText('Create new group')
+                    .setCta()
+                    .onClick(() => {
+                        if (!this.plugin.getActiveStory()) {
+                            new Notice('Select or create a story first.');
+                            return;
                         }
-                    ).open();
-                })
-            );
+                        new GroupModal(
+                            this.app,
+                            this.plugin,
+                            null,
+                            async () => { await this.renderGroupsContent(container); },
+                            async (groupId) => {
+                                await this.plugin.deleteGroup(groupId);
+                                await this.renderGroupsContent(container);
+                            }
+                        ).open();
+                    });
+                if (!hasActiveStory) {
+                    button.setDisabled(true).setTooltip('Select or create a story first.');
+                }
+            });
         // --- Persistent Filter Bar and Group List Containers ---
         let filterBar = container.querySelector('.storyteller-group-filter-bar') as HTMLElement;
         let groupListContainer = container.querySelector('.storyteller-group-list-container') as HTMLElement;
@@ -1079,6 +1098,28 @@ export class DashboardView extends ItemView {
         controlsGroup.style.alignItems = 'center';
         controlsGroup.style.gap = '0.5em';
         
+        // Determine entity type from title for folder resolvability check
+        const titleKey = title.toLowerCase();
+        let entityType: 'character' | 'location' | 'event' | 'item' | 'reference' | 'chapter' | 'scene' | null = null;
+        if (titleKey.startsWith('character')) entityType = 'character';
+        else if (titleKey.startsWith('location')) entityType = 'location';
+        else if (titleKey.includes('event') || titleKey.includes('timeline')) entityType = 'event';
+        else if (titleKey.startsWith('item')) entityType = 'item';
+        else if (titleKey.startsWith('reference')) entityType = 'reference';
+        else if (titleKey.startsWith('chapter')) entityType = 'chapter';
+        else if (titleKey.startsWith('scene')) entityType = 'scene';
+
+        const canCreate = (() => {
+            if (!entityType) return true; // Non-entity sections like Gallery
+            try {
+                // Will throw if no resolvable folder (e.g., requires active story)
+                this.plugin.getEntityFolder(entityType);
+                return true;
+            } catch {
+                return false;
+            }
+        })();
+
         const headerSetting = new Setting(controlsGroup)
             .setName(`Filter ${title.toLowerCase()}`)
             .setDesc('')
@@ -1199,10 +1240,22 @@ export class DashboardView extends ItemView {
                 return component;
             });
         headerSetting
-            .addButton(button => button
-                .setButtonText(addButtonText)
-                .setCta()
-                .onClick(addFn));
+            .addButton(button => {
+                button
+                    .setButtonText(addButtonText)
+                    .setCta()
+                    .onClick(() => {
+                        // Re-evaluate on click in case state changed
+                        if (entityType) {
+                            try { this.plugin.getEntityFolder(entityType); }
+                            catch { new Notice('Select or create a story first.'); return; }
+                        }
+                        addFn();
+                    });
+                if (!canCreate) {
+                    button.setDisabled(true).setTooltip('Select or create a story first.');
+                }
+            });
 
         if (extendButtons) {
             extendButtons(headerSetting);
