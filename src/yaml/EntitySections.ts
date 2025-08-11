@@ -46,18 +46,61 @@ const FRONTMATTER_WHITELISTS: Record<EntityType, Set<string>> = {
   ])
 };
 
+export function getWhitelistKeys(entityType: EntityType): Set<string> {
+  return FRONTMATTER_WHITELISTS[entityType];
+}
+
 /**
  * Build frontmatter safely by applying the entity whitelist and removing values that are unsafe for YAML scalars.
  * - filters out null/undefined
  * - removes multi-line strings (kept in sections instead)
  * - skips empty arrays and empty objects (for customFields)
  */
-export function buildFrontmatter(entityType: EntityType, source: Record<string, unknown>): Record<string, unknown> {
+export function buildFrontmatter(
+  entityType: EntityType,
+  source: Record<string, unknown>,
+  preserveKeys?: Set<string>,
+  options?: { customFieldsMode?: 'flatten' | 'nested' }
+): Record<string, unknown> {
   const whitelist = FRONTMATTER_WHITELISTS[entityType];
   const output: Record<string, unknown> = {};
+  const mode = options?.customFieldsMode ?? 'flatten';
+  const srcKeys = new Set(Object.keys(source || {}));
+
+  // Handle customFields specially
+  const cfRaw = (source as any)?.customFields;
+  if (cfRaw && typeof cfRaw === 'object' && !Array.isArray(cfRaw)) {
+    const cfObj = cfRaw as Record<string, unknown>;
+    if (mode === 'flatten') {
+      const unpromoted: Record<string, unknown> = {};
+      for (const [cfKey, cfVal] of Object.entries(cfObj)) {
+        // Skip if top-level already has this key (avoid collisions)
+        if (cfKey === 'customFields') continue;
+        if (srcKeys.has(cfKey)) { unpromoted[cfKey] = cfVal; continue; }
+        if (cfVal === null || cfVal === undefined) continue;
+        if (typeof cfVal === 'string' && cfVal.includes('\n')) { unpromoted[cfKey] = cfVal; continue; }
+        if (Array.isArray(cfVal) && cfVal.length === 0) continue;
+        if (typeof cfVal === 'object' && Object.keys(cfVal as any).length === 0) continue;
+        // Promote to top-level
+        output[cfKey] = cfVal;
+      }
+      // Preserve any unpromoted entries under the container to avoid data loss
+      if (Object.keys(unpromoted).length > 0) {
+        output['customFields'] = unpromoted;
+      }
+    } else {
+      // nested map (not stringified)
+      if (Object.keys(cfObj).length > 0) {
+        output['customFields'] = cfObj;
+      }
+    }
+  }
 
   for (const [key, value] of Object.entries(source || {})) {
-    if (!whitelist.has(key)) continue;
+    const allowKey = whitelist.has(key) || (preserveKeys?.has(key) ?? false);
+    if (!allowKey) continue;
+    // In flatten mode, avoid writing the customFields container when we promoted its entries
+    if (key === 'customFields' && mode === 'flatten') continue;
     if (value === null || value === undefined) continue;
 
     if (typeof value === 'string') {

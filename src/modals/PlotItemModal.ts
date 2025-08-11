@@ -3,6 +3,7 @@ import { App, Modal, Setting, Notice, TextAreaComponent } from 'obsidian';
 import { PlotItem, Group } from '../types';
 import StorytellerSuitePlugin from '../main';
 import { GalleryImageSuggestModal } from './GalleryImageSuggestModal';
+import { getWhitelistKeys } from '../yaml/EntitySections';
 import { CharacterSuggestModal } from './CharacterSuggestModal';
 import { LocationSuggestModal } from './LocationSuggestModal';
 import { EventSuggestModal } from './EventSuggestModal';
@@ -179,6 +180,60 @@ export class PlotItemModal extends Modal {
 
 
         const buttonsSetting = new Setting(contentEl).setClass('storyteller-modal-buttons');
+        // --- Custom Fields ---
+        contentEl.createEl('h3', { text: 'Custom fields' });
+        const customFieldsContainer = contentEl.createDiv('storyteller-custom-fields-container');
+        const renderCustomFields = (container: HTMLElement, fields: Record<string, string>) => {
+            container.empty();
+            const keys = Object.keys(fields || {});
+            if (keys.length === 0) {
+                container.createEl('p', { text: 'No custom fields defined.', cls: 'storyteller-modal-list-empty' });
+                return;
+            }
+            const reserved = new Set<string>([...getWhitelistKeys('item'), 'customFields', 'filePath', 'id', 'sections']);
+            keys.forEach(key => {
+                let currentKey = key;
+                const setting = new Setting(container)
+                    .addText(t => t
+                        .setValue(currentKey)
+                        .setPlaceholder('Field name')
+                        .onChange(newKey => {
+                            const trimmed = newKey.trim();
+                            const isUniqueCaseInsensitive = !Object.keys(fields).some(k => k.toLowerCase() === trimmed.toLowerCase());
+                            const isReserved = reserved.has(trimmed);
+                            if (trimmed && trimmed !== currentKey && isUniqueCaseInsensitive && !isReserved) {
+                                fields[trimmed] = fields[currentKey];
+                                delete fields[currentKey];
+                                currentKey = trimmed;
+                            } else if (trimmed !== currentKey) {
+                                t.setValue(currentKey);
+                                new Notice('Custom field name must be unique, non-empty, and not reserved.');
+                            }
+                        }))
+                    .addText(t => t
+                        .setValue(fields[currentKey]?.toString() || '')
+                        .setPlaceholder('Field value')
+                        .onChange(v => { fields[currentKey] = v; }))
+                    .addButton(b => b
+                        .setIcon('trash')
+                        .setClass('mod-warning')
+                        .setTooltip(`Remove field "${currentKey}"`)
+                        .onClick(() => { delete fields[currentKey]; renderCustomFields(container, fields); }));
+                setting.controlEl.addClass('storyteller-custom-field-row');
+            });
+        };
+        if (!this.item.customFields) this.item.customFields = {};
+        renderCustomFields(customFieldsContainer, this.item.customFields);
+        new Setting(contentEl)
+            .addButton(b => b
+                .setButtonText('Add custom field')
+                .setIcon('plus')
+                .onClick(() => {
+                    const fields = this.item.customFields!;
+                    const newKey = `field_${Object.keys(fields).length + 1}`;
+                    fields[newKey] = '';
+                    renderCustomFields(customFieldsContainer, fields);
+                }));
         new Setting(contentEl)
             .setName('Current Location')
             .setDesc(`Location: ${this.item.currentLocation || 'None'}`)
