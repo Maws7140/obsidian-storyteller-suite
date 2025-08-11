@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { App, Setting, Notice, TextAreaComponent, TextComponent, ButtonComponent } from 'obsidian';
 import { Location } from '../types'; // Assumes Location type no longer has charactersPresent, eventsHere, subLocations
+import { getWhitelistKeys } from '../yaml/EntitySections';
 import { Group } from '../types';
 import StorytellerSuitePlugin from '../main';
 import { GalleryImageSuggestModal } from './GalleryImageSuggestModal';
@@ -273,34 +274,38 @@ export class LocationModal extends ResponsiveModal {
             return;
         }
 
+        const reserved = new Set<string>([...getWhitelistKeys('location'), 'customFields', 'filePath', 'id', 'sections']);
         keys.forEach(key => {
+            let currentKey = key;
             const fieldSetting = new Setting(container)
                 .addText(text => text
-                    .setValue(key)
+                    .setValue(currentKey)
                     .setPlaceholder('Field name')
                     .onChange(newKey => {
-                        if (newKey && newKey !== key && !fields.hasOwnProperty(newKey)) {
-                            fields[newKey] = fields[key];
-                            delete fields[key];
-                            // No need to re-render immediately, just update the object
-                        } else if (newKey !== key) {
-                            // Prevent duplicate or empty keys
-                            text.setValue(key); // Revert change
-                            new Notice("Custom field name must be unique and not empty.");
+                        const trimmed = newKey.trim();
+                        const isUniqueCaseInsensitive = !Object.keys(fields).some(k => k.toLowerCase() === trimmed.toLowerCase());
+                        const isReserved = reserved.has(trimmed);
+                        if (trimmed && trimmed !== currentKey && isUniqueCaseInsensitive && !isReserved) {
+                            fields[trimmed] = fields[currentKey];
+                            delete fields[currentKey];
+                            currentKey = trimmed;
+                        } else if (trimmed !== currentKey) {
+                            text.setValue(currentKey);
+                            new Notice("Custom field name must be unique, non-empty, and not reserved.");
                         }
                     }))
                 .addText(text => text
-                    .setValue(fields[key]?.toString() || '')
+                    .setValue(fields[currentKey]?.toString() || '')
                     .setPlaceholder('Field value')
                     .onChange(value => {
-                        fields[key] = value;
+                        fields[currentKey] = value;
                     }))
                 .addButton(button => button
                     .setIcon('trash')
-                    .setTooltip(`Remove field "${key}"`)
+                    .setTooltip(`Remove field "${currentKey}"`)
                     .setClass('mod-warning')
                     .onClick(() => {
-                        delete fields[key];
+                        delete fields[currentKey];
                         this.renderCustomFields(container, fields); // Re-render after deletion
                     }));
             fieldSetting.controlEl.addClass('storyteller-custom-field-row');

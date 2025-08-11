@@ -2,7 +2,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { App, Notice, Plugin, TFile, TFolder, normalizePath, stringifyYaml, WorkspaceLeaf } from 'obsidian';
 import { parseEventDate, toMillis } from './utils/DateParsing';
-import { buildFrontmatter } from './yaml/EntitySections';
+import { buildFrontmatter, getWhitelistKeys } from './yaml/EntitySections';
 import { FolderResolver, FolderResolverOptions } from './folders/FolderResolver';
 import { PromptModal } from './modals/ui/PromptModal';
 import { ConfirmModal } from './modals/ui/ConfirmModal';
@@ -64,6 +64,8 @@ import { PlatformUtils } from './utils/PlatformUtils';
      allowRemoteImages?: boolean;
     /** Internal: set after first-run sanitization to avoid repeating it */
     sanitizedSeedData?: boolean;
+    /** How to serialize customFields into frontmatter */
+    customFieldsMode?: 'flatten' | 'nested';
 }
 
 /**
@@ -94,7 +96,8 @@ import { PlatformUtils } from './utils/PlatformUtils';
     defaultTimelineDensity: 50,
     showTimelineLegend: true,
     allowRemoteImages: true,
-    sanitizedSeedData: false
+    sanitizedSeedData: false,
+    customFieldsMode: 'flatten'
 }
 
 /**
@@ -127,6 +130,51 @@ export default class StorytellerSuitePlugin extends Plugin {
             oneStoryBaseFolder: this.settings.oneStoryBaseFolder,
         };
         return new FolderResolver(options, () => this.getActiveStory());
+    }
+
+    /**
+     * Normalize custom fields for a loaded entity so UI works from a single source of truth.
+     * - Moves non-whitelisted, scalar string keys into `customFields`
+     * - Deduplicates keys in a case-insensitive way
+     * - Preserves values without overriding existing `customFields` entries
+     */
+    private normalizeEntityCustomFields<T extends { customFields?: Record<string, string> }>(
+        entityType: 'character' | 'location' | 'event' | 'item',
+        entity: T
+    ): T {
+        if (!entity) return entity;
+        const whitelist = getWhitelistKeys(entityType);
+        const reserved = new Set<string>([...whitelist, 'customFields', 'filePath', 'sections', 'id']);
+        const mode = this.settings.customFieldsMode ?? 'flatten';
+
+        const src: Record<string, unknown> = entity as unknown as Record<string, unknown>;
+        const currentCustom: Record<string, string> = { ...(entity.customFields || {}) };
+
+        // Sweep non-whitelisted scalar string keys into customFields
+        for (const [key, value] of Object.entries(src)) {
+            if (reserved.has(key)) continue;
+            if (typeof value === 'string' && !value.includes('\n')) {
+                // Only move if not conflicting (case-insensitive) with existing customFields
+                const hasConflict = Object.keys(currentCustom).some(k => k.toLowerCase() === key.toLowerCase());
+                if (!hasConflict) {
+                    currentCustom[key] = value as string;
+                    delete (src as any)[key];
+                }
+            }
+        }
+
+        // Deduplicate case-insensitively within customFields
+        const deduped: Record<string, string> = {};
+        const seen: Set<string> = new Set();
+        for (const [k, v] of Object.entries(currentCustom)) {
+            const lower = k.toLowerCase();
+            if (seen.has(lower)) continue; // keep first occurrence
+            seen.add(lower);
+            deduped[k] = v;
+        }
+
+        (entity as any).customFields = deduped;
+        return entity;
     }
 
     /** Resolve all folders; if any error, return a summary message for the user. */
@@ -1094,19 +1142,27 @@ export default class StorytellerSuitePlugin extends Plugin {
 	 * Only whitelisted keys are allowed and multi-line strings are excluded.
 	 */
     private buildFrontmatterForCharacter(src: any): Record<string, any> {
-        return buildFrontmatter('character', src) as Record<string, any>;
+        const preserve = new Set<string>(Object.keys(src || {}));
+        const mode = this.settings.customFieldsMode ?? 'flatten';
+        return buildFrontmatter('character', src, preserve, { customFieldsMode: mode }) as Record<string, any>;
     }
 
     private buildFrontmatterForLocation(src: any): Record<string, any> {
-        return buildFrontmatter('location', src) as Record<string, any>;
+        const preserve = new Set<string>(Object.keys(src || {}));
+        const mode = this.settings.customFieldsMode ?? 'flatten';
+        return buildFrontmatter('location', src, preserve, { customFieldsMode: mode }) as Record<string, any>;
     }
 
     private buildFrontmatterForEvent(src: any): Record<string, any> {
-        return buildFrontmatter('event', src) as Record<string, any>;
+        const preserve = new Set<string>(Object.keys(src || {}));
+        const mode = this.settings.customFieldsMode ?? 'flatten';
+        return buildFrontmatter('event', src, preserve, { customFieldsMode: mode }) as Record<string, any>;
     }
 
     private buildFrontmatterForItem(src: any): Record<string, any> {
-        return buildFrontmatter('item', src) as Record<string, any>;
+        const preserve = new Set<string>(Object.keys(src || {}));
+        const mode = this.settings.customFieldsMode ?? 'flatten';
+        return buildFrontmatter('item', src, preserve, { customFieldsMode: mode }) as Record<string, any>;
     }
 
 	/**
@@ -1282,9 +1338,11 @@ export default class StorytellerSuitePlugin extends Plugin {
 		// Parse each character file
 		const characters: Character[] = [];
 		for (const file of files) {
-			const charData = await this.parseFile<Character>(file, { name: '' });
-			if (charData) {
-				characters.push(charData);
+            let charData = await this.parseFile<Character>(file, { name: '' });
+            if (charData) charData = this.normalizeEntityCustomFields('character', charData);
+            const charResult = charData;
+            if (charResult) {
+                characters.push(charResult);
 			}
 		}
 		
@@ -1466,9 +1524,10 @@ export default class StorytellerSuitePlugin extends Plugin {
 		// Parse each location file
 		const locations: Location[] = [];
 		for (const file of files) {
-			const locData = await this.parseFile<Location>(file, { name: '' });
-			if (locData) {
-				locations.push(locData);
+            let locData = await this.parseFile<Location>(file, { name: '' });
+            if (locData) locData = this.normalizeEntityCustomFields('location', locData);
+            if (locData) {
+                locations.push(locData);
 			}
 		}
 		
@@ -1652,9 +1711,10 @@ export default class StorytellerSuitePlugin extends Plugin {
 		
 		const events: Event[] = [];
 		for (const file of files) {
-			const eventData = await this.parseFile<Event>(file, { name: '' });
-			if (eventData) {
-				events.push(eventData);
+            let eventData = await this.parseFile<Event>(file, { name: '' });
+            if (eventData) eventData = this.normalizeEntityCustomFields('event', eventData);
+            if (eventData) {
+                events.push(eventData);
 			}
 		}
 		
@@ -1842,9 +1902,10 @@ export default class StorytellerSuitePlugin extends Plugin {
 
 		const items: PlotItem[] = [];
 		for (const file of files) {
-			const itemData = await this.parseFile<PlotItem>(file, { name: '', isPlotCritical: false });
-			if (itemData) {
-				items.push(itemData);
+            let itemData = await this.parseFile<PlotItem>(file, { name: '', isPlotCritical: false });
+            if (itemData) itemData = this.normalizeEntityCustomFields('item', itemData);
+            if (itemData) {
+                items.push(itemData);
 			}
 		}
 		return items.sort((a, b) => a.name.localeCompare(b.name));
@@ -1879,16 +1940,10 @@ export default class StorytellerSuitePlugin extends Plugin {
 
 		const { filePath: currentFilePath, content, ...rest } = reference as any;
 
-		// Build frontmatter strictly from whitelist
-		const whitelist = new Set(['id', 'name', 'category', 'tags', 'profileImagePath']);
-		const fm: Record<string, any> = {};
-		for (const [k, v] of Object.entries(rest || {})) {
-			if (!whitelist.has(k)) continue;
-			if (typeof v === 'string' && v.includes('\n')) continue;
-			if (v === null || v === undefined) continue;
-			if (Array.isArray(v) && v.length === 0) continue;
-			fm[k] = v;
-		}
+        // Build frontmatter (preserve any custom fields)
+        const preserveRef = new Set<string>(Object.keys(rest || {}));
+        const mode = this.settings.customFieldsMode ?? 'flatten';
+        const fm: Record<string, any> = buildFrontmatter('reference', rest as any, preserveRef, { customFieldsMode: mode }) as Record<string, any>;
 		const frontmatterString = Object.keys(fm).length > 0 ? stringifyYaml(fm) : '';
 
 		// Handle rename
@@ -1998,16 +2053,11 @@ export default class StorytellerSuitePlugin extends Plugin {
 
         const { filePath: currentFilePath, summary, linkedCharacters, linkedLocations, linkedEvents, linkedItems, linkedGroups, ...rest } = chapter as any;
 
-        // Whitelist frontmatter
-        const whitelist = new Set(['id', 'name', 'number', 'tags', 'profileImagePath', 'linkedCharacters', 'linkedLocations', 'linkedEvents', 'linkedItems', 'linkedGroups']);
-        const fm: Record<string, any> = {};
-        for (const [k, v] of Object.entries({ ...rest, linkedCharacters, linkedLocations, linkedEvents, linkedItems, linkedGroups } as Record<string, unknown>)) {
-            if (!whitelist.has(k)) continue;
-            if (typeof v === 'string' && v.includes('\n')) continue;
-            if (v === null || v === undefined) continue;
-            if (Array.isArray(v) && v.length === 0) continue;
-            fm[k] = v;
-        }
+        // Build frontmatter (preserve any custom fields)
+        const chapterSrc = { ...rest, linkedCharacters, linkedLocations, linkedEvents, linkedItems, linkedGroups } as Record<string, unknown>;
+        const preserveChap = new Set<string>(Object.keys(chapterSrc));
+        const mode = this.settings.customFieldsMode ?? 'flatten';
+        const fm: Record<string, any> = buildFrontmatter('chapter', chapterSrc, preserveChap, { customFieldsMode: mode }) as Record<string, any>;
         const frontmatterString = Object.keys(fm).length > 0 ? stringifyYaml(fm) : '';
 
         // Rename if needed
@@ -2115,15 +2165,10 @@ export default class StorytellerSuitePlugin extends Plugin {
         const filePath = normalizePath(`${folderPath}/${fileName}`);
 
         const { filePath: currentFilePath, content, beats, linkedCharacters, linkedLocations, linkedEvents, linkedItems, linkedGroups, ...rest } = scene as any;
-        const whitelist = new Set(['id','name','chapterId','chapterName','status','priority','tags','profileImagePath','linkedCharacters','linkedLocations','linkedEvents','linkedItems','linkedGroups']);
-        const fm: Record<string, any> = {};
-        for (const [k, v] of Object.entries({ ...rest, linkedCharacters, linkedLocations, linkedEvents, linkedItems, linkedGroups } as Record<string, unknown>)) {
-            if (!whitelist.has(k)) continue;
-            if (typeof v === 'string' && v.includes('\n')) continue;
-            if (v === null || v === undefined) continue;
-            if (Array.isArray(v) && v.length === 0) continue;
-            fm[k] = v;
-        }
+        const sceneSrc = { ...rest, linkedCharacters, linkedLocations, linkedEvents, linkedItems, linkedGroups } as Record<string, unknown>;
+        const preserveScene = new Set<string>(Object.keys(sceneSrc));
+        const mode = this.settings.customFieldsMode ?? 'flatten';
+        const fm: Record<string, any> = buildFrontmatter('scene', sceneSrc, preserveScene, { customFieldsMode: mode }) as Record<string, any>;
         const frontmatterString = Object.keys(fm).length > 0 ? stringifyYaml(fm) : '';
 
         // Rename if needed
