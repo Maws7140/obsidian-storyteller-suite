@@ -1,3 +1,23 @@
+.storyteller-dashboard-tabs {
+  border-bottom: 1px solid var(--background-modifier-border);
+  padding: 6px 8px;
+}
+.storyteller-tab-header {
+  color: var(--text-normal);
+  border: 1px solid transparent;
+}
+.storyteller-tab-header:hover {
+  border-color: var(--background-modifier-border);
+}
+.storyteller-tab-header.active {
+  border-color: var(--interactive-accent);
+}
+.storyteller-tab-more-btn {
+  padding: 4px 8px;
+}
+.storyteller-tab-more-menu {
+  min-width: 160px;
+}
 /*
 
 This CSS file will be included with your plugin, and

@@ -48,6 +48,11 @@ export class DashboardView extends ItemView {
     tabs: Array<{ id: string; label: string; renderFn: (container: HTMLElement) => Promise<void> }>;
 
     private debouncedRefreshActiveTab: () => void; // Declare property for debounce
+    // Responsive tabs UI state
+    private tabHeaderRibbonEl: HTMLElement | null = null;
+    // Measurement/More elements removed
+    private tabsResizeObserver: ResizeObserver | null = null;
+    // Icons removed per UX request; text-only tabs
     
     /** Search input reference for focus preservation */
     private currentSearchInput: HTMLInputElement | null = null;
@@ -385,75 +390,41 @@ export class DashboardView extends ItemView {
             };
         }
 
-        // --- Tab Headers (Now added AFTER the header container) ---
+        // --- Tab Headers (priority+ ribbon) ---
         this.tabHeaderContainer = container.createDiv('storyteller-dashboard-tabs');
         this.tabHeaderContainer.setAttr('role', 'tablist');
-        this.tabHeaderContainer.tabIndex = 0; // Make tablist focusable for keyboard navigation
+        this.tabHeaderContainer.style.overflow = 'hidden';
+        this.tabHeaderContainer.style.position = 'relative';
+        this.tabHeaderContainer.style.display = 'flex';
+        this.tabHeaderContainer.style.alignItems = 'center';
+        this.tabHeaderContainer.style.gap = '0.25rem';
+        this.tabHeaderContainer.style.width = '100%';
 
-        // Mouse wheel horizontal scroll support (desktop only - let mobile use native touch scrolling)
-        if (!PlatformUtils.isMobile()) {
-            this.tabHeaderContainer.addEventListener('wheel', (e: WheelEvent) => {
-                // Use both axes, and a multiplier for deltaY for natural feel
-                const scrollAmount = e.deltaX + e.deltaY * 2;
-                if (scrollAmount !== 0) {
-                    e.preventDefault();
-                    this.tabHeaderContainer.scrollLeft += scrollAmount;
-                }
-            }, { passive: false });
-        }
+        // Ribbon row (visible tabs)
+        this.tabHeaderRibbonEl = this.tabHeaderContainer.createDiv('storyteller-tab-ribbon');
+        this.tabHeaderRibbonEl.style.display = 'flex';
+        this.tabHeaderRibbonEl.style.gap = '0.5rem';
+        this.tabHeaderRibbonEl.style.alignItems = 'center';
+        this.tabHeaderRibbonEl.style.whiteSpace = 'nowrap';
+        this.tabHeaderRibbonEl.style.justifyContent = 'center';
+        (this.tabHeaderRibbonEl.style as any).alignContent = 'center';
+        (this.tabHeaderRibbonEl.style as any).flex = '1 1 auto';
+        this.tabHeaderRibbonEl.style.width = '100%';
 
-        // Keyboard navigation for tabs (left/right arrow)
-        this.tabHeaderContainer.addEventListener('keydown', (e: KeyboardEvent) => {
-            const tabs = Array.from(this.tabHeaderContainer.querySelectorAll('.storyteller-tab-header'));
-            const activeIdx = tabs.findIndex((el) => el.classList.contains('active'));
-            if (e.key === 'ArrowRight') {
-                e.preventDefault();
-                const nextIdx = (activeIdx + 1) % tabs.length;
-                (tabs[nextIdx] as HTMLElement).focus();
-                (tabs[nextIdx] as HTMLElement).click();
-            } else if (e.key === 'ArrowLeft') {
-                e.preventDefault();
-                const prevIdx = (activeIdx - 1 + tabs.length) % tabs.length;
-                (tabs[prevIdx] as HTMLElement).focus();
-                (tabs[prevIdx] as HTMLElement).click();
-            }
-        });
+        // Measurement/More removed; tabs will wrap freely
+
+        // Responsive layout via ResizeObserver
+        this.tabsResizeObserver = new ResizeObserver(() => this.layoutTabs());
+        this.tabsResizeObserver.observe(this.tabHeaderContainer);
+
+        // Initial layout
+        this.layoutTabs();
 
         // --- Tab Content ---
         this.tabContentContainer = container.createDiv('storyteller-dashboard-content');
 
-        // --- Create Tab Headers ---
-        this.tabs.forEach((tab, index) => {
-             const header = this.tabHeaderContainer.createEl('div', {
-                 text: tab.label,
-                 cls: 'storyteller-tab-header' + (index === 0 ? ' active' : '') // Activate first tab
-             });
-             header.dataset.tabId = tab.id; // Store tab id
-             header.setAttr('role', 'tab');
-             header.setAttr('tabindex', index === 0 ? '0' : '-1');
-             if (index === 0) header.setAttr('aria-selected', 'true');
-             else header.setAttr('aria-selected', 'false');
-
-             header.addEventListener('click', async () => {
-                 // Deactivate others
-                 this.tabHeaderContainer.querySelectorAll('.storyteller-tab-header').forEach(h => {
-                     h.removeClass('active');
-                     h.setAttr('aria-selected', 'false');
-                     h.setAttr('tabindex', '-1');
-                 });
-                 // Activate clicked
-                 header.addClass('active');
-                 header.setAttr('aria-selected', 'true');
-                 header.setAttr('tabindex', '0');
-                 // Update active tab tracking
-                 this.activeTabId = tab.id;
-                 // Reset filter and clear search input reference on tab switch
-                 this.currentFilter = '';
-                 this.currentSearchInput = null;
-                 // Render content
-                 await tab.renderFn(this.tabContentContainer);
-             });
-        });
+        // Initial active state
+        this.setActiveTab(this.activeTabId || this.tabs[0].id);
 
         // --- Register Vault Event Listeners for Auto-refresh ---
         this.registerVaultEventListeners();
@@ -488,6 +459,102 @@ export class DashboardView extends ItemView {
 
         // --- Initial Content Render ---
         await this.renderCharactersContent(this.tabContentContainer); // Render the first tab initially
+    }
+
+    /** Compute responsive display mode based on container width */
+    private getTabDisplayMode(): 'tiny' | 'compact' | 'normal' {
+        const width = this.tabHeaderContainer?.clientWidth ?? 0;
+        // Favor showing labels more often
+        if (width < 320) return 'tiny';
+        if (width < 480) return 'compact';
+        return 'normal';
+    }
+
+    /** Render or re-render tabs according to available width (priority+ ribbon) */
+    private layoutTabs(): void {
+        if (!this.tabHeaderContainer || !this.tabHeaderRibbonEl) return;
+
+        // Prepare container
+        this.tabHeaderRibbonEl.style.flexWrap = 'wrap';
+        (this.tabHeaderRibbonEl.style as any).rowGap = '6px';
+
+        // Reset
+        this.tabHeaderRibbonEl.empty();
+
+        const mode = this.getTabDisplayMode();
+        const btnMode: 'compact' | 'normal' = (mode === 'normal') ? 'normal' : 'compact';
+
+        // Tiny: still render tabs; they'll wrap to multiple lines
+        // Compact mode reduces padding via mode pass-through
+
+        // Render all tabs and allow natural wrapping to any number of rows
+        for (const tab of this.tabs) {
+            const btn = this.createTabButtonEl(tab, btnMode, false);
+            this.tabHeaderRibbonEl.appendChild(btn);
+        }
+
+        this.syncActiveTabStyles();
+    }
+
+    private createTabButtonEl(tab: { id: string; label: string }, mode: 'normal' | 'compact', forMeasure = false): HTMLElement {
+        const btn = document.createElement('button');
+        btn.className = 'storyteller-tab-header';
+        btn.setAttribute('role', 'tab');
+        btn.dataset.tabId = tab.id;
+        btn.title = mode === 'compact' ? tab.label : '';
+        btn.style.display = 'inline-flex';
+        btn.style.alignItems = 'center';
+        btn.style.justifyContent = 'center';
+        btn.style.gap = '0.25rem';
+        btn.style.padding = '6px 10px';
+        btn.style.borderRadius = '6px';
+        if (!forMeasure) {
+            (btn.style as any).flex = '0 1 auto';
+            btn.style.minWidth = '96px';
+            btn.style.maxWidth = '220px';
+        }
+
+        const labelSpan = document.createElement('span');
+        labelSpan.textContent = tab.label;
+        // Always render label (icons removed); keep visible in all modes
+        labelSpan.style.display = 'inline';
+        btn.appendChild(labelSpan);
+
+        if (!forMeasure) {
+            btn.addEventListener('click', async () => {
+                await this.setActiveTab(tab.id);
+            });
+        }
+        return btn;
+    }
+
+    // More dropdown removed
+
+    private async setActiveTab(tabId: string) {
+        const tab = this.tabs.find(t => t.id === tabId);
+        if (!tab) return;
+        // Update state
+        this.activeTabId = tabId;
+        this.currentFilter = '';
+        this.currentSearchInput = null;
+        // Render content
+        await tab.renderFn(this.tabContentContainer);
+        // Update styles
+        this.syncActiveTabStyles();
+    }
+
+    private syncActiveTabStyles() {
+        if (!this.tabHeaderRibbonEl) return;
+        const all = this.tabHeaderContainer?.querySelectorAll('.storyteller-tab-header') ?? [];
+        all.forEach((el: Element) => {
+            const h = el as HTMLElement;
+            const isActive = h.dataset.tabId === this.activeTabId;
+            h.classList.toggle('active', !!isActive);
+            h.setAttribute('aria-selected', isActive ? 'true' : 'false');
+            h.setAttribute('tabindex', isActive ? '0' : '-1');
+            h.style.background = isActive ? 'var(--background-modifier-hover)' : 'transparent';
+            h.style.outline = 'none';
+        });
     }
 
     // --- Render Functions for Tab Content ---
