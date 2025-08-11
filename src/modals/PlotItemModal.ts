@@ -7,6 +7,7 @@ import { getWhitelistKeys } from '../yaml/EntitySections';
 import { CharacterSuggestModal } from './CharacterSuggestModal';
 import { LocationSuggestModal } from './LocationSuggestModal';
 import { EventSuggestModal } from './EventSuggestModal';
+import { PromptModal } from './ui/PromptModal';
 
 export type PlotItemModalSubmitCallback = (item: PlotItem) => Promise<void>;
 export type PlotItemModalDeleteCallback = (item: PlotItem) => Promise<void>;
@@ -179,60 +180,40 @@ export class PlotItemModal extends Modal {
         }, 2000);
 
 
-        const buttonsSetting = new Setting(contentEl).setClass('storyteller-modal-buttons');
         // --- Custom Fields ---
         contentEl.createEl('h3', { text: 'Custom fields' });
         const customFieldsContainer = contentEl.createDiv('storyteller-custom-fields-container');
-        const renderCustomFields = (container: HTMLElement, fields: Record<string, string>) => {
-            container.empty();
-            const keys = Object.keys(fields || {});
-            if (keys.length === 0) {
-                container.createEl('p', { text: 'No custom fields defined.', cls: 'storyteller-modal-list-empty' });
-                return;
-            }
-            const reserved = new Set<string>([...getWhitelistKeys('item'), 'customFields', 'filePath', 'id', 'sections']);
-            keys.forEach(key => {
-                let currentKey = key;
-                const setting = new Setting(container)
-                    .addText(t => t
-                        .setValue(currentKey)
-                        .setPlaceholder('Field name')
-                        .onChange(newKey => {
-                            const trimmed = newKey.trim();
-                            const isUniqueCaseInsensitive = !Object.keys(fields).some(k => k.toLowerCase() === trimmed.toLowerCase());
-                            const isReserved = reserved.has(trimmed);
-                            if (trimmed && trimmed !== currentKey && isUniqueCaseInsensitive && !isReserved) {
-                                fields[trimmed] = fields[currentKey];
-                                delete fields[currentKey];
-                                currentKey = trimmed;
-                            } else if (trimmed !== currentKey) {
-                                t.setValue(currentKey);
-                                new Notice('Custom field name must be unique, non-empty, and not reserved.');
-                            }
-                        }))
-                    .addText(t => t
-                        .setValue(fields[currentKey]?.toString() || '')
-                        .setPlaceholder('Field value')
-                        .onChange(v => { fields[currentKey] = v; }))
-                    .addButton(b => b
-                        .setIcon('trash')
-                        .setClass('mod-warning')
-                        .setTooltip(`Remove field "${currentKey}"`)
-                        .onClick(() => { delete fields[currentKey]; renderCustomFields(container, fields); }));
-                setting.controlEl.addClass('storyteller-custom-field-row');
-            });
-        };
+        // Do not render existing custom fields in the modal to avoid duplication with note page
         if (!this.item.customFields) this.item.customFields = {};
-        renderCustomFields(customFieldsContainer, this.item.customFields);
         new Setting(contentEl)
             .addButton(b => b
                 .setButtonText('Add custom field')
                 .setIcon('plus')
                 .onClick(() => {
                     const fields = this.item.customFields!;
-                    const newKey = `field_${Object.keys(fields).length + 1}`;
-                    fields[newKey] = '';
-                    renderCustomFields(customFieldsContainer, fields);
+                    const reserved = new Set<string>([...getWhitelistKeys('item'), 'customFields', 'filePath', 'id', 'sections']);
+                    const askValue = (key: string) => {
+                        new PromptModal(this.app, {
+                            title: 'Custom field value',
+                            label: `Value for "${key}"`,
+                            defaultValue: '',
+                            onSubmit: (val: string) => { fields[key] = val; }
+                        }).open();
+                    };
+                    new PromptModal(this.app, {
+                        title: 'New custom field',
+                        label: 'Field name',
+                        defaultValue: '',
+                        validator: (value: string) => {
+                            const trimmed = value.trim();
+                            if (!trimmed) return 'Field name cannot be empty';
+                            if (reserved.has(trimmed)) return 'That name is reserved';
+                            const exists = Object.keys(fields).some(k => k.toLowerCase() === trimmed.toLowerCase());
+                            if (exists) return 'A field with that name already exists';
+                            return null;
+                        },
+                        onSubmit: (name: string) => askValue(name.trim())
+                    }).open();
                 }));
         new Setting(contentEl)
             .setName('Current Location')
@@ -250,6 +231,8 @@ export class PlotItemModal extends Modal {
 
         // TODO: Add UI for pastOwners and associatedEvents lists
         
+        // --- Action Buttons at bottom ---
+        const buttonsSetting = new Setting(contentEl).setClass('storyteller-modal-buttons');
         if (!this.isNew && this.onDelete) {
             buttonsSetting.addButton(button => button
                 .setButtonText('Delete item')
