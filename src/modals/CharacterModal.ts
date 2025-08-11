@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { App, Setting, Notice, TextAreaComponent, TextComponent, ButtonComponent } from 'obsidian';
 import { Character, Group } from '../types'; // Assumes Character type has relationships?: string[], associatedLocations?: string[], associatedEvents?: string[]
+import { getWhitelistKeys } from '../yaml/EntitySections';
 import StorytellerSuitePlugin from '../main';
 import { GalleryImageSuggestModal } from './GalleryImageSuggestModal';
 import { ResponsiveModal } from './ResponsiveModal';
@@ -21,6 +22,7 @@ export class CharacterModal extends ResponsiveModal {
     isNew: boolean;
     private _groupRefreshInterval: number | null = null;
     private groupSelectorContainer: HTMLElement | null = null;
+    private workingCustomFields: Record<string, string> = {};
 
     constructor(app: App, plugin: StorytellerSuitePlugin, character: Character | null, onSubmit: CharacterModalSubmitCallback, onDelete?: CharacterModalDeleteCallback) {
         super(app);
@@ -192,9 +194,10 @@ export class CharacterModal extends ResponsiveModal {
         this.renderGroupSelector(this.groupSelectorContainer);
 
         // --- Custom Fields ---
+        this.workingCustomFields = { ...(this.character.customFields || {}) };
         contentEl.createEl('h3', { text: 'Custom fields' });
         const customFieldsContainer = contentEl.createDiv('storyteller-custom-fields-container');
-        this.renderCustomFields(customFieldsContainer, this.character.customFields || {});
+        this.renderCustomFields(customFieldsContainer, this.workingCustomFields);
 
         // --- Real-time group refresh ---
         this._groupRefreshInterval = window.setInterval(() => {
@@ -208,10 +211,8 @@ export class CharacterModal extends ResponsiveModal {
                 .setButtonText('Add custom field')
                 .setIcon('plus')
                 .onClick(() => {
-                    if (!this.character.customFields) {
-                        this.character.customFields = {};
-                    }
-                    const fields = this.character.customFields;
+                    if (!this.workingCustomFields) this.workingCustomFields = {};
+                    const fields = this.workingCustomFields;
                     const newKey = `field_${Object.keys(fields).length + 1}`;
                     fields[newKey] = '';
                     this.renderCustomFields(customFieldsContainer, fields);
@@ -257,6 +258,7 @@ export class CharacterModal extends ResponsiveModal {
                     return;
                 }
                 try {
+                    this.character.customFields = this.workingCustomFields;
                     await this.onSubmit(this.character);
                     this.close();
                 } catch (error) {
@@ -300,32 +302,38 @@ export class CharacterModal extends ResponsiveModal {
             return;
         }
 
+        const reserved = new Set<string>([...getWhitelistKeys('character'), 'customFields', 'filePath', 'id', 'sections']);
         keys.forEach(key => {
+            let currentKey = key;
             const fieldSetting = new Setting(container)
                 .addText(text => text
-                    .setValue(key)
+                    .setValue(currentKey)
                     .setPlaceholder('Field name')
                     .onChange(newKey => {
-                        if (newKey && newKey !== key && !fields.hasOwnProperty(newKey)) {
-                            fields[newKey] = fields[key];
-                            delete fields[key];
-                        } else if (newKey !== key) {
-                            text.setValue(key);
-                            new Notice("Custom field name must be unique and not empty.");
+                        const trimmed = newKey.trim();
+                        const isUniqueCaseInsensitive = !Object.keys(fields).some(k => k.toLowerCase() === trimmed.toLowerCase());
+                        const isReserved = reserved.has(trimmed);
+                        if (trimmed && trimmed !== currentKey && isUniqueCaseInsensitive && !isReserved) {
+                            fields[trimmed] = fields[currentKey];
+                            delete fields[currentKey];
+                            currentKey = trimmed;
+                        } else if (trimmed !== currentKey) {
+                            text.setValue(currentKey);
+                            new Notice("Custom field name must be unique, non-empty, and not reserved.");
                         }
                     }))
                 .addText(text => text
-                    .setValue(fields[key]?.toString() || '')
+                    .setValue(fields[currentKey]?.toString() || '')
                     .setPlaceholder('Field value')
                     .onChange(value => {
-                        fields[key] = value;
+                        fields[currentKey] = value;
                     }))
                 .addButton(button => button
                     .setIcon('trash')
-                    .setTooltip(`Remove field "${key}"`)
+                    .setTooltip(`Remove field "${currentKey}"`)
                     .setClass('mod-warning')
                     .onClick(() => {
-                        delete fields[key];
+                        delete fields[currentKey];
                         this.renderCustomFields(container, fields);
                     }));
             fieldSetting.controlEl.addClass('storyteller-custom-field-row');

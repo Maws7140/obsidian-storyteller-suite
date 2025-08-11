@@ -161,6 +161,19 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
             .setName('Timeline and parsing')
             .setHeading();
 
+        // --- Custom fields serialization ---
+        new Setting(containerEl)
+            .setName('Custom fields serialization')
+            .setDesc('Choose how custom fields are stored in frontmatter')
+            .addDropdown(dd => dd
+                .addOption('flatten', 'Flatten to native keys (recommended)')
+                .addOption('nested', 'Nested under customFields (YAML map)')
+                .setValue((this.plugin.settings as any).customFieldsMode || 'flatten')
+                .onChange(async (v) => {
+                    (this.plugin.settings as any).customFieldsMode = (v as any);
+                    await this.plugin.saveSettings();
+                }));
+
         new Setting(containerEl)
             .setName('Forward-date bias for natural language parsing')
             .setDesc('Prefer future interpretation for relative dates (e.g., "Friday")')
