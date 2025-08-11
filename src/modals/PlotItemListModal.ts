@@ -34,16 +34,26 @@ export class PlotItemListModal extends Modal {
         this.renderList('', this.listContainer);
 
         new Setting(contentEl)
-            .addButton(button => button
-                .setButtonText('Create new item')
-                .setCta()
-                .onClick(() => {
-                    this.close();
-                    new PlotItemModal(this.app, this.plugin, null, async (itemData: PlotItem) => {
-                        await this.plugin.savePlotItem(itemData);
-                        new Notice(`Item "${itemData.name}" created.`);
-                    }).open();
-                }));
+            .addButton(button => {
+                const hasActiveStory = !!this.plugin.getActiveStory();
+                button
+                    .setButtonText('Create new item')
+                    .setCta()
+                    .onClick(() => {
+                        if (!this.plugin.getActiveStory()) {
+                            new Notice('Select or create a story first.');
+                            return;
+                        }
+                        this.close();
+                        new PlotItemModal(this.app, this.plugin, null, async (itemData: PlotItem) => {
+                            await this.plugin.savePlotItem(itemData);
+                            new Notice(`Item "${itemData.name}" created.`);
+                        }).open();
+                    });
+                if (!hasActiveStory) {
+                    button.setDisabled(true).setTooltip('Select or create a story first.');
+                }
+            });
     }
 
     renderList(filter: string, container: HTMLElement) {

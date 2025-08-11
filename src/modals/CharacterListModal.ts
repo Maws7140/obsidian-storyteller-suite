@@ -61,17 +61,26 @@ export class CharacterListModal extends Modal {
 
         // Add "Create New Character" button at bottom
         new Setting(contentEl)
-            .addButton(button => button
-                .setButtonText('Create new character')
-                .setCta()
-                .onClick(() => {
-                    this.close(); // Close list modal
-                    new CharacterModal(this.app, this.plugin, null, async (characterData: Character) => {
-                        await this.plugin.saveCharacter(characterData);
-                        new Notice(`Character "${characterData.name}" created.`);
-                        // Could optionally reopen list modal or return to dashboard
-                    }).open();
-                }));
+            .addButton(button => {
+                const hasActiveStory = !!this.plugin.getActiveStory();
+                button
+                    .setButtonText('Create new character')
+                    .setCta()
+                    .onClick(() => {
+                        if (!this.plugin.getActiveStory()) {
+                            new Notice('Select or create a story first.');
+                            return;
+                        }
+                        this.close();
+                        new CharacterModal(this.app, this.plugin, null, async (characterData: Character) => {
+                            await this.plugin.saveCharacter(characterData);
+                            new Notice(`Character "${characterData.name}" created.`);
+                        }).open();
+                    });
+                if (!hasActiveStory) {
+                    button.setDisabled(true).setTooltip('Select or create a story first.');
+                }
+            });
     }
 
     /**

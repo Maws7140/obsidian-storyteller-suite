@@ -62,6 +62,8 @@ import { PlatformUtils } from './utils/PlatformUtils';
      showTimelineLegend?: boolean;
      /** When false (default), block external http/https images. */
      allowRemoteImages?: boolean;
+    /** Internal: set after first-run sanitization to avoid repeating it */
+    sanitizedSeedData?: boolean;
 }
 
 /**
@@ -91,7 +93,8 @@ import { PlatformUtils } from './utils/PlatformUtils';
     defaultTimelineStack: true,
     defaultTimelineDensity: 50,
     showTimelineLegend: true,
-    allowRemoteImages: true
+    allowRemoteImages: true,
+    sanitizedSeedData: false
 }
 
 /**
@@ -100,6 +103,14 @@ import { PlatformUtils } from './utils/PlatformUtils';
  * a unified dashboard interface for story management
  */
 export default class StorytellerSuitePlugin extends Plugin {
+    /** Quick guard to ensure an active story exists before creation actions. */
+    private ensureActiveStoryOrGuide(): boolean {
+        if (!this.getActiveStory()) {
+            new Notice('Select or create a story first.');
+            return false;
+        }
+        return true;
+    }
     /** Build a resolver using current settings */
     private buildResolver(): FolderResolver {
         const options: FolderResolverOptions = {
@@ -290,6 +301,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		// Add settings tab for user configuration
 		this.addSettingTab(new StorytellerSuiteSettingTab(this.app, this));
 
+
 		// Perform story discovery after workspace is ready
 		this.app.workspace.onLayoutReady(() => {
 			this.discoverExistingStories();
@@ -309,9 +321,9 @@ export default class StorytellerSuitePlugin extends Plugin {
 	} = {}): Promise<{ newStories: Story[]; totalStories: number; error?: string }> {
         const { isInitialDiscovery = false, logPrefix = 'Storyteller Suite' } = options;
 		
-        // In one-story mode users may not have a Stories/ folder at all.
-        // Keep discovery logic as-is so it remains a no-op in that case.
-        const baseStoriesPath = 'StorytellerSuite/Stories';
+		// In one-story mode users may not have a Stories/ folder at all.
+		// Keep discovery logic as-is so it remains a no-op in that case.
+		const baseStoriesPath = 'StorytellerSuite/Stories';
 		const storiesFolder = this.app.vault.getAbstractFileByPath(normalizePath(baseStoriesPath));
 
 		if (storiesFolder instanceof TFolder) {
@@ -343,11 +355,81 @@ export default class StorytellerSuitePlugin extends Plugin {
 			return { newStories, totalStories: this.settings.stories.length };
 		} else if (storiesFolder === null) {
 			const message = `Stories folder does not exist at ${baseStoriesPath}`;
-			return { newStories: [], totalStories: this.settings.stories.length, error: message };
+			// Continue to alternate discovery paths below instead of returning immediately
+			// return { newStories: [], totalStories: this.settings.stories.length, error: message };
 		} else {
 			const message = `Path exists but is not a folder: ${baseStoriesPath}`;
 			return { newStories: [], totalStories: this.settings.stories.length, error: message };
 		}
+
+		// --- Alternate discovery: Custom folder mode with story templates ---
+		try {
+			if (this.settings.enableCustomEntityFolders && this.settings.storyRootFolderTemplate) {
+				const tpl = this.settings.storyRootFolderTemplate;
+				const hasPlaceholder = tpl.includes('{storyName}') || tpl.includes('{storySlug}') || tpl.includes('{storyId}');
+				if (hasPlaceholder) {
+					// Determine parent folder path before the first placeholder
+					const idx = Math.min(
+						...['{storyName}','{storySlug}','{storyId}']
+							.map(tok => {
+								const i = tpl.indexOf(tok);
+								return i === -1 ? Number.POSITIVE_INFINITY : i;
+							})
+					);
+					const before = idx === Number.POSITIVE_INFINITY ? tpl : tpl.slice(0, idx);
+					const parent = before.endsWith('/') ? before.slice(0, -1) : before;
+					const parentPath = parent.includes('/') ? parent : parent; // already normalized-ish
+					const parentFolder = this.app.vault.getAbstractFileByPath(normalizePath(parentPath));
+					if (parentFolder instanceof TFolder) {
+						const subFolders = parentFolder.children.filter(c => c instanceof TFolder) as TFolder[];
+						const newlyAdded: Story[] = [];
+						for (const f of subFolders) {
+							// Use folder name as story name; ensure uniqueness by id
+							if (!this.settings.stories.some(s => s.name === f.name)) {
+								const id = Date.now().toString(36) + Math.random().toString(36).substr(2, 6);
+								const story: Story = { id, name: f.name, created: new Date().toISOString() };
+								this.settings.stories.push(story);
+								newlyAdded.push(story);
+							}
+						}
+						if (newlyAdded.length > 0) {
+							// Set first discovered as active if none
+							if (isInitialDiscovery && !this.settings.activeStoryId) {
+								this.settings.activeStoryId = this.settings.stories[0].id;
+							}
+							await this.saveSettings();
+							return { newStories: newlyAdded, totalStories: this.settings.stories.length };
+						}
+					}
+				}
+			}
+		} catch (e) {
+			console.warn('Storyteller Suite: Custom-folder discovery failed', e);
+		}
+
+		// --- Alternate discovery: One-story mode with existing content ---
+		try {
+			if (this.settings.enableOneStoryMode) {
+				const base = this.settings.oneStoryBaseFolder || 'StorytellerSuite';
+				const baseFolder = this.app.vault.getAbstractFileByPath(normalizePath(base));
+				if (baseFolder instanceof TFolder) {
+					const md = this.app.vault.getMarkdownFiles();
+					const hasAny = md.some(f => f.path.startsWith(normalizePath(base) + '/'));
+					if (hasAny && this.settings.stories.length === 0) {
+						const id = Date.now().toString(36) + Math.random().toString(36).substr(2, 6);
+						const story: Story = { id, name: 'Single Story', created: new Date().toISOString() };
+						this.settings.stories.push(story);
+						this.settings.activeStoryId = id;
+						await this.saveSettings();
+						return { newStories: [story], totalStories: this.settings.stories.length };
+					}
+				}
+			}
+		} catch (e) {
+			console.warn('Storyteller Suite: One-story discovery failed', e);
+		}
+
+		return { newStories: [], totalStories: this.settings.stories.length };
 	}
 
 	/**
@@ -580,6 +662,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 			id: 'create-new-character',
 			name: 'Create new character',
 			callback: () => {
+                if (!this.ensureActiveStoryOrGuide()) return;
 				new CharacterModal(this.app, this, null, async (characterData: Character) => {
 					await this.saveCharacter(characterData);
 					new Notice(`Character "${characterData.name}" created.`);
@@ -601,6 +684,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 			id: 'create-new-location',
 			name: 'Create new location',
 			callback: () => {
+                if (!this.ensureActiveStoryOrGuide()) return;
 				new LocationModal(this.app, this, null, async (locationData: Location) => {
 					await this.saveLocation(locationData);
 					new Notice(`Location "${locationData.name}" created.`);
@@ -622,6 +706,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 			id: 'create-new-event',
 			name: 'Create new event',
 			callback: () => {
+                if (!this.ensureActiveStoryOrGuide()) return;
 				new EventModal(this.app, this, null, async (eventData: Event) => {
 					await this.saveEvent(eventData);
 					new Notice(`Event "${eventData.name}" created.`);
@@ -643,6 +728,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 			id: 'create-new-plot-item',
 			name: 'Create new plot item',
 			callback: () => {
+                if (!this.ensureActiveStoryOrGuide()) return;
 				new PlotItemModal(this.app, this, null, async (itemData: PlotItem) => {
 					await this.savePlotItem(itemData);
 					new Notice(`Item "${itemData.name}" created.`);
@@ -673,7 +759,8 @@ export default class StorytellerSuitePlugin extends Plugin {
 			id: 'create-new-reference',
 			name: 'Create new reference',
 			callback: () => {
-				import('./modals/ReferenceModal').then(({ ReferenceModal }) => {
+                if (!this.ensureActiveStoryOrGuide()) return;
+                import('./modals/ReferenceModal').then(({ ReferenceModal }) => {
 					new ReferenceModal(this.app, this, null, async (ref: Reference) => {
 						await this.saveReference(ref);
 						new Notice(`Reference "${ref.name}" created.`);
@@ -702,7 +789,8 @@ export default class StorytellerSuitePlugin extends Plugin {
 			id: 'create-new-chapter',
 			name: 'Create new chapter',
 			callback: () => {
-				import('./modals/ChapterModal').then(({ ChapterModal }) => {
+                if (!this.ensureActiveStoryOrGuide()) return;
+                import('./modals/ChapterModal').then(({ ChapterModal }) => {
 					new ChapterModal(this.app, this, null, async (ch: Chapter) => {
 						await this.saveChapter(ch);
 						new Notice(`Chapter "${ch.name}" created.`);
@@ -731,7 +819,8 @@ export default class StorytellerSuitePlugin extends Plugin {
 			id: 'create-new-scene',
 			name: 'Create new scene',
 			callback: () => {
-				import('./modals/SceneModal').then(({ SceneModal }) => {
+                if (!this.ensureActiveStoryOrGuide()) return;
+                import('./modals/SceneModal').then(({ SceneModal }) => {
 					new SceneModal(this.app, this, null, async (sc: Scene) => {
 						await this.saveScene(sc);
 						new Notice(`Scene "${sc.name}" created.`);
@@ -760,6 +849,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 			id: 'create-group',
 			name: 'Create group',
 			callback: async () => {
+                if (!this.ensureActiveStoryOrGuide()) return;
 				const name = prompt('Enter group name:');
 				if (name && name.trim()) {
                     const trimmed = name.trim();
@@ -2467,6 +2557,42 @@ export default class StorytellerSuitePlugin extends Plugin {
 		this.settings = Object.assign({}, DEFAULT_SETTINGS, loaded);
 
 		let settingsUpdated = false;
+
+        // First-run sanitization: if dev/test stories leaked in but the vault has no content, clear them
+        try {
+            if (!this.settings.sanitizedSeedData) {
+                const lowerNames = (this.settings.stories || []).map(s => (s.name || '').toLowerCase());
+                const hasSeedNames = lowerNames.some(n => n.includes('test') || /\bmy\s*story\s*1\b/i.test(n));
+                if ((this.settings.stories?.length || 0) > 0 && hasSeedNames) {
+                    // Determine if there are any entity markdown files under resolved folders
+                    const allMd = this.app.vault.getMarkdownFiles();
+                    const resolved = this.buildResolver().resolveAll();
+                    const prefixes: string[] = Object.values(resolved)
+                        .map(v => (v as any).path as string | undefined)
+                        .filter((p): p is string => !!p)
+                        .map(p => normalizePath(p) + '/');
+                    const anyEntityFiles = allMd.some(f => prefixes.some(pref => f.path.startsWith(pref)));
+                    if (!anyEntityFiles) {
+                        // Clear leaked stories and reset active story
+                        this.settings.stories = [];
+                        this.settings.activeStoryId = '';
+                        this.settings.sanitizedSeedData = true;
+                        settingsUpdated = true;
+                    } else {
+                        // Mark checked to avoid repeated work
+                        this.settings.sanitizedSeedData = true;
+                        settingsUpdated = true;
+                    }
+                } else if (!this.settings.sanitizedSeedData) {
+                    // Mark sanitized flag to avoid re-check overhead if nothing to sanitize
+                    this.settings.sanitizedSeedData = true;
+                    settingsUpdated = true;
+                }
+            }
+        } catch (e) {
+            // Best-effort sanitization; ignore errors
+            console.warn('Storyteller Suite: Seed data sanitization skipped due to error', e);
+        }
 
 		// MIGRATION: If no stories exist but old folders/data exist, migrate
 		if ((!this.settings.stories || this.settings.stories.length === 0)) {

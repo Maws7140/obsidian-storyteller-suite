@@ -101,17 +101,26 @@ export class TimelineModal extends Modal {
 
         // Add New button
         new Setting(contentEl)
-            .addButton(button => button
-                .setButtonText('Create new event')
-                .setCta()
-                .onClick(() => {
-                    this.close(); // Close list modal
-                    new EventModal(this.app, this.plugin, null, async (eventData: Event) => {
-                        await this.plugin.saveEvent(eventData);
-                        new Notice(`Event "${eventData.name}" created.`);
-                        // Optionally reopen list modal or dashboard
-                    }).open();
-                }));
+            .addButton(button => {
+                const hasActiveStory = !!this.plugin.getActiveStory();
+                button
+                    .setButtonText('Create new event')
+                    .setCta()
+                    .onClick(() => {
+                        if (!this.plugin.getActiveStory()) {
+                            new Notice('Select or create a story first.');
+                            return;
+                        }
+                        this.close();
+                        new EventModal(this.app, this.plugin, null, async (eventData: Event) => {
+                            await this.plugin.saveEvent(eventData);
+                            new Notice(`Event "${eventData.name}" created.`);
+                        }).open();
+                    });
+                if (!hasActiveStory) {
+                    button.setDisabled(true).setTooltip('Select or create a story first.');
+                }
+            });
     }
 
     // List UI removed
