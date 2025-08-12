@@ -312,6 +312,11 @@ export class DashboardView extends ItemView {
         const container = this.containerEl.children[1]; // View content container
         container.empty();
         container.addClass('storyteller-dashboard-view-container'); // Add a class for styling
+        // Ensure container fills the pane and provides a fixed height for inner layout
+        (container as HTMLElement).style.display = 'flex';
+        (container as HTMLElement).style.flexDirection = 'column';
+        (container as HTMLElement).style.height = '100%';
+        (container as HTMLElement).style.overflow = 'hidden';
 
         // Apply mobile-specific classes
         const mobileClasses = PlatformUtils.getMobileCssClasses();
@@ -326,16 +331,24 @@ export class DashboardView extends ItemView {
 
         // --- Create a Header Container ---
         const headerContainer = container.createDiv('storyteller-dashboard-header');
+        // Make header stick to the top of the scroll container
+        headerContainer.style.position = 'sticky';
+        headerContainer.style.top = '0';
+        headerContainer.style.zIndex = '10';
+        headerContainer.style.background = getComputedStyle(document.body).getPropertyValue('--background-primary') || 'var(--background-primary)';
 
-        // --- Title (inside the header container) ---
-        const titleEl = headerContainer.createEl('h2', {
+        // --- Header Top Row (title + selector/button) ---
+        const headerTopRow = headerContainer.createDiv('storyteller-dashboard-header-top');
+
+        // --- Title (inside the header top row) ---
+        const titleEl = headerTopRow.createEl('h2', {
             cls: 'storyteller-dashboard-title'
         });
 
         titleEl.append('Storyteller suite');
 
         // --- Group for selector and button (mobile-optimized layout) ---
-        const selectorButtonGroup = headerContainer.createDiv('storyteller-selector-button-group');
+        const selectorButtonGroup = headerTopRow.createDiv('storyteller-selector-button-group');
         
         if (PlatformUtils.isMobile() && !PlatformUtils.isTablet()) {
             // Stack vertically on mobile phones
@@ -391,10 +404,14 @@ export class DashboardView extends ItemView {
         }
 
         // --- Tab Headers (priority+ ribbon) ---
+        // Place tabs as their own sticky row below the header
         this.tabHeaderContainer = container.createDiv('storyteller-dashboard-tabs');
         this.tabHeaderContainer.setAttr('role', 'tablist');
         this.tabHeaderContainer.style.overflow = 'hidden';
-        this.tabHeaderContainer.style.position = 'relative';
+        this.tabHeaderContainer.style.position = 'sticky';
+        // Will be updated dynamically based on header height
+        this.tabHeaderContainer.style.top = '0px';
+        this.tabHeaderContainer.style.zIndex = '9';
         this.tabHeaderContainer.style.display = 'flex';
         this.tabHeaderContainer.style.alignItems = 'center';
         this.tabHeaderContainer.style.gap = '0.25rem';
@@ -414,14 +431,23 @@ export class DashboardView extends ItemView {
         // Measurement/More removed; tabs will wrap freely
 
         // Responsive layout via ResizeObserver
-        this.tabsResizeObserver = new ResizeObserver(() => this.layoutTabs());
+        this.tabsResizeObserver = new ResizeObserver(() => {
+            this.layoutTabs();
+            this.updateStickyOffsets(headerContainer);
+        });
         this.tabsResizeObserver.observe(this.tabHeaderContainer);
 
-        // Initial layout
+        // Initial layout and sticky offset
         this.layoutTabs();
+        this.updateStickyOffsets(headerContainer);
 
         // --- Tab Content ---
         this.tabContentContainer = container.createDiv('storyteller-dashboard-content');
+        // Fixed-height content area that hosts scrollable lists/grids
+        this.tabContentContainer.style.flex = '1 1 auto';
+        this.tabContentContainer.style.minHeight = '0';
+        this.tabContentContainer.style.overflowY = 'hidden';
+        this.tabContentContainer.style.overflowX = 'hidden';
 
         // Initial active state
         this.setActiveTab(this.activeTabId || this.tabs[0].id);
@@ -432,6 +458,7 @@ export class DashboardView extends ItemView {
         // --- Register Workspace Resize Event Listener ---
         this.registerEvent(this.app.workspace.on('resize', () => {
             this.debouncedRefreshActiveTab();
+            this.updateStickyOffsets(headerContainer);
         }));
 
         // --- Register Global Click Handler for Mobile Keyboard Dismissal ---
@@ -459,6 +486,18 @@ export class DashboardView extends ItemView {
 
         // --- Initial Content Render ---
         await this.renderCharactersContent(this.tabContentContainer); // Render the first tab initially
+    }
+
+    /** Update sticky top offsets so tabs sit exactly below header without clipping */
+    private updateStickyOffsets(headerEl: HTMLElement): void {
+        try {
+            if (!this.tabHeaderContainer || !headerEl) return;
+            const rect = headerEl.getBoundingClientRect();
+            const headerHeight = Math.ceil(rect.height);
+            this.tabHeaderContainer.style.top = `${headerHeight}px`;
+        } catch (e) {
+            console.warn('Storyteller: failed to update sticky offsets', e);
+        }
     }
 
     /** Compute responsive display mode based on container width */
