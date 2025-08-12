@@ -1073,308 +1073,76 @@ If your plugin does not need CSS, delete this file.
 /* --- Dashboard View Styles --- */
 .storyteller-dashboard-view-container {
   display: flex;
-  flex-direction: column;
+  flex-direction: column; /* header, tabs, content */
   height: 100%;
-  overflow: visible;
+  overflow: hidden; /* only inner regions scroll */
   box-sizing: border-box;
   max-width: 100%;
   width: 100%;
-  overflow-x: visible !important;
+  overflow-x: hidden !important;
+  min-height: 0;
 }
 
 .storyteller-dashboard-header {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
   background: var(--background-primary);
   border-bottom: 1px solid var(--background-modifier-border);
   box-shadow: 0 2px 6px 0 rgba(0,0,0,0.04);
-  padding: 0.75em 1em 0.75em 0.5em; /* Reduce left padding */
-  font-family: var(--font-interface);
+  padding: 0.5em 1em 0.25em 0.5em;
   min-height: 3.2em;
   margin-bottom: 0;
   box-sizing: border-box;
-  max-width: 100%;
   width: 100%;
-  flex-wrap: wrap;
-  gap: 0.5em;
+  gap: 0.25em;
+  position: sticky;
+  top: 0;
+  z-index: 10;
 }
 
-.storyteller-dashboard-title {
+.storyteller-dashboard-header-top {
   display: flex;
   align-items: center;
-  font-size: var(--h2, 1.5em);
-  font-family: var(--font-interface);
-  color: var(--text-normal);
-  font-weight: 700;
-  margin: 0;
-  letter-spacing: 0.01em;
-  min-width: 0;
-  flex: 1 1 auto;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 60%;
-}
-
-.storyteller-dashboard-title .storyteller-dashboard-title-icon {
-  margin-right: 0.5em;
-  color: var(--text-accent);
-  font-size: 1.2em;
-  vertical-align: middle;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5em;
 }
 
 .storyteller-dashboard-tabs {
+  position: sticky;
+  top: var(--sts-header-height, 3.2em); /* updated by JS */
+  z-index: 9;
   display: flex;
-  flex-direction: row;
-  flex-wrap: nowrap; /* Explicit nowrap to prevent wrapping */
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0.5em;
+  width: 100%;
+  min-height: 3em;
+  background: var(--background-secondary);
+  border-bottom: 2px solid var(--background-modifier-border);
+  padding: 0.25em 1em;
   overflow-x: auto;
   overflow-y: hidden;
   -webkit-overflow-scrolling: touch;
-  position: relative;
   white-space: nowrap;
-  background: var(--background-secondary);
-  /* Use integer pixel to avoid hairline artifacts during scroll */
-  border-bottom: 2px solid var(--background-modifier-border);
-  gap: 0.5em;
-  padding: 0.25em 1em 0.25em 1em;
-  scrollbar-width: thin;
-  box-shadow: 0 1px 2px 0 rgba(0,0,0,0.02);
-  box-sizing: border-box;
-  max-width: 100%;
-  width: 100%;
-  min-height: 3em;
-  
-  /* Enhanced mobile scrolling behavior */
-  overscroll-behavior-x: contain;
-  overscroll-behavior-y: auto;
-  scroll-behavior: smooth;
-  touch-action: pan-x;
-  scroll-snap-type: x proximity;
-
-  /* Stabilize compositor/text during motion */
-  will-change: scroll-position;
-  -webkit-font-smoothing: antialiased;
-  text-rendering: optimizeLegibility;
-
-  /* Ensure proper scrollbar styling */
-  scrollbar-color: var(--background-modifier-border) var(--background-secondary);
 }
 
-.storyteller-dashboard-tabs::-webkit-scrollbar {
-  height: 10px;
-  background: var(--background-secondary);
-}
-.storyteller-dashboard-tabs::-webkit-scrollbar-thumb {
-  background: var(--background-modifier-border);
-  border-radius: 5px;
-}
-.storyteller-dashboard-tabs:focus {
-  outline: 2px solid var(--text-accent);
-  outline-offset: -2px;
-}
-
-.storyteller-dashboard-tabs:after {
-  content: '';
-  position: absolute;
-  right: 0;
-  top: 0;
-  /* Narrow gradient to reduce seam prominence */
-  width: 1em;
-  height: 100%;
-  pointer-events: none;
-  /* Softer gradient to avoid visible step at edge */
-  background: linear-gradient(to left, color-mix(in srgb, var(--background-secondary) 95%, transparent), transparent 70%);
-  display: block;
-}
-
-.storyteller-tab-header {
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 140px; /* Ensure minimum width for overflow on mobile - MATCHED TO MOBILE BREAKPOINT */
-  padding: 0.5em 1.2em;
-  cursor: pointer;
-  border-radius: var(--radius-m) var(--radius-m) 0 0;
-  border-bottom: 2px solid transparent;
-  color: var(--text-muted);
-  background: none;
-  font-family: var(--font-interface);
-  font-size: 1em;
-  font-weight: 500;
-  /* Avoid negative margin stacking artifacts with container border */
-  margin-bottom: 0;
-  transition: color 0.18s, border-color 0.18s, background 0.18s;
-  outline: none;
-  white-space: nowrap;
-
-  /* Rendering/compositing stability */
-  -webkit-font-smoothing: antialiased;
-  text-rendering: optimizeLegibility;
-  
-  /* Mobile touch optimization */
-  touch-action: manipulation;
-  -webkit-tap-highlight-color: transparent;
-  -webkit-user-select: none;
-  user-select: none;
-  
-  /* Mobile-specific adjustments */
-  scroll-snap-align: center;
-}
-
-/* Mobile-specific tab header sizing */
-@media (max-width: 768px) {
-  .storyteller-tab-header {
-    min-width: 140px; /* MATCH mobile breakpoint - force overflow on mobile */
-    padding: 0.5em 1em;
-    font-size: 0.9em;
-    /* Ensure flex properties are explicitly set */
-    flex: 0 0 auto;
-    flex-shrink: 0;
-  }
-}
-
-.storyteller-tab-header:focus-visible {
-  outline: 2px solid var(--text-accent);
-  outline-offset: 2px;
-  z-index: 2;
-}
-
-.storyteller-tab-header:active {
-  background: var(--background-modifier-hover);
-}
-
-.storyteller-tab-header.active {
-  color: var(--text-accent);
-  border-bottom-color: var(--text-accent);
-  background: var(--background-primary);
-  font-weight: 600;
-  z-index: 1;
-}
-
-.storyteller-dashboard-header select.storyteller-story-selector {
-  margin-left: 1.5em;
-  background: var(--background-secondary);
-  color: var(--text-normal);
-  border: 1px solid var(--background-modifier-border);
-  border-radius: var(--radius-s);
-  font-family: var(--font-interface);
-  font-size: 1em;
-  padding: 0.3em 1em 0.3em 0.5em;
-  outline: none;
-  transition: border-color 0.18s;
-}
-
-.storyteller-dashboard-header select.storyteller-story-selector:focus {
-  border-color: var(--text-accent);
-}
-
-/* .storyteller-story-selector-group {
-  display: flex;
-  align-items: center;
-  gap: 0.5em;
-  flex-wrap: wrap;
-  min-width: 0;
-} */
-/* .storyteller-story-selector-group label { font-size: 1em; color: var(--text-muted); margin-right: 0.25em; } */
-.storyteller-controls-group {
-  display: flex;
-  align-items: center;
-  gap: 0.5em;
-  margin-bottom: 0.5em;
-}
-.storyteller-controls-group .setting-item {
-  border-bottom: none;
-  margin-bottom: 0;
-  padding-bottom: 0;
-}
-.storyteller-controls-group .setting-item-control .button.mod-cta {
-  margin-left: 0.25rem;
-}
-.storyteller-empty-state {
-  color: var(--text-muted);
-  font-style: italic;
-  margin: 1.5em 0;
-  text-align: center;
-}
-.storyteller-dashboard-header .storyteller-new-story-btn {
-  flex-shrink: 0;
-  min-width: 0;
-  max-width: 100%;
-  white-space: nowrap;
-  background: var(--interactive-accent);
-  color: var(--text-on-accent);
-  border: none;
-  border-radius: var(--radius-s);
-  font-family: var(--font-interface);
-  font-size: 1em;
-  font-weight: 500;
-  padding: 0.4em 1.2em;
-  cursor: pointer;
-  transition: background 0.18s;
-}
-.storyteller-dashboard-header .storyteller-new-story-btn:hover, .storyteller-dashboard-header .storyteller-new-story-btn:focus {
-  background: var(--interactive-accent-hover);
-}
-
-/* Tab Content Area */
 .storyteller-dashboard-content {
-  flex-grow: 1;
-  overflow-y: auto;
-  overflow-x: hidden;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden; /* list/grid manage their own scroll */
   display: flex;
   flex-direction: column;
-  width: 100%;
-  max-width: 100%;
-  box-sizing: border-box;
 }
 
-/* Controls within the view (Filter + Add Button) */
-.storyteller-view-controls .setting-item {
-    padding: var(--size-4-2) 0;
-    border-bottom: 1px solid var(--background-modifier-border);
-    margin-bottom: var(--size-4-3);
-}
-.storyteller-view-controls .setting-item-info {
-    /* Adjust label styling if needed */
-    font-weight: 600;
-}
-.storyteller-view-controls .setting-item-control {
-    /* Ensure controls align well */
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-}
-
-/* List Container within View */
-.storyteller-dashboard-content .storyteller-list-container {
-    /* Remove max-height and border from modal style */
-    max-height: none;
-    overflow-y: visible;
-    border: none;
-    margin-bottom: 0; /* Remove bottom margin */
-    flex-grow: 1; /* Allow list to fill space if needed */
-}
-
-/* Gallery Grid within View */
-.storyteller-dashboard-content .storyteller-gallery-grid {
-    /* Remove max-height from modal style */
-    max-height: none;
-    overflow-y: visible;
-    padding: var(--size-4-1);
-    flex-grow: 1; /* Allow grid to fill space */
-}
-
-/* Remove or override any max-height or height on .storyteller-dashboard-content or .storyteller-dashboard-list-container */
 .storyteller-dashboard-content .storyteller-list-container,
 .storyteller-dashboard-content .storyteller-gallery-grid {
-  max-width: 100%;
-  width: 100%;
-  overflow-x: hidden !important;
-  box-sizing: border-box;
-  max-height: none !important;
-  overflow-y: visible !important;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 /* Adjust list item styles slightly for view context if needed */
