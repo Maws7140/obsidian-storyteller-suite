@@ -42,6 +42,17 @@ export class FolderResolver {
     return normalizePath(resolved);
   }
 
+  /** Sanitize the one-story base folder so it is vault-relative and never a leading slash. */
+  private sanitizeBaseFolderPath(input?: string): string {
+    if (!input) return '';
+    const raw = input.trim();
+    if (raw === '/' || raw === '\\') return '';
+    // Strip leading/trailing slashes and backslashes, then normalize
+    const stripped = raw.replace(/^[\\/]+/, '').replace(/[\\/]+$/, '');
+    if (!stripped) return '';
+    return normalizePath(stripped);
+  }
+
   private slugifyFolderName(name: string): string {
     if (!name) return '';
     return name
@@ -71,14 +82,15 @@ export class FolderResolver {
     }
 
     if (o.enableOneStoryMode) {
-      const base = o.oneStoryBaseFolder || 'StorytellerSuite';
-      if (type === 'character') return `${base}/Characters`;
-      if (type === 'location')  return `${base}/Locations`;
-      if (type === 'event')     return `${base}/Events`;
-      if (type === 'item')      return `${base}/Items`;
-      if (type === 'reference') return `${base}/References`;
-      if (type === 'chapter')   return `${base}/Chapters`;
-      if (type === 'scene')     return `${base}/Scenes`;
+      const baseSanitized = this.sanitizeBaseFolderPath(o.oneStoryBaseFolder || 'StorytellerSuite');
+      const prefix = baseSanitized ? `${baseSanitized}/` : '';
+      if (type === 'character') return `${prefix}Characters`;
+      if (type === 'location')  return `${prefix}Locations`;
+      if (type === 'event')     return `${prefix}Events`;
+      if (type === 'item')      return `${prefix}Items`;
+      if (type === 'reference') return `${prefix}References`;
+      if (type === 'chapter')   return `${prefix}Chapters`;
+      if (type === 'scene')     return `${prefix}Scenes`;
     }
 
     const story = this.getActiveStory();

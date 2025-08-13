@@ -207,6 +207,16 @@ export default class StorytellerSuitePlugin extends Plugin {
 	settings: StorytellerSuiteSettings;
     private folderResolver: FolderResolver | null = null;
 
+    /** Sanitize the one-story base folder so it is vault-relative and never a leading slash. */
+    private sanitizeBaseFolderPath(input?: string): string {
+        if (!input) return '';
+        const raw = input.trim();
+        if (raw === '/' || raw === '\\') return '';
+        const stripped = raw.replace(/^[\\/]+/, '').replace(/[\\/]+$/, '');
+        if (!stripped) return '';
+        return normalizePath(stripped);
+    }
+
     /** Get the Date object for the plugin's notion of "today" (custom override or system). */
     getReferenceTodayDate(): Date {
         const iso = this.settings.customTodayISO;
@@ -233,6 +243,41 @@ export default class StorytellerSuitePlugin extends Plugin {
     }
 
     /**
+     * Ensure One Story Mode has a seeded story and folders immediately when enabled or base folder changes.
+     */
+    async initializeOneStoryModeIfNeeded(): Promise<void> {
+        if (!this.settings.enableOneStoryMode) return;
+        // Seed a default story if none exist
+        if ((this.settings.stories?.length ?? 0) === 0) {
+            const story = await this.createStory('Single Story', 'Auto-created for One Story Mode');
+            this.settings.activeStoryId = story.id;
+            await this.saveSettings();
+        } else if (!this.getActiveStory()) {
+            // If stories exist but none active, pick the first
+            const first = this.settings.stories[0];
+            if (first) {
+                await this.setActiveStory(first.id);
+            }
+        }
+
+        // Ensure entity folders exist under the current base
+        try {
+            await this.ensureFolder(this.getEntityFolder('character'));
+            await this.ensureFolder(this.getEntityFolder('location'));
+            await this.ensureFolder(this.getEntityFolder('event'));
+            await this.ensureFolder(this.getEntityFolder('item'));
+            await this.ensureFolder(this.getEntityFolder('reference'));
+            await this.ensureFolder(this.getEntityFolder('chapter'));
+            await this.ensureFolder(this.getEntityFolder('scene'));
+        } catch (e) {
+            // Best-effort; errors will surface via Notice in ensureFolder
+        }
+
+        // Refresh dashboard if open
+        this.refreshDashboardActiveTab();
+    }
+
+    /**
      * Produce a filesystem-safe folder name for a story
      */
     private slugifyFolderName(name: string): string {
@@ -255,34 +300,14 @@ export default class StorytellerSuitePlugin extends Plugin {
 		this.settings.stories.push(story);
 		this.settings.activeStoryId = id;
 		await this.saveSettings();
-        // Ensure folders for this story exist. Respect custom folders / one-story mode.
-        if (this.settings.enableCustomEntityFolders) {
-            // Use getEntityFolder so placeholders and root fallback are applied
-            await this.ensureFolder(this.getEntityFolder('character'));
-            await this.ensureFolder(this.getEntityFolder('location'));
-            await this.ensureFolder(this.getEntityFolder('event'));
-            await this.ensureFolder(this.getEntityFolder('item'));
-            await this.ensureFolder(this.getEntityFolder('reference'));
-            await this.ensureFolder(this.getEntityFolder('chapter'));
-            await this.ensureFolder(this.getEntityFolder('scene'));
-        } else if (this.settings.enableOneStoryMode) {
-            const base = this.settings.oneStoryBaseFolder || 'StorytellerSuite';
-            await this.ensureFolder(`${base}/Characters`);
-            await this.ensureFolder(`${base}/Locations`);
-            await this.ensureFolder(`${base}/Events`);
-            await this.ensureFolder(`${base}/Items`);
-            await this.ensureFolder(`${base}/References`);
-            await this.ensureFolder(`${base}/Chapters`);
-            await this.ensureFolder(`${base}/Scenes`);
-        } else {
-            await this.ensureFolder(`StorytellerSuite/Stories/${name}/Characters`);
-            await this.ensureFolder(`StorytellerSuite/Stories/${name}/Locations`);
-            await this.ensureFolder(`StorytellerSuite/Stories/${name}/Events`);
-            await this.ensureFolder(`StorytellerSuite/Stories/${name}/Items`);
-            await this.ensureFolder(`StorytellerSuite/Stories/${name}/References`);
-            await this.ensureFolder(`StorytellerSuite/Stories/${name}/Chapters`);
-            await this.ensureFolder(`StorytellerSuite/Stories/${name}/Scenes`);
-        }
+        // Ensure folders using resolver so all modes are respected (custom, one-story, default)
+        await this.ensureFolder(this.getEntityFolder('character'));
+        await this.ensureFolder(this.getEntityFolder('location'));
+        await this.ensureFolder(this.getEntityFolder('event'));
+        await this.ensureFolder(this.getEntityFolder('item'));
+        await this.ensureFolder(this.getEntityFolder('reference'));
+        await this.ensureFolder(this.getEntityFolder('chapter'));
+        await this.ensureFolder(this.getEntityFolder('scene'));
 		return story;
 	}
 
@@ -361,9 +386,10 @@ export default class StorytellerSuitePlugin extends Plugin {
 		this.addSettingTab(new StorytellerSuiteSettingTab(this.app, this));
 
 
-		// Perform story discovery after workspace is ready
-		this.app.workspace.onLayoutReady(() => {
-			this.discoverExistingStories();
+		// Perform story discovery and ensure one-story seeding after workspace is ready
+		this.app.workspace.onLayoutReady(async () => {
+			await this.discoverExistingStories();
+			await this.initializeOneStoryModeIfNeeded();
 		});
 	}
 
@@ -467,24 +493,30 @@ export default class StorytellerSuitePlugin extends Plugin {
 		}
 
 		// --- Alternate discovery: One-story mode with existing content ---
-		try {
-			if (this.settings.enableOneStoryMode) {
-				const base = this.settings.oneStoryBaseFolder || 'StorytellerSuite';
-				const baseFolder = this.app.vault.getAbstractFileByPath(normalizePath(base));
-				if (baseFolder instanceof TFolder) {
-					const md = this.app.vault.getMarkdownFiles();
-					const hasAny = md.some(f => f.path.startsWith(normalizePath(base) + '/'));
-					if (hasAny && this.settings.stories.length === 0) {
-						const id = Date.now().toString(36) + Math.random().toString(36).substr(2, 6);
-						const story: Story = { id, name: 'Single Story', created: new Date().toISOString() };
-						this.settings.stories.push(story);
-						this.settings.activeStoryId = id;
-						await this.saveSettings();
-						return { newStories: [story], totalStories: this.settings.stories.length };
-					}
-				}
-			}
-		} catch (e) {
+        try {
+            if (this.settings.enableOneStoryMode) {
+                const baseSanitized = this.sanitizeBaseFolderPath(this.settings.oneStoryBaseFolder || 'StorytellerSuite');
+                // If no stories exist, create the default one regardless of existing files
+                if ((this.settings.stories?.length ?? 0) === 0) {
+                    const id = Date.now().toString(36) + Math.random().toString(36).substr(2, 6);
+                    const story: Story = { id, name: 'Single Story', created: new Date().toISOString() };
+                    this.settings.stories.push(story);
+                    this.settings.activeStoryId = id;
+                    await this.saveSettings();
+                    // Ensure folders even if base doesn't exist yet
+                    try {
+                        await this.ensureFolder(this.getEntityFolder('character'));
+                        await this.ensureFolder(this.getEntityFolder('location'));
+                        await this.ensureFolder(this.getEntityFolder('event'));
+                        await this.ensureFolder(this.getEntityFolder('item'));
+                        await this.ensureFolder(this.getEntityFolder('reference'));
+                        await this.ensureFolder(this.getEntityFolder('chapter'));
+                        await this.ensureFolder(this.getEntityFolder('scene'));
+                    } catch {}
+                    return { newStories: [story], totalStories: this.settings.stories.length };
+                }
+            }
+        } catch (e) {
 			console.warn('Storyteller Suite: One-story discovery failed', e);
 		}
 
