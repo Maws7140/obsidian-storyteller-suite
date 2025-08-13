@@ -634,6 +634,10 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                 .onChange(async (value) => {
                     this.plugin.settings.enableOneStoryMode = value;
                     await this.plugin.saveSettings();
+                    // Immediately initialize one-story mode so the UI and folders are ready
+                    if (value) {
+                        await this.plugin.initializeOneStoryModeIfNeeded();
+                    }
                     this.display();
                 })
             );
@@ -647,8 +651,12 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                         .setPlaceholder('StorytellerSuite')
                         .setValue(this.plugin.settings.oneStoryBaseFolder || 'StorytellerSuite')
                         .onChange(async (value) => {
-                            this.plugin.settings.oneStoryBaseFolder = value || 'StorytellerSuite';
+                            // Normalize root selections like '/' to empty (vault root)
+                            const normalized = (value && value.trim() === '/') ? '' : (value || 'StorytellerSuite');
+                            this.plugin.settings.oneStoryBaseFolder = normalized;
                             await this.plugin.saveSettings();
+                            // Ensure folders exist if user changes base
+                            await this.plugin.initializeOneStoryModeIfNeeded();
                         });
                     let suppress = false;
                     const openSuggest = () => {
@@ -656,10 +664,11 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                         const modal = new FolderSuggestModal(
                             this.app,
                             async (folderPath) => {
-                                const chosen = folderPath || 'StorytellerSuite';
-                                this.plugin.settings.oneStoryBaseFolder = chosen;
+                                const chosen = (!folderPath || folderPath === '/') ? '' : folderPath;
+                                this.plugin.settings.oneStoryBaseFolder = chosen || 'StorytellerSuite';
                                 comp.setValue(chosen);
                                 await this.plugin.saveSettings();
+                                await this.plugin.initializeOneStoryModeIfNeeded();
                             },
                             () => {
                                 suppress = true;

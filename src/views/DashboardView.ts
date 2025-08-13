@@ -380,6 +380,11 @@ export class DashboardView extends ItemView {
             option.value = story.id;
             if (story.id === this.plugin.settings.activeStoryId) option.selected = true;
         });
+        // If one-story mode is enabled but there is still no story, prompt initialization
+        if (this.plugin.settings.enableOneStoryMode && this.plugin.settings.stories.length === 0) {
+            // Fire and forget; will refresh active tab once folders are ensured
+            this.plugin.initializeOneStoryModeIfNeeded().then(() => this.onOpen());
+        }
         storySelector.onchange = async (e) => {
             const id = (e.target as HTMLSelectElement).value;
             await this.plugin.setActiveStory(id);
