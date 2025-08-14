@@ -1138,11 +1138,21 @@ If your plugin does not need CSS, delete this file.
 }
 
 .storyteller-dashboard-content .storyteller-list-container,
-.storyteller-dashboard-content .storyteller-gallery-grid {
+.storyteller-dashboard-content .storyteller-gallery-grid,
+.storyteller-dashboard-content .storyteller-group-list-container {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
+  /* Override modal-specific caps inside the dashboard view */
+  max-height: none;
+}
+
+/* Ensure children in the groups list don’t overflow horizontally */
+.storyteller-dashboard-content .storyteller-group-list-container > * {
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 /* Adjust list item styles slightly for view context if needed */
