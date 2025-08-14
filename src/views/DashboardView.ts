@@ -309,6 +309,12 @@ export class DashboardView extends ItemView {
      * Called when the view is first opened or needs to be rebuilt
      */
     async onOpen() {
+        // First, ensure the main containerEl can expand properly for our content
+        this.containerEl.style.height = '100%';
+        this.containerEl.style.overflow = 'visible';
+        this.containerEl.style.display = 'flex';
+        this.containerEl.style.flexDirection = 'column';
+        
         const container = this.containerEl.children[1]; // View content container
         container.empty();
         container.addClass('storyteller-dashboard-view-container'); // Add a class for styling
@@ -316,7 +322,11 @@ export class DashboardView extends ItemView {
         (container as HTMLElement).style.display = 'flex';
         (container as HTMLElement).style.flexDirection = 'column';
         (container as HTMLElement).style.height = '100%';
-        (container as HTMLElement).style.overflow = 'hidden';
+        (container as HTMLElement).style.overflow = 'visible'; // Changed from hidden to visible
+        (container as HTMLElement).style.minHeight = '0';
+        // Create isolated stacking context for proper z-index layering
+        (container as HTMLElement).style.isolation = 'isolate';
+        (container as HTMLElement).style.position = 'relative';
 
         // Apply mobile-specific classes
         const mobileClasses = PlatformUtils.getMobileCssClasses();
@@ -331,11 +341,10 @@ export class DashboardView extends ItemView {
 
         // --- Create a Header Container ---
         const headerContainer = container.createDiv('storyteller-dashboard-header');
-        // Make header stick to the top of the scroll container
-        headerContainer.style.position = 'sticky';
-        headerContainer.style.top = '0';
-        headerContainer.style.zIndex = '10';
+        // Use Obsidian's official z-index layer system
+        headerContainer.style.zIndex = 'var(--layer-status-bar, 15)';
         headerContainer.style.background = getComputedStyle(document.body).getPropertyValue('--background-primary') || 'var(--background-primary)';
+        headerContainer.style.flexShrink = '0'; // Prevent header from shrinking
 
         // --- Header Top Row (title + selector/button) ---
         const headerTopRow = headerContainer.createDiv('storyteller-dashboard-header-top');
@@ -409,25 +418,23 @@ export class DashboardView extends ItemView {
         }
 
         // --- Tab Headers (priority+ ribbon) ---
-        // Place tabs as their own sticky row below the header
+        // Place tabs as their own row below the header
         this.tabHeaderContainer = container.createDiv('storyteller-dashboard-tabs');
         this.tabHeaderContainer.setAttr('role', 'tablist');
-        this.tabHeaderContainer.style.overflow = 'hidden';
-        this.tabHeaderContainer.style.position = 'sticky';
-        // Will be updated dynamically based on header height
-        this.tabHeaderContainer.style.top = '0px';
-        this.tabHeaderContainer.style.zIndex = '9';
+        // Use Obsidian's official z-index layer system - just below header
+        this.tabHeaderContainer.style.zIndex = 'calc(var(--layer-status-bar, 15) - 1)';
         this.tabHeaderContainer.style.display = 'flex';
         this.tabHeaderContainer.style.alignItems = 'center';
         this.tabHeaderContainer.style.gap = '0.25rem';
         this.tabHeaderContainer.style.width = '100%';
+        this.tabHeaderContainer.style.flexShrink = '0'; // Prevent tabs from shrinking
 
         // Ribbon row (visible tabs)
         this.tabHeaderRibbonEl = this.tabHeaderContainer.createDiv('storyteller-tab-ribbon');
         this.tabHeaderRibbonEl.style.display = 'flex';
         this.tabHeaderRibbonEl.style.gap = '0.5rem';
         this.tabHeaderRibbonEl.style.alignItems = 'center';
-        this.tabHeaderRibbonEl.style.whiteSpace = 'nowrap';
+        this.tabHeaderRibbonEl.style.whiteSpace = 'normal';
         this.tabHeaderRibbonEl.style.justifyContent = 'center';
         (this.tabHeaderRibbonEl.style as any).alignContent = 'center';
         (this.tabHeaderRibbonEl.style as any).flex = '1 1 auto';
@@ -438,21 +445,28 @@ export class DashboardView extends ItemView {
         // Responsive layout via ResizeObserver
         this.tabsResizeObserver = new ResizeObserver(() => {
             this.layoutTabs();
-            this.updateStickyOffsets(headerContainer);
+            // Use requestAnimationFrame to ensure layout is complete before measuring
+            requestAnimationFrame(() => {
+                this.updateStickyOffsets(headerContainer);
+            });
         });
         this.tabsResizeObserver.observe(this.tabHeaderContainer);
 
         // Initial layout and sticky offset
         this.layoutTabs();
-        this.updateStickyOffsets(headerContainer);
+        // Use requestAnimationFrame to ensure initial layout is complete
+        requestAnimationFrame(() => {
+            this.updateStickyOffsets(headerContainer);
+        });
 
         // --- Tab Content ---
         this.tabContentContainer = container.createDiv('storyteller-dashboard-content');
-        // Fixed-height content area that hosts scrollable lists/grids
+        // Content area is the sole vertical scroller under header+tabs
         this.tabContentContainer.style.flex = '1 1 auto';
         this.tabContentContainer.style.minHeight = '0';
-        this.tabContentContainer.style.overflowY = 'hidden';
+        this.tabContentContainer.style.overflowY = 'auto';
         this.tabContentContainer.style.overflowX = 'hidden';
+        this.tabContentContainer.style.height = 'auto'; // Allow content to expand
 
         // Initial active state
         this.setActiveTab(this.activeTabId || this.tabs[0].id);
@@ -463,7 +477,11 @@ export class DashboardView extends ItemView {
         // --- Register Workspace Resize Event Listener ---
         this.registerEvent(this.app.workspace.on('resize', () => {
             this.debouncedRefreshActiveTab();
-            this.updateStickyOffsets(headerContainer);
+            // Relayout tabs and update offsets on window resize
+            this.layoutTabs();
+            requestAnimationFrame(() => {
+                this.updateStickyOffsets(headerContainer);
+            });
         }));
 
         // --- Register Global Click Handler for Mobile Keyboard Dismissal ---
@@ -493,15 +511,16 @@ export class DashboardView extends ItemView {
         await this.renderCharactersContent(this.tabContentContainer); // Render the first tab initially
     }
 
-    /** Update sticky top offsets so tabs sit exactly below header without clipping */
+    /** Update layout to ensure proper spacing (no longer needed for sticky positioning) */
     private updateStickyOffsets(headerEl: HTMLElement): void {
+        // This function is now primarily for maintaining compatibility
+        // Since we switched to relative positioning, no offset calculation is needed
         try {
             if (!this.tabHeaderContainer || !headerEl) return;
-            const rect = headerEl.getBoundingClientRect();
-            const headerHeight = Math.ceil(rect.height);
-            this.tabHeaderContainer.style.top = `${headerHeight}px`;
+            // Force a layout recalculation to ensure proper rendering
+            this.tabHeaderContainer.style.display = 'flex';
         } catch (e) {
-            console.warn('Storyteller: failed to update sticky offsets', e);
+            console.warn('Storyteller: failed to update layout', e);
         }
     }
 
@@ -518,7 +537,7 @@ export class DashboardView extends ItemView {
     private layoutTabs(): void {
         if (!this.tabHeaderContainer || !this.tabHeaderRibbonEl) return;
 
-        // Prepare container
+        // Prepare container: allow wrapping/growing rows
         this.tabHeaderRibbonEl.style.flexWrap = 'wrap';
         (this.tabHeaderRibbonEl.style as any).rowGap = '6px';
 

@@ -261,6 +261,9 @@ If your plugin does not need CSS, delete this file.
         scroll-behavior: smooth;
         /* Add scroll snapping for better mobile UX */
         scroll-snap-type: x mandatory;
+        /* Allow automatic height expansion for wrapped tabs */
+        height: auto !important;
+        max-height: none !important;
 
         /* Hide visual scrollbars on mobile while preserving swipe */
         scrollbar-width: none; /* Firefox */
@@ -286,6 +289,18 @@ If your plugin does not need CSS, delete this file.
         /* Ensure flex properties are maintained on mobile */
         flex: 0 0 auto;
         flex-shrink: 0;
+    }
+    
+    /* Mobile tab ribbon improvements */
+    .mobile-dashboard .storyteller-tab-ribbon {
+        /* Enhanced wrapping behavior on mobile */
+        flex-wrap: wrap !important;
+        justify-content: flex-start !important;
+        align-content: flex-start !important;
+        width: 100% !important;
+        /* Ensure adequate spacing between wrapped rows */
+        row-gap: 8px !important;
+        column-gap: 4px !important;
     }
     
     /* Card layouts become single column */
@@ -1071,16 +1086,26 @@ If your plugin does not need CSS, delete this file.
 }
 
 /* --- Dashboard View Styles --- */
+/* Ensure the ItemView containerEl can expand properly */
+.view-type-storyteller-dashboard-view {
+  height: 100% !important;
+  overflow: visible !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
 .storyteller-dashboard-view-container {
   display: flex;
   flex-direction: column; /* header, tabs, content */
   height: 100%;
-  overflow: hidden; /* only inner regions scroll */
+  overflow: visible; /* Changed from hidden to visible */
   box-sizing: border-box;
   max-width: 100%;
   width: 100%;
-  overflow-x: hidden !important;
   min-height: 0;
+  /* Create isolated stacking context for proper z-index layering */
+  isolation: isolate;
+  position: relative;
 }
 
 .storyteller-dashboard-header {
@@ -1097,9 +1122,11 @@ If your plugin does not need CSS, delete this file.
   box-sizing: border-box;
   width: 100%;
   gap: 0.25em;
-  position: sticky;
-  top: 0;
-  z-index: 10;
+  position: relative; /* Changed from sticky to relative */
+  /* Use Obsidian's official z-index layer system */
+  z-index: var(--layer-status-bar, 15);
+  /* Ensure it doesn't get clipped */
+  flex-shrink: 0;
 }
 
 .storyteller-dashboard-header-top {
@@ -1111,12 +1138,12 @@ If your plugin does not need CSS, delete this file.
 }
 
 .storyteller-dashboard-tabs {
-  position: sticky;
-  top: var(--sts-header-height, 3.2em); /* updated by JS */
-  z-index: 9;
+  position: relative; /* Changed from sticky to relative */
+  /* Use Obsidian's official z-index layer system - just below header */
+  z-index: calc(var(--layer-status-bar, 15) - 1);
   display: flex;
   flex-wrap: nowrap;
-  align-items: center;
+  align-items: flex-start; /* Changed from center to flex-start to properly align wrapped rows */
   gap: 0.5em;
   width: 100%;
   min-height: 3em;
@@ -1124,17 +1151,42 @@ If your plugin does not need CSS, delete this file.
   border-bottom: 2px solid var(--background-modifier-border);
   padding: 0.25em 1em;
   overflow-x: auto;
-  overflow-y: hidden;
+  overflow-y: visible; /* Changed from hidden to visible to accommodate wrapped tabs */
   -webkit-overflow-scrolling: touch;
   white-space: nowrap;
+  /* Ensure proper sizing for wrapped content */
+  box-sizing: border-box;
+  /* Ensure it doesn't get clipped */
+  flex-shrink: 0;
+}
+
+/* Tab ribbon specific styles for proper wrapping */
+.storyteller-tab-ribbon {
+  /* Allow tabs to wrap when needed while maintaining horizontal scroll on mobile */
+  flex-wrap: wrap !important;
+  justify-content: center !important;
+  align-items: center !important;
+  align-content: flex-start !important;
+  width: 100% !important;
+  gap: 0.5rem !important;
+  row-gap: 6px !important;
+  /* Ensure proper sizing */
+  box-sizing: border-box !important;
+  min-height: 0 !important;
+  /* Reset any conflicting styles */
+  overflow: visible !important;
 }
 
 .storyteller-dashboard-content {
   flex: 1 1 auto;
   min-height: 0;
-  overflow: hidden; /* list/grid manage their own scroll */
+  overflow-y: auto; /* content area is the scroller */
+  overflow-x: hidden;
   display: flex;
   flex-direction: column;
+  position: relative; /* Establish stacking context below header/tabs */
+  /* Ensure content stays below sticky elements */
+  z-index: 1;
 }
 
 .storyteller-dashboard-content .storyteller-list-container,
@@ -1142,7 +1194,7 @@ If your plugin does not need CSS, delete this file.
 .storyteller-dashboard-content .storyteller-group-list-container {
   flex: 1 1 auto;
   min-height: 0;
-  overflow-y: auto;
+  overflow-y: visible; /* lists are not independent scrollers in the dashboard */
   overflow-x: hidden;
   /* Override modal-specific caps inside the dashboard view */
   max-height: none;
