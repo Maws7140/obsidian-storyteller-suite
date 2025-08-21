@@ -221,8 +221,17 @@ export default class StorytellerSuitePlugin extends Plugin {
     getReferenceTodayDate(): Date {
         const iso = this.settings.customTodayISO;
         if (iso) {
+            // Handle BCE dates (negative years) in ISO format
             const parsed = new Date(iso);
-            if (!isNaN(parsed.getTime())) return parsed;
+            if (!isNaN(parsed.getTime())) {
+                // Validate that the parsed date matches the input for BCE dates
+                if (iso.startsWith('-') && parsed.getFullYear() >= 0) {
+                    console.warn(`BCE date parsing issue: Input "${iso}" parsed as CE year ${parsed.getFullYear()}`);
+                }
+                return parsed;
+            } else {
+                console.warn(`Invalid custom today date: "${iso}". Using system today.`);
+            }
         }
         return new Date();
     }
