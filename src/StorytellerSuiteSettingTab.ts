@@ -187,9 +187,9 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
 
         new Setting(containerEl)
             .setName('Custom today (timeline reference)')
-            .setDesc('Optional ISO date used for the Today button and relative parsing (e.g., 2024-01-15). Leave empty to use system today.')
+            .setDesc('Optional date used for the Today button and relative parsing. Supports BCE dates (e.g., 2024-01-15 for CE, or -00499-01-01 for 500 BCE). Leave empty to use system today.')
             .addText(text => text
-                .setPlaceholder('YYYY-MM-DD or full ISO')
+                .setPlaceholder('YYYY-MM-DD or full ISO (supports BCE dates)')
                 .setValue(this.plugin.settings.customTodayISO || '')
                 .onChange(async (value) => {
                     const trimmed = value.trim();

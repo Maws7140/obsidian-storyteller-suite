@@ -202,7 +202,11 @@ export class TimelineModal extends Modal {
             const left = row.createDiv('storyteller-timeline-detail-info');
             left.createEl('strong', { text: evt.name });
             if (evt.location) left.createSpan({ text: `  @ ${evt.location}` });
-            if (evt.dateTime) left.createSpan({ text: `  • ${evt.dateTime}` });
+            if (evt.dateTime) {
+                const parsed = parseEventDate(evt.dateTime);
+                const displayDate = parsed.start ? toDisplay(parsed.start, undefined, parsed.isBCE, parsed.originalYear) : evt.dateTime;
+                left.createSpan({ text: `  • ${displayDate}` });
+            }
             const right = row.createDiv('storyteller-timeline-detail-actions');
             new ButtonComponent(right).setButtonText('Edit').onClick(() => {
                 this.close();
@@ -266,7 +270,13 @@ export class TimelineModal extends Modal {
             const parsed = evt.dateTime ? parseEventDate(evt.dateTime, { referenceDate }) : { error: 'empty' } as any;
             const startMs = toMillis(parsed.start);
             const endMs = toMillis(parsed.end);
-            if (startMs == null) return;
+            if (startMs == null) {
+                // Log BCE parsing issues for debugging
+                if (parsed.error === 'unparsed' && evt.dateTime && /\b\d+\s*(?:BC|bce|BCE|B\.C\.|b\.c\.|b\.c\.e\.)\b/i.test(evt.dateTime)) {
+                    console.warn(`Failed to parse BCE date: ${evt.dateTime} for event: ${evt.name}`);
+                }
+                return;
+            }
 
             // Determine grouping key and color
             let groupId: string | undefined;
@@ -300,7 +310,7 @@ export class TimelineModal extends Modal {
 
     private makeTooltip(evt: Event, parsed: any): string {
         const parts: string[] = [evt.name];
-        const dt = parsed?.start ? toDisplay(parsed.start) : (evt.dateTime || '');
+        const dt = parsed?.start ? toDisplay(parsed.start, undefined, parsed.isBCE, parsed.originalYear) : (evt.dateTime || '');
         if (dt) parts.push(dt);
         if (evt.location) parts.push(`@ ${evt.location}`);
         if (evt.description) parts.push(evt.description.length > 120 ? evt.description.slice(0, 120) + '…' : evt.description);
