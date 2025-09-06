@@ -75,6 +75,7 @@ export class CharacterListModal extends Modal {
                         new CharacterModal(this.app, this.plugin, null, async (characterData: Character) => {
                             await this.plugin.saveCharacter(characterData);
                             new Notice(`Character "${characterData.name}" created.`);
+                            new Notice('Note created with standard sections for easy editing.');
                         }).open();
                     });
                 if (!hasActiveStory) {

@@ -272,6 +272,8 @@ export class ChapterModal extends Modal {
                     new Notice('Chapter title is required.');
                     return;
                 }
+                // Ensure empty section fields are set so templates can render headings
+                this.chapter.summary = this.chapter.summary || '';
                 await this.onSubmit(this.chapter);
                 this.close();
             }));

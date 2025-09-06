@@ -280,6 +280,9 @@ export class CharacterModal extends ResponsiveModal {
                     new Notice("Character name cannot be empty.");
                     return;
                 }
+                // Ensure empty section fields are set so templates can render headings
+                this.character.description = this.character.description || '';
+                this.character.backstory = this.character.backstory || '';
                 try {
                     this.character.customFields = this.workingCustomFields;
                     await this.onSubmit(this.character);

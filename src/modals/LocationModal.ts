@@ -270,6 +270,9 @@ export class LocationModal extends ResponsiveModal {
                     new Notice("Location name cannot be empty.");
                     return;
                 }
+                // Ensure empty section fields are set so templates can render headings
+                this.location.description = this.location.description || '';
+                this.location.history = this.location.history || '';
                 try {
                     await this.onSubmit(this.location);
                     this.close();
