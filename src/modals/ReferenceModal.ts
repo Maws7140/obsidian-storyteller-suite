@@ -185,6 +185,8 @@ export class ReferenceModal extends Modal {
                     new Notice('Reference name is required.');
                     return;
                 }
+                // Ensure empty section fields are set so templates can render headings
+                this.refData.content = this.refData.content || '';
                 await this.onSubmit(this.refData);
                 this.close();
             })

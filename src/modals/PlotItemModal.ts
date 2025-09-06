@@ -259,6 +259,9 @@ export class PlotItemModal extends Modal {
                     new Notice("Item name cannot be empty.");
                     return;
                 }
+                // Ensure empty section fields are set so templates can render headings
+                this.item.description = this.item.description || '';
+                this.item.history = this.item.history || '';
                 await this.onSubmit(this.item);
                 this.close();
             }));

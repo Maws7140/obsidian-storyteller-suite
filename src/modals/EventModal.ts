@@ -355,6 +355,9 @@ export class EventModal extends Modal {
                     new Notice("Event name cannot be empty.");
                     return;
                 }
+                // Ensure empty section fields are set so templates can render headings
+                this.event.description = this.event.description || '';
+                this.event.outcome = this.event.outcome || '';
                 try {
                     await this.onSubmit(this.event);
                     // Notice is handled by the onSubmit callback provided by the caller

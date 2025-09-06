@@ -2,7 +2,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { App, Notice, Plugin, TFile, TFolder, normalizePath, stringifyYaml, WorkspaceLeaf } from 'obsidian';
 import { parseEventDate, toMillis } from './utils/DateParsing';
-import { buildFrontmatter, getWhitelistKeys } from './yaml/EntitySections';
+import { buildFrontmatter, getWhitelistKeys, parseSectionsFromMarkdown } from './yaml/EntitySections';
 import { FolderResolver, FolderResolverOptions } from './folders/FolderResolver';
 import { PromptModal } from './modals/ui/PromptModal';
 import { ConfirmModal } from './modals/ui/ConfirmModal';
@@ -22,6 +22,7 @@ import { NewStoryModal } from './modals/NewStoryModal';
 import { PlotItemModal } from './modals/PlotItemModal';
 import { PlotItemListModal } from './modals/PlotItemListModal';
 import { PlatformUtils } from './utils/PlatformUtils';
+import { getTemplateSections } from './utils/EntityTemplates';
 
 /**
  * Plugin settings interface defining all configurable options
@@ -1282,127 +1283,45 @@ export default class StorytellerSuitePlugin extends Plugin {
 			}
 		}
 
-		// Check if file exists and read existing content for preservation
+		// Check if file exists and read existing content sections for preservation
 		const existingFile = this.app.vault.getAbstractFileByPath(finalFilePath);
-		let existingContent = '';
-		const existingSections: Record<string, string> = {};
-		let customSections: Record<string, string> = {};
-		
+		let existingSections: Record<string, string> = {};
 		if (existingFile && existingFile instanceof TFile) {
 			try {
-				existingContent = await this.app.vault.cachedRead(existingFile);
-				
-				// Parse ALL existing markdown sections dynamically to preserve user content
-				// Use robust regex pattern for backward compatibility with older file formats
-				const primaryMatches = existingContent.matchAll(/^##\s*([^\n\r]+?)\s*[\n\r]+([\s\S]*?)(?=\n\s*##\s|$)/gm);
-				
-				for (const match of primaryMatches) {
-					const sectionName = match[1].trim();
-					const sectionContent = match[2].trim();
-					if (sectionName && sectionContent) {
-						customSections[sectionName] = sectionContent;
-					}
-				}
-				
-				// Fallback parsing for edge cases where primary regex might miss sections
-				if (Object.keys(customSections).length === 0 && existingContent.includes('##')) {
-					console.warn(`Primary regex failed for character file ${finalFilePath}, attempting fallback parsing`);
-					// Fallback: Split by ## and try to reconstruct sections
-					const lines = existingContent.split('\n');
-					let currentSection = '';
-					let currentContent: string[] = [];
-					
-					for (const line of lines) {
-						if (line.startsWith('##')) {
-							// Save previous section if exists
-							if (currentSection && currentContent.length > 0) {
-								const content = currentContent.join('\n').trim();
-								if (content) {
-									customSections[currentSection] = content;
-								}
-							}
-							// Start new section
-							currentSection = line.replace(/^##\s*/, '').trim();
-							currentContent = [];
-						} else if (currentSection) {
-							currentContent.push(line);
-						}
-					}
-					// Save final section
-					if (currentSection && currentContent.length > 0) {
-						const content = currentContent.join('\n').trim();
-						if (content) {
-							customSections[currentSection] = content;
-						}
-					}
-				}
+				const existingContent = await this.app.vault.cachedRead(existingFile);
+				existingSections = parseSectionsFromMarkdown(existingContent);
 			} catch (error) {
 				console.warn(`Error reading existing character file: ${error}`);
 			}
 		}
 
-		// Build file content with frontmatter and markdown sections
-		let fileContent = `---\n${frontmatterString}---\n\n`;
-		
-		// Handle sections dynamically - preserve ALL user sections
-		// Priority order: new content from character object, then existing content, then generate from arrays
-		
-		// Description section
-		if (description) {
-			fileContent += `## Description\n${description.trim()}\n\n`;
-		} else if (customSections['Description']) {
-			fileContent += `## Description\n${customSections['Description']}\n\n`;
-		}
-		
-		// Backstory section
-		if (backstory) {
-			fileContent += `## Backstory\n${backstory.trim()}\n\n`;
-		} else if (customSections['Backstory']) {
-			fileContent += `## Backstory\n${customSections['Backstory']}\n\n`;
-		}
-		
-		// Relationships section
-		const relationshipsContent = (character.relationships || []).map(r => `- [[${r}]]`).join('\n');
-		if (relationshipsContent) {
-			fileContent += `## Relationships\n${relationshipsContent}\n\n`;
-		} else if (customSections['Relationships']) {
-			fileContent += `## Relationships\n${customSections['Relationships']}\n\n`;
-		}
-		
-		// Locations section
-		const locationsContent = (character.locations || []).map(l => `- [[${l}]]`).join('\n');
-		if (locationsContent) {
-			fileContent += `## Locations\n${locationsContent}\n\n`;
-		} else if (customSections['Locations']) {
-			fileContent += `## Locations\n${customSections['Locations']}\n\n`;
-		}
-		
-		// Events section
-		const eventsContent = (character.events || []).map(e => `- [[${e}]]`).join('\n');
-		if (eventsContent) {
-			fileContent += `## Events\n${eventsContent}\n\n`;
-		} else if (customSections['Events']) {
-			fileContent += `## Events\n${customSections['Events']}\n\n`;
-		}
+		// Build sections from templates + provided data
+		const providedSections = {
+			Description: description || '',
+			Backstory: backstory || ''
+		};
+		const templateSections = getTemplateSections('character', providedSections);
+		const allSections: Record<string, string> = (existingFile && existingFile instanceof TFile)
+			? { ...templateSections, ...existingSections }
+			: templateSections;
 
-		// Add ALL other sections that users have created (unlimited sections support!)
-		const handledSections = ['Description', 'Backstory', 'Relationships', 'Locations', 'Events'];
-		for (const [sectionName, sectionContent] of Object.entries(customSections)) {
-			if (!handledSections.includes(sectionName) && sectionContent.trim()) {
-				fileContent += `## ${sectionName}\n${sectionContent}\n\n`;
-			}
-		}
+		// Generate Markdown
+		let mdContent = `---\n${frontmatterString}---\n\n`;
+		mdContent += Object.entries(allSections)
+			.map(([key, content]) => `## ${key}\n${content || ''}`)
+			.join('\n\n');
+		if (!mdContent.endsWith('\n')) mdContent += '\n';
 
-		// Save or update the file
+		// Save: modify existing or create new
 		if (existingFile && existingFile instanceof TFile) {
-			await this.app.vault.modify(existingFile, fileContent);
+			await this.app.vault.modify(existingFile, mdContent);
 		} else {
-			await this.app.vault.create(finalFilePath, fileContent);
+			await this.app.vault.create(finalFilePath, mdContent);
+			new Notice('Note created with standard sections for easy editing.');
 		}
-		
-		// Update the filePath in the character object
+
+		// Update path and refresh
 		character.filePath = finalFilePath;
-		// Trigger dataview refresh for plugins that depend on this data
 		this.app.metadataCache.trigger("dataview:refresh-views");
 	}
 
@@ -1494,98 +1413,41 @@ export default class StorytellerSuitePlugin extends Plugin {
 			}
 		}
 
-		// Check if file exists and read existing content for preservation
+		// Check if file exists and read existing content sections for preservation
 		const existingFile = this.app.vault.getAbstractFileByPath(finalFilePath);
-		let existingContent = '';
-		const existingSections: Record<string, string> = {};
-		const customSections: Record<string, string> = {};
-		
+		let existingSections: Record<string, string> = {};
 		if (existingFile && existingFile instanceof TFile) {
 			try {
-				existingContent = await this.app.vault.cachedRead(existingFile);
-				
-				// Parse ALL existing markdown sections dynamically to preserve user content
-				// Use robust regex pattern for backward compatibility with older file formats
-				const primaryMatches = existingContent.matchAll(/^##\s*([^\n\r]+?)\s*[\n\r]+([\s\S]*?)(?=\n\s*##\s|$)/gm);
-				
-				for (const match of primaryMatches) {
-					const sectionName = match[1].trim();
-					const sectionContent = match[2].trim();
-					if (sectionName && sectionContent) {
-						customSections[sectionName] = sectionContent;
-					}
-				}
-				
-				// Fallback parsing for edge cases where primary regex might miss sections
-				if (Object.keys(customSections).length === 0 && existingContent.includes('##')) {
-					console.warn(`Primary regex failed for location file ${finalFilePath}, attempting fallback parsing`);
-					// Fallback: Split by ## and try to reconstruct sections
-					const lines = existingContent.split('\n');
-					let currentSection = '';
-					let currentContent: string[] = [];
-					
-					for (const line of lines) {
-						if (line.startsWith('##')) {
-							// Save previous section if exists
-							if (currentSection && currentContent.length > 0) {
-								const content = currentContent.join('\n').trim();
-								if (content) {
-									customSections[currentSection] = content;
-								}
-							}
-							// Start new section
-							currentSection = line.replace(/^##\s*/, '').trim();
-							currentContent = [];
-						} else if (currentSection) {
-							currentContent.push(line);
-						}
-					}
-					// Save final section
-					if (currentSection && currentContent.length > 0) {
-						const content = currentContent.join('\n').trim();
-						if (content) {
-							customSections[currentSection] = content;
-						}
-					}
-				}
+				const existingContent = await this.app.vault.cachedRead(existingFile);
+				existingSections = parseSectionsFromMarkdown(existingContent);
 			} catch (error) {
 				console.warn(`Error reading existing location file: ${error}`);
 			}
 		}
 
-		// Build file content with frontmatter and markdown sections
-		let fileContent = `---\n${frontmatterString}---\n\n`;
-		
-		// Handle sections dynamically - preserve ALL user sections
-		// Priority order: new content from location object, then existing content, then generate from arrays
-		
-		// Description section
-		if (description) {
-			fileContent += `## Description\n${description.trim()}\n\n`;
-		} else if (customSections['Description']) {
-			fileContent += `## Description\n${customSections['Description']}\n\n`;
-		}
-		
-		// History section
-		if (history) {
-			fileContent += `## History\n${history.trim()}\n\n`;
-		} else if (customSections['History']) {
-			fileContent += `## History\n${customSections['History']}\n\n`;
-		}
+		// Build sections from templates + provided data
+		const providedSections = {
+			Description: description || '',
+			History: history || ''
+		};
+		const templateSections = getTemplateSections('location', providedSections);
+		const allSections: Record<string, string> = (existingFile && existingFile instanceof TFile)
+			? { ...templateSections, ...existingSections }
+			: templateSections;
 
-		// Add ALL other sections that users have created (unlimited sections support!)
-		const handledSections = ['Description', 'History'];
-		for (const [sectionName, sectionContent] of Object.entries(customSections)) {
-			if (!handledSections.includes(sectionName) && sectionContent.trim()) {
-				fileContent += `## ${sectionName}\n${sectionContent}\n\n`;
-			}
-		}
+		// Generate Markdown
+		let mdContent = `---\n${frontmatterString}---\n\n`;
+		mdContent += Object.entries(allSections)
+			.map(([key, content]) => `## ${key}\n${content || ''}`)
+			.join('\n\n');
+		if (!mdContent.endsWith('\n')) mdContent += '\n';
 
 		// Save or update the file
 		if (existingFile && existingFile instanceof TFile) {
-			await this.app.vault.modify(existingFile, fileContent);
+			await this.app.vault.modify(existingFile, mdContent);
 		} else {
-			await this.app.vault.create(finalFilePath, fileContent);
+			await this.app.vault.create(finalFilePath, mdContent);
+			new Notice('Note created with standard sections for easy editing.');
 		}
 		
 		// Update the filePath in the location object
@@ -1680,104 +1542,40 @@ export default class StorytellerSuitePlugin extends Plugin {
 			}
 		}
 
-		// Check if file exists and read existing content for preservation
+		// Check if file exists and read existing content sections for preservation
 		const existingFile = this.app.vault.getAbstractFileByPath(finalFilePath);
-		let existingContent = '';
-		const customSections: Record<string, string> = {};
-		
+		let existingSections: Record<string, string> = {};
 		if (existingFile && existingFile instanceof TFile) {
 			try {
-				existingContent = await this.app.vault.cachedRead(existingFile);
-				
-				// Parse ALL existing markdown sections dynamically to preserve user content
-				// Use robust regex pattern for backward compatibility with older file formats
-				const primaryMatches = existingContent.matchAll(/^##\s*([^\n\r]+?)\s*[\n\r]+([\s\S]*?)(?=\n\s*##\s|$)/gm);
-				
-				for (const match of primaryMatches) {
-					const sectionName = match[1].trim();
-					const sectionContent = match[2].trim();
-					if (sectionName && sectionContent) {
-						customSections[sectionName] = sectionContent;
-					}
-				}
-				
-				// Fallback parsing for edge cases where primary regex might miss sections
-				if (Object.keys(customSections).length === 0 && existingContent.includes('##')) {
-					console.warn(`Primary regex failed for event file ${finalFilePath}, attempting fallback parsing`);
-					// Fallback: Split by ## and try to reconstruct sections
-					const lines = existingContent.split('\n');
-					let currentSection = '';
-					let currentContent: string[] = [];
-					
-					for (const line of lines) {
-						if (line.startsWith('##')) {
-							// Save previous section if exists
-							if (currentSection && currentContent.length > 0) {
-								const content = currentContent.join('\n').trim();
-								if (content) {
-									customSections[currentSection] = content;
-								}
-							}
-							// Start new section
-							currentSection = line.replace(/^##\s*/, '').trim();
-							currentContent = [];
-						} else if (currentSection) {
-							currentContent.push(line);
-						}
-					}
-					// Save final section
-					if (currentSection && currentContent.length > 0) {
-						const content = currentContent.join('\n').trim();
-						if (content) {
-							customSections[currentSection] = content;
-						}
-					}
-				}
+				const existingContent = await this.app.vault.cachedRead(existingFile);
+				existingSections = parseSectionsFromMarkdown(existingContent);
 			} catch (error) {
 				console.warn(`Error reading existing event file: ${error}`);
 			}
 		}
 
-		// Build file content with frontmatter and markdown sections
-		let fileContent = `---\n${frontmatterString}---\n\n`;
-		
-		// Handle sections dynamically - preserve ALL user sections
-		// Priority order: new content from event object, then existing content, then generate from arrays
-		
-		// Description section
-		if (description) {
-			fileContent += `## Description\n${description.trim()}\n\n`;
-		} else if (customSections['Description']) {
-			fileContent += `## Description\n${customSections['Description']}\n\n`;
-		}
-		
-		// Outcome section
-		if (outcome) {
-			fileContent += `## Outcome\n${outcome.trim()}\n\n`;
-		} else if (customSections['Outcome']) {
-			fileContent += `## Outcome\n${customSections['Outcome']}\n\n`;
-		}
-		
-		// Characters Involved section
-		const charactersContent = (finalFrontmatter.characters || []).map((c: string) => `- [[${c}]]`).join('\n');
-		if (charactersContent) {
-			fileContent += `## Characters Involved\n${charactersContent}\n\n`;
-		} else if (customSections['Characters Involved']) {
-			fileContent += `## Characters Involved\n${customSections['Characters Involved']}\n\n`;
-		}
+		// Build sections from templates + provided data
+		const providedSections = {
+			Description: description || '',
+			Outcome: outcome || ''
+		};
+		const templateSections = getTemplateSections('event', providedSections);
+		const allSections: Record<string, string> = (existingFile && existingFile instanceof TFile)
+			? { ...templateSections, ...existingSections }
+			: templateSections;
 
-		// Add ALL other sections that users have created (unlimited sections support!)
-		const handledSections = ['Description', 'Outcome', 'Characters Involved'];
-		for (const [sectionName, sectionContent] of Object.entries(customSections)) {
-			if (!handledSections.includes(sectionName) && sectionContent.trim()) {
-				fileContent += `## ${sectionName}\n${sectionContent}\n\n`;
-			}
-		}
+		// Generate Markdown
+		let mdContent = `---\n${frontmatterString}---\n\n`;
+		mdContent += Object.entries(allSections)
+			.map(([key, content]) => `## ${key}\n${content || ''}`)
+			.join('\n\n');
+		if (!mdContent.endsWith('\n')) mdContent += '\n';
 
 		if (existingFile && existingFile instanceof TFile) {
-			await this.app.vault.modify(existingFile, fileContent);
+			await this.app.vault.modify(existingFile, mdContent);
 		} else {
-			await this.app.vault.create(finalFilePath, fileContent);
+			await this.app.vault.create(finalFilePath, mdContent);
+			new Notice('Note created with standard sections for easy editing.');
 		}
 		
 		this.app.metadataCache.trigger("dataview:refresh-views");
@@ -1879,97 +1677,41 @@ export default class StorytellerSuitePlugin extends Plugin {
 			}
 		}
 
-		// Check if file exists and read existing content for preservation
+		// Check if file exists and read existing content sections for preservation
 		const existingFile = this.app.vault.getAbstractFileByPath(finalFilePath);
-		let existingContent = '';
-		const customSections: Record<string, string> = {};
-		
+		let existingSections: Record<string, string> = {};
 		if (existingFile && existingFile instanceof TFile) {
 			try {
-				existingContent = await this.app.vault.cachedRead(existingFile);
-				
-				// Parse ALL existing markdown sections dynamically to preserve user content
-				// Use robust regex pattern for backward compatibility with older file formats
-				const primaryMatches = existingContent.matchAll(/^##\s*([^\n\r]+?)\s*[\n\r]+([\s\S]*?)(?=\n\s*##\s|$)/gm);
-				
-				for (const match of primaryMatches) {
-					const sectionName = match[1].trim();
-					const sectionContent = match[2].trim();
-					if (sectionName && sectionContent) {
-						customSections[sectionName] = sectionContent;
-					}
-				}
-				
-				// Fallback parsing for edge cases where primary regex might miss sections
-				if (Object.keys(customSections).length === 0 && existingContent.includes('##')) {
-					console.warn(`Primary regex failed for item file ${finalFilePath}, attempting fallback parsing`);
-					// Fallback: Split by ## and try to reconstruct sections
-					const lines = existingContent.split('\n');
-					let currentSection = '';
-					let currentContent: string[] = [];
-					
-					for (const line of lines) {
-						if (line.startsWith('##')) {
-							// Save previous section if exists
-							if (currentSection && currentContent.length > 0) {
-								const content = currentContent.join('\n').trim();
-								if (content) {
-									customSections[currentSection] = content;
-								}
-							}
-							// Start new section
-							currentSection = line.replace(/^##\s*/, '').trim();
-							currentContent = [];
-						} else if (currentSection) {
-							currentContent.push(line);
-						}
-					}
-					// Save final section
-					if (currentSection && currentContent.length > 0) {
-						const content = currentContent.join('\n').trim();
-						if (content) {
-							customSections[currentSection] = content;
-						}
-					}
-				}
+				const existingContent = await this.app.vault.cachedRead(existingFile);
+				existingSections = parseSectionsFromMarkdown(existingContent);
 			} catch (error) {
 				console.warn(`Error reading existing item file: ${error}`);
 			}
 		}
 
-		// Build file content with frontmatter and markdown sections
-		let fileContent = `---\n${frontmatterString}---\n\n`;
-		
-		// Handle sections dynamically - preserve ALL user sections
-		// Priority order: new content from item object, then existing content, then generate from arrays
-		
-		// Description section
-		if (description) {
-			fileContent += `## Description\n${description.trim()}\n\n`;
-		} else if (customSections['Description']) {
-			fileContent += `## Description\n${customSections['Description']}\n\n`;
-		}
-		
-		// History section
-		if (history) {
-			fileContent += `## History\n${history.trim()}\n\n`;
-		} else if (customSections['History']) {
-			fileContent += `## History\n${customSections['History']}\n\n`;
-		}
+		// Build sections from templates + provided data
+		const providedSections = {
+			Description: description || '',
+			History: history || ''
+		};
+		const templateSections = getTemplateSections('item', providedSections);
+		const allSections: Record<string, string> = (existingFile && existingFile instanceof TFile)
+			? { ...templateSections, ...existingSections }
+			: templateSections;
 
-		// Add ALL other sections that users have created (unlimited sections support!)
-		const handledSections = ['Description', 'History'];
-		for (const [sectionName, sectionContent] of Object.entries(customSections)) {
-			if (!handledSections.includes(sectionName) && sectionContent.trim()) {
-				fileContent += `## ${sectionName}\n${sectionContent}\n\n`;
-			}
-		}
+		// Generate Markdown
+		let mdContent = `---\n${frontmatterString}---\n\n`;
+		mdContent += Object.entries(allSections)
+			.map(([key, content]) => `## ${key}\n${content || ''}`)
+			.join('\n\n');
+		if (!mdContent.endsWith('\n')) mdContent += '\n';
 
 		// Save or update the file
 		if (existingFile && existingFile instanceof TFile) {
-			await this.app.vault.modify(existingFile, fileContent);
+			await this.app.vault.modify(existingFile, mdContent);
 		} else {
-			await this.app.vault.create(finalFilePath, fileContent);
+			await this.app.vault.create(finalFilePath, mdContent);
+			new Notice('Note created with standard sections for easy editing.');
 		}
 		
 		item.filePath = finalFilePath;
@@ -2048,41 +1790,34 @@ export default class StorytellerSuitePlugin extends Plugin {
 		}
 
 		const existingFile = this.app.vault.getAbstractFileByPath(finalFilePath);
-		const customSections: Record<string, string> = {};
+		let existingSections: Record<string, string> = {};
 		if (existingFile && existingFile instanceof TFile) {
 			try {
 				const existingContent = await this.app.vault.cachedRead(existingFile);
-				const primaryMatches = existingContent.matchAll(/^##\s*([^\n\r]+?)\s*[\n\r]+([\s\S]*?)(?=\n\s*##\s|$)/gm);
-				for (const match of primaryMatches) {
-					const sectionName = match[1].trim();
-					const sectionContent = match[2].trim();
-					if (sectionName && sectionContent) customSections[sectionName] = sectionContent;
-				}
+				existingSections = parseSectionsFromMarkdown(existingContent);
 			} catch (e) {
 				console.warn('Error reading existing reference file', e);
 			}
 		}
 
-		// Build body
-		let fileContent = `---\n${frontmatterString}---\n\n`;
+		// Build sections from templates + provided data
+		const providedSections = { Content: (content as string) || '' };
+		const templateSections = getTemplateSections('reference', providedSections);
+		const allSections: Record<string, string> = (existingFile && existingFile instanceof TFile)
+			? { ...templateSections, ...existingSections }
+			: templateSections;
 
-		if (content) {
-			fileContent += `## Content\n${(content as string).trim()}\n\n`;
-		} else if (customSections['Content']) {
-			fileContent += `## Content\n${customSections['Content']}\n\n`;
-		}
-
-		const handled = ['Content'];
-		for (const [sectionName, sectionContent] of Object.entries(customSections)) {
-			if (!handled.includes(sectionName) && sectionContent.trim()) {
-				fileContent += `## ${sectionName}\n${sectionContent}\n\n`;
-			}
-		}
+		let mdContent = `---\n${frontmatterString}---\n\n`;
+		mdContent += Object.entries(allSections)
+			.map(([key, val]) => `## ${key}\n${val || ''}`)
+			.join('\n\n');
+		if (!mdContent.endsWith('\n')) mdContent += '\n';
 
 		if (existingFile && existingFile instanceof TFile) {
-			await this.app.vault.modify(existingFile, fileContent);
+			await this.app.vault.modify(existingFile, mdContent);
 		} else {
-			await this.app.vault.create(finalFilePath, fileContent);
+			await this.app.vault.create(finalFilePath, mdContent);
+			new Notice('Note created with standard sections for easy editing.');
 		}
 		reference.filePath = finalFilePath;
 		this.app.metadataCache.trigger('dataview:refresh-views');
@@ -2157,38 +1892,33 @@ export default class StorytellerSuitePlugin extends Plugin {
         }
 
         const existingFile = this.app.vault.getAbstractFileByPath(finalFilePath);
-        const customSections: Record<string, string> = {};
+        let existingSections: Record<string, string> = {};
         if (existingFile && existingFile instanceof TFile) {
             try {
                 const existingContent = await this.app.vault.cachedRead(existingFile);
-                const primaryMatches = existingContent.matchAll(/^##\s*([^\n\r]+?)\s*[\n\r]+([\s\S]*?)(?=\n\s*##\s|$)/gm);
-                for (const match of primaryMatches) {
-                    const sectionName = match[1].trim();
-                    const sectionContent = match[2].trim();
-                    if (sectionName && sectionContent) customSections[sectionName] = sectionContent;
-                }
+                existingSections = parseSectionsFromMarkdown(existingContent);
             } catch (e) {
                 console.warn('Error reading existing chapter file', e);
             }
         }
 
-        let fileContent = `---\n${frontmatterString}---\n\n`;
-        if (summary) {
-            fileContent += `## Summary\n${(summary as string).trim()}\n\n`;
-        } else if (customSections['Summary']) {
-            fileContent += `## Summary\n${customSections['Summary']}\n\n`;
-        }
-        const handled = ['Summary'];
-        for (const [sectionName, sectionContent] of Object.entries(customSections)) {
-            if (!handled.includes(sectionName) && sectionContent.trim()) {
-                fileContent += `## ${sectionName}\n${sectionContent}\n\n`;
-            }
-        }
+        const providedSections = { Summary: summary || '' };
+        const templateSections = getTemplateSections('chapter', providedSections);
+        const allSections: Record<string, string> = (existingFile && existingFile instanceof TFile)
+            ? { ...templateSections, ...existingSections }
+            : templateSections;
+
+        let mdContent = `---\n${frontmatterString}---\n\n`;
+        mdContent += Object.entries(allSections)
+            .map(([key, val]) => `## ${key}\n${val || ''}`)
+            .join('\n\n');
+        if (!mdContent.endsWith('\n')) mdContent += '\n';
 
         if (existingFile && existingFile instanceof TFile) {
-            await this.app.vault.modify(existingFile, fileContent);
+            await this.app.vault.modify(existingFile, mdContent);
         } else {
-            await this.app.vault.create(finalFilePath, fileContent);
+            await this.app.vault.create(finalFilePath, mdContent);
+            new Notice('Note created with standard sections for easy editing.');
         }
         chapter.filePath = finalFilePath;
         this.app.metadataCache.trigger('dataview:refresh-views');
@@ -2265,43 +1995,37 @@ export default class StorytellerSuitePlugin extends Plugin {
         }
 
         const existingFile = this.app.vault.getAbstractFileByPath(finalFilePath);
-        const customSections: Record<string, string> = {};
+        let existingSections: Record<string, string> = {};
         if (existingFile && existingFile instanceof TFile) {
             try {
                 const existingContent = await this.app.vault.cachedRead(existingFile);
-                const primaryMatches = existingContent.matchAll(/^##\s*([^\n\r]+?)\s*[\n\r]+([\s\S]*?)(?=\n\s*##\s|$)/gm);
-                for (const match of primaryMatches) {
-                    const sectionName = match[1].trim();
-                    const sectionContent = match[2].trim();
-                    if (sectionName && sectionContent) customSections[sectionName] = sectionContent;
-                }
+                existingSections = parseSectionsFromMarkdown(existingContent);
             } catch (e) {
                 console.warn('Error reading existing scene file', e);
             }
         }
 
-        let fileContent = `---\n${frontmatterString}---\n\n`;
-        if (content) fileContent += `## Content\n${(content as string).trim()}\n\n`;
-        else if (customSections['Content']) fileContent += `## Content\n${customSections['Content']}\n\n`;
-
         const beatsBlock = (beats && Array.isArray(beats) ? beats as string[] : undefined);
-        if (beatsBlock && beatsBlock.length > 0) {
-            fileContent += `## Beat Sheet\n` + beatsBlock.map(b => `- ${b}`).join('\n') + `\n\n`;
-        } else if (customSections['Beat Sheet']) {
-            fileContent += `## Beat Sheet\n${customSections['Beat Sheet']}\n\n`;
-        }
+        const providedSections = {
+            Content: (content as string) || '',
+            Beats: (beatsBlock && beatsBlock.length > 0) ? beatsBlock.join('\n') : ''
+        };
+        const templateSections = getTemplateSections('scene', providedSections);
+        const allSections: Record<string, string> = (existingFile && existingFile instanceof TFile)
+            ? { ...templateSections, ...existingSections }
+            : templateSections;
 
-        const handled = ['Content','Beat Sheet'];
-        for (const [sectionName, sectionContent] of Object.entries(customSections)) {
-            if (!handled.includes(sectionName) && sectionContent.trim()) {
-                fileContent += `## ${sectionName}\n${sectionContent}\n\n`;
-            }
-        }
+        let mdContent = `---\n${frontmatterString}---\n\n`;
+        mdContent += Object.entries(allSections)
+            .map(([key, val]) => `## ${key}\n${val || ''}`)
+            .join('\n\n');
+        if (!mdContent.endsWith('\n')) mdContent += '\n';
 
         if (existingFile && existingFile instanceof TFile) {
-            await this.app.vault.modify(existingFile, fileContent);
+            await this.app.vault.modify(existingFile, mdContent);
         } else {
-            await this.app.vault.create(finalFilePath, fileContent);
+            await this.app.vault.create(finalFilePath, mdContent);
+            new Notice('Note created with standard sections for easy editing.');
         }
         scene.filePath = finalFilePath;
         // Keep display name in sync post-save when chapterId is set

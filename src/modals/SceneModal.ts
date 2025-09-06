@@ -279,6 +279,9 @@ export class SceneModal extends Modal {
                     new Notice('Scene title is required.');
                     return;
                 }
+                // Ensure empty section fields are set so templates can render headings
+                this.scene.content = this.scene.content || '';
+                this.scene.beats = this.scene.beats || [];
                 await this.onSubmit(this.scene);
                 this.close();
             }));

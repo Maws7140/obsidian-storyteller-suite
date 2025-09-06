@@ -50,6 +50,7 @@ export class LocationListModal extends Modal {
                         new LocationModal(this.app, this.plugin, null, async (locationData: Location) => {
                             await this.plugin.saveLocation(locationData);
                             new Notice(`Location "${locationData.name}" created.`);
+                            new Notice('Note created with standard sections for easy editing.');
                         }).open();
                     });
                 if (!hasActiveStory) {

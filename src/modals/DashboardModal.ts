@@ -38,6 +38,7 @@ export class DashboardModal extends ResponsiveModal {
                     new (await import('./CharacterModal')).CharacterModal(this.app, this.plugin, null, async (char: Character) => {
                         await this.plugin.saveCharacter(char);
                         new Notice(`Character "${char.name}" created.`);
+                        new Notice('Note created with standard sections for easy editing.');
                     }).open();
                 }));
 
@@ -59,6 +60,7 @@ export class DashboardModal extends ResponsiveModal {
                     new (await import('./LocationModal')).LocationModal(this.app, this.plugin, null, async (loc: Location) => {
                         await this.plugin.saveLocation(loc);
                         new Notice(`Location "${loc.name}" created.`);
+                        new Notice('Note created with standard sections for easy editing.');
                     }).open();
                 }));
 
@@ -80,6 +82,7 @@ export class DashboardModal extends ResponsiveModal {
                     new (await import('./EventModal')).EventModal(this.app, this.plugin, null, async (evt: Event) => {
                         await this.plugin.saveEvent(evt);
                         new Notice(`Event "${evt.name}" created.`);
+                        new Notice('Note created with standard sections for easy editing.');
                     }).open();
                 }));
 
