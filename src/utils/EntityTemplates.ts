@@ -47,9 +47,10 @@ export function getTemplateSections(
   providedSections: Record<string, string> = {}
 ): Record<string, string> {
   const template = { ...ENTITY_TEMPLATES[type] };
-  // Override template with provided (non-empty) sections
+  // Override template with provided sections (including empty ones)
+  // This allows users to clear fields and have them saved as empty
   Object.entries(providedSections).forEach(([key, value]) => {
-    if (typeof value === 'string' && value.trim()) { // Only override if non-empty
+    if (typeof value === 'string') { // Accept all string values, including empty strings
       template[key] = value;
     }
   });
