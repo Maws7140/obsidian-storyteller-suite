@@ -4,6 +4,7 @@ import { Location } from '../types'; // Assumes Location type no longer has char
 import { getWhitelistKeys } from '../yaml/EntitySections';
 import { Group } from '../types';
 import StorytellerSuitePlugin from '../main';
+import { t } from '../i18n/strings';
 import { GalleryImageSuggestModal } from './GalleryImageSuggestModal';
 import { ResponsiveModal } from './ResponsiveModal';
 import { PromptModal } from './ui/PromptModal';
@@ -51,14 +52,14 @@ export class LocationModal extends ResponsiveModal {
         
         const { contentEl } = this;
         contentEl.empty();
-        contentEl.createEl('h2', { text: this.isNew ? 'Create new location' : `Edit ${this.location.name}` });
+        contentEl.createEl('h2', { text: this.isNew ? t('createNewLocation') : `${t('edit')} ${this.location.name}` });
 
         // --- Basic Fields ---
         new Setting(contentEl)
-            .setName('Name')
-            .setDesc('The location\'s name.')
+            .setName(t('name'))
+            .setDesc(t('locationNameDesc'))
             .addText(text => text
-                .setPlaceholder('Enter location name')
+                .setPlaceholder(t('enterLocationName'))
                 .setValue(this.location.name)
                 .onChange(value => {
                     this.location.name = value;
@@ -67,11 +68,11 @@ export class LocationModal extends ResponsiveModal {
             );
 
         new Setting(contentEl)
-            .setName('Description')
+            .setName(t('description'))
             .setClass('storyteller-modal-setting-vertical')
             .addTextArea(text => {
                 text
-                    .setPlaceholder('A brief description of the location...')
+                    .setPlaceholder(t('locationDescriptionPh'))
                     .setValue(this.location.description || '')
                     .onChange(value => {
                         this.location.description = value || undefined;
@@ -81,11 +82,11 @@ export class LocationModal extends ResponsiveModal {
             });
 
         new Setting(contentEl)
-            .setName('History')
+            .setName(t('history'))
             .setClass('storyteller-modal-setting-vertical')
             .addTextArea(text => {
                 text
-                    .setPlaceholder('The location\'s history and past events...')
+                    .setPlaceholder(t('locationHistoryPh'))
                     .setValue(this.location.history || '')
                     .onChange(value => {
                         this.location.history = value || undefined;
@@ -95,22 +96,22 @@ export class LocationModal extends ResponsiveModal {
             });
 
         new Setting(contentEl)
-            .setName('Type')
-            .setDesc('e.g., City, Forest, Castle, Tavern')
+            .setName(t('type'))
+            .setDesc(t('locationTypeDesc'))
             .addText(text => text
                 .setValue(this.location.locationType || '')
                 .onChange(value => { this.location.locationType = value || undefined; }));
 
         new Setting(contentEl)
-            .setName('Region')
-            .setDesc('Broader geographic area.')
+            .setName(t('region'))
+            .setDesc(t('locationRegionDesc'))
             .addText(text => text
                 .setValue(this.location.region || '')
                 .onChange(value => { this.location.region = value || undefined; }));
 
         new Setting(contentEl)
-            .setName('Status')
-            .setDesc('e.g., Active, Ruins, Abandoned')
+            .setName(t('status'))
+            .setDesc(t('locationStatusDesc'))
             .addText(text => text
                 .setValue(this.location.status || '')
                 .onChange(value => { this.location.status = value || undefined; }));
@@ -118,14 +119,14 @@ export class LocationModal extends ResponsiveModal {
         // --- Profile Image ---
         let imagePathDesc: HTMLElement;
         new Setting(contentEl)
-            .setName('Image')
+            .setName(t('image'))
             .setDesc('')
             .then(setting => {
-                imagePathDesc = setting.descEl.createEl('small', { text: `Current: ${this.location.profileImagePath || 'None'}` });
+                imagePathDesc = setting.descEl.createEl('small', { text: t('currentValue', this.location.profileImagePath || t('none')) });
                 setting.descEl.addClass('storyteller-modal-setting-vertical');
             })
             .addButton(button => button
-                .setButtonText('Select')
+                .setButtonText(t('selectBtn'))
                 .setTooltip('Select from gallery')
                 .onClick(() => {
                     new GalleryImageSuggestModal(this.app, this.plugin, (selectedImage) => {
@@ -135,8 +136,8 @@ export class LocationModal extends ResponsiveModal {
                     }).open();
                 }))
             .addButton(button => button
-                .setButtonText('Upload')
-                .setTooltip('Upload new image')
+                .setButtonText(t('upload'))
+                .setTooltip(t('uploadImage'))
                 .onClick(async () => {
                     const fileInput = document.createElement('input');
                     fileInput.type = 'file';
@@ -164,10 +165,10 @@ export class LocationModal extends ResponsiveModal {
                                 this.location.profileImagePath = filePath;
                                 imagePathDesc.setText(`Current: ${filePath}`);
                                 
-                                new Notice(`Image uploaded: ${fileName}`);
+                                new Notice(t('imageUploaded', fileName));
                             } catch (error) {
                                 console.error('Error uploading image:', error);
-                                new Notice('Error uploading image. Please try again.');
+                                new Notice(t('errorUploadingImage'));
                             }
                         }
                     };
@@ -185,13 +186,13 @@ export class LocationModal extends ResponsiveModal {
         
 
         // --- Custom Fields ---
-        contentEl.createEl('h3', { text: 'Custom fields' });
+        contentEl.createEl('h3', { text: t('customFields') });
         const customFieldsContainer = contentEl.createDiv('storyteller-custom-fields-container');
         // Do not list existing fields to reduce redundancy
 
         new Setting(contentEl)
             .addButton(button => button
-                .setButtonText('Add custom field')
+                .setButtonText(t('addCustomField'))
                 .setIcon('plus')
                 .onClick(() => {
                     if (!this.location.customFields) this.location.customFields = {};
@@ -236,18 +237,18 @@ export class LocationModal extends ResponsiveModal {
 
         if (!this.isNew && this.onDelete) {
             buttonsSetting.addButton(button => button
-                .setButtonText('Delete location')
+                .setButtonText(t('deleteLocation'))
                 .setClass('mod-warning')
                 .onClick(async () => {
-                    if (confirm(`Are you sure you want to delete "${this.location.name}"?`)) {
+                    if (confirm(t('confirmDeleteLocation', this.location.name))) {
                         if (this.onDelete) {
                             try {
                                 await this.onDelete(this.location);
-                                new Notice(`Location "${this.location.name}" deleted.`);
+                                new Notice(t('locationDeleted', this.location.name));
                                 this.close();
                             } catch (error) {
                                 console.error("Error deleting location:", error);
-                                new Notice("Failed to delete location.");
+                                new Notice(t('failedToDelete', t('location')));
                             }
                         }
                     }
@@ -257,7 +258,7 @@ export class LocationModal extends ResponsiveModal {
         buttonsSetting.controlEl.createDiv({ cls: 'storyteller-modal-button-spacer' });
 
         buttonsSetting.addButton(button => button
-            .setButtonText('Cancel')
+            .setButtonText(t('cancel'))
             .onClick(() => {
                 this.close();
             }));
@@ -267,7 +268,7 @@ export class LocationModal extends ResponsiveModal {
             .setCta()
             .onClick(async () => {
                 if (!this.location.name?.trim()) {
-                    new Notice("Location name cannot be empty.");
+                    new Notice(t('locationNameRequired'));
                     return;
                 }
                 // Ensure empty section fields are set so templates can render headings
@@ -278,7 +279,7 @@ export class LocationModal extends ResponsiveModal {
                     this.close();
                 } catch (error) {
                     console.error("Error saving location:", error);
-                    new Notice("Failed to save location.");
+                    new Notice(t('failedToSave', t('location')));
                 }
             }));
     }
@@ -292,7 +293,7 @@ export class LocationModal extends ResponsiveModal {
         const keys = Object.keys(fields);
 
         if (keys.length === 0) {
-            container.createEl('p', { text: 'No custom fields defined.', cls: 'storyteller-modal-list-empty' });
+            container.createEl('p', { text: t('noCustomFields'), cls: 'storyteller-modal-list-empty' });
             return;
         }
 
@@ -302,7 +303,7 @@ export class LocationModal extends ResponsiveModal {
             const fieldSetting = new Setting(container)
                 .addText(text => text
                     .setValue(currentKey)
-                    .setPlaceholder('Field name')
+                    .setPlaceholder(t('fieldNamePh'))
                     .onChange(newKey => {
                         const trimmed = newKey.trim();
                         const isUniqueCaseInsensitive = !Object.keys(fields).some(k => k.toLowerCase() === trimmed.toLowerCase());
@@ -313,12 +314,12 @@ export class LocationModal extends ResponsiveModal {
                             currentKey = trimmed;
                         } else if (trimmed !== currentKey) {
                             text.setValue(currentKey);
-                            new Notice("Custom field name must be unique, non-empty, and not reserved.");
+                            new Notice(t('customFieldError'));
                         }
                     }))
                 .addText(text => text
                     .setValue(fields[currentKey]?.toString() || '')
-                    .setPlaceholder('Field value')
+                    .setPlaceholder(t('fieldValuePh'))
                     .onChange(value => {
                         fields[currentKey] = value;
                     }))
@@ -348,10 +349,10 @@ export class LocationModal extends ResponsiveModal {
         (async () => {
             const selectedGroupIds = await syncSelection();
             new Setting(container)
-                .setName('Groups')
-                .setDesc('Assign this location to one or more groups.')
+                .setName(t('groups'))
+                .setDesc(t('assignToGroupsDesc'))
                 .addDropdown(dropdown => {
-                    dropdown.addOption('', '-- Select group --');
+                    dropdown.addOption('', t('selectGroupPlaceholder'));
                     allGroups.forEach(group => {
                         dropdown.addOption(group.id, group.name);
                     });

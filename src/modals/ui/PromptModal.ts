@@ -1,4 +1,5 @@
 import { App, Modal, Setting, TextComponent } from 'obsidian';
+import { t } from '../../i18n/strings';
 
 export class PromptModal extends Modal {
   private titleText: string;
@@ -48,8 +49,8 @@ export class PromptModal extends Modal {
     };
 
     const buttons = new Setting(contentEl);
-    buttons.addButton(b => b.setButtonText('OK').setCta().onClick(submit));
-    buttons.addButton(b => b.setButtonText('Cancel').onClick(() => this.close()));
+    buttons.addButton(b => b.setButtonText(t('ok')).setCta().onClick(submit));
+    buttons.addButton(b => b.setButtonText(t('cancel')).onClick(() => this.close()));
 
     // Keyboard enter to submit
     this.contentEl.addEventListener('keydown', (e) => {

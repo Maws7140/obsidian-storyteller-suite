@@ -3,6 +3,7 @@
 import { App, Notice, Plugin, TFile, TFolder, normalizePath, stringifyYaml, WorkspaceLeaf } from 'obsidian';
 import { parseEventDate, toMillis } from './utils/DateParsing';
 import { buildFrontmatter, getWhitelistKeys, parseSectionsFromMarkdown } from './yaml/EntitySections';
+import { setLocale, t } from './i18n/strings';
 import { FolderResolver, FolderResolverOptions } from './folders/FolderResolver';
 import { PromptModal } from './modals/ui/PromptModal';
 import { ConfirmModal } from './modals/ui/ConfirmModal';
@@ -37,6 +38,8 @@ import { getTemplateSections } from './utils/EntityTemplates';
     groups: Group[];
     /** Whether to show the tutorial section in settings */
     showTutorial: boolean;
+    /** UI language setting */
+    language: 'en' | 'zh';
     /** When true, use user-provided folders instead of generated story folders */
     enableCustomEntityFolders?: boolean;
     /** Optional per-entity custom folders (used when enableCustomEntityFolders is true) */
@@ -79,6 +82,7 @@ import { getTemplateSections } from './utils/EntityTemplates';
     galleryData: { images: [] },
     groups: [],
     showTutorial: true,
+    language: 'en',
     enableCustomEntityFolders: false,
     storyRootFolderTemplate: '',
     characterFolderPath: '',
@@ -110,7 +114,7 @@ export default class StorytellerSuitePlugin extends Plugin {
     /** Quick guard to ensure an active story exists before creation actions. */
     private ensureActiveStoryOrGuide(): boolean {
         if (!this.getActiveStory()) {
-            new Notice('Select or create a story first.');
+            new Notice(t('selectOrCreateStoryFirst'));
             return false;
         }
         return true;
@@ -374,6 +378,9 @@ export default class StorytellerSuitePlugin extends Plugin {
 	 */
 	async onload() {
 		await this.loadSettings();
+
+		// Initialize locale from settings
+		setLocale(this.settings.language);
 
 		// Apply mobile CSS classes to the document body
 		this.applyMobilePlatformClasses();
@@ -817,7 +824,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 
 		this.addCommand({
 			id: 'view-timeline',
-			name: 'View timeline',
+			name: t('viewTimeline'),
 			callback: async () => {
 				const events = await this.listEvents();
 				new TimelineModal(this.app, this, events).open();
@@ -2523,6 +2530,11 @@ export default class StorytellerSuitePlugin extends Plugin {
         if (!('sceneFolderPath' in this.settings)) { (this.settings as any).sceneFolderPath = DEFAULT_SETTINGS.sceneFolderPath as any; settingsUpdated = true; }
         if (!this.settings.groups) {
             this.settings.groups = [];
+            settingsUpdated = true;
+        }
+        // Ensure language setting exists for backward compatibility
+        if (!this.settings.language) {
+            this.settings.language = DEFAULT_SETTINGS.language;
             settingsUpdated = true;
         }
         // Ensure new optional fields exist on groups for backward compatibility

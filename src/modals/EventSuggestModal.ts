@@ -1,6 +1,7 @@
 import { App, FuzzySuggestModal, Notice, prepareFuzzySearch, FuzzyMatch } from 'obsidian';
 import { Event } from '../types';
 import StorytellerSuitePlugin from '../main';
+import { t } from '../i18n/strings';
 
 export class EventSuggestModal extends FuzzySuggestModal<Event> {
     plugin: StorytellerSuitePlugin;
@@ -11,7 +12,7 @@ export class EventSuggestModal extends FuzzySuggestModal<Event> {
         super(app);
         this.plugin = plugin;
         this.onChoose = onChoose;
-        this.setPlaceholder('Select an event to link...');
+        this.setPlaceholder(t('selectEventPh'));
     }
 
     // Show all items initially; fuzzy-match when there is a query
@@ -35,7 +36,7 @@ export class EventSuggestModal extends FuzzySuggestModal<Event> {
             this.events = await this.plugin.listEvents();
         } catch (error) {
             console.error('Storyteller Suite: Error fetching events for suggester:', error);
-            new Notice('Error loading events. Check console.');
+            new Notice(t('errorLoadingEvents'));
             this.events = [];
         }
         // Force-refresh suggestions so initial list shows without typing

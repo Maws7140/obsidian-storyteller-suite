@@ -3,6 +3,7 @@ import { App, Setting, Notice, TextAreaComponent, TextComponent, ButtonComponent
 import { Character, Group } from '../types'; // Assumes Character type has relationships?: string[], associatedLocations?: string[], associatedEvents?: string[]
 import { getWhitelistKeys } from '../yaml/EntitySections';
 import StorytellerSuitePlugin from '../main';
+import { t } from '../i18n/strings';
 import { GalleryImageSuggestModal } from './GalleryImageSuggestModal';
 import { ResponsiveModal } from './ResponsiveModal';
 import { PromptModal } from './ui/PromptModal';
@@ -51,14 +52,14 @@ export class CharacterModal extends ResponsiveModal {
         
         const { contentEl } = this;
         contentEl.empty();
-        contentEl.createEl('h2', { text: this.isNew ? 'Create new character' : `Edit ${this.character.name}` });
+        contentEl.createEl('h2', { text: this.isNew ? t('createNewCharacter') : `${t('edit')} ${this.character.name}` });
 
         // --- Name ---
         new Setting(contentEl)
-            .setName('Name')
-            .setDesc('The character\'s full name.')
+            .setName(t('name'))
+            .setDesc(t('name'))
             .addText(text => text
-                .setPlaceholder('Enter character name')
+                .setPlaceholder(t('enterCharacterName'))
                 .setValue(this.character.name)
                 .onChange(value => {
                     this.character.name = value;
@@ -69,15 +70,15 @@ export class CharacterModal extends ResponsiveModal {
         // --- Profile Image ---
         let imagePathDesc: HTMLElement;
         new Setting(contentEl)
-            .setName('Profile image')
+            .setName(t('profileImage'))
             .setDesc('')
             .then(setting => {
-                imagePathDesc = setting.descEl.createEl('small', { text: `Current: ${this.character.profileImagePath || 'None'}` });
+                imagePathDesc = setting.descEl.createEl('small', { text: t('currentValue', this.character.profileImagePath || t('none')) });
                 setting.descEl.addClass('storyteller-modal-setting-vertical');
             })
             .addButton(button => button
-                .setButtonText('Select')
-                .setTooltip('Select from gallery')
+                .setButtonText(t('select'))
+                .setTooltip(t('selectFromGallery'))
                 .onClick(() => {
                     new GalleryImageSuggestModal(this.app, this.plugin, (selectedImage) => {
                         const path = selectedImage ? selectedImage.filePath : '';
@@ -86,8 +87,8 @@ export class CharacterModal extends ResponsiveModal {
                     }).open();
                 }))
             .addButton(button => button
-                .setButtonText('Upload')
-                .setTooltip('Upload new image')
+                .setButtonText(t('upload'))
+                .setTooltip(t('uploadImage'))
                 .onClick(async () => {
                     const fileInput = document.createElement('input');
                     fileInput.type = 'file';
@@ -115,10 +116,10 @@ export class CharacterModal extends ResponsiveModal {
                                 this.character.profileImagePath = filePath;
                                 imagePathDesc.setText(`Current: ${filePath}`);
                                 
-                                new Notice(`Image uploaded: ${fileName}`);
+                                new Notice(t('imageUploaded', fileName));
                             } catch (error) {
                                 console.error('Error uploading image:', error);
-                                new Notice('Error uploading image. Please try again.');
+                                new Notice(t('errorUploadingImage'));
                             }
                         }
                     };
@@ -126,7 +127,7 @@ export class CharacterModal extends ResponsiveModal {
                 }))
             .addButton(button => button
                 .setIcon('cross')
-                .setTooltip('Clear image')
+                .setTooltip(t('clearImage'))
                 .setClass('mod-warning')
                 .onClick(() => {
                     this.character.profileImagePath = undefined;
@@ -135,11 +136,11 @@ export class CharacterModal extends ResponsiveModal {
 
         // --- Description ---
         new Setting(contentEl)
-            .setName('Description')
+            .setName(t('description'))
             .setClass('storyteller-modal-setting-vertical')
             .addTextArea(text => {
                 text
-                    .setPlaceholder('A brief description of the character...')
+                    .setPlaceholder(t('characterDescriptionPh'))
                     .setValue(this.character.description || '')
                     .onChange(value => {
                         this.character.description = value || undefined;
@@ -150,10 +151,10 @@ export class CharacterModal extends ResponsiveModal {
 
         // --- Traits ---
         new Setting(contentEl)
-            .setName('Traits')
-            .setDesc('Comma-separated list of character traits.')
+            .setName(t('traits'))
+            .setDesc(t('traitsPlaceholder'))
             .addText(text => text
-                .setPlaceholder('e.g., Brave, Curious, Stubborn')
+                .setPlaceholder(t('traitsPlaceholder'))
                 .setValue((this.character.traits || []).join(', '))
                 .onChange(value => {
                     this.character.traits = value.split(',').map(t => t.trim()).filter(t => t.length > 0);
@@ -161,11 +162,11 @@ export class CharacterModal extends ResponsiveModal {
 
         // --- Backstory ---
         new Setting(contentEl)
-            .setName('Backstory')
+            .setName(t('backstory'))
             .setClass('storyteller-modal-setting-vertical')
             .addTextArea(text => {
                 text
-                    .setPlaceholder('The character\'s history...')
+                    .setPlaceholder(t('characterHistoryPh'))
                     .setValue(this.character.backstory || '')
                     .onChange(value => {
                         this.character.backstory = value || undefined;
@@ -176,16 +177,16 @@ export class CharacterModal extends ResponsiveModal {
 
         // --- Status ---
         new Setting(contentEl)
-            .setName('Status')
-            .setDesc('e.g., Alive, Deceased, Missing')
+            .setName(t('status'))
+            .setDesc(t('statusPlaceholderCharacter'))
             .addText(text => text
                 .setValue(this.character.status || '')
                 .onChange(value => { this.character.status = value || undefined; }));
 
         // --- Affiliation ---
         new Setting(contentEl)
-            .setName('Affiliation')
-            .setDesc('Primary group, faction, or kingdom.')
+            .setName(t('affiliation'))
+            .setDesc(t('affiliation'))
             .addText(text => text
                 .setValue(this.character.affiliation || '')
                 .onChange(value => { this.character.affiliation = value || undefined; }));
@@ -196,7 +197,7 @@ export class CharacterModal extends ResponsiveModal {
 
         // --- Custom Fields ---
         this.workingCustomFields = { ...(this.character.customFields || {}) };
-        contentEl.createEl('h3', { text: 'Custom fields' });
+        contentEl.createEl('h3', { text: t('customFields') });
         const customFieldsContainer = contentEl.createDiv('storyteller-custom-fields-container');
         // Intentionally do not render existing custom fields to avoid redundancy in the modal UI
 
@@ -209,7 +210,7 @@ export class CharacterModal extends ResponsiveModal {
 
         new Setting(contentEl)
             .addButton(button => button
-                .setButtonText('Add custom field')
+                .setButtonText(t('addCustomField'))
                 .setIcon('plus')
                 .onClick(() => {
                     if (!this.workingCustomFields) this.workingCustomFields = {};
@@ -217,8 +218,8 @@ export class CharacterModal extends ResponsiveModal {
                     const reserved = new Set<string>([...getWhitelistKeys('character'), 'customFields', 'filePath', 'id', 'sections']);
                     const askValue = (key: string) => {
                         new PromptModal(this.app, {
-                            title: 'Custom field value',
-                            label: `Value for "${key}"`,
+                            title: t('customFieldValueTitle'),
+                            label: t('valueForX', key),
                             defaultValue: '',
                             onSubmit: (val: string) => {
                                 fields[key] = val;
@@ -226,15 +227,15 @@ export class CharacterModal extends ResponsiveModal {
                         }).open();
                     };
                     new PromptModal(this.app, {
-                        title: 'New custom field',
-                        label: 'Field name',
+                        title: t('newCustomFieldTitle'),
+                        label: t('fieldName'),
                         defaultValue: '',
                         validator: (value: string) => {
                             const trimmed = value.trim();
-                            if (!trimmed) return 'Field name cannot be empty';
-                            if (reserved.has(trimmed)) return 'That name is reserved';
+                            if (!trimmed) return t('fieldNameCannotBeEmpty');
+                            if (reserved.has(trimmed)) return t('thatNameIsReserved');
                             const exists = Object.keys(fields).some(k => k.toLowerCase() === trimmed.toLowerCase());
-                            if (exists) return 'A field with that name already exists';
+                            if (exists) return t('fieldAlreadyExists');
                             return null;
                         },
                         onSubmit: (name: string) => askValue(name.trim())
@@ -246,18 +247,18 @@ export class CharacterModal extends ResponsiveModal {
 
         if (!this.isNew && this.onDelete) {
             buttonsSetting.addButton(button => button
-                .setButtonText('Delete character')
+                .setButtonText(t('deleteCharacter'))
                 .setClass('mod-warning')
                 .onClick(async () => {
-                    if (confirm(`Are you sure you want to delete "${this.character.name}"?`)) {
+                    if (confirm(t('confirmDeleteCharacter', this.character.name))) {
                         if (this.onDelete) {
                             try {
                                 await this.onDelete(this.character);
-                                new Notice(`Character "${this.character.name}" deleted.`);
+                                new Notice(t('characterDeleted', this.character.name));
                                 this.close();
                             } catch (error) {
                                 console.error("Error deleting character:", error);
-                                new Notice("Failed to delete character.");
+                                new Notice(t('failedToDelete', t('character')));
                             }
                         }
                     }
@@ -267,17 +268,17 @@ export class CharacterModal extends ResponsiveModal {
         buttonsSetting.controlEl.createDiv({ cls: 'storyteller-modal-button-spacer' });
 
         buttonsSetting.addButton(button => button
-            .setButtonText('Cancel')
+            .setButtonText(t('cancel'))
             .onClick(() => {
                 this.close();
             }));
 
         buttonsSetting.addButton(button => button
-            .setButtonText(this.isNew ? 'Create character' : 'Save changes')
+            .setButtonText(this.isNew ? t('createCharacter') : t('saveChanges'))
             .setCta()
             .onClick(async () => {
                 if (!this.character.name?.trim()) {
-                    new Notice("Character name cannot be empty.");
+                    new Notice(t('characterNameRequired'));
                     return;
                 }
                 // Ensure empty section fields are set so templates can render headings
@@ -289,7 +290,7 @@ export class CharacterModal extends ResponsiveModal {
                     this.close();
                 } catch (error) {
                     console.error("Error saving character:", error);
-                    new Notice("Failed to save character.");
+                    new Notice(t('failedToSave', t('character')));
                 }
             }));
     }
@@ -298,7 +299,7 @@ export class CharacterModal extends ResponsiveModal {
     renderList(container: HTMLElement, items: string[], type: 'relationship' | 'location' | 'event' | 'character' | 'image' | 'sublocation') {
         container.empty();
         if (!items || items.length === 0) {
-            container.createEl('span', { text: 'None', cls: 'storyteller-modal-list-empty' });
+            container.createEl('span', { text: t('none'), cls: 'storyteller-modal-list-empty' });
             return;
         }
         items.forEach((item, index) => {
@@ -307,7 +308,7 @@ export class CharacterModal extends ResponsiveModal {
             itemEl.createSpan({ text: displayItem });
             new ButtonComponent(itemEl)
                 .setClass('storyteller-modal-list-remove')
-                .setTooltip(`Remove ${displayItem}`)
+                .setTooltip(t('removeX', displayItem))
                 .setIcon('cross')
                 .onClick(() => {
                     if (type === 'relationship') {
@@ -324,7 +325,7 @@ export class CharacterModal extends ResponsiveModal {
         const keys = Object.keys(fields);
 
         if (keys.length === 0) {
-            container.createEl('p', { text: 'No custom fields defined.', cls: 'storyteller-modal-list-empty' });
+            container.createEl('p', { text: t('noCustomFields'), cls: 'storyteller-modal-list-empty' });
             return;
         }
 
@@ -334,7 +335,7 @@ export class CharacterModal extends ResponsiveModal {
             const fieldSetting = new Setting(container)
                 .addText(text => text
                     .setValue(currentKey)
-                    .setPlaceholder('Field name')
+                    .setPlaceholder(t('fieldName'))
                     .onChange(newKey => {
                         const trimmed = newKey.trim();
                         const isUniqueCaseInsensitive = !Object.keys(fields).some(k => k.toLowerCase() === trimmed.toLowerCase());
@@ -345,18 +346,18 @@ export class CharacterModal extends ResponsiveModal {
                             currentKey = trimmed;
                         } else if (trimmed !== currentKey) {
                             text.setValue(currentKey);
-                            new Notice("Custom field name must be unique, non-empty, and not reserved.");
+                            new Notice(t('fieldNameCannotBeEmpty'));
                         }
                     }))
                 .addText(text => text
                     .setValue(fields[currentKey]?.toString() || '')
-                    .setPlaceholder('Field value')
+                    .setPlaceholder(t('fieldValue'))
                     .onChange(value => {
                         fields[currentKey] = value;
                     }))
                 .addButton(button => button
                     .setIcon('trash')
-                    .setTooltip(`Remove field "${currentKey}"`)
+                    .setTooltip(t('removeFieldX', currentKey))
                     .setClass('mod-warning')
                     .onClick(() => {
                         delete fields[currentKey];
@@ -383,10 +384,10 @@ export class CharacterModal extends ResponsiveModal {
         (async () => {
             const selectedGroupIds = await syncSelection();
             new Setting(container)
-                .setName('Groups')
-                .setDesc('Assign this character to one or more groups.')
+                .setName(t('groups'))
+                .setDesc(t('groupsHelpCharacter'))
                 .addDropdown(dropdown => {
-                    dropdown.addOption('', '-- Select group --');
+                    dropdown.addOption('', t('selectGroupPlaceholder'));
                     allGroups.forEach(group => {
                         dropdown.addOption(group.id, group.name);
                     });

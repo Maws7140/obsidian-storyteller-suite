@@ -1,4 +1,5 @@
 import { App, Modal, Setting, Notice, ButtonComponent } from 'obsidian';
+import { t } from '../i18n/strings';
 import { Group, Character, Location, Event, PlotItem } from '../types';
 import StorytellerSuitePlugin from '../main';
 import { GalleryImageSuggestModal } from './GalleryImageSuggestModal';
@@ -49,41 +50,41 @@ export class GroupModal extends Modal {
     async onOpen() {
         const { contentEl } = this;
         contentEl.empty();
-        contentEl.createEl('h2', { text: this.isNew ? 'Create new group' : `Edit group: ${this.group.name}` });
+        contentEl.createEl('h2', { text: this.isNew ? t('createNewGroup') : `${t('editGroup')}: ${this.group.name}` });
 
         // --- Name ---
         new Setting(contentEl)
-            .setName('Name')
+            .setName(t('name'))
             .addText(text => text
-                .setPlaceholder('Enter group name')
+                .setPlaceholder(t('enterGroupName'))
                 .setValue(this.group.name)
                 .onChange(value => { this.group.name = value; })
             );
 
         // --- Description ---
         new Setting(contentEl)
-            .setName('Description')
+            .setName(t('description'))
             .addTextArea(text => text
-                .setPlaceholder('Describe this group...')
+                .setPlaceholder(t('describeGroupPh'))
                 .setValue(this.group.description || '')
                 .onChange(value => { this.group.description = value; })
             );
 
         // --- Color ---
         new Setting(contentEl)
-            .setName('Color')
+            .setName(t('color'))
             .addText(text => text
-                .setPlaceholder('#RRGGBB or color name')
+                .setPlaceholder(t('colorPlaceholder'))
                 .setValue(this.group.color || '')
                 .onChange(value => { this.group.color = value; })
             );
 
         // --- Tags ---
         new Setting(contentEl)
-            .setName('Tags')
-            .setDesc('Comma-separated tags')
+            .setName(t('tags') || 'Tags')
+            .setDesc(t('traitsPlaceholder'))
             .addText(text => text
-                .setPlaceholder('e.g., royal, faction, allied')
+                .setPlaceholder(t('tagsPh'))
                 .setValue((this.group.tags || []).join(', '))
                 .onChange(value => { this.group.tags = value.split(',').map(t => t.trim()).filter(Boolean); })
             );
@@ -91,14 +92,14 @@ export class GroupModal extends Modal {
         // --- Profile Image ---
         let imagePathDesc: HTMLElement | null = null;
         new Setting(contentEl)
-            .setName('Profile image')
+            .setName(t('profileImage'))
             .then(s => {
-                imagePathDesc = s.descEl.createEl('small', { text: `Current: ${this.group.profileImagePath || 'None'}` });
+                imagePathDesc = s.descEl.createEl('small', { text: t('currentValue', this.group.profileImagePath || t('none')) });
                 s.descEl.addClass('storyteller-modal-setting-vertical');
             })
             .addButton(btn => btn
-                .setButtonText('Select')
-                .setTooltip('Select from gallery')
+                .setButtonText(t('select'))
+                .setTooltip(t('selectFromGallery'))
                 .onClick(() => {
                     new GalleryImageSuggestModal(this.app, this.plugin, (img) => {
                         this.group.profileImagePath = img?.filePath;
@@ -106,8 +107,8 @@ export class GroupModal extends Modal {
                     }).open();
                 }))
             .addButton(btn => btn
-                .setButtonText('Upload')
-                .setTooltip('Upload new image')
+                .setButtonText(t('upload'))
+                .setTooltip(t('uploadImage'))
                 .onClick(async () => {
                     const input = document.createElement('input');
                     input.type = 'file';
@@ -123,17 +124,17 @@ export class GroupModal extends Modal {
                             await this.app.vault.createBinary(filePath, buf);
                             this.group.profileImagePath = filePath;
                             if (imagePathDesc) imagePathDesc.setText(`Current: ${filePath}`);
-                            new Notice('Image uploaded');
+                            new Notice(t('imageUploaded', name));
                         } catch (e) {
                             console.error('Upload failed', e);
-                            new Notice('Error uploading image');
+                            new Notice(t('errorUploadingImage'));
                         }
                     };
                     input.click();
                 }))
             .addButton(btn => btn
                 .setIcon('cross')
-                .setTooltip('Clear image')
+                .setTooltip(t('clearImage'))
                 .setClass('mod-warning')
                 .onClick(() => {
                     this.group.profileImagePath = undefined;
@@ -141,18 +142,18 @@ export class GroupModal extends Modal {
                 }));
 
         // --- Members ---
-        contentEl.createEl('h3', { text: 'Members' });
+        contentEl.createEl('h3', { text: t('members') });
         await this.loadAllEntities();
         this.renderMemberSelectors(contentEl);
 
         // --- Action Buttons ---
         const buttonsSetting = new Setting(contentEl).setClass('storyteller-modal-buttons');
         buttonsSetting.addButton(button => button
-            .setButtonText(this.isNew ? 'Create group' : 'Save changes')
+            .setButtonText(this.isNew ? t('createGroupBtn') : t('saveChanges'))
             .setCta()
             .onClick(async () => {
                 if (!this.group.name.trim()) {
-                    new Notice('Group name is required.');
+                    new Notice(t('groupNameRequired'));
                     return;
                 }
                 // Prevent duplicate group names (case-insensitive)
@@ -160,7 +161,7 @@ export class GroupModal extends Modal {
                 const nameLower = this.group.name.trim().toLowerCase();
                 const duplicate = allGroups.some(g => g.name.trim().toLowerCase() === nameLower && (!this.group.id || g.id !== this.group.id));
                 if (duplicate) {
-                    new Notice('A group with this name already exists. Please choose a different name.');
+                    new Notice(t('groupNameExists'));
                     return;
                 }
                 if (this.isNew) {
@@ -211,10 +212,10 @@ export class GroupModal extends Modal {
         );
         if (!this.isNew && this.onDelete) {
             buttonsSetting.addButton(button => button
-                .setButtonText('Delete group')
+                .setButtonText(t('deleteGroup'))
                 .setClass('mod-warning')
                 .onClick(async () => {
-                    if (confirm(`Are you sure you want to delete group "${this.group.name}"?`)) {
+                    if (confirm(t('confirmDeleteGroup', this.group.name))) {
                         await this.onDelete!(this.group.id);
                         this.close();
                     }
@@ -236,7 +237,7 @@ export class GroupModal extends Modal {
 
         // --- Characters Multi-Select ---
         const charSetting = new Setting(container)
-            .setName('Characters');
+            .setName(t('characters'));
         const charTagContainer = charSetting.controlEl.createDiv('group-tag-list');
         this.group.members.filter(m => m.type === 'character').forEach(member => {
             const char = this.allCharacters.find(c => (c.id || c.name) === member.id);
@@ -251,7 +252,7 @@ export class GroupModal extends Modal {
             }
         });
         charSetting.addButton(btn => {
-            btn.setButtonText('Add character')
+            btn.setButtonText(t('add'))
                 .setCta()
                 .onClick(() => {
                     new CharacterSuggestModal(this.app, this.plugin, (selectedChar) => {
@@ -266,7 +267,7 @@ export class GroupModal extends Modal {
 
         // --- Locations Multi-Select ---
         const locSetting = new Setting(container)
-            .setName('Locations');
+            .setName(t('locations'));
         const locTagContainer = locSetting.controlEl.createDiv('group-tag-list');
         this.group.members.filter(m => m.type === 'location').forEach(member => {
             const loc = this.allLocations.find(l => (l.id || l.name) === member.id);
@@ -281,7 +282,7 @@ export class GroupModal extends Modal {
             }
         });
         locSetting.addButton(btn => {
-            btn.setButtonText('Add location')
+            btn.setButtonText(t('add'))
                 .setCta()
                 .onClick(() => {
                     new LocationSuggestModal(this.app, this.plugin, (selectedLoc) => {
@@ -296,7 +297,7 @@ export class GroupModal extends Modal {
 
         // --- Events Multi-Select ---
         const evtSetting = new Setting(container)
-            .setName('Events');
+            .setName(t('events'));
         const evtTagContainer = evtSetting.controlEl.createDiv('group-tag-list');
         this.group.members.filter(m => m.type === 'event').forEach(member => {
             const evt = this.allEvents.find(e => (e.id || e.name) === member.id);
@@ -311,7 +312,7 @@ export class GroupModal extends Modal {
             }
         });
         evtSetting.addButton(btn => {
-            btn.setButtonText('Add event')
+            btn.setButtonText(t('add'))
                 .setCta()
                 .onClick(() => {
                     new EventSuggestModal(this.app, this.plugin, (selectedEvt) => {
@@ -325,7 +326,7 @@ export class GroupModal extends Modal {
         });
 
         // --- Items Multi-Select ---
-        const itemSetting = new Setting(container).setName('Items');
+        const itemSetting = new Setting(container).setName(t('items'));
         const itemTagContainer = itemSetting.controlEl.createDiv('group-tag-list');
         this.group.members.filter(m => m.type === 'item').forEach(member => {
             const item = this.allPlotItems.find(i => (i.id || i.name) === member.id);
@@ -340,7 +341,7 @@ export class GroupModal extends Modal {
             }
         });
         itemSetting.addButton(btn => {
-            btn.setButtonText('Add item').setCta().onClick(() => {
+            btn.setButtonText(t('add')).setCta().onClick(() => {
                 new PlotItemSuggestModal(this.app, this.plugin, (selectedItem) => {
                     const itemId = selectedItem.id || selectedItem.name;
                     if (selectedItem && !this.group.members.some(m => m.type === 'item' && m.id === itemId)) {

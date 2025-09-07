@@ -3,6 +3,7 @@ import { App, Modal, Setting, Notice, TextAreaComponent, TextComponent, ButtonCo
 import { Event, GalleryImage, Character, Location, Group } from '../types'; // Added Character, Location, Group
 import StorytellerSuitePlugin from '../main';
 import { getWhitelistKeys } from '../yaml/EntitySections';
+import { t } from '../i18n/strings';
 import { GalleryImageSuggestModal } from './GalleryImageSuggestModal';
 import { PromptModal } from './ui/PromptModal';
 // Import the new suggesters
@@ -49,31 +50,31 @@ export class EventModal extends Modal {
     onOpen() {
         const { contentEl } = this;
         contentEl.empty();
-        contentEl.createEl('h2', { text: this.isNew ? 'Create new event' : `Edit ${this.event.name}` });
+        contentEl.createEl('h2', { text: this.isNew ? t('createNewEvent') : `${t('edit')} ${this.event.name}` });
 
         // --- Standard Fields (Name, DateTime, Description, etc.) ---
         new Setting(contentEl)
-            .setName('Name')
-            .setDesc('The event\'s name.')
+            .setName(t('name'))
+            .setDesc(t('name'))
             .addText(text => text
-                .setPlaceholder('Enter event name')
+                .setPlaceholder(t('enterEventName'))
                 .setValue(this.event.name)
                 .onChange(value => { this.event.name = value; })
                 .inputEl.addClass('storyteller-modal-input-large'));
 
         new Setting(contentEl)
-            .setName('Date/time')
-            .setDesc('When the event occurred (e.g., YYYY-MM-DD HH:MM or descriptive).')
+            .setName(t('dateTime'))
+            .setDesc(t('statusPlaceholderEvent'))
             .addText(text => text
-                .setPlaceholder('Enter date/time')
+                .setPlaceholder(t('enterDateTime'))
                 .setValue(this.event.dateTime || '')
                 .onChange(value => { this.event.dateTime = value || undefined; }));
 
         new Setting(contentEl)
-            .setName('Description')
+            .setName(t('description'))
             .setClass('storyteller-modal-setting-vertical')
             .addTextArea(text => {
-                text.setPlaceholder('A description of the event...')
+                text.setPlaceholder(t('eventDescriptionPh'))
                     .setValue(this.event.description || '')
                     .onChange(value => { this.event.description = value || undefined; });
                 text.inputEl.rows = 4;
@@ -81,10 +82,10 @@ export class EventModal extends Modal {
             });
 
         new Setting(contentEl)
-            .setName('Outcome')
+            .setName(t('outcome'))
             .setClass('storyteller-modal-setting-vertical')
             .addTextArea(text => {
-                text.setPlaceholder('The result or consequences of the event...')
+                text.setPlaceholder(t('eventOutcomePh'))
                     .setValue(this.event.outcome || '')
                     .onChange(value => { this.event.outcome = value || undefined; });
                 text.inputEl.rows = 3;
@@ -92,23 +93,23 @@ export class EventModal extends Modal {
             });
 
         new Setting(contentEl)
-            .setName('Status')
-            .setDesc('e.g., Upcoming, Completed, Ongoing, key plot point')
+            .setName(t('status'))
+            .setDesc(t('statusPlaceholderEvent'))
             .addText(text => text
                 .setValue(this.event.status || '')
                 .onChange(value => { this.event.status = value || undefined; }));
 
         let imagePathDesc: HTMLElement;
         new Setting(contentEl)
-            .setName('Image')
+            .setName(t('image'))
             .setDesc('')
             .then(setting => {
-                imagePathDesc = setting.descEl.createEl('small', { text: `Current: ${this.event.profileImagePath || 'None'}` });
+                imagePathDesc = setting.descEl.createEl('small', { text: t('currentValue', this.event.profileImagePath || t('none')) });
                 setting.descEl.addClass('storyteller-modal-setting-vertical');
             })
             .addButton(button => button
-                .setButtonText('Select')
-                .setTooltip('Select from gallery')
+                .setButtonText(t('select'))
+                .setTooltip(t('selectFromGallery'))
                 .onClick(() => {
                     new GalleryImageSuggestModal(this.app, this.plugin, (selectedImage) => {
                         const path = selectedImage ? selectedImage.filePath : '';
@@ -117,8 +118,8 @@ export class EventModal extends Modal {
                     }).open();
                 }))
             .addButton(button => button
-                .setButtonText('Upload')
-                .setTooltip('Upload new image')
+                .setButtonText(t('upload'))
+                .setTooltip(t('uploadImage'))
                 .onClick(async () => {
                     const fileInput = document.createElement('input');
                     fileInput.type = 'file';
@@ -145,11 +146,10 @@ export class EventModal extends Modal {
                                 // Update event and UI
                                 this.event.profileImagePath = filePath;
                                 imagePathDesc.setText(`Current: ${filePath}`);
-                                
-                                new Notice(`Image uploaded: ${fileName}`);
+                                new Notice(t('imageUploaded', fileName));
                             } catch (error) {
                                 console.error('Error uploading image:', error);
-                                new Notice('Error uploading image. Please try again.');
+                                new Notice(t('errorUploadingImage'));
                             }
                         }
                     };
@@ -157,7 +157,7 @@ export class EventModal extends Modal {
                 }))
             .addButton(button => button
                 .setIcon('cross')
-                .setTooltip('Clear image')
+                .setTooltip(t('clearImage'))
                 .setClass('mod-warning')
                 .onClick(() => {
                     this.event.profileImagePath = undefined;
@@ -165,18 +165,18 @@ export class EventModal extends Modal {
                 }));
 
         // --- Links ---
-        contentEl.createEl('h3', { text: 'Links' });
+        contentEl.createEl('h3', { text: t('links') });
 
         // --- Characters ---
         const charactersSetting = new Setting(contentEl)
-            .setName('Characters involved')
-            .setDesc('Manage linked characters.');
+            .setName(t('charactersInvolved'))
+            .setDesc(t('characters'));
         // Store the list container element
         this.charactersListEl = charactersSetting.controlEl.createDiv('storyteller-modal-list');
         this.renderList(this.charactersListEl, this.event.characters || [], 'character'); // Initial render
         charactersSetting.addButton(button => button
-            .setButtonText('Add character')
-            .setTooltip('Select character to link') // Changed tooltip to singular
+                .setButtonText(t('addCharacter'))
+            .setTooltip(t('addCharacter'))
             .setCta()
             .onClick(() => { // Removed async as suggester handles await internally
                 // Use the new CharacterSuggestModal
@@ -192,7 +192,7 @@ export class EventModal extends Modal {
                             // Re-render the list in the modal
                             this.renderList(this.charactersListEl, this.event.characters, 'character');
                         } else {
-                            new Notice(`Character "${selectedCharacter.name}" is already linked.`);
+                            new Notice(t('characterLinkedAlready', selectedCharacter.name));
                         }
                     }
                 }).open();
@@ -201,8 +201,8 @@ export class EventModal extends Modal {
         // --- Location ---
         // Store the setting itself for later updates
         this.locationSetting = new Setting(contentEl)
-            .setName('Location')
-            .setDesc(`Current: ${this.event.location || 'None'}`); // Initial description
+            .setName(t('location'))
+            .setDesc(t('currentValue', this.event.location || t('none'))); // Initial description
 
         // Assign the button component inside the callback
         this.locationSetting.addButton(button => {
@@ -211,7 +211,7 @@ export class EventModal extends Modal {
 
             // Configure the button
             button
-                .setTooltip('Select event location')
+                .setTooltip(t('selectLocation'))
                 .onClick(() => { // Removed async
                     // Use the new LocationSuggestModal
                     new LocationSuggestModal(this.app, this.plugin, (selectedLocation) => {
@@ -220,7 +220,7 @@ export class EventModal extends Modal {
                         this.event.location = locationName;
 
                         // Update the location display
-                        this.locationSetting.setDesc(`Current: ${this.event.location || 'None'}`);
+                        this.locationSetting.setDesc(`${t('current')}: ${this.event.location || t('none')}`);
                         this.updateLocationClearButton(); // Update location buttons
 
                         // ADD THIS LINE: Explicitly re-render the character list
@@ -235,14 +235,14 @@ export class EventModal extends Modal {
 
         // --- Associated Images ---
         const imagesSetting = new Setting(contentEl)
-            .setName('Associated images')
-            .setDesc('Manage linked gallery images.');
+            .setName(t('associatedImages'))
+            .setDesc(t('imageGallery'));
         // Store the list container element
         this.imagesListEl = imagesSetting.controlEl.createDiv('storyteller-modal-list');
         this.renderList(this.imagesListEl, this.event.images || [], 'image'); // Initial render
         imagesSetting.addButton(button => button
-            .setButtonText('Add image') // Changed to singular as we add one by one
-            .setTooltip('Select image from gallery') // Changed tooltip
+            .setButtonText(t('addImage'))
+            .setTooltip(t('selectFromGallery'))
             .setCta()
             .onClick(() => {
                 // Use the existing GalleryImageSuggestModal
@@ -258,8 +258,6 @@ export class EventModal extends Modal {
                         if (!this.event.images.includes(imagePath)) {
                             this.event.images.push(imagePath);
                             this.renderList(this.imagesListEl, this.event.images, 'image'); // Re-render list
-                        } else {
-                            new Notice(`Image "${imagePath}" is already linked.`);
                         }
                     }
                     // No action needed if selectedImage is null (Shift+Enter)
@@ -267,13 +265,13 @@ export class EventModal extends Modal {
             }));
 
         // --- Custom Fields ---
-        contentEl.createEl('h3', { text: 'Custom fields' });
+        contentEl.createEl('h3', { text: t('customFields') });
         const customFieldsContainer = contentEl.createDiv('storyteller-custom-fields-container');
         // Do not render existing custom fields in the modal to reduce redundancy
 
         new Setting(contentEl)
             .addButton(button => button
-                .setButtonText('Add custom field')
+                .setButtonText(t('addCustomField'))
                 .setIcon('plus')
                 .onClick(() => {
                     if (!this.event.customFields) this.event.customFields = {};
@@ -304,7 +302,7 @@ export class EventModal extends Modal {
                 }));
 
         // --- Groups ---
-        contentEl.createEl('h3', { text: 'Groups' });
+        contentEl.createEl('h3', { text: t('groups') });
         this.groupSelectorContainer = contentEl.createDiv('storyteller-group-selector-container');
         this.renderGroupSelector(this.groupSelectorContainer);
         // --- Real-time group refresh ---
@@ -319,11 +317,11 @@ export class EventModal extends Modal {
 
         if (!this.isNew && this.onDelete) {
             buttonsSetting.addButton(button => button
-                .setButtonText('Delete event')
+                .setButtonText(t('deleteEvent'))
                 .setClass('mod-warning')
                 .onClick(async () => {
                     // Added confirmation dialog
-                    if (confirm(`Are you sure you want to delete the event "${this.event.name}"? This will move the note to system trash.`)) {
+                    if (confirm(t('confirmDeleteEvent', this.event.name))) {
                         if (this.onDelete) {
                             try {
                                 await this.onDelete(this.event);
@@ -332,7 +330,7 @@ export class EventModal extends Modal {
                                 this.close();
                             } catch (error) {
                                 console.error("Error deleting event:", error);
-                                new Notice("Failed to delete event. Check console for details.");
+                                new Notice(t('workspaceLeafCreateError'));
                             }
                         }
                     }
@@ -342,17 +340,17 @@ export class EventModal extends Modal {
         buttonsSetting.controlEl.createDiv({ cls: 'storyteller-modal-button-spacer' });
 
         buttonsSetting.addButton(button => button
-            .setButtonText('Cancel')
+            .setButtonText(t('cancel'))
             .onClick(() => {
                 this.close();
             }));
 
         buttonsSetting.addButton(button => button
-            .setButtonText(this.isNew ? 'Create event' : 'Save changes')
+            .setButtonText(this.isNew ? t('createNewEvent') : t('saveChanges'))
             .setCta()
             .onClick(async () => {
                 if (!this.event.name?.trim()) {
-                    new Notice("Event name cannot be empty.");
+                    new Notice(t('eventNameRequired'));
                     return;
                 }
                 // Ensure empty section fields are set so templates can render headings
@@ -364,7 +362,7 @@ export class EventModal extends Modal {
                     this.close();
                 } catch (error) {
                     console.error("Error saving event:", error);
-                    new Notice("Failed to save event. Check console for details.");
+                    new Notice(t('workspaceLeafRevealError'));
                 }
             }));
     }
@@ -391,7 +389,7 @@ export class EventModal extends Modal {
                 .setClass('storyteller-clear-location-button') // Add class for identification
                 .onClick(() => {
                     this.event.location = undefined;
-                    this.locationSetting.setDesc(`Current: ${this.event.location || 'None'}`);
+                    this.locationSetting.setDesc(t('currentValue', this.event.location || t('none')));
                     this.updateLocationClearButton(); // Re-run to remove button and update text
                 }));
         }
@@ -406,7 +404,7 @@ export class EventModal extends Modal {
     renderList(container: HTMLElement, items: string[], type: 'character' | 'image') {
         container.empty();
         if (!items || items.length === 0) {
-            container.createEl('span', { text: 'None', cls: 'storyteller-modal-list-empty' });
+            container.createEl('span', { text: t('none'), cls: 'storyteller-modal-list-empty' });
             return;
         }
         items.forEach((item, index) => {
@@ -436,7 +434,7 @@ export class EventModal extends Modal {
         const keys = Object.keys(fields);
 
         if (keys.length === 0) {
-            container.createEl('p', { text: 'No custom fields defined.', cls: 'storyteller-modal-list-empty' });
+            container.createEl('p', { text: t('noCustomFields'), cls: 'storyteller-modal-list-empty' });
             return;
         }
 
@@ -446,7 +444,7 @@ export class EventModal extends Modal {
             const fieldSetting = new Setting(container)
                 .addText(text => text
                     .setValue(currentKey)
-                    .setPlaceholder('Field name')
+                    .setPlaceholder(t('fieldNamePh'))
                     .onChange(newKey => {
                         const trimmed = newKey.trim();
                         const isUniqueCaseInsensitive = !Object.keys(fields).some(k => k.toLowerCase() === trimmed.toLowerCase());
@@ -457,12 +455,12 @@ export class EventModal extends Modal {
                             currentKey = trimmed;
                         } else if (trimmed !== currentKey) {
                             text.setValue(currentKey); // Revert change
-                            new Notice("Custom field name must be unique, non-empty, and not reserved.");
+                            new Notice(t('customFieldError'));
                         }
                     }))
                 .addText(text => text
                     .setValue(fields[currentKey]?.toString() || '')
-                    .setPlaceholder('Field value')
+                    .setPlaceholder(t('fieldValuePh'))
                     .onChange(value => {
                         fields[currentKey] = value;
                     }))
@@ -493,10 +491,10 @@ export class EventModal extends Modal {
         (async () => {
             const selectedGroupIds = await syncSelection();
             new Setting(container)
-                .setName('Groups')
-                .setDesc('Assign this event to one or more groups.')
+                .setName(t('groups'))
+                .setDesc(t('assignEventToGroupsDesc'))
                 .addDropdown(dropdown => {
-                    dropdown.addOption('', '-- Select group --');
+                    dropdown.addOption('', t('selectGroupPlaceholder'));
                     allGroups.forEach(group => {
                         dropdown.addOption(group.id, group.name);
                     });

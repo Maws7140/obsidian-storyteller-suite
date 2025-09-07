@@ -4,6 +4,7 @@ import { PlotItem, Group } from '../types';
 import StorytellerSuitePlugin from '../main';
 import { GalleryImageSuggestModal } from './GalleryImageSuggestModal';
 import { getWhitelistKeys } from '../yaml/EntitySections';
+import { t } from '../i18n/strings';
 import { CharacterSuggestModal } from './CharacterSuggestModal';
 import { LocationSuggestModal } from './LocationSuggestModal';
 import { EventSuggestModal } from './EventSuggestModal';
@@ -50,21 +51,21 @@ export class PlotItemModal extends Modal {
     onOpen() {
         const { contentEl } = this;
         contentEl.empty();
-        contentEl.createEl('h2', { text: this.isNew ? 'Create new plot item' : `Edit ${this.item.name}` });
+        contentEl.createEl('h2', { text: this.isNew ? t('createItem') : `${t('edit')} ${this.item.name}` });
 
         new Setting(contentEl)
-            .setName('Name')
-            .setDesc("The item's name.")
+            .setName(t('name'))
+            .setDesc(t('name'))
             .addText(text => text
-                .setPlaceholder('Enter item name')
+                .setPlaceholder(t('enterItemName'))
                 .setValue(this.item.name)
                 .onChange(value => this.item.name = value)
                 .inputEl.addClass('storyteller-modal-input-large')
             );
 
         new Setting(contentEl)
-            .setName('Plot Critical')
-            .setDesc('Enable to "bookmark" this item as important to the plot.')
+            .setName(t('plotCritical'))
+            .setDesc(t('plotCritical'))
             .addToggle(toggle => toggle
                 .setValue(this.item.isPlotCritical)
                 .onChange(value => this.item.isPlotCritical = value)
@@ -72,15 +73,15 @@ export class PlotItemModal extends Modal {
         
         let imagePathDesc: HTMLElement;
         new Setting(contentEl)
-            .setName('Item Image')
+            .setName(t('itemImage'))
             .setDesc('')
             .then(setting => {
-                imagePathDesc = setting.descEl.createEl('small', { text: `Current: ${this.item.profileImagePath || 'None'}` });
+                imagePathDesc = setting.descEl.createEl('small', { text: t('currentValue', this.item.profileImagePath || t('none')) });
                 setting.descEl.addClass('storyteller-modal-setting-vertical');
             })
             .addButton(button => button
-                .setButtonText('Select')
-                .setTooltip('Select from gallery')
+                .setButtonText(t('select'))
+                .setTooltip(t('selectFromGallery'))
                 .onClick(() => {
                     new GalleryImageSuggestModal(this.app, this.plugin, (selectedImage) => {
                         const path = selectedImage ? selectedImage.filePath : undefined;
@@ -90,8 +91,8 @@ export class PlotItemModal extends Modal {
                 })
             )
             .addButton(button => button
-                .setButtonText('Upload')
-                .setTooltip('Upload new image')
+                .setButtonText(t('upload'))
+                .setTooltip(t('uploadImage'))
                 .onClick(async () => {
                     const fileInput = document.createElement('input');
                     fileInput.type = 'file';
@@ -114,10 +115,10 @@ export class PlotItemModal extends Modal {
                                 this.item.profileImagePath = filePath;
                                 imagePathDesc.setText(`Current: ${filePath}`);
                                 
-                                new Notice(`Image uploaded: ${fileName}`);
+                                new Notice(t('imageUploaded', fileName));
                             } catch (error) {
                                 console.error('Error uploading image:', error);
-                                new Notice('Error uploading image. Please try again.');
+                                new Notice(t('errorUploadingImage'));
                             }
                         }
                     };
@@ -126,7 +127,7 @@ export class PlotItemModal extends Modal {
             )
             .addButton(button => button
                 .setIcon('cross')
-                .setTooltip('Clear image')
+                .setTooltip(t('clearImage'))
                 .setClass('mod-warning')
                 .onClick(() => {
                     this.item.profileImagePath = undefined;
@@ -135,32 +136,32 @@ export class PlotItemModal extends Modal {
             );
 
         new Setting(contentEl)
-            .setName('Description')
+            .setName(t('description'))
             .setClass('storyteller-modal-setting-vertical')
             .addTextArea(text => {
-                text.setPlaceholder('A visual description of the item...')
+                text.setPlaceholder(t('itemDescriptionPh'))
                     .setValue(this.item.description || '')
                     .onChange(value => this.item.description = value || undefined);
                 text.inputEl.rows = 4;
             });
         
         new Setting(contentEl)
-            .setName('History / Lore')
+            .setName(t('history'))
             .setClass('storyteller-modal-setting-vertical')
             .addTextArea(text => {
-                text.setPlaceholder('The item\'s origin, past, and significance...')
+                text.setPlaceholder(t('itemHistoryPh'))
                     .setValue(this.item.history || '')
                     .onChange(value => this.item.history = value || undefined);
                 text.inputEl.rows = 6;
             });
         
-        contentEl.createEl('h3', { text: 'Relationships & Location' });
+        contentEl.createEl('h3', { text: t('relationships') });
 
         new Setting(contentEl)
-            .setName('Current Owner')
-            .setDesc(`Owner: ${this.item.currentOwner || 'None'}`)
+            .setName(t('currentOwner'))
+            .setDesc(`${t('currentOwner')}: ${this.item.currentOwner || t('none')}`)
             .addButton(btn => btn
-                .setButtonText('Select Owner')
+                .setButtonText(t('selectOwner'))
                 .onClick(() => {
                     new CharacterSuggestModal(this.app, this.plugin, (char) => {
                         this.item.currentOwner = char.name;
@@ -169,7 +170,7 @@ export class PlotItemModal extends Modal {
                 })
             );
         // --- Groups ---
-        contentEl.createEl('h3', { text: 'Groups' });
+        contentEl.createEl('h3', { text: t('groups') });
         this.groupSelectorContainer = contentEl.createDiv('storyteller-group-selector-container');
         this.renderGroupSelector(this.groupSelectorContainer);
         // --- Real-time group refresh ---
@@ -181,45 +182,45 @@ export class PlotItemModal extends Modal {
 
 
         // --- Custom Fields ---
-        contentEl.createEl('h3', { text: 'Custom fields' });
+        contentEl.createEl('h3', { text: t('customFields') });
         const customFieldsContainer = contentEl.createDiv('storyteller-custom-fields-container');
         // Do not render existing custom fields in the modal to avoid duplication with note page
         if (!this.item.customFields) this.item.customFields = {};
         new Setting(contentEl)
             .addButton(b => b
-                .setButtonText('Add custom field')
+                .setButtonText(t('addCustomField'))
                 .setIcon('plus')
                 .onClick(() => {
                     const fields = this.item.customFields!;
                     const reserved = new Set<string>([...getWhitelistKeys('item'), 'customFields', 'filePath', 'id', 'sections']);
                     const askValue = (key: string) => {
                         new PromptModal(this.app, {
-                            title: 'Custom field value',
-                            label: `Value for "${key}"`,
+                            title: t('customFieldValueTitle'),
+                            label: t('valueForX', key),
                             defaultValue: '',
                             onSubmit: (val: string) => { fields[key] = val; }
                         }).open();
                     };
                     new PromptModal(this.app, {
-                        title: 'New custom field',
-                        label: 'Field name',
+                        title: t('newCustomFieldTitle'),
+                        label: t('fieldName'),
                         defaultValue: '',
                         validator: (value: string) => {
                             const trimmed = value.trim();
-                            if (!trimmed) return 'Field name cannot be empty';
-                            if (reserved.has(trimmed)) return 'That name is reserved';
+                            if (!trimmed) return t('fieldNameCannotBeEmpty');
+                            if (reserved.has(trimmed)) return t('thatNameIsReserved');
                             const exists = Object.keys(fields).some(k => k.toLowerCase() === trimmed.toLowerCase());
-                            if (exists) return 'A field with that name already exists';
+                            if (exists) return t('fieldAlreadyExists');
                             return null;
                         },
                         onSubmit: (name: string) => askValue(name.trim())
                     }).open();
                 }));
         new Setting(contentEl)
-            .setName('Current Location')
-            .setDesc(`Location: ${this.item.currentLocation || 'None'}`)
+            .setName(t('currentLocation'))
+            .setDesc(`${t('currentLocation')}: ${this.item.currentLocation || t('none')}`)
             .addButton(btn => btn
-                .setButtonText('Select Location')
+                .setButtonText(t('selectLocation'))
                 .onClick(() => {
                     new LocationSuggestModal(this.app, this.plugin, (loc) => {
                         this.item.currentLocation = loc ? loc.name : undefined;
@@ -235,10 +236,10 @@ export class PlotItemModal extends Modal {
         const buttonsSetting = new Setting(contentEl).setClass('storyteller-modal-buttons');
         if (!this.isNew && this.onDelete) {
             buttonsSetting.addButton(button => button
-                .setButtonText('Delete item')
+                .setButtonText(t('deleteItem'))
                 .setClass('mod-warning')
                 .onClick(async () => {
-                    if (confirm(`Are you sure you want to delete "${this.item.name}"?`)) {
+                    if (confirm(t('confirmDeleteItem', this.item.name))) {
                         await this.onDelete!(this.item);
                         this.close();
                     }
@@ -248,15 +249,15 @@ export class PlotItemModal extends Modal {
         buttonsSetting.controlEl.createDiv({ cls: 'storyteller-modal-button-spacer' });
         
         buttonsSetting.addButton(btn => btn
-            .setButtonText('Cancel')
+            .setButtonText(t('cancel'))
             .onClick(() => this.close()));
             
         buttonsSetting.addButton(btn => btn
-            .setButtonText(this.isNew ? 'Create Item' : 'Save Changes')
+            .setButtonText(this.isNew ? t('createItem') : t('saveChanges'))
             .setCta()
             .onClick(async () => {
                 if (!this.item.name.trim()) {
-                    new Notice("Item name cannot be empty.");
+                    new Notice(t('itemNameRequired'));
                     return;
                 }
                 // Ensure empty section fields are set so templates can render headings
@@ -280,10 +281,10 @@ export class PlotItemModal extends Modal {
         (async () => {
             const selectedGroupIds = await syncSelection();
             new Setting(container)
-                .setName('Groups')
-                .setDesc('Assign this item to one or more groups.')
+                .setName(t('groups'))
+                .setDesc(t('assignItemToGroupsDesc'))
                 .addDropdown(dropdown => {
-                    dropdown.addOption('', '-- Select group --');
+                    dropdown.addOption('', t('selectGroupPlaceholder'));
                     allGroups.forEach(group => dropdown.addOption(group.id, group.name));
                     dropdown.setValue('');
                     dropdown.onChange(async (value) => {

@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { App, Modal, Notice, Setting, TextAreaComponent } from 'obsidian';
+import { t } from '../i18n/strings';
 import StorytellerSuitePlugin from '../main';
 import { Scene } from '../types';
 import { CharacterSuggestModal } from './CharacterSuggestModal';
@@ -31,20 +32,20 @@ export class SceneModal extends Modal {
     onOpen(): void {
         const { contentEl } = this;
         contentEl.empty();
-        contentEl.createEl('h2', { text: this.isNew ? 'Create scene' : `Edit ${this.scene.name}` });
+        contentEl.createEl('h2', { text: this.isNew ? t('createNewScene') : `${t('editScene')} ${this.scene.name}` });
 
         new Setting(contentEl)
-            .setName('Title')
-            .addText(t => t
-                .setPlaceholder('Scene title')
+            .setName(t('name'))
+            .addText(text => text
+                .setPlaceholder(t('sceneTitlePh'))
                 .setValue(this.scene.name || '')
                 .onChange(v => this.scene.name = v)
             );
 
         // Chapter selector
         new Setting(contentEl)
-            .setName('Chapter')
-            .setDesc(this.scene.chapterName || 'Unassigned')
+            .setName(t('chapter'))
+            .setDesc(this.scene.chapterName || t('none'))
             .addDropdown(async dd => {
                 dd.addOption('', 'Unassigned');
                 const chapters = await this.plugin.listChapters();
@@ -62,7 +63,7 @@ export class SceneModal extends Modal {
             });
 
         new Setting(contentEl)
-            .setName('Status')
+            .setName(t('status'))
             .addDropdown(dd => dd
                 .addOptions({ Draft: 'Draft', Outline: 'Outline', WIP: 'WIP', Revised: 'Revised', Final: 'Final' })
                 .setValue(this.scene.status || 'Draft')
@@ -70,9 +71,9 @@ export class SceneModal extends Modal {
             );
 
         new Setting(contentEl)
-            .setName('Priority (in chapter)')
-            .addText(t => t
-                .setPlaceholder('e.g., 1')
+            .setName(t('priorityInChapter'))
+            .addText(text => text
+                .setPlaceholder(t('priorityEg'))
                 .setValue(this.scene.priority != null ? String(this.scene.priority) : '')
                 .onChange(v => {
                     const n = parseInt(v, 10);
@@ -81,9 +82,9 @@ export class SceneModal extends Modal {
             );
 
         new Setting(contentEl)
-            .setName('Tags')
-            .addText(t => t
-                .setPlaceholder('tag1, tag2')
+            .setName(t('tags') || 'Tags')
+            .addText(text => text
+                .setPlaceholder(t('tagsPh'))
                 .setValue((this.scene.tags || []).join(', '))
                 .onChange(v => {
                     const arr = v.split(',').map(s => s.trim()).filter(Boolean);
@@ -94,13 +95,13 @@ export class SceneModal extends Modal {
         // Image block
         let imageDescEl: HTMLElement | null = null;
         new Setting(contentEl)
-            .setName('Image')
+            .setName(t('profileImage'))
             .then(s => {
-                imageDescEl = s.descEl.createEl('small', { text: `Current: ${this.scene.profileImagePath || 'None'}` });
+                imageDescEl = s.descEl.createEl('small', { text: t('currentValue', this.scene.profileImagePath || t('none')) });
                 s.descEl.addClass('storyteller-modal-setting-vertical');
             })
             .addButton(btn => btn
-                .setButtonText('Select')
+                .setButtonText(t('select'))
                 .setTooltip('Select from gallery')
                 .onClick(() => {
                     new GalleryImageSuggestModal(this.app, this.plugin, (img) => {
@@ -110,8 +111,8 @@ export class SceneModal extends Modal {
                 })
             )
             .addButton(btn => btn
-                .setButtonText('Upload')
-                .setTooltip('Upload new image')
+                .setButtonText(t('upload'))
+                .setTooltip(t('uploadImage'))
                 .onClick(async () => {
                     const fileInput = document.createElement('input');
                     fileInput.type = 'file';
@@ -130,10 +131,10 @@ export class SceneModal extends Modal {
                                 await this.app.vault.createBinary(filePath, arrayBuffer);
                                 this.scene.profileImagePath = filePath;
                                 if (imageDescEl) imageDescEl.setText(`Current: ${filePath}`);
-                                new Notice(`Image uploaded: ${fileName}`);
+                                new Notice(t('imageUploaded', fileName));
                             } catch (error) {
                                 console.error('Error uploading image:', error);
-                                new Notice('Error uploading image. Please try again.');
+                                new Notice(t('errorUploadingImage'));
                             }
                         }
                     };
@@ -152,10 +153,10 @@ export class SceneModal extends Modal {
 
         // Content
         new Setting(contentEl)
-            .setName('Content')
+            .setName(t('content') || 'Content')
             .setClass('storyteller-modal-setting-vertical')
             .addTextArea((ta: TextAreaComponent) => {
-                ta.setPlaceholder('Write your scene...')
+                ta.setPlaceholder(t('writeScenePh'))
                   .setValue(this.scene.content || '')
                   .onChange(v => this.scene.content = v || undefined);
                 ta.inputEl.rows = 10;
@@ -163,11 +164,11 @@ export class SceneModal extends Modal {
 
         // Beat sheet
         new Setting(contentEl)
-            .setName('Beat sheet (one per line)')
+            .setName(t('beatSheetOneLine'))
             .setClass('storyteller-modal-setting-vertical')
             .addTextArea((ta: TextAreaComponent) => {
                 const value = (this.scene.beats || []).join('\n');
-                ta.setPlaceholder('- Meet the mentor\n- The refusal')
+                ta.setPlaceholder(t('beatSheetPh'))
                   .setValue(value)
                   .onChange(v => {
                       const lines = v.split('\n').map(s => s.trim()).filter(Boolean);
@@ -177,27 +178,27 @@ export class SceneModal extends Modal {
             });
 
         // Linked entities
-        contentEl.createEl('h3', { text: 'Linked Entities' });
+        contentEl.createEl('h3', { text: t('links') });
 
         new Setting(contentEl)
-            .setName('Characters')
-            .setDesc((this.scene.linkedCharacters || []).length ? (this.scene.linkedCharacters || []).join(', ') : 'None')
-            .addButton(btn => btn.setButtonText('Add').onClick(() => {
+            .setName(t('characters'))
+            .setDesc((this.scene.linkedCharacters || []).length ? (this.scene.linkedCharacters || []).join(', ') : t('none'))
+            .addButton(btn => btn.setButtonText(t('add')).onClick(() => {
                 new CharacterSuggestModal(this.app, this.plugin, (ch) => {
                     if (!this.scene.linkedCharacters) this.scene.linkedCharacters = [];
                     if (!this.scene.linkedCharacters.includes(ch.name)) this.scene.linkedCharacters.push(ch.name);
                     this.onOpen();
                 }).open();
             }))
-            .addButton(btn => btn.setButtonText('Clear').onClick(() => {
+            .addButton(btn => btn.setButtonText(t('clear')).onClick(() => {
                 this.scene.linkedCharacters = [];
                 this.onOpen();
             }));
 
         new Setting(contentEl)
-            .setName('Locations')
-            .setDesc((this.scene.linkedLocations || []).length ? (this.scene.linkedLocations || []).join(', ') : 'None')
-            .addButton(btn => btn.setButtonText('Add').onClick(() => {
+            .setName(t('locations'))
+            .setDesc((this.scene.linkedLocations || []).length ? (this.scene.linkedLocations || []).join(', ') : t('none'))
+            .addButton(btn => btn.setButtonText(t('add')).onClick(() => {
                 new LocationSuggestModal(this.app, this.plugin, (loc) => {
                     if (!loc) return;
                     if (!this.scene.linkedLocations) this.scene.linkedLocations = [];
@@ -205,30 +206,30 @@ export class SceneModal extends Modal {
                     this.onOpen();
                 }).open();
             }))
-            .addButton(btn => btn.setButtonText('Clear').onClick(() => {
+            .addButton(btn => btn.setButtonText(t('clear')).onClick(() => {
                 this.scene.linkedLocations = [];
                 this.onOpen();
             }));
 
         new Setting(contentEl)
-            .setName('Events')
-            .setDesc((this.scene.linkedEvents || []).length ? (this.scene.linkedEvents || []).join(', ') : 'None')
-            .addButton(btn => btn.setButtonText('Add').onClick(() => {
+            .setName(t('events'))
+            .setDesc((this.scene.linkedEvents || []).length ? (this.scene.linkedEvents || []).join(', ') : t('none'))
+            .addButton(btn => btn.setButtonText(t('add')).onClick(() => {
                 new EventSuggestModal(this.app, this.plugin, (evt) => {
                     if (!this.scene.linkedEvents) this.scene.linkedEvents = [];
                     if (!this.scene.linkedEvents.includes(evt.name)) this.scene.linkedEvents.push(evt.name);
                     this.onOpen();
                 }).open();
             }))
-            .addButton(btn => btn.setButtonText('Clear').onClick(() => {
+            .addButton(btn => btn.setButtonText(t('clear')).onClick(() => {
                 this.scene.linkedEvents = [];
                 this.onOpen();
             }));
 
         new Setting(contentEl)
-            .setName('Items')
-            .setDesc((this.scene.linkedItems || []).length ? (this.scene.linkedItems || []).join(', ') : 'None')
-            .addButton(btn => btn.setButtonText('Add').onClick(async () => {
+            .setName(t('items'))
+            .setDesc((this.scene.linkedItems || []).length ? (this.scene.linkedItems || []).join(', ') : t('none'))
+            .addButton(btn => btn.setButtonText(t('add')).onClick(async () => {
                 const { PlotItemSuggestModal } = await import('./PlotItemSuggestModal');
                 new PlotItemSuggestModal(this.app, this.plugin, (item) => {
                     if (!this.scene.linkedItems) this.scene.linkedItems = [];
@@ -236,22 +237,22 @@ export class SceneModal extends Modal {
                     this.onOpen();
                 }).open();
             }))
-            .addButton(btn => btn.setButtonText('Clear').onClick(() => {
+            .addButton(btn => btn.setButtonText(t('clear')).onClick(() => {
                 this.scene.linkedItems = [];
                 this.onOpen();
             }));
 
         new Setting(contentEl)
-            .setName('Groups')
-            .setDesc((this.scene.linkedGroups || []).length ? (this.scene.linkedGroups || []).join(', ') : 'None')
-            .addButton(btn => btn.setButtonText('Add').onClick(() => {
+            .setName(t('groups'))
+            .setDesc((this.scene.linkedGroups || []).length ? (this.scene.linkedGroups || []).join(', ') : t('none'))
+            .addButton(btn => btn.setButtonText(t('add')).onClick(() => {
                 new GroupSuggestModal(this.app, this.plugin, (g) => {
                     if (!this.scene.linkedGroups) this.scene.linkedGroups = [];
                     if (!this.scene.linkedGroups.includes(g.id)) this.scene.linkedGroups.push(g.id);
                     this.onOpen();
                 }).open();
             }))
-            .addButton(btn => btn.setButtonText('Clear').onClick(() => {
+            .addButton(btn => btn.setButtonText(t('clear')).onClick(() => {
                 this.scene.linkedGroups = [];
                 this.onOpen();
             }));
@@ -259,10 +260,10 @@ export class SceneModal extends Modal {
         const buttons = new Setting(contentEl).setClass('storyteller-modal-buttons');
         if (!this.isNew && this.onDelete) {
             buttons.addButton(btn => btn
-                .setButtonText('Delete')
+                .setButtonText(t('delete'))
                 .setClass('mod-warning')
                 .onClick(async () => {
-                    if (this.scene.filePath && confirm(`Delete scene "${this.scene.name}"?`)) {
+                    if (this.scene.filePath && confirm(t('confirmDeleteScene', this.scene.name))) {
                         await this.onDelete!(this.scene);
                         this.close();
                     }
@@ -270,13 +271,13 @@ export class SceneModal extends Modal {
             );
         }
         buttons.controlEl.createDiv({ cls: 'storyteller-modal-button-spacer' });
-        buttons.addButton(btn => btn.setButtonText('Cancel').onClick(() => this.close()));
+        buttons.addButton(btn => btn.setButtonText(t('cancel')).onClick(() => this.close()));
         buttons.addButton(btn => btn
-            .setButtonText(this.isNew ? 'Create Scene' : 'Save Changes')
+            .setButtonText(this.isNew ? t('createSceneBtn') : t('saveChanges'))
             .setCta()
             .onClick(async () => {
                 if (!this.scene.name || !this.scene.name.trim()) {
-                    new Notice('Scene title is required.');
+                    new Notice(t('sceneNameRequired'));
                     return;
                 }
                 // Ensure empty section fields are set so templates can render headings

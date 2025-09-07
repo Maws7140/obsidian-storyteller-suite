@@ -1,6 +1,7 @@
 import { App, FuzzySuggestModal, Notice, prepareFuzzySearch, FuzzyMatch } from 'obsidian';
 import { PlotItem } from '../types';
 import StorytellerSuitePlugin from '../main';
+import { t } from '../i18n/strings';
 
 export class PlotItemSuggestModal extends FuzzySuggestModal<PlotItem> {
 	plugin: StorytellerSuitePlugin;
@@ -11,7 +12,7 @@ export class PlotItemSuggestModal extends FuzzySuggestModal<PlotItem> {
 		super(app);
 		this.plugin = plugin;
 		this.onChoose = onChoose;
-		this.setPlaceholder("Select an item to link...");
+		this.setPlaceholder(t('selectItemPh'));
 	}
 
     async onOpen() {
@@ -20,7 +21,7 @@ export class PlotItemSuggestModal extends FuzzySuggestModal<PlotItem> {
             this.items = await this.plugin.listPlotItems();
         } catch (error) {
             console.error('Storyteller Suite: Error fetching items for suggester:', error);
-            new Notice('Error loading items. Check console.');
+            new Notice(t('errorLoadingItems'));
             this.items = [];
         }
         // Force-refresh suggestions so initial list shows without typing

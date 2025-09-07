@@ -1,6 +1,7 @@
 import { App, FuzzySuggestModal, prepareFuzzySearch, FuzzyMatch } from 'obsidian';
 import { GalleryImage } from '../types';
 import StorytellerSuitePlugin from '../main';
+import { t } from '../i18n/strings';
 
 export class GalleryImageSuggestModal extends FuzzySuggestModal<GalleryImage> {
     plugin: StorytellerSuitePlugin;
@@ -10,7 +11,7 @@ export class GalleryImageSuggestModal extends FuzzySuggestModal<GalleryImage> {
         super(app);
         this.plugin = plugin;
         this.onChoose = onChoose;
-        this.setPlaceholder("Select an image from the gallery...");
+        this.setPlaceholder(t('selectGalleryImagePh'));
         // Add instruction for clearing
         this.setInstructions([{ command: 'Shift + Enter', purpose: 'Clear selection' }]);
     }

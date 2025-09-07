@@ -2,6 +2,7 @@ import { App, Setting, Notice } from 'obsidian'; // Import Notice
 import StorytellerSuitePlugin from '../main'; // Import the plugin class
 import { Character, Location, Event } from '../types'; // Import types
 import { ResponsiveModal } from './ResponsiveModal';
+import { t } from '../i18n/strings';
 import { PlatformUtils } from '../utils/PlatformUtils';
 
 export class DashboardModal extends ResponsiveModal {
@@ -18,13 +19,13 @@ export class DashboardModal extends ResponsiveModal {
         
         const { contentEl } = this;
         contentEl.empty();
-        contentEl.createEl('h2', { text: 'Storyteller Suite dashboard' });
+        contentEl.createEl('h2', { text: t('dashboardTitle') });
 
         new Setting(contentEl)
-            .setName('Characters')
-            .setDesc('Manage your story characters.')
+            .setName(t('characters'))
+            .setDesc(t('manageCharactersDesc'))
             .addButton(button => button
-                .setButtonText('View characters')
+                .setButtonText(t('viewCharacters'))
                 .setCta()
                 .onClick(async () => {
                     this.close();
@@ -32,21 +33,21 @@ export class DashboardModal extends ResponsiveModal {
                     new (await import('./CharacterListModal')).CharacterListModal(this.app, this.plugin, characters).open();
                 }))
             .addButton(button => button
-                .setButtonText('Create new')
+                .setButtonText(t('createNew'))
                 .onClick(async () => {
                     this.close();
                     new (await import('./CharacterModal')).CharacterModal(this.app, this.plugin, null, async (char: Character) => {
                         await this.plugin.saveCharacter(char);
-                        new Notice(`Character "${char.name}" created.`);
-                        new Notice('Note created with standard sections for easy editing.');
+                        new Notice(t('created', t('character'), char.name));
+                        new Notice(t('noteCreatedWithSections'));
                     }).open();
                 }));
 
         new Setting(contentEl)
-            .setName('Locations')
-            .setDesc('Manage your story locations.')
+            .setName(t('locations'))
+            .setDesc(t('manageLocationsDesc'))
             .addButton(button => button
-                .setButtonText('View locations')
+                .setButtonText(t('viewLocations'))
                 .setCta()
                 .onClick(async () => {
                     this.close();
@@ -54,21 +55,21 @@ export class DashboardModal extends ResponsiveModal {
                     new (await import('./LocationListModal')).LocationListModal(this.app, this.plugin, locations).open();
                 }))
             .addButton(button => button
-                .setButtonText('Create new')
+                .setButtonText(t('createNew'))
                 .onClick(async () => {
                     this.close();
                     new (await import('./LocationModal')).LocationModal(this.app, this.plugin, null, async (loc: Location) => {
                         await this.plugin.saveLocation(loc);
-                        new Notice(`Location "${loc.name}" created.`);
-                        new Notice('Note created with standard sections for easy editing.');
+                        new Notice(t('created', t('location'), loc.name));
+                        new Notice(t('noteCreatedWithSections'));
                     }).open();
                 }));
 
         new Setting(contentEl)
-            .setName('Events/timeline')
-            .setDesc('Manage your story events.')
+            .setName(t('events'))
+            .setDesc(t('manageEventsDesc'))
             .addButton(button => button
-                .setButtonText('View timeline')
+                .setButtonText(t('viewTimeline'))
                 .setCta()
                 .onClick(async () => {
                     this.close();
@@ -76,21 +77,21 @@ export class DashboardModal extends ResponsiveModal {
                     new (await import('./TimelineModal')).TimelineModal(this.app, this.plugin, events).open();
                 }))
             .addButton(button => button
-                .setButtonText('Create new')
+                .setButtonText(t('createNew'))
                 .onClick(async () => {
                     this.close();
                     new (await import('./EventModal')).EventModal(this.app, this.plugin, null, async (evt: Event) => {
                         await this.plugin.saveEvent(evt);
-                        new Notice(`Event "${evt.name}" created.`);
-                        new Notice('Note created with standard sections for easy editing.');
+                        new Notice(t('created', t('event'), evt.name));
+                        new Notice(t('noteCreatedWithSections'));
                     }).open();
                 }));
 
         new Setting(contentEl)
-            .setName('Gallery')
-            .setDesc('Manage your story images.')
+            .setName(t('gallery'))
+            .setDesc(t('manageImagesDesc'))
             .addButton(button => button
-                .setButtonText('Open gallery')
+                .setButtonText(t('viewGallery'))
                 .setCta()
                 .onClick(async () => {
                     this.close();
