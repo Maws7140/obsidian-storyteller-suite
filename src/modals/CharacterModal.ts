@@ -142,9 +142,9 @@ export class CharacterModal extends ResponsiveModal {
                 text
                     .setPlaceholder(t('characterDescriptionPh'))
                     .setValue(this.character.description || '')
-                    .onChange(value => {
-                        this.character.description = value || undefined;
-                    });
+                .onChange(value => {
+                    this.character.description = value;
+                });
                 text.inputEl.rows = 4;
                 text.inputEl.addClass('storyteller-modal-textarea');
             });
@@ -168,9 +168,9 @@ export class CharacterModal extends ResponsiveModal {
                 text
                     .setPlaceholder(t('characterHistoryPh'))
                     .setValue(this.character.backstory || '')
-                    .onChange(value => {
-                        this.character.backstory = value || undefined;
-                    });
+                .onChange(value => {
+                    this.character.backstory = value;
+                });
                 text.inputEl.rows = 6;
                 text.inputEl.addClass('storyteller-modal-textarea');
             });
@@ -281,9 +281,8 @@ export class CharacterModal extends ResponsiveModal {
                     new Notice(t('characterNameRequired'));
                     return;
                 }
-                // Ensure empty section fields are set so templates can render headings
-                this.character.description = this.character.description || '';
-                this.character.backstory = this.character.backstory || '';
+                // Note: Allow empty strings to be saved - don't force to empty string if undefined
+                // The save logic will handle proper template rendering
                 try {
                     this.character.customFields = this.workingCustomFields;
                     await this.onSubmit(this.character);

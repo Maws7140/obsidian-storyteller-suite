@@ -133,45 +133,43 @@ export function buildFrontmatter(
  * Parse all markdown sections from a file body.
  * Returns a map of sectionName -> content (trimmed, without the heading line).
  * Robust against spacing and older formats; if no regex matches but '##' exists, falls back to a manual splitter.
+ * Now properly handles empty sections to prevent field bleeding.
  */
 export function parseSectionsFromMarkdown(content: string): Record<string, string> {
   const sections: Record<string, string> = {};
   if (!content) return sections;
 
-  // Primary regex: heading starting with `##`, capture until next heading or end.
-  const primaryMatches = content.matchAll(/^##\s*([^\n\r]+?)\s*[\n\r]+([\s\S]*?)(?=\n\s*##\s|$)/gm);
-  for (const match of primaryMatches) {
-    const sectionName = (match[1] || '').trim();
-    const sectionContent = (match[2] || '').trim();
-    if (sectionName && sectionContent) {
-      sections[sectionName] = sectionContent;
-    }
-  }
-
-  if (Object.keys(sections).length > 0) return sections;
-
-  // Fallback splitter: tolerant parsing when regex misses
+  // Use the fallback splitter approach as primary method for better handling of empty sections
   if (content.includes('##')) {
     const lines = content.split('\n');
     let currentSection = '';
     let buffer: string[] = [];
+    
     for (const line of lines) {
       if (line.startsWith('##')) {
-        if (currentSection && buffer.length > 0) {
+        // Save previous section if it exists
+        if (currentSection) {
           const text = buffer.join('\n').trim();
-          if (text) sections[currentSection] = text;
+          // Always store the section, even if empty - this prevents field bleeding
+          sections[currentSection] = text;
         }
+        // Start new section
         currentSection = line.replace(/^##\s*/, '').trim();
         buffer = [];
       } else if (currentSection) {
         buffer.push(line);
       }
     }
-    if (currentSection && buffer.length > 0) {
+    
+    // Save the last section
+    if (currentSection) {
       const text = buffer.join('\n').trim();
-      if (text) sections[currentSection] = text;
+      // Always store the section, even if empty - this prevents field bleeding
+      sections[currentSection] = text;
     }
   }
+
+  if (Object.keys(sections).length > 0) return sections;
 
   return sections;
 }

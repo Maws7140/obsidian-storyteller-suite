@@ -1135,18 +1135,19 @@ export default class StorytellerSuitePlugin extends Plugin {
 			};
 
             // Map well-known sections into lowercase fields used by UI
-            if (allSections['Description']) data['description'] = allSections['Description'];
-            if (allSections['Backstory']) data['backstory'] = allSections['Backstory'];
-            if (allSections['History']) data['history'] = allSections['History'];
-            if (allSections['Outcome']) data['outcome'] = allSections['Outcome'];
+            // Always map sections if they exist in the file, even if empty (to prevent field bleeding)
+            if ('Description' in allSections) data['description'] = allSections['Description'];
+            if ('Backstory' in allSections) data['backstory'] = allSections['Backstory'];
+            if ('History' in allSections) data['history'] = allSections['History'];
+            if ('Outcome' in allSections) data['outcome'] = allSections['Outcome'];
 
             // Entity-type specific mappings
             if (entityType === 'reference') {
-                if (allSections['Content']) data['content'] = allSections['Content'];
+                if ('Content' in allSections) data['content'] = allSections['Content'];
             } else if (entityType === 'chapter') {
-                if (allSections['Summary']) data['summary'] = allSections['Summary'];
+                if ('Summary' in allSections) data['summary'] = allSections['Summary'];
             } else if (entityType === 'scene') {
-                if (allSections['Content']) data['content'] = allSections['Content'];
+                if ('Content' in allSections) data['content'] = allSections['Content'];
                 if (allSections['Beat Sheet']) {
                     const raw = allSections['Beat Sheet'] as string;
                     const beats = raw
@@ -1304,13 +1305,24 @@ export default class StorytellerSuitePlugin extends Plugin {
 
 		// Build sections from templates + provided data
 		const providedSections = {
-			Description: description || '',
-			Backstory: backstory || ''
+			Description: description !== undefined ? description : '',
+			Backstory: backstory !== undefined ? backstory : ''
 		};
 		const templateSections = getTemplateSections('character', providedSections);
-		const allSections: Record<string, string> = (existingFile && existingFile instanceof TFile)
-			? { ...templateSections, ...existingSections }
-			: templateSections;
+		
+		// When updating existing files, preserve existing sections but allow overriding with provided data
+		// This ensures empty fields can be saved and don't get overwritten by existing content
+		let allSections: Record<string, string>;
+		if (existingFile && existingFile instanceof TFile) {
+			// Start with existing sections, then apply template sections, then apply provided sections
+			allSections = { ...existingSections, ...templateSections };
+			// Explicitly override with provided sections (including empty ones)
+			Object.entries(providedSections).forEach(([key, value]) => {
+				allSections[key] = value;
+			});
+		} else {
+			allSections = templateSections;
+		}
 
 		// Generate Markdown
 		let mdContent = `---\n${frontmatterString}---\n\n`;
