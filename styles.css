@@ -41,6 +41,20 @@
     font-size: var(--font-ui-small);
 }
 
+/* Parent location indicator */
+.storyteller-parent-indicator {
+    color: var(--text-muted);
+    font-weight: normal;
+    font-size: var(--font-ui-smaller);
+}
+
+/* Parent location in list item extra info */
+.storyteller-list-item-parent {
+    color: var(--text-accent);
+    font-size: var(--font-ui-smaller);
+    font-style: italic;
+}
+
 .storyteller-dashboard-tabs {
   border-bottom: 1px solid var(--background-modifier-border);
   padding: 6px 8px;

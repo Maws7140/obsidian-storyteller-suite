@@ -225,6 +225,9 @@ export interface Location {
     /** Path to a representative image of the location within the vault */
     profileImagePath?: string;
     
+    /** Name or identifier of the parent location that contains this location */
+    parentLocation?: string;
+    
     /** Array of group ids this location belongs to */
     groups?: string[];
 }

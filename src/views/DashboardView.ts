@@ -1774,8 +1774,12 @@ export class DashboardView extends ItemView {
                 if (location.locationType) extraInfoEl.appendText(' • '); // Separator
                 extraInfoEl.createSpan({ cls: 'storyteller-list-item-region', text: `(${location.region})` });
             }
-            if (location.status) {
+            if (location.parentLocation) {
                 if (location.locationType || location.region) extraInfoEl.appendText(' • '); // Separator
+                extraInfoEl.createSpan({ cls: 'storyteller-list-item-parent', text: `within ${location.parentLocation}` });
+            }
+            if (location.status) {
+                if (location.locationType || location.region || location.parentLocation) extraInfoEl.appendText(' • '); // Separator
                 extraInfoEl.createSpan({ cls: 'storyteller-list-item-status', text: `[${location.status}]` });
             }
 

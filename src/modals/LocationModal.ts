@@ -6,12 +6,12 @@ import { Group } from '../types';
 import StorytellerSuitePlugin from '../main';
 import { t } from '../i18n/strings';
 import { GalleryImageSuggestModal } from './GalleryImageSuggestModal';
+import { LocationSuggestModal } from './LocationSuggestModal';
 import { ResponsiveModal } from './ResponsiveModal';
 import { PromptModal } from './ui/PromptModal';
 // Placeholder imports for suggesters -
 // import { CharacterSuggestModal } from './CharacterSuggestModal';
 // import { EventSuggestModal } from './EventSuggestModal';
-// import { LocationSuggestModal } from './LocationSuggestModal';
 
 export type LocationModalSubmitCallback = (location: Location) => Promise<void>;
 export type LocationModalDeleteCallback = (location: Location) => Promise<void>;
@@ -32,6 +32,7 @@ export class LocationModal extends ResponsiveModal {
         // Remove charactersPresent, eventsHere, subLocations from initialization
         const initialLocation = location ? { ...location } : {
             name: '', description: '', history: '', locationType: undefined, region: undefined, status: undefined, profileImagePath: undefined,
+            parentLocation: undefined,
             customFields: {},
             filePath: undefined
         };
@@ -115,6 +116,42 @@ export class LocationModal extends ResponsiveModal {
             .addText(text => text
                 .setValue(this.location.status || '')
                 .onChange(value => { this.location.status = value || undefined; }));
+
+        // --- Parent Location ---
+        let parentLocationDesc: HTMLElement;
+        new Setting(contentEl)
+            .setName(t('parentLocation'))
+            .setDesc('')
+            .then(setting => {
+                parentLocationDesc = setting.descEl.createEl('small', { text: t('currentValue', this.location.parentLocation || t('none')) });
+                setting.descEl.addClass('storyteller-modal-setting-vertical');
+            })
+            .addButton(button => button
+                .setButtonText(t('selectParentLocation'))
+                .setTooltip(t('parentLocationDesc'))
+                .onClick(() => {
+                    new LocationSuggestModal(this.app, this.plugin, async (selectedLocation) => {
+                        if (selectedLocation) {
+                            // Check for circular reference
+                            if (await this.wouldCreateCircularReference(selectedLocation.name)) {
+                                new Notice(t('circularLocationError'));
+                                return;
+                            }
+                            this.location.parentLocation = selectedLocation.name;
+                        } else {
+                            this.location.parentLocation = undefined;
+                        }
+                        parentLocationDesc.setText(`Current: ${this.location.parentLocation || 'None'}`);
+                    }).open();
+                }))
+            .addButton(button => button
+                .setIcon('cross')
+                .setTooltip(t('clearParentLocation'))
+                .setClass('mod-warning')
+                .onClick(() => {
+                    this.location.parentLocation = undefined;
+                    parentLocationDesc.setText(`Current: ${this.location.parentLocation || 'None'}`);
+                }));
 
         // --- Profile Image ---
         let imagePathDesc: HTMLElement;
@@ -380,6 +417,47 @@ export class LocationModal extends ResponsiveModal {
                 });
             }
         })();
+    }
+
+    /**
+     * Check if setting the given location as parent would create a circular reference
+     */
+    private async wouldCreateCircularReference(parentLocationName: string): Promise<boolean> {
+        // If trying to set self as parent, that's circular
+        if (parentLocationName === this.location.name) {
+            return true;
+        }
+
+        // Get all locations to check the hierarchy
+        const allLocations = await this.plugin.listLocations();
+        const locationMap = new Map<string, Location>();
+        
+        // Create a map for quick lookup
+        allLocations.forEach(loc => {
+            locationMap.set(loc.name, loc);
+        });
+
+        // Check if the proposed parent has this location as an ancestor
+        let currentLocation = locationMap.get(parentLocationName);
+        const visited = new Set<string>();
+        
+        while (currentLocation && currentLocation.parentLocation) {
+            // If we've seen this location before, there's already a cycle
+            if (visited.has(currentLocation.name)) {
+                return true;
+            }
+            visited.add(currentLocation.name);
+            
+            // If the parent's ancestor is this location, it would create a cycle
+            if (currentLocation.parentLocation === this.location.name) {
+                return true;
+            }
+            
+            // Move up the hierarchy
+            currentLocation = locationMap.get(currentLocation.parentLocation);
+        }
+
+        return false;
     }
 
     onClose() {
