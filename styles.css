@@ -1,3 +1,46 @@
+/* Linked entities display */
+.storyteller-modal-linked-entities {
+    margin-top: 8px;
+    margin-bottom: 8px;
+}
+
+.storyteller-modal-list-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 8px;
+    margin: 2px 0;
+    background: var(--background-secondary);
+    border-radius: var(--radius-s);
+    border: 1px solid var(--background-modifier-border);
+}
+
+.storyteller-modal-list-item span {
+    flex: 1;
+    font-size: var(--font-ui-small);
+}
+
+.storyteller-modal-list-remove {
+    margin-left: 8px;
+    color: var(--text-muted);
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    padding: 2px;
+    border-radius: var(--radius-xs);
+}
+
+.storyteller-modal-list-remove:hover {
+    background: var(--background-modifier-error-hover);
+    color: var(--text-error-hover);
+}
+
+.storyteller-modal-list-empty {
+    color: var(--text-muted);
+    font-style: italic;
+    font-size: var(--font-ui-small);
+}
+
 .storyteller-dashboard-tabs {
   border-bottom: 1px solid var(--background-modifier-border);
   padding: 6px 8px;

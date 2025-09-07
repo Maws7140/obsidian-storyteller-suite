@@ -172,82 +172,67 @@ export class ChapterModal extends Modal {
         // Linked entities
         contentEl.createEl('h3', { text: t('links') });
 
-        new Setting(contentEl)
-            .setName(t('characters'))
-            .setDesc((this.chapter.linkedCharacters || []).length ? (this.chapter.linkedCharacters || []).join(', ') : t('none'))
-            .addButton(btn => btn.setButtonText(t('add')).onClick(() => {
-                new CharacterSuggestModal(this.app, this.plugin, (ch) => {
-                    if (!this.chapter.linkedCharacters) this.chapter.linkedCharacters = [];
-                    if (!this.chapter.linkedCharacters.includes(ch.name)) this.chapter.linkedCharacters.push(ch.name);
-                    this.onOpen();
-                }).open();
-            }))
-            .addButton(btn => btn.setButtonText(t('clear')).onClick(() => {
-                this.chapter.linkedCharacters = [];
-                this.onOpen();
-            }));
+        const charactersSetting = new Setting(contentEl)
+            .setName(t('characters'));
+        const charactersListEl = charactersSetting.controlEl.createDiv('storyteller-modal-linked-entities');
+        this.renderLinkedEntities(charactersListEl, this.chapter.linkedCharacters, 'characters');
+        charactersSetting.addButton(btn => btn.setButtonText(t('add')).onClick(() => {
+            new CharacterSuggestModal(this.app, this.plugin, (ch) => {
+                if (!this.chapter.linkedCharacters) this.chapter.linkedCharacters = [];
+                if (!this.chapter.linkedCharacters.includes(ch.name)) this.chapter.linkedCharacters.push(ch.name);
+                this.renderLinkedEntities(charactersListEl, this.chapter.linkedCharacters, 'characters');
+            }).open();
+        }));
 
-        new Setting(contentEl)
-            .setName(t('locations'))
-            .setDesc((this.chapter.linkedLocations || []).length ? (this.chapter.linkedLocations || []).join(', ') : t('none'))
-            .addButton(btn => btn.setButtonText(t('add')).onClick(() => {
-                new LocationSuggestModal(this.app, this.plugin, (loc) => {
-                    if (!loc) return;
-                    if (!this.chapter.linkedLocations) this.chapter.linkedLocations = [];
-                    if (!this.chapter.linkedLocations.includes(loc.name)) this.chapter.linkedLocations.push(loc.name);
-                    this.onOpen();
-                }).open();
-            }))
-            .addButton(btn => btn.setButtonText(t('clear')).onClick(() => {
-                this.chapter.linkedLocations = [];
-                this.onOpen();
-            }));
+        const locationsSetting = new Setting(contentEl)
+            .setName(t('locations'));
+        const locationsListEl = locationsSetting.controlEl.createDiv('storyteller-modal-linked-entities');
+        this.renderLinkedEntities(locationsListEl, this.chapter.linkedLocations, 'locations');
+        locationsSetting.addButton(btn => btn.setButtonText(t('add')).onClick(() => {
+            new LocationSuggestModal(this.app, this.plugin, (loc) => {
+                if (!loc) return;
+                if (!this.chapter.linkedLocations) this.chapter.linkedLocations = [];
+                if (!this.chapter.linkedLocations.includes(loc.name)) this.chapter.linkedLocations.push(loc.name);
+                this.renderLinkedEntities(locationsListEl, this.chapter.linkedLocations, 'locations');
+            }).open();
+        }));
 
-        new Setting(contentEl)
-            .setName(t('events'))
-            .setDesc((this.chapter.linkedEvents || []).length ? (this.chapter.linkedEvents || []).join(', ') : t('none'))
-            .addButton(btn => btn.setButtonText(t('add')).onClick(() => {
-                new EventSuggestModal(this.app, this.plugin, (evt) => {
-                    if (!this.chapter.linkedEvents) this.chapter.linkedEvents = [];
-                    if (!this.chapter.linkedEvents.includes(evt.name)) this.chapter.linkedEvents.push(evt.name);
-                    this.onOpen();
-                }).open();
-            }))
-            .addButton(btn => btn.setButtonText(t('clear')).onClick(() => {
-                this.chapter.linkedEvents = [];
-                this.onOpen();
-            }));
+        const eventsSetting = new Setting(contentEl)
+            .setName(t('events'));
+        const eventsListEl = eventsSetting.controlEl.createDiv('storyteller-modal-linked-entities');
+        this.renderLinkedEntities(eventsListEl, this.chapter.linkedEvents, 'events');
+        eventsSetting.addButton(btn => btn.setButtonText(t('add')).onClick(() => {
+            new EventSuggestModal(this.app, this.plugin, (evt) => {
+                if (!this.chapter.linkedEvents) this.chapter.linkedEvents = [];
+                if (!this.chapter.linkedEvents.includes(evt.name)) this.chapter.linkedEvents.push(evt.name);
+                this.renderLinkedEntities(eventsListEl, this.chapter.linkedEvents, 'events');
+            }).open();
+        }));
 
-        new Setting(contentEl)
-            .setName(t('items'))
-            .setDesc((this.chapter.linkedItems || []).length ? (this.chapter.linkedItems || []).join(', ') : t('none'))
-            .addButton(btn => btn.setButtonText(t('add')).onClick(async () => {
-                const { PlotItemSuggestModal } = await import('./PlotItemSuggestModal');
-                new PlotItemSuggestModal(this.app, this.plugin, (item) => {
-                    if (!this.chapter.linkedItems) this.chapter.linkedItems = [];
-                    if (!this.chapter.linkedItems.includes(item.name)) this.chapter.linkedItems.push(item.name);
-                    this.onOpen();
-                }).open();
-            }))
-            .addButton(btn => btn.setButtonText(t('clear')).onClick(() => {
-                this.chapter.linkedItems = [];
-                this.onOpen();
-            }));
+        const itemsSetting = new Setting(contentEl)
+            .setName(t('items'));
+        const itemsListEl = itemsSetting.controlEl.createDiv('storyteller-modal-linked-entities');
+        this.renderLinkedEntities(itemsListEl, this.chapter.linkedItems, 'items');
+        itemsSetting.addButton(btn => btn.setButtonText(t('add')).onClick(async () => {
+            const { PlotItemSuggestModal } = await import('./PlotItemSuggestModal');
+            new PlotItemSuggestModal(this.app, this.plugin, (item) => {
+                if (!this.chapter.linkedItems) this.chapter.linkedItems = [];
+                if (!this.chapter.linkedItems.includes(item.name)) this.chapter.linkedItems.push(item.name);
+                this.renderLinkedEntities(itemsListEl, this.chapter.linkedItems, 'items');
+            }).open();
+        }));
 
-        new Setting(contentEl)
-            .setName(t('groups'))
-            .setDesc((this.chapter.linkedGroups || []).length ? (this.chapter.linkedGroups || []).join(', ') : t('none'))
-            .addButton(btn => btn.setButtonText(t('add')).onClick(() => {
-                new GroupSuggestModal(this.app, this.plugin, (g) => {
-                    if (!this.chapter.linkedGroups) this.chapter.linkedGroups = [];
-                    if (!this.chapter.linkedGroups.includes(g.id)) this.chapter.linkedGroups.push(g.id);
-                    this.onOpen();
-                }).open();
-            }))
-            .addButton(btn => btn.setButtonText(t('clear')).onClick(() => {
-                this.chapter.linkedGroups = [];
-                this.onOpen();
-            }));
+        const groupsSetting = new Setting(contentEl)
+            .setName(t('groups'));
+        const groupsListEl = groupsSetting.controlEl.createDiv('storyteller-modal-linked-entities');
+        this.renderLinkedEntities(groupsListEl, this.chapter.linkedGroups, 'groups');
+        groupsSetting.addButton(btn => btn.setButtonText(t('add')).onClick(() => {
+            new GroupSuggestModal(this.app, this.plugin, (g) => {
+                if (!this.chapter.linkedGroups) this.chapter.linkedGroups = [];
+                if (!this.chapter.linkedGroups.includes(g.id)) this.chapter.linkedGroups.push(g.id);
+                this.renderLinkedEntities(groupsListEl, this.chapter.linkedGroups, 'groups');
+            }).open();
+        }));
 
         // Buttons
         const buttons = new Setting(contentEl).setClass('storyteller-modal-buttons');
@@ -278,6 +263,59 @@ export class ChapterModal extends Modal {
                 await this.onSubmit(this.chapter);
                 this.close();
             }));
+    }
+
+    // Helper method to render linked entities with individual delete buttons
+    renderLinkedEntities(container: HTMLElement, items: string[] | undefined, entityType: string): void {
+        container.empty();
+        if (!items || items.length === 0) {
+            container.createEl('span', { text: t('none'), cls: 'storyteller-modal-list-empty' });
+            return;
+        }
+        
+        items.forEach((item, index) => {
+            const itemEl = container.createDiv('storyteller-modal-list-item');
+            itemEl.createSpan({ text: item });
+            new ButtonComponent(itemEl)
+                .setClass('storyteller-modal-list-remove')
+                .setTooltip(`Remove ${item}`)
+                .setIcon('cross')
+                .onClick(() => {
+                    // Remove the item from the appropriate array
+                    switch (entityType) {
+                        case 'characters':
+                            if (this.chapter.linkedCharacters) {
+                                this.chapter.linkedCharacters.splice(index, 1);
+                                this.renderLinkedEntities(container, this.chapter.linkedCharacters, entityType);
+                            }
+                            break;
+                        case 'locations':
+                            if (this.chapter.linkedLocations) {
+                                this.chapter.linkedLocations.splice(index, 1);
+                                this.renderLinkedEntities(container, this.chapter.linkedLocations, entityType);
+                            }
+                            break;
+                        case 'events':
+                            if (this.chapter.linkedEvents) {
+                                this.chapter.linkedEvents.splice(index, 1);
+                                this.renderLinkedEntities(container, this.chapter.linkedEvents, entityType);
+                            }
+                            break;
+                        case 'items':
+                            if (this.chapter.linkedItems) {
+                                this.chapter.linkedItems.splice(index, 1);
+                                this.renderLinkedEntities(container, this.chapter.linkedItems, entityType);
+                            }
+                            break;
+                        case 'groups':
+                            if (this.chapter.linkedGroups) {
+                                this.chapter.linkedGroups.splice(index, 1);
+                                this.renderLinkedEntities(container, this.chapter.linkedGroups, entityType);
+                            }
+                            break;
+                    }
+                });
+        });
     }
 
     onClose(): void { this.contentEl.empty(); }
