@@ -22,7 +22,7 @@ const FRONTMATTER_WHITELISTS: Record<EntityType, Set<string>> = {
     'status', 'affiliation', 'groups', 'profileImagePath', 'customFields'
   ]),
   location: new Set([
-    'id', 'name', 'locationType', 'region', 'status',
+    'id', 'name', 'locationType', 'region', 'status', 'parentLocation',
     'groups', 'profileImagePath', 'customFields'
   ]),
   event: new Set([
