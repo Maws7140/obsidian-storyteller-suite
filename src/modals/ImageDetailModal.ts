@@ -1,4 +1,5 @@
 import { App, Modal, Setting, Notice, TFile } from 'obsidian';
+import { t } from '../i18n/strings';
 import { GalleryImage } from '../types';
 import StorytellerSuitePlugin from '../main';
 
@@ -41,7 +42,7 @@ export class ImageDetailModal extends Modal {
     onOpen() {
         const { contentEl } = this;
         contentEl.empty();
-        contentEl.createEl('h2', { text: this.isNew ? 'Add image details' : 'Edit image details' });
+        contentEl.createEl('h2', { text: this.isNew ? t('addImageDetails') : t('editImageDetails') });
 
         const mainContainer = contentEl.createDiv('storyteller-image-detail-container');
 
@@ -56,19 +57,19 @@ export class ImageDetailModal extends Modal {
         const formEl = mainContainer.createDiv('storyteller-image-form');
 
         new Setting(formEl)
-            .setName('Title')
+            .setName(t('title'))
             .addText(text => text
                 .setValue(this.image.title || '')
                 .onChange(value => { this.image.title = value || undefined; }));
 
         new Setting(formEl)
-            .setName('Caption')
+            .setName(t('caption'))
             .addText(text => text
                 .setValue(this.image.caption || '')
                 .onChange(value => { this.image.caption = value || undefined; }));
 
         new Setting(formEl)
-            .setName('Description')
+            .setName(t('description'))
             .addTextArea(text => {
                 text.setValue(this.image.description || '')
                     .onChange(value => { this.image.description = value || undefined; });
@@ -76,19 +77,19 @@ export class ImageDetailModal extends Modal {
             });
 
         new Setting(formEl)
-            .setName('Tags')
-            .setDesc('Comma-separated tags.')
+            .setName(t('tags'))
+            .setDesc(t('commaSeparatedTags'))
             .addText(text => text
                 .setValue((this.image.tags || []).join(', '))
                 .onChange(value => {
                     this.image.tags = value.split(',').map(t => t.trim()).filter(t => t.length > 0);
                 }));
 
-        formEl.createEl('h3', { text: 'Links' });
+        formEl.createEl('h3', { text: t('links') });
 
         new Setting(formEl)
-            .setName('Characters')
-            .setDesc('Comma-separated character names.')
+            .setName(t('characters'))
+            .setDesc(t('commaSeparatedCharacterNames'))
             .addText(text => text
                 .setValue((this.image.linkedCharacters || []).join(', '))
                 .onChange(value => {
@@ -96,8 +97,8 @@ export class ImageDetailModal extends Modal {
                 }));
 
         new Setting(formEl)
-            .setName('Locations')
-            .setDesc('Comma-separated location names.')
+            .setName(t('locations'))
+            .setDesc(t('commaSeparatedLocationNames'))
             .addText(text => text
                 .setValue((this.image.linkedLocations || []).join(', '))
                 .onChange(value => {
@@ -105,8 +106,8 @@ export class ImageDetailModal extends Modal {
                 }));
 
         new Setting(formEl)
-            .setName('Events')
-            .setDesc('Comma-separated event names.')
+            .setName(t('events'))
+            .setDesc(t('commaSeparatedEventNames'))
             .addText(text => text
                 .setValue((this.image.linkedEvents || []).join(', '))
                 .onChange(value => {
@@ -117,23 +118,23 @@ export class ImageDetailModal extends Modal {
         new Setting(formEl)
             .setClass('storyteller-modal-buttons')
             .addButton(button => button
-                .setButtonText('Save details')
+                .setButtonText(t('saveDetails'))
                 .setCta()
                 .onClick(async () => {
                     await this.plugin.updateGalleryImage(this.image);
-                    new Notice(`Image details for "${this.image.filePath}" saved.`);
+                    new Notice(t('imageDetailsSaved', this.image.filePath));
                     if (this.onSaveCallback) {
                         await this.onSaveCallback();
                     }
                     this.close();
                 }))
             .addButton(button => button
-                .setButtonText('Remove from gallery')
+                .setButtonText(t('removeFromGallery'))
                 .setClass('mod-warning')
                 .onClick(async () => {
-                    if (confirm(`Are you sure you want to remove "${this.image.filePath}" from the gallery? This does not delete the file itself.`)) {
+                    if (confirm(t('confirmRemoveImageFromGallery', this.image.filePath))) {
                         await this.plugin.deleteGalleryImage(this.image.id);
-                        new Notice(`Image "${this.image.filePath}" removed from gallery.`);
+                        new Notice(t('imageRemovedFromGallery', this.image.filePath));
                         if (this.onSaveCallback) {
                             await this.onSaveCallback();
                         }

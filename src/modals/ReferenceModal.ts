@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { App, Modal, Notice, Setting, TextAreaComponent } from 'obsidian';
+import { t } from '../i18n/strings';
 import StorytellerSuitePlugin from '../main';
 import { Reference } from '../types';
 import { GalleryImageSuggestModal } from './GalleryImageSuggestModal';
@@ -30,29 +31,29 @@ export class ReferenceModal extends Modal {
     onOpen(): void {
         const { contentEl } = this;
         contentEl.empty();
-        contentEl.createEl('h2', { text: this.isNew ? 'Create reference' : `Edit ${this.refData.name}` });
+        contentEl.createEl('h2', { text: this.isNew ? t('createReference') : `${t('editReference')} ${this.refData.name}` });
 
         new Setting(contentEl)
-            .setName('Name')
-            .addText(t => t
-                .setPlaceholder('Reference title')
+            .setName(t('name'))
+            .addText(text => text
+                .setPlaceholder(t('title'))
                 .setValue(this.refData.name || '')
                 .onChange(v => this.refData.name = v)
             );
 
         new Setting(contentEl)
-            .setName('Category')
-            .addText(t => t
-                .setPlaceholder('Language, Prophecy, Inspiration, Misc, ...')
+            .setName(t('category') || 'Category')
+            .addText(text => text
+                .setPlaceholder(t('categoryPh'))
                 .setValue(this.refData.category || '')
                 .onChange(v => this.refData.category = v || undefined)
             );
 
         new Setting(contentEl)
-            .setName('Tags')
-            .setDesc('Comma-separated tags (e.g., elves, phonology)')
-            .addText(t => t
-                .setPlaceholder('tag1, tag2')
+            .setName(t('tags') || 'Tags')
+            .setDesc(t('traitsPlaceholder'))
+            .addText(text => text
+                .setPlaceholder(t('tagsPh'))
                 .setValue((this.refData.tags || []).join(', '))
                 .onChange(v => {
                     const arr = v.split(',').map(s => s.trim()).filter(Boolean);
@@ -62,14 +63,14 @@ export class ReferenceModal extends Modal {
 
         let imageDescEl: HTMLElement | null = null;
         new Setting(contentEl)
-            .setName('Image')
+            .setName(t('profileImage'))
             .then(s => {
-                imageDescEl = s.descEl.createEl('small', { text: `Current: ${this.refData.profileImagePath || 'None'}` });
+                imageDescEl = s.descEl.createEl('small', { text: t('currentValue', this.refData.profileImagePath || t('none')) });
                 s.descEl.addClass('storyteller-modal-setting-vertical');
             })
             .addButton(btn => btn
-                .setButtonText('Select')
-                .setTooltip('Select from Gallery')
+                .setButtonText(t('select'))
+                .setTooltip(t('selectFromGallery'))
                 .onClick(() => {
                     new GalleryImageSuggestModal(this.app, this.plugin, (img) => {
                         this.refData.profileImagePath = img?.filePath;
@@ -78,8 +79,8 @@ export class ReferenceModal extends Modal {
                 })
             )
             .addButton(btn => btn
-                .setButtonText('Upload')
-                .setTooltip('Upload new image')
+                .setButtonText(t('upload'))
+                .setTooltip(t('uploadImage'))
                 .onClick(async () => {
                     const input = document.createElement('input');
                     input.type = 'file';
@@ -98,10 +99,10 @@ export class ReferenceModal extends Modal {
                             await this.app.vault.createBinary(filePath, arrayBuffer);
                             this.refData.profileImagePath = filePath;
                             if (imageDescEl) imageDescEl.setText(`Current: ${filePath}`);
-                            new Notice(`Image uploaded: ${fileName}`);
+                            new Notice(t('imageUploaded', fileName));
                         } catch (e) {
                             console.error('Upload failed', e);
-                            new Notice('Error uploading image');
+                            new Notice(t('errorUploadingImage'));
                         }
                     };
                     input.click();
@@ -110,28 +111,28 @@ export class ReferenceModal extends Modal {
             .addButton(btn => btn
                 .setIcon('cross')
                 .setClass('mod-warning')
-                .setTooltip('Clear image')
+                .setTooltip(t('clearImage'))
                 .onClick(() => {
                     this.refData.profileImagePath = undefined;
-                    if (imageDescEl) imageDescEl.setText(`Current: None`);
+                    if (imageDescEl) imageDescEl.setText(`${t('current')}: ${t('none')}`);
                 })
             );
 
         new Setting(contentEl)
-            .setName('Content')
+            .setName(t('content') || 'Content')
             .setClass('storyteller-modal-setting-vertical')
             .addTextArea((ta: TextAreaComponent) => {
-                ta.setPlaceholder('Write your reference content here...')
+                ta.setPlaceholder(t('content'))
                   .setValue(this.refData.content || '')
                   .onChange(v => this.refData.content = v || undefined);
                 ta.inputEl.rows = 12;
             });
 
         // Custom fields (add only)
-        contentEl.createEl('h3', { text: 'Custom fields' });
+        contentEl.createEl('h3', { text: t('customFields') });
         new Setting(contentEl)
             .addButton(btn => btn
-                .setButtonText('Add custom field')
+                .setButtonText(t('addCustomField'))
                 .setIcon('plus')
                 .onClick(() => {
                     const reserved = new Set<string>([...getWhitelistKeys('reference'), 'customFields', 'filePath', 'id', 'sections']);
@@ -140,22 +141,22 @@ export class ReferenceModal extends Modal {
                     const fields = anyRef.customFields as Record<string, string>;
                     const askValue = (key: string) => {
                         new PromptModal(this.app, {
-                            title: 'Custom field value',
-                            label: `Value for "${key}"`,
+                            title: t('customFieldValueTitle'),
+                            label: t('valueForX', key),
                             defaultValue: '',
                             onSubmit: (val: string) => { fields[key] = val; }
                         }).open();
                     };
                     new PromptModal(this.app, {
-                        title: 'New custom field',
-                        label: 'Field name',
+                        title: t('newCustomFieldTitle'),
+                        label: t('fieldName'),
                         defaultValue: '',
                         validator: (value: string) => {
                             const trimmed = value.trim();
-                            if (!trimmed) return 'Field name cannot be empty';
-                            if (reserved.has(trimmed)) return 'That name is reserved';
+                            if (!trimmed) return t('fieldNameCannotBeEmpty');
+                            if (reserved.has(trimmed)) return t('thatNameIsReserved');
                             const exists = Object.keys(fields).some(k => k.toLowerCase() === trimmed.toLowerCase());
-                            if (exists) return 'A field with that name already exists';
+                            if (exists) return t('fieldAlreadyExists');
                             return null;
                         },
                         onSubmit: (name: string) => askValue(name.trim())
@@ -165,10 +166,10 @@ export class ReferenceModal extends Modal {
         const buttons = new Setting(contentEl).setClass('storyteller-modal-buttons');
         if (!this.isNew && this.onDelete) {
             buttons.addButton(btn => btn
-                .setButtonText('Delete')
+                .setButtonText(t('delete'))
                 .setClass('mod-warning')
                 .onClick(async () => {
-                    if (confirm(`Delete reference "${this.refData.name}"?`)) {
+                    if (confirm(t('confirmDeleteReference', this.refData.name))) {
                         await this.onDelete!(this.refData);
                         this.close();
                     }
@@ -176,13 +177,13 @@ export class ReferenceModal extends Modal {
             );
         }
         buttons.controlEl.createDiv({ cls: 'storyteller-modal-button-spacer' });
-        buttons.addButton(btn => btn.setButtonText('Cancel').onClick(() => this.close()));
+        buttons.addButton(btn => btn.setButtonText(t('cancel')).onClick(() => this.close()));
         buttons.addButton(btn => btn
-            .setButtonText(this.isNew ? 'Create Reference' : 'Save Changes')
+            .setButtonText(this.isNew ? t('createReferenceBtn') : t('saveChanges'))
             .setCta()
             .onClick(async () => {
                 if (!this.refData.name || !this.refData.name.trim()) {
-                    new Notice('Reference name is required.');
+                    new Notice(t('title'));
                     return;
                 }
                 // Ensure empty section fields are set so templates can render headings

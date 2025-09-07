@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 
 import { App, Modal, Setting, Notice, ButtonComponent, TFile } from 'obsidian';
+import { t } from '../i18n/strings';
 import { PlotItem } from '../types';
 import StorytellerSuitePlugin from '../main';
 import { PlotItemModal } from './PlotItemModal';
@@ -20,14 +21,14 @@ export class PlotItemListModal extends Modal {
     onOpen() {
         const { contentEl } = this;
         contentEl.empty();
-        contentEl.createEl('h2', { text: 'Plot items' });
+        contentEl.createEl('h2', { text: t('plotItems') });
 
         this.listContainer = contentEl.createDiv('storyteller-list-container');
 
         new Setting(contentEl)
-            .setName('Search')
+            .setName(t('search'))
             .addText(text => {
-                text.setPlaceholder('Filter items...')
+                text.setPlaceholder(t('searchX', t('items')))
                     .onChange(value => this.renderList(value.toLowerCase(), this.listContainer));
             });
 
@@ -37,21 +38,21 @@ export class PlotItemListModal extends Modal {
             .addButton(button => {
                 const hasActiveStory = !!this.plugin.getActiveStory();
                 button
-                    .setButtonText('Create new item')
+                    .setButtonText(t('createItem'))
                     .setCta()
                     .onClick(() => {
                         if (!this.plugin.getActiveStory()) {
-                            new Notice('Select or create a story first.');
+                            new Notice(t('selectOrCreateStoryFirst'));
                             return;
                         }
                         this.close();
                         new PlotItemModal(this.app, this.plugin, null, async (itemData: PlotItem) => {
                             await this.plugin.savePlotItem(itemData);
-                            new Notice(`Item "${itemData.name}" created.`);
+                            new Notice(t('created', t('item'), itemData.name));
                         }).open();
                     });
                 if (!hasActiveStory) {
-                    button.setDisabled(true).setTooltip('Select or create a story first.');
+                    button.setDisabled(true).setTooltip(t('selectOrCreateStoryFirst'));
                 }
             });
     }
@@ -66,7 +67,7 @@ export class PlotItemListModal extends Modal {
         );
 
         if (filteredItems.length === 0) {
-            container.createEl('p', { text: 'No items found.' + (filter ? ' Matching filter.' : '') });
+            container.createEl('p', { text: t('noItemsFound') + (filter ? t('matchingFilter') : '') });
             return;
         }
 
@@ -87,44 +88,44 @@ export class PlotItemListModal extends Modal {
             }
 
             if (item.currentOwner) {
-                infoEl.createEl('p', { text: `Owner: ${item.currentOwner}` });
+                infoEl.createEl('p', { text: t('ownerValue', item.currentOwner) });
             }
 
 
             const actionsEl = itemEl.createDiv('storyteller-list-item-actions');
             new ButtonComponent(actionsEl)
                 .setIcon('pencil')
-                .setTooltip('Edit')
+                .setTooltip(t('edit'))
                 .onClick(() => {
                     this.close();
                     new PlotItemModal(this.app, this.plugin, item, async (updatedData: PlotItem) => {
                         await this.plugin.savePlotItem(updatedData);
-                        new Notice(`Item "${updatedData.name}" updated.`);
+                        new Notice(t('updated', t('item'), updatedData.name));
                     }).open();
                 });
 
             new ButtonComponent(actionsEl)
                 .setIcon('trash')
-                .setTooltip('Delete')
+                .setTooltip(t('delete'))
                 .setClass('mod-warning')
                 .onClick(async () => {
-                    if (confirm(`Are you sure you want to delete "${item.name}"? This will move the file to system trash.`)) {
+                    if (confirm(t('confirmDeleteItemTrash', item.name))) {
                         if (item.filePath) {
                             await this.plugin.deletePlotItem(item.filePath);
                             this.items = this.items.filter(i => i.filePath !== item.filePath);
                             this.renderList(filter, container);
                         } else {
-                            new Notice('Error: Cannot delete item without file path.');
+                            new Notice(t('errorCannotDeleteWithoutFilePath', t('item')));
                         }
                     }
                 });
 
             new ButtonComponent(actionsEl)
                 .setIcon('go-to-file')
-                .setTooltip('Open note')
+                .setTooltip(t('openNote'))
                 .onClick(() => {
                     if (!item.filePath) {
-                        new Notice('Error: Cannot open item note without file path.');
+                        new Notice(t('errorCannotOpenNoteWithoutFilePath', t('item')));
                         return;
                     }
                     const file = this.app.vault.getAbstractFileByPath(item.filePath);
@@ -132,7 +133,7 @@ export class PlotItemListModal extends Modal {
                         this.app.workspace.getLeaf(false).openFile(file);
                         this.close();
                     } else {
-                        new Notice('Could not find the note file.');
+                        new Notice(t('workspaceLeafRevealError'));
                     }
                 });
         });

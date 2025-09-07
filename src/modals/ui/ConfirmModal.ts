@@ -1,4 +1,5 @@
 import { App, Modal, Setting } from 'obsidian';
+import { t } from '../../i18n/strings';
 
 export class ConfirmModal extends Modal {
   private titleText: string;
@@ -10,7 +11,7 @@ export class ConfirmModal extends Modal {
     super(app);
     this.titleText = options.title;
     this.bodyText = options.body;
-    this.confirmText = options.confirmText ?? 'Confirm';
+    this.confirmText = options.confirmText ?? t('confirm');
     this.onConfirm = options.onConfirm;
   }
 
@@ -22,6 +23,6 @@ export class ConfirmModal extends Modal {
 
     const buttons = new Setting(contentEl);
     buttons.addButton(b => b.setButtonText(this.confirmText).setCta().onClick(() => { this.onConfirm(); this.close(); }));
-    buttons.addButton(b => b.setButtonText('Cancel').onClick(() => this.close()));
+    buttons.addButton(b => b.setButtonText(t('cancel')).onClick(() => this.close()));
   }
 }

@@ -2,6 +2,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { ItemView, WorkspaceLeaf, Setting, Notice, App, ButtonComponent, TFile, normalizePath, debounce } from 'obsidian'; // Added normalizePath, debounce
 import StorytellerSuitePlugin from '../main';
+import { t } from '../i18n/strings';
 // Import necessary modals for button actions (Edit/Create/Detail)
 import { CharacterModal } from '../modals/CharacterModal';
 import { LocationModal } from '../modals/LocationModal';
@@ -132,15 +133,15 @@ export class DashboardView extends ItemView {
 
         // Initialize tab configuration
         this.tabs = [
-            { id: 'characters', label: 'Characters', renderFn: this.renderCharactersContent.bind(this) },
-            { id: 'locations', label: 'Locations', renderFn: this.renderLocationsContent.bind(this) },
-            { id: 'events', label: 'Timeline', renderFn: this.renderEventsContent.bind(this) },
-            { id: 'items', label: 'Items', renderFn: this.renderItemsContent.bind(this) }, // NEW TAB
-            { id: 'gallery', label: 'Gallery', renderFn: this.renderGalleryContent.bind(this) },
-            { id: 'groups', label: 'Groups', renderFn: this.renderGroupsContent.bind(this) },
-            { id: 'references', label: 'Reference', renderFn: this.renderReferencesContent.bind(this) },
-            { id: 'chapters', label: 'Chapters', renderFn: this.renderChaptersContent.bind(this) },
-            { id: 'scenes', label: 'Scenes', renderFn: this.renderScenesContent.bind(this) },
+            { id: 'characters', label: t('characters'), renderFn: this.renderCharactersContent.bind(this) },
+            { id: 'locations', label: t('locations'), renderFn: this.renderLocationsContent.bind(this) },
+            { id: 'events', label: t('timeline'), renderFn: this.renderEventsContent.bind(this) },
+            { id: 'items', label: t('items'), renderFn: this.renderItemsContent.bind(this) }, // NEW TAB
+            { id: 'gallery', label: t('gallery'), renderFn: this.renderGalleryContent.bind(this) },
+            { id: 'groups', label: t('groups'), renderFn: this.renderGroupsContent.bind(this) },
+            { id: 'references', label: t('references'), renderFn: this.renderReferencesContent.bind(this) },
+            { id: 'chapters', label: t('chapters'), renderFn: this.renderChaptersContent.bind(this) },
+            { id: 'scenes', label: t('scenes'), renderFn: this.renderScenesContent.bind(this) },
         ];
 
         this.debouncedRefreshActiveTab = debounce(this.refreshActiveTab.bind(this), 200, true);
@@ -177,7 +178,7 @@ export class DashboardView extends ItemView {
      * Required by Obsidian's view system
      */
     getDisplayText() {
-        return "Storyteller dashboard";
+        return t('dashboardTitle');
     }
 
     /**
@@ -354,7 +355,7 @@ export class DashboardView extends ItemView {
             cls: 'storyteller-dashboard-title'
         });
 
-        titleEl.append('Storyteller suite');
+        titleEl.append(t('dashboardTitle'));
 
         // --- Group for selector and button (mobile-optimized layout) ---
         const selectorButtonGroup = headerTopRow.createDiv('storyteller-selector-button-group');
@@ -401,7 +402,7 @@ export class DashboardView extends ItemView {
         };
 
         if (!this.plugin.settings.enableOneStoryMode) {
-            const newStoryBtn = selectorButtonGroup.createEl('button', { text: '+ New story', cls: 'storyteller-new-story-btn' });
+            const newStoryBtn = selectorButtonGroup.createEl('button', { text: t('newStory'), cls: 'storyteller-new-story-btn' });
             newStoryBtn.onclick = () => {
                 new NewStoryModal(
                     this.app,
@@ -629,7 +630,7 @@ export class DashboardView extends ItemView {
      */
     async renderCharactersContent(container: HTMLElement) {
         container.empty();
-        this.renderHeaderControls(container, 'Characters', async (filter: string) => {
+        this.renderHeaderControls(container, t('characters'), async (filter: string) => {
             this.currentFilter = filter;
             await this.renderCharactersList(container);
         }, () => {
@@ -662,7 +663,7 @@ export class DashboardView extends ItemView {
 
         const listContainer = container.createDiv('storyteller-list-container');
         if (characters.length === 0) {
-            const emptyMsg = listContainer.createEl('p', { text: 'No characters found. Click "Create new" to add your first character.', cls: 'storyteller-empty-state' });
+            const emptyMsg = listContainer.createEl('p', { text: t('noCharactersFound'), cls: 'storyteller-empty-state' });
             emptyMsg.style.color = 'var(--text-muted)';
             emptyMsg.style.fontStyle = 'italic';
             return;
@@ -677,7 +678,7 @@ export class DashboardView extends ItemView {
      */
     async renderLocationsContent(container: HTMLElement) {
         container.empty();
-        this.renderHeaderControls(container, 'Locations', async (filter: string) => {
+        this.renderHeaderControls(container, t('locations'), async (filter: string) => {
             this.currentFilter = filter;
             await this.renderLocationsList(container);
         }, () => {
@@ -709,7 +710,7 @@ export class DashboardView extends ItemView {
 
         const listContainer = container.createDiv('storyteller-list-container');
         if (locations.length === 0) {
-            listContainer.createEl('p', { text: 'No locations found.' + (this.currentFilter ? ' Matching filter.' : '') });
+            listContainer.createEl('p', { text: t('noLocationsFound') + (this.currentFilter ? t('matchingFilter') : '') });
             return;
         }
         this.renderLocationList(locations, listContainer, container);
@@ -722,7 +723,7 @@ export class DashboardView extends ItemView {
      */
     async renderEventsContent(container: HTMLElement) {
         container.empty();
-        this.renderHeaderControls(container, 'Events/timeline', async (filter: string) => {
+        this.renderHeaderControls(container, t('events'), async (filter: string) => {
             this.currentFilter = filter;
             await this.renderEventsList(container);
         }, () => {
@@ -730,9 +731,9 @@ export class DashboardView extends ItemView {
                 await this.plugin.saveEvent(eventData);
                 new Notice(`Event "${eventData.name}" created.`);
             }).open();
-        }, 'Create new', (setting: Setting) => {
+        }, t('createNew'), (setting: Setting) => {
             setting.addButton(button => button
-                .setButtonText('View timeline')
+                .setButtonText(t('viewTimeline'))
                 .setCta()
                 .onClick(async () => {
                     const events = await this.plugin.listEvents();
@@ -764,7 +765,7 @@ export class DashboardView extends ItemView {
 
         const listContainer = container.createDiv('storyteller-list-container storyteller-timeline-container'); // Add timeline class if needed
         if (events.length === 0) {
-            listContainer.createEl('p', { text: 'No events found.' + (this.currentFilter ? ' Matching filter.' : '') });
+            listContainer.createEl('p', { text: t('noEventsFound') + (this.currentFilter ? t('matchingFilter') : '') });
             return;
         }
         this.renderEventList(events, listContainer, container);
@@ -780,9 +781,9 @@ export class DashboardView extends ItemView {
 
         const controlsGroup = container.createDiv('storyteller-controls-group');
         const filterSetting = new Setting(controlsGroup)
-            .setName('Filter Items')
+            .setName(t('filterItems'))
             .addText(text => text
-                .setPlaceholder('Search items...')
+                .setPlaceholder(t('searchX', 'items'))
                 .onChange(async (value) => {
                     this.currentFilter = value.toLowerCase();
                     await this.renderItemsList(container, showPlotCriticalOnly);
@@ -790,8 +791,8 @@ export class DashboardView extends ItemView {
 
         // "Plot Critical Only" Toggle Button
         new Setting(controlsGroup)
-            .setName('Plot Critical')
-            .setDesc('Show only bookmarked items.')
+            .setName(t('plotCritical'))
+            .setDesc(t('filterX', 'bookmarked'))
             .addToggle(toggle => {
                 toggle.setValue(showPlotCriticalOnly)
                     .onChange(async (value) => {
@@ -804,7 +805,7 @@ export class DashboardView extends ItemView {
             .addButton(button => {
                 const hasActiveStory = !!this.plugin.getActiveStory();
                 button
-                    .setButtonText('Create new')
+                    .setButtonText(t('createNew'))
                     .setCta()
                     .onClick(() => {
                         if (!this.plugin.getActiveStory()) {
@@ -846,7 +847,7 @@ export class DashboardView extends ItemView {
 
         const listContainer = container.createDiv('storyteller-list-container');
         if (items.length === 0) {
-            listContainer.createEl('p', { text: 'No items found.' });
+            listContainer.createEl('p', { text: t('noItemsFound') });
             return;
         }
 
@@ -914,7 +915,7 @@ export class DashboardView extends ItemView {
             await this.renderGalleryContent(container);
         };
 
-        this.renderHeaderControls(container, 'Gallery', filterCallback, () => {
+        this.renderHeaderControls(container, t('gallery'), filterCallback, () => {
             // --- Upload Image Logic ---
             if (!this.fileInput) {
                 // Create file input element if it doesn't exist
@@ -970,7 +971,7 @@ export class DashboardView extends ItemView {
             }
             // Trigger click on the hidden file input
             this.fileInput.click();
-        }, "Upload Image"); // Change button text
+        }, t('uploadImage'));
 
         await this.renderGalleryList(container);
     }
@@ -999,7 +1000,7 @@ export class DashboardView extends ItemView {
 
         const gridContainer = container.createDiv('storyteller-gallery-grid');
         if (images.length === 0) {
-            gridContainer.createEl('p', { text: 'No images found.' + (this.currentFilter ? ' Matching filter.' : '') });
+            gridContainer.createEl('p', { text: t('noImagesFound') + (this.currentFilter ? t('matchingFilter') : '') });
             return;
         }
         // Pass refreshCallback to renderGalleryGrid
@@ -1018,12 +1019,12 @@ export class DashboardView extends ItemView {
         container.empty();
         // Header and create group button
         new Setting(container)
-            .setName('Groups')
+            .setName(t('groups'))
             .setDesc('Manage your groups. Shared across all entity types.')
             .addButton(button => {
                 const hasActiveStory = !!this.plugin.getActiveStory();
                 button
-                    .setButtonText('Create new group')
+                    .setButtonText(t('createNewGroup'))
                     .setCta()
                     .onClick(() => {
                         if (!this.plugin.getActiveStory()) {
@@ -1052,7 +1053,7 @@ export class DashboardView extends ItemView {
             filterBar = container.createDiv('storyteller-group-filter-bar');
             // Only create filter input once
             new Setting(filterBar)
-                .setName('Filter groups')
+                .setName(t('filterGroups'))
                 .setDesc('Search by group name or description.')
                 .addText(text => {
                     text.setPlaceholder('Search groups...')
@@ -1083,7 +1084,7 @@ export class DashboardView extends ItemView {
             );
         });
         if (groups.length === 0) {
-            container.createEl('p', { text: 'No groups found.' });
+            container.createEl('p', { text: t('noGroupsFound') });
             return;
         }
         const allCharacters = await this.plugin.listCharacters();
@@ -1121,7 +1122,7 @@ export class DashboardView extends ItemView {
             }
             // Actions (Edit button)
             const actionsDiv = groupHeader.createDiv('storyteller-group-actions');
-            const editBtn = actionsDiv.createEl('button', { text: 'Edit', cls: 'mod-cta storyteller-group-edit-btn' });
+            const editBtn = actionsDiv.createEl('button', { text: t('edit'), cls: 'mod-cta storyteller-group-edit-btn' });
             editBtn.onclick = () => {
                 new GroupModal(
                     this.app,
@@ -1200,7 +1201,7 @@ export class DashboardView extends ItemView {
                 }
             });
             if (group.members.length === 0) {
-                membersSection.createEl('em', { text: 'No members.' });
+                membersSection.createEl('em', { text: t('noMembers') });
             }
             // Toggle expand/collapse
             let expanded = isExpanded;
@@ -1222,7 +1223,7 @@ export class DashboardView extends ItemView {
     }
 
     // --- Header Controls (Filter + Add Button) ---
-    private renderHeaderControls(container: HTMLElement, title: string, filterFn: (filter: string) => Promise<void>, addFn: () => void, addButtonText: string = 'Create new', extendButtons?: (s: Setting) => void) {
+    private renderHeaderControls(container: HTMLElement, title: string, filterFn: (filter: string) => Promise<void>, addFn: () => void, addButtonText: string = t('createNew'), extendButtons?: (s: Setting) => void) {
         const controlsGroup = container.createDiv('storyteller-controls-group');
         controlsGroup.style.display = 'flex';
         controlsGroup.style.alignItems = 'center';
@@ -1251,11 +1252,11 @@ export class DashboardView extends ItemView {
         })();
 
         const headerSetting = new Setting(controlsGroup)
-            .setName(`Filter ${title.toLowerCase()}`)
+            .setName(t('filterX', title.toLowerCase()))
             .setDesc('')
             .addText(text => {
                 const component = text
-                    .setPlaceholder(`Search ${title.toLowerCase()}...`)
+                    .setPlaceholder(t('searchX', title.toLowerCase()))
                     .onChange(async (value) => {
                         this.currentFilter = value.toLowerCase();
                         
@@ -1407,7 +1408,7 @@ export class DashboardView extends ItemView {
                     new Notice(`Reference "${ref.name}" created.`);
                 }).open();
             });
-        }, 'Create new');
+        }, t('createNew'));
 
         await this.renderReferencesList(container);
     }
@@ -1426,7 +1427,7 @@ export class DashboardView extends ItemView {
 
         const listContainer = container.createDiv('storyteller-list-container');
         if (references.length === 0) {
-            const emptyMsg = listContainer.createEl('p', { text: 'No references found.' + (this.currentFilter ? ' Matching filter.' : '') });
+            const emptyMsg = listContainer.createEl('p', { text: t('noReferencesFound') + (this.currentFilter ? t('matchingFilter') : '') });
             emptyMsg.addClass('storyteller-empty-state');
             return;
         }
@@ -1494,7 +1495,7 @@ export class DashboardView extends ItemView {
                     new Notice(`Chapter "${ch.name}" created.`);
                 }).open();
             });
-        }, 'Create new');
+        }, t('createNew'));
 
         await this.renderChaptersList(container);
     }
@@ -1513,7 +1514,7 @@ export class DashboardView extends ItemView {
 
         const listContainer = container.createDiv('storyteller-list-container');
         if (chapters.length === 0) {
-            listContainer.createEl('p', { text: 'No chapters found.' + (this.currentFilter ? ' Matching filter.' : '') });
+            listContainer.createEl('p', { text: t('noChaptersFound') + (this.currentFilter ? t('matchingFilter') : '') });
             return;
         }
 
@@ -1579,7 +1580,7 @@ export class DashboardView extends ItemView {
                     new Notice(`Scene "${sc.name}" created.`);
                 }).open();
             });
-        }, 'Create new');
+        }, t('createNew'));
 
         await this.renderScenesList(container);
     }
@@ -1602,7 +1603,7 @@ export class DashboardView extends ItemView {
 
         const listContainer = container.createDiv('storyteller-list-container');
         if (scenes.length === 0) {
-            listContainer.createEl('p', { text: 'No scenes found.' + (this.currentFilter ? ' Matching filter.' : '') });
+            listContainer.createEl('p', { text: t('noScenesFound' as any) || ('No scenes found.' + (this.currentFilter ? t('matchingFilter') : '')) });
             return;
         }
 

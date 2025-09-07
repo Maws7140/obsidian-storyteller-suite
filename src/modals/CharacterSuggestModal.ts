@@ -1,6 +1,7 @@
 import { App, FuzzySuggestModal, Notice, prepareFuzzySearch, FuzzyMatch } from 'obsidian';
 import { Character } from '../types';
 import StorytellerSuitePlugin from '../main';
+import { t } from '../i18n/strings';
 
 export class CharacterSuggestModal extends FuzzySuggestModal<Character> {
 	plugin: StorytellerSuitePlugin;
@@ -11,7 +12,7 @@ export class CharacterSuggestModal extends FuzzySuggestModal<Character> {
 		super(app);
 		this.plugin = plugin;
 		this.onChoose = onChoose;
-		this.setPlaceholder("Select a character to link...");
+		this.setPlaceholder(t('selectCharacterPh'));
 	}
 
     // Override onOpen to fetch data asynchronously *before* getItems is needed
@@ -21,7 +22,7 @@ export class CharacterSuggestModal extends FuzzySuggestModal<Character> {
             this.characters = await this.plugin.listCharacters();
         } catch (error) {
             console.error("Storyteller Suite: Error fetching characters for suggester:", error);
-            new Notice("Error loading characters. Check console.");
+            new Notice(t('errorLoadingCharacters'));
             this.characters = []; // Ensure it's an empty array on error
         }
         // Force-refresh suggestions so initial list shows without typing

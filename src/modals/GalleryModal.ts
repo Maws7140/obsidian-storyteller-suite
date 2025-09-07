@@ -1,4 +1,5 @@
 import { App, Modal, Setting, TFile, FuzzySuggestModal, prepareFuzzySearch, FuzzyMatch } from 'obsidian';
+import { t } from '../i18n/strings';
 import { GalleryImage } from '../types';
 import StorytellerSuitePlugin from '../main';
 import { ImageDetailModal } from './ImageDetailModal';
@@ -12,7 +13,7 @@ export class ImageSuggestModal extends FuzzySuggestModal<TFile> { // Added expor
         super(app);
         this.plugin = plugin;
         this.onChoose = onChoose;
-        this.setPlaceholder("Select an image file...");
+        this.setPlaceholder(t('selectImageFilePh'));
     }
 
     async onOpen() {
@@ -98,7 +99,7 @@ export class GalleryModal extends Modal {
     onOpen() {
         const { contentEl } = this;
         contentEl.empty();
-        contentEl.createEl('h2', { text: 'Image gallery' });
+        contentEl.createEl('h2', { text: t('imageGallery') });
 
         // Store the container element
         this.gridContainer = contentEl.createDiv('storyteller-gallery-grid');
@@ -106,14 +107,14 @@ export class GalleryModal extends Modal {
         // --- Controls (Add Image, Filter) ---
         const controlsEl = contentEl.createDiv('storyteller-gallery-controls');
         new Setting(controlsEl)
-            .setName('Filter')
+            .setName(t('filter'))
             .addText(text => {
-                text.setPlaceholder('Filter by title, tag, link...')
+                text.setPlaceholder(t('filterImagesPh'))
                     // Pass the container to renderGrid
                     .onChange(value => this.renderGrid(value.toLowerCase(), this.gridContainer));
             })
             .addButton(button => button
-                .setButtonText('Add image')
+                .setButtonText(t('addImage'))
                 .setCta()
                 .onClick(() => {
                     new ImageSuggestModal(this.app, this.plugin, async (selectedFile: TFile) => {
@@ -155,7 +156,7 @@ export class GalleryModal extends Modal {
         );
 
         if (filteredImages.length === 0) {
-            container.createEl('p', { text: 'No images found.' + (filter ? ' Matching filter.' : '') });
+            container.createEl('p', { text: t('noImagesFound') + (filter ? t('matchingFilter') : '') });
             return;
         }
 

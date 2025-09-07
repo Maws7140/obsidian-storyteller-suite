@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { App, Modal, Setting, TextComponent, TextAreaComponent } from 'obsidian';
 import { Story } from '../types';
+import { t } from '../i18n/strings';
 
 export type EditStoryModalSubmitCallback = (name: string, description?: string) => Promise<void>;
 
@@ -27,15 +28,15 @@ export class EditStoryModal extends Modal {
     onOpen() {
         const { contentEl } = this;
         contentEl.empty();
-        contentEl.createEl('h2', { text: 'Edit story' });
+        contentEl.createEl('h2', { text: t('editStory') });
 
         // Name input
         new Setting(contentEl)
-            .setName('Story Name')
-            .setDesc('Required. Must be unique.')
+            .setName(t('storyNameField'))
+            .setDesc(t('storyNameDesc'))
             .addText((text: TextComponent) => {
                 this.nameInput = text;
-                text.setPlaceholder('Enter story name')
+                text.setPlaceholder(t('enterStoryNamePh'))
                     .setValue(this.name)
                     .onChange((value: string) => {
                         this.name = value.trim();
@@ -52,11 +53,11 @@ export class EditStoryModal extends Modal {
 
         // Description input
         new Setting(contentEl)
-            .setName('Description')
-            .setDesc('Optional')
+            .setName(t('descriptionField'))
+            .setDesc(t('descriptionOptionalDesc'))
             .addTextArea((text: TextAreaComponent) => {
                 this.descInput = text;
-                text.setPlaceholder('Describe your story (optional)')
+                text.setPlaceholder(t('describeStoryPh'))
                     .setValue(this.description)
                     .onChange((value: string) => {
                         this.description = value;
@@ -71,11 +72,11 @@ export class EditStoryModal extends Modal {
         // Action buttons
         const buttonSetting = new Setting(contentEl);
         buttonSetting.addButton((btn: any) =>
-            btn.setButtonText('Cancel')
+            btn.setButtonText(t('cancel'))
                 .onClick(() => this.close())
         );
         buttonSetting.addButton((btn: any) =>
-            btn.setButtonText('Save Changes')
+            btn.setButtonText(t('saveChanges'))
                 .setCta()
                 .onClick(() => this.trySubmit())
         );

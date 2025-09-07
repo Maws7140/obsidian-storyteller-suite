@@ -1,4 +1,5 @@
 import { App, Modal, Setting, Notice, ButtonComponent, TFile } from 'obsidian';
+import { t } from '../i18n/strings';
 import { Event } from '../types';
 import StorytellerSuitePlugin from '../main';
 import { EventModal } from './EventModal';
@@ -44,7 +45,7 @@ export class TimelineModal extends Modal {
     onOpen() {
         const { contentEl } = this;
         contentEl.empty();
-        contentEl.createEl('h2', { text: 'Timeline' });
+        contentEl.createEl('h2', { text: t('timeline') });
 
         // Controls toolbar (grouping, presets, density)
         const controls = new Setting(contentEl)
@@ -61,10 +62,10 @@ export class TimelineModal extends Modal {
                 });
                 return dd;
             })
-            .addButton(b => b.setButtonText('Fit').onClick(() => { if (this.timeline) this.timeline.fit(); }))
-            .addButton(b => b.setButtonText('Decade').onClick(() => this.zoomPresetYears(10)))
-            .addButton(b => b.setButtonText('Century').onClick(() => this.zoomPresetYears(100)))
-            .addButton(b => b.setButtonText('Today').onClick(() => {
+            .addButton(b => b.setButtonText(t('fit') || 'Fit').onClick(() => { if (this.timeline) this.timeline.fit(); }))
+            .addButton(b => b.setButtonText(t('decade') || 'Decade').onClick(() => this.zoomPresetYears(10)))
+            .addButton(b => b.setButtonText(t('century') || 'Century').onClick(() => this.zoomPresetYears(100)))
+            .addButton(b => b.setButtonText(t('today') || 'Today').onClick(() => {
                 if (this.timeline) {
                     const ref = this.plugin.getReferenceTodayDate();
                     this.timeline.moveTo(ref);
@@ -76,7 +77,7 @@ export class TimelineModal extends Modal {
           //      .setValue(this.density)
           //      .setDynamicTooltip()
           //      .onChange(v => { this.density = v; this.renderTimeline(); }))
-            .addButton(b => b.setButtonText('Copy range').onClick(() => this.copyVisibleRange()));
+            .addButton(b => b.setButtonText(t('copyRange') || 'Copy range').onClick(() => this.copyVisibleRange()));
 
         // (Search/filter removed per request)
 
@@ -104,17 +105,17 @@ export class TimelineModal extends Modal {
             .addButton(button => {
                 const hasActiveStory = !!this.plugin.getActiveStory();
                 button
-                    .setButtonText('Create new event')
+                    .setButtonText(t('createNewEvent'))
                     .setCta()
                     .onClick(() => {
                         if (!this.plugin.getActiveStory()) {
-                            new Notice('Select or create a story first.');
+                            new Notice(t('selectOrCreateStoryFirst'));
                             return;
                         }
                         this.close();
                         new EventModal(this.app, this.plugin, null, async (eventData: Event) => {
                             await this.plugin.saveEvent(eventData);
-                            new Notice(`Event "${eventData.name}" created.`);
+                            new Notice(t('created', t('event'), eventData.name));
                         }).open();
                     });
                 if (!hasActiveStory) {
@@ -186,7 +187,7 @@ export class TimelineModal extends Modal {
                 this.close();
                 new EventModal(this.app, this.plugin, event, async (updatedData: Event) => {
                     await this.plugin.saveEvent(updatedData);
-                    new Notice(`Event "${updatedData.name}" updated.`);
+                    new Notice(t('updated', t('event'), updatedData.name));
                 }).open();
             }
         });
@@ -208,14 +209,14 @@ export class TimelineModal extends Modal {
                 left.createSpan({ text: `  • ${displayDate}` });
             }
             const right = row.createDiv('storyteller-timeline-detail-actions');
-            new ButtonComponent(right).setButtonText('Edit').onClick(() => {
+            new ButtonComponent(right).setButtonText(t('editBtn')).onClick(() => {
                 this.close();
                 new EventModal(this.app, this.plugin, evt, async (updated: Event) => {
                     await this.plugin.saveEvent(updated);
-                    new Notice(`Event "${updated.name}" updated.`);
+                    new Notice(t('updated', t('event'), updated.name));
                 }).open();
             });
-            new ButtonComponent(right).setButtonText('Open note').onClick(() => {
+            new ButtonComponent(right).setButtonText(t('openNoteBtn')).onClick(() => {
                 if (!evt.filePath) return;
                 const file = this.app.vault.getAbstractFileByPath(evt.filePath);
                 if (file instanceof TFile) {
@@ -330,10 +331,10 @@ export class TimelineModal extends Modal {
             const range = this.timeline.getWindow();
             const text = `Timeline range: ${new Date(range.start).toISOString()} — ${new Date(range.end).toISOString()}`;
             navigator.clipboard?.writeText(text);
-            new Notice('Timeline range copied');
+            new Notice(t('copyRange'));
         } catch (e) {
             // Fallback
-            new Notice('Could not copy timeline range');
+            new Notice('Could not copy timeline range'); // Keep this as is - it's an error message
         }
     }
 

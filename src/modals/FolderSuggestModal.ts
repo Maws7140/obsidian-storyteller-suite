@@ -1,4 +1,5 @@
 import { App, SuggestModal, TAbstractFile, TFolder } from 'obsidian';
+import { t } from '../i18n/strings';
 
 /**
  * Modal that suggests vault folders and returns the chosen folder path
@@ -14,7 +15,7 @@ export class FolderSuggestModal extends SuggestModal<string> {
     this.appRef = app;
     this.onChoose = onChoose;
     this.onCloseCb = onCloseCb;
-    this.setPlaceholder('Type to filter folders…');
+    this.setPlaceholder(t('filterFoldersPh'));
     this.allFolderPaths = this.collectAllFolderPaths();
   }
 

@@ -1,6 +1,7 @@
 import { App, FuzzySuggestModal, Notice, prepareFuzzySearch, FuzzyMatch } from 'obsidian';
 import { Location } from '../types';
 import StorytellerSuitePlugin from '../main';
+import { t } from '../i18n/strings';
 
 export class LocationSuggestModal extends FuzzySuggestModal<Location> {
 	plugin: StorytellerSuitePlugin;
@@ -11,7 +12,7 @@ export class LocationSuggestModal extends FuzzySuggestModal<Location> {
 		super(app);
 		this.plugin = plugin;
 		this.onChoose = onChoose;
-		this.setPlaceholder("Select the event's location...");
+		this.setPlaceholder(t('selectEventLocationPh'));
         this.setInstructions([{ command: 'Shift + Enter', purpose: 'Clear selection (No Location)' }]);
 	}
 
@@ -22,7 +23,7 @@ export class LocationSuggestModal extends FuzzySuggestModal<Location> {
             this.locations = await this.plugin.listLocations();
         } catch (error) {
             console.error("Storyteller Suite: Error fetching locations for suggester:", error);
-            new Notice("Error loading locations. Check console.");
+            new Notice(t('errorLoadingLocations'));
             this.locations = []; // Ensure it's an empty array on error
         }
         // Force-refresh suggestions so initial list shows without typing

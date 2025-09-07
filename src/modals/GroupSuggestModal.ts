@@ -1,6 +1,7 @@
 import { App, FuzzySuggestModal, FuzzyMatch, prepareFuzzySearch } from 'obsidian';
 import StorytellerSuitePlugin from '../main';
 import { Group } from '../types';
+import { t } from '../i18n/strings';
 
 export class GroupSuggestModal extends FuzzySuggestModal<Group> {
   private readonly plugin: StorytellerSuitePlugin;
@@ -11,7 +12,7 @@ export class GroupSuggestModal extends FuzzySuggestModal<Group> {
     super(app);
     this.plugin = plugin;
     this.onChoose = onChoose;
-    this.setPlaceholder('Select a group…');
+    this.setPlaceholder(t('selectGroupPh'));
   }
 
   // Load groups when opened to ensure freshness

@@ -2,6 +2,7 @@
 
 // Core Obsidian imports for modal functionality
 import { App, Modal, Setting, Notice, ButtonComponent, TFile } from 'obsidian';
+import { t } from '../i18n/strings';
 
 // Import types and related modals
 import { Character } from '../types';
@@ -43,16 +44,16 @@ export class CharacterListModal extends Modal {
     onOpen() {
         const { contentEl } = this;
         contentEl.empty();
-        contentEl.createEl('h2', { text: 'Characters' });
+        contentEl.createEl('h2', { text: t('characters') });
 
         // Create container for the character list (stored for filtering)
         this.listContainer = contentEl.createDiv('storyteller-list-container');
 
         // Add search input with real-time filtering
         const searchInput = new Setting(contentEl)
-            .setName('Search')
+            .setName(t('search'))
             .addText(text => {
-                text.setPlaceholder('Filter characters...')
+                text.setPlaceholder(t('searchX', t('characters')))
                     .onChange(value => this.renderList(value.toLowerCase(), this.listContainer));
             });
 
@@ -64,22 +65,22 @@ export class CharacterListModal extends Modal {
             .addButton(button => {
                 const hasActiveStory = !!this.plugin.getActiveStory();
                 button
-                    .setButtonText('Create new character')
+                    .setButtonText(t('createCharacter'))
                     .setCta()
                     .onClick(() => {
                         if (!this.plugin.getActiveStory()) {
-                            new Notice('Select or create a story first.');
+                            new Notice(t('selectOrCreateStoryFirst'));
                             return;
                         }
                         this.close();
                         new CharacterModal(this.app, this.plugin, null, async (characterData: Character) => {
                             await this.plugin.saveCharacter(characterData);
-                            new Notice(`Character "${characterData.name}" created.`);
-                            new Notice('Note created with standard sections for easy editing.');
+                            new Notice(t('created', t('character'), characterData.name));
+                            new Notice(t('noteCreatedWithSections'));
                         }).open();
                     });
                 if (!hasActiveStory) {
-                    button.setDisabled(true).setTooltip('Select or create a story first.');
+                    button.setDisabled(true).setTooltip(t('selectOrCreateStoryFirst'));
                 }
             });
     }
@@ -101,7 +102,7 @@ export class CharacterListModal extends Modal {
 
         // Handle empty results
         if (filteredCharacters.length === 0) {
-            container.createEl('p', { text: 'No characters found.' + (filter ? ' Matching filter.' : '') });
+            container.createEl('p', { text: t('noCharactersFound') + (filter ? t('matchingFilter') : '') });
             return;
         }
 
@@ -125,12 +126,12 @@ export class CharacterListModal extends Modal {
             // Edit button - opens character in edit modal
             new ButtonComponent(actionsEl)
                 .setIcon('pencil')
-                .setTooltip('Edit')
+                .setTooltip(t('edit'))
                 .onClick(() => {
                     this.close(); // Close list modal
                     new CharacterModal(this.app, this.plugin, character, async (updatedData: Character) => {
                         await this.plugin.saveCharacter(updatedData);
-                        new Notice(`Character "${updatedData.name}" updated.`);
+                        new Notice(t('updated', t('character'), updatedData.name));
                         // Could optionally reopen list modal
                     }).open();
                 });
@@ -138,18 +139,18 @@ export class CharacterListModal extends Modal {
             // Delete button - removes character file
             new ButtonComponent(actionsEl)
                 .setIcon('trash')
-                .setTooltip('Delete')
+                .setTooltip(t('delete'))
                 .setClass('mod-warning') // Visual warning styling
                 .onClick(async () => {
                     // Simple confirmation dialog
-                    if (confirm(`Are you sure you want to delete "${character.name}"? This will move the file to system trash.`)) {
+                    if (confirm(t('confirmDeleteCharacterTrash', character.name))) {
                         if (character.filePath) {
                             await this.plugin.deleteCharacter(character.filePath);
                             // Update local character list and re-render
                             this.characters = this.characters.filter(c => c.filePath !== character.filePath);
                             this.renderList(filter, container);
                         } else {
-                            new Notice('Error: Cannot delete character without file path.');
+                            new Notice(t('errorCannotDeleteWithoutFilePath', t('character')));
                         }
                     }
                 });
@@ -157,10 +158,10 @@ export class CharacterListModal extends Modal {
             // Open note button - opens character file directly in Obsidian
              new ButtonComponent(actionsEl)
                 .setIcon('go-to-file')
-                .setTooltip('Open note')
+                .setTooltip(t('openNote'))
                 .onClick(() => {
                     if (!character.filePath) {
-                        new Notice('Error: Cannot open character note without file path.');
+                        new Notice(t('errorCannotOpenNoteWithoutFilePath', t('character')));
                         return;
                     }
                     
@@ -170,7 +171,7 @@ export class CharacterListModal extends Modal {
                         this.app.workspace.getLeaf(false).openFile(file);
                         this.close(); // Close modal after opening file
                     } else {
-                        new Notice('Could not find the note file.');
+                        new Notice(t('workspaceLeafRevealError'));
                     }
                 });
         });

@@ -1,4 +1,5 @@
 import { App, Modal, Setting, TextComponent, TextAreaComponent } from 'obsidian';
+import { t } from '../i18n/strings';
 
 export type NewStoryModalSubmitCallback = (name: string, description?: string) => Promise<void>;
 
@@ -21,15 +22,15 @@ export class NewStoryModal extends Modal {
     onOpen() {
         const { contentEl } = this;
         contentEl.empty();
-        contentEl.createEl('h2', { text: 'Create new story' });
+        contentEl.createEl('h2', { text: t('createNewStory') });
 
         // Name input
         new Setting(contentEl)
-            .setName('Story Name')
+            .setName(t('storyName'))
             .setDesc('Required. Must be unique.')
             .addText(text => {
                 this.nameInput = text;
-                text.setPlaceholder('Enter story name')
+                text.setPlaceholder(t('enterStoryNamePh'))
                     .onChange(value => {
                         this.name = value.trim();
                         this.clearError();
@@ -45,11 +46,11 @@ export class NewStoryModal extends Modal {
 
         // Description input
         new Setting(contentEl)
-            .setName('Description')
+            .setName(t('description'))
             .setDesc('Optional')
             .addTextArea(text => {
                 this.descInput = text;
-                text.setPlaceholder('Describe your story (optional)')
+                text.setPlaceholder(t('describeStoryPh'))
                     .onChange(value => {
                         this.description = value;
                     });
@@ -63,11 +64,11 @@ export class NewStoryModal extends Modal {
         // Action buttons
         const buttonSetting = new Setting(contentEl);
         buttonSetting.addButton(btn =>
-            btn.setButtonText('Cancel')
+            btn.setButtonText(t('cancel'))
                 .onClick(() => this.close())
         );
         buttonSetting.addButton(btn =>
-            btn.setButtonText('Create')
+            btn.setButtonText(t('create'))
                 .setCta()
                 .onClick(() => this.trySubmit())
         );

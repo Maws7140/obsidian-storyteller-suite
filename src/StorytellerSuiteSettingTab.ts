@@ -1,8 +1,9 @@
-import { App, PluginSettingTab, Setting } from 'obsidian';
+import { App, PluginSettingTab, Setting, Notice } from 'obsidian';
 import StorytellerSuitePlugin from './main';
 import { NewStoryModal } from './modals/NewStoryModal';
 import { EditStoryModal } from './modals/EditStoryModal';
 import { FolderSuggestModal } from './modals/FolderSuggestModal';
+import { setLocale, t } from './i18n/strings';
 
 export class StorytellerSuiteSettingTab extends PluginSettingTab {
     plugin: StorytellerSuitePlugin;
@@ -22,9 +23,26 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
             this.addTutorialSection(containerEl);
         }
 
+        // --- Language Setting ---
+        new Setting(containerEl)
+            .setName(t('language'))
+            .setDesc(t('selectLanguage'))
+            .addDropdown(dropdown => {
+                dropdown
+                    .addOption('en', t('english'))
+                    .addOption('zh', t('chinese'))
+                    .setValue(this.plugin.settings.language)
+                    .onChange(async (value) => {
+                        this.plugin.settings.language = value as 'en' | 'zh';
+                        await this.plugin.saveSettings();
+                        setLocale(value as 'en' | 'zh');
+                        new Notice(t('languageChanged'));
+                    });
+            });
+
         // --- Story Management Section ---
         new Setting(containerEl)
-            .setName('Stories')
+            .setName(t('stories'))
             .setHeading();
 
         // List all stories and allow selection
@@ -34,7 +52,7 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                 .setName(story.name)
                 .setDesc(story.description || '')
                 .addButton(btn => btn
-                    .setButtonText(isActive ? 'Active' : 'Set Active')
+                    .setButtonText(isActive ? t('active') : t('setActive'))
                     .setCta()
                     .setDisabled(isActive)
                     .onClick(async () => {
@@ -44,7 +62,7 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                 )
                 .addExtraButton(btn => btn
                     .setIcon('pencil')
-                    .setTooltip('Edit Story')
+                    .setTooltip(t('editStory'))
                     .onClick(async () => {
                         const existingNames = this.plugin.settings.stories.map(s => s.name);
                         new EditStoryModal(
@@ -60,9 +78,9 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                 )
                 .addExtraButton(btn => btn
                     .setIcon('trash')
-                    .setTooltip('Delete')
+                    .setTooltip(t('delete'))
                     .onClick(async () => {
-                        if (confirm(`Delete story "${story.name}"? This cannot be undone.`)) {
+                        if (confirm(t('confirmDeleteStory', story.name))) {
                             this.plugin.settings.stories = this.plugin.settings.stories.filter(s => s.id !== story.id);
                             if (this.plugin.settings.activeStoryId === story.id) {
                                 this.plugin.settings.activeStoryId = this.plugin.settings.stories[0]?.id || '';
@@ -77,7 +95,7 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
         // Button to create a new story
         new Setting(containerEl)
             .addButton(btn => btn
-                .setButtonText('Create New Story')
+                .setButtonText(t('createNewStory'))
                 .setCta()
                 .onClick(async () => {
                     const existingNames = this.plugin.settings.stories.map(s => s.name);
@@ -94,11 +112,11 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
 
         // Manual story discovery refresh
         new Setting(containerEl)
-            .setName('Story discovery')
-            .setDesc('Scan your vault for existing Storyteller stories and import them. Useful after moving folders or changing structure.')
+            .setName(t('storyDiscovery'))
+            .setDesc(t('scanVaultDesc'))
             .addButton(btn => btn
-                .setButtonText('Refresh discovery')
-                .setTooltip('Scan StorytellerSuite/Stories for new story folders')
+                .setButtonText(t('refreshDiscovery'))
+                .setTooltip(t('scanVaultDesc'))
                 .onClick(async () => {
                     btn.setDisabled(true);
                     try {
@@ -113,11 +131,11 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
 
         // --- Gallery Upload Folder ---
         new Setting(containerEl)
-            .setName('Gallery upload folder')
-            .setDesc('Folder where uploaded gallery images will be stored')
+            .setName(t('galleryUploadFolder'))
+            .setDesc(t('galleryFolderDesc'))
             .addText(text => {
                 const comp = text
-                    .setPlaceholder('StorytellerSuite/GalleryUploads')
+                    .setPlaceholder(t('galleryUploadFolderPh'))
                     .setValue(this.plugin.settings.galleryUploadFolder)
                     .onChange(async (value) => {
                         this.plugin.settings.galleryUploadFolder = value;
@@ -158,16 +176,16 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
 
         // --- Timeline & Parsing ---
         new Setting(containerEl)
-            .setName('Timeline and parsing')
+            .setName(t('timelineAndParsing'))
             .setHeading();
 
         // --- Custom fields serialization ---
         new Setting(containerEl)
-            .setName('Custom fields serialization')
-            .setDesc('Choose how custom fields are stored in frontmatter')
+            .setName(t('customFieldsSerialization'))
+            .setDesc(t('customFieldsDesc'))
             .addDropdown(dd => dd
-                .addOption('flatten', 'Flatten to native keys (recommended)')
-                .addOption('nested', 'Nested under customFields (YAML map)')
+                .addOption('flatten', t('flattenCustomFields'))
+                .addOption('nested', t('nestedCustomFields'))
                 .setValue((this.plugin.settings as any).customFieldsMode || 'flatten')
                 .onChange(async (v) => {
                     (this.plugin.settings as any).customFieldsMode = (v as any);
@@ -175,8 +193,8 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                 }));
 
         new Setting(containerEl)
-            .setName('Forward-date bias for natural language parsing')
-            .setDesc('Prefer future interpretation for relative dates (e.g., "Friday")')
+            .setName(t('forwardDateBias'))
+            .setDesc(t('forwardDateBiasDesc'))
             .addToggle(toggle => toggle
                 .setValue(false)
                 .onChange(async (value) => {
@@ -186,10 +204,10 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                 }));
 
         new Setting(containerEl)
-            .setName('Custom today (timeline reference)')
-            .setDesc('Optional date used for the Today button and relative parsing. Supports BCE dates (e.g., 2024-01-15 for CE, or -00499-01-01 for 500 BCE). Leave empty to use system today.')
+            .setName(t('customToday'))
+            .setDesc(t('customTodayDesc'))
             .addText(text => text
-                .setPlaceholder('YYYY-MM-DD or full ISO (supports BCE dates)')
+                .setPlaceholder(t('customTodayPh'))
                 .setValue(this.plugin.settings.customTodayISO || '')
                 .onChange(async (value) => {
                     const trimmed = value.trim();
@@ -198,7 +216,7 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                 }))
             .addExtraButton(btn => btn
                 .setIcon('reset')
-                .setTooltip('Clear custom today')
+                .setTooltip(t('clearCustomToday'))
                 .onClick(async () => {
                     this.plugin.settings.customTodayISO = undefined;
                     await this.plugin.saveSettings();
@@ -207,27 +225,27 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
 
         // Timeline defaults
         new Setting(containerEl)
-            .setName('Default timeline grouping')
+            .setName(t('defaultTimelineGrouping'))
             .addDropdown(dd => dd
-                .addOptions({ none: 'No grouping', location: 'By location', group: 'By group' })
+                .addOptions({ none: t('noGrouping'), location: t('byLocation'), group: t('byGroup') })
                 .setValue(this.plugin.settings.defaultTimelineGroupMode || 'none')
                 .onChange(async (v) => { this.plugin.settings.defaultTimelineGroupMode = v as any; await this.plugin.saveSettings(); }));
 
         new Setting(containerEl)
-            .setName('Default zoom preset')
+            .setName(t('defaultZoomPreset'))
             .addDropdown(dd => dd
-                .addOptions({ none: 'None', fit: 'Fit', decade: 'Decade', century: 'Century' })
+                .addOptions({ none: t('noneOption'), fit: t('fitOption'), decade: t('decadeOption'), century: t('centuryOption') })
                 .setValue(this.plugin.settings.defaultTimelineZoomPreset || 'none')
                 .onChange(async (v) => { this.plugin.settings.defaultTimelineZoomPreset = v as any; await this.plugin.saveSettings(); }));
 
         new Setting(containerEl)
-            .setName('Default stacking')
+            .setName(t('defaultStacking'))
             .addToggle(t => t
                 .setValue(this.plugin.settings.defaultTimelineStack ?? true)
                 .onChange(async (v) => { this.plugin.settings.defaultTimelineStack = v; await this.plugin.saveSettings(); }));
 
         new Setting(containerEl)
-            .setName('Default density')
+            .setName(t('defaultDensity'))
             .addSlider(sl => sl
                 .setLimits(0, 100, 5)
                 .setValue(this.plugin.settings.defaultTimelineDensity ?? 50)
@@ -235,23 +253,23 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                 .onChange(async (v) => { this.plugin.settings.defaultTimelineDensity = v; await this.plugin.saveSettings(); }));
 
         new Setting(containerEl)
-            .setName('Show legend by default')
+            .setName(t('showLegendByDefault'))
             .addToggle(t => t
                 .setValue(this.plugin.settings.showTimelineLegend ?? true)
                 .onChange(async (v) => { this.plugin.settings.showTimelineLegend = v; await this.plugin.saveSettings(); }));
 
         new Setting(containerEl)
-            .setName('Timeline default height')
-            .setDesc('Adjust the height of the timeline modal')
+            .setName(t('timelineDefaultHeight'))
+            .setDesc(t('timelineHeightDesc'))
             .addText(text => text
-                .setPlaceholder('e.g., 380px')
+                .setPlaceholder(t('timelineHeightPh'))
                 .setValue('380px')
                 .onChange(async () => { /* no-op stub; future setting */ }));
 
         // --- Custom Folders & One Story Mode ---
         new Setting(containerEl)
-            .setName('Use custom entity folders')
-            .setDesc('When enabled, use the folder paths below. You can include {storyName}, {storySlug}, or {storyId} to make per-story folders (e.g., Creative/Writing/{storyName}/Characters).')
+            .setName(t('useCustomEntityFolders'))
+            .setDesc(t('useCustomFoldersDesc'))
             .addToggle(toggle => toggle
                 .setValue(!!this.plugin.settings.enableCustomEntityFolders)
                 .onChange(async (value) => {
@@ -274,7 +292,7 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                         if (hasStoryPlaceholder && !this.plugin.settings.activeStoryId) {
                             const banner = containerEl.createDiv({ cls: 'mod-warning' });
                             banner.style.marginTop = '8px';
-                            banner.setText('Custom folders use {story*} placeholders. Select or create an active story, then click "Rescan custom folders".');
+                            banner.setText(t('customFoldersPlaceholderWarning'));
                         } else {
                             await this.plugin.refreshCustomFolderDiscovery();
                         }
@@ -286,10 +304,10 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
         if (this.plugin.settings.enableCustomEntityFolders) {
             // Preview resolved folders
             new Setting(containerEl)
-                .setName('Preview resolved folders')
-                .setDesc('See each entity’s resolved folder path based on current settings and active story')
+                .setName(t('previewResolvedFolders'))
+                .setDesc(t('previewFoldersDesc'))
                 .addButton(btn => btn
-                    .setButtonText('Preview')
+                    .setButtonText(t('previewBtn'))
                     .onClick(async () => {
                         const resolver = (this.plugin as any).buildResolver?.() || null;
                         if (!resolver) return;
@@ -304,11 +322,11 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                     }));
             // Optional story root template
             new Setting(containerEl)
-                .setName('Story root folder (optional)')
-                .setDesc('Base path template for all entities. Supports {storyName}, {storySlug}, {storyId}. Example: Creative/Writing/{storyName}')
+                .setName(t('storyRootFolderOptional'))
+                .setDesc(t('storyRootDesc'))
                 .addText(text => {
                     const comp = text
-                        .setPlaceholder('Creative/Writing/{storyName}')
+                        .setPlaceholder(t('storyRootFolderPh'))
                         .setValue(this.plugin.settings.storyRootFolderTemplate || '')
                         .onChange(async (value) => {
                             this.plugin.settings.storyRootFolderTemplate = value;
@@ -347,11 +365,11 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
 
             // NOTE: The explicit "Detect folders" control is intentionally hidden to avoid disrupting manual setups.
             new Setting(containerEl)
-                .setName('Characters folder')
-                .setDesc('Path for character markdown files (placeholders allowed: {storyName}, {storySlug}, {storyId})')
+                .setName(t('charactersFolder'))
+                .setDesc(t('charactersFolderDesc'))
                 .addText(text => {
                     const comp = text
-                        .setPlaceholder('MyStory/Characters')
+                        .setPlaceholder(t('charactersFolderPh'))
                         .setValue(this.plugin.settings.characterFolderPath || '')
                         .onChange(async (value) => {
                             this.plugin.settings.characterFolderPath = value;
@@ -387,11 +405,11 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                 });
 
             new Setting(containerEl)
-                .setName('Locations folder')
-                .setDesc('Path for location markdown files (placeholders allowed: {storyName}, {storySlug}, {storyId})')
+                .setName(t('locationsFolder'))
+                .setDesc(t('locationsFolderDesc'))
                 .addText(text => {
                     const comp = text
-                        .setPlaceholder('MyStory/Locations')
+                        .setPlaceholder(t('locationsFolderPh'))
                         .setValue(this.plugin.settings.locationFolderPath || '')
                         .onChange(async (value) => {
                             this.plugin.settings.locationFolderPath = value;
@@ -427,11 +445,11 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                 });
 
             new Setting(containerEl)
-                .setName('Events folder')
-                .setDesc('Path for event markdown files (placeholders allowed: {storyName}, {storySlug}, {storyId})')
+                .setName(t('eventsFolder'))
+                .setDesc(t('eventsFolderDesc'))
                 .addText(text => {
                     const comp = text
-                        .setPlaceholder('MyStory/Events')
+                        .setPlaceholder(t('eventsFolderPh'))
                         .setValue(this.plugin.settings.eventFolderPath || '')
                         .onChange(async (value) => {
                             this.plugin.settings.eventFolderPath = value;
@@ -467,11 +485,11 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                 });
 
             new Setting(containerEl)
-                .setName('Items folder')
-                .setDesc('Path for item markdown files (placeholders allowed: {storyName}, {storySlug}, {storyId})')
+                .setName(t('itemsFolder'))
+                .setDesc(t('itemsFolderDesc'))
                 .addText(text => {
                     const comp = text
-                        .setPlaceholder('MyStory/Items')
+                        .setPlaceholder(t('itemsFolderPh'))
                         .setValue(this.plugin.settings.itemFolderPath || '')
                         .onChange(async (value) => {
                             this.plugin.settings.itemFolderPath = value;
@@ -507,11 +525,11 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                 });
 
             new Setting(containerEl)
-                .setName('References folder')
-                .setDesc('Path for reference markdown files (placeholders allowed: {storyName}, {storySlug}, {storyId})')
+                .setName(t('referencesFolder'))
+                .setDesc(t('referencesFolderDesc'))
                 .addText(text => {
                     const comp = text
-                        .setPlaceholder('MyStory/References')
+                        .setPlaceholder(t('referencesFolderPh'))
                         .setValue(this.plugin.settings.referenceFolderPath || '')
                         .onChange(async (value) => {
                             this.plugin.settings.referenceFolderPath = value;
@@ -547,11 +565,11 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                 });
 
             new Setting(containerEl)
-                .setName('Scenes folder')
-                .setDesc('Path for scene markdown files (placeholders allowed: {storyName}, {storySlug}, {storyId})')
+                .setName(t('scenesFolder'))
+                .setDesc(t('scenesFolderDesc'))
                 .addText(text => {
                     const comp = text
-                        .setPlaceholder('MyStory/Scenes')
+                        .setPlaceholder(t('scenesFolderPh'))
                         .setValue(this.plugin.settings.sceneFolderPath || '')
                         .onChange(async (value) => {
                             this.plugin.settings.sceneFolderPath = value;
@@ -586,11 +604,11 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                     return comp;
                 });
             new Setting(containerEl)
-                .setName('Chapters folder')
-                .setDesc('Path for chapter markdown files (placeholders allowed: {storyName}, {storySlug}, {storyId})')
+                .setName(t('chaptersFolder'))
+                .setDesc(t('chaptersFolderDesc'))
                 .addText(text => {
                     const comp = text
-                        .setPlaceholder('MyStory/Chapters')
+                        .setPlaceholder(t('chaptersFolderPh'))
                         .setValue(this.plugin.settings.chapterFolderPath || '')
                         .onChange(async (value) => {
                             this.plugin.settings.chapterFolderPath = value;
@@ -627,8 +645,8 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
         }
 
         new Setting(containerEl)
-            .setName('One Story Mode')
-            .setDesc('Flatten the folder structure to a single story. When enabled (and custom folders disabled), content goes under a single base folder without Stories/StoryName.')
+            .setName(t('oneStoryMode'))
+            .setDesc(t('oneStoryModeDesc'))
             .addToggle(toggle => toggle
                 .setValue(!!this.plugin.settings.enableOneStoryMode)
                 .onChange(async (value) => {
@@ -644,11 +662,11 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
 
         if (!this.plugin.settings.enableCustomEntityFolders && this.plugin.settings.enableOneStoryMode) {
             new Setting(containerEl)
-                .setName('One Story base folder')
-                .setDesc('Base folder for Characters/Locations/Events/Items/References/Chapters')
+                .setName(t('oneStoryBaseFolder'))
+                .setDesc(t('oneStoryBaseFolderDesc'))
                 .addText(text => {
                     const comp = text
-                        .setPlaceholder('StorytellerSuite')
+                        .setPlaceholder(t('oneStoryBaseFolderPh'))
                         .setValue(this.plugin.settings.oneStoryBaseFolder || 'StorytellerSuite')
                         .onChange(async (value) => {
                             // Normalize root selections like '/' to empty (vault root)
@@ -692,8 +710,8 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
 
         // --- Tutorial Settings ---
         new Setting(containerEl)
-            .setName('Show tutorial section')
-            .setDesc('Display the tutorial and getting started section in settings')
+            .setName(t('showTutorialSection'))
+            .setDesc(t('showTutorialDesc'))
             .addToggle(toggle => toggle
                 .setValue(this.plugin.settings.showTutorial)
                 .onChange(async (value) => {
@@ -707,14 +725,14 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
         // NOTE: Remote images are enabled by default and this toggle is intentionally hidden to reduce settings noise.
 
         new Setting(containerEl)
-            .setName('Support')
+            .setName(t('support'))
             .setHeading();
 
         new Setting(containerEl)
-            .setName('Support development')
-            .setDesc('If you find this plugin helpful, consider supporting its development')
+            .setName(t('supportDevelopment'))
+            .setDesc(t('supportDevDesc'))
             .addButton(button => button
-                .setButtonText('Buy me a coffee')
+                .setButtonText(t('buyMeACoffee'))
                 .setTooltip('Support on Ko-fi')
                 .onClick(() => {
                     window.open('https://ko-fi.com/kingmaws', '_blank');
@@ -722,14 +740,14 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
             );
 
         new Setting(containerEl)
-            .setName('About')
+            .setName(t('about'))
             .setHeading();
 
         new Setting(containerEl)
-            .setName('Plugin information')
-            .setDesc('Storyteller Suite - A comprehensive suite for managing characters, locations, events, and galleries for your stories.')
+            .setName(t('pluginInformation'))
+            .setDesc(t('pluginInfoDesc'))
             .addButton(button => button
-                .setButtonText('GitHub')
+                .setButtonText(t('github'))
                 .setTooltip('View source code')
                 .onClick(() => {
                     window.open('https://github.com/SamW7140/obsidian-storyteller-suite', '_blank');
@@ -742,7 +760,7 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
      */
     private addTutorialSection(containerEl: HTMLElement): void {
         new Setting(containerEl)
-            .setName('Tutorial and getting started')
+            .setName(t('tutorialGettingStarted'))
             .setHeading();
 
         // Tutorial introduction
