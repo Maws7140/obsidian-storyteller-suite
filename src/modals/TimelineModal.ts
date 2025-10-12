@@ -10,6 +10,8 @@ import { parseEventDate, toMillis, toDisplay } from '../utils/DateParsing';
 const VisStandalone = require('vis-timeline/standalone');
 const Timeline: any = VisStandalone.Timeline;
 const DataSet: any = VisStandalone.DataSet;
+// @ts-ignore: timeline-arrows bundled dependency
+import Arrow from '../vendor/timeline-arrows.js';
 
 export class TimelineModal extends Modal {
     plugin: StorytellerSuitePlugin;
@@ -21,9 +23,24 @@ export class TimelineModal extends Modal {
     detailsEl?: HTMLElement;
 
     // UI state
-    private groupMode: 'none' | 'location' | 'group' = 'none';
+    private groupMode: 'none' | 'location' | 'group' | 'character' = 'none';
     private stackEnabled = true;
     private density = 50; // 0-100 influences item margin
+    private editModeEnabled = false;
+    private viewMode: 'timeline' | 'gantt' = 'timeline';
+    private defaultGanttDuration = 1; // days - default duration for events without end date in Gantt view
+    
+    // Filter state
+    private filters = {
+        characters: new Set<string>(),
+        locations: new Set<string>(),
+        groups: new Set<string>(),
+        milestonesOnly: false
+    };
+    private filterPanelVisible = false;
+    
+    // Dependency arrow rendering
+    private dependencyArrows: any; // timeline-arrows instance
 
     private palette = [
         '#7C3AED', '#2563EB', '#059669', '#CA8A04', '#DC2626', '#EA580C', '#0EA5E9', '#22C55E', '#D946EF', '#F59E0B'
@@ -47,7 +64,7 @@ export class TimelineModal extends Modal {
         contentEl.empty();
         contentEl.createEl('h2', { text: t('timeline') });
 
-        // Controls toolbar (grouping, presets, density)
+        // Controls toolbar (grouping, presets, density, edit mode, filters)
         const controls = new Setting(contentEl)
             .setName('')
             .setClass('storyteller-timeline-toolbar')
@@ -55,12 +72,26 @@ export class TimelineModal extends Modal {
                 dd.addOption('none', 'No grouping');
                 dd.addOption('location', 'By location');
                 dd.addOption('group', 'By group');
+                dd.addOption('character', 'By character');
                 dd.setValue(this.groupMode);
                 dd.onChange(value => {
                     this.groupMode = (value as any);
                     this.renderTimeline();
                 });
                 return dd;
+            })
+            .addButton(b => {
+                b.setButtonText(this.viewMode === 'gantt' ? 'Gantt' : 'Timeline')
+                    .setIcon(this.viewMode === 'gantt' ? 'bar-chart-2' : 'clock')
+                    .setTooltip('Switch between Timeline and Gantt chart views')
+                    .onClick(() => {
+                        this.viewMode = this.viewMode === 'timeline' ? 'gantt' : 'timeline';
+                        b.setButtonText(this.viewMode === 'gantt' ? 'Gantt' : 'Timeline');
+                        b.setIcon(this.viewMode === 'gantt' ? 'bar-chart-2' : 'clock');
+                        this.renderTimeline();
+                        new Notice(`Switched to ${this.viewMode === 'gantt' ? 'Gantt' : 'Timeline'} view`);
+                    });
+                return b;
             })
             .addButton(b => b.setButtonText(t('fit') || 'Fit').onClick(() => { if (this.timeline) this.timeline.fit(); }))
             .addButton(b => b.setButtonText(t('decade') || 'Decade').onClick(() => this.zoomPresetYears(10)))
@@ -72,14 +103,131 @@ export class TimelineModal extends Modal {
                 }
             }))
             .addToggle(t => t.setTooltip('Stack items').setValue(this.stackEnabled).onChange(v => { this.stackEnabled = v; this.renderTimeline(); }))
-          //  .addSlider(sl => sl
-          //      .setLimits(0, 100, 5)
-          //      .setValue(this.density)
-          //      .setDynamicTooltip()
-          //      .onChange(v => { this.density = v; this.renderTimeline(); }))
+            .addButton(b => {
+                b.setTooltip('Edit mode (drag to reschedule)')
+                    .setIcon(this.editModeEnabled ? 'pencil' : 'lock')
+                    .onClick(() => {
+                        this.editModeEnabled = !this.editModeEnabled;
+                        b.setIcon(this.editModeEnabled ? 'pencil' : 'lock');
+                        this.renderTimeline();
+                        if (this.editModeEnabled) {
+                            this.timelineContainer.addClass('timeline-edit-mode');
+                            new Notice('Edit mode enabled - drag events to reschedule');
+                        } else {
+                            this.timelineContainer.removeClass('timeline-edit-mode');
+                            new Notice('Edit mode disabled');
+                        }
+                    });
+                return b;
+            })
             .addButton(b => b.setButtonText(t('copyRange') || 'Copy range').onClick(() => this.copyVisibleRange()));
 
-        // (Search/filter removed per request)
+        // Filter panel
+        const filterPanelContainer = contentEl.createDiv('storyteller-filter-panel-container');
+        const filterToggleBtn = new ButtonComponent(filterPanelContainer)
+            .setButtonText('Filters')
+            .setIcon('filter')
+            .onClick(() => {
+                this.filterPanelVisible = !this.filterPanelVisible;
+                filterPanel.style.display = this.filterPanelVisible ? 'block' : 'none';
+            });
+        
+        const filterPanel = filterPanelContainer.createDiv('storyteller-filter-panel');
+        filterPanel.style.display = this.filterPanelVisible ? 'block' : 'none';
+        
+        // Milestones only toggle
+        new Setting(filterPanel)
+            .setName('Milestones Only')
+            .setDesc('Show only milestone events')
+            .addToggle(toggle => toggle
+                .setValue(this.filters.milestonesOnly)
+                .onChange(value => {
+                    this.filters.milestonesOnly = value;
+                    this.renderTimeline();
+                }));
+        
+        // Character filter
+        new Setting(filterPanel)
+            .setName('Filter by Character')
+            .addDropdown(dropdown => {
+                dropdown.addOption('', 'Select character...');
+                const allCharacters = new Set<string>();
+                this.events.forEach(e => {
+                    if (e.characters) e.characters.forEach(c => allCharacters.add(c));
+                });
+                Array.from(allCharacters).sort().forEach(char => {
+                    dropdown.addOption(char, char);
+                });
+                dropdown.setValue('');
+                dropdown.onChange(value => {
+                    if (value && !this.filters.characters.has(value)) {
+                        this.filters.characters.add(value);
+                        this.renderFilterChips(filterChips);
+                        this.renderTimeline();
+                    }
+                    dropdown.setValue('');
+                });
+            });
+        
+        // Location filter
+        new Setting(filterPanel)
+            .setName('Filter by Location')
+            .addDropdown(dropdown => {
+                dropdown.addOption('', 'Select location...');
+                const allLocations = new Set<string>();
+                this.events.forEach(e => {
+                    if (e.location) allLocations.add(e.location);
+                });
+                Array.from(allLocations).sort().forEach(loc => {
+                    dropdown.addOption(loc, loc);
+                });
+                dropdown.setValue('');
+                dropdown.onChange(value => {
+                    if (value && !this.filters.locations.has(value)) {
+                        this.filters.locations.add(value);
+                        this.renderFilterChips(filterChips);
+                        this.renderTimeline();
+                    }
+                    dropdown.setValue('');
+                });
+            });
+        
+        // Group filter
+        new Setting(filterPanel)
+            .setName('Filter by Group')
+            .addDropdown(dropdown => {
+                dropdown.addOption('', 'Select group...');
+                const groups = this.plugin.getGroups();
+                groups.forEach(g => {
+                    dropdown.addOption(g.id, g.name);
+                });
+                dropdown.setValue('');
+                dropdown.onChange(value => {
+                    if (value && !this.filters.groups.has(value)) {
+                        this.filters.groups.add(value);
+                        this.renderFilterChips(filterChips);
+                        this.renderTimeline();
+                    }
+                    dropdown.setValue('');
+                });
+            });
+        
+        // Clear all filters button
+        new Setting(filterPanel)
+            .addButton(button => button
+                .setButtonText('Clear All Filters')
+                .onClick(() => {
+                    this.filters.characters.clear();
+                    this.filters.locations.clear();
+                    this.filters.groups.clear();
+                    this.filters.milestonesOnly = false;
+                    this.renderFilterChips(filterChips);
+                    this.renderTimeline();
+                }));
+        
+        // Active filter chips
+        const filterChips = contentEl.createDiv('storyteller-filter-chips');
+        this.renderFilterChips(filterChips);
 
         // Timeline container
         this.timelineContainer = contentEl.createDiv();
@@ -156,7 +304,7 @@ export class TimelineModal extends Modal {
         const itemMargin = 4 + Math.round(this.density / 6); // 4..20 approx
         const dayMs = 24 * 60 * 60 * 1000;
         const yearMs = 365.25 * dayMs;
-        const options = {
+        const options: any = {
             stack: this.stackEnabled,
             stackSubgroups: true,
             margin: { item: itemMargin, axis: 20 },
@@ -166,7 +314,22 @@ export class TimelineModal extends Modal {
             zoomMax: 1000 * yearMs,      // up to ~1000 years
             multiselect: true,
             orientation: 'bottom' as const,
+            // Progress bar template - renders as overlay on timeline items
+            visibleFrameTemplate: function(item: any) {
+                if (!item.progress || item.progress === 0) return '';
+                return `<div class="timeline-progress" style="width:${item.progress}%"></div>`;
+            }
         };
+        
+        // Enable drag-and-drop editing when in edit mode
+        if (this.editModeEnabled) {
+            options.editable = {
+                updateTime: true,
+                updateGroup: true,
+                remove: false,
+                add: false
+            };
+        }
 
         this.timeline = groups ? new Timeline(this.timelineContainer, items, groups, options)
                                : new Timeline(this.timelineContainer, items, options);
@@ -179,6 +342,41 @@ export class TimelineModal extends Modal {
                 }
             } catch {}
         }
+
+        // Handle drag-and-drop changes when in edit mode
+        this.timeline.on('changed', async (props: any) => {
+            if (!this.editModeEnabled) return;
+            if (!props || !props.items || props.items.length === 0) return;
+            
+            // Get the updated item from the timeline
+            const updatedItemId = props.items[0];
+            const updatedItem = items.get(updatedItemId);
+            if (!updatedItem) return;
+            
+            // Get the corresponding event
+            const event = this.events[updatedItemId];
+            if (!event) return;
+            
+            // Update the event's dateTime based on the new start/end
+            const startDate = new Date(updatedItem.start);
+            const endDate = updatedItem.end ? new Date(updatedItem.end) : null;
+            
+            // Format as ISO string for consistency
+            if (endDate) {
+                event.dateTime = `${startDate.toISOString()} to ${endDate.toISOString()}`;
+            } else {
+                event.dateTime = startDate.toISOString();
+            }
+            
+            // Save the updated event
+            try {
+                await this.plugin.saveEvent(event);
+                new Notice(`Event "${event.name}" rescheduled`);
+            } catch (error) {
+                console.error('Error saving event after drag:', error);
+                new Notice('Error saving event changes');
+            }
+        });
 
         this.timeline.on('doubleClick', (props: any) => {
             if (props.item != null) {
@@ -225,6 +423,30 @@ export class TimelineModal extends Modal {
                 }
             });
         });
+        
+        // Render dependency arrows if in Gantt mode using timeline-arrows library
+        if (this.viewMode === 'gantt') {
+            // Clear existing arrows
+            if (this.dependencyArrows) {
+                try {
+                    this.dependencyArrows.removeArrows();
+                } catch {}
+            }
+            
+            // Build arrow specifications
+            const arrowSpecs = this.buildDependencyArrows();
+            
+            // Create arrows with timeline-arrows library
+            if (arrowSpecs.length > 0) {
+                const arrowOptions = {
+                    followRelationships: true,
+                    color: '#666',
+                    strokeWidth: 2,
+                    hideWhenItemsNotVisible: true
+                };
+                this.dependencyArrows = new Arrow(this.timeline, arrowSpecs, arrowOptions);
+            }
+        }
     }
 
     private buildDatasets(referenceDate: Date): { items: any; groups?: any; legend: Array<{ key: string; label: string; color: string }>; } {
@@ -264,6 +486,27 @@ export class TimelineModal extends Modal {
                     groupsDS.add({ id, content: loc || 'Unspecified' });
                     legend.push({ key: id, label: loc || 'Unspecified', color });
                 });
+            } else if (this.groupMode === 'character') {
+                // Collect unique characters from events
+                const uniqueCharacters = new Set<string>();
+                this.events.forEach(e => {
+                    if (e.characters && e.characters.length > 0) {
+                        e.characters.forEach(c => uniqueCharacters.add(c));
+                    }
+                });
+                Array.from(uniqueCharacters).forEach((char, i) => {
+                    const color = this.palette[i % this.palette.length];
+                    keyToColor.set(char, color);
+                    keyToLabel.set(char, char);
+                    groupsDS.add({ id: char, content: char });
+                    legend.push({ key: char, label: char, color });
+                });
+                // Fallback for events without characters
+                const noneColor = '#64748B';
+                keyToColor.set('__unassigned__', noneColor);
+                keyToLabel.set('__unassigned__', 'No character');
+                groupsDS.add({ id: '__unassigned__', content: 'No character' });
+                legend.push({ key: '__unassigned__', label: 'No character', color: noneColor });
             }
         }
 
@@ -279,6 +522,25 @@ export class TimelineModal extends Modal {
                 return;
             }
 
+            // Apply filters
+            if (this.filters.milestonesOnly && !evt.isMilestone) {
+                return; // Skip non-milestones when filter is active
+            }
+            
+            if (this.filters.characters.size > 0) {
+                const hasMatchingChar = evt.characters?.some(c => this.filters.characters.has(c));
+                if (!hasMatchingChar) return;
+            }
+            
+            if (this.filters.locations.size > 0) {
+                if (!evt.location || !this.filters.locations.has(evt.location)) return;
+            }
+            
+            if (this.filters.groups.size > 0) {
+                const hasMatchingGroup = evt.groups?.some(g => this.filters.groups.has(g));
+                if (!hasMatchingGroup) return;
+            }
+
             // Determine grouping key and color
             let groupId: string | undefined;
             let color: string | undefined;
@@ -288,21 +550,53 @@ export class TimelineModal extends Modal {
             } else if (this.groupMode === 'location') {
                 groupId = evt.location || 'Unspecified';
                 color = keyToColor.get(groupId);
+            } else if (this.groupMode === 'character') {
+                groupId = (evt.characters && evt.characters.length > 0) ? evt.characters[0] : '__unassigned__';
+                color = keyToColor.get(groupId);
             }
 
             const approx = !!parsed.approximate;
-            const style = color ? `background-color:${this.hexWithAlpha(color, 0.18)};border-color:${color};` : '';
+            const isMilestone = !!evt.isMilestone;
+            
+            // Gantt mode: ensure all events have duration (convert points to ranges)
+            let displayEndMs = endMs;
+            if (this.viewMode === 'gantt' && displayEndMs == null) {
+                // Add default duration for events without end date
+                const durationMs = this.defaultGanttDuration * 24 * 60 * 60 * 1000;
+                displayEndMs = startMs + durationMs;
+            }
+            
+            // Build CSS classes
+            const classes: string[] = [];
+            if (approx) classes.push('is-approx');
+            if (isMilestone) classes.push('timeline-milestone');
+            if (this.viewMode === 'gantt') classes.push('gantt-bar');
+            
+            // Build style with milestone overrides
+            let style = color ? `background-color:${this.hexWithAlpha(color, 0.18)};border-color:${color};` : '';
+            
+            // Milestone icon prefix
+            const content = isMilestone ? '⭐ ' + evt.name : evt.name;
+
+            // Determine item type based on view mode
+            let itemType: string;
+            if (this.viewMode === 'gantt') {
+                itemType = 'range'; // Always use range bars in Gantt mode
+            } else {
+                itemType = displayEndMs != null ? 'range' : 'box'; // Timeline mode: use original logic
+            }
 
             items.add({
                 id: idx,
-                content: evt.name,
+                content: content, // Clean text only - progress bar handled by visibleFrameTemplate
                 start: new Date(startMs),
-                end: endMs != null ? new Date(endMs) : undefined,
+                end: displayEndMs != null ? new Date(displayEndMs) : undefined,
                 title: this.makeTooltip(evt, parsed),
-                type: endMs != null ? 'range' : 'box',
-                className: approx ? 'is-approx' : undefined,
+                type: itemType,
+                className: classes.length > 0 ? classes.join(' ') : undefined,
                 group: groupId,
                 style,
+                progress: evt.progress // Pass as data property for visibleFrameTemplate
             });
         });
 
@@ -348,7 +642,95 @@ export class TimelineModal extends Modal {
         return `rgba(${r}, ${g}, ${b}, ${alpha})`;
     }
 
+    private renderFilterChips(container: HTMLElement) {
+        container.empty();
+        const hasActiveFilters = this.filters.characters.size > 0 || 
+                                 this.filters.locations.size > 0 || 
+                                 this.filters.groups.size > 0 || 
+                                 this.filters.milestonesOnly;
+        
+        if (!hasActiveFilters) return;
+        
+        // Character chips
+        this.filters.characters.forEach(char => {
+            const chip = container.createDiv('filter-chip');
+            chip.createSpan({ text: `Character: ${char}` });
+            const removeBtn = chip.createSpan({ text: '×', cls: 'filter-chip-remove' });
+            removeBtn.onclick = () => {
+                this.filters.characters.delete(char);
+                this.renderFilterChips(container);
+                this.renderTimeline();
+            };
+        });
+        
+        // Location chips
+        this.filters.locations.forEach(loc => {
+            const chip = container.createDiv('filter-chip');
+            chip.createSpan({ text: `Location: ${loc}` });
+            const removeBtn = chip.createSpan({ text: '×', cls: 'filter-chip-remove' });
+            removeBtn.onclick = () => {
+                this.filters.locations.delete(loc);
+                this.renderFilterChips(container);
+                this.renderTimeline();
+            };
+        });
+        
+        // Group chips
+        this.filters.groups.forEach(groupId => {
+            const group = this.plugin.getGroups().find(g => g.id === groupId);
+            const groupName = group ? group.name : groupId;
+            const chip = container.createDiv('filter-chip');
+            chip.createSpan({ text: `Group: ${groupName}` });
+            const removeBtn = chip.createSpan({ text: '×', cls: 'filter-chip-remove' });
+            removeBtn.onclick = () => {
+                this.filters.groups.delete(groupId);
+                this.renderFilterChips(container);
+                this.renderTimeline();
+            };
+        });
+        
+        // Milestones chip
+        if (this.filters.milestonesOnly) {
+            const chip = container.createDiv('filter-chip');
+            chip.createSpan({ text: 'Milestones Only' });
+            const removeBtn = chip.createSpan({ text: '×', cls: 'filter-chip-remove' });
+            removeBtn.onclick = () => {
+                this.filters.milestonesOnly = false;
+                this.renderFilterChips(container);
+                this.renderTimeline();
+            };
+        }
+    }
+
+    private buildDependencyArrows(): Array<{id: string, id_item_1: number, id_item_2: number, title?: string}> {
+        const arrows: Array<{id: string, id_item_1: number, id_item_2: number, title?: string}> = [];
+        let arrowId = 0;
+        
+        this.events.forEach((evt, targetIdx) => {
+            if (!evt.dependencies || evt.dependencies.length === 0) return;
+            
+            evt.dependencies.forEach(depName => {
+                const sourceIdx = this.events.findIndex(e => e.name === depName);
+                if (sourceIdx === -1) return;
+                
+                arrows.push({
+                    id: `arrow_${arrowId++}`,
+                    id_item_1: sourceIdx,
+                    id_item_2: targetIdx,
+                    title: `${depName} → ${evt.name}`
+                });
+            });
+        });
+        
+        return arrows;
+    }
+
     onClose() {
         this.contentEl.empty();
+        if (this.dependencyArrows) {
+            try {
+                this.dependencyArrows.removeArrows();
+            } catch {}
+        }
     }
 }

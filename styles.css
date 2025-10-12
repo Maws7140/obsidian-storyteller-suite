@@ -1670,3 +1670,464 @@ body.mod-rtl .storyteller-group-members {
   font-size: 0.8em;
   line-height: 1.3;
 }
+
+/* Network Graph Styles */
+.storyteller-network-controls {
+  margin-bottom: 1rem;
+  padding: 1rem;
+  background-color: var(--background-secondary);
+  border-radius: 8px;
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  align-items: center;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.storyteller-network-filters {
+  margin-bottom: 1rem;
+  padding: 1rem;
+  background-color: var(--background-secondary);
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.storyteller-entity-type-filters {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-top: 0.5rem;
+}
+
+.storyteller-network-canvas {
+  width: 100%;
+  background-color: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  position: relative;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.storyteller-network-graph-container {
+  margin-bottom: 1rem;
+}
+
+.storyteller-network-legend {
+  padding: 1rem;
+  background-color: var(--background-secondary);
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.storyteller-network-legend h3 {
+  margin-top: 0;
+  margin-bottom: 1rem;
+  font-size: 1.2rem;
+  color: var(--text-normal);
+  font-weight: 600;
+}
+
+.storyteller-network-legend h4 {
+  margin-top: 1rem;
+  margin-bottom: 0.75rem;
+  font-size: 1rem;
+  color: var(--text-normal);
+  font-weight: 600;
+}
+
+.storyteller-legend-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 0.5rem;
+}
+
+.storyteller-entity-legend {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 0.75rem;
+}
+
+.storyteller-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0;
+  font-size: 13px;
+}
+
+/* Network graph tooltip */
+.storyteller-network-tooltip {
+  position: absolute;
+  display: none;
+  background-color: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  padding: 8px 12px;
+  pointer-events: none;
+  z-index: 1000;
+  max-width: 250px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+/* Relationship Editor Modal */
+.storyteller-relationship-editor-modal .modal-content {
+  padding: 1rem;
+}
+
+.storyteller-relationship-editor-modal .setting-item {
+  border: none;
+  padding: 0.75rem 0;
+}
+
+/* Empty state for network graph */
+.storyteller-network-empty-state {
+  padding: 3rem 2rem;
+  text-align: center;
+  color: var(--text-muted);
+  background-color: var(--background-primary);
+  border-radius: 8px;
+  border: 2px dashed var(--background-modifier-border);
+  min-height: 400px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Loading state */
+.storyteller-network-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 400px;
+  color: var(--text-muted);
+  font-size: 16px;
+  padding: 2rem;
+}
+
+.storyteller-network-loading::after {
+  content: '';
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  margin-left: 10px;
+  border: 2px solid var(--text-faint);
+  border-radius: 50%;
+  border-top-color: var(--interactive-accent);
+  animation: spin 1s linear infinite;
+}
+
+/* Cytoscape canvas styling */
+.storyteller-network-canvas canvas {
+  border-radius: 8px;
+}
+
+/* Filter buttons and controls */
+.storyteller-network-filters input[type="checkbox"] {
+  cursor: pointer;
+  margin: 0;
+}
+
+.storyteller-network-filters label {
+  cursor: pointer;
+  user-select: none;
+}
+
+.storyteller-network-filters input[type="date"] {
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  border: 1px solid var(--background-modifier-border);
+  background-color: var(--background-primary);
+  color: var(--text-normal);
+  font-size: var(--font-ui-small);
+}
+
+.storyteller-network-filters input[type="date"]:focus {
+  border-color: var(--interactive-accent);
+  outline: none;
+}
+
+/* Mobile responsive adjustments */
+@media (max-width: 768px) {
+  .storyteller-network-controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .storyteller-network-controls > div {
+    width: 100%;
+  }
+
+  .storyteller-network-canvas {
+    min-height: 400px !important;
+    height: 50vh !important;
+  }
+
+  .storyteller-legend-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .storyteller-entity-legend {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+/* Network Graph View - Full screen panel */
+.storyteller-network-graph-view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.storyteller-network-graph-view .storyteller-network-graph-header {
+  flex-shrink: 0;
+}
+
+.storyteller-network-graph-view .storyteller-network-controls {
+  flex-shrink: 0;
+}
+
+.storyteller-network-graph-view .storyteller-network-graph-container {
+  flex: 1;
+  overflow: hidden;
+}
+
+/* Network Graph Modal - Popup overlay */
+.storyteller-network-graph-modal {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.storyteller-network-graph-modal .modal-header {
+  flex-shrink: 0;
+}
+
+.storyteller-network-graph-modal .storyteller-network-controls {
+  flex-shrink: 0;
+}
+
+.storyteller-network-graph-modal .storyteller-network-graph-container {
+  flex: 1;
+  overflow: hidden;
+}
+
+  .storyteller-entity-type-filters {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .storyteller-network-tooltip {
+    max-width: 200px;
+    font-size: 11px;
+  }
+}
+
+/* --- Timeline Gantt Enhancements --- */
+
+/* Milestone styling */
+.storyteller-timeline-modal .vis-item.timeline-milestone {
+  background: linear-gradient(135deg, #FFD700 0%, #FFA500 100%) !important;
+  border: 3px solid #FF8C00 !important;
+  font-weight: bold;
+  box-shadow: 0 4px 12px rgba(255, 215, 0, 0.4);
+  padding: 4px 10px !important;
+}
+
+.storyteller-timeline-modal .vis-item.timeline-milestone:hover {
+  box-shadow: 0 6px 16px rgba(255, 215, 0, 0.6);
+}
+
+/* Edit mode indicator */
+.timeline-edit-mode {
+  border: 2px solid var(--interactive-accent);
+  box-shadow: 0 0 12px var(--interactive-accent-hover);
+  border-radius: 8px;
+}
+
+/* Progress bar styling - rendered by visibleFrameTemplate */
+.timeline-progress {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 4px;
+  background: linear-gradient(90deg, #22C55E 0%, #10B981 100%);
+  border-radius: 0 0 4px 4px;
+  transition: width 200ms ease;
+  z-index: 2;
+  pointer-events: none;
+}
+
+/* Filter panel */
+.storyteller-filter-panel-container {
+  margin-bottom: 12px;
+}
+
+.storyteller-filter-panel {
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  padding: 12px;
+  margin-top: 8px;
+}
+
+.storyteller-filter-panel .setting-item {
+  margin: 8px 0;
+  padding: 8px 0;
+  border: none;
+}
+
+/* Filter chips */
+.storyteller-filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+  min-height: 24px;
+}
+
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  border-radius: 12px;
+  font-size: var(--font-ui-smaller);
+  font-weight: 500;
+}
+
+.filter-chip-remove {
+  cursor: pointer;
+  font-size: 16px;
+  font-weight: bold;
+  line-height: 1;
+  padding: 0 4px;
+  border-radius: 50%;
+  transition: background 150ms ease;
+}
+
+.filter-chip-remove:hover {
+  background: rgba(0, 0, 0, 0.2);
+}
+
+/* Status-based coloring (future enhancement) */
+.vis-item.status-upcoming {
+  border-color: #2563EB !important;
+}
+
+.vis-item.status-completed {
+  border-color: #059669 !important;
+  opacity: 0.7;
+}
+
+.vis-item.status-ongoing {
+  border-color: #CA8A04 !important;
+}
+
+.vis-item.status-cancelled {
+  border-color: #64748B !important;
+  opacity: 0.5;
+  text-decoration: line-through;
+}
+
+/* Gantt Chart View Specific Styles */
+.storyteller-timeline-modal .vis-item.gantt-bar {
+  min-height: 30px;
+  border-radius: 4px;
+  border-width: 2px;
+  padding: 6px 12px !important;
+}
+
+.storyteller-timeline-modal .vis-item.gantt-bar.vis-range {
+  border-left-width: 4px;
+  border-right-width: 4px;
+}
+
+/* Gantt mode: make bars more prominent */
+.storyteller-timeline-modal .vis-item.gantt-bar {
+  font-size: var(--font-ui-medium);
+  font-weight: 500;
+  padding: 8px 12px !important;
+}
+
+/* Ensure item content is always visible in Gantt mode */
+.storyteller-timeline-modal .vis-item.gantt-bar .vis-item-overflow {
+  overflow: visible;
+}
+
+.storyteller-timeline-modal .vis-item.gantt-bar .vis-item-content {
+  white-space: nowrap;
+  overflow: visible;
+}
+
+/* Minimum width for Gantt bars so labels fit */
+.storyteller-timeline-modal .vis-item.gantt-bar.vis-range {
+  min-width: 100px;
+}
+
+/* Gantt mode: alternating swimlane backgrounds */
+.storyteller-timeline-modal .vis-group:nth-child(even) {
+  background: var(--background-secondary-alt);
+}
+
+/* Gantt mode: more visible grid lines */
+.storyteller-timeline-modal .vis-time-axis .vis-grid.vis-vertical {
+  border-color: var(--background-modifier-border-hover);
+}
+
+/* Dependency arrows */
+.dependency-arrow-overlay {
+  position: absolute;
+  pointer-events: none;
+}
+
+.dependency-arrow {
+  stroke: #666;
+  stroke-width: 2;
+  fill: none;
+  opacity: 0.7;
+  transition: opacity 200ms ease;
+}
+
+.dependency-arrow:hover {
+  opacity: 1;
+  stroke: var(--interactive-accent);
+}
+
+/* Gantt milestone bars have thicker borders */
+.storyteller-timeline-modal .vis-item.gantt-bar.timeline-milestone {
+  border-width: 4px;
+  min-height: 36px;
+}
+
+/* Responsive timeline for mobile */
+@media (max-width: 768px) {
+  .storyteller-timeline-toolbar .setting-item-control {
+    flex-wrap: wrap;
+  }
+  
+  .storyteller-timeline-toolbar select,
+  .storyteller-timeline-toolbar input[type="range"] {
+    width: 100%;
+    max-width: none;
+  }
+  
+  .storyteller-filter-panel {
+    padding: 8px;
+  }
+  
+  .timeline-edit-mode {
+    border-width: 1px;
+  }
+  
+  /* Gantt bars smaller on mobile */
+  .storyteller-timeline-modal .vis-item.gantt-bar {
+    min-height: 24px;
+    padding: 4px 8px !important;
+    font-size: var(--font-ui-small);
+  }
+}

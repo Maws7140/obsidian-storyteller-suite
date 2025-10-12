@@ -70,6 +70,9 @@ export class DashboardView extends ItemView {
     /** Timer for clearing search input dismissal flag */
     private dismissalTimer: number | null = null;
 
+    /** Network graph renderer instance for persistence across refreshes */
+    private networkGraphRenderer: any = null;
+
     /**
      * Helper method to mark search input dismissal intent
      * Sets a temporary attribute to indicate user requested keyboard dismissal
@@ -136,7 +139,8 @@ export class DashboardView extends ItemView {
             { id: 'characters', label: t('characters'), renderFn: this.renderCharactersContent.bind(this) },
             { id: 'locations', label: t('locations'), renderFn: this.renderLocationsContent.bind(this) },
             { id: 'events', label: t('timeline'), renderFn: this.renderEventsContent.bind(this) },
-            { id: 'items', label: t('items'), renderFn: this.renderItemsContent.bind(this) }, // NEW TAB
+            { id: 'items', label: t('items'), renderFn: this.renderItemsContent.bind(this) },
+            { id: 'network', label: t('networkGraph'), renderFn: this.renderNetworkContent.bind(this) },
             { id: 'gallery', label: t('gallery'), renderFn: this.renderGalleryContent.bind(this) },
             { id: 'groups', label: t('groups'), renderFn: this.renderGroupsContent.bind(this) },
             { id: 'references', label: t('references'), renderFn: this.renderReferencesContent.bind(this) },
@@ -898,6 +902,444 @@ export class DashboardView extends ItemView {
             });
             this.addOpenFileButton(actionsEl, item.filePath);
         });
+    }
+
+    /**
+     * Render the Network Graph tab content
+     * Shows interactive graph visualization of entity relationships
+     * @param container The container element to render content into
+     */
+    async renderNetworkContent(container: HTMLElement) {
+        // Import NetworkGraphRenderer dynamically
+        const { NetworkGraphRenderer } = await import('./NetworkGraphRenderer');
+        
+        // If graph already exists and is initialized, just refresh the data
+        if (this.networkGraphRenderer && this.networkGraphRenderer.cy) {
+            try {
+                await this.networkGraphRenderer.refresh();
+                return;
+            } catch (error) {
+                console.error('Error refreshing network graph, recreating:', error);
+                // If refresh fails, destroy and recreate
+                this.networkGraphRenderer.destroy();
+                this.networkGraphRenderer = null;
+            }
+        }
+        
+        // Clear container only when creating new graph
+        container.empty();
+        
+        // Create controls container (search, zoom, layout)
+        const controlsContainer = container.createDiv('storyteller-network-controls');
+        controlsContainer.style.marginBottom = '1rem';
+        controlsContainer.style.padding = '1rem';
+        controlsContainer.style.backgroundColor = 'var(--background-secondary)';
+        controlsContainer.style.borderRadius = '8px';
+        controlsContainer.style.display = 'flex';
+        controlsContainer.style.gap = '1rem';
+        controlsContainer.style.flexWrap = 'wrap';
+        controlsContainer.style.alignItems = 'center';
+
+        // Use class property for graph renderer persistence
+        let graphRenderer = this.networkGraphRenderer;
+
+        // Search box
+        const searchContainer = controlsContainer.createDiv();
+        searchContainer.style.flex = '1 1 300px';
+        searchContainer.style.minWidth = '200px';
+        
+        const searchInput = searchContainer.createEl('input', { 
+            type: 'text',
+            placeholder: t('searchEntities')
+        });
+        searchInput.style.width = '100%';
+        searchInput.style.padding = '6px 12px';
+        searchInput.style.border = '1px solid var(--background-modifier-border)';
+        searchInput.style.borderRadius = '4px';
+        searchInput.style.backgroundColor = 'var(--background-primary)';
+        searchInput.style.color = 'var(--text-normal)';
+        
+        searchInput.addEventListener('input', () => {
+            if (graphRenderer) {
+                if (searchInput.value) {
+                    graphRenderer.searchAndHighlight(searchInput.value);
+                } else {
+                    graphRenderer.clearSearch();
+                }
+            }
+        });
+
+        // Zoom controls
+        const zoomContainer = controlsContainer.createDiv();
+        zoomContainer.style.display = 'flex';
+        zoomContainer.style.gap = '0.5rem';
+        
+        const createControlButton = (text: string, title: string, onClick: () => void) => {
+            const btn = zoomContainer.createEl('button', { text });
+            btn.title = title;
+            btn.style.padding = '6px 12px';
+            btn.style.border = '1px solid var(--background-modifier-border)';
+            btn.style.borderRadius = '4px';
+            btn.style.backgroundColor = 'var(--background-primary)';
+            btn.style.color = 'var(--text-normal)';
+            btn.style.cursor = 'pointer';
+            btn.style.fontSize = '14px';
+            btn.style.fontWeight = '600';
+            btn.addEventListener('click', onClick);
+            btn.addEventListener('mouseenter', () => {
+                btn.style.backgroundColor = 'var(--background-modifier-hover)';
+            });
+            btn.addEventListener('mouseleave', () => {
+                btn.style.backgroundColor = 'var(--background-primary)';
+            });
+            return btn;
+        };
+
+        createControlButton('+', t('zoomIn'), () => graphRenderer?.zoomIn());
+        createControlButton('−', t('zoomOut'), () => graphRenderer?.zoomOut());
+        createControlButton('⊡', t('fitToView'), () => graphRenderer?.fitToView());
+
+        // Layout selector
+        const layoutContainer = controlsContainer.createDiv();
+        layoutContainer.style.display = 'flex';
+        layoutContainer.style.alignItems = 'center';
+        layoutContainer.style.gap = '0.5rem';
+        
+        const layoutLabel = layoutContainer.createSpan({ text: t('layout') + ':' });
+        layoutLabel.style.fontSize = '13px';
+        layoutLabel.style.color = 'var(--text-muted)';
+        
+        const layoutSelect = layoutContainer.createEl('select');
+        layoutSelect.style.padding = '6px 12px';
+        layoutSelect.style.border = '1px solid var(--background-modifier-border)';
+        layoutSelect.style.borderRadius = '4px';
+        layoutSelect.style.backgroundColor = 'var(--background-primary)';
+        layoutSelect.style.color = 'var(--text-normal)';
+        layoutSelect.style.cursor = 'pointer';
+        
+        const layouts = [
+            { value: 'cose', label: t('forceDirected') },
+            { value: 'circle', label: t('circle') },
+            { value: 'grid', label: t('grid') },
+            { value: 'concentric', label: t('concentric') }
+        ];
+        
+        layouts.forEach(layout => {
+            const option = layoutSelect.createEl('option', { 
+                text: layout.label,
+                value: layout.value
+            });
+        });
+        
+        layoutSelect.addEventListener('change', () => {
+            if (graphRenderer) {
+                graphRenderer.changeLayout(layoutSelect.value as any);
+            }
+        });
+        
+        // Expand buttons - Open in Panel and Modal
+        const expandContainer = controlsContainer.createDiv();
+        expandContainer.style.display = 'flex';
+        expandContainer.style.gap = '0.5rem';
+        expandContainer.style.marginLeft = 'auto';
+        
+        const createExpandButton = (text: string, title: string, onClick: () => void) => {
+            const btn = expandContainer.createEl('button', { text });
+            btn.title = title;
+            btn.style.padding = '6px 12px';
+            btn.style.border = '1px solid var(--background-modifier-border)';
+            btn.style.borderRadius = '4px';
+            btn.style.backgroundColor = 'var(--interactive-accent)';
+            btn.style.color = 'var(--text-on-accent)';
+            btn.style.cursor = 'pointer';
+            btn.style.fontSize = '13px';
+            btn.style.fontWeight = '500';
+            btn.addEventListener('click', onClick);
+            btn.addEventListener('mouseenter', () => {
+                btn.style.backgroundColor = 'var(--interactive-accent-hover)';
+            });
+            btn.addEventListener('mouseleave', () => {
+                btn.style.backgroundColor = 'var(--interactive-accent)';
+            });
+            return btn;
+        };
+
+        createExpandButton(t('openInPanel'), t('openInPanel'), async () => {
+            await this.openNetworkGraphInPanel();
+        });
+        
+        createExpandButton(t('openInModal'), t('openInModal'), async () => {
+            await this.openNetworkGraphInModal();
+        });
+        
+        // Create filters container
+        const filtersContainer = container.createDiv('storyteller-network-filters');
+        filtersContainer.style.marginBottom = '1rem';
+        filtersContainer.style.padding = '1rem';
+        filtersContainer.style.backgroundColor = 'var(--background-secondary)';
+        filtersContainer.style.borderRadius = '8px';
+
+        // Filter state
+        let currentFilters: any = {
+            groups: [],
+            timelineStart: undefined,
+            timelineEnd: undefined,
+            entityTypes: ['character', 'location', 'event', 'item']
+        };
+
+        // Group filter
+        const groups = this.plugin.getGroups();
+        if (groups.length > 0) {
+            new Setting(filtersContainer)
+                .setName(t('filterByGroup'))
+                .setDesc(t('selectEntityTypes'))
+                .addDropdown(dropdown => {
+                    dropdown.addOption('', t('all') || 'All');
+                    groups.forEach(g => dropdown.addOption(g.id, g.name));
+                    dropdown.onChange(async (value) => {
+                        currentFilters.groups = value ? [value] : [];
+                        if (graphRenderer) {
+                            await graphRenderer.applyFilters(currentFilters);
+                        }
+                    });
+                });
+        }
+
+        // Entity type checkboxes
+        const entityTypeSetting = new Setting(filtersContainer)
+            .setName(t('filterByEntityTypes'))
+            .setDesc(t('selectEntityTypes'));
+
+        const entityTypeContainer = entityTypeSetting.controlEl.createDiv('storyteller-entity-type-filters');
+        entityTypeContainer.style.display = 'flex';
+        entityTypeContainer.style.gap = '1rem';
+        entityTypeContainer.style.flexWrap = 'wrap';
+
+        const entityTypes = ['character', 'location', 'event', 'item'] as const;
+        entityTypes.forEach(type => {
+            const checkboxContainer = entityTypeContainer.createDiv();
+            checkboxContainer.style.display = 'flex';
+            checkboxContainer.style.alignItems = 'center';
+            checkboxContainer.style.gap = '0.5rem';
+
+            const checkbox = checkboxContainer.createEl('input', { type: 'checkbox' });
+            checkbox.checked = true;
+            checkbox.id = `entity-type-${type}`;
+            checkbox.onchange = async () => {
+                if (checkbox.checked) {
+                    if (!currentFilters.entityTypes.includes(type)) {
+                        currentFilters.entityTypes.push(type);
+                    }
+                } else {
+                    currentFilters.entityTypes = currentFilters.entityTypes.filter((t: string) => t !== type);
+                }
+                if (graphRenderer) {
+                    await graphRenderer.applyFilters(currentFilters);
+                }
+            };
+
+            const label = checkboxContainer.createEl('label', { text: t((type + 's') as any) });
+            label.htmlFor = `entity-type-${type}`;
+            label.style.cursor = 'pointer';
+        });
+
+        // Timeline filters
+        const timelineFilterSetting = new Setting(filtersContainer)
+            .setName(t('filterByTimeline'))
+            .setDesc(t('timelineStart') + ' / ' + t('timelineEnd'));
+
+        const timelineContainer = timelineFilterSetting.controlEl.createDiv();
+        timelineContainer.style.display = 'flex';
+        timelineContainer.style.gap = '0.5rem';
+        timelineContainer.style.alignItems = 'center';
+
+        const startInput = timelineContainer.createEl('input', { type: 'date' });
+        startInput.onchange = async () => {
+            currentFilters.timelineStart = startInput.value || undefined;
+            if (graphRenderer) {
+                await graphRenderer.applyFilters(currentFilters);
+            }
+        };
+
+        timelineContainer.createSpan({ text: '—' });
+
+        const endInput = timelineContainer.createEl('input', { type: 'date' });
+        endInput.onchange = async () => {
+            currentFilters.timelineEnd = endInput.value || undefined;
+            if (graphRenderer) {
+                await graphRenderer.applyFilters(currentFilters);
+            }
+        };
+
+        // Export and reset buttons
+        new Setting(filtersContainer)
+            .addButton(button => button
+                .setButtonText(t('resetFilters'))
+                .onClick(async () => {
+                    currentFilters = {
+                        groups: [],
+                        timelineStart: undefined,
+                        timelineEnd: undefined,
+                        entityTypes: ['character', 'location', 'event', 'item']
+                    };
+                    startInput.value = '';
+                    endInput.value = '';
+                    entityTypes.forEach(type => {
+                        const checkbox = container.querySelector(`#entity-type-${type}`) as HTMLInputElement;
+                        if (checkbox) checkbox.checked = true;
+                    });
+                    if (graphRenderer) {
+                        await graphRenderer.applyFilters(currentFilters);
+                    }
+                }))
+            .addButton(button => button
+                .setButtonText(t('exportAsPNG'))
+                .setCta()
+                .onClick(async () => {
+                    if (graphRenderer) {
+                        await graphRenderer.exportAsImage('png');
+                    }
+                }));
+
+        // Create graph container
+        const graphContainer = container.createDiv('storyteller-network-graph-container');
+        graphContainer.style.marginBottom = '1rem';
+
+        // Create comprehensive legend
+        const legendContainer = container.createDiv('storyteller-network-legend');
+        legendContainer.style.padding = '1rem';
+        legendContainer.style.backgroundColor = 'var(--background-secondary)';
+        legendContainer.style.borderRadius = '8px';
+
+        const legendTitle = legendContainer.createEl('h3', { text: t('legend') });
+        legendTitle.style.marginTop = '0';
+        legendTitle.style.marginBottom = '1rem';
+
+        // Node types section
+        const nodeTypesHeader = legendContainer.createEl('h4', { text: t('nodeTypes') });
+        nodeTypesHeader.style.marginTop = '0';
+        nodeTypesHeader.style.marginBottom = '0.75rem';
+        nodeTypesHeader.style.fontSize = '1rem';
+        nodeTypesHeader.style.fontWeight = '600';
+
+        const entityLegend = legendContainer.createDiv('storyteller-entity-legend');
+        entityLegend.style.display = 'grid';
+        entityLegend.style.gridTemplateColumns = 'repeat(auto-fill, minmax(150px, 1fr))';
+        entityLegend.style.gap = '0.75rem';
+        entityLegend.style.marginBottom = '1.5rem';
+
+        const createLegendItem = (shape: string, color: string, label: string) => {
+            const item = entityLegend.createDiv('storyteller-legend-item');
+            item.style.display = 'flex';
+            item.style.alignItems = 'center';
+            item.style.gap = '0.5rem';
+
+            const shapeEl = item.createDiv();
+            shapeEl.style.width = '20px';
+            shapeEl.style.height = '20px';
+            shapeEl.style.backgroundColor = color;
+            shapeEl.style.border = '2px solid var(--background-modifier-border)';
+            
+            if (shape === 'circle') {
+                shapeEl.style.borderRadius = '50%';
+            } else if (shape === 'diamond') {
+                shapeEl.style.transform = 'rotate(45deg)';
+                shapeEl.style.width = '16px';
+                shapeEl.style.height = '16px';
+            } else if (shape === 'hexagon') {
+                shapeEl.style.clipPath = 'polygon(30% 0%, 70% 0%, 100% 50%, 70% 100%, 30% 100%, 0% 50%)';
+            } else {
+                shapeEl.style.borderRadius = '4px';
+            }
+
+            item.createSpan({ text: label });
+        };
+
+        createLegendItem('circle', '#8b5cf6', t('character'));
+        createLegendItem('square', '#06b6d4', t('location'));
+        createLegendItem('diamond', '#f59e0b', t('event'));
+        createLegendItem('hexagon', '#10b981', t('item'));
+
+        // Relationship types section
+        const relationshipsHeader = legendContainer.createEl('h4', { text: t('relationshipTypes') });
+        relationshipsHeader.style.marginTop = '1rem';
+        relationshipsHeader.style.marginBottom = '0.75rem';
+        relationshipsHeader.style.fontSize = '1rem';
+        relationshipsHeader.style.fontWeight = '600';
+
+        const legendGrid = legendContainer.createDiv('storyteller-legend-grid');
+        legendGrid.style.display = 'grid';
+        legendGrid.style.gridTemplateColumns = 'repeat(auto-fill, minmax(180px, 1fr))';
+        legendGrid.style.gap = '0.5rem';
+        legendGrid.style.marginBottom = '1.5rem';
+
+        // Relationship type legend
+        const relationshipTypes = [
+            { type: 'ally', color: '#4ade80' },
+            { type: 'enemy', color: '#ef4444' },
+            { type: 'family', color: '#3b82f6' },
+            { type: 'rival', color: '#f97316' },
+            { type: 'romantic', color: '#ec4899' },
+            { type: 'mentor', color: '#a855f7' },
+            { type: 'acquaintance', color: '#94a3b8' },
+            { type: 'neutral', color: '#64748b' }
+        ];
+
+        relationshipTypes.forEach(({ type, color }) => {
+            const item = legendGrid.createDiv('storyteller-legend-item');
+            item.style.display = 'flex';
+            item.style.alignItems = 'center';
+            item.style.gap = '0.5rem';
+
+            const colorBox = item.createDiv();
+            colorBox.style.width = '24px';
+            colorBox.style.height = '3px';
+            colorBox.style.backgroundColor = color;
+            colorBox.style.borderRadius = '2px';
+
+            item.createSpan({ text: t(type as any) || type.charAt(0).toUpperCase() + type.slice(1) });
+        });
+
+        // Interaction hints section
+        const hintsHeader = legendContainer.createEl('h4', { text: t('interactions') });
+        hintsHeader.style.marginTop = '1rem';
+        hintsHeader.style.marginBottom = '0.75rem';
+        hintsHeader.style.fontSize = '1rem';
+        hintsHeader.style.fontWeight = '600';
+
+        const hintsContainer = legendContainer.createDiv();
+        hintsContainer.style.fontSize = '12px';
+        hintsContainer.style.color = 'var(--text-muted)';
+        hintsContainer.style.lineHeight = '1.6';
+
+        const hints = [
+            '• Click node to open entity file',
+            '• Hover to see entity details',
+            '• Right-click to pin/unpin nodes',
+            '• Drag nodes to reposition',
+            '• Scroll to zoom',
+            '• Drag background to pan'
+        ];
+
+        hints.forEach(hint => {
+            const hintEl = hintsContainer.createDiv();
+            hintEl.textContent = hint;
+            hintEl.style.marginBottom = '4px';
+        });
+
+        // Initialize graph renderer
+        try {
+            graphRenderer = new NetworkGraphRenderer(graphContainer, this.plugin);
+            await graphRenderer.initializeCytoscape();
+            // Store renderer instance for future refreshes
+            this.networkGraphRenderer = graphRenderer;
+        } catch (error) {
+            console.error('Error initializing network graph:', error);
+            graphContainer.createEl('p', {
+                text: 'Error loading network graph. See console for details.',
+                cls: 'storyteller-empty-state'
+            });
+        }
     }
 
     /**
@@ -1965,6 +2407,47 @@ export class DashboardView extends ItemView {
            });
     }
 
+    /**
+     * Open network graph in a dedicated panel view
+     */
+    async openNetworkGraphInPanel(): Promise<void> {
+        const { workspace } = this.app;
+        
+        // Import NetworkGraphView dynamically
+        const { NetworkGraphView, VIEW_TYPE_NETWORK_GRAPH } = await import('./NetworkGraphView');
+        
+        // Check if a network graph view already exists
+        const existingLeaves = workspace.getLeavesOfType(VIEW_TYPE_NETWORK_GRAPH);
+        
+        if (existingLeaves.length > 0) {
+            // Reveal existing view
+            workspace.revealLeaf(existingLeaves[0]);
+            return;
+        }
+        
+        // Create new leaf for network graph view
+        const leaf = workspace.getLeaf('tab');
+        if (leaf) {
+            await leaf.setViewState({
+                type: VIEW_TYPE_NETWORK_GRAPH,
+                active: true
+            });
+            workspace.revealLeaf(leaf);
+        }
+    }
+    
+    /**
+     * Open network graph in a modal overlay
+     */
+    async openNetworkGraphInModal(): Promise<void> {
+        // Import NetworkGraphModal dynamically
+        const { NetworkGraphModal } = await import('../modals/NetworkGraphModal');
+        
+        // Create and open the modal
+        const modal = new NetworkGraphModal(this.app, this.plugin);
+        modal.open();
+    }
+
     async onClose() {
         // Clean up file input if it exists
         this.fileInput?.remove();
@@ -1985,6 +2468,12 @@ export class DashboardView extends ItemView {
         // Reset typing state
         this.isUserTyping = false;
         this.currentSearchInput = null;
+        
+        // Clean up network graph renderer
+        if (this.networkGraphRenderer) {
+            this.networkGraphRenderer.destroy();
+            this.networkGraphRenderer = null;
+        }
         
         // Event listeners are automatically cleaned up by registerEvent()
     }

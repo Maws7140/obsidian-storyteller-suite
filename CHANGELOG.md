@@ -1,6 +1,32 @@
 # Changelog
 
 ## Unreleased
+- **Timeline Gantt-Style Enhancements**:
+  - Add milestone marker support (`isMilestone` field) with distinct golden styling and star icons
+  - Add event progress tracking (`progress` field, 0-100%) with visual progress bars
+  - Add event dependencies (`dependencies` field) for Gantt-style relationships
+  - Implement drag-and-drop event rescheduling with edit mode toggle
+  - Add comprehensive filtering system (by character, location, group, milestones-only)
+  - Add character-based swimlane grouping option
+  - Add interactive filter chips with easy removal
+  - Add collapsible filter panel for better UI organization
+  - Enhance EventModal with milestone toggle, progress slider, and dependency selector
+  - Add visual indicator when edit mode is active
+  - Add responsive CSS for mobile timeline viewing
+  - **NEW: Separate Gantt Chart View** with toggle button (Timeline / Gantt with icons)
+    - All events displayed as horizontal bars in Gantt mode
+    - Events without end dates get default 1-day duration in Gantt view
+    - Dependency arrows connecting related events using timeline-arrows library
+    - Enhanced bar styling with thicker borders and better spacing
+    - Alternating swimlane backgrounds for better readability
+    - Preserves original timeline view - toggle between modes
+  - **Gantt View Fixes**:
+    - Fix missing event labels on Gantt bars with CSS overflow visibility rules
+    - Add minimum width (100px) for Gantt bars to ensure labels are readable
+    - Replace custom SVG arrow implementation with timeline-arrows library for automatic updates
+    - Fix progress bars using visibleFrameTemplate instead of HTML injection
+    - Replace emoji in toggle button with proper Obsidian icons (clock/bar-chart-2)
+    - Improve bar padding and font weight for better readability
 - Centralize YAML whitelist and section parsing in `src/yaml/EntitySections.ts` and refactor parsing/builders to use it
 - Add `FolderResolver` for all entity folder paths (custom, one-story, default multi-story)
 - Replace `prompt/confirm` with `PromptModal`/`ConfirmModal` in group commands

@@ -9,6 +9,7 @@ import { PromptModal } from './ui/PromptModal';
 // Import the new suggesters
 import { CharacterSuggestModal } from './CharacterSuggestModal';
 import { LocationSuggestModal } from './LocationSuggestModal';
+import { EventSuggestModal } from './EventSuggestModal';
 // Remove placeholder import for multi-image
 // import { MultiGalleryImageSuggestModal } from './MultiGalleryImageSuggestModal';
 
@@ -34,12 +35,15 @@ export class EventModal extends Modal {
         super(app);
         this.plugin = plugin;
         this.isNew = event === null;
-        const initialEvent = event ? { ...event } : { name: '', dateTime: '', description: '', outcome: '', status: undefined, profileImagePath: undefined, characters: [], location: undefined, images: [], customFields: {}, groups: [] };
+        const initialEvent = event ? { ...event } : { name: '', dateTime: '', description: '', outcome: '', status: undefined, profileImagePath: undefined, characters: [], location: undefined, images: [], customFields: {}, groups: [], isMilestone: false, dependencies: [], progress: 0 };
         if (!initialEvent.customFields) initialEvent.customFields = {};
         // Ensure link arrays are initialized
         if (!initialEvent.characters) initialEvent.characters = [];
         if (!initialEvent.images) initialEvent.images = [];
         if (!initialEvent.groups) initialEvent.groups = [];
+        if (!initialEvent.dependencies) initialEvent.dependencies = [];
+        if (initialEvent.isMilestone === undefined) initialEvent.isMilestone = false;
+        if (initialEvent.progress === undefined) initialEvent.progress = 0;
 
         this.event = initialEvent;
         this.onSubmit = onSubmit;
@@ -98,6 +102,69 @@ export class EventModal extends Modal {
             .addText(text => text
                 .setValue(this.event.status || '')
                 .onChange(value => { this.event.status = value || undefined; }));
+
+        // --- Gantt-style Fields ---
+        new Setting(contentEl)
+            .setName('Milestone')
+            .setDesc('Mark this event as a key story moment')
+            .addToggle(toggle => toggle
+                .setValue(this.event.isMilestone || false)
+                .onChange(value => { this.event.isMilestone = value; }));
+
+        new Setting(contentEl)
+            .setName('Progress')
+            .setDesc('Completion percentage (0-100)')
+            .addSlider(slider => slider
+                .setLimits(0, 100, 5)
+                .setValue(this.event.progress || 0)
+                .setDynamicTooltip()
+                .onChange(value => { this.event.progress = value; }));
+
+        // Dependencies (event names this event depends on)
+        const dependenciesSetting = new Setting(contentEl)
+            .setName('Dependencies')
+            .setDesc('Events that must occur before this one');
+        const dependenciesListEl = dependenciesSetting.controlEl.createDiv('storyteller-modal-list');
+        const renderDependenciesList = () => {
+            dependenciesListEl.empty();
+            if (!this.event.dependencies || this.event.dependencies.length === 0) {
+                dependenciesListEl.createEl('span', { text: t('none'), cls: 'storyteller-modal-list-empty' });
+            } else {
+                this.event.dependencies.forEach((dep, index) => {
+                    const itemEl = dependenciesListEl.createDiv('storyteller-modal-list-item');
+                    itemEl.createSpan({ text: dep });
+                    new ButtonComponent(itemEl)
+                        .setClass('storyteller-modal-list-remove')
+                        .setTooltip(`Remove ${dep}`)
+                        .setIcon('cross')
+                        .onClick(() => {
+                            this.event.dependencies?.splice(index, 1);
+                            renderDependenciesList();
+                        });
+                });
+            }
+        };
+        renderDependenciesList();
+        dependenciesSetting.addButton(button => button
+            .setButtonText('Add Dependency')
+            .setTooltip('Add event dependency')
+            .setCta()
+            .onClick(() => {
+                // Use EventSuggestModal (we'll need to create this or reuse existing suggest pattern)
+                new EventSuggestModal(this.app, this.plugin, (selectedEvent) => {
+                    if (selectedEvent && selectedEvent.name) {
+                        if (!this.event.dependencies) {
+                            this.event.dependencies = [];
+                        }
+                        if (!this.event.dependencies.includes(selectedEvent.name)) {
+                            this.event.dependencies.push(selectedEvent.name);
+                            renderDependenciesList();
+                        } else {
+                            new Notice(`Dependency "${selectedEvent.name}" already added.`);
+                        }
+                    }
+                }).open();
+            }));
 
         let imagePathDesc: HTMLElement;
         new Setting(contentEl)
