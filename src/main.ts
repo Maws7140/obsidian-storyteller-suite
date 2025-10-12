@@ -1375,11 +1375,23 @@ export default class StorytellerSuitePlugin extends Plugin {
 		let existingSections: Record<string, string> = {};
 		let originalFrontmatter: Record<string, unknown> | undefined;
 		if (existingFile && existingFile instanceof TFile) {
-			const fileCache = this.app.metadataCache.getFileCache(existingFile);
-			originalFrontmatter = fileCache?.frontmatter as Record<string, unknown> | undefined;
 			try {
 				const existingContent = await this.app.vault.cachedRead(existingFile);
 				existingSections = parseSectionsFromMarkdown(existingContent);
+				
+				// Parse frontmatter directly from file content to ensure empty values are captured
+				const { parseFrontmatterFromContent } = await import('./yaml/EntitySections');
+				const directFrontmatter = parseFrontmatterFromContent(existingContent);
+				
+				// Also get frontmatter from metadata cache
+				const fileCache = this.app.metadataCache.getFileCache(existingFile);
+				const cachedFrontmatter = fileCache?.frontmatter as Record<string, unknown> | undefined;
+				
+				// Merge both sources, preferring direct parsing for better empty value handling
+				// Direct parsing captures empty values that the cache might miss
+				if (directFrontmatter || cachedFrontmatter) {
+					originalFrontmatter = { ...(cachedFrontmatter || {}), ...(directFrontmatter || {}) };
+				}
 			} catch (error) {
 				console.warn(`Error reading existing character file: ${error}`);
 			}
@@ -1519,11 +1531,22 @@ export default class StorytellerSuitePlugin extends Plugin {
 		let existingSections: Record<string, string> = {};
 		let originalFrontmatter: Record<string, unknown> | undefined;
 		if (existingFile && existingFile instanceof TFile) {
-			const fileCache = this.app.metadataCache.getFileCache(existingFile);
-			originalFrontmatter = fileCache?.frontmatter as Record<string, unknown> | undefined;
 			try {
 				const existingContent = await this.app.vault.cachedRead(existingFile);
 				existingSections = parseSectionsFromMarkdown(existingContent);
+				
+				// Parse frontmatter directly from file content to ensure empty values are captured
+				const { parseFrontmatterFromContent } = await import('./yaml/EntitySections');
+				const directFrontmatter = parseFrontmatterFromContent(existingContent);
+				
+				// Also get frontmatter from metadata cache
+				const fileCache = this.app.metadataCache.getFileCache(existingFile);
+				const cachedFrontmatter = fileCache?.frontmatter as Record<string, unknown> | undefined;
+				
+				// Merge both sources, preferring direct parsing for better empty value handling
+				if (directFrontmatter || cachedFrontmatter) {
+					originalFrontmatter = { ...(cachedFrontmatter || {}), ...(directFrontmatter || {}) };
+				}
 			} catch (error) {
 				console.warn(`Error reading existing location file: ${error}`);
 			}
@@ -1651,11 +1674,22 @@ export default class StorytellerSuitePlugin extends Plugin {
 		let existingSections: Record<string, string> = {};
 		let originalFrontmatter: Record<string, unknown> | undefined;
 		if (existingFile && existingFile instanceof TFile) {
-			const fileCache = this.app.metadataCache.getFileCache(existingFile);
-			originalFrontmatter = fileCache?.frontmatter as Record<string, unknown> | undefined;
 			try {
 				const existingContent = await this.app.vault.cachedRead(existingFile);
 				existingSections = parseSectionsFromMarkdown(existingContent);
+				
+				// Parse frontmatter directly from file content to ensure empty values are captured
+				const { parseFrontmatterFromContent } = await import('./yaml/EntitySections');
+				const directFrontmatter = parseFrontmatterFromContent(existingContent);
+				
+				// Also get frontmatter from metadata cache
+				const fileCache = this.app.metadataCache.getFileCache(existingFile);
+				const cachedFrontmatter = fileCache?.frontmatter as Record<string, unknown> | undefined;
+				
+				// Merge both sources, preferring direct parsing for better empty value handling
+				if (directFrontmatter || cachedFrontmatter) {
+					originalFrontmatter = { ...(cachedFrontmatter || {}), ...(directFrontmatter || {}) };
+				}
 			} catch (error) {
 				console.warn(`Error reading existing event file: ${error}`);
 			}
@@ -1790,11 +1824,22 @@ export default class StorytellerSuitePlugin extends Plugin {
 		let existingSections: Record<string, string> = {};
 		let originalFrontmatter: Record<string, unknown> | undefined;
 		if (existingFile && existingFile instanceof TFile) {
-			const fileCache = this.app.metadataCache.getFileCache(existingFile);
-			originalFrontmatter = fileCache?.frontmatter as Record<string, unknown> | undefined;
 			try {
 				const existingContent = await this.app.vault.cachedRead(existingFile);
 				existingSections = parseSectionsFromMarkdown(existingContent);
+				
+				// Parse frontmatter directly from file content to ensure empty values are captured
+				const { parseFrontmatterFromContent } = await import('./yaml/EntitySections');
+				const directFrontmatter = parseFrontmatterFromContent(existingContent);
+				
+				// Also get frontmatter from metadata cache
+				const fileCache = this.app.metadataCache.getFileCache(existingFile);
+				const cachedFrontmatter = fileCache?.frontmatter as Record<string, unknown> | undefined;
+				
+				// Merge both sources, preferring direct parsing for better empty value handling
+				if (directFrontmatter || cachedFrontmatter) {
+					originalFrontmatter = { ...(cachedFrontmatter || {}), ...(directFrontmatter || {}) };
+				}
 			} catch (error) {
 				console.warn(`Error reading existing item file: ${error}`);
 			}
