@@ -225,7 +225,9 @@ export class LocationModal extends ResponsiveModal {
         // --- Custom Fields ---
         contentEl.createEl('h3', { text: t('customFields') });
         const customFieldsContainer = contentEl.createDiv('storyteller-custom-fields-container');
-        // Do not list existing fields to reduce redundancy
+        // Render existing custom fields so users can see and edit them
+        if (!this.location.customFields) this.location.customFields = {};
+        this.renderCustomFields(customFieldsContainer, this.location.customFields);
 
         new Setting(contentEl)
             .addButton(button => button

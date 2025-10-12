@@ -58,6 +58,9 @@ export function getWhitelistKeys(entityType: EntityType): Set<string> {
  * - skips empty arrays and empty objects (unless they existed in original frontmatter)
  * - preserves all keys from originalFrontmatter, even if not in whitelist
  * - maintains field order from originalFrontmatter where possible
+ * 
+ * CRITICAL: This function NEVER deletes fields that existed in originalFrontmatter.
+ * Empty values are preserved if they existed in the original file.
  */
 export function buildFrontmatter(
   entityType: EntityType,
@@ -70,6 +73,9 @@ export function buildFrontmatter(
   const mode = options?.customFieldsMode ?? 'flatten';
   const srcKeys = new Set(Object.keys(source || {}));
   const originalFrontmatter = options?.originalFrontmatter;
+  
+  // Track all keys that existed in original frontmatter - these must NEVER be deleted
+  const originalKeys = originalFrontmatter ? new Set(Object.keys(originalFrontmatter)) : new Set<string>();
 
   // Handle customFields specially
   const cfRaw = (source as any)?.customFields;
@@ -81,11 +87,19 @@ export function buildFrontmatter(
         // Skip if top-level already has this key (avoid collisions)
         if (cfKey === 'customFields') continue;
         if (srcKeys.has(cfKey)) { unpromoted[cfKey] = cfVal; continue; }
-        const existedInOriginal = originalFrontmatter && cfKey in originalFrontmatter;
-        if (!existedInOriginal && (cfVal === null || cfVal === undefined)) continue;
-        if (!existedInOriginal && typeof cfVal === 'string' && cfVal.includes('\n')) { unpromoted[cfKey] = cfVal; continue; }
-        if (!existedInOriginal && Array.isArray(cfVal) && cfVal.length === 0) continue;
-        if (!existedInOriginal && typeof cfVal === 'object' && Object.keys(cfVal as any).length === 0) continue;
+        const existedInOriginal = originalKeys.has(cfKey);
+        
+        // CRITICAL: If field existed in original, always preserve it regardless of value
+        if (existedInOriginal) {
+          output[cfKey] = cfVal;
+          continue;
+        }
+        
+        // For new fields, apply filtering logic
+        if (cfVal === null || cfVal === undefined) continue;
+        if (typeof cfVal === 'string' && cfVal.includes('\n')) { unpromoted[cfKey] = cfVal; continue; }
+        if (Array.isArray(cfVal) && cfVal.length === 0) continue;
+        if (typeof cfVal === 'object' && Object.keys(cfVal as any).length === 0) continue;
         // Promote to top-level
         output[cfKey] = cfVal;
       }
@@ -107,10 +121,17 @@ export function buildFrontmatter(
     // In flatten mode, avoid writing the customFields container when we promoted its entries
     if (key === 'customFields' && mode === 'flatten') continue;
     
-    const existedInOriginal = originalFrontmatter && key in originalFrontmatter;
+    const existedInOriginal = originalKeys.has(key);
     
+    // CRITICAL: If field existed in original, always preserve it regardless of value
+    if (existedInOriginal) {
+      output[key] = value;
+      continue;
+    }
+    
+    // For new fields, apply filtering logic
     // Only filter out null/undefined if it didn't exist in original
-    if (!existedInOriginal && (value === null || value === undefined)) continue;
+    if (value === null || value === undefined) continue;
 
     if (typeof value === 'string') {
       // Exclude multi-line strings from frontmatter; they belong to sections
@@ -120,15 +141,15 @@ export function buildFrontmatter(
     }
 
     if (Array.isArray(value)) {
-      // Preserve empty arrays if they existed in original
-      if (!existedInOriginal && value.length === 0) continue;
+      // Skip empty arrays for new fields
+      if (value.length === 0) continue;
       output[key] = value;
       continue;
     }
 
     if (typeof value === 'object') {
-      // Preserve empty objects if they existed in original
-      if (!existedInOriginal && Object.keys(value as Record<string, unknown>).length === 0) continue;
+      // Skip empty objects for new fields
+      if (Object.keys(value as Record<string, unknown>).length === 0) continue;
       output[key] = value;
       continue;
     }
@@ -136,15 +157,15 @@ export function buildFrontmatter(
     output[key] = value;
   }
 
-  // Preserve all fields from originalFrontmatter that weren't already added
-  // This ensures user-added fields are never deleted
+  // Preserve ALL fields from originalFrontmatter that weren't already processed
+  // This ensures user-added fields are NEVER deleted, even if empty
   if (originalFrontmatter) {
     for (const [key, value] of Object.entries(originalFrontmatter)) {
       // Skip Obsidian internal fields
       if (key === 'position') continue;
       // If already in output, skip (new value takes precedence)
       if (key in output) continue;
-      // Preserve the original value
+      // CRITICAL: Preserve the original value, even if null/undefined/empty
       output[key] = value;
     }
   }
@@ -214,6 +235,93 @@ export function parseSectionsFromMarkdown(content: string): Record<string, strin
   if (Object.keys(sections).length > 0) return sections;
 
   return sections;
+}
+
+/**
+ * Parse frontmatter directly from file content.
+ * This is a fallback when Obsidian's metadata cache is stale or doesn't capture empty values.
+ * 
+ * @param content The full file content including frontmatter
+ * @returns Parsed frontmatter object or undefined if no frontmatter found
+ */
+export function parseFrontmatterFromContent(content: string): Record<string, unknown> | undefined {
+  if (!content || !content.startsWith('---')) return undefined;
+  
+  const frontmatterEndIndex = content.indexOf('\n---', 3);
+  if (frontmatterEndIndex === -1) return undefined;
+  
+  const frontmatterContent = content.substring(3, frontmatterEndIndex).trim();
+  if (!frontmatterContent) return {};
+  
+  try {
+    // Use simple YAML parsing - this is a best-effort approach
+    // We need to handle empty values explicitly
+    const lines = frontmatterContent.split('\n');
+    const result: Record<string, unknown> = {};
+    
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const colonIndex = line.indexOf(':');
+      if (colonIndex === -1) continue;
+      
+      const key = line.substring(0, colonIndex).trim();
+      if (!key) continue;
+      
+      let value = line.substring(colonIndex + 1).trim();
+      
+      // Handle arrays (value is empty and next line starts with -)
+      if (value === '' && i + 1 < lines.length && lines[i + 1].trim().startsWith('-')) {
+        const arrayItems: string[] = [];
+        i++;
+        while (i < lines.length && lines[i].trim().startsWith('-')) {
+          const item = lines[i].trim().substring(1).trim();
+          arrayItems.push(item);
+          i++;
+        }
+        i--; // Back up one since the for loop will increment
+        result[key] = arrayItems;
+        continue;
+      }
+      
+      // Handle empty values (null or empty string) - after array check
+      if (value === '' || value === 'null' || value === '~') {
+        result[key] = null;
+        continue;
+      }
+      
+      // Handle quoted strings
+      if ((value.startsWith('"') && value.endsWith('"')) || 
+          (value.startsWith("'") && value.endsWith("'"))) {
+        result[key] = value.substring(1, value.length - 1);
+        continue;
+      }
+      
+      // Handle booleans
+      if (value === 'true') {
+        result[key] = true;
+        continue;
+      }
+      if (value === 'false') {
+        result[key] = false;
+        continue;
+      }
+      
+      // Handle numbers
+      const numValue = Number(value);
+      if (!isNaN(numValue) && value !== '') {
+        result[key] = numValue;
+        continue;
+      }
+      
+      // Default to string
+      result[key] = value;
+    }
+    
+    return result;
+  } catch (error) {
+    console.warn('Error parsing frontmatter from content:', error);
+    return undefined;
+  }
 }
 
 /**

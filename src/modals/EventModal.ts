@@ -334,7 +334,9 @@ export class EventModal extends Modal {
         // --- Custom Fields ---
         contentEl.createEl('h3', { text: t('customFields') });
         const customFieldsContainer = contentEl.createDiv('storyteller-custom-fields-container');
-        // Do not render existing custom fields in the modal to reduce redundancy
+        // Render existing custom fields so users can see and edit them
+        if (!this.event.customFields) this.event.customFields = {};
+        this.renderCustomFields(customFieldsContainer, this.event.customFields);
 
         new Setting(contentEl)
             .addButton(button => button
