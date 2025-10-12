@@ -231,7 +231,8 @@ export class CharacterModal extends ResponsiveModal {
         this.workingCustomFields = { ...(this.character.customFields || {}) };
         contentEl.createEl('h3', { text: t('customFields') });
         const customFieldsContainer = contentEl.createDiv('storyteller-custom-fields-container');
-        // Intentionally do not render existing custom fields to avoid redundancy in the modal UI
+        // Render existing custom fields so users can see and edit them
+        this.renderCustomFields(customFieldsContainer, this.workingCustomFields);
 
         // --- Real-time group refresh ---
         this._groupRefreshInterval = window.setInterval(() => {
