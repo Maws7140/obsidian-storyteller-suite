@@ -14,6 +14,7 @@
 	"author": "",
 	"license": "MIT",
 	"devDependencies": {
+		"@types/cytoscape": "^3.21.0",
 		"@types/luxon": "^3.7.1",
 		"@types/node": "18.19.39",
 		"@typescript-eslint/eslint-plugin": "5.29.0",
@@ -21,6 +22,7 @@
 		"@vitest/coverage-v8": "1.6.0",
 		"builtin-modules": "3.3.0",
 		"chrono-node": "2.6.4",
+		"cytoscape": "^3.30.0",
 		"esbuild": "0.17.3",
 		"luxon": "3.4.4",
 		"obsidian": "^1.8.7",
@@ -30,6 +32,9 @@
 		"vitest": "1.6.0"
 	},
 	"engines": {
-    "node": ">=18.18.0 <23"
+		"node": ">=18.18.0 <23"
+	},
+	"dependencies": {
+		"timeline-arrows": "^4.8.0"
 	}
 }

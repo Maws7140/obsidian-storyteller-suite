@@ -17,6 +17,7 @@ import { TimelineModal } from './modals/TimelineModal';
 import { GalleryModal } from './modals/GalleryModal';
 import { ImageDetailModal } from './modals/ImageDetailModal';
 import { DashboardView, VIEW_TYPE_DASHBOARD } from './views/DashboardView';
+import { NetworkGraphView, VIEW_TYPE_NETWORK_GRAPH } from './views/NetworkGraphView';
 import { GalleryImageSuggestModal } from './modals/GalleryImageSuggestModal';
 import { StorytellerSuiteSettingTab } from './StorytellerSuiteSettingTab';
 import { NewStoryModal } from './modals/NewStoryModal';
@@ -70,6 +71,8 @@ import { getTemplateSections } from './utils/EntityTemplates';
     sanitizedSeedData?: boolean;
     /** How to serialize customFields into frontmatter */
     customFieldsMode?: 'flatten' | 'nested';
+    /** Internal: set after relationships migration to avoid repeating it */
+    relationshipsMigrated?: boolean;
 }
 
 /**
@@ -102,7 +105,8 @@ import { getTemplateSections } from './utils/EntityTemplates';
     showTimelineLegend: true,
     allowRemoteImages: true,
     sanitizedSeedData: false,
-    customFieldsMode: 'flatten'
+    customFieldsMode: 'flatten',
+    relationshipsMigrated: false
 }
 
 /**
@@ -373,6 +377,72 @@ export default class StorytellerSuitePlugin extends Plugin {
 	}
 
 	/**
+	 * Migrate legacy string relationships to typed TypedRelationship format
+	 * This runs once per vault on plugin upgrade
+	 */
+	async migrateRelationshipsToTyped(): Promise<void> {
+		console.log('Storyteller Suite: Starting relationships migration to typed format...');
+		
+		try {
+			const characters = await this.listCharacters();
+			let migratedCount = 0;
+
+			for (const char of characters) {
+				let needsSave = false;
+
+				// Migrate relationships field
+				if (char.relationships && Array.isArray(char.relationships) && char.relationships.length > 0) {
+					// Check if any relationships are plain strings
+					const hasStringRelationships = char.relationships.some(rel => typeof rel === 'string');
+					
+					if (hasStringRelationships) {
+						// Initialize connections if not present
+						if (!char.connections) {
+							char.connections = [];
+						}
+
+						// Convert string relationships to typed connections
+						char.relationships.forEach(rel => {
+							if (typeof rel === 'string') {
+								// Add as neutral connection if not already in connections
+								const alreadyExists = char.connections?.some(c => c.target === rel);
+								if (!alreadyExists) {
+									char.connections?.push({
+										target: rel,
+										type: 'neutral',
+										label: undefined
+									});
+								}
+							} else {
+								// Already typed, add to connections if not there
+								const alreadyExists = char.connections?.some(c => c.target === rel.target);
+								if (!alreadyExists) {
+									char.connections?.push(rel);
+								}
+							}
+						});
+
+						needsSave = true;
+					}
+				}
+
+				if (needsSave) {
+					await this.saveCharacter(char);
+					migratedCount++;
+				}
+			}
+
+			if (migratedCount > 0) {
+				console.log(`Storyteller Suite: Migrated ${migratedCount} character(s) to typed relationships.`);
+			} else {
+				console.log('Storyteller Suite: No migration needed for relationships.');
+			}
+		} catch (error) {
+			console.error('Storyteller Suite: Error during relationships migration:', error);
+		}
+	}
+
+	/**
 	 * Plugin initialization - called when the plugin is loaded
 	 * Registers views, commands, UI elements, and mobile adaptations
 	 */
@@ -391,6 +461,12 @@ export default class StorytellerSuitePlugin extends Plugin {
 			(leaf) => new DashboardView(leaf, this)
 		);
 
+		// Register the network graph view for expanded visualization
+		this.registerView(
+			VIEW_TYPE_NETWORK_GRAPH,
+			(leaf) => new NetworkGraphView(leaf, this)
+		);
+
 		// Add ribbon icon for quick access to dashboard
 		this.addRibbonIcon('book-open', 'Open storyteller dashboard', () => {
 			this.activateView();
@@ -407,6 +483,13 @@ export default class StorytellerSuitePlugin extends Plugin {
 		this.app.workspace.onLayoutReady(async () => {
 			await this.discoverExistingStories();
 			await this.initializeOneStoryModeIfNeeded();
+			
+			// Run migration for typed relationships (only runs once)
+			if (!this.settings.relationshipsMigrated) {
+				await this.migrateRelationshipsToTyped();
+				this.settings.relationshipsMigrated = true;
+				await this.saveSettings();
+			}
 		});
 	}
 
@@ -1236,28 +1319,28 @@ export default class StorytellerSuitePlugin extends Plugin {
 	 * Build sanitized YAML frontmatter for each entity type.
 	 * Only whitelisted keys are allowed and multi-line strings are excluded.
 	 */
-    private buildFrontmatterForCharacter(src: any): Record<string, any> {
+    private buildFrontmatterForCharacter(src: any, originalFrontmatter?: Record<string, unknown>): Record<string, any> {
         const preserve = new Set<string>(Object.keys(src || {}));
         const mode = this.settings.customFieldsMode ?? 'flatten';
-        return buildFrontmatter('character', src, preserve, { customFieldsMode: mode }) as Record<string, any>;
+        return buildFrontmatter('character', src, preserve, { customFieldsMode: mode, originalFrontmatter }) as Record<string, any>;
     }
 
-    private buildFrontmatterForLocation(src: any): Record<string, any> {
+    private buildFrontmatterForLocation(src: any, originalFrontmatter?: Record<string, unknown>): Record<string, any> {
         const preserve = new Set<string>(Object.keys(src || {}));
         const mode = this.settings.customFieldsMode ?? 'flatten';
-        return buildFrontmatter('location', src, preserve, { customFieldsMode: mode }) as Record<string, any>;
+        return buildFrontmatter('location', src, preserve, { customFieldsMode: mode, originalFrontmatter }) as Record<string, any>;
     }
 
-    private buildFrontmatterForEvent(src: any): Record<string, any> {
+    private buildFrontmatterForEvent(src: any, originalFrontmatter?: Record<string, unknown>): Record<string, any> {
         const preserve = new Set<string>(Object.keys(src || {}));
         const mode = this.settings.customFieldsMode ?? 'flatten';
-        return buildFrontmatter('event', src, preserve, { customFieldsMode: mode }) as Record<string, any>;
+        return buildFrontmatter('event', src, preserve, { customFieldsMode: mode, originalFrontmatter }) as Record<string, any>;
     }
 
-    private buildFrontmatterForItem(src: any): Record<string, any> {
+    private buildFrontmatterForItem(src: any, originalFrontmatter?: Record<string, unknown>): Record<string, any> {
         const preserve = new Set<string>(Object.keys(src || {}));
         const mode = this.settings.customFieldsMode ?? 'flatten';
-        return buildFrontmatter('item', src, preserve, { customFieldsMode: mode }) as Record<string, any>;
+        return buildFrontmatter('item', src, preserve, { customFieldsMode: mode, originalFrontmatter }) as Record<string, any>;
     }
 
 	/**
@@ -1277,10 +1360,6 @@ export default class StorytellerSuitePlugin extends Plugin {
         const { filePath: currentFilePath, backstory, description, ...rest } = character as any;
         if ((rest as any).sections) delete (rest as any).sections;
 
-		// Build frontmatter strictly from whitelist
-		const finalFrontmatter = this.buildFrontmatterForCharacter(rest);
-		const frontmatterString = Object.keys(finalFrontmatter).length > 0 ? stringifyYaml(finalFrontmatter) : '';
-
 		// Handle renaming if filePath is present and name changed
 		let finalFilePath = filePath;
 		if (currentFilePath && currentFilePath !== filePath) {
@@ -1291,10 +1370,13 @@ export default class StorytellerSuitePlugin extends Plugin {
 			}
 		}
 
-		// Check if file exists and read existing content sections for preservation
+		// Check if file exists and read existing frontmatter and sections for preservation
 		const existingFile = this.app.vault.getAbstractFileByPath(finalFilePath);
 		let existingSections: Record<string, string> = {};
+		let originalFrontmatter: Record<string, unknown> | undefined;
 		if (existingFile && existingFile instanceof TFile) {
+			const fileCache = this.app.metadataCache.getFileCache(existingFile);
+			originalFrontmatter = fileCache?.frontmatter as Record<string, unknown> | undefined;
 			try {
 				const existingContent = await this.app.vault.cachedRead(existingFile);
 				existingSections = parseSectionsFromMarkdown(existingContent);
@@ -1302,6 +1384,10 @@ export default class StorytellerSuitePlugin extends Plugin {
 				console.warn(`Error reading existing character file: ${error}`);
 			}
 		}
+
+		// Build frontmatter strictly from whitelist, preserving original frontmatter
+		const finalFrontmatter = this.buildFrontmatterForCharacter(rest, originalFrontmatter);
+		const frontmatterString = Object.keys(finalFrontmatter).length > 0 ? stringifyYaml(finalFrontmatter) : '';
 
 		// Build sections from templates + provided data
 		const providedSections = {
@@ -1418,10 +1504,6 @@ export default class StorytellerSuitePlugin extends Plugin {
         const { filePath: currentFilePath, history, description, ...rest } = location as any;
         if ((rest as any).sections) delete (rest as any).sections;
 
-		// Build frontmatter strictly from whitelist
-		const finalFrontmatter = this.buildFrontmatterForLocation(rest);
-		const frontmatterString = Object.keys(finalFrontmatter).length > 0 ? stringifyYaml(finalFrontmatter) : '';
-
 		// Handle renaming if filePath is present and name changed
 		let finalFilePath = filePath;
 		if (currentFilePath && currentFilePath !== filePath) {
@@ -1432,10 +1514,13 @@ export default class StorytellerSuitePlugin extends Plugin {
 			}
 		}
 
-		// Check if file exists and read existing content sections for preservation
+		// Check if file exists and read existing frontmatter and sections for preservation
 		const existingFile = this.app.vault.getAbstractFileByPath(finalFilePath);
 		let existingSections: Record<string, string> = {};
+		let originalFrontmatter: Record<string, unknown> | undefined;
 		if (existingFile && existingFile instanceof TFile) {
+			const fileCache = this.app.metadataCache.getFileCache(existingFile);
+			originalFrontmatter = fileCache?.frontmatter as Record<string, unknown> | undefined;
 			try {
 				const existingContent = await this.app.vault.cachedRead(existingFile);
 				existingSections = parseSectionsFromMarkdown(existingContent);
@@ -1443,6 +1528,10 @@ export default class StorytellerSuitePlugin extends Plugin {
 				console.warn(`Error reading existing location file: ${error}`);
 			}
 		}
+
+		// Build frontmatter strictly from whitelist, preserving original frontmatter
+		const finalFrontmatter = this.buildFrontmatterForLocation(rest, originalFrontmatter);
+		const frontmatterString = Object.keys(finalFrontmatter).length > 0 ? stringifyYaml(finalFrontmatter) : '';
 
 		// Build sections from templates + provided data
 		const providedSections = {
@@ -1548,10 +1637,6 @@ export default class StorytellerSuitePlugin extends Plugin {
         const { filePath: currentFilePath, description, outcome, images, ...rest } = event as any;
         if ((rest as any).sections) delete (rest as any).sections;
 
-		// Build frontmatter strictly from whitelist
-		const finalFrontmatter = this.buildFrontmatterForEvent(rest);
-		const frontmatterString = Object.keys(finalFrontmatter).length > 0 ? stringifyYaml(finalFrontmatter) : '';
-
 		let finalFilePath = filePath;
 		if (currentFilePath && currentFilePath !== filePath) {
 			const existingFile = this.app.vault.getAbstractFileByPath(currentFilePath);
@@ -1561,10 +1646,13 @@ export default class StorytellerSuitePlugin extends Plugin {
 			}
 		}
 
-		// Check if file exists and read existing content sections for preservation
+		// Check if file exists and read existing frontmatter and sections for preservation
 		const existingFile = this.app.vault.getAbstractFileByPath(finalFilePath);
 		let existingSections: Record<string, string> = {};
+		let originalFrontmatter: Record<string, unknown> | undefined;
 		if (existingFile && existingFile instanceof TFile) {
+			const fileCache = this.app.metadataCache.getFileCache(existingFile);
+			originalFrontmatter = fileCache?.frontmatter as Record<string, unknown> | undefined;
 			try {
 				const existingContent = await this.app.vault.cachedRead(existingFile);
 				existingSections = parseSectionsFromMarkdown(existingContent);
@@ -1572,6 +1660,10 @@ export default class StorytellerSuitePlugin extends Plugin {
 				console.warn(`Error reading existing event file: ${error}`);
 			}
 		}
+
+		// Build frontmatter strictly from whitelist, preserving original frontmatter
+		const finalFrontmatter = this.buildFrontmatterForEvent(rest, originalFrontmatter);
+		const frontmatterString = Object.keys(finalFrontmatter).length > 0 ? stringifyYaml(finalFrontmatter) : '';
 
 		// Build sections from templates + provided data
 		const providedSections = {
@@ -1684,9 +1776,6 @@ export default class StorytellerSuitePlugin extends Plugin {
         const { filePath: currentFilePath, description, history, ...rest } = item as any;
         if ((rest as any).sections) delete (rest as any).sections;
 
-		const finalFrontmatter = this.buildFrontmatterForItem(rest);
-		const frontmatterString = Object.keys(finalFrontmatter).length > 0 ? stringifyYaml(finalFrontmatter) : '';
-
 		let finalFilePath = filePath;
 		if (currentFilePath && currentFilePath !== filePath) {
 			const existingFile = this.app.vault.getAbstractFileByPath(currentFilePath);
@@ -1696,10 +1785,13 @@ export default class StorytellerSuitePlugin extends Plugin {
 			}
 		}
 
-		// Check if file exists and read existing content sections for preservation
+		// Check if file exists and read existing frontmatter and sections for preservation
 		const existingFile = this.app.vault.getAbstractFileByPath(finalFilePath);
 		let existingSections: Record<string, string> = {};
+		let originalFrontmatter: Record<string, unknown> | undefined;
 		if (existingFile && existingFile instanceof TFile) {
+			const fileCache = this.app.metadataCache.getFileCache(existingFile);
+			originalFrontmatter = fileCache?.frontmatter as Record<string, unknown> | undefined;
 			try {
 				const existingContent = await this.app.vault.cachedRead(existingFile);
 				existingSections = parseSectionsFromMarkdown(existingContent);
@@ -1707,6 +1799,10 @@ export default class StorytellerSuitePlugin extends Plugin {
 				console.warn(`Error reading existing item file: ${error}`);
 			}
 		}
+
+		// Build frontmatter strictly from whitelist, preserving original frontmatter
+		const finalFrontmatter = this.buildFrontmatterForItem(rest, originalFrontmatter);
+		const frontmatterString = Object.keys(finalFrontmatter).length > 0 ? stringifyYaml(finalFrontmatter) : '';
 
 		// Build sections from templates + provided data
 		const providedSections = {
@@ -1792,12 +1888,6 @@ export default class StorytellerSuitePlugin extends Plugin {
         const { filePath: currentFilePath, content, ...rest } = reference as any;
         if ((rest as any).sections) delete (rest as any).sections;
 
-        // Build frontmatter (preserve any custom fields)
-        const preserveRef = new Set<string>(Object.keys(rest || {}));
-        const mode = this.settings.customFieldsMode ?? 'flatten';
-        const fm: Record<string, any> = buildFrontmatter('reference', rest as any, preserveRef, { customFieldsMode: mode }) as Record<string, any>;
-		const frontmatterString = Object.keys(fm).length > 0 ? stringifyYaml(fm) : '';
-
 		// Handle rename
 		let finalFilePath = filePath;
 		if (currentFilePath && currentFilePath !== filePath) {
@@ -1808,9 +1898,13 @@ export default class StorytellerSuitePlugin extends Plugin {
 			}
 		}
 
+		// Check if file exists and read existing frontmatter and sections for preservation
 		const existingFile = this.app.vault.getAbstractFileByPath(finalFilePath);
 		let existingSections: Record<string, string> = {};
+		let originalFrontmatter: Record<string, unknown> | undefined;
 		if (existingFile && existingFile instanceof TFile) {
+			const fileCache = this.app.metadataCache.getFileCache(existingFile);
+			originalFrontmatter = fileCache?.frontmatter as Record<string, unknown> | undefined;
 			try {
 				const existingContent = await this.app.vault.cachedRead(existingFile);
 				existingSections = parseSectionsFromMarkdown(existingContent);
@@ -1818,6 +1912,12 @@ export default class StorytellerSuitePlugin extends Plugin {
 				console.warn('Error reading existing reference file', e);
 			}
 		}
+
+        // Build frontmatter (preserve any custom fields and original frontmatter)
+        const preserveRef = new Set<string>(Object.keys(rest || {}));
+        const mode = this.settings.customFieldsMode ?? 'flatten';
+        const fm: Record<string, any> = buildFrontmatter('reference', rest as any, preserveRef, { customFieldsMode: mode, originalFrontmatter }) as Record<string, any>;
+		const frontmatterString = Object.keys(fm).length > 0 ? stringifyYaml(fm) : '';
 
 		// Build sections from templates + provided data
 		const providedSections = { Content: (content as string) || '' };
@@ -1893,13 +1993,6 @@ export default class StorytellerSuitePlugin extends Plugin {
         const { filePath: currentFilePath, summary, linkedCharacters, linkedLocations, linkedEvents, linkedItems, linkedGroups, ...rest } = chapter as any;
         if ((rest as any).sections) delete (rest as any).sections;
 
-        // Build frontmatter (preserve any custom fields)
-        const chapterSrc = { ...rest, linkedCharacters, linkedLocations, linkedEvents, linkedItems, linkedGroups } as Record<string, unknown>;
-        const preserveChap = new Set<string>(Object.keys(chapterSrc));
-        const mode = this.settings.customFieldsMode ?? 'flatten';
-        const fm: Record<string, any> = buildFrontmatter('chapter', chapterSrc, preserveChap, { customFieldsMode: mode }) as Record<string, any>;
-        const frontmatterString = Object.keys(fm).length > 0 ? stringifyYaml(fm) : '';
-
         // Rename if needed
         let finalFilePath = filePath;
         if (currentFilePath && currentFilePath !== filePath) {
@@ -1910,9 +2003,13 @@ export default class StorytellerSuitePlugin extends Plugin {
             }
         }
 
+        // Check if file exists and read existing frontmatter and sections for preservation
         const existingFile = this.app.vault.getAbstractFileByPath(finalFilePath);
         let existingSections: Record<string, string> = {};
+        let originalFrontmatter: Record<string, unknown> | undefined;
         if (existingFile && existingFile instanceof TFile) {
+            const fileCache = this.app.metadataCache.getFileCache(existingFile);
+            originalFrontmatter = fileCache?.frontmatter as Record<string, unknown> | undefined;
             try {
                 const existingContent = await this.app.vault.cachedRead(existingFile);
                 existingSections = parseSectionsFromMarkdown(existingContent);
@@ -1920,6 +2017,13 @@ export default class StorytellerSuitePlugin extends Plugin {
                 console.warn('Error reading existing chapter file', e);
             }
         }
+
+        // Build frontmatter (preserve any custom fields and original frontmatter)
+        const chapterSrc = { ...rest, linkedCharacters, linkedLocations, linkedEvents, linkedItems, linkedGroups } as Record<string, unknown>;
+        const preserveChap = new Set<string>(Object.keys(chapterSrc));
+        const mode = this.settings.customFieldsMode ?? 'flatten';
+        const fm: Record<string, any> = buildFrontmatter('chapter', chapterSrc, preserveChap, { customFieldsMode: mode, originalFrontmatter }) as Record<string, any>;
+        const frontmatterString = Object.keys(fm).length > 0 ? stringifyYaml(fm) : '';
 
         const providedSections = { Summary: summary || '' };
         const templateSections = getTemplateSections('chapter', providedSections);
@@ -1997,11 +2101,6 @@ export default class StorytellerSuitePlugin extends Plugin {
 
         const { filePath: currentFilePath, content, beats, linkedCharacters, linkedLocations, linkedEvents, linkedItems, linkedGroups, ...rest } = scene as any;
         if ((rest as any).sections) delete (rest as any).sections;
-        const sceneSrc = { ...rest, linkedCharacters, linkedLocations, linkedEvents, linkedItems, linkedGroups } as Record<string, unknown>;
-        const preserveScene = new Set<string>(Object.keys(sceneSrc));
-        const mode = this.settings.customFieldsMode ?? 'flatten';
-        const fm: Record<string, any> = buildFrontmatter('scene', sceneSrc, preserveScene, { customFieldsMode: mode }) as Record<string, any>;
-        const frontmatterString = Object.keys(fm).length > 0 ? stringifyYaml(fm) : '';
 
         // Rename if needed
         let finalFilePath = filePath;
@@ -2013,9 +2112,13 @@ export default class StorytellerSuitePlugin extends Plugin {
             }
         }
 
+        // Check if file exists and read existing frontmatter and sections for preservation
         const existingFile = this.app.vault.getAbstractFileByPath(finalFilePath);
         let existingSections: Record<string, string> = {};
+        let originalFrontmatter: Record<string, unknown> | undefined;
         if (existingFile && existingFile instanceof TFile) {
+            const fileCache = this.app.metadataCache.getFileCache(existingFile);
+            originalFrontmatter = fileCache?.frontmatter as Record<string, unknown> | undefined;
             try {
                 const existingContent = await this.app.vault.cachedRead(existingFile);
                 existingSections = parseSectionsFromMarkdown(existingContent);
@@ -2023,6 +2126,13 @@ export default class StorytellerSuitePlugin extends Plugin {
                 console.warn('Error reading existing scene file', e);
             }
         }
+
+        // Build frontmatter (preserve any custom fields and original frontmatter)
+        const sceneSrc = { ...rest, linkedCharacters, linkedLocations, linkedEvents, linkedItems, linkedGroups } as Record<string, unknown>;
+        const preserveScene = new Set<string>(Object.keys(sceneSrc));
+        const mode = this.settings.customFieldsMode ?? 'flatten';
+        const fm: Record<string, any> = buildFrontmatter('scene', sceneSrc, preserveScene, { customFieldsMode: mode, originalFrontmatter }) as Record<string, any>;
+        const frontmatterString = Object.keys(fm).length > 0 ? stringifyYaml(fm) : '';
 
         const beatsBlock = (beats && Array.isArray(beats) ? beats as string[] : undefined);
         const providedSections = {

@@ -19,19 +19,20 @@ export type EntityType =
 const FRONTMATTER_WHITELISTS: Record<EntityType, Set<string>> = {
   character: new Set([
     'id', 'name', 'traits', 'relationships', 'locations', 'events',
-    'status', 'affiliation', 'groups', 'profileImagePath', 'customFields'
+    'status', 'affiliation', 'groups', 'profileImagePath', 'customFields', 'connections'
   ]),
   location: new Set([
     'id', 'name', 'locationType', 'region', 'status', 'parentLocation',
-    'groups', 'profileImagePath', 'customFields'
+    'groups', 'profileImagePath', 'customFields', 'connections'
   ]),
   event: new Set([
     'id', 'name', 'dateTime', 'characters', 'location', 'status',
-    'groups', 'profileImagePath', 'customFields'
+    'groups', 'profileImagePath', 'customFields', 'connections',
+    'isMilestone', 'dependencies', 'progress'
   ]),
   item: new Set([
     'id', 'name', 'isPlotCritical', 'currentOwner', 'pastOwners',
-    'currentLocation', 'associatedEvents', 'groups', 'profileImagePath', 'customFields'
+    'currentLocation', 'associatedEvents', 'groups', 'profileImagePath', 'customFields', 'connections'
   ]),
   reference: new Set([
     'id', 'name', 'category', 'tags', 'profileImagePath'
@@ -52,20 +53,23 @@ export function getWhitelistKeys(entityType: EntityType): Set<string> {
 
 /**
  * Build frontmatter safely by applying the entity whitelist and removing values that are unsafe for YAML scalars.
- * - filters out null/undefined
+ * - filters out null/undefined (unless they existed in original frontmatter)
  * - removes multi-line strings (kept in sections instead)
- * - skips empty arrays and empty objects (for customFields)
+ * - skips empty arrays and empty objects (unless they existed in original frontmatter)
+ * - preserves all keys from originalFrontmatter, even if not in whitelist
+ * - maintains field order from originalFrontmatter where possible
  */
 export function buildFrontmatter(
   entityType: EntityType,
   source: Record<string, unknown>,
   preserveKeys?: Set<string>,
-  options?: { customFieldsMode?: 'flatten' | 'nested' }
+  options?: { customFieldsMode?: 'flatten' | 'nested'; originalFrontmatter?: Record<string, unknown> }
 ): Record<string, unknown> {
   const whitelist = FRONTMATTER_WHITELISTS[entityType];
   const output: Record<string, unknown> = {};
   const mode = options?.customFieldsMode ?? 'flatten';
   const srcKeys = new Set(Object.keys(source || {}));
+  const originalFrontmatter = options?.originalFrontmatter;
 
   // Handle customFields specially
   const cfRaw = (source as any)?.customFields;
@@ -77,10 +81,11 @@ export function buildFrontmatter(
         // Skip if top-level already has this key (avoid collisions)
         if (cfKey === 'customFields') continue;
         if (srcKeys.has(cfKey)) { unpromoted[cfKey] = cfVal; continue; }
-        if (cfVal === null || cfVal === undefined) continue;
-        if (typeof cfVal === 'string' && cfVal.includes('\n')) { unpromoted[cfKey] = cfVal; continue; }
-        if (Array.isArray(cfVal) && cfVal.length === 0) continue;
-        if (typeof cfVal === 'object' && Object.keys(cfVal as any).length === 0) continue;
+        const existedInOriginal = originalFrontmatter && cfKey in originalFrontmatter;
+        if (!existedInOriginal && (cfVal === null || cfVal === undefined)) continue;
+        if (!existedInOriginal && typeof cfVal === 'string' && cfVal.includes('\n')) { unpromoted[cfKey] = cfVal; continue; }
+        if (!existedInOriginal && Array.isArray(cfVal) && cfVal.length === 0) continue;
+        if (!existedInOriginal && typeof cfVal === 'object' && Object.keys(cfVal as any).length === 0) continue;
         // Promote to top-level
         output[cfKey] = cfVal;
       }
@@ -101,7 +106,11 @@ export function buildFrontmatter(
     if (!allowKey) continue;
     // In flatten mode, avoid writing the customFields container when we promoted its entries
     if (key === 'customFields' && mode === 'flatten') continue;
-    if (value === null || value === undefined) continue;
+    
+    const existedInOriginal = originalFrontmatter && key in originalFrontmatter;
+    
+    // Only filter out null/undefined if it didn't exist in original
+    if (!existedInOriginal && (value === null || value === undefined)) continue;
 
     if (typeof value === 'string') {
       // Exclude multi-line strings from frontmatter; they belong to sections
@@ -111,19 +120,52 @@ export function buildFrontmatter(
     }
 
     if (Array.isArray(value)) {
-      if (value.length === 0) continue;
+      // Preserve empty arrays if they existed in original
+      if (!existedInOriginal && value.length === 0) continue;
       output[key] = value;
       continue;
     }
 
     if (typeof value === 'object') {
-      // Avoid emitting empty objects such as empty customFields
-      if (Object.keys(value as Record<string, unknown>).length === 0) continue;
+      // Preserve empty objects if they existed in original
+      if (!existedInOriginal && Object.keys(value as Record<string, unknown>).length === 0) continue;
       output[key] = value;
       continue;
     }
 
     output[key] = value;
+  }
+
+  // Preserve all fields from originalFrontmatter that weren't already added
+  // This ensures user-added fields are never deleted
+  if (originalFrontmatter) {
+    for (const [key, value] of Object.entries(originalFrontmatter)) {
+      // Skip Obsidian internal fields
+      if (key === 'position') continue;
+      // If already in output, skip (new value takes precedence)
+      if (key in output) continue;
+      // Preserve the original value
+      output[key] = value;
+    }
+  }
+
+  // Preserve field order: rebuild with original keys first, then new keys
+  if (originalFrontmatter) {
+    const orderedOutput: Record<string, unknown> = {};
+    // First, add all original keys in their original order
+    for (const key of Object.keys(originalFrontmatter)) {
+      if (key === 'position') continue; // Skip Obsidian internal field
+      if (key in output) {
+        orderedOutput[key] = output[key];
+      }
+    }
+    // Then add any new keys
+    for (const [key, value] of Object.entries(output)) {
+      if (!(key in orderedOutput)) {
+        orderedOutput[key] = value;
+      }
+    }
+    return orderedOutput;
   }
 
   return output;

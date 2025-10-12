@@ -195,6 +195,38 @@ export class CharacterModal extends ResponsiveModal {
         this.groupSelectorContainer = contentEl.createDiv('storyteller-group-selector-container');
         this.renderGroupSelector(this.groupSelectorContainer);
 
+        // --- Connections (Typed Relationships) ---
+        contentEl.createEl('h3', { text: t('connections') });
+        
+        // Initialize connections if not present
+        if (!this.character.connections) {
+            this.character.connections = [];
+        }
+
+        const connectionsListContainer = contentEl.createDiv('storyteller-modal-linked-entities');
+        this.renderConnectionsList(connectionsListContainer);
+
+        new Setting(contentEl)
+            .addButton(button => button
+                .setButtonText(t('addConnection'))
+                .setIcon('plus')
+                .onClick(async () => {
+                    const { RelationshipEditorModal } = await import('./RelationshipEditorModal');
+                    new RelationshipEditorModal(
+                        this.app,
+                        this.plugin,
+                        null,
+                        'any',
+                        (relationship) => {
+                            if (!this.character.connections) {
+                                this.character.connections = [];
+                            }
+                            this.character.connections.push(relationship);
+                            this.renderConnectionsList(connectionsListContainer);
+                        }
+                    ).open();
+                }));
+
         // --- Custom Fields ---
         this.workingCustomFields = { ...(this.character.customFields || {}) };
         contentEl.createEl('h3', { text: t('customFields') });
@@ -292,6 +324,36 @@ export class CharacterModal extends ResponsiveModal {
                     new Notice(t('failedToSave', t('character')));
                 }
             }));
+    }
+
+    // Helper to render connections list
+    renderConnectionsList(container: HTMLElement) {
+        container.empty();
+        const connections = this.character.connections || [];
+
+        if (connections.length === 0) {
+            container.createEl('p', { text: t('noConnectionsYet') || 'No connections yet.', cls: 'storyteller-modal-list-empty' });
+            return;
+        }
+
+        connections.forEach((conn, index) => {
+            const item = container.createDiv('storyteller-modal-list-item');
+            
+            const infoSpan = item.createSpan();
+            infoSpan.setText(`${conn.target} (${t(conn.type)})`);
+            if (conn.label) {
+                infoSpan.appendText(` - ${conn.label}`);
+            }
+
+            new ButtonComponent(item)
+                .setClass('storyteller-modal-list-remove')
+                .setTooltip(t('removeX', conn.target))
+                .setIcon('cross')
+                .onClick(() => {
+                    this.character.connections?.splice(index, 1);
+                    this.renderConnectionsList(container);
+                });
+        });
     }
 
     // Helper to render lists

@@ -26,6 +26,7 @@
     "src/**/*.ts" // <--- Tell TS to include all .ts files in src
   ],
   "exclude": [
-    "node_modules" // <--- Only exclude node_modules (and maybe build output folders if needed)
+    "node_modules", // <--- Only exclude node_modules (and maybe build output folders if needed)
+    "src/vendor/**/*" // Exclude vendor folder from type checking
   ]
 }

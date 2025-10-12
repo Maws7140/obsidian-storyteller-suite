@@ -4,6 +4,77 @@
  */
 
 /**
+ * Relationship types for network graph visualization
+ */
+export type RelationshipType = 
+    | 'ally' 
+    | 'enemy' 
+    | 'family' 
+    | 'rival' 
+    | 'romantic' 
+    | 'mentor' 
+    | 'acquaintance' 
+    | 'neutral' 
+    | 'custom';
+
+/**
+ * Typed relationship for network graph connections
+ * Supports both simple string references and detailed typed relationships
+ */
+export interface TypedRelationship {
+    /** Target entity name or ID */
+    target: string;
+    /** Type of relationship for color-coding */
+    type: RelationshipType;
+    /** Optional descriptive label */
+    label?: string;
+}
+
+/**
+ * Filters for network graph visualization
+ */
+export interface GraphFilters {
+    /** Filter by specific group IDs */
+    groups?: string[];
+    /** Filter events after this date */
+    timelineStart?: string;
+    /** Filter events before this date */
+    timelineEnd?: string;
+    /** Filter by entity types to show */
+    entityTypes?: ('character' | 'location' | 'event' | 'item')[];
+}
+
+/**
+ * Node in the network graph
+ */
+export interface GraphNode {
+    /** Unique identifier */
+    id: string;
+    /** Display label */
+    label: string;
+    /** Entity type for styling */
+    type: 'character' | 'location' | 'event' | 'item';
+    /** Full entity data */
+    data: Character | Location | Event | PlotItem;
+    /** Optional image URL for node background */
+    imageUrl?: string;
+}
+
+/**
+ * Edge in the network graph
+ */
+export interface GraphEdge {
+    /** Source node ID */
+    source: string;
+    /** Target node ID */
+    target: string;
+    /** Relationship type for color-coding */
+    relationshipType: RelationshipType;
+    /** Optional label */
+    label?: string;
+}
+
+/**
  * PlotItem entity representing an important object or artifact in the story.
  * These are stored as markdown files with frontmatter in the item folder.
  */
@@ -46,6 +117,9 @@ export interface PlotItem {
     
     /** Array of group ids this item belongs to */
     groups?: string[];
+    
+    /** Typed connections to other entities for network graph */
+    connections?: TypedRelationship[];
 }
 
 /**
@@ -168,8 +242,8 @@ export interface Character {
     /** Character's background story (stored in markdown body) */
     backstory?: string;
     
-    /** Names/links of related characters (relationships, family, etc.) */
-    relationships?: string[];
+    /** Names/links of related characters (relationships, family, etc.) - supports both string[] and TypedRelationship[] for backward compatibility */
+    relationships?: (string | TypedRelationship)[];
     
     /** Names/links of locations associated with this character */
     locations?: string[];
@@ -188,6 +262,9 @@ export interface Character {
     
     /** Array of group ids this character belongs to */
     groups?: string[];
+    
+    /** Typed connections to other entities for network graph */
+    connections?: TypedRelationship[];
 }
 
 /**
@@ -230,6 +307,9 @@ export interface Location {
     
     /** Array of group ids this location belongs to */
     groups?: string[];
+    
+    /** Typed connections to other entities for network graph */
+    connections?: TypedRelationship[];
 }
 
 /**
@@ -275,6 +355,18 @@ export interface Event {
     
     /** Array of group ids this event belongs to */
     groups?: string[];
+    
+    /** Typed connections to other entities for network graph */
+    connections?: TypedRelationship[];
+    
+    /** Flag to mark this event as a milestone (key story moment) */
+    isMilestone?: boolean;
+    
+    /** Array of event names/ids that this event depends on (for Gantt-style dependencies) */
+    dependencies?: string[];
+    
+    /** Completion progress (0-100) for tracking event status */
+    progress?: number;
 }
 
 /**
