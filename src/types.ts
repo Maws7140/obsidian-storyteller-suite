@@ -310,6 +310,15 @@ export interface Location {
     
     /** Typed connections to other entities for network graph */
     connections?: TypedRelationship[];
+    
+    /** Primary map ID where this location is featured */
+    mapId?: string;
+    
+    /** Additional maps where this location appears */
+    relatedMapIds?: string[];
+    
+    /** Marker IDs representing this location on various maps */
+    markerIds?: string[];
 }
 
 /**
@@ -448,4 +457,150 @@ export interface Story {
     created: string;
     /** Optional description of the story */
     description?: string;
+}
+
+/**
+ * Map marker representing a location or point of interest on a map
+ * Used for pinning locations, events, or custom points on interactive maps
+ */
+export interface MapMarker {
+    /** Unique identifier for this marker */
+    id: string;
+    
+    /** Name or identifier of linked location entity */
+    locationName?: string;
+    
+    /** Latitude coordinate (or Y for image-based maps) */
+    lat: number;
+    
+    /** Longitude coordinate (or X for image-based maps) */
+    lng: number;
+    
+    /** Icon identifier or path to custom icon image */
+    icon?: string;
+    
+    /** Marker color for visual distinction */
+    color?: string;
+    
+    /** Display label for the marker */
+    label?: string;
+    
+    /** Marker description or notes */
+    description?: string;
+    
+    /** Scale/size multiplier for the marker icon */
+    scale?: number;
+    
+    /** Whether marker is currently visible */
+    visible?: boolean;
+    
+    /** Minimum zoom level at which marker appears */
+    minZoom?: number;
+    
+    /** Maximum zoom level at which marker appears */
+    maxZoom?: number;
+}
+
+/**
+ * Map layer containing a collection of related map objects
+ * Enables organization and selective visibility of map elements
+ */
+export interface MapLayer {
+    /** Unique identifier for this layer */
+    id: string;
+    
+    /** Display name of the layer */
+    name: string;
+    
+    /** Whether layer is currently visible */
+    visible: boolean;
+    
+    /** Whether layer is locked from editing */
+    locked?: boolean;
+    
+    /** Layer opacity (0-1) */
+    opacity?: number;
+    
+    /** GeoJSON or Leaflet objects in this layer */
+    objects?: any[];
+    
+    /** Z-index for layer ordering */
+    zIndex?: number;
+}
+
+/**
+ * Map entity representing an interactive geographical or spatial map
+ * Maps can display locations, support custom drawings, and organize hierarchically
+ * Stored as markdown files with frontmatter and JSON data
+ */
+export interface Map {
+    /** Unique identifier for the map */
+    id?: string;
+    
+    /** Display name of the map (required) */
+    name: string;
+    
+    /** Detailed description of the map */
+    description?: string;
+    
+    /** Map scale/hierarchy level */
+    scale: 'world' | 'region' | 'city' | 'building' | 'custom';
+    
+    /** ID of parent map in hierarchy */
+    parentMapId?: string;
+    
+    /** IDs of child maps at smaller scales */
+    childMapIds?: string[];
+    
+    /** Path to background image file for the map */
+    backgroundImagePath?: string;
+    
+    /** Serialized Leaflet map state (layers, drawings, etc.) */
+    mapData?: string;
+    
+    /** Map dimensions in pixels (for image-based maps) */
+    width?: number;
+    height?: number;
+    
+    /** Default zoom level for the map */
+    defaultZoom?: number;
+    
+    /** Center coordinates [lat, lng] for the map */
+    center?: [number, number];
+    
+    /** Bounds for image overlay [[south, west], [north, east]] */
+    bounds?: [[number, number], [number, number]];
+    
+    /** Array of markers placed on this map */
+    markers: MapMarker[];
+    
+    /** Layer organization for map objects */
+    layers?: MapLayer[];
+    
+    /** Whether grid overlay is enabled */
+    gridEnabled?: boolean;
+    
+    /** Grid cell size in pixels or map units */
+    gridSize?: number;
+    
+    /** File system path to the map's markdown file */
+    filePath?: string;
+    
+    /** Path to thumbnail image for map browser */
+    profileImagePath?: string;
+    
+    /** Names of locations featured on this map */
+    linkedLocations?: string[];
+    
+    /** Array of group ids this map belongs to */
+    groups?: string[];
+    
+    /** User-defined custom fields */
+    customFields?: Record<string, string>;
+    
+    /** ISO string of creation date */
+    created?: string;
+    
+    /** ISO string of last modification date */
+    modified?: string;
 }

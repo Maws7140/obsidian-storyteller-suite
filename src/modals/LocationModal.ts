@@ -7,6 +7,7 @@ import StorytellerSuitePlugin from '../main';
 import { t } from '../i18n/strings';
 import { GalleryImageSuggestModal } from './GalleryImageSuggestModal';
 import { LocationSuggestModal } from './LocationSuggestModal';
+import { MapSuggestModal } from './MapSuggestModal';
 import { ResponsiveModal } from './ResponsiveModal';
 import { PromptModal } from './ui/PromptModal';
 // Placeholder imports for suggesters -
@@ -34,9 +35,14 @@ export class LocationModal extends ResponsiveModal {
             name: '', description: '', history: '', locationType: undefined, region: undefined, status: undefined, profileImagePath: undefined,
             parentLocation: undefined,
             customFields: {},
-            filePath: undefined
+            filePath: undefined,
+            mapId: undefined,
+            relatedMapIds: [],
+            markerIds: []
         };
         if (!initialLocation.customFields) initialLocation.customFields = {};
+        if (!initialLocation.relatedMapIds) initialLocation.relatedMapIds = [];
+        if (!initialLocation.markerIds) initialLocation.markerIds = [];
         // Preserve filePath if editing
         if (location && location.filePath) initialLocation.filePath = location.filePath;
         // REMOVED: Check for subLocations removed
@@ -220,7 +226,65 @@ export class LocationModal extends ResponsiveModal {
                     imagePathDesc.setText(`Current: ${this.location.profileImagePath || 'None'}`);
                 }));
 
-        
+        // --- Maps Section ---
+        contentEl.createEl('h3', { text: 'Maps' });
+
+        // Primary Map Selector
+        let primaryMapDesc: HTMLElement;
+        new Setting(contentEl)
+            .setName('Primary Map')
+            .setDesc('')
+            .then(setting => {
+                primaryMapDesc = setting.descEl.createEl('small', { 
+                    text: `Current: ${this.location.mapId || 'None'}` 
+                });
+                setting.descEl.addClass('storyteller-modal-setting-vertical');
+            })
+            .addButton(button => button
+                .setButtonText('Select Map')
+                .setTooltip('Choose the main map where this location appears')
+                .onClick(() => {
+                    new MapSuggestModal(this.app, this.plugin, (selectedMap) => {
+                        if (selectedMap) {
+                            this.location.mapId = selectedMap.id;
+                        } else {
+                            this.location.mapId = undefined;
+                        }
+                        primaryMapDesc.setText(`Current: ${this.location.mapId || 'None'}`);
+                    }).open();
+                }))
+            .addButton(button => button
+                .setIcon('cross')
+                .setTooltip('Clear primary map')
+                .setClass('mod-warning')
+                .onClick(() => {
+                    this.location.mapId = undefined;
+                    primaryMapDesc.setText(`Current: None`);
+                }));
+
+        // Related Maps List
+        const relatedMapsContainer = contentEl.createDiv('storyteller-modal-linked-entities');
+        this.renderRelatedMapsList(relatedMapsContainer);
+
+        new Setting(contentEl)
+            .addButton(button => button
+                .setButtonText('Add Related Map')
+                .setIcon('plus')
+                .onClick(() => {
+                    new MapSuggestModal(this.app, this.plugin, (selectedMap) => {
+                        if (selectedMap && selectedMap.id) {
+                            if (!this.location.relatedMapIds) {
+                                this.location.relatedMapIds = [];
+                            }
+                            if (!this.location.relatedMapIds.includes(selectedMap.id)) {
+                                this.location.relatedMapIds.push(selectedMap.id);
+                                this.renderRelatedMapsList(relatedMapsContainer);
+                            } else {
+                                new Notice('Map already added');
+                            }
+                        }
+                    }).open();
+                }));
 
         // --- Custom Fields ---
         contentEl.createEl('h3', { text: t('customFields') });
@@ -371,6 +435,34 @@ export class LocationModal extends ResponsiveModal {
                         this.renderCustomFields(container, fields); // Re-render after deletion
                     }));
             fieldSetting.controlEl.addClass('storyteller-custom-field-row');
+        });
+    }
+
+    renderRelatedMapsList(container: HTMLElement) {
+        container.empty();
+        const relatedMapIds = this.location.relatedMapIds || [];
+
+        if (relatedMapIds.length === 0) {
+            container.createEl('p', { 
+                text: 'No related maps', 
+                cls: 'storyteller-modal-list-empty' 
+            });
+            return;
+        }
+
+        relatedMapIds.forEach((mapId, index) => {
+            const item = container.createDiv('storyteller-modal-list-item');
+            const infoSpan = item.createSpan();
+            infoSpan.setText(mapId);
+
+            new ButtonComponent(item)
+                .setClass('storyteller-modal-list-remove')
+                .setTooltip(`Remove ${mapId}`)
+                .setIcon('cross')
+                .onClick(() => {
+                    this.location.relatedMapIds?.splice(index, 1);
+                    this.renderRelatedMapsList(container);
+                });
         });
     }
 

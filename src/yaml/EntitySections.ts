@@ -13,7 +13,8 @@ export type EntityType =
   | 'item'
   | 'reference'
   | 'chapter'
-  | 'scene';
+  | 'scene'
+  | 'map';
 
 /** Whitelisted frontmatter keys per entity type. */
 const FRONTMATTER_WHITELISTS: Record<EntityType, Set<string>> = {
@@ -44,6 +45,12 @@ const FRONTMATTER_WHITELISTS: Record<EntityType, Set<string>> = {
   scene: new Set([
     'id', 'name', 'chapterId', 'chapterName', 'status', 'priority', 'tags', 'profileImagePath',
     'linkedCharacters', 'linkedLocations', 'linkedEvents', 'linkedItems', 'linkedGroups'
+  ]),
+  map: new Set([
+    'id', 'name', 'scale', 'parentMapId', 'childMapIds', 'backgroundImagePath', 'mapData',
+    'width', 'height', 'defaultZoom', 'center', 'bounds', 'markers', 'layers',
+    'gridEnabled', 'gridSize', 'profileImagePath', 'linkedLocations', 'groups', 'customFields',
+    'created', 'modified'
   ])
 };
 

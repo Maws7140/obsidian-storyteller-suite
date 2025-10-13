@@ -1,7 +1,7 @@
 import { normalizePath, TFolder } from 'obsidian';
 import StorytellerSuitePlugin from '../main';
 
-export type EntityFolderType = 'character' | 'location' | 'event' | 'item' | 'reference' | 'chapter' | 'scene';
+export type EntityFolderType = 'character' | 'location' | 'event' | 'item' | 'reference' | 'chapter' | 'scene' | 'map';
 
 export interface FolderResolverOptions {
   enableCustomEntityFolders: boolean | undefined;
@@ -13,6 +13,7 @@ export interface FolderResolverOptions {
   referenceFolderPath?: string | undefined;
   chapterFolderPath?: string | undefined;
   sceneFolderPath?: string | undefined;
+  mapFolderPath?: string | undefined;
   enableOneStoryMode?: boolean | undefined;
   oneStoryBaseFolder?: string | undefined;
 }
@@ -79,6 +80,7 @@ export class FolderResolver {
       if (type === 'reference') { const p = prefer(o.referenceFolderPath, 'References'); if (p) return p; }
       if (type === 'chapter')   { const p = prefer(o.chapterFolderPath,   'Chapters');   if (p) return p; }
       if (type === 'scene')     { const p = prefer(o.sceneFolderPath,     'Scenes');     if (p) return p; }
+      if (type === 'map')       { const p = prefer(o.mapFolderPath,       'Maps');       if (p) return p; }
     }
 
     if (o.enableOneStoryMode) {
@@ -91,6 +93,7 @@ export class FolderResolver {
       if (type === 'reference') return `${prefix}References`;
       if (type === 'chapter')   return `${prefix}Chapters`;
       if (type === 'scene')     return `${prefix}Scenes`;
+      if (type === 'map')       return `${prefix}Maps`;
     }
 
     const story = this.getActiveStory();
@@ -103,6 +106,7 @@ export class FolderResolver {
     if (type === 'reference') return `${base}/References`;
     if (type === 'chapter')   return `${base}/Chapters`;
     if (type === 'scene')     return `${base}/Scenes`;
+    if (type === 'map')       return `${base}/Maps`;
     throw new Error('Unknown entity type');
   }
 
@@ -119,7 +123,7 @@ export class FolderResolver {
 
   /** Resolve all entity folders at once. */
   resolveAll(): Record<EntityFolderType, { path?: string; error?: string }> {
-    const types: EntityFolderType[] = ['character','location','event','item','reference','chapter','scene'];
+    const types: EntityFolderType[] = ['character','location','event','item','reference','chapter','scene','map'];
     const out = {} as Record<EntityFolderType, { path?: string; error?: string }>;
     for (const t of types) out[t] = this.tryGetEntityFolder(t);
     return out;
