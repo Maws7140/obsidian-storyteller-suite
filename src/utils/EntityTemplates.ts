@@ -33,6 +33,11 @@ export const ENTITY_TEMPLATES: Record<EntityType, Record<string, string>> = {
   scene: {
     Content: '',
     Beats: '', // Empty; user can add lines like "- Beat 1\n- Beat 2"
+  },
+  map: {
+    Description: '',
+    // Maps store most data in frontmatter (markers, layers, etc.)
+    // Description section is for overview/notes
   }
 };
 

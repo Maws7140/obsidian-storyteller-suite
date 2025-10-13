@@ -2131,3 +2131,322 @@ body.mod-rtl .storyteller-group-members {
     font-size: var(--font-ui-small);
   }
 }
+
+/* ========================================
+   MAP EDITOR & VIEWER STYLES
+   ======================================== */
+
+/* Import Leaflet CSS - these will be bundled via esbuild */
+@import '~leaflet/dist/leaflet.css';
+@import '~leaflet-draw/dist/leaflet.draw.css';
+
+/* Map Modal */
+.storyteller-map-modal .modal {
+  width: 90vw;
+  max-width: 1400px;
+}
+
+.storyteller-map-modal .modal-content {
+  padding: 20px;
+}
+
+/* Map modal tabs */
+.storyteller-modal-tabs {
+  display: flex;
+  gap: 5px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid var(--background-modifier-border);
+  padding-bottom: 5px;
+}
+
+.storyteller-modal-tab {
+  padding: 8px 16px;
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  border-radius: 4px 4px 0 0;
+  font-size: var(--font-ui-medium);
+  color: var(--text-muted);
+  transition: all 0.2s;
+}
+
+.storyteller-modal-tab:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.storyteller-modal-tab.active {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  font-weight: 600;
+}
+
+.storyteller-modal-tab-content {
+  margin-top: 20px;
+}
+
+/* Map Editor Container */
+.storyteller-map-editor-container {
+  position: relative;
+  background: var(--background-primary);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+/* Leaflet overrides for Obsidian theme */
+.storyteller-map-editor-container .leaflet-container {
+  background: var(--background-primary);
+  font-family: var(--font-interface);
+}
+
+.storyteller-map-editor-container .leaflet-popup-content-wrapper {
+  background: var(--background-primary);
+  color: var(--text-normal);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+}
+
+.storyteller-map-editor-container .leaflet-popup-tip {
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+}
+
+/* Map marker popup styling */
+.storyteller-marker-popup {
+  padding: 8px;
+}
+
+.storyteller-marker-popup strong {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--text-normal);
+}
+
+.storyteller-marker-popup p {
+  margin: 5px 0;
+  font-size: var(--font-ui-small);
+  color: var(--text-muted);
+}
+
+/* Custom map marker */
+.storyteller-map-marker {
+  background: transparent;
+  border: none;
+}
+
+/* Map List Modal */
+.storyteller-map-list-modal .modal {
+  width: 85vw;
+  max-width: 1200px;
+}
+
+.storyteller-map-list-header {
+  margin-bottom: 20px;
+}
+
+.storyteller-map-stats {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
+  font-size: var(--font-ui-small);
+  color: var(--text-muted);
+}
+
+.storyteller-map-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 20px;
+  padding: 15px;
+  background: var(--background-secondary);
+  border-radius: 8px;
+}
+
+/* Map grid view */
+.storyteller-map-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 15px;
+  padding: 10px 0;
+}
+
+.storyteller-map-grid-item {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  padding: 10px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.storyteller-map-grid-item:hover {
+  background: var(--background-modifier-hover);
+  border-color: var(--interactive-accent);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+
+.storyteller-map-thumbnail {
+  width: 100%;
+  height: 150px;
+  background: var(--background-secondary);
+  border-radius: 4px;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  font-size: 3em;
+}
+
+.storyteller-map-grid-info strong {
+  display: block;
+  margin-bottom: 5px;
+  font-size: var(--font-ui-medium);
+}
+
+.storyteller-map-grid-meta {
+  font-size: 0.85em;
+  color: var(--text-muted);
+  margin-top: 5px;
+}
+
+/* Map scale badge */
+.storyteller-map-scale-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.85em;
+  font-weight: 500;
+  background: var(--background-modifier-border);
+  color: var(--text-muted);
+}
+
+/* Map hierarchy */
+.storyteller-map-hierarchy-section,
+.storyteller-linked-locations-section {
+  margin-top: 20px;
+  padding: 15px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  background: var(--background-secondary);
+}
+
+.storyteller-map-hierarchy-section h3,
+.storyteller-linked-locations-section h3 {
+  margin-top: 0;
+  margin-bottom: 15px;
+  color: var(--text-normal);
+}
+
+.storyteller-child-map-item,
+.storyteller-location-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px;
+  margin-top: 5px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.storyteller-child-map-item:hover,
+.storyteller-location-item:hover {
+  background: var(--background-modifier-hover);
+}
+
+/* Map Viewer Modal */
+.storyteller-map-viewer-modal .modal {
+  width: 90vw;
+  max-width: 1400px;
+}
+
+.storyteller-map-viewer-header {
+  margin-bottom: 20px;
+}
+
+.storyteller-map-viewer-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.storyteller-map-description {
+  margin-top: 10px;
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+}
+
+.storyteller-map-viewer-controls {
+  margin: 15px 0;
+  padding: 10px;
+  background: var(--background-secondary);
+  border-radius: 8px;
+}
+
+.storyteller-map-viewer-container {
+  width: 100%;
+  height: 500px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  margin-top: 10px;
+}
+
+/* Map background preview */
+.storyteller-map-background-preview {
+  padding: 15px;
+  background: var(--background-secondary);
+  border-radius: 8px;
+  margin-bottom: 20px;
+}
+
+.storyteller-map-background-preview img {
+  display: block;
+  max-width: 100%;
+  max-height: 300px;
+  margin-top: 10px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+}
+
+/* Marker list */
+.storyteller-marker-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* Mobile responsiveness for maps */
+@media (max-width: 768px) {
+  .storyteller-map-modal .modal,
+  .storyteller-map-viewer-modal .modal,
+  .storyteller-map-list-modal .modal {
+    width: 95vw;
+  }
+  
+  .storyteller-map-editor-container,
+  .storyteller-map-viewer-container {
+    height: 400px;
+  }
+  
+  .storyteller-modal-tabs {
+    flex-wrap: wrap;
+    gap: 2px;
+  }
+  
+  .storyteller-modal-tab {
+    font-size: var(--font-ui-small);
+    padding: 6px 12px;
+  }
+  
+  .storyteller-map-grid {
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 10px;
+  }
+  
+  .storyteller-map-thumbnail {
+    height: 120px;
+    font-size: 2em;
+  }
+}

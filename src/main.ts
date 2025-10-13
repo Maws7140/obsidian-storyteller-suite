@@ -8,7 +8,7 @@ import { FolderResolver, FolderResolverOptions } from './folders/FolderResolver'
 import { PromptModal } from './modals/ui/PromptModal';
 import { ConfirmModal } from './modals/ui/ConfirmModal';
 import { CharacterModal } from './modals/CharacterModal';
-import { Character, Location, Event, GalleryImage, GalleryData, Story, Group, PlotItem, Reference, Chapter, Scene } from './types';
+import { Character, Location, Event, GalleryImage, GalleryData, Story, Group, PlotItem, Reference, Chapter, Scene, Map as StoryMap } from './types';
 import { CharacterListModal } from './modals/CharacterListModal';
 import { LocationModal } from './modals/LocationModal';
 import { LocationListModal } from './modals/LocationListModal';
@@ -53,6 +53,7 @@ import { getTemplateSections } from './utils/EntityTemplates';
     referenceFolderPath?: string;
     chapterFolderPath?: string;
     sceneFolderPath?: string;
+    mapFolderPath?: string;
     /** When true, avoid nested Stories/StoryName structure and use a single base */
     enableOneStoryMode?: boolean;
     /** Base folder used when one-story mode is enabled (defaults to 'StorytellerSuite') */
@@ -95,6 +96,7 @@ import { getTemplateSections } from './utils/EntityTemplates';
     referenceFolderPath: '',
     chapterFolderPath: '',
     sceneFolderPath: '',
+    mapFolderPath: '',
     enableOneStoryMode: false,
     oneStoryBaseFolder: 'StorytellerSuite',
     customTodayISO: undefined,
@@ -135,6 +137,7 @@ export default class StorytellerSuitePlugin extends Plugin {
             referenceFolderPath: this.settings.referenceFolderPath,
             chapterFolderPath: this.settings.chapterFolderPath,
             sceneFolderPath: this.settings.sceneFolderPath,
+            mapFolderPath: this.settings.mapFolderPath,
             enableOneStoryMode: this.settings.enableOneStoryMode,
             oneStoryBaseFolder: this.settings.oneStoryBaseFolder,
         };
@@ -255,7 +258,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 	/**
 	 * Helper: Get the folder path for a given entity type in the active story
 	 */
-    getEntityFolder(type: 'character' | 'location' | 'event' | 'item' | 'reference' | 'chapter' | 'scene'): string { // include 'scene'
+    getEntityFolder(type: 'character' | 'location' | 'event' | 'item' | 'reference' | 'chapter' | 'scene' | 'map'): string {
         const resolver = this.buildResolver();
         return resolver.getEntityFolder(type);
     }
@@ -1628,6 +1631,193 @@ export default class StorytellerSuitePlugin extends Plugin {
 			this.app.metadataCache.trigger("dataview:refresh-views");
 		} else {
 			new Notice(`Error: Could not find location file to delete at ${filePath}`);
+		}
+	}
+
+	/**
+	 * Map Data Management
+	 * Methods for creating, reading, updating, and deleting map entities
+	 */
+
+	/**
+	 * Ensure the map folder exists for the active story
+	 */
+	async ensureMapFolder(): Promise<void> {
+		await this.ensureFolder(this.getEntityFolder('map'));
+	}
+
+	/**
+	 * Build frontmatter for map entity
+	 */
+	private buildFrontmatterForMap(map: Partial<StoryMap>, originalFrontmatter?: Record<string, unknown>): Record<string, unknown> {
+		return buildFrontmatter('map' as any, map, undefined, { customFieldsMode: this.settings.customFieldsMode, originalFrontmatter });
+	}
+
+	/**
+	 * Save a map to the vault as a markdown file (in the active story)
+	 * @param map The map data to save
+	 */
+	async saveMap(map: StoryMap): Promise<void> {
+		await this.ensureMapFolder();
+		const folderPath = this.getEntityFolder('map');
+		
+		// Create safe filename from map name
+		const fileName = `${map.name.replace(/[\\/:"*?<>|]+/g, '')}.md`;
+		const filePath = normalizePath(`${folderPath}/${fileName}`);
+
+		// Separate content fields from frontmatter fields
+		const { filePath: currentFilePath, description, ...rest } = map as any;
+		if ((rest as any).sections) delete (rest as any).sections;
+
+		// Handle renaming if filePath is present and name changed
+		let finalFilePath = filePath;
+		if (currentFilePath && currentFilePath !== filePath) {
+			const existingFile = this.app.vault.getAbstractFileByPath(currentFilePath);
+			if (existingFile && existingFile instanceof TFile) {
+				await this.app.fileManager.renameFile(existingFile, filePath);
+				finalFilePath = filePath;
+			}
+		}
+
+		// Check if file exists and read existing frontmatter and sections
+		const existingFile = this.app.vault.getAbstractFileByPath(finalFilePath);
+		let existingSections: Record<string, string> = {};
+		let originalFrontmatter: Record<string, unknown> | undefined;
+		if (existingFile && existingFile instanceof TFile) {
+			try {
+				const existingContent = await this.app.vault.cachedRead(existingFile);
+				existingSections = parseSectionsFromMarkdown(existingContent);
+				
+				const { parseFrontmatterFromContent } = await import('./yaml/EntitySections');
+				const directFrontmatter = parseFrontmatterFromContent(existingContent);
+				
+				const fileCache = this.app.metadataCache.getFileCache(existingFile);
+				const cachedFrontmatter = fileCache?.frontmatter as Record<string, unknown> | undefined;
+				
+				if (directFrontmatter || cachedFrontmatter) {
+					originalFrontmatter = { ...(cachedFrontmatter || {}), ...(directFrontmatter || {}) };
+				}
+			} catch (error) {
+				console.warn(`Error reading existing map file: ${error}`);
+			}
+		}
+
+		// Build frontmatter
+		const finalFrontmatter = this.buildFrontmatterForMap(rest, originalFrontmatter);
+		const frontmatterString = Object.keys(finalFrontmatter).length > 0 ? stringifyYaml(finalFrontmatter) : '';
+
+		// Build sections from templates + provided data
+		const providedSections = {
+			Description: description || ''
+		};
+		const templateSections = getTemplateSections('map', providedSections);
+		const allSections: Record<string, string> = (existingFile && existingFile instanceof TFile)
+			? { ...templateSections, ...existingSections }
+			: templateSections;
+
+		// Generate Markdown
+		let mdContent = `---\n${frontmatterString}---\n\n`;
+		mdContent += Object.entries(allSections)
+			.map(([key, content]) => `## ${key}\n${content || ''}`)
+			.join('\n\n');
+		if (!mdContent.endsWith('\n')) mdContent += '\n';
+
+		// Save or update the file
+		if (existingFile && existingFile instanceof TFile) {
+			await this.app.vault.modify(existingFile, mdContent);
+		} else {
+			await this.app.vault.create(finalFilePath, mdContent);
+		}
+		
+		// Update the filePath in the map object
+		map.filePath = finalFilePath;
+		this.app.metadataCache.trigger("dataview:refresh-views");
+	}
+
+	/**
+	 * Load all maps from the map folder
+	 * @returns Array of map objects sorted by name
+	 */
+	async listMaps(): Promise<StoryMap[]> {
+		await this.ensureMapFolder();
+		const folderPath = this.getEntityFolder('map');
+		
+		const allFiles = this.app.vault.getMarkdownFiles();
+		const prefix = normalizePath(folderPath) + '/';
+		const files = allFiles.filter(file => 
+			file.path.startsWith(prefix) && 
+			file.extension === 'md'
+		);
+		
+		// Parse each map file
+		const maps: StoryMap[] = [];
+		for (const file of files) {
+			let mapData = await this.parseFile<StoryMap>(file, { name: '', scale: 'region', markers: [] }, 'map' as any);
+			if (mapData) mapData = this.normalizeEntityCustomFields('map' as any, mapData);
+			if (mapData) {
+				maps.push(mapData);
+			}
+		}
+		
+		// Return sorted by name
+		return maps.sort((a, b) => a.name.localeCompare(b.name));
+	}
+
+	/**
+	 * Get a single map by ID
+	 * @param mapId The ID of the map to retrieve
+	 * @returns The map object or null if not found
+	 */
+	async getMap(mapId: string): Promise<StoryMap | null> {
+		const maps = await this.listMaps();
+		return maps.find(m => m.id === mapId) || null;
+	}
+
+	/**
+	 * Delete a map file by moving it to trash
+	 * @param filePath Path to the map file to delete
+	 */
+	async deleteMap(filePath: string): Promise<void> {
+		const file = this.app.vault.getAbstractFileByPath(normalizePath(filePath));
+		if (file instanceof TFile) {
+			await this.app.vault.trash(file, true);
+			new Notice(`Map file "${file.basename}" moved to trash.`);
+			this.app.metadataCache.trigger("dataview:refresh-views");
+		} else {
+			new Notice(`Error: Could not find map file to delete at ${filePath}`);
+		}
+	}
+
+	/**
+	 * Link a location to a map
+	 * @param locationName Name of the location to link
+	 * @param mapId ID of the map to link to
+	 */
+	async linkLocationToMap(locationName: string, mapId: string): Promise<void> {
+		const locations = await this.listLocations();
+		const location = locations.find(l => l.name === locationName);
+		
+		if (location) {
+			if (!location.relatedMapIds) location.relatedMapIds = [];
+			if (!location.relatedMapIds.includes(mapId)) {
+				location.relatedMapIds.push(mapId);
+				await this.saveLocation(location);
+			}
+		}
+	}
+
+	/**
+	 * Unlink a location from a map
+	 * @param locationName Name of the location to unlink
+	 * @param mapId ID of the map to unlink from
+	 */
+	async unlinkLocationFromMap(locationName: string, mapId: string): Promise<void> {
+		const locations = await this.listLocations();
+		const location = locations.find(l => l.name === locationName);
+		
+		if (location && location.relatedMapIds) {
+			location.relatedMapIds = location.relatedMapIds.filter(id => id !== mapId);
+			await this.saveLocation(location);
 		}
 	}
 

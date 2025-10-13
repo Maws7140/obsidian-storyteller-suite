@@ -262,3 +262,5 @@ The Gantt chart view is now fully implemented as a **separate, toggleable view**
 
 Users can now choose between Timeline mode (for overview) and Gantt mode (for project planning) based on their needs!
 
+
+
