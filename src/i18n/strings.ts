@@ -61,6 +61,7 @@ const en = {
   upload: 'Upload',
   import: 'Import',
   export: 'Export',
+  refresh: 'Refresh',
   // Modal titles
   createNewCharacter: 'Create new character',
   editCharacter: 'Edit character',
@@ -137,6 +138,7 @@ const en = {
   viewScenes: 'View scenes',
   viewGroups: 'View groups',
   viewTimeline: 'View timeline',
+  openTimelinePanel: 'Open timeline panel',
   viewGallery: 'View gallery',
   // Additional messages
   selectOrCreateStoryFirst: 'Select or create a story first.',
@@ -299,6 +301,7 @@ const en = {
   filterByTimeline: 'Filter by timeline',
   filterByEntityTypes: 'Filter by entity types',
   exportGraph: 'Export graph',
+  toggleEdgeLabels: 'Toggle edge labels',
   showLegend: 'Show legend',
   legend: 'Legend',
   noRelationshipsFound: 'No relationships found. Add connections between entities to visualize them in the network graph.',
@@ -310,6 +313,7 @@ const en = {
   resetFilters: 'Reset filters',
   exportAsPNG: 'Export as PNG',
   exportAsJPG: 'Export as JPG',
+  graphExported: 'Graph exported.',
   connections: 'Connections',
   searchEntities: 'Search entities...',
   zoomIn: 'Zoom In',
@@ -531,6 +535,22 @@ const en = {
   assignEventToGroupsDesc: 'Assign this event to one or more groups.',
   assignItemToGroupsDesc: 'Assign this item to one or more groups.',
   assignCharacterToGroupsDesc: 'Assign this character to one or more groups.',
+  // Network Graph - Additional strings
+  nodesLabel: 'Nodes',
+  edgesLabel: 'Edges',
+  filteredLabel: 'Filtered',
+  loadingNodes: 'Loading nodes',
+  emptyGraphTitle: 'No entities to display',
+  emptyGraphMessage: 'Create characters, locations, events, or items to see them in the network graph.',
+  emptyGraphTip: 'Add relationships between entities to see connections visualized here.',
+  keyboardShortcuts: 'Keyboard Shortcuts',
+  graphUpdated: 'Graph updated',
+  filterApplied: 'Filter applied',
+  layoutChanged: 'Layout changed',
+  graphFitToView: 'Fit graph to view',
+  showingXNodes: (count: number) => `Showing ${count} node${count !== 1 ? 's' : ''}`,
+  showingXEdges: (count: number) => `${count} edge${count !== 1 ? 's' : ''}`,
+  noNodesVisible: 'No nodes visible with current filters',
 };
 
 const zh = {
@@ -594,6 +614,7 @@ const zh = {
   upload: '上传',
   import: '导入',
   export: '导出',
+  refresh: '刷新',
   // Modal titles
   createNewCharacter: '创建新角色',
   editCharacter: '编辑角色',
@@ -670,6 +691,7 @@ const zh = {
   viewScenes: '查看场景',
   viewGroups: '查看组群',
   viewTimeline: '查看时间线',
+  openTimelinePanel: '打开时间线面板',
   viewGallery: '查看图库',
   // Additional messages
   selectOrCreateStoryFirst: '请先选择或创建一个故事。',
@@ -830,6 +852,7 @@ const zh = {
   filterByTimeline: '按时间线筛选',
   filterByEntityTypes: '按实体类型筛选',
   exportGraph: '导出图谱',
+  toggleEdgeLabels: '切换边标签',
   showLegend: '显示图例',
   legend: '图例',
   noRelationshipsFound: '未找到关系。在实体之间添加连接以在网络图谱中可视化它们。',
@@ -841,6 +864,7 @@ const zh = {
   resetFilters: '重置筛选',
   exportAsPNG: '导出为PNG',
   exportAsJPG: '导出为JPG',
+  graphExported: '图谱已导出。',
   connections: '连接',
   searchEntities: '搜索实体...',
   zoomIn: '放大',
@@ -1062,15 +1086,37 @@ const zh = {
   assignEventToGroupsDesc: '将此事件分配到一个或多个组群。',
   assignItemToGroupsDesc: '将此物品分配到一个或多个组群。',
   assignCharacterToGroupsDesc: '将此角色分配到一个或多个组群。',
+  // Network Graph - Additional strings
+  nodesLabel: '节点',
+  edgesLabel: '边',
+  filteredLabel: '已筛选',
+  loadingNodes: '加载节点中',
+  emptyGraphTitle: '无实体可显示',
+  emptyGraphMessage: '创建角色、位置、事件或物品以在网络图谱中查看它们。',
+  emptyGraphTip: '在实体之间添加关系以在此处可视化连接。',
+  keyboardShortcuts: '键盘快捷键',
+  graphUpdated: '图谱已更新',
+  filterApplied: '已应用筛选',
+  layoutChanged: '布局已更改',
+  graphFitToView: '适应图谱到视图',
+  showingXNodes: (count: number) => `显示 ${count} 个节点`,
+  showingXEdges: (count: number) => `${count} 条边`,
+  noNodesVisible: '当前筛选器下无可见节点',
 };
 
 const locales: Record<Lang, typeof en> = { en, zh };
 let current: Lang = 'en';
 
 export function setLocale(lang: Lang) { current = lang; }
-type ExtractFunction<T> = T extends (...args: infer P) => string ? (...args: P) => string : never;
-export function t<K extends keyof typeof en>(key: K, ...args: Parameters<ExtractFunction<typeof en[K]>>): string {
-  const value = locales[current][key] as any;
-  if (typeof value === 'function') return value(...args);
+type TranslationValue<K extends keyof typeof en> = typeof en[K];
+type TranslationArgs<K extends keyof typeof en> = TranslationValue<K> extends (...args: infer P) => string ? P : [];
+type TranslationFn<K extends keyof typeof en> = TranslationValue<K> extends (...args: infer P) => string ? (...args: P) => string : never;
+
+export function t<K extends keyof typeof en>(key: K, ...args: TranslationArgs<K>): string {
+  const value = locales[current][key] as TranslationValue<K>;
+  if (typeof value === 'function') {
+    const fn = value as unknown as TranslationFn<K>;
+    return fn(...args);
+  }
   return value as string;
 }

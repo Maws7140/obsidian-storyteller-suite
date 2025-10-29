@@ -18,6 +18,7 @@ import { GalleryModal } from './modals/GalleryModal';
 import { ImageDetailModal } from './modals/ImageDetailModal';
 import { DashboardView, VIEW_TYPE_DASHBOARD } from './views/DashboardView';
 import { NetworkGraphView, VIEW_TYPE_NETWORK_GRAPH } from './views/NetworkGraphView';
+import { TimelineView, VIEW_TYPE_TIMELINE } from './views/TimelineView';
 import { GalleryImageSuggestModal } from './modals/GalleryImageSuggestModal';
 import { StorytellerSuiteSettingTab } from './StorytellerSuiteSettingTab';
 import { NewStoryModal } from './modals/NewStoryModal';
@@ -66,6 +67,10 @@ import { getTemplateSections } from './utils/EntityTemplates';
      defaultTimelineStack?: boolean;
      defaultTimelineDensity?: number; // 0..100
      showTimelineLegend?: boolean;
+     /** Gantt mode specific settings */
+     ganttShowProgressBars?: boolean; // Show progress bar overlays in Gantt view
+     ganttDefaultDuration?: number; // Default duration in days for events without end date in Gantt
+     ganttArrowStyle?: 'solid' | 'dashed' | 'dotted'; // Arrow style for dependencies
      /** When false (default), block external http/https images. */
      allowRemoteImages?: boolean;
     /** Internal: set after first-run sanitization to avoid repeating it */
@@ -105,6 +110,9 @@ import { getTemplateSections } from './utils/EntityTemplates';
     defaultTimelineStack: true,
     defaultTimelineDensity: 50,
     showTimelineLegend: true,
+    ganttShowProgressBars: true,
+    ganttDefaultDuration: 1,
+    ganttArrowStyle: 'solid',
     allowRemoteImages: true,
     sanitizedSeedData: false,
     customFieldsMode: 'flatten',
@@ -468,6 +476,12 @@ export default class StorytellerSuitePlugin extends Plugin {
 		this.registerView(
 			VIEW_TYPE_NETWORK_GRAPH,
 			(leaf) => new NetworkGraphView(leaf, this)
+		);
+
+		// Register the timeline panel view for persistent timeline access
+		this.registerView(
+			VIEW_TYPE_TIMELINE,
+			(leaf) => new TimelineView(leaf, this)
 		);
 
 		// Add ribbon icon for quick access to dashboard
@@ -917,6 +931,15 @@ export default class StorytellerSuitePlugin extends Plugin {
 			}
 		});
 
+		// Timeline panel view command
+		this.addCommand({
+			id: 'open-timeline-panel',
+			name: t('openTimelinePanel'),
+			callback: async () => {
+				await this.activateTimelineView();
+			}
+		});
+
 		// Plot Item management commands
 		this.addCommand({
 			id: 'create-new-plot-item',
@@ -1161,6 +1184,36 @@ export default class StorytellerSuitePlugin extends Plugin {
 
 		// Show the view (expand sidebar if collapsed)
 		workspace.revealLeaf(leaf);
+	}
+
+	/**
+	 * Activate or focus the timeline panel view in the main editor area
+	 * Creates a new view as a tab if none exists, otherwise focuses existing view
+	 */
+	async activateTimelineView() {
+		const { workspace } = this.app;
+
+		// Check if a timeline view already exists
+		const existingLeaves = workspace.getLeavesOfType(VIEW_TYPE_TIMELINE);
+
+		if (existingLeaves.length > 0) {
+			// Reveal existing timeline view
+			workspace.revealLeaf(existingLeaves[0]);
+			return;
+		}
+
+		// Create new leaf for timeline view in main editor area (as a tab)
+		const leaf = workspace.getLeaf('tab');
+		if (leaf) {
+			await leaf.setViewState({
+				type: VIEW_TYPE_TIMELINE,
+				active: true
+			});
+			workspace.revealLeaf(leaf);
+		} else {
+			console.error("Storyteller Suite: Could not create workspace leaf for timeline.");
+			new Notice("Error opening timeline panel: Could not create workspace leaf.");
+		}
 	}
 
 	/**

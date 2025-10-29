@@ -57,6 +57,7 @@ export class TimelineModal extends Modal {
         this.groupMode = (plugin.settings.defaultTimelineGroupMode || 'none') as any;
         this.stackEnabled = plugin.settings.defaultTimelineStack ?? true;
         this.density = plugin.settings.defaultTimelineDensity ?? 50;
+        this.defaultGanttDuration = plugin.settings.ganttDefaultDuration ?? 1;
     }
 
     onOpen() {
@@ -301,7 +302,9 @@ export class TimelineModal extends Modal {
         }
 
         // Options
-        const itemMargin = 4 + Math.round(this.density / 6); // 4..20 approx
+        // In Gantt mode, use larger margins for better bar visibility
+        const baseMargin = this.viewMode === 'gantt' ? 15 : 4;
+        const itemMargin = baseMargin + Math.round(this.density / 6);
         const dayMs = 24 * 60 * 60 * 1000;
         const yearMs = 365.25 * dayMs;
         const options: any = {
@@ -320,6 +323,11 @@ export class TimelineModal extends Modal {
                 return `<div class="timeline-progress" style="width:${item.progress}%"></div>`;
             }
         };
+
+        // Add explicit item height in Gantt mode for consistent bar sizing
+        if (this.viewMode === 'gantt') {
+            options.height = '40px';
+        }
         
         // Enable drag-and-drop editing when in edit mode
         if (this.editModeEnabled) {
@@ -558,9 +566,9 @@ export class TimelineModal extends Modal {
             const approx = !!parsed.approximate;
             const isMilestone = !!evt.isMilestone;
             
-            // Gantt mode: ensure all events have duration (convert points to ranges)
+            // Gantt mode: ensure all events have duration (but not milestones)
             let displayEndMs = endMs;
-            if (this.viewMode === 'gantt' && displayEndMs == null) {
+            if (this.viewMode === 'gantt' && displayEndMs == null && !isMilestone) {
                 // Add default duration for events without end date
                 const durationMs = this.defaultGanttDuration * 24 * 60 * 60 * 1000;
                 displayEndMs = startMs + durationMs;
@@ -570,7 +578,7 @@ export class TimelineModal extends Modal {
             const classes: string[] = [];
             if (approx) classes.push('is-approx');
             if (isMilestone) classes.push('timeline-milestone');
-            if (this.viewMode === 'gantt') classes.push('gantt-bar');
+            if (this.viewMode === 'gantt' && !isMilestone) classes.push('gantt-bar');
             
             // Build style with milestone overrides
             let style = color ? `background-color:${this.hexWithAlpha(color, 0.18)};border-color:${color};` : '';
@@ -578,10 +586,12 @@ export class TimelineModal extends Modal {
             // Milestone icon prefix
             const content = isMilestone ? '⭐ ' + evt.name : evt.name;
 
-            // Determine item type based on view mode
+            // Determine item type based on view mode - milestones always use 'box' to avoid showing range bars
             let itemType: string;
-            if (this.viewMode === 'gantt') {
-                itemType = 'range'; // Always use range bars in Gantt mode
+            if (isMilestone) {
+                itemType = 'box'; // Milestones always render as boxes to show content without range bars
+            } else if (this.viewMode === 'gantt') {
+                itemType = 'range'; // Non-milestone events use range bars in Gantt mode
             } else {
                 itemType = displayEndMs != null ? 'range' : 'box'; // Timeline mode: use original logic
             }

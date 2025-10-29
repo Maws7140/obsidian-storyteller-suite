@@ -1823,6 +1823,119 @@ body.mod-rtl .storyteller-group-members {
   border-radius: 8px;
 }
 
+/* Priority 1: Status Bar for node/edge counts */
+.storyteller-graph-status-bar {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: var(--background-secondary);
+  color: var(--text-normal);
+  padding: 6px 16px;
+  border-radius: 20px;
+  font-size: 14px;
+  font-weight: 500;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  border: 1px solid var(--background-modifier-border);
+  z-index: 100;
+  pointer-events: none;
+  line-height: 1.4;
+}
+
+/* Priority 1: Improved Empty State */
+.storyteller-empty-state {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  max-width: 400px;
+  padding: 2rem;
+}
+
+.storyteller-empty-state-icon {
+  color: var(--text-faint);
+  margin-bottom: 1.5rem;
+  opacity: 0.6;
+}
+
+.storyteller-empty-state-icon svg {
+  width: 64px;
+  height: 64px;
+}
+
+.storyteller-empty-state h3 {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text-normal);
+  margin-bottom: 0.75rem;
+}
+
+.storyteller-empty-state-message {
+  font-size: 14px;
+  color: var(--text-muted);
+  margin-bottom: 1.5rem;
+  line-height: 1.6;
+}
+
+.storyteller-empty-state-tips {
+  margin-bottom: 1.5rem;
+}
+
+.storyteller-empty-state-tip {
+  font-size: 13px;
+  color: var(--text-muted);
+  background-color: var(--background-secondary);
+  padding: 0.75rem 1rem;
+  border-radius: 6px;
+  margin-bottom: 0.5rem;
+  text-align: left;
+  border-left: 3px solid var(--interactive-accent);
+}
+
+.storyteller-empty-state-actions {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: center;
+}
+
+.storyteller-empty-state-actions button {
+  min-height: 44px; /* WCAG touch target size */
+  padding: 0.5rem 1.5rem;
+  font-size: 14px;
+}
+
+/* Priority 1: Keyboard Shortcuts Help Table */
+.storyteller-keyboard-shortcuts-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 1rem;
+}
+
+.storyteller-keyboard-shortcuts-table tr {
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.storyteller-keyboard-shortcuts-table td {
+  padding: 12px 16px;
+  font-size: 14px;
+}
+
+.storyteller-shortcut-key {
+  font-family: var(--font-monospace);
+  background-color: var(--background-secondary);
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-weight: 600;
+  color: var(--text-accent);
+  min-width: 100px;
+  text-align: center;
+}
+
+.storyteller-shortcut-desc {
+  color: var(--text-normal);
+}
+
 /* Filter buttons and controls */
 .storyteller-network-filters input[type="checkbox"] {
   cursor: pointer;
@@ -1914,6 +2027,8 @@ body.mod-rtl .storyteller-group-members {
   overflow: hidden;
 }
 
+/* Mobile responsive adjustments for network graph modal */
+@media (max-width: 768px) {
   .storyteller-entity-type-filters {
     flex-direction: column;
     gap: 0.5rem;
@@ -1922,6 +2037,382 @@ body.mod-rtl .storyteller-group-members {
   .storyteller-network-tooltip {
     max-width: 200px;
     font-size: 11px;
+  }
+}
+
+/* Priority 2: Font Size Improvements - Minimum 14px for all UI text */
+.storyteller-network-graph-modal {
+  font-size: 14px;
+}
+
+.storyteller-network-graph-modal .modal-title {
+  font-size: 20px;
+  font-weight: 600;
+}
+
+/* Toolbar Styles - Priority 2.1: Better visual hierarchy */
+.storyteller-graph-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 12px 16px;
+  background-color: var(--background-secondary);
+  border-bottom: 1px solid var(--background-modifier-border);
+  align-items: center;
+}
+
+.storyteller-toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.storyteller-toolbar-group--filters {
+  margin-right: auto;
+}
+
+.storyteller-toolbar-button {
+  min-height: 36px;
+  min-width: 36px;
+  padding: 6px 12px;
+  font-size: 14px;
+  background-color: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.storyteller-toolbar-button:hover {
+  background-color: var(--background-modifier-hover);
+  border-color: var(--interactive-accent);
+}
+
+.storyteller-toolbar-button.is-active {
+  background-color: var(--interactive-accent);
+  color: var(--text-on-accent);
+  border-color: var(--interactive-accent);
+}
+
+.storyteller-toolbar-button svg {
+  width: 16px;
+  height: 16px;
+}
+
+.storyteller-filter-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  font-size: 12px;
+  font-weight: 600;
+  background-color: var(--interactive-accent);
+  color: var(--text-on-accent);
+  border-radius: 10px;
+  margin-left: 4px;
+}
+
+.storyteller-toolbar-search {
+  min-height: 36px;
+  padding: 6px 12px;
+  font-size: 14px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  background-color: var(--background-primary);
+  color: var(--text-normal);
+  min-width: 200px;
+  transition: border-color 0.2s ease;
+}
+
+.storyteller-toolbar-search:focus {
+  outline: none;
+  border-color: var(--interactive-accent);
+  box-shadow: 0 0 0 2px rgba(var(--interactive-accent-rgb), 0.1);
+}
+
+.storyteller-toolbar-search::placeholder {
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.storyteller-toolbar-select {
+  min-height: 36px;
+  padding: 6px 32px 6px 12px;
+  font-size: 14px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  background-color: var(--background-primary);
+  color: var(--text-normal);
+  cursor: pointer;
+  transition: border-color 0.2s ease;
+  appearance: none;
+  background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 12 12"><path fill="currentColor" d="M6 9L1 4h10z"/></svg>');
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+}
+
+.storyteller-toolbar-select:focus {
+  outline: none;
+  border-color: var(--interactive-accent);
+  box-shadow: 0 0 0 2px rgba(var(--interactive-accent-rgb), 0.1);
+}
+
+.storyteller-toolbar-segment {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  background-color: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+}
+
+.storyteller-toolbar-segment .storyteller-toolbar-button {
+  border: none;
+  min-width: 32px;
+  padding: 6px;
+}
+
+.storyteller-toolbar-segment .storyteller-toolbar-button:hover {
+  background-color: var(--background-modifier-hover);
+}
+
+/* Filter Chips Row */
+.storyteller-filter-chips-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background-color: var(--background-primary-alt);
+  border-bottom: 1px solid var(--background-modifier-border);
+  min-height: 48px;
+  flex-wrap: wrap;
+}
+
+.storyteller-filter-chips-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  flex: 1;
+}
+
+.storyteller-filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background-color: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 16px;
+  font-size: 13px;
+  color: var(--text-normal);
+  max-width: 250px;
+}
+
+.storyteller-filter-chip span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.storyteller-filter-chip-remove {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 20px;
+  line-height: 1;
+  padding: 0;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.storyteller-filter-chip-remove:hover {
+  background-color: var(--background-modifier-error);
+  color: var(--text-error);
+}
+
+.storyteller-filter-clear-all {
+  padding: 6px 12px;
+  font-size: 13px;
+  background-color: transparent;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.storyteller-filter-clear-all:hover {
+  background-color: var(--background-modifier-error);
+  border-color: var(--text-error);
+  color: var(--text-error);
+}
+
+.storyteller-filter-clear-all.is-disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* Filter Drawer - Priority 2.1: Improved sidebar design */
+.storyteller-graph-filter-drawer {
+  position: fixed;
+  top: 0;
+  right: -400px;
+  width: 400px;
+  height: 100%;
+  background-color: var(--background-primary);
+  border-left: 1px solid var(--background-modifier-border);
+  box-shadow: -4px 0 24px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+  transition: right 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.storyteller-graph-filter-drawer.is-open {
+  right: 0;
+}
+
+.storyteller-filter-drawer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--background-modifier-border);
+  background-color: var(--background-secondary);
+}
+
+.storyteller-filter-drawer-header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-normal);
+}
+
+.storyteller-filter-drawer-close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 6px;
+  color: var(--text-muted);
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.storyteller-filter-drawer-close:hover {
+  background-color: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.storyteller-filter-drawer-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+}
+
+.storyteller-filter-section {
+  margin-bottom: 24px;
+}
+
+.storyteller-filter-section-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-normal);
+  margin-bottom: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.storyteller-filter-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  margin-bottom: 6px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  font-size: 14px;
+}
+
+.storyteller-filter-option:hover {
+  background-color: var(--background-secondary);
+}
+
+.storyteller-filter-option input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  margin: 0;
+}
+
+.storyteller-filter-option label {
+  cursor: pointer;
+  user-select: none;
+  flex: 1;
+  font-size: 14px;
+}
+
+.storyteller-filter-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.5);
+  z-index: 999;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.3s ease, visibility 0.3s ease;
+}
+
+.storyteller-filter-backdrop.is-visible {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* Mobile adjustments for toolbar and filters */
+@media (max-width: 768px) {
+  .storyteller-graph-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .storyteller-toolbar-group {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .storyteller-toolbar-search {
+    min-width: 100%;
+  }
+
+  .storyteller-graph-filter-drawer {
+    width: 100%;
+    right: -100%;
+  }
+
+  .storyteller-filter-chips-row {
+    padding: 8px 12px;
   }
 }
 
@@ -2062,6 +2553,11 @@ body.mod-rtl .storyteller-group-members {
 .storyteller-timeline-modal .vis-item.gantt-bar .vis-item-content {
   white-space: nowrap;
   overflow: visible;
+}
+
+/* Hide overflow container for milestones to prevent visual artifacts */
+.storyteller-timeline-modal .vis-item.timeline-milestone .vis-item-overflow {
+  overflow: hidden !important;
 }
 
 /* Minimum width for Gantt bars so labels fit */
@@ -2448,5 +2944,498 @@ body.mod-rtl .storyteller-group-members {
   .storyteller-map-thumbnail {
     height: 120px;
     font-size: 2em;
+  }
+}
+/* =================================================================
+   NETWORK GRAPH VIEW - OPTIMIZED UI
+   ================================================================= */
+
+/* Main container - Flexbox vertical layout */
+.storyteller-network-graph-view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* Toolbar - Icon buttons row */
+.storyteller-graph-toolbar {
+  display: flex;
+  gap: 4px;
+  padding: 8px;
+  border-bottom: 1px solid var(--background-modifier-border);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+.storyteller-toolbar-btn {
+  padding: 6px;
+  border-radius: var(--radius-s);
+  transition: background-color 0.2s;
+}
+
+.storyteller-toolbar-btn:hover {
+  background-color: var(--background-modifier-hover);
+}
+
+/* Entity filter buttons */
+.storyteller-graph-entity-filters {
+  display: flex;
+  gap: 4px;
+  padding: 8px;
+  border-bottom: 1px solid var(--background-modifier-border);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+.storyteller-entity-filter-btn {
+  padding: 8px;
+  border-radius: var(--radius-s);
+  opacity: 0.4;
+  transition: opacity 0.2s, background-color 0.2s;
+  border: 1px solid transparent;
+}
+
+.storyteller-entity-filter-btn:hover {
+  opacity: 0.7;
+  background-color: var(--background-modifier-hover);
+}
+
+.storyteller-entity-filter-btn.is-active {
+  opacity: 1;
+  background-color: var(--interactive-accent);
+  color: var(--text-on-accent);
+  border-color: var(--interactive-accent);
+}
+
+/* Advanced filters - Collapsible section */
+.storyteller-graph-advanced-filters {
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.storyteller-advanced-filters-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 0.2s;
+}
+
+.storyteller-advanced-filters-header:hover {
+  background-color: var(--background-modifier-hover);
+}
+
+.storyteller-advanced-filters-header .collapse-icon {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  transition: transform 0.2s;
+}
+
+.storyteller-advanced-filters-content {
+  padding: 8px;
+  background-color: var(--background-secondary);
+}
+
+.storyteller-filter-row {
+  margin-bottom: 8px;
+}
+
+.storyteller-filter-row:last-child {
+  margin-bottom: 0;
+}
+
+.storyteller-filter-row label {
+  display: block;
+  margin-bottom: 4px;
+  font-size: var(--font-ui-small);
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.storyteller-filter-row input[type="text"],
+.storyteller-filter-row input[type="date"] {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  background-color: var(--background-primary);
+  color: var(--text-normal);
+  font-size: var(--font-ui-small);
+}
+
+.storyteller-date-range {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.storyteller-date-range input {
+  flex: 1;
+}
+
+.storyteller-date-range .date-separator {
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+}
+
+/* Graph container - Flex grow to fill space */
+.storyteller-graph-container {
+  flex: 1 1 auto;
+  min-height: 0;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Loading skeleton */
+.storyteller-graph-loader {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--text-muted);
+}
+
+.storyteller-loader-spinner {
+  width: 40px;
+  height: 40px;
+  border: 4px solid var(--background-modifier-border);
+  border-top-color: var(--interactive-accent);
+  border-radius: 50%;
+  animation: storyteller-spin 0.8s linear infinite;
+  margin-bottom: 12px;
+}
+
+@keyframes storyteller-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.storyteller-graph-loader p {
+  margin: 0;
+  font-size: var(--font-ui-small);
+}
+
+/* Status footer */
+.storyteller-graph-footer {
+  padding: 8px;
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  border-top: 1px solid var(--background-modifier-border);
+  flex-shrink: 0;
+  text-align: center;
+  background-color: var(--background-secondary);
+}
+
+.storyteller-graph-status {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ==================== Timeline View Styles ==================== */
+
+/* Timeline view container - full height flex layout */
+.storyteller-timeline-view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* Timeline toolbar - horizontal layout matching graph toolbar */
+.storyteller-timeline-toolbar {
+  display: flex;
+  gap: 4px;
+  padding: 8px;
+  border-bottom: 1px solid var(--background-modifier-border);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+/* Timeline filter toggle section (milestone checkbox) */
+.storyteller-timeline-filter-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background-color: var(--background-secondary);
+  border-bottom: 1px solid var(--background-modifier-border);
+  flex-shrink: 0;
+}
+
+.storyteller-filter-label {
+  font-size: var(--font-ui-small);
+  color: var(--text-normal);
+  cursor: pointer;
+  user-select: none;
+}
+
+.storyteller-filter-checkbox {
+  cursor: pointer;
+}
+
+/* Timeline grouping dropdown */
+.storyteller-grouping-container {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.storyteller-grouping-select {
+  padding: 4px 8px;
+  font-size: var(--font-ui-small);
+  border-radius: var(--radius-s);
+  background-color: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  color: var(--text-normal);
+  cursor: pointer;
+}
+
+.storyteller-grouping-select:hover {
+  background-color: var(--background-modifier-hover);
+}
+
+/* Timeline advanced filters section */
+.storyteller-timeline-advanced-filters {
+  background-color: var(--background-secondary);
+  border-bottom: 1px solid var(--background-modifier-border);
+  flex-shrink: 0;
+}
+
+/* Timeline container - fills remaining space in panel view */
+.storyteller-timeline-view .storyteller-timeline-container {
+  flex: 1 1 auto;
+  min-height: 0;
+  position: relative;
+  overflow: hidden;
+  max-height: none; /* Override modal max-height */
+}
+
+/* Make vis-timeline fill the container in panel view */
+.storyteller-timeline-view .vis-timeline {
+  height: 100% !important;
+  width: 100%;
+}
+
+/* Timeline footer */
+.storyteller-timeline-footer {
+  padding: 8px;
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  border-top: 1px solid var(--background-modifier-border);
+  flex-shrink: 0;
+  text-align: center;
+  background-color: var(--background-secondary);
+}
+
+.storyteller-timeline-status {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Timeline View Item Styles - Mirror Modal Styles */
+.storyteller-timeline-view .vis-item {
+  border-radius: 6px;
+  border-width: 1px;
+  padding: 2px 8px;
+  color: var(--text-normal);
+  background: var(--background-secondary);
+  border-color: var(--interactive-accent);
+  transition: transform 120ms ease, box-shadow 120ms ease, background 120ms ease;
+}
+
+.storyteller-timeline-view .vis-item.is-approx {
+  border-style: dashed;
+  opacity: 0.85;
+}
+
+.storyteller-timeline-view .vis-item:hover,
+.storyteller-timeline-view .vis-item.vis-selected {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(0,0,0,0.25);
+}
+
+.storyteller-timeline-view .vis-range {
+  border-radius: 6px;
+}
+
+.storyteller-timeline-view .vis-grid.vis-odd,
+.storyteller-timeline-view .vis-grid.vis-even {
+  border-color: var(--background-modifier-border);
+}
+
+.storyteller-timeline-view .vis-time-axis .vis-text {
+  color: var(--text-muted);
+}
+
+.storyteller-timeline-view .vis-current-time {
+  background-color: var(--interactive-accent);
+}
+
+/* Timeline View Progress Bars */
+.storyteller-timeline-view .timeline-progress {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 4px;
+  background: linear-gradient(90deg, #22C55E 0%, #10B981 100%);
+  border-radius: 0 0 4px 4px;
+  pointer-events: none;
+}
+
+/* Timeline View Milestones */
+.storyteller-timeline-view .vis-item.timeline-milestone {
+  padding: 4px 12px;
+  font-weight: 600;
+  border-width: 2px;
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+}
+
+.storyteller-timeline-view .vis-item.timeline-milestone:hover {
+  transform: scale(1.05);
+}
+
+/* Timeline View Gantt Bar Styles */
+.storyteller-timeline-view .vis-item.gantt-bar {
+  min-height: 30px;
+  border-radius: 4px;
+  border-width: 2px;
+  padding: 6px 12px !important;
+  font-size: var(--font-ui-medium);
+  font-weight: 500;
+}
+
+.storyteller-timeline-view .vis-item.gantt-bar.vis-range {
+  border-left-width: 4px;
+  border-right-width: 4px;
+  min-width: 100px;
+}
+
+.storyteller-timeline-view .vis-item.gantt-bar .vis-item-overflow {
+  overflow: visible;
+}
+
+.storyteller-timeline-view .vis-item.gantt-bar .vis-item-content {
+  white-space: nowrap;
+  overflow: visible;
+  line-height: 1.4;
+  min-height: 20px;
+}
+
+/* Hide overflow container for milestones to prevent visual artifacts */
+.storyteller-timeline-view .vis-item.timeline-milestone .vis-item-overflow {
+  overflow: hidden !important;
+}
+
+/* Timeline View Gantt Swimlanes */
+.storyteller-timeline-view .vis-group:nth-child(even) {
+  background: var(--background-secondary-alt);
+}
+
+/* Timeline View Grid Lines */
+.storyteller-timeline-view .vis-time-axis .vis-grid.vis-vertical {
+  border-color: var(--background-modifier-border-hover);
+}
+
+/* Timeline View Status Classes */
+.storyteller-timeline-view .vis-item.status-upcoming {
+  border-left-width: 4px;
+  border-left-color: var(--interactive-accent);
+}
+
+.storyteller-timeline-view .vis-item.status-completed {
+  opacity: 0.7;
+  text-decoration: line-through;
+}
+
+.storyteller-timeline-view .vis-item.status-ongoing {
+  border-left-width: 4px;
+  border-left-color: #22C55E;
+}
+
+.storyteller-timeline-view .vis-item.status-cancelled {
+  opacity: 0.5;
+  text-decoration: line-through;
+}
+
+/* ==================== End Timeline View Styles ==================== */
+
+/* Focus indicators for accessibility */
+.storyteller-toolbar-btn:focus-visible,
+.storyteller-entity-filter-btn:focus-visible,
+.storyteller-advanced-filters-header:focus-visible {
+  outline: 2px solid var(--interactive-accent);
+  outline-offset: 2px;
+}
+
+/* Remove default outline for mouse clicks */
+.storyteller-toolbar-btn:focus:not(:focus-visible),
+.storyteller-entity-filter-btn:focus:not(:focus-visible),
+.storyteller-advanced-filters-header:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* Responsive: narrow sidebar */
+@media (max-width: 400px) {
+  .storyteller-graph-toolbar,
+  .storyteller-graph-entity-filters {
+    gap: 2px;
+    padding: 6px;
+  }
+
+  .storyteller-toolbar-btn,
+  .storyteller-entity-filter-btn {
+    min-width: 32px;
+    padding: 6px;
+  }
+
+  .storyteller-advanced-filters-header {
+    padding: 6px;
+    font-size: var(--font-ui-small);
+  }
+
+  .storyteller-graph-footer {
+    padding: 6px;
+    font-size: var(--font-ui-smaller);
+  }
+}
+
+/* Dark theme adjustments */
+.theme-dark .storyteller-entity-filter-btn.is-active {
+  background-color: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
+
+.theme-dark .storyteller-advanced-filters-content {
+  background-color: var(--background-primary-alt);
+}
+
+/* Mobile responsive */
+@media (max-width: 768px) {
+  .storyteller-graph-toolbar {
+    padding: 6px 4px;
+  }
+
+  .storyteller-graph-entity-filters {
+    padding: 6px 4px;
+  }
+
+  .storyteller-filter-row {
+    margin-bottom: 12px;
+  }
+
+  .storyteller-date-range {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .storyteller-date-range .date-separator {
+    display: none;
   }
 }
