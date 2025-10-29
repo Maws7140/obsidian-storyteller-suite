@@ -20,9 +20,11 @@ export class NetworkGraphRenderer {
     private currentFilters: GraphFilters = {
         entityTypes: ['character', 'location', 'event', 'item']
     };
-    private tooltipEl: HTMLElement | null = null;
+    private infoPanelEl: HTMLElement | null = null; // Fixed info panel instead of tooltip
     private pinnedNodes: Set<string> = new Set();
     private currentLayout: 'cose' | 'circle' | 'grid' | 'concentric' = 'cose';
+    private showAllEdgeLabels = false; // Toggle for showing all edge labels
+    private infoPanelTimeout: NodeJS.Timeout | null = null; // Delay before updating info panel
 
     constructor(containerEl: HTMLElement, plugin: StorytellerSuitePlugin) {
         this.containerEl = containerEl;
@@ -248,11 +250,28 @@ export class NetworkGraphRenderer {
             wheelSensitivity: 0.15
         });
 
+        // Apply initial zoom adjustment after layout completes
+        this.cy.one('layoutstop', () => {
+            if (!this.cy) return;
+            
+            // Get the current zoom level after fit
+            const currentZoom = this.cy.zoom();
+            
+            // If zoom is too small (nodes appear tiny), zoom in a bit
+            // Typically fit creates zoom levels between 0.3-0.8 for medium/large graphs
+            if (currentZoom < 0.7) {
+                this.cy.zoom({
+                    level: Math.min(currentZoom * 1.4, 1.0), // Zoom in by 40%, max 1.0
+                    renderedPosition: { x: this.cy.width() / 2, y: this.cy.height() / 2 }
+                });
+            }
+        });
+
         // Add event listeners
         this.setupEventListeners();
 
-        // Create tooltip element
-        this.createTooltip();
+        // Create fixed info panel
+        this.createInfoPanel();
     }
 
     // Get layout configuration options based on selected layout type
@@ -261,7 +280,7 @@ export class NetworkGraphRenderer {
             animate: true,
             animationDuration: 500,
             fit: true,
-            padding: 50
+            padding: 80 // Increased from 50 for better initial zoom
         };
 
         switch (layoutName) {
@@ -269,15 +288,17 @@ export class NetworkGraphRenderer {
                 return {
                     ...baseOptions,
                     name: 'cose',
-                    nodeRepulsion: 15000, // Increased from 8000 for better spacing
-                    idealEdgeLength: 150, // Increased from 100
+                    nodeRepulsion: 25000, // Increased from 15000 for better spacing
+                    idealEdgeLength: 200, // Increased from 150 for more space
                     edgeElasticity: 100,
                     nestingFactor: 5,
-                    gravity: 50, // Reduced from 80 for more spread
+                    gravity: 30, // Reduced from 50 for more spread
                     numIter: 1000,
                     initialTemp: 200,
                     coolingFactor: 0.95,
                     minTemp: 1.0,
+                    componentSpacing: 150, // NEW: space between disconnected components
+                    nodeOverlap: 20, // NEW: prevent node overlap
                     nodeDimensionsIncludeLabels: true // Prevent label overlap
                 };
             case 'circle':
@@ -315,26 +336,34 @@ export class NetworkGraphRenderer {
             {
                 selector: 'node',
                 style: {
-                    'label': 'data(label)',
-                    'text-valign': 'bottom', // Position labels below nodes
+                    'label': (node: any) => {
+                        const label = node.data('label');
+                        // Truncate long labels with ellipsis
+                        return label && label.length > 15 ? label.substring(0, 15) + '...' : label;
+                    },
+                    'text-valign': 'center', // Center labels on nodes for better readability
                     'text-halign': 'center',
-                    'text-margin-y': 5, // Offset below node
-                    'font-size': '13px', // Increased from 12px
+                    'font-size': '14px', // Increased for accessibility (min 14px)
                     'font-family': 'var(--font-interface)',
                     'color': '#ffffff', // White text for contrast
-                    'text-outline-color': '#000000', // Black outline for readability
-                    'text-outline-width': 2,
+                    // Label background for better readability
+                    'text-background-color': 'rgba(0, 0, 0, 0.75)',
+                    'text-background-opacity': 0.85,
+                    'text-background-padding': '4px',
+                    'text-background-shape': 'roundrectangle',
+                    'text-outline-color': 'transparent', // Remove outline, background is enough
+                    'text-outline-width': 0,
                     'background-color': 'var(--interactive-accent)',
                     'border-width': 2,
                     'border-color': 'var(--background-modifier-border)',
-                    // Dynamic sizing based on degree (connections)
+                    // Enhanced dynamic sizing based on degree (connections)
                     'width': (node: any) => {
                         const degree = node.data('degree') || 0;
-                        return Math.max(50, Math.min(100, 50 + degree * 5));
+                        return Math.max(40, Math.min(120, 40 + degree * 8)); // More pronounced: 40-120px
                     },
                     'height': (node: any) => {
                         const degree = node.data('degree') || 0;
-                        return Math.max(50, Math.min(100, 50 + degree * 5));
+                        return Math.max(40, Math.min(120, 40 + degree * 8));
                     },
                     'text-wrap': 'wrap',
                     'text-max-width': '100px'
@@ -350,39 +379,63 @@ export class NetworkGraphRenderer {
                     'background-color': '#ffffff'
                 }
             },
-            // Character nodes (circles)
+            // Character nodes (circles) - Color-blind friendly rose/pink
             {
                 selector: 'node[type="character"]',
                 style: {
                     'shape': 'ellipse',
-                    'background-color': '#8b5cf6'
+                    'background-color': '#CC6677' // Tol muted palette - rose
                 }
             },
-            // Location nodes (squares)
+            // Location nodes (squares) - Color-blind friendly teal
             {
                 selector: 'node[type="location"]',
                 style: {
                     'shape': 'round-rectangle',
-                    'background-color': '#06b6d4'
+                    'background-color': '#44AA99' // Tol muted palette - teal
                 }
             },
-            // Event nodes (diamonds)
+            // Event nodes (diamonds) - Color-blind friendly sand/gold
             {
                 selector: 'node[type="event"]',
                 style: {
                     'shape': 'diamond',
-                    'background-color': '#f59e0b'
+                    'background-color': '#DDCC77' // Tol muted palette - sand
                 }
             },
-            // Item nodes (hexagons)
+            // Item nodes (hexagons) - Color-blind friendly cyan
             {
                 selector: 'node[type="item"]',
                 style: {
                     'shape': 'hexagon',
-                    'background-color': '#10b981'
+                    'background-color': '#88CCEE' // Tol muted palette - cyan
                 }
             },
-            // Edge styles
+            // Visual hierarchy: Highly connected nodes (degree > 5) - Add glow effect
+            {
+                selector: 'node[[degree > 5]]',
+                style: {
+                    'border-width': 3,
+                    'box-shadow': '0 0 20px var(--interactive-accent)',
+                    'z-index': 100
+                }
+            },
+            // Visual hierarchy: Less connected nodes (degree < 2) - Dim slightly
+            {
+                selector: 'node[[degree < 2]]',
+                style: {
+                    'opacity': 0.7
+                }
+            },
+            // Visual hierarchy: Isolated nodes (degree = 0) - Most dimmed
+            {
+                selector: 'node[[degree = 0]]',
+                style: {
+                    'opacity': 0.5,
+                    'border-style': 'dashed'
+                }
+            },
+            // Edge styles - Labels hidden by default, shown on hover
             {
                 selector: 'edge',
                 style: {
@@ -392,13 +445,17 @@ export class NetworkGraphRenderer {
                     'target-arrow-shape': 'triangle',
                     'curve-style': 'bezier',
                     'arrow-scale': 1.2,
-                    'label': 'data(label)',
-                    'font-size': '10px',
+                    'label': '', // Hide labels by default
+                    'font-size': '11px', // Increased from 10px for accessibility
                     'text-rotation': 'autorotate',
                     'text-margin-y': -10,
-                    'color': '#ffffff', // White text for contrast
-                    'text-outline-color': '#000000', // Black outline for readability
-                    'text-outline-width': 2,
+                    'color': '#ffffff',
+                    'text-background-color': 'rgba(0, 0, 0, 0.8)', // Background for edge labels too
+                    'text-background-opacity': 0.85,
+                    'text-background-padding': '3px',
+                    'text-background-shape': 'roundrectangle',
+                    'text-outline-color': 'transparent',
+                    'text-outline-width': 0,
                     'font-family': 'var(--font-interface)'
                 }
             },
@@ -495,8 +552,10 @@ export class NetworkGraphRenderer {
                     'width': 3,
                     'z-index': 999,
                     'font-size': '11px',
-                    // Enhanced visibility with thicker outline
-                    'text-outline-width': 3
+                    'label': 'data(label)', // Show label when highlighted
+                    // Enhanced visibility with background
+                    'text-background-color': 'rgba(0, 0, 0, 0.85)',
+                    'text-background-opacity': 0.95
                 }
             },
             // Pinned nodes
@@ -521,7 +580,7 @@ export class NetworkGraphRenderer {
             this.handleNodeClick(node);
         });
 
-        // Enhanced hover effects with highlighting
+        // Enhanced hover effects with highlighting and info panel update
         this.cy.on('mouseover', 'node', (evt) => {
             const node = evt.target;
             const nodeId = node.id();
@@ -545,14 +604,25 @@ export class NetworkGraphRenderer {
                 }
             });
 
-            // Show tooltip
-            this.showTooltip(node, evt);
+            // Update info panel with slight delay for smooth UX
+            if (this.infoPanelTimeout) {
+                clearTimeout(this.infoPanelTimeout);
+            }
+            this.infoPanelTimeout = setTimeout(() => {
+                this.updateInfoPanel(node);
+            }, 150); // 150ms delay - faster than tooltip since it's less intrusive
         });
 
         this.cy.on('mouseout', 'node', (evt) => {
+            // Clear any pending info panel update
+            if (this.infoPanelTimeout) {
+                clearTimeout(this.infoPanelTimeout);
+                this.infoPanelTimeout = null;
+            }
+            
             // Remove all highlighting
             this.cy?.elements().removeClass('highlighted dimmed');
-            this.hideTooltip();
+            this.hideInfoPanel();
         });
 
         // Right-click to pin/unpin nodes
@@ -564,7 +634,7 @@ export class NetworkGraphRenderer {
 
         // Update tooltip position when panning/zooming
         this.cy.on('pan zoom', () => {
-            this.hideTooltip();
+            this.hideInfoPanel();
         });
     }
 
@@ -579,58 +649,137 @@ export class NetworkGraphRenderer {
         }
     }
 
-    // Create tooltip element
-    private createTooltip(): void {
+    // Create fixed info panel in bottom-right corner
+    private createInfoPanel(): void {
         if (!this.canvasEl) return;
         
-        this.tooltipEl = document.createElement('div');
-        this.tooltipEl.className = 'storyteller-network-tooltip';
-        this.tooltipEl.style.position = 'absolute';
-        this.tooltipEl.style.display = 'none';
-        this.tooltipEl.style.backgroundColor = 'var(--background-secondary)';
-        this.tooltipEl.style.border = '1px solid var(--background-modifier-border)';
-        this.tooltipEl.style.borderRadius = '6px';
-        this.tooltipEl.style.padding = '8px 12px';
-        this.tooltipEl.style.pointerEvents = 'none';
-        this.tooltipEl.style.zIndex = '1000';
-        this.tooltipEl.style.maxWidth = '250px';
-        this.tooltipEl.style.boxShadow = '0 2px 8px rgba(0,0,0,0.15)';
-        this.canvasEl.appendChild(this.tooltipEl);
+        this.infoPanelEl = document.createElement('div');
+        this.infoPanelEl.className = 'storyteller-network-info-panel';
+        this.infoPanelEl.style.position = 'absolute';
+        this.infoPanelEl.style.bottom = '16px';
+        this.infoPanelEl.style.right = '16px';
+        this.infoPanelEl.style.backgroundColor = 'var(--background-secondary)';
+        this.infoPanelEl.style.border = '1px solid var(--background-modifier-border)';
+        this.infoPanelEl.style.borderRadius = '8px';
+        this.infoPanelEl.style.padding = '12px 16px';
+        this.infoPanelEl.style.pointerEvents = 'none';
+        this.infoPanelEl.style.zIndex = '100';
+        this.infoPanelEl.style.minWidth = '200px';
+        this.infoPanelEl.style.maxWidth = '280px';
+        this.infoPanelEl.style.boxShadow = '0 4px 12px rgba(0,0,0,0.2)';
+        this.infoPanelEl.style.opacity = '0';
+        this.infoPanelEl.style.transform = 'translateY(10px)';
+        this.infoPanelEl.style.transition = 'opacity 0.2s ease, transform 0.2s ease';
+        
+        // Initial hidden state message
+        this.infoPanelEl.innerHTML = `
+            <div style="text-align: center; color: var(--text-muted); font-style: italic; font-size: 11px;">
+                Hover over a node to see details
+            </div>
+        `;
+        
+        this.canvasEl.appendChild(this.infoPanelEl);
     }
 
-    // Show tooltip for a node
-    private showTooltip(node: NodeSingular, evt: any): void {
-        if (!this.tooltipEl) return;
+    // Update info panel with node information
+    private updateInfoPanel(node: NodeSingular): void {
+        if (!this.infoPanelEl) return;
 
         const entityData = node.data('entityData');
-        const degree = node.data('degree') || 0;
         const type = node.data('type');
+        const label = node.data('label');
         
-        let content = `<div style="font-weight: 600; margin-bottom: 4px;">${node.data('label')}</div>`;
-        content += `<div style="font-size: 11px; color: var(--text-muted); margin-bottom: 4px;">Type: ${type}</div>`;
-        content += `<div style="font-size: 11px; color: var(--text-muted); margin-bottom: 4px;">Connections: ${degree}</div>`;
+        // Calculate actual degree by counting connected edges
+        const degree = node.degree(false); // false = count each edge once (undirected)
         
-        if (entityData?.description) {
-            const desc = entityData.description.substring(0, 100);
-            content += `<div style="font-size: 11px; margin-top: 6px; color: var(--text-muted);">${desc}${entityData.description.length > 100 ? '...' : ''}</div>`;
+        // Get type icon
+        const typeIcons: Record<string, string> = {
+            'character': '👤',
+            'location': '📍',
+            'event': '⚡',
+            'item': '🎁'
+        };
+        const icon = typeIcons[type] || '●';
+        
+        let content = `
+            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px; border-bottom: 1px solid var(--background-modifier-border); padding-bottom: 8px;">
+                <span style="font-size: 20px;">${icon}</span>
+                <div style="flex: 1;">
+                    <div style="font-weight: 600; font-size: 14px; color: var(--text-normal);">${label}</div>
+                    <div style="font-size: 11px; color: var(--text-muted); text-transform: capitalize;">${type}</div>
+                </div>
+            </div>
+        `;
+        
+        // Connection count with visual indicator
+        const connectionColor = degree > 5 ? 'var(--text-success)' : degree > 2 ? 'var(--text-accent)' : 'var(--text-muted)';
+        content += `
+            <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
+                <span style="font-size: 11px; color: var(--text-muted);">Connections:</span>
+                <span style="font-weight: 600; color: ${connectionColor};">${degree}</span>
+            </div>
+        `;
+        
+        // Show breakdown of connected entity types
+        if (degree > 0) {
+            const connectedNodes = node.neighborhood('node');
+            const typeCounts: Record<string, number> = {};
+            
+            connectedNodes.forEach((n: NodeSingular) => {
+                const nodeType = n.data('type');
+                typeCounts[nodeType] = (typeCounts[nodeType] || 0) + 1;
+            });
+            
+            const typeLabels: Record<string, string> = {
+                'character': '👤 Characters',
+                'location': '📍 Locations',
+                'event': '⚡ Events',
+                'item': '🎁 Items'
+            };
+            
+            const breakdown = Object.entries(typeCounts)
+                .map(([t, count]) => `<span style="font-size: 11px; color: var(--text-muted);">${typeLabels[t] || t}: <strong>${count}</strong></span>`)
+                .join('<span style="color: var(--background-modifier-border); margin: 0 4px;">•</span>');
+            
+            if (breakdown) {
+                content += `
+                    <div style="font-size: 11px; line-height: 1.6; padding: 6px 0; border-top: 1px solid var(--background-modifier-border);">
+                        ${breakdown}
+                    </div>
+                `;
+            }
         }
         
-        content += `<div style="font-size: 10px; margin-top: 6px; color: var(--text-faint); font-style: italic;">Click to open • Right-click to pin</div>`;
-
-        this.tooltipEl.innerHTML = content;
-        this.tooltipEl.style.display = 'block';
+        // Description if available
+        if (entityData?.description) {
+            const desc = entityData.description.substring(0, 120);
+            content += `
+                <div style="font-size: 11px; line-height: 1.4; color: var(--text-muted); margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--background-modifier-border);">
+                    ${desc}${entityData.description.length > 120 ? '...' : ''}
+                </div>
+            `;
+        }
         
-        // Position tooltip near cursor
-        const renderedPosition = evt.renderedPosition || evt.position;
-        this.tooltipEl.style.left = `${renderedPosition.x + 15}px`;
-        this.tooltipEl.style.top = `${renderedPosition.y + 15}px`;
+        content += `
+            <div style="font-size: 10px; margin-top: 8px; color: var(--text-faint); font-style: italic; text-align: center;">
+                Click to open • Right-click to pin
+            </div>
+        `;
+
+        this.infoPanelEl.innerHTML = content;
+        
+        // Show with animation
+        this.infoPanelEl.style.opacity = '1';
+        this.infoPanelEl.style.transform = 'translateY(0)';
     }
 
-    // Hide tooltip
-    private hideTooltip(): void {
-        if (this.tooltipEl) {
-            this.tooltipEl.style.display = 'none';
-        }
+    // Hide info panel
+    private hideInfoPanel(): void {
+        if (!this.infoPanelEl) return;
+        
+        // Fade out animation
+        this.infoPanelEl.style.opacity = '0';
+        this.infoPanelEl.style.transform = 'translateY(10px)';
     }
 
     // Toggle node pin state
@@ -710,6 +859,31 @@ export class NetworkGraphRenderer {
         this.cy.elements().removeClass('highlighted dimmed');
     }
 
+    // Toggle edge labels visibility
+    toggleEdgeLabels(): void {
+        if (!this.cy) return;
+        
+        this.showAllEdgeLabels = !this.showAllEdgeLabels;
+        
+        if (this.showAllEdgeLabels) {
+            // Show all edge labels
+            this.cy.style()
+                .selector('edge')
+                .style({
+                    'label': 'data(label)'
+                })
+                .update();
+        } else {
+            // Hide edge labels (only show on highlighted)
+            this.cy.style()
+                .selector('edge')
+                .style({
+                    'label': ''
+                })
+                .update();
+        }
+    }
+
     // Zoom controls
     zoomIn(): void {
         if (!this.cy) return;
@@ -731,7 +905,7 @@ export class NetworkGraphRenderer {
 
     fitToView(): void {
         if (!this.cy) return;
-        this.cy.fit(undefined, 50);
+        this.cy.fit(undefined, 80); // Increased from 50 to match layout padding
     }
 
     // Change layout algorithm
@@ -832,11 +1006,27 @@ export class NetworkGraphRenderer {
         URL.revokeObjectURL(link.href);
     }
 
+    // Get node count for status display
+    getNodeCount(): number {
+        return this.cy?.nodes().length || 0;
+    }
+
+    // Get edge count for status display
+    getEdgeCount(): number {
+        return this.cy?.edges().length || 0;
+    }
+
     // Cleanup
     destroy(): void {
-        if (this.tooltipEl) {
-            this.tooltipEl.remove();
-            this.tooltipEl = null;
+        // Clear any pending info panel timeout
+        if (this.infoPanelTimeout) {
+            clearTimeout(this.infoPanelTimeout);
+            this.infoPanelTimeout = null;
+        }
+        
+        if (this.infoPanelEl) {
+            this.infoPanelEl.remove();
+            this.infoPanelEl = null;
         }
         if (this.cy) {
             this.cy.destroy();

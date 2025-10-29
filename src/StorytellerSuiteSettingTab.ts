@@ -258,6 +258,43 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                 .setValue(this.plugin.settings.showTimelineLegend ?? true)
                 .onChange(async (v) => { this.plugin.settings.showTimelineLegend = v; await this.plugin.saveSettings(); }));
 
+        // Gantt View Settings
+        containerEl.createEl('h3', { text: 'Gantt View Settings' });
+
+        new Setting(containerEl)
+            .setName('Show progress bars in Gantt view')
+            .setDesc('Display progress bar overlays on Gantt bars to visualize event completion.')
+            .addToggle(t => t
+                .setValue(this.plugin.settings.ganttShowProgressBars ?? true)
+                .onChange(async (v) => { this.plugin.settings.ganttShowProgressBars = v; await this.plugin.saveSettings(); }));
+
+        new Setting(containerEl)
+            .setName('Default Gantt duration (days)')
+            .setDesc('Default duration in days for events without an end date when shown in Gantt view.')
+            .addText(text => text
+                .setPlaceholder('1')
+                .setValue(String(this.plugin.settings.ganttDefaultDuration ?? 1))
+                .onChange(async (v) => {
+                    const num = parseInt(v, 10);
+                    if (!isNaN(num) && num > 0) {
+                        this.plugin.settings.ganttDefaultDuration = num;
+                        await this.plugin.saveSettings();
+                    }
+                }));
+
+        new Setting(containerEl)
+            .setName('Dependency arrow style')
+            .setDesc('Visual style for dependency arrows between events in Gantt view.')
+            .addDropdown(dd => dd
+                .addOption('solid', 'Solid')
+                .addOption('dashed', 'Dashed')
+                .addOption('dotted', 'Dotted')
+                .setValue(this.plugin.settings.ganttArrowStyle ?? 'solid')
+                .onChange(async (v: 'solid' | 'dashed' | 'dotted') => {
+                    this.plugin.settings.ganttArrowStyle = v;
+                    await this.plugin.saveSettings();
+                }));
+
         new Setting(containerEl)
             .setName(t('timelineDefaultHeight'))
             .setDesc(t('timelineHeightDesc'))
