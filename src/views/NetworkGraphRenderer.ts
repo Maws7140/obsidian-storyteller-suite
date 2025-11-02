@@ -25,6 +25,7 @@ export class NetworkGraphRenderer {
     private currentLayout: 'cose' | 'circle' | 'grid' | 'concentric' = 'cose';
     private showAllEdgeLabels = false; // Toggle for showing all edge labels
     private infoPanelTimeout: NodeJS.Timeout | null = null; // Delay before updating info panel
+    private saveViewportTimeout: NodeJS.Timeout | null = null; // Debounce for saving viewport state
 
     constructor(containerEl: HTMLElement, plugin: StorytellerSuitePlugin) {
         this.containerEl = containerEl;
@@ -253,17 +254,25 @@ export class NetworkGraphRenderer {
         // Apply initial zoom adjustment after layout completes
         this.cy.one('layoutstop', () => {
             if (!this.cy) return;
-            
-            // Get the current zoom level after fit
-            const currentZoom = this.cy.zoom();
-            
-            // If zoom is too small (nodes appear tiny), zoom in a bit
-            // Typically fit creates zoom levels between 0.3-0.8 for medium/large graphs
-            if (currentZoom < 0.7) {
-                this.cy.zoom({
-                    level: Math.min(currentZoom * 1.4, 1.0), // Zoom in by 40%, max 1.0
-                    renderedPosition: { x: this.cy.width() / 2, y: this.cy.height() / 2 }
-                });
+
+            // Try to restore saved viewport state first
+            const restored = this.restoreViewportState();
+
+            if (!restored) {
+                // No saved state - apply default zoom adjustment
+                // Get the current zoom level after fit
+                const currentZoom = this.cy.zoom();
+
+                // If zoom is too small (nodes appear tiny), zoom in a bit
+                // Typically fit creates zoom levels between 0.3-0.8 for medium/large graphs
+                if (currentZoom < 0.7) {
+                    this.cy.zoom({
+                        level: Math.min(currentZoom * 1.4, 1.0), // Zoom in by 40%, max 1.0
+                        renderedPosition: { x: this.cy.width() / 2, y: this.cy.height() / 2 }
+                    });
+                }
+                // Save the initial zoom as the user's preference
+                this.saveViewportState();
             }
         });
 
@@ -632,9 +641,10 @@ export class NetworkGraphRenderer {
             this.toggleNodePin(node);
         });
 
-        // Update tooltip position when panning/zooming
+        // Update tooltip position when panning/zooming and save viewport state
         this.cy.on('pan zoom', () => {
             this.hideInfoPanel();
+            this.saveViewportState(); // Save user's zoom/pan position
         });
     }
 
@@ -892,6 +902,7 @@ export class NetworkGraphRenderer {
             level: currentZoom * 1.2,
             renderedPosition: { x: this.cy.width() / 2, y: this.cy.height() / 2 }
         });
+        this.saveViewportState(); // Save after zoom
     }
 
     zoomOut(): void {
@@ -901,11 +912,56 @@ export class NetworkGraphRenderer {
             level: currentZoom * 0.8,
             renderedPosition: { x: this.cy.width() / 2, y: this.cy.height() / 2 }
         });
+        this.saveViewportState(); // Save after zoom
     }
 
     fitToView(): void {
         if (!this.cy) return;
         this.cy.fit(undefined, 80); // Increased from 50 to match layout padding
+        this.saveViewportState(); // Save after fit
+    }
+
+    // Resize the graph canvas without changing zoom/pan
+    resize(): void {
+        if (!this.cy) return;
+        this.cy.resize();
+    }
+
+    // Save current zoom and pan position to settings (debounced)
+    private saveViewportState(): void {
+        if (!this.cy) return;
+
+        // Clear existing timeout
+        if (this.saveViewportTimeout) {
+            clearTimeout(this.saveViewportTimeout);
+        }
+
+        // Debounce the save operation (wait 500ms after last change)
+        this.saveViewportTimeout = setTimeout(() => {
+            if (!this.cy) return;
+            const zoom = this.cy.zoom();
+            const pan = this.cy.pan();
+
+            this.plugin.settings.networkGraphZoom = zoom;
+            this.plugin.settings.networkGraphPan = { x: pan.x, y: pan.y };
+            this.plugin.saveSettings();
+        }, 500);
+    }
+
+    // Restore saved zoom and pan position from settings
+    private restoreViewportState(): boolean {
+        if (!this.cy) return false;
+
+        const savedZoom = this.plugin.settings.networkGraphZoom;
+        const savedPan = this.plugin.settings.networkGraphPan;
+
+        if (savedZoom !== undefined && savedPan !== undefined) {
+            this.cy.zoom(savedZoom);
+            this.cy.pan(savedPan);
+            return true;
+        }
+
+        return false;
     }
 
     // Change layout algorithm
