@@ -3,6 +3,7 @@
 import { App, Notice, Plugin, TFile, TFolder, normalizePath, stringifyYaml, WorkspaceLeaf } from 'obsidian';
 import { parseEventDate, toMillis } from './utils/DateParsing';
 import { buildFrontmatter, getWhitelistKeys, parseSectionsFromMarkdown } from './yaml/EntitySections';
+import { stringifyYamlWithLogging, validateFrontmatterPreservation } from './utils/YamlSerializer';
 import { setLocale, t } from './i18n/strings';
 import { FolderResolver, FolderResolverOptions } from './folders/FolderResolver';
 import { PromptModal } from './modals/ui/PromptModal';
@@ -84,6 +85,13 @@ import { getTemplateSections } from './utils/EntityTemplates';
     networkGraphZoom?: number;
     /** Network graph view pan position (saved per session) */
     networkGraphPan?: { x: number; y: number };
+
+    /** Story board settings */
+    storyBoardLayout?: 'chapters' | 'timeline' | 'status';
+    storyBoardCardWidth?: number;
+    storyBoardCardHeight?: number;
+    storyBoardColorBy?: 'status' | 'chapter' | 'none';
+    storyBoardShowEdges?: boolean;
 }
 
 /**
@@ -1156,6 +1164,15 @@ export default class StorytellerSuitePlugin extends Plugin {
                 }).open();
             }
 		});
+
+		// Story Board command - Create visual canvas of scenes
+		this.addCommand({
+			id: 'create-story-board',
+			name: 'Create Story Board',
+			callback: async () => {
+				await this.createStoryBoard();
+			}
+		});
 	}
 
 	/**
@@ -1472,7 +1489,19 @@ export default class StorytellerSuitePlugin extends Plugin {
 
 		// Build frontmatter strictly from whitelist, preserving original frontmatter
 		const finalFrontmatter = this.buildFrontmatterForCharacter(rest, originalFrontmatter);
-		const frontmatterString = Object.keys(finalFrontmatter).length > 0 ? stringifyYaml(finalFrontmatter) : '';
+
+		// Validate that we're not losing any fields before serialization
+		if (originalFrontmatter) {
+			const validation = validateFrontmatterPreservation(finalFrontmatter, originalFrontmatter);
+			if (validation.lostFields.length > 0) {
+				console.warn(`[saveCharacter] Warning: Fields will be lost on save:`, validation.lostFields);
+			}
+		}
+
+		// Use custom serializer that preserves empty string values
+		const frontmatterString = Object.keys(finalFrontmatter).length > 0
+			? stringifyYamlWithLogging(finalFrontmatter, originalFrontmatter, `Character: ${character.name}`)
+			: '';
 
 		// Build sections from templates + provided data
 		const providedSections = {
@@ -1627,7 +1656,19 @@ export default class StorytellerSuitePlugin extends Plugin {
 
 		// Build frontmatter strictly from whitelist, preserving original frontmatter
 		const finalFrontmatter = this.buildFrontmatterForLocation(rest, originalFrontmatter);
-		const frontmatterString = Object.keys(finalFrontmatter).length > 0 ? stringifyYaml(finalFrontmatter) : '';
+
+		// Validate that we're not losing any fields before serialization
+		if (originalFrontmatter) {
+			const validation = validateFrontmatterPreservation(finalFrontmatter, originalFrontmatter);
+			if (validation.lostFields.length > 0) {
+				console.warn(`[saveLocation] Warning: Fields will be lost on save:`, validation.lostFields);
+			}
+		}
+
+		// Use custom serializer that preserves empty string values
+		const frontmatterString = Object.keys(finalFrontmatter).length > 0
+			? stringifyYamlWithLogging(finalFrontmatter, originalFrontmatter, `Location: ${location.name}`)
+			: '';
 
 		// Build sections from templates + provided data
 		const providedSections = {
@@ -1774,7 +1815,19 @@ export default class StorytellerSuitePlugin extends Plugin {
 
 		// Build frontmatter
 		const finalFrontmatter = this.buildFrontmatterForMap(rest, originalFrontmatter);
-		const frontmatterString = Object.keys(finalFrontmatter).length > 0 ? stringifyYaml(finalFrontmatter) : '';
+
+		// Validate that we're not losing any fields before serialization
+		if (originalFrontmatter) {
+			const validation = validateFrontmatterPreservation(finalFrontmatter, originalFrontmatter);
+			if (validation.lostFields.length > 0) {
+				console.warn(`[saveMap] Warning: Fields will be lost on save:`, validation.lostFields);
+			}
+		}
+
+		// Use custom serializer that preserves empty string values
+		const frontmatterString = Object.keys(finalFrontmatter).length > 0
+			? stringifyYamlWithLogging(finalFrontmatter, originalFrontmatter, `Map: ${map.name}`)
+			: '';
 
 		// Build sections from templates + provided data
 		const providedSections = {
@@ -1957,7 +2010,19 @@ export default class StorytellerSuitePlugin extends Plugin {
 
 		// Build frontmatter strictly from whitelist, preserving original frontmatter
 		const finalFrontmatter = this.buildFrontmatterForEvent(rest, originalFrontmatter);
-		const frontmatterString = Object.keys(finalFrontmatter).length > 0 ? stringifyYaml(finalFrontmatter) : '';
+
+		// Validate that we're not losing any fields before serialization
+		if (originalFrontmatter) {
+			const validation = validateFrontmatterPreservation(finalFrontmatter, originalFrontmatter);
+			if (validation.lostFields.length > 0) {
+				console.warn(`[saveEvent] Warning: Fields will be lost on save:`, validation.lostFields);
+			}
+		}
+
+		// Use custom serializer that preserves empty string values
+		const frontmatterString = Object.keys(finalFrontmatter).length > 0
+			? stringifyYamlWithLogging(finalFrontmatter, originalFrontmatter, `Event: ${event.name}`)
+			: '';
 
 		// Build sections from templates + provided data
 		const providedSections = {
@@ -2107,7 +2172,19 @@ export default class StorytellerSuitePlugin extends Plugin {
 
 		// Build frontmatter strictly from whitelist, preserving original frontmatter
 		const finalFrontmatter = this.buildFrontmatterForItem(rest, originalFrontmatter);
-		const frontmatterString = Object.keys(finalFrontmatter).length > 0 ? stringifyYaml(finalFrontmatter) : '';
+
+		// Validate that we're not losing any fields before serialization
+		if (originalFrontmatter) {
+			const validation = validateFrontmatterPreservation(finalFrontmatter, originalFrontmatter);
+			if (validation.lostFields.length > 0) {
+				console.warn(`[savePlotItem] Warning: Fields will be lost on save:`, validation.lostFields);
+			}
+		}
+
+		// Use custom serializer that preserves empty string values
+		const frontmatterString = Object.keys(finalFrontmatter).length > 0
+			? stringifyYamlWithLogging(finalFrontmatter, originalFrontmatter, `PlotItem: ${item.name}`)
+			: '';
 
 		// Build sections from templates + provided data
 		const providedSections = {
@@ -2222,7 +2299,19 @@ export default class StorytellerSuitePlugin extends Plugin {
         const preserveRef = new Set<string>(Object.keys(rest || {}));
         const mode = this.settings.customFieldsMode ?? 'flatten';
         const fm: Record<string, any> = buildFrontmatter('reference', rest as any, preserveRef, { customFieldsMode: mode, originalFrontmatter }) as Record<string, any>;
-		const frontmatterString = Object.keys(fm).length > 0 ? stringifyYaml(fm) : '';
+
+		// Validate that we're not losing any fields before serialization
+		if (originalFrontmatter) {
+			const validation = validateFrontmatterPreservation(fm, originalFrontmatter);
+			if (validation.lostFields.length > 0) {
+				console.warn(`[saveReference] Warning: Fields will be lost on save:`, validation.lostFields);
+			}
+		}
+
+		// Use custom serializer that preserves empty string values
+		const frontmatterString = Object.keys(fm).length > 0
+			? stringifyYamlWithLogging(fm, originalFrontmatter, `Reference: ${reference.name}`)
+			: '';
 
 		// Build sections from templates + provided data
 		const providedSections = { Content: (content as string) || '' };
@@ -2328,7 +2417,19 @@ export default class StorytellerSuitePlugin extends Plugin {
         const preserveChap = new Set<string>(Object.keys(chapterSrc));
         const mode = this.settings.customFieldsMode ?? 'flatten';
         const fm: Record<string, any> = buildFrontmatter('chapter', chapterSrc, preserveChap, { customFieldsMode: mode, originalFrontmatter }) as Record<string, any>;
-        const frontmatterString = Object.keys(fm).length > 0 ? stringifyYaml(fm) : '';
+
+		// Validate that we're not losing any fields before serialization
+		if (originalFrontmatter) {
+			const validation = validateFrontmatterPreservation(fm, originalFrontmatter);
+			if (validation.lostFields.length > 0) {
+				console.warn(`[saveChapter] Warning: Fields will be lost on save:`, validation.lostFields);
+			}
+		}
+
+		// Use custom serializer that preserves empty string values
+        const frontmatterString = Object.keys(fm).length > 0
+			? stringifyYamlWithLogging(fm, originalFrontmatter, `Chapter: ${chapter.name}`)
+			: '';
 
         const providedSections = { Summary: summary || '' };
         const templateSections = getTemplateSections('chapter', providedSections);
@@ -2437,7 +2538,19 @@ export default class StorytellerSuitePlugin extends Plugin {
         const preserveScene = new Set<string>(Object.keys(sceneSrc));
         const mode = this.settings.customFieldsMode ?? 'flatten';
         const fm: Record<string, any> = buildFrontmatter('scene', sceneSrc, preserveScene, { customFieldsMode: mode, originalFrontmatter }) as Record<string, any>;
-        const frontmatterString = Object.keys(fm).length > 0 ? stringifyYaml(fm) : '';
+
+		// Validate that we're not losing any fields before serialization
+		if (originalFrontmatter) {
+			const validation = validateFrontmatterPreservation(fm, originalFrontmatter);
+			if (validation.lostFields.length > 0) {
+				console.warn(`[saveScene] Warning: Fields will be lost on save:`, validation.lostFields);
+			}
+		}
+
+		// Use custom serializer that preserves empty string values
+        const frontmatterString = Object.keys(fm).length > 0
+			? stringifyYamlWithLogging(fm, originalFrontmatter, `Scene: ${scene.name}`)
+			: '';
 
         const beatsBlock = (beats && Array.isArray(beats) ? beats as string[] : undefined);
         const providedSections = {
@@ -2503,7 +2616,124 @@ export default class StorytellerSuitePlugin extends Plugin {
             new Notice(`Error: Could not find scene file to delete at ${filePath}`);
         }
     }
-    
+
+	/**
+	 * Story Board Management
+	 * Methods for creating and managing visual story boards on canvas
+	 */
+
+	/**
+	 * Create a visual story board on an Obsidian Canvas
+	 * Organizes scenes visually by chapter, status, or timeline
+	 */
+	async createStoryBoard(): Promise<void> {
+		try {
+			// Get all scenes
+			const scenes = await this.listScenes();
+
+			if (scenes.length === 0) {
+				new Notice('No scenes found. Create some scenes first!');
+				return;
+			}
+
+			// Get all chapters
+			const chapters = await this.listChapters();
+
+			// Import the generator
+			const { StoryBoardGenerator } = await import('./utils/StoryBoardGenerator');
+
+			// Get settings or use defaults
+			const layout = this.settings.storyBoardLayout || 'chapters';
+			const cardWidth = this.settings.storyBoardCardWidth || 400;
+			const cardHeight = this.settings.storyBoardCardHeight || 300;
+			const colorBy = this.settings.storyBoardColorBy || 'status';
+			const showEdges = this.settings.storyBoardShowEdges !== undefined ? this.settings.storyBoardShowEdges : false;
+
+			// Generate canvas data
+			const generator = new StoryBoardGenerator({ cardWidth, cardHeight });
+			const canvasData = generator.generateCanvas(scenes, chapters, {
+				layout: layout,
+				colorBy: colorBy,
+				showChapterHeaders: true,
+				showEdges: showEdges
+			});
+
+			// Determine canvas file path
+			const canvasPath = this.getStoryBoardPath();
+
+			// Check if canvas already exists
+			const existingFile = this.app.vault.getAbstractFileByPath(canvasPath);
+			if (existingFile instanceof TFile) {
+				// Ask user if they want to overwrite
+				const { ConfirmModal } = await import('./modals/ui/ConfirmModal');
+				let userConfirmed = false;
+				await new Promise<void>((resolve) => {
+					new ConfirmModal(this.app, {
+						title: 'Overwrite Story Board?',
+						body: 'A story board already exists. Do you want to overwrite it?',
+						onConfirm: () => {
+							userConfirmed = true;
+							resolve();
+						}
+					}).open();
+					// If modal is closed without confirming, resolve after a short delay
+					setTimeout(() => resolve(), 100);
+				});
+
+				if (userConfirmed) {
+					// Overwrite existing canvas
+					const canvasContent = JSON.stringify(canvasData, null, 2);
+					await this.app.vault.modify(existingFile, canvasContent);
+					new Notice('Story board updated!');
+				} else {
+					// User cancelled
+					return;
+				}
+			} else {
+				// Create new canvas file
+				const canvasContent = JSON.stringify(canvasData, null, 2);
+				await this.app.vault.create(canvasPath, canvasContent);
+				new Notice('Story board created!');
+			}
+
+			// Open the canvas file
+			const canvasFile = this.app.vault.getAbstractFileByPath(canvasPath);
+			if (canvasFile instanceof TFile) {
+				const leaf = this.app.workspace.getLeaf(false);
+				await leaf.openFile(canvasFile);
+			}
+
+		} catch (error) {
+			if (error instanceof Error && error.message === 'User cancelled') {
+				// User chose not to overwrite, silently return
+				return;
+			}
+			console.error('Error creating story board:', error);
+			new Notice('Error creating story board. See console for details.');
+		}
+	}
+
+	/**
+	 * Get the file path for the story board canvas
+	 */
+	private getStoryBoardPath(): string {
+		const activeStory = this.getActiveStory();
+		const storyName = activeStory ? activeStory.name : 'Default';
+
+		// Create a safe filename from story name
+		const safeName = storyName.replace(/[\\/:*?"<>|]/g, '-');
+
+		// Use story's base folder if in one-story mode, otherwise use Stories folder
+		if (this.settings.enableOneStoryMode) {
+			const baseFolder = this.sanitizeBaseFolderPath(this.settings.oneStoryBaseFolder);
+			return normalizePath(`${baseFolder}/Story Board - ${safeName}.canvas`);
+		} else {
+			// Use Stories/StoryName folder structure
+			const baseStoriesPath = 'StorytellerSuite/Stories';
+			return normalizePath(`${baseStoriesPath}/${storyName}/Story Board - ${safeName}.canvas`);
+		}
+	}
+
 	/**
 	 * Gallery Data Management
 	 * Methods for managing gallery images stored in plugin settings
