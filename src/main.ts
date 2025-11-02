@@ -20,6 +20,7 @@ import { DashboardView, VIEW_TYPE_DASHBOARD } from './views/DashboardView';
 import { NetworkGraphView, VIEW_TYPE_NETWORK_GRAPH } from './views/NetworkGraphView';
 import { TimelineView, VIEW_TYPE_TIMELINE } from './views/TimelineView';
 import { GalleryImageSuggestModal } from './modals/GalleryImageSuggestModal';
+import { GroupSuggestModal } from './modals/GroupSuggestModal';
 import { StorytellerSuiteSettingTab } from './StorytellerSuiteSettingTab';
 import { NewStoryModal } from './modals/NewStoryModal';
 import { PlotItemModal } from './modals/PlotItemModal';
@@ -79,6 +80,10 @@ import { getTemplateSections } from './utils/EntityTemplates';
     customFieldsMode?: 'flatten' | 'nested';
     /** Internal: set after relationships migration to avoid repeating it */
     relationshipsMigrated?: boolean;
+    /** Network graph view zoom level (saved per session) */
+    networkGraphZoom?: number;
+    /** Network graph view pan position (saved per session) */
+    networkGraphPan?: { x: number; y: number };
 }
 
 /**
@@ -181,9 +186,22 @@ export default class StorytellerSuitePlugin extends Plugin {
         const src: Record<string, unknown> = entity as unknown as Record<string, unknown>;
         const currentCustom: Record<string, string> = { ...(entity.customFields || {}) };
 
-        // Sweep non-whitelisted scalar string keys into customFields
+        // Sweep non-whitelisted scalar keys into customFields (including null/empty values)
+        // This makes manually-added empty fields visible and editable in the modal
         for (const [key, value] of Object.entries(src)) {
             if (reserved.has(key)) continue;
+
+            // Handle null/undefined values - convert to empty string for editing
+            if (value === null || value === undefined) {
+                const hasConflict = Object.keys(currentCustom).some(k => k.toLowerCase() === key.toLowerCase());
+                if (!hasConflict) {
+                    currentCustom[key] = ''; // Convert null to empty string for modal editing
+                    delete (src as any)[key];
+                }
+                continue;
+            }
+
+            // Handle string values (including empty strings)
             if (typeof value === 'string' && !value.includes('\n')) {
                 // Only move if not conflicting (case-insensitive) with existing customFields
                 const hasConflict = Object.keys(currentCustom).some(k => k.toLowerCase() === key.toLowerCase());
@@ -1099,24 +1117,19 @@ export default class StorytellerSuitePlugin extends Plugin {
                     new Notice('No groups to rename.');
                     return;
                 }
-                new PromptModal(this.app, {
-                    title: 'Rename group',
-                    label: 'Enter the name of the group to rename',
-                    validator: (val) => !val.trim() ? 'Required' : null,
-                    onSubmit: async (groupName) => {
-                        const group = groups.find(g => g.name === groupName.trim());
-                        if (!group) { new Notice('Group not found.'); return; }
-                        new PromptModal(this.app, {
-                            title: 'New name',
-                            label: 'Enter new group name',
-                            defaultValue: group.name,
-                            validator: (v) => !v.trim() ? 'Required' : null,
-                            onSubmit: async (newName) => {
-                                await this.updateGroup(group.id, { name: newName.trim() });
-                                new Notice(`Group renamed to "${newName.trim()}".`);
-                            }
-                        }).open();
-                    }
+                // Use GroupSuggestModal for better reliability
+                new GroupSuggestModal(this.app, this, (group) => {
+                    if (!group) return;
+                    new PromptModal(this.app, {
+                        title: 'New name',
+                        label: 'Enter new group name',
+                        defaultValue: group.name,
+                        validator: (v) => !v.trim() ? 'Required' : null,
+                        onSubmit: async (newName) => {
+                            await this.updateGroup(group.id, { name: newName.trim() });
+                            new Notice(`Group renamed to "${newName.trim()}".`);
+                        }
+                    }).open();
                 }).open();
             }
 		});
@@ -1129,22 +1142,17 @@ export default class StorytellerSuitePlugin extends Plugin {
                     new Notice('No groups to delete.');
                     return;
                 }
-                new PromptModal(this.app, {
-                    title: 'Delete group',
-                    label: 'Enter the name of the group to delete',
-                    validator: (v) => !v.trim() ? 'Required' : null,
-                    onSubmit: (groupName) => {
-                        const group = groups.find(g => g.name === groupName.trim());
-                        if (!group) { new Notice('Group not found.'); return; }
-                        new ConfirmModal(this.app, {
-                            title: 'Confirm delete',
-                            body: `Are you sure you want to delete group "${group.name}"?`,
-                            onConfirm: async () => {
-                                await this.deleteGroup(group.id);
-                                new Notice(`Group "${group.name}" deleted.`);
-                            }
-                        }).open();
-                    }
+                // Use GroupSuggestModal for better reliability
+                new GroupSuggestModal(this.app, this, (group) => {
+                    if (!group) return;
+                    new ConfirmModal(this.app, {
+                        title: 'Confirm delete',
+                        body: `Are you sure you want to delete group "${group.name}"?`,
+                        onConfirm: async () => {
+                            await this.deleteGroup(group.id);
+                            new Notice(`Group "${group.name}" deleted.`);
+                        }
+                    }).open();
                 }).open();
             }
 		});
@@ -1257,13 +1265,22 @@ export default class StorytellerSuitePlugin extends Plugin {
         entityType: 'character' | 'location' | 'event' | 'item' | 'reference' | 'chapter' | 'scene'
     ): Promise<T | null> {
 		try {
-			// Get cached frontmatter from Obsidian's metadata cache
-			const fileCache = this.app.metadataCache.getFileCache(file);
-			const frontmatter = fileCache?.frontmatter as Record<string, unknown> | undefined;
-
 			// Read file content for markdown sections
 			const content = await this.app.vault.cachedRead(file);
             const allSections = (await import('./yaml/EntitySections')).parseSectionsFromMarkdown(content);
+
+			// Get cached frontmatter from Obsidian's metadata cache
+			const fileCache = this.app.metadataCache.getFileCache(file);
+			const cachedFrontmatter = fileCache?.frontmatter as Record<string, unknown> | undefined;
+
+			// Also parse frontmatter directly from file content to capture empty values
+			// This ensures manually-added empty fields are not lost
+			const { parseFrontmatterFromContent } = await import('./yaml/EntitySections');
+			const directFrontmatter = parseFrontmatterFromContent(content);
+
+			// Merge both sources, preferring direct parsing for better empty value handling
+			// Direct parsing captures empty values that the cache might miss
+			const frontmatter = { ...(cachedFrontmatter || {}), ...(directFrontmatter || {}) };
 
 			// Combine frontmatter and defaults with file path
 			// IMPORTANT: Do NOT spread allSections into top-level props to avoid leaking into YAML later.

@@ -1459,65 +1459,41 @@ export class DashboardView extends ItemView {
      */
     async renderGroupsContent(container: HTMLElement) {
         container.empty();
-        // Header and create group button
-        new Setting(container)
-            .setName(t('groups'))
-            .setDesc('Manage your groups. Shared across all entity types.')
-            .addButton(button => {
-                const hasActiveStory = !!this.plugin.getActiveStory();
-                button
-                    .setButtonText(t('createNewGroup'))
-                    .setCta()
-                    .onClick(() => {
-                        if (!this.plugin.getActiveStory()) {
-                            new Notice('Select or create a story first.');
-                            return;
-                        }
-                        new GroupModal(
-                            this.app,
-                            this.plugin,
-                            null,
-                            async () => { await this.renderGroupsContent(container); },
-                            async (groupId) => {
-                                await this.plugin.deleteGroup(groupId);
-                                await this.renderGroupsContent(container);
-                            }
-                        ).open();
-                    });
-                if (!hasActiveStory) {
-                    button.setDisabled(true).setTooltip('Select or create a story first.');
+        this.renderHeaderControls(container, t('groups'), async (filter: string) => {
+            this.currentFilter = filter;
+            await this.renderGroupsList(container);
+        }, () => {
+            if (!this.plugin.getActiveStory()) {
+                new Notice('Select or create a story first.');
+                return;
+            }
+            new GroupModal(
+                this.app,
+                this.plugin,
+                null,
+                async () => {
+                    // Manual refresh removed - automatic vault event refresh will handle this
+                },
+                async (groupId) => {
+                    await this.plugin.deleteGroup(groupId);
                 }
-            });
-        // --- Persistent Filter Bar and Group List Containers ---
-        let filterBar = container.querySelector('.storyteller-group-filter-bar') as HTMLElement;
-        let groupListContainer = container.querySelector('.storyteller-group-list-container') as HTMLElement;
-        if (!filterBar) {
-            filterBar = container.createDiv('storyteller-group-filter-bar');
-            // Only create filter input once
-            new Setting(filterBar)
-                .setName(t('filterGroups'))
-                .setDesc('Search by group name or description.')
-                .addText(text => {
-                    text.setPlaceholder('Search groups...')
-                        .setValue(this.currentFilter)
-                        .onChange(async (value) => {
-                            this.currentFilter = value;
-                            // Only re-render the group list, not the filter input
-                            this.renderGroupsList(groupListContainer);
-                        });
-                    text.inputEl.setAttribute('aria-label', 'Filter groups');
-                });
-        }
-        if (!groupListContainer) {
-            groupListContainer = container.createDiv('storyteller-group-list-container');
-        }
-        // Always render the group list (but only clear/re-render this part)
-        await this.renderGroupsList(groupListContainer);
+            ).open();
+        }, t('createNewGroup'));
+
+        await this.renderGroupsList(container);
     }
 
-    // New helper to render just the group list (filtered)
-    async renderGroupsList(container: HTMLElement) {
-        container.empty();
+    /**
+     * Render just the groups list (without header controls)
+     * Used by filter function to avoid infinite recursion
+     */
+    private async renderGroupsList(container: HTMLElement) {
+        // Clear existing list container if it exists
+        const existingListContainer = container.querySelector('.storyteller-list-container');
+        if (existingListContainer) {
+            existingListContainer.remove();
+        }
+
         const groups = this.plugin.getGroups().filter(group => {
             const filter = this.currentFilter.toLowerCase();
             return (
@@ -1525,8 +1501,12 @@ export class DashboardView extends ItemView {
                 (group.description && group.description.toLowerCase().includes(filter))
             );
         });
+
+        const listContainer = container.createDiv('storyteller-list-container');
         if (groups.length === 0) {
-            container.createEl('p', { text: t('noGroupsFound') });
+            const emptyMsg = listContainer.createEl('p', { text: t('noGroupsFound'), cls: 'storyteller-empty-state' });
+            emptyMsg.style.color = 'var(--text-muted)';
+            emptyMsg.style.fontStyle = 'italic';
             return;
         }
         const allCharacters = await this.plugin.listCharacters();
@@ -1537,7 +1517,7 @@ export class DashboardView extends ItemView {
         groups.forEach((group, idx) => {
             // Collapsible card state: expanded by default if filter is active, else collapsed
             const isExpanded = !!this.currentFilter || false;
-            const groupCard = container.createDiv('storyteller-group-card sts-card');
+            const groupCard = listContainer.createDiv('storyteller-group-card sts-card');
             groupCard.setAttr('tabindex', '0'); // Make card focusable
             // Header row with expand/collapse button, group info, and actions
             const groupHeader = groupCard.createDiv('storyteller-group-header');
