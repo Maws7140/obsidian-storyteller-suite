@@ -26,6 +26,10 @@ export class NetworkGraphRenderer {
     private showAllEdgeLabels = false; // Toggle for showing all edge labels
     private infoPanelTimeout: NodeJS.Timeout | null = null; // Delay before updating info panel
     private saveViewportTimeout: NodeJS.Timeout | null = null; // Debounce for saving viewport state
+    private legendVisible = false; // Toggle for showing/hiding legend
+    private legendPanelEl: HTMLElement | null = null; // Reference to legend panel element
+    private legendToggleButtonEl: HTMLElement | null = null; // Floating button to show legend
+    private infoPanelExpanded = false; // Toggle for expanded/collapsed info panel
 
     constructor(containerEl: HTMLElement, plugin: StorytellerSuitePlugin) {
         this.containerEl = containerEl;
@@ -276,11 +280,14 @@ export class NetworkGraphRenderer {
             }
         });
 
-        // Add event listeners
-        this.setupEventListeners();
-
         // Create fixed info panel
         this.createInfoPanel();
+        
+        // Create legend panel
+        this.createLegendPanel();
+        
+        // Add event listeners (after panels are created)
+        this.setupEventListeners();
     }
 
     // Get layout configuration options based on selected layout type
@@ -420,28 +427,55 @@ export class NetworkGraphRenderer {
                     'background-color': '#88CCEE' // Tol muted palette - cyan
                 }
             },
-            // Visual hierarchy: Highly connected nodes (degree > 5) - Add glow effect
+            // Visual hierarchy: Hub nodes (degree > 10) - Major characters/locations
             {
-                selector: 'node[[degree > 5]]',
+                selector: 'node[[degree > 10]]',
+                style: {
+                    'border-width': 5,
+                    'border-color': '#FFD700',
+                    'box-shadow': '0 0 30px rgba(255, 215, 0, 0.6)',
+                    'z-index': 200,
+                    'font-size': '16px',
+                    'font-weight': 'bold'
+                }
+            },
+            // Visual hierarchy: Highly connected nodes (degree 6-10) - Important entities
+            {
+                selector: 'node[[degree > 5]][[degree <= 10]]',
+                style: {
+                    'border-width': 4,
+                    'box-shadow': '0 0 20px var(--interactive-accent)',
+                    'z-index': 150,
+                    'font-size': '15px',
+                    'font-weight': '600'
+                }
+            },
+            // Visual hierarchy: Moderately connected nodes (degree 3-5) - Regular entities
+            {
+                selector: 'node[[degree > 2]][[degree <= 5]]',
                 style: {
                     'border-width': 3,
-                    'box-shadow': '0 0 20px var(--interactive-accent)',
-                    'z-index': 100
+                    'z-index': 100,
+                    'opacity': 1
                 }
             },
-            // Visual hierarchy: Less connected nodes (degree < 2) - Dim slightly
+            // Visual hierarchy: Less connected nodes (degree 1-2) - Minor entities
             {
-                selector: 'node[[degree < 2]]',
+                selector: 'node[[degree > 0]][[degree <= 2]]',
                 style: {
-                    'opacity': 0.7
+                    'opacity': 0.8,
+                    'border-width': 2,
+                    'font-size': '13px'
                 }
             },
-            // Visual hierarchy: Isolated nodes (degree = 0) - Most dimmed
+            // Visual hierarchy: Isolated nodes (degree = 0) - Orphaned entities
             {
                 selector: 'node[[degree = 0]]',
                 style: {
                     'opacity': 0.5,
-                    'border-style': 'dashed'
+                    'border-style': 'dashed',
+                    'border-width': 2,
+                    'font-size': '12px'
                 }
             },
             // Edge styles - Labels hidden by default, shown on hover
@@ -623,16 +657,36 @@ export class NetworkGraphRenderer {
         });
 
         this.cy.on('mouseout', 'node', (evt) => {
-            // Clear any pending info panel update
+            // Don't immediately hide - give time for user to move to info panel
             if (this.infoPanelTimeout) {
                 clearTimeout(this.infoPanelTimeout);
                 this.infoPanelTimeout = null;
             }
             
-            // Remove all highlighting
-            this.cy?.elements().removeClass('highlighted dimmed');
-            this.hideInfoPanel();
+            // Delay hiding to allow moving to info panel
+            this.infoPanelTimeout = setTimeout(() => {
+                // Remove all highlighting
+                this.cy?.elements().removeClass('highlighted dimmed');
+                this.hideInfoPanel();
+            }, 500); // 500ms grace period
         });
+        
+        // Keep info panel visible when hovering over it
+        if (this.infoPanelEl) {
+            this.infoPanelEl.addEventListener('mouseenter', () => {
+                // Cancel any pending hide
+                if (this.infoPanelTimeout) {
+                    clearTimeout(this.infoPanelTimeout);
+                    this.infoPanelTimeout = null;
+                }
+            });
+            
+            this.infoPanelEl.addEventListener('mouseleave', () => {
+                // Hide when leaving the panel
+                this.cy?.elements().removeClass('highlighted dimmed');
+                this.hideInfoPanel();
+            });
+        }
 
         // Right-click to pin/unpin nodes
         this.cy.on('cxttap', 'node', (evt) => {
@@ -669,22 +723,24 @@ export class NetworkGraphRenderer {
         this.infoPanelEl.style.bottom = '16px';
         this.infoPanelEl.style.right = '16px';
         this.infoPanelEl.style.backgroundColor = 'var(--background-secondary)';
-        this.infoPanelEl.style.border = '1px solid var(--background-modifier-border)';
-        this.infoPanelEl.style.borderRadius = '8px';
-        this.infoPanelEl.style.padding = '12px 16px';
-        this.infoPanelEl.style.pointerEvents = 'none';
+        this.infoPanelEl.style.border = '2px solid var(--background-modifier-border)';
+        this.infoPanelEl.style.borderRadius = '12px';
+        this.infoPanelEl.style.padding = '0';
+        this.infoPanelEl.style.pointerEvents = 'auto';
         this.infoPanelEl.style.zIndex = '100';
-        this.infoPanelEl.style.minWidth = '200px';
-        this.infoPanelEl.style.maxWidth = '280px';
-        this.infoPanelEl.style.boxShadow = '0 4px 12px rgba(0,0,0,0.2)';
+        this.infoPanelEl.style.minWidth = '140px';
+        this.infoPanelEl.style.maxWidth = '140px';
+        this.infoPanelEl.style.boxShadow = '0 2px 8px rgba(0,0,0,0.3)';
+        this.infoPanelEl.style.cursor = 'pointer';
         this.infoPanelEl.style.opacity = '0';
         this.infoPanelEl.style.transform = 'translateY(10px)';
-        this.infoPanelEl.style.transition = 'opacity 0.2s ease, transform 0.2s ease';
+        this.infoPanelEl.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
         
-        // Initial hidden state message
+        // Initial hidden state message with icon
         this.infoPanelEl.innerHTML = `
-            <div style="text-align: center; color: var(--text-muted); font-style: italic; font-size: 11px;">
-                Hover over a node to see details
+            <div style="text-align: center; padding: 12px 8px; color: var(--text-muted);">
+                <div style="font-size: 18px; opacity: 0.5;">🎯</div>
+                <div style="font-size: 9px; margin-top: 4px;">Hover node</div>
             </div>
         `;
         
@@ -702,6 +758,25 @@ export class NetworkGraphRenderer {
         // Calculate actual degree by counting connected edges
         const degree = node.degree(false); // false = count each edge once (undirected)
         
+        // Determine importance level
+        let importanceLevel = 'Minor';
+        let importanceColor = 'var(--text-muted)';
+        let importanceIcon = '○';
+        
+        if (degree > 10) {
+            importanceLevel = 'Hub';
+            importanceColor = '#FFD700';
+            importanceIcon = '★★★';
+        } else if (degree > 5) {
+            importanceLevel = 'Major';
+            importanceColor = 'var(--text-success)';
+            importanceIcon = '★★';
+        } else if (degree > 2) {
+            importanceLevel = 'Moderate';
+            importanceColor = 'var(--text-accent)';
+            importanceIcon = '★';
+        }
+        
         // Get type icon
         const typeIcons: Record<string, string> = {
             'character': '👤',
@@ -711,72 +786,204 @@ export class NetworkGraphRenderer {
         };
         const icon = typeIcons[type] || '●';
         
-        let content = `
-            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px; border-bottom: 1px solid var(--background-modifier-border); padding-bottom: 8px;">
-                <span style="font-size: 20px;">${icon}</span>
-                <div style="flex: 1;">
-                    <div style="font-weight: 600; font-size: 14px; color: var(--text-normal);">${label}</div>
-                    <div style="font-size: 11px; color: var(--text-muted); text-transform: capitalize;">${type}</div>
+        let content = '';
+        
+        // Collapsed view - minimal display
+        if (!this.infoPanelExpanded) {
+            content = `
+                <div style="padding: 8px; text-align: center; position: relative;">
+                    <div style="font-size: 24px; margin-bottom: 4px;">${icon}</div>
+                    <div style="font-size: 9px; font-weight: 600; color: var(--text-normal); margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${label}</div>
+                    <div style="font-size: 8px; color: ${importanceColor}; margin-bottom: 4px;">${importanceIcon}</div>
+                    <div style="font-size: 11px; font-weight: 700; color: ${importanceColor};">${degree}</div>
+                    <button style="position: absolute; top: 4px; right: 4px; background: transparent; border: none; cursor: pointer; color: var(--text-muted); font-size: 12px; padding: 2px; line-height: 1;" title="Expand">⤢</button>
+                </div>
+            `;
+            
+            this.infoPanelEl.innerHTML = content;
+            this.infoPanelEl.style.maxWidth = '140px';
+            
+            // Add click handler for expand button
+            const expandBtn = this.infoPanelEl.querySelector('button');
+            if (expandBtn) {
+                expandBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    this.infoPanelExpanded = true;
+                    this.updateInfoPanel(node);
+                });
+            }
+            
+            // Show with animation
+            this.infoPanelEl.style.opacity = '1';
+            this.infoPanelEl.style.transform = 'translateY(0)';
+            return;
+        }
+        
+        // Expanded view - full details
+        this.infoPanelEl.style.maxWidth = '280px';
+        
+        // Header with gradient background
+        content = `
+            <div style="background: linear-gradient(135deg, var(--background-secondary-alt) 0%, var(--background-secondary) 100%); padding: 8px 12px; border-radius: 12px 12px 0 0; border-bottom: 2px solid var(--background-modifier-border); position: relative;">
+                <button style="position: absolute; top: 8px; right: 8px; background: transparent; border: none; cursor: pointer; color: var(--text-muted); font-size: 14px; padding: 2px; line-height: 1;" title="Collapse">⤡</button>
+                <div style="display: flex; align-items: flex-start; gap: 8px; padding-right: 24px;">
+                    <span style="font-size: 20px; line-height: 1;">${icon}</span>
+                    <div style="flex: 1; min-width: 0;">
+                        <div style="font-weight: 700; font-size: 13px; color: var(--text-normal); margin-bottom: 3px; word-wrap: break-word;">${label}</div>
+                        <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                            <span style="font-size: 10px; color: var(--text-muted); text-transform: capitalize; padding: 2px 6px; background: var(--background-primary); border-radius: 10px;">${type}</span>
+                            <span style="font-size: 10px; font-weight: 600; color: ${importanceColor}; padding: 2px 6px; background: rgba(0,0,0,0.2); border-radius: 10px;">${importanceIcon} ${importanceLevel}</span>
+                        </div>
+                    </div>
                 </div>
             </div>
         `;
         
-        // Connection count with visual indicator
-        const connectionColor = degree > 5 ? 'var(--text-success)' : degree > 2 ? 'var(--text-accent)' : 'var(--text-muted)';
+        // Content area with stats
+        content += `<div style="padding: 8px 12px;">`;
+        
+        // Connection count with progress bar
+        const maxConnections = 20; // For visualization
+        const connectionPercent = Math.min((degree / maxConnections) * 100, 100);
         content += `
-            <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
-                <span style="font-size: 11px; color: var(--text-muted);">Connections:</span>
-                <span style="font-weight: 600; color: ${connectionColor};">${degree}</span>
+            <div style="margin-bottom: 8px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                    <span style="font-size: 11px; font-weight: 600; color: var(--text-normal);">Connections</span>
+                    <span style="font-size: 13px; font-weight: 700; color: ${importanceColor};">${degree}</span>
+                </div>
+                <div style="height: 4px; background: var(--background-modifier-border); border-radius: 2px; overflow: hidden;">
+                    <div style="height: 100%; width: ${connectionPercent}%; background: linear-gradient(90deg, ${importanceColor}, var(--interactive-accent)); transition: width 0.3s ease;"></div>
+                </div>
             </div>
         `;
         
-        // Show breakdown of connected entity types
+        // Show breakdown of connected entity types with visual grid
         if (degree > 0) {
             const connectedNodes = node.neighborhood('node');
             const typeCounts: Record<string, number> = {};
+            const relationshipTypes: Record<string, number> = {};
             
             connectedNodes.forEach((n: NodeSingular) => {
                 const nodeType = n.data('type');
                 typeCounts[nodeType] = (typeCounts[nodeType] || 0) + 1;
             });
             
-            const typeLabels: Record<string, string> = {
-                'character': '👤 Characters',
-                'location': '📍 Locations',
-                'event': '⚡ Events',
-                'item': '🎁 Items'
-            };
+            // Count relationship types
+            const connectedEdges = node.connectedEdges();
+            connectedEdges.forEach((e: EdgeSingular) => {
+                const relType = e.data('relationshipType') || 'unknown';
+                relationshipTypes[relType] = (relationshipTypes[relType] || 0) + 1;
+            });
             
-            const breakdown = Object.entries(typeCounts)
-                .map(([t, count]) => `<span style="font-size: 11px; color: var(--text-muted);">${typeLabels[t] || t}: <strong>${count}</strong></span>`)
-                .join('<span style="color: var(--background-modifier-border); margin: 0 4px;">•</span>');
+            // Entity type breakdown with visual cards
+            content += `
+                <div style="margin-bottom: 8px;">
+                    <div style="font-size: 11px; font-weight: 600; color: var(--text-normal); margin-bottom: 6px;">Connected To</div>
+                    <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px;">
+            `;
             
-            if (breakdown) {
+            const typeInfo = [
+                { key: 'character', icon: '👤', label: 'Characters', color: '#CC6677' },
+                { key: 'location', icon: '📍', label: 'Locations', color: '#44AA99' },
+                { key: 'event', icon: '⚡', label: 'Events', color: '#DDCC77' },
+                { key: 'item', icon: '🎁', label: 'Items', color: '#88CCEE' }
+            ];
+            
+            typeInfo.forEach(({ key, icon, label, color }) => {
+                const count = typeCounts[key] || 0;
+                const opacity = count > 0 ? 1 : 0.3;
                 content += `
-                    <div style="font-size: 11px; line-height: 1.6; padding: 6px 0; border-top: 1px solid var(--background-modifier-border);">
-                        ${breakdown}
+                    <div style="background: var(--background-primary); padding: 6px; border-radius: 4px; border-left: 2px solid ${color}; opacity: ${opacity};">
+                        <div style="font-size: 14px; margin-bottom: 1px;">${icon}</div>
+                        <div style="font-size: 12px; font-weight: 700; color: var(--text-normal);">${count}</div>
+                        <div style="font-size: 9px; color: var(--text-muted);">${label}</div>
                     </div>
                 `;
+            });
+            
+            content += `</div></div>`;
+            
+            // Relationship strength breakdown
+            const topRelationships = Object.entries(relationshipTypes)
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 3);
+            
+            if (topRelationships.length > 0) {
+                content += `
+                    <div style="margin-bottom: 8px;">
+                        <div style="font-size: 11px; font-weight: 600; color: var(--text-normal); margin-bottom: 4px;">Top Relationships</div>
+                `;
+                
+                const relColors: Record<string, string> = {
+                    'ally': '#4ade80',
+                    'enemy': '#ef4444',
+                    'family': '#3b82f6',
+                    'rival': '#f97316',
+                    'romantic': '#ec4899',
+                    'mentor': '#a855f7',
+                    'acquaintance': '#94a3b8'
+                };
+                
+                topRelationships.forEach(([relType, count]) => {
+                    const color = relColors[relType] || 'var(--text-muted)';
+                    const percent = (count / degree) * 100;
+                    content += `
+                        <div style="margin-bottom: 3px;">
+                            <div style="display: flex; justify-content: space-between; font-size: 10px; margin-bottom: 2px;">
+                                <span style="color: var(--text-muted); text-transform: capitalize;">${relType}</span>
+                                <span style="font-weight: 600; color: ${color};">${count}</span>
+                            </div>
+                            <div style="height: 3px; background: var(--background-modifier-border); border-radius: 2px; overflow: hidden;">
+                                <div style="height: 100%; width: ${percent}%; background: ${color};"></div>
+                            </div>
+                        </div>
+                    `;
+                });
+                
+                content += `</div>`;
             }
         }
         
         // Description if available
         if (entityData?.description) {
-            const desc = entityData.description.substring(0, 120);
+            const desc = entityData.description.substring(0, 100);
             content += `
-                <div style="font-size: 11px; line-height: 1.4; color: var(--text-muted); margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--background-modifier-border);">
-                    ${desc}${entityData.description.length > 120 ? '...' : ''}
+                <div style="font-size: 10px; line-height: 1.4; color: var(--text-muted); margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--background-modifier-border);">
+                    ${desc}${entityData.description.length > 100 ? '...' : ''}
                 </div>
             `;
         }
         
+        content += `</div>`; // Close content padding div
+        
+        // Footer with quick actions
         content += `
-            <div style="font-size: 10px; margin-top: 8px; color: var(--text-faint); font-style: italic; text-align: center;">
-                Click to open • Right-click to pin
+            <div style="background: var(--background-primary); padding: 6px 12px; border-radius: 0 0 12px 12px; border-top: 1px solid var(--background-modifier-border);">
+                <div style="display: flex; align-items: center; justify-content: center; gap: 12px; font-size: 9px; color: var(--text-muted);">
+                    <div style="display: flex; align-items: center; gap: 3px;">
+                        <span style="font-weight: 600; color: var(--text-accent);">Click</span>
+                        <span>to open</span>
+                    </div>
+                    <span style="color: var(--background-modifier-border);">•</span>
+                    <div style="display: flex; align-items: center; gap: 3px;">
+                        <span style="font-weight: 600; color: var(--text-accent);">Right-click</span>
+                        <span>to pin</span>
+                    </div>
+                </div>
             </div>
         `;
 
         this.infoPanelEl.innerHTML = content;
+        
+        // Add click handler for collapse button
+        const collapseBtn = this.infoPanelEl.querySelector('button');
+        if (collapseBtn) {
+            collapseBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.infoPanelExpanded = false;
+                this.updateInfoPanel(node);
+            });
+        }
         
         // Show with animation
         this.infoPanelEl.style.opacity = '1';
@@ -786,6 +993,9 @@ export class NetworkGraphRenderer {
     // Hide info panel
     private hideInfoPanel(): void {
         if (!this.infoPanelEl) return;
+        
+        // Reset to collapsed state when hiding
+        this.infoPanelExpanded = false;
         
         // Fade out animation
         this.infoPanelEl.style.opacity = '0';
@@ -804,6 +1014,250 @@ export class NetworkGraphRenderer {
             this.pinnedNodes.add(nodeId);
             node.addClass('pinned');
             node.lock();
+        }
+    }
+    
+    // Create interactive legend panel
+    private createLegendPanel(): void {
+        if (!this.canvasEl) return;
+        
+        const legendPanel = document.createElement('div');
+        legendPanel.className = 'storyteller-network-legend-panel';
+        legendPanel.style.position = 'absolute';
+        legendPanel.style.top = '16px';
+        legendPanel.style.left = '16px';
+        legendPanel.style.backgroundColor = 'var(--background-secondary)';
+        legendPanel.style.border = '2px solid var(--background-modifier-border)';
+        legendPanel.style.borderRadius = '12px';
+        legendPanel.style.padding = '0';
+        legendPanel.style.zIndex = '100';
+        legendPanel.style.minWidth = '200px';
+        legendPanel.style.maxWidth = '280px';
+        legendPanel.style.boxShadow = '0 8px 24px rgba(0,0,0,0.3)';
+        legendPanel.style.maxHeight = '400px';
+        legendPanel.style.overflowY = 'auto';
+        legendPanel.style.opacity = '0';
+        legendPanel.style.transform = 'translateX(-100%)';
+        legendPanel.style.pointerEvents = 'none';
+        legendPanel.style.display = 'none'; // Start completely hidden
+        
+        let content = `
+            <div style="background: linear-gradient(135deg, var(--background-secondary-alt) 0%, var(--background-secondary) 100%); padding: 12px 16px; border-bottom: 2px solid var(--background-modifier-border); position: sticky; top: 0; z-index: 1; display: flex; justify-content: space-between; align-items: center;">
+                <div style="font-weight: 700; font-size: 14px; color: var(--text-normal);">🗺️ Graph Legend</div>
+                <button class="legend-toggle-btn" style="background: transparent; border: none; cursor: pointer; padding: 4px; display: flex; align-items: center; color: var(--text-muted); font-size: 16px;" title="Hide legend">✕</button>
+            </div>
+            
+            <div style="padding: 12px 16px;">
+                <!-- Node Types -->
+                <div style="margin-bottom: 16px;">
+                    <div style="font-size: 12px; font-weight: 600; color: var(--text-normal); margin-bottom: 8px;">Node Types</div>
+                    <div style="display: flex; flex-direction: column; gap: 6px;">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <div style="width: 20px; height: 20px; border-radius: 50%; background: #CC6677; border: 2px solid var(--background-modifier-border);"></div>
+                            <span style="font-size: 11px; color: var(--text-muted);">👤 Characters</span>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <div style="width: 20px; height: 20px; border-radius: 4px; background: #44AA99; border: 2px solid var(--background-modifier-border);"></div>
+                            <span style="font-size: 11px; color: var(--text-muted);">📍 Locations</span>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <div style="width: 20px; height: 20px; background: #DDCC77; border: 2px solid var(--background-modifier-border); transform: rotate(45deg);"></div>
+                            <span style="font-size: 11px; color: var(--text-muted); margin-left: 4px;">⚡ Events</span>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <div style="width: 20px; height: 20px; background: #88CCEE; border: 2px solid var(--background-modifier-border); clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);"></div>
+                            <span style="font-size: 11px; color: var(--text-muted);">🎁 Items</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Importance Hierarchy -->
+                <div style="margin-bottom: 16px;">
+                    <div style="font-size: 12px; font-weight: 600; color: var(--text-normal); margin-bottom: 8px;">Importance Level</div>
+                    <div style="display: flex; flex-direction: column; gap: 6px;">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span style="font-size: 14px; color: #FFD700;">★★★</span>
+                            <span style="font-size: 11px; color: var(--text-muted);">Hub (10+ connections)</span>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span style="font-size: 14px; color: var(--text-success);">★★</span>
+                            <span style="font-size: 11px; color: var(--text-muted);">Major (6-10 connections)</span>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span style="font-size: 14px; color: var(--text-accent);">★</span>
+                            <span style="font-size: 11px; color: var(--text-muted);">Moderate (3-5 connections)</span>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span style="font-size: 14px; color: var(--text-muted);">○</span>
+                            <span style="font-size: 11px; color: var(--text-muted);">Minor (1-2 connections)</span>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span style="font-size: 14px; color: var(--text-faint);">⊝</span>
+                            <span style="font-size: 11px; color: var(--text-muted);">Isolated (0 connections)</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Relationship Types -->
+                <div style="margin-bottom: 16px;">
+                    <div style="font-size: 12px; font-weight: 600; color: var(--text-normal); margin-bottom: 8px;">Relationships</div>
+                    <div style="display: flex; flex-direction: column; gap: 6px;">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <div style="width: 24px; height: 3px; background: #4ade80; border-radius: 2px;"></div>
+                            <span style="font-size: 11px; color: var(--text-muted);">Ally</span>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <div style="width: 24px; height: 3px; background: #ef4444; border-radius: 2px;"></div>
+                            <span style="font-size: 11px; color: var(--text-muted);">Enemy</span>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <div style="width: 24px; height: 3px; background: #3b82f6; border-radius: 2px;"></div>
+                            <span style="font-size: 11px; color: var(--text-muted);">Family</span>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <div style="width: 24px; height: 3px; background: #ec4899; border-radius: 2px;"></div>
+                            <span style="font-size: 11px; color: var(--text-muted);">Romantic</span>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <div style="width: 24px; height: 3px; background: #a855f7; border-radius: 2px;"></div>
+                            <span style="font-size: 11px; color: var(--text-muted);">Mentor</span>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <div style="width: 24px; height: 3px; background: #f97316; border-radius: 2px;"></div>
+                            <span style="font-size: 11px; color: var(--text-muted);">Rival</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Quick Tips -->
+                <div style="background: var(--background-primary); padding: 10px; border-radius: 8px; border: 1px solid var(--background-modifier-border);">
+                    <div style="font-size: 11px; font-weight: 600; color: var(--text-normal); margin-bottom: 6px;">💡 Quick Tips</div>
+                    <div style="font-size: 10px; color: var(--text-muted); line-height: 1.6;">
+                        • Hover nodes to see details<br>
+                        • Click to open entity<br>
+                        • Right-click to pin nodes<br>
+                        • Scroll to zoom in/out<br>
+                        • Drag background to pan
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        legendPanel.innerHTML = content;
+        this.canvasEl.appendChild(legendPanel);
+        this.legendPanelEl = legendPanel;
+        
+        // Add transition after DOM is ready to prevent flash
+        setTimeout(() => {
+            if (this.legendPanelEl) {
+                this.legendPanelEl.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
+            }
+        }, 0);
+        
+        // Add toggle button click handler
+        const toggleBtn = legendPanel.querySelector('.legend-toggle-btn') as HTMLElement;
+        if (toggleBtn) {
+            toggleBtn.addEventListener('click', () => {
+                this.toggleLegend();
+            });
+        }
+        
+        // Create floating show legend button (initially visible)
+        this.createLegendToggleButton();
+    }
+    
+    // Create floating button to show legend when hidden
+    private createLegendToggleButton(): void {
+        if (!this.canvasEl) return;
+        
+        const toggleButton = document.createElement('button');
+        toggleButton.className = 'storyteller-legend-toggle-btn';
+        toggleButton.title = 'Show Legend';
+        toggleButton.innerHTML = '🗺️';
+        toggleButton.style.position = 'absolute';
+        toggleButton.style.top = '16px';
+        toggleButton.style.left = '16px';
+        toggleButton.style.width = '40px';
+        toggleButton.style.height = '40px';
+        toggleButton.style.borderRadius = '50%';
+        toggleButton.style.backgroundColor = 'var(--background-secondary)';
+        toggleButton.style.border = '2px solid var(--background-modifier-border)';
+        toggleButton.style.cursor = 'pointer';
+        toggleButton.style.display = 'flex';
+        toggleButton.style.alignItems = 'center';
+        toggleButton.style.justifyContent = 'center';
+        toggleButton.style.fontSize = '18px';
+        toggleButton.style.zIndex = '99';
+        toggleButton.style.boxShadow = '0 4px 12px rgba(0,0,0,0.2)';
+        toggleButton.style.opacity = '1';
+        toggleButton.style.pointerEvents = 'auto';
+        toggleButton.style.transition = 'opacity 0.3s ease, transform 0.2s ease';
+        
+        toggleButton.addEventListener('mouseenter', () => {
+            if (!this.legendVisible) {
+                toggleButton.style.transform = 'scale(1.1)';
+            }
+        });
+        
+        toggleButton.addEventListener('mouseleave', () => {
+            toggleButton.style.transform = 'scale(1)';
+        });
+        
+        toggleButton.addEventListener('click', () => {
+            this.toggleLegend();
+        });
+        
+        this.canvasEl.appendChild(toggleButton);
+        this.legendToggleButtonEl = toggleButton;
+    }
+    
+    // Toggle legend visibility
+    private toggleLegend(): void {
+        this.legendVisible = !this.legendVisible;
+        if (this.legendPanelEl) {
+            if (this.legendVisible) {
+                this.legendPanelEl.style.display = 'block';
+                // Force reflow before animating
+                this.legendPanelEl.offsetHeight;
+                this.legendPanelEl.style.opacity = '1';
+                this.legendPanelEl.style.transform = 'translateX(0)';
+                this.legendPanelEl.style.pointerEvents = 'auto';
+            } else {
+                this.legendPanelEl.style.opacity = '0';
+                this.legendPanelEl.style.transform = 'translateX(-100%)';
+                this.legendPanelEl.style.pointerEvents = 'none';
+                // Hide after animation
+                setTimeout(() => {
+                    if (this.legendPanelEl && !this.legendVisible) {
+                        this.legendPanelEl.style.display = 'none';
+                    }
+                }, 300);
+            }
+        }
+        
+        // Toggle floating button visibility
+        if (this.legendToggleButtonEl) {
+            if (this.legendVisible) {
+                this.legendToggleButtonEl.style.opacity = '0';
+                this.legendToggleButtonEl.style.pointerEvents = 'none';
+            } else {
+                this.legendToggleButtonEl.style.opacity = '1';
+                this.legendToggleButtonEl.style.pointerEvents = 'auto';
+            }
+        }
+    }
+    
+    // Show legend
+    public showLegend(): void {
+        if (!this.legendVisible) {
+            this.toggleLegend();
+        }
+    }
+    
+    // Hide legend
+    public hideLegend(): void {
+        if (this.legendVisible) {
+            this.toggleLegend();
         }
     }
 

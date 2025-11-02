@@ -104,15 +104,17 @@ export class NetworkGraphView extends ItemView {
         setIcon(layoutBtn, 'layout-grid');
         layoutBtn.addEventListener('click', () => this.showLayoutMenu(layoutBtn));
 
-        // Export button
+        // Export button (prominent)
         const exportBtn = this.toolbarEl.createEl('button', {
-            cls: 'clickable-icon storyteller-toolbar-btn',
+            cls: 'storyteller-export-button',
+            text: t('exportGraph'),
             attr: { 
-                'aria-label': t('exportGraph'),
-                'title': t('exportGraph')
+                'aria-label': t('exportGraph') + ' (Ctrl+E)',
+                'title': t('exportGraph') + ' (Ctrl+E)'
             }
         });
-        setIcon(exportBtn, 'download');
+        const exportIcon = exportBtn.createSpan();
+        setIcon(exportIcon, 'download');
         exportBtn.addEventListener('click', () => this.showExportMenu(exportBtn));
 
         // Refresh button
@@ -155,12 +157,23 @@ export class NetworkGraphView extends ItemView {
         const fitBtn = this.toolbarEl.createEl('button', {
             cls: 'clickable-icon storyteller-toolbar-btn',
             attr: { 
-                'aria-label': t('fitToView'),
-                'title': t('fitToView')
+                'aria-label': t('fitToView') + ' (F)',
+                'title': t('fitToView') + ' (F)'
             }
         });
         setIcon(fitBtn, 'maximize-2');
         fitBtn.addEventListener('click', () => this.graphRenderer?.fitToView());
+        
+        // Keyboard shortcuts hint
+        const shortcutsBtn = this.toolbarEl.createEl('button', {
+            cls: 'clickable-icon storyteller-toolbar-btn',
+            attr: { 
+                'aria-label': 'Keyboard Shortcuts (?)',
+                'title': 'Keyboard Shortcuts (?)'
+            }
+        });
+        setIcon(shortcutsBtn, 'keyboard');
+        shortcutsBtn.addEventListener('click', () => this.showKeyboardShortcuts());
     }
 
     /**
@@ -303,6 +316,9 @@ export class NetworkGraphView extends ItemView {
             this.graphRenderer = new NetworkGraphRenderer(this.graphContainer, this.plugin);
             await this.graphRenderer.initializeCytoscape();
             await this.applyCurrentFilters();
+            
+            // Add zoom indicator
+            this.addZoomIndicator();
         } catch (error) {
             console.error('Error initializing network graph:', error);
             loader.remove();
@@ -507,5 +523,75 @@ export class NetworkGraphView extends ItemView {
             await this.graphRenderer.refresh();
             this.updateFooterStatus();
         }
+    }
+    
+    /**
+     * Add zoom indicator overlay
+     */
+    private addZoomIndicator(): void {
+        if (!this.graphContainer) return;
+        
+        const zoomIndicator = this.graphContainer.createDiv('storyteller-zoom-indicator');
+        zoomIndicator.setText('100%');
+        
+        // Update zoom on zoom events
+        if (this.graphRenderer) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const cy = (this.graphRenderer as any).cy;
+            if (cy) {
+                cy.on('zoom', () => {
+                    const zoom = cy.zoom();
+                    zoomIndicator.setText(`${Math.round(zoom * 100)}%`);
+                });
+            }
+        }
+    }
+    
+    /**
+     * Show keyboard shortcuts modal
+     */
+    private showKeyboardShortcuts(): void {
+        const { Modal } = require('obsidian');
+        
+        class KeyboardShortcutsModal extends Modal {
+            constructor(app: any) {
+                super(app);
+            }
+            
+            onOpen(): void {
+                const { contentEl } = this;
+                contentEl.empty();
+                contentEl.addClass('storyteller-keyboard-shortcuts-modal');
+                
+                contentEl.createEl('h2', { text: 'Keyboard Shortcuts' });
+                
+                const table = contentEl.createEl('table', { cls: 'storyteller-keyboard-shortcuts-table' });
+                
+                const shortcuts = [
+                    { key: 'F', desc: 'Fit graph to view' },
+                    { key: 'Ctrl + E', desc: 'Export graph as image' },
+                    { key: '+', desc: 'Zoom in' },
+                    { key: '-', desc: 'Zoom out' },
+                    { key: 'Click + Drag', desc: 'Pan the graph' },
+                    { key: 'Ctrl + F', desc: 'Focus on search' },
+                    { key: '?', desc: 'Show this help' }
+                ];
+                
+                shortcuts.forEach(({ key, desc }) => {
+                    const row = table.createEl('tr');
+                    const keyCell = row.createEl('td', { cls: 'storyteller-shortcut-key' });
+                    keyCell.setText(key);
+                    const descCell = row.createEl('td', { cls: 'storyteller-shortcut-desc' });
+                    descCell.setText(desc);
+                });
+            }
+            
+            onClose(): void {
+                const { contentEl } = this;
+                contentEl.empty();
+            }
+        }
+        
+        new KeyboardShortcutsModal(this.app).open();
     }
 }
