@@ -1,47 +1,3 @@
-/* =================================================================
-   STORYTELLER SUITE - UI/UX IMPROVEMENTS v2.0
-   November 2, 2025
-   ================================================================= */
-
-/* ============================================
-   1. STANDARDIZED DESIGN SYSTEM
-   ============================================ */
-
-:root {
-  /* Typography Scale */
-  --sts-text-xs: 12px;
-  --sts-text-sm: 14px;
-  --sts-text-base: 16px;
-  --sts-text-lg: 18px;
-  --sts-text-xl: 20px;
-  --sts-text-2xl: 24px;
-  
-  /* Spacing Scale (8px base) */
-  --sts-space-1: 8px;
-  --sts-space-2: 16px;
-  --sts-space-3: 24px;
-  --sts-space-4: 32px;
-  --sts-space-5: 40px;
-  --sts-space-6: 48px;
-  
-  /* Touch Targets (WCAG 2.1 AA) */
-  --sts-touch-target: 44px;
-  --sts-touch-target-sm: 36px;
-  
-  /* Semantic Colors */
-  --sts-color-success: #10B981;
-  --sts-color-warning: #F59E0B;
-  --sts-color-error: #EF4444;
-  --sts-color-info: #3B82F6;
-  
-  /* Z-index Layers */
-  --sts-z-base: 1;
-  --sts-z-dropdown: 100;
-  --sts-z-sticky: 200;
-  --sts-z-modal: 1000;
-  --sts-z-tooltip: 1100;
-}
-
 /* Linked entities display */
 .storyteller-modal-linked-entities {
     margin-top: 8px;
@@ -102,34 +58,19 @@
 .storyteller-dashboard-tabs {
   border-bottom: 1px solid var(--background-modifier-border);
   padding: 6px 8px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
 }
 .storyteller-tab-header {
   color: var(--text-normal);
   border: 1px solid transparent;
-  min-height: var(--sts-touch-target, 44px);
-  padding: 12px 20px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s ease;
 }
 .storyteller-tab-header:hover {
   border-color: var(--background-modifier-border);
-  background-color: var(--background-modifier-hover);
-  transform: translateY(-1px);
 }
 .storyteller-tab-header.active {
   border-color: var(--interactive-accent);
-  background-color: var(--interactive-accent);
-  color: var(--text-on-accent);
-  font-weight: 600;
 }
 .storyteller-tab-more-btn {
-  padding: 12px 16px;
-  min-height: var(--sts-touch-target, 44px);
+  padding: 4px 8px;
 }
 .storyteller-tab-more-menu {
   min-width: 160px;
@@ -154,54 +95,6 @@ If your plugin does not need CSS, delete this file.
     --touch-target-size: 44px;
     --mobile-padding: 0.5rem;
     --desktop-padding: 1rem;
-}
-
-/* ==============================================
-   IMPROVED FILTER PANEL LAYOUT
-   ============================================== */
-
-/* Full-width, better spaced filter layout */
-.storyteller-graph-entity-filters {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-  gap: var(--sts-space-2, 16px);
-  padding: var(--sts-space-2, 16px);
-  background-color: var(--background-secondary);
-  border-bottom: 1px solid var(--background-modifier-border);
-}
-
-.storyteller-entity-filter-btn {
-  min-height: var(--sts-touch-target, 44px) !important;
-  min-width: 100% !important;
-  padding: 12px 16px !important;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  font-size: var(--sts-text-sm, 14px) !important;
-  font-weight: 500;
-  border-radius: 8px;
-  border: 2px solid var(--background-modifier-border);
-  background-color: var(--background-primary);
-  color: var(--text-normal);
-  cursor: pointer;
-  transition: all 0.2s ease;
-  user-select: none;
-  -webkit-tap-highlight-color: transparent;
-}
-
-.storyteller-entity-filter-btn:hover {
-  background-color: var(--background-modifier-hover);
-  border-color: var(--interactive-accent);
-  transform: translateY(-1px);
-}
-
-.storyteller-entity-filter-btn.is-active {
-  background-color: var(--interactive-accent) !important;
-  color: var(--text-on-accent) !important;
-  border-color: var(--interactive-accent) !important;
-  font-weight: 600;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
 }
 
 /* Mobile platform detection classes */
@@ -349,57 +242,25 @@ If your plugin does not need CSS, delete this file.
     margin: 0 0.25rem;
 }
 
-/* ==============================================
-   LOADING STATES
-   ============================================== */
-
-.mobile-loading,
-.storyteller-loading {
+/* Loading states */
+.mobile-loading {
     position: relative;
     pointer-events: none;
     opacity: 0.6;
 }
 
-.mobile-loading::after,
-.storyteller-loading::after {
+.mobile-loading::after {
     content: '';
     position: absolute;
     top: 50%;
     left: 50%;
-    width: 32px;
-    height: 32px;
-    margin: -16px 0 0 -16px;
-    border: 3px solid var(--background-modifier-border);
+    width: 24px;
+    height: 24px;
+    margin: -12px 0 0 -12px;
+    border: 2px solid var(--text-faint);
     border-radius: 50%;
     border-top-color: var(--interactive-accent);
-    animation: storyteller-spin 0.8s linear infinite;
-}
-
-@keyframes storyteller-spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
-}
-
-/* Loading skeleton for list items */
-.storyteller-skeleton {
-    background: linear-gradient(
-        90deg,
-        var(--background-secondary) 25%,
-        var(--background-modifier-hover) 50%,
-        var(--background-secondary) 75%
-    );
-    background-size: 200% 100%;
-    animation: storyteller-skeleton 1.5s ease-in-out infinite;
-    border-radius: 8px;
-}
-
-@keyframes storyteller-skeleton {
-    0% {
-        background-position: 200% 0;
-    }
-    100% {
-        background-position: -200% 0;
-    }
+    animation: spin 1s linear infinite;
 }
 
 @keyframes spin {
@@ -449,33 +310,42 @@ If your plugin does not need CSS, delete this file.
     /* Mobile tab navigation improvements */
     .storyteller-dashboard-tabs {
         min-height: 48px; /* Larger touch target for mobile */
-        padding: 8px 12px;
+        padding: 4px 1em;
         /* Enhanced mobile touch scrolling */
         -webkit-overflow-scrolling: touch;
         overscroll-behavior-x: contain;
         overscroll-behavior-y: auto;
         scroll-behavior: smooth;
-        /* Allow tabs to wrap on mobile */
-        flex-wrap: wrap !important;
-        overflow-x: visible !important;
-        overflow-y: visible !important;
+        /* Add scroll snapping for better mobile UX */
+        scroll-snap-type: x mandatory;
+        /* Allow automatic height expansion for wrapped tabs */
         height: auto !important;
         max-height: none !important;
-        gap: 8px;
+
+        /* Hide visual scrollbars on mobile while preserving swipe */
+        scrollbar-width: none; /* Firefox */
+    }
+    .storyteller-dashboard-tabs::-webkit-scrollbar {
+        height: 0; /* WebKit-based browsers */
+        width: 0;
+        background: transparent;
     }
     
     .storyteller-tab-header {
-        min-height: var(--sts-touch-target, 44px) !important; /* Apple HIG standard touch target */
-        padding: 12px 20px !important; /* Larger padding for mobile */
-        font-size: var(--sts-text-base, 16px) !important; /* Prevent iOS zoom */
-        min-width: auto !important; /* Allow flexible widths */
-        flex: 1 1 auto;
+        min-height: 44px; /* Apple HIG standard touch target */
+        padding: 0.75em 1.5em; /* Larger padding for mobile */
+        font-size: 1.1rem; /* Slightly larger text */
+        min-width: 140px; /* INCREASED - Ensure minimum touch target width AND force overflow */
         display: flex;
         align-items: center;
         justify-content: center;
+        /* Add scroll snap alignment for mobile */
+        scroll-snap-align: start;
         /* Ensure proper touch targets */
         touch-action: manipulation;
-        border-radius: 8px;
+        /* Ensure flex properties are maintained on mobile */
+        flex: 0 0 auto;
+        flex-shrink: 0;
     }
     
     /* Mobile tab ribbon improvements */
@@ -510,15 +380,11 @@ If your plugin does not need CSS, delete this file.
     }
     
     /* Mobile search and filter improvements */
-    .search-input,
-    input[type="text"],
-    input[type="search"],
-    input[type="date"],
-    textarea,
-    select {
-        font-size: 16px !important; /* Prevent iOS zoom */
-        min-height: var(--sts-touch-target, 44px);
-        padding: 12px 16px;
+    .search-input {
+        font-size: 1.1rem;
+        min-height: var(--touch-target-size);
+        /* Prevent zoom on iOS */
+        transform-origin: 0 0;
         /* Improve touch interaction */
         touch-action: manipulation;
         /* Ensure proper focus behavior */
@@ -530,24 +396,14 @@ If your plugin does not need CSS, delete this file.
         user-select: text;
         /* Prevent input field jumping */
         box-sizing: border-box;
-        border-radius: 8px;
-        border: 2px solid var(--background-modifier-border);
-        background-color: var(--background-primary);
-        color: var(--text-normal);
-        transition: all 0.2s ease;
     }
     
-    .search-input:focus,
-    input[type="text"]:focus,
-    input[type="search"]:focus,
-    input[type="date"]:focus,
-    textarea:focus,
-    select:focus {
+    .search-input:focus {
         /* Enhanced focus styling for mobile */
         border-color: var(--interactive-accent);
-        box-shadow: 0 0 0 3px rgba(var(--interactive-accent-rgb, 100, 100, 255), 0.1);
+        box-shadow: 0 0 0 2px var(--interactive-accent-translucent);
         /* Prevent zoom on focus */
-        font-size: 16px !important;
+        font-size: 1.1rem !important;
         /* Maintain stable layout */
         transform: none;
     }
@@ -959,17 +815,16 @@ If your plugin does not need CSS, delete this file.
 .storyteller-list-item {
     display: flex;
     align-items: center;
-    padding: 12px 16px !important; /* Optimized padding */
+    padding: var(--size-4-4); /* Slightly more padding */
     border-bottom: 1px solid var(--background-modifier-border-hover);
-    transition: all 0.2s ease;
-    gap: 12px !important; /* Tighter gap */
+    transition: background-color 0.1s ease, box-shadow 0.2s ease, border-color 0.2s ease; /* Added transitions */
+    gap: var(--size-4-4); /* Increased gap */
     /* Card Styling */
     background-color: var(--background-secondary); /* Subtle background */
-    border-radius: 8px; /* Rounded corners */
-    margin-bottom: 12px; /* Space between cards */
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1); /* Subtle shadow */
+    border-radius: var(--radius-m); /* Rounded corners */
+    margin-bottom: var(--size-4-3); /* Space between cards */
+    box-shadow: 0 1px 3px var(--shadow-elevation-sm); /* Subtle shadow */
     border: 1px solid transparent; /* Prepare for hover border */
-    position: relative;
 }
 .storyteller-list-item:last-child {
     border-bottom: none; /* Remove bottom border for last item */
@@ -977,32 +832,8 @@ If your plugin does not need CSS, delete this file.
 }
 .storyteller-list-item:hover {
     background-color: var(--background-modifier-hover);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15); /* Enhanced shadow on hover */
-    border-color: var(--interactive-accent); /* Accent border on hover */
-    transform: translateY(-2px);
-}
-
-/* Quick actions appear on hover */
-.storyteller-list-item-actions {
-    position: absolute;
-    top: 12px;
-    right: 12px;
-    opacity: 0;
-    display: flex;
-    gap: 6px;
-    transition: opacity 0.2s ease;
-}
-
-.storyteller-list-item:hover .storyteller-list-item-actions {
-    opacity: 1;
-}
-
-.storyteller-list-item-actions .button {
-    min-height: 32px;
-    min-width: 32px;
-    padding: 6px;
-    border-radius: 6px;
-    font-size: 12px;
+    box-shadow: 0 3px 8px var(--shadow-elevation-md); /* Enhanced shadow on hover */
+    border-color: var(--interactive-accent-translucent); /* Accent border on hover */
 }
 
 .storyteller-list-item-info {
@@ -1950,66 +1781,18 @@ body.mod-rtl .storyteller-group-members {
   padding: 0.75rem 0;
 }
 
-/* ==============================================
-   IMPROVED EMPTY STATES
-   ============================================== */
-
-.storyteller-empty-state,
+/* Empty state for network graph */
 .storyteller-network-empty-state {
-  padding: var(--sts-space-6, 48px);
+  padding: 3rem 2rem;
   text-align: center;
-  max-width: 500px;
-  margin: 0 auto;
-}
-
-.storyteller-empty-state-icon {
-  font-size: 64px;
-  margin-bottom: var(--sts-space-3, 24px);
-  opacity: 0.5;
-}
-
-.storyteller-empty-state h3 {
-  font-size: var(--sts-text-xl, 20px);
-  font-weight: 600;
-  margin-bottom: 12px;
-  color: var(--text-normal);
-}
-
-.storyteller-empty-state-message {
-  font-size: var(--sts-text-base, 16px);
   color: var(--text-muted);
-  margin-bottom: var(--sts-space-3, 24px);
-  line-height: 1.6;
-}
-
-.storyteller-empty-state-tips {
-  background-color: var(--background-secondary);
+  background-color: var(--background-primary);
   border-radius: 8px;
-  padding: var(--sts-space-2, 16px);
-  margin-bottom: var(--sts-space-3, 24px);
-  text-align: left;
-}
-
-.storyteller-empty-state-tip {
-  font-size: var(--sts-text-sm, 14px);
-  color: var(--text-muted);
-  padding: 8px 0;
-  border-left: 3px solid var(--interactive-accent);
-  padding-left: 12px;
-  margin-bottom: 8px;
-}
-
-.storyteller-empty-state-actions {
+  border: 2px dashed var(--background-modifier-border);
+  min-height: 400px;
   display: flex;
-  gap: 12px;
+  align-items: center;
   justify-content: center;
-  flex-wrap: wrap;
-}
-
-.storyteller-empty-state-actions .button {
-  min-height: var(--sts-touch-target, 44px);
-  padding: 12px 24px;
-  font-size: var(--sts-text-base, 16px);
 }
 
 /* Loading state */
@@ -3654,175 +3437,5 @@ body.mod-rtl .storyteller-group-members {
 
   .storyteller-date-range .date-separator {
     display: none;
-  }
-  
-  /* Stack panels vertically on mobile */
-  .storyteller-network-info-panel,
-  .storyteller-network-legend-panel {
-    position: relative !important;
-    top: auto !important;
-    left: auto !important;
-    right: auto !important;
-    bottom: auto !important;
-    max-width: 100%;
-    margin-bottom: 12px;
-  }
-}
-
-/* ==============================================
-   ENHANCED NETWORK GRAPH PANELS
-   ============================================== */
-
-/* Info Panel - Displays node details on hover */
-.storyteller-network-info-panel {
-  /* Smooth scrollbar for long content */
-  scrollbar-width: thin;
-  scrollbar-color: var(--background-modifier-border) transparent;
-}
-
-.storyteller-network-info-panel::-webkit-scrollbar {
-  width: 6px;
-}
-
-.storyteller-network-info-panel::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.storyteller-network-info-panel::-webkit-scrollbar-thumb {
-  background: var(--background-modifier-border);
-  border-radius: 3px;
-}
-
-.storyteller-network-info-panel::-webkit-scrollbar-thumb:hover {
-  background: var(--text-muted);
-}
-
-/* Legend Panel - Graph key and instructions */
-.storyteller-network-legend-panel {
-  /* Smooth scrollbar */
-  scrollbar-width: thin;
-  scrollbar-color: var(--background-modifier-border) transparent;
-}
-
-.storyteller-network-legend-panel::-webkit-scrollbar {
-  width: 6px;
-}
-
-.storyteller-network-legend-panel::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.storyteller-network-legend-panel::-webkit-scrollbar-thumb {
-  background: var(--background-modifier-border);
-  border-radius: 3px;
-}
-
-.storyteller-network-legend-panel::-webkit-scrollbar-thumb:hover {
-  background: var(--text-muted);
-}
-
-/* Panel animations */
-@keyframes slideInFromBottom {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes slideInFromLeft {
-  from {
-    opacity: 0;
-    transform: translateX(-20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-
-.storyteller-network-info-panel {
-  animation: slideInFromBottom 0.4s ease-out;
-}
-
-.storyteller-network-legend-panel {
-  animation: slideInFromLeft 0.4s ease-out;
-}
-
-/* Enhanced network canvas */
-.storyteller-network-canvas {
-  /* Add subtle texture for better depth perception */
-  background-image: 
-    repeating-linear-gradient(0deg, transparent, transparent 50px, var(--background-modifier-border) 50px, var(--background-modifier-border) 51px),
-    repeating-linear-gradient(90deg, transparent, transparent 50px, var(--background-modifier-border) 50px, var(--background-modifier-border) 51px);
-  background-size: 51px 51px;
-  background-position: -1px -1px;
-}
-
-/* Improve zoom indicator visibility */
-.storyteller-zoom-indicator {
-  font-family: var(--font-monospace);
-  background: rgba(0, 0, 0, 0.8) !important;
-  color: #ffffff !important;
-  padding: 6px 12px !important;
-  border-radius: 8px !important;
-  font-size: 13px !important;
-  font-weight: 600 !important;
-  letter-spacing: 0.5px;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-}
-
-/* Enhanced graph status bar */
-.storyteller-graph-status-bar {
-  background: linear-gradient(135deg, var(--background-secondary-alt), var(--background-secondary));
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  font-variant-numeric: tabular-nums;
-  letter-spacing: 0.3px;
-}
-
-/* Print-friendly styles for network graph */
-@media print {
-  .storyteller-network-info-panel,
-  .storyteller-network-legend-panel,
-  .storyteller-zoom-indicator,
-  .storyteller-graph-toolbar,
-  .storyteller-graph-entity-filters {
-    display: none !important;
-  }
-  
-  .storyteller-network-canvas {
-    border: none !important;
-    box-shadow: none !important;
-  }
-}
-
-/* High contrast mode adjustments */
-@media (prefers-contrast: high) {
-  .storyteller-network-info-panel,
-  .storyteller-network-legend-panel {
-    border-width: 3px;
-  }
-  
-  .storyteller-zoom-indicator {
-    border-width: 2px;
-  }
-}
-
-/* Reduced motion preferences */
-@media (prefers-reduced-motion: reduce) {
-  .storyteller-network-info-panel,
-  .storyteller-network-legend-panel {
-    animation: none;
-    transition: none;
-  }
-  
-  .storyteller-network-info-panel,
-  .storyteller-network-legend-panel {
-    opacity: 1 !important;
-    transform: none !important;
   }
 }
