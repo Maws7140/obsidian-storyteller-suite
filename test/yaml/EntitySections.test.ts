@@ -247,13 +247,166 @@ age: 25
 active: true
 retired: false
 ---`;
-      
+
       const fm = parseFrontmatterFromContent(content);
       expect(fm).toBeDefined();
       expect(fm!.name).toBe('Test');
       expect(fm!.age).toBe(25);
       expect(fm!.active).toBe(true);
       expect(fm!.retired).toBe(false);
+    });
+
+    it('handles empty string values at end of line', () => {
+      const content = `---
+name: Test Character
+emptyField1:
+emptyField2:
+status: active
+---`;
+
+      const fm = parseFrontmatterFromContent(content);
+      expect(fm).toBeDefined();
+      expect(fm!.name).toBe('Test Character');
+      expect(fm!.emptyField1).toBeNull();
+      expect(fm!.emptyField2).toBeNull();
+      expect(fm!.status).toBe('active');
+    });
+  });
+
+  describe('Round-trip Empty Field Preservation', () => {
+    it('preserves empty custom fields through write-read cycle', () => {
+      const src = {
+        name: 'Test Character',
+        status: 'active',
+        customFields: {
+          customField1: 'value',
+          customField2: '',
+          customField3: 'another value'
+        }
+      };
+
+      const originalFrontmatter = {
+        name: 'Old Name',
+        status: 'inactive',
+        customField1: 'old value',
+        customField2: '',
+        customField3: 'old another value'
+      };
+
+      // Simulate write
+      const fm = buildFrontmatter('character', src, undefined, {
+        customFieldsMode: 'flatten',
+        originalFrontmatter
+      });
+
+      // Verify all custom fields are present, including empty one
+      expect(fm.customField1).toBe('value');
+      expect(fm.customField2).toBe(''); // Empty field should be preserved
+      expect(fm.customField3).toBe('another value');
+    });
+
+    it('preserves null fields when they existed in original', () => {
+      const src = {
+        name: 'Test Character',
+        customFields: {
+          nullField: ''
+        }
+      };
+
+      const originalFrontmatter = {
+        name: 'Test Character',
+        nullField: null
+      };
+
+      const fm = buildFrontmatter('character', src, undefined, {
+        customFieldsMode: 'flatten',
+        originalFrontmatter
+      });
+
+      // Null field should be preserved with the new value (empty string)
+      expect(fm).toHaveProperty('nullField');
+      expect(fm.nullField).toBe('');
+    });
+
+    it('preserves fields that were added manually (not through modal)', () => {
+      const src = {
+        name: 'Test Character',
+        status: 'active'
+      };
+
+      const originalFrontmatter = {
+        name: 'Test Character',
+        status: 'active',
+        manualField1: '',
+        manualField2: null,
+        manualField3: 'value'
+      };
+
+      const fm = buildFrontmatter('character', src, undefined, {
+        originalFrontmatter
+      });
+
+      // All manual fields should be preserved
+      expect(fm).toHaveProperty('manualField1', '');
+      expect(fm).toHaveProperty('manualField2', null);
+      expect(fm).toHaveProperty('manualField3', 'value');
+    });
+
+    it('does not filter out empty arrays that existed in original', () => {
+      const src = {
+        name: 'Test Character',
+        traits: []
+      };
+
+      const originalFrontmatter = {
+        name: 'Test Character',
+        traits: []
+      };
+
+      const fm = buildFrontmatter('character', src, undefined, {
+        originalFrontmatter
+      });
+
+      // Empty array should be preserved
+      expect(fm).toHaveProperty('traits');
+      expect(fm.traits).toEqual([]);
+    });
+
+    it('handles update scenario: modify non-empty field without removing empty fields', () => {
+      const src = {
+        name: 'Updated Character Name',
+        status: 'active',
+        customFields: {
+          field1: '',
+          field2: 'updated value',
+          field3: ''
+        }
+      };
+
+      const originalFrontmatter = {
+        name: 'Old Character Name',
+        status: 'active',
+        field1: '',
+        field2: 'old value',
+        field3: '',
+        field4: 'preserved'
+      };
+
+      const fm = buildFrontmatter('character', src, undefined, {
+        customFieldsMode: 'flatten',
+        originalFrontmatter
+      });
+
+      // Updated field should have new value
+      expect(fm.name).toBe('Updated Character Name');
+      expect(fm.field2).toBe('updated value');
+
+      // Empty fields should be preserved
+      expect(fm.field1).toBe('');
+      expect(fm.field3).toBe('');
+
+      // Field that wasn't in src but was in original should be preserved
+      expect(fm.field4).toBe('preserved');
     });
   });
 });

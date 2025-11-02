@@ -360,10 +360,13 @@ export class NetworkGraphView extends ItemView {
 
     /**
      * Handle resize events
+     * Note: We don't call fitToView here to preserve user's zoom level
+     * We only call resize() to update the canvas dimensions
      */
     onResize(): void {
         if (this.graphRenderer) {
-            this.graphRenderer.fitToView();
+            // Tell Cytoscape to update canvas size, but keep zoom/pan position
+            this.graphRenderer.resize();
         }
     }
 

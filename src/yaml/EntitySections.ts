@@ -253,29 +253,52 @@ export function parseSectionsFromMarkdown(content: string): Record<string, strin
  */
 export function parseFrontmatterFromContent(content: string): Record<string, unknown> | undefined {
   if (!content || !content.startsWith('---')) return undefined;
-  
+
   const frontmatterEndIndex = content.indexOf('\n---', 3);
   if (frontmatterEndIndex === -1) return undefined;
-  
+
   const frontmatterContent = content.substring(3, frontmatterEndIndex).trim();
   if (!frontmatterContent) return {};
-  
+
   try {
-    // Use simple YAML parsing - this is a best-effort approach
-    // We need to handle empty values explicitly
+    // Try to use Obsidian's parseYaml if available for robust YAML parsing
+    // This properly handles nested objects, arrays, and complex YAML structures
+    try {
+      // Dynamic import to handle if parseYaml is not available
+      const { parseYaml } = require('obsidian');
+      if (parseYaml && typeof parseYaml === 'function') {
+        const parsed = parseYaml(frontmatterContent);
+        // Ensure we return a plain object
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          return parsed as Record<string, unknown>;
+        }
+      }
+    } catch (e) {
+      // parseYaml not available, fall back to simple parser
+    }
+
+    // Fallback: Use simple YAML parsing for basic cases
+    // This handles empty values explicitly but has limitations with nested objects
     const lines = frontmatterContent.split('\n');
     const result: Record<string, unknown> = {};
-    
+
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
+
+      // Skip indented lines (nested objects/arrays) in simple parser
+      // These would need proper YAML parsing which we don't have in fallback
+      if (line.startsWith('  ') || line.startsWith('\t')) {
+        continue;
+      }
+
       const colonIndex = line.indexOf(':');
       if (colonIndex === -1) continue;
-      
+
       const key = line.substring(0, colonIndex).trim();
       if (!key) continue;
-      
+
       let value = line.substring(colonIndex + 1).trim();
-      
+
       // Handle arrays (value is empty and next line starts with -)
       if (value === '' && i + 1 < lines.length && lines[i + 1].trim().startsWith('-')) {
         const arrayItems: string[] = [];
@@ -289,20 +312,20 @@ export function parseFrontmatterFromContent(content: string): Record<string, unk
         result[key] = arrayItems;
         continue;
       }
-      
-      // Handle empty values (null or empty string) - after array check
+
+      // Handle empty values (null or empty string) - CRITICAL for empty field preservation
       if (value === '' || value === 'null' || value === '~') {
         result[key] = null;
         continue;
       }
-      
+
       // Handle quoted strings
-      if ((value.startsWith('"') && value.endsWith('"')) || 
+      if ((value.startsWith('"') && value.endsWith('"')) ||
           (value.startsWith("'") && value.endsWith("'"))) {
         result[key] = value.substring(1, value.length - 1);
         continue;
       }
-      
+
       // Handle booleans
       if (value === 'true') {
         result[key] = true;
@@ -312,18 +335,18 @@ export function parseFrontmatterFromContent(content: string): Record<string, unk
         result[key] = false;
         continue;
       }
-      
+
       // Handle numbers
       const numValue = Number(value);
       if (!isNaN(numValue) && value !== '') {
         result[key] = numValue;
         continue;
       }
-      
+
       // Default to string
       result[key] = value;
     }
-    
+
     return result;
   } catch (error) {
     console.warn('Error parsing frontmatter from content:', error);
