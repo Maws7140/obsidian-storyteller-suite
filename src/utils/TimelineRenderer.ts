@@ -287,12 +287,20 @@ export class TimelineRenderer {
                 zoomMax: 1000 * yearMs,
                 multiselect: true,
                 orientation: 'bottom' as const,
+                tooltip: {
+                    followMouse: true,
+                    overflowMethod: 'cap',
+                    delay: 300
+                },
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 visibleFrameTemplate: function(item: any) {
                     if (!item.progress || item.progress === 0) return '';
                     return `<div class="timeline-progress" style="width:${item.progress}%"></div>`;
                 }
             };
+
+            // Ensure container doesn't clip tooltips
+            this.container.style.overflow = 'visible';
 
             // Add explicit item height in Gantt mode for consistent bar sizing
             if (this.options.ganttMode) {

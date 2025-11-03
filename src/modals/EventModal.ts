@@ -66,7 +66,7 @@ export class EventModal extends Modal {
                 .onChange(value => { this.event.name = value; })
                 .inputEl.addClass('storyteller-modal-input-large'));
 
-        new Setting(contentEl)
+        const dateTimeSetting = new Setting(contentEl)
             .setName(t('dateTime'))
             .setDesc(t('statusPlaceholderEvent'))
             .addText(text => text

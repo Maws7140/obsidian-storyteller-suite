@@ -1173,6 +1173,15 @@ export default class StorytellerSuitePlugin extends Plugin {
 				await this.createStoryBoard();
 			}
 		});
+
+		// Update Story Board command - Update existing story board with changes
+		this.addCommand({
+			id: 'update-story-board',
+			name: 'Update Story Board',
+			callback: async () => {
+				await this.updateStoryBoard();
+			}
+		});
 	}
 
 	/**
@@ -2710,6 +2719,76 @@ export default class StorytellerSuitePlugin extends Plugin {
 			}
 			console.error('Error creating story board:', error);
 			new Notice('Error creating story board. See console for details.');
+		}
+	}
+
+	/**
+	 * Update existing story board with current scenes
+	 * Preserves manual user edits while adding/removing/updating scenes
+	 */
+	async updateStoryBoard(): Promise<void> {
+		try {
+			// Check if story board exists
+			const canvasPath = this.getStoryBoardPath();
+			const existingFile = this.app.vault.getAbstractFileByPath(canvasPath);
+
+			if (!(existingFile instanceof TFile)) {
+				new Notice('No story board found. Create one first using "Create Story Board".');
+				return;
+			}
+
+			// Get all scenes
+			const scenes = await this.listScenes();
+
+			if (scenes.length === 0) {
+				new Notice('No scenes found. Create some scenes first!');
+				return;
+			}
+			// Get all chapters
+			const chapters = await this.listChapters();
+
+			// Read existing canvas
+			const existingContent = await this.app.vault.read(existingFile);
+			let existingCanvas: any;
+			try {
+				existingCanvas = JSON.parse(existingContent);
+			} catch (error) {
+				new Notice('Error reading existing story board. It may be corrupted.');
+				console.error('Error parsing canvas:', error);
+				return;
+			}
+
+			// Import the generator
+			const { StoryBoardGenerator } = await import('./utils/StoryBoardGenerator');
+
+			// Get settings or use defaults
+			const layout = this.settings.storyBoardLayout || 'chapters';
+			const cardWidth = this.settings.storyBoardCardWidth || 400;
+			const cardHeight = this.settings.storyBoardCardHeight || 300;
+			const colorBy = this.settings.storyBoardColorBy || 'status';
+			const showEdges = this.settings.storyBoardShowEdges !== undefined ? this.settings.storyBoardShowEdges : false;
+
+			// Update canvas data (preserves manual edits)
+			const generator = new StoryBoardGenerator({ cardWidth, cardHeight });
+			const updatedCanvas = generator.updateCanvas(existingCanvas, scenes, chapters, {
+				layout: layout,
+				colorBy: colorBy,
+				showChapterHeaders: true,
+				showEdges: showEdges
+			});
+
+			// Save updated canvas
+			const canvasContent = JSON.stringify(updatedCanvas, null, 2);
+			await this.app.vault.modify(existingFile, canvasContent);
+			new Notice('Story board updated! Manual edits preserved.');
+
+			// Open the canvas file
+			const leaf = this.app.workspace.getLeaf(false);
+			await leaf.openFile(existingFile);
+
+		} catch (error) {
+			console.error('Error updating story board:', error);
+			new Notice('Error updating story board. See console for details.');
 		}
 	}
 

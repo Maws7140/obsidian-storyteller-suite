@@ -30,10 +30,27 @@ export class NetworkGraphRenderer {
     private legendPanelEl: HTMLElement | null = null; // Reference to legend panel element
     private legendToggleButtonEl: HTMLElement | null = null; // Floating button to show legend
     private infoPanelExpanded = false; // Toggle for expanded/collapsed info panel
+    private isModal: boolean; // Whether this renderer is in a modal context
 
-    constructor(containerEl: HTMLElement, plugin: StorytellerSuitePlugin) {
+    constructor(containerEl: HTMLElement, plugin: StorytellerSuitePlugin, isModal = false) {
         this.containerEl = containerEl;
         this.plugin = plugin;
+        this.isModal = isModal;
+    }
+
+    // Resolve CSS custom property to actual color value
+    // Cytoscape.js doesn't support CSS variables, so we need to compute them
+    private getCSSVariable(varName: string): string {
+        const style = getComputedStyle(document.body);
+        const value = style.getPropertyValue(varName).trim();
+        // Fallback colors if CSS variable is not found
+        const fallbacks: Record<string, string> = {
+            '--background-modifier-border': '#3e3e3e',
+            '--interactive-accent': '#7952b3',
+            '--interactive-accent-hover': '#9a7bcc',
+            '--font-interface': 'sans-serif'
+        };
+        return value || fallbacks[varName] || '#808080';
     }
 
     // Convert vault image path to usable URL for display
@@ -252,7 +269,7 @@ export class NetworkGraphRenderer {
             layout: this.getLayoutOptions('cose'),
             minZoom: 0.2,
             maxZoom: 4,
-            wheelSensitivity: 0.15
+            wheelSensitivity: 0.3 // Moderate sensitivity - not too fast, not too slow
         });
 
         // Apply initial zoom adjustment after layout completes
@@ -347,6 +364,12 @@ export class NetworkGraphRenderer {
 
     // Get Cytoscape stylesheet with Obsidian theme integration
     private getCytoscapeStyle(): any[] {
+        // Compute CSS variables at runtime (Cytoscape doesn't support CSS vars)
+        const borderColor = this.getCSSVariable('--background-modifier-border');
+        const accentColor = this.getCSSVariable('--interactive-accent');
+        const accentHoverColor = this.getCSSVariable('--interactive-accent-hover');
+        const fontFamily = this.getCSSVariable('--font-interface');
+
         return [
             // Node styles - Dynamic sizing based on connections
             {
@@ -360,7 +383,7 @@ export class NetworkGraphRenderer {
                     'text-valign': 'center', // Center labels on nodes for better readability
                     'text-halign': 'center',
                     'font-size': '14px', // Increased for accessibility (min 14px)
-                    'font-family': 'var(--font-interface)',
+                    'font-family': fontFamily,
                     'color': '#ffffff', // White text for contrast
                     // Label background for better readability
                     'text-background-color': 'rgba(0, 0, 0, 0.75)',
@@ -369,9 +392,9 @@ export class NetworkGraphRenderer {
                     'text-background-shape': 'roundrectangle',
                     'text-outline-color': 'transparent', // Remove outline, background is enough
                     'text-outline-width': 0,
-                    'background-color': 'var(--interactive-accent)',
+                    'background-color': accentColor,
                     'border-width': 2,
-                    'border-color': 'var(--background-modifier-border)',
+                    'border-color': borderColor,
                     // Enhanced dynamic sizing based on degree (connections)
                     'width': (node: any) => {
                         const degree = node.data('degree') || 0;
@@ -433,7 +456,6 @@ export class NetworkGraphRenderer {
                 style: {
                     'border-width': 5,
                     'border-color': '#FFD700',
-                    'box-shadow': '0 0 30px rgba(255, 215, 0, 0.6)',
                     'z-index': 200,
                     'font-size': '16px',
                     'font-weight': 'bold'
@@ -444,7 +466,6 @@ export class NetworkGraphRenderer {
                 selector: 'node[[degree > 5]][[degree <= 10]]',
                 style: {
                     'border-width': 4,
-                    'box-shadow': '0 0 20px var(--interactive-accent)',
                     'z-index': 150,
                     'font-size': '15px',
                     'font-weight': '600'
@@ -483,8 +504,8 @@ export class NetworkGraphRenderer {
                 selector: 'edge',
                 style: {
                     'width': 2,
-                    'line-color': 'var(--background-modifier-border)',
-                    'target-arrow-color': 'var(--background-modifier-border)',
+                    'line-color': borderColor,
+                    'target-arrow-color': borderColor,
                     'target-arrow-shape': 'triangle',
                     'curve-style': 'bezier',
                     'arrow-scale': 1.2,
@@ -499,7 +520,7 @@ export class NetworkGraphRenderer {
                     'text-background-shape': 'roundrectangle',
                     'text-outline-color': 'transparent',
                     'text-outline-width': 0,
-                    'font-family': 'var(--font-interface)'
+                    'font-family': fontFamily
                 }
             },
             // Relationship type colors
@@ -557,7 +578,7 @@ export class NetworkGraphRenderer {
                 selector: 'node:selected',
                 style: {
                     'border-width': 4,
-                    'border-color': 'var(--interactive-accent-hover)',
+                    'border-color': accentHoverColor,
                     'z-index': 999
                 }
             },
@@ -585,7 +606,7 @@ export class NetworkGraphRenderer {
                 selector: 'node.highlighted',
                 style: {
                     'border-width': 4,
-                    'border-color': 'var(--interactive-accent)',
+                    'border-color': accentColor,
                     'z-index': 999
                 }
             },
@@ -607,7 +628,7 @@ export class NetworkGraphRenderer {
                 style: {
                     'border-width': 3,
                     'border-style': 'double',
-                    'border-color': 'var(--interactive-accent-hover)'
+                    'border-color': accentHoverColor
                 }
             }
         ];
@@ -626,21 +647,27 @@ export class NetworkGraphRenderer {
         // Enhanced hover effects with highlighting and info panel update
         this.cy.on('mouseover', 'node', (evt) => {
             const node = evt.target;
-            const nodeId = node.id();
-            
+
+            // Get all neighbors of the hovered node (nodes connected to it)
+            const neighbors = node.neighborhood('node');
+
             // Highlight the node and its connections
             this.cy?.nodes().forEach(n => {
-                if (n.id() === nodeId) {
+                if (n.id() === node.id()) {
+                    // The hovered node itself
                     n.addClass('highlighted');
-                } else if (n.neighborhood(`#${nodeId}`).length > 0) {
-                    // Connected node
+                } else if (neighbors.contains(n)) {
+                    // This node is a neighbor of the hovered node
+                    // Don't dim it, but don't highlight it either (or optionally highlight it)
+                    // For now, we'll leave it normal (not dimmed)
                 } else {
+                    // This node is not connected
                     n.addClass('dimmed');
                 }
             });
 
             this.cy?.edges().forEach(e => {
-                if (e.source().id() === nodeId || e.target().id() === nodeId) {
+                if (e.source().id() === node.id() || e.target().id() === node.id()) {
                     e.addClass('highlighted');
                 } else {
                     e.addClass('dimmed');
@@ -716,26 +743,38 @@ export class NetworkGraphRenderer {
     // Create fixed info panel in bottom-right corner
     private createInfoPanel(): void {
         if (!this.canvasEl) return;
-        
+
         this.infoPanelEl = document.createElement('div');
         this.infoPanelEl.className = 'storyteller-network-info-panel';
-        this.infoPanelEl.style.position = 'absolute';
-        this.infoPanelEl.style.bottom = '16px';
+        this.infoPanelEl.style.position = 'absolute'; // Absolute to canvas container
+
+        // Different positioning for modal vs sidebar view
+        if (this.isModal) {
+            // Modal: higher bottom position to avoid modal's bottom bar
+            this.infoPanelEl.style.bottom = '60px';
+            this.infoPanelEl.style.maxHeight = 'calc(100% - 80px)'; // More room in modal
+        } else {
+            // Sidebar view: standard position
+            this.infoPanelEl.style.bottom = '20px';
+            this.infoPanelEl.style.maxHeight = 'calc(100% - 40px)'; // Ensure it fits
+        }
+
         this.infoPanelEl.style.right = '16px';
         this.infoPanelEl.style.backgroundColor = 'var(--background-secondary)';
         this.infoPanelEl.style.border = '2px solid var(--background-modifier-border)';
         this.infoPanelEl.style.borderRadius = '12px';
         this.infoPanelEl.style.padding = '0';
         this.infoPanelEl.style.pointerEvents = 'auto';
-        this.infoPanelEl.style.zIndex = '100';
+        this.infoPanelEl.style.zIndex = '1000'; // High within canvas context
         this.infoPanelEl.style.minWidth = '140px';
         this.infoPanelEl.style.maxWidth = '140px';
-        this.infoPanelEl.style.boxShadow = '0 2px 8px rgba(0,0,0,0.3)';
+        this.infoPanelEl.style.overflowY = 'auto'; // Allow scrolling if content is too tall
+        this.infoPanelEl.style.boxShadow = '0 4px 16px rgba(0,0,0,0.4)'; // Stronger shadow for visibility
         this.infoPanelEl.style.cursor = 'pointer';
         this.infoPanelEl.style.opacity = '0';
         this.infoPanelEl.style.transform = 'translateY(10px)';
-        this.infoPanelEl.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
-        
+        this.infoPanelEl.style.transition = 'opacity 0.3s ease, transform 0.3s ease, max-width 0.3s ease';
+
         // Initial hidden state message with icon
         this.infoPanelEl.innerHTML = `
             <div style="text-align: center; padding: 12px 8px; color: var(--text-muted);">
@@ -743,7 +782,8 @@ export class NetworkGraphRenderer {
                 <div style="font-size: 9px; margin-top: 4px;">Hover node</div>
             </div>
         `;
-        
+
+        // Append to canvas element
         this.canvasEl.appendChild(this.infoPanelEl);
     }
 
@@ -1030,11 +1070,11 @@ export class NetworkGraphRenderer {
         legendPanel.style.border = '2px solid var(--background-modifier-border)';
         legendPanel.style.borderRadius = '12px';
         legendPanel.style.padding = '0';
-        legendPanel.style.zIndex = '100';
+        legendPanel.style.zIndex = '999'; // Just below info panel but above canvas
         legendPanel.style.minWidth = '200px';
         legendPanel.style.maxWidth = '280px';
         legendPanel.style.boxShadow = '0 8px 24px rgba(0,0,0,0.3)';
-        legendPanel.style.maxHeight = '400px';
+        legendPanel.style.maxHeight = 'calc(100% - 32px)'; // Stay within canvas bounds
         legendPanel.style.overflowY = 'auto';
         legendPanel.style.opacity = '0';
         legendPanel.style.transform = 'translateX(-100%)';
@@ -1187,7 +1227,7 @@ export class NetworkGraphRenderer {
         toggleButton.style.alignItems = 'center';
         toggleButton.style.justifyContent = 'center';
         toggleButton.style.fontSize = '18px';
-        toggleButton.style.zIndex = '99';
+        toggleButton.style.zIndex = '998'; // Below legend panel but above canvas
         toggleButton.style.boxShadow = '0 4px 12px rgba(0,0,0,0.2)';
         toggleButton.style.opacity = '1';
         toggleButton.style.pointerEvents = 'auto';
