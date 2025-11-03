@@ -1,7 +1,7 @@
 // MapUtils - Helper functions for map operations and conversions
 // Provides utilities for coordinate handling, marker management, and map hierarchy
 
-import { Map, MapMarker, MapLayer } from '../types';
+import type { Map, MapMarker, MapLayer } from '../types';
 import { LatLng, LatLngBounds } from 'leaflet';
 
 // Generate unique ID for maps, markers, and layers

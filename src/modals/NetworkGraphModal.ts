@@ -427,7 +427,7 @@ export class NetworkGraphModal extends ResponsiveModal {
 	private async initializeGraph(container: HTMLElement): Promise<void> {
 		this.graphContainer = container.createDiv('storyteller-network-graph-container');
 		this.graphContainer.style.flex = '1';
-		this.graphContainer.style.overflow = 'hidden';
+		this.graphContainer.style.overflow = 'visible'; // Changed from 'hidden' to allow info panel to show
 		this.graphContainer.style.position = 'relative';
 		this.graphContainer.style.minHeight = '420px';
 
@@ -435,7 +435,7 @@ export class NetworkGraphModal extends ResponsiveModal {
 		this.createStatusBar(this.graphContainer);
 
 		try {
-			const renderer = new NetworkGraphRenderer(this.graphContainer, this.plugin);
+			const renderer = new NetworkGraphRenderer(this.graphContainer, this.plugin, true); // true = isModal
 			await renderer.initializeCytoscape();
 			this.graphRenderer = renderer;
 			

@@ -42,8 +42,7 @@ function inferPrecisionFromLuxon(dt: DateTime): ParsedPrecision {
   return 'year';
 }
 
-/** Try BCE patterns first, then Luxon ISO, SQL, Chrono (casual). */
-export function parseEventDate(input?: string, opts: ParseOptions = {}): ParsedEventDate {
+/** Try CE/BCE patterns first, then Luxon ISO, SQL, Chrono (casual), then ad-hoc formats. */export function parseEventDate(input?: string, opts: ParseOptions = {}): ParsedEventDate {
   if (!input || !input.trim()) return { error: 'empty' };
   const text = input.trim();
   const approximate = APPROX_RE.test(text);
