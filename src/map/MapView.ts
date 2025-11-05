@@ -431,41 +431,52 @@ export class MapView {
   private setupDrawingControls(): void {
     if (!this.map) return;
 
-    this.drawnItems.addTo(this.map);
+    // Check if L.Draw is available
+    if (typeof (L as any).Draw === 'undefined' || typeof (L as any).Control.Draw === 'undefined') {
+      console.warn('Leaflet Draw library not loaded, skipping drawing controls');
+      return;
+    }
 
-    this.drawControl = new L.Control.Draw({
-      position: 'topleft',
-      draw: {
-        polyline: { shapeOptions: { color: '#3388ff' } },
-        polygon: { shapeOptions: { color: '#3388ff' } },
-        rectangle: { shapeOptions: { color: '#3388ff' } },
-        circle: { shapeOptions: { color: '#3388ff' } },
-        marker: false,
-        circlemarker: false
-      },
-      edit: {
-        featureGroup: this.drawnItems,
-        remove: true
-      }
-    });
+    // Note: drawnItems is already added to the map in initMap, no need to add again
 
-    this.map.addControl(this.drawControl);
+    try {
+      this.drawControl = new L.Control.Draw({
+        position: 'topleft',
+        draw: {
+          polyline: { shapeOptions: { color: '#3388ff' } },
+          polygon: { shapeOptions: { color: '#3388ff' } },
+          rectangle: { shapeOptions: { color: '#3388ff' } },
+          circle: { shapeOptions: { color: '#3388ff' } },
+          marker: false,
+          circlemarker: false
+        },
+        edit: {
+          featureGroup: this.drawnItems,
+          remove: true
+        }
+      });
 
-    // Handle draw events
-    // Use string literals instead of L.Draw.Event constants for better compatibility
-    this.map.on('draw:created', (e: any) => {
-      const layer = e.layer;
-      this.drawnItems.addLayer(layer);
-      this.onMapChange?.();
-    });
+      this.map.addControl(this.drawControl);
 
-    this.map.on('draw:edited', () => {
-      this.onMapChange?.();
-    });
+      // Handle draw events
+      // Use string literals instead of L.Draw.Event constants for better compatibility
+      this.map.on('draw:created', (e: any) => {
+        const layer = e.layer;
+        this.drawnItems.addLayer(layer);
+        this.onMapChange?.();
+      });
 
-    this.map.on('draw:deleted', () => {
-      this.onMapChange?.();
-    });
+      this.map.on('draw:edited', () => {
+        this.onMapChange?.();
+      });
+
+      this.map.on('draw:deleted', () => {
+        this.onMapChange?.();
+      });
+    } catch (error) {
+      console.error('Failed to setup drawing controls:', error);
+      // Continue without drawing controls rather than crashing
+    }
   }
 
   // Add tile layer (OSM or custom)
