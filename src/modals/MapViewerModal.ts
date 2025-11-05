@@ -5,14 +5,14 @@ import { App, Modal, Setting, Notice, ButtonComponent, TFile } from 'obsidian';
 import { Map as StoryMap, MapMarker } from '../types';
 import StorytellerSuitePlugin from '../main';
 import { t } from '../i18n/strings';
-import { MapEditor } from '../components/MapEditor';
-import { MapModal } from './MapModal';
+import { MapView } from '../map/MapView';
 import { LocationModal } from './LocationModal';
+import { EventModal } from './EventModal';
 
 export class MapViewerModal extends Modal {
     plugin: StorytellerSuitePlugin;
     map: StoryMap;
-    private mapEditor: MapEditor | null = null;
+    private mapEditor: MapView | null = null;
     private editorContainer: HTMLElement | null = null;
     private showLabels: boolean = true;
     private filterVisible: boolean = true;
@@ -24,7 +24,7 @@ export class MapViewerModal extends Modal {
         this.modalEl.addClass('storyteller-map-viewer-modal');
     }
 
-    onOpen(): void {
+    async onOpen(): Promise<void> {
         const { contentEl } = this;
         contentEl.empty();
 
@@ -47,11 +47,14 @@ export class MapViewerModal extends Modal {
         scaleBadge.style.fontSize = '0.75em';
 
         if (this.map.description) {
-            headerContainer.createEl('p', { 
+            headerContainer.createEl('p', {
                 text: this.map.description,
                 cls: 'storyteller-map-description'
             });
         }
+
+        // Breadcrumb navigation
+        await this.renderBreadcrumbs(headerContainer);
 
         // Map statistics
         const statsContainer = headerContainer.createDiv('storyteller-map-stats');
@@ -64,10 +67,13 @@ export class MapViewerModal extends Modal {
         });
         
         if (this.map.linkedLocations && this.map.linkedLocations.length > 0) {
-            statsContainer.createEl('span', { 
-                text: ` • ${this.map.linkedLocations.length} location${this.map.linkedLocations.length !== 1 ? 's' : ''}` 
+            statsContainer.createEl('span', {
+                text: ` • ${this.map.linkedLocations.length} location${this.map.linkedLocations.length !== 1 ? 's' : ''}`
             });
         }
+
+        // Quick navigation buttons
+        await this.renderQuickNavigation(contentEl);
 
         // Controls
         const controlsContainer = contentEl.createDiv('storyteller-map-viewer-controls');
@@ -95,12 +101,9 @@ export class MapViewerModal extends Modal {
             .addButton(button => button
                 .setButtonText('Edit Map')
                 .setIcon('pencil')
-                .onClick(() => {
+                .onClick(async () => {
                     this.close();
-                    new MapModal(this.app, this.plugin, this.map, async (updatedData: StoryMap) => {
-                        await this.plugin.saveMap(updatedData);
-                        new Notice(`Map "${updatedData.name}" updated`);
-                    }).open();
+                    await this.plugin.openMapEditor(this.map.id);
                 })
             );
 
@@ -137,29 +140,41 @@ export class MapViewerModal extends Modal {
     private async initializeMapViewer(): Promise<void> {
         if (!this.editorContainer) return;
 
-        this.mapEditor = new MapEditor({
+        this.mapEditor = new MapView({
             container: this.editorContainer,
             app: this.app,
             readOnly: true,
-            onMarkerClick: (marker) => this.handleMarkerClick(marker)
+            onMarkerClick: (marker) => this.handleMarkerClick(marker),
+            enableFrontmatterMarkers: this.plugin.settings.enableFrontmatterMarkers,
+            enableDataViewMarkers: this.plugin.settings.enableDataViewMarkers,
+            markerFiles: this.map.markerFiles,
+            markerFolders: this.map.markerFolders,
+            markerTags: this.map.markerTags,
+            geojsonFiles: this.map.geojsonFiles,
+            gpxFiles: this.map.gpxFiles,
+            tileServer: this.map.tileServer,
+            osmLayer: this.map.osmLayer,
+            tileSubdomains: this.map.tileSubdomains
         });
 
         await this.mapEditor.initMap(this.map);
     }
 
-    // Handle marker click - open location if linked
+    // Handle marker click - open location, event, or navigate to child map
     private async handleMarkerClick(marker: MapMarker): Promise<void> {
-        if (marker.locationName) {
+        const markerType = marker.markerType || 'location';
+
+        if (markerType === 'location' && marker.locationName) {
             // Try to find and open the location
             const locations = await this.plugin.listLocations();
             const location = locations.find(loc => loc.name === marker.locationName);
-            
+
             if (location) {
                 this.close();
                 new LocationModal(
-                    this.app, 
-                    this.plugin, 
-                    location, 
+                    this.app,
+                    this.plugin,
+                    location,
                     async (updatedData) => {
                         await this.plugin.saveLocation(updatedData);
                         new Notice(`Location "${updatedData.name}" updated`);
@@ -168,73 +183,345 @@ export class MapViewerModal extends Modal {
             } else {
                 new Notice(`Location "${marker.locationName}" not found`);
             }
+        } else if (markerType === 'event' && marker.eventName) {
+            // Try to find and open the event
+            const events = await this.plugin.listEvents();
+            const event = events.find(evt => evt.name === marker.eventName);
+
+            if (event) {
+                this.close();
+                new EventModal(
+                    this.app,
+                    this.plugin,
+                    event,
+                    async (updatedData) => {
+                        await this.plugin.saveEvent(updatedData);
+                        new Notice(`Event "${updatedData.name}" updated`);
+                    }
+                ).open();
+            } else {
+                new Notice(`Event "${marker.eventName}" not found`);
+            }
+        } else if (markerType === 'childMap' && marker.childMapId) {
+            // Navigate to child map
+            const maps = await this.plugin.listMaps();
+            const childMap = maps.find(m => m.id === marker.childMapId || m.name === marker.childMapId);
+
+            if (childMap) {
+                this.close();
+                new MapViewerModal(this.app, this.plugin, childMap).open();
+            } else {
+                new Notice(`Child map "${marker.childMapId}" not found`);
+            }
         } else {
             new Notice(`Marker: ${marker.label || 'Unnamed'}`);
         }
     }
 
-    // Render hierarchy navigation section
-    private renderHierarchyNavigation(container: HTMLElement): void {
+    // Render quick navigation buttons for parent/child maps
+    private async renderQuickNavigation(container: HTMLElement): Promise<void> {
+        const hasParent = !!this.map.parentMapId;
+        const hasChildren = this.map.childMapIds && this.map.childMapIds.length > 0;
+
+        if (!hasParent && !hasChildren) return;
+
+        const navContainer = container.createDiv('storyteller-quick-navigation');
+        navContainer.style.marginTop = '15px';
+        navContainer.style.padding = '12px';
+        navContainer.style.background = 'var(--background-secondary)';
+        navContainer.style.borderRadius = '8px';
+        navContainer.style.display = 'flex';
+        navContainer.style.gap = '10px';
+        navContainer.style.alignItems = 'center';
+
+        navContainer.createEl('span', {
+            text: 'Navigate:',
+            attr: { style: 'font-weight: bold; margin-right: 5px;' }
+        });
+
+        // Parent map button
+        if (hasParent) {
+            const allMaps = await this.plugin.listMaps();
+            const parentMap = allMaps.find(m => m.id === this.map.parentMapId || m.name === this.map.parentMapId);
+
+            const parentBtn = new ButtonComponent(navContainer);
+            parentBtn
+                .setButtonText(`↑ ${parentMap?.name || 'Parent Map'}`)
+                .setTooltip('Go to parent map')
+                .setClass('storyteller-nav-button')
+                .onClick(() => {
+                    if (parentMap) {
+                        this.close();
+                        new MapViewerModal(this.app, this.plugin, parentMap).open();
+                    } else {
+                        new Notice('Parent map not found');
+                    }
+                });
+        }
+
+        // Child maps dropdown button
+        if (hasChildren) {
+            const allMaps = await this.plugin.listMaps();
+            const childMaps = this.map.childMapIds!
+                .map(id => allMaps.find(m => m.id === id || m.name === id))
+                .filter(m => m !== undefined) as StoryMap[];
+
+            if (childMaps.length > 0) {
+                const childBtn = new ButtonComponent(navContainer);
+                childBtn
+                    .setButtonText(`↓ ${childMaps.length} Child Map${childMaps.length > 1 ? 's' : ''}`)
+                    .setTooltip('View child maps')
+                    .setClass('storyteller-nav-button')
+                    .onClick(() => {
+                        // Show child map selector
+                        this.showChildMapSelector(childMaps);
+                    });
+            }
+        }
+    }
+
+    // Show child map selector
+    private showChildMapSelector(childMaps: StoryMap[]): void {
+        const menu = document.createElement('div');
+        menu.className = 'menu';
+        menu.style.position = 'fixed';
+        menu.style.background = 'var(--background-primary)';
+        menu.style.border = '1px solid var(--background-modifier-border)';
+        menu.style.borderRadius = '4px';
+        menu.style.padding = '4px';
+        menu.style.boxShadow = '0 2px 8px rgba(0,0,0,0.15)';
+        menu.style.zIndex = '1000';
+        menu.style.left = '50%';
+        menu.style.top = '50%';
+        menu.style.transform = 'translate(-50%, -50%)';
+        menu.style.maxWidth = '300px';
+
+        childMaps.forEach(childMap => {
+            const item = menu.createDiv('menu-item');
+            item.textContent = childMap.name;
+            item.style.padding = '8px 12px';
+            item.style.cursor = 'pointer';
+
+            item.addEventListener('mouseenter', () => {
+                item.style.background = 'var(--background-modifier-hover)';
+            });
+            item.addEventListener('mouseleave', () => {
+                item.style.background = '';
+            });
+
+            item.onclick = () => {
+                this.close();
+                new MapViewerModal(this.app, this.plugin, childMap).open();
+                menu.remove();
+            };
+        });
+
+        document.body.appendChild(menu);
+
+        // Close on click outside
+        const closeMenu = (e: MouseEvent) => {
+            if (!menu.contains(e.target as Node)) {
+                menu.remove();
+                document.removeEventListener('click', closeMenu);
+            }
+        };
+        setTimeout(() => document.addEventListener('click', closeMenu), 100);
+    }
+
+    // Render breadcrumb navigation
+    private async renderBreadcrumbs(container: HTMLElement): Promise<void> {
+        if (!this.map.parentMapId) return;
+
+        const breadcrumbContainer = container.createDiv('storyteller-map-breadcrumbs');
+        breadcrumbContainer.style.marginTop = '10px';
+        breadcrumbContainer.style.padding = '8px 0';
+        breadcrumbContainer.style.display = 'flex';
+        breadcrumbContainer.style.alignItems = 'center';
+        breadcrumbContainer.style.gap = '8px';
+        breadcrumbContainer.style.fontSize = '0.9em';
+        breadcrumbContainer.style.color = 'var(--text-muted)';
+
+        // Build hierarchy path
+        const hierarchy: StoryMap[] = [];
+        let currentMapId: string | undefined = this.map.parentMapId;
+        const allMaps = await this.plugin.listMaps();
+
+        // Traverse up the hierarchy
+        while (currentMapId) {
+            const parentMap = allMaps.find(m => m.id === currentMapId || m.name === currentMapId);
+            if (!parentMap) break;
+            hierarchy.unshift(parentMap);
+            currentMapId = parentMap.parentMapId;
+        }
+
+        // Render breadcrumbs
+        hierarchy.forEach((map, index) => {
+            const breadcrumb = breadcrumbContainer.createEl('a', {
+                text: map.name,
+                cls: 'storyteller-breadcrumb-link'
+            });
+            breadcrumb.style.color = 'var(--link-color)';
+            breadcrumb.style.cursor = 'pointer';
+            breadcrumb.style.textDecoration = 'none';
+
+            breadcrumb.addEventListener('mouseenter', () => {
+                breadcrumb.style.textDecoration = 'underline';
+            });
+            breadcrumb.addEventListener('mouseleave', () => {
+                breadcrumb.style.textDecoration = 'none';
+            });
+
+            breadcrumb.onclick = () => {
+                this.close();
+                new MapViewerModal(this.app, this.plugin, map).open();
+            };
+
+            if (index < hierarchy.length - 1) {
+                const separator = breadcrumbContainer.createEl('span', { text: '›' });
+                separator.style.opacity = '0.5';
+            }
+        });
+
+        // Current map (not clickable)
+        if (hierarchy.length > 0) {
+            const separator = breadcrumbContainer.createEl('span', { text: '›' });
+            separator.style.opacity = '0.5';
+        }
+        const currentCrumb = breadcrumbContainer.createEl('span', { text: this.map.name });
+        currentCrumb.style.fontWeight = 'bold';
+        currentCrumb.style.color = 'var(--text-normal)';
+    }
+
+    // Render hierarchy navigation section with tree view
+    private async renderHierarchyNavigation(container: HTMLElement): Promise<void> {
         const hierarchySection = container.createDiv('storyteller-map-hierarchy-section');
         hierarchySection.style.marginTop = '20px';
         hierarchySection.style.padding = '15px';
         hierarchySection.style.border = '1px solid var(--background-modifier-border)';
         hierarchySection.style.borderRadius = '8px';
 
-        hierarchySection.createEl('h3', { text: 'Map Hierarchy' });
+        hierarchySection.createEl('h3', { text: 'Map Hierarchy Tree' });
 
-        // Parent map
-        if (this.map.parentMapId) {
-            const parentSetting = new Setting(hierarchySection)
-                .setName('Parent Map')
-                .setDesc(`Go to parent map: ${this.map.parentMapId}`)
-                .addButton(button => button
-                    .setButtonText('View Parent')
-                    .setIcon('arrow-up')
-                    .onClick(async () => {
-                        const maps = await this.plugin.listMaps();
-                        const parentMap = maps.find(m => m.id === this.map.parentMapId);
-                        if (parentMap) {
-                            this.close();
-                            new MapViewerModal(this.app, this.plugin, parentMap).open();
-                        } else {
-                            new Notice('Parent map not found');
-                        }
-                    })
-                );
+        const allMaps = await this.plugin.listMaps();
+
+        // Find root map (topmost ancestor)
+        let rootMap = this.map;
+        while (rootMap.parentMapId) {
+            const parent = allMaps.find(m => m.id === rootMap.parentMapId || m.name === rootMap.parentMapId);
+            if (!parent) break;
+            rootMap = parent;
         }
 
-        // Child maps
-        if (this.map.childMapIds && this.map.childMapIds.length > 0) {
-            hierarchySection.createEl('h4', { text: 'Child Maps' });
-            
-            const childListContainer = hierarchySection.createDiv('storyteller-child-maps-list');
-            
-            this.map.childMapIds.forEach(async (childId) => {
-                const maps = await this.plugin.listMaps();
-                const childMap = maps.find(m => m.id === childId);
-                
-                if (childMap) {
-                    const childItem = childListContainer.createDiv('storyteller-child-map-item');
-                    childItem.style.display = 'flex';
-                    childItem.style.justifyContent = 'space-between';
-                    childItem.style.alignItems = 'center';
-                    childItem.style.padding = '8px';
-                    childItem.style.marginTop = '5px';
-                    childItem.style.border = '1px solid var(--background-modifier-border)';
-                    childItem.style.borderRadius = '4px';
+        // Render tree starting from root
+        const treeContainer = hierarchySection.createDiv('storyteller-hierarchy-tree');
+        treeContainer.style.marginTop = '12px';
+        await this.renderMapTreeNode(treeContainer, rootMap, allMaps, 0);
+    }
 
-                    const nameEl = childItem.createSpan({ text: childMap.name });
-                    
-                    const viewBtn = new ButtonComponent(childItem);
-                    viewBtn
-                        .setButtonText('View')
-                        .setIcon('arrow-right')
-                        .onClick(() => {
-                            this.close();
-                            new MapViewerModal(this.app, this.plugin, childMap).open();
-                        });
+    // Recursively render map tree node
+    private async renderMapTreeNode(
+        container: HTMLElement,
+        map: StoryMap,
+        allMaps: StoryMap[],
+        depth: number
+    ): Promise<void> {
+        const nodeContainer = container.createDiv('storyteller-tree-node');
+        nodeContainer.style.marginLeft = `${depth * 20}px`;
+        nodeContainer.style.marginTop = depth > 0 ? '4px' : '0';
+        nodeContainer.style.padding = '6px 10px';
+        nodeContainer.style.borderRadius = '4px';
+        nodeContainer.style.cursor = 'pointer';
+        nodeContainer.style.transition = 'all 0.2s ease';
+
+        // Highlight current map
+        const isCurrent = map.id === this.map.id || map.name === this.map.name;
+        if (isCurrent) {
+            nodeContainer.style.background = 'var(--interactive-accent)';
+            nodeContainer.style.color = 'var(--text-on-accent)';
+            nodeContainer.style.fontWeight = 'bold';
+        }
+
+        // Node content
+        const nodeContent = nodeContainer.createDiv();
+        nodeContent.style.display = 'flex';
+        nodeContent.style.alignItems = 'center';
+        nodeContent.style.gap = '8px';
+
+        // Expand/collapse icon for nodes with children
+        const hasChildren = map.childMapIds && map.childMapIds.length > 0;
+        if (hasChildren) {
+            const expandIcon = nodeContent.createSpan({
+                text: '▸',
+                cls: 'storyteller-tree-expand-icon'
+            });
+            expandIcon.style.fontSize = '12px';
+            expandIcon.style.transition = 'transform 0.2s ease';
+        } else {
+            nodeContent.createSpan({ text: '  ' }); // Spacer for alignment
+        }
+
+        // Map name
+        const mapName = nodeContent.createSpan({ text: map.name });
+
+        // Scale badge
+        const scaleBadge = nodeContent.createSpan({
+            text: (map.scale || 'custom').substring(0, 1).toUpperCase(),
+            cls: 'storyteller-tree-scale-badge'
+        });
+        scaleBadge.style.fontSize = '10px';
+        scaleBadge.style.padding = '2px 6px';
+        scaleBadge.style.borderRadius = '3px';
+        scaleBadge.style.background = isCurrent ? 'rgba(255,255,255,0.2)' : 'var(--background-modifier-border)';
+
+        // Child container (initially hidden)
+        let childContainer: HTMLElement | null = null;
+        let isExpanded = depth < 2 || isCurrent; // Auto-expand first 2 levels and current map
+
+        if (hasChildren) {
+            childContainer = container.createDiv('storyteller-tree-children');
+            childContainer.style.display = isExpanded ? 'block' : 'none';
+
+            // Render children
+            const childMaps = map.childMapIds!
+                .map(id => allMaps.find(m => m.id === id || m.name === id))
+                .filter(m => m !== undefined) as StoryMap[];
+
+            for (const childMap of childMaps) {
+                await this.renderMapTreeNode(childContainer, childMap, allMaps, depth + 1);
+            }
+
+            // Toggle expand/collapse
+            const expandIcon = nodeContent.querySelector('.storyteller-tree-expand-icon') as HTMLElement;
+            if (expandIcon && isExpanded) {
+                expandIcon.style.transform = 'rotate(90deg)';
+            }
+
+            nodeContainer.addEventListener('click', (e) => {
+                e.stopPropagation();
+                isExpanded = !isExpanded;
+                childContainer!.style.display = isExpanded ? 'block' : 'none';
+                if (expandIcon) {
+                    expandIcon.style.transform = isExpanded ? 'rotate(90deg)' : 'rotate(0deg)';
                 }
+            });
+        } else {
+            // No children - navigate on click
+            nodeContainer.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (!isCurrent) {
+                    this.close();
+                    new MapViewerModal(this.app, this.plugin, map).open();
+                }
+            });
+        }
+
+        // Hover effect
+        if (!isCurrent) {
+            nodeContainer.addEventListener('mouseenter', () => {
+                nodeContainer.style.background = 'var(--background-modifier-hover)';
+            });
+            nodeContainer.addEventListener('mouseleave', () => {
+                nodeContainer.style.background = '';
             });
         }
     }

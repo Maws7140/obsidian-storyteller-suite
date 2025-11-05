@@ -26,29 +26,6 @@
 		"builtin-modules": "3.3.0",
 		"chrono-node": "2.6.4",
 		"cytoscape": "^3.30.0",
-		"luxon": "3.4.4",
-		"obsidian": "^1.8.7",
-		"tslib": "2.4.0",
-		"typescript": "4.7.4",
-		"vis-timeline": "7.7.0",
-		"vitest": "1.6.0"
-	},
-	"engines": {
-		"node": ">=18.18.0 <23"
-	},
-	"dependencies": {
-	"devDependencies": {
-		"@types/cytoscape": "^3.21.0",
-		"@types/leaflet": "^1.9.21",
-		"@types/leaflet-draw": "^1.0.13",
-		"@types/leaflet.markercluster": "^1.5.6",
-		"@types/luxon": "^3.7.1",
-		"@typescript-eslint/eslint-plugin": "5.29.0",
-		"@typescript-eslint/parser": "5.29.0",
-		"@vitest/coverage-v8": "1.6.0",
-		"builtin-modules": "3.3.0",
-		"chrono-node": "2.6.4",
-		"cytoscape": "^3.30.0",
 		"esbuild": "^0.25.12",
 		"luxon": "3.4.4",
 		"obsidian": "^1.8.7",
@@ -62,10 +39,6 @@
 	},
 	"dependencies": {
 		"leaflet": "^1.9.4",
-		"leaflet-draw": "^1.0.4",
-		"leaflet.markercluster": "^1.5.3",
-		"timeline-arrows": "^4.8.0"
-	}		"leaflet": "^1.9.4",
 		"leaflet-draw": "^1.0.4",
 		"leaflet.markercluster": "^1.5.3",
 		"timeline-arrows": "^4.8.0"

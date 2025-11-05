@@ -681,6 +681,33 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                 });
         }
 
+        // --- Map Settings Section ---
+        new Setting(containerEl)
+            .setName('Map Settings')
+            .setHeading();
+
+        new Setting(containerEl)
+            .setName('Enable frontmatter markers')
+            .setDesc('Auto-generate markers from notes with location or mapmarkers in frontmatter')
+            .addToggle(toggle => toggle
+                .setValue(!!this.plugin.settings.enableFrontmatterMarkers)
+                .onChange(async (value) => {
+                    this.plugin.settings.enableFrontmatterMarkers = value;
+                    await this.plugin.saveSettings();
+                })
+            );
+
+        new Setting(containerEl)
+            .setName('Enable DataView markers')
+            .setDesc('Auto-generate markers from DataView queries (requires DataView plugin)')
+            .addToggle(toggle => toggle
+                .setValue(!!this.plugin.settings.enableDataViewMarkers)
+                .onChange(async (value) => {
+                    this.plugin.settings.enableDataViewMarkers = value;
+                    await this.plugin.saveSettings();
+                })
+            );
+
         new Setting(containerEl)
             .setName(t('oneStoryMode'))
             .setDesc(t('oneStoryModeDesc'))

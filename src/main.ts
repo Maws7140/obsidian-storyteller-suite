@@ -20,6 +20,7 @@ import { ImageDetailModal } from './modals/ImageDetailModal';
 import { DashboardView, VIEW_TYPE_DASHBOARD } from './views/DashboardView';
 import { NetworkGraphView, VIEW_TYPE_NETWORK_GRAPH } from './views/NetworkGraphView';
 import { TimelineView, VIEW_TYPE_TIMELINE } from './views/TimelineView';
+import { MapEditorView, VIEW_TYPE_MAP_EDITOR } from './views/MapEditorView';
 import { GalleryImageSuggestModal } from './modals/GalleryImageSuggestModal';
 import { GroupSuggestModal } from './modals/GroupSuggestModal';
 import { StorytellerSuiteSettingTab } from './StorytellerSuiteSettingTab';
@@ -92,6 +93,10 @@ import { getTemplateSections } from './utils/EntityTemplates';
     storyBoardCardHeight?: number;
     storyBoardColorBy?: 'status' | 'chapter' | 'none';
     storyBoardShowEdges?: boolean;
+
+    /** Map settings */
+    enableFrontmatterMarkers?: boolean;
+    enableDataViewMarkers?: boolean;
 }
 
 /**
@@ -128,6 +133,8 @@ import { getTemplateSections } from './utils/EntityTemplates';
     ganttArrowStyle: 'solid',
     allowRemoteImages: true,
     sanitizedSeedData: false,
+    enableFrontmatterMarkers: false,
+    enableDataViewMarkers: false,
     customFieldsMode: 'flatten',
     relationshipsMigrated: false
 }
@@ -508,6 +515,12 @@ export default class StorytellerSuitePlugin extends Plugin {
 		this.registerView(
 			VIEW_TYPE_TIMELINE,
 			(leaf) => new TimelineView(leaf, this)
+		);
+
+		// Register the map editor view for full-screen map editing
+		this.registerView(
+			VIEW_TYPE_MAP_EDITOR,
+			(leaf) => new MapEditorView(leaf, this)
 		);
 
 		// Add ribbon icon for quick access to dashboard
@@ -988,6 +1001,38 @@ export default class StorytellerSuitePlugin extends Plugin {
 			}
 		});
 
+		// Map management commands
+		this.addCommand({
+			id: 'create-new-map',
+			name: 'Create new map',
+			callback: async () => {
+				if (!this.ensureActiveStoryOrGuide()) return;
+				// Open map editor view for new map
+				await this.openMapEditor();
+			}
+		});
+
+		this.addCommand({
+			id: 'open-map-editor',
+			name: 'Open map editor panel',
+			callback: async () => {
+				if (!this.ensureActiveStoryOrGuide()) return;
+				// Open map editor panel (will create new map if none loaded)
+				await this.openMapEditor();
+			}
+		});
+
+		this.addCommand({
+			id: 'view-maps',
+			name: 'View maps',
+			callback: async () => {
+				const maps = await this.listMaps();
+				import('./modals/MapListModal').then(({ MapListModal }) => {
+					new MapListModal(this.app, this, maps).open();
+				});
+			}
+		});
+
 		// Gallery management command
 		this.addCommand({
 			id: 'open-gallery',
@@ -1247,6 +1292,48 @@ export default class StorytellerSuitePlugin extends Plugin {
 		} else {
 			console.error("Storyteller Suite: Could not create workspace leaf for timeline.");
 			new Notice("Error opening timeline panel: Could not create workspace leaf.");
+		}
+	}
+
+	/**
+	 * Open the map editor view
+	 * If a map editor already exists, focuses it and optionally loads a specific map
+	 * Otherwise, creates a new map editor view in a panel
+	 * @param mapId Optional map ID to load in the editor
+	 */
+	async openMapEditor(mapId?: string): Promise<void> {
+		const { workspace } = this.app;
+
+		// Check if a map editor view already exists
+		const existingLeaves = workspace.getLeavesOfType(VIEW_TYPE_MAP_EDITOR);
+
+		if (existingLeaves.length > 0) {
+			// Focus existing view
+			const leaf = existingLeaves[0];
+			workspace.revealLeaf(leaf);
+
+			// Load the specified map if provided
+			if (mapId) {
+				const view = leaf.view as MapEditorView;
+				await view.loadMap(mapId);
+			}
+			return;
+		}
+
+		// Create new map editor view in the main editor area (center panel)
+		// This matches Javalent's behavior - opens like a normal note/editor
+		const leaf = workspace.getLeaf('tab');
+
+		if (leaf) {
+			await leaf.setViewState({
+				type: VIEW_TYPE_MAP_EDITOR,
+				active: true,
+				state: { mapId, isNew: !mapId }
+			});
+			workspace.revealLeaf(leaf);
+		} else {
+			console.error("Storyteller Suite: Could not create workspace leaf for map editor.");
+			new Notice("Error opening map editor: Could not create workspace leaf.");
 		}
 	}
 

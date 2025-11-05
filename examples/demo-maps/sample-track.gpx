@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="Storyteller Suite Example">
+  <metadata>
+    <name>Adventure Track</name>
+    <desc>Example GPX track with waypoints</desc>
+  </metadata>
+
+  <!-- Waypoints -->
+  <wpt lat="45.523" lon="-122.676">
+    <name>Starting Point</name>
+    <desc>Begin your journey here</desc>
+  </wpt>
+
+  <wpt lat="45.525" lon="-122.675">
+    <name>Checkpoint Alpha</name>
+    <desc>First major landmark</desc>
+  </wpt>
+
+  <wpt lat="45.518" lon="-122.678">
+    <name>Rest Stop</name>
+    <desc>Good place to resupply</desc>
+  </wpt>
+
+  <!-- Track -->
+  <trk>
+    <name>Main Route</name>
+    <desc>Primary travel path</desc>
+    <trkseg>
+      <trkpt lat="45.523" lon="-122.676">
+        <ele>100</ele>
+      </trkpt>
+      <trkpt lat="45.522" lon="-122.677">
+        <ele>105</ele>
+      </trkpt>
+      <trkpt lat="45.521" lon="-122.678">
+        <ele>110</ele>
+      </trkpt>
+      <trkpt lat="45.520" lon="-122.679">
+        <ele>115</ele>
+      </trkpt>
+      <trkpt lat="45.519" lon="-122.678">
+        <ele>112</ele>
+      </trkpt>
+      <trkpt lat="45.518" lon="-122.678">
+        <ele>108</ele>
+      </trkpt>
+    </trkseg>
+  </trk>
+</gpx>

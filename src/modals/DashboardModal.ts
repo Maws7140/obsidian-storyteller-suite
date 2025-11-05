@@ -1,6 +1,6 @@
 import { App, Setting, Notice } from 'obsidian'; // Import Notice
 import StorytellerSuitePlugin from '../main'; // Import the plugin class
-import { Character, Location, Event } from '../types'; // Import types
+import { Character, Location, Event, Map as StoryMap } from '../types'; // Import types
 import { ResponsiveModal } from './ResponsiveModal';
 import { t } from '../i18n/strings';
 import { PlatformUtils } from '../utils/PlatformUtils';
@@ -85,6 +85,24 @@ export class DashboardModal extends ResponsiveModal {
                         new Notice(t('created', t('event'), evt.name));
                         new Notice(t('noteCreatedWithSections'));
                     }).open();
+                }));
+
+        new Setting(contentEl)
+            .setName('Maps')
+            .setDesc('Create and manage interactive maps for your story')
+            .addButton(button => button
+                .setButtonText('View Maps')
+                .setCta()
+                .onClick(async () => {
+                    this.close();
+                    const maps = await this.plugin.listMaps();
+                    new (await import('./MapListModal')).MapListModal(this.app, this.plugin, maps).open();
+                }))
+            .addButton(button => button
+                .setButtonText(t('createNew'))
+                .onClick(async () => {
+                    this.close();
+                    await this.plugin.openMapEditor();
                 }));
 
         new Setting(contentEl)

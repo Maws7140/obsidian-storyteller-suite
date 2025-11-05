@@ -373,9 +373,15 @@ export interface Event {
     
     /** Array of event names/ids that this event depends on (for Gantt-style dependencies) */
     dependencies?: string[];
-    
+
     /** Completion progress (0-100) for tracking event status */
     progress?: number;
+
+    /** ID of the map where this event is primarily displayed */
+    mapId?: string;
+
+    /** IDs of markers representing this event on various maps */
+    markerIds?: string[];
 }
 
 /**
@@ -466,37 +472,46 @@ export interface Story {
 export interface MapMarker {
     /** Unique identifier for this marker */
     id: string;
-    
+
+    /** Type of entity this marker represents */
+    markerType?: 'location' | 'event' | 'childMap';
+
     /** Name or identifier of linked location entity */
     locationName?: string;
-    
+
+    /** Name or identifier of linked event entity */
+    eventName?: string;
+
+    /** ID of child map this marker links to (for map portals) */
+    childMapId?: string;
+
     /** Latitude coordinate (or Y for image-based maps) */
     lat: number;
-    
+
     /** Longitude coordinate (or X for image-based maps) */
     lng: number;
-    
+
     /** Icon identifier or path to custom icon image */
     icon?: string;
-    
+
     /** Marker color for visual distinction */
     color?: string;
-    
+
     /** Display label for the marker */
     label?: string;
-    
+
     /** Marker description or notes */
     description?: string;
-    
+
     /** Scale/size multiplier for the marker icon */
     scale?: number;
-    
+
     /** Whether marker is currently visible */
     visible?: boolean;
-    
+
     /** Minimum zoom level at which marker appears */
     minZoom?: number;
-    
+
     /** Maximum zoom level at which marker appears */
     maxZoom?: number;
 }
@@ -583,6 +598,30 @@ export interface Map {
     /** Grid cell size in pixels or map units */
     gridSize?: number;
     
+    /** GeoJSON file paths to load as layers */
+    geojsonFiles?: string[];
+    
+    /** GPX file paths to load as tracks/waypoints */
+    gpxFiles?: string[];
+    
+    /** Custom tile server URL template (e.g., https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png) */
+    tileServer?: string;
+    
+    /** Enable OpenStreetMap tile layer for real-world maps */
+    osmLayer?: boolean;
+    
+    /** Tile server subdomains (comma-separated, e.g., "a,b,c") */
+    tileSubdomains?: string;
+    
+    /** File paths to scan for frontmatter markers */
+    markerFiles?: string[];
+    
+    /** Folder paths to scan for frontmatter markers */
+    markerFolders?: string[];
+    
+    /** Tags to filter markers by (requires DataView) */
+    markerTags?: string[];
+    
     /** File system path to the map's markdown file */
     filePath?: string;
     
@@ -603,4 +642,66 @@ export interface Map {
     
     /** ISO string of last modification date */
     modified?: string;
+}
+
+/**
+ * Map Template - Pre-configured map layouts and styles
+ * Templates provide starting points for creating new maps with common configurations
+ */
+export interface MapTemplate {
+    /** Unique identifier for the template */
+    id: string;
+
+    /** Display name of the template */
+    name: string;
+
+    /** Description of what this template is for */
+    description: string;
+
+    /** Category for organizing templates */
+    category: 'world' | 'region' | 'city' | 'building' | 'dungeon' | 'battle' | 'custom';
+
+    /** Tags for searching/filtering templates */
+    tags?: string[];
+
+    /** Path to preview/thumbnail image */
+    thumbnailPath?: string;
+
+    /** Base64 encoded preview image (for embedded templates) */
+    thumbnailData?: string;
+
+    /** Map scale this template is designed for */
+    scale: 'world' | 'region' | 'city' | 'building' | 'custom';
+
+    /** Default map dimensions */
+    width?: number;
+    height?: number;
+
+    /** Default zoom level */
+    defaultZoom?: number;
+
+    /** Default center coordinates */
+    center?: [number, number];
+
+    /** Pre-configured markers */
+    markers?: Partial<MapMarker>[];
+
+    /** Grid configuration */
+    gridEnabled?: boolean;
+    gridSize?: number;
+
+    /** Background image (optional - can be placeholder or actual asset) */
+    backgroundImagePath?: string;
+    backgroundImageData?: string; // Base64 for embedded templates
+
+    /** Template metadata */
+    author?: string;
+    version?: string;
+    createdDate?: string;
+
+    /** Whether this is a built-in or user-created template */
+    isBuiltIn?: boolean;
+
+    /** Custom instructions or tips for using this template */
+    usageNotes?: string;
 }

@@ -5,7 +5,6 @@ import { App, Modal, Setting, Notice, ButtonComponent, TFile } from 'obsidian';
 import { Map as StoryMap } from '../types';
 import StorytellerSuitePlugin from '../main';
 import { t } from '../i18n/strings';
-import { MapModal } from './MapModal';
 import { MapViewerModal } from './MapViewerModal';
 import { buildMapHierarchy, filterMapsByScale } from '../utils/MapUtils';
 
@@ -100,16 +99,13 @@ export class MapListModal extends Modal {
                 button
                     .setButtonText('Create New Map')
                     .setCta()
-                    .onClick(() => {
+                    .onClick(async () => {
                         if (!this.plugin.getActiveStory()) {
                             new Notice('Please select or create a story first');
                             return;
                         }
                         this.close();
-                        new MapModal(this.app, this.plugin, null, async (mapData: StoryMap) => {
-                            await this.plugin.saveMap(mapData);
-                            new Notice(`Map "${mapData.name}" created`);
-                        }).open();
+                        await this.plugin.openMapEditor();
                     });
                 if (!hasActiveStory) {
                     button.setDisabled(true).setTooltip('Please select or create a story first');
@@ -319,12 +315,9 @@ export class MapListModal extends Modal {
         new ButtonComponent(actionsEl)
             .setIcon('pencil')
             .setTooltip('Edit map')
-            .onClick(() => {
+            .onClick(async () => {
                 this.close();
-                new MapModal(this.app, this.plugin, map, async (updatedData: StoryMap) => {
-                    await this.plugin.saveMap(updatedData);
-                    new Notice(`Map "${updatedData.name}" updated`);
-                }).open();
+                await this.plugin.openMapEditor(map.id);
             });
 
         new ButtonComponent(actionsEl)

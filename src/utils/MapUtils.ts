@@ -36,10 +36,12 @@ export function latLngToPixel(latlng: LatLng, imageWidth: number, imageHeight: n
 }
 
 // Calculate bounds for an image overlay
-// Centers the image at [0,0] with appropriate scale
+// Uses positive coordinates to properly fill the canvas
 export function calculateImageBounds(imageWidth: number, imageHeight: number): LatLngBounds {
-    const southWest = new LatLng(-imageHeight, 0);
-    const northEast = new LatLng(0, imageWidth);
+    // Use [0,0] as top-left corner, image dimensions as bottom-right
+    // This ensures the image fills from origin and scales properly
+    const southWest = new LatLng(0, 0);
+    const northEast = new LatLng(imageHeight, imageWidth);
     return new LatLngBounds(southWest, northEast);
 }
 
