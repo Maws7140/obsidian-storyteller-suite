@@ -452,17 +452,18 @@ export class MapView {
     this.map.addControl(this.drawControl);
 
     // Handle draw events
-    this.map.on(L.Draw.Event.CREATED, (e: any) => {
+    // Use string literals instead of L.Draw.Event constants for better compatibility
+    this.map.on('draw:created', (e: any) => {
       const layer = e.layer;
       this.drawnItems.addLayer(layer);
       this.onMapChange?.();
     });
 
-    this.map.on(L.Draw.Event.EDITED, () => {
+    this.map.on('draw:edited', () => {
       this.onMapChange?.();
     });
 
-    this.map.on(L.Draw.Event.DELETED, () => {
+    this.map.on('draw:deleted', () => {
       this.onMapChange?.();
     });
   }
