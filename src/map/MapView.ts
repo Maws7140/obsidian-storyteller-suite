@@ -2,12 +2,8 @@
 // Implements the minimal surface used by our modals and editor view.
 
 import * as L from 'leaflet';
-import 'leaflet/dist/leaflet.css';
 import 'leaflet-draw';
-import 'leaflet-draw/dist/leaflet.draw.css';
 import 'leaflet.markercluster';
-import 'leaflet.markercluster/dist/MarkerCluster.css';
-import 'leaflet.markercluster/dist/MarkerCluster.Default.css';
 import { App, TFile } from 'obsidian';
 import type { Map as StoryMap, MapMarker, MapLayer } from '../types';
 import { calculateImageBounds, generateMarkerId } from '../utils/MapUtils';
@@ -65,32 +61,45 @@ export class MapView {
   }
 
   private fixLeafletIcons(): void {
-    // Create simple circle icons to replace default Leaflet markers
-    // This avoids path issues in Obsidian
-    const createCircleIcon = (color: string) => {
-      return L.divIcon({
-        className: 'storyteller-default-marker',
-        html: `<div style="width: 24px; height: 24px; background: ${color}; border: 3px solid #fff; border-radius: 50%; box-shadow: 0 2px 8px rgba(0,0,0,0.4);"></div>`,
-        iconSize: [24, 24],
-        iconAnchor: [12, 12]
-      });
-    };
+    // Fix Leaflet icon paths for Obsidian environment
+    // Leaflet tries to load marker-icon.png, marker-icon-2x.png, and marker-shadow.png
+    // from its images folder, but these paths don't work in Obsidian
 
-    // Override default icon
-    L.Icon.Default.prototype.options.iconUrl = '';
-    L.Icon.Default.prototype.options.iconRetinaUrl = '';
-    L.Icon.Default.prototype.options.shadowUrl = '';
+    // Delete the default icon to prevent Leaflet from trying to load images
+    delete (L.Icon.Default.prototype as any)._getIconUrl;
+
+    // Set empty paths to prevent 404 errors
+    L.Icon.Default.mergeOptions({
+      iconUrl: '',
+      iconRetinaUrl: '',
+      shadowUrl: '',
+      iconSize: [0, 0],
+      iconAnchor: [0, 0]
+    });
   }
 
   async initMap(mapData: StoryMap): Promise<void> {
     this.mapData = mapData;
 
-    // Ensure container is visible and has dimensions
+    // Clear previous map instance
+    if (this.map) {
+      try {
+        this.map.remove();
+      } catch (error) {
+        console.error('Error removing previous map:', error);
+      }
+      this.map = null;
+    }
+
+    // Ensure container exists and is in the DOM
+    if (!this.container || !this.container.isConnected) {
+      throw new Error('MapView: Container is not in the DOM');
+    }
+
+    // Ensure container has dimensions
     if (!this.container.offsetWidth || !this.container.offsetHeight) {
-      console.warn('MapView: Container not visible or has no dimensions, waiting...');
-      // Wait for container to be visible
-      await new Promise(resolve => setTimeout(resolve, 100));
-      
+      console.warn('MapView: Container not visible or has no dimensions, applying defaults...');
+
       // Force dimensions if still not set
       if (!this.container.offsetWidth) {
         this.container.style.width = '100%';
@@ -98,12 +107,19 @@ export class MapView {
       if (!this.container.offsetHeight) {
         this.container.style.height = '500px';
       }
-    }
 
-    // Clear previous
-    if (this.map) {
-      this.map.remove();
-      this.map = null;
+      // Wait a bit for layout to settle
+      await new Promise(resolve => setTimeout(resolve, 50));
+
+      // Check again
+      if (!this.container.offsetWidth || !this.container.offsetHeight) {
+        console.warn('MapView: Container still has no dimensions:', {
+          width: this.container.offsetWidth,
+          height: this.container.offsetHeight,
+          display: getComputedStyle(this.container).display,
+          visibility: getComputedStyle(this.container).visibility
+        });
+      }
     }
 
     // Detect mode: real-world (OSM tiles) vs image-based
@@ -132,17 +148,24 @@ export class MapView {
       mapZoom = mapData.defaultZoom ?? 0;
     }
 
-    this.map = L.map(this.container, {
-      crs: useRealWorldMode ? L.CRS.EPSG3857 : L.CRS.Simple,
-      center: mapCenter,
-      zoom: mapZoom,
-      minZoom: useRealWorldMode ? 0 : -2,
-      maxZoom: useRealWorldMode ? 18 : 4,
-      zoomControl: !this.readOnly,
-      attributionControl: false,
-      maxBounds: bounds, // undefined for real-world, defined for image
-      maxBoundsViscosity: bounds ? 1.0 : 0
-    });
+    // Initialize Leaflet map with error handling
+    try {
+      this.map = L.map(this.container, {
+        crs: useRealWorldMode ? L.CRS.EPSG3857 : L.CRS.Simple,
+        center: mapCenter,
+        zoom: mapZoom,
+        minZoom: useRealWorldMode ? 0 : -2,
+        maxZoom: useRealWorldMode ? 18 : 4,
+        zoomControl: !this.readOnly,
+        attributionControl: false,
+        maxBounds: bounds, // undefined for real-world, defined for image
+        maxBoundsViscosity: bounds ? 1.0 : 0,
+        preferCanvas: false // Use SVG renderer for better Obsidian compatibility
+      });
+    } catch (error) {
+      console.error('Failed to initialize Leaflet map:', error);
+      throw new Error(`MapView initialization failed: ${error.message}`);
+    }
 
     // Add tile layer for real-world mode OR background image (mutually exclusive)
     if (useRealWorldMode) {
@@ -209,16 +232,21 @@ export class MapView {
       this.setupDrawingControls();
     }
 
-    // Ensure sizing after container attach - use longer delay for proper rendering
-    setTimeout(() => {
+    // Ensure sizing after initialization
+    // Use requestAnimationFrame for better timing with DOM rendering
+    requestAnimationFrame(() => {
       if (this.map) {
-        this.map.invalidateSize({ pan: false });
-        // Fit bounds again after invalidation
-        if (bounds && !useRealWorldMode) {
-          this.map.fitBounds(bounds, { padding: [10, 10], animate: false });
+        try {
+          this.map.invalidateSize({ pan: false, animate: false });
+          // Fit bounds again after invalidation for image-based maps
+          if (bounds && !useRealWorldMode) {
+            this.map.fitBounds(bounds, { padding: [10, 10], animate: false });
+          }
+        } catch (error) {
+          console.error('Error invalidating map size:', error);
         }
       }
-    }, 150);
+    });
   }
 
   getMapData(): StoryMap | null {
