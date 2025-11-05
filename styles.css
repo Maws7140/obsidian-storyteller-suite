@@ -12,6 +12,18 @@
   background: transparent !important;
 }
 
+/* Error message styling for map initialization failures */
+.storyteller-error-message {
+  padding: 20px;
+  margin: 20px;
+  background: var(--background-modifier-error);
+  color: var(--text-error);
+  border: 1px solid var(--background-modifier-error-hover);
+  border-radius: 8px;
+  text-align: center;
+  font-size: 14px;
+}
+
 /* ============================================
    MARKER CLUSTER STYLING
    ============================================ */
@@ -2944,8 +2956,9 @@ body.mod-rtl .storyteller-group-members {
    ======================================== */
 
 /* Import Leaflet CSS - these will be bundled via esbuild */
-@import '~leaflet/dist/leaflet.css';
-@import '~leaflet-draw/dist/leaflet.draw.css';
+/* Leaflet CSS is bundled via esbuild - imports removed to prevent errors */
+/* @import '~leaflet/dist/leaflet.css'; */
+/* @import '~leaflet-draw/dist/leaflet.draw.css'; */
 
 /* Map Modal */
 .storyteller-map-modal .modal {
