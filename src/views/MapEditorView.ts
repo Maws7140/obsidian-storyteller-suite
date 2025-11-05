@@ -98,12 +98,22 @@ export class MapEditorView extends ItemView {
             // In a real implementation, we might want to save automatically or show a confirmation
             console.warn('MapEditorView closed with unsaved changes');
         }
-        
+
         // Clean up map editor
         if (this.mapEditor) {
-            this.mapEditor.destroy();
+            try {
+                this.mapEditor.destroy();
+            } catch (error) {
+                console.error('Error destroying map editor:', error);
+            }
             this.mapEditor = null;
         }
+
+        // Clean up containers
+        this.editorContainer = null;
+        this.toolbarEl = null;
+        this.tabBarEl = null;
+        this.contentContainer = null;
     }
 
     /**
@@ -415,29 +425,40 @@ export class MapEditorView extends ItemView {
         this.editorContainer.style.minHeight = '500px';
 
         // Initialize map editor
-        this.mapEditor = new MapView({
-            container: this.editorContainer,
-            app: this.app,
-            readOnly: false,
-            onMarkerClick: async (marker) => {
-                await this.handleMarkerClick(marker);
-            },
-            onMapChange: () => {
-                this.markAsChanged();
-            },
-            enableFrontmatterMarkers: this.plugin.settings.enableFrontmatterMarkers,
-            enableDataViewMarkers: this.plugin.settings.enableDataViewMarkers,
-            markerFiles: this.map.markerFiles,
-            markerFolders: this.map.markerFolders,
-            markerTags: this.map.markerTags,
-            geojsonFiles: this.map.geojsonFiles,
-            gpxFiles: this.map.gpxFiles,
-            tileServer: this.map.tileServer,
-            osmLayer: this.map.osmLayer,
-            tileSubdomains: this.map.tileSubdomains
-        });
+        try {
+            this.mapEditor = new MapView({
+                container: this.editorContainer,
+                app: this.app,
+                readOnly: false,
+                onMarkerClick: async (marker) => {
+                    await this.handleMarkerClick(marker);
+                },
+                onMapChange: () => {
+                    this.markAsChanged();
+                },
+                enableFrontmatterMarkers: this.plugin.settings.enableFrontmatterMarkers,
+                enableDataViewMarkers: this.plugin.settings.enableDataViewMarkers,
+                markerFiles: this.map.markerFiles,
+                markerFolders: this.map.markerFolders,
+                markerTags: this.map.markerTags,
+                geojsonFiles: this.map.geojsonFiles,
+                gpxFiles: this.map.gpxFiles,
+                tileServer: this.map.tileServer,
+                osmLayer: this.map.osmLayer,
+                tileSubdomains: this.map.tileSubdomains
+            });
 
-        await this.mapEditor.initMap(this.map);
+            await this.mapEditor.initMap(this.map);
+        } catch (error) {
+            console.error('Failed to initialize map editor:', error);
+            new Notice('Failed to initialize map editor. Check console for details.');
+            // Show error in the editor container
+            this.editorContainer.empty();
+            this.editorContainer.createEl('div', {
+                text: `Failed to initialize map: ${error.message}`,
+                cls: 'storyteller-error-message'
+            });
+        }
 
         // Quick actions below editor
         const actionsEl = this.contentContainer.createDiv('storyteller-map-editor-actions');
