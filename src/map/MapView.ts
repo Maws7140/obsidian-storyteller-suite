@@ -2,7 +2,7 @@
 // Implements the minimal surface used by our modals and editor view.
 
 import * as L from 'leaflet';
-import 'leaflet-draw';
+import 'leaflet-draw/dist/leaflet.draw';
 import 'leaflet.markercluster';
 import { App, TFile } from 'obsidian';
 import type { Map as StoryMap, MapMarker, MapLayer } from '../types';
