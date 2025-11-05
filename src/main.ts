@@ -1,9 +1,10 @@
 /* eslint-disable no-mixed-spaces-and-tabs */
 /* eslint-disable @typescript-eslint/no-unused-vars */
 
-// Import Leaflet CSS so esbuild can bundle it properly
+// Import Leaflet CSS and JS so esbuild can bundle it properly
 import 'leaflet/dist/leaflet.css';
 import 'leaflet-draw/dist/leaflet.draw.css';
+import 'leaflet-draw/dist/leaflet.draw';
 import 'leaflet.markercluster/dist/MarkerCluster.css';
 import 'leaflet.markercluster/dist/MarkerCluster.Default.css';
 
