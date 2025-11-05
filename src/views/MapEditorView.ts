@@ -336,9 +336,16 @@ export class MapEditorView extends ItemView {
                             const arrayBuffer = await file.arrayBuffer();
                             await this.app.vault.createBinary(filePath, arrayBuffer);
 
-                            // Get image dimensions
+                            // Get image dimensions using async/await
                             const img = new Image();
-                            img.onload = async () => {
+                            const imageLoadPromise = new Promise<void>((resolve, reject) => {
+                                img.onload = () => resolve();
+                                img.onerror = () => reject(new Error('Failed to load image'));
+                            });
+                            img.src = URL.createObjectURL(file);
+
+                            try {
+                                await imageLoadPromise;
                                 if (this.map) {
                                     this.map.backgroundImagePath = filePath;
                                     this.map.width = img.width;
@@ -347,8 +354,10 @@ export class MapEditorView extends ItemView {
                                     await this.renderCurrentTab(); // Re-render to show editor
                                     new Notice('Background image uploaded successfully! 🎉');
                                 }
-                            };
-                            img.src = URL.createObjectURL(file);
+                            } catch (imgError) {
+                                console.error('Error loading image:', imgError);
+                                new Notice('Image uploaded but failed to load for preview');
+                            }
                         } catch (error) {
                             console.error('Error uploading background image:', error);
                             new Notice(`Error uploading image: ${(error as Error).message || 'Unknown error'}`);
@@ -365,12 +374,19 @@ export class MapEditorView extends ItemView {
                         if (selectedImage && selectedImage.filePath && this.map) {
                             this.map.backgroundImagePath = selectedImage.filePath;
                             
-                            // Load image to get dimensions
+                            // Load image to get dimensions using async/await
                             const file = this.app.vault.getAbstractFileByPath(selectedImage.filePath);
                             if (file && 'stat' in file) {
                                 const imgUrl = this.app.vault.getResourcePath(file as TFile);
                                 const img = new Image();
-                                img.onload = async () => {
+                                const imageLoadPromise = new Promise<void>((resolve, reject) => {
+                                    img.onload = () => resolve();
+                                    img.onerror = () => reject(new Error('Failed to load image'));
+                                });
+                                img.src = imgUrl;
+
+                                try {
+                                    await imageLoadPromise;
                                     if (this.map) {
                                         this.map.width = img.width;
                                         this.map.height = img.height;
@@ -378,8 +394,10 @@ export class MapEditorView extends ItemView {
                                         await this.renderCurrentTab(); // Re-render to show editor
                                         new Notice('Background image set successfully! 🎉');
                                     }
-                                };
-                                img.src = imgUrl;
+                                } catch (imgError) {
+                                    console.error('Error loading image:', imgError);
+                                    new Notice('Failed to load selected image');
+                                }
                             }
                         }
                     }).open();
