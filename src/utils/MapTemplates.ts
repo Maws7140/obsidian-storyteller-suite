@@ -1,4 +1,9 @@
 /**
+ * DEPRECATED: Map functionality has been deprecated and will be removed in a future version.
+ * This file is kept for backward compatibility only.
+ */
+
+/**
  * MapTemplates - Built-in map templates and template management
  * Provides pre-configured templates for common map types
  */

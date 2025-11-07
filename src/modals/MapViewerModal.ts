@@ -1,3 +1,8 @@
+/**
+ * DEPRECATED: Map functionality has been deprecated and will be removed in a future version.
+ * This file is kept for backward compatibility only.
+ */
+
 // MapViewerModal - Read-only map viewer with clickable markers
 // Allows users to view maps, navigate hierarchy, and open linked locations
 
