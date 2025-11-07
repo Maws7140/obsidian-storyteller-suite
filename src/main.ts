@@ -357,7 +357,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 	/**
 	 * Helper: Get the folder path for a given entity type in the active story
 	 */
-    getEntityFolder(type: 'character' | 'location' | 'event' | 'item' | 'reference' | 'chapter' | 'scene' | 'map'): string {
+    getEntityFolder(type: 'character' | 'location' | 'event' | 'item' | 'reference' | 'chapter' | 'scene' | 'map' | 'culture' | 'faction' | 'economy' | 'magicSystem' | 'calendar'): string {
         const resolver = this.buildResolver();
         return resolver.getEntityFolder(type);
     }
@@ -1406,7 +1406,7 @@ export default class StorytellerSuitePlugin extends Plugin {
     async parseFile<T>(
         file: TFile,
         typeDefaults: Partial<T>,
-        entityType: 'character' | 'location' | 'event' | 'item' | 'reference' | 'chapter' | 'scene'
+        entityType: 'character' | 'location' | 'event' | 'item' | 'reference' | 'chapter' | 'scene' | 'culture' | 'faction' | 'economy' | 'magicSystem' | 'calendar'
     ): Promise<T | null> {
 		try {
 			// Read file content for markdown sections
@@ -1558,6 +1558,36 @@ export default class StorytellerSuitePlugin extends Plugin {
         const preserve = new Set<string>(Object.keys(src || {}));
         const mode = this.settings.customFieldsMode ?? 'flatten';
         return buildFrontmatter('item', src, preserve, { customFieldsMode: mode, originalFrontmatter }) as Record<string, any>;
+    }
+
+    private buildFrontmatterForCulture(src: any, originalFrontmatter?: Record<string, unknown>): Record<string, any> {
+        const preserve = new Set<string>(Object.keys(src || {}));
+        const mode = this.settings.customFieldsMode ?? 'flatten';
+        return buildFrontmatter('culture', src, preserve, { customFieldsMode: mode, originalFrontmatter }) as Record<string, any>;
+    }
+
+    private buildFrontmatterForFaction(src: any, originalFrontmatter?: Record<string, unknown>): Record<string, any> {
+        const preserve = new Set<string>(Object.keys(src || {}));
+        const mode = this.settings.customFieldsMode ?? 'flatten';
+        return buildFrontmatter('faction', src, preserve, { customFieldsMode: mode, originalFrontmatter }) as Record<string, any>;
+    }
+
+    private buildFrontmatterForEconomy(src: any, originalFrontmatter?: Record<string, unknown>): Record<string, any> {
+        const preserve = new Set<string>(Object.keys(src || {}));
+        const mode = this.settings.customFieldsMode ?? 'flatten';
+        return buildFrontmatter('economy', src, preserve, { customFieldsMode: mode, originalFrontmatter }) as Record<string, any>;
+    }
+
+    private buildFrontmatterForMagicSystem(src: any, originalFrontmatter?: Record<string, unknown>): Record<string, any> {
+        const preserve = new Set<string>(Object.keys(src || {}));
+        const mode = this.settings.customFieldsMode ?? 'flatten';
+        return buildFrontmatter('magicSystem', src, preserve, { customFieldsMode: mode, originalFrontmatter }) as Record<string, any>;
+    }
+
+    private buildFrontmatterForCalendar(src: any, originalFrontmatter?: Record<string, unknown>): Record<string, any> {
+        const preserve = new Set<string>(Object.keys(src || {}));
+        const mode = this.settings.customFieldsMode ?? 'flatten';
+        return buildFrontmatter('calendar', src, preserve, { customFieldsMode: mode, originalFrontmatter }) as Record<string, any>;
     }
 
 	/**
@@ -2507,6 +2537,26 @@ export default class StorytellerSuitePlugin extends Plugin {
         await this.ensureFolder(this.getEntityFolder('scene'));
     }
 
+    async ensureCultureFolder(): Promise<void> {
+        await this.ensureFolder(this.getEntityFolder('culture'));
+    }
+
+    async ensureFactionFolder(): Promise<void> {
+        await this.ensureFolder(this.getEntityFolder('faction'));
+    }
+
+    async ensureEconomyFolder(): Promise<void> {
+        await this.ensureFolder(this.getEntityFolder('economy'));
+    }
+
+    async ensureMagicSystemFolder(): Promise<void> {
+        await this.ensureFolder(this.getEntityFolder('magicSystem'));
+    }
+
+    async ensureCalendarFolder(): Promise<void> {
+        await this.ensureFolder(this.getEntityFolder('calendar'));
+    }
+
     async saveScene(scene: Scene): Promise<void> {
         // Normalize chapterName for display if id is present
         if (scene.chapterId && !scene.chapterName) {
@@ -2628,6 +2678,126 @@ export default class StorytellerSuitePlugin extends Plugin {
             this.app.metadataCache.trigger('dataview:refresh-views');
         } else {
             new Notice(`Error: Could not find scene file to delete at ${filePath}`);
+        }
+    }
+
+    /**
+     * Culture Data Management
+     * Methods for creating, reading, updating, and deleting culture entities
+     */
+
+    async saveCulture(culture: Culture): Promise<void> {
+        await this.ensureCultureFolder();
+        const folderPath = this.getEntityFolder('culture');
+
+        const fileName = `${culture.name.replace(/[\\/:"*?<>|]+/g, '')}.md`;
+        const filePath = normalizePath(`${folderPath}/${fileName}`);
+
+        const { filePath: currentFilePath, description, values, religion, socialStructure, history, namingConventions, customs, ...rest } = culture as any;
+        if ((rest as any).sections) delete (rest as any).sections;
+
+        let finalFilePath = filePath;
+        if (currentFilePath && currentFilePath !== filePath) {
+            const existingFile = this.app.vault.getAbstractFileByPath(currentFilePath);
+            if (existingFile && existingFile instanceof TFile) {
+                await this.app.fileManager.renameFile(existingFile, filePath);
+                finalFilePath = filePath;
+            }
+        }
+
+        const existingFile = this.app.vault.getAbstractFileByPath(finalFilePath);
+        let existingSections: Record<string, string> = {};
+        let originalFrontmatter: Record<string, unknown> | undefined;
+        if (existingFile && existingFile instanceof TFile) {
+            try {
+                const existingContent = await this.app.vault.cachedRead(existingFile);
+                existingSections = parseSectionsFromMarkdown(existingContent);
+
+                const { parseFrontmatterFromContent } = await import('./yaml/EntitySections');
+                const directFrontmatter = parseFrontmatterFromContent(existingContent);
+                const fileCache = this.app.metadataCache.getFileCache(existingFile);
+                const cachedFrontmatter = fileCache?.frontmatter as Record<string, unknown> | undefined;
+
+                if (directFrontmatter || cachedFrontmatter) {
+                    originalFrontmatter = { ...(cachedFrontmatter || {}), ...(directFrontmatter || {}) };
+                }
+            } catch (error) {
+                console.warn(`Error reading existing culture file: ${error}`);
+            }
+        }
+
+        const finalFrontmatter = this.buildFrontmatterForCulture(rest, originalFrontmatter);
+
+        if (originalFrontmatter) {
+            const validation = validateFrontmatterPreservation(finalFrontmatter, originalFrontmatter);
+            if (validation.lostFields.length > 0) {
+                console.warn(`[saveCulture] Warning: Fields will be lost on save:`, validation.lostFields);
+            }
+        }
+
+        const frontmatterString = Object.keys(finalFrontmatter).length > 0
+            ? stringifyYamlWithLogging(finalFrontmatter, originalFrontmatter, `Culture: ${culture.name}`)
+            : '';
+
+        const providedSections = {
+            Description: description !== undefined ? description : '',
+            Values: values !== undefined ? values : '',
+            Religion: religion !== undefined ? religion : '',
+            'Social Structure': socialStructure !== undefined ? socialStructure : '',
+            History: history !== undefined ? history : '',
+            'Naming Conventions': namingConventions !== undefined ? namingConventions : '',
+            Customs: customs !== undefined ? customs : ''
+        };
+        const templateSections = getTemplateSections('culture', providedSections);
+
+        let allSections: Record<string, string>;
+        if (existingFile && existingFile instanceof TFile) {
+            allSections = { ...existingSections, ...templateSections };
+            Object.entries(providedSections).forEach(([key, value]) => {
+                allSections[key] = value;
+            });
+        } else {
+            allSections = templateSections;
+        }
+
+        let mdContent = `---\n${frontmatterString}---\n\n`;
+        mdContent += Object.entries(allSections)
+            .map(([key, content]) => `## ${key}\n${content || ''}`)
+            .join('\n\n');
+        if (!mdContent.endsWith('\n')) mdContent += '\n';
+
+        if (existingFile && existingFile instanceof TFile) {
+            await this.app.vault.modify(existingFile, mdContent);
+        } else {
+            await this.app.vault.create(finalFilePath, mdContent);
+            new Notice('Note created with standard sections for easy editing.');
+        }
+
+        culture.filePath = finalFilePath;
+        this.app.metadataCache.trigger("dataview:refresh-views");
+    }
+
+    async listCultures(): Promise<Culture[]> {
+        await this.ensureCultureFolder();
+        const folderPath = this.getEntityFolder('culture');
+        const allFiles = this.app.vault.getMarkdownFiles();
+        const files = allFiles.filter(f => f.path.startsWith(folderPath + '/') && f.extension === 'md');
+        const cultures: Culture[] = [];
+        for (const file of files) {
+            const data = await this.parseFile<Culture>(file, { name: '' }, 'culture');
+            if (data) cultures.push(data);
+        }
+        return cultures.sort((a, b) => a.name.localeCompare(b.name));
+    }
+
+    async deleteCulture(filePath: string): Promise<void> {
+        const file = this.app.vault.getAbstractFileByPath(normalizePath(filePath));
+        if (file instanceof TFile) {
+            await this.app.vault.trash(file, true);
+            new Notice(`Culture file "${file.basename}" moved to trash.`);
+            this.app.metadataCache.trigger('dataview:refresh-views');
+        } else {
+            new Notice(`Error: Could not find culture file to delete at ${filePath}`);
         }
     }
 
