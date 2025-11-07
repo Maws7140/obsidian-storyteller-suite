@@ -144,6 +144,90 @@ export class TimelineView extends ItemView {
             this.updateFooterStatus();
         });
 
+        // Fork selector dropdown
+        const forkContainer = this.toolbarEl.createDiv('storyteller-fork-container');
+        const forkSelect = forkContainer.createEl('select', {
+            cls: 'dropdown storyteller-fork-select',
+            attr: { 'aria-label': 'Timeline fork' }
+        });
+
+        // Add main timeline option
+        const mainOption = forkSelect.createEl('option', {
+            value: 'main',
+            text: 'Main Timeline'
+        });
+        mainOption.selected = true;
+
+        // Add fork options
+        const forks = this.plugin.getTimelineForks();
+        forks.forEach(fork => {
+            const option = forkSelect.createEl('option', {
+                value: fork.id,
+                text: `🔀 ${fork.name}`
+            });
+            if (fork.color) {
+                option.style.color = fork.color;
+            }
+        });
+
+        forkSelect.addEventListener('change', () => {
+            const selectedFork = forkSelect.value;
+            // TODO: Filter events by fork
+            // For now, just show a notice
+            if (selectedFork === 'main') {
+                // Show all events
+            } else {
+                // Filter to fork-specific events
+                const fork = this.plugin.getTimelineFork(selectedFork);
+                if (fork) {
+                    // Future: filter events by fork
+                }
+            }
+        });
+
+        // Conflict warnings badge (if conflicts exist)
+        const conflicts = this.plugin.settings.timelineConflicts || [];
+        const activeConflicts = conflicts.filter(c => !c.dismissed);
+        if (activeConflicts.length > 0) {
+            const conflictBadge = this.toolbarEl.createEl('button', {
+                cls: 'clickable-icon storyteller-toolbar-btn storyteller-conflict-badge',
+                attr: {
+                    'aria-label': `${activeConflicts.length} timeline conflicts`,
+                    'title': `View ${activeConflicts.length} timeline conflict(s)`
+                }
+            });
+            conflictBadge.innerHTML = `<span class="storyteller-badge-icon">⚠️</span><span class="storyteller-badge-count">${activeConflicts.length}</span>`;
+            conflictBadge.addEventListener('click', async () => {
+                const { ConflictListModal } = await import('../modals/ConflictListModal');
+                new ConflictListModal(
+                    this.app,
+                    this.plugin,
+                    conflicts,
+                    async () => {
+                        // Re-scan callback
+                        const events = await this.plugin.listEvents();
+                        const characters = await this.plugin.listCharacters();
+                        const locations = await this.plugin.listLocations();
+                        const causalityLinks = this.plugin.getCausalityLinks();
+
+                        const { ConflictDetector } = await import('../utils/ConflictDetection');
+                        const newConflicts = ConflictDetector.detectConflicts(
+                            events,
+                            characters,
+                            locations,
+                            causalityLinks
+                        );
+
+                        this.plugin.settings.timelineConflicts = newConflicts;
+                        await this.plugin.saveSettings();
+
+                        // Rebuild toolbar to update badge
+                        this.buildToolbar();
+                    }
+                ).open();
+            });
+        }
+
         // Fit button
         const fitBtn = this.toolbarEl.createEl('button', {
             cls: 'clickable-icon storyteller-toolbar-btn',
