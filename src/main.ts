@@ -2800,6 +2800,471 @@ export default class StorytellerSuitePlugin extends Plugin {
             new Notice(`Error: Could not find culture file to delete at ${filePath}`);
         }
     }
+    /**
+     * Faction Data Management
+     */
+
+    async saveFaction(faction: Faction): Promise<void> {
+        await this.ensureFactionFolder();
+        const folderPath = this.getEntityFolder('faction');
+
+        const fileName = `${faction.name.replace(/[\\/:"*?<>|]+/g, '')}.md`;
+        const filePath = normalizePath(`${folderPath}/${fileName}`);
+
+        const { filePath: currentFilePath, description, history, structure, goals, resources, ...rest } = faction as any;
+        if ((rest as any).sections) delete (rest as any).sections;
+
+        let finalFilePath = filePath;
+        if (currentFilePath && currentFilePath !== filePath) {
+            const existingFile = this.app.vault.getAbstractFileByPath(currentFilePath);
+            if (existingFile && existingFile instanceof TFile) {
+                await this.app.fileManager.renameFile(existingFile, filePath);
+                finalFilePath = filePath;
+            }
+        }
+
+        const existingFile = this.app.vault.getAbstractFileByPath(finalFilePath);
+        let existingSections: Record<string, string> = {};
+        let originalFrontmatter: Record<string, unknown> | undefined;
+        if (existingFile && existingFile instanceof TFile) {
+            try {
+                const existingContent = await this.app.vault.cachedRead(existingFile);
+                existingSections = parseSectionsFromMarkdown(existingContent);
+
+                const { parseFrontmatterFromContent } = await import('./yaml/EntitySections');
+                const directFrontmatter = parseFrontmatterFromContent(existingContent);
+                const fileCache = this.app.metadataCache.getFileCache(existingFile);
+                const cachedFrontmatter = fileCache?.frontmatter as Record<string, unknown> | undefined;
+
+                if (directFrontmatter || cachedFrontmatter) {
+                    originalFrontmatter = { ...(cachedFrontmatter || {}), ...(directFrontmatter || {}) };
+                }
+            } catch (error) {
+                console.warn(`Error reading existing faction file: ${error}`);
+            }
+        }
+
+        const finalFrontmatter = this.buildFrontmatterForFaction(rest, originalFrontmatter);
+
+        if (originalFrontmatter) {
+            const validation = validateFrontmatterPreservation(finalFrontmatter, originalFrontmatter);
+            if (validation.lostFields.length > 0) {
+                console.warn(`[saveFaction] Warning: Fields will be lost on save:`, validation.lostFields);
+            }
+        }
+
+        const frontmatterString = Object.keys(finalFrontmatter).length > 0
+            ? stringifyYamlWithLogging(finalFrontmatter, originalFrontmatter, `Faction: ${faction.name}`)
+            : '';
+
+        const providedSections = {
+            Description: description !== undefined ? description : '',
+            History: history !== undefined ? history : '',
+            Structure: structure !== undefined ? structure : '',
+            Goals: goals !== undefined ? goals : '',
+            Resources: resources !== undefined ? resources : ''
+        };
+        const templateSections = getTemplateSections('faction', providedSections);
+
+        let allSections: Record<string, string>;
+        if (existingFile && existingFile instanceof TFile) {
+            allSections = { ...existingSections, ...templateSections };
+            Object.entries(providedSections).forEach(([key, value]) => {
+                allSections[key] = value;
+            });
+        } else {
+            allSections = templateSections;
+        }
+
+        let mdContent = `---\n${frontmatterString}---\n\n`;
+        mdContent += Object.entries(allSections)
+            .map(([key, content]) => `## ${key}\n${content || ''}`)
+            .join('\n\n');
+        if (!mdContent.endsWith('\n')) mdContent += '\n';
+
+        if (existingFile && existingFile instanceof TFile) {
+            await this.app.vault.modify(existingFile, mdContent);
+        } else {
+            await this.app.vault.create(finalFilePath, mdContent);
+            new Notice('Note created with standard sections for easy editing.');
+        }
+
+        faction.filePath = finalFilePath;
+        this.app.metadataCache.trigger("dataview:refresh-views");
+    }
+
+    async listFactions(): Promise<Faction[]> {
+        await this.ensureFactionFolder();
+        const folderPath = this.getEntityFolder('faction');
+        const allFiles = this.app.vault.getMarkdownFiles();
+        const files = allFiles.filter(f => f.path.startsWith(folderPath + '/') && f.extension === 'md');
+        const factions: Faction[] = [];
+        for (const file of files) {
+            const data = await this.parseFile<Faction>(file, { name: '' }, 'faction');
+            if (data) factions.push(data);
+        }
+        return factions.sort((a, b) => a.name.localeCompare(b.name));
+    }
+
+    async deleteFaction(filePath: string): Promise<void> {
+        const file = this.app.vault.getAbstractFileByPath(normalizePath(filePath));
+        if (file instanceof TFile) {
+            await this.app.vault.trash(file, true);
+            new Notice(`Faction file "${file.basename}" moved to trash.`);
+            this.app.metadataCache.trigger('dataview:refresh-views');
+        } else {
+            new Notice(`Error: Could not find faction file to delete at ${filePath}`);
+        }
+    }
+
+    /**
+     * Economy Data Management
+     */
+
+    async saveEconomy(economy: Economy): Promise<void> {
+        await this.ensureEconomyFolder();
+        const folderPath = this.getEntityFolder('economy');
+
+        const fileName = `${economy.name.replace(/[\\/:"*?<>|]+/g, '')}.md`;
+        const filePath = normalizePath(`${folderPath}/${fileName}`);
+
+        const { filePath: currentFilePath, description, industries, taxation, ...rest } = economy as any;
+        if ((rest as any).sections) delete (rest as any).sections;
+
+        let finalFilePath = filePath;
+        if (currentFilePath && currentFilePath !== filePath) {
+            const existingFile = this.app.vault.getAbstractFileByPath(currentFilePath);
+            if (existingFile && existingFile instanceof TFile) {
+                await this.app.fileManager.renameFile(existingFile, filePath);
+                finalFilePath = filePath;
+            }
+        }
+
+        const existingFile = this.app.vault.getAbstractFileByPath(finalFilePath);
+        let existingSections: Record<string, string> = {};
+        let originalFrontmatter: Record<string, unknown> | undefined;
+        if (existingFile && existingFile instanceof TFile) {
+            try {
+                const existingContent = await this.app.vault.cachedRead(existingFile);
+                existingSections = parseSectionsFromMarkdown(existingContent);
+
+                const { parseFrontmatterFromContent } = await import('./yaml/EntitySections');
+                const directFrontmatter = parseFrontmatterFromContent(existingContent);
+                const fileCache = this.app.metadataCache.getFileCache(existingFile);
+                const cachedFrontmatter = fileCache?.frontmatter as Record<string, unknown> | undefined;
+
+                if (directFrontmatter || cachedFrontmatter) {
+                    originalFrontmatter = { ...(cachedFrontmatter || {}), ...(directFrontmatter || {}) };
+                }
+            } catch (error) {
+                console.warn(`Error reading existing economy file: ${error}`);
+            }
+        }
+
+        const finalFrontmatter = this.buildFrontmatterForEconomy(rest, originalFrontmatter);
+
+        if (originalFrontmatter) {
+            const validation = validateFrontmatterPreservation(finalFrontmatter, originalFrontmatter);
+            if (validation.lostFields.length > 0) {
+                console.warn(`[saveEconomy] Warning: Fields will be lost on save:`, validation.lostFields);
+            }
+        }
+
+        const frontmatterString = Object.keys(finalFrontmatter).length > 0
+            ? stringifyYamlWithLogging(finalFrontmatter, originalFrontmatter, `Economy: ${economy.name}`)
+            : '';
+
+        const providedSections = {
+            Description: description !== undefined ? description : '',
+            Industries: industries !== undefined ? industries : '',
+            Taxation: taxation !== undefined ? taxation : ''
+        };
+        const templateSections = getTemplateSections('economy', providedSections);
+
+        let allSections: Record<string, string>;
+        if (existingFile && existingFile instanceof TFile) {
+            allSections = { ...existingSections, ...templateSections };
+            Object.entries(providedSections).forEach(([key, value]) => {
+                allSections[key] = value;
+            });
+        } else {
+            allSections = templateSections;
+        }
+
+        let mdContent = `---\n${frontmatterString}---\n\n`;
+        mdContent += Object.entries(allSections)
+            .map(([key, content]) => `## ${key}\n${content || ''}`)
+            .join('\n\n');
+        if (!mdContent.endsWith('\n')) mdContent += '\n';
+
+        if (existingFile && existingFile instanceof TFile) {
+            await this.app.vault.modify(existingFile, mdContent);
+        } else {
+            await this.app.vault.create(finalFilePath, mdContent);
+            new Notice('Note created with standard sections for easy editing.');
+        }
+
+        economy.filePath = finalFilePath;
+        this.app.metadataCache.trigger("dataview:refresh-views");
+    }
+
+    async listEconomies(): Promise<Economy[]> {
+        await this.ensureEconomyFolder();
+        const folderPath = this.getEntityFolder('economy');
+        const allFiles = this.app.vault.getMarkdownFiles();
+        const files = allFiles.filter(f => f.path.startsWith(folderPath + '/') && f.extension === 'md');
+        const economies: Economy[] = [];
+        for (const file of files) {
+            const data = await this.parseFile<Economy>(file, { name: '' }, 'economy');
+            if (data) economies.push(data);
+        }
+        return economies.sort((a, b) => a.name.localeCompare(b.name));
+    }
+
+    async deleteEconomy(filePath: string): Promise<void> {
+        const file = this.app.vault.getAbstractFileByPath(normalizePath(filePath));
+        if (file instanceof TFile) {
+            await this.app.vault.trash(file, true);
+            new Notice(`Economy file "${file.basename}" moved to trash.`);
+            this.app.metadataCache.trigger('dataview:refresh-views');
+        } else {
+            new Notice(`Error: Could not find economy file to delete at ${filePath}`);
+        }
+    }
+
+    /**
+     * MagicSystem Data Management
+     */
+
+    async saveMagicSystem(magicSystem: MagicSystem): Promise<void> {
+        await this.ensureMagicSystemFolder();
+        const folderPath = this.getEntityFolder('magicSystem');
+
+        const fileName = `${magicSystem.name.replace(/[\\/:"*?<>|]+/g, '')}.md`;
+        const filePath = normalizePath(`${folderPath}/${fileName}`);
+
+        const { filePath: currentFilePath, description, rules, source, costs, limitations, training, history, ...rest } = magicSystem as any;
+        if ((rest as any).sections) delete (rest as any).sections;
+
+        let finalFilePath = filePath;
+        if (currentFilePath && currentFilePath !== filePath) {
+            const existingFile = this.app.vault.getAbstractFileByPath(currentFilePath);
+            if (existingFile && existingFile instanceof TFile) {
+                await this.app.fileManager.renameFile(existingFile, filePath);
+                finalFilePath = filePath;
+            }
+        }
+
+        const existingFile = this.app.vault.getAbstractFileByPath(finalFilePath);
+        let existingSections: Record<string, string> = {};
+        let originalFrontmatter: Record<string, unknown> | undefined;
+        if (existingFile && existingFile instanceof TFile) {
+            try {
+                const existingContent = await this.app.vault.cachedRead(existingFile);
+                existingSections = parseSectionsFromMarkdown(existingContent);
+
+                const { parseFrontmatterFromContent } = await import('./yaml/EntitySections');
+                const directFrontmatter = parseFrontmatterFromContent(existingContent);
+                const fileCache = this.app.metadataCache.getFileCache(existingFile);
+                const cachedFrontmatter = fileCache?.frontmatter as Record<string, unknown> | undefined;
+
+                if (directFrontmatter || cachedFrontmatter) {
+                    originalFrontmatter = { ...(cachedFrontmatter || {}), ...(directFrontmatter || {}) };
+                }
+            } catch (error) {
+                console.warn(`Error reading existing magic system file: ${error}`);
+            }
+        }
+
+        const finalFrontmatter = this.buildFrontmatterForMagicSystem(rest, originalFrontmatter);
+
+        if (originalFrontmatter) {
+            const validation = validateFrontmatterPreservation(finalFrontmatter, originalFrontmatter);
+            if (validation.lostFields.length > 0) {
+                console.warn(`[saveMagicSystem] Warning: Fields will be lost on save:`, validation.lostFields);
+            }
+        }
+
+        const frontmatterString = Object.keys(finalFrontmatter).length > 0
+            ? stringifyYamlWithLogging(finalFrontmatter, originalFrontmatter, `MagicSystem: ${magicSystem.name}`)
+            : '';
+
+        const providedSections = {
+            Description: description !== undefined ? description : '',
+            Rules: rules !== undefined ? rules : '',
+            Source: source !== undefined ? source : '',
+            Costs: costs !== undefined ? costs : '',
+            Limitations: limitations !== undefined ? limitations : '',
+            Training: training !== undefined ? training : '',
+            History: history !== undefined ? history : ''
+        };
+        const templateSections = getTemplateSections('magicSystem', providedSections);
+
+        let allSections: Record<string, string>;
+        if (existingFile && existingFile instanceof TFile) {
+            allSections = { ...existingSections, ...templateSections };
+            Object.entries(providedSections).forEach(([key, value]) => {
+                allSections[key] = value;
+            });
+        } else {
+            allSections = templateSections;
+        }
+
+        let mdContent = `---\n${frontmatterString}---\n\n`;
+        mdContent += Object.entries(allSections)
+            .map(([key, content]) => `## ${key}\n${content || ''}`)
+            .join('\n\n');
+        if (!mdContent.endsWith('\n')) mdContent += '\n';
+
+        if (existingFile && existingFile instanceof TFile) {
+            await this.app.vault.modify(existingFile, mdContent);
+        } else {
+            await this.app.vault.create(finalFilePath, mdContent);
+            new Notice('Note created with standard sections for easy editing.');
+        }
+
+        magicSystem.filePath = finalFilePath;
+        this.app.metadataCache.trigger("dataview:refresh-views");
+    }
+
+    async listMagicSystems(): Promise<MagicSystem[]> {
+        await this.ensureMagicSystemFolder();
+        const folderPath = this.getEntityFolder('magicSystem');
+        const allFiles = this.app.vault.getMarkdownFiles();
+        const files = allFiles.filter(f => f.path.startsWith(folderPath + '/') && f.extension === 'md');
+        const magicSystems: MagicSystem[] = [];
+        for (const file of files) {
+            const data = await this.parseFile<MagicSystem>(file, { name: '' }, 'magicSystem');
+            if (data) magicSystems.push(data);
+        }
+        return magicSystems.sort((a, b) => a.name.localeCompare(b.name));
+    }
+
+    async deleteMagicSystem(filePath: string): Promise<void> {
+        const file = this.app.vault.getAbstractFileByPath(normalizePath(filePath));
+        if (file instanceof TFile) {
+            await this.app.vault.trash(file, true);
+            new Notice(`Magic System file "${file.basename}" moved to trash.`);
+            this.app.metadataCache.trigger('dataview:refresh-views');
+        } else {
+            new Notice(`Error: Could not find magic system file to delete at ${filePath}`);
+        }
+    }
+
+    /**
+     * Calendar Data Management
+     */
+
+    async saveCalendar(calendar: Calendar): Promise<void> {
+        await this.ensureCalendarFolder();
+        const folderPath = this.getEntityFolder('calendar');
+
+        const fileName = `${calendar.name.replace(/[\\/:"*?<>|]+/g, '')}.md`;
+        const filePath = normalizePath(`${folderPath}/${fileName}`);
+
+        const { filePath: currentFilePath, description, history, ...rest } = calendar as any;
+        if ((rest as any).sections) delete (rest as any).sections;
+
+        let finalFilePath = filePath;
+        if (currentFilePath && currentFilePath !== filePath) {
+            const existingFile = this.app.vault.getAbstractFileByPath(currentFilePath);
+            if (existingFile && existingFile instanceof TFile) {
+                await this.app.fileManager.renameFile(existingFile, filePath);
+                finalFilePath = filePath;
+            }
+        }
+
+        const existingFile = this.app.vault.getAbstractFileByPath(finalFilePath);
+        let existingSections: Record<string, string> = {};
+        let originalFrontmatter: Record<string, unknown> | undefined;
+        if (existingFile && existingFile instanceof TFile) {
+            try {
+                const existingContent = await this.app.vault.cachedRead(existingFile);
+                existingSections = parseSectionsFromMarkdown(existingContent);
+
+                const { parseFrontmatterFromContent } = await import('./yaml/EntitySections');
+                const directFrontmatter = parseFrontmatterFromContent(existingContent);
+                const fileCache = this.app.metadataCache.getFileCache(existingFile);
+                const cachedFrontmatter = fileCache?.frontmatter as Record<string, unknown> | undefined;
+
+                if (directFrontmatter || cachedFrontmatter) {
+                    originalFrontmatter = { ...(cachedFrontmatter || {}), ...(directFrontmatter || {}) };
+                }
+            } catch (error) {
+                console.warn(`Error reading existing calendar file: ${error}`);
+            }
+        }
+
+        const finalFrontmatter = this.buildFrontmatterForCalendar(rest, originalFrontmatter);
+
+        if (originalFrontmatter) {
+            const validation = validateFrontmatterPreservation(finalFrontmatter, originalFrontmatter);
+            if (validation.lostFields.length > 0) {
+                console.warn(`[saveCalendar] Warning: Fields will be lost on save:`, validation.lostFields);
+            }
+        }
+
+        const frontmatterString = Object.keys(finalFrontmatter).length > 0
+            ? stringifyYamlWithLogging(finalFrontmatter, originalFrontmatter, `Calendar: ${calendar.name}`)
+            : '';
+
+        const providedSections = {
+            Description: description !== undefined ? description : '',
+            History: history !== undefined ? history : ''
+        };
+        const templateSections = getTemplateSections('calendar', providedSections);
+
+        let allSections: Record<string, string>;
+        if (existingFile && existingFile instanceof TFile) {
+            allSections = { ...existingSections, ...templateSections };
+            Object.entries(providedSections).forEach(([key, value]) => {
+                allSections[key] = value;
+            });
+        } else {
+            allSections = templateSections;
+        }
+
+        let mdContent = `---\n${frontmatterString}---\n\n`;
+        mdContent += Object.entries(allSections)
+            .map(([key, content]) => `## ${key}\n${content || ''}`)
+            .join('\n\n');
+        if (!mdContent.endsWith('\n')) mdContent += '\n';
+
+        if (existingFile && existingFile instanceof TFile) {
+            await this.app.vault.modify(existingFile, mdContent);
+        } else {
+            await this.app.vault.create(finalFilePath, mdContent);
+            new Notice('Note created with standard sections for easy editing.');
+        }
+
+        calendar.filePath = finalFilePath;
+        this.app.metadataCache.trigger("dataview:refresh-views");
+    }
+
+    async listCalendars(): Promise<Calendar[]> {
+        await this.ensureCalendarFolder();
+        const folderPath = this.getEntityFolder('calendar');
+        const allFiles = this.app.vault.getMarkdownFiles();
+        const files = allFiles.filter(f => f.path.startsWith(folderPath + '/') && f.extension === 'md');
+        const calendars: Calendar[] = [];
+        for (const file of files) {
+            const data = await this.parseFile<Calendar>(file, { name: '' }, 'calendar');
+            if (data) calendars.push(data);
+        }
+        return calendars.sort((a, b) => a.name.localeCompare(b.name));
+    }
+
+    async deleteCalendar(filePath: string): Promise<void> {
+        const file = this.app.vault.getAbstractFileByPath(normalizePath(filePath));
+        if (file instanceof TFile) {
+            await this.app.vault.trash(file, true);
+            new Notice(`Calendar file "${file.basename}" moved to trash.`);
+            this.app.metadataCache.trigger('dataview:refresh-views');
+        } else {
+            new Notice(`Error: Could not find calendar file to delete at ${filePath}`);
+        }
+    }
+
 
 	/**
 	 * Story Board Management
