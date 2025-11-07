@@ -717,3 +717,1119 @@ export interface MapTemplate {
     /** Custom instructions or tips for using this template */
     usageNotes?: string;
 }
+
+/**
+ * Culture entity representing a society, civilization, or cultural group in the story world
+ * Cultures define languages, values, social structures, and traditions
+ */
+export interface Culture {
+    /** Optional unique identifier */
+    id?: string;
+
+    /** File system path to the culture's markdown file */
+    filePath?: string;
+
+    /** Display name of the culture (required) */
+    name: string;
+
+    /** Path to a representative image within the vault */
+    profileImagePath?: string;
+
+    /** Overview of the culture (stored in markdown body) */
+    description?: string;
+
+    /** Core cultural values and worldview (stored in markdown body) */
+    values?: string;
+
+    /** Religious beliefs and practices (stored in markdown body) */
+    religion?: string;
+
+    /** Class hierarchy and social organization (stored in markdown body) */
+    socialStructure?: string;
+
+    /** Origins and cultural evolution (stored in markdown body) */
+    history?: string;
+
+    /** Naming patterns and traditions (stored in markdown body) */
+    namingConventions?: string;
+
+    /** Cultural customs and practices (stored in markdown body) */
+    customs?: string;
+
+    /** Languages spoken by this culture */
+    languages?: string[];
+
+    /** Technology level of the culture */
+    techLevel?: string;
+
+    /** Type of government system */
+    governmentType?: string;
+
+    /** Current status of the culture */
+    status?: string;
+
+    /** Estimated population size */
+    population?: string;
+
+    /** Links to locations where this culture is prevalent */
+    linkedLocations?: string[];
+
+    /** Links to characters of this culture */
+    linkedCharacters?: string[];
+
+    /** Links to events significant to this culture */
+    linkedEvents?: string[];
+
+    /** Related or neighboring cultures */
+    relatedCultures?: string[];
+
+    /** Parent culture (if derived from another) */
+    parentCulture?: string;
+
+    /** User-defined custom fields */
+    customFields?: Record<string, string>;
+
+    /** Array of group ids this culture belongs to */
+    groups?: string[];
+
+    /** Typed connections to other entities */
+    connections?: TypedRelationship[];
+}
+
+/**
+ * Currency sub-interface for Economy
+ */
+export interface Currency {
+    /** Name of the currency */
+    name: string;
+
+    /** Exchange rate relative to a base currency */
+    exchangeRate?: number;
+
+    /** Visual description of the currency */
+    description?: string;
+}
+
+/**
+ * Resource sub-interface for Economy
+ */
+export interface Resource {
+    /** Name of the resource */
+    name: string;
+
+    /** How common or rare the resource is */
+    availability: 'abundant' | 'common' | 'uncommon' | 'rare' | 'legendary';
+
+    /** Average market value */
+    value?: string;
+
+    /** Description of the resource */
+    description?: string;
+}
+
+/**
+ * Trade route sub-interface for Economy
+ */
+export interface TradeRoute {
+    /** Name or identifier of the trade route */
+    name: string;
+
+    /** Origin location */
+    origin: string;
+
+    /** Destination location */
+    destination: string;
+
+    /** Primary goods traded */
+    goods?: string[];
+
+    /** Status of the route */
+    status?: string;
+}
+
+/**
+ * Economy entity representing an economic system in the story world
+ * Defines currencies, resources, trade routes, and economic relationships
+ */
+export interface Economy {
+    /** Optional unique identifier */
+    id?: string;
+
+    /** File system path to the economy's markdown file */
+    filePath?: string;
+
+    /** Display name of the economy (required) */
+    name: string;
+
+    /** Path to a representative image within the vault */
+    profileImagePath?: string;
+
+    /** Overview of the economic system (stored in markdown body) */
+    description?: string;
+
+    /** Industries and production information (stored in markdown body) */
+    industries?: string;
+
+    /** Tax systems and policies (stored in markdown body) */
+    taxation?: string;
+
+    /** Type of economic system */
+    economicSystem?: string;
+
+    /** Current economic status */
+    status?: string;
+
+    /** Currencies used in this economy */
+    currencies?: Currency[];
+
+    /** Available resources */
+    resources?: Resource[];
+
+    /** Active trade routes */
+    tradeRoutes?: TradeRoute[];
+
+    /** Links to locations using this economy */
+    linkedLocations?: string[];
+
+    /** Links to factions controlling this economy */
+    linkedFactions?: string[];
+
+    /** Links to cultures participating in this economy */
+    linkedCultures?: string[];
+
+    /** Links to economic events */
+    linkedEvents?: string[];
+
+    /** User-defined custom fields */
+    customFields?: Record<string, string>;
+
+    /** Array of group ids this economy belongs to */
+    groups?: string[];
+
+    /** Typed connections to other entities */
+    connections?: TypedRelationship[];
+}
+
+/**
+ * Faction member sub-interface
+ */
+export interface FactionMember {
+    /** Character name or ID */
+    characterName: string;
+
+    /** Member's rank or position */
+    rank?: string;
+
+    /** Join date */
+    joinDate?: string;
+
+    /** Loyalty level */
+    loyalty?: 'devoted' | 'loyal' | 'neutral' | 'wavering' | 'traitor';
+}
+
+/**
+ * Faction relationship sub-interface
+ */
+export interface FactionRelationship {
+    /** Target faction name or ID */
+    factionName: string;
+
+    /** Nature of the relationship */
+    relationshipType: 'allied' | 'friendly' | 'neutral' | 'rival' | 'hostile' | 'at-war';
+
+    /** Additional context */
+    notes?: string;
+}
+
+/**
+ * Faction entity representing an organization, guild, political group, or alliance
+ * Factions have members, resources, goals, and relationships with other factions
+ */
+export interface Faction {
+    /** Optional unique identifier */
+    id?: string;
+
+    /** File system path to the faction's markdown file */
+    filePath?: string;
+
+    /** Display name of the faction (required) */
+    name: string;
+
+    /** Path to a representative image within the vault */
+    profileImagePath?: string;
+
+    /** Overview of the faction (stored in markdown body) */
+    description?: string;
+
+    /** Faction's origin and history (stored in markdown body) */
+    history?: string;
+
+    /** Organizational structure (stored in markdown body) */
+    structure?: string;
+
+    /** Faction's objectives and motivations (stored in markdown body) */
+    goals?: string;
+
+    /** Available resources (stored in markdown body) */
+    resources?: string;
+
+    /** Type of faction */
+    factionType?: string;
+
+    /** Overall strength/influence level */
+    strength?: string;
+
+    /** Current status */
+    status?: string;
+
+    /** Military power rating */
+    militaryPower?: number;
+
+    /** Economic power rating */
+    economicPower?: number;
+
+    /** Political influence rating */
+    politicalInfluence?: number;
+
+    /** Faction colors */
+    colors?: string[];
+
+    /** Emblem or symbol description */
+    emblem?: string;
+
+    /** Faction motto or slogan */
+    motto?: string;
+
+    /** Detailed member roster */
+    members?: FactionMember[];
+
+    /** Territories controlled */
+    territories?: string[];
+
+    /** Relationships with other factions */
+    factionRelationships?: FactionRelationship[];
+
+    /** Links to significant events */
+    linkedEvents?: string[];
+
+    /** Link to associated culture */
+    linkedCulture?: string;
+
+    /** Parent faction (if sub-faction) */
+    parentFaction?: string;
+
+    /** Sub-factions under this faction */
+    subfactions?: string[];
+
+    /** User-defined custom fields */
+    customFields?: Record<string, string>;
+
+    /** Array of group ids this faction belongs to */
+    groups?: string[];
+
+    /** Typed connections to other entities */
+    connections?: TypedRelationship[];
+}
+
+/**
+ * Magic category sub-interface
+ */
+export interface MagicCategory {
+    /** Name of the category */
+    name: string;
+
+    /** Description of this type of magic */
+    description?: string;
+
+    /** Difficulty level */
+    difficulty?: 'trivial' | 'easy' | 'moderate' | 'hard' | 'master' | 'forbidden';
+}
+
+/**
+ * Magic ability sub-interface
+ */
+export interface MagicAbility {
+    /** Name of the ability or spell */
+    name: string;
+
+    /** Category this ability belongs to */
+    category?: string;
+
+    /** Power level */
+    powerLevel?: number;
+
+    /** Cost or resource requirement */
+    cost?: string;
+
+    /** Description of what the ability does */
+    description?: string;
+}
+
+/**
+ * Consistency rule sub-interface for magic systems
+ */
+export interface ConsistencyRule {
+    /** Rule name or title */
+    name: string;
+
+    /** Detailed explanation of the rule */
+    description: string;
+
+    /** Importance level */
+    priority?: 'critical' | 'important' | 'optional';
+}
+
+/**
+ * MagicSystem entity representing a system of magic or supernatural powers
+ * Defines rules, costs, limitations, and abilities available in the world
+ */
+export interface MagicSystem {
+    /** Optional unique identifier */
+    id?: string;
+
+    /** File system path to the magic system's markdown file */
+    filePath?: string;
+
+    /** Display name of the magic system (required) */
+    name: string;
+
+    /** Path to a representative image within the vault */
+    profileImagePath?: string;
+
+    /** Overview of the magic system (stored in markdown body) */
+    description?: string;
+
+    /** Core rules and mechanics (stored in markdown body) */
+    rules?: string;
+
+    /** Source of magical power (stored in markdown body) */
+    source?: string;
+
+    /** Costs and consequences of using magic (stored in markdown body) */
+    costs?: string;
+
+    /** Limitations and restrictions (stored in markdown body) */
+    limitations?: string;
+
+    /** How practitioners learn magic (stored in markdown body) */
+    training?: string;
+
+    /** History and origins of the magic system (stored in markdown body) */
+    history?: string;
+
+    /** Type of magic system */
+    systemType?: string;
+
+    /** How common magic users are */
+    rarity?: string;
+
+    /** Overall power level */
+    powerLevel?: string;
+
+    /** Current status */
+    status?: string;
+
+    /** Required materials or components */
+    materials?: string[];
+
+    /** Categories of magic */
+    categories?: MagicCategory[];
+
+    /** Specific abilities or spells */
+    abilities?: MagicAbility[];
+
+    /** Internal consistency rules */
+    consistencyRules?: ConsistencyRule[];
+
+    /** Links to characters who use this magic */
+    linkedCharacters?: string[];
+
+    /** Links to locations where this magic is practiced */
+    linkedLocations?: string[];
+
+    /** Links to cultures that use this magic */
+    linkedCultures?: string[];
+
+    /** Links to events involving this magic */
+    linkedEvents?: string[];
+
+    /** Links to magical items */
+    linkedItems?: string[];
+
+    /** User-defined custom fields */
+    customFields?: Record<string, string>;
+
+    /** Array of group ids this magic system belongs to */
+    groups?: string[];
+
+    /** Typed connections to other entities */
+    connections?: TypedRelationship[];
+}
+
+/**
+ * Calendar month sub-interface
+ */
+export interface CalendarMonth {
+    /** Month name */
+    name: string;
+
+    /** Number of days in the month */
+    days: number;
+
+    /** Season this month belongs to */
+    season?: string;
+}
+
+/**
+ * Calendar holiday sub-interface
+ */
+export interface CalendarHoliday {
+    /** Holiday name */
+    name: string;
+
+    /** Date in calendar (e.g., "3rd of Springrise") */
+    date: string;
+
+    /** Description and significance */
+    description?: string;
+}
+
+/**
+ * Astronomical event sub-interface
+ */
+export interface AstronomicalEvent {
+    /** Event name */
+    name: string;
+
+    /** Type of event */
+    eventType?: string;
+
+    /** When it occurs */
+    frequency?: string;
+
+    /** Description */
+    description?: string;
+}
+
+/**
+ * Season sub-interface
+ */
+export interface Season {
+    /** Season name */
+    name: string;
+
+    /** Starting month */
+    startMonth?: string;
+
+    /** Duration in months */
+    duration?: number;
+
+    /** Description */
+    description?: string;
+}
+
+/**
+ * Calendar date representation
+ */
+export interface CalendarDate {
+    /** Year number */
+    year: number;
+
+    /** Month name or number */
+    month: string | number;
+
+    /** Day number */
+    day: number;
+
+    /** Optional time component */
+    time?: string;
+}
+
+/**
+ * Calendar entity representing a custom calendar system for the story world
+ * Defines months, holidays, seasons, and astronomical events
+ */
+export interface Calendar {
+    /** Optional unique identifier */
+    id?: string;
+
+    /** File system path to the calendar's markdown file */
+    filePath?: string;
+
+    /** Display name of the calendar (required) */
+    name: string;
+
+    /** Path to a representative image within the vault */
+    profileImagePath?: string;
+
+    /** Overview of the calendar system (stored in markdown body) */
+    description?: string;
+
+    /** History and origins (stored in markdown body) */
+    history?: string;
+
+    /** Type of calendar */
+    calendarType?: string;
+
+    /** Total days in a year */
+    daysPerYear?: number;
+
+    /** Days in a week */
+    daysPerWeek?: number;
+
+    /** Names of weekdays */
+    weekdays?: string[];
+
+    /** Month definitions */
+    months?: CalendarMonth[];
+
+    /** Holidays and celebrations */
+    holidays?: CalendarHoliday[];
+
+    /** Astronomical events */
+    astronomicalEvents?: AstronomicalEvent[];
+
+    /** Season definitions */
+    seasons?: Season[];
+
+    /** Current date in the story */
+    currentDate?: CalendarDate;
+
+    /** Reference date for conversions */
+    referenceDate?: CalendarDate;
+
+    /** Conversion factor to Earth calendar */
+    earthConversion?: string;
+
+    /** Where this calendar is used */
+    usage?: string;
+
+    /** Links to cultures using this calendar */
+    linkedCultures?: string[];
+
+    /** Links to locations using this calendar */
+    linkedLocations?: string[];
+
+    /** User-defined custom fields */
+    customFields?: Record<string, string>;
+
+    /** Array of group ids this calendar belongs to */
+    groups?: string[];
+
+    /** Typed connections to other entities */
+    connections?: TypedRelationship[];
+}
+
+/**
+ * Altered entity in a timeline fork
+ */
+export interface AlteredEntity {
+    /** Entity ID or name */
+    entityId: string;
+
+    /** Type of entity */
+    entityType: 'character' | 'location' | 'event' | 'item';
+
+    /** What changed about this entity */
+    changes: string;
+}
+
+/**
+ * TimelineFork entity representing an alternate timeline or "what-if" scenario
+ * Allows tracking divergent story paths from a key decision point
+ */
+export interface TimelineFork {
+    /** Unique identifier */
+    id: string;
+
+    /** Display name of the fork */
+    name: string;
+
+    /** Parent timeline ID (undefined for main timeline) */
+    parentTimelineId?: string;
+
+    /** Event where timeline diverged */
+    divergenceEvent: string;
+
+    /** Date of divergence */
+    divergenceDate: string;
+
+    /** Description of what changed */
+    description?: string;
+
+    /** Current status */
+    status: 'exploring' | 'canon' | 'abandoned' | 'merged';
+
+    /** Events unique to this fork */
+    forkEvents?: string[];
+
+    /** Characters altered in this fork */
+    alteredCharacters?: AlteredEntity[];
+
+    /** Locations altered in this fork */
+    alteredLocations?: AlteredEntity[];
+
+    /** Color for visualization */
+    color?: string;
+
+    /** Creation timestamp */
+    created: string;
+
+    /** Additional notes */
+    notes?: string;
+}
+
+/**
+ * CausalityLink representing cause-and-effect relationships between events
+ */
+export interface CausalityLink {
+    /** Unique identifier */
+    id: string;
+
+    /** ID or name of the cause event */
+    causeEvent: string;
+
+    /** ID or name of the effect event */
+    effectEvent: string;
+
+    /** Type of causal relationship */
+    linkType: string;
+
+    /** Strength of the causal connection */
+    strength?: 'weak' | 'moderate' | 'strong' | 'absolute';
+
+    /** Description of how the cause led to the effect */
+    description?: string;
+}
+
+/**
+ * Conflict entity in timeline conflict detection
+ */
+export interface ConflictEntity {
+    /** Entity ID or name */
+    entityId: string;
+
+    /** Type of entity */
+    entityType: 'character' | 'location' | 'event' | 'item';
+
+    /** Display name */
+    entityName: string;
+
+    /** Which field has the conflict */
+    conflictField?: string;
+
+    /** Conflicting value */
+    conflictValue?: string;
+}
+
+/**
+ * TimelineConflict representing detected inconsistencies in the timeline
+ */
+export interface TimelineConflict {
+    /** Unique identifier */
+    id: string;
+
+    /** Type of conflict */
+    type: 'location' | 'death' | 'age' | 'causality' | 'custom';
+
+    /** Severity level */
+    severity: 'minor' | 'moderate' | 'critical';
+
+    /** Entities involved in the conflict */
+    entities: ConflictEntity[];
+
+    /** Events involved in the conflict */
+    events: string[];
+
+    /** Description of the conflict */
+    description: string;
+
+    /** Suggested resolution */
+    suggestion?: string;
+
+    /** Whether user has dismissed this conflict */
+    dismissed: boolean;
+
+    /** When the conflict was detected */
+    detected: string;
+}
+
+/**
+ * Chapter pacing information
+ */
+export interface ChapterPacing {
+    /** Chapter name or number */
+    chapterName: string;
+
+    /** Word count */
+    wordCount: number;
+
+    /** Event count in chapter */
+    eventCount: number;
+
+    /** Estimated reading time in minutes */
+    readingTime?: number;
+
+    /** Pacing rating */
+    pacing?: 'slow' | 'moderate' | 'fast' | 'intense';
+}
+
+/**
+ * Event density analysis
+ */
+export interface EventDensity {
+    /** Time period */
+    period: string;
+
+    /** Number of events in period */
+    eventCount: number;
+
+    /** Density rating */
+    density?: 'sparse' | 'balanced' | 'crowded';
+}
+
+/**
+ * Tension point in the story
+ */
+export interface TensionPoint {
+    /** Location in story */
+    location: string;
+
+    /** Tension level */
+    tensionLevel: number;
+
+    /** Type of tension */
+    tensionType?: string;
+}
+
+/**
+ * Pacing recommendation
+ */
+export interface PacingRecommendation {
+    /** Area of concern */
+    area: string;
+
+    /** Type of recommendation */
+    type: 'warning' | 'suggestion' | 'success';
+
+    /** Recommendation message */
+    message: string;
+}
+
+/**
+ * PacingAnalysis entity for analyzing story pacing and structure
+ */
+export interface PacingAnalysis {
+    /** Unique identifier */
+    id?: string;
+
+    /** When analysis was performed */
+    analyzedDate: string;
+
+    /** Chapter-by-chapter pacing */
+    chapterPacing?: ChapterPacing[];
+
+    /** Event density over time */
+    eventDensity?: EventDensity[];
+
+    /** Tension points */
+    tensionPoints?: TensionPoint[];
+
+    /** Recommendations for improvement */
+    recommendations?: PacingRecommendation[];
+
+    /** Overall pacing score */
+    overallScore?: number;
+}
+
+/**
+ * WritingSession tracking individual writing sessions
+ */
+export interface WritingSession {
+    /** Unique identifier */
+    id: string;
+
+    /** Session start time */
+    startTime: string;
+
+    /** Session end time */
+    endTime?: string;
+
+    /** Words written in session */
+    wordsWritten: number;
+
+    /** Files edited */
+    filesEdited?: string[];
+
+    /** Session notes */
+    notes?: string;
+}
+
+/**
+ * Character screen time analysis
+ */
+export interface CharacterScreenTime {
+    /** Character name */
+    characterName: string;
+
+    /** Number of scenes/events */
+    appearances: number;
+
+    /** Estimated word count featuring character */
+    wordCount?: number;
+
+    /** Percentage of total story */
+    percentage?: number;
+}
+
+/**
+ * Event distribution analysis
+ */
+export interface EventDistribution {
+    /** Time period or category */
+    category: string;
+
+    /** Event count */
+    count: number;
+
+    /** Percentage of total */
+    percentage?: number;
+}
+
+/**
+ * Dialogue analysis
+ */
+export interface DialogueAnalysis {
+    /** Total dialogue count */
+    totalLines?: number;
+
+    /** Dialogue per character */
+    byCharacter?: Record<string, number>;
+
+    /** Dialogue density */
+    density?: number;
+}
+
+/**
+ * Point of view statistics
+ */
+export interface POVStats {
+    /** POV character name */
+    character: string;
+
+    /** Scene/chapter count from this POV */
+    sceneCount: number;
+
+    /** Percentage of story */
+    percentage?: number;
+}
+
+/**
+ * Writing velocity data
+ */
+export interface VelocityData {
+    /** Date */
+    date: string;
+
+    /** Words written */
+    wordsWritten: number;
+
+    /** Time spent writing */
+    timeSpent?: number;
+}
+
+/**
+ * Foreshadowing pair tracking setup and payoff
+ */
+export interface ForeshadowingPair {
+    /** Setup event or hint */
+    setup: string;
+
+    /** Payoff event or resolution */
+    payoff?: string;
+
+    /** Status */
+    status: 'planted' | 'resolved' | 'abandoned';
+
+    /** Distance between setup and payoff */
+    distance?: string;
+}
+
+/**
+ * StoryAnalytics entity for comprehensive story analysis
+ */
+export interface StoryAnalytics {
+    /** Last update timestamp */
+    lastUpdated: string;
+
+    /** Total word count */
+    totalWords?: number;
+
+    /** Character screen time breakdown */
+    characterScreenTime?: CharacterScreenTime[];
+
+    /** Event distribution */
+    eventDistribution?: EventDistribution[];
+
+    /** Dialogue analysis */
+    dialogueAnalysis?: DialogueAnalysis;
+
+    /** POV statistics */
+    povStats?: POVStats[];
+
+    /** Writing velocity over time */
+    velocity?: VelocityData[];
+
+    /** Foreshadowing tracking */
+    foreshadowing?: ForeshadowingPair[];
+}
+
+/**
+ * Atmosphere profile for sensory details
+ */
+export interface AtmosphereProfile {
+    /** Overall mood */
+    mood: string;
+
+    /** Dominant emotion */
+    emotion?: string;
+
+    /** Intensity level */
+    intensity?: number;
+}
+
+/**
+ * Sensory details breakdown
+ */
+export interface SensoryDetails {
+    /** Visual details */
+    sight?: string;
+
+    /** Auditory details */
+    sound?: string;
+
+    /** Olfactory details */
+    smell?: string;
+
+    /** Tactile details */
+    touch?: string;
+
+    /** Taste details */
+    taste?: string;
+}
+
+/**
+ * Mood profile
+ */
+export interface MoodProfile {
+    /** Primary mood */
+    primary: string;
+
+    /** Secondary mood */
+    secondary?: string;
+
+    /** Mood intensity */
+    intensity?: number;
+}
+
+/**
+ * Color palette
+ */
+export interface ColorPalette {
+    /** Dominant colors */
+    dominant?: string[];
+
+    /** Accent colors */
+    accent?: string[];
+
+    /** Color temperature */
+    temperature?: 'warm' | 'cool' | 'neutral';
+}
+
+/**
+ * Ambient sound
+ */
+export interface AmbientSound {
+    /** Sound name or description */
+    name: string;
+
+    /** Sound volume/prominence */
+    volume?: 'quiet' | 'moderate' | 'loud';
+
+    /** Sound frequency */
+    frequency?: 'constant' | 'intermittent' | 'rare';
+}
+
+/**
+ * Sound profile
+ */
+export interface SoundProfile {
+    /** Background/ambient sounds */
+    ambient?: AmbientSound[];
+
+    /** Overall sound level */
+    soundLevel?: 'silent' | 'quiet' | 'moderate' | 'noisy' | 'deafening';
+}
+
+/**
+ * Time-based variations
+ */
+export interface TimeVariation {
+    /** Time of day */
+    timeOfDay: 'dawn' | 'morning' | 'noon' | 'afternoon' | 'evening' | 'dusk' | 'night' | 'midnight';
+
+    /** Sensory changes at this time */
+    changes?: SensoryDetails;
+
+    /** Mood changes */
+    mood?: string;
+}
+
+/**
+ * Seasonal variations
+ */
+export interface SeasonalVariation {
+    /** Season name */
+    season: string;
+
+    /** Sensory changes in this season */
+    changes?: SensoryDetails;
+
+    /** Mood changes */
+    mood?: string;
+}
+
+/**
+ * LocationSensoryProfile entity for rich sensory descriptions of locations
+ */
+export interface LocationSensoryProfile {
+    /** Location ID or name this profile is for */
+    locationId: string;
+
+    /** Location name for reference */
+    locationName?: string;
+
+    /** Atmosphere profile */
+    atmosphere?: AtmosphereProfile;
+
+    /** Base sensory details */
+    sensoryDetails?: SensoryDetails;
+
+    /** Mood profile */
+    mood?: MoodProfile;
+
+    /** Color palette */
+    colors?: ColorPalette;
+
+    /** Sound profile */
+    sounds?: SoundProfile;
+
+    /** Time-of-day variations */
+    timeVariations?: TimeVariation[];
+
+    /** Seasonal variations */
+    seasonalVariations?: SeasonalVariation[];
+
+    /** Additional notes */
+    notes?: string;
+}

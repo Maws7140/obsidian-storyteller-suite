@@ -14,7 +14,12 @@ export type EntityType =
   | 'reference'
   | 'chapter'
   | 'scene'
-  | 'map';
+  | 'map'
+  | 'culture'
+  | 'faction'
+  | 'economy'
+  | 'magicSystem'
+  | 'calendar';
 
 /** Whitelisted frontmatter keys per entity type. */
 const FRONTMATTER_WHITELISTS: Record<EntityType, Set<string>> = {
@@ -51,6 +56,34 @@ const FRONTMATTER_WHITELISTS: Record<EntityType, Set<string>> = {
     'width', 'height', 'defaultZoom', 'center', 'bounds', 'markers', 'layers',
     'gridEnabled', 'gridSize', 'profileImagePath', 'linkedLocations', 'groups', 'customFields',
     'created', 'modified'
+  ]),
+  culture: new Set([
+    'id', 'name', 'profileImagePath', 'languages', 'techLevel', 'governmentType', 'status',
+    'population', 'linkedLocations', 'linkedCharacters', 'linkedEvents', 'relatedCultures',
+    'parentCulture', 'groups', 'customFields', 'connections'
+  ]),
+  faction: new Set([
+    'id', 'name', 'profileImagePath', 'factionType', 'strength', 'status', 'militaryPower',
+    'economicPower', 'politicalInfluence', 'colors', 'emblem', 'motto', 'members',
+    'territories', 'factionRelationships', 'linkedEvents', 'linkedCulture', 'parentFaction',
+    'subfactions', 'groups', 'customFields', 'connections'
+  ]),
+  economy: new Set([
+    'id', 'name', 'profileImagePath', 'economicSystem', 'status', 'currencies', 'resources',
+    'tradeRoutes', 'linkedLocations', 'linkedFactions', 'linkedCultures', 'linkedEvents',
+    'groups', 'customFields', 'connections'
+  ]),
+  magicSystem: new Set([
+    'id', 'name', 'profileImagePath', 'systemType', 'rarity', 'powerLevel', 'status',
+    'materials', 'categories', 'abilities', 'consistencyRules', 'linkedCharacters',
+    'linkedLocations', 'linkedCultures', 'linkedEvents', 'linkedItems', 'groups',
+    'customFields', 'connections'
+  ]),
+  calendar: new Set([
+    'id', 'name', 'profileImagePath', 'calendarType', 'daysPerYear', 'daysPerWeek',
+    'weekdays', 'months', 'holidays', 'astronomicalEvents', 'seasons', 'currentDate',
+    'referenceDate', 'earthConversion', 'usage', 'linkedCultures', 'linkedLocations',
+    'groups', 'customFields', 'connections'
   ])
 };
 
