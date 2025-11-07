@@ -23,7 +23,13 @@ import { FolderResolver, FolderResolverOptions } from './folders/FolderResolver'
 import { PromptModal } from './modals/ui/PromptModal';
 import { ConfirmModal } from './modals/ui/ConfirmModal';
 import { CharacterModal } from './modals/CharacterModal';
-import { Character, Location, Event, GalleryImage, GalleryData, Story, Group, PlotItem, Reference, Chapter, Scene /* DEPRECATED: Map as StoryMap */ } from './types';
+import {
+    Character, Location, Event, GalleryImage, GalleryData, Story, Group, PlotItem, Reference, Chapter, Scene,
+    Culture, Faction, Economy, MagicSystem, Calendar,
+    TimelineFork, CausalityLink, TimelineConflict,
+    PacingAnalysis, WritingSession, StoryAnalytics, LocationSensoryProfile
+    /* DEPRECATED: Map as StoryMap */
+} from './types';
 import { CharacterListModal } from './modals/CharacterListModal';
 import { LocationModal } from './modals/LocationModal';
 import { LocationListModal } from './modals/LocationListModal';
@@ -113,6 +119,32 @@ import { getTemplateSections } from './utils/EntityTemplates';
     /** Map settings */
     enableFrontmatterMarkers?: boolean;
     enableDataViewMarkers?: boolean;
+
+    /** Timeline & Causality */
+    timelineForks?: TimelineFork[];
+    causalityLinks?: CausalityLink[];
+    timelineConflicts?: TimelineConflict[];
+    enableAdvancedTimeline?: boolean;
+    autoDetectConflicts?: boolean;
+
+    /** Analytics */
+    analyticsEnabled?: boolean;
+    analyticsData?: StoryAnalytics;
+    writingSessions?: WritingSession[];
+    pacingAnalysis?: PacingAnalysis;
+    trackWritingSessions?: boolean;
+
+    /** World-Building */
+    enableWorldBuilding?: boolean;
+    cultureFolderPath?: string;
+    economyFolderPath?: string;
+    factionFolderPath?: string;
+    magicSystemFolderPath?: string;
+    calendarFolderPath?: string;
+    activeCalendarId?: string;
+
+    /** Sensory Profiles */
+    enableSensoryProfiles?: boolean;
 }
 
 /**
@@ -152,7 +184,17 @@ import { getTemplateSections } from './utils/EntityTemplates';
     enableFrontmatterMarkers: false,
     enableDataViewMarkers: false,
     customFieldsMode: 'flatten',
-    relationshipsMigrated: false
+    relationshipsMigrated: false,
+    timelineForks: [],
+    causalityLinks: [],
+    timelineConflicts: [],
+    enableAdvancedTimeline: false,
+    autoDetectConflicts: true,
+    analyticsEnabled: false,
+    writingSessions: [],
+    trackWritingSessions: false,
+    enableWorldBuilding: true,
+    enableSensoryProfiles: true
 }
 
 /**
