@@ -1287,6 +1287,193 @@ export default class StorytellerSuitePlugin extends Plugin {
 				await this.updateStoryBoard();
 			}
 		});
+
+		// ============================================================
+		// Timeline Fork Commands
+		// ============================================================
+
+		// Create timeline fork
+		this.addCommand({
+			id: 'create-timeline-fork',
+			name: 'Create timeline fork',
+			callback: () => {
+				if (!this.ensureActiveStoryOrGuide()) return;
+				import('./modals/TimelineForkModal').then(({ TimelineForkModal }) => {
+					new TimelineForkModal(
+						this.app,
+						this,
+						null,
+						async (fork) => {
+							this.createTimelineFork(
+								fork.name,
+								fork.divergenceEvent,
+								fork.divergenceDate,
+								fork.description || ''
+							);
+						}
+					).open();
+				});
+			}
+		});
+
+		// View timeline forks
+		this.addCommand({
+			id: 'view-timeline-forks',
+			name: 'View timeline forks',
+			callback: () => {
+				const forks = this.getTimelineForks();
+				if (forks.length === 0) {
+					new Notice('No timeline forks yet. Create your first fork!');
+					return;
+				}
+				new Notice(`${forks.length} timeline fork(s) found`);
+				// TODO: Create TimelineForkListModal for better visualization
+			}
+		});
+
+		// ============================================================
+		// Causality Link Commands
+		// ============================================================
+
+		// Create causality link
+		this.addCommand({
+			id: 'create-causality-link',
+			name: 'Add causality link',
+			callback: () => {
+				if (!this.ensureActiveStoryOrGuide()) return;
+				import('./modals/CausalityLinkModal').then(({ CausalityLinkModal }) => {
+					new CausalityLinkModal(
+						this.app,
+						this,
+						null,
+						async (link) => {
+							this.createCausalityLink(
+								link.causeEvent,
+								link.effectEvent,
+								link.linkType as 'direct' | 'indirect' | 'conditional' | 'catalyst',
+								link.description || '',
+								link.strength
+							);
+						}
+					).open();
+				});
+			}
+		});
+
+		// View causality links
+		this.addCommand({
+			id: 'view-causality-links',
+			name: 'View causality links',
+			callback: () => {
+				const links = this.getCausalityLinks();
+				if (links.length === 0) {
+					new Notice('No causality links yet. Create your first link!');
+					return;
+				}
+				new Notice(`${links.length} causality link(s) found`);
+				// TODO: Create CausalityLinkListModal for better visualization
+			}
+		});
+
+		// ============================================================
+		// Conflict Detection Commands
+		// ============================================================
+
+		// Detect timeline conflicts
+		this.addCommand({
+			id: 'detect-timeline-conflicts',
+			name: 'Detect timeline conflicts',
+			callback: async () => {
+				new Notice('Scanning timeline for conflicts...');
+
+				const events = await this.listEvents();
+				const characters = await this.listCharacters();
+				const locations = await this.listLocations();
+				const causalityLinks = this.getCausalityLinks();
+
+				const { ConflictDetector } = await import('./utils/ConflictDetection');
+				const conflicts = ConflictDetector.detectConflicts(
+					events,
+					characters,
+					locations,
+					causalityLinks
+				);
+
+				this.settings.timelineConflicts = conflicts;
+				await this.saveSettings();
+
+				new Notice(`Found ${conflicts.length} timeline conflict(s)`);
+
+				// Open conflicts modal
+				const { ConflictListModal } = await import('./modals/ConflictListModal');
+				new ConflictListModal(
+					this.app,
+					this,
+					conflicts,
+					async () => {
+						// Re-scan callback - re-run conflict detection
+						new Notice('Re-scanning timeline for conflicts...');
+						const events = await this.listEvents();
+						const characters = await this.listCharacters();
+						const locations = await this.listLocations();
+						const causalityLinks = this.getCausalityLinks();
+
+						const { ConflictDetector } = await import('./utils/ConflictDetection');
+						const newConflicts = ConflictDetector.detectConflicts(
+							events,
+							characters,
+							locations,
+							causalityLinks
+						);
+
+						this.settings.timelineConflicts = newConflicts;
+						await this.saveSettings();
+						new Notice(`Found ${newConflicts.length} timeline conflict(s)`);
+					}
+				).open();
+			}
+		});
+
+		// View existing conflicts
+		this.addCommand({
+			id: 'view-timeline-conflicts',
+			name: 'View timeline conflicts',
+			callback: async () => {
+				const conflicts = this.settings.timelineConflicts || [];
+
+				if (conflicts.length === 0) {
+					new Notice('No conflicts detected. Run "Detect timeline conflicts" to scan.');
+					return;
+				}
+
+				const { ConflictListModal } = await import('./modals/ConflictListModal');
+				new ConflictListModal(
+					this.app,
+					this,
+					conflicts,
+					async () => {
+						// Re-scan callback - re-run conflict detection
+						new Notice('Re-scanning timeline for conflicts...');
+						const events = await this.listEvents();
+						const characters = await this.listCharacters();
+						const locations = await this.listLocations();
+						const causalityLinks = this.getCausalityLinks();
+
+						const { ConflictDetector } = await import('./utils/ConflictDetection');
+						const newConflicts = ConflictDetector.detectConflicts(
+							events,
+							characters,
+							locations,
+							causalityLinks
+						);
+
+						this.settings.timelineConflicts = newConflicts;
+						await this.saveSettings();
+						new Notice(`Found ${newConflicts.length} timeline conflict(s)`);
+					}
+				).open();
+			}
+		});
 	}
 
 	/**
@@ -3262,6 +3449,206 @@ export default class StorytellerSuitePlugin extends Plugin {
             this.app.metadataCache.trigger('dataview:refresh-views');
         } else {
             new Notice(`Error: Could not find calendar file to delete at ${filePath}`);
+        }
+    }
+
+    // ============================================================
+    // Timeline Fork Management
+    // ============================================================
+
+    /**
+     * Create a new timeline fork (alternate timeline)
+     * @param name - Name of the fork
+     * @param divergenceEvent - Event where timeline diverges
+     * @param divergenceDate - Date of divergence
+     * @param description - Description of how this timeline differs
+     * @returns The created TimelineFork object
+     */
+    createTimelineFork(
+        name: string,
+        divergenceEvent: string,
+        divergenceDate: string,
+        description: string
+    ): TimelineFork {
+        const fork: TimelineFork = {
+            id: Date.now().toString(),
+            name,
+            parentTimelineId: undefined, // Main timeline
+            divergenceEvent,
+            divergenceDate,
+            description,
+            status: 'exploring',
+            forkEvents: [],
+            alteredCharacters: [],
+            alteredLocations: [],
+            color: this.generateRandomColor(),
+            created: new Date().toISOString(),
+            notes: ''
+        };
+
+        this.settings.timelineForks = this.settings.timelineForks || [];
+        this.settings.timelineForks.push(fork);
+        this.saveSettings();
+
+        new Notice(`Timeline fork "${name}" created`);
+        return fork;
+    }
+
+    /**
+     * Get all timeline forks
+     * @returns Array of all timeline forks
+     */
+    getTimelineForks(): TimelineFork[] {
+        return this.settings.timelineForks || [];
+    }
+
+    /**
+     * Get a specific timeline fork by ID
+     * @param forkId - ID of the fork to retrieve
+     * @returns The timeline fork or undefined if not found
+     */
+    getTimelineFork(forkId: string): TimelineFork | undefined {
+        return this.settings.timelineForks?.find(f => f.id === forkId);
+    }
+
+    /**
+     * Update an existing timeline fork
+     * @param fork - Updated fork object
+     */
+    async updateTimelineFork(fork: TimelineFork): Promise<void> {
+        const index = this.settings.timelineForks?.findIndex(f => f.id === fork.id);
+        if (index !== undefined && index >= 0) {
+            this.settings.timelineForks![index] = fork;
+            await this.saveSettings();
+            new Notice(`Timeline fork "${fork.name}" updated`);
+        } else {
+            new Notice(`Error: Timeline fork not found`);
+        }
+    }
+
+    /**
+     * Delete a timeline fork
+     * @param forkId - ID of the fork to delete
+     */
+    async deleteTimelineFork(forkId: string): Promise<void> {
+        const fork = this.getTimelineFork(forkId);
+        if (fork) {
+            this.settings.timelineForks = this.settings.timelineForks?.filter(f => f.id !== forkId);
+            await this.saveSettings();
+            new Notice(`Timeline fork "${fork.name}" deleted`);
+        } else {
+            new Notice(`Error: Timeline fork not found`);
+        }
+    }
+
+    /**
+     * Generate a random color for timeline fork visualization
+     * @returns Hex color string
+     */
+    generateRandomColor(): string {
+        const colors = [
+            '#FF6B6B', // Red
+            '#4ECDC4', // Teal
+            '#45B7D1', // Blue
+            '#FFA07A', // Light Salmon
+            '#98D8C8', // Mint
+            '#F7DC6F', // Yellow
+            '#BB8FCE', // Purple
+            '#85C1E2', // Sky Blue
+            '#F8B195', // Peach
+            '#95E1D3'  // Aqua
+        ];
+        return colors[Math.floor(Math.random() * colors.length)];
+    }
+
+    // ============================================================
+    // Causality Link Management
+    // ============================================================
+
+    /**
+     * Create a causality link between two events
+     * @param causeEvent - ID or name of the cause event
+     * @param effectEvent - ID or name of the effect event
+     * @param linkType - Type of causality (direct, indirect, conditional, catalyst)
+     * @param description - Description of the causal relationship
+     * @param strength - Strength of the link (weak, moderate, strong, absolute)
+     * @returns The created CausalityLink object
+     */
+    createCausalityLink(
+        causeEvent: string,
+        effectEvent: string,
+        linkType: 'direct' | 'indirect' | 'conditional' | 'catalyst',
+        description: string,
+        strength?: 'weak' | 'moderate' | 'strong' | 'absolute'
+    ): CausalityLink {
+        const link: CausalityLink = {
+            id: `${causeEvent}-${effectEvent}-${Date.now()}`,
+            causeEvent,
+            effectEvent,
+            linkType,
+            strength: strength || 'strong',
+            description
+        };
+
+        this.settings.causalityLinks = this.settings.causalityLinks || [];
+        this.settings.causalityLinks.push(link);
+        this.saveSettings();
+
+        new Notice(`Causality link created: ${causeEvent} → ${effectEvent}`);
+        return link;
+    }
+
+    /**
+     * Get all causality links
+     * @returns Array of all causality links
+     */
+    getCausalityLinks(): CausalityLink[] {
+        return this.settings.causalityLinks || [];
+    }
+
+    /**
+     * Get causality links for a specific event
+     * @param eventId - ID or name of the event
+     * @returns Object containing causes and effects for the event
+     */
+    getCausalityLinksForEvent(eventId: string): { causes: CausalityLink[], effects: CausalityLink[] } {
+        const links = this.settings.causalityLinks || [];
+
+        return {
+            causes: links.filter(l => l.effectEvent === eventId),
+            effects: links.filter(l => l.causeEvent === eventId)
+        };
+    }
+
+    /**
+     * Update a causality link
+     * @param link - Updated link object
+     */
+    async updateCausalityLink(link: CausalityLink): Promise<void> {
+        const index = this.settings.causalityLinks?.findIndex(l => l.id === link.id);
+        if (index !== undefined && index >= 0) {
+            this.settings.causalityLinks![index] = link;
+            await this.saveSettings();
+            new Notice(`Causality link updated`);
+        } else {
+            new Notice(`Error: Causality link not found`);
+        }
+    }
+
+    /**
+     * Delete a causality link
+     * @param linkId - ID of the link to delete
+     */
+    async deleteCausalityLink(linkId: string): Promise<void> {
+        const linksBefore = this.settings.causalityLinks?.length || 0;
+        this.settings.causalityLinks = this.settings.causalityLinks?.filter(l => l.id !== linkId);
+        const linksAfter = this.settings.causalityLinks?.length || 0;
+
+        if (linksBefore > linksAfter) {
+            await this.saveSettings();
+            new Notice(`Causality link deleted`);
+        } else {
+            new Notice(`Error: Causality link not found`);
         }
     }
 
