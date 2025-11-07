@@ -3,6 +3,12 @@
 
 // Import Leaflet CSS and JS so esbuild can bundle it properly
 import 'leaflet/dist/leaflet.css';
+import * as L from 'leaflet';
+
+// Expose Leaflet to the global scope so plugins can use it
+(window as any).L = L;
+
+// Now import Leaflet plugins (they expect window.L to exist)
 import 'leaflet-draw/dist/leaflet.draw.css';
 import 'leaflet-draw/dist/leaflet.draw';
 import 'leaflet.markercluster/dist/MarkerCluster.css';
@@ -17,7 +23,7 @@ import { FolderResolver, FolderResolverOptions } from './folders/FolderResolver'
 import { PromptModal } from './modals/ui/PromptModal';
 import { ConfirmModal } from './modals/ui/ConfirmModal';
 import { CharacterModal } from './modals/CharacterModal';
-import { Character, Location, Event, GalleryImage, GalleryData, Story, Group, PlotItem, Reference, Chapter, Scene, Map as StoryMap } from './types';
+import { Character, Location, Event, GalleryImage, GalleryData, Story, Group, PlotItem, Reference, Chapter, Scene /* DEPRECATED: Map as StoryMap */ } from './types';
 import { CharacterListModal } from './modals/CharacterListModal';
 import { LocationModal } from './modals/LocationModal';
 import { LocationListModal } from './modals/LocationListModal';
@@ -28,7 +34,8 @@ import { ImageDetailModal } from './modals/ImageDetailModal';
 import { DashboardView, VIEW_TYPE_DASHBOARD } from './views/DashboardView';
 import { NetworkGraphView, VIEW_TYPE_NETWORK_GRAPH } from './views/NetworkGraphView';
 import { TimelineView, VIEW_TYPE_TIMELINE } from './views/TimelineView';
-import { MapEditorView, VIEW_TYPE_MAP_EDITOR } from './views/MapEditorView';
+// DEPRECATED: Map functionality has been deprecated
+// import { MapEditorView, VIEW_TYPE_MAP_EDITOR } from './views/MapEditorView';
 import { GalleryImageSuggestModal } from './modals/GalleryImageSuggestModal';
 import { GroupSuggestModal } from './modals/GroupSuggestModal';
 import { StorytellerSuiteSettingTab } from './StorytellerSuiteSettingTab';
@@ -65,6 +72,7 @@ import { getTemplateSections } from './utils/EntityTemplates';
     referenceFolderPath?: string;
     chapterFolderPath?: string;
     sceneFolderPath?: string;
+    /** @deprecated Map functionality has been deprecated */
     mapFolderPath?: string;
     /** When true, avoid nested Stories/StoryName structure and use a single base */
     enableOneStoryMode?: boolean;
@@ -525,11 +533,12 @@ export default class StorytellerSuitePlugin extends Plugin {
 			(leaf) => new TimelineView(leaf, this)
 		);
 
+		// DEPRECATED: Map functionality has been deprecated
 		// Register the map editor view for full-screen map editing
-		this.registerView(
-			VIEW_TYPE_MAP_EDITOR,
-			(leaf) => new MapEditorView(leaf, this)
-		);
+		// this.registerView(
+		// 	VIEW_TYPE_MAP_EDITOR,
+		// 	(leaf) => new MapEditorView(leaf, this)
+		// );
 
 		// Add ribbon icon for quick access to dashboard
 		this.addRibbonIcon('book-open', 'Open storyteller dashboard', () => {
@@ -1009,37 +1018,38 @@ export default class StorytellerSuitePlugin extends Plugin {
 			}
 		});
 
+		// DEPRECATED: Map functionality has been deprecated
 		// Map management commands
-		this.addCommand({
-			id: 'create-new-map',
-			name: 'Create new map',
-			callback: async () => {
-				if (!this.ensureActiveStoryOrGuide()) return;
-				// Open map editor view for new map
-				await this.openMapEditor();
-			}
-		});
+		// this.addCommand({
+		// 	id: 'create-new-map',
+		// 	name: 'Create new map',
+		// 	callback: async () => {
+		// 		if (!this.ensureActiveStoryOrGuide()) return;
+		// 		// Open map editor view for new map
+		// 		await this.openMapEditor();
+		// 	}
+		// });
 
-		this.addCommand({
-			id: 'open-map-editor',
-			name: 'Open map editor panel',
-			callback: async () => {
-				if (!this.ensureActiveStoryOrGuide()) return;
-				// Open map editor panel (will create new map if none loaded)
-				await this.openMapEditor();
-			}
-		});
+		// this.addCommand({
+		// 	id: 'open-map-editor',
+		// 	name: 'Open map editor panel',
+		// 	callback: async () => {
+		// 		if (!this.ensureActiveStoryOrGuide()) return;
+		// 		// Open map editor panel (will create new map if none loaded)
+		// 		await this.openMapEditor();
+		// 	}
+		// });
 
-		this.addCommand({
-			id: 'view-maps',
-			name: 'View maps',
-			callback: async () => {
-				const maps = await this.listMaps();
-				import('./modals/MapListModal').then(({ MapListModal }) => {
-					new MapListModal(this.app, this, maps).open();
-				});
-			}
-		});
+		// this.addCommand({
+		// 	id: 'view-maps',
+		// 	name: 'View maps',
+		// 	callback: async () => {
+		// 		const maps = await this.listMaps();
+		// 		import('./modals/MapListModal').then(({ MapListModal }) => {
+		// 			new MapListModal(this.app, this, maps).open();
+		// 		});
+		// 	}
+		// });
 
 		// Gallery management command
 		this.addCommand({
@@ -1303,46 +1313,17 @@ export default class StorytellerSuitePlugin extends Plugin {
 		}
 	}
 
+	// DEPRECATED: Map functionality has been deprecated
 	/**
 	 * Open the map editor view
 	 * If a map editor already exists, focuses it and optionally loads a specific map
 	 * Otherwise, creates a new map editor view in a panel
 	 * @param mapId Optional map ID to load in the editor
+	 * @deprecated Map functionality has been deprecated
 	 */
 	async openMapEditor(mapId?: string): Promise<void> {
-		const { workspace } = this.app;
-
-		// Check if a map editor view already exists
-		const existingLeaves = workspace.getLeavesOfType(VIEW_TYPE_MAP_EDITOR);
-
-		if (existingLeaves.length > 0) {
-			// Focus existing view
-			const leaf = existingLeaves[0];
-			workspace.revealLeaf(leaf);
-
-			// Load the specified map if provided
-			if (mapId) {
-				const view = leaf.view as MapEditorView;
-				await view.loadMap(mapId);
-			}
-			return;
-		}
-
-		// Create new map editor view in the main editor area (center panel)
-		// This matches Javalent's behavior - opens like a normal note/editor
-		const leaf = workspace.getLeaf('tab');
-
-		if (leaf) {
-			await leaf.setViewState({
-				type: VIEW_TYPE_MAP_EDITOR,
-				active: true,
-				state: { mapId, isNew: !mapId }
-			});
-			workspace.revealLeaf(leaf);
-		} else {
-			console.error("Storyteller Suite: Could not create workspace leaf for map editor.");
-			new Notice("Error opening map editor: Could not create workspace leaf.");
-		}
+		console.warn('DEPRECATED: Map functionality has been deprecated');
+		new Notice('Map functionality has been deprecated');
 	}
 
 	/**
@@ -1849,203 +1830,90 @@ export default class StorytellerSuitePlugin extends Plugin {
 		}
 	}
 
+	// DEPRECATED: Map functionality has been deprecated
 	/**
 	 * Map Data Management
 	 * Methods for creating, reading, updating, and deleting map entities
+	 * @deprecated Map functionality has been deprecated
 	 */
 
 	/**
 	 * Ensure the map folder exists for the active story
+	 * @deprecated Map functionality has been deprecated
 	 */
 	async ensureMapFolder(): Promise<void> {
-		await this.ensureFolder(this.getEntityFolder('map'));
+		console.warn('DEPRECATED: Map functionality has been deprecated');
+		// Stub implementation for backward compatibility
 	}
 
 	/**
 	 * Build frontmatter for map entity
+	 * @deprecated Map functionality has been deprecated
 	 */
-	private buildFrontmatterForMap(map: Partial<StoryMap>, originalFrontmatter?: Record<string, unknown>): Record<string, unknown> {
-		return buildFrontmatter('map' as any, map, undefined, { customFieldsMode: this.settings.customFieldsMode, originalFrontmatter });
+	private buildFrontmatterForMap(map: Partial<any>, originalFrontmatter?: Record<string, unknown>): Record<string, unknown> {
+		console.warn('DEPRECATED: Map functionality has been deprecated');
+		return {};
 	}
 
 	/**
 	 * Save a map to the vault as a markdown file (in the active story)
 	 * @param map The map data to save
+	 * @deprecated Map functionality has been deprecated
 	 */
-	async saveMap(map: StoryMap): Promise<void> {
-		await this.ensureMapFolder();
-		const folderPath = this.getEntityFolder('map');
-		
-		// Create safe filename from map name
-		const fileName = `${map.name.replace(/[\\/:"*?<>|]+/g, '')}.md`;
-		const filePath = normalizePath(`${folderPath}/${fileName}`);
-
-		// Separate content fields from frontmatter fields
-		const { filePath: currentFilePath, description, ...rest } = map as any;
-		if ((rest as any).sections) delete (rest as any).sections;
-
-		// Handle renaming if filePath is present and name changed
-		let finalFilePath = filePath;
-		if (currentFilePath && currentFilePath !== filePath) {
-			const existingFile = this.app.vault.getAbstractFileByPath(currentFilePath);
-			if (existingFile && existingFile instanceof TFile) {
-				await this.app.fileManager.renameFile(existingFile, filePath);
-				finalFilePath = filePath;
-			}
-		}
-
-		// Check if file exists and read existing frontmatter and sections
-		const existingFile = this.app.vault.getAbstractFileByPath(finalFilePath);
-		let existingSections: Record<string, string> = {};
-		let originalFrontmatter: Record<string, unknown> | undefined;
-		if (existingFile && existingFile instanceof TFile) {
-			try {
-				const existingContent = await this.app.vault.cachedRead(existingFile);
-				existingSections = parseSectionsFromMarkdown(existingContent);
-				
-				const { parseFrontmatterFromContent } = await import('./yaml/EntitySections');
-				const directFrontmatter = parseFrontmatterFromContent(existingContent);
-				
-				const fileCache = this.app.metadataCache.getFileCache(existingFile);
-				const cachedFrontmatter = fileCache?.frontmatter as Record<string, unknown> | undefined;
-				
-				if (directFrontmatter || cachedFrontmatter) {
-					originalFrontmatter = { ...(cachedFrontmatter || {}), ...(directFrontmatter || {}) };
-				}
-			} catch (error) {
-				console.warn(`Error reading existing map file: ${error}`);
-			}
-		}
-
-		// Build frontmatter
-		const finalFrontmatter = this.buildFrontmatterForMap(rest, originalFrontmatter);
-
-		// Validate that we're not losing any fields before serialization
-		if (originalFrontmatter) {
-			const validation = validateFrontmatterPreservation(finalFrontmatter, originalFrontmatter);
-			if (validation.lostFields.length > 0) {
-				console.warn(`[saveMap] Warning: Fields will be lost on save:`, validation.lostFields);
-			}
-		}
-
-		// Use custom serializer that preserves empty string values
-		const frontmatterString = Object.keys(finalFrontmatter).length > 0
-			? stringifyYamlWithLogging(finalFrontmatter, originalFrontmatter, `Map: ${map.name}`)
-			: '';
-
-		// Build sections from templates + provided data
-		const providedSections = {
-			Description: description || ''
-		};
-		const templateSections = getTemplateSections('map', providedSections);
-		const allSections: Record<string, string> = (existingFile && existingFile instanceof TFile)
-			? { ...templateSections, ...existingSections }
-			: templateSections;
-
-		// Generate Markdown
-		let mdContent = `---\n${frontmatterString}---\n\n`;
-		mdContent += Object.entries(allSections)
-			.map(([key, content]) => `## ${key}\n${content || ''}`)
-			.join('\n\n');
-		if (!mdContent.endsWith('\n')) mdContent += '\n';
-
-		// Save or update the file
-		if (existingFile && existingFile instanceof TFile) {
-			await this.app.vault.modify(existingFile, mdContent);
-		} else {
-			await this.app.vault.create(finalFilePath, mdContent);
-		}
-		
-		// Update the filePath in the map object
-		map.filePath = finalFilePath;
-		this.app.metadataCache.trigger("dataview:refresh-views");
+	async saveMap(map: any): Promise<void> {
+		console.warn('DEPRECATED: Map functionality has been deprecated');
+		new Notice('Map functionality has been deprecated');
 	}
 
 	/**
 	 * Load all maps from the map folder
 	 * @returns Array of map objects sorted by name
+	 * @deprecated Map functionality has been deprecated
 	 */
-	async listMaps(): Promise<StoryMap[]> {
-		await this.ensureMapFolder();
-		const folderPath = this.getEntityFolder('map');
-		
-		const allFiles = this.app.vault.getMarkdownFiles();
-		const prefix = normalizePath(folderPath) + '/';
-		const files = allFiles.filter(file => 
-			file.path.startsWith(prefix) && 
-			file.extension === 'md'
-		);
-		
-		// Parse each map file
-		const maps: StoryMap[] = [];
-		for (const file of files) {
-			let mapData = await this.parseFile<StoryMap>(file, { name: '', scale: 'region', markers: [] }, 'map' as any);
-			if (mapData) mapData = this.normalizeEntityCustomFields('map' as any, mapData);
-			if (mapData) {
-				maps.push(mapData);
-			}
-		}
-		
-		// Return sorted by name
-		return maps.sort((a, b) => a.name.localeCompare(b.name));
+	async listMaps(): Promise<any[]> {
+		console.warn('DEPRECATED: Map functionality has been deprecated');
+		return [];
 	}
 
 	/**
 	 * Get a single map by ID
 	 * @param mapId The ID of the map to retrieve
 	 * @returns The map object or null if not found
+	 * @deprecated Map functionality has been deprecated
 	 */
-	async getMap(mapId: string): Promise<StoryMap | null> {
-		const maps = await this.listMaps();
-		return maps.find(m => m.id === mapId) || null;
+	async getMap(mapId: string): Promise<any | null> {
+		console.warn('DEPRECATED: Map functionality has been deprecated');
+		return null;
 	}
 
 	/**
 	 * Delete a map file by moving it to trash
 	 * @param filePath Path to the map file to delete
+	 * @deprecated Map functionality has been deprecated
 	 */
 	async deleteMap(filePath: string): Promise<void> {
-		const file = this.app.vault.getAbstractFileByPath(normalizePath(filePath));
-		if (file instanceof TFile) {
-			await this.app.vault.trash(file, true);
-			new Notice(`Map file "${file.basename}" moved to trash.`);
-			this.app.metadataCache.trigger("dataview:refresh-views");
-		} else {
-			new Notice(`Error: Could not find map file to delete at ${filePath}`);
-		}
+		console.warn('DEPRECATED: Map functionality has been deprecated');
+		new Notice('Map functionality has been deprecated');
 	}
 
 	/**
 	 * Link a location to a map
 	 * @param locationName Name of the location to link
 	 * @param mapId ID of the map to link to
+	 * @deprecated Map functionality has been deprecated
 	 */
 	async linkLocationToMap(locationName: string, mapId: string): Promise<void> {
-		const locations = await this.listLocations();
-		const location = locations.find(l => l.name === locationName);
-		
-		if (location) {
-			if (!location.relatedMapIds) location.relatedMapIds = [];
-			if (!location.relatedMapIds.includes(mapId)) {
-				location.relatedMapIds.push(mapId);
-				await this.saveLocation(location);
-			}
-		}
+		console.warn('DEPRECATED: Map functionality has been deprecated');
 	}
 
 	/**
 	 * Unlink a location from a map
 	 * @param locationName Name of the location to unlink
 	 * @param mapId ID of the map to unlink from
+	 * @deprecated Map functionality has been deprecated
 	 */
 	async unlinkLocationFromMap(locationName: string, mapId: string): Promise<void> {
-		const locations = await this.listLocations();
-		const location = locations.find(l => l.name === locationName);
-		
-		if (location && location.relatedMapIds) {
-			location.relatedMapIds = location.relatedMapIds.filter(id => id !== mapId);
-			await this.saveLocation(location);
-		}
+		console.warn('DEPRECATED: Map functionality has been deprecated');
 	}
 
 	/**

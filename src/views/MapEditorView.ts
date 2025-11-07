@@ -1,3 +1,8 @@
+/**
+ * DEPRECATED: Map functionality has been deprecated and will be removed in a future version.
+ * This file is kept for backward compatibility only.
+ */
+
 // MapEditorView - Full workspace view for map editing
 // Provides a dedicated panel for creating and editing maps with full screen space
 
@@ -286,7 +291,15 @@ export class MapEditorView extends ItemView {
         // Check if background image exists or if using tile server
         const hasBackground = this.map.backgroundImagePath || this.map.osmLayer || this.map.tileServer;
         
-        if (!hasBackground) {
+        console.log('MapEditorView: hasBackground check:', {
+            backgroundImagePath: !!this.map.backgroundImagePath,
+            osmLayer: !!this.map.osmLayer,
+            tileServer: !!this.map.tileServer,
+            hasBackground: hasBackground
+        });
+        
+        // Don't show "get started" if map is already initialized or has any content
+        if (!hasBackground && (!this.map.markers || this.map.markers.length === 0)) {
             // Show prominent "Get Started" section when no background
             const getStartedEl = this.contentContainer.createDiv('storyteller-map-editor-get-started');
             getStartedEl.style.textAlign = 'center';
