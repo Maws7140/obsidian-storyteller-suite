@@ -1,3 +1,8 @@
+/**
+ * DEPRECATED: Map functionality has been deprecated and will be removed in a future version.
+ * This file is kept for backward compatibility only.
+ */
+
 // MapUtils - Helper functions for map operations and conversions
 // Provides utilities for coordinate handling, marker management, and map hierarchy
 

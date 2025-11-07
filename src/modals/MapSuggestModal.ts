@@ -1,3 +1,8 @@
+/**
+ * DEPRECATED: Map functionality has been deprecated and will be removed in a future version.
+ * This file is kept for backward compatibility only.
+ */
+
 // MapSuggestModal - Fuzzy suggestion modal for selecting maps
 // Allows quick search and selection of maps from the story
 

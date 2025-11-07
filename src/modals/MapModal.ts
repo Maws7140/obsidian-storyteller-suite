@@ -1,3 +1,8 @@
+/**
+ * DEPRECATED: Map functionality has been deprecated and will be removed in a future version.
+ * This file is kept for backward compatibility only.
+ */
+
 // MapModal - Main modal for creating and editing maps
 // Provides tabbed interface with basic info, editor, background, markers, hierarchy, and metadata
 
@@ -504,13 +509,26 @@ export class MapModal extends Modal {
                 })
             )
             .addButton(button => button
-                .setButtonText('Clear')
+                .setButtonText('Clear Background')
                 .setClass('mod-warning')
-                .onClick(() => {
+                .onClick(async () => {
+                    if (!confirm('Remove background image from this map?')) return;
+                    
                     this.map.backgroundImagePath = undefined;
                     this.map.width = undefined;
                     this.map.height = undefined;
                     this.hasUnsavedChanges = true;
+                    
+                    // If on editor tab, reinitialize the map
+                    if (this.currentTab === 'editor' && this.mapEditor) {
+                        try {
+                            await this.mapEditor.initMap(this.map);
+                        } catch (error) {
+                            console.error('Error reinitializing map:', error);
+                        }
+                    }
+                    
+                    // Re-render the background tab to reflect changes
                     this.renderTabContent(container.parentElement!);
                     new Notice('Background cleared');
                 })

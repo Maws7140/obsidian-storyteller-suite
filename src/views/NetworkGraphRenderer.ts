@@ -680,7 +680,7 @@ export class NetworkGraphRenderer {
             }
             this.infoPanelTimeout = setTimeout(() => {
                 this.updateInfoPanel(node);
-            }, 150); // 150ms delay - faster than tooltip since it's less intrusive
+            }, 50); // 50ms delay - responsive hover feedback
         });
 
         this.cy.on('mouseout', 'node', (evt) => {
