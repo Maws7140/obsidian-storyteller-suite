@@ -38,6 +38,40 @@ export const ENTITY_TEMPLATES: Record<EntityType, Record<string, string>> = {
     Description: '',
     // Maps store most data in frontmatter (markers, layers, etc.)
     // Description section is for overview/notes
+  },
+  culture: {
+    Description: '',
+    Values: '',
+    Religion: '',
+    'Social Structure': '',
+    History: '',
+    'Naming Conventions': '',
+    Customs: '',
+  },
+  faction: {
+    Description: '',
+    History: '',
+    Structure: '',
+    Goals: '',
+    Resources: '',
+  },
+  economy: {
+    Description: '',
+    Industries: '',
+    Taxation: '',
+  },
+  magicSystem: {
+    Description: '',
+    Rules: '',
+    Source: '',
+    Costs: '',
+    Limitations: '',
+    Training: '',
+    History: '',
+  },
+  calendar: {
+    Description: '',
+    History: '',
   }
 };
 
