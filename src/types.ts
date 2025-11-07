@@ -311,13 +311,16 @@ export interface Location {
     /** Typed connections to other entities for network graph */
     connections?: TypedRelationship[];
     
-    /** Primary map ID where this location is featured */
+    /** Primary map ID where this location is featured
+     * @deprecated Map functionality has been deprecated */
     mapId?: string;
     
-    /** Additional maps where this location appears */
+    /** Additional maps where this location appears
+     * @deprecated Map functionality has been deprecated */
     relatedMapIds?: string[];
     
-    /** Marker IDs representing this location on various maps */
+    /** Marker IDs representing this location on various maps
+     * @deprecated Map functionality has been deprecated */
     markerIds?: string[];
 }
 
@@ -377,10 +380,12 @@ export interface Event {
     /** Completion progress (0-100) for tracking event status */
     progress?: number;
 
-    /** ID of the map where this event is primarily displayed */
+    /** ID of the map where this event is primarily displayed
+     * @deprecated Map functionality has been deprecated */
     mapId?: string;
 
-    /** IDs of markers representing this event on various maps */
+    /** IDs of markers representing this event on various maps
+     * @deprecated Map functionality has been deprecated */
     markerIds?: string[];
 }
 
@@ -468,6 +473,7 @@ export interface Story {
 /**
  * Map marker representing a location or point of interest on a map
  * Used for pinning locations, events, or custom points on interactive maps
+ * @deprecated Map functionality has been deprecated and will be removed in a future version
  */
 export interface MapMarker {
     /** Unique identifier for this marker */
@@ -519,6 +525,7 @@ export interface MapMarker {
 /**
  * Map layer containing a collection of related map objects
  * Enables organization and selective visibility of map elements
+ * @deprecated Map functionality has been deprecated and will be removed in a future version
  */
 export interface MapLayer {
     /** Unique identifier for this layer */
@@ -547,6 +554,7 @@ export interface MapLayer {
  * Map entity representing an interactive geographical or spatial map
  * Maps can display locations, support custom drawings, and organize hierarchically
  * Stored as markdown files with frontmatter and JSON data
+ * @deprecated Map functionality has been deprecated and will be removed in a future version
  */
 export interface Map {
     /** Unique identifier for the map */
@@ -613,6 +621,9 @@ export interface Map {
     /** Tile server subdomains (comma-separated, e.g., "a,b,c") */
     tileSubdomains?: string;
     
+    /** Attribution text for the tile server (supports HTML) */
+    tileAttribution?: string;
+    
     /** File paths to scan for frontmatter markers */
     markerFiles?: string[];
     
@@ -647,6 +658,7 @@ export interface Map {
 /**
  * Map Template - Pre-configured map layouts and styles
  * Templates provide starting points for creating new maps with common configurations
+ * @deprecated Map functionality has been deprecated and will be removed in a future version
  */
 export interface MapTemplate {
     /** Unique identifier for the template */
