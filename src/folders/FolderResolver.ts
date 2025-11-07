@@ -1,7 +1,7 @@
 import { normalizePath, TFolder } from 'obsidian';
 import StorytellerSuitePlugin from '../main';
 
-export type EntityFolderType = 'character' | 'location' | 'event' | 'item' | 'reference' | 'chapter' | 'scene' | 'map';
+export type EntityFolderType = 'character' | 'location' | 'event' | 'item' | 'reference' | 'chapter' | 'scene' | 'map' | 'culture' | 'faction' | 'economy' | 'magicSystem' | 'calendar';
 
 export interface FolderResolverOptions {
   enableCustomEntityFolders: boolean | undefined;
@@ -14,6 +14,11 @@ export interface FolderResolverOptions {
   chapterFolderPath?: string | undefined;
   sceneFolderPath?: string | undefined;
   mapFolderPath?: string | undefined;
+  cultureFolderPath?: string | undefined;
+  factionFolderPath?: string | undefined;
+  economyFolderPath?: string | undefined;
+  magicSystemFolderPath?: string | undefined;
+  calendarFolderPath?: string | undefined;
   enableOneStoryMode?: boolean | undefined;
   oneStoryBaseFolder?: string | undefined;
 }
@@ -73,40 +78,55 @@ export class FolderResolver {
         if (root && fallbackLeaf) return normalizePath(`${root}/${fallbackLeaf}`);
         return undefined;
       };
-      if (type === 'character') { const p = prefer(o.characterFolderPath, 'Characters'); if (p) return p; }
-      if (type === 'location')  { const p = prefer(o.locationFolderPath,  'Locations');  if (p) return p; }
-      if (type === 'event')     { const p = prefer(o.eventFolderPath,     'Events');     if (p) return p; }
-      if (type === 'item')      { const p = prefer(o.itemFolderPath,      'Items');      if (p) return p; }
-      if (type === 'reference') { const p = prefer(o.referenceFolderPath, 'References'); if (p) return p; }
-      if (type === 'chapter')   { const p = prefer(o.chapterFolderPath,   'Chapters');   if (p) return p; }
-      if (type === 'scene')     { const p = prefer(o.sceneFolderPath,     'Scenes');     if (p) return p; }
-      if (type === 'map')       { const p = prefer(o.mapFolderPath,       'Maps');       if (p) return p; }
+      if (type === 'character')   { const p = prefer(o.characterFolderPath,   'Characters');   if (p) return p; }
+      if (type === 'location')    { const p = prefer(o.locationFolderPath,    'Locations');    if (p) return p; }
+      if (type === 'event')       { const p = prefer(o.eventFolderPath,       'Events');       if (p) return p; }
+      if (type === 'item')        { const p = prefer(o.itemFolderPath,        'Items');        if (p) return p; }
+      if (type === 'reference')   { const p = prefer(o.referenceFolderPath,   'References');   if (p) return p; }
+      if (type === 'chapter')     { const p = prefer(o.chapterFolderPath,     'Chapters');     if (p) return p; }
+      if (type === 'scene')       { const p = prefer(o.sceneFolderPath,       'Scenes');       if (p) return p; }
+      if (type === 'map')         { const p = prefer(o.mapFolderPath,         'Maps');         if (p) return p; }
+      if (type === 'culture')     { const p = prefer(o.cultureFolderPath,     'Cultures');     if (p) return p; }
+      if (type === 'faction')     { const p = prefer(o.factionFolderPath,     'Factions');     if (p) return p; }
+      if (type === 'economy')     { const p = prefer(o.economyFolderPath,     'Economies');    if (p) return p; }
+      if (type === 'magicSystem') { const p = prefer(o.magicSystemFolderPath, 'MagicSystems'); if (p) return p; }
+      if (type === 'calendar')    { const p = prefer(o.calendarFolderPath,    'Calendars');    if (p) return p; }
     }
 
     if (o.enableOneStoryMode) {
       const baseSanitized = this.sanitizeBaseFolderPath(o.oneStoryBaseFolder || 'StorytellerSuite');
       const prefix = baseSanitized ? `${baseSanitized}/` : '';
-      if (type === 'character') return `${prefix}Characters`;
-      if (type === 'location')  return `${prefix}Locations`;
-      if (type === 'event')     return `${prefix}Events`;
-      if (type === 'item')      return `${prefix}Items`;
-      if (type === 'reference') return `${prefix}References`;
-      if (type === 'chapter')   return `${prefix}Chapters`;
-      if (type === 'scene')     return `${prefix}Scenes`;
-      if (type === 'map')       return `${prefix}Maps`;
+      if (type === 'character')   return `${prefix}Characters`;
+      if (type === 'location')    return `${prefix}Locations`;
+      if (type === 'event')       return `${prefix}Events`;
+      if (type === 'item')        return `${prefix}Items`;
+      if (type === 'reference')   return `${prefix}References`;
+      if (type === 'chapter')     return `${prefix}Chapters`;
+      if (type === 'scene')       return `${prefix}Scenes`;
+      if (type === 'map')         return `${prefix}Maps`;
+      if (type === 'culture')     return `${prefix}Cultures`;
+      if (type === 'faction')     return `${prefix}Factions`;
+      if (type === 'economy')     return `${prefix}Economies`;
+      if (type === 'magicSystem') return `${prefix}MagicSystems`;
+      if (type === 'calendar')    return `${prefix}Calendars`;
     }
 
     const story = this.getActiveStory();
     if (!story) throw new Error('No active story selected.');
     const base = `StorytellerSuite/Stories/${story.name}`;
-    if (type === 'character') return `${base}/Characters`;
-    if (type === 'location')  return `${base}/Locations`;
-    if (type === 'event')     return `${base}/Events`;
-    if (type === 'item')      return `${base}/Items`;
-    if (type === 'reference') return `${base}/References`;
-    if (type === 'chapter')   return `${base}/Chapters`;
-    if (type === 'scene')     return `${base}/Scenes`;
-    if (type === 'map')       return `${base}/Maps`;
+    if (type === 'character')   return `${base}/Characters`;
+    if (type === 'location')    return `${base}/Locations`;
+    if (type === 'event')       return `${base}/Events`;
+    if (type === 'item')        return `${base}/Items`;
+    if (type === 'reference')   return `${base}/References`;
+    if (type === 'chapter')     return `${base}/Chapters`;
+    if (type === 'scene')       return `${base}/Scenes`;
+    if (type === 'map')         return `${base}/Maps`;
+    if (type === 'culture')     return `${base}/Cultures`;
+    if (type === 'faction')     return `${base}/Factions`;
+    if (type === 'economy')     return `${base}/Economies`;
+    if (type === 'magicSystem') return `${base}/MagicSystems`;
+    if (type === 'calendar')    return `${base}/Calendars`;
     throw new Error('Unknown entity type');
   }
 
@@ -123,7 +143,10 @@ export class FolderResolver {
 
   /** Resolve all entity folders at once. */
   resolveAll(): Record<EntityFolderType, { path?: string; error?: string }> {
-    const types: EntityFolderType[] = ['character','location','event','item','reference','chapter','scene','map'];
+    const types: EntityFolderType[] = [
+      'character', 'location', 'event', 'item', 'reference', 'chapter', 'scene', 'map',
+      'culture', 'faction', 'economy', 'magicSystem', 'calendar'
+    ];
     const out = {} as Record<EntityFolderType, { path?: string; error?: string }>;
     for (const t of types) out[t] = this.tryGetEntityFolder(t);
     return out;

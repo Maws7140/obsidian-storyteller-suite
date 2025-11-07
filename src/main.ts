@@ -23,7 +23,13 @@ import { FolderResolver, FolderResolverOptions } from './folders/FolderResolver'
 import { PromptModal } from './modals/ui/PromptModal';
 import { ConfirmModal } from './modals/ui/ConfirmModal';
 import { CharacterModal } from './modals/CharacterModal';
-import { Character, Location, Event, GalleryImage, GalleryData, Story, Group, PlotItem, Reference, Chapter, Scene /* DEPRECATED: Map as StoryMap */ } from './types';
+import {
+    Character, Location, Event, GalleryImage, GalleryData, Story, Group, PlotItem, Reference, Chapter, Scene,
+    Culture, Faction, Economy, MagicSystem, Calendar,
+    TimelineFork, CausalityLink, TimelineConflict,
+    PacingAnalysis, WritingSession, StoryAnalytics, LocationSensoryProfile
+    /* DEPRECATED: Map as StoryMap */
+} from './types';
 import { CharacterListModal } from './modals/CharacterListModal';
 import { LocationModal } from './modals/LocationModal';
 import { LocationListModal } from './modals/LocationListModal';
@@ -113,6 +119,32 @@ import { getTemplateSections } from './utils/EntityTemplates';
     /** Map settings */
     enableFrontmatterMarkers?: boolean;
     enableDataViewMarkers?: boolean;
+
+    /** Timeline & Causality */
+    timelineForks?: TimelineFork[];
+    causalityLinks?: CausalityLink[];
+    timelineConflicts?: TimelineConflict[];
+    enableAdvancedTimeline?: boolean;
+    autoDetectConflicts?: boolean;
+
+    /** Analytics */
+    analyticsEnabled?: boolean;
+    analyticsData?: StoryAnalytics;
+    writingSessions?: WritingSession[];
+    pacingAnalysis?: PacingAnalysis;
+    trackWritingSessions?: boolean;
+
+    /** World-Building */
+    enableWorldBuilding?: boolean;
+    cultureFolderPath?: string;
+    economyFolderPath?: string;
+    factionFolderPath?: string;
+    magicSystemFolderPath?: string;
+    calendarFolderPath?: string;
+    activeCalendarId?: string;
+
+    /** Sensory Profiles */
+    enableSensoryProfiles?: boolean;
 }
 
 /**
@@ -152,7 +184,17 @@ import { getTemplateSections } from './utils/EntityTemplates';
     enableFrontmatterMarkers: false,
     enableDataViewMarkers: false,
     customFieldsMode: 'flatten',
-    relationshipsMigrated: false
+    relationshipsMigrated: false,
+    timelineForks: [],
+    causalityLinks: [],
+    timelineConflicts: [],
+    enableAdvancedTimeline: false,
+    autoDetectConflicts: true,
+    analyticsEnabled: false,
+    writingSessions: [],
+    trackWritingSessions: false,
+    enableWorldBuilding: true,
+    enableSensoryProfiles: true
 }
 
 /**
@@ -315,7 +357,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 	/**
 	 * Helper: Get the folder path for a given entity type in the active story
 	 */
-    getEntityFolder(type: 'character' | 'location' | 'event' | 'item' | 'reference' | 'chapter' | 'scene' | 'map'): string {
+    getEntityFolder(type: 'character' | 'location' | 'event' | 'item' | 'reference' | 'chapter' | 'scene' | 'map' | 'culture' | 'faction' | 'economy' | 'magicSystem' | 'calendar'): string {
         const resolver = this.buildResolver();
         return resolver.getEntityFolder(type);
     }
@@ -1245,6 +1287,327 @@ export default class StorytellerSuitePlugin extends Plugin {
 				await this.updateStoryBoard();
 			}
 		});
+
+		// ============================================================
+		// World-Building Entity Commands
+		// ============================================================
+
+		// Create Culture
+		this.addCommand({
+			id: 'create-new-culture',
+			name: 'Create new culture',
+			callback: () => {
+				if (!this.ensureActiveStoryOrGuide()) return;
+				import('./modals/CultureModal').then(({ CultureModal }) => {
+					new CultureModal(this.app, this, null, async (culture) => {
+						await this.saveCulture(culture);
+						new Notice(`Culture "${culture.name}" created.`);
+					}).open();
+				});
+			}
+		});
+
+		// View Cultures
+		this.addCommand({
+			id: 'view-cultures',
+			name: 'View cultures',
+			callback: async () => {
+				const cultures = await this.listCultures();
+				new Notice(`${cultures.length} culture(s) found`);
+				// TODO: Create CultureListModal for better visualization
+			}
+		});
+
+		// Create Faction
+		this.addCommand({
+			id: 'create-new-faction',
+			name: 'Create new faction',
+			callback: () => {
+				if (!this.ensureActiveStoryOrGuide()) return;
+				import('./modals/FactionModal').then(({ FactionModal }) => {
+					new FactionModal(this.app, this, null, async (faction) => {
+						await this.saveFaction(faction);
+						new Notice(`Faction "${faction.name}" created.`);
+					}).open();
+				});
+			}
+		});
+
+		// View Factions
+		this.addCommand({
+			id: 'view-factions',
+			name: 'View factions',
+			callback: async () => {
+				const factions = await this.listFactions();
+				new Notice(`${factions.length} faction(s) found`);
+				// TODO: Create FactionListModal for better visualization
+			}
+		});
+
+		// Create Economy
+		this.addCommand({
+			id: 'create-new-economy',
+			name: 'Create new economy',
+			callback: () => {
+				if (!this.ensureActiveStoryOrGuide()) return;
+				import('./modals/EconomyModal').then(({ EconomyModal }) => {
+					new EconomyModal(this.app, this, null, async (economy) => {
+						await this.saveEconomy(economy);
+						new Notice(`Economy "${economy.name}" created.`);
+					}).open();
+				});
+			}
+		});
+
+		// View Economies
+		this.addCommand({
+			id: 'view-economies',
+			name: 'View economies',
+			callback: async () => {
+				const economies = await this.listEconomies();
+				new Notice(`${economies.length} economy/economies found`);
+				// TODO: Create EconomyListModal for better visualization
+			}
+		});
+
+		// Create Magic System
+		this.addCommand({
+			id: 'create-new-magic-system',
+			name: 'Create new magic system',
+			callback: () => {
+				if (!this.ensureActiveStoryOrGuide()) return;
+				import('./modals/MagicSystemModal').then(({ MagicSystemModal }) => {
+					new MagicSystemModal(this.app, this, null, async (magicSystem) => {
+						await this.saveMagicSystem(magicSystem);
+						new Notice(`Magic System "${magicSystem.name}" created.`);
+					}).open();
+				});
+			}
+		});
+
+		// View Magic Systems
+		this.addCommand({
+			id: 'view-magic-systems',
+			name: 'View magic systems',
+			callback: async () => {
+				const magicSystems = await this.listMagicSystems();
+				new Notice(`${magicSystems.length} magic system(s) found`);
+				// TODO: Create MagicSystemListModal for better visualization
+			}
+		});
+
+		// Create Calendar
+		this.addCommand({
+			id: 'create-new-calendar',
+			name: 'Create new calendar',
+			callback: () => {
+				if (!this.ensureActiveStoryOrGuide()) return;
+				import('./modals/CalendarModal').then(({ CalendarModal }) => {
+					new CalendarModal(this.app, this, null, async (calendar) => {
+						await this.saveCalendar(calendar);
+						new Notice(`Calendar "${calendar.name}" created.`);
+					}).open();
+				});
+			}
+		});
+
+		// View Calendars
+		this.addCommand({
+			id: 'view-calendars',
+			name: 'View calendars',
+			callback: async () => {
+				const calendars = await this.listCalendars();
+				new Notice(`${calendars.length} calendar(s) found`);
+				// TODO: Create CalendarListModal for better visualization
+			}
+		});
+
+		// ============================================================
+		// Timeline Fork Commands
+		// ============================================================
+
+		// Create timeline fork
+		this.addCommand({
+			id: 'create-timeline-fork',
+			name: 'Create timeline fork',
+			callback: () => {
+				if (!this.ensureActiveStoryOrGuide()) return;
+				import('./modals/TimelineForkModal').then(({ TimelineForkModal }) => {
+					new TimelineForkModal(
+						this.app,
+						this,
+						null,
+						async (fork) => {
+							this.createTimelineFork(
+								fork.name,
+								fork.divergenceEvent,
+								fork.divergenceDate,
+								fork.description || ''
+							);
+						}
+					).open();
+				});
+			}
+		});
+
+		// View timeline forks
+		this.addCommand({
+			id: 'view-timeline-forks',
+			name: 'View timeline forks',
+			callback: () => {
+				const forks = this.getTimelineForks();
+				if (forks.length === 0) {
+					new Notice('No timeline forks yet. Create your first fork!');
+					return;
+				}
+				new Notice(`${forks.length} timeline fork(s) found`);
+				// TODO: Create TimelineForkListModal for better visualization
+			}
+		});
+
+		// ============================================================
+		// Causality Link Commands
+		// ============================================================
+
+		// Create causality link
+		this.addCommand({
+			id: 'create-causality-link',
+			name: 'Add causality link',
+			callback: () => {
+				if (!this.ensureActiveStoryOrGuide()) return;
+				import('./modals/CausalityLinkModal').then(({ CausalityLinkModal }) => {
+					new CausalityLinkModal(
+						this.app,
+						this,
+						null,
+						async (link) => {
+							this.createCausalityLink(
+								link.causeEvent,
+								link.effectEvent,
+								link.linkType as 'direct' | 'indirect' | 'conditional' | 'catalyst',
+								link.description || '',
+								link.strength
+							);
+						}
+					).open();
+				});
+			}
+		});
+
+		// View causality links
+		this.addCommand({
+			id: 'view-causality-links',
+			name: 'View causality links',
+			callback: () => {
+				const links = this.getCausalityLinks();
+				if (links.length === 0) {
+					new Notice('No causality links yet. Create your first link!');
+					return;
+				}
+				new Notice(`${links.length} causality link(s) found`);
+				// TODO: Create CausalityLinkListModal for better visualization
+			}
+		});
+
+		// ============================================================
+		// Conflict Detection Commands
+		// ============================================================
+
+		// Detect timeline conflicts
+		this.addCommand({
+			id: 'detect-timeline-conflicts',
+			name: 'Detect timeline conflicts',
+			callback: async () => {
+				new Notice('Scanning timeline for conflicts...');
+
+				const events = await this.listEvents();
+				const characters = await this.listCharacters();
+				const locations = await this.listLocations();
+				const causalityLinks = this.getCausalityLinks();
+
+				const { ConflictDetector } = await import('./utils/ConflictDetection');
+				const conflicts = ConflictDetector.detectConflicts(
+					events,
+					characters,
+					locations,
+					causalityLinks
+				);
+
+				this.settings.timelineConflicts = conflicts;
+				await this.saveSettings();
+
+				new Notice(`Found ${conflicts.length} timeline conflict(s)`);
+
+				// Open conflicts modal
+				const { ConflictListModal } = await import('./modals/ConflictListModal');
+				new ConflictListModal(
+					this.app,
+					this,
+					conflicts,
+					async () => {
+						// Re-scan callback - re-run conflict detection
+						new Notice('Re-scanning timeline for conflicts...');
+						const events = await this.listEvents();
+						const characters = await this.listCharacters();
+						const locations = await this.listLocations();
+						const causalityLinks = this.getCausalityLinks();
+
+						const { ConflictDetector } = await import('./utils/ConflictDetection');
+						const newConflicts = ConflictDetector.detectConflicts(
+							events,
+							characters,
+							locations,
+							causalityLinks
+						);
+
+						this.settings.timelineConflicts = newConflicts;
+						await this.saveSettings();
+						new Notice(`Found ${newConflicts.length} timeline conflict(s)`);
+					}
+				).open();
+			}
+		});
+
+		// View existing conflicts
+		this.addCommand({
+			id: 'view-timeline-conflicts',
+			name: 'View timeline conflicts',
+			callback: async () => {
+				const conflicts = this.settings.timelineConflicts || [];
+
+				if (conflicts.length === 0) {
+					new Notice('No conflicts detected. Run "Detect timeline conflicts" to scan.');
+					return;
+				}
+
+				const { ConflictListModal } = await import('./modals/ConflictListModal');
+				new ConflictListModal(
+					this.app,
+					this,
+					conflicts,
+					async () => {
+						// Re-scan callback - re-run conflict detection
+						new Notice('Re-scanning timeline for conflicts...');
+						const events = await this.listEvents();
+						const characters = await this.listCharacters();
+						const locations = await this.listLocations();
+						const causalityLinks = this.getCausalityLinks();
+
+						const { ConflictDetector } = await import('./utils/ConflictDetection');
+						const newConflicts = ConflictDetector.detectConflicts(
+							events,
+							characters,
+							locations,
+							causalityLinks
+						);
+
+						this.settings.timelineConflicts = newConflicts;
+						await this.saveSettings();
+						new Notice(`Found ${newConflicts.length} timeline conflict(s)`);
+					}
+				).open();
+			}
+		});
 	}
 
 	/**
@@ -1364,7 +1727,7 @@ export default class StorytellerSuitePlugin extends Plugin {
     async parseFile<T>(
         file: TFile,
         typeDefaults: Partial<T>,
-        entityType: 'character' | 'location' | 'event' | 'item' | 'reference' | 'chapter' | 'scene'
+        entityType: 'character' | 'location' | 'event' | 'item' | 'reference' | 'chapter' | 'scene' | 'culture' | 'faction' | 'economy' | 'magicSystem' | 'calendar'
     ): Promise<T | null> {
 		try {
 			// Read file content for markdown sections
@@ -1516,6 +1879,36 @@ export default class StorytellerSuitePlugin extends Plugin {
         const preserve = new Set<string>(Object.keys(src || {}));
         const mode = this.settings.customFieldsMode ?? 'flatten';
         return buildFrontmatter('item', src, preserve, { customFieldsMode: mode, originalFrontmatter }) as Record<string, any>;
+    }
+
+    private buildFrontmatterForCulture(src: any, originalFrontmatter?: Record<string, unknown>): Record<string, any> {
+        const preserve = new Set<string>(Object.keys(src || {}));
+        const mode = this.settings.customFieldsMode ?? 'flatten';
+        return buildFrontmatter('culture', src, preserve, { customFieldsMode: mode, originalFrontmatter }) as Record<string, any>;
+    }
+
+    private buildFrontmatterForFaction(src: any, originalFrontmatter?: Record<string, unknown>): Record<string, any> {
+        const preserve = new Set<string>(Object.keys(src || {}));
+        const mode = this.settings.customFieldsMode ?? 'flatten';
+        return buildFrontmatter('faction', src, preserve, { customFieldsMode: mode, originalFrontmatter }) as Record<string, any>;
+    }
+
+    private buildFrontmatterForEconomy(src: any, originalFrontmatter?: Record<string, unknown>): Record<string, any> {
+        const preserve = new Set<string>(Object.keys(src || {}));
+        const mode = this.settings.customFieldsMode ?? 'flatten';
+        return buildFrontmatter('economy', src, preserve, { customFieldsMode: mode, originalFrontmatter }) as Record<string, any>;
+    }
+
+    private buildFrontmatterForMagicSystem(src: any, originalFrontmatter?: Record<string, unknown>): Record<string, any> {
+        const preserve = new Set<string>(Object.keys(src || {}));
+        const mode = this.settings.customFieldsMode ?? 'flatten';
+        return buildFrontmatter('magicSystem', src, preserve, { customFieldsMode: mode, originalFrontmatter }) as Record<string, any>;
+    }
+
+    private buildFrontmatterForCalendar(src: any, originalFrontmatter?: Record<string, unknown>): Record<string, any> {
+        const preserve = new Set<string>(Object.keys(src || {}));
+        const mode = this.settings.customFieldsMode ?? 'flatten';
+        return buildFrontmatter('calendar', src, preserve, { customFieldsMode: mode, originalFrontmatter }) as Record<string, any>;
     }
 
 	/**
@@ -2465,6 +2858,26 @@ export default class StorytellerSuitePlugin extends Plugin {
         await this.ensureFolder(this.getEntityFolder('scene'));
     }
 
+    async ensureCultureFolder(): Promise<void> {
+        await this.ensureFolder(this.getEntityFolder('culture'));
+    }
+
+    async ensureFactionFolder(): Promise<void> {
+        await this.ensureFolder(this.getEntityFolder('faction'));
+    }
+
+    async ensureEconomyFolder(): Promise<void> {
+        await this.ensureFolder(this.getEntityFolder('economy'));
+    }
+
+    async ensureMagicSystemFolder(): Promise<void> {
+        await this.ensureFolder(this.getEntityFolder('magicSystem'));
+    }
+
+    async ensureCalendarFolder(): Promise<void> {
+        await this.ensureFolder(this.getEntityFolder('calendar'));
+    }
+
     async saveScene(scene: Scene): Promise<void> {
         // Normalize chapterName for display if id is present
         if (scene.chapterId && !scene.chapterName) {
@@ -2588,6 +3001,791 @@ export default class StorytellerSuitePlugin extends Plugin {
             new Notice(`Error: Could not find scene file to delete at ${filePath}`);
         }
     }
+
+    /**
+     * Culture Data Management
+     * Methods for creating, reading, updating, and deleting culture entities
+     */
+
+    async saveCulture(culture: Culture): Promise<void> {
+        await this.ensureCultureFolder();
+        const folderPath = this.getEntityFolder('culture');
+
+        const fileName = `${culture.name.replace(/[\\/:"*?<>|]+/g, '')}.md`;
+        const filePath = normalizePath(`${folderPath}/${fileName}`);
+
+        const { filePath: currentFilePath, description, values, religion, socialStructure, history, namingConventions, customs, ...rest } = culture as any;
+        if ((rest as any).sections) delete (rest as any).sections;
+
+        let finalFilePath = filePath;
+        if (currentFilePath && currentFilePath !== filePath) {
+            const existingFile = this.app.vault.getAbstractFileByPath(currentFilePath);
+            if (existingFile && existingFile instanceof TFile) {
+                await this.app.fileManager.renameFile(existingFile, filePath);
+                finalFilePath = filePath;
+            }
+        }
+
+        const existingFile = this.app.vault.getAbstractFileByPath(finalFilePath);
+        let existingSections: Record<string, string> = {};
+        let originalFrontmatter: Record<string, unknown> | undefined;
+        if (existingFile && existingFile instanceof TFile) {
+            try {
+                const existingContent = await this.app.vault.cachedRead(existingFile);
+                existingSections = parseSectionsFromMarkdown(existingContent);
+
+                const { parseFrontmatterFromContent } = await import('./yaml/EntitySections');
+                const directFrontmatter = parseFrontmatterFromContent(existingContent);
+                const fileCache = this.app.metadataCache.getFileCache(existingFile);
+                const cachedFrontmatter = fileCache?.frontmatter as Record<string, unknown> | undefined;
+
+                if (directFrontmatter || cachedFrontmatter) {
+                    originalFrontmatter = { ...(cachedFrontmatter || {}), ...(directFrontmatter || {}) };
+                }
+            } catch (error) {
+                console.warn(`Error reading existing culture file: ${error}`);
+            }
+        }
+
+        const finalFrontmatter = this.buildFrontmatterForCulture(rest, originalFrontmatter);
+
+        if (originalFrontmatter) {
+            const validation = validateFrontmatterPreservation(finalFrontmatter, originalFrontmatter);
+            if (validation.lostFields.length > 0) {
+                console.warn(`[saveCulture] Warning: Fields will be lost on save:`, validation.lostFields);
+            }
+        }
+
+        const frontmatterString = Object.keys(finalFrontmatter).length > 0
+            ? stringifyYamlWithLogging(finalFrontmatter, originalFrontmatter, `Culture: ${culture.name}`)
+            : '';
+
+        const providedSections = {
+            Description: description !== undefined ? description : '',
+            Values: values !== undefined ? values : '',
+            Religion: religion !== undefined ? religion : '',
+            'Social Structure': socialStructure !== undefined ? socialStructure : '',
+            History: history !== undefined ? history : '',
+            'Naming Conventions': namingConventions !== undefined ? namingConventions : '',
+            Customs: customs !== undefined ? customs : ''
+        };
+        const templateSections = getTemplateSections('culture', providedSections);
+
+        let allSections: Record<string, string>;
+        if (existingFile && existingFile instanceof TFile) {
+            allSections = { ...existingSections, ...templateSections };
+            Object.entries(providedSections).forEach(([key, value]) => {
+                allSections[key] = value;
+            });
+        } else {
+            allSections = templateSections;
+        }
+
+        let mdContent = `---\n${frontmatterString}---\n\n`;
+        mdContent += Object.entries(allSections)
+            .map(([key, content]) => `## ${key}\n${content || ''}`)
+            .join('\n\n');
+        if (!mdContent.endsWith('\n')) mdContent += '\n';
+
+        if (existingFile && existingFile instanceof TFile) {
+            await this.app.vault.modify(existingFile, mdContent);
+        } else {
+            await this.app.vault.create(finalFilePath, mdContent);
+            new Notice('Note created with standard sections for easy editing.');
+        }
+
+        culture.filePath = finalFilePath;
+        this.app.metadataCache.trigger("dataview:refresh-views");
+    }
+
+    async listCultures(): Promise<Culture[]> {
+        await this.ensureCultureFolder();
+        const folderPath = this.getEntityFolder('culture');
+        const allFiles = this.app.vault.getMarkdownFiles();
+        const files = allFiles.filter(f => f.path.startsWith(folderPath + '/') && f.extension === 'md');
+        const cultures: Culture[] = [];
+        for (const file of files) {
+            const data = await this.parseFile<Culture>(file, { name: '' }, 'culture');
+            if (data) cultures.push(data);
+        }
+        return cultures.sort((a, b) => a.name.localeCompare(b.name));
+    }
+
+    async deleteCulture(filePath: string): Promise<void> {
+        const file = this.app.vault.getAbstractFileByPath(normalizePath(filePath));
+        if (file instanceof TFile) {
+            await this.app.vault.trash(file, true);
+            new Notice(`Culture file "${file.basename}" moved to trash.`);
+            this.app.metadataCache.trigger('dataview:refresh-views');
+        } else {
+            new Notice(`Error: Could not find culture file to delete at ${filePath}`);
+        }
+    }
+    /**
+     * Faction Data Management
+     */
+
+    async saveFaction(faction: Faction): Promise<void> {
+        await this.ensureFactionFolder();
+        const folderPath = this.getEntityFolder('faction');
+
+        const fileName = `${faction.name.replace(/[\\/:"*?<>|]+/g, '')}.md`;
+        const filePath = normalizePath(`${folderPath}/${fileName}`);
+
+        const { filePath: currentFilePath, description, history, structure, goals, resources, ...rest } = faction as any;
+        if ((rest as any).sections) delete (rest as any).sections;
+
+        let finalFilePath = filePath;
+        if (currentFilePath && currentFilePath !== filePath) {
+            const existingFile = this.app.vault.getAbstractFileByPath(currentFilePath);
+            if (existingFile && existingFile instanceof TFile) {
+                await this.app.fileManager.renameFile(existingFile, filePath);
+                finalFilePath = filePath;
+            }
+        }
+
+        const existingFile = this.app.vault.getAbstractFileByPath(finalFilePath);
+        let existingSections: Record<string, string> = {};
+        let originalFrontmatter: Record<string, unknown> | undefined;
+        if (existingFile && existingFile instanceof TFile) {
+            try {
+                const existingContent = await this.app.vault.cachedRead(existingFile);
+                existingSections = parseSectionsFromMarkdown(existingContent);
+
+                const { parseFrontmatterFromContent } = await import('./yaml/EntitySections');
+                const directFrontmatter = parseFrontmatterFromContent(existingContent);
+                const fileCache = this.app.metadataCache.getFileCache(existingFile);
+                const cachedFrontmatter = fileCache?.frontmatter as Record<string, unknown> | undefined;
+
+                if (directFrontmatter || cachedFrontmatter) {
+                    originalFrontmatter = { ...(cachedFrontmatter || {}), ...(directFrontmatter || {}) };
+                }
+            } catch (error) {
+                console.warn(`Error reading existing faction file: ${error}`);
+            }
+        }
+
+        const finalFrontmatter = this.buildFrontmatterForFaction(rest, originalFrontmatter);
+
+        if (originalFrontmatter) {
+            const validation = validateFrontmatterPreservation(finalFrontmatter, originalFrontmatter);
+            if (validation.lostFields.length > 0) {
+                console.warn(`[saveFaction] Warning: Fields will be lost on save:`, validation.lostFields);
+            }
+        }
+
+        const frontmatterString = Object.keys(finalFrontmatter).length > 0
+            ? stringifyYamlWithLogging(finalFrontmatter, originalFrontmatter, `Faction: ${faction.name}`)
+            : '';
+
+        const providedSections = {
+            Description: description !== undefined ? description : '',
+            History: history !== undefined ? history : '',
+            Structure: structure !== undefined ? structure : '',
+            Goals: goals !== undefined ? goals : '',
+            Resources: resources !== undefined ? resources : ''
+        };
+        const templateSections = getTemplateSections('faction', providedSections);
+
+        let allSections: Record<string, string>;
+        if (existingFile && existingFile instanceof TFile) {
+            allSections = { ...existingSections, ...templateSections };
+            Object.entries(providedSections).forEach(([key, value]) => {
+                allSections[key] = value;
+            });
+        } else {
+            allSections = templateSections;
+        }
+
+        let mdContent = `---\n${frontmatterString}---\n\n`;
+        mdContent += Object.entries(allSections)
+            .map(([key, content]) => `## ${key}\n${content || ''}`)
+            .join('\n\n');
+        if (!mdContent.endsWith('\n')) mdContent += '\n';
+
+        if (existingFile && existingFile instanceof TFile) {
+            await this.app.vault.modify(existingFile, mdContent);
+        } else {
+            await this.app.vault.create(finalFilePath, mdContent);
+            new Notice('Note created with standard sections for easy editing.');
+        }
+
+        faction.filePath = finalFilePath;
+        this.app.metadataCache.trigger("dataview:refresh-views");
+    }
+
+    async listFactions(): Promise<Faction[]> {
+        await this.ensureFactionFolder();
+        const folderPath = this.getEntityFolder('faction');
+        const allFiles = this.app.vault.getMarkdownFiles();
+        const files = allFiles.filter(f => f.path.startsWith(folderPath + '/') && f.extension === 'md');
+        const factions: Faction[] = [];
+        for (const file of files) {
+            const data = await this.parseFile<Faction>(file, { name: '' }, 'faction');
+            if (data) factions.push(data);
+        }
+        return factions.sort((a, b) => a.name.localeCompare(b.name));
+    }
+
+    async deleteFaction(filePath: string): Promise<void> {
+        const file = this.app.vault.getAbstractFileByPath(normalizePath(filePath));
+        if (file instanceof TFile) {
+            await this.app.vault.trash(file, true);
+            new Notice(`Faction file "${file.basename}" moved to trash.`);
+            this.app.metadataCache.trigger('dataview:refresh-views');
+        } else {
+            new Notice(`Error: Could not find faction file to delete at ${filePath}`);
+        }
+    }
+
+    /**
+     * Economy Data Management
+     */
+
+    async saveEconomy(economy: Economy): Promise<void> {
+        await this.ensureEconomyFolder();
+        const folderPath = this.getEntityFolder('economy');
+
+        const fileName = `${economy.name.replace(/[\\/:"*?<>|]+/g, '')}.md`;
+        const filePath = normalizePath(`${folderPath}/${fileName}`);
+
+        const { filePath: currentFilePath, description, industries, taxation, ...rest } = economy as any;
+        if ((rest as any).sections) delete (rest as any).sections;
+
+        let finalFilePath = filePath;
+        if (currentFilePath && currentFilePath !== filePath) {
+            const existingFile = this.app.vault.getAbstractFileByPath(currentFilePath);
+            if (existingFile && existingFile instanceof TFile) {
+                await this.app.fileManager.renameFile(existingFile, filePath);
+                finalFilePath = filePath;
+            }
+        }
+
+        const existingFile = this.app.vault.getAbstractFileByPath(finalFilePath);
+        let existingSections: Record<string, string> = {};
+        let originalFrontmatter: Record<string, unknown> | undefined;
+        if (existingFile && existingFile instanceof TFile) {
+            try {
+                const existingContent = await this.app.vault.cachedRead(existingFile);
+                existingSections = parseSectionsFromMarkdown(existingContent);
+
+                const { parseFrontmatterFromContent } = await import('./yaml/EntitySections');
+                const directFrontmatter = parseFrontmatterFromContent(existingContent);
+                const fileCache = this.app.metadataCache.getFileCache(existingFile);
+                const cachedFrontmatter = fileCache?.frontmatter as Record<string, unknown> | undefined;
+
+                if (directFrontmatter || cachedFrontmatter) {
+                    originalFrontmatter = { ...(cachedFrontmatter || {}), ...(directFrontmatter || {}) };
+                }
+            } catch (error) {
+                console.warn(`Error reading existing economy file: ${error}`);
+            }
+        }
+
+        const finalFrontmatter = this.buildFrontmatterForEconomy(rest, originalFrontmatter);
+
+        if (originalFrontmatter) {
+            const validation = validateFrontmatterPreservation(finalFrontmatter, originalFrontmatter);
+            if (validation.lostFields.length > 0) {
+                console.warn(`[saveEconomy] Warning: Fields will be lost on save:`, validation.lostFields);
+            }
+        }
+
+        const frontmatterString = Object.keys(finalFrontmatter).length > 0
+            ? stringifyYamlWithLogging(finalFrontmatter, originalFrontmatter, `Economy: ${economy.name}`)
+            : '';
+
+        const providedSections = {
+            Description: description !== undefined ? description : '',
+            Industries: industries !== undefined ? industries : '',
+            Taxation: taxation !== undefined ? taxation : ''
+        };
+        const templateSections = getTemplateSections('economy', providedSections);
+
+        let allSections: Record<string, string>;
+        if (existingFile && existingFile instanceof TFile) {
+            allSections = { ...existingSections, ...templateSections };
+            Object.entries(providedSections).forEach(([key, value]) => {
+                allSections[key] = value;
+            });
+        } else {
+            allSections = templateSections;
+        }
+
+        let mdContent = `---\n${frontmatterString}---\n\n`;
+        mdContent += Object.entries(allSections)
+            .map(([key, content]) => `## ${key}\n${content || ''}`)
+            .join('\n\n');
+        if (!mdContent.endsWith('\n')) mdContent += '\n';
+
+        if (existingFile && existingFile instanceof TFile) {
+            await this.app.vault.modify(existingFile, mdContent);
+        } else {
+            await this.app.vault.create(finalFilePath, mdContent);
+            new Notice('Note created with standard sections for easy editing.');
+        }
+
+        economy.filePath = finalFilePath;
+        this.app.metadataCache.trigger("dataview:refresh-views");
+    }
+
+    async listEconomies(): Promise<Economy[]> {
+        await this.ensureEconomyFolder();
+        const folderPath = this.getEntityFolder('economy');
+        const allFiles = this.app.vault.getMarkdownFiles();
+        const files = allFiles.filter(f => f.path.startsWith(folderPath + '/') && f.extension === 'md');
+        const economies: Economy[] = [];
+        for (const file of files) {
+            const data = await this.parseFile<Economy>(file, { name: '' }, 'economy');
+            if (data) economies.push(data);
+        }
+        return economies.sort((a, b) => a.name.localeCompare(b.name));
+    }
+
+    async deleteEconomy(filePath: string): Promise<void> {
+        const file = this.app.vault.getAbstractFileByPath(normalizePath(filePath));
+        if (file instanceof TFile) {
+            await this.app.vault.trash(file, true);
+            new Notice(`Economy file "${file.basename}" moved to trash.`);
+            this.app.metadataCache.trigger('dataview:refresh-views');
+        } else {
+            new Notice(`Error: Could not find economy file to delete at ${filePath}`);
+        }
+    }
+
+    /**
+     * MagicSystem Data Management
+     */
+
+    async saveMagicSystem(magicSystem: MagicSystem): Promise<void> {
+        await this.ensureMagicSystemFolder();
+        const folderPath = this.getEntityFolder('magicSystem');
+
+        const fileName = `${magicSystem.name.replace(/[\\/:"*?<>|]+/g, '')}.md`;
+        const filePath = normalizePath(`${folderPath}/${fileName}`);
+
+        const { filePath: currentFilePath, description, rules, source, costs, limitations, training, history, ...rest } = magicSystem as any;
+        if ((rest as any).sections) delete (rest as any).sections;
+
+        let finalFilePath = filePath;
+        if (currentFilePath && currentFilePath !== filePath) {
+            const existingFile = this.app.vault.getAbstractFileByPath(currentFilePath);
+            if (existingFile && existingFile instanceof TFile) {
+                await this.app.fileManager.renameFile(existingFile, filePath);
+                finalFilePath = filePath;
+            }
+        }
+
+        const existingFile = this.app.vault.getAbstractFileByPath(finalFilePath);
+        let existingSections: Record<string, string> = {};
+        let originalFrontmatter: Record<string, unknown> | undefined;
+        if (existingFile && existingFile instanceof TFile) {
+            try {
+                const existingContent = await this.app.vault.cachedRead(existingFile);
+                existingSections = parseSectionsFromMarkdown(existingContent);
+
+                const { parseFrontmatterFromContent } = await import('./yaml/EntitySections');
+                const directFrontmatter = parseFrontmatterFromContent(existingContent);
+                const fileCache = this.app.metadataCache.getFileCache(existingFile);
+                const cachedFrontmatter = fileCache?.frontmatter as Record<string, unknown> | undefined;
+
+                if (directFrontmatter || cachedFrontmatter) {
+                    originalFrontmatter = { ...(cachedFrontmatter || {}), ...(directFrontmatter || {}) };
+                }
+            } catch (error) {
+                console.warn(`Error reading existing magic system file: ${error}`);
+            }
+        }
+
+        const finalFrontmatter = this.buildFrontmatterForMagicSystem(rest, originalFrontmatter);
+
+        if (originalFrontmatter) {
+            const validation = validateFrontmatterPreservation(finalFrontmatter, originalFrontmatter);
+            if (validation.lostFields.length > 0) {
+                console.warn(`[saveMagicSystem] Warning: Fields will be lost on save:`, validation.lostFields);
+            }
+        }
+
+        const frontmatterString = Object.keys(finalFrontmatter).length > 0
+            ? stringifyYamlWithLogging(finalFrontmatter, originalFrontmatter, `MagicSystem: ${magicSystem.name}`)
+            : '';
+
+        const providedSections = {
+            Description: description !== undefined ? description : '',
+            Rules: rules !== undefined ? rules : '',
+            Source: source !== undefined ? source : '',
+            Costs: costs !== undefined ? costs : '',
+            Limitations: limitations !== undefined ? limitations : '',
+            Training: training !== undefined ? training : '',
+            History: history !== undefined ? history : ''
+        };
+        const templateSections = getTemplateSections('magicSystem', providedSections);
+
+        let allSections: Record<string, string>;
+        if (existingFile && existingFile instanceof TFile) {
+            allSections = { ...existingSections, ...templateSections };
+            Object.entries(providedSections).forEach(([key, value]) => {
+                allSections[key] = value;
+            });
+        } else {
+            allSections = templateSections;
+        }
+
+        let mdContent = `---\n${frontmatterString}---\n\n`;
+        mdContent += Object.entries(allSections)
+            .map(([key, content]) => `## ${key}\n${content || ''}`)
+            .join('\n\n');
+        if (!mdContent.endsWith('\n')) mdContent += '\n';
+
+        if (existingFile && existingFile instanceof TFile) {
+            await this.app.vault.modify(existingFile, mdContent);
+        } else {
+            await this.app.vault.create(finalFilePath, mdContent);
+            new Notice('Note created with standard sections for easy editing.');
+        }
+
+        magicSystem.filePath = finalFilePath;
+        this.app.metadataCache.trigger("dataview:refresh-views");
+    }
+
+    async listMagicSystems(): Promise<MagicSystem[]> {
+        await this.ensureMagicSystemFolder();
+        const folderPath = this.getEntityFolder('magicSystem');
+        const allFiles = this.app.vault.getMarkdownFiles();
+        const files = allFiles.filter(f => f.path.startsWith(folderPath + '/') && f.extension === 'md');
+        const magicSystems: MagicSystem[] = [];
+        for (const file of files) {
+            const data = await this.parseFile<MagicSystem>(file, { name: '' }, 'magicSystem');
+            if (data) magicSystems.push(data);
+        }
+        return magicSystems.sort((a, b) => a.name.localeCompare(b.name));
+    }
+
+    async deleteMagicSystem(filePath: string): Promise<void> {
+        const file = this.app.vault.getAbstractFileByPath(normalizePath(filePath));
+        if (file instanceof TFile) {
+            await this.app.vault.trash(file, true);
+            new Notice(`Magic System file "${file.basename}" moved to trash.`);
+            this.app.metadataCache.trigger('dataview:refresh-views');
+        } else {
+            new Notice(`Error: Could not find magic system file to delete at ${filePath}`);
+        }
+    }
+
+    /**
+     * Calendar Data Management
+     */
+
+    async saveCalendar(calendar: Calendar): Promise<void> {
+        await this.ensureCalendarFolder();
+        const folderPath = this.getEntityFolder('calendar');
+
+        const fileName = `${calendar.name.replace(/[\\/:"*?<>|]+/g, '')}.md`;
+        const filePath = normalizePath(`${folderPath}/${fileName}`);
+
+        const { filePath: currentFilePath, description, history, ...rest } = calendar as any;
+        if ((rest as any).sections) delete (rest as any).sections;
+
+        let finalFilePath = filePath;
+        if (currentFilePath && currentFilePath !== filePath) {
+            const existingFile = this.app.vault.getAbstractFileByPath(currentFilePath);
+            if (existingFile && existingFile instanceof TFile) {
+                await this.app.fileManager.renameFile(existingFile, filePath);
+                finalFilePath = filePath;
+            }
+        }
+
+        const existingFile = this.app.vault.getAbstractFileByPath(finalFilePath);
+        let existingSections: Record<string, string> = {};
+        let originalFrontmatter: Record<string, unknown> | undefined;
+        if (existingFile && existingFile instanceof TFile) {
+            try {
+                const existingContent = await this.app.vault.cachedRead(existingFile);
+                existingSections = parseSectionsFromMarkdown(existingContent);
+
+                const { parseFrontmatterFromContent } = await import('./yaml/EntitySections');
+                const directFrontmatter = parseFrontmatterFromContent(existingContent);
+                const fileCache = this.app.metadataCache.getFileCache(existingFile);
+                const cachedFrontmatter = fileCache?.frontmatter as Record<string, unknown> | undefined;
+
+                if (directFrontmatter || cachedFrontmatter) {
+                    originalFrontmatter = { ...(cachedFrontmatter || {}), ...(directFrontmatter || {}) };
+                }
+            } catch (error) {
+                console.warn(`Error reading existing calendar file: ${error}`);
+            }
+        }
+
+        const finalFrontmatter = this.buildFrontmatterForCalendar(rest, originalFrontmatter);
+
+        if (originalFrontmatter) {
+            const validation = validateFrontmatterPreservation(finalFrontmatter, originalFrontmatter);
+            if (validation.lostFields.length > 0) {
+                console.warn(`[saveCalendar] Warning: Fields will be lost on save:`, validation.lostFields);
+            }
+        }
+
+        const frontmatterString = Object.keys(finalFrontmatter).length > 0
+            ? stringifyYamlWithLogging(finalFrontmatter, originalFrontmatter, `Calendar: ${calendar.name}`)
+            : '';
+
+        const providedSections = {
+            Description: description !== undefined ? description : '',
+            History: history !== undefined ? history : ''
+        };
+        const templateSections = getTemplateSections('calendar', providedSections);
+
+        let allSections: Record<string, string>;
+        if (existingFile && existingFile instanceof TFile) {
+            allSections = { ...existingSections, ...templateSections };
+            Object.entries(providedSections).forEach(([key, value]) => {
+                allSections[key] = value;
+            });
+        } else {
+            allSections = templateSections;
+        }
+
+        let mdContent = `---\n${frontmatterString}---\n\n`;
+        mdContent += Object.entries(allSections)
+            .map(([key, content]) => `## ${key}\n${content || ''}`)
+            .join('\n\n');
+        if (!mdContent.endsWith('\n')) mdContent += '\n';
+
+        if (existingFile && existingFile instanceof TFile) {
+            await this.app.vault.modify(existingFile, mdContent);
+        } else {
+            await this.app.vault.create(finalFilePath, mdContent);
+            new Notice('Note created with standard sections for easy editing.');
+        }
+
+        calendar.filePath = finalFilePath;
+        this.app.metadataCache.trigger("dataview:refresh-views");
+    }
+
+    async listCalendars(): Promise<Calendar[]> {
+        await this.ensureCalendarFolder();
+        const folderPath = this.getEntityFolder('calendar');
+        const allFiles = this.app.vault.getMarkdownFiles();
+        const files = allFiles.filter(f => f.path.startsWith(folderPath + '/') && f.extension === 'md');
+        const calendars: Calendar[] = [];
+        for (const file of files) {
+            const data = await this.parseFile<Calendar>(file, { name: '' }, 'calendar');
+            if (data) calendars.push(data);
+        }
+        return calendars.sort((a, b) => a.name.localeCompare(b.name));
+    }
+
+    async deleteCalendar(filePath: string): Promise<void> {
+        const file = this.app.vault.getAbstractFileByPath(normalizePath(filePath));
+        if (file instanceof TFile) {
+            await this.app.vault.trash(file, true);
+            new Notice(`Calendar file "${file.basename}" moved to trash.`);
+            this.app.metadataCache.trigger('dataview:refresh-views');
+        } else {
+            new Notice(`Error: Could not find calendar file to delete at ${filePath}`);
+        }
+    }
+
+    // ============================================================
+    // Timeline Fork Management
+    // ============================================================
+
+    /**
+     * Create a new timeline fork (alternate timeline)
+     * @param name - Name of the fork
+     * @param divergenceEvent - Event where timeline diverges
+     * @param divergenceDate - Date of divergence
+     * @param description - Description of how this timeline differs
+     * @returns The created TimelineFork object
+     */
+    createTimelineFork(
+        name: string,
+        divergenceEvent: string,
+        divergenceDate: string,
+        description: string
+    ): TimelineFork {
+        const fork: TimelineFork = {
+            id: Date.now().toString(),
+            name,
+            parentTimelineId: undefined, // Main timeline
+            divergenceEvent,
+            divergenceDate,
+            description,
+            status: 'exploring',
+            forkEvents: [],
+            alteredCharacters: [],
+            alteredLocations: [],
+            color: this.generateRandomColor(),
+            created: new Date().toISOString(),
+            notes: ''
+        };
+
+        this.settings.timelineForks = this.settings.timelineForks || [];
+        this.settings.timelineForks.push(fork);
+        this.saveSettings();
+
+        new Notice(`Timeline fork "${name}" created`);
+        return fork;
+    }
+
+    /**
+     * Get all timeline forks
+     * @returns Array of all timeline forks
+     */
+    getTimelineForks(): TimelineFork[] {
+        return this.settings.timelineForks || [];
+    }
+
+    /**
+     * Get a specific timeline fork by ID
+     * @param forkId - ID of the fork to retrieve
+     * @returns The timeline fork or undefined if not found
+     */
+    getTimelineFork(forkId: string): TimelineFork | undefined {
+        return this.settings.timelineForks?.find(f => f.id === forkId);
+    }
+
+    /**
+     * Update an existing timeline fork
+     * @param fork - Updated fork object
+     */
+    async updateTimelineFork(fork: TimelineFork): Promise<void> {
+        const index = this.settings.timelineForks?.findIndex(f => f.id === fork.id);
+        if (index !== undefined && index >= 0) {
+            this.settings.timelineForks![index] = fork;
+            await this.saveSettings();
+            new Notice(`Timeline fork "${fork.name}" updated`);
+        } else {
+            new Notice(`Error: Timeline fork not found`);
+        }
+    }
+
+    /**
+     * Delete a timeline fork
+     * @param forkId - ID of the fork to delete
+     */
+    async deleteTimelineFork(forkId: string): Promise<void> {
+        const fork = this.getTimelineFork(forkId);
+        if (fork) {
+            this.settings.timelineForks = this.settings.timelineForks?.filter(f => f.id !== forkId);
+            await this.saveSettings();
+            new Notice(`Timeline fork "${fork.name}" deleted`);
+        } else {
+            new Notice(`Error: Timeline fork not found`);
+        }
+    }
+
+    /**
+     * Generate a random color for timeline fork visualization
+     * @returns Hex color string
+     */
+    generateRandomColor(): string {
+        const colors = [
+            '#FF6B6B', // Red
+            '#4ECDC4', // Teal
+            '#45B7D1', // Blue
+            '#FFA07A', // Light Salmon
+            '#98D8C8', // Mint
+            '#F7DC6F', // Yellow
+            '#BB8FCE', // Purple
+            '#85C1E2', // Sky Blue
+            '#F8B195', // Peach
+            '#95E1D3'  // Aqua
+        ];
+        return colors[Math.floor(Math.random() * colors.length)];
+    }
+
+    // ============================================================
+    // Causality Link Management
+    // ============================================================
+
+    /**
+     * Create a causality link between two events
+     * @param causeEvent - ID or name of the cause event
+     * @param effectEvent - ID or name of the effect event
+     * @param linkType - Type of causality (direct, indirect, conditional, catalyst)
+     * @param description - Description of the causal relationship
+     * @param strength - Strength of the link (weak, moderate, strong, absolute)
+     * @returns The created CausalityLink object
+     */
+    createCausalityLink(
+        causeEvent: string,
+        effectEvent: string,
+        linkType: 'direct' | 'indirect' | 'conditional' | 'catalyst',
+        description: string,
+        strength?: 'weak' | 'moderate' | 'strong' | 'absolute'
+    ): CausalityLink {
+        const link: CausalityLink = {
+            id: `${causeEvent}-${effectEvent}-${Date.now()}`,
+            causeEvent,
+            effectEvent,
+            linkType,
+            strength: strength || 'strong',
+            description
+        };
+
+        this.settings.causalityLinks = this.settings.causalityLinks || [];
+        this.settings.causalityLinks.push(link);
+        this.saveSettings();
+
+        new Notice(`Causality link created: ${causeEvent} → ${effectEvent}`);
+        return link;
+    }
+
+    /**
+     * Get all causality links
+     * @returns Array of all causality links
+     */
+    getCausalityLinks(): CausalityLink[] {
+        return this.settings.causalityLinks || [];
+    }
+
+    /**
+     * Get causality links for a specific event
+     * @param eventId - ID or name of the event
+     * @returns Object containing causes and effects for the event
+     */
+    getCausalityLinksForEvent(eventId: string): { causes: CausalityLink[], effects: CausalityLink[] } {
+        const links = this.settings.causalityLinks || [];
+
+        return {
+            causes: links.filter(l => l.effectEvent === eventId),
+            effects: links.filter(l => l.causeEvent === eventId)
+        };
+    }
+
+    /**
+     * Update a causality link
+     * @param link - Updated link object
+     */
+    async updateCausalityLink(link: CausalityLink): Promise<void> {
+        const index = this.settings.causalityLinks?.findIndex(l => l.id === link.id);
+        if (index !== undefined && index >= 0) {
+            this.settings.causalityLinks![index] = link;
+            await this.saveSettings();
+            new Notice(`Causality link updated`);
+        } else {
+            new Notice(`Error: Causality link not found`);
+        }
+    }
+
+    /**
+     * Delete a causality link
+     * @param linkId - ID of the link to delete
+     */
+    async deleteCausalityLink(linkId: string): Promise<void> {
+        const linksBefore = this.settings.causalityLinks?.length || 0;
+        this.settings.causalityLinks = this.settings.causalityLinks?.filter(l => l.id !== linkId);
+        const linksAfter = this.settings.causalityLinks?.length || 0;
+
+        if (linksBefore > linksAfter) {
+            await this.saveSettings();
+            new Notice(`Causality link deleted`);
+        } else {
+            new Notice(`Error: Causality link not found`);
+        }
+    }
+
 
 	/**
 	 * Story Board Management
