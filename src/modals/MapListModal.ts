@@ -1,3 +1,8 @@
+/**
+ * DEPRECATED: Map functionality has been deprecated and will be removed in a future version.
+ * This file is kept for backward compatibility only.
+ */
+
 // MapListModal - Browse and manage maps with hierarchical view
 // Provides filtering, search, and quick actions for map management
 
