@@ -1289,6 +1289,140 @@ export default class StorytellerSuitePlugin extends Plugin {
 		});
 
 		// ============================================================
+		// World-Building Entity Commands
+		// ============================================================
+
+		// Create Culture
+		this.addCommand({
+			id: 'create-new-culture',
+			name: 'Create new culture',
+			callback: () => {
+				if (!this.ensureActiveStoryOrGuide()) return;
+				import('./modals/CultureModal').then(({ CultureModal }) => {
+					new CultureModal(this.app, this, null, async (culture) => {
+						await this.saveCulture(culture);
+						new Notice(`Culture "${culture.name}" created.`);
+					}).open();
+				});
+			}
+		});
+
+		// View Cultures
+		this.addCommand({
+			id: 'view-cultures',
+			name: 'View cultures',
+			callback: async () => {
+				const cultures = await this.listCultures();
+				new Notice(`${cultures.length} culture(s) found`);
+				// TODO: Create CultureListModal for better visualization
+			}
+		});
+
+		// Create Faction
+		this.addCommand({
+			id: 'create-new-faction',
+			name: 'Create new faction',
+			callback: () => {
+				if (!this.ensureActiveStoryOrGuide()) return;
+				import('./modals/FactionModal').then(({ FactionModal }) => {
+					new FactionModal(this.app, this, null, async (faction) => {
+						await this.saveFaction(faction);
+						new Notice(`Faction "${faction.name}" created.`);
+					}).open();
+				});
+			}
+		});
+
+		// View Factions
+		this.addCommand({
+			id: 'view-factions',
+			name: 'View factions',
+			callback: async () => {
+				const factions = await this.listFactions();
+				new Notice(`${factions.length} faction(s) found`);
+				// TODO: Create FactionListModal for better visualization
+			}
+		});
+
+		// Create Economy
+		this.addCommand({
+			id: 'create-new-economy',
+			name: 'Create new economy',
+			callback: () => {
+				if (!this.ensureActiveStoryOrGuide()) return;
+				import('./modals/EconomyModal').then(({ EconomyModal }) => {
+					new EconomyModal(this.app, this, null, async (economy) => {
+						await this.saveEconomy(economy);
+						new Notice(`Economy "${economy.name}" created.`);
+					}).open();
+				});
+			}
+		});
+
+		// View Economies
+		this.addCommand({
+			id: 'view-economies',
+			name: 'View economies',
+			callback: async () => {
+				const economies = await this.listEconomies();
+				new Notice(`${economies.length} economy/economies found`);
+				// TODO: Create EconomyListModal for better visualization
+			}
+		});
+
+		// Create Magic System
+		this.addCommand({
+			id: 'create-new-magic-system',
+			name: 'Create new magic system',
+			callback: () => {
+				if (!this.ensureActiveStoryOrGuide()) return;
+				import('./modals/MagicSystemModal').then(({ MagicSystemModal }) => {
+					new MagicSystemModal(this.app, this, null, async (magicSystem) => {
+						await this.saveMagicSystem(magicSystem);
+						new Notice(`Magic System "${magicSystem.name}" created.`);
+					}).open();
+				});
+			}
+		});
+
+		// View Magic Systems
+		this.addCommand({
+			id: 'view-magic-systems',
+			name: 'View magic systems',
+			callback: async () => {
+				const magicSystems = await this.listMagicSystems();
+				new Notice(`${magicSystems.length} magic system(s) found`);
+				// TODO: Create MagicSystemListModal for better visualization
+			}
+		});
+
+		// Create Calendar
+		this.addCommand({
+			id: 'create-new-calendar',
+			name: 'Create new calendar',
+			callback: () => {
+				if (!this.ensureActiveStoryOrGuide()) return;
+				import('./modals/CalendarModal').then(({ CalendarModal }) => {
+					new CalendarModal(this.app, this, null, async (calendar) => {
+						await this.saveCalendar(calendar);
+						new Notice(`Calendar "${calendar.name}" created.`);
+					}).open();
+				});
+			}
+		});
+
+		// View Calendars
+		this.addCommand({
+			id: 'view-calendars',
+			name: 'View calendars',
+			callback: async () => {
+				const calendars = await this.listCalendars();
+				new Notice(`${calendars.length} calendar(s) found`);
+				// TODO: Create CalendarListModal for better visualization
+			}
+		});
+
+		// ============================================================
 		// Timeline Fork Commands
 		// ============================================================
 
