@@ -5573,255 +5573,110 @@ body.mod-rtl .storyteller-group-members {
 }
 
 /* ===== END MAP EDITOR VIEW STYLES =====*/
-/* ===== ANALYTICS DASHBOARD VIEW STYLES ===== */
+/* ===== LEVEL 3 CUSTOM CALENDAR TIMELINE STYLES ===== */
 
-.storyteller-analytics-view {
-  padding: 20px;
-  overflow-y: auto;
-  height: 100%;
+/* Calendar selector container */
+.storyteller-calendar-container {
+  display: inline-block;
+  margin: 0 4px;
 }
 
-.storyteller-analytics-header {
-  margin-bottom: 24px;
-}
-
-.storyteller-analytics-header h2 {
-  margin: 0 0 12px 0;
-}
-
-.storyteller-analytics-toolbar {
-  display: flex;
-  gap: 8px;
-}
-
-.storyteller-analytics-content {
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
-}
-
-.storyteller-analytics-section {
-  background: var(--background-secondary);
-  padding: 16px;
-  border-radius: 8px;
-}
-
-.storyteller-analytics-section h3 {
-  margin: 0 0 16px 0;
-  border-bottom: 1px solid var(--background-modifier-border);
-  padding-bottom: 8px;
-}
-
-.storyteller-analytics-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 16px;
-  margin-bottom: 16px;
-}
-
-.storyteller-stat-card {
-  background: var(--background-primary);
-  padding: 16px;
-  border-radius: 8px;
-  text-align: center;
+/* Calendar selector dropdown */
+.storyteller-calendar-select {
+  padding: 4px 8px;
   border: 1px solid var(--background-modifier-border);
-}
-
-.storyteller-stat-icon {
-  font-size: 32px;
-  margin-bottom: 8px;
-}
-
-.storyteller-stat-value {
-  font-size: 24px;
-  font-weight: bold;
-  color: var(--text-accent);
-  margin-bottom: 4px;
-}
-
-.storyteller-stat-label {
-  font-size: 12px;
-  color: var(--text-muted);
-  text-transform: uppercase;
-}
-
-.storyteller-analytics-table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-.storyteller-analytics-table th,
-.storyteller-analytics-table td {
-  padding: 8px;
-  text-align: left;
-  border-bottom: 1px solid var(--background-modifier-border);
-}
-
-.storyteller-analytics-table th {
-  font-weight: bold;
-  color: var(--text-muted);
-  font-size: 12px;
-  text-transform: uppercase;
-}
-
-.storyteller-progress-bar {
-  width: 100%;
-  height: 20px;
-  background: var(--background-modifier-border);
   border-radius: 4px;
-  overflow: hidden;
-}
-
-.storyteller-progress-fill {
-  height: 100%;
-  background: var(--interactive-accent);
-  transition: width 0.3s ease;
-}
-
-.storyteller-bar-chart {
-  display: flex;
-  gap: 8px;
-  align-items: flex-end;
-  height: 200px;
-  padding: 16px 0;
-}
-
-.storyteller-bar-item {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-}
-
-.storyteller-bar {
-  width: 100%;
-  flex: 1;
-  display: flex;
-  align-items: flex-end;
-  min-height: 20px;
-}
-
-.storyteller-bar-fill {
-  width: 100%;
-  background: var(--interactive-accent);
-  border-radius: 4px 4px 0 0;
-  transition: height 0.3s ease;
-}
-
-.storyteller-bar-label {
-  font-size: 11px;
-  color: var(--text-muted);
-}
-
-.storyteller-velocity-chart {
-  display: flex;
-  gap: 4px;
-  align-items: flex-end;
-  height: 150px;
-  padding: 16px 0;
-}
-
-.storyteller-velocity-item {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-}
-
-.storyteller-velocity-bar {
-  width: 100%;
-  flex: 1;
-  display: flex;
-  align-items: flex-end;
-}
-
-.storyteller-velocity-fill {
-  width: 100%;
-  background: var(--color-accent-2);
-  border-radius: 2px 2px 0 0;
-  transition: height 0.3s ease;
-}
-
-.storyteller-velocity-label {
-  font-size: 10px;
-  color: var(--text-faint);
-}
-
-.storyteller-pov-list {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-}
-
-.storyteller-pov-list li {
-  padding: 8px 0;
-  border-bottom: 1px solid var(--background-modifier-border);
-}
-
-.storyteller-pov-list li:last-child {
-  border-bottom: none;
-}
-
-.storyteller-pov-name {
-  font-weight: bold;
-}
-
-.storyteller-foreshadowing-list {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-}
-
-.storyteller-foreshadowing-list li {
-  padding: 12px;
-  margin-bottom: 8px;
-  background: var(--background-primary);
-  border-radius: 4px;
-  border-left: 3px solid var(--interactive-accent);
-}
-
-.storyteller-foreshadow-status {
-  font-size: 16px;
-  margin-right: 8px;
-}
-
-.storyteller-foreshadow-setup {
-  font-weight: bold;
-}
-
-.storyteller-sessions-list {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-}
-
-.storyteller-sessions-list li {
-  padding: 8px 12px;
-  margin-bottom: 4px;
-  background: var(--background-primary);
-  border-radius: 4px;
+  background: var(--background-secondary);
+  color: var(--text-normal);
   font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s ease;
 }
 
-.storyteller-section-toolbar {
-  margin-bottom: 12px;
+.storyteller-calendar-select:hover {
+  background: var(--background-modifier-hover);
+  border-color: var(--interactive-accent);
 }
 
-/* Mobile responsiveness */
-@media (max-width: 900px) {
-  .storyteller-analytics-grid {
-    grid-template-columns: 1fr 1fr;
-  }
-  
-  .storyteller-bar-chart {
-    height: 150px;
-  }
-  
-  .storyteller-velocity-chart {
-    height: 120px;
-  }
+.storyteller-calendar-select:focus {
+  outline: none;
+  border-color: var(--interactive-accent);
+  box-shadow: 0 0 0 2px var(--interactive-accent-hover);
 }
 
-/* ===== END ANALYTICS DASHBOARD VIEW STYLES ===== */
+/* Calendar mode badge */
+.storyteller-calendar-badge {
+  display: inline-block;
+  padding: 4px 12px;
+  margin: 0 4px;
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: default;
+}
+
+/* Calendar badge hover effect */
+.storyteller-calendar-badge:hover {
+  background: var(--interactive-accent-hover);
+}
+
+/* ===== END CALENDAR TIMELINE STYLES ===== */
+
+/* ===== CALENDAR MARKER STYLES ===== */
+
+/* Season background markers */
+.timeline-season-marker {
+  opacity: 0.3;
+  pointer-events: all;
+  transition: opacity 0.2s ease;
+}
+
+.timeline-season-marker:hover {
+  opacity: 0.5;
+}
+
+/* Holiday markers */
+.timeline-holiday-marker {
+  font-weight: bold;
+  font-size: 14px;
+  padding: 4px 8px;
+  background: linear-gradient(135deg, #FF6B6B 0%, #FF8E8E 100%);
+  color: white;
+  border-radius: 4px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.timeline-holiday-marker:hover {
+  transform: scale(1.05);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+}
+
+/* Intercalary day markers */
+.timeline-intercalary-marker {
+  font-weight: bold;
+  font-size: 14px;
+  padding: 4px 8px;
+  background: linear-gradient(135deg, #9C27B0 0%, #BA68C8 100%);
+  color: white;
+  border-radius: 4px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  border: 2px dashed rgba(255, 255, 255, 0.5);
+}
+
+.timeline-intercalary-marker:hover {
+  transform: scale(1.05);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+}
+
+/* Astronomical event markers */
+.timeline-astronomical-marker {
+  font-size: 12px;
+  padding: 2px 6px;
+  background: rgba(33, 150, 243, 0.8);
+  color: white;
+  border-radius: 3px;
+}
+
+/* ===== END CALENDAR MARKER STYLES ===== */
