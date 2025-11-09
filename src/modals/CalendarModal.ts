@@ -1,9 +1,8 @@
-import { App, Setting, Notice } from 'obsidian';
-import type { Calendar, CalendarDate, CalendarLookupEntry } from '../types';
+﻿import { App, Setting, Notice } from 'obsidian';
+import type { Calendar } from '../types';
 import type StorytellerSuitePlugin from '../main';
 import { ResponsiveModal } from './ResponsiveModal';
 import { GalleryImageSuggestModal } from './GalleryImageSuggestModal';
-import { CalendarConverter } from '../utils/CalendarConverter';
 
 export type CalendarModalSubmitCallback = (calendar: Calendar) => Promise<void>;
 export type CalendarModalDeleteCallback = (calendar: Calendar) => Promise<void>;
@@ -30,7 +29,6 @@ export class CalendarModal extends ResponsiveModal {
         this.isNew = calendar === null;
 
         this.calendar = calendar || {
-            id: Date.now().toString(36) + Math.random().toString(36).substr(2, 6),
             name: '',
             calendarType: 'solar',
             daysPerYear: 365,
@@ -158,72 +156,6 @@ export class CalendarModal extends ResponsiveModal {
                 })
             );
 
-        // === MONTHS SECTION ===
-        contentEl.createEl('h3', {
-            text: 'Months',
-            cls: 'storyteller-section-header'
-        }).style.cssText = 'margin-top: 20px; margin-bottom: 10px;';
-
-        contentEl.createEl('p', {
-            text: 'Define the months in your calendar. Each month needs a name and number of days.',
-            cls: 'storyteller-months-desc'
-        }).style.cssText = 'opacity: 0.8; font-size: 13px; margin-bottom: 15px;';
-
-        // Display existing months
-        if (!this.calendar.months) this.calendar.months = [];
-
-        this.calendar.months.forEach((month, index) => {
-            const monthContainer = contentEl.createDiv('storyteller-month-entry');
-            monthContainer.style.cssText = 'padding: 10px; margin-bottom: 10px; background: var(--background-secondary); border-radius: 5px;';
-
-            const monthSetting = new Setting(monthContainer)
-                .setName(`Month ${index + 1}`)
-                .addButton(btn => btn
-                    .setIcon('trash')
-                    .setTooltip('Remove')
-                    .onClick(() => {
-                        if (this.calendar.months) {
-                            this.calendar.months.splice(index, 1);
-                            this.onOpen(); // Re-render
-                        }
-                    })
-                );
-
-            // Month name and days
-            new Setting(monthContainer)
-                .setName('Month Details')
-                .addText(text => text
-                    .setPlaceholder('Month name (e.g., "January")')
-                    .setValue(month.name)
-                    .onChange(value => {
-                        month.name = value;
-                    })
-                )
-                .addText(text => text
-                    .setPlaceholder('Days')
-                    .setValue(String(month.days))
-                    .onChange(value => {
-                        month.days = parseInt(value) || 30;
-                    })
-                );
-        });
-
-        // Add new month button
-        new Setting(contentEl)
-            .addButton(btn => btn
-                .setButtonText('Add Month')
-                .onClick(() => {
-                    if (!this.calendar.months) {
-                        this.calendar.months = [];
-                    }
-                    this.calendar.months.push({
-                        name: '',
-                        days: 30
-                    });
-                    this.onOpen(); // Re-render
-                })
-            );
-
         // Usage
         new Setting(contentEl)
             .setName('Usage')
@@ -257,210 +189,9 @@ export class CalendarModal extends ResponsiveModal {
                 text.inputEl.style.width = '100%';
             });
 
-        // === DATE CONVERSION CONFIGURATION (for Timeline Integration) ===
-        contentEl.createEl('h3', {
-            text: 'Timeline Integration',
-            cls: 'storyteller-section-header'
-        }).style.cssText = 'margin-top: 20px; margin-bottom: 10px;';
-
-        contentEl.createEl('p', {
-            text: 'Configure how dates in this calendar convert to Gregorian dates for timeline display.',
-            cls: 'storyteller-conversion-desc'
-        }).style.cssText = 'opacity: 0.8; font-size: 13px; margin-bottom: 15px;';
-
-        // Conversion Type
-        new Setting(contentEl)
-            .setName('Conversion Method')
-            .setDesc('How to convert dates to Gregorian for timeline')
-            .addDropdown(dropdown => dropdown
-                .addOption('none', 'None (No conversion)')
-                .addOption('linear', 'Linear Formula')
-                .addOption('lookup', 'Lookup Table')
-                .setValue(this.calendar.conversionType || 'none')
-                .onChange(value => {
-                    this.calendar.conversionType = value as any;
-                    this.onOpen(); // Re-render to show/hide configuration
-                })
-            );
-
-        // === LINEAR CONVERSION CONFIGURATION ===
-        if (this.calendar.conversionType === 'linear') {
-            contentEl.createEl('h4', {
-                text: 'Linear Conversion Settings',
-                cls: 'storyteller-subsection-header'
-            }).style.cssText = 'margin-top: 15px; margin-bottom: 10px; font-size: 14px;';
-
-            // Initialize linearConversion if not exists
-            if (!this.calendar.linearConversion) {
-                this.calendar.linearConversion = {
-                    daysPerYear: this.calendar.daysPerYear || 365,
-                    epochYear: 0,
-                    epochGregorianDate: '2000-01-01'
-                };
-            }
-
-            // Days Per Year (auto-populate from calendar.daysPerYear)
-            new Setting(contentEl)
-                .setName('Days Per Year')
-                .setDesc('Number of days in one year')
-                .addText(text => text
-                    .setValue(String(this.calendar.linearConversion!.daysPerYear))
-                    .onChange(value => {
-                        if (this.calendar.linearConversion) {
-                            this.calendar.linearConversion.daysPerYear = parseInt(value) || 365;
-                        }
-                    })
-                );
-
-            // Epoch Year
-            new Setting(contentEl)
-                .setName('Epoch Year (Year 0)')
-                .setDesc('The "year zero" in your calendar system')
-                .addText(text => text
-                    .setValue(String(this.calendar.linearConversion!.epochYear))
-                    .onChange(value => {
-                        if (this.calendar.linearConversion) {
-                            this.calendar.linearConversion.epochYear = parseInt(value) || 0;
-                        }
-                    })
-                );
-
-            // Epoch Gregorian Date
-            new Setting(contentEl)
-                .setName('Epoch Gregorian Date')
-                .setDesc('What Gregorian date corresponds to your Year 0?')
-                .addText(text => text
-                    .setPlaceholder('2000-01-01')
-                    .setValue(this.calendar.linearConversion!.epochGregorianDate)
-                    .onChange(value => {
-                        if (this.calendar.linearConversion) {
-                            this.calendar.linearConversion.epochGregorianDate = value;
-                        }
-                    })
-                );
-
-            // Leap Years
-            new Setting(contentEl)
-                .setName('Use Leap Years')
-                .setDesc('Does this calendar have leap years?')
-                .addToggle(toggle => toggle
-                    .setValue(this.calendar.linearConversion!.useLeapYears || false)
-                    .onChange(value => {
-                        if (this.calendar.linearConversion) {
-                            this.calendar.linearConversion.useLeapYears = value;
-                        }
-                    })
-                );
-
-            // Leap Year Frequency (conditional)
-            if (this.calendar.linearConversion.useLeapYears) {
-                new Setting(contentEl)
-                    .setName('Leap Year Frequency')
-                    .setDesc('How often do leap years occur? (e.g., 4 = every 4 years)')
-                    .addText(text => text
-                        .setValue(String(this.calendar.linearConversion!.leapYearFrequency || 4))
-                        .onChange(value => {
-                            if (this.calendar.linearConversion) {
-                                this.calendar.linearConversion.leapYearFrequency = parseInt(value) || 4;
-                            }
-                        })
-                    );
-            }
-        }
-
-        // === LOOKUP TABLE CONFIGURATION ===
-        if (this.calendar.conversionType === 'lookup') {
-            contentEl.createEl('h4', {
-                text: 'Lookup Table',
-                cls: 'storyteller-subsection-header'
-            }).style.cssText = 'margin-top: 15px; margin-bottom: 10px; font-size: 14px;';
-
-            contentEl.createEl('p', {
-                text: 'Map specific custom calendar dates to Gregorian dates. System will interpolate between entries.',
-                cls: 'storyteller-lookup-desc'
-            }).style.cssText = 'opacity: 0.7; font-size: 12px; margin-bottom: 10px;';
-
-            // Initialize lookup table if not exists
-            if (!this.calendar.lookupTable) {
-                this.calendar.lookupTable = [];
-            }
-
-            // Display existing entries
-            this.calendar.lookupTable.forEach((entry, index) => {
-                const entryContainer = contentEl.createDiv('storyteller-lookup-entry');
-                entryContainer.style.cssText = 'padding: 10px; margin-bottom: 10px; background: var(--background-secondary); border-radius: 5px;';
-
-                const entrySetting = new Setting(entryContainer)
-                    .setName(`Entry ${index + 1}`)
-                    .addButton(btn => btn
-                        .setIcon('trash')
-                        .setTooltip('Remove')
-                        .onClick(() => {
-                            if (this.calendar.lookupTable) {
-                                this.calendar.lookupTable.splice(index, 1);
-                                this.onOpen(); // Re-render
-                            }
-                        })
-                    );
-
-                // Custom date inputs
-                new Setting(entryContainer)
-                    .setName('Custom Date')
-                    .setDesc('Year, Month, Day in your calendar')
-                    .addText(text => text
-                        .setPlaceholder('Year')
-                        .setValue(String(entry.customDate.year))
-                        .onChange(value => {
-                            entry.customDate.year = parseInt(value) || 0;
-                        })
-                    )
-                    .addText(text => text
-                        .setPlaceholder('Month')
-                        .setValue(String(entry.customDate.month))
-                        .onChange(value => {
-                            entry.customDate.month = value;
-                        })
-                    )
-                    .addText(text => text
-                        .setPlaceholder('Day')
-                        .setValue(String(entry.customDate.day))
-                        .onChange(value => {
-                            entry.customDate.day = parseInt(value) || 1;
-                        })
-                    );
-
-                // Gregorian date
-                new Setting(entryContainer)
-                    .setName('Gregorian Equivalent')
-                    .addText(text => text
-                        .setPlaceholder('YYYY-MM-DD')
-                        .setValue(entry.gregorianDate)
-                        .onChange(value => {
-                            entry.gregorianDate = value;
-                        })
-                    );
-            });
-
-            // Add new entry button
-            new Setting(contentEl)
-                .addButton(btn => btn
-                    .setButtonText('Add Lookup Entry')
-                    .onClick(() => {
-                        if (!this.calendar.lookupTable) {
-                            this.calendar.lookupTable = [];
-                        }
-                        this.calendar.lookupTable.push({
-                            customDate: { year: 0, month: 1, day: 1 },
-                            gregorianDate: '2000-01-01'
-                        });
-                        this.onOpen(); // Re-render
-                    })
-                );
-        }
-
         // Note about complex fields
         contentEl.createEl('div', {
-            text: 'Note: Holiday, season, and astronomical event details can be added by editing the calendar file directly.',
+            text: 'Note: Month, holiday, season, and astronomical event details can be added by editing the calendar file directly.',
             cls: 'storyteller-calendar-note'
         }).style.cssText = 'padding: 10px; margin: 10px 0; background: var(--background-secondary); border-radius: 5px; font-size: 12px; opacity: 0.8;';
 
