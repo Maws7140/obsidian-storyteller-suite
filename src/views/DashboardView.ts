@@ -146,6 +146,10 @@ export class DashboardView extends ItemView {
             { id: 'references', label: t('references'), renderFn: this.renderReferencesContent.bind(this) },
             { id: 'chapters', label: t('chapters'), renderFn: this.renderChaptersContent.bind(this) },
             { id: 'scenes', label: t('scenes'), renderFn: this.renderScenesContent.bind(this) },
+            { id: 'cultures', label: 'Cultures', renderFn: this.renderCulturesContent.bind(this) },
+            { id: 'economies', label: 'Economies', renderFn: this.renderEconomiesContent.bind(this) },
+            { id: 'magicsystems', label: 'Magic Systems', renderFn: this.renderMagicSystemsContent.bind(this) },
+            { id: 'calendars', label: 'Calendars', renderFn: this.renderCalendarsContent.bind(this) },
         ];
 
         this.debouncedRefreshActiveTab = debounce(this.refreshActiveTab.bind(this), 200, true);
@@ -410,9 +414,10 @@ export class DashboardView extends ItemView {
             newStoryBtn.onclick = () => {
                 new NewStoryModal(
                     this.app,
+                    this.plugin,
                     this.plugin.settings.stories.map(s => s.name),
-                    async (name, description) => {
-                        const story = await this.plugin.createStory(name, description);
+                    async (name, description, defaultCalendarId) => {
+                        const story = await this.plugin.createStory(name, description, defaultCalendarId);
                         await this.plugin.setActiveStory(story.id);
                         // @ts-ignore
                         new window.Notice(`Story "${name}" created and activated.`);
@@ -2300,10 +2305,326 @@ export class DashboardView extends ItemView {
     async openNetworkGraphInModal(): Promise<void> {
         // Import NetworkGraphModal dynamically
         const { NetworkGraphModal } = await import('../modals/NetworkGraphModal');
-        
+
         // Create and open the modal
         const modal = new NetworkGraphModal(this.app, this.plugin);
         modal.open();
+    }
+
+    // ========== Phase 2A: World-Building Entity Render Methods ==========
+
+    async renderCulturesContent(container: HTMLElement) {
+        container.empty();
+        this.renderHeaderControls(container, 'Cultures', async (filter: string) => {
+            this.currentFilter = filter;
+            await this.renderCulturesList(container);
+        }, () => {
+            import('../modals/CultureModal').then(({ CultureModal }) => {
+                new CultureModal(this.app, this.plugin, null, async (culture) => {
+                    await this.plugin.saveCulture(culture);
+                    new Notice(`Culture "${culture.name}" created.`);
+                }).open();
+            });
+        }, t('createNew'));
+
+        await this.renderCulturesList(container);
+    }
+
+    private async renderCulturesList(container: HTMLElement) {
+        const existingListContainer = container.querySelector('.storyteller-list-container');
+        if (existingListContainer) existingListContainer.remove();
+
+        const cultures = (await this.plugin.listCultures()).filter(c =>
+            c.name.toLowerCase().includes(this.currentFilter) ||
+            (c.values || '').toLowerCase().includes(this.currentFilter) ||
+            (c.religion || '').toLowerCase().includes(this.currentFilter) ||
+            (c.governmentType || '').toLowerCase().includes(this.currentFilter)
+        );
+
+        const listContainer = container.createDiv('storyteller-list-container');
+        if (cultures.length === 0) {
+            listContainer.createEl('p', { text: 'No cultures found' + (this.currentFilter ? ' matching filter' : '') });
+            return;
+        }
+
+        cultures.forEach(culture => {
+            const itemEl = listContainer.createDiv('storyteller-list-item');
+
+            const pfpContainer = itemEl.createDiv('storyteller-list-item-pfp');
+            if (culture.profileImagePath) {
+                const imgEl = pfpContainer.createEl('img');
+                imgEl.src = this.getImageSrc(culture.profileImagePath);
+                imgEl.alt = culture.name;
+            } else {
+                pfpContainer.createDiv({ cls: 'storyteller-pfp-placeholder', text: culture.name.substring(0, 1) });
+            }
+
+            const infoEl = itemEl.createDiv('storyteller-list-item-info');
+            infoEl.createEl('strong', { text: culture.name });
+
+            const meta = infoEl.createDiv('storyteller-list-item-extra');
+            if (culture.governmentType) meta.createSpan({ text: `Gov: ${culture.governmentType}` });
+            if (culture.techLevel) meta.createSpan({ text: ` • Tech: ${culture.techLevel}` });
+
+            if (culture.values) {
+                const preview = culture.values.length > 120 ? culture.values.substring(0, 120) + '…' : culture.values;
+                infoEl.createEl('p', { text: preview });
+            }
+
+            const actionsEl = itemEl.createDiv('storyteller-list-item-actions');
+            this.addEditButton(actionsEl, () => {
+                import('../modals/CultureModal').then(({ CultureModal }) => {
+                    new CultureModal(this.app, this.plugin, culture, async (updated) => {
+                        await this.plugin.saveCulture(updated);
+                        new Notice(`Culture "${updated.name}" updated.`);
+                    }, async (toDelete) => {
+                        if (toDelete.filePath) await this.plugin.deleteCulture(toDelete.filePath);
+                    }).open();
+                });
+            });
+            this.addDeleteButton(actionsEl, async () => {
+                if (culture.filePath && confirm(`Delete culture "${culture.name}"?`)) {
+                    await this.plugin.deleteCulture(culture.filePath);
+                }
+            });
+            this.addOpenFileButton(actionsEl, culture.filePath);
+        });
+    }
+
+
+    async renderEconomiesContent(container: HTMLElement) {
+        container.empty();
+        this.renderHeaderControls(container, 'Economies', async (filter: string) => {
+            this.currentFilter = filter;
+            await this.renderEconomiesList(container);
+        }, () => {
+            import('../modals/EconomyModal').then(({ EconomyModal }) => {
+                new EconomyModal(this.app, this.plugin, null, async (economy) => {
+                    await this.plugin.saveEconomy(economy);
+                    new Notice(`Economy "${economy.name}" created.`);
+                }).open();
+            });
+        }, t('createNew'));
+
+        await this.renderEconomiesList(container);
+    }
+
+    private async renderEconomiesList(container: HTMLElement) {
+        const existingListContainer = container.querySelector('.storyteller-list-container');
+        if (existingListContainer) existingListContainer.remove();
+
+        const economies = (await this.plugin.listEconomies()).filter(e =>
+            e.name.toLowerCase().includes(this.currentFilter) ||
+            (e.industries || '').toLowerCase().includes(this.currentFilter) ||
+            (e.taxation || '').toLowerCase().includes(this.currentFilter) ||
+            (e.economicSystem || '').toLowerCase().includes(this.currentFilter)
+        );
+
+        const listContainer = container.createDiv('storyteller-list-container');
+        if (economies.length === 0) {
+            listContainer.createEl('p', { text: 'No economies found' + (this.currentFilter ? ' matching filter' : '') });
+            return;
+        }
+
+        economies.forEach(economy => {
+            const itemEl = listContainer.createDiv('storyteller-list-item');
+
+            const pfpContainer = itemEl.createDiv('storyteller-list-item-pfp');
+            if (economy.profileImagePath) {
+                const imgEl = pfpContainer.createEl('img');
+                imgEl.src = this.getImageSrc(economy.profileImagePath);
+                imgEl.alt = economy.name;
+            } else {
+                pfpContainer.createDiv({ cls: 'storyteller-pfp-placeholder', text: economy.name.substring(0, 1) });
+            }
+
+            const infoEl = itemEl.createDiv('storyteller-list-item-info');
+            infoEl.createEl('strong', { text: economy.name });
+
+            const meta = infoEl.createDiv('storyteller-list-item-extra');
+            if (economy.economicSystem) meta.createSpan({ text: `System: ${economy.economicSystem}` });
+            if (economy.currencies && economy.currencies.length > 0) {
+                meta.createSpan({ text: ` • Currencies: ${economy.currencies.length}` });
+            }
+
+            if (economy.industries) {
+                const preview = economy.industries.length > 120 ? economy.industries.substring(0, 120) + '…' : economy.industries;
+                infoEl.createEl('p', { text: preview });
+            }
+
+            const actionsEl = itemEl.createDiv('storyteller-list-item-actions');
+            this.addEditButton(actionsEl, () => {
+                import('../modals/EconomyModal').then(({ EconomyModal }) => {
+                    new EconomyModal(this.app, this.plugin, economy, async (updated) => {
+                        await this.plugin.saveEconomy(updated);
+                        new Notice(`Economy "${updated.name}" updated.`);
+                    }, async (toDelete) => {
+                        if (toDelete.filePath) await this.plugin.deleteEconomy(toDelete.filePath);
+                    }).open();
+                });
+            });
+            this.addDeleteButton(actionsEl, async () => {
+                if (economy.filePath && confirm(`Delete economy "${economy.name}"?`)) {
+                    await this.plugin.deleteEconomy(economy.filePath);
+                }
+            });
+            this.addOpenFileButton(actionsEl, economy.filePath);
+        });
+    }
+
+    async renderMagicSystemsContent(container: HTMLElement) {
+        container.empty();
+        this.renderHeaderControls(container, 'Magic Systems', async (filter: string) => {
+            this.currentFilter = filter;
+            await this.renderMagicSystemsList(container);
+        }, () => {
+            import('../modals/MagicSystemModal').then(({ MagicSystemModal }) => {
+                new MagicSystemModal(this.app, this.plugin, null, async (magicSystem) => {
+                    await this.plugin.saveMagicSystem(magicSystem);
+                    new Notice(`Magic System "${magicSystem.name}" created.`);
+                }).open();
+            });
+        }, t('createNew'));
+
+        await this.renderMagicSystemsList(container);
+    }
+
+    private async renderMagicSystemsList(container: HTMLElement) {
+        const existingListContainer = container.querySelector('.storyteller-list-container');
+        if (existingListContainer) existingListContainer.remove();
+
+        const magicSystems = (await this.plugin.listMagicSystems()).filter(m =>
+            m.name.toLowerCase().includes(this.currentFilter) ||
+            (m.rules || '').toLowerCase().includes(this.currentFilter) ||
+            (m.source || '').toLowerCase().includes(this.currentFilter) ||
+            (m.systemType || '').toLowerCase().includes(this.currentFilter)
+        );
+
+        const listContainer = container.createDiv('storyteller-list-container');
+        if (magicSystems.length === 0) {
+            listContainer.createEl('p', { text: 'No magic systems found' + (this.currentFilter ? ' matching filter' : '') });
+            return;
+        }
+
+        magicSystems.forEach(magicSystem => {
+            const itemEl = listContainer.createDiv('storyteller-list-item');
+
+            const pfpContainer = itemEl.createDiv('storyteller-list-item-pfp');
+            if (magicSystem.profileImagePath) {
+                const imgEl = pfpContainer.createEl('img');
+                imgEl.src = this.getImageSrc(magicSystem.profileImagePath);
+                imgEl.alt = magicSystem.name;
+            } else {
+                pfpContainer.createDiv({ cls: 'storyteller-pfp-placeholder', text: magicSystem.name.substring(0, 1) });
+            }
+
+            const infoEl = itemEl.createDiv('storyteller-list-item-info');
+            infoEl.createEl('strong', { text: magicSystem.name });
+
+            const meta = infoEl.createDiv('storyteller-list-item-extra');
+            if (magicSystem.systemType) meta.createSpan({ text: `Type: ${magicSystem.systemType}` });
+            if (magicSystem.rarity) meta.createSpan({ text: ` • Rarity: ${magicSystem.rarity}` });
+
+            if (magicSystem.rules) {
+                const preview = magicSystem.rules.length > 120 ? magicSystem.rules.substring(0, 120) + '…' : magicSystem.rules;
+                infoEl.createEl('p', { text: preview });
+            }
+
+            const actionsEl = itemEl.createDiv('storyteller-list-item-actions');
+            this.addEditButton(actionsEl, () => {
+                import('../modals/MagicSystemModal').then(({ MagicSystemModal }) => {
+                    new MagicSystemModal(this.app, this.plugin, magicSystem, async (updated) => {
+                        await this.plugin.saveMagicSystem(updated);
+                        new Notice(`Magic System "${updated.name}" updated.`);
+                    }, async (toDelete) => {
+                        if (toDelete.filePath) await this.plugin.deleteMagicSystem(toDelete.filePath);
+                    }).open();
+                });
+            });
+            this.addDeleteButton(actionsEl, async () => {
+                if (magicSystem.filePath && confirm(`Delete magic system "${magicSystem.name}"?`)) {
+                    await this.plugin.deleteMagicSystem(magicSystem.filePath);
+                }
+            });
+            this.addOpenFileButton(actionsEl, magicSystem.filePath);
+        });
+    }
+
+    async renderCalendarsContent(container: HTMLElement) {
+        container.empty();
+        this.renderHeaderControls(container, 'Calendars', async (filter: string) => {
+            this.currentFilter = filter;
+            await this.renderCalendarsList(container);
+        }, () => {
+            import('../modals/CalendarModal').then(({ CalendarModal }) => {
+                new CalendarModal(this.app, this.plugin, null, async (calendar) => {
+                    await this.plugin.saveCalendar(calendar);
+                    new Notice(`Calendar "${calendar.name}" created.`);
+                }).open();
+            });
+        }, t('createNew'));
+
+        await this.renderCalendarsList(container);
+    }
+
+    private async renderCalendarsList(container: HTMLElement) {
+        const existingListContainer = container.querySelector('.storyteller-list-container');
+        if (existingListContainer) existingListContainer.remove();
+
+        const calendars = (await this.plugin.listCalendars()).filter(c =>
+            c.name.toLowerCase().includes(this.currentFilter) ||
+            (c.calendarType || '').toLowerCase().includes(this.currentFilter) ||
+            (c.description || '').toLowerCase().includes(this.currentFilter)
+        );
+
+        const listContainer = container.createDiv('storyteller-list-container');
+        if (calendars.length === 0) {
+            listContainer.createEl('p', { text: 'No calendars found' + (this.currentFilter ? ' matching filter' : '') });
+            return;
+        }
+
+        calendars.forEach(calendar => {
+            const itemEl = listContainer.createDiv('storyteller-list-item');
+
+            const pfpContainer = itemEl.createDiv('storyteller-list-item-pfp');
+            if (calendar.profileImagePath) {
+                const imgEl = pfpContainer.createEl('img');
+                imgEl.src = this.getImageSrc(calendar.profileImagePath);
+                imgEl.alt = calendar.name;
+            } else {
+                pfpContainer.createDiv({ cls: 'storyteller-pfp-placeholder', text: calendar.name.substring(0, 1) });
+            }
+
+            const infoEl = itemEl.createDiv('storyteller-list-item-info');
+            infoEl.createEl('strong', { text: calendar.name });
+
+            const meta = infoEl.createDiv('storyteller-list-item-extra');
+            if (calendar.calendarType) meta.createSpan({ text: `Type: ${calendar.calendarType}` });
+            if (calendar.daysPerYear) meta.createSpan({ text: ` • ${calendar.daysPerYear} days/year` });
+
+            if (calendar.description) {
+                const preview = calendar.description.length > 120 ? calendar.description.substring(0, 120) + '…' : calendar.description;
+                infoEl.createEl('p', { text: preview });
+            }
+
+            const actionsEl = itemEl.createDiv('storyteller-list-item-actions');
+            this.addEditButton(actionsEl, () => {
+                import('../modals/CalendarModal').then(({ CalendarModal }) => {
+                    new CalendarModal(this.app, this.plugin, calendar, async (updated) => {
+                        await this.plugin.saveCalendar(updated);
+                        new Notice(`Calendar "${updated.name}" updated.`);
+                    }, async (toDelete) => {
+                        if (toDelete.filePath) await this.plugin.deleteCalendar(toDelete.filePath);
+                    }).open();
+                });
+            });
+            this.addDeleteButton(actionsEl, async () => {
+                if (calendar.filePath && confirm(`Delete calendar "${calendar.name}"?`)) {
+                    await this.plugin.deleteCalendar(calendar.filePath);
+                }
+            });
+            this.addOpenFileButton(actionsEl, calendar.filePath);
+        });
     }
 
     async onClose() {

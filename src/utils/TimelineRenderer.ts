@@ -4,8 +4,9 @@
 import { App, Notice } from 'obsidian';
 import StorytellerSuitePlugin from '../main';
 import { Event } from '../types';
-import { parseEventDate, toMillis, toDisplay } from './DateParsing';
+import { parseEventDate, toMillis, toDisplay, getEventDateForTimeline } from './DateParsing';
 import { EventModal } from '../modals/EventModal';
+import { CalendarConverter } from './CalendarConverter';
 
 // @ts-ignore: vis-timeline is bundled dependency
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -221,7 +222,8 @@ export class TimelineRenderer {
 
         this.events.forEach(evt => {
             if (!this.shouldIncludeEvent(evt)) return;
-            const parsed = evt.dateTime ? parseEventDate(evt.dateTime, { referenceDate }) : null;
+            const dateString = getEventDateForTimeline(evt);
+            const parsed = dateString ? parseEventDate(dateString, { referenceDate }) : null;
             const startMs = toMillis(parsed?.start);
             const endMs = toMillis(parsed?.end);
             
@@ -266,7 +268,7 @@ export class TimelineRenderer {
             this.destroy();
 
             const referenceDate = this.plugin.getReferenceTodayDate();
-            const build = this.buildDatasets(referenceDate);
+            const build = await this.buildDatasets(referenceDate);
             const items = build.items;
             const groups = build.groups;
 
@@ -425,13 +427,13 @@ export class TimelineRenderer {
     /**
      * Build datasets for vis-timeline
      */
-    private buildDatasets(referenceDate: Date): {
+    private async buildDatasets(referenceDate: Date): Promise<{
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         items: any;
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         groups?: any;
         legend: Array<{ key: string; label: string; color: string }>;
-    } {
+    }> {
         const items = new DataSet();
         const legend: Array<{ key: string; label: string; color: string }> = [];
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -491,14 +493,49 @@ export class TimelineRenderer {
         }
 
         // Build items
-        this.events.forEach((evt, idx) => {
-            if (!this.shouldIncludeEvent(evt)) return;
+        for (let idx = 0; idx < this.events.length; idx++) {
+            const evt = this.events[idx];
+
+            // DEBUG: Log custom calendar events
+            if (evt.customCalendarDate) {
+                console.log('[Timeline] Processing custom calendar event:', evt.name, {
+                    calendarId: evt.calendarId,
+                    customDate: evt.customCalendarDate,
+                    gregorianDateTime: evt.gregorianDateTime
+                });
+            }
+
+            if (!this.shouldIncludeEvent(evt)) {
+                if (evt.customCalendarDate) {
+                    console.log('[Timeline] Event filtered out by shouldIncludeEvent:', evt.name);
+                }
+                continue;
+            }
+
+            const dateString = getEventDateForTimeline(evt);
+            if (evt.customCalendarDate) {
+                console.log('[Timeline] Date string for', evt.name, ':', dateString);
+            }
 
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const parsed = evt.dateTime ? parseEventDate(evt.dateTime, { referenceDate }) : { error: 'empty' } as any;
+            const parsed = dateString ? parseEventDate(dateString, { referenceDate }) : { error: 'empty' } as any;
+            if (evt.customCalendarDate) {
+                console.log('[Timeline] Parsed result for', evt.name, ':', parsed);
+            }
+
             const startMs = toMillis(parsed.start);
             const endMs = toMillis(parsed.end);
-            if (startMs == null) return;
+
+            if (evt.customCalendarDate) {
+                console.log('[Timeline] Timestamps for', evt.name, ':', { startMs, endMs });
+            }
+
+            if (startMs == null) {
+                if (evt.customCalendarDate) {
+                    console.log('[Timeline] Event excluded due to null startMs:', evt.name);
+                }
+                continue;
+            }
 
             // Determine grouping
             let groupId: string | undefined;
@@ -551,14 +588,14 @@ export class TimelineRenderer {
                 content: content,
                 start: new Date(startMs),
                 end: displayEndMs != null ? new Date(displayEndMs) : undefined,
-                title: this.makeTooltip(evt, parsed),
+                title: await this.makeTooltipAsync(evt, parsed),
                 type: itemType,
                 className: classes.length > 0 ? classes.join(' ') : undefined,
                 group: groupId,
                 style,
                 progress: evt.progress
             });
-        });
+        }
 
         return { items, groups: groupsDS, legend };
     }
@@ -661,7 +698,42 @@ export class TimelineRenderer {
      * Make tooltip for event
      */
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    private async makeTooltipAsync(evt: Event, parsed: any): Promise<string> {
+        const parts: string[] = [evt.name];
+
+        // If event uses custom calendar, show custom date first
+        if (evt.customCalendarDate && evt.calendarId) {
+            try {
+                const calendars = await this.plugin.listCalendars();
+                const calendar = calendars.find(c => c.id === evt.calendarId);
+
+                if (calendar) {
+                    const customDateStr = CalendarConverter.formatCustomCalendarDate(evt.customCalendarDate, calendar);
+                    parts.push(`${calendar.name}: ${customDateStr}`);
+
+                    // Also show Gregorian equivalent
+                    const dt = parsed?.start ? toDisplay(parsed.start, undefined, parsed.isBCE, parsed.originalYear) : '';
+                    if (dt) parts.push(`(Gregorian: ${dt})`);
+                }
+            } catch (error) {
+                console.error('Error formatting custom calendar date for tooltip:', error);
+                // Fallback to standard date display
+                const dt = parsed?.start ? toDisplay(parsed.start, undefined, parsed.isBCE, parsed.originalYear) : (evt.dateTime || '');
+                if (dt) parts.push(dt);
+            }
+        } else {
+            // Standard Gregorian date
+            const dt = parsed?.start ? toDisplay(parsed.start, undefined, parsed.isBCE, parsed.originalYear) : (evt.dateTime || '');
+            if (dt) parts.push(dt);
+        }
+
+        if (evt.location) parts.push(`@ ${evt.location}`);
+        if (evt.description) parts.push(evt.description.length > 120 ? evt.description.slice(0, 120) + '…' : evt.description);
+        return parts.filter(Boolean).join(' \n');
+    }
+
     private makeTooltip(evt: Event, parsed: any): string {
+        // Synchronous version for backwards compatibility - will be async in tooltip generation
         const parts: string[] = [evt.name];
         const dt = parsed?.start ? toDisplay(parsed.start, undefined, parsed.isBCE, parsed.originalYear) : (evt.dateTime || '');
         if (dt) parts.push(dt);
