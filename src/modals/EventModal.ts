@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { App, Modal, Setting, Notice, TextAreaComponent, TextComponent, ButtonComponent } from 'obsidian';
-import { Event, GalleryImage, Character, Location, Group } from '../types'; // Added Character, Location, Group
+import { Event, GalleryImage, Character, Location, Group, Calendar, CalendarDate } from '../types'; // Added Character, Location, Group
 import StorytellerSuitePlugin from '../main';
 import { getWhitelistKeys } from '../yaml/EntitySections';
 import { t } from '../i18n/strings';
@@ -10,6 +10,9 @@ import { PromptModal } from './ui/PromptModal';
 import { CharacterSuggestModal } from './CharacterSuggestModal';
 import { LocationSuggestModal } from './LocationSuggestModal';
 import { EventSuggestModal } from './EventSuggestModal';
+// Import calendar components
+import { CustomCalendarDatePicker } from '../components/CustomCalendarDatePicker';
+import { CalendarConverter } from '../utils/CalendarConverter';
 // Remove placeholder import for multi-image
 // import { MultiGalleryImageSuggestModal } from './MultiGalleryImageSuggestModal';
 
@@ -24,6 +27,11 @@ export class EventModal extends Modal {
     isNew: boolean;
     private _groupRefreshInterval: number | null = null;
     private groupSelectorContainer: HTMLElement | null = null;
+
+    // Calendar-related
+    private selectedCalendar: Calendar | null = null;
+    private datePickerContainer: HTMLElement | null = null;
+    private customDatePicker: CustomCalendarDatePicker | null = null;
 
     // Elements to update dynamically
     charactersListEl: HTMLElement;
@@ -66,13 +74,51 @@ export class EventModal extends Modal {
                 .onChange(value => { this.event.name = value; })
                 .inputEl.addClass('storyteller-modal-input-large'));
 
-        const dateTimeSetting = new Setting(contentEl)
-            .setName(t('dateTime'))
-            .setDesc(t('statusPlaceholderEvent'))
-            .addText(text => text
-                .setPlaceholder(t('enterDateTime'))
-                .setValue(this.event.dateTime || '')
-                .onChange(value => { this.event.dateTime = value || undefined; }));
+        // === Calendar Selection ===
+        new Setting(contentEl)
+            .setName('Calendar System')
+            .setDesc('Choose calendar system for this event')
+            .addDropdown(async dropdown => {
+                dropdown.addOption('', 'Gregorian (standard)');
+
+                // Load calendars
+                const calendars = await this.plugin.listCalendars();
+                calendars.forEach(calendar => {
+                    if (calendar.id) {
+                        dropdown.addOption(calendar.id, calendar.name);
+                    }
+                });
+
+                // Set initial value
+                dropdown.setValue(this.event.calendarId || '');
+
+                dropdown.onChange(async value => {
+                    this.event.calendarId = value || undefined;
+
+                    // Load the selected calendar
+                    if (value) {
+                        const calendars = await this.plugin.listCalendars();
+                        this.selectedCalendar = calendars.find(c => c.id === value) || null;
+                    } else {
+                        this.selectedCalendar = null;
+                    }
+
+                    // Re-render the date picker section
+                    this.renderDatePicker();
+                });
+
+                // Load initial calendar if event has one
+                if (this.event.calendarId) {
+                    const calendars = await this.plugin.listCalendars();
+                    this.selectedCalendar = calendars.find(c => c.id === this.event.calendarId) || null;
+                }
+
+                // Render date picker after calendar is loaded
+                this.renderDatePicker();
+            });
+
+        // === Date/Time Section (conditionally rendered) ===
+        this.datePickerContainer = contentEl.createDiv('event-date-picker-container');
 
         new Setting(contentEl)
             .setName(t('description'))
@@ -591,6 +637,82 @@ export class EventModal extends Modal {
                 });
             }
         })();
+    }
+
+    /**
+     * Render the date picker section based on selected calendar
+     */
+    private renderDatePicker(): void {
+        if (!this.datePickerContainer) return;
+
+        this.datePickerContainer.empty();
+
+        if (!this.selectedCalendar) {
+            // Gregorian calendar - show standard text input
+            new Setting(this.datePickerContainer)
+                .setName(t('dateTime'))
+                .setDesc('Date and time in standard format (e.g., "2024-03-15" or "March 15, 2024")')
+                .addText(text => text
+                    .setPlaceholder(t('enterDateTime'))
+                    .setValue(this.event.dateTime || '')
+                    .onChange(value => {
+                        this.event.dateTime = value || undefined;
+                        // Clear custom calendar fields when using Gregorian
+                        this.event.customCalendarDate = undefined;
+                        this.event.gregorianDateTime = undefined;
+                    }));
+        } else {
+            // Custom calendar - show calendar date picker
+
+            // Validate calendar has required configuration
+            if (!this.selectedCalendar.months || this.selectedCalendar.months.length === 0) {
+                new Setting(this.datePickerContainer)
+                    .setName('Calendar Configuration Error')
+                    .setDesc('This calendar has no months defined. Please edit the calendar and add months before using it for events.');
+                return;
+            }
+
+            if (!this.selectedCalendar.conversionType) {
+                new Setting(this.datePickerContainer)
+                    .setName('Calendar Configuration Warning')
+                    .setDesc('This calendar has no timeline integration configured. Events will not appear on the timeline. Edit the calendar and set up Linear or Lookup conversion.');
+            }
+
+            const pickerSetting = new Setting(this.datePickerContainer)
+                .setName('Event Date')
+                .setDesc(`Date in ${this.selectedCalendar.name} calendar`);
+
+            const pickerContainer = pickerSetting.controlEl.createDiv('custom-calendar-picker-wrapper');
+
+            // Create the custom calendar date picker
+            this.customDatePicker = CustomCalendarDatePicker.create(
+                pickerContainer,
+                this.plugin,
+                this.selectedCalendar,
+                this.event.customCalendarDate || null,
+                (date: CalendarDate) => {
+                    // Update event with custom calendar date
+                    this.event.customCalendarDate = date;
+
+                    // Convert to Gregorian for timeline
+                    console.log('Converting custom calendar date:', date, 'with calendar:', this.selectedCalendar);
+                    const gregorianDate = CalendarConverter.convertCustomToGregorian(date, this.selectedCalendar!);
+                    console.log('Conversion result:', gregorianDate);
+
+                    if (gregorianDate) {
+                        this.event.gregorianDateTime = gregorianDate.toISOString();
+                        console.log('Set gregorianDateTime to:', this.event.gregorianDateTime);
+                        new Notice(`Date set: ${CalendarConverter.formatCustomCalendarDate(date, this.selectedCalendar!)}`);
+                    } else {
+                        console.error('Failed to convert custom calendar date to Gregorian');
+                        new Notice('Error: Failed to convert date. Check calendar configuration.');
+                    }
+
+                    // Clear standard dateTime when using custom calendar
+                    this.event.dateTime = undefined;
+                }
+            );
+        }
     }
 
     onClose() {
