@@ -5573,3 +5573,53 @@ body.mod-rtl .storyteller-group-members {
 }
 
 /* ===== END MAP EDITOR VIEW STYLES =====*/
+/* ===== LEVEL 3 CUSTOM CALENDAR TIMELINE STYLES ===== */
+
+/* Calendar selector container */
+.storyteller-calendar-container {
+  display: inline-block;
+  margin: 0 4px;
+}
+
+/* Calendar selector dropdown */
+.storyteller-calendar-select {
+  padding: 4px 8px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  background: var(--background-secondary);
+  color: var(--text-normal);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.storyteller-calendar-select:hover {
+  background: var(--background-modifier-hover);
+  border-color: var(--interactive-accent);
+}
+
+.storyteller-calendar-select:focus {
+  outline: none;
+  border-color: var(--interactive-accent);
+  box-shadow: 0 0 0 2px var(--interactive-accent-hover);
+}
+
+/* Calendar mode badge */
+.storyteller-calendar-badge {
+  display: inline-block;
+  padding: 4px 12px;
+  margin: 0 4px;
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: default;
+}
+
+/* Calendar badge hover effect */
+.storyteller-calendar-badge:hover {
+  background: var(--interactive-accent-hover);
+}
+
+/* ===== END CALENDAR TIMELINE STYLES ===== */
