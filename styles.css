@@ -5623,3 +5623,60 @@ body.mod-rtl .storyteller-group-members {
 }
 
 /* ===== END CALENDAR TIMELINE STYLES ===== */
+
+/* ===== CALENDAR MARKER STYLES ===== */
+
+/* Season background markers */
+.timeline-season-marker {
+  opacity: 0.3;
+  pointer-events: all;
+  transition: opacity 0.2s ease;
+}
+
+.timeline-season-marker:hover {
+  opacity: 0.5;
+}
+
+/* Holiday markers */
+.timeline-holiday-marker {
+  font-weight: bold;
+  font-size: 14px;
+  padding: 4px 8px;
+  background: linear-gradient(135deg, #FF6B6B 0%, #FF8E8E 100%);
+  color: white;
+  border-radius: 4px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.timeline-holiday-marker:hover {
+  transform: scale(1.05);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+}
+
+/* Intercalary day markers */
+.timeline-intercalary-marker {
+  font-weight: bold;
+  font-size: 14px;
+  padding: 4px 8px;
+  background: linear-gradient(135deg, #9C27B0 0%, #BA68C8 100%);
+  color: white;
+  border-radius: 4px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  border: 2px dashed rgba(255, 255, 255, 0.5);
+}
+
+.timeline-intercalary-marker:hover {
+  transform: scale(1.05);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+}
+
+/* Astronomical event markers */
+.timeline-astronomical-marker {
+  font-size: 12px;
+  padding: 2px 6px;
+  background: rgba(33, 150, 243, 0.8);
+  color: white;
+  border-radius: 3px;
+}
+
+/* ===== END CALENDAR MARKER STYLES ===== */

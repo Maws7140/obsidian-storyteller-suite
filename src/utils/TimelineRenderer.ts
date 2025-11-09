@@ -7,6 +7,7 @@ import { Event, Calendar } from '../types';
 import { parseEventDate, toMillis, toDisplay } from './DateParsing';
 import { EventModal } from '../modals/EventModal';
 import { CustomTimeAxis } from './CustomTimeAxis';
+import { CalendarMarkers } from './CalendarMarkers';
 
 // @ts-ignore: vis-timeline is bundled dependency
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -290,6 +291,40 @@ export class TimelineRenderer {
             const items = build.items;
             const groups = build.groups;
 
+            // Add calendar markers if a calendar is selected (Level 3 feature)
+            if (this.selectedCalendarId) {
+                try {
+                    const calendars = await this.plugin.listCalendars();
+                    const selectedCalendar = calendars.find(
+                        c => (c.id || c.name) === this.selectedCalendarId
+                    );
+
+                    if (selectedCalendar) {
+                        // Determine year range from events
+                        const eventDates = this.events
+                            .map(e => parseEventDate(e.dateTime || ''))
+                            .filter(d => d.start)
+                            .map(d => d.start!.year);
+
+                        const startYear = Math.min(...eventDates, new Date().getFullYear() - 1);
+                        const endYear = Math.max(...eventDates, new Date().getFullYear() + 1);
+
+                        // Generate calendar markers
+                        const markers = CalendarMarkers.generateAllMarkers(
+                            selectedCalendar,
+                            startYear,
+                            endYear
+                        );
+
+                        // Add markers to items dataset
+                        CalendarMarkers.applyMarkersToTimeline(null, markers, items);
+                    }
+                } catch (markerError) {
+                    console.warn('Storyteller Suite: Error adding calendar markers:', markerError);
+                    // Non-critical, continue without markers
+                }
+            }
+
             // Timeline options
             // In Gantt mode, use larger margins for better bar visibility
             const baseMargin = this.options.ganttMode ? 15 : 4;
@@ -464,6 +499,37 @@ export class TimelineRenderer {
                     console.warn('Storyteller Suite: Error rendering dependency arrows:', arrowError);
                     // Non-critical, continue without arrows
                 }
+            }
+
+            // Add zoom/pan listener for dynamic calendar axis updates (Level 3 feature)
+            if (this.timeline && this.selectedCalendarId) {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                this.timeline.on('rangechanged', async (props: any) => {
+                    if (!this.selectedCalendarId) return;
+
+                    try {
+                        const calendars = await this.plugin.listCalendars();
+                        const selectedCalendar = calendars.find(
+                            c => (c.id || c.name) === this.selectedCalendarId
+                        );
+
+                        if (selectedCalendar && props.byUser) {
+                            // User initiated zoom/pan - update axis scale
+                            const range = this.timeline.getWindow();
+                            if (range && range.start && range.end) {
+                                const timeScale = CustomTimeAxis.determineTimeScale(
+                                    range.start.valueOf(),
+                                    range.end.valueOf()
+                                );
+
+                                // Re-apply custom time axis with updated scale
+                                CustomTimeAxis.applyToTimeline(this.timeline, selectedCalendar);
+                            }
+                        }
+                    } catch (error) {
+                        console.warn('Storyteller Suite: Error updating calendar axis on zoom:', error);
+                    }
+                });
             }
         } catch (error) {
             console.error('Storyteller Suite: Fatal error in timeline rendering:', error);
