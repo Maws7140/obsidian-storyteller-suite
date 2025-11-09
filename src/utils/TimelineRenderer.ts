@@ -3,10 +3,12 @@
 
 import { App, Notice } from 'obsidian';
 import StorytellerSuitePlugin from '../main';
-import { Event } from '../types';
+import { Event, Calendar } from '../types';
 import { parseEventDate, toMillis, toDisplay, getEventDateForTimeline } from './DateParsing';
 import { EventModal } from '../modals/EventModal';
 import { CalendarConverter } from './CalendarConverter';
+import { CustomTimeAxis } from './CustomTimeAxis';
+import { CalendarMarkers } from './CalendarMarkers';
 
 // @ts-ignore: vis-timeline is bundled dependency
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -52,6 +54,9 @@ export class TimelineRenderer {
     private options: TimelineRendererOptions;
     private filters: TimelineFilters = {};
     private events: Event[] = [];
+
+    // Calendar configuration (Level 3 feature)
+    private selectedCalendarId?: string;
     
     // Color palette for grouping
     private palette = [
@@ -117,6 +122,22 @@ export class TimelineRenderer {
     setGroupMode(mode: 'none' | 'location' | 'group' | 'character'): void {
         this.options.groupMode = mode;
         this.render();
+    }
+
+    /**
+     * Set selected calendar for timeline display (Level 3 feature)
+     * @param calendarId Calendar ID, or undefined for "All Calendars (Gregorian)" mode
+     */
+    setCalendar(calendarId?: string): void {
+        this.selectedCalendarId = calendarId;
+        this.render();
+    }
+
+    /**
+     * Get currently selected calendar
+     */
+    getSelectedCalendarId(): string | undefined {
+        return this.selectedCalendarId;
     }
 
     /**
@@ -272,6 +293,40 @@ export class TimelineRenderer {
             const items = build.items;
             const groups = build.groups;
 
+            // Add calendar markers if a calendar is selected (Level 3 feature)
+            if (this.selectedCalendarId) {
+                try {
+                    const calendars = await this.plugin.listCalendars();
+                    const selectedCalendar = calendars.find(
+                        c => (c.id || c.name) === this.selectedCalendarId
+                    );
+
+                    if (selectedCalendar) {
+                        // Determine year range from events
+                        const eventDates = this.events
+                            .map(e => parseEventDate(e.dateTime || ''))
+                            .filter(d => d.start)
+                            .map(d => d.start!.year);
+
+                        const startYear = Math.min(...eventDates, new Date().getFullYear() - 1);
+                        const endYear = Math.max(...eventDates, new Date().getFullYear() + 1);
+
+                        // Generate calendar markers
+                        const markers = CalendarMarkers.generateAllMarkers(
+                            selectedCalendar,
+                            startYear,
+                            endYear
+                        );
+
+                        // Add markers to items dataset
+                        CalendarMarkers.applyMarkersToTimeline(null, markers, items);
+                    }
+                } catch (markerError) {
+                    console.warn('Storyteller Suite: Error adding calendar markers:', markerError);
+                    // Non-critical, continue without markers
+                }
+            }
+
             // Timeline options
             // In Gantt mode, use larger margins for better bar visibility
             const baseMargin = this.options.ganttMode ? 15 : 4;
@@ -348,6 +403,42 @@ export class TimelineRenderer {
                 }
             }
 
+            // Apply custom calendar axis if a calendar is selected (Level 3 feature)
+            if (this.timeline && this.selectedCalendarId) {
+                try {
+                    const calendars = await this.plugin.listCalendars();
+                    const selectedCalendar = calendars.find(
+                        c => (c.id || c.name) === this.selectedCalendarId
+                    );
+
+                    if (selectedCalendar) {
+                        // Apply custom time axis formatting
+                        CustomTimeAxis.applyToTimeline(this.timeline, selectedCalendar);
+
+                        // Determine visible range to add month boundary markers
+                        const range = this.timeline.getWindow();
+                        if (range && range.start && range.end) {
+                            const startDate = new Date(range.start);
+                            const endDate = new Date(range.end);
+                            const startYear = startDate.getFullYear();
+                            const endYear = endDate.getFullYear();
+
+                            // Add month boundary markers (limited range to avoid performance issues)
+                            const yearRange = Math.min(endYear - startYear, 10); // Limit to 10 years
+                            CustomTimeAxis.createMonthBoundaryMarkers(
+                                this.timeline,
+                                selectedCalendar,
+                                startYear,
+                                startYear + yearRange
+                            );
+                        }
+                    }
+                } catch (calendarError) {
+                    console.warn('Storyteller Suite: Could not apply custom calendar axis:', calendarError);
+                    // Non-critical, continue with default axis
+                }
+            }
+
             // Handle drag-and-drop changes when in edit mode
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             this.timeline.on('changed', async (props: any) => {
@@ -410,6 +501,37 @@ export class TimelineRenderer {
                     console.warn('Storyteller Suite: Error rendering dependency arrows:', arrowError);
                     // Non-critical, continue without arrows
                 }
+            }
+
+            // Add zoom/pan listener for dynamic calendar axis updates (Level 3 feature)
+            if (this.timeline && this.selectedCalendarId) {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                this.timeline.on('rangechanged', async (props: any) => {
+                    if (!this.selectedCalendarId) return;
+
+                    try {
+                        const calendars = await this.plugin.listCalendars();
+                        const selectedCalendar = calendars.find(
+                            c => (c.id || c.name) === this.selectedCalendarId
+                        );
+
+                        if (selectedCalendar && props.byUser) {
+                            // User initiated zoom/pan - update axis scale
+                            const range = this.timeline.getWindow();
+                            if (range && range.start && range.end) {
+                                const timeScale = CustomTimeAxis.determineTimeScale(
+                                    range.start.valueOf(),
+                                    range.end.valueOf()
+                                );
+
+                                // Re-apply custom time axis with updated scale
+                                CustomTimeAxis.applyToTimeline(this.timeline, selectedCalendar);
+                            }
+                        }
+                    } catch (error) {
+                        console.warn('Storyteller Suite: Error updating calendar axis on zoom:', error);
+                    }
+                });
             }
         } catch (error) {
             console.error('Storyteller Suite: Fatal error in timeline rendering:', error);
@@ -708,7 +830,7 @@ export class TimelineRenderer {
                 const calendar = calendars.find(c => c.id === evt.calendarId);
 
                 if (calendar) {
-                    const customDateStr = CalendarConverter.formatCustomCalendarDate(evt.customCalendarDate, calendar);
+                    const customDateStr = CalendarConverter.formatDate(evt.customCalendarDate, calendar);
                     parts.push(`${calendar.name}: ${customDateStr}`);
 
                     // Also show Gregorian equivalent
