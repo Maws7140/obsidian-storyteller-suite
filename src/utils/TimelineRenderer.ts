@@ -3,9 +3,10 @@
 
 import { App, Notice } from 'obsidian';
 import StorytellerSuitePlugin from '../main';
-import { Event } from '../types';
+import { Event, Calendar } from '../types';
 import { parseEventDate, toMillis, toDisplay } from './DateParsing';
 import { EventModal } from '../modals/EventModal';
+import { CustomTimeAxis } from './CustomTimeAxis';
 
 // @ts-ignore: vis-timeline is bundled dependency
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -51,6 +52,9 @@ export class TimelineRenderer {
     private options: TimelineRendererOptions;
     private filters: TimelineFilters = {};
     private events: Event[] = [];
+
+    // Calendar configuration (Level 3 feature)
+    private selectedCalendarId?: string;
     
     // Color palette for grouping
     private palette = [
@@ -116,6 +120,22 @@ export class TimelineRenderer {
     setGroupMode(mode: 'none' | 'location' | 'group' | 'character'): void {
         this.options.groupMode = mode;
         this.render();
+    }
+
+    /**
+     * Set selected calendar for timeline display (Level 3 feature)
+     * @param calendarId Calendar ID, or undefined for "All Calendars (Gregorian)" mode
+     */
+    setCalendar(calendarId?: string): void {
+        this.selectedCalendarId = calendarId;
+        this.render();
+    }
+
+    /**
+     * Get currently selected calendar
+     */
+    getSelectedCalendarId(): string | undefined {
+        return this.selectedCalendarId;
     }
 
     /**
@@ -343,6 +363,42 @@ export class TimelineRenderer {
                     }
                 } catch (timeError) {
                     console.warn('Storyteller Suite: Could not set current time marker:', timeError);
+                }
+            }
+
+            // Apply custom calendar axis if a calendar is selected (Level 3 feature)
+            if (this.timeline && this.selectedCalendarId) {
+                try {
+                    const calendars = await this.plugin.listCalendars();
+                    const selectedCalendar = calendars.find(
+                        c => (c.id || c.name) === this.selectedCalendarId
+                    );
+
+                    if (selectedCalendar) {
+                        // Apply custom time axis formatting
+                        CustomTimeAxis.applyToTimeline(this.timeline, selectedCalendar);
+
+                        // Determine visible range to add month boundary markers
+                        const range = this.timeline.getWindow();
+                        if (range && range.start && range.end) {
+                            const startDate = new Date(range.start);
+                            const endDate = new Date(range.end);
+                            const startYear = startDate.getFullYear();
+                            const endYear = endDate.getFullYear();
+
+                            // Add month boundary markers (limited range to avoid performance issues)
+                            const yearRange = Math.min(endYear - startYear, 10); // Limit to 10 years
+                            CustomTimeAxis.createMonthBoundaryMarkers(
+                                this.timeline,
+                                selectedCalendar,
+                                startYear,
+                                startYear + yearRange
+                            );
+                        }
+                    }
+                } catch (calendarError) {
+                    console.warn('Storyteller Suite: Could not apply custom calendar axis:', calendarError);
+                    // Non-critical, continue with default axis
                 }
             }
 
