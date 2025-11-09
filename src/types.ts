@@ -387,6 +387,15 @@ export interface Event {
     /** IDs of markers representing this event on various maps
      * @deprecated Map functionality has been deprecated */
     markerIds?: string[];
+
+    /** Calendar ID that this event's dateTime is based on (Level 3 feature)
+     * If undefined, dateTime is interpreted as Gregorian/Earth calendar */
+    calendarId?: string;
+
+    /** Multi-calendar date mappings (Level 3 feature)
+     * Stores the event's date in multiple calendar systems
+     * Key: calendar ID or name, Value: date in that calendar */
+    calendarDates?: Record<string, CalendarDate>;
 }
 
 /**
@@ -1318,6 +1327,36 @@ export interface Calendar {
 
     /** Typed connections to other entities */
     connections?: TypedRelationship[];
+
+    /** Hours per day (Level 3 feature - custom time units)
+     * Defaults to 24 if not specified */
+    hoursPerDay?: number;
+
+    /** Minutes per hour (Level 3 feature - custom time units)
+     * Defaults to 60 if not specified */
+    minutesPerHour?: number;
+
+    /** Seconds per minute (Level 3 feature - custom time units)
+     * Defaults to 60 if not specified */
+    secondsPerMinute?: number;
+
+    /** Flag indicating this calendar uses a lookup table (Level 3 feature)
+     * Lookup tables are used for irregular calendars that don't follow simple patterns */
+    isLookupTable?: boolean;
+
+    /** Lookup table entries for irregular calendars (Level 3 feature)
+     * Maps specific dates to day-of-year offsets */
+    lookupTable?: CalendarLookupEntry[];
+
+    /** Leap year rules for calendars with complex leap year patterns (Level 3 feature) */
+    leapYearRules?: LeapYearRule[];
+
+    /** Intercalary days/months (special days outside the normal calendar structure)
+     * These are common in many fantasy calendars (e.g., Midwinter in Harptos) */
+    intercalaryDays?: IntercalaryDay[];
+
+    /** Whether this calendar can be used as the default for the story */
+    isDefault?: boolean;
 }
 
 /**
@@ -1832,4 +1871,109 @@ export interface LocationSensoryProfile {
 
     /** Additional notes */
     notes?: string;
+}
+
+// ============================================================================
+// LEVEL 3 CUSTOM CALENDAR TIMELINE TYPES
+// ============================================================================
+
+/**
+ * Lookup table entry for irregular calendars (Level 3 feature)
+ * Maps a specific date to its absolute day offset from epoch
+ */
+export interface CalendarLookupEntry {
+    /** Year in the calendar */
+    year: number;
+
+    /** Month name or number */
+    month: string | number;
+
+    /** Day number */
+    day: number;
+
+    /** Absolute day offset from epoch (day 0) */
+    absoluteDayOffset: number;
+
+    /** Optional: Is this an intercalary day? */
+    isIntercalary?: boolean;
+}
+
+/**
+ * Leap year rule for complex leap year patterns (Level 3 feature)
+ */
+export interface LeapYearRule {
+    /** Rule type: 'divisible' | 'modulo' | 'custom' */
+    type: 'divisible' | 'modulo' | 'custom';
+
+    /** Divisor for divisibility check (e.g., 4 for "every 4 years") */
+    divisor?: number;
+
+    /** Exception divisor (e.g., 100 for "except every 100 years") */
+    exceptionDivisor?: number;
+
+    /** Exception to exception divisor (e.g., 400 for "except every 400 years") */
+    exceptionExceptionDivisor?: number;
+
+    /** Custom function name for complex rules */
+    customFunction?: string;
+
+    /** Number of days added in a leap year */
+    daysAdded?: number;
+
+    /** Description of the rule */
+    description?: string;
+}
+
+/**
+ * Intercalary day (special day outside normal calendar structure)
+ * Common in fantasy calendars (e.g., Midwinter in Harptos)
+ */
+export interface IntercalaryDay {
+    /** Name of the intercalary day */
+    name: string;
+
+    /** Position in the year (day number) */
+    dayOfYear: number;
+
+    /** Month it falls between (e.g., "between Month 6 and Month 7") */
+    position?: string;
+
+    /** Description and significance */
+    description?: string;
+
+    /** Whether this day is counted in the year total */
+    counted?: boolean;
+}
+
+/**
+ * Timeline calendar display settings (Level 3 feature)
+ * Stores user preferences for timeline calendar display
+ */
+export interface TimelineCalendarSettings {
+    /** Active calendar ID for timeline display (undefined = Gregorian/All) */
+    activeCalendarId?: string;
+
+    /** Display mode: 'single' | 'dual-axis' */
+    displayMode?: 'single' | 'dual-axis';
+
+    /** Secondary calendar for dual-axis mode */
+    secondaryCalendarId?: string;
+
+    /** Show Gregorian events when custom calendar is selected */
+    showGregorianEvents?: boolean;
+
+    /** Show custom calendar events when Gregorian is selected */
+    showCustomEvents?: boolean;
+
+    /** Show season markers on timeline */
+    showSeasons?: boolean;
+
+    /** Show holiday markers on timeline */
+    showHolidays?: boolean;
+
+    /** Preferred zoom level for custom calendars */
+    customZoomLevel?: 'year' | 'month' | 'day';
+
+    /** Color scheme for calendar display */
+    colorScheme?: string;
 }
