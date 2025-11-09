@@ -25,7 +25,7 @@ import { ConfirmModal } from './modals/ui/ConfirmModal';
 import { CharacterModal } from './modals/CharacterModal';
 import {
     Character, Location, Event, GalleryImage, GalleryData, Story, Group, PlotItem, Reference, Chapter, Scene,
-    Culture, Faction, Economy, MagicSystem, Calendar,
+    Culture, Economy, MagicSystem, Calendar,
     TimelineFork, CausalityLink, TimelineConflict,
     PacingAnalysis, WritingSession, StoryAnalytics, LocationSensoryProfile
     /* DEPRECATED: Map as StoryMap */
@@ -40,6 +40,7 @@ import { ImageDetailModal } from './modals/ImageDetailModal';
 import { DashboardView, VIEW_TYPE_DASHBOARD } from './views/DashboardView';
 import { NetworkGraphView, VIEW_TYPE_NETWORK_GRAPH } from './views/NetworkGraphView';
 import { TimelineView, VIEW_TYPE_TIMELINE } from './views/TimelineView';
+import { AnalyticsDashboardView, VIEW_TYPE_ANALYTICS } from './views/AnalyticsDashboardView';
 // DEPRECATED: Map functionality has been deprecated
 // import { MapEditorView, VIEW_TYPE_MAP_EDITOR } from './views/MapEditorView';
 import { GalleryImageSuggestModal } from './modals/GalleryImageSuggestModal';
@@ -48,6 +49,14 @@ import { StorytellerSuiteSettingTab } from './StorytellerSuiteSettingTab';
 import { NewStoryModal } from './modals/NewStoryModal';
 import { PlotItemModal } from './modals/PlotItemModal';
 import { PlotItemListModal } from './modals/PlotItemListModal';
+import { CultureModal } from './modals/CultureModal';
+import { CultureListModal } from './modals/CultureListModal';
+import { EconomyModal } from './modals/EconomyModal';
+import { EconomyListModal } from './modals/EconomyListModal';
+import { MagicSystemModal } from './modals/MagicSystemModal';
+import { MagicSystemListModal } from './modals/MagicSystemListModal';
+import { CalendarModal } from './modals/CalendarModal';
+import { CalendarListModal } from './modals/CalendarListModal';
 import { PlatformUtils } from './utils/PlatformUtils';
 import { getTemplateSections } from './utils/EntityTemplates';
 
@@ -145,6 +154,7 @@ import { getTemplateSections } from './utils/EntityTemplates';
 
     /** Sensory Profiles */
     enableSensoryProfiles?: boolean;
+    sensoryProfiles?: LocationSensoryProfile[];
 }
 
 /**
@@ -412,11 +422,11 @@ export default class StorytellerSuitePlugin extends Plugin {
 	/**
 	 * Create a new story, add it to settings, and set as active
 	 */
-    async createStory(name: string, description?: string): Promise<Story> {
+    async createStory(name: string, description?: string, defaultCalendarId?: string): Promise<Story> {
 		// Generate unique id
 		const id = Date.now().toString(36) + Math.random().toString(36).substr(2, 6);
 		const created = new Date().toISOString();
-		const story: Story = { id, name, created, description };
+		const story: Story = { id, name, created, description, defaultCalendarId };
 		this.settings.stories.push(story);
 		this.settings.activeStoryId = id;
 		await this.saveSettings();
@@ -446,19 +456,19 @@ export default class StorytellerSuitePlugin extends Plugin {
 	/**
 	 * Update an existing story's name and description
 	 */
-	async updateStory(storyId: string, name: string, description?: string): Promise<void> {
+	async updateStory(storyId: string, name: string, description?: string, defaultCalendarId?: string): Promise<void> {
 		const story = this.settings.stories.find(s => s.id === storyId);
 		if (!story) {
 			throw new Error('Story not found');
 		}
-		
+
 		const oldName = story.name;
-		
+
 		// If the name changed, we need to rename the story folders
 		if (oldName !== name) {
 			const oldStoryPath = `StorytellerSuite/Stories/${oldName}`;
 			const newStoryPath = `StorytellerSuite/Stories/${name}`;
-			
+
 			// Check if the old story folder exists
 			const oldFolder = this.app.vault.getAbstractFileByPath(oldStoryPath);
 			if (oldFolder && oldFolder instanceof TFolder) {
@@ -471,10 +481,11 @@ export default class StorytellerSuitePlugin extends Plugin {
 				}
 			}
 		}
-		
-		// Update the story name and description in memory
+
+		// Update the story name, description, and defaultCalendarId in memory
 		story.name = name;
 		story.description = description;
+		story.defaultCalendarId = defaultCalendarId;
 		await this.saveSettings();
 	}
 
@@ -573,6 +584,12 @@ export default class StorytellerSuitePlugin extends Plugin {
 		this.registerView(
 			VIEW_TYPE_TIMELINE,
 			(leaf) => new TimelineView(leaf, this)
+		);
+
+		// Register the analytics dashboard view for writing insights
+		this.registerView(
+			VIEW_TYPE_ANALYTICS,
+			(leaf) => new AnalyticsDashboardView(leaf, this)
 		);
 
 		// DEPRECATED: Map functionality has been deprecated
@@ -942,9 +959,10 @@ export default class StorytellerSuitePlugin extends Plugin {
 			callback: () => {
 				new NewStoryModal(
 					this.app,
+					this,
 					this.settings.stories.map(s => s.name),
-					async (name, description) => {
-						const story = await this.createStory(name, description);
+					async (name, description, defaultCalendarId) => {
+						const story = await this.createStory(name, description, defaultCalendarId);
 						await this.setActiveStory(story.id);
                         new Notice(`Story "${name}" created and activated.`);
 						// Optionally, open dashboard
@@ -1038,6 +1056,14 @@ export default class StorytellerSuitePlugin extends Plugin {
 			}
 		});
 
+		this.addCommand({
+			id: 'open-analytics-dashboard',
+			name: 'Open writing analytics',
+			callback: async () => {
+				await this.activateAnalyticsView();
+			}
+		});
+
 		// Plot Item management commands
 		this.addCommand({
 			id: 'create-new-plot-item',
@@ -1057,6 +1083,94 @@ export default class StorytellerSuitePlugin extends Plugin {
 			callback: async () => {
 				const items = await this.listPlotItems();
 				new PlotItemListModal(this.app, this, items).open();
+			}
+		});
+
+		// Culture management commands
+		this.addCommand({
+			id: 'create-new-culture',
+			name: 'Create new culture',
+			callback: () => {
+                if (!this.ensureActiveStoryOrGuide()) return;
+				new CultureModal(this.app, this, null, async (cultureData: Culture) => {
+					await this.saveCulture(cultureData);
+					new Notice(`Culture "${cultureData.name}" created.`);
+				}).open();
+			}
+		});
+
+		this.addCommand({
+			id: 'view-cultures',
+			name: 'View cultures',
+			callback: async () => {
+				const cultures = await this.listCultures();
+				new CultureListModal(this.app, this, cultures).open();
+			}
+		});
+
+		// Economy management commands
+		this.addCommand({
+			id: 'create-new-economy',
+			name: 'Create new economy',
+			callback: () => {
+                if (!this.ensureActiveStoryOrGuide()) return;
+				new EconomyModal(this.app, this, null, async (economyData: Economy) => {
+					await this.saveEconomy(economyData);
+					new Notice(`Economy "${economyData.name}" created.`);
+				}).open();
+			}
+		});
+
+		this.addCommand({
+			id: 'view-economies',
+			name: 'View economies',
+			callback: async () => {
+				const economies = await this.listEconomies();
+				new EconomyListModal(this.app, this, economies).open();
+			}
+		});
+
+		// Magic System management commands
+		this.addCommand({
+			id: 'create-new-magic-system',
+			name: 'Create new magic system',
+			callback: () => {
+                if (!this.ensureActiveStoryOrGuide()) return;
+				new MagicSystemModal(this.app, this, null, async (magicSystemData: MagicSystem) => {
+					await this.saveMagicSystem(magicSystemData);
+					new Notice(`Magic System "${magicSystemData.name}" created.`);
+				}).open();
+			}
+		});
+
+		this.addCommand({
+			id: 'view-magic-systems',
+			name: 'View magic systems',
+			callback: async () => {
+				const magicSystems = await this.listMagicSystems();
+				new MagicSystemListModal(this.app, this, magicSystems).open();
+			}
+		});
+
+		// Calendar management commands
+		this.addCommand({
+			id: 'create-new-calendar',
+			name: 'Create new calendar',
+			callback: () => {
+                if (!this.ensureActiveStoryOrGuide()) return;
+				new CalendarModal(this.app, this, null, async (calendarData: Calendar) => {
+					await this.saveCalendar(calendarData);
+					new Notice(`Calendar "${calendarData.name}" created.`);
+				}).open();
+			}
+		});
+
+		this.addCommand({
+			id: 'view-calendars',
+			name: 'View calendars',
+			callback: async () => {
+				const calendars = await this.listCalendars();
+				new CalendarListModal(this.app, this, calendars).open();
 			}
 		});
 
@@ -1318,31 +1432,6 @@ export default class StorytellerSuitePlugin extends Plugin {
 			}
 		});
 
-		// Create Faction
-		this.addCommand({
-			id: 'create-new-faction',
-			name: 'Create new faction',
-			callback: () => {
-				if (!this.ensureActiveStoryOrGuide()) return;
-				import('./modals/FactionModal').then(({ FactionModal }) => {
-					new FactionModal(this.app, this, null, async (faction) => {
-						await this.saveFaction(faction);
-						new Notice(`Faction "${faction.name}" created.`);
-					}).open();
-				});
-			}
-		});
-
-		// View Factions
-		this.addCommand({
-			id: 'view-factions',
-			name: 'View factions',
-			callback: async () => {
-				const factions = await this.listFactions();
-				new Notice(`${factions.length} faction(s) found`);
-				// TODO: Create FactionListModal for better visualization
-			}
-		});
 
 		// Create Economy
 		this.addCommand({
@@ -1676,6 +1765,32 @@ export default class StorytellerSuitePlugin extends Plugin {
 		}
 	}
 
+	async activateAnalyticsView() {
+		const { workspace } = this.app;
+
+		// Check if analytics view already exists
+		const existingLeaves = workspace.getLeavesOfType(VIEW_TYPE_ANALYTICS);
+
+		if (existingLeaves.length > 0) {
+			// Reveal existing analytics view
+			workspace.revealLeaf(existingLeaves[0]);
+			return;
+		}
+
+		// Create new leaf for analytics view in main editor area (as a tab)
+		const leaf = workspace.getLeaf('tab');
+		if (leaf) {
+			await leaf.setViewState({
+				type: VIEW_TYPE_ANALYTICS,
+				active: true
+			});
+			workspace.revealLeaf(leaf);
+		} else {
+			console.error("Storyteller Suite: Could not create workspace leaf for analytics.");
+			new Notice("Error opening analytics dashboard: Could not create workspace leaf.");
+		}
+	}
+
 	// DEPRECATED: Map functionality has been deprecated
 	/**
 	 * Open the map editor view
@@ -1887,11 +2002,6 @@ export default class StorytellerSuitePlugin extends Plugin {
         return buildFrontmatter('culture', src, preserve, { customFieldsMode: mode, originalFrontmatter }) as Record<string, any>;
     }
 
-    private buildFrontmatterForFaction(src: any, originalFrontmatter?: Record<string, unknown>): Record<string, any> {
-        const preserve = new Set<string>(Object.keys(src || {}));
-        const mode = this.settings.customFieldsMode ?? 'flatten';
-        return buildFrontmatter('faction', src, preserve, { customFieldsMode: mode, originalFrontmatter }) as Record<string, any>;
-    }
 
     private buildFrontmatterForEconomy(src: any, originalFrontmatter?: Record<string, unknown>): Record<string, any> {
         const preserve = new Set<string>(Object.keys(src || {}));
@@ -2221,6 +2331,43 @@ export default class StorytellerSuitePlugin extends Plugin {
 		} else {
 			new Notice(`Error: Could not find location file to delete at ${filePath}`);
 		}
+	}
+
+	// Sensory Profile Methods
+
+	async saveSensoryProfile(profile: LocationSensoryProfile): Promise<void> {
+		if (!this.settings.sensoryProfiles) {
+			this.settings.sensoryProfiles = [];
+		}
+
+		const existingIndex = this.settings.sensoryProfiles.findIndex(
+			p => p.locationId === profile.locationId
+		);
+
+		if (existingIndex >= 0) {
+			this.settings.sensoryProfiles[existingIndex] = profile;
+		} else {
+			this.settings.sensoryProfiles.push(profile);
+		}
+
+		await this.saveSettings();
+		new Notice(`Sensory profile for ${profile.locationName} saved.`);
+	}
+
+	getSensoryProfile(locationId: string): LocationSensoryProfile | null {
+		if (!this.settings.sensoryProfiles) return null;
+		return this.settings.sensoryProfiles.find(p => p.locationId === locationId) || null;
+	}
+
+	async deleteSensoryProfile(locationId: string): Promise<void> {
+		if (!this.settings.sensoryProfiles) return;
+
+		this.settings.sensoryProfiles = this.settings.sensoryProfiles.filter(
+			p => p.locationId !== locationId
+		);
+
+		await this.saveSettings();
+		new Notice('Sensory profile deleted.');
 	}
 
 	// DEPRECATED: Map functionality has been deprecated
@@ -2862,10 +3009,6 @@ export default class StorytellerSuitePlugin extends Plugin {
         await this.ensureFolder(this.getEntityFolder('culture'));
     }
 
-    async ensureFactionFolder(): Promise<void> {
-        await this.ensureFolder(this.getEntityFolder('faction'));
-    }
-
     async ensureEconomyFolder(): Promise<void> {
         await this.ensureFolder(this.getEntityFolder('economy'));
     }
@@ -3119,122 +3262,6 @@ export default class StorytellerSuitePlugin extends Plugin {
             this.app.metadataCache.trigger('dataview:refresh-views');
         } else {
             new Notice(`Error: Could not find culture file to delete at ${filePath}`);
-        }
-    }
-    /**
-     * Faction Data Management
-     */
-
-    async saveFaction(faction: Faction): Promise<void> {
-        await this.ensureFactionFolder();
-        const folderPath = this.getEntityFolder('faction');
-
-        const fileName = `${faction.name.replace(/[\\/:"*?<>|]+/g, '')}.md`;
-        const filePath = normalizePath(`${folderPath}/${fileName}`);
-
-        const { filePath: currentFilePath, description, history, structure, goals, resources, ...rest } = faction as any;
-        if ((rest as any).sections) delete (rest as any).sections;
-
-        let finalFilePath = filePath;
-        if (currentFilePath && currentFilePath !== filePath) {
-            const existingFile = this.app.vault.getAbstractFileByPath(currentFilePath);
-            if (existingFile && existingFile instanceof TFile) {
-                await this.app.fileManager.renameFile(existingFile, filePath);
-                finalFilePath = filePath;
-            }
-        }
-
-        const existingFile = this.app.vault.getAbstractFileByPath(finalFilePath);
-        let existingSections: Record<string, string> = {};
-        let originalFrontmatter: Record<string, unknown> | undefined;
-        if (existingFile && existingFile instanceof TFile) {
-            try {
-                const existingContent = await this.app.vault.cachedRead(existingFile);
-                existingSections = parseSectionsFromMarkdown(existingContent);
-
-                const { parseFrontmatterFromContent } = await import('./yaml/EntitySections');
-                const directFrontmatter = parseFrontmatterFromContent(existingContent);
-                const fileCache = this.app.metadataCache.getFileCache(existingFile);
-                const cachedFrontmatter = fileCache?.frontmatter as Record<string, unknown> | undefined;
-
-                if (directFrontmatter || cachedFrontmatter) {
-                    originalFrontmatter = { ...(cachedFrontmatter || {}), ...(directFrontmatter || {}) };
-                }
-            } catch (error) {
-                console.warn(`Error reading existing faction file: ${error}`);
-            }
-        }
-
-        const finalFrontmatter = this.buildFrontmatterForFaction(rest, originalFrontmatter);
-
-        if (originalFrontmatter) {
-            const validation = validateFrontmatterPreservation(finalFrontmatter, originalFrontmatter);
-            if (validation.lostFields.length > 0) {
-                console.warn(`[saveFaction] Warning: Fields will be lost on save:`, validation.lostFields);
-            }
-        }
-
-        const frontmatterString = Object.keys(finalFrontmatter).length > 0
-            ? stringifyYamlWithLogging(finalFrontmatter, originalFrontmatter, `Faction: ${faction.name}`)
-            : '';
-
-        const providedSections = {
-            Description: description !== undefined ? description : '',
-            History: history !== undefined ? history : '',
-            Structure: structure !== undefined ? structure : '',
-            Goals: goals !== undefined ? goals : '',
-            Resources: resources !== undefined ? resources : ''
-        };
-        const templateSections = getTemplateSections('faction', providedSections);
-
-        let allSections: Record<string, string>;
-        if (existingFile && existingFile instanceof TFile) {
-            allSections = { ...existingSections, ...templateSections };
-            Object.entries(providedSections).forEach(([key, value]) => {
-                allSections[key] = value;
-            });
-        } else {
-            allSections = templateSections;
-        }
-
-        let mdContent = `---\n${frontmatterString}---\n\n`;
-        mdContent += Object.entries(allSections)
-            .map(([key, content]) => `## ${key}\n${content || ''}`)
-            .join('\n\n');
-        if (!mdContent.endsWith('\n')) mdContent += '\n';
-
-        if (existingFile && existingFile instanceof TFile) {
-            await this.app.vault.modify(existingFile, mdContent);
-        } else {
-            await this.app.vault.create(finalFilePath, mdContent);
-            new Notice('Note created with standard sections for easy editing.');
-        }
-
-        faction.filePath = finalFilePath;
-        this.app.metadataCache.trigger("dataview:refresh-views");
-    }
-
-    async listFactions(): Promise<Faction[]> {
-        await this.ensureFactionFolder();
-        const folderPath = this.getEntityFolder('faction');
-        const allFiles = this.app.vault.getMarkdownFiles();
-        const files = allFiles.filter(f => f.path.startsWith(folderPath + '/') && f.extension === 'md');
-        const factions: Faction[] = [];
-        for (const file of files) {
-            const data = await this.parseFile<Faction>(file, { name: '' }, 'faction');
-            if (data) factions.push(data);
-        }
-        return factions.sort((a, b) => a.name.localeCompare(b.name));
-    }
-
-    async deleteFaction(filePath: string): Promise<void> {
-        const file = this.app.vault.getAbstractFileByPath(normalizePath(filePath));
-        if (file instanceof TFile) {
-            await this.app.vault.trash(file, true);
-            new Notice(`Faction file "${file.basename}" moved to trash.`);
-            this.app.metadataCache.trigger('dataview:refresh-views');
-        } else {
-            new Notice(`Error: Could not find faction file to delete at ${filePath}`);
         }
     }
 

@@ -67,10 +67,11 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                         const existingNames = this.plugin.settings.stories.map(s => s.name);
                         new EditStoryModal(
                             this.app,
+                            this.plugin,
                             story,
                             existingNames,
-                            async (name: string, description?: string) => {
-                                await this.plugin.updateStory(story.id, name, description);
+                            async (name: string, description?: string, defaultCalendarId?: string) => {
+                                await this.plugin.updateStory(story.id, name, description, defaultCalendarId);
                                 this.display();
                             }
                         ).open();
@@ -100,10 +101,11 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                 .onClick(async () => {
                     const existingNames = this.plugin.settings.stories.map(s => s.name);
                     new NewStoryModal(
-                        this.app, 
-                        existingNames, 
-                        async (name: string, description?: string) => {
-                            await this.plugin.createStory(name, description);
+                        this.app,
+                        this.plugin,
+                        existingNames,
+                        async (name: string, description?: string, defaultCalendarId?: string) => {
+                            await this.plugin.createStory(name, description, defaultCalendarId);
                             this.display();
                         }
                     ).open();

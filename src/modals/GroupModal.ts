@@ -1,7 +1,8 @@
-import { App, Modal, Setting, Notice, ButtonComponent } from 'obsidian';
+import { App, Setting, Notice, ButtonComponent } from 'obsidian';
 import { t } from '../i18n/strings';
-import { Group, Character, Location, Event, PlotItem } from '../types';
+import { Group, Character, Location, Event, PlotItem, GroupMemberDetails, GroupRelationship, Culture } from '../types';
 import StorytellerSuitePlugin from '../main';
+import { ResponsiveModal } from './ResponsiveModal';
 import { GalleryImageSuggestModal } from './GalleryImageSuggestModal';
 import { CharacterSuggestModal } from './CharacterSuggestModal';
 import { LocationSuggestModal } from './LocationSuggestModal';
@@ -11,7 +12,7 @@ import { PlotItemSuggestModal } from './PlotItemSuggestModal';
 export type GroupModalSubmitCallback = (group: Group) => Promise<void>;
 export type GroupModalDeleteCallback = (groupId: string) => Promise<void>;
 
-export class GroupModal extends Modal {
+export class GroupModal extends ResponsiveModal {
     plugin: StorytellerSuitePlugin;
     group: Group;
     isNew: boolean;
@@ -23,13 +24,24 @@ export class GroupModal extends Modal {
     allLocations: Location[] = [];
     allEvents: Event[] = [];
     allPlotItems: PlotItem[] = [];
+    allGroups: Group[] = [];
+    allCultures: Culture[] = [];
 
     constructor(app: App, plugin: StorytellerSuitePlugin, group: Group | null, onSubmit: GroupModalSubmitCallback, onDelete?: GroupModalDeleteCallback) {
         super(app);
         this.plugin = plugin;
         this.isNew = group === null;
         if (group) {
-            this.group = { ...group, members: [...group.members] };
+            this.group = {
+                ...group,
+                members: group.members.map(m => ({ ...m })),
+                groupRelationships: group.groupRelationships ? [...group.groupRelationships] : [],
+                territories: group.territories ? [...group.territories] : [],
+                colors: group.colors ? [...group.colors] : [],
+                linkedEvents: group.linkedEvents ? [...group.linkedEvents] : [],
+                subgroups: group.subgroups ? [...group.subgroups] : [],
+                customFields: group.customFields ? { ...group.customFields } : {}
+            };
         } else {
             const activeStory = this.plugin.getActiveStory();
             if (!activeStory) throw new Error('No active story selected');
@@ -39,7 +51,14 @@ export class GroupModal extends Modal {
                 name: '',
                 description: '',
                 color: '',
-                members: []
+                members: [],
+                groupType: 'collection',
+                groupRelationships: [],
+                territories: [],
+                colors: [],
+                linkedEvents: [],
+                subgroups: [],
+                customFields: {}
             };
         }
         this.onSubmit = onSubmit;
@@ -48,11 +67,19 @@ export class GroupModal extends Modal {
     }
 
     async onOpen() {
+        super.onOpen();
+
         const { contentEl } = this;
         contentEl.empty();
         contentEl.createEl('h2', { text: this.isNew ? t('createNewGroup') : `${t('editGroup')}: ${this.group.name}` });
 
-        // --- Name ---
+        // Load all entities for dropdowns
+        await this.loadAllEntities();
+
+        // === BASIC INFORMATION ===
+        contentEl.createEl('h3', { text: 'Basic Information' });
+
+        // Name
         new Setting(contentEl)
             .setName(t('name'))
             .addText(text => text
@@ -61,16 +88,38 @@ export class GroupModal extends Modal {
                 .onChange(value => { this.group.name = value; })
             );
 
-        // --- Description ---
+        // Description
         new Setting(contentEl)
             .setName(t('description'))
-            .addTextArea(text => text
-                .setPlaceholder(t('describeGroupPh'))
-                .setValue(this.group.description || '')
-                .onChange(value => { this.group.description = value; })
+            .addTextArea(text => {
+                text.setPlaceholder(t('describeGroupPh'))
+                    .setValue(this.group.description || '')
+                    .onChange(value => { this.group.description = value; });
+                text.inputEl.rows = 4;
+            });
+
+        // Group Type
+        new Setting(contentEl)
+            .setName('Group Type')
+            .setDesc('Type of group or organization')
+            .addDropdown(dropdown => dropdown
+                .addOption('collection', 'Simple Collection')
+                .addOption('faction', 'Faction')
+                .addOption('organization', 'Organization')
+                .addOption('guild', 'Guild')
+                .addOption('political', 'Political')
+                .addOption('military', 'Military')
+                .addOption('religious', 'Religious')
+                .addOption('custom', 'Custom')
+                .setValue(this.group.groupType || 'collection')
+                .onChange(value => {
+                    this.group.groupType = value as any;
+                    // Re-render modal to show/hide faction-enhanced sections
+                    this.onOpen();
+                })
             );
 
-        // --- Color ---
+        // Color
         new Setting(contentEl)
             .setName(t('color'))
             .addText(text => text
@@ -79,22 +128,22 @@ export class GroupModal extends Modal {
                 .onChange(value => { this.group.color = value; })
             );
 
-        // --- Tags ---
+        // Tags
         new Setting(contentEl)
             .setName(t('tags') || 'Tags')
-            .setDesc(t('traitsPlaceholder'))
+            .setDesc('Comma-separated tags')
             .addText(text => text
                 .setPlaceholder(t('tagsPh'))
                 .setValue((this.group.tags || []).join(', '))
                 .onChange(value => { this.group.tags = value.split(',').map(t => t.trim()).filter(Boolean); })
             );
 
-        // --- Profile Image ---
+        // Profile Image
         let imagePathDesc: HTMLElement | null = null;
         new Setting(contentEl)
             .setName(t('profileImage'))
             .then(s => {
-                imagePathDesc = s.descEl.createEl('small', { text: t('currentValue', this.group.profileImagePath || t('none')) });
+                imagePathDesc = s.descEl.createEl('small', { text: `Current: ${this.group.profileImagePath || 'None'}` });
                 s.descEl.addClass('storyteller-modal-setting-vertical');
             })
             .addButton(btn => btn
@@ -138,13 +187,294 @@ export class GroupModal extends Modal {
                 .setClass('mod-warning')
                 .onClick(() => {
                     this.group.profileImagePath = undefined;
-                    if (imagePathDesc) imagePathDesc.setText(`Current: ${this.group.profileImagePath || 'None'}`);
+                    if (imagePathDesc) imagePathDesc.setText(`Current: None`);
                 }));
 
-        // --- Members ---
+        // === MEMBERS ===
         contentEl.createEl('h3', { text: t('members') });
-        await this.loadAllEntities();
         this.renderMemberSelectors(contentEl);
+
+        // === FACTION DETAILS === (only show if not collection type)
+        if (this.group.groupType && this.group.groupType !== 'collection') {
+            contentEl.createEl('h3', { text: 'Faction Details' });
+
+            // History
+            new Setting(contentEl)
+                .setName('History')
+                .setDesc('Origin and historical background')
+                .addTextArea(text => {
+                    text.setValue(this.group.history || '')
+                        .onChange(value => { this.group.history = value; });
+                    text.inputEl.rows = 4;
+                });
+
+            // Structure
+            new Setting(contentEl)
+                .setName('Structure')
+                .setDesc('Organizational hierarchy and leadership')
+                .addTextArea(text => {
+                    text.setValue(this.group.structure || '')
+                        .onChange(value => { this.group.structure = value; });
+                    text.inputEl.rows = 4;
+                });
+
+            // Goals
+            new Setting(contentEl)
+                .setName('Goals')
+                .setDesc('Objectives and motivations')
+                .addTextArea(text => {
+                    text.setValue(this.group.goals || '')
+                        .onChange(value => { this.group.goals = value; });
+                    text.inputEl.rows = 4;
+                });
+
+            // Resources
+            new Setting(contentEl)
+                .setName('Resources')
+                .setDesc('Available assets and capabilities')
+                .addTextArea(text => {
+                    text.setValue(this.group.resources || '')
+                        .onChange(value => { this.group.resources = value; });
+                    text.inputEl.rows = 4;
+                });
+
+            // Strength
+            new Setting(contentEl)
+                .setName('Strength')
+                .setDesc('Overall power level or description')
+                .addText(text => text
+                    .setValue(this.group.strength || '')
+                    .onChange(value => { this.group.strength = value; })
+                );
+
+            // Status
+            new Setting(contentEl)
+                .setName('Status')
+                .setDesc('Current state (active, dormant, disbanded, etc.)')
+                .addText(text => text
+                    .setValue(this.group.status || '')
+                    .onChange(value => { this.group.status = value; })
+                );
+
+            // === POWER & INFLUENCE ===
+            contentEl.createEl('h3', { text: 'Power & Influence' });
+
+            // Military Power
+            new Setting(contentEl)
+                .setName('Military Power')
+                .setDesc('Military strength (0-100)')
+                .addSlider(slider => slider
+                    .setLimits(0, 100, 1)
+                    .setValue(this.group.militaryPower || 50)
+                    .setDynamicTooltip()
+                    .onChange(value => { this.group.militaryPower = value; })
+                );
+
+            // Economic Power
+            new Setting(contentEl)
+                .setName('Economic Power')
+                .setDesc('Economic influence (0-100)')
+                .addSlider(slider => slider
+                    .setLimits(0, 100, 1)
+                    .setValue(this.group.economicPower || 50)
+                    .setDynamicTooltip()
+                    .onChange(value => { this.group.economicPower = value; })
+                );
+
+            // Political Influence
+            new Setting(contentEl)
+                .setName('Political Influence')
+                .setDesc('Political power (0-100)')
+                .addSlider(slider => slider
+                    .setLimits(0, 100, 1)
+                    .setValue(this.group.politicalInfluence || 50)
+                    .setDynamicTooltip()
+                    .onChange(value => { this.group.politicalInfluence = value; })
+                );
+
+            // === IDENTITY & SYMBOLS ===
+            contentEl.createEl('h3', { text: 'Identity & Symbols' });
+
+            // Colors
+            new Setting(contentEl)
+                .setName('Colors')
+                .setDesc('Faction colors (comma-separated)')
+                .addText(text => text
+                    .setValue((this.group.colors || []).join(', '))
+                    .onChange(value => {
+                        this.group.colors = value.split(',').map(c => c.trim()).filter(Boolean);
+                    })
+                );
+
+            // Emblem
+            new Setting(contentEl)
+                .setName('Emblem')
+                .setDesc('Symbol or emblem description')
+                .addText(text => text
+                    .setValue(this.group.emblem || '')
+                    .onChange(value => { this.group.emblem = value; })
+                );
+
+            // Motto
+            new Setting(contentEl)
+                .setName('Motto')
+                .setDesc('Slogan or motto')
+                .addText(text => text
+                    .setValue(this.group.motto || '')
+                    .onChange(value => { this.group.motto = value; })
+                );
+
+            // Territories
+            new Setting(contentEl)
+                .setName('Territories')
+                .setDesc('Controlled territories (comma-separated)')
+                .addTextArea(text => {
+                    text.setValue((this.group.territories || []).join(', '))
+                        .onChange(value => {
+                            this.group.territories = value.split(',').map(t => t.trim()).filter(Boolean);
+                        });
+                    text.inputEl.rows = 3;
+                });
+
+            // === RELATIONSHIPS ===
+            contentEl.createEl('h3', { text: 'Relationships' });
+
+            // Group Relationships
+            if (!this.group.groupRelationships) {
+                this.group.groupRelationships = [];
+            }
+
+            contentEl.createEl('h4', { text: 'Inter-Group Relationships', cls: 'storyteller-subsection-header' });
+
+            this.group.groupRelationships.forEach((rel, index) => {
+                const relSetting = new Setting(contentEl)
+                    .setName(`Relationship ${index + 1}`)
+                    .addDropdown(dropdown => {
+                        dropdown.addOption('', 'Select group...');
+                        this.allGroups
+                            .filter(g => g.id !== this.group.id)
+                            .forEach(g => dropdown.addOption(g.name, g.name));
+                        dropdown.setValue(rel.groupName || '')
+                            .onChange(value => { rel.groupName = value; });
+                    })
+                    .addDropdown(dropdown => {
+                        dropdown
+                            .addOption('allied', 'Allied')
+                            .addOption('friendly', 'Friendly')
+                            .addOption('neutral', 'Neutral')
+                            .addOption('rival', 'Rival')
+                            .addOption('hostile', 'Hostile')
+                            .addOption('at-war', 'At War')
+                            .setValue(rel.relationshipType || 'neutral')
+                            .onChange(value => { rel.relationshipType = value as any; });
+                    })
+                    .addButton(btn => btn
+                        .setIcon('trash')
+                        .setTooltip('Remove')
+                        .onClick(() => {
+                            this.group.groupRelationships = this.group.groupRelationships!.filter((_, i) => i !== index);
+                            this.onOpen();
+                        })
+                    );
+            });
+
+            new Setting(contentEl)
+                .addButton(btn => btn
+                    .setButtonText('Add Group Relationship')
+                    .onClick(() => {
+                        if (!this.group.groupRelationships) this.group.groupRelationships = [];
+                        this.group.groupRelationships.push({
+                            groupName: '',
+                            relationshipType: 'neutral'
+                        });
+                        this.onOpen();
+                    })
+                );
+
+            // Linked Culture
+            new Setting(contentEl)
+                .setName('Linked Culture')
+                .setDesc('Associated culture')
+                .addDropdown(dropdown => {
+                    dropdown.addOption('', 'None');
+                    this.allCultures.forEach(c => dropdown.addOption(c.name, c.name));
+                    dropdown.setValue(this.group.linkedCulture || '')
+                        .onChange(value => { this.group.linkedCulture = value || undefined; });
+                });
+
+            // Parent Group
+            new Setting(contentEl)
+                .setName('Parent Group')
+                .setDesc('Larger organization this group belongs to')
+                .addDropdown(dropdown => {
+                    dropdown.addOption('', 'None');
+                    this.allGroups
+                        .filter(g => g.id !== this.group.id)
+                        .forEach(g => dropdown.addOption(g.name, g.name));
+                    dropdown.setValue(this.group.parentGroup || '')
+                        .onChange(value => { this.group.parentGroup = value || undefined; });
+                });
+
+            // Subgroups
+            new Setting(contentEl)
+                .setName('Subgroups')
+                .setDesc('Smaller groups within this organization (comma-separated)')
+                .addTextArea(text => {
+                    text.setValue((this.group.subgroups || []).join(', '))
+                        .onChange(value => {
+                            this.group.subgroups = value.split(',').map(s => s.trim()).filter(Boolean);
+                        });
+                    text.inputEl.rows = 2;
+                });
+
+            // === CUSTOM FIELDS ===
+            contentEl.createEl('h3', { text: 'Custom Fields' });
+
+            if (!this.group.customFields) {
+                this.group.customFields = {};
+            }
+
+            Object.entries(this.group.customFields).forEach(([key, value]) => {
+                new Setting(contentEl)
+                    .setName('Field')
+                    .addText(text => {
+                        const oldKey = key;
+                        text.setValue(key)
+                            .setPlaceholder('Field name')
+                            .onChange(newKey => {
+                                if (newKey && newKey !== oldKey) {
+                                    const val = this.group.customFields![oldKey];
+                                    delete this.group.customFields![oldKey];
+                                    this.group.customFields![newKey] = val;
+                                }
+                            });
+                    })
+                    .addText(text => text
+                        .setValue(value)
+                        .setPlaceholder('Field value')
+                        .onChange(newValue => { this.group.customFields![key] = newValue; })
+                    )
+                    .addButton(btn => btn
+                        .setIcon('trash')
+                        .setTooltip('Remove field')
+                        .onClick(() => {
+                            delete this.group.customFields![key];
+                            this.onOpen();
+                        })
+                    );
+            });
+
+            new Setting(contentEl)
+                .addButton(btn => btn
+                    .setButtonText('Add Custom Field')
+                    .onClick(() => {
+                        if (!this.group.customFields) this.group.customFields = {};
+                        const fieldNum = Object.keys(this.group.customFields).length + 1;
+                        this.group.customFields[`field${fieldNum}`] = '';
+                        this.onOpen();
+                    })
+                );
+        }
 
         // --- Action Buttons ---
         const buttonsSetting = new Setting(contentEl).setClass('storyteller-modal-buttons');
@@ -167,13 +497,12 @@ export class GroupModal extends Modal {
                 if (this.isNew) {
                     const newGroup = await this.plugin.createGroup(this.group.name, this.group.description, this.group.color);
                     this.group.id = newGroup.id;
-                    // Immediately persist tags/image for the new group
+                    // Immediately persist all fields for the new group
                     await this.plugin.updateGroup(this.group.id, { description: this.group.description, color: this.group.color, name: this.group.name } as any);
-                    // Manually merge non-core fields and save
+                    // Manually merge all fields including faction-enhanced ones
                     const found = this.plugin.getGroups().find(g => g.id === this.group.id);
                     if (found) {
-                        (found as any).tags = this.group.tags || [];
-                        (found as any).profileImagePath = this.group.profileImagePath;
+                        Object.assign(found, this.group);
                         await this.plugin.saveSettings();
                         this.plugin.emitGroupsChanged?.();
                     }
@@ -191,11 +520,10 @@ export class GroupModal extends Modal {
                         description: this.group.description,
                         color: this.group.color
                     });
-                    // Persist tags and image on edit
+                    // Persist all fields including faction-enhanced ones on edit
                     const found = this.plugin.getGroups().find(g => g.id === this.group.id);
                     if (found) {
-                        (found as any).tags = this.group.tags || [];
-                        (found as any).profileImagePath = this.group.profileImagePath;
+                        Object.assign(found, this.group);
                         await this.plugin.saveSettings();
                         this.plugin.emitGroupsChanged?.();
                     }
@@ -229,6 +557,8 @@ export class GroupModal extends Modal {
         this.allLocations = await this.plugin.listLocations();
         this.allEvents = await this.plugin.listEvents();
         this.allPlotItems = await this.plugin.listPlotItems();
+        this.allGroups = this.plugin.getGroups();
+        this.allCultures = await this.plugin.listCultures();
     }
 
     renderMemberSelectors(container: HTMLElement) {
