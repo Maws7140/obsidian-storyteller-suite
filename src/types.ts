@@ -337,7 +337,16 @@ export interface Event {
     
     /** Date and/or time when the event occurred (string format for flexibility) */
     dateTime?: string;
-    
+
+    /** Reference to Calendar.id for custom calendar events */
+    calendarId?: string;
+
+    /** Custom calendar date representation (for non-Gregorian calendars) */
+    customCalendarDate?: CalendarDate;
+
+    /** Cached Gregorian conversion for timeline rendering (when using custom calendar) */
+    gregorianDateTime?: string;
+
     /** Main description of what happened (stored in markdown body) */
     description?: string;
     
@@ -393,6 +402,41 @@ export interface Event {
  * Group entity representing a user-defined collection of characters, events, and locations
  * Groups are specific to a story and can contain any mix of members from that story
  */
+/**
+ * Enhanced member interface for faction-type groups
+ */
+export interface GroupMemberDetails {
+    /** Entity type and ID */
+    type: 'character' | 'event' | 'location' | 'item';
+    id: string;
+
+    /** Character name (for display) */
+    name?: string;
+
+    /** Member's rank or position (faction-type groups) */
+    rank?: string;
+
+    /** Join date (faction-type groups) */
+    joinDate?: string;
+
+    /** Loyalty level (faction-type groups) */
+    loyalty?: 'devoted' | 'loyal' | 'neutral' | 'wavering' | 'traitor';
+}
+
+/**
+ * Group relationship for faction-type groups
+ */
+export interface GroupRelationship {
+    /** Target group name or ID */
+    groupName: string;
+
+    /** Nature of the relationship */
+    relationshipType: 'allied' | 'friendly' | 'neutral' | 'rival' | 'hostile' | 'at-war';
+
+    /** Additional context */
+    notes?: string;
+}
+
 export interface Group {
     /** Unique identifier for the group */
     id: string;
@@ -408,8 +452,74 @@ export interface Group {
     tags?: string[];
     /** Optional representative image path within the vault */
     profileImagePath?: string;
-    /** Array of group members, each with type and id */
-    members: Array<{ type: 'character' | 'event' | 'location' | 'item'; id: string }>;
+
+    /** Type of group: simple collection or faction-like organization */
+    groupType?: 'collection' | 'faction' | 'organization' | 'guild' | 'political' | 'military' | 'religious' | 'custom';
+
+    /** Array of group members with optional detailed information */
+    members: GroupMemberDetails[];
+
+    // Faction-enhanced fields (optional, used when groupType is faction-like)
+
+    /** Faction's origin and history */
+    history?: string;
+
+    /** Organizational structure */
+    structure?: string;
+
+    /** Faction's objectives and motivations */
+    goals?: string;
+
+    /** Available resources */
+    resources?: string;
+
+    /** Overall strength/influence level */
+    strength?: string;
+
+    /** Current status */
+    status?: string;
+
+    /** Military power rating (0-100) */
+    militaryPower?: number;
+
+    /** Economic power rating (0-100) */
+    economicPower?: number;
+
+    /** Political influence rating (0-100) */
+    politicalInfluence?: number;
+
+    /** Group/faction colors */
+    colors?: string[];
+
+    /** Emblem or symbol description */
+    emblem?: string;
+
+    /** Motto or slogan */
+    motto?: string;
+
+    /** Territories controlled */
+    territories?: string[];
+
+    /** Relationships with other groups/factions */
+    groupRelationships?: GroupRelationship[];
+
+    /** Links to significant events */
+    linkedEvents?: string[];
+
+    /** Link to associated culture */
+    linkedCulture?: string;
+
+    /** Parent group (if sub-group) */
+    parentGroup?: string;
+
+    /** Sub-groups under this group */
+    subgroups?: string[];
+
+    /** User-defined custom fields */
+    customFields?: Record<string, string>;
+
+    /** Typed connections to other entities */
+    connections?: TypedRelationship[];
 }
 
 /**
@@ -468,6 +578,8 @@ export interface Story {
     created: string;
     /** Optional description of the story */
     description?: string;
+    /** Default calendar ID for events in this story */
+    defaultCalendarId?: string;
 }
 
 /**
@@ -913,123 +1025,8 @@ export interface Economy {
 /**
  * Faction member sub-interface
  */
-export interface FactionMember {
-    /** Character name or ID */
-    characterName: string;
-
-    /** Member's rank or position */
-    rank?: string;
-
-    /** Join date */
-    joinDate?: string;
-
-    /** Loyalty level */
-    loyalty?: 'devoted' | 'loyal' | 'neutral' | 'wavering' | 'traitor';
-}
-
-/**
- * Faction relationship sub-interface
- */
-export interface FactionRelationship {
-    /** Target faction name or ID */
-    factionName: string;
-
-    /** Nature of the relationship */
-    relationshipType: 'allied' | 'friendly' | 'neutral' | 'rival' | 'hostile' | 'at-war';
-
-    /** Additional context */
-    notes?: string;
-}
-
-/**
- * Faction entity representing an organization, guild, political group, or alliance
- * Factions have members, resources, goals, and relationships with other factions
- */
-export interface Faction {
-    /** Optional unique identifier */
-    id?: string;
-
-    /** File system path to the faction's markdown file */
-    filePath?: string;
-
-    /** Display name of the faction (required) */
-    name: string;
-
-    /** Path to a representative image within the vault */
-    profileImagePath?: string;
-
-    /** Overview of the faction (stored in markdown body) */
-    description?: string;
-
-    /** Faction's origin and history (stored in markdown body) */
-    history?: string;
-
-    /** Organizational structure (stored in markdown body) */
-    structure?: string;
-
-    /** Faction's objectives and motivations (stored in markdown body) */
-    goals?: string;
-
-    /** Available resources (stored in markdown body) */
-    resources?: string;
-
-    /** Type of faction */
-    factionType?: string;
-
-    /** Overall strength/influence level */
-    strength?: string;
-
-    /** Current status */
-    status?: string;
-
-    /** Military power rating */
-    militaryPower?: number;
-
-    /** Economic power rating */
-    economicPower?: number;
-
-    /** Political influence rating */
-    politicalInfluence?: number;
-
-    /** Faction colors */
-    colors?: string[];
-
-    /** Emblem or symbol description */
-    emblem?: string;
-
-    /** Faction motto or slogan */
-    motto?: string;
-
-    /** Detailed member roster */
-    members?: FactionMember[];
-
-    /** Territories controlled */
-    territories?: string[];
-
-    /** Relationships with other factions */
-    factionRelationships?: FactionRelationship[];
-
-    /** Links to significant events */
-    linkedEvents?: string[];
-
-    /** Link to associated culture */
-    linkedCulture?: string;
-
-    /** Parent faction (if sub-faction) */
-    parentFaction?: string;
-
-    /** Sub-factions under this faction */
-    subfactions?: string[];
-
-    /** User-defined custom fields */
-    customFields?: Record<string, string>;
-
-    /** Array of group ids this faction belongs to */
-    groups?: string[];
-
-    /** Typed connections to other entities */
-    connections?: TypedRelationship[];
-}
+// Faction entity has been merged into Group entity
+// Use Group with groupType='faction' for faction-like organizations
 
 /**
  * Magic category sub-interface
@@ -1246,6 +1243,40 @@ export interface CalendarDate {
 }
 
 /**
+ * Linear conversion formula for converting between custom calendar and Gregorian
+ */
+export interface CalendarLinearConversion {
+    /** Number of days in a year in the custom calendar */
+    daysPerYear: number;
+
+    /** Year 0 in the custom calendar system */
+    epochYear: number;
+
+    /** Gregorian date corresponding to custom calendar's epoch year */
+    epochGregorianDate: string;
+
+    /** Whether to use leap years in conversion */
+    useLeapYears?: boolean;
+
+    /** Frequency of leap years (e.g., 4 means every 4 years) */
+    leapYearFrequency?: number;
+}
+
+/**
+ * Manual lookup entry for irregular calendar conversions
+ */
+export interface CalendarLookupEntry {
+    /** Custom calendar date */
+    customDate: CalendarDate;
+
+    /** Corresponding Gregorian date (ISO format) */
+    gregorianDate: string;
+
+    /** Optional notes about this mapping */
+    notes?: string;
+}
+
+/**
  * Calendar entity representing a custom calendar system for the story world
  * Defines months, holidays, seasons, and astronomical events
  */
@@ -1300,6 +1331,21 @@ export interface Calendar {
 
     /** Conversion factor to Earth calendar */
     earthConversion?: string;
+
+    /** Type of conversion used for Gregorian calendar integration */
+    conversionType?: 'linear' | 'lookup';
+
+    /** Linear conversion formula configuration */
+    linearConversion?: CalendarLinearConversion;
+
+    /** Manual lookup table for date conversion */
+    lookupTable?: CalendarLookupEntry[];
+
+    /** Epoch year (Year 0) in this calendar system */
+    epochYear?: number;
+
+    /** Gregorian date corresponding to this calendar's epoch */
+    epochGregorianDate?: string;
 
     /** Where this calendar is used */
     usage?: string;

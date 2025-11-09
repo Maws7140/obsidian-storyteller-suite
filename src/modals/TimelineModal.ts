@@ -3,7 +3,8 @@ import { t } from '../i18n/strings';
 import { Event } from '../types';
 import StorytellerSuitePlugin from '../main';
 import { EventModal } from './EventModal';
-import { parseEventDate, toMillis, toDisplay } from '../utils/DateParsing';
+import { parseEventDate, toMillis, toDisplay, getEventDateForTimeline } from '../utils/DateParsing';
+import { CalendarConverter } from '../utils/CalendarConverter';
 // @ts-ignore: vis-timeline is bundled dependency
 // Use any typing to avoid complex vis types clashing with TS config
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -29,7 +30,7 @@ export class TimelineModal extends Modal {
     private editModeEnabled = false;
     private viewMode: 'timeline' | 'gantt' = 'timeline';
     private defaultGanttDuration = 1; // days - default duration for events without end date in Gantt view
-    
+
     // Filter state
     private filters = {
         characters: new Set<string>(),
@@ -38,9 +39,12 @@ export class TimelineModal extends Modal {
         milestonesOnly: false
     };
     private filterPanelVisible = false;
-    
+
     // Dependency arrow rendering
     private dependencyArrows: any; // timeline-arrows instance
+
+    // Cached calendars for tooltip generation
+    private calendarsCache: any[] = [];
 
     private palette = [
         '#7C3AED', '#2563EB', '#059669', '#CA8A04', '#DC2626', '#EA580C', '#0EA5E9', '#22C55E', '#D946EF', '#F59E0B'
@@ -60,10 +64,13 @@ export class TimelineModal extends Modal {
         this.defaultGanttDuration = plugin.settings.ganttDefaultDuration ?? 1;
     }
 
-    onOpen() {
+    async onOpen() {
         const { contentEl } = this;
         contentEl.empty();
         contentEl.createEl('h2', { text: t('timeline') });
+
+        // Load calendars for custom calendar tooltip support
+        this.calendarsCache = await this.plugin.listCalendars();
 
         // Controls toolbar (grouping, presets, density, edit mode, filters)
         const controls = new Setting(contentEl)
@@ -519,13 +526,15 @@ export class TimelineModal extends Modal {
         }
 
         this.events.forEach((evt, idx) => {
-            const parsed = evt.dateTime ? parseEventDate(evt.dateTime, { referenceDate }) : { error: 'empty' } as any;
+            // Use getEventDateForTimeline to support both Gregorian and custom calendar events
+            const dateString = getEventDateForTimeline(evt);
+            const parsed = dateString ? parseEventDate(dateString, { referenceDate }) : { error: 'empty' } as any;
             const startMs = toMillis(parsed.start);
             const endMs = toMillis(parsed.end);
             if (startMs == null) {
                 // Log BCE parsing issues for debugging
-                if (parsed.error === 'unparsed' && evt.dateTime && /\b\d+\s*(?:BC|bce|BCE|B\.C\.|b\.c\.|b\.c\.e\.)\b/i.test(evt.dateTime)) {
-                    console.warn(`Failed to parse BCE date: ${evt.dateTime} for event: ${evt.name}`);
+                if (parsed.error === 'unparsed' && dateString && /\b\d+\s*(?:BC|bce|BCE|B\.C\.|b\.c\.|b\.c\.e\.)\b/i.test(dateString)) {
+                    console.warn(`Failed to parse BCE date: ${dateString} for event: ${evt.name}`);
                 }
                 return;
             }
@@ -615,8 +624,25 @@ export class TimelineModal extends Modal {
 
     private makeTooltip(evt: Event, parsed: any): string {
         const parts: string[] = [evt.name];
-        const dt = parsed?.start ? toDisplay(parsed.start, undefined, parsed.isBCE, parsed.originalYear) : (evt.dateTime || '');
-        if (dt) parts.push(dt);
+
+        // Show custom calendar date if available
+        if (evt.customCalendarDate && evt.calendarId) {
+            const calendar = this.calendarsCache.find(c => c.id === evt.calendarId);
+
+            if (calendar) {
+                const customDateStr = CalendarConverter.formatCustomCalendarDate(evt.customCalendarDate, calendar);
+                parts.push(`${calendar.name}: ${customDateStr}`);
+
+                // Also show Gregorian equivalent
+                const dt = parsed?.start ? toDisplay(parsed.start, undefined, parsed.isBCE, parsed.originalYear) : '';
+                if (dt) parts.push(`(Gregorian: ${dt})`);
+            }
+        } else {
+            // Standard Gregorian date
+            const dt = parsed?.start ? toDisplay(parsed.start, undefined, parsed.isBCE, parsed.originalYear) : (evt.dateTime || '');
+            if (dt) parts.push(dt);
+        }
+
         if (evt.location) parts.push(`@ ${evt.location}`);
         if (evt.description) parts.push(evt.description.length > 120 ? evt.description.slice(0, 120) + '…' : evt.description);
         return parts.filter(Boolean).join(' \n');
