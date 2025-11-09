@@ -5573,3 +5573,255 @@ body.mod-rtl .storyteller-group-members {
 }
 
 /* ===== END MAP EDITOR VIEW STYLES =====*/
+/* ===== ANALYTICS DASHBOARD VIEW STYLES ===== */
+
+.storyteller-analytics-view {
+  padding: 20px;
+  overflow-y: auto;
+  height: 100%;
+}
+
+.storyteller-analytics-header {
+  margin-bottom: 24px;
+}
+
+.storyteller-analytics-header h2 {
+  margin: 0 0 12px 0;
+}
+
+.storyteller-analytics-toolbar {
+  display: flex;
+  gap: 8px;
+}
+
+.storyteller-analytics-content {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.storyteller-analytics-section {
+  background: var(--background-secondary);
+  padding: 16px;
+  border-radius: 8px;
+}
+
+.storyteller-analytics-section h3 {
+  margin: 0 0 16px 0;
+  border-bottom: 1px solid var(--background-modifier-border);
+  padding-bottom: 8px;
+}
+
+.storyteller-analytics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.storyteller-stat-card {
+  background: var(--background-primary);
+  padding: 16px;
+  border-radius: 8px;
+  text-align: center;
+  border: 1px solid var(--background-modifier-border);
+}
+
+.storyteller-stat-icon {
+  font-size: 32px;
+  margin-bottom: 8px;
+}
+
+.storyteller-stat-value {
+  font-size: 24px;
+  font-weight: bold;
+  color: var(--text-accent);
+  margin-bottom: 4px;
+}
+
+.storyteller-stat-label {
+  font-size: 12px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+.storyteller-analytics-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.storyteller-analytics-table th,
+.storyteller-analytics-table td {
+  padding: 8px;
+  text-align: left;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.storyteller-analytics-table th {
+  font-weight: bold;
+  color: var(--text-muted);
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.storyteller-progress-bar {
+  width: 100%;
+  height: 20px;
+  background: var(--background-modifier-border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.storyteller-progress-fill {
+  height: 100%;
+  background: var(--interactive-accent);
+  transition: width 0.3s ease;
+}
+
+.storyteller-bar-chart {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+  height: 200px;
+  padding: 16px 0;
+}
+
+.storyteller-bar-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.storyteller-bar {
+  width: 100%;
+  flex: 1;
+  display: flex;
+  align-items: flex-end;
+  min-height: 20px;
+}
+
+.storyteller-bar-fill {
+  width: 100%;
+  background: var(--interactive-accent);
+  border-radius: 4px 4px 0 0;
+  transition: height 0.3s ease;
+}
+
+.storyteller-bar-label {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.storyteller-velocity-chart {
+  display: flex;
+  gap: 4px;
+  align-items: flex-end;
+  height: 150px;
+  padding: 16px 0;
+}
+
+.storyteller-velocity-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.storyteller-velocity-bar {
+  width: 100%;
+  flex: 1;
+  display: flex;
+  align-items: flex-end;
+}
+
+.storyteller-velocity-fill {
+  width: 100%;
+  background: var(--color-accent-2);
+  border-radius: 2px 2px 0 0;
+  transition: height 0.3s ease;
+}
+
+.storyteller-velocity-label {
+  font-size: 10px;
+  color: var(--text-faint);
+}
+
+.storyteller-pov-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.storyteller-pov-list li {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.storyteller-pov-list li:last-child {
+  border-bottom: none;
+}
+
+.storyteller-pov-name {
+  font-weight: bold;
+}
+
+.storyteller-foreshadowing-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.storyteller-foreshadowing-list li {
+  padding: 12px;
+  margin-bottom: 8px;
+  background: var(--background-primary);
+  border-radius: 4px;
+  border-left: 3px solid var(--interactive-accent);
+}
+
+.storyteller-foreshadow-status {
+  font-size: 16px;
+  margin-right: 8px;
+}
+
+.storyteller-foreshadow-setup {
+  font-weight: bold;
+}
+
+.storyteller-sessions-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.storyteller-sessions-list li {
+  padding: 8px 12px;
+  margin-bottom: 4px;
+  background: var(--background-primary);
+  border-radius: 4px;
+  font-size: 13px;
+}
+
+.storyteller-section-toolbar {
+  margin-bottom: 12px;
+}
+
+/* Mobile responsiveness */
+@media (max-width: 900px) {
+  .storyteller-analytics-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+  
+  .storyteller-bar-chart {
+    height: 150px;
+  }
+  
+  .storyteller-velocity-chart {
+    height: 120px;
+  }
+}
+
+/* ===== END ANALYTICS DASHBOARD VIEW STYLES ===== */
