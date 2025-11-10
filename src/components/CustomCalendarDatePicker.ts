@@ -129,10 +129,17 @@ export class CustomCalendarDatePicker {
             ? (this.calendar.months?.findIndex(m => m.name === monthName) ?? -1)
             : (monthName as number);
 
-        const daysInMonth = CalendarConverter.getDaysInMonth(monthIndex, this.value.year, this.calendar);
+        // Convert 0-based index to 1-based month number for getDaysInMonth
+        const monthNumber = typeof monthName === 'string'
+            ? (monthIndex >= 0 ? monthIndex + 1 : 1)
+            : monthIndex;
 
-        // Clear existing options
-        this.dayDropdown.empty();
+        const daysInMonth = CalendarConverter.getDaysInMonth(monthNumber, this.value.year, this.calendar);
+
+        // Clear existing options using standard DOM methods
+        while (this.dayDropdown.options.length > 0) {
+            this.dayDropdown.remove(0);
+        }
 
         // Add day options
         for (let day = 1; day <= daysInMonth; day++) {
@@ -156,15 +163,22 @@ export class CustomCalendarDatePicker {
             ? (this.calendar.months?.findIndex(m => m.name === monthName) ?? -1)
             : (monthName as number);
 
-        const daysInMonth = CalendarConverter.getDaysInMonth(monthIndex, this.value.year, this.calendar);
+        // Convert 0-based index to 1-based month number for getDaysInMonth
+        const monthNumber = typeof monthName === 'string'
+            ? (monthIndex >= 0 ? monthIndex + 1 : 1)
+            : monthIndex;
 
-        // Clear and repopulate
-        this.dayDropdown.empty();
+        const daysInMonth = CalendarConverter.getDaysInMonth(monthNumber, this.value.year, this.calendar);
+
+        // Clear and repopulate using standard DOM methods
+        while (this.dayDropdown.options.length > 0) {
+            this.dayDropdown.remove(0);
+        }
         for (let day = 1; day <= daysInMonth; day++) {
-            const option = this.dayDropdown.createEl('option', {
-                value: String(day),
-                text: String(day)
-            });
+            const option = document.createElement('option');
+            option.value = String(day);
+            option.text = String(day);
+            this.dayDropdown.add(option);
         }
 
         // Ensure current day is valid
