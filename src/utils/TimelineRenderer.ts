@@ -791,6 +791,27 @@ export class TimelineRenderer {
      * Check if event should be included based on filters
      */
     private shouldIncludeEvent(evt: Event): boolean {
+        // Calendar filter (Level 3 feature)
+        // When a calendar is selected, filter events by calendar
+        if (this.selectedCalendarId) {
+            // If calendar is selected, show events that:
+            // 1. Have matching calendarId
+            // 2. OR have a valid gregorianDateTime (can be converted to selected calendar)
+            // 3. OR have NO calendar set (default Gregorian events with valid dateTime)
+            
+            const hasMatchingCalendar = evt.calendarId === this.selectedCalendarId;
+            const hasGregorianFallback = !!(evt.gregorianDateTime);
+            const isDefaultGregorian = !evt.calendarId && !evt.customCalendarDate && evt.dateTime;
+            
+            // Only show events from the selected calendar OR events with Gregorian dates that can be displayed
+            if (!hasMatchingCalendar && !hasGregorianFallback && !isDefaultGregorian) {
+                return false;
+            }
+        } else {
+            // "All Calendars (Gregorian)" mode - show all events
+            // No calendar-based filtering
+        }
+        
         // Milestones filter
         if (this.filters.milestonesOnly && !evt.isMilestone) {
             return false;

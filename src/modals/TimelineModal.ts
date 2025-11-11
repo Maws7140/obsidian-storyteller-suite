@@ -24,7 +24,7 @@ export class TimelineModal extends Modal {
     private selectedCalendarId?: string; // Calendar selection for custom calendar support (Level 3 feature)
 
     // Filter state
-    private filters: TimelineFilters = {
+    private filters: Required<TimelineFilters> = {
         characters: new Set<string>(),
         locations: new Set<string>(),
         groups: new Set<string>(),
@@ -46,7 +46,7 @@ export class TimelineModal extends Modal {
         this.defaultGanttDuration = plugin.settings.ganttDefaultDuration ?? 1;
     }
 
-    onOpen() {
+    async onOpen() {
         const { contentEl } = this;
         contentEl.empty();
         contentEl.createEl('h2', { text: t('timeline') });
@@ -144,7 +144,7 @@ export class TimelineModal extends Modal {
                 .setValue(this.filters.milestonesOnly)
                 .onChange(value => {
                     this.filters.milestonesOnly = value;
-                    this.renderTimeline();
+                    void this.renderTimeline();
                 }));
         
         // Character filter
@@ -164,7 +164,7 @@ export class TimelineModal extends Modal {
                     if (value && !this.filters.characters.has(value)) {
                         this.filters.characters.add(value);
                         this.renderFilterChips(filterChips);
-                        this.renderTimeline();
+                        void this.renderTimeline();
                     }
                     dropdown.setValue('');
                 });
@@ -187,7 +187,7 @@ export class TimelineModal extends Modal {
                     if (value && !this.filters.locations.has(value)) {
                         this.filters.locations.add(value);
                         this.renderFilterChips(filterChips);
-                        this.renderTimeline();
+                        void this.renderTimeline();
                     }
                     dropdown.setValue('');
                 });
@@ -207,7 +207,7 @@ export class TimelineModal extends Modal {
                     if (value && !this.filters.groups.has(value)) {
                         this.filters.groups.add(value);
                         this.renderFilterChips(filterChips);
-                        this.renderTimeline();
+                        void this.renderTimeline();
                     }
                     dropdown.setValue('');
                 });
@@ -223,7 +223,7 @@ export class TimelineModal extends Modal {
                     this.filters.groups.clear();
                     this.filters.milestonesOnly = false;
                     this.renderFilterChips(filterChips);
-                    this.renderTimeline();
+                    void this.renderTimeline();
                 }));
         
         // Active filter chips
@@ -241,12 +241,8 @@ export class TimelineModal extends Modal {
         this.detailsEl = contentEl.createDiv('storyteller-timeline-details');
 
         // Build timeline now
-        this.renderTimeline();
-        // Apply default zoom preset
-        const preset = this.plugin.settings.defaultTimelineZoomPreset || 'none';
-        if (preset === 'fit' && this.timeline) this.timeline.fit();
-        else if (preset === 'decade') this.zoomPresetYears(10);
-        else if (preset === 'century') this.zoomPresetYears(100);
+        await this.renderTimeline();
+        this.applyDefaultZoomPreset();
         // No secondary list render
 
         // Add New button
@@ -303,12 +299,32 @@ export class TimelineModal extends Modal {
 
         await this.renderer.initialize();
 
-        // Apply filters
-        this.renderer.applyFilters(this.filters);
+        if (this.hasActiveFilters()) {
+            this.renderer.applyFilters(this.filters);
+        }
 
         // Set calendar if selected
         if (this.selectedCalendarId) {
             this.renderer.setCalendar(this.selectedCalendarId);
+        }
+    }
+
+    private hasActiveFilters(): boolean {
+        return this.filters.characters.size > 0 ||
+            this.filters.locations.size > 0 ||
+            this.filters.groups.size > 0 ||
+            this.filters.milestonesOnly;
+    }
+
+    private applyDefaultZoomPreset(): void {
+        if (!this.renderer) return;
+        const preset = this.plugin.settings.defaultTimelineZoomPreset || 'none';
+        if (preset === 'fit') {
+            this.renderer.fitToView();
+        } else if (preset === 'decade') {
+            this.renderer.zoomPresetYears(10);
+        } else if (preset === 'century') {
+            this.renderer.zoomPresetYears(100);
         }
     }
 
@@ -331,10 +347,7 @@ export class TimelineModal extends Modal {
 
     private renderFilterChips(container: HTMLElement) {
         container.empty();
-        const hasActiveFilters = this.filters.characters.size > 0 || 
-                                 this.filters.locations.size > 0 || 
-                                 this.filters.groups.size > 0 || 
-                                 this.filters.milestonesOnly;
+        const hasActiveFilters = this.hasActiveFilters();
         
         if (!hasActiveFilters) return;
         
@@ -342,11 +355,11 @@ export class TimelineModal extends Modal {
         this.filters.characters.forEach(char => {
             const chip = container.createDiv('filter-chip');
             chip.createSpan({ text: `Character: ${char}` });
-            const removeBtn = chip.createSpan({ text: '├ù', cls: 'filter-chip-remove' });
+            const removeBtn = chip.createSpan({ text: 'x', cls: 'filter-chip-remove' });
             removeBtn.onclick = () => {
                 this.filters.characters.delete(char);
                 this.renderFilterChips(container);
-                this.renderTimeline();
+                void this.renderTimeline();
             };
         });
         
@@ -354,11 +367,11 @@ export class TimelineModal extends Modal {
         this.filters.locations.forEach(loc => {
             const chip = container.createDiv('filter-chip');
             chip.createSpan({ text: `Location: ${loc}` });
-            const removeBtn = chip.createSpan({ text: '├ù', cls: 'filter-chip-remove' });
+            const removeBtn = chip.createSpan({ text: 'x', cls: 'filter-chip-remove' });
             removeBtn.onclick = () => {
                 this.filters.locations.delete(loc);
                 this.renderFilterChips(container);
-                this.renderTimeline();
+                void this.renderTimeline();
             };
         });
         
@@ -368,11 +381,11 @@ export class TimelineModal extends Modal {
             const groupName = group ? group.name : groupId;
             const chip = container.createDiv('filter-chip');
             chip.createSpan({ text: `Group: ${groupName}` });
-            const removeBtn = chip.createSpan({ text: '├ù', cls: 'filter-chip-remove' });
+            const removeBtn = chip.createSpan({ text: 'x', cls: 'filter-chip-remove' });
             removeBtn.onclick = () => {
                 this.filters.groups.delete(groupId);
                 this.renderFilterChips(container);
-                this.renderTimeline();
+                void this.renderTimeline();
             };
         });
         
@@ -380,11 +393,11 @@ export class TimelineModal extends Modal {
         if (this.filters.milestonesOnly) {
             const chip = container.createDiv('filter-chip');
             chip.createSpan({ text: 'Milestones Only' });
-            const removeBtn = chip.createSpan({ text: '├ù', cls: 'filter-chip-remove' });
+            const removeBtn = chip.createSpan({ text: 'x', cls: 'filter-chip-remove' });
             removeBtn.onclick = () => {
                 this.filters.milestonesOnly = false;
                 this.renderFilterChips(container);
-                this.renderTimeline();
+                void this.renderTimeline();
             };
         }
     }
