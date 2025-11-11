@@ -358,6 +358,10 @@ export class CalendarConverter {
 
     /**
      * Get number of days in a month
+     * @param month 1-based month number (1 = first month, 2 = second month, etc.)
+     * @param year The year (for potential leap year calculations)
+     * @param calendar The calendar system
+     * @returns Number of days in the specified month
      */
     static getDaysInMonth(month: number, year: number, calendar: Calendar): number {
         if (!calendar.months || month < 1 || month > calendar.months.length) {
@@ -600,9 +604,25 @@ export class CalendarConverter {
             const gregorianCalendar: Calendar = {
                 id: 'gregorian',
                 name: 'Gregorian',
-                months: [],
+                months: [
+                    { name: 'January', days: 31 },
+                    { name: 'February', days: 28 },
+                    { name: 'March', days: 31 },
+                    { name: 'April', days: 30 },
+                    { name: 'May', days: 31 },
+                    { name: 'June', days: 30 },
+                    { name: 'July', days: 31 },
+                    { name: 'August', days: 31 },
+                    { name: 'September', days: 30 },
+                    { name: 'October', days: 31 },
+                    { name: 'November', days: 30 },
+                    { name: 'December', days: 31 }
+                ],
                 daysPerYear: 365,
-                referenceDate: { year: 1970, month: 1, day: 1 }
+                referenceDate: { year: 1970, month: 'January', day: 1 },
+                hoursPerDay: 24,
+                minutesPerHour: 60,
+                secondsPerMinute: 60
             };
             const conversion = this.convert(customDate, calendar, gregorianCalendar);
             return new Date(conversion.timestamp);
