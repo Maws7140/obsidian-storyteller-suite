@@ -93,7 +93,11 @@ export class CustomTimeAxis {
 
         // Generate a marker for each year
         for (let year = startDate.year; year <= endDate.year; year++) {
-            const yearDate: CalendarDate = { year, month: 1, day: 1 };
+            // Use first month's name if calendar has named months, otherwise use 1
+            const firstMonth = options.calendar.months && options.calendar.months.length > 0
+                ? options.calendar.months[0].name
+                : 1;
+            const yearDate: CalendarDate = { year, month: firstMonth, day: 1 };
 
             // Convert back to timestamp for marker position
             const gregorianCalendar = this.getGregorianCalendar();
