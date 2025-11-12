@@ -298,8 +298,29 @@ export class CustomTimeAxis {
      * Create a vis-timeline format function for custom calendar
      */
     static createFormatFunction(calendar: Calendar) {
-        return (date: Date, scale: string, step: number) => {
-            const timestamp = date.getTime();
+        return (date: Date | number | undefined, scale: string, step: number) => {
+            // Handle various input types from vis-timeline
+            let timestamp: number;
+
+            if (date == null) {
+                console.warn('CustomTimeAxis: Received null/undefined date, using current time');
+                timestamp = Date.now();
+            } else if (typeof date === 'number') {
+                // Already a timestamp
+                timestamp = date;
+            } else if (date instanceof Date) {
+                // Date object - validate it's valid
+                timestamp = date.getTime();
+                if (isNaN(timestamp)) {
+                    console.warn('CustomTimeAxis: Received invalid Date object, using current time');
+                    timestamp = Date.now();
+                }
+            } else {
+                // Unknown type - try to coerce to number
+                console.warn('CustomTimeAxis: Received unexpected type for date:', typeof date, date);
+                timestamp = Date.now();
+            }
+
             const calendarDate = CalendarConverter.fromUnixTimestamp(timestamp, calendar);
 
             switch (scale) {
