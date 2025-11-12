@@ -637,7 +637,16 @@ export class CalendarConverter {
      */
     static convertGregorianToCustom(gregorianDate: Date, calendar: Calendar): CalendarDate | null {
         try {
-            return this.fromUnixTimestamp(gregorianDate.getTime(), calendar);
+            if (!gregorianDate || !(gregorianDate instanceof Date)) {
+                console.error('CalendarConverter: Invalid Date object provided');
+                return null;
+            }
+            const timestamp = gregorianDate.getTime();
+            if (isNaN(timestamp)) {
+                console.error('CalendarConverter: Date object has invalid timestamp');
+                return null;
+            }
+            return this.fromUnixTimestamp(timestamp, calendar);
         } catch (error) {
             console.error('Error converting Gregorian date to custom:', error);
             return null;
