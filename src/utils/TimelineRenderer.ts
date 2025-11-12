@@ -556,6 +556,17 @@ export class TimelineRenderer {
         groups?: any;
         legend: Array<{ key: string; label: string; color: string }>;
     }> {
+        // DEBUG: Log all events before filtering
+        console.log('[Timeline] Building datasets with', this.events.length, 'total events');
+        console.log('[Timeline] Selected calendar:', this.selectedCalendarId);
+        console.log('[Timeline] All events:', this.events.map(e => ({
+            name: e.name,
+            calendarId: e.calendarId,
+            customCalendarDate: e.customCalendarDate,
+            gregorianDateTime: e.gregorianDateTime,
+            dateTime: e.dateTime
+        })));
+        
         const items = new DataSet();
         const legend: Array<{ key: string; label: string; color: string }> = [];
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -652,10 +663,16 @@ export class TimelineRenderer {
                 console.log('[Timeline] Timestamps for', evt.name, ':', { startMs, endMs });
             }
 
-            if (startMs == null) {
+            // Validate that we have a valid numeric timestamp
+            if (startMs == null || typeof startMs !== 'number' || isNaN(startMs)) {
                 if (evt.customCalendarDate) {
-                    console.log('[Timeline] Event excluded due to null startMs:', evt.name);
+                    console.log('[Timeline] Event excluded due to invalid startMs:', evt.name, startMs);
                 }
+                console.warn('[Timeline] Skipping event with invalid start date:', evt.name, {
+                    dateString,
+                    parsed,
+                    startMs
+                });
                 continue;
             }
 
@@ -681,6 +698,12 @@ export class TimelineRenderer {
             if (this.options.ganttMode && displayEndMs == null && !isMilestone) {
                 const durationMs = (this.options.defaultGanttDuration || 1) * 24 * 60 * 60 * 1000;
                 displayEndMs = startMs + durationMs;
+            }
+            
+            // Validate displayEndMs if it exists
+            if (displayEndMs != null && (typeof displayEndMs !== 'number' || isNaN(displayEndMs))) {
+                console.warn('[Timeline] Invalid end timestamp for event:', evt.name, displayEndMs);
+                displayEndMs = undefined; // Treat as point event
             }
             
             // Build CSS classes
@@ -802,6 +825,19 @@ export class TimelineRenderer {
             const hasMatchingCalendar = evt.calendarId === this.selectedCalendarId;
             const hasGregorianFallback = !!(evt.gregorianDateTime);
             const isDefaultGregorian = !evt.calendarId && !evt.customCalendarDate && evt.dateTime;
+            
+            // DEBUG logging
+            console.log('[Timeline Filter]', evt.name, {
+                selectedCalendarId: this.selectedCalendarId,
+                eventCalendarId: evt.calendarId,
+                hasMatchingCalendar,
+                hasGregorianFallback,
+                isDefaultGregorian,
+                customCalendarDate: evt.customCalendarDate,
+                gregorianDateTime: evt.gregorianDateTime,
+                dateTime: evt.dateTime,
+                willInclude: hasMatchingCalendar || hasGregorianFallback || isDefaultGregorian
+            });
             
             // Only show events from the selected calendar OR events with Gregorian dates that can be displayed
             if (!hasMatchingCalendar && !hasGregorianFallback && !isDefaultGregorian) {

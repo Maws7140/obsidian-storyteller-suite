@@ -439,6 +439,16 @@ export class CustomTimeAxis {
                 const conversion = CalendarConverter.convert(monthDate, calendar, gregorianCalendar);
                 const markerId = `${calendar.name}-${year}-${month.name}`;
 
+                // Validate timestamp before creating Date object
+                if (typeof conversion.timestamp !== 'number' || isNaN(conversion.timestamp)) {
+                    console.warn('[CustomTimeAxis] Invalid timestamp for month boundary:', {
+                        year,
+                        month: month.name,
+                        timestamp: conversion.timestamp
+                    });
+                    continue;
+                }
+
                 try {
                     timeline.addCustomTime(new Date(conversion.timestamp), markerId);
                     timeline.setCustomTimeMarker(month.name, markerId, false);
