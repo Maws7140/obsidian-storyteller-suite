@@ -187,7 +187,12 @@ export class TimelineRenderer {
      */
     zoomPresetYears(years: number): void {
         if (!this.timeline) return;
-        const center = this.plugin.getReferenceTodayDate().getTime();
+        const refDate = this.plugin.getReferenceTodayDate();
+        if (!refDate || !(refDate instanceof Date) || isNaN(refDate.getTime())) {
+            console.error('Timeline: Invalid reference date, cannot zoom');
+            return;
+        }
+        const center = refDate.getTime();
         const half = (years * 365.25 * 24 * 60 * 60 * 1000) / 2;
         this.timeline.setWindow(new Date(center - half), new Date(center + half));
     }
