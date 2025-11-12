@@ -187,7 +187,12 @@ export class TimelineRenderer {
      */
     zoomPresetYears(years: number): void {
         if (!this.timeline) return;
-        const center = this.plugin.getReferenceTodayDate().getTime();
+        const refDate = this.plugin.getReferenceTodayDate();
+        if (!refDate || !(refDate instanceof Date) || isNaN(refDate.getTime())) {
+            console.error('Timeline: Invalid reference date, cannot zoom');
+            return;
+        }
+        const center = refDate.getTime();
         const half = (years * 365.25 * 24 * 60 * 60 * 1000) / 2;
         this.timeline.setWindow(new Date(center - half), new Date(center + half));
     }
@@ -308,8 +313,14 @@ export class TimelineRenderer {
                             .filter(d => d.start)
                             .map(d => d.start!.year);
 
-                        const startYear = Math.min(...eventDates, new Date().getFullYear() - 1);
-                        const endYear = Math.max(...eventDates, new Date().getFullYear() + 1);
+                        // Protect against empty array - use current year ± 1 as fallback
+                        const currentYear = new Date().getFullYear();
+                        const startYear = eventDates.length > 0
+                            ? Math.min(...eventDates, currentYear - 1)
+                            : currentYear - 1;
+                        const endYear = eventDates.length > 0
+                            ? Math.max(...eventDates, currentYear + 1)
+                            : currentYear + 1;
 
                         // Generate calendar markers
                         const markers = CalendarMarkers.generateAllMarkers(
@@ -420,17 +431,21 @@ export class TimelineRenderer {
                         if (range && range.start && range.end) {
                             const startDate = new Date(range.start);
                             const endDate = new Date(range.end);
-                            const startYear = startDate.getFullYear();
-                            const endYear = endDate.getFullYear();
 
-                            // Add month boundary markers (limited range to avoid performance issues)
-                            const yearRange = Math.min(endYear - startYear, 10); // Limit to 10 years
-                            CustomTimeAxis.createMonthBoundaryMarkers(
-                                this.timeline,
-                                selectedCalendar,
-                                startYear,
-                                startYear + yearRange
-                            );
+                            // Validate Date objects before calling getFullYear()
+                            if (!isNaN(startDate.getTime()) && !isNaN(endDate.getTime())) {
+                                const startYear = startDate.getFullYear();
+                                const endYear = endDate.getFullYear();
+
+                                // Add month boundary markers (limited range to avoid performance issues)
+                                const yearRange = Math.min(endYear - startYear, 10); // Limit to 10 years
+                                CustomTimeAxis.createMonthBoundaryMarkers(
+                                    this.timeline,
+                                    selectedCalendar,
+                                    startYear,
+                                    startYear + yearRange
+                                );
+                            }
                         }
                     }
                 } catch (calendarError) {
@@ -444,23 +459,42 @@ export class TimelineRenderer {
             this.timeline.on('changed', async (props: any) => {
                 if (!this.options.editMode) return;
                 if (!props || !props.items || props.items.length === 0) return;
-                
+
                 const updatedItemId = props.items[0];
                 const updatedItem = items.get(updatedItemId);
                 if (!updatedItem) return;
-                
+
+                // Validate array bounds
+                if (updatedItemId < 0 || updatedItemId >= this.events.length) {
+                    console.error('Timeline: Invalid event index in drag-drop:', updatedItemId);
+                    return;
+                }
+
                 const event = this.events[updatedItemId];
                 if (!event) return;
-                
+
                 const startDate = new Date(updatedItem.start);
                 const endDate = updatedItem.end ? new Date(updatedItem.end) : null;
-                
+
+                // Validate Date objects
+                if (isNaN(startDate.getTime())) {
+                    console.error('Timeline: Invalid start date after drag:', updatedItem.start);
+                    new Notice('Error: Invalid date after move');
+                    return;
+                }
+
+                if (endDate && isNaN(endDate.getTime())) {
+                    console.error('Timeline: Invalid end date after drag:', updatedItem.end);
+                    new Notice('Error: Invalid date after move');
+                    return;
+                }
+
                 if (endDate) {
                     event.dateTime = `${startDate.toISOString()} to ${endDate.toISOString()}`;
                 } else {
                     event.dateTime = startDate.toISOString();
                 }
-                
+
                 try {
                     await this.plugin.saveEvent(event);
                     new Notice(`Event "${event.name}" rescheduled`);
@@ -475,7 +509,19 @@ export class TimelineRenderer {
             this.timeline.on('doubleClick', (props: any) => {
                 if (props.item != null) {
                     const idx = props.item as number;
+
+                    // Validate array bounds
+                    if (idx < 0 || idx >= this.events.length) {
+                        console.error('Timeline: Invalid event index in double-click:', idx);
+                        return;
+                    }
+
                     const event = this.events[idx];
+                    if (!event) {
+                        console.error('Timeline: Event not found at index:', idx);
+                        return;
+                    }
+
                     new EventModal(this.app, this.plugin, event, async (updatedData: Event) => {
                         await this.plugin.saveEvent(updatedData);
                         new Notice(`Event "${updatedData.name}" updated`);
@@ -519,13 +565,20 @@ export class TimelineRenderer {
                             // User initiated zoom/pan - update axis scale
                             const range = this.timeline.getWindow();
                             if (range && range.start && range.end) {
-                                const timeScale = CustomTimeAxis.determineTimeScale(
-                                    range.start.valueOf(),
-                                    range.end.valueOf()
-                                );
+                                // Handle both Date objects and raw timestamps
+                                const startMs = typeof range.start === 'number'
+                                    ? range.start
+                                    : (range.start instanceof Date ? range.start.getTime() : range.start.valueOf());
+                                const endMs = typeof range.end === 'number'
+                                    ? range.end
+                                    : (range.end instanceof Date ? range.end.getTime() : range.end.valueOf());
 
-                                // Re-apply custom time axis with updated scale
-                                CustomTimeAxis.applyToTimeline(this.timeline, selectedCalendar);
+                                if (!isNaN(startMs) && !isNaN(endMs)) {
+                                    const timeScale = CustomTimeAxis.determineTimeScale(startMs, endMs);
+
+                                    // Re-apply custom time axis with updated scale
+                                    CustomTimeAxis.applyToTimeline(this.timeline, selectedCalendar);
+                                }
                             }
                         }
                     } catch (error) {
