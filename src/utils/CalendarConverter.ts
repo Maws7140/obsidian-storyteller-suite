@@ -193,6 +193,11 @@ export class CalendarConverter {
     private static calculateDateFromOffset(dayOffset: number, calendar: Calendar, timeOfDay: number): CalendarDate {
         const epochYear = calendar.referenceDate?.year || 0;
 
+        // Validate calendar has required fields
+        if (!calendar.referenceDate) {
+            console.warn('CalendarConverter: Calendar missing referenceDate, using year 0 as epoch');
+        }
+
         let remainingDays = dayOffset;
         let year = epochYear;
 
@@ -212,6 +217,7 @@ export class CalendarConverter {
         let monthName: string | undefined;
 
         if (calendar.months && calendar.months.length > 0) {
+            let monthFound = false;
             for (let i = 0; i < calendar.months.length; i++) {
                 const daysInMonth = calendar.months[i].days;
                 if (remainingDays >= daysInMonth) {
@@ -219,8 +225,21 @@ export class CalendarConverter {
                 } else {
                     month = i + 1;
                     monthName = calendar.months[i].name;
+                    monthFound = true;
                     break;
                 }
+            }
+
+            // If we exhausted all months without finding a match, we have too many remaining days
+            // This indicates the date is in the next year or there's a calculation error
+            if (!monthFound) {
+                console.warn(`CalendarConverter: Remaining days (${remainingDays}) exceed all months in year ${year}. Using last month and adjusting.`);
+                // Wrap to last month, last day
+                const lastMonthIndex = calendar.months.length - 1;
+                month = lastMonthIndex + 1;
+                monthName = calendar.months[lastMonthIndex].name;
+                // Cap the day at the last day of the last month to avoid invalid dates
+                remainingDays = calendar.months[lastMonthIndex].days - 1;
             }
         } else {
             // Fallback to numbered months
@@ -464,11 +483,36 @@ export class CalendarConverter {
      * Convert Unix timestamp to calendar date
      */
     static fromUnixTimestamp(timestamp: number, calendar: Calendar): CalendarDate {
-        // Calculate day offset from epoch
+        // Validate input
+        if (typeof timestamp !== 'number' || isNaN(timestamp)) {
+            console.error('CalendarConverter: Invalid timestamp:', timestamp);
+            return { year: 0, month: 0, day: 0 };
+        }
+
+        // Calculate day offset from Unix epoch (1970-01-01)
         const dayOffset = Math.floor(timestamp / this.MS_PER_GREGORIAN_DAY);
         const timeOfDay = timestamp % this.MS_PER_GREGORIAN_DAY;
 
-        // Convert to calendar date
+        // If calendar uses Gregorian reference (or is close to it), use direct calculation
+        // Otherwise, we need to adjust for the difference between calendar epoch and Unix epoch
+        if (calendar.referenceDate) {
+            // Calculate offset between calendar's epoch and Unix epoch
+            // Unix epoch is 1970-01-01
+            const unixEpochYear = this.GREGORIAN_EPOCH_YEAR;
+            const calendarEpochYear = calendar.referenceDate.year;
+
+            // Approximate days between calendar epoch and Unix epoch
+            // This is a simplified calculation - for exact results, we'd need full date conversion
+            const yearDiff = unixEpochYear - calendarEpochYear;
+            const approxDayDiff = yearDiff * (calendar.daysPerYear || 365);
+
+            // Adjust dayOffset to be relative to calendar's epoch instead of Unix epoch
+            const adjustedDayOffset = dayOffset + approxDayDiff;
+
+            return this.calculateDateFromOffset(adjustedDayOffset, calendar, timeOfDay);
+        }
+
+        // Fallback: use dayOffset directly if no reference date
         return this.calculateDateFromOffset(dayOffset, calendar, timeOfDay);
     }
 
@@ -587,6 +631,49 @@ export class CalendarConverter {
         dayOfYear += date.day;
 
         return dayOfYear;
+    }
+
+    /**
+     * Validate calendar configuration
+     * Returns array of warning messages, empty if valid
+     */
+    static validateCalendar(calendar: Calendar): string[] {
+        const warnings: string[] = [];
+
+        // Check required fields
+        if (!calendar.name) {
+            warnings.push('Calendar is missing a name');
+        }
+
+        if (!calendar.daysPerYear || calendar.daysPerYear <= 0) {
+            warnings.push('Calendar is missing or has invalid daysPerYear');
+        }
+
+        if (!calendar.months || calendar.months.length === 0) {
+            warnings.push('Calendar is missing months definition');
+        } else {
+            // Validate months add up to daysPerYear
+            const totalDays = calendar.months.reduce((sum, m) => sum + m.days, 0);
+            if (calendar.daysPerYear && totalDays !== calendar.daysPerYear) {
+                warnings.push(`Calendar months total ${totalDays} days but daysPerYear is ${calendar.daysPerYear}`);
+            }
+        }
+
+        if (!calendar.referenceDate) {
+            warnings.push('Calendar is missing referenceDate - timeline display may be incorrect');
+        } else {
+            if (!calendar.referenceDate.year) {
+                warnings.push('Calendar referenceDate is missing year');
+            }
+            if (!calendar.referenceDate.month) {
+                warnings.push('Calendar referenceDate is missing month');
+            }
+            if (!calendar.referenceDate.day) {
+                warnings.push('Calendar referenceDate is missing day');
+            }
+        }
+
+        return warnings;
     }
 
     /**
