@@ -1228,7 +1228,9 @@ If your plugin does not need CSS, delete this file.
   border-color: var(--background-modifier-border);
 }
 .storyteller-timeline-modal .vis-time-axis .vis-text {
-  color: var(--text-muted);
+  color: var(--text-normal);
+  visibility: visible;
+  display: inline-block;
 }
 .storyteller-timeline-modal .vis-current-time {
   background-color: var(--interactive-accent);
@@ -2898,6 +2900,42 @@ body.mod-rtl .storyteller-group-members {
   border-color: var(--background-modifier-border-hover);
 }
 
+/* Ensure vertical gridlines are visible */
+.storyteller-timeline-modal .vis-grid.vis-vertical,
+.storyteller-timeline-view .vis-grid.vis-vertical {
+  border-left-width: 1px;
+  border-left-style: solid;
+  opacity: 1;
+}
+
+/* Ensure axis labels are visible and properly styled */
+.storyteller-timeline-modal .vis-time-axis .vis-text,
+.storyteller-timeline-view .vis-time-axis .vis-text {
+  color: var(--text-normal);
+  font-size: 11px;
+  padding: 2px 4px;
+  white-space: nowrap;
+}
+
+/* Ensure major labels are more prominent */
+.storyteller-timeline-modal .vis-time-axis .vis-text.vis-major,
+.storyteller-timeline-view .vis-time-axis .vis-text.vis-major {
+  font-weight: 600;
+  color: var(--text-normal);
+}
+
+/* Ensure minor labels are visible */
+.storyteller-timeline-modal .vis-time-axis .vis-text.vis-minor,
+.storyteller-timeline-view .vis-time-axis .vis-text.vis-minor {
+  color: var(--text-muted);
+}
+
+/* Custom calendar month boundary markers */
+.custom-calendar-month-boundary {
+  opacity: 0.3;
+  pointer-events: none;
+}
+
 /* Dependency arrows */
 .dependency-arrow-overlay {
   position: absolute;
@@ -3582,7 +3620,9 @@ body.mod-rtl .storyteller-group-members {
 }
 
 .storyteller-timeline-view .vis-time-axis .vis-text {
-  color: var(--text-muted);
+  color: var(--text-normal);
+  visibility: visible;
+  display: inline-block;
 }
 
 .storyteller-timeline-view .vis-current-time {

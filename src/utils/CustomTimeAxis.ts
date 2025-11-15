@@ -414,46 +414,26 @@ export class CustomTimeAxis {
         // Set custom format function
         const formatFunction = this.createFormatFunction(calendar);
 
-        // Get current timeline window to determine appropriate scale
+        // Get current timeline window to determine appropriate scale for logging
         const range = timeline.getWindow();
         let scale: TimeScale = 'month';
-        let step = 1;
 
         if (range && range.start && range.end) {
             const start = typeof range.start === 'number' ? range.start : new Date(range.start).getTime();
             const end = typeof range.end === 'number' ? range.end : new Date(range.end).getTime();
             scale = this.determineTimeScale(start, end);
-
-            // Set step based on scale
-            switch (scale) {
-                case 'year':
-                    step = 1;
-                    break;
-                case 'month':
-                    step = 1;
-                    break;
-                case 'day':
-                    step = 1;
-                    break;
-                case 'hour':
-                    step = 1;
-                    break;
-            }
         }
 
-        console.log('[CustomTimeAxis] Applying axis with scale:', scale, 'step:', step);
+        console.log('[CustomTimeAxis] Applying custom calendar format for scale:', scale);
 
+        // Apply custom format function and ensure axis labels are visible
+        // Note: vis-timeline automatically determines scale based on zoom level
+        // We only need to provide the format function and ensure labels are shown
         timeline.setOptions({
             format: {
                 minorLabels: formatFunction,
                 majorLabels: formatFunction
             },
-            // Customize time axis with dynamic scale
-            timeAxis: {
-                scale: scale,
-                step: step
-            },
-            // Ensure gridlines are visible
             showMinorLabels: true,
             showMajorLabels: true
         });
