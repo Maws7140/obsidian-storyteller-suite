@@ -345,6 +345,19 @@ export class TimelineRenderer {
             const dayMs = 24 * 60 * 60 * 1000;
             const yearMs = 365.25 * dayMs;
 
+            // Check if a custom calendar is selected and prepare format function
+            let selectedCalendar: Calendar | null = null;
+            if (this.selectedCalendarId) {
+                try {
+                    const calendars = await this.plugin.listCalendars();
+                    selectedCalendar = calendars.find(
+                        c => (c.id || c.name) === this.selectedCalendarId
+                    ) || null;
+                } catch (error) {
+                    console.warn('Storyteller Suite: Error loading calendar for timeline options:', error);
+                }
+            }
+
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const timelineOptions: any = {
                 stack: this.options.stackEnabled,
@@ -364,8 +377,22 @@ export class TimelineRenderer {
                 visibleFrameTemplate: function(item: any) {
                     if (!item.progress || item.progress === 0) return '';
                     return `<div class="timeline-progress" style="width:${item.progress}%"></div>`;
-                }
+                },
+                // Ensure gridlines and labels are visible
+                showMinorLabels: true,
+                showMajorLabels: true,
+                showCurrentTime: true
             };
+
+            // Apply custom calendar format function during initialization if calendar is selected
+            if (selectedCalendar) {
+                const formatFunction = CustomTimeAxis.createFormatFunction(selectedCalendar);
+                timelineOptions.format = {
+                    minorLabels: formatFunction,
+                    majorLabels: formatFunction
+                };
+                console.log('[Timeline] Applying custom calendar format during initialization:', selectedCalendar.name);
+            }
 
             // Ensure container doesn't clip tooltips
             this.container.style.overflow = 'visible';
@@ -415,36 +442,35 @@ export class TimelineRenderer {
             }
 
             // Apply custom calendar axis if a calendar is selected (Level 3 feature)
-            if (this.timeline && this.selectedCalendarId) {
+            if (this.timeline && selectedCalendar) {
                 try {
-                    const calendars = await this.plugin.listCalendars();
-                    const selectedCalendar = calendars.find(
-                        c => (c.id || c.name) === this.selectedCalendarId
-                    );
+                    // Apply custom time axis scale settings (format already applied during init)
+                    CustomTimeAxis.applyToTimeline(this.timeline, selectedCalendar);
 
-                    if (selectedCalendar) {
-                        // Apply custom time axis formatting
-                        CustomTimeAxis.applyToTimeline(this.timeline, selectedCalendar);
+                    // Determine visible range to add month boundary markers
+                    const range = this.timeline.getWindow();
+                    if (range && range.start && range.end) {
+                        const startDate = new Date(range.start);
+                        const endDate = new Date(range.end);
 
-                        // Determine visible range to add month boundary markers
-                        const range = this.timeline.getWindow();
-                        if (range && range.start && range.end) {
-                            const startDate = new Date(range.start);
-                            const endDate = new Date(range.end);
+                        // Validate Date objects before calling getFullYear()
+                        if (!isNaN(startDate.getTime()) && !isNaN(endDate.getTime())) {
+                            const startYear = startDate.getFullYear();
+                            const endYear = endDate.getFullYear();
 
-                            // Validate Date objects before calling getFullYear()
-                            if (!isNaN(startDate.getTime()) && !isNaN(endDate.getTime())) {
-                                const startYear = startDate.getFullYear();
-                                const endYear = endDate.getFullYear();
+                            // Create month boundary markers (limited range to avoid performance issues)
+                            const yearRange = Math.min(endYear - startYear, 10); // Limit to 10 years
+                            const boundaryMarkers = CustomTimeAxis.createMonthBoundaryMarkers(
+                                this.timeline,
+                                selectedCalendar,
+                                startYear,
+                                startYear + yearRange
+                            );
 
-                                // Add month boundary markers (limited range to avoid performance issues)
-                                const yearRange = Math.min(endYear - startYear, 10); // Limit to 10 years
-                                CustomTimeAxis.createMonthBoundaryMarkers(
-                                    this.timeline,
-                                    selectedCalendar,
-                                    startYear,
-                                    startYear + yearRange
-                                );
+                            // Add boundary markers to the timeline items
+                            if (boundaryMarkers.length > 0) {
+                                items.add(boundaryMarkers);
+                                console.log(`[Timeline] Added ${boundaryMarkers.length} month boundary markers to timeline`);
                             }
                         }
                     }
@@ -793,6 +819,24 @@ export class TimelineRenderer {
                 style,
                 progress: evt.progress
             });
+        }
+
+        // Summary of event filtering
+        const totalEvents = this.events.length;
+        const displayedEvents = items.length;
+        const filteredEvents = totalEvents - displayedEvents;
+
+        console.log('[Timeline] Dataset build complete:', {
+            totalEvents,
+            displayedEvents,
+            filteredEvents,
+            selectedCalendar: this.selectedCalendarId,
+            filterPercentage: totalEvents > 0 ? Math.round((filteredEvents / totalEvents) * 100) : 0
+        });
+
+        if (this.selectedCalendarId && filteredEvents > 0) {
+            console.log('[Timeline] Note: Events were filtered because they don\'t match the selected calendar or lack conversion data.');
+            console.log('[Timeline] To see all events, switch to "All Calendars (Gregorian)" mode.');
         }
 
         return { items, groups: groupsDS, legend };

@@ -414,16 +414,48 @@ export class CustomTimeAxis {
         // Set custom format function
         const formatFunction = this.createFormatFunction(calendar);
 
+        // Get current timeline window to determine appropriate scale
+        const range = timeline.getWindow();
+        let scale: TimeScale = 'month';
+        let step = 1;
+
+        if (range && range.start && range.end) {
+            const start = typeof range.start === 'number' ? range.start : new Date(range.start).getTime();
+            const end = typeof range.end === 'number' ? range.end : new Date(range.end).getTime();
+            scale = this.determineTimeScale(start, end);
+
+            // Set step based on scale
+            switch (scale) {
+                case 'year':
+                    step = 1;
+                    break;
+                case 'month':
+                    step = 1;
+                    break;
+                case 'day':
+                    step = 1;
+                    break;
+                case 'hour':
+                    step = 1;
+                    break;
+            }
+        }
+
+        console.log('[CustomTimeAxis] Applying axis with scale:', scale, 'step:', step);
+
         timeline.setOptions({
             format: {
                 minorLabels: formatFunction,
                 majorLabels: formatFunction
             },
-            // Customize time axis styling
+            // Customize time axis with dynamic scale
             timeAxis: {
-                scale: 'day',
-                step: 1
-            }
+                scale: scale,
+                step: step
+            },
+            // Ensure gridlines are visible
+            showMinorLabels: true,
+            showMajorLabels: true
         });
 
         // If dual axis is enabled, we would add a second axis here
@@ -436,6 +468,7 @@ export class CustomTimeAxis {
 
     /**
      * Create custom time markers for month boundaries
+     * Returns an array of background items that can be added to the timeline
      */
     static createMonthBoundaryMarkers(
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -443,12 +476,14 @@ export class CustomTimeAxis {
         calendar: Calendar,
         startYear: number,
         endYear: number
-    ): void {
-        if (!timeline || !calendar.months) return;
+    ): any[] {
+        const markers: any[] = [];
+
+        if (!timeline || !calendar.months) return markers;
 
         const gregorianCalendar = this.getGregorianCalendar();
 
-        // Add a custom time marker for each month boundary
+        // Create background markers for month boundaries
         for (let year = startYear; year <= endYear; year++) {
             for (const month of calendar.months) {
                 const monthDate: CalendarDate = {
@@ -458,7 +493,7 @@ export class CustomTimeAxis {
                 };
 
                 const conversion = CalendarConverter.convert(monthDate, calendar, gregorianCalendar);
-                const markerId = `${calendar.name}-${year}-${month.name}`;
+                const markerId = `month-boundary-${calendar.name}-${year}-${month.name}`;
 
                 // Validate timestamp before creating Date object
                 if (typeof conversion.timestamp !== 'number' || isNaN(conversion.timestamp)) {
@@ -470,13 +505,20 @@ export class CustomTimeAxis {
                     continue;
                 }
 
-                try {
-                    timeline.addCustomTime(new Date(conversion.timestamp), markerId);
-                    timeline.setCustomTimeMarker(month.name, markerId, false);
-                } catch (error) {
-                    // Marker might already exist, ignore
-                }
+                // Add a background item to mark the month boundary
+                markers.push({
+                    id: markerId,
+                    type: 'background',
+                    start: new Date(conversion.timestamp),
+                    end: new Date(conversion.timestamp + 1), // 1ms duration for vertical line
+                    className: 'custom-calendar-month-boundary',
+                    content: '', // No content, just visual marker
+                    style: 'background-color: rgba(128, 128, 128, 0.1); border-left: 1px solid rgba(128, 128, 128, 0.3);'
+                });
             }
         }
+
+        console.log(`[CustomTimeAxis] Created ${markers.length} month boundary markers for ${calendar.name}`);
+        return markers;
     }
 }
