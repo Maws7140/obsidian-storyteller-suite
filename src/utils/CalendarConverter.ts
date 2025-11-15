@@ -588,4 +588,110 @@ export class CalendarConverter {
 
         return dayOfYear;
     }
+
+    /**
+     * Validate a custom calendar date
+     */
+    static validateCustomDate(date: CalendarDate, calendar: Calendar): boolean {
+        // Check year
+        if (date.year === undefined || isNaN(date.year)) {
+            return false;
+        }
+
+        // Check month
+        if (date.month === undefined) {
+            return false;
+        }
+
+        if (typeof date.month === 'number') {
+            if (calendar.months && (date.month < 1 || date.month > calendar.months.length)) {
+                return false;
+            }
+        } else if (typeof date.month === 'string') {
+            if (calendar.months && !calendar.months.find(m => m.name === date.month)) {
+                return false;
+            }
+        }
+
+        // Check day
+        if (date.day === undefined || date.day < 1) {
+            return false;
+        }
+
+        // Check day is within valid range for the month
+        const monthIndex = typeof date.month === 'string'
+            ? (calendar.months?.findIndex(m => m.name === date.month) ?? -1)
+            : (date.month as number);
+
+        const monthNumber = typeof date.month === 'string'
+            ? (monthIndex >= 0 ? monthIndex + 1 : 1)
+            : monthIndex;
+
+        const daysInMonth = this.getDaysInMonth(monthNumber, date.year, calendar);
+        if (date.day > daysInMonth) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Convert a custom calendar date to Gregorian date
+     */
+    static convertCustomToGregorian(date: CalendarDate, calendar: Calendar): Date | null {
+        try {
+            // Create a default Gregorian calendar
+            const gregorianCalendar: Calendar = {
+                id: 'gregorian',
+                name: 'Gregorian',
+                daysPerYear: 365,
+                months: [
+                    { name: 'January', days: 31 },
+                    { name: 'February', days: 28 },
+                    { name: 'March', days: 31 },
+                    { name: 'April', days: 30 },
+                    { name: 'May', days: 31 },
+                    { name: 'June', days: 30 },
+                    { name: 'July', days: 31 },
+                    { name: 'August', days: 31 },
+                    { name: 'September', days: 30 },
+                    { name: 'October', days: 31 },
+                    { name: 'November', days: 30 },
+                    { name: 'December', days: 31 }
+                ],
+                referenceDate: {
+                    year: this.GREGORIAN_EPOCH_YEAR,
+                    month: this.GREGORIAN_EPOCH_MONTH,
+                    day: this.GREGORIAN_EPOCH_DAY
+                },
+                leapYearRules: [
+                    {
+                        type: 'divisible',
+                        divisor: 4,
+                        exceptionDivisor: 100,
+                        exceptionExceptionDivisor: 400,
+                        daysAdded: 1
+                    }
+                ]
+            };
+
+            // Convert from custom calendar to Gregorian
+            const result = this.convert(date, calendar, gregorianCalendar);
+
+            // Convert the result to a JavaScript Date object
+            const gregorianDate = result.targetDate;
+            
+            // Create a JavaScript Date from the Gregorian date
+            const jsDate = new Date(
+                gregorianDate.year,
+                typeof gregorianDate.month === 'number' ? gregorianDate.month - 1 : 0,
+                gregorianDate.day
+            );
+
+            return jsDate;
+        } catch (error) {
+            console.error('Error converting custom date to Gregorian:', error);
+            return null;
+        }
+    }
 }
