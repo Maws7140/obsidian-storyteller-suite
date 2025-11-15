@@ -358,10 +358,7 @@ export class CalendarConverter {
 
     /**
      * Get number of days in a month
-     * @param month 1-based month number (1 = first month, 2 = second month, etc.)
-     * @param year The year (for potential leap year calculations)
-     * @param calendar The calendar system
-     * @returns Number of days in the specified month
+     * (Made public for backward compatibility)
      */
     static getDaysInMonth(month: number, year: number, calendar: Calendar): number {
         if (!calendar.months || month < 1 || month > calendar.months.length) {
@@ -591,92 +588,4 @@ export class CalendarConverter {
 
         return dayOfYear;
     }
-
-    // ===================================================================
-    // Backward Compatibility Methods for Legacy Code
-    // ===================================================================
-
-    /**
-     * Convert custom calendar date to Gregorian Date (legacy API)
-     */
-    static convertCustomToGregorian(customDate: CalendarDate, calendar: Calendar): Date | null {
-        try {
-            const gregorianCalendar: Calendar = {
-                id: 'gregorian',
-                name: 'Gregorian',
-                months: [
-                    { name: 'January', days: 31 },
-                    { name: 'February', days: 28 },
-                    { name: 'March', days: 31 },
-                    { name: 'April', days: 30 },
-                    { name: 'May', days: 31 },
-                    { name: 'June', days: 30 },
-                    { name: 'July', days: 31 },
-                    { name: 'August', days: 31 },
-                    { name: 'September', days: 30 },
-                    { name: 'October', days: 31 },
-                    { name: 'November', days: 30 },
-                    { name: 'December', days: 31 }
-                ],
-                daysPerYear: 365,
-                referenceDate: { year: 1970, month: 'January', day: 1 },
-                hoursPerDay: 24,
-                minutesPerHour: 60,
-                secondsPerMinute: 60
-            };
-            const conversion = this.convert(customDate, calendar, gregorianCalendar);
-            return new Date(conversion.timestamp);
-        } catch (error) {
-            console.error('Error converting custom date to Gregorian:', error);
-            return null;
-        }
-    }
-
-    /**
-     * Convert Gregorian Date to custom calendar date (legacy API)
-     */
-    static convertGregorianToCustom(gregorianDate: Date, calendar: Calendar): CalendarDate | null {
-        try {
-            if (!gregorianDate || !(gregorianDate instanceof Date)) {
-                console.error('CalendarConverter: Invalid Date object provided');
-                return null;
-            }
-            const timestamp = gregorianDate.getTime();
-            if (isNaN(timestamp)) {
-                console.error('CalendarConverter: Date object has invalid timestamp');
-                return null;
-            }
-            return this.fromUnixTimestamp(timestamp, calendar);
-        } catch (error) {
-            console.error('Error converting Gregorian date to custom:', error);
-            return null;
-        }
-    }
-
-    /**
-     * Format custom calendar date (legacy API)
-     */
-    static formatCustomCalendarDate(customDate: CalendarDate, calendar: Calendar): string {
-        return this.formatDate(customDate, calendar, 'long');
-    }
-
-    /**
-     * Validate a custom calendar date (legacy API)
-     */
-    static validateCustomDate(date: CalendarDate, calendar: Calendar): boolean {
-        if (!date || !calendar) return false;
-        if (!date.year || date.year < 0) return false;
-        if (typeof date.month === 'number') {
-            if (!calendar.months || date.month < 1 || date.month > calendar.months.length) return false;
-        } else if (typeof date.month === 'string') {
-            if (!calendar.months || !calendar.months.find(m => m.name === date.month)) return false;
-        } else {
-            return false;
-        }
-        if (!date.day || date.day < 1) return false;
-        const monthIndex = typeof date.month === 'number' ? date.month : calendar.months?.findIndex(m => m.name === date.month)! + 1;
-        const maxDays = calendar.months && monthIndex > 0 && monthIndex <= calendar.months.length ? calendar.months[monthIndex - 1].days : 30;
-        return date.day <= maxDays;
-    }
 }
-
