@@ -362,7 +362,10 @@ export class TimelineRenderer {
             const timelineOptions: any = {
                 stack: this.options.stackEnabled,
                 stackSubgroups: true,
-                margin: { item: itemMargin, axis: 20 },
+                margin: {
+                    item: itemMargin,
+                    axis: 40  // Increased axis margin to ensure labels have space
+                },
                 zoomable: true,
                 zoomMin: dayMs,
                 zoomMax: 1000 * yearMs,
@@ -378,10 +381,15 @@ export class TimelineRenderer {
                     if (!item.progress || item.progress === 0) return '';
                     return `<div class="timeline-progress" style="width:${item.progress}%"></div>`;
                 },
-                // Ensure gridlines and labels are visible
+                // Explicitly enable axis labels and gridlines
                 showMinorLabels: true,
                 showMajorLabels: true,
-                showCurrentTime: true
+                showCurrentTime: true,
+                // Ensure vertical gridlines are visible
+                verticalScroll: false,
+                horizontalScroll: true,
+                // Configure time axis to ensure proper rendering
+                height: this.options.ganttMode ? 'auto' : undefined
             };
 
             // Apply custom calendar format function during initialization if calendar is selected
