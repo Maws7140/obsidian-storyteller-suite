@@ -4,7 +4,7 @@ import { Story } from '../types';
 import { t } from '../i18n/strings';
 import type StorytellerSuitePlugin from '../main';
 
-export type EditStoryModalSubmitCallback = (name: string, description?: string, defaultCalendarId?: string) => Promise<void>;
+export type EditStoryModalSubmitCallback = (name: string, description?: string) => Promise<void>;
 
 export class EditStoryModal extends Modal {
     plugin: StorytellerSuitePlugin;
@@ -14,7 +14,6 @@ export class EditStoryModal extends Modal {
 
     private name = '';
     private description = '';
-    private defaultCalendarId?: string;
     private nameInput!: TextComponent;
     private descInput!: TextAreaComponent;
     private errorEl!: HTMLElement;
@@ -27,7 +26,6 @@ export class EditStoryModal extends Modal {
         this.existingNames = existingNames.filter(n => n !== story.name).map(n => n.toLowerCase());
         this.name = story.name;
         this.description = story.description || '';
-        this.defaultCalendarId = story.defaultCalendarId;
     }
 
     onOpen() {
@@ -70,27 +68,6 @@ export class EditStoryModal extends Modal {
                 text.inputEl.rows = 3;
             });
 
-        // Default Calendar
-        new Setting(contentEl)
-            .setName('Default Calendar')
-            .setDesc('Default calendar system for events in this story (optional)')
-            .addDropdown(async dropdown => {
-                dropdown.addOption('', 'None (use Gregorian)');
-
-                // Load calendars from the plugin
-                const calendars = await this.plugin.listCalendars();
-                calendars.forEach(calendar => {
-                    if (calendar.id) {
-                        dropdown.addOption(calendar.id, calendar.name);
-                    }
-                });
-
-                dropdown.setValue(this.defaultCalendarId || '');
-                dropdown.onChange(value => {
-                    this.defaultCalendarId = value || undefined;
-                });
-            });
-
         // Error message
         this.errorEl = contentEl.createEl('div', { cls: 'storyteller-modal-error' });
         this.clearError();
@@ -129,7 +106,7 @@ export class EditStoryModal extends Modal {
             return;
         }
         try {
-            await this.onSubmit(this.name, this.description, this.defaultCalendarId);
+            await this.onSubmit(this.name, this.description);
             this.close();
         } catch (e) {
             this.showError('Failed to update story.');
