@@ -2,7 +2,7 @@ import { App, Modal, Setting, TextComponent, TextAreaComponent } from 'obsidian'
 import { t } from '../i18n/strings';
 import type StorytellerSuitePlugin from '../main';
 
-export type NewStoryModalSubmitCallback = (name: string, description?: string, defaultCalendarId?: string) => Promise<void>;
+export type NewStoryModalSubmitCallback = (name: string, description?: string) => Promise<void>;
 
 export class NewStoryModal extends Modal {
     plugin: StorytellerSuitePlugin;
@@ -11,7 +11,6 @@ export class NewStoryModal extends Modal {
 
     private name = '';
     private description = '';
-    private defaultCalendarId?: string;
     private nameInput!: TextComponent;
     private descInput!: TextAreaComponent;
     private errorEl!: HTMLElement;
@@ -61,27 +60,6 @@ export class NewStoryModal extends Modal {
                 text.inputEl.rows = 3;
             });
 
-        // Default Calendar
-        new Setting(contentEl)
-            .setName('Default Calendar')
-            .setDesc('Default calendar system for events in this story (optional)')
-            .addDropdown(async dropdown => {
-                dropdown.addOption('', 'None (use Gregorian)');
-
-                // Load calendars from the plugin
-                const calendars = await this.plugin.listCalendars();
-                calendars.forEach(calendar => {
-                    if (calendar.id) {
-                        dropdown.addOption(calendar.id, calendar.name);
-                    }
-                });
-
-                dropdown.setValue(this.defaultCalendarId || '');
-                dropdown.onChange(value => {
-                    this.defaultCalendarId = value || undefined;
-                });
-            });
-
         // Error message
         this.errorEl = contentEl.createEl('div', { cls: 'storyteller-modal-error' });
         this.clearError();
@@ -120,7 +98,7 @@ export class NewStoryModal extends Modal {
             return;
         }
         try {
-            await this.onSubmit(this.name, this.description, this.defaultCalendarId);
+            await this.onSubmit(this.name, this.description);
             this.close();
         } catch (e) {
             this.showError('Failed to create story.');
