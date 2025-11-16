@@ -21,6 +21,11 @@ import { CalendarConverter } from './CalendarConverter';
 export type TimeScale = 'year' | 'month' | 'day' | 'hour';
 
 /**
+ * Track if we've logged unknown date type warning (to avoid console spam)
+ */
+let unknownTypeLogged = false;
+
+/**
  * Axis marker for custom calendar
  */
 export interface AxisMarker {
@@ -315,6 +320,30 @@ export class CustomTimeAxis {
                     console.warn('CustomTimeAxis: Received invalid Date object, using current time');
                     timestamp = Date.now();
                 }
+            } else if (typeof date === 'object') {
+                // Handle moment-like objects or other date-like objects
+                // Try common timestamp extraction patterns
+                const obj = date as any;
+
+                if (typeof obj.getTime === 'function') {
+                    timestamp = obj.getTime();
+                } else if (typeof obj.valueOf === 'function') {
+                    const value = obj.valueOf();
+                    timestamp = typeof value === 'number' ? value : Date.now();
+                } else if (typeof obj.toDate === 'function') {
+                    // Moment.js style
+                    timestamp = obj.toDate().getTime();
+                } else if (obj._d instanceof Date) {
+                    // Moment.js internal date
+                    timestamp = obj._d.getTime();
+                } else {
+                    // Unknown object type - log once and fallback
+                    if (!unknownTypeLogged) {
+                        console.warn('CustomTimeAxis: Received unexpected object type for date:', typeof date, date);
+                        unknownTypeLogged = true;
+                    }
+                    timestamp = Date.now();
+                }
             } else {
                 // Unknown type - try to coerce to number
                 console.warn('CustomTimeAxis: Received unexpected type for date:', typeof date, date);
@@ -417,6 +446,12 @@ export class CustomTimeAxis {
             console.warn('[CustomTimeAxis] Calendar validation warnings:', warnings);
             console.warn('[CustomTimeAxis] Calendar name:', calendar.name);
             console.warn('[CustomTimeAxis] These issues may cause incorrect date display on the timeline.');
+
+            // Check for critical epochGregorianDate warning
+            const hasCriticalWarning = warnings.some(w => w.includes('epochGregorianDate'));
+            if (hasCriticalWarning) {
+                console.error(`[CustomTimeAxis] CRITICAL: Calendar "${calendar.name}" is missing epochGregorianDate field. Timeline events will be positioned incorrectly. Please add this field to your calendar YAML file.`);
+            }
         }
 
         // Set custom format function
