@@ -294,17 +294,10 @@ export function toMillis(dt?: DateTime): number | undefined {
 
 /**
  * Extract the appropriate date string from an Event for timeline positioning
- * Prioritizes custom calendar's Gregorian conversion if available
  * @param event Event object
  * @returns Date string to use for parsing (Gregorian format)
  */
 export function getEventDateForTimeline(event: Event): string | undefined {
-  // If event uses custom calendar, use the converted Gregorian date
-  if (event.customCalendarDate && event.gregorianDateTime) {
-    return event.gregorianDateTime;
-  }
-
-  // Otherwise, use standard dateTime field
   return event.dateTime;
 }
 
