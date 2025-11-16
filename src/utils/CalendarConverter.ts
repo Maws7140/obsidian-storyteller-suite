@@ -148,20 +148,25 @@ export class CalendarConverter {
 
     /**
      * Calculate day offset from epoch for regular calendars
+     * Supports both positive (future) and negative (historical) offsets
      */
     private static calculateDayOffset(date: CalendarDate, calendar: Calendar): number {
         // Use reference date as epoch if available
         const epochYear = calendar.referenceDate?.year || 0;
 
-        // Calculate years from epoch
-        const yearsDiff = date.year - epochYear;
-
         // Calculate total days from years
         let totalDays = 0;
 
-        // Add days for complete years
-        for (let y = epochYear; y < date.year; y++) {
-            totalDays += this.getDaysInYear(y, calendar);
+        if (date.year >= epochYear) {
+            // Date is at or after epoch - count forward
+            for (let y = epochYear; y < date.year; y++) {
+                totalDays += this.getDaysInYear(y, calendar);
+            }
+        } else {
+            // Date is before epoch - count backward (negative offset)
+            for (let y = epochYear - 1; y >= date.year; y--) {
+                totalDays -= this.getDaysInYear(y, calendar);
+            }
         }
 
         // Add days for months in the current year
@@ -189,6 +194,7 @@ export class CalendarConverter {
 
     /**
      * Calculate date from day offset for regular calendars
+     * Supports both positive and negative offsets
      */
     private static calculateDateFromOffset(dayOffset: number, calendar: Calendar, timeOfDay: number): CalendarDate {
         const epochYear = calendar.referenceDate?.year || 0;
@@ -201,14 +207,24 @@ export class CalendarConverter {
         let remainingDays = dayOffset;
         let year = epochYear;
 
-        // Find the year
-        while (remainingDays > 0) {
-            const daysInYear = this.getDaysInYear(year, calendar);
-            if (remainingDays >= daysInYear) {
-                remainingDays -= daysInYear;
-                year++;
-            } else {
-                break;
+        // Find the year - handle both positive and negative offsets
+        if (remainingDays >= 0) {
+            // Positive offset - move forward from epoch
+            while (remainingDays > 0) {
+                const daysInYear = this.getDaysInYear(year, calendar);
+                if (remainingDays >= daysInYear) {
+                    remainingDays -= daysInYear;
+                    year++;
+                } else {
+                    break;
+                }
+            }
+        } else {
+            // Negative offset - move backward from epoch
+            while (remainingDays < 0) {
+                year--;
+                const daysInYear = this.getDaysInYear(year, calendar);
+                remainingDays += daysInYear;
             }
         }
 
@@ -470,13 +486,52 @@ export class CalendarConverter {
      * Convert absolute date to Unix timestamp (for vis-timeline)
      */
     private static toUnixTimestamp(absoluteDate: AbsoluteDate): number {
-        // Convert day offset to milliseconds
-        const dayMs = absoluteDate.dayOffset * this.MS_PER_GREGORIAN_DAY;
+        const calendar = absoluteDate.calendar;
 
-        // Add time of day
-        const totalMs = dayMs + absoluteDate.timeOfDay;
+        // Get the Unix timestamp for the calendar's epoch
+        const epochTimestamp = this.getEpochTimestamp(calendar);
+
+        // absoluteDate.dayOffset is relative to calendar's epoch, so add it to epoch timestamp
+        const dayMs = absoluteDate.dayOffset * this.MS_PER_GREGORIAN_DAY;
+        const totalMs = epochTimestamp + dayMs + absoluteDate.timeOfDay;
 
         return totalMs;
+    }
+
+    /**
+     * Get Unix timestamp for a calendar's epoch
+     * Uses epochGregorianDate if available, otherwise falls back to referenceDate year
+     */
+    private static getEpochTimestamp(calendar: Calendar): number {
+        // Prefer epochGregorianDate if available (most accurate)
+        if (calendar.epochGregorianDate) {
+            try {
+                const epochDate = new Date(calendar.epochGregorianDate);
+                if (!isNaN(epochDate.getTime())) {
+                    console.log(`[CalendarConverter] Using epochGregorianDate for ${calendar.name}:`, calendar.epochGregorianDate, '→', epochDate.getTime());
+                    return epochDate.getTime();
+                } else {
+                    console.warn(`[CalendarConverter] Invalid epochGregorianDate for ${calendar.name}:`, calendar.epochGregorianDate);
+                }
+            } catch (error) {
+                console.warn(`[CalendarConverter] Error parsing epochGregorianDate for ${calendar.name}:`, error);
+            }
+        }
+
+        // Fallback: use referenceDate year with approximation
+        if (calendar.referenceDate && calendar.referenceDate.year) {
+            const refYear = calendar.referenceDate.year;
+            console.warn(`[CalendarConverter] Calendar "${calendar.name}" missing epochGregorianDate. Using referenceDate.year (${refYear}) with approximation. This may be inaccurate.`);
+
+            // Simple approximation: (year - 1970) * 365.25 days
+            // This is rough but better than treating epoch as Unix epoch
+            const yearDiff = refYear - this.GREGORIAN_EPOCH_YEAR;
+            return yearDiff * 365.25 * this.MS_PER_GREGORIAN_DAY;
+        }
+
+        // Last resort: assume Unix epoch
+        console.error(`[CalendarConverter] Calendar "${calendar.name}" has no epochGregorianDate or referenceDate. Defaulting to Unix epoch (1970-01-01). Timeline positioning will be INCORRECT.`);
+        return 0;
     }
 
     /**
@@ -489,30 +544,14 @@ export class CalendarConverter {
             return { year: 0, month: 0, day: 0 };
         }
 
-        // Calculate day offset from Unix epoch (1970-01-01)
-        const dayOffset = Math.floor(timestamp / this.MS_PER_GREGORIAN_DAY);
-        const timeOfDay = timestamp % this.MS_PER_GREGORIAN_DAY;
+        // Get the timestamp of the calendar's epoch
+        const epochTimestamp = this.getEpochTimestamp(calendar);
 
-        // If calendar uses Gregorian reference (or is close to it), use direct calculation
-        // Otherwise, we need to adjust for the difference between calendar epoch and Unix epoch
-        if (calendar.referenceDate) {
-            // Calculate offset between calendar's epoch and Unix epoch
-            // Unix epoch is 1970-01-01
-            const unixEpochYear = this.GREGORIAN_EPOCH_YEAR;
-            const calendarEpochYear = calendar.referenceDate.year;
+        // Calculate offset from calendar's epoch
+        const msSinceEpoch = timestamp - epochTimestamp;
+        const dayOffset = Math.floor(msSinceEpoch / this.MS_PER_GREGORIAN_DAY);
+        const timeOfDay = msSinceEpoch % this.MS_PER_GREGORIAN_DAY;
 
-            // Approximate days between calendar epoch and Unix epoch
-            // This is a simplified calculation - for exact results, we'd need full date conversion
-            const yearDiff = unixEpochYear - calendarEpochYear;
-            const approxDayDiff = yearDiff * (calendar.daysPerYear || 365);
-
-            // Adjust dayOffset to be relative to calendar's epoch instead of Unix epoch
-            const adjustedDayOffset = dayOffset + approxDayDiff;
-
-            return this.calculateDateFromOffset(adjustedDayOffset, calendar, timeOfDay);
-        }
-
-        // Fallback: use dayOffset directly if no reference date
         return this.calculateDateFromOffset(dayOffset, calendar, timeOfDay);
     }
 
@@ -670,6 +709,21 @@ export class CalendarConverter {
             }
             if (!calendar.referenceDate.day) {
                 warnings.push('Calendar referenceDate is missing day');
+            }
+        }
+
+        // CRITICAL: Check for epochGregorianDate
+        if (!calendar.epochGregorianDate) {
+            warnings.push('⚠️  CRITICAL: Calendar is missing epochGregorianDate. Timeline positioning will be INCORRECT. Add epochGregorianDate (e.g., "1492-01-01") to specify what Gregorian date corresponds to your calendar\'s epoch.');
+        } else {
+            // Validate it's a parseable date
+            try {
+                const testDate = new Date(calendar.epochGregorianDate);
+                if (isNaN(testDate.getTime())) {
+                    warnings.push(`Calendar has invalid epochGregorianDate: "${calendar.epochGregorianDate}". Must be a valid ISO date string (e.g., "1492-01-01").`);
+                }
+            } catch (error) {
+                warnings.push(`Calendar epochGregorianDate cannot be parsed: "${calendar.epochGregorianDate}"`);
             }
         }
 
