@@ -25,7 +25,7 @@ import { ConfirmModal } from './modals/ui/ConfirmModal';
 import { CharacterModal } from './modals/CharacterModal';
 import {
     Character, Location, Event, GalleryImage, GalleryData, Story, Group, PlotItem, Reference, Chapter, Scene,
-    Culture, Economy, MagicSystem, Calendar,
+    Culture, Economy, MagicSystem,
     TimelineFork, CausalityLink, TimelineConflict,
     PacingAnalysis, WritingSession, StoryAnalytics, LocationSensoryProfile
     /* DEPRECATED: Map as StoryMap */
@@ -55,8 +55,6 @@ import { EconomyModal } from './modals/EconomyModal';
 import { EconomyListModal } from './modals/EconomyListModal';
 import { MagicSystemModal } from './modals/MagicSystemModal';
 import { MagicSystemListModal } from './modals/MagicSystemListModal';
-import { CalendarModal } from './modals/CalendarModal';
-import { CalendarListModal } from './modals/CalendarListModal';
 import { PlatformUtils } from './utils/PlatformUtils';
 import { getTemplateSections } from './utils/EntityTemplates';
 
@@ -149,8 +147,6 @@ import { getTemplateSections } from './utils/EntityTemplates';
     economyFolderPath?: string;
     factionFolderPath?: string;
     magicSystemFolderPath?: string;
-    calendarFolderPath?: string;
-    activeCalendarId?: string;
 
     /** Sensory Profiles */
     enableSensoryProfiles?: boolean;
@@ -422,11 +418,11 @@ export default class StorytellerSuitePlugin extends Plugin {
 	/**
 	 * Create a new story, add it to settings, and set as active
 	 */
-    async createStory(name: string, description?: string, defaultCalendarId?: string): Promise<Story> {
+    async createStory(name: string, description?: string): Promise<Story> {
 		// Generate unique id
 		const id = Date.now().toString(36) + Math.random().toString(36).substr(2, 6);
 		const created = new Date().toISOString();
-		const story: Story = { id, name, created, description, defaultCalendarId };
+		const story: Story = { id, name, created, description };
 		this.settings.stories.push(story);
 		this.settings.activeStoryId = id;
 		await this.saveSettings();
@@ -456,7 +452,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 	/**
 	 * Update an existing story's name and description
 	 */
-	async updateStory(storyId: string, name: string, description?: string, defaultCalendarId?: string): Promise<void> {
+	async updateStory(storyId: string, name: string, description?: string): Promise<void> {
 		const story = this.settings.stories.find(s => s.id === storyId);
 		if (!story) {
 			throw new Error('Story not found');
@@ -482,10 +478,9 @@ export default class StorytellerSuitePlugin extends Plugin {
 			}
 		}
 
-		// Update the story name, description, and defaultCalendarId in memory
+		// Update the story name and description in memory
 		story.name = name;
 		story.description = description;
-		story.defaultCalendarId = defaultCalendarId;
 		await this.saveSettings();
 	}
 
@@ -961,8 +956,8 @@ export default class StorytellerSuitePlugin extends Plugin {
 					this.app,
 					this,
 					this.settings.stories.map(s => s.name),
-					async (name, description, defaultCalendarId) => {
-						const story = await this.createStory(name, description, defaultCalendarId);
+					async (name, description) => {
+						const story = await this.createStory(name, description);
 						await this.setActiveStory(story.id);
                         new Notice(`Story "${name}" created and activated.`);
 						// Optionally, open dashboard
@@ -1149,28 +1144,6 @@ export default class StorytellerSuitePlugin extends Plugin {
 			callback: async () => {
 				const magicSystems = await this.listMagicSystems();
 				new MagicSystemListModal(this.app, this, magicSystems).open();
-			}
-		});
-
-		// Calendar management commands
-		this.addCommand({
-			id: 'create-new-calendar',
-			name: 'Create new calendar',
-			callback: () => {
-                if (!this.ensureActiveStoryOrGuide()) return;
-				new CalendarModal(this.app, this, null, async (calendarData: Calendar) => {
-					await this.saveCalendar(calendarData);
-					new Notice(`Calendar "${calendarData.name}" created.`);
-				}).open();
-			}
-		});
-
-		this.addCommand({
-			id: 'view-calendars',
-			name: 'View calendars',
-			callback: async () => {
-				const calendars = await this.listCalendars();
-				new CalendarListModal(this.app, this, calendars).open();
 			}
 		});
 
@@ -1482,32 +1455,6 @@ export default class StorytellerSuitePlugin extends Plugin {
 				const magicSystems = await this.listMagicSystems();
 				new Notice(`${magicSystems.length} magic system(s) found`);
 				// TODO: Create MagicSystemListModal for better visualization
-			}
-		});
-
-		// Create Calendar
-		this.addCommand({
-			id: 'create-new-calendar',
-			name: 'Create new calendar',
-			callback: () => {
-				if (!this.ensureActiveStoryOrGuide()) return;
-				import('./modals/CalendarModal').then(({ CalendarModal }) => {
-					new CalendarModal(this.app, this, null, async (calendar) => {
-						await this.saveCalendar(calendar);
-						new Notice(`Calendar "${calendar.name}" created.`);
-					}).open();
-				});
-			}
-		});
-
-		// View Calendars
-		this.addCommand({
-			id: 'view-calendars',
-			name: 'View calendars',
-			callback: async () => {
-				const calendars = await this.listCalendars();
-				new Notice(`${calendars.length} calendar(s) found`);
-				// TODO: Create CalendarListModal for better visualization
 			}
 		});
 
@@ -2015,11 +1962,6 @@ export default class StorytellerSuitePlugin extends Plugin {
         return buildFrontmatter('magicSystem', src, preserve, { customFieldsMode: mode, originalFrontmatter }) as Record<string, any>;
     }
 
-    private buildFrontmatterForCalendar(src: any, originalFrontmatter?: Record<string, unknown>): Record<string, any> {
-        const preserve = new Set<string>(Object.keys(src || {}));
-        const mode = this.settings.customFieldsMode ?? 'flatten';
-        return buildFrontmatter('calendar', src, preserve, { customFieldsMode: mode, originalFrontmatter }) as Record<string, any>;
-    }
 
 	/**
 	 * Save a character to the vault as a markdown file (in the active story)
@@ -3017,9 +2959,6 @@ export default class StorytellerSuitePlugin extends Plugin {
         await this.ensureFolder(this.getEntityFolder('magicSystem'));
     }
 
-    async ensureCalendarFolder(): Promise<void> {
-        await this.ensureFolder(this.getEntityFolder('calendar'));
-    }
 
     async saveScene(scene: Scene): Promise<void> {
         // Normalize chapterName for display if id is present
@@ -3496,120 +3435,6 @@ export default class StorytellerSuitePlugin extends Plugin {
             this.app.metadataCache.trigger('dataview:refresh-views');
         } else {
             new Notice(`Error: Could not find magic system file to delete at ${filePath}`);
-        }
-    }
-
-    /**
-     * Calendar Data Management
-     */
-
-    async saveCalendar(calendar: Calendar): Promise<void> {
-        await this.ensureCalendarFolder();
-        const folderPath = this.getEntityFolder('calendar');
-
-        const fileName = `${calendar.name.replace(/[\\/:"*?<>|]+/g, '')}.md`;
-        const filePath = normalizePath(`${folderPath}/${fileName}`);
-
-        const { filePath: currentFilePath, description, history, ...rest } = calendar as any;
-        if ((rest as any).sections) delete (rest as any).sections;
-
-        let finalFilePath = filePath;
-        if (currentFilePath && currentFilePath !== filePath) {
-            const existingFile = this.app.vault.getAbstractFileByPath(currentFilePath);
-            if (existingFile && existingFile instanceof TFile) {
-                await this.app.fileManager.renameFile(existingFile, filePath);
-                finalFilePath = filePath;
-            }
-        }
-
-        const existingFile = this.app.vault.getAbstractFileByPath(finalFilePath);
-        let existingSections: Record<string, string> = {};
-        let originalFrontmatter: Record<string, unknown> | undefined;
-        if (existingFile && existingFile instanceof TFile) {
-            try {
-                const existingContent = await this.app.vault.cachedRead(existingFile);
-                existingSections = parseSectionsFromMarkdown(existingContent);
-
-                const { parseFrontmatterFromContent } = await import('./yaml/EntitySections');
-                const directFrontmatter = parseFrontmatterFromContent(existingContent);
-                const fileCache = this.app.metadataCache.getFileCache(existingFile);
-                const cachedFrontmatter = fileCache?.frontmatter as Record<string, unknown> | undefined;
-
-                if (directFrontmatter || cachedFrontmatter) {
-                    originalFrontmatter = { ...(cachedFrontmatter || {}), ...(directFrontmatter || {}) };
-                }
-            } catch (error) {
-                console.warn(`Error reading existing calendar file: ${error}`);
-            }
-        }
-
-        const finalFrontmatter = this.buildFrontmatterForCalendar(rest, originalFrontmatter);
-
-        if (originalFrontmatter) {
-            const validation = validateFrontmatterPreservation(finalFrontmatter, originalFrontmatter);
-            if (validation.lostFields.length > 0) {
-                console.warn(`[saveCalendar] Warning: Fields will be lost on save:`, validation.lostFields);
-            }
-        }
-
-        const frontmatterString = Object.keys(finalFrontmatter).length > 0
-            ? stringifyYamlWithLogging(finalFrontmatter, originalFrontmatter, `Calendar: ${calendar.name}`)
-            : '';
-
-        const providedSections = {
-            Description: description !== undefined ? description : '',
-            History: history !== undefined ? history : ''
-        };
-        const templateSections = getTemplateSections('calendar', providedSections);
-
-        let allSections: Record<string, string>;
-        if (existingFile && existingFile instanceof TFile) {
-            allSections = { ...existingSections, ...templateSections };
-            Object.entries(providedSections).forEach(([key, value]) => {
-                allSections[key] = value;
-            });
-        } else {
-            allSections = templateSections;
-        }
-
-        let mdContent = `---\n${frontmatterString}---\n\n`;
-        mdContent += Object.entries(allSections)
-            .map(([key, content]) => `## ${key}\n${content || ''}`)
-            .join('\n\n');
-        if (!mdContent.endsWith('\n')) mdContent += '\n';
-
-        if (existingFile && existingFile instanceof TFile) {
-            await this.app.vault.modify(existingFile, mdContent);
-        } else {
-            await this.app.vault.create(finalFilePath, mdContent);
-            new Notice('Note created with standard sections for easy editing.');
-        }
-
-        calendar.filePath = finalFilePath;
-        this.app.metadataCache.trigger("dataview:refresh-views");
-    }
-
-    async listCalendars(): Promise<Calendar[]> {
-        await this.ensureCalendarFolder();
-        const folderPath = this.getEntityFolder('calendar');
-        const allFiles = this.app.vault.getMarkdownFiles();
-        const files = allFiles.filter(f => f.path.startsWith(folderPath + '/') && f.extension === 'md');
-        const calendars: Calendar[] = [];
-        for (const file of files) {
-            const data = await this.parseFile<Calendar>(file, { name: '' }, 'calendar');
-            if (data) calendars.push(data);
-        }
-        return calendars.sort((a, b) => a.name.localeCompare(b.name));
-    }
-
-    async deleteCalendar(filePath: string): Promise<void> {
-        const file = this.app.vault.getAbstractFileByPath(normalizePath(filePath));
-        if (file instanceof TFile) {
-            await this.app.vault.trash(file, true);
-            new Notice(`Calendar file "${file.basename}" moved to trash.`);
-            this.app.metadataCache.trigger('dataview:refresh-views');
-        } else {
-            new Notice(`Error: Could not find calendar file to delete at ${filePath}`);
         }
     }
 
