@@ -1280,7 +1280,8 @@ export class DashboardView extends ItemView {
                         new Notice(`Uploaded "${fileName}" to vault.`);
 
                         // 5. Add to gallery data and open detail modal
-                        const newImageData = await this.plugin.addGalleryImage({ filePath: createdFile.path, title: createdFile.basename });
+                        // Use the relative filePath, not createdFile.path which may be absolute on Windows
+                        const newImageData = await this.plugin.addGalleryImage({ filePath: filePath, title: createdFile.basename });
                         new ImageDetailModal(this.app, this.plugin, newImageData, true, refreshCallback).open();
 
                     } catch (error) {
