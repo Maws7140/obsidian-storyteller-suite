@@ -813,6 +813,7 @@ export class CalendarConverter {
                     month: this.GREGORIAN_EPOCH_MONTH,
                     day: this.GREGORIAN_EPOCH_DAY
                 },
+                epochGregorianDate: "1970-01-01", // Critical: Unix epoch anchor
                 leapYearRules: [
                     {
                         type: 'divisible',
