@@ -15,11 +15,6 @@ export interface TimelineViewState {
     stackEnabled: boolean;
     density: number;
     editMode: boolean;
-    /** Selected calendar for timeline display (Level 3 feature)
-     * undefined = "All Calendars (Gregorian)" mode */
-    selectedCalendarId?: string;
-    /** Display mode for timeline (Level 3 feature) */
-    calendarDisplayMode?: 'single' | 'dual-axis';
 }
 
 /**
@@ -189,62 +184,6 @@ export class TimelineView extends ItemView {
                 }
             }
         });
-
-        // Calendar selector dropdown (Level 3 feature)
-        const calendarContainer = this.toolbarEl.createDiv('storyteller-calendar-container');
-        const calendarSelect = calendarContainer.createEl('select', {
-            cls: 'dropdown storyteller-calendar-select',
-            attr: { 'aria-label': 'Calendar system' }
-        });
-
-        // Add "All Calendars (Gregorian)" option
-        const allCalendarsOption = calendarSelect.createEl('option', {
-            value: '',
-            text: '📅 All Calendars (Gregorian)'
-        });
-        allCalendarsOption.selected = !this.currentState.selectedCalendarId;
-
-        // Add custom calendar options
-        this.plugin.listCalendars().then(calendars => {
-            calendars.forEach(calendar => {
-                const option = calendarSelect.createEl('option', {
-                    value: calendar.id || calendar.name,
-                    text: `📆 ${calendar.name}`
-                });
-                if (this.currentState.selectedCalendarId === (calendar.id || calendar.name)) {
-                    option.selected = true;
-                }
-            });
-        });
-
-        calendarSelect.addEventListener('change', () => {
-            this.currentState.selectedCalendarId = calendarSelect.value || undefined;
-            // Update timeline with selected calendar
-            this.renderer?.setCalendar(this.currentState.selectedCalendarId);
-            this.updateFooterStatus();
-            // Rebuild toolbar to show calendar mode badge
-            this.buildToolbar();
-        });
-
-        // Calendar mode badge (if custom calendar is selected)
-        if (this.currentState.selectedCalendarId) {
-            this.plugin.listCalendars().then(calendars => {
-                const selectedCalendar = calendars.find(
-                    c => (c.id || c.name) === this.currentState.selectedCalendarId
-                );
-                if (selectedCalendar) {
-                    const calendarBadge = this.toolbarEl?.createEl('span', {
-                        cls: 'storyteller-calendar-badge',
-                        attr: {
-                            'title': `Viewing in ${selectedCalendar.name} calendar`
-                        }
-                    });
-                    if (calendarBadge) {
-                        calendarBadge.textContent = `📆 ${selectedCalendar.name}`;
-                    }
-                }
-            });
-        }
 
         // Conflict warnings badge (if conflicts exist)
         const conflicts = this.plugin.settings.timelineConflicts || [];
