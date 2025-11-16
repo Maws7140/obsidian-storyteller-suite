@@ -21,7 +21,6 @@ export class TimelineModal extends Modal {
     private editModeEnabled = false;
     private viewMode: 'timeline' | 'gantt' = 'timeline';
     private defaultGanttDuration = 1; // days - default duration for events without end date in Gantt view
-    private selectedCalendarId?: string; // Calendar selection for custom calendar support (Level 3 feature)
 
     // Filter state
     private filters: Required<TimelineFilters> = {
@@ -103,25 +102,6 @@ export class TimelineModal extends Modal {
                 return b;
             })
             .addButton(b => b.setButtonText(t('copyRange') || 'Copy range').onClick(() => this.copyVisibleRange()));
-
-        // Calendar selector (Level 3 feature)
-        const calendarSetting = new Setting(contentEl)
-            .setName('Calendar System')
-            .setDesc('Select custom calendar for timeline display')
-            .addDropdown(async dropdown => {
-                dropdown.addOption('', 'All Calendars (Gregorian)');
-
-                const calendars = await this.plugin.listCalendars();
-                calendars.forEach(calendar => {
-                    dropdown.addOption(calendar.id || calendar.name, calendar.name);
-                });
-
-                dropdown.setValue(this.selectedCalendarId || '');
-                dropdown.onChange(value => {
-                    this.selectedCalendarId = value || undefined;
-                    this.renderTimeline();
-                });
-            });
 
         // Filter panel
         const filterPanelContainer = contentEl.createDiv('storyteller-filter-panel-container');
@@ -301,11 +281,6 @@ export class TimelineModal extends Modal {
 
         if (this.hasActiveFilters()) {
             this.renderer.applyFilters(this.filters);
-        }
-
-        // Set calendar if selected
-        if (this.selectedCalendarId) {
-            this.renderer.setCalendar(this.selectedCalendarId);
         }
     }
 

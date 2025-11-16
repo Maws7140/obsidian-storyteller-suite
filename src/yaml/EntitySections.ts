@@ -18,8 +18,7 @@ export type EntityType =
   | 'culture'
   | 'faction'
   | 'economy'
-  | 'magicSystem'
-  | 'calendar';
+  | 'magicSystem';
 
 /** Whitelisted frontmatter keys per entity type. */
 const FRONTMATTER_WHITELISTS: Record<EntityType, Set<string>> = {
@@ -34,8 +33,7 @@ const FRONTMATTER_WHITELISTS: Record<EntityType, Set<string>> = {
   event: new Set([
     'id', 'name', 'dateTime', 'characters', 'location', 'status',
     'groups', 'profileImagePath', 'customFields', 'connections',
-    'isMilestone', 'dependencies', 'progress',
-    'calendarId', 'customCalendarDate', 'gregorianDateTime'
+    'isMilestone', 'dependencies', 'progress'
   ]),
   item: new Set([
     'id', 'name', 'isPlotCritical', 'currentOwner', 'pastOwners',
@@ -79,12 +77,6 @@ const FRONTMATTER_WHITELISTS: Record<EntityType, Set<string>> = {
     'materials', 'categories', 'abilities', 'consistencyRules', 'linkedCharacters',
     'linkedLocations', 'linkedCultures', 'linkedEvents', 'linkedItems', 'groups',
     'customFields', 'connections'
-  ]),
-  calendar: new Set([
-    'id', 'name', 'profileImagePath', 'calendarType', 'daysPerYear', 'daysPerWeek',
-    'weekdays', 'months', 'holidays', 'astronomicalEvents', 'seasons', 'currentDate',
-    'referenceDate', 'earthConversion', 'usage', 'linkedCultures', 'linkedLocations',
-    'groups', 'customFields', 'connections'
   ])
 };
 

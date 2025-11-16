@@ -3,12 +3,9 @@
 
 import { App, Notice } from 'obsidian';
 import StorytellerSuitePlugin from '../main';
-import { Event, Calendar } from '../types';
+import { Event } from '../types';
 import { parseEventDate, toMillis, toDisplay, getEventDateForTimeline } from './DateParsing';
 import { EventModal } from '../modals/EventModal';
-import { CalendarConverter } from './CalendarConverter';
-import { CustomTimeAxis } from './CustomTimeAxis';
-import { CalendarMarkers } from './CalendarMarkers';
 
 // @ts-ignore: vis-timeline is bundled dependency
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -55,9 +52,6 @@ export class TimelineRenderer {
     private filters: TimelineFilters = {};
     private events: Event[] = [];
 
-    // Calendar configuration (Level 3 feature)
-    private selectedCalendarId?: string;
-    
     // Color palette for grouping
     private palette = [
         '#7C3AED', '#2563EB', '#059669', '#CA8A04', '#DC2626', 
@@ -122,22 +116,6 @@ export class TimelineRenderer {
     setGroupMode(mode: 'none' | 'location' | 'group' | 'character'): void {
         this.options.groupMode = mode;
         this.render();
-    }
-
-    /**
-     * Set selected calendar for timeline display (Level 3 feature)
-     * @param calendarId Calendar ID, or undefined for "All Calendars (Gregorian)" mode
-     */
-    setCalendar(calendarId?: string): void {
-        this.selectedCalendarId = calendarId;
-        this.render();
-    }
-
-    /**
-     * Get currently selected calendar
-     */
-    getSelectedCalendarId(): string | undefined {
-        return this.selectedCalendarId;
     }
 
     /**
@@ -298,65 +276,12 @@ export class TimelineRenderer {
             const items = build.items;
             const groups = build.groups;
 
-            // Add calendar markers if a calendar is selected (Level 3 feature)
-            if (this.selectedCalendarId) {
-                try {
-                    const calendars = await this.plugin.listCalendars();
-                    const selectedCalendar = calendars.find(
-                        c => (c.id || c.name) === this.selectedCalendarId
-                    );
-
-                    if (selectedCalendar) {
-                        // Determine year range from events
-                        const eventDates = this.events
-                            .map(e => parseEventDate(e.dateTime || ''))
-                            .filter(d => d.start)
-                            .map(d => d.start!.year);
-
-                        // Protect against empty array - use current year ± 1 as fallback
-                        const currentYear = new Date().getFullYear();
-                        const startYear = eventDates.length > 0
-                            ? Math.min(...eventDates, currentYear - 1)
-                            : currentYear - 1;
-                        const endYear = eventDates.length > 0
-                            ? Math.max(...eventDates, currentYear + 1)
-                            : currentYear + 1;
-
-                        // Generate calendar markers
-                        const markers = CalendarMarkers.generateAllMarkers(
-                            selectedCalendar,
-                            startYear,
-                            endYear
-                        );
-
-                        // Add markers to items dataset
-                        CalendarMarkers.applyMarkersToTimeline(null, markers, items);
-                    }
-                } catch (markerError) {
-                    console.warn('Storyteller Suite: Error adding calendar markers:', markerError);
-                    // Non-critical, continue without markers
-                }
-            }
-
             // Timeline options
             // In Gantt mode, use larger margins for better bar visibility
             const baseMargin = this.options.ganttMode ? 15 : 4;
             const itemMargin = baseMargin + Math.round((this.options.density || 50) / 6);
             const dayMs = 24 * 60 * 60 * 1000;
             const yearMs = 365.25 * dayMs;
-
-            // Check if a custom calendar is selected and prepare format function
-            let selectedCalendar: Calendar | null = null;
-            if (this.selectedCalendarId) {
-                try {
-                    const calendars = await this.plugin.listCalendars();
-                    selectedCalendar = calendars.find(
-                        c => (c.id || c.name) === this.selectedCalendarId
-                    ) || null;
-                } catch (error) {
-                    console.warn('Storyteller Suite: Error loading calendar for timeline options:', error);
-                }
-            }
 
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const timelineOptions: any = {
@@ -446,45 +371,6 @@ export class TimelineRenderer {
                     }
                 } catch (timeError) {
                     console.warn('Storyteller Suite: Could not set current time marker:', timeError);
-                }
-            }
-
-            // Apply custom calendar axis if a calendar is selected (Level 3 feature)
-            if (this.timeline && selectedCalendar) {
-                try {
-                    // Apply custom time axis scale settings (format already applied during init)
-                    CustomTimeAxis.applyToTimeline(this.timeline, selectedCalendar);
-
-                    // Determine visible range to add month boundary markers
-                    const range = this.timeline.getWindow();
-                    if (range && range.start && range.end) {
-                        const startDate = new Date(range.start);
-                        const endDate = new Date(range.end);
-
-                        // Validate Date objects before calling getFullYear()
-                        if (!isNaN(startDate.getTime()) && !isNaN(endDate.getTime())) {
-                            const startYear = startDate.getFullYear();
-                            const endYear = endDate.getFullYear();
-
-                            // Create month boundary markers (limited range to avoid performance issues)
-                            const yearRange = Math.min(endYear - startYear, 10); // Limit to 10 years
-                            const boundaryMarkers = CustomTimeAxis.createMonthBoundaryMarkers(
-                                this.timeline,
-                                selectedCalendar,
-                                startYear,
-                                startYear + yearRange
-                            );
-
-                            // Add boundary markers to the timeline items
-                            if (boundaryMarkers.length > 0) {
-                                items.add(boundaryMarkers);
-                                console.log(`[Timeline] Added ${boundaryMarkers.length} month boundary markers to timeline`);
-                            }
-                        }
-                    }
-                } catch (calendarError) {
-                    console.warn('Storyteller Suite: Could not apply custom calendar axis:', calendarError);
-                    // Non-critical, continue with default axis
                 }
             }
 
@@ -582,44 +468,6 @@ export class TimelineRenderer {
                     // Non-critical, continue without arrows
                 }
             }
-
-            // Add zoom/pan listener for dynamic calendar axis updates (Level 3 feature)
-            if (this.timeline && this.selectedCalendarId) {
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                this.timeline.on('rangechanged', async (props: any) => {
-                    if (!this.selectedCalendarId) return;
-
-                    try {
-                        const calendars = await this.plugin.listCalendars();
-                        const selectedCalendar = calendars.find(
-                            c => (c.id || c.name) === this.selectedCalendarId
-                        );
-
-                        if (selectedCalendar && props.byUser) {
-                            // User initiated zoom/pan - update axis scale
-                            const range = this.timeline.getWindow();
-                            if (range && range.start && range.end) {
-                                // Handle both Date objects and raw timestamps
-                                const startMs = typeof range.start === 'number'
-                                    ? range.start
-                                    : (range.start instanceof Date ? range.start.getTime() : range.start.valueOf());
-                                const endMs = typeof range.end === 'number'
-                                    ? range.end
-                                    : (range.end instanceof Date ? range.end.getTime() : range.end.valueOf());
-
-                                if (!isNaN(startMs) && !isNaN(endMs)) {
-                                    const timeScale = CustomTimeAxis.determineTimeScale(startMs, endMs);
-
-                                    // Re-apply custom time axis with updated scale
-                                    CustomTimeAxis.applyToTimeline(this.timeline, selectedCalendar);
-                                }
-                            }
-                        }
-                    } catch (error) {
-                        console.warn('Storyteller Suite: Error updating calendar axis on zoom:', error);
-                    }
-                });
-            }
         } catch (error) {
             console.error('Storyteller Suite: Fatal error in timeline rendering:', error);
             new Notice('Timeline could not be rendered. Check console for details.');
@@ -645,12 +493,8 @@ export class TimelineRenderer {
     }> {
         // DEBUG: Log all events before filtering
         console.log('[Timeline] Building datasets with', this.events.length, 'total events');
-        console.log('[Timeline] Selected calendar:', this.selectedCalendarId);
         console.log('[Timeline] All events:', this.events.map(e => ({
             name: e.name,
-            calendarId: e.calendarId,
-            customCalendarDate: e.customCalendarDate,
-            gregorianDateTime: e.gregorianDateTime,
             dateTime: e.dateTime
         })));
         
@@ -838,14 +682,8 @@ export class TimelineRenderer {
             totalEvents,
             displayedEvents,
             filteredEvents,
-            selectedCalendar: this.selectedCalendarId,
             filterPercentage: totalEvents > 0 ? Math.round((filteredEvents / totalEvents) * 100) : 0
         });
-
-        if (this.selectedCalendarId && filteredEvents > 0) {
-            console.log('[Timeline] Note: Events were filtered because they don\'t match the selected calendar or lack conversion data.');
-            console.log('[Timeline] To see all events, switch to "All Calendars (Gregorian)" mode.');
-        }
 
         return { items, groups: groupsDS, legend };
     }
@@ -919,40 +757,6 @@ export class TimelineRenderer {
      * Check if event should be included based on filters
      */
     private shouldIncludeEvent(evt: Event): boolean {
-        // Calendar filter (Level 3 feature)
-        // When a calendar is selected, filter events by calendar
-        if (this.selectedCalendarId) {
-            // If calendar is selected, show events that:
-            // 1. Have matching calendarId
-            // 2. OR have a valid gregorianDateTime (can be converted to selected calendar)
-            // 3. OR have NO calendar set (default Gregorian events with valid dateTime)
-            
-            const hasMatchingCalendar = evt.calendarId === this.selectedCalendarId;
-            const hasGregorianFallback = !!(evt.gregorianDateTime);
-            const isDefaultGregorian = !evt.calendarId && !evt.customCalendarDate && evt.dateTime;
-            
-            // DEBUG logging
-            console.log('[Timeline Filter]', evt.name, {
-                selectedCalendarId: this.selectedCalendarId,
-                eventCalendarId: evt.calendarId,
-                hasMatchingCalendar,
-                hasGregorianFallback,
-                isDefaultGregorian,
-                customCalendarDate: evt.customCalendarDate,
-                gregorianDateTime: evt.gregorianDateTime,
-                dateTime: evt.dateTime,
-                willInclude: hasMatchingCalendar || hasGregorianFallback || isDefaultGregorian
-            });
-            
-            // Only show events from the selected calendar OR events with Gregorian dates that can be displayed
-            if (!hasMatchingCalendar && !hasGregorianFallback && !isDefaultGregorian) {
-                return false;
-            }
-        } else {
-            // "All Calendars (Gregorian)" mode - show all events
-            // No calendar-based filtering
-        }
-        
         // Milestones filter
         if (this.filters.milestonesOnly && !evt.isMilestone) {
             return false;
@@ -985,31 +789,9 @@ export class TimelineRenderer {
     private async makeTooltipAsync(evt: Event, parsed: any): Promise<string> {
         const parts: string[] = [evt.name];
 
-        // If event uses custom calendar, show custom date first
-        if (evt.customCalendarDate && evt.calendarId) {
-            try {
-                const calendars = await this.plugin.listCalendars();
-                const calendar = calendars.find(c => c.id === evt.calendarId);
-
-                if (calendar) {
-                    const customDateStr = CalendarConverter.formatDate(evt.customCalendarDate, calendar);
-                    parts.push(`${calendar.name}: ${customDateStr}`);
-
-                    // Also show Gregorian equivalent
-                    const dt = parsed?.start ? toDisplay(parsed.start, undefined, parsed.isBCE, parsed.originalYear) : '';
-                    if (dt) parts.push(`(Gregorian: ${dt})`);
-                }
-            } catch (error) {
-                console.error('Error formatting custom calendar date for tooltip:', error);
-                // Fallback to standard date display
-                const dt = parsed?.start ? toDisplay(parsed.start, undefined, parsed.isBCE, parsed.originalYear) : (evt.dateTime || '');
-                if (dt) parts.push(dt);
-            }
-        } else {
-            // Standard Gregorian date
-            const dt = parsed?.start ? toDisplay(parsed.start, undefined, parsed.isBCE, parsed.originalYear) : (evt.dateTime || '');
-            if (dt) parts.push(dt);
-        }
+        // Standard Gregorian date
+        const dt = parsed?.start ? toDisplay(parsed.start, undefined, parsed.isBCE, parsed.originalYear) : (evt.dateTime || '');
+        if (dt) parts.push(dt);
 
         if (evt.location) parts.push(`@ ${evt.location}`);
         if (evt.description) parts.push(evt.description.length > 120 ? evt.description.slice(0, 120) + '…' : evt.description);

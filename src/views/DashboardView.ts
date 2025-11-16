@@ -149,7 +149,6 @@ export class DashboardView extends ItemView {
             { id: 'cultures', label: 'Cultures', renderFn: this.renderCulturesContent.bind(this) },
             { id: 'economies', label: 'Economies', renderFn: this.renderEconomiesContent.bind(this) },
             { id: 'magicsystems', label: 'Magic Systems', renderFn: this.renderMagicSystemsContent.bind(this) },
-            { id: 'calendars', label: 'Calendars', renderFn: this.renderCalendarsContent.bind(this) },
         ];
 
         this.debouncedRefreshActiveTab = debounce(this.refreshActiveTab.bind(this), 200, true);
@@ -416,8 +415,8 @@ export class DashboardView extends ItemView {
                     this.app,
                     this.plugin,
                     this.plugin.settings.stories.map(s => s.name),
-                    async (name, description, defaultCalendarId) => {
-                        const story = await this.plugin.createStory(name, description, defaultCalendarId);
+                    async (name, description) => {
+                        const story = await this.plugin.createStory(name, description);
                         await this.plugin.setActiveStory(story.id);
                         // @ts-ignore
                         new window.Notice(`Story "${name}" created and activated.`);
@@ -2547,83 +2546,6 @@ export class DashboardView extends ItemView {
                 }
             });
             this.addOpenFileButton(actionsEl, magicSystem.filePath);
-        });
-    }
-
-    async renderCalendarsContent(container: HTMLElement) {
-        container.empty();
-        this.renderHeaderControls(container, 'Calendars', async (filter: string) => {
-            this.currentFilter = filter;
-            await this.renderCalendarsList(container);
-        }, () => {
-            import('../modals/CalendarModal').then(({ CalendarModal }) => {
-                new CalendarModal(this.app, this.plugin, null, async (calendar) => {
-                    await this.plugin.saveCalendar(calendar);
-                    new Notice(`Calendar "${calendar.name}" created.`);
-                }).open();
-            });
-        }, t('createNew'));
-
-        await this.renderCalendarsList(container);
-    }
-
-    private async renderCalendarsList(container: HTMLElement) {
-        const existingListContainer = container.querySelector('.storyteller-list-container');
-        if (existingListContainer) existingListContainer.remove();
-
-        const calendars = (await this.plugin.listCalendars()).filter(c =>
-            c.name.toLowerCase().includes(this.currentFilter) ||
-            (c.calendarType || '').toLowerCase().includes(this.currentFilter) ||
-            (c.description || '').toLowerCase().includes(this.currentFilter)
-        );
-
-        const listContainer = container.createDiv('storyteller-list-container');
-        if (calendars.length === 0) {
-            listContainer.createEl('p', { text: 'No calendars found' + (this.currentFilter ? ' matching filter' : '') });
-            return;
-        }
-
-        calendars.forEach(calendar => {
-            const itemEl = listContainer.createDiv('storyteller-list-item');
-
-            const pfpContainer = itemEl.createDiv('storyteller-list-item-pfp');
-            if (calendar.profileImagePath) {
-                const imgEl = pfpContainer.createEl('img');
-                imgEl.src = this.getImageSrc(calendar.profileImagePath);
-                imgEl.alt = calendar.name;
-            } else {
-                pfpContainer.createDiv({ cls: 'storyteller-pfp-placeholder', text: calendar.name.substring(0, 1) });
-            }
-
-            const infoEl = itemEl.createDiv('storyteller-list-item-info');
-            infoEl.createEl('strong', { text: calendar.name });
-
-            const meta = infoEl.createDiv('storyteller-list-item-extra');
-            if (calendar.calendarType) meta.createSpan({ text: `Type: ${calendar.calendarType}` });
-            if (calendar.daysPerYear) meta.createSpan({ text: ` • ${calendar.daysPerYear} days/year` });
-
-            if (calendar.description) {
-                const preview = calendar.description.length > 120 ? calendar.description.substring(0, 120) + '…' : calendar.description;
-                infoEl.createEl('p', { text: preview });
-            }
-
-            const actionsEl = itemEl.createDiv('storyteller-list-item-actions');
-            this.addEditButton(actionsEl, () => {
-                import('../modals/CalendarModal').then(({ CalendarModal }) => {
-                    new CalendarModal(this.app, this.plugin, calendar, async (updated) => {
-                        await this.plugin.saveCalendar(updated);
-                        new Notice(`Calendar "${updated.name}" updated.`);
-                    }, async (toDelete) => {
-                        if (toDelete.filePath) await this.plugin.deleteCalendar(toDelete.filePath);
-                    }).open();
-                });
-            });
-            this.addDeleteButton(actionsEl, async () => {
-                if (calendar.filePath && confirm(`Delete calendar "${calendar.name}"?`)) {
-                    await this.plugin.deleteCalendar(calendar.filePath);
-                }
-            });
-            this.addOpenFileButton(actionsEl, calendar.filePath);
         });
     }
 
