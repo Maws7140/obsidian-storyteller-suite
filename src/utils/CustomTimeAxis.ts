@@ -411,6 +411,14 @@ export class CustomTimeAxis {
     ): void {
         if (!timeline) return;
 
+        // Validate calendar configuration
+        const warnings = CalendarConverter.validateCalendar(calendar);
+        if (warnings.length > 0) {
+            console.warn('[CustomTimeAxis] Calendar validation warnings:', warnings);
+            console.warn('[CustomTimeAxis] Calendar name:', calendar.name);
+            console.warn('[CustomTimeAxis] These issues may cause incorrect date display on the timeline.');
+        }
+
         // Set custom format function
         const formatFunction = this.createFormatFunction(calendar);
 
@@ -424,7 +432,13 @@ export class CustomTimeAxis {
             scale = this.determineTimeScale(start, end);
         }
 
-        console.log('[CustomTimeAxis] Applying custom calendar format for scale:', scale);
+        console.log('[CustomTimeAxis] Applying custom calendar format:', {
+            calendar: calendar.name,
+            scale,
+            hasReferenceDate: !!calendar.referenceDate,
+            monthCount: calendar.months?.length || 0,
+            daysPerYear: calendar.daysPerYear
+        });
 
         // Apply custom format function and ensure axis labels are visible
         // Note: vis-timeline automatically determines scale based on zoom level
