@@ -70,8 +70,8 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                             this.plugin,
                             story,
                             existingNames,
-                            async (name: string, description?: string, defaultCalendarId?: string) => {
-                                await this.plugin.updateStory(story.id, name, description, defaultCalendarId);
+                            async (name: string, description?: string) => {
+                                await this.plugin.updateStory(story.id, name, description);
                                 this.display();
                             }
                         ).open();
@@ -104,8 +104,8 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                         this.app,
                         this.plugin,
                         existingNames,
-                        async (name: string, description?: string, defaultCalendarId?: string) => {
-                            await this.plugin.createStory(name, description, defaultCalendarId);
+                        async (name: string, description?: string) => {
+                            await this.plugin.createStory(name, description);
                             this.display();
                         }
                     ).open();
