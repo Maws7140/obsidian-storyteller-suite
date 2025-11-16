@@ -701,13 +701,14 @@ export class CalendarConverter {
         if (!calendar.referenceDate) {
             warnings.push('Calendar is missing referenceDate - timeline display may be incorrect');
         } else {
-            if (!calendar.referenceDate.year) {
+            // Use explicit null/undefined checks to allow year 0, day 0
+            if (calendar.referenceDate.year === undefined || calendar.referenceDate.year === null) {
                 warnings.push('Calendar referenceDate is missing year');
             }
             if (!calendar.referenceDate.month) {
                 warnings.push('Calendar referenceDate is missing month');
             }
-            if (!calendar.referenceDate.day) {
+            if (calendar.referenceDate.day === undefined || calendar.referenceDate.day === null) {
                 warnings.push('Calendar referenceDate is missing day');
             }
         }
