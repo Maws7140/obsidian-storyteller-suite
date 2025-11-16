@@ -361,6 +361,7 @@ export class CalendarMarkers {
                 { name: 'December', days: 31 }
             ],
             referenceDate: { year: 1970, month: 1, day: 1 },
+            epochGregorianDate: "1970-01-01", // Critical: Unix epoch anchor
             hoursPerDay: 24,
             minutesPerHour: 60,
             secondsPerMinute: 60
