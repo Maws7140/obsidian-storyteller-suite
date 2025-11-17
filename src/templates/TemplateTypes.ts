@@ -111,6 +111,27 @@ export interface Template {
 
     /** Metadata about the template */
     metadata?: TemplateMetadata;
+
+    /** Which entity types this template provides (for filtering) */
+    entityTypes?: TemplateEntityType[];
+
+    /** Number of times this template has been used */
+    usageCount?: number;
+
+    /** ISO date string when template was last used */
+    lastUsed?: string;
+
+    /** Field-level customization and placeholders */
+    placeholders?: TemplatePlaceholder[];
+
+    /** Whether to show in quick-apply menus */
+    quickApplyEnabled?: boolean;
+
+    /** Parent template ID if this is derived from another template */
+    parentTemplateId?: string;
+
+    /** Template variables for advanced customization */
+    variables?: TemplateVariable[];
 }
 
 /**
@@ -154,6 +175,74 @@ export interface TemplateMetadata {
 
     /** External URL for more information */
     sourceUrl?: string;
+
+    /** Help text for specific fields */
+    fieldInstructions?: Record<string, string>;
+
+    /** Which custom fields are required for this template */
+    requiredCustomFields?: string[];
+
+    /** Suggested relationship types to add */
+    suggestedRelationships?: string[];
+}
+
+/**
+ * Template placeholder for field-level customization
+ */
+export interface TemplatePlaceholder {
+    /** Entity type this placeholder applies to */
+    entityType: TemplateEntityType;
+
+    /** Template ID of the specific entity */
+    entityTemplateId: string;
+
+    /** Field name to apply placeholder to */
+    field: string;
+
+    /** Placeholder text to show in UI */
+    placeholderText: string;
+
+    /** Default value for the field */
+    defaultValue?: string;
+
+    /** Whether this field is required */
+    isRequired: boolean;
+
+    /** Validation rule (regex pattern or validation type) */
+    validationRule?: string;
+
+    /** Help text for this field */
+    helpText?: string;
+}
+
+/**
+ * Template variable for advanced customization (Phase 5)
+ */
+export interface TemplateVariable {
+    /** Variable name (e.g., "kingdomName", "characterAge") */
+    name: string;
+
+    /** Display label for UI */
+    label: string;
+
+    /** Variable type */
+    type: 'text' | 'number' | 'boolean' | 'select' | 'date';
+
+    /** Default value */
+    defaultValue?: any;
+
+    /** For select type, the available options */
+    options?: string[];
+
+    /** Description/help text */
+    description?: string;
+
+    /** Where this variable is used (for dependency tracking) */
+    usedIn?: {
+        entityType: TemplateEntityType;
+        entityTemplateId: string;
+        field: string;
+    }[];
 }
 
 /**
@@ -177,6 +266,24 @@ export interface TemplateApplicationOptions {
 
     /** Custom field overrides before applying */
     fieldOverrides?: Map<string, Partial<any>>;
+
+    /** Whether to prompt for customization before applying */
+    promptForCustomization?: boolean;
+
+    /** Auto-prefix entity names (e.g., "Copy of ") */
+    namePrefix?: string;
+
+    /** Keep template IDs or generate new ones */
+    preserveOriginalIds?: boolean;
+
+    /** Override default entity folder */
+    targetFolder?: string;
+
+    /** Create entities without relationships */
+    skipRelationships?: boolean;
+
+    /** Template variable values (for Phase 5) */
+    variableValues?: Record<string, any>;
 }
 
 /**
@@ -281,6 +388,9 @@ export interface TemplateFilter {
     /** Category filter */
     category?: TemplateCategory[];
 
+    /** Entity type filter (templates that contain these entity types) */
+    entityTypes?: TemplateEntityType[];
+
     /** Search text (name, description, tags) */
     searchText?: string;
 
@@ -298,6 +408,12 @@ export interface TemplateFilter {
 
     /** Maximum entity count */
     maxEntities?: number;
+
+    /** Sort by usage count */
+    sortByUsage?: boolean;
+
+    /** Sort by recently used */
+    sortByRecent?: boolean;
 }
 
 /**

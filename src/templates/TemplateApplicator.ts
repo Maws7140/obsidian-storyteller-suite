@@ -76,6 +76,9 @@ export class TemplateApplicator {
                 });
             }
 
+            // Apply variable values if provided (Phase 5)
+            const variableValues = options.variableValues || {};
+
             // Filter entities based on selection
             const filteredEntities = this.filterEntities(template.entities, options.includeEntities);
 
@@ -172,6 +175,9 @@ export class TemplateApplicator {
             // Success!
             result.success = true;
             result.idMap = new Map(this.idMap);
+
+            // Track template usage
+            await this.plugin.templateManager.incrementUsageCount(template.id);
 
             new Notice(`Template "${template.name}" applied successfully!`);
         } catch (error) {
