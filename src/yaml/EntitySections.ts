@@ -78,6 +78,11 @@ const FRONTMATTER_WHITELISTS: Record<EntityType, Set<string>> = {
     'materials', 'categories', 'abilities', 'consistencyRules', 'linkedCharacters',
     'linkedLocations', 'linkedCultures', 'linkedEvents', 'linkedItems', 'groups',
     'customFields', 'connections'
+  ]),
+  calendar: new Set([
+    'id', 'name', 'profileImagePath', 'calendarType', 'status', 'epoch', 'eras',
+    'months', 'daysPerWeek', 'hoursPerDay', 'linkedEvents', 'linkedCultures',
+    'groups', 'customFields', 'connections'
   ])
 };
 
