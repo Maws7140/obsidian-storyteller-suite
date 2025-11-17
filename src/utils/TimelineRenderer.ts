@@ -3,9 +3,10 @@
 
 import { App, Notice } from 'obsidian';
 import StorytellerSuitePlugin from '../main';
-import { Event } from '../types';
+import { Event, TimelineEra } from '../types';
 import { parseEventDate, toMillis, toDisplay, getEventDateForTimeline } from './DateParsing';
 import { EventModal } from '../modals/EventModal';
+import { EraManager } from './EraManager';
 
 // @ts-ignore: vis-timeline is bundled dependency
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -25,6 +26,8 @@ export interface TimelineRendererOptions {
     density?: number;
     defaultGanttDuration?: number; // days
     editMode?: boolean;
+    showEras?: boolean; // Whether to display era backgrounds
+    narrativeOrder?: boolean; // Sort by narrative date instead of chronological
 }
 
 export interface TimelineFilters {
@@ -32,6 +35,8 @@ export interface TimelineFilters {
     locations?: Set<string>;
     groups?: Set<string>;
     milestonesOnly?: boolean;
+    tags?: Set<string>;
+    eras?: Set<string>; // Filter by era IDs
 }
 
 /**
@@ -149,6 +154,22 @@ export class TimelineRenderer {
      */
     setDensity(density: number): void {
         this.options.density = density;
+        this.renderPreservingView();
+    }
+
+    /**
+     * Toggle era backgrounds
+     */
+    setShowEras(enabled: boolean): void {
+        this.options.showEras = enabled;
+        this.renderPreservingView();
+    }
+
+    /**
+     * Toggle narrative order sorting
+     */
+    setNarrativeOrder(enabled: boolean): void {
+        this.options.narrativeOrder = enabled;
         this.renderPreservingView();
     }
 
@@ -465,7 +486,7 @@ export class TimelineRenderer {
 
             // Create timeline with error handling
             try {
-                this.timeline = groups 
+                this.timeline = groups
                     ? new Timeline(this.container, items, groups, timelineOptions)
                     : new Timeline(this.container, items, timelineOptions);
             } catch (timelineError) {
@@ -479,6 +500,11 @@ export class TimelineRenderer {
                     div.createEl('p', { text: 'Check the developer console (Ctrl+Shift+I) for more details.' });
                 });
                 return;
+            }
+
+            // Add era backgrounds if enabled
+            if (this.options.showEras && this.timeline) {
+                this.addEraBackgrounds(referenceDate);
             }
 
             // Set custom current time bar
@@ -719,7 +745,11 @@ export class TimelineRenderer {
                 continue;
             }
 
-            const dateString = getEventDateForTimeline(evt);
+            // Use narrative date if narrative order is enabled and event has one
+            let dateString = getEventDateForTimeline(evt);
+            if (this.options.narrativeOrder && evt.narrativeMarkers?.narrativeDate) {
+                dateString = evt.narrativeMarkers.narrativeDate;
+            }
 
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const parsed = dateString ? parseEventDate(dateString, { referenceDate }) : { error: 'empty' } as any;
@@ -753,31 +783,38 @@ export class TimelineRenderer {
 
             const approx = !!parsed.approximate;
             const isMilestone = !!evt.isMilestone;
-            
+            const isFlashback = !!evt.narrativeMarkers?.isFlashback;
+            const isFlashforward = !!evt.narrativeMarkers?.isFlashforward;
+
             // Gantt mode: ensure all events have duration (but not milestones)
             let displayEndMs = endMs;
             if (this.options.ganttMode && displayEndMs == null && !isMilestone) {
                 const durationMs = (this.options.defaultGanttDuration || 1) * 24 * 60 * 60 * 1000;
                 displayEndMs = startMs + durationMs;
             }
-            
+
             // Validate displayEndMs if it exists
             if (displayEndMs != null && (typeof displayEndMs !== 'number' || isNaN(displayEndMs))) {
                 console.warn('[Timeline] Invalid end timestamp for event:', evt.name, displayEndMs);
                 displayEndMs = undefined; // Treat as point event
             }
-            
+
             // Build CSS classes
             const classes: string[] = [];
             if (approx) classes.push('is-approx');
             if (isMilestone) classes.push('timeline-milestone');
             if (this.options.ganttMode && !isMilestone) classes.push('gantt-bar');
+            if (isFlashback) classes.push('narrative-flashback');
+            if (isFlashforward) classes.push('narrative-flashforward');
             
             // Style
             const style = color ? `background-color:${this.hexWithAlpha(color, 0.18)};border-color:${color};` : '';
-            
-            // Content with milestone icon
-            const content = isMilestone ? '⭐ ' + evt.name : evt.name;
+
+            // Content with icons for milestone, flashback, flash-forward
+            let content = evt.name;
+            if (isMilestone) content = '⭐ ' + content;
+            if (isFlashback) content = '⬅️ ' + content;
+            if (isFlashforward) content = '➡️ ' + content;
 
             // Item type - milestones always use 'box' to show content without range bars
             let itemType: string;
@@ -879,22 +916,39 @@ export class TimelineRenderer {
         if (this.filters.milestonesOnly && !evt.isMilestone) {
             return false;
         }
-        
+
         // Character filter
         if (this.filters.characters && this.filters.characters.size > 0) {
             const hasMatchingChar = evt.characters?.some(c => this.filters.characters && this.filters.characters.has(c));
             if (!hasMatchingChar) return false;
         }
-        
+
         // Location filter
         if (this.filters.locations && this.filters.locations.size > 0) {
             if (!evt.location || !this.filters.locations.has(evt.location)) return false;
         }
-        
+
         // Group filter
         if (this.filters.groups && this.filters.groups.size > 0) {
             const hasMatchingGroup = evt.groups?.some(g => this.filters.groups && this.filters.groups.has(g));
             if (!hasMatchingGroup) return false;
+        }
+
+        // Tag filter
+        if (this.filters.tags && this.filters.tags.size > 0) {
+            const hasMatchingTag = evt.tags?.some(t => this.filters.tags && this.filters.tags.has(t));
+            if (!hasMatchingTag) return false;
+        }
+
+        // Era filter (check if event falls within selected eras)
+        if (this.filters.eras && this.filters.eras.size > 0) {
+            const eras = this.plugin.settings.timelineEras || [];
+            const selectedEras = eras.filter(era => this.filters.eras && this.filters.eras.has(era.id));
+            const eventInEra = selectedEras.some(era => {
+                const eventsInEra = EraManager.getEventsInEra(era, [evt]);
+                return eventsInEra.length > 0;
+            });
+            if (!eventInEra) return false;
         }
 
         return true;
@@ -924,6 +978,58 @@ export class TimelineRenderer {
     }
 
     /**
+     * Add era backgrounds to the timeline
+     */
+    private addEraBackgrounds(referenceDate: Date): void {
+        if (!this.timeline) return;
+
+        const eras = this.plugin.settings.timelineEras || [];
+        const visibleEras = EraManager.getVisibleEras(eras);
+
+        if (visibleEras.length === 0) return;
+
+        try {
+            // Create background items for each era
+            const backgroundItems: any[] = [];
+
+            for (const era of visibleEras) {
+                const startParsed = parseEventDate(era.startDate, { referenceDate });
+                const endParsed = parseEventDate(era.endDate, { referenceDate });
+
+                if (!startParsed.start || !endParsed.start) {
+                    console.warn(`Skipping era "${era.name}" - invalid dates`);
+                    continue;
+                }
+
+                const startMs = toMillis(startParsed.start);
+                const endMs = toMillis(endParsed.start);
+
+                if (startMs == null || endMs == null) continue;
+
+                // Create background item
+                backgroundItems.push({
+                    id: `era-bg-${era.id}`,
+                    start: new Date(startMs),
+                    end: new Date(endMs),
+                    type: 'background',
+                    className: 'timeline-era-background',
+                    style: `background-color: ${era.color || 'rgba(200, 200, 200, 0.2)'};`,
+                    content: era.name,
+                    title: `${era.name}\n${era.startDate} → ${era.endDate}${era.description ? '\n' + era.description : ''}`
+                });
+            }
+
+            // Add background items to timeline
+            if (backgroundItems.length > 0) {
+                const backgroundDataSet = new DataSet(backgroundItems);
+                this.timeline.setItems(backgroundDataSet, true); // true = add to existing items
+            }
+        } catch (error) {
+            console.error('Error adding era backgrounds:', error);
+        }
+    }
+
+    /**
      * Convert hex color to rgba
      */
     private hexWithAlpha(hex: string, alpha: number): string {
@@ -935,3 +1041,4 @@ export class TimelineRenderer {
         return `rgba(${r}, ${g}, ${b}, ${alpha})`;
     }
 }
+
