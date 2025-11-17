@@ -7,7 +7,8 @@ import StorytellerSuitePlugin from '../main';
 import { t } from '../i18n/strings';
 import { GalleryImageSuggestModal } from './GalleryImageSuggestModal';
 import { LocationSuggestModal } from './LocationSuggestModal';
-import { MapSuggestModal } from './MapSuggestModal';
+// TODO: Maps feature - MapSuggestModal to be reimplemented
+// import { MapSuggestModal } from './MapSuggestModal';
 import { ResponsiveModal } from './ResponsiveModal';
 import { PromptModal } from './ui/PromptModal';
 // Placeholder imports for suggesters -
@@ -227,64 +228,46 @@ export class LocationModal extends ResponsiveModal {
                 }));
 
         // --- Maps Section ---
-        contentEl.createEl('h3', { text: 'Maps' });
+        // TODO: Maps feature - to be reimplemented
+        // contentEl.createEl('h3', { text: 'Maps' });
 
-        // Primary Map Selector
-        let primaryMapDesc: HTMLElement;
-        new Setting(contentEl)
-            .setName('Primary Map')
-            .setDesc('')
-            .then(setting => {
-                primaryMapDesc = setting.descEl.createEl('small', { 
-                    text: `Current: ${this.location.mapId || 'None'}` 
-                });
-                setting.descEl.addClass('storyteller-modal-setting-vertical');
-            })
-            .addButton(button => button
-                .setButtonText('Select Map')
-                .setTooltip('Choose the main map where this location appears')
-                .onClick(() => {
-                    new MapSuggestModal(this.app, this.plugin, (selectedMap) => {
-                        if (selectedMap) {
-                            this.location.mapId = selectedMap.id;
-                        } else {
-                            this.location.mapId = undefined;
-                        }
-                        primaryMapDesc.setText(`Current: ${this.location.mapId || 'None'}`);
-                    }).open();
-                }))
-            .addButton(button => button
-                .setIcon('cross')
-                .setTooltip('Clear primary map')
-                .setClass('mod-warning')
-                .onClick(() => {
-                    this.location.mapId = undefined;
-                    primaryMapDesc.setText(`Current: None`);
-                }));
+        // // Primary Map Selector
+        // let primaryMapDesc: HTMLElement;
+        // new Setting(contentEl)
+        //     .setName('Primary Map')
+        //     .setDesc('')
+        //     .then(setting => {
+        //         primaryMapDesc = setting.descEl.createEl('small', {
+        //             text: `Current: ${this.location.mapId || 'None'}`
+        //         });
+        //         setting.descEl.addClass('storyteller-modal-setting-vertical');
+        //     })
+        //     .addButton(button => button
+        //         .setButtonText('Select Map')
+        //         .setTooltip('Choose the main map where this location appears')
+        //         .onClick(() => {
+        //             // Maps feature to be implemented
+        //         }))
+        //     .addButton(button => button
+        //         .setIcon('cross')
+        //         .setTooltip('Clear primary map')
+        //         .setClass('mod-warning')
+        //         .onClick(() => {
+        //             this.location.mapId = undefined;
+        //             // primaryMapDesc.setText(`Current: None`);
+        //         }));
 
-        // Related Maps List
-        const relatedMapsContainer = contentEl.createDiv('storyteller-modal-linked-entities');
-        this.renderRelatedMapsList(relatedMapsContainer);
+        // // Related Maps List
+        // const relatedMapsContainer = contentEl.createDiv('storyteller-modal-linked-entities');
+        // this.renderRelatedMapsList(relatedMapsContainer);
 
-        new Setting(contentEl)
-            .addButton(button => button
-                .setButtonText('Add Related Map')
-                .setIcon('plus')
-                .onClick(() => {
-                    new MapSuggestModal(this.app, this.plugin, (selectedMap) => {
-                        if (selectedMap && selectedMap.id) {
-                            if (!this.location.relatedMapIds) {
-                                this.location.relatedMapIds = [];
-                            }
-                            if (!this.location.relatedMapIds.includes(selectedMap.id)) {
-                                this.location.relatedMapIds.push(selectedMap.id);
-                                this.renderRelatedMapsList(relatedMapsContainer);
-                            } else {
-                                new Notice('Map already added');
-                            }
-                        }
-                    }).open();
-                }));
+        // new Setting(contentEl)
+        //     .addButton(button => button
+        //         .setButtonText('Add Related Map')
+        //         .setIcon('plus')
+        //         .onClick(() => {
+        //             // Maps feature to be implemented
+        //         }));
 
         // --- Custom Fields ---
         contentEl.createEl('h3', { text: t('customFields') });
