@@ -10,7 +10,8 @@ import {
     Template,
     TemplateGenre,
     TemplateCategory,
-    TemplateEntities
+    TemplateEntities,
+    TemplateEntityType
 } from '../templates/TemplateTypes';
 
 export class TemplateEditorModal extends ResponsiveModal {
@@ -24,6 +25,7 @@ export class TemplateEditorModal extends ResponsiveModal {
     private description: string = '';
     private genre: TemplateGenre = 'fantasy';
     private category: TemplateCategory = 'single-entity';
+    private entityType: TemplateEntityType = 'character';
     private tags: string = '';
 
     constructor(
@@ -48,6 +50,7 @@ export class TemplateEditorModal extends ResponsiveModal {
         this.description = template.description;
         this.genre = template.genre;
         this.category = template.category;
+        this.entityType = template.entityTypes?.[0] || 'character';
         this.tags = template.tags.join(', ');
     }
 
@@ -113,6 +116,26 @@ export class TemplateEditorModal extends ResponsiveModal {
                 .onChange(value => this.category = value as TemplateCategory)
             );
 
+        // Entity Type
+        new Setting(contentEl)
+            .setName('Entity Type')
+            .setDesc('Primary entity type for this template')
+            .addDropdown(dropdown => dropdown
+                .addOption('character', 'Character')
+                .addOption('location', 'Location')
+                .addOption('event', 'Event')
+                .addOption('item', 'Item')
+                .addOption('group', 'Group')
+                .addOption('culture', 'Culture')
+                .addOption('economy', 'Economy')
+                .addOption('magicSystem', 'Magic System')
+                .addOption('chapter', 'Chapter')
+                .addOption('scene', 'Scene')
+                .addOption('reference', 'Reference')
+                .setValue(this.entityType)
+                .onChange(value => this.entityType = value as TemplateEntityType)
+            );
+
         // Tags
         new Setting(contentEl)
             .setName('Tags')
@@ -175,6 +198,7 @@ export class TemplateEditorModal extends ResponsiveModal {
                     genre: this.genre,
                     category: this.category,
                     tags: tagArray,
+                    entityTypes: [this.entityType],
                     modified: new Date().toISOString()
                 };
             } else {
@@ -195,7 +219,7 @@ export class TemplateEditorModal extends ResponsiveModal {
                     modified: new Date().toISOString(),
                     tags: tagArray,
                     entities,
-                    entityTypes: [],
+                    entityTypes: [this.entityType],
                     usageCount: 0,
                     quickApplyEnabled: true
                 };
