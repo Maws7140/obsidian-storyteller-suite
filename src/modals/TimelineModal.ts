@@ -27,7 +27,9 @@ export class TimelineModal extends Modal {
         characters: new Set<string>(),
         locations: new Set<string>(),
         groups: new Set<string>(),
-        milestonesOnly: false
+        milestonesOnly: false,
+        tags: new Set<string>(),
+        eras: new Set<string>()
     };
     private filterPanelVisible = false;
 
