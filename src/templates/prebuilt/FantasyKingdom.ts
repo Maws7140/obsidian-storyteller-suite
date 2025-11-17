@@ -520,19 +520,19 @@ export const FANTASY_KINGDOM_TEMPLATE: Template = {
                     seat: 'Castle Stormhaven'
                 },
                 members: [
-                    { name: 'CHAR_001', rank: 'King', joinDate: '1201-03-15', loyalty: 100 },
-                    { name: 'CHAR_002', rank: 'Queen', joinDate: '1201-03-15', loyalty: 100 },
-                    { name: 'CHAR_003', rank: 'Crown Prince', joinDate: '1203-05-20', loyalty: 100 },
-                    { name: 'CHAR_005', rank: 'Court Wizard', joinDate: '1210-08-10', loyalty: 95 },
-                    { name: 'CHAR_006', rank: 'Allied Noble', joinDate: '1201-03-15', loyalty: 85 }
+                    { type: 'character', id: 'CHAR_001', name: 'CHAR_001', rank: 'King', joinDate: '1201-03-15', loyalty: 'devoted' },
+                    { type: 'character', id: 'CHAR_002', name: 'CHAR_002', rank: 'Queen', joinDate: '1201-03-15', loyalty: 'devoted' },
+                    { type: 'character', id: 'CHAR_003', name: 'CHAR_003', rank: 'Crown Prince', joinDate: '1203-05-20', loyalty: 'devoted' },
+                    { type: 'character', id: 'CHAR_005', name: 'CHAR_005', rank: 'Court Wizard', joinDate: '1210-08-10', loyalty: 'devoted' },
+                    { type: 'character', id: 'CHAR_006', name: 'CHAR_006', rank: 'Allied Noble', joinDate: '1201-03-15', loyalty: 'loyal' }
                 ],
                 territories: ['LOC_001', 'LOC_002', 'LOC_003'],
                 linkedEvents: ['EVENT_001', 'EVENT_005'],
                 resources: 'Extensive - treasury, lands, military',
                 strength: 'Very High',
-                militaryPower: 'Strong',
-                economicPower: 'Strong',
-                politicalInfluence: 'Dominant'
+                militaryPower: 85,
+                economicPower: 85,
+                politicalInfluence: 100
             },
             {
                 templateId: 'GROUP_002',
@@ -549,16 +549,16 @@ export const FANTASY_KINGDOM_TEMPLATE: Template = {
                     headquarters: 'Castle Stormhaven'
                 },
                 members: [
-                    { name: 'CHAR_004', rank: 'Lord Commander', joinDate: '1195-01-01', loyalty: 100 },
-                    { name: 'CHAR_007', rank: 'Captain', joinDate: '1215-03-15', loyalty: 95 }
+                    { type: 'character', id: 'CHAR_004', name: 'CHAR_004', rank: 'Lord Commander', joinDate: '1195-01-01', loyalty: 'devoted' },
+                    { type: 'character', id: 'CHAR_007', name: 'CHAR_007', rank: 'Captain', joinDate: '1215-03-15', loyalty: 'devoted' }
                 ],
                 territories: ['LOC_001', 'LOC_008'],
                 linkedEvents: ['EVENT_002'],
                 resources: 'Moderate - royal funding, equipment',
                 strength: 'High',
-                militaryPower: 'Very Strong',
-                economicPower: 'Moderate',
-                politicalInfluence: 'Moderate'
+                militaryPower: 90,
+                economicPower: 50,
+                politicalInfluence: 55
             },
             {
                 templateId: 'GROUP_003',
@@ -575,16 +575,16 @@ export const FANTASY_KINGDOM_TEMPLATE: Template = {
                     headquarters: 'Market District'
                 },
                 members: [
-                    { name: 'CHAR_010', rank: 'Guildmaster', joinDate: '1220-01-01', loyalty: 100 },
-                    { name: 'CHAR_009', rank: 'Master Craftsman', joinDate: '1215-06-01', loyalty: 80 }
+                    { type: 'character', id: 'CHAR_010', name: 'CHAR_010', rank: 'Guildmaster', joinDate: '1220-01-01', loyalty: 'devoted' },
+                    { type: 'character', id: 'CHAR_009', name: 'CHAR_009', rank: 'Master Craftsman', joinDate: '1215-06-01', loyalty: 'loyal' }
                 ],
                 territories: ['LOC_004'],
                 linkedEvents: ['EVENT_003', 'EVENT_005'],
                 resources: 'High - wealth, trade connections, warehouses',
                 strength: 'Moderate',
-                militaryPower: 'Low',
-                economicPower: 'Very Strong',
-                politicalInfluence: 'Strong'
+                militaryPower: 20,
+                economicPower: 90,
+                politicalInfluence: 70
             }
         ],
 
@@ -626,9 +626,12 @@ export const FANTASY_KINGDOM_TEMPLATE: Template = {
                     unemployment: 'Low',
                     inflation: 'Stable'
                 },
-                currencies: ['Gold Crown', 'Silver Penny', 'Copper Bit'],
+                currencies: [
+                    { name: 'Gold Crown' },
+                    { name: 'Silver Penny' },
+                    { name: 'Copper Bit' }
+                ],
                 industries: 'Agriculture, metalworking, textiles, timber, livestock',
-                resources: 'Farmland, forests, iron deposits, fertile soil',
                 taxation: 'Feudal taxes, trade tariffs, guild fees',
                 linkedLocations: ['LOC_001', 'LOC_004'],
                 linkedFactions: ['GROUP_001', 'GROUP_003'],
@@ -656,8 +659,12 @@ export const FANTASY_KINGDOM_TEMPLATE: Template = {
                     notable_effects: 'Fireballs, ice walls, earth shaping, wind blasts',
                     advanced_techniques: 'Element combination, permanent enchantments'
                 },
-                categories: ['Evocation', 'Transmutation', 'Enchantment'],
-                materials: 'Focus items (staffs, wands), spell components',
+                categories: [
+                    { name: 'Evocation' },
+                    { name: 'Transmutation' },
+                    { name: 'Enchantment' }
+                ],
+                materials: ['Focus items (staffs, wands)', 'spell components', 'elemental crystals'],
                 linkedCharacters: ['CHAR_005'],
                 linkedCultures: ['CULTURE_001'],
                 linkedLocations: ['LOC_003']
