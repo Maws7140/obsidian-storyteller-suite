@@ -11,6 +11,8 @@ import { LocationSuggestModal } from './LocationSuggestModal';
 // import { MapSuggestModal } from './MapSuggestModal';
 import { ResponsiveModal } from './ResponsiveModal';
 import { PromptModal } from './ui/PromptModal';
+import { TemplatePickerModal } from './TemplatePickerModal';
+import { Template } from '../templates/TemplateTypes';
 // Placeholder imports for suggesters -
 // import { CharacterSuggestModal } from './CharacterSuggestModal';
 // import { EventSuggestModal } from './EventSuggestModal';
@@ -57,10 +59,33 @@ export class LocationModal extends ResponsiveModal {
 
     onOpen() {
         super.onOpen(); // Call ResponsiveModal's mobile optimizations
-        
+
         const { contentEl } = this;
         contentEl.empty();
         contentEl.createEl('h2', { text: this.isNew ? t('createNewLocation') : `${t('edit')} ${this.location.name}` });
+
+        // --- Template Selector (for new locations) ---
+        if (this.isNew) {
+            new Setting(contentEl)
+                .setName('Start from Template')
+                .setDesc('Optionally start with a pre-configured location template')
+                .addButton(button => button
+                    .setButtonText('Choose Template')
+                    .setTooltip('Select a location template')
+                    .onClick(() => {
+                        new TemplatePickerModal(
+                            this.app,
+                            this.plugin,
+                            async (template: Template) => {
+                                await this.applyTemplateToLocation(template);
+                                this.refresh(); // Refresh the modal to show template values
+                                new Notice(`Template "${template.name}" applied`);
+                            },
+                            'location' // Filter to location templates only
+                        ).open();
+                    })
+                );
+        }
 
         // --- Basic Fields ---
         new Setting(contentEl)
@@ -535,6 +560,32 @@ export class LocationModal extends ResponsiveModal {
         }
 
         return false;
+    }
+
+    private async applyTemplateToLocation(template: Template): Promise<void> {
+        if (!template.entities.locations || template.entities.locations.length === 0) {
+            new Notice('This template does not contain any locations');
+            return;
+        }
+
+        // Get the first location from the template
+        const templateLoc = template.entities.locations[0];
+
+        // Apply template fields to current location (excluding templateId, id, filePath)
+        Object.keys(templateLoc).forEach(key => {
+            if (key !== 'templateId' && key !== 'id' && key !== 'filePath') {
+                (this.location as any)[key] = (templateLoc as any)[key];
+            }
+        });
+
+        // Clear relationships as they reference template entities
+        this.location.connections = [];
+        this.location.groups = [];
+    }
+
+    private refresh(): void {
+        // Refresh the modal by reopening it
+        this.onOpen();
     }
 
     onClose() {
