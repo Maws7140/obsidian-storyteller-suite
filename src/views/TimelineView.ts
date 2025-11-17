@@ -444,6 +444,34 @@ export class TimelineView extends ItemView {
                 });
             });
 
+        // Tag filter
+        new Setting(this.advancedFiltersContent)
+            .setName('Filter by Tag')
+            .addDropdown(dropdown => {
+                dropdown.addOption('', 'Select tag...');
+                const allTags = new Set<string>();
+                this.plugin.listEvents().then(events => {
+                    events.forEach(e => {
+                        if (e.tags) e.tags.forEach(t => allTags.add(t));
+                    });
+                    Array.from(allTags).sort().forEach(tag => {
+                        dropdown.addOption(tag, tag);
+                    });
+                });
+                dropdown.setValue('');
+                dropdown.onChange(value => {
+                    if (value) {
+                        if (!this.currentState.filters.tags) {
+                            this.currentState.filters.tags = new Set();
+                        }
+                        this.currentState.filters.tags.add(value);
+                        this.renderer?.applyFilters(this.currentState.filters);
+                        this.updateFooterStatus();
+                        dropdown.setValue('');
+                    }
+                });
+            });
+
         // Clear all filters button
         new Setting(this.advancedFiltersContent)
             .addButton(button => button

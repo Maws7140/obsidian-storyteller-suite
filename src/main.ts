@@ -1059,6 +1059,26 @@ export default class StorytellerSuitePlugin extends Plugin {
 			}
 		});
 
+		// Timeline era management
+		this.addCommand({
+			id: 'manage-timeline-eras',
+			name: 'Manage timeline eras',
+			callback: async () => {
+				const { EraListModal } = await import('./modals/EraListModal');
+				new EraListModal(this.app, this).open();
+			}
+		});
+
+		// Generate events from tags
+		this.addCommand({
+			id: 'generate-events-from-tags',
+			name: 'Generate events from tags',
+			callback: async () => {
+				const { TagBasedEventModal } = await import('./modals/TagBasedEventModal');
+				new TagBasedEventModal(this.app, this).open();
+			}
+		});
+
 		this.addCommand({
 			id: 'open-analytics-dashboard',
 			name: 'Open writing analytics',
@@ -3553,6 +3573,130 @@ export default class StorytellerSuitePlugin extends Plugin {
             '#95E1D3'  // Aqua
         ];
         return colors[Math.floor(Math.random() * colors.length)];
+    }
+
+    // ============================================================
+    // Timeline Era Management
+    // ============================================================
+
+    /**
+     * Create a new timeline era
+     * @param era - Era object to create
+     */
+    async createTimelineEra(era: TimelineEra): Promise<void> {
+        this.settings.timelineEras = this.settings.timelineEras || [];
+        this.settings.timelineEras.push(era);
+        await this.saveSettings();
+        new Notice(`Era "${era.name}" created`);
+    }
+
+    /**
+     * Get all timeline eras
+     * @returns Array of all eras
+     */
+    getTimelineEras(): TimelineEra[] {
+        return this.settings.timelineEras || [];
+    }
+
+    /**
+     * Get a specific era by ID
+     * @param eraId - ID of the era to retrieve
+     * @returns The era or undefined if not found
+     */
+    getTimelineEra(eraId: string): TimelineEra | undefined {
+        return this.settings.timelineEras?.find(e => e.id === eraId);
+    }
+
+    /**
+     * Update an existing era
+     * @param era - Updated era object
+     */
+    async updateTimelineEra(era: TimelineEra): Promise<void> {
+        const index = this.settings.timelineEras?.findIndex(e => e.id === era.id);
+        if (index !== undefined && index >= 0) {
+            this.settings.timelineEras![index] = era;
+            await this.saveSettings();
+            new Notice(`Era "${era.name}" updated`);
+        } else {
+            new Notice(`Error: Era not found`);
+        }
+    }
+
+    /**
+     * Delete an era
+     * @param eraId - ID of the era to delete
+     */
+    async deleteTimelineEra(eraId: string): Promise<void> {
+        const era = this.getTimelineEra(eraId);
+        if (era) {
+            this.settings.timelineEras = this.settings.timelineEras?.filter(e => e.id !== eraId);
+            await this.saveSettings();
+            new Notice(`Era "${era.name}" deleted`);
+        } else {
+            new Notice(`Error: Era not found`);
+        }
+    }
+
+    // ============================================================
+    // Timeline Track Management
+    // ============================================================
+
+    /**
+     * Create a new timeline track
+     * @param track - Track object to create
+     */
+    async createTimelineTrack(track: TimelineTrack): Promise<void> {
+        this.settings.timelineTracks = this.settings.timelineTracks || [];
+        this.settings.timelineTracks.push(track);
+        await this.saveSettings();
+        new Notice(`Track "${track.name}" created`);
+    }
+
+    /**
+     * Get all timeline tracks
+     * @returns Array of all tracks
+     */
+    getTimelineTracks(): TimelineTrack[] {
+        return this.settings.timelineTracks || [];
+    }
+
+    /**
+     * Get a specific track by ID
+     * @param trackId - ID of the track to retrieve
+     * @returns The track or undefined if not found
+     */
+    getTimelineTrack(trackId: string): TimelineTrack | undefined {
+        return this.settings.timelineTracks?.find(t => t.id === trackId);
+    }
+
+    /**
+     * Update an existing track
+     * @param track - Updated track object
+     */
+    async updateTimelineTrack(track: TimelineTrack): Promise<void> {
+        const index = this.settings.timelineTracks?.findIndex(t => t.id === track.id);
+        if (index !== undefined && index >= 0) {
+            this.settings.timelineTracks![index] = track;
+            await this.saveSettings();
+            new Notice(`Track "${track.name}" updated`);
+        } else {
+            new Notice(`Error: Track not found`);
+        }
+    }
+
+    /**
+     * Delete a track
+     * @param trackId - ID of the track to delete
+     */
+    async deleteTimelineTrack(trackId: string): Promise<void> {
+        const track = this.getTimelineTrack(trackId);
+        if (track) {
+            this.settings.timelineTracks = this.settings.timelineTracks?.filter(t => t.id !== trackId);
+            await this.saveSettings();
+            new Notice(`Track "${track.name}" deleted`);
+        } else {
+            new Notice(`Error: Track not found`);
+        }
     }
 
     // ============================================================
