@@ -88,7 +88,7 @@ export class TemplateApplicator {
             }
 
             // Phase 2: Create all entities without relationships
-            const creationPromises = [];
+            const creationPromises: Promise<any>[] = [];
 
             if (filteredEntities.characters && filteredEntities.characters.length > 0) {
                 creationPromises.push(
@@ -304,7 +304,7 @@ export class TemplateApplicator {
                 id: this.generateId(),
                 storyId,
                 // Don't map relationships yet - will do in phase 3
-                members: groupData.members || []
+                members: (groupData as any).members || []
             } as Group;
 
             // Store mapping
@@ -346,7 +346,7 @@ export class TemplateApplicator {
                 events: [],
                 groups: [],
                 connections: []
-            };
+            } as Character;
 
             // Store mapping
             this.idMap.set(templateId, character.id!);
@@ -379,7 +379,7 @@ export class TemplateApplicator {
                 // Don't map relationships yet
                 groups: [],
                 connections: []
-            };
+            } as Location;
 
             // Store mapping
             this.idMap.set(templateId, location.id!);
@@ -414,7 +414,7 @@ export class TemplateApplicator {
                 groups: [],
                 connections: [],
                 dependencies: []
-            };
+            } as Event;
 
             // Store mapping
             this.idMap.set(templateId, event.id!);
@@ -444,12 +444,12 @@ export class TemplateApplicator {
                 ...itemData,
                 ...override,
                 id: this.generateId(),
-                isPlotCritical: itemData.isPlotCritical || false,
+                isPlotCritical: (itemData as any).isPlotCritical || false,
                 // Don't map relationships yet
                 associatedEvents: [],
                 groups: [],
                 connections: []
-            };
+            } as PlotItem;
 
             // Store mapping
             this.idMap.set(templateId, item.id!);
@@ -484,7 +484,7 @@ export class TemplateApplicator {
                 linkedCharacters: [],
                 linkedEvents: [],
                 relatedCultures: []
-            };
+            } as Culture;
 
             // Store mapping
             this.idMap.set(templateId, culture.id!);
@@ -519,7 +519,7 @@ export class TemplateApplicator {
                 linkedFactions: [],
                 linkedCultures: [],
                 linkedEvents: []
-            };
+            } as Economy;
 
             // Store mapping
             this.idMap.set(templateId, economy.id!);
@@ -555,7 +555,7 @@ export class TemplateApplicator {
                 linkedCultures: [],
                 linkedEvents: [],
                 linkedItems: []
-            };
+            } as MagicSystem;
 
             // Store mapping
             this.idMap.set(templateId, magicSystem.id!);
@@ -591,7 +591,7 @@ export class TemplateApplicator {
                 linkedEvents: [],
                 linkedItems: [],
                 linkedGroups: []
-            };
+            } as Chapter;
 
             // Store mapping
             this.idMap.set(templateId, chapter.id!);
@@ -627,7 +627,7 @@ export class TemplateApplicator {
                 linkedEvents: [],
                 linkedItems: [],
                 linkedGroups: []
-            };
+            } as Scene;
 
             // Store mapping
             this.idMap.set(templateId, scene.id!);
@@ -657,7 +657,7 @@ export class TemplateApplicator {
                 ...refData,
                 ...override,
                 id: this.generateId()
-            };
+            } as Reference;
 
             // Store mapping
             this.idMap.set(templateId, reference.id!);
@@ -736,7 +736,7 @@ export class TemplateApplicator {
             if (group.groupRelationships) {
                 group.groupRelationships = group.groupRelationships.map(rel => ({
                     ...rel,
-                    targetGroupId: this.resolveId(rel.targetGroupId) || rel.targetGroupId
+                    groupName: this.resolveId(rel.groupName) || rel.groupName
                 }));
             }
         }
@@ -855,7 +855,7 @@ export class TemplateApplicator {
      * Save all created entities to vault
      */
     private async saveAllEntities(created: TemplateApplicationResult['created']): Promise<void> {
-        const savePromises = [];
+        const savePromises: Promise<any>[] = [];
 
         // Save characters
         for (const char of created.characters) {
@@ -874,7 +874,7 @@ export class TemplateApplicator {
 
         // Save items
         for (const item of created.items) {
-            savePromises.push(this.plugin.saveItem(item));
+            savePromises.push(this.plugin.savePlotItem(item));
         }
 
         // Save cultures

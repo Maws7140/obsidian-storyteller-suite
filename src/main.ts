@@ -58,6 +58,8 @@ import { MagicSystemListModal } from './modals/MagicSystemListModal';
 import { PlatformUtils } from './utils/PlatformUtils';
 import { getTemplateSections } from './utils/EntityTemplates';
 import { LeafletCodeBlockProcessor } from './leaflet/processor';
+import { TemplateStorageManager } from './templates/TemplateStorageManager';
+import { StoryTemplateGalleryModal } from './templates/modals/StoryTemplateGalleryModal';
 
 /**
  * Plugin settings interface defining all configurable options
@@ -341,6 +343,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 	settings: StorytellerSuiteSettings;
     private folderResolver: FolderResolver | null = null;
     private leafletProcessor: LeafletCodeBlockProcessor;
+    templateManager: TemplateStorageManager;
 
     /** Sanitize the one-story base folder so it is vault-relative and never a leading slash. */
     private sanitizeBaseFolderPath(input?: string): string {

@@ -6,6 +6,8 @@
  - building frontmatter objects from raw entity objects safely
 */
 
+import { parseYaml } from 'obsidian';
+
 export type EntityType =
   | 'character'
   | 'location'
@@ -296,8 +298,6 @@ export function parseFrontmatterFromContent(content: string): Record<string, unk
     // Try to use Obsidian's parseYaml if available for robust YAML parsing
     // This properly handles nested objects, arrays, and complex YAML structures
     try {
-      // Dynamic import to handle if parseYaml is not available
-      const { parseYaml } = require('obsidian');
       if (parseYaml && typeof parseYaml === 'function') {
         const parsed = parseYaml(frontmatterContent);
         // Ensure we return a plain object

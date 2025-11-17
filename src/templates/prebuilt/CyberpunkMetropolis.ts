@@ -496,16 +496,16 @@ export const CYBERPUNK_METROPOLIS_TEMPLATE: Template = {
                     headquarters: 'Corporate Plaza, Upper City'
                 },
                 members: [
-                    { name: 'CHAR_004', rank: 'VP Special Projects', loyalty: 100 },
-                    { name: 'CHAR_009', rank: 'Chief Scientist', loyalty: 95 }
+                    { type: 'character', id: 'CHAR_004', name: 'CHAR_004', rank: 'VP Special Projects', loyalty: 'devoted' },
+                    { type: 'character', id: 'CHAR_009', name: 'CHAR_009', rank: 'Chief Scientist', loyalty: 'devoted' }
                 ],
                 territories: ['LOC_002', 'LOC_007'],
                 linkedEvents: ['EVENT_001', 'EVENT_002', 'EVENT_003'],
                 resources: 'Virtually unlimited - private armies, tech, wealth',
                 strength: 'Dominant',
-                militaryPower: 'Private army',
-                economicPower: 'Extreme',
-                politicalInfluence: 'Total'
+                militaryPower: 95,
+                economicPower: 100,
+                politicalInfluence: 100
             },
             {
                 templateId: 'GROUP_002',
@@ -522,15 +522,15 @@ export const CYBERPUNK_METROPOLIS_TEMPLATE: Template = {
                     territory: 'Lower City Districts 4-7'
                 },
                 members: [
-                    { name: 'CHAR_008', rank: 'Boss', loyalty: 100 }
+                    { type: 'character', id: 'CHAR_008', name: 'CHAR_008', rank: 'Boss', loyalty: 'devoted' }
                 ],
                 territories: ['LOC_003', 'LOC_006'],
                 linkedEvents: ['EVENT_002', 'EVENT_004'],
                 resources: 'Black market goods, weapons, cyberware',
                 strength: 'Strong',
-                militaryPower: 'Moderate - well-armed',
-                economicPower: 'Moderate - black market',
-                politicalInfluence: 'Low'
+                militaryPower: 60,
+                economicPower: 50,
+                politicalInfluence: 20
             },
             {
                 templateId: 'GROUP_003',
@@ -547,15 +547,15 @@ export const CYBERPUNK_METROPOLIS_TEMPLATE: Template = {
                     presence: 'Global but primarily Net-based'
                 },
                 members: [
-                    { name: 'CHAR_003', rank: 'Elite Netrunner', loyalty: 90 }
+                    { type: 'character', id: 'CHAR_003', name: 'CHAR_003', rank: 'Elite Netrunner', loyalty: 'devoted' }
                 ],
                 territories: ['LOC_005'],
                 linkedEvents: ['EVENT_001', 'EVENT_003'],
                 resources: 'Network access, data, skilled hackers',
                 strength: 'Moderate',
-                militaryPower: 'Very Low - digital only',
-                economicPower: 'Low',
-                politicalInfluence: 'Growing'
+                militaryPower: 10,
+                economicPower: 20,
+                politicalInfluence: 40
             },
             {
                 templateId: 'GROUP_004',
@@ -572,15 +572,15 @@ export const CYBERPUNK_METROPOLIS_TEMPLATE: Template = {
                     budget: 'Chronically underfunded'
                 },
                 members: [
-                    { name: 'CHAR_005', rank: 'Detective First Class', loyalty: 100 }
+                    { type: 'character', id: 'CHAR_005', name: 'CHAR_005', rank: 'Detective First Class', loyalty: 'devoted' }
                 ],
                 territories: ['LOC_001'],
                 linkedEvents: ['EVENT_001', 'EVENT_002'],
                 resources: 'Limited - outdated equipment, overworked staff',
                 strength: 'Weak',
-                militaryPower: 'Moderate on paper, weak in practice',
-                economicPower: 'Very Low',
-                politicalInfluence: 'Very Low - corporate controlled'
+                militaryPower: 30,
+                economicPower: 10,
+                politicalInfluence: 15
             }
         ],
 
@@ -598,9 +598,12 @@ export const CYBERPUNK_METROPOLIS_TEMPLATE: Template = {
                     unemployment: 'High - automation displaced workers',
                     inflation: 'Controlled by corporations'
                 },
-                currencies: ['Corporate Credits (CC)', 'Bitcoin', 'Street Barter'],
+                currencies: [
+                    { name: 'Corporate Credits (CC)' },
+                    { name: 'Bitcoin' },
+                    { name: 'Street Barter' }
+                ],
                 industries: 'Technology, cybernetics, AI, media, surveillance, weapons',
-                resources: 'Advanced technology, automated manufacturing, data',
                 taxation: 'Corporate controlled - minimal for wealthy, heavy for poor',
                 linkedLocations: ['LOC_001', 'LOC_002', 'LOC_003'],
                 linkedFactions: ['GROUP_001', 'GROUP_002', 'GROUP_003', 'GROUP_004'],
@@ -628,8 +631,13 @@ export const CYBERPUNK_METROPOLIS_TEMPLATE: Template = {
                     effects: 'Enhanced strength/speed/senses, data ports, weapons integration',
                     side_effects: 'Psychological impact, dependency, cyberpsychosis risk'
                 },
-                categories: ['Combat', 'Utility', 'Medical', 'Neural'],
-                materials: 'Biocompatible metals, synthetic tissue, neural interfaces',
+                categories: [
+                    { name: 'Combat' },
+                    { name: 'Utility' },
+                    { name: 'Medical' },
+                    { name: 'Neural' }
+                ],
+                materials: ['Biocompatible metals', 'synthetic tissue', 'neural interfaces'],
                 linkedCharacters: ['CHAR_001', 'CHAR_002', 'CHAR_008'],
                 linkedLocations: ['LOC_004'],
                 linkedItems: []

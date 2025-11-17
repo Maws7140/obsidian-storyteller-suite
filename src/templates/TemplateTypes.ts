@@ -58,10 +58,10 @@ export type TemplateEntityType =
 /**
  * Template entity - includes templateId for relationship mapping
  */
-export interface TemplateEntity<T> extends Partial<T> {
+export type TemplateEntity<T> = Partial<T> & {
     /** Temporary ID used within template for relationship mapping */
     templateId: string;
-}
+};
 
 /**
  * Complete template definition
