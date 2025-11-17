@@ -2756,6 +2756,40 @@ body.mod-rtl .storyteller-group-members {
   box-shadow: 0 6px 16px rgba(255, 215, 0, 0.6);
 }
 
+/* Narrative Markers - Flashbacks */
+.storyteller-timeline-modal .vis-item.narrative-flashback,
+.storyteller-timeline-view .vis-item.narrative-flashback {
+  border-style: dashed !important;
+  border-width: 2px !important;
+  background: linear-gradient(135deg, rgba(139, 92, 46, 0.15) 0%, rgba(101, 67, 33, 0.1) 100%) !important;
+  border-color: #8B5C2E !important;
+  font-style: italic;
+  opacity: 0.9;
+}
+
+.storyteller-timeline-modal .vis-item.narrative-flashback:hover,
+.storyteller-timeline-view .vis-item.narrative-flashback:hover {
+  opacity: 1;
+  box-shadow: 0 4px 12px rgba(139, 92, 46, 0.3);
+}
+
+/* Narrative Markers - Flash-forwards */
+.storyteller-timeline-modal .vis-item.narrative-flashforward,
+.storyteller-timeline-view .vis-item.narrative-flashforward {
+  border-style: dashed !important;
+  border-width: 2px !important;
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.15) 0%, rgba(29, 78, 216, 0.1) 100%) !important;
+  border-color: #2563EB !important;
+  font-style: italic;
+  opacity: 0.9;
+}
+
+.storyteller-timeline-modal .vis-item.narrative-flashforward:hover,
+.storyteller-timeline-view .vis-item.narrative-flashforward:hover {
+  opacity: 1;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+}
+
 /* Edit mode indicator */
 .timeline-edit-mode {
   border: 2px solid var(--interactive-accent);
