@@ -8,6 +8,8 @@ import { GalleryImageSuggestModal } from './GalleryImageSuggestModal';
 import { ResponsiveModal } from './ResponsiveModal';
 import { PromptModal } from './ui/PromptModal';
 import { PlatformUtils } from '../utils/PlatformUtils';
+import { TemplatePickerModal } from './TemplatePickerModal';
+import { Template } from '../templates/TemplateTypes';
 // Placeholder imports for suggesters - these would need to be created
 // import { CharacterSuggestModal } from './CharacterSuggestModal';
 // import { LocationSuggestModal } from './LocationSuggestModal';
@@ -49,10 +51,33 @@ export class CharacterModal extends ResponsiveModal {
 
     onOpen() {
         super.onOpen(); // Call the parent's mobile optimizations
-        
+
         const { contentEl } = this;
         contentEl.empty();
         contentEl.createEl('h2', { text: this.isNew ? t('createNewCharacter') : `${t('edit')} ${this.character.name}` });
+
+        // --- Template Selector (for new characters) ---
+        if (this.isNew) {
+            new Setting(contentEl)
+                .setName('Start from Template')
+                .setDesc('Optionally start with a pre-configured character template')
+                .addButton(button => button
+                    .setButtonText('Choose Template')
+                    .setTooltip('Select a character template')
+                    .onClick(() => {
+                        new TemplatePickerModal(
+                            this.app,
+                            this.plugin,
+                            async (template: Template) => {
+                                await this.applyTemplateToCharacter(template);
+                                this.refresh(); // Refresh the modal to show template values
+                                new Notice(`Template "${template.name}" applied`);
+                            },
+                            'character' // Filter to character templates only
+                        ).open();
+                    })
+                );
+        }
 
         // --- Name ---
         new Setting(contentEl)
@@ -477,6 +502,33 @@ export class CharacterModal extends ResponsiveModal {
                 });
             }
         })();
+    }
+
+    private async applyTemplateToCharacter(template: Template): Promise<void> {
+        if (!template.entities.characters || template.entities.characters.length === 0) {
+            new Notice('This template does not contain any characters');
+            return;
+        }
+
+        // Get the first character from the template
+        const templateChar = template.entities.characters[0];
+
+        // Apply template fields to current character (excluding templateId, id, filePath)
+        Object.keys(templateChar).forEach(key => {
+            if (key !== 'templateId' && key !== 'id' && key !== 'filePath') {
+                (this.character as any)[key] = (templateChar as any)[key];
+            }
+        });
+
+        // Clear relationships as they reference template entities
+        this.character.relationships = [];
+        this.character.connections = [];
+        this.character.groups = [];
+    }
+
+    private refresh(): void {
+        // Refresh the modal by reopening it
+        this.onOpen();
     }
 
     onClose() {
