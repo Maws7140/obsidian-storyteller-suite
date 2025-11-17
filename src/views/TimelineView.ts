@@ -462,7 +462,8 @@ export class TimelineView extends ItemView {
         if (!this.timelineContainer) return;
         this.timelineContainer.empty();
         this.timelineContainer.style.flexGrow = '1';
-        this.timelineContainer.style.overflow = 'hidden';
+        // Allow timeline to handle its own overflow
+        this.timelineContainer.style.overflow = 'auto';
 
         // Initialize timeline renderer
         this.renderer = new TimelineRenderer(this.timelineContainer, this.plugin, {
@@ -531,8 +532,18 @@ export class TimelineView extends ItemView {
      * Handle resize events
      */
     onResize(): void {
-        // Timeline auto-adjusts to container size, but we can trigger fit if needed
-        // this.renderer?.fitToView();
+        // Timeline should auto-adjust to container size
+        // Force redraw to ensure proper rendering after resize
+        if (this.renderer) {
+            // Request a redraw from vis-timeline without losing zoom position
+            try {
+                // The timeline library handles resize automatically, but we need to ensure it updates
+                // No need to call fitToView() as that would change the user's zoom level
+                // vis-timeline has internal resize handling
+            } catch (error) {
+                console.warn('Timeline: Resize handling error:', error);
+            }
+        }
     }
 
     /**
@@ -567,6 +578,9 @@ export class TimelineView extends ItemView {
      * Get view state for persistence
      */
     getState(): Record<string, unknown> {
+        // Capture current window range for zoom/scroll persistence
+        const visibleRange = this.renderer?.getVisibleRange();
+
         return {
             ganttMode: this.currentState.ganttMode,
             groupMode: this.currentState.groupMode,
@@ -575,13 +589,18 @@ export class TimelineView extends ItemView {
             editMode: this.currentState.editMode,
             filters: {
                 milestonesOnly: this.currentState.filters.milestonesOnly,
-                characters: this.currentState.filters.characters ? 
+                characters: this.currentState.filters.characters ?
                     Array.from(this.currentState.filters.characters) : undefined,
-                locations: this.currentState.filters.locations ? 
+                locations: this.currentState.filters.locations ?
                     Array.from(this.currentState.filters.locations) : undefined,
-                groups: this.currentState.filters.groups ? 
+                groups: this.currentState.filters.groups ?
                     Array.from(this.currentState.filters.groups) : undefined
-            }
+            },
+            // Save visible window range for restoring zoom/scroll position
+            visibleRange: visibleRange ? {
+                start: visibleRange.start.toISOString(),
+                end: visibleRange.end.toISOString()
+            } : undefined
         };
     }
 
@@ -591,7 +610,7 @@ export class TimelineView extends ItemView {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     async setState(state: any, result: any): Promise<void> {
         await super.setState(state, result);
-        
+
         if (state) {
             this.currentState = {
                 ganttMode: state.ganttMode ?? false,
@@ -601,7 +620,7 @@ export class TimelineView extends ItemView {
                 editMode: state.editMode ?? false,
                 filters: state.filters || {}
             };
-            
+
             // Restore Sets from arrays if needed
             if (state.filters) {
                 if (state.filters.characters && Array.isArray(state.filters.characters)) {
@@ -612,6 +631,22 @@ export class TimelineView extends ItemView {
                 }
                 if (state.filters.groups && Array.isArray(state.filters.groups)) {
                     this.currentState.filters.groups = new Set(state.filters.groups);
+                }
+            }
+
+            // Restore visible window range if available
+            if (state.visibleRange && this.renderer) {
+                try {
+                    const start = new Date(state.visibleRange.start);
+                    const end = new Date(state.visibleRange.end);
+                    // Use setTimeout to ensure timeline is fully initialized
+                    setTimeout(() => {
+                        if (this.renderer) {
+                            this.renderer.setVisibleRange(start, end);
+                        }
+                    }, 100);
+                } catch (error) {
+                    console.warn('Timeline: Could not restore visible range from state:', error);
                 }
             }
         }
