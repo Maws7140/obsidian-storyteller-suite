@@ -42,14 +42,40 @@ export class NetworkGraphRenderer {
     // Cytoscape.js doesn't support CSS variables, so we need to compute them
     private getCSSVariable(varName: string): string {
         const style = getComputedStyle(document.body);
-        const value = style.getPropertyValue(varName).trim();
-        // Fallback colors if CSS variable is not found
+        let value = style.getPropertyValue(varName).trim();
+
+        // Fallback values if CSS variable is not found or invalid
         const fallbacks: Record<string, string> = {
             '--background-modifier-border': '#3e3e3e',
             '--interactive-accent': '#7952b3',
             '--interactive-accent-hover': '#9a7bcc',
             '--font-interface': 'sans-serif'
         };
+
+        // Special handling for font-family
+        if (varName === '--font-interface' && value) {
+            // Remove invalid characters like '??' and clean up the font stack
+            value = value
+                .replace(/['"]?\?\?['"]?/g, '') // Remove ?? characters
+                .replace(/,\s*,/g, ',') // Remove double commas
+                .replace(/^,\s*/, '') // Remove leading comma
+                .replace(/\s*,\s*$/, '') // Remove trailing comma
+                .trim();
+
+            // If the cleaned value is empty or invalid, use fallback
+            if (!value || value === ',') {
+                value = fallbacks[varName] || 'sans-serif';
+            }
+        }
+
+        // Special handling for colors with calc() or invalid HSL
+        if ((varName.includes('color') || varName.includes('border')) && value) {
+            // If the value contains calc() inside hsl/rgb, it's invalid for Cytoscape
+            if (value.includes('calc(')) {
+                value = fallbacks[varName] || '#808080';
+            }
+        }
+
         return value || fallbacks[varName] || '#808080';
     }
 
@@ -1485,6 +1511,23 @@ export class NetworkGraphRenderer {
     // Refresh the graph
     async refresh(): Promise<void> {
         if (!this.cy) return;
+
+        // Ensure container is valid and has dimensions
+        if (!this.canvasEl || !this.canvasEl.isConnected) {
+            throw new Error('Canvas element is not attached to DOM');
+        }
+
+        // Get container dimensions
+        const width = this.canvasEl.offsetWidth;
+        const height = this.canvasEl.offsetHeight;
+
+        // Validate dimensions before proceeding
+        if (width === 0 || height === 0) {
+            throw new Error('Canvas element has invalid dimensions (width or height is 0)');
+        }
+
+        // Resize cytoscape to match current container dimensions
+        this.cy.resize();
 
         const { nodes, edges } = await this.buildGraphData();
 
