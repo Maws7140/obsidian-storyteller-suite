@@ -732,15 +732,18 @@ export class NetworkGraphModal extends ResponsiveModal {
 	private updateStatusBar(): void {
 		if (!this.statusBarEl) return;
 
-		// For now, display a basic status message
-		// TODO: Enhance NetworkGraphRenderer to expose graph stats
+		const nodeCount = this.graphRenderer?.getNodeCount() || 0;
+		const edgeCount = this.graphRenderer?.getEdgeCount() || 0;
 		const activeFilters = Object.keys(this.currentFilters).length;
-		
+
 		let statusText = '';
-		if (activeFilters > 0) {
-			statusText = `${t('filteredLabel')} (${activeFilters} ${activeFilters === 1 ? 'filter' : 'filters'} active)`;
+		if (nodeCount === 0 && edgeCount === 0) {
+			statusText = t('emptyGraphMessage') || 'No entities to display';
 		} else {
-			statusText = t('nodesLabel') + ' & ' + t('edgesLabel');
+			statusText = `${nodeCount} ${nodeCount === 1 ? 'node' : 'nodes'} • ${edgeCount} ${edgeCount === 1 ? 'edge' : 'edges'}`;
+			if (activeFilters > 0) {
+				statusText += ` (${activeFilters} ${activeFilters === 1 ? 'filter' : 'filters'} active)`;
+			}
 		}
 
 		this.statusBarEl.textContent = statusText;

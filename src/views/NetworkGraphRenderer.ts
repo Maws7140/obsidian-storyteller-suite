@@ -239,7 +239,15 @@ export class NetworkGraphRenderer {
             return;
         }
 
-        // Convert to cytoscape format
+        // Calculate node degrees for dynamic sizing and visual hierarchy
+        const nodeDegrees = new Map<string, number>();
+        nodes.forEach(node => nodeDegrees.set(node.id, 0));
+        edges.forEach(edge => {
+            nodeDegrees.set(edge.source, (nodeDegrees.get(edge.source) || 0) + 1);
+            nodeDegrees.set(edge.target, (nodeDegrees.get(edge.target) || 0) + 1);
+        });
+
+        // Convert to cytoscape format with degree data
         const elements = [
             ...nodes.map(node => ({
                 data: {
@@ -247,7 +255,8 @@ export class NetworkGraphRenderer {
                     label: node.label,
                     type: node.type,
                     entityData: node.data,
-                    imageUrl: node.imageUrl
+                    imageUrl: node.imageUrl,
+                    degree: nodeDegrees.get(node.id) || 0
                 }
             })),
             ...edges.map(edge => ({
@@ -1573,19 +1582,42 @@ export class NetworkGraphRenderer {
             clearTimeout(this.infoPanelTimeout);
             this.infoPanelTimeout = null;
         }
-        
+
+        // Clear viewport save timeout to prevent memory leaks
+        if (this.saveViewportTimeout) {
+            clearTimeout(this.saveViewportTimeout);
+            this.saveViewportTimeout = null;
+        }
+
+        // Clean up info panel
         if (this.infoPanelEl) {
             this.infoPanelEl.remove();
             this.infoPanelEl = null;
         }
+
+        // Clean up legend panel elements
+        if (this.legendPanelEl) {
+            this.legendPanelEl.remove();
+            this.legendPanelEl = null;
+        }
+
+        if (this.legendToggleButtonEl) {
+            this.legendToggleButtonEl.remove();
+            this.legendToggleButtonEl = null;
+        }
+
+        // Clean up Cytoscape instance
         if (this.cy) {
             this.cy.destroy();
             this.cy = null;
         }
+
+        // Clean up canvas element
         if (this.canvasEl) {
             this.canvasEl.remove();
             this.canvasEl = null;
         }
+
         this.pinnedNodes.clear();
     }
 }
