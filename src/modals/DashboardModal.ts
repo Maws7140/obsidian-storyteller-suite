@@ -87,23 +87,23 @@ export class DashboardModal extends ResponsiveModal {
                     }).open();
                 }));
 
-        new Setting(contentEl)
-            .setName('Maps')
-            .setDesc('Create and manage interactive maps for your story')
-            .addButton(button => button
-                .setButtonText('View Maps')
-                .setCta()
-                .onClick(async () => {
-                    this.close();
-                    const maps = await this.plugin.listMaps();
-                    new (await import('./MapListModal')).MapListModal(this.app, this.plugin, maps).open();
-                }))
-            .addButton(button => button
-                .setButtonText(t('createNew'))
-                .onClick(async () => {
-                    this.close();
-                    await this.plugin.openMapEditor();
-                }));
+        // TODO: Maps feature - to be reimplemented
+        // new Setting(contentEl)
+        //     .setName('Maps')
+        //     .setDesc('Create and manage interactive maps for your story')
+        //     .addButton(button => button
+        //         .setButtonText('View Maps')
+        //         .setCta()
+        //         .onClick(async () => {
+        //             this.close();
+        //             // Maps feature to be implemented
+        //         }))
+        //     .addButton(button => button
+        //         .setButtonText(t('createNew'))
+        //         .onClick(async () => {
+        //             this.close();
+        //             // Maps feature to be implemented
+        //         }));
 
         new Setting(contentEl)
             .setName(t('gallery'))
