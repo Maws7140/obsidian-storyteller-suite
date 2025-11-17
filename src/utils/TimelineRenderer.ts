@@ -99,7 +99,7 @@ export class TimelineRenderer {
      */
     applyFilters(filters: Partial<TimelineFilters>): void {
         this.filters = { ...this.filters, ...filters };
-        this.render();
+        this.renderPreservingView();
     }
 
     /**
@@ -107,7 +107,7 @@ export class TimelineRenderer {
      */
     setGanttMode(enabled: boolean): void {
         this.options.ganttMode = enabled;
-        this.render();
+        this.renderPreservingView();
     }
 
     /**
@@ -115,7 +115,7 @@ export class TimelineRenderer {
      */
     setGroupMode(mode: 'none' | 'location' | 'group' | 'character'): void {
         this.options.groupMode = mode;
-        this.render();
+        this.renderPreservingView();
     }
 
     /**
@@ -140,7 +140,7 @@ export class TimelineRenderer {
      */
     setStackEnabled(enabled: boolean): void {
         this.options.stackEnabled = enabled;
-        this.render();
+        this.renderPreservingView();
     }
 
     /**
@@ -148,15 +148,21 @@ export class TimelineRenderer {
      */
     setDensity(density: number): void {
         this.options.density = density;
-        this.render();
+        this.renderPreservingView();
     }
 
     /**
      * Zoom to fit all events
      */
     fitToView(): void {
-        if (this.timeline) {
-            this.timeline.fit();
+        if (!this.timeline) return;
+        try {
+            // Verify timeline is fully initialized
+            if (typeof this.timeline.fit === 'function') {
+                this.timeline.fit();
+            }
+        } catch (error) {
+            console.warn('Timeline: Could not fit to view:', error);
         }
     }
 
@@ -165,23 +171,42 @@ export class TimelineRenderer {
      */
     zoomPresetYears(years: number): void {
         if (!this.timeline) return;
-        const refDate = this.plugin.getReferenceTodayDate();
-        if (!refDate || !(refDate instanceof Date) || isNaN(refDate.getTime())) {
-            console.error('Timeline: Invalid reference date, cannot zoom');
-            return;
+        try {
+            const refDate = this.plugin.getReferenceTodayDate();
+            if (!refDate || !(refDate instanceof Date) || isNaN(refDate.getTime())) {
+                console.error('Timeline: Invalid reference date, cannot zoom');
+                return;
+            }
+            // Verify timeline has setWindow method
+            if (typeof this.timeline.setWindow !== 'function') {
+                console.warn('Timeline: setWindow method not available');
+                return;
+            }
+            const center = refDate.getTime();
+            const half = (years * 365.25 * 24 * 60 * 60 * 1000) / 2;
+            this.timeline.setWindow(new Date(center - half), new Date(center + half));
+        } catch (error) {
+            console.warn('Timeline: Could not zoom to preset:', error);
         }
-        const center = refDate.getTime();
-        const half = (years * 365.25 * 24 * 60 * 60 * 1000) / 2;
-        this.timeline.setWindow(new Date(center - half), new Date(center + half));
     }
 
     /**
      * Move timeline to today
      */
     moveToToday(): void {
-        if (this.timeline) {
+        if (!this.timeline) return;
+        try {
             const ref = this.plugin.getReferenceTodayDate();
-            this.timeline.moveTo(ref);
+            if (!ref || !(ref instanceof Date) || isNaN(ref.getTime())) {
+                console.error('Timeline: Invalid reference date, cannot move to today');
+                return;
+            }
+            // Verify timeline has moveTo method
+            if (typeof this.timeline.moveTo === 'function') {
+                this.timeline.moveTo(ref);
+            }
+        } catch (error) {
+            console.warn('Timeline: Could not move to today:', error);
         }
     }
 
@@ -198,6 +223,20 @@ export class TimelineRenderer {
             };
         } catch {
             return null;
+        }
+    }
+
+    /**
+     * Set visible window range (for state restoration)
+     */
+    setVisibleRange(start: Date, end: Date): void {
+        if (!this.timeline) return;
+        try {
+            if (typeof this.timeline.setWindow === 'function') {
+                this.timeline.setWindow(start, end, { animation: false });
+            }
+        } catch (error) {
+            console.warn('Timeline: Could not set visible range:', error);
         }
     }
 
@@ -264,9 +303,18 @@ export class TimelineRenderer {
     }
 
     /**
-     * Main rendering method with error boundary
+     * Render while preserving current zoom/scroll position
      */
-    private async render(): Promise<void> {
+    private renderPreservingView(): void {
+        const currentWindow = this.getVisibleRange();
+        this.render(currentWindow);
+    }
+
+    /**
+     * Main rendering method with error boundary
+     * @param preservedWindow Optional window range to restore after rendering
+     */
+    private async render(preservedWindow?: { start: Date; end: Date } | null): Promise<void> {
         try {
             // Clear existing timeline
             this.destroy();
@@ -317,13 +365,9 @@ export class TimelineRenderer {
                 height: this.options.ganttMode ? 'auto' : undefined
             };
 
-            // Ensure container doesn't clip tooltips
-            this.container.style.overflow = 'visible';
-
-            // Add explicit item height in Gantt mode for consistent bar sizing
-            if (this.options.ganttMode) {
-                timelineOptions.height = '40px';
-            }
+            // Set container overflow to allow proper scrolling
+            // Remove the overflow: visible that was causing issues
+            this.container.style.removeProperty('overflow');
 
             // Enable drag-and-drop editing when in edit mode
             if (this.options.editMode) {
@@ -361,6 +405,22 @@ export class TimelineRenderer {
                     }
                 } catch (timeError) {
                     console.warn('Storyteller Suite: Could not set current time marker:', timeError);
+                }
+            }
+
+            // Restore preserved window range if available
+            if (preservedWindow && this.timeline) {
+                try {
+                    if (typeof this.timeline.setWindow === 'function') {
+                        // Use requestAnimationFrame to ensure timeline is fully rendered
+                        requestAnimationFrame(() => {
+                            if (this.timeline && preservedWindow) {
+                                this.timeline.setWindow(preservedWindow.start, preservedWindow.end, { animation: false });
+                            }
+                        });
+                    }
+                } catch (windowError) {
+                    console.warn('Storyteller Suite: Could not restore window range:', windowError);
                 }
             }
 
