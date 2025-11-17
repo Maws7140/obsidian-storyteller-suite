@@ -81,9 +81,29 @@ export class TemplateStorageManager {
 
         // Ensure template folder exists
         await this.ensureTemplateFolderExists();
+        await this.ensureEntityTypeFoldersExist();
 
-        // Get all JSON files in template folder
-        const folder = this.app.vault.getAbstractFileByPath(this.templateFolder);
+        // Load templates from root template folder (for backward compatibility)
+        await this.loadTemplatesFromFolder(this.templateFolder);
+
+        // Load templates from entity-type subfolders
+        const entityTypes: TemplateEntityType[] = [
+            'character', 'location', 'event', 'item', 'group',
+            'culture', 'economy', 'magicSystem', 'chapter', 'scene', 'reference'
+        ];
+
+        for (const entityType of entityTypes) {
+            const entityTypeFolder = this.getEntityTypeFolder(entityType);
+            const folderPath = `${this.templateFolder}/${entityTypeFolder}`;
+            await this.loadTemplatesFromFolder(folderPath);
+        }
+    }
+
+    /**
+     * Load templates from a specific folder
+     */
+    private async loadTemplatesFromFolder(folderPath: string): Promise<void> {
+        const folder = this.app.vault.getAbstractFileByPath(folderPath);
         if (!folder || !(folder instanceof TFolder)) {
             return;
         }
@@ -119,6 +139,61 @@ export class TemplateStorageManager {
         const folder = this.app.vault.getAbstractFileByPath(this.templateFolder);
         if (!folder) {
             await this.app.vault.createFolder(this.templateFolder);
+        }
+    }
+
+    /**
+     * Get the folder name for a given entity type
+     */
+    private getEntityTypeFolder(entityType: TemplateEntityType): string {
+        const folderMap: Record<TemplateEntityType, string> = {
+            character: 'Characters',
+            location: 'Locations',
+            event: 'Events',
+            item: 'Items',
+            group: 'Groups',
+            culture: 'Cultures',
+            economy: 'Economies',
+            magicSystem: 'MagicSystems',
+            chapter: 'Chapters',
+            scene: 'Scenes',
+            reference: 'References'
+        };
+        return folderMap[entityType] || 'General';
+    }
+
+    /**
+     * Determine the primary entity type for a template
+     */
+    private determineTemplateEntityType(template: Template): TemplateEntityType {
+        // Use the first entity type if available
+        if (template.entityTypes && template.entityTypes.length > 0) {
+            return template.entityTypes[0];
+        }
+        // Default to 'character' if not specified
+        return 'character';
+    }
+
+    /**
+     * Ensure all entity type subfolders exist
+     */
+    private async ensureEntityTypeFoldersExist(): Promise<void> {
+        const entityTypes: TemplateEntityType[] = [
+            'character', 'location', 'event', 'item', 'group',
+            'culture', 'economy', 'magicSystem', 'chapter', 'scene', 'reference'
+        ];
+
+        for (const entityType of entityTypes) {
+            const folderName = this.getEntityTypeFolder(entityType);
+            const folderPath = `${this.templateFolder}/${folderName}`;
+            const folder = this.app.vault.getAbstractFileByPath(folderPath);
+            if (!folder) {
+                try {
+                    await this.app.vault.createFolder(folderPath);
+                } catch (error) {
+                    // Folder might already exist, ignore error
+                }
+            }
         }
     }
 
@@ -230,15 +305,32 @@ export class TemplateStorageManager {
         // Update modified timestamp
         template.modified = new Date().toISOString();
 
-        // Save to vault
-        const filePath = `${this.templateFolder}/${template.id}.json`;
+        // Determine entity type and folder
+        const entityType = this.determineTemplateEntityType(template);
+        const entityTypeFolder = this.getEntityTypeFolder(entityType);
+        const entityTypeFolderPath = `${this.templateFolder}/${entityTypeFolder}`;
+
+        // Ensure entity type subfolder exists
+        await this.ensureTemplateFolderExists();
+        await this.ensureEntityTypeFoldersExist();
+
+        // Save to vault in entity-type-specific folder
+        const filePath = `${entityTypeFolderPath}/${template.id}.json`;
         const content = JSON.stringify(template, null, 2);
 
+        // Check if template exists in old location (for migration)
+        const oldFilePath = `${this.templateFolder}/${template.id}.json`;
+        const oldFile = this.app.vault.getAbstractFileByPath(oldFilePath);
+        if (oldFile instanceof TFile) {
+            // Delete old file if it exists
+            await this.app.vault.delete(oldFile);
+        }
+
+        // Save to new location
         const existingFile = this.app.vault.getAbstractFileByPath(filePath);
         if (existingFile instanceof TFile) {
             await this.app.vault.modify(existingFile, content);
         } else {
-            await this.ensureTemplateFolderExists();
             await this.app.vault.create(filePath, content);
         }
 
@@ -257,8 +349,19 @@ export class TemplateStorageManager {
             throw new Error('Template not found or is built-in');
         }
 
-        const filePath = `${this.templateFolder}/${id}.json`;
-        const file = this.app.vault.getAbstractFileByPath(filePath);
+        // Try to find and delete the template file
+        // Check in entity-type folder first
+        const entityType = this.determineTemplateEntityType(template);
+        const entityTypeFolder = this.getEntityTypeFolder(entityType);
+        const entityTypeFolderPath = `${this.templateFolder}/${entityTypeFolder}`;
+        let filePath = `${entityTypeFolderPath}/${id}.json`;
+        let file = this.app.vault.getAbstractFileByPath(filePath);
+
+        // If not found in entity-type folder, check root template folder (backward compatibility)
+        if (!file) {
+            filePath = `${this.templateFolder}/${id}.json`;
+            file = this.app.vault.getAbstractFileByPath(filePath);
+        }
 
         if (file instanceof TFile) {
             await this.app.vault.delete(file);
