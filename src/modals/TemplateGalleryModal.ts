@@ -5,9 +5,15 @@
 
 import { App, Modal, ButtonComponent, setIcon } from 'obsidian';
 import { MapTemplate, Map as StoryMap } from '../types';
-import { getAllTemplates, getTemplateCategories, applyTemplate } from '../utils/MapTemplates';
+// TODO: Maps feature - MapTemplates to be reimplemented
+// import { getAllTemplates, getTemplateCategories, applyTemplate } from '../utils/MapTemplates';
 import StorytellerSuitePlugin from '../main';
 import { PromptModal } from './ui/PromptModal';
+
+// Temporary stubs until MapTemplates is reimplemented
+const getAllTemplates = (): any[] => [];
+const getTemplateCategories = (): any[] => [];
+const applyTemplate = (template: any, map: any): any => map;
 
 export type TemplateSelectCallback = (template: MapTemplate, mapName: string) => void;
 
