@@ -928,21 +928,16 @@ export class DashboardView extends ItemView {
     async renderNetworkContent(container: HTMLElement) {
         // Import NetworkGraphRenderer dynamically
         const { NetworkGraphRenderer } = await import('./NetworkGraphRenderer');
-        
-        // If graph already exists and is initialized, just refresh the data
-        if (this.networkGraphRenderer && this.networkGraphRenderer.cy) {
-            try {
-                await this.networkGraphRenderer.refresh();
-                return;
-            } catch (error) {
-                console.error('Error refreshing network graph, recreating:', error);
-                // If refresh fails, destroy and recreate
-                this.networkGraphRenderer.destroy();
-                this.networkGraphRenderer = null;
-            }
+
+        // Always clear and recreate - the container changes on each tab switch
+        // The old approach of trying to refresh the existing renderer fails because
+        // the container element is recreated by the tab system
+        if (this.networkGraphRenderer) {
+            this.networkGraphRenderer.destroy();
+            this.networkGraphRenderer = null;
         }
-        
-        // Clear container only when creating new graph
+
+        // Clear container before creating new graph
         container.empty();
         
         // Create controls container (search, zoom, layout)
