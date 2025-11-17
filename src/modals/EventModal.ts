@@ -331,6 +331,148 @@ export class EventModal extends Modal {
                 }).open();
             }));
 
+        // --- Tags ---
+        contentEl.createEl('h3', { text: 'Tags' });
+        const tagsSetting = new Setting(contentEl)
+            .setName('Event Tags')
+            .setDesc('Tags for categorization and filtering');
+        const tagsListEl = tagsSetting.controlEl.createDiv('storyteller-modal-list');
+        const renderTagsList = () => {
+            tagsListEl.empty();
+            if (!this.event.tags || this.event.tags.length === 0) {
+                tagsListEl.createEl('span', { text: 'No tags', cls: 'storyteller-modal-list-empty' });
+            } else {
+                this.event.tags.forEach((tag, index) => {
+                    const itemEl = tagsListEl.createDiv('storyteller-modal-list-item');
+                    itemEl.createSpan({ text: tag });
+                    new ButtonComponent(itemEl)
+                        .setClass('storyteller-modal-list-remove')
+                        .setTooltip(`Remove tag: ${tag}`)
+                        .setIcon('cross')
+                        .onClick(() => {
+                            this.event.tags?.splice(index, 1);
+                            renderTagsList();
+                        });
+                });
+            }
+        };
+        renderTagsList();
+        tagsSetting.addButton(button => button
+            .setButtonText('Add Tag')
+            .setTooltip('Add a tag to this event')
+            .setCta()
+            .onClick(() => {
+                new PromptModal(this.app, {
+                    title: 'Add Tag',
+                    label: 'Tag name',
+                    defaultValue: '',
+                    onSubmit: (tagName: string) => {
+                        const trimmed = tagName.trim();
+                        if (trimmed) {
+                            if (!this.event.tags) {
+                                this.event.tags = [];
+                            }
+                            if (!this.event.tags.includes(trimmed)) {
+                                this.event.tags.push(trimmed);
+                                renderTagsList();
+                            } else {
+                                new Notice(`Tag "${trimmed}" already added.`);
+                            }
+                        }
+                    }
+                }).open();
+            }));
+
+        // --- Narrative Markers (Flashback/Flash-forward) ---
+        contentEl.createEl('h3', { text: 'Narrative Markers' });
+        contentEl.createEl('p', {
+            text: 'Mark this event as a flashback or flash-forward for non-linear storytelling',
+            cls: 'storyteller-modal-description'
+        });
+
+        // Initialize narrativeMarkers if not present
+        if (!this.event.narrativeMarkers) {
+            this.event.narrativeMarkers = {};
+        }
+
+        new Setting(contentEl)
+            .setName('Flashback')
+            .setDesc('This event is told as a flashback')
+            .addToggle(toggle => toggle
+                .setValue(this.event.narrativeMarkers?.isFlashback || false)
+                .onChange(value => {
+                    if (!this.event.narrativeMarkers) {
+                        this.event.narrativeMarkers = {};
+                    }
+                    this.event.narrativeMarkers.isFlashback = value;
+                    if (value && this.event.narrativeMarkers.isFlashforward) {
+                        // Can't be both flashback and flash-forward
+                        this.event.narrativeMarkers.isFlashforward = false;
+                        new Notice('Disabled flash-forward (event cannot be both)');
+                    }
+                }));
+
+        new Setting(contentEl)
+            .setName('Flash-forward')
+            .setDesc('This event is told as a flash-forward')
+            .addToggle(toggle => toggle
+                .setValue(this.event.narrativeMarkers?.isFlashforward || false)
+                .onChange(value => {
+                    if (!this.event.narrativeMarkers) {
+                        this.event.narrativeMarkers = {};
+                    }
+                    this.event.narrativeMarkers.isFlashforward = value;
+                    if (value && this.event.narrativeMarkers.isFlashback) {
+                        // Can't be both flashback and flash-forward
+                        this.event.narrativeMarkers.isFlashback = false;
+                        new Notice('Disabled flashback (event cannot be both)');
+                    }
+                }));
+
+        new Setting(contentEl)
+            .setName('Narrative Date')
+            .setDesc('When this event is narrated in the story (vs when it chronologically occurred)')
+            .addText(text => text
+                .setPlaceholder('e.g., "2024-06-15", "Chapter 3"')
+                .setValue(this.event.narrativeMarkers?.narrativeDate || '')
+                .onChange(value => {
+                    if (!this.event.narrativeMarkers) {
+                        this.event.narrativeMarkers = {};
+                    }
+                    this.event.narrativeMarkers.narrativeDate = value || undefined;
+                }));
+
+        new Setting(contentEl)
+            .setName('Target Event')
+            .setDesc('The event from which this flashback/flash-forward is told')
+            .addText(text => text
+                .setPlaceholder('Event ID or name')
+                .setValue(this.event.narrativeMarkers?.targetEvent || '')
+                .onChange(value => {
+                    if (!this.event.narrativeMarkers) {
+                        this.event.narrativeMarkers = {};
+                    }
+                    this.event.narrativeMarkers.targetEvent = value || undefined;
+                }));
+
+        new Setting(contentEl)
+            .setName('Narrative Context')
+            .setDesc('Description of the narrative framing')
+            .setClass('storyteller-modal-setting-vertical')
+            .addTextArea(text => {
+                text
+                    .setPlaceholder('e.g., "Told through John\'s memory while in prison"')
+                    .setValue(this.event.narrativeMarkers?.narrativeContext || '')
+                    .onChange(value => {
+                        if (!this.event.narrativeMarkers) {
+                            this.event.narrativeMarkers = {};
+                        }
+                        this.event.narrativeMarkers.narrativeContext = value || undefined;
+                    });
+                text.inputEl.rows = 2;
+                text.inputEl.addClass('storyteller-modal-textarea');
+            });
+
         // --- Custom Fields ---
         contentEl.createEl('h3', { text: t('customFields') });
         const customFieldsContainer = contentEl.createDiv('storyteller-custom-fields-container');
