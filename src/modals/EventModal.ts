@@ -473,6 +473,47 @@ export class EventModal extends Modal {
                 text.inputEl.addClass('storyteller-modal-textarea');
             });
 
+        // --- Era Membership ---
+        contentEl.createEl('h3', { text: 'Timeline Eras' });
+        const eras = this.plugin.settings.timelineEras || [];
+        if (eras.length > 0) {
+            contentEl.createEl('p', {
+                text: 'This event belongs to the following timeline eras based on its date:',
+                cls: 'storyteller-modal-description'
+            });
+
+            const eraBadgesContainer = contentEl.createDiv('storyteller-era-badges-container');
+
+            // Import EraManager to find eras for this event
+            import('../utils/EraManager').then(({ EraManager }) => {
+                const eventEras = EraManager.findErasForEvent(this.event, eras);
+
+                if (eventEras.length === 0) {
+                    eraBadgesContainer.createEl('span', {
+                        text: 'None (event date does not fall within any era)',
+                        cls: 'storyteller-era-no-match'
+                    });
+                } else {
+                    for (const era of eventEras) {
+                        const badge = eraBadgesContainer.createDiv('storyteller-era-badge');
+                        if (era.color) {
+                            badge.style.borderLeftColor = era.color;
+                        }
+                        badge.createEl('strong', { text: era.name });
+                        badge.createEl('span', {
+                            text: ` (${era.startDate} → ${era.endDate})`,
+                            cls: 'storyteller-era-badge-dates'
+                        });
+                    }
+                }
+            });
+        } else {
+            contentEl.createEl('p', {
+                text: 'No timeline eras have been created yet. Use the "Manage timeline eras" command to create eras.',
+                cls: 'storyteller-modal-description storyteller-era-empty-state'
+            });
+        }
+
         // --- Custom Fields ---
         contentEl.createEl('h3', { text: t('customFields') });
         const customFieldsContainer = contentEl.createDiv('storyteller-custom-fields-container');

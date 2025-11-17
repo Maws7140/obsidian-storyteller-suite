@@ -31,7 +31,7 @@ export class EraManager {
             }
 
             // Check for any overlap between the ranges
-            return eraStart.start <= end.start && eraEnd.start >= start.start;
+            return eraStart.start! <= end.start! && eraEnd.start! >= start.start!;
         });
     }
 
@@ -56,7 +56,7 @@ export class EraManager {
             const eventStart = eventDate.start;
             const eventEnd = eventDate.end || eventDate.start;
 
-            return eventStart >= eraStart.start && eventEnd <= eraEnd.start;
+            return eventStart! >= eraStart.start! && eventEnd! <= eraEnd.start!;
         });
     }
 

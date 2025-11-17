@@ -158,6 +158,22 @@ export class TimelineRenderer {
     }
 
     /**
+     * Toggle era backgrounds
+     */
+    setShowEras(enabled: boolean): void {
+        this.options.showEras = enabled;
+        this.renderPreservingView();
+    }
+
+    /**
+     * Toggle narrative order sorting
+     */
+    setNarrativeOrder(enabled: boolean): void {
+        this.options.narrativeOrder = enabled;
+        this.renderPreservingView();
+    }
+
+    /**
      * Zoom to fit all events
      */
     fitToView(): void {
@@ -470,7 +486,7 @@ export class TimelineRenderer {
 
             // Create timeline with error handling
             try {
-                this.timeline = groups 
+                this.timeline = groups
                     ? new Timeline(this.container, items, groups, timelineOptions)
                     : new Timeline(this.container, items, timelineOptions);
             } catch (timelineError) {
@@ -484,6 +500,11 @@ export class TimelineRenderer {
                     div.createEl('p', { text: 'Check the developer console (Ctrl+Shift+I) for more details.' });
                 });
                 return;
+            }
+
+            // Add era backgrounds if enabled
+            if (this.options.showEras && this.timeline) {
+                this.addEraBackgrounds(referenceDate);
             }
 
             // Set custom current time bar
@@ -724,7 +745,11 @@ export class TimelineRenderer {
                 continue;
             }
 
-            const dateString = getEventDateForTimeline(evt);
+            // Use narrative date if narrative order is enabled and event has one
+            let dateString = getEventDateForTimeline(evt);
+            if (this.options.narrativeOrder && evt.narrativeMarkers?.narrativeDate) {
+                dateString = evt.narrativeMarkers.narrativeDate;
+            }
 
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const parsed = dateString ? parseEventDate(dateString, { referenceDate }) : { error: 'empty' } as any;
@@ -953,6 +978,58 @@ export class TimelineRenderer {
     }
 
     /**
+     * Add era backgrounds to the timeline
+     */
+    private addEraBackgrounds(referenceDate: Date): void {
+        if (!this.timeline) return;
+
+        const eras = this.plugin.settings.timelineEras || [];
+        const visibleEras = EraManager.getVisibleEras(eras);
+
+        if (visibleEras.length === 0) return;
+
+        try {
+            // Create background items for each era
+            const backgroundItems: any[] = [];
+
+            for (const era of visibleEras) {
+                const startParsed = parseEventDate(era.startDate, { referenceDate });
+                const endParsed = parseEventDate(era.endDate, { referenceDate });
+
+                if (!startParsed.start || !endParsed.start) {
+                    console.warn(`Skipping era "${era.name}" - invalid dates`);
+                    continue;
+                }
+
+                const startMs = toMillis(startParsed.start);
+                const endMs = toMillis(endParsed.start);
+
+                if (startMs == null || endMs == null) continue;
+
+                // Create background item
+                backgroundItems.push({
+                    id: `era-bg-${era.id}`,
+                    start: new Date(startMs),
+                    end: new Date(endMs),
+                    type: 'background',
+                    className: 'timeline-era-background',
+                    style: `background-color: ${era.color || 'rgba(200, 200, 200, 0.2)'};`,
+                    content: era.name,
+                    title: `${era.name}\n${era.startDate} → ${era.endDate}${era.description ? '\n' + era.description : ''}`
+                });
+            }
+
+            // Add background items to timeline
+            if (backgroundItems.length > 0) {
+                const backgroundDataSet = new DataSet(backgroundItems);
+                this.timeline.setItems(backgroundDataSet, true); // true = add to existing items
+            }
+        } catch (error) {
+            console.error('Error adding era backgrounds:', error);
+        }
+    }
+
+    /**
      * Convert hex color to rgba
      */
     private hexWithAlpha(hex: string, alpha: number): string {
@@ -964,3 +1041,4 @@ export class TimelineRenderer {
         return `rgba(${r}, ${g}, ${b}, ${alpha})`;
     }
 }
+
