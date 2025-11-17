@@ -44,7 +44,7 @@ export class TemplateLibraryModal extends ResponsiveModal {
     }
 
     private refreshTemplates(): void {
-        this.templates = this.plugin.templateStorageManager.getFilteredTemplates(this.filter);
+        this.templates = this.plugin.templateManager.getFilteredTemplates(this.filter);
     }
 
     private displayContent(): void {
@@ -274,7 +274,7 @@ export class TemplateLibraryModal extends ResponsiveModal {
         const confirmed = await this.confirmDelete(template.name);
         if (confirmed) {
             try {
-                await this.plugin.templateStorageManager.deleteTemplate(template.id);
+                await this.plugin.templateManager.deleteTemplate(template.id);
                 this.refreshAndDisplay();
             } catch (error) {
                 console.error('Error deleting template:', error);
@@ -286,7 +286,7 @@ export class TemplateLibraryModal extends ResponsiveModal {
     private async handleDuplicateTemplate(template: Template): Promise<void> {
         try {
             const newName = `${template.name} (Copy)`;
-            const duplicate = await this.plugin.templateStorageManager.copyTemplate(
+            const duplicate = await this.plugin.templateManager.copyTemplate(
                 template.id,
                 newName
             );
