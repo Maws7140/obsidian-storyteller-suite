@@ -4,6 +4,8 @@
 
 A comprehensive entity template system has been implemented for the Obsidian Storyteller Suite, allowing users to create, manage, and apply reusable templates for all entity types (characters, locations, events, etc.).
 
+**✨ NEW: Templates are now integrated as a dashboard tab with show/hide settings!**
+
 ## Implementation Summary
 
 ### Phase 1: Core Infrastructure ✅
@@ -88,6 +90,27 @@ A comprehensive entity template system has been implemented for the Obsidian Sto
 **Bulk Creation** (Prepared):
 - TemplateApplicator already supports creating multiple entities
 - Can be extended for bulk template application
+
+## Dashboard Integration ✅
+
+**Templates Tab** (`src/views/DashboardView.ts`):
+- Added dedicated Templates tab to the main dashboard
+- Shows template statistics (total, built-in, custom counts)
+- Displays recently used templates in a grid view
+- Displays most popular templates based on usage
+- Quick access buttons to open full template library
+- Create new templates directly from the dashboard
+- Interactive template cards with hover effects
+
+**Settings Integration** (`src/StorytellerSuiteSettingTab.ts`):
+- Added 'Templates' to dashboard tab visibility settings
+- Users can show/hide the Templates tab via Settings > Dashboard Tab Visibility
+- Uses existing `hiddenDashboardTabs` infrastructure
+
+**Accessing Templates**:
+1. **Dashboard Tab**: Click the "Templates" tab in the dashboard sidebar
+2. **Command Palette**: Use "Open entity template library" command
+3. **Quick Access**: Template cards link directly to the template library
 
 ## Usage Examples
 
