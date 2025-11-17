@@ -149,6 +149,7 @@ export class DashboardView extends ItemView {
             { id: 'cultures', label: 'Cultures', renderFn: this.renderCulturesContent.bind(this) },
             { id: 'economies', label: 'Economies', renderFn: this.renderEconomiesContent.bind(this) },
             { id: 'magicsystems', label: 'Magic Systems', renderFn: this.renderMagicSystemsContent.bind(this) },
+            { id: 'templates', label: 'Templates', renderFn: this.renderTemplatesContent.bind(this) },
         ];
 
         this.debouncedRefreshActiveTab = debounce(this.refreshActiveTab.bind(this), 200, true);
@@ -2561,27 +2562,205 @@ export class DashboardView extends ItemView {
         });
     }
 
+    /**
+     * Render the Templates tab content
+     * Shows template library with filtering and management
+     * @param container The container element to render content into
+     */
+    async renderTemplatesContent(container: HTMLElement) {
+        container.empty();
+
+        // Import the template library modal components
+        const { TemplateLibraryModal } = await import('../modals/TemplateLibraryModal');
+
+        // Create header
+        const header = container.createDiv('storyteller-templates-header');
+        header.createEl('h3', { text: 'Entity Templates' });
+        header.createEl('p', {
+            text: 'Browse and manage reusable templates for characters, locations, and other entities.',
+            cls: 'storyteller-templates-description'
+        });
+
+        // Create action buttons
+        const actionsContainer = container.createDiv('storyteller-templates-actions');
+        actionsContainer.style.display = 'flex';
+        actionsContainer.style.gap = '0.5rem';
+        actionsContainer.style.marginBottom = '1rem';
+
+        const openLibraryBtn = actionsContainer.createEl('button', {
+            text: 'Open Template Library',
+            cls: 'mod-cta'
+        });
+        openLibraryBtn.addEventListener('click', () => {
+            new TemplateLibraryModal(this.app, this.plugin).open();
+        });
+
+        const createTemplateBtn = actionsContainer.createEl('button', {
+            text: 'Create New Template'
+        });
+        createTemplateBtn.addEventListener('click', () => {
+            const { TemplateEditorModal } = require('../modals/TemplateEditorModal');
+            new TemplateEditorModal(
+                this.app,
+                this.plugin,
+                async (template) => {
+                    new Notice(`Template "${template.name}" created!`);
+                    await this.renderTemplatesQuickView(container);
+                }
+            ).open();
+        });
+
+        // Render quick view of templates
+        await this.renderTemplatesQuickView(container);
+    }
+
+    /**
+     * Render a quick view of available templates
+     */
+    private async renderTemplatesQuickView(container: HTMLElement) {
+        // Remove existing quick view if it exists
+        const existingQuickView = container.querySelector('.storyteller-templates-quickview');
+        if (existingQuickView) {
+            existingQuickView.remove();
+        }
+
+        const quickViewContainer = container.createDiv('storyteller-templates-quickview');
+
+        // Get templates from template manager
+        const allTemplates = this.plugin.templateManager.getAllTemplates();
+
+        if (allTemplates.length === 0) {
+            quickViewContainer.createEl('p', {
+                text: 'No templates available. Create your first template to get started!',
+                cls: 'storyteller-empty-state'
+            });
+            return;
+        }
+
+        // Show summary stats
+        const statsContainer = quickViewContainer.createDiv('storyteller-templates-stats');
+        statsContainer.style.marginBottom = '1rem';
+        statsContainer.style.padding = '1rem';
+        statsContainer.style.backgroundColor = 'var(--background-secondary)';
+        statsContainer.style.borderRadius = '8px';
+
+        const builtInCount = allTemplates.filter(t => t.isBuiltIn).length;
+        const customCount = allTemplates.filter(t => !t.isBuiltIn).length;
+
+        statsContainer.createEl('div', {
+            text: `Total Templates: ${allTemplates.length}`,
+            cls: 'storyteller-stat-item'
+        });
+        statsContainer.createEl('div', {
+            text: `Built-in: ${builtInCount} | Custom: ${customCount}`,
+            cls: 'storyteller-stat-item'
+        });
+
+        // Show recently used templates
+        const recentTemplates = this.plugin.templateManager.getRecentlyUsedTemplates(5);
+        if (recentTemplates.length > 0) {
+            quickViewContainer.createEl('h4', { text: 'Recently Used' });
+            const recentList = quickViewContainer.createDiv('storyteller-templates-recent-list');
+            recentList.style.display = 'grid';
+            recentList.style.gridTemplateColumns = 'repeat(auto-fill, minmax(200px, 1fr))';
+            recentList.style.gap = '0.5rem';
+            recentList.style.marginBottom = '1rem';
+
+            recentTemplates.forEach(template => {
+                this.renderTemplateCard(recentList, template);
+            });
+        }
+
+        // Show most popular templates
+        const popularTemplates = this.plugin.templateManager.getMostPopularTemplates(5);
+        if (popularTemplates.length > 0 && popularTemplates.some(t => (t.usageCount || 0) > 0)) {
+            quickViewContainer.createEl('h4', { text: 'Most Popular' });
+            const popularList = quickViewContainer.createDiv('storyteller-templates-popular-list');
+            popularList.style.display = 'grid';
+            popularList.style.gridTemplateColumns = 'repeat(auto-fill, minmax(200px, 1fr))';
+            popularList.style.gap = '0.5rem';
+
+            popularTemplates.forEach(template => {
+                this.renderTemplateCard(popularList, template);
+            });
+        }
+    }
+
+    /**
+     * Render a template card in the quick view
+     */
+    private renderTemplateCard(container: HTMLElement, template: any) {
+        const card = container.createDiv('storyteller-template-card');
+        card.style.padding = '0.75rem';
+        card.style.backgroundColor = 'var(--background-primary)';
+        card.style.border = '1px solid var(--background-modifier-border)';
+        card.style.borderRadius = '6px';
+        card.style.cursor = 'pointer';
+        card.style.transition = 'all 0.2s';
+
+        card.addEventListener('mouseenter', () => {
+            card.style.backgroundColor = 'var(--background-modifier-hover)';
+        });
+
+        card.addEventListener('mouseleave', () => {
+            card.style.backgroundColor = 'var(--background-primary)';
+        });
+
+        card.addEventListener('click', () => {
+            const { TemplateLibraryModal } = require('../modals/TemplateLibraryModal');
+            new TemplateLibraryModal(this.app, this.plugin).open();
+        });
+
+        const titleEl = card.createEl('div', {
+            text: template.name,
+            cls: 'storyteller-template-card-title'
+        });
+        titleEl.style.fontWeight = 'bold';
+        titleEl.style.marginBottom = '0.25rem';
+
+        const metaEl = card.createDiv('storyteller-template-card-meta');
+        metaEl.style.fontSize = '0.85em';
+        metaEl.style.color = 'var(--text-muted)';
+
+        const categoryBadge = metaEl.createEl('span', { text: template.category });
+        categoryBadge.style.marginRight = '0.5rem';
+
+        if (template.usageCount && template.usageCount > 0) {
+            metaEl.createEl('span', { text: `Used: ${template.usageCount}x` });
+        }
+
+        if (template.entityTypes && template.entityTypes.length > 0) {
+            const typesEl = card.createDiv('storyteller-template-card-types');
+            typesEl.style.marginTop = '0.5rem';
+            typesEl.style.fontSize = '0.75em';
+            typesEl.createEl('span', {
+                text: template.entityTypes.slice(0, 2).join(', '),
+                cls: 'storyteller-template-entity-types'
+            });
+        }
+    }
+
     async onClose() {
         // Clean up file input if it exists
         this.fileInput?.remove();
         this.fileInput = null;
-        
+
         // Clean up typing timer
         if (this.typingTimer) {
             clearTimeout(this.typingTimer);
             this.typingTimer = null;
         }
-        
+
         // Clean up dismissal timer
         if (this.dismissalTimer) {
             clearTimeout(this.dismissalTimer);
             this.dismissalTimer = null;
         }
-        
+
         // Reset typing state
         this.isUserTyping = false;
         this.currentSearchInput = null;
-        
+
         // Clean up network graph renderer
         if (this.networkGraphRenderer) {
             this.networkGraphRenderer.destroy();
