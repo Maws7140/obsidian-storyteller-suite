@@ -32,13 +32,13 @@ export class TemplatePickerModal extends SuggestModal<Template> {
 
     getSuggestions(query: string): Template[] {
         const allTemplates = this.entityType
-            ? this.plugin.templateStorageManager.getTemplatesByEntityType(this.entityType)
-            : this.plugin.templateStorageManager.getAllTemplates();
+            ? this.plugin.templateManager.getTemplatesByEntityType(this.entityType)
+            : this.plugin.templateManager.getAllTemplates();
 
         if (!query) {
             // If no query, show recently used and popular templates
-            const recentTemplates = this.plugin.templateStorageManager.getRecentlyUsedTemplates(3);
-            const popularTemplates = this.plugin.templateStorageManager.getMostPopularTemplates(3);
+            const recentTemplates = this.plugin.templateManager.getRecentlyUsedTemplates(3);
+            const popularTemplates = this.plugin.templateManager.getMostPopularTemplates(3);
 
             // Combine and deduplicate
             const combined = [...recentTemplates];
