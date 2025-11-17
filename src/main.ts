@@ -57,6 +57,7 @@ import { MagicSystemModal } from './modals/MagicSystemModal';
 import { MagicSystemListModal } from './modals/MagicSystemListModal';
 import { PlatformUtils } from './utils/PlatformUtils';
 import { getTemplateSections } from './utils/EntityTemplates';
+import { LeafletCodeBlockProcessor } from './leaflet/processor';
 
 /**
  * Plugin settings interface defining all configurable options
@@ -327,6 +328,7 @@ export default class StorytellerSuitePlugin extends Plugin {
     }
 	settings: StorytellerSuiteSettings;
     private folderResolver: FolderResolver | null = null;
+    private leafletProcessor: LeafletCodeBlockProcessor;
 
     /** Sanitize the one-story base folder so it is vault-relative and never a leading slash. */
     private sanitizeBaseFolderPath(input?: string): string {
@@ -566,6 +568,10 @@ export default class StorytellerSuitePlugin extends Plugin {
 
 		// Apply mobile CSS classes to the document body
 		this.applyMobilePlatformClasses();
+
+		// Initialize and register Leaflet code block processor
+		this.leafletProcessor = new LeafletCodeBlockProcessor(this);
+		this.leafletProcessor.register();
 
 		// Register the main dashboard view with Obsidian's workspace
 		this.registerView(
@@ -935,6 +941,11 @@ export default class StorytellerSuitePlugin extends Plugin {
 		// Manual cleanup not needed - Obsidian handles view management
 		// Clean up mobile platform classes to prevent class leakage
 		this.removeMobilePlatformClasses();
+
+		// Cleanup all active maps
+		if (this.leafletProcessor) {
+			this.leafletProcessor.cleanup();
+		}
 	}
 
 	/**
