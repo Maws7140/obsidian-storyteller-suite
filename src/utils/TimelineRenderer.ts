@@ -561,7 +561,7 @@ export class TimelineRenderer {
             // Handle single click to zoom into event
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             this.timeline.on('click', (props: any) => {
-                if (props.item != null && props.event) {
+                if (props.item != null) {
                     // Prevent zoom if this is the first click of a double-click
                     // We use a simple timeout-based approach to distinguish single from double clicks
                     const clickDelay = 250; // ms to wait before treating as single click
