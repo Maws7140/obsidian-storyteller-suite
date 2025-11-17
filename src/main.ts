@@ -57,6 +57,8 @@ import { MagicSystemModal } from './modals/MagicSystemModal';
 import { MagicSystemListModal } from './modals/MagicSystemListModal';
 import { PlatformUtils } from './utils/PlatformUtils';
 import { getTemplateSections } from './utils/EntityTemplates';
+import { TemplateStorageManager } from './templates/TemplateStorageManager';
+import { StoryTemplateGalleryModal } from './templates/modals/StoryTemplateGalleryModal';
 
 /**
  * Plugin settings interface defining all configurable options
@@ -154,6 +156,11 @@ import { getTemplateSections } from './utils/EntityTemplates';
 
     /** Dashboard tab visibility - array of tab IDs to hide */
     hiddenDashboardTabs?: string[];
+
+    /** Template system settings */
+    templateStorageFolder?: string;
+    showBuiltInTemplates?: boolean;
+    showCommunityTemplates?: boolean;
 }
 
 /**
@@ -204,7 +211,10 @@ import { getTemplateSections } from './utils/EntityTemplates';
     trackWritingSessions: false,
     enableWorldBuilding: true,
     enableSensoryProfiles: true,
-    hiddenDashboardTabs: []
+    hiddenDashboardTabs: [],
+    templateStorageFolder: 'StorytellerSuite/Templates',
+    showBuiltInTemplates: true,
+    showCommunityTemplates: false
 }
 
 /**
@@ -327,6 +337,7 @@ export default class StorytellerSuitePlugin extends Plugin {
     }
 	settings: StorytellerSuiteSettings;
     private folderResolver: FolderResolver | null = null;
+    templateManager: TemplateStorageManager;
 
     /** Sanitize the one-story base folder so it is vault-relative and never a leading slash. */
     private sanitizeBaseFolderPath(input?: string): string {
@@ -563,6 +574,13 @@ export default class StorytellerSuitePlugin extends Plugin {
 
 		// Initialize locale from settings
 		setLocale(this.settings.language);
+
+		// Initialize template manager
+		this.templateManager = new TemplateStorageManager(
+			this.app,
+			this.settings.templateStorageFolder || 'StorytellerSuite/Templates'
+		);
+		await this.templateManager.initialize();
 
 		// Apply mobile CSS classes to the document body
 		this.applyMobilePlatformClasses();
@@ -977,6 +995,15 @@ export default class StorytellerSuitePlugin extends Plugin {
 			name: 'Refresh story discovery',
 			callback: async () => {
 				await this.refreshStoryDiscovery();
+			}
+		});
+
+		// --- Template Gallery Command ---
+		this.addCommand({
+			id: 'open-template-gallery',
+			name: 'Browse story templates',
+			callback: () => {
+				new StoryTemplateGalleryModal(this.app, this, this.templateManager).open();
 			}
 		});
 
