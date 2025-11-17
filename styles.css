@@ -84,6 +84,47 @@
 }
 
 /* ============================================
+   STORYTELLER MAP CONTAINER
+   ============================================ */
+
+.storyteller-map-container {
+  width: 100%;
+  height: 500px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  overflow: hidden;
+  margin: 1em 0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.storyteller-map-error {
+  padding: 1em;
+  border: 1px solid var(--background-modifier-error);
+  border-radius: 4px;
+  background-color: var(--background-modifier-error);
+  color: var(--text-error);
+  margin: 1em 0;
+}
+
+/* ============================================
+   STORYTELLER MAP MARKERS
+   ============================================ */
+
+.storyteller-map-marker {
+  cursor: pointer;
+  transition: transform 0.2s ease;
+}
+
+.storyteller-map-marker:hover {
+  transform: scale(1.1);
+  z-index: 1000;
+}
+
+.storyteller-map-marker svg {
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
+}
+
+/* ============================================
    1. STANDARDIZED DESIGN SYSTEM
    ============================================ */
 
