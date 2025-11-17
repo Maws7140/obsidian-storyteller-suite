@@ -34,7 +34,7 @@ const FRONTMATTER_WHITELISTS: Record<EntityType, Set<string>> = {
   event: new Set([
     'id', 'name', 'dateTime', 'characters', 'location', 'status',
     'groups', 'profileImagePath', 'customFields', 'connections',
-    'isMilestone', 'dependencies', 'progress'
+    'isMilestone', 'dependencies', 'progress', 'tags', 'narrativeMarkers'
   ]),
   item: new Set([
     'id', 'name', 'isPlotCritical', 'currentOwner', 'pastOwners',
