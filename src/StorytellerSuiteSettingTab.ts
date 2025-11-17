@@ -62,7 +62,8 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
             { id: 'scenes', name: 'Scenes' },
             { id: 'cultures', name: 'Cultures' },
             { id: 'economies', name: 'Economies' },
-            { id: 'magicsystems', name: 'Magic Systems' }
+            { id: 'magicsystems', name: 'Magic Systems' },
+            { id: 'templates', name: 'Templates' }
         ];
 
         // Create a toggle for each tab
