@@ -46,7 +46,8 @@ export class TimelineRenderer {
     private timeline: any = null;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     private dependencyArrows: any = null;
-    
+    private clickTimeout: ReturnType<typeof setTimeout> | null = null;
+
     // Configuration
     private options: TimelineRendererOptions;
     private filters: TimelineFilters = {};
@@ -211,6 +212,83 @@ export class TimelineRenderer {
     }
 
     /**
+     * Zoom timeline to focus on a specific event
+     * Intelligently calculates window size based on event duration and neighboring events
+     */
+    private zoomToEvent(eventIndex: number): void {
+        if (!this.timeline) return;
+
+        // Validate array bounds
+        if (eventIndex < 0 || eventIndex >= this.events.length) {
+            console.error('Timeline: Invalid event index for zoom:', eventIndex);
+            return;
+        }
+
+        const event = this.events[eventIndex];
+        if (!event) {
+            console.error('Timeline: Event not found at index:', eventIndex);
+            return;
+        }
+
+        try {
+            const referenceDate = this.plugin.getReferenceTodayDate();
+            const dateString = getEventDateForTimeline(event);
+            const parsed = dateString ? parseEventDate(dateString, { referenceDate }) : null;
+
+            const startMs = toMillis(parsed?.start);
+            if (startMs == null || typeof startMs !== 'number' || isNaN(startMs)) {
+                console.warn('Timeline: Cannot zoom to event with invalid date:', event.name);
+                return;
+            }
+
+            const endMs = toMillis(parsed?.end);
+
+            // Calculate appropriate zoom window
+            let windowStart: Date;
+            let windowEnd: Date;
+
+            if (endMs != null && typeof endMs === 'number' && !isNaN(endMs)) {
+                // Event has a duration (range event)
+                const durationMs = endMs - startMs;
+
+                // Add 50% padding on each side for context
+                const paddingMs = durationMs * 0.5;
+                windowStart = new Date(startMs - paddingMs);
+                windowEnd = new Date(endMs + paddingMs);
+            } else {
+                // Point event - create a window based on the timeline's current zoom level or default
+                const currentWindow = this.getVisibleRange();
+                let contextWindowMs: number;
+
+                if (currentWindow) {
+                    // Use 10% of current visible window as the new window
+                    const currentRangeMs = currentWindow.end.getTime() - currentWindow.start.getTime();
+                    contextWindowMs = Math.max(currentRangeMs * 0.1, 30 * 24 * 60 * 60 * 1000); // Minimum 30 days
+                } else {
+                    // Default to 1 year window for point events
+                    contextWindowMs = 365.25 * 24 * 60 * 60 * 1000;
+                }
+
+                const halfWindow = contextWindowMs / 2;
+                windowStart = new Date(startMs - halfWindow);
+                windowEnd = new Date(startMs + halfWindow);
+            }
+
+            // Apply the zoom with smooth animation
+            if (typeof this.timeline.setWindow === 'function') {
+                this.timeline.setWindow(windowStart, windowEnd, {
+                    animation: {
+                        duration: 500,
+                        easingFunction: 'easeInOutQuad'
+                    }
+                });
+            }
+        } catch (error) {
+            console.warn('Timeline: Could not zoom to event:', error);
+        }
+    }
+
+    /**
      * Get visible date range
      */
     getVisibleRange(): { start: Date; end: Date } | null {
@@ -284,6 +362,12 @@ export class TimelineRenderer {
      * Destroy timeline and clean up
      */
     destroy(): void {
+        // Clear any pending click timeout
+        if (this.clickTimeout) {
+            clearTimeout(this.clickTimeout);
+            this.clickTimeout = null;
+        }
+
         if (this.dependencyArrows) {
             try {
                 this.dependencyArrows.removeArrows();
@@ -474,9 +558,36 @@ export class TimelineRenderer {
                 }
             });
 
+            // Handle single click to zoom into event
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            this.timeline.on('click', (props: any) => {
+                if (props.item != null && props.event) {
+                    // Prevent zoom if this is the first click of a double-click
+                    // We use a simple timeout-based approach to distinguish single from double clicks
+                    const clickDelay = 250; // ms to wait before treating as single click
+
+                    if (this.clickTimeout) {
+                        clearTimeout(this.clickTimeout);
+                        this.clickTimeout = null;
+                        return; // This is a double-click, don't zoom
+                    }
+
+                    this.clickTimeout = setTimeout(() => {
+                        this.clickTimeout = null;
+                        this.zoomToEvent(props.item as number);
+                    }, clickDelay);
+                }
+            });
+
             // Handle double-click to edit
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             this.timeline.on('doubleClick', (props: any) => {
+                // Cancel any pending single-click zoom
+                if (this.clickTimeout) {
+                    clearTimeout(this.clickTimeout);
+                    this.clickTimeout = null;
+                }
+
                 if (props.item != null) {
                     const idx = props.item as number;
 
