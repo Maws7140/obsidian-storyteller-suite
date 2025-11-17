@@ -389,7 +389,7 @@ export const MURDER_MYSTERY_TEMPLATE: Template = {
                 customFields: {
                     discoveries: 'Blackmail files, secret affair, gambling debts',
                     contradictions: 'Multiple alibi inconsistencies',
-                    evidence': 'Fingerprints on glass, hidden passages, poison source',
+                    'evidence': 'Fingerprints on glass, hidden passages, poison source',
                     conclusion: 'All suspects had means, motive, and opportunity'
                 }
             },
