@@ -1720,6 +1720,16 @@ export default class StorytellerSuitePlugin extends Plugin {
 				).open();
 			}
 		});
+
+		// --- Entity Template Commands ---
+		this.addCommand({
+			id: 'open-entity-template-library',
+			name: 'Open entity template library',
+			callback: () => {
+				const { TemplateLibraryModal } = require('./modals/TemplateLibraryModal');
+				new TemplateLibraryModal(this.app, this).open();
+			}
+		});
 	}
 
 	/**
