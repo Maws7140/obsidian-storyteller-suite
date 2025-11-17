@@ -3,9 +3,10 @@
 
 import { App, Notice } from 'obsidian';
 import StorytellerSuitePlugin from '../main';
-import { Event } from '../types';
+import { Event, TimelineEra } from '../types';
 import { parseEventDate, toMillis, toDisplay, getEventDateForTimeline } from './DateParsing';
 import { EventModal } from '../modals/EventModal';
+import { EraManager } from './EraManager';
 
 // @ts-ignore: vis-timeline is bundled dependency
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -25,6 +26,8 @@ export interface TimelineRendererOptions {
     density?: number;
     defaultGanttDuration?: number; // days
     editMode?: boolean;
+    showEras?: boolean; // Whether to display era backgrounds
+    narrativeOrder?: boolean; // Sort by narrative date instead of chronological
 }
 
 export interface TimelineFilters {
@@ -32,6 +35,8 @@ export interface TimelineFilters {
     locations?: Set<string>;
     groups?: Set<string>;
     milestonesOnly?: boolean;
+    tags?: Set<string>;
+    eras?: Set<string>; // Filter by era IDs
 }
 
 /**
@@ -753,31 +758,38 @@ export class TimelineRenderer {
 
             const approx = !!parsed.approximate;
             const isMilestone = !!evt.isMilestone;
-            
+            const isFlashback = !!evt.narrativeMarkers?.isFlashback;
+            const isFlashforward = !!evt.narrativeMarkers?.isFlashforward;
+
             // Gantt mode: ensure all events have duration (but not milestones)
             let displayEndMs = endMs;
             if (this.options.ganttMode && displayEndMs == null && !isMilestone) {
                 const durationMs = (this.options.defaultGanttDuration || 1) * 24 * 60 * 60 * 1000;
                 displayEndMs = startMs + durationMs;
             }
-            
+
             // Validate displayEndMs if it exists
             if (displayEndMs != null && (typeof displayEndMs !== 'number' || isNaN(displayEndMs))) {
                 console.warn('[Timeline] Invalid end timestamp for event:', evt.name, displayEndMs);
                 displayEndMs = undefined; // Treat as point event
             }
-            
+
             // Build CSS classes
             const classes: string[] = [];
             if (approx) classes.push('is-approx');
             if (isMilestone) classes.push('timeline-milestone');
             if (this.options.ganttMode && !isMilestone) classes.push('gantt-bar');
+            if (isFlashback) classes.push('narrative-flashback');
+            if (isFlashforward) classes.push('narrative-flashforward');
             
             // Style
             const style = color ? `background-color:${this.hexWithAlpha(color, 0.18)};border-color:${color};` : '';
-            
-            // Content with milestone icon
-            const content = isMilestone ? '⭐ ' + evt.name : evt.name;
+
+            // Content with icons for milestone, flashback, flash-forward
+            let content = evt.name;
+            if (isMilestone) content = '⭐ ' + content;
+            if (isFlashback) content = '⬅️ ' + content;
+            if (isFlashforward) content = '➡️ ' + content;
 
             // Item type - milestones always use 'box' to show content without range bars
             let itemType: string;
@@ -879,22 +891,39 @@ export class TimelineRenderer {
         if (this.filters.milestonesOnly && !evt.isMilestone) {
             return false;
         }
-        
+
         // Character filter
         if (this.filters.characters && this.filters.characters.size > 0) {
             const hasMatchingChar = evt.characters?.some(c => this.filters.characters && this.filters.characters.has(c));
             if (!hasMatchingChar) return false;
         }
-        
+
         // Location filter
         if (this.filters.locations && this.filters.locations.size > 0) {
             if (!evt.location || !this.filters.locations.has(evt.location)) return false;
         }
-        
+
         // Group filter
         if (this.filters.groups && this.filters.groups.size > 0) {
             const hasMatchingGroup = evt.groups?.some(g => this.filters.groups && this.filters.groups.has(g));
             if (!hasMatchingGroup) return false;
+        }
+
+        // Tag filter
+        if (this.filters.tags && this.filters.tags.size > 0) {
+            const hasMatchingTag = evt.tags?.some(t => this.filters.tags && this.filters.tags.has(t));
+            if (!hasMatchingTag) return false;
+        }
+
+        // Era filter (check if event falls within selected eras)
+        if (this.filters.eras && this.filters.eras.size > 0) {
+            const eras = this.plugin.settings.timelineEras || [];
+            const selectedEras = eras.filter(era => this.filters.eras && this.filters.eras.has(era.id));
+            const eventInEra = selectedEras.some(era => {
+                const eventsInEra = EraManager.getEventsInEra(era, [evt]);
+                return eventsInEra.length > 0;
+            });
+            if (!eventInEra) return false;
         }
 
         return true;

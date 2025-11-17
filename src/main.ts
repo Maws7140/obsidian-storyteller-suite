@@ -26,7 +26,7 @@ import { CharacterModal } from './modals/CharacterModal';
 import {
     Character, Location, Event, GalleryImage, GalleryData, Story, Group, PlotItem, Reference, Chapter, Scene,
     Culture, Economy, MagicSystem,
-    TimelineFork, CausalityLink, TimelineConflict,
+    TimelineFork, CausalityLink, TimelineConflict, TimelineEra, TimelineTrack,
     PacingAnalysis, WritingSession, StoryAnalytics, LocationSensoryProfile
     /* DEPRECATED: Map as StoryMap */
 } from './types';
@@ -131,6 +131,8 @@ import { getTemplateSections } from './utils/EntityTemplates';
     timelineForks?: TimelineFork[];
     causalityLinks?: CausalityLink[];
     timelineConflicts?: TimelineConflict[];
+    timelineEras?: TimelineEra[];
+    timelineTracks?: TimelineTrack[];
     enableAdvancedTimeline?: boolean;
     autoDetectConflicts?: boolean;
 
@@ -197,6 +199,8 @@ import { getTemplateSections } from './utils/EntityTemplates';
     timelineForks: [],
     causalityLinks: [],
     timelineConflicts: [],
+    timelineEras: [],
+    timelineTracks: [],
     enableAdvancedTimeline: false,
     autoDetectConflicts: true,
     analyticsEnabled: false,
