@@ -477,8 +477,10 @@ export class DashboardView extends ItemView {
         this.tabContentContainer.style.overflowX = 'hidden';
         this.tabContentContainer.style.height = 'auto'; // Allow content to expand
 
-        // Initial active state
-        this.setActiveTab(this.activeTabId || this.tabs[0].id);
+        // Initial active state - use first visible tab if current tab is hidden
+        const visibleTabs = this.getVisibleTabs();
+        const initialTabId = visibleTabs.find(t => t.id === this.activeTabId)?.id || visibleTabs[0]?.id || this.tabs[0].id;
+        this.setActiveTab(initialTabId);
 
         // --- Register Vault Event Listeners for Auto-refresh ---
         this.registerVaultEventListeners();
@@ -542,6 +544,14 @@ export class DashboardView extends ItemView {
         return 'normal';
     }
 
+    /**
+     * Get visible tabs (excluding hidden tabs based on user settings)
+     */
+    private getVisibleTabs() {
+        const hiddenTabs = this.plugin.settings.hiddenDashboardTabs || [];
+        return this.tabs.filter(tab => !hiddenTabs.includes(tab.id));
+    }
+
     /** Render or re-render tabs according to available width (priority+ ribbon) */
     private layoutTabs(): void {
         if (!this.tabHeaderContainer || !this.tabHeaderRibbonEl) return;
@@ -559,8 +569,9 @@ export class DashboardView extends ItemView {
         // Tiny: still render tabs; they'll wrap to multiple lines
         // Compact mode reduces padding via mode pass-through
 
-        // Render all tabs and allow natural wrapping to any number of rows
-        for (const tab of this.tabs) {
+        // Render visible tabs only and allow natural wrapping to any number of rows
+        const visibleTabs = this.getVisibleTabs();
+        for (const tab of visibleTabs) {
             const btn = this.createTabButtonEl(tab, btnMode, false);
             this.tabHeaderRibbonEl.appendChild(btn);
         }
