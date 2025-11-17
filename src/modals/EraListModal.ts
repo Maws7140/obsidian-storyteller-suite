@@ -124,9 +124,9 @@ export class EraListModal extends Modal {
             // Description (if present)
             if (era.description) {
                 eraContent.createDiv('storyteller-era-description', div => {
-                    const desc = era.description.length > 100
+                    const desc = era.description && era.description.length > 100
                         ? era.description.slice(0, 100) + '...'
-                        : era.description;
+                        : era.description || '';
                     div.createSpan({ text: desc });
                 });
             }

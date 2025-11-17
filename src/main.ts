@@ -1069,6 +1069,16 @@ export default class StorytellerSuitePlugin extends Plugin {
 			}
 		});
 
+		// Timeline track management
+		this.addCommand({
+			id: 'manage-timeline-tracks',
+			name: 'Manage timeline tracks',
+			callback: async () => {
+				const { TrackListModal } = await import('./modals/TrackListModal');
+				new TrackListModal(this.app, this).open();
+			}
+		});
+
 		// Generate events from tags
 		this.addCommand({
 			id: 'generate-events-from-tags',
