@@ -61,6 +61,16 @@ export class TemplateStorageManager {
         } catch (error) {
             console.log('Murder Mystery template not yet available');
         }
+
+        // Load built-in character templates
+        try {
+            const { BUILTIN_CHARACTER_TEMPLATES } = await import('./prebuilt/CharacterTemplates');
+            BUILTIN_CHARACTER_TEMPLATES.forEach(template => {
+                this.builtInTemplates.set(template.id, template);
+            });
+        } catch (error) {
+            console.log('Character templates not yet available:', error);
+        }
     }
 
     /**
@@ -146,6 +156,14 @@ export class TemplateStorageManager {
             templates = templates.filter(t => filter.category!.includes(t.category));
         }
 
+        // Filter by entity types
+        if (filter.entityTypes && filter.entityTypes.length > 0) {
+            templates = templates.filter(t => {
+                if (!t.entityTypes) return false;
+                return filter.entityTypes!.some(type => t.entityTypes!.includes(type));
+            });
+        }
+
         // Filter by author
         if (filter.author && filter.author.length > 0) {
             templates = templates.filter(t => filter.author!.includes(t.author));
@@ -172,7 +190,20 @@ export class TemplateStorageManager {
             filteredStats = filteredStats.filter(s => s.stats.totalEntities <= filter.maxEntities!);
         }
 
-        return filteredStats.map(s => s.template);
+        templates = filteredStats.map(s => s.template);
+
+        // Sort templates
+        if (filter.sortByUsage) {
+            templates = templates.sort((a, b) => (b.usageCount || 0) - (a.usageCount || 0));
+        } else if (filter.sortByRecent) {
+            templates = templates.sort((a, b) => {
+                const aTime = a.lastUsed ? new Date(a.lastUsed).getTime() : 0;
+                const bTime = b.lastUsed ? new Date(b.lastUsed).getTime() : 0;
+                return bTime - aTime;
+            });
+        }
+
+        return templates;
     }
 
     /**
@@ -265,185 +296,9 @@ export class TemplateStorageManager {
      * Validate template structure and references
      */
     validateTemplate(template: Template): TemplateValidationResult {
-        const result: TemplateValidationResult = {
-            isValid: true,
-            errors: [],
-            warnings: [],
-            brokenReferences: []
-        };
-
-        // Check required fields
-        if (!template.id) {
-            result.errors.push('Template ID is required');
-        }
-        if (!template.name) {
-            result.errors.push('Template name is required');
-        }
-        if (!template.version) {
-            result.errors.push('Template version is required');
-        }
-
-        // Collect all template IDs
-        const allIds = new Set<string>();
-        const entities = template.entities;
-
-        // Helper to add IDs
-        const addIds = (items: any[] | undefined) => {
-            if (items) {
-                items.forEach(item => {
-                    if (item.templateId) {
-                        allIds.add(item.templateId);
-                    }
-                });
-            }
-        };
-
-        addIds(entities.characters);
-        addIds(entities.locations);
-        addIds(entities.events);
-        addIds(entities.items);
-        addIds(entities.groups);
-        addIds(entities.cultures);
-        addIds(entities.economies);
-        addIds(entities.magicSystems);
-        addIds(entities.chapters);
-        addIds(entities.scenes);
-        addIds(entities.references);
-
-        // Validate references in each entity type
-        const validateReferences = (
-            items: any[] | undefined,
-            entityType: TemplateEntityType,
-            fields: { field: string; targetType?: TemplateEntityType }[]
-        ) => {
-            if (!items) return;
-
-            items.forEach(item => {
-                fields.forEach(({ field, targetType }) => {
-                    const value = item[field];
-                    if (!value) return;
-
-                    // Handle arrays
-                    if (Array.isArray(value)) {
-                        value.forEach((ref: any) => {
-                            const refId = typeof ref === 'string' ? ref : ref.target;
-                            if (refId && !allIds.has(refId)) {
-                                result.brokenReferences.push({
-                                    entityType,
-                                    entityId: item.templateId,
-                                    referenceType: field,
-                                    targetId: refId
-                                });
-                            }
-                        });
-                    }
-                    // Handle single reference
-                    else if (typeof value === 'string') {
-                        if (!allIds.has(value)) {
-                            result.brokenReferences.push({
-                                entityType,
-                                entityId: item.templateId,
-                                referenceType: field,
-                                targetId: value
-                            });
-                        }
-                    }
-                    // Handle Group members (special case)
-                    else if (field === 'members' && Array.isArray(value)) {
-                        value.forEach((member: any) => {
-                            if (member.name && !allIds.has(member.name)) {
-                                result.brokenReferences.push({
-                                    entityType,
-                                    entityId: item.templateId,
-                                    referenceType: 'members',
-                                    targetId: member.name
-                                });
-                            }
-                        });
-                    }
-                });
-            });
-        };
-
-        // Validate character references
-        validateReferences(entities.characters, 'character', [
-            { field: 'relationships' },
-            { field: 'locations' },
-            { field: 'events' },
-            { field: 'groups' },
-            { field: 'connections' }
-        ]);
-
-        // Validate location references
-        validateReferences(entities.locations, 'location', [
-            { field: 'parentLocation' },
-            { field: 'groups' },
-            { field: 'connections' }
-        ]);
-
-        // Validate event references
-        validateReferences(entities.events, 'event', [
-            { field: 'characters' },
-            { field: 'location' },
-            { field: 'groups' },
-            { field: 'connections' },
-            { field: 'dependencies' }
-        ]);
-
-        // Validate item references
-        validateReferences(entities.items, 'item', [
-            { field: 'currentOwner' },
-            { field: 'pastOwners' },
-            { field: 'currentLocation' },
-            { field: 'associatedEvents' },
-            { field: 'groups' }
-        ]);
-
-        // Validate group references
-        validateReferences(entities.groups, 'group', [
-            { field: 'members' },
-            { field: 'territories' },
-            { field: 'linkedEvents' },
-            { field: 'parentGroup' },
-            { field: 'subgroups' },
-            { field: 'groupRelationships' }
-        ]);
-
-        // Validate culture references
-        validateReferences(entities.cultures, 'culture', [
-            { field: 'linkedLocations' },
-            { field: 'linkedCharacters' },
-            { field: 'linkedEvents' },
-            { field: 'relatedCultures' },
-            { field: 'parentCulture' }
-        ]);
-
-        // Validate economy references
-        validateReferences(entities.economies, 'economy', [
-            { field: 'linkedLocations' },
-            { field: 'linkedFactions' },
-            { field: 'linkedCultures' },
-            { field: 'linkedEvents' }
-        ]);
-
-        // Validate magic system references
-        validateReferences(entities.magicSystems, 'magicSystem', [
-            { field: 'linkedCharacters' },
-            { field: 'linkedLocations' },
-            { field: 'linkedCultures' },
-            { field: 'linkedEvents' },
-            { field: 'linkedItems' }
-        ]);
-
-        // Add warnings for broken references
-        if (result.brokenReferences.length > 0) {
-            result.warnings.push(
-                `Found ${result.brokenReferences.length} broken references. These will be removed when applying template.`
-            );
-        }
-
-        result.isValid = result.errors.length === 0;
-        return result;
+        // Use the enhanced TemplateValidator
+        const { TemplateValidator } = require('./TemplateValidator');
+        return TemplateValidator.validate(template);
     }
 
     /**
@@ -561,5 +416,80 @@ export class TemplateStorageManager {
      */
     getTemplateFolder(): string {
         return this.templateFolder;
+    }
+
+    /**
+     * Increment template usage count
+     */
+    async incrementUsageCount(templateId: string): Promise<void> {
+        const template = this.getTemplate(templateId);
+        if (!template) return;
+
+        // Update usage count and last used
+        template.usageCount = (template.usageCount || 0) + 1;
+        template.lastUsed = new Date().toISOString();
+
+        // Save if it's a user template
+        if (!template.isBuiltIn) {
+            await this.saveTemplate(template);
+        }
+
+        // Update cache
+        this.userTemplates.set(templateId, template);
+    }
+
+    /**
+     * Get templates by entity type
+     */
+    getTemplatesByEntityType(entityType: TemplateEntityType): Template[] {
+        return this.getAllTemplates().filter(t =>
+            t.entityTypes?.includes(entityType)
+        );
+    }
+
+    /**
+     * Get recently used templates
+     */
+    getRecentlyUsedTemplates(limit: number = 5): Template[] {
+        return this.getAllTemplates()
+            .filter(t => t.lastUsed)
+            .sort((a, b) => {
+                const aTime = new Date(a.lastUsed!).getTime();
+                const bTime = new Date(b.lastUsed!).getTime();
+                return bTime - aTime;
+            })
+            .slice(0, limit);
+    }
+
+    /**
+     * Get most popular templates
+     */
+    getMostPopularTemplates(limit: number = 5): Template[] {
+        return this.getAllTemplates()
+            .filter(t => t.usageCount && t.usageCount > 0)
+            .sort((a, b) => (b.usageCount || 0) - (a.usageCount || 0))
+            .slice(0, limit);
+    }
+
+    /**
+     * Auto-populate entityTypes field based on actual entities
+     */
+    autoPopulateEntityTypes(template: Template): void {
+        const entityTypes: TemplateEntityType[] = [];
+        const entities = template.entities;
+
+        if (entities.characters && entities.characters.length > 0) entityTypes.push('character');
+        if (entities.locations && entities.locations.length > 0) entityTypes.push('location');
+        if (entities.events && entities.events.length > 0) entityTypes.push('event');
+        if (entities.items && entities.items.length > 0) entityTypes.push('item');
+        if (entities.groups && entities.groups.length > 0) entityTypes.push('group');
+        if (entities.cultures && entities.cultures.length > 0) entityTypes.push('culture');
+        if (entities.economies && entities.economies.length > 0) entityTypes.push('economy');
+        if (entities.magicSystems && entities.magicSystems.length > 0) entityTypes.push('magicSystem');
+        if (entities.chapters && entities.chapters.length > 0) entityTypes.push('chapter');
+        if (entities.scenes && entities.scenes.length > 0) entityTypes.push('scene');
+        if (entities.references && entities.references.length > 0) entityTypes.push('reference');
+
+        template.entityTypes = entityTypes;
     }
 }
