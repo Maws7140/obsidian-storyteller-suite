@@ -202,7 +202,7 @@ export class TemplateEditorModal extends ResponsiveModal {
             }
 
             // Save template
-            await this.plugin.templateStorageManager.saveTemplate(template);
+            await this.plugin.templateManager.saveTemplate(template);
 
             // Call onSubmit callback
             this.onSubmit(template);
