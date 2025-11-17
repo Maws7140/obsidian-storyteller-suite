@@ -1,10 +1,12 @@
 // Timeline View - Full workspace view for timeline visualization
 // Provides a dedicated panel for viewing and interacting with the story timeline
 
-import { ItemView, WorkspaceLeaf, setIcon, Menu, Setting } from 'obsidian';
+import { ItemView, WorkspaceLeaf, setIcon, Menu, Setting, DropdownComponent } from 'obsidian';
 import StorytellerSuitePlugin from '../main';
 import { t } from '../i18n/strings';
 import { TimelineRenderer, TimelineFilters } from '../utils/TimelineRenderer';
+import { TimelineTrack } from '../types';
+import { TimelineTrackManager } from '../utils/TimelineTrackManager';
 
 export const VIEW_TYPE_TIMELINE = 'storyteller-timeline-view';
 
@@ -15,6 +17,9 @@ export interface TimelineViewState {
     stackEnabled: boolean;
     density: number;
     editMode: boolean;
+    showEras: boolean;
+    currentTrackId?: string;
+    narrativeOrder: boolean;
 }
 
 /**
@@ -57,7 +62,9 @@ export class TimelineView extends ItemView {
             filters: {},
             stackEnabled: this.plugin.settings.defaultTimelineStack ?? true,
             density: this.plugin.settings.defaultTimelineDensity ?? 50,
-            editMode: false
+            editMode: false,
+            showEras: false,
+            narrativeOrder: false
         };
     }
 
@@ -275,7 +282,7 @@ export class TimelineView extends ItemView {
         // Edit mode toggle
         const editBtn = this.toolbarEl.createEl('button', {
             cls: 'clickable-icon storyteller-toolbar-btn',
-            attr: { 
+            attr: {
                 'aria-label': t('editMode'),
                 'title': t('editModeTooltip')
             }
@@ -285,6 +292,75 @@ export class TimelineView extends ItemView {
             this.currentState.editMode = !this.currentState.editMode;
             setIcon(editBtn, this.currentState.editMode ? 'pencil' : 'lock');
             this.renderer?.setEditMode(this.currentState.editMode);
+        });
+
+        // Narrative order toggle
+        const narrativeOrderBtn = this.toolbarEl.createEl('button', {
+            cls: `clickable-icon storyteller-toolbar-btn${this.currentState.narrativeOrder ? ' is-active' : ''}`,
+            attr: {
+                'aria-label': 'Toggle narrative order',
+                'title': this.currentState.narrativeOrder ? 'Show chronological order' : 'Show narrative order'
+            }
+        });
+        setIcon(narrativeOrderBtn, 'book-open');
+        narrativeOrderBtn.addEventListener('click', () => {
+            this.currentState.narrativeOrder = !this.currentState.narrativeOrder;
+            narrativeOrderBtn.toggleClass('is-active', this.currentState.narrativeOrder);
+            narrativeOrderBtn.setAttribute('title', this.currentState.narrativeOrder ? 'Show chronological order' : 'Show narrative order');
+            this.renderer?.setNarrativeOrder(this.currentState.narrativeOrder);
+        });
+
+        // Era backgrounds toggle
+        const eraBtn = this.toolbarEl.createEl('button', {
+            cls: `clickable-icon storyteller-toolbar-btn${this.currentState.showEras ? ' is-active' : ''}`,
+            attr: {
+                'aria-label': 'Toggle era backgrounds',
+                'title': this.currentState.showEras ? 'Hide era backgrounds' : 'Show era backgrounds'
+            }
+        });
+        setIcon(eraBtn, 'layers');
+        eraBtn.addEventListener('click', () => {
+            this.currentState.showEras = !this.currentState.showEras;
+            eraBtn.toggleClass('is-active', this.currentState.showEras);
+            eraBtn.setAttribute('title', this.currentState.showEras ? 'Hide era backgrounds' : 'Show era backgrounds');
+            this.renderer?.setShowEras(this.currentState.showEras);
+        });
+
+        // Manage eras button
+        const manageErasBtn = this.toolbarEl.createEl('button', {
+            cls: 'clickable-icon storyteller-toolbar-btn',
+            attr: {
+                'aria-label': 'Manage timeline eras',
+                'title': 'Manage timeline eras'
+            }
+        });
+        setIcon(manageErasBtn, 'calendar-range');
+        manageErasBtn.addEventListener('click', async () => {
+            const { EraListModal } = await import('../modals/EraListModal');
+            new EraListModal(this.app, this.plugin).open();
+        });
+
+        // Track selector dropdown
+        const trackSelectorContainer = this.toolbarEl.createDiv('storyteller-track-selector');
+        const trackLabel = trackSelectorContainer.createEl('span', {
+            text: 'Track: ',
+            cls: 'storyteller-track-label'
+        });
+
+        const trackDropdown = new DropdownComponent(trackSelectorContainer);
+        trackDropdown.addOption('', 'All Events (Global)');
+
+        // Populate tracks from settings
+        const tracks = this.plugin.settings.timelineTracks || [];
+        const visibleTracks = TimelineTrackManager.getVisibleTracks(tracks);
+        for (const track of visibleTracks) {
+            trackDropdown.addOption(track.id, track.name);
+        }
+
+        trackDropdown.setValue(this.currentState.currentTrackId || '');
+        trackDropdown.onChange(async (trackId) => {
+            this.currentState.currentTrackId = trackId || undefined;
+            await this.applyTrackFilter(trackId);
         });
 
         // Export button
@@ -444,6 +520,34 @@ export class TimelineView extends ItemView {
                 });
             });
 
+        // Tag filter
+        new Setting(this.advancedFiltersContent)
+            .setName('Filter by Tag')
+            .addDropdown(dropdown => {
+                dropdown.addOption('', 'Select tag...');
+                const allTags = new Set<string>();
+                this.plugin.listEvents().then(events => {
+                    events.forEach(e => {
+                        if (e.tags) e.tags.forEach(t => allTags.add(t));
+                    });
+                    Array.from(allTags).sort().forEach(tag => {
+                        dropdown.addOption(tag, tag);
+                    });
+                });
+                dropdown.setValue('');
+                dropdown.onChange(value => {
+                    if (value) {
+                        if (!this.currentState.filters.tags) {
+                            this.currentState.filters.tags = new Set();
+                        }
+                        this.currentState.filters.tags.add(value);
+                        this.renderer?.applyFilters(this.currentState.filters);
+                        this.updateFooterStatus();
+                        dropdown.setValue('');
+                    }
+                });
+            });
+
         // Clear all filters button
         new Setting(this.advancedFiltersContent)
             .addButton(button => button
@@ -472,6 +576,8 @@ export class TimelineView extends ItemView {
             stackEnabled: this.currentState.stackEnabled,
             density: this.currentState.density,
             editMode: this.currentState.editMode,
+            showEras: this.currentState.showEras,
+            narrativeOrder: this.currentState.narrativeOrder,
             defaultGanttDuration: this.plugin.settings.ganttDefaultDuration ?? 1
         });
 
@@ -490,6 +596,57 @@ export class TimelineView extends ItemView {
             cls: 'storyteller-timeline-status',
             attr: { 'aria-live': 'polite' }
         });
+        this.updateFooterStatus();
+    }
+
+    /**
+     * Apply track-based filtering
+     */
+    private async applyTrackFilter(trackId: string): Promise<void> {
+        if (!trackId) {
+            // Clear track filter - show all events
+            this.currentState.filters = {
+                ...this.currentState.filters,
+                characters: undefined,
+                locations: undefined,
+                groups: undefined,
+                tags: undefined
+            };
+            this.renderer?.applyFilters(this.currentState.filters);
+            this.updateFooterStatus();
+            return;
+        }
+
+        // Get the selected track
+        const track = this.plugin.getTimelineTrack(trackId);
+        if (!track) {
+            console.error(`Track not found: ${trackId}`);
+            return;
+        }
+
+        // Apply track's filter criteria to current filters
+        const newFilters: TimelineFilters = { ...this.currentState.filters };
+
+        if (track.filterCriteria) {
+            if (track.filterCriteria.characters && track.filterCriteria.characters.length > 0) {
+                newFilters.characters = new Set(track.filterCriteria.characters);
+            }
+            if (track.filterCriteria.locations && track.filterCriteria.locations.length > 0) {
+                newFilters.locations = new Set(track.filterCriteria.locations);
+            }
+            if (track.filterCriteria.groups && track.filterCriteria.groups.length > 0) {
+                newFilters.groups = new Set(track.filterCriteria.groups);
+            }
+            if (track.filterCriteria.tags && track.filterCriteria.tags.length > 0) {
+                newFilters.tags = new Set(track.filterCriteria.tags);
+            }
+            if (track.filterCriteria.milestonesOnly) {
+                newFilters.milestonesOnly = true;
+            }
+        }
+
+        this.currentState.filters = newFilters;
+        this.renderer?.applyFilters(this.currentState.filters);
         this.updateFooterStatus();
     }
 
@@ -618,7 +775,9 @@ export class TimelineView extends ItemView {
                 stackEnabled: state.stackEnabled ?? true,
                 density: state.density ?? 50,
                 editMode: state.editMode ?? false,
-                filters: state.filters || {}
+                filters: state.filters || {},
+                showEras: state.showEras ?? false,
+                narrativeOrder: state.narrativeOrder ?? false
             };
 
             // Restore Sets from arrays if needed

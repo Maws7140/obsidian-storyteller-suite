@@ -380,6 +380,23 @@ export interface Event {
     /** Completion progress (0-100) for tracking event status */
     progress?: number;
 
+    /** Tags for categorization and filtering */
+    tags?: string[];
+
+    /** Narrative markers for non-linear storytelling */
+    narrativeMarkers?: {
+        /** Flag indicating this event is a flashback */
+        isFlashback?: boolean;
+        /** Flag indicating this event is a flash-forward */
+        isFlashforward?: boolean;
+        /** Date/time when this event is narrated in the story (vs when it chronologically occurred) */
+        narrativeDate?: string;
+        /** Event ID that this flashback/flash-forward is told from */
+        targetEvent?: string;
+        /** Description of the narrative framing or context */
+        narrativeContext?: string;
+    };
+
     /** ID of the map where this event is primarily displayed
      * @deprecated Map functionality has been deprecated */
     mapId?: string;
@@ -1285,6 +1302,94 @@ export interface TimelineConflict {
 
     /** When the conflict was detected */
     detected: string;
+}
+
+/**
+ * TimelineEra representing a period, arc, or act in the story timeline
+ * Used to organize events into meaningful narrative or chronological periods
+ */
+export interface TimelineEra {
+    /** Unique identifier */
+    id: string;
+
+    /** Display name of the era (e.g., "Act I: The Beginning", "Medieval Period") */
+    name: string;
+
+    /** Description of what defines this era */
+    description?: string;
+
+    /** Start date of the era (flexible format like events) */
+    startDate: string;
+
+    /** End date of the era (flexible format like events) */
+    endDate: string;
+
+    /** Background color for timeline visualization (hex or CSS color) */
+    color?: string;
+
+    /** Type of era for categorization */
+    type?: 'act' | 'arc' | 'period' | 'season' | 'chapter' | 'custom';
+
+    /** Parent era ID for nested hierarchies (e.g., Arc within Act) */
+    parentEraId?: string;
+
+    /** Events that fall within this era (auto-populated based on dates) */
+    events?: string[];
+
+    /** Tags for filtering and organization */
+    tags?: string[];
+
+    /** Sort order for display */
+    sortOrder?: number;
+
+    /** Whether this era is visible on the timeline */
+    visible?: boolean;
+}
+
+/**
+ * TimelineTrack representing a filtered view of the timeline
+ * Allows users to focus on specific characters, locations, or custom criteria
+ */
+export interface TimelineTrack {
+    /** Unique identifier */
+    id: string;
+
+    /** Display name of the track */
+    name: string;
+
+    /** Type of track */
+    type: 'global' | 'character' | 'location' | 'group' | 'custom';
+
+    /** Entity ID/name for character or location tracks */
+    entityId?: string;
+
+    /** Description of what this track shows */
+    description?: string;
+
+    /** Color for track visualization */
+    color?: string;
+
+    /** Filter criteria for custom tracks */
+    filterCriteria?: {
+        /** Filter by character names */
+        characters?: string[];
+        /** Filter by location names */
+        locations?: string[];
+        /** Filter by tags */
+        tags?: string[];
+        /** Filter by groups */
+        groups?: string[];
+        /** Filter by status values */
+        status?: string[];
+        /** Filter by milestone flag */
+        milestonesOnly?: boolean;
+    };
+
+    /** Sort order for display in track selector */
+    sortOrder?: number;
+
+    /** Whether this track is currently visible */
+    visible?: boolean;
 }
 
 /**
