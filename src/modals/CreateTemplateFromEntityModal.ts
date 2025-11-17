@@ -228,10 +228,10 @@ export class CreateTemplateFromEntityModal extends ResponsiveModal {
             );
 
             // Auto-populate entity types
-            this.plugin.templateStorageManager.autoPopulateEntityTypes(template);
+            this.plugin.templateManager.autoPopulateEntityTypes(template);
 
             // Save template
-            await this.plugin.templateStorageManager.saveTemplate(template);
+            await this.plugin.templateManager.saveTemplate(template);
 
             // Call onSubmit callback
             this.onSubmit(template);
