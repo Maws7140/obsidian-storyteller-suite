@@ -151,6 +151,9 @@ import { getTemplateSections } from './utils/EntityTemplates';
     /** Sensory Profiles */
     enableSensoryProfiles?: boolean;
     sensoryProfiles?: LocationSensoryProfile[];
+
+    /** Dashboard tab visibility - array of tab IDs to hide */
+    hiddenDashboardTabs?: string[];
 }
 
 /**
@@ -200,7 +203,8 @@ import { getTemplateSections } from './utils/EntityTemplates';
     writingSessions: [],
     trackWritingSessions: false,
     enableWorldBuilding: true,
-    enableSensoryProfiles: true
+    enableSensoryProfiles: true,
+    hiddenDashboardTabs: []
 }
 
 /**
