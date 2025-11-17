@@ -40,6 +40,60 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                     });
             });
 
+        // --- Dashboard Tab Visibility ---
+        new Setting(containerEl)
+            .setName('Dashboard Tab Visibility')
+            .setHeading();
+
+        new Setting(containerEl)
+            .setDesc('Choose which tabs to show in the dashboard sidebar. Hidden tabs will not appear in the tab bar.');
+
+        // Define all available tabs with their display names
+        const availableTabs = [
+            { id: 'characters', name: 'Characters' },
+            { id: 'locations', name: 'Locations' },
+            { id: 'events', name: 'Timeline/Events' },
+            { id: 'items', name: 'Plot Items' },
+            { id: 'network', name: 'Network Graph' },
+            { id: 'gallery', name: 'Gallery' },
+            { id: 'groups', name: 'Groups' },
+            { id: 'references', name: 'References' },
+            { id: 'chapters', name: 'Chapters' },
+            { id: 'scenes', name: 'Scenes' },
+            { id: 'cultures', name: 'Cultures' },
+            { id: 'economies', name: 'Economies' },
+            { id: 'magicsystems', name: 'Magic Systems' }
+        ];
+
+        // Create a toggle for each tab
+        availableTabs.forEach(tab => {
+            const hiddenTabs = this.plugin.settings.hiddenDashboardTabs || [];
+            const isVisible = !hiddenTabs.includes(tab.id);
+
+            new Setting(containerEl)
+                .setName(tab.name)
+                .addToggle(toggle => toggle
+                    .setValue(isVisible)
+                    .setTooltip(isVisible ? 'Tab is visible' : 'Tab is hidden')
+                    .onChange(async (value) => {
+                        const hidden = this.plugin.settings.hiddenDashboardTabs || [];
+
+                        if (value) {
+                            // Show tab - remove from hidden list
+                            this.plugin.settings.hiddenDashboardTabs = hidden.filter(id => id !== tab.id);
+                        } else {
+                            // Hide tab - add to hidden list
+                            if (!hidden.includes(tab.id)) {
+                                this.plugin.settings.hiddenDashboardTabs = [...hidden, tab.id];
+                            }
+                        }
+
+                        await this.plugin.saveSettings();
+                        new Notice(`${tab.name} tab ${value ? 'shown' : 'hidden'}. Refresh the dashboard to see changes.`);
+                    })
+                );
+        });
+
         // --- Story Management Section ---
         new Setting(containerEl)
             .setName(t('stories'))
