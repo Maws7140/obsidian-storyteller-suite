@@ -657,6 +657,15 @@ export class NetworkGraphRenderer {
         this.cy.on('mouseover', 'node', (evt) => {
             const node = evt.target;
 
+            // Clear any pending hide timeout from previous node
+            if (this.infoPanelTimeout) {
+                clearTimeout(this.infoPanelTimeout);
+                this.infoPanelTimeout = null;
+            }
+
+            // Immediately clear all previous highlighting before applying new
+            this.cy?.elements().removeClass('highlighted dimmed');
+
             // Get all neighbors of the hovered node (nodes connected to it)
             const neighbors = node.neighborhood('node');
 
@@ -684,9 +693,6 @@ export class NetworkGraphRenderer {
             });
 
             // Update info panel with slight delay for smooth UX
-            if (this.infoPanelTimeout) {
-                clearTimeout(this.infoPanelTimeout);
-            }
             this.infoPanelTimeout = setTimeout(() => {
                 this.updateInfoPanel(node);
             }, 50); // 50ms delay - responsive hover feedback
