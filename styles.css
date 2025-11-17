@@ -2790,6 +2790,25 @@ body.mod-rtl .storyteller-group-members {
   box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
 }
 
+/* Era backgrounds */
+.storyteller-timeline-modal .vis-item.timeline-era-background,
+.storyteller-timeline-view .vis-item.timeline-era-background {
+  border: none !important;
+  opacity: 0.3;
+  z-index: -1;
+  pointer-events: none;
+  font-size: 0.9em;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-align: center;
+  padding: 4px !important;
+}
+
+.storyteller-timeline-modal .vis-item.timeline-era-background:hover,
+.storyteller-timeline-view .vis-item.timeline-era-background:hover {
+  opacity: 0.4;
+}
+
 /* Edit mode indicator */
 .timeline-edit-mode {
   border: 2px solid var(--interactive-accent);
@@ -3363,6 +3382,11 @@ body.mod-rtl .storyteller-group-members {
   background-color: var(--background-modifier-hover);
 }
 
+.storyteller-toolbar-btn.is-active {
+  background-color: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
+
 /* Entity filter buttons */
 .storyteller-graph-entity-filters {
   display: flex;
@@ -3538,8 +3562,30 @@ body.mod-rtl .storyteller-group-members {
   padding: 8px;
   border-bottom: 1px solid var(--background-modifier-border);
   flex-shrink: 0;
-  flex-wrap: wrap;
   align-items: center;
+  flex-wrap: wrap;
+}
+
+/* Track selector */
+.storyteller-track-selector {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 8px;
+  padding: 4px 8px;
+  background: var(--background-secondary);
+  border-radius: var(--radius-s);
+}
+
+.storyteller-track-label {
+  font-size: var(--font-ui-small);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.storyteller-track-selector select {
+  min-width: 150px;
+  max-width: 250px;
 }
 
 /* Timeline filter toggle section (milestone checkbox) */
@@ -5971,6 +6017,140 @@ body.mod-rtl .storyteller-group-members {
 .storyteller-preview-warning {
   font-size: var(--font-ui-small);
   color: var(--color-orange);
+}
+
+/* ==================== Track Management Styles ==================== */
+
+.storyteller-track-modal .modal-content,
+.storyteller-track-list-modal .modal-content {
+  padding: 20px;
+}
+
+/* Track List Styles */
+.storyteller-track-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+.storyteller-track-card {
+  display: flex;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--background-primary);
+  transition: box-shadow 0.2s ease;
+}
+
+.storyteller-track-card:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.storyteller-track-color-bar {
+  width: 8px;
+  min-height: 100%;
+  background: var(--text-muted);
+}
+
+.storyteller-track-content {
+  flex: 1;
+  padding: 12px 16px;
+}
+
+.storyteller-track-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.storyteller-track-header h3 {
+  margin: 0;
+  font-size: var(--font-ui-medium);
+}
+
+.storyteller-track-hidden-badge,
+.storyteller-track-type-badge {
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: var(--font-ui-smaller);
+  background: var(--background-secondary);
+  color: var(--text-muted);
+}
+
+.storyteller-track-description,
+.storyteller-track-criteria,
+.storyteller-track-events {
+  margin-top: 4px;
+  font-size: var(--font-ui-small);
+  color: var(--text-muted);
+}
+
+.storyteller-track-no-filters {
+  font-style: italic;
+  opacity: 0.7;
+}
+
+.storyteller-track-error {
+  margin-top: 4px;
+  padding: 4px 8px;
+  background: var(--background-modifier-error);
+  border-radius: 4px;
+  font-size: var(--font-ui-small);
+  color: var(--text-error);
+}
+
+.storyteller-track-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.storyteller-track-action-btn {
+  padding: 4px 12px;
+  font-size: var(--font-ui-small);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+/* ==================== Era Badges in Event Modal ==================== */
+
+.storyteller-era-badges-container {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+  margin-bottom: 16px;
+}
+
+.storyteller-era-badge {
+  padding: 8px 12px;
+  background: var(--background-secondary);
+  border-left: 4px solid var(--text-muted);
+  border-radius: 4px;
+  font-size: var(--font-ui-small);
+}
+
+.storyteller-era-badge strong {
+  color: var(--text-normal);
+}
+
+.storyteller-era-badge-dates {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.storyteller-era-no-match {
+  font-size: var(--font-ui-small);
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.storyteller-era-empty-state {
+  color: var(--text-muted);
+  font-style: italic;
 }
 
 /* ==================== END New Modal Styles ==================== */
