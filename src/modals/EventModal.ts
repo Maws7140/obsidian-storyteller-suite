@@ -10,6 +10,8 @@ import { PromptModal } from './ui/PromptModal';
 import { CharacterSuggestModal } from './CharacterSuggestModal';
 import { LocationSuggestModal } from './LocationSuggestModal';
 import { EventSuggestModal } from './EventSuggestModal';
+import { TemplatePickerModal } from './TemplatePickerModal';
+import { Template } from '../templates/TemplateTypes';
 // Remove placeholder import for multi-image
 // import { MultiGalleryImageSuggestModal } from './MultiGalleryImageSuggestModal';
 
@@ -55,6 +57,29 @@ export class EventModal extends Modal {
         const { contentEl } = this;
         contentEl.empty();
         contentEl.createEl('h2', { text: this.isNew ? t('createNewEvent') : `${t('edit')} ${this.event.name}` });
+
+        // --- Template Selector (for new events) ---
+        if (this.isNew) {
+            new Setting(contentEl)
+                .setName('Start from Template')
+                .setDesc('Optionally start with a pre-configured event template')
+                .addButton(button => button
+                    .setButtonText('Choose Template')
+                    .setTooltip('Select an event template')
+                    .onClick(() => {
+                        new TemplatePickerModal(
+                            this.app,
+                            this.plugin,
+                            async (template: Template) => {
+                                await this.applyTemplateToEvent(template);
+                                this.refresh(); // Refresh the modal to show template values
+                                new Notice(`Template "${template.name}" applied`);
+                            },
+                            'event' // Filter to event templates only
+                        ).open();
+                    })
+                );
+        }
 
         // --- Standard Fields (Name, DateTime, Description, etc.) ---
         new Setting(contentEl)
@@ -774,6 +799,34 @@ export class EventModal extends Modal {
                 });
             }
         })();
+    }
+
+    private async applyTemplateToEvent(template: Template): Promise<void> {
+        if (!template.entities.events || template.entities.events.length === 0) {
+            new Notice('This template does not contain any events');
+            return;
+        }
+
+        // Get the first event from the template
+        const templateEvt = template.entities.events[0];
+
+        // Apply template fields to current event (excluding templateId, id, filePath)
+        Object.keys(templateEvt).forEach(key => {
+            if (key !== 'templateId' && key !== 'id' && key !== 'filePath') {
+                (this.event as any)[key] = (templateEvt as any)[key];
+            }
+        });
+
+        // Clear relationships as they reference template entities
+        this.event.characters = [];
+        this.event.connections = [];
+        this.event.groups = [];
+        this.event.dependencies = [];
+    }
+
+    private refresh(): void {
+        // Refresh the modal by reopening it
+        this.onOpen();
     }
 
     onClose() {
