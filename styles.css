@@ -2798,10 +2798,19 @@ body.mod-rtl .storyteller-group-members {
 }
 
 /* Fix for milestone line width - ensure it's not too thick */
-.storyteller-timeline-modal .vis-item.timeline-milestone .vis-line {
+.vis-item.timeline-milestone .vis-line {
   width: 0 !important;
-  border-left: 2px solid #FF8C00 !important;
-  background: none !important;
+  max-width: 0 !important;
+  border: none !important;
+  border-left: 1px solid #FF8C00 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+.vis-item.timeline-milestone .vis-dot {
+  border: 1px solid #FF8C00 !important;
+  background: #FFD700 !important;
   box-shadow: none !important;
 }
 
@@ -3784,10 +3793,19 @@ body.mod-rtl .storyteller-group-members {
 }
 
 /* Fix for milestone line width - ensure it's not too thick */
-.storyteller-timeline-view .vis-item.timeline-milestone .vis-line {
+.vis-item.timeline-milestone .vis-line {
   width: 0 !important;
-  border-left: 2px solid #FF8C00 !important;
-  background: none !important;
+  max-width: 0 !important;
+  border: none !important;
+  border-left: 1px solid #FF8C00 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+.vis-item.timeline-milestone .vis-dot {
+  border: 1px solid #FF8C00 !important;
+  background: #FFD700 !important;
   box-shadow: none !important;
 }
 
