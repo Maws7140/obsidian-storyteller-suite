@@ -467,7 +467,7 @@ export class TimelineRenderer {
                 verticalScroll: false,
                 horizontalScroll: true,
                 // Configure time axis to ensure proper rendering
-                height: this.options.ganttMode ? 'auto' : undefined
+                ...(this.options.ganttMode ? { height: 'auto' } : {})
             };
 
             // Set container overflow to allow proper scrolling
