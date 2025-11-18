@@ -803,7 +803,7 @@ export class TimelineRenderer {
             const classes: string[] = [];
             if (approx) classes.push('is-approx');
             if (isMilestone) classes.push('timeline-milestone');
-            if (this.options.ganttMode && !isMilestone) classes.push('gantt-bar');
+            if (this.options.ganttMode) classes.push('gantt-bar');
             if (isFlashback) classes.push('narrative-flashback');
             if (isFlashforward) classes.push('narrative-flashforward');
             
