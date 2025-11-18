@@ -650,7 +650,7 @@ export class TimelineRenderer {
             const classes: string[] = [];
             if (approx) classes.push('is-approx');
             if (isMilestone) classes.push('timeline-milestone');
-            if (this.options.ganttMode && !isMilestone) classes.push('gantt-bar');
+            if (this.options.ganttMode) classes.push('gantt-bar');
             
             // Style
             const style = color ? `background-color:${this.hexWithAlpha(color, 0.18)};border-color:${color};` : '';
