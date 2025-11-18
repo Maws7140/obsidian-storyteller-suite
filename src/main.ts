@@ -1855,7 +1855,19 @@ export default class StorytellerSuitePlugin extends Plugin {
             current = current ? `${current}/${seg}` : seg;
             const af = this.app.vault.getAbstractFileByPath(current);
             if (!af) {
-                await this.app.vault.createFolder(current);
+                try {
+                    await this.app.vault.createFolder(current);
+                } catch (error) {
+                    // Handle race condition: folder may have been created by another call
+                    // Check if folder now exists (created by concurrent call)
+                    const existingFolder = this.app.vault.getAbstractFileByPath(current);
+                    if (existingFolder instanceof TFolder) {
+                        // Folder was created by another call, continue
+                        continue;
+                    }
+                    // Re-throw if it's a different error
+                    throw error;
+                }
             } else if (!(af instanceof TFolder)) {
                 const errorMsg = `Error: Path ${current} exists but is not a folder. Check Storyteller Suite settings.`;
                 new Notice(errorMsg);
