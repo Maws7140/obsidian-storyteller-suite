@@ -2797,6 +2797,14 @@ body.mod-rtl .storyteller-group-members {
   box-shadow: 0 6px 16px rgba(255, 215, 0, 0.6);
 }
 
+/* Fix for milestone line width - ensure it's not too thick */
+.storyteller-timeline-modal .vis-item.timeline-milestone .vis-line {
+  width: 0 !important;
+  border-left: 2px solid #FF8C00 !important;
+  background: none !important;
+  box-shadow: none !important;
+}
+
 /* Narrative Markers - Flashbacks */
 .storyteller-timeline-modal .vis-item.narrative-flashback,
 .storyteller-timeline-view .vis-item.narrative-flashback {
@@ -3773,6 +3781,14 @@ body.mod-rtl .storyteller-group-members {
 
 .storyteller-timeline-view .vis-item.timeline-milestone:hover {
   transform: scale(1.05);
+}
+
+/* Fix for milestone line width - ensure it's not too thick */
+.storyteller-timeline-view .vis-item.timeline-milestone .vis-line {
+  width: 0 !important;
+  border-left: 2px solid #FF8C00 !important;
+  background: none !important;
+  box-shadow: none !important;
 }
 
 /* Timeline View Gantt Bar Styles */
