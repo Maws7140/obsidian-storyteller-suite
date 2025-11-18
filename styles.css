@@ -2797,6 +2797,13 @@ body.mod-rtl .storyteller-group-members {
   box-shadow: 0 6px 16px rgba(255, 215, 0, 0.6);
 }
 
+/* Fix for all timeline point item stems - ensure they're thin lines */
+.storyteller-timeline-modal .vis-item.vis-point .vis-line {
+  width: 2px !important;
+  background: var(--text-muted) !important;
+  box-shadow: none !important;
+}
+
 /* Fix for milestone line width - ensure it's not too thick */
 .storyteller-timeline-modal .vis-item.timeline-milestone .vis-line {
   width: 0 !important;
@@ -3781,6 +3788,13 @@ body.mod-rtl .storyteller-group-members {
 
 .storyteller-timeline-view .vis-item.timeline-milestone:hover {
   transform: scale(1.05);
+}
+
+/* Fix for all timeline point item stems - ensure they're thin lines */
+.storyteller-timeline-view .vis-item.vis-point .vis-line {
+  width: 2px !important;
+  background: var(--text-muted) !important;
+  box-shadow: none !important;
 }
 
 /* Fix for milestone line width - ensure it's not too thick */
