@@ -138,7 +138,12 @@ export class TemplateStorageManager {
     private async ensureTemplateFolderExists(): Promise<void> {
         const folder = this.app.vault.getAbstractFileByPath(this.templateFolder);
         if (!folder) {
-            await this.app.vault.createFolder(this.templateFolder);
+            try {
+                await this.app.vault.createFolder(this.templateFolder);
+            } catch (error) {
+                // Folder might have been created by another process
+                console.debug('Template folder already exists or could not be created:', error);
+            }
         }
     }
 
