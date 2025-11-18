@@ -3807,6 +3807,12 @@ body.mod-rtl .storyteller-group-members {
   overflow: hidden !important;
 }
 
+/* Gantt milestone bars have thicker borders to match modal styling */
+.storyteller-timeline-view .vis-item.gantt-bar.timeline-milestone {
+  border-width: 4px;
+  min-height: 36px;
+}
+
 /* Timeline View Gantt Swimlanes */
 .storyteller-timeline-view .vis-group:nth-child(even) {
   background: var(--background-secondary-alt);
