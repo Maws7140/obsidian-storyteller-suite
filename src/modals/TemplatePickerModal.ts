@@ -36,9 +36,11 @@ export class TemplatePickerModal extends SuggestModal<Template> {
             : this.plugin.templateManager.getAllTemplates();
 
         if (!query) {
-            // If no query, show recently used and popular templates
-            const recentTemplates = this.plugin.templateManager.getRecentlyUsedTemplates(3);
-            const popularTemplates = this.plugin.templateManager.getMostPopularTemplates(3);
+            // If no query, show recently used and popular templates first
+            const recentTemplates = this.plugin.templateManager.getRecentlyUsedTemplates(5)
+                .filter(t => !this.entityType || (t.entityTypes && t.entityTypes.includes(this.entityType)));
+            const popularTemplates = this.plugin.templateManager.getMostPopularTemplates(5)
+                .filter(t => !this.entityType || (t.entityTypes && t.entityTypes.includes(this.entityType)));
 
             // Combine and deduplicate
             const combined = [...recentTemplates];
@@ -48,7 +50,19 @@ export class TemplatePickerModal extends SuggestModal<Template> {
                 }
             });
 
-            return combined.slice(0, 10);
+            // If we have recent/popular templates, show them first, then fill with remaining
+            if (combined.length > 0) {
+                // Add remaining templates that aren't already in the list
+                allTemplates.forEach(t => {
+                    if (!combined.find(existing => existing.id === t.id)) {
+                        combined.push(t);
+                    }
+                });
+                return combined.slice(0, 20);
+            }
+
+            // No recent/popular templates, show all available templates
+            return allTemplates.slice(0, 20);
         }
 
         // Filter by query
