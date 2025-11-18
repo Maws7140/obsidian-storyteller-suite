@@ -3,10 +3,11 @@
 
 import { App, Notice } from 'obsidian';
 import StorytellerSuitePlugin from '../main';
-import { Event, TimelineEra } from '../types';
-import { parseEventDate, toMillis, toDisplay, getEventDateForTimeline } from './DateParsing';
+import { Event, Calendar } from '../types';
+import { parseEventDate, toMillis, toDisplay } from './DateParsing';
 import { EventModal } from '../modals/EventModal';
-import { EraManager } from './EraManager';
+import { CustomTimeAxis } from './CustomTimeAxis';
+import { CalendarMarkers } from './CalendarMarkers';
 
 // @ts-ignore: vis-timeline is bundled dependency
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -26,8 +27,6 @@ export interface TimelineRendererOptions {
     density?: number;
     defaultGanttDuration?: number; // days
     editMode?: boolean;
-    showEras?: boolean; // Whether to display era backgrounds
-    narrativeOrder?: boolean; // Sort by narrative date instead of chronological
 }
 
 export interface TimelineFilters {
@@ -35,8 +34,6 @@ export interface TimelineFilters {
     locations?: Set<string>;
     groups?: Set<string>;
     milestonesOnly?: boolean;
-    tags?: Set<string>;
-    eras?: Set<string>; // Filter by era IDs
 }
 
 /**
@@ -51,13 +48,15 @@ export class TimelineRenderer {
     private timeline: any = null;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     private dependencyArrows: any = null;
-    private clickTimeout: ReturnType<typeof setTimeout> | null = null;
-
+    
     // Configuration
     private options: TimelineRendererOptions;
     private filters: TimelineFilters = {};
     private events: Event[] = [];
 
+    // Calendar configuration (Level 3 feature)
+    private selectedCalendarId?: string;
+    
     // Color palette for grouping
     private palette = [
         '#7C3AED', '#2563EB', '#059669', '#CA8A04', '#DC2626', 
@@ -105,7 +104,7 @@ export class TimelineRenderer {
      */
     applyFilters(filters: Partial<TimelineFilters>): void {
         this.filters = { ...this.filters, ...filters };
-        this.renderPreservingView();
+        this.render();
     }
 
     /**
@@ -113,7 +112,7 @@ export class TimelineRenderer {
      */
     setGanttMode(enabled: boolean): void {
         this.options.ganttMode = enabled;
-        this.renderPreservingView();
+        this.render();
     }
 
     /**
@@ -121,7 +120,23 @@ export class TimelineRenderer {
      */
     setGroupMode(mode: 'none' | 'location' | 'group' | 'character'): void {
         this.options.groupMode = mode;
-        this.renderPreservingView();
+        this.render();
+    }
+
+    /**
+     * Set selected calendar for timeline display (Level 3 feature)
+     * @param calendarId Calendar ID, or undefined for "All Calendars (Gregorian)" mode
+     */
+    setCalendar(calendarId?: string): void {
+        this.selectedCalendarId = calendarId;
+        this.render();
+    }
+
+    /**
+     * Get currently selected calendar
+     */
+    getSelectedCalendarId(): string | undefined {
+        return this.selectedCalendarId;
     }
 
     /**
@@ -146,7 +161,7 @@ export class TimelineRenderer {
      */
     setStackEnabled(enabled: boolean): void {
         this.options.stackEnabled = enabled;
-        this.renderPreservingView();
+        this.render();
     }
 
     /**
@@ -154,37 +169,15 @@ export class TimelineRenderer {
      */
     setDensity(density: number): void {
         this.options.density = density;
-        this.renderPreservingView();
-    }
-
-    /**
-     * Toggle era backgrounds
-     */
-    setShowEras(enabled: boolean): void {
-        this.options.showEras = enabled;
-        this.renderPreservingView();
-    }
-
-    /**
-     * Toggle narrative order sorting
-     */
-    setNarrativeOrder(enabled: boolean): void {
-        this.options.narrativeOrder = enabled;
-        this.renderPreservingView();
+        this.render();
     }
 
     /**
      * Zoom to fit all events
      */
     fitToView(): void {
-        if (!this.timeline) return;
-        try {
-            // Verify timeline is fully initialized
-            if (typeof this.timeline.fit === 'function') {
-                this.timeline.fit();
-            }
-        } catch (error) {
-            console.warn('Timeline: Could not fit to view:', error);
+        if (this.timeline) {
+            this.timeline.fit();
         }
     }
 
@@ -193,119 +186,18 @@ export class TimelineRenderer {
      */
     zoomPresetYears(years: number): void {
         if (!this.timeline) return;
-        try {
-            const refDate = this.plugin.getReferenceTodayDate();
-            if (!refDate || !(refDate instanceof Date) || isNaN(refDate.getTime())) {
-                console.error('Timeline: Invalid reference date, cannot zoom');
-                return;
-            }
-            // Verify timeline has setWindow method
-            if (typeof this.timeline.setWindow !== 'function') {
-                console.warn('Timeline: setWindow method not available');
-                return;
-            }
-            const center = refDate.getTime();
-            const half = (years * 365.25 * 24 * 60 * 60 * 1000) / 2;
-            this.timeline.setWindow(new Date(center - half), new Date(center + half));
-        } catch (error) {
-            console.warn('Timeline: Could not zoom to preset:', error);
-        }
+        const center = this.plugin.getReferenceTodayDate().getTime();
+        const half = (years * 365.25 * 24 * 60 * 60 * 1000) / 2;
+        this.timeline.setWindow(new Date(center - half), new Date(center + half));
     }
 
     /**
      * Move timeline to today
      */
     moveToToday(): void {
-        if (!this.timeline) return;
-        try {
+        if (this.timeline) {
             const ref = this.plugin.getReferenceTodayDate();
-            if (!ref || !(ref instanceof Date) || isNaN(ref.getTime())) {
-                console.error('Timeline: Invalid reference date, cannot move to today');
-                return;
-            }
-            // Verify timeline has moveTo method
-            if (typeof this.timeline.moveTo === 'function') {
-                this.timeline.moveTo(ref);
-            }
-        } catch (error) {
-            console.warn('Timeline: Could not move to today:', error);
-        }
-    }
-
-    /**
-     * Zoom timeline to focus on a specific event
-     * Intelligently calculates window size based on event duration and neighboring events
-     */
-    private zoomToEvent(eventIndex: number): void {
-        if (!this.timeline) return;
-
-        // Validate array bounds
-        if (eventIndex < 0 || eventIndex >= this.events.length) {
-            console.error('Timeline: Invalid event index for zoom:', eventIndex);
-            return;
-        }
-
-        const event = this.events[eventIndex];
-        if (!event) {
-            console.error('Timeline: Event not found at index:', eventIndex);
-            return;
-        }
-
-        try {
-            const referenceDate = this.plugin.getReferenceTodayDate();
-            const dateString = getEventDateForTimeline(event);
-            const parsed = dateString ? parseEventDate(dateString, { referenceDate }) : null;
-
-            const startMs = toMillis(parsed?.start);
-            if (startMs == null || typeof startMs !== 'number' || isNaN(startMs)) {
-                console.warn('Timeline: Cannot zoom to event with invalid date:', event.name);
-                return;
-            }
-
-            const endMs = toMillis(parsed?.end);
-
-            // Calculate appropriate zoom window
-            let windowStart: Date;
-            let windowEnd: Date;
-
-            if (endMs != null && typeof endMs === 'number' && !isNaN(endMs)) {
-                // Event has a duration (range event)
-                const durationMs = endMs - startMs;
-
-                // Add 50% padding on each side for context
-                const paddingMs = durationMs * 0.5;
-                windowStart = new Date(startMs - paddingMs);
-                windowEnd = new Date(endMs + paddingMs);
-            } else {
-                // Point event - create a window based on the timeline's current zoom level or default
-                const currentWindow = this.getVisibleRange();
-                let contextWindowMs: number;
-
-                if (currentWindow) {
-                    // Use 10% of current visible window as the new window
-                    const currentRangeMs = currentWindow.end.getTime() - currentWindow.start.getTime();
-                    contextWindowMs = Math.max(currentRangeMs * 0.1, 30 * 24 * 60 * 60 * 1000); // Minimum 30 days
-                } else {
-                    // Default to 1 year window for point events
-                    contextWindowMs = 365.25 * 24 * 60 * 60 * 1000;
-                }
-
-                const halfWindow = contextWindowMs / 2;
-                windowStart = new Date(startMs - halfWindow);
-                windowEnd = new Date(startMs + halfWindow);
-            }
-
-            // Apply the zoom with smooth animation
-            if (typeof this.timeline.setWindow === 'function') {
-                this.timeline.setWindow(windowStart, windowEnd, {
-                    animation: {
-                        duration: 500,
-                        easingFunction: 'easeInOutQuad'
-                    }
-                });
-            }
-        } catch (error) {
-            console.warn('Timeline: Could not zoom to event:', error);
+            this.timeline.moveTo(ref);
         }
     }
 
@@ -322,20 +214,6 @@ export class TimelineRenderer {
             };
         } catch {
             return null;
-        }
-    }
-
-    /**
-     * Set visible window range (for state restoration)
-     */
-    setVisibleRange(start: Date, end: Date): void {
-        if (!this.timeline) return;
-        try {
-            if (typeof this.timeline.setWindow === 'function') {
-                this.timeline.setWindow(start, end, { animation: false });
-            }
-        } catch (error) {
-            console.warn('Timeline: Could not set visible range:', error);
         }
     }
 
@@ -364,8 +242,7 @@ export class TimelineRenderer {
 
         this.events.forEach(evt => {
             if (!this.shouldIncludeEvent(evt)) return;
-            const dateString = getEventDateForTimeline(evt);
-            const parsed = dateString ? parseEventDate(dateString, { referenceDate }) : null;
+            const parsed = evt.dateTime ? parseEventDate(evt.dateTime, { referenceDate }) : null;
             const startMs = toMillis(parsed?.start);
             const endMs = toMillis(parsed?.end);
             
@@ -383,12 +260,6 @@ export class TimelineRenderer {
      * Destroy timeline and clean up
      */
     destroy(): void {
-        // Clear any pending click timeout
-        if (this.clickTimeout) {
-            clearTimeout(this.clickTimeout);
-            this.clickTimeout = null;
-        }
-
         if (this.dependencyArrows) {
             try {
                 this.dependencyArrows.removeArrows();
@@ -408,26 +279,51 @@ export class TimelineRenderer {
     }
 
     /**
-     * Render while preserving current zoom/scroll position
-     */
-    private renderPreservingView(): void {
-        const currentWindow = this.getVisibleRange();
-        this.render(currentWindow);
-    }
-
-    /**
      * Main rendering method with error boundary
-     * @param preservedWindow Optional window range to restore after rendering
      */
-    private async render(preservedWindow?: { start: Date; end: Date } | null): Promise<void> {
+    private async render(): Promise<void> {
         try {
             // Clear existing timeline
             this.destroy();
 
             const referenceDate = this.plugin.getReferenceTodayDate();
-            const build = await this.buildDatasets(referenceDate);
+            const build = this.buildDatasets(referenceDate);
             const items = build.items;
             const groups = build.groups;
+
+            // Add calendar markers if a calendar is selected (Level 3 feature)
+            if (this.selectedCalendarId) {
+                try {
+                    const calendars = await this.plugin.listCalendars();
+                    const selectedCalendar = calendars.find(
+                        c => (c.id || c.name) === this.selectedCalendarId
+                    );
+
+                    if (selectedCalendar) {
+                        // Determine year range from events
+                        const eventDates = this.events
+                            .map(e => parseEventDate(e.dateTime || ''))
+                            .filter(d => d.start)
+                            .map(d => d.start!.year);
+
+                        const startYear = Math.min(...eventDates, new Date().getFullYear() - 1);
+                        const endYear = Math.max(...eventDates, new Date().getFullYear() + 1);
+
+                        // Generate calendar markers
+                        const markers = CalendarMarkers.generateAllMarkers(
+                            selectedCalendar,
+                            startYear,
+                            endYear
+                        );
+
+                        // Add markers to items dataset
+                        CalendarMarkers.applyMarkersToTimeline(null, markers, items);
+                    }
+                } catch (markerError) {
+                    console.warn('Storyteller Suite: Error adding calendar markers:', markerError);
+                    // Non-critical, continue without markers
+                }
+            }
 
             // Timeline options
             // In Gantt mode, use larger margins for better bar visibility
@@ -440,10 +336,7 @@ export class TimelineRenderer {
             const timelineOptions: any = {
                 stack: this.options.stackEnabled,
                 stackSubgroups: true,
-                margin: {
-                    item: itemMargin,
-                    axis: 40  // Increased axis margin to ensure labels have space
-                },
+                margin: { item: itemMargin, axis: 20 },
                 zoomable: true,
                 zoomMin: dayMs,
                 zoomMax: 1000 * yearMs,
@@ -458,21 +351,16 @@ export class TimelineRenderer {
                 visibleFrameTemplate: function(item: any) {
                     if (!item.progress || item.progress === 0) return '';
                     return `<div class="timeline-progress" style="width:${item.progress}%"></div>`;
-                },
-                // Explicitly enable axis labels and gridlines
-                showMinorLabels: true,
-                showMajorLabels: true,
-                showCurrentTime: true,
-                // Ensure vertical gridlines are visible
-                verticalScroll: false,
-                horizontalScroll: true,
-                // Configure time axis to ensure proper rendering
-                ...(this.options.ganttMode ? { height: 'auto' } : {})
+                }
             };
 
-            // Set container overflow to allow proper scrolling
-            // Remove the overflow: visible that was causing issues
-            this.container.style.removeProperty('overflow');
+            // Ensure container doesn't clip tooltips
+            this.container.style.overflow = 'visible';
+
+            // Add explicit item height in Gantt mode for consistent bar sizing
+            if (this.options.ganttMode) {
+                timelineOptions.height = '40px';
+            }
 
             // Enable drag-and-drop editing when in edit mode
             if (this.options.editMode) {
@@ -486,7 +374,7 @@ export class TimelineRenderer {
 
             // Create timeline with error handling
             try {
-                this.timeline = groups
+                this.timeline = groups 
                     ? new Timeline(this.container, items, groups, timelineOptions)
                     : new Timeline(this.container, items, timelineOptions);
             } catch (timelineError) {
@@ -502,11 +390,6 @@ export class TimelineRenderer {
                 return;
             }
 
-            // Add era backgrounds if enabled
-            if (this.options.showEras && this.timeline) {
-                this.addEraBackgrounds(referenceDate);
-            }
-
             // Set custom current time bar
             if (this.timeline && referenceDate) {
                 try {
@@ -518,19 +401,39 @@ export class TimelineRenderer {
                 }
             }
 
-            // Restore preserved window range if available
-            if (preservedWindow && this.timeline) {
+            // Apply custom calendar axis if a calendar is selected (Level 3 feature)
+            if (this.timeline && this.selectedCalendarId) {
                 try {
-                    if (typeof this.timeline.setWindow === 'function') {
-                        // Use requestAnimationFrame to ensure timeline is fully rendered
-                        requestAnimationFrame(() => {
-                            if (this.timeline && preservedWindow) {
-                                this.timeline.setWindow(preservedWindow.start, preservedWindow.end, { animation: false });
-                            }
-                        });
+                    const calendars = await this.plugin.listCalendars();
+                    const selectedCalendar = calendars.find(
+                        c => (c.id || c.name) === this.selectedCalendarId
+                    );
+
+                    if (selectedCalendar) {
+                        // Apply custom time axis formatting
+                        CustomTimeAxis.applyToTimeline(this.timeline, selectedCalendar);
+
+                        // Determine visible range to add month boundary markers
+                        const range = this.timeline.getWindow();
+                        if (range && range.start && range.end) {
+                            const startDate = new Date(range.start);
+                            const endDate = new Date(range.end);
+                            const startYear = startDate.getFullYear();
+                            const endYear = endDate.getFullYear();
+
+                            // Add month boundary markers (limited range to avoid performance issues)
+                            const yearRange = Math.min(endYear - startYear, 10); // Limit to 10 years
+                            CustomTimeAxis.createMonthBoundaryMarkers(
+                                this.timeline,
+                                selectedCalendar,
+                                startYear,
+                                startYear + yearRange
+                            );
+                        }
                     }
-                } catch (windowError) {
-                    console.warn('Storyteller Suite: Could not restore window range:', windowError);
+                } catch (calendarError) {
+                    console.warn('Storyteller Suite: Could not apply custom calendar axis:', calendarError);
+                    // Non-critical, continue with default axis
                 }
             }
 
@@ -539,42 +442,23 @@ export class TimelineRenderer {
             this.timeline.on('changed', async (props: any) => {
                 if (!this.options.editMode) return;
                 if (!props || !props.items || props.items.length === 0) return;
-
+                
                 const updatedItemId = props.items[0];
                 const updatedItem = items.get(updatedItemId);
                 if (!updatedItem) return;
-
-                // Validate array bounds
-                if (updatedItemId < 0 || updatedItemId >= this.events.length) {
-                    console.error('Timeline: Invalid event index in drag-drop:', updatedItemId);
-                    return;
-                }
-
+                
                 const event = this.events[updatedItemId];
                 if (!event) return;
-
+                
                 const startDate = new Date(updatedItem.start);
                 const endDate = updatedItem.end ? new Date(updatedItem.end) : null;
-
-                // Validate Date objects
-                if (isNaN(startDate.getTime())) {
-                    console.error('Timeline: Invalid start date after drag:', updatedItem.start);
-                    new Notice('Error: Invalid date after move');
-                    return;
-                }
-
-                if (endDate && isNaN(endDate.getTime())) {
-                    console.error('Timeline: Invalid end date after drag:', updatedItem.end);
-                    new Notice('Error: Invalid date after move');
-                    return;
-                }
-
+                
                 if (endDate) {
                     event.dateTime = `${startDate.toISOString()} to ${endDate.toISOString()}`;
                 } else {
                     event.dateTime = startDate.toISOString();
                 }
-
+                
                 try {
                     await this.plugin.saveEvent(event);
                     new Notice(`Event "${event.name}" rescheduled`);
@@ -584,51 +468,12 @@ export class TimelineRenderer {
                 }
             });
 
-            // Handle single click to zoom into event
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            this.timeline.on('click', (props: any) => {
-                if (props.item != null && props.event) {
-                    // Prevent zoom if this is the first click of a double-click
-                    // We use a simple timeout-based approach to distinguish single from double clicks
-                    const clickDelay = 250; // ms to wait before treating as single click
-
-                    if (this.clickTimeout) {
-                        clearTimeout(this.clickTimeout);
-                        this.clickTimeout = null;
-                        return; // This is a double-click, don't zoom
-                    }
-
-                    this.clickTimeout = setTimeout(() => {
-                        this.clickTimeout = null;
-                        this.zoomToEvent(props.item as number);
-                    }, clickDelay);
-                }
-            });
-
             // Handle double-click to edit
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             this.timeline.on('doubleClick', (props: any) => {
-                // Cancel any pending single-click zoom
-                if (this.clickTimeout) {
-                    clearTimeout(this.clickTimeout);
-                    this.clickTimeout = null;
-                }
-
                 if (props.item != null) {
                     const idx = props.item as number;
-
-                    // Validate array bounds
-                    if (idx < 0 || idx >= this.events.length) {
-                        console.error('Timeline: Invalid event index in double-click:', idx);
-                        return;
-                    }
-
                     const event = this.events[idx];
-                    if (!event) {
-                        console.error('Timeline: Event not found at index:', idx);
-                        return;
-                    }
-
                     new EventModal(this.app, this.plugin, event, async (updatedData: Event) => {
                         await this.plugin.saveEvent(updatedData);
                         new Notice(`Event "${updatedData.name}" updated`);
@@ -656,6 +501,36 @@ export class TimelineRenderer {
                 }
             }
 
+            // Add zoom/pan listener for dynamic calendar axis updates (Level 3 feature)
+            if (this.timeline && this.selectedCalendarId) {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                this.timeline.on('rangechanged', async (props: any) => {
+                    if (!this.selectedCalendarId) return;
+
+                    try {
+                        const calendars = await this.plugin.listCalendars();
+                        const selectedCalendar = calendars.find(
+                            c => (c.id || c.name) === this.selectedCalendarId
+                        );
+
+                        if (selectedCalendar && props.byUser) {
+                            // User initiated zoom/pan - update axis scale
+                            const range = this.timeline.getWindow();
+                            if (range && range.start && range.end) {
+                                const timeScale = CustomTimeAxis.determineTimeScale(
+                                    range.start.valueOf(),
+                                    range.end.valueOf()
+                                );
+
+                                // Re-apply custom time axis with updated scale
+                                CustomTimeAxis.applyToTimeline(this.timeline, selectedCalendar);
+                            }
+                        }
+                    } catch (error) {
+                        console.warn('Storyteller Suite: Error updating calendar axis on zoom:', error);
+                    }
+                });
+            }
         } catch (error) {
             console.error('Storyteller Suite: Fatal error in timeline rendering:', error);
             new Notice('Timeline could not be rendered. Check console for details.');
@@ -672,13 +547,13 @@ export class TimelineRenderer {
     /**
      * Build datasets for vis-timeline
      */
-    private async buildDatasets(referenceDate: Date): Promise<{
+    private buildDatasets(referenceDate: Date): {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         items: any;
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         groups?: any;
         legend: Array<{ key: string; label: string; color: string }>;
-    }> {
+    } {
         const items = new DataSet();
         const legend: Array<{ key: string; label: string; color: string }> = [];
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -738,34 +613,14 @@ export class TimelineRenderer {
         }
 
         // Build items
-        for (let idx = 0; idx < this.events.length; idx++) {
-            const evt = this.events[idx];
-
-            if (!this.shouldIncludeEvent(evt)) {
-                continue;
-            }
-
-            // Use narrative date if narrative order is enabled and event has one
-            let dateString = getEventDateForTimeline(evt);
-            if (this.options.narrativeOrder && evt.narrativeMarkers?.narrativeDate) {
-                dateString = evt.narrativeMarkers.narrativeDate;
-            }
+        this.events.forEach((evt, idx) => {
+            if (!this.shouldIncludeEvent(evt)) return;
 
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const parsed = dateString ? parseEventDate(dateString, { referenceDate }) : { error: 'empty' } as any;
-
+            const parsed = evt.dateTime ? parseEventDate(evt.dateTime, { referenceDate }) : { error: 'empty' } as any;
             const startMs = toMillis(parsed.start);
             const endMs = toMillis(parsed.end);
-
-            // Validate that we have a valid numeric timestamp
-            if (startMs == null || typeof startMs !== 'number' || isNaN(startMs)) {
-                console.warn('[Timeline] Skipping event with invalid start date:', evt.name, {
-                    dateString,
-                    parsed,
-                    startMs
-                });
-                continue;
-            }
+            if (startMs == null) return;
 
             // Determine grouping
             let groupId: string | undefined;
@@ -783,38 +638,25 @@ export class TimelineRenderer {
 
             const approx = !!parsed.approximate;
             const isMilestone = !!evt.isMilestone;
-            const isFlashback = !!evt.narrativeMarkers?.isFlashback;
-            const isFlashforward = !!evt.narrativeMarkers?.isFlashforward;
-
+            
             // Gantt mode: ensure all events have duration (but not milestones)
             let displayEndMs = endMs;
             if (this.options.ganttMode && displayEndMs == null && !isMilestone) {
                 const durationMs = (this.options.defaultGanttDuration || 1) * 24 * 60 * 60 * 1000;
                 displayEndMs = startMs + durationMs;
             }
-
-            // Validate displayEndMs if it exists
-            if (displayEndMs != null && (typeof displayEndMs !== 'number' || isNaN(displayEndMs))) {
-                console.warn('[Timeline] Invalid end timestamp for event:', evt.name, displayEndMs);
-                displayEndMs = undefined; // Treat as point event
-            }
-
+            
             // Build CSS classes
             const classes: string[] = [];
             if (approx) classes.push('is-approx');
             if (isMilestone) classes.push('timeline-milestone');
             if (this.options.ganttMode && !isMilestone) classes.push('gantt-bar');
-            if (isFlashback) classes.push('narrative-flashback');
-            if (isFlashforward) classes.push('narrative-flashforward');
             
             // Style
             const style = color ? `background-color:${this.hexWithAlpha(color, 0.18)};border-color:${color};` : '';
-
-            // Content with icons for milestone, flashback, flash-forward
-            let content = evt.name;
-            if (isMilestone) content = '⭐ ' + content;
-            if (isFlashback) content = '⬅️ ' + content;
-            if (isFlashforward) content = '➡️ ' + content;
+            
+            // Content with milestone icon
+            const content = isMilestone ? '⭐ ' + evt.name : evt.name;
 
             // Item type - milestones always use 'box' to show content without range bars
             let itemType: string;
@@ -831,14 +673,14 @@ export class TimelineRenderer {
                 content: content,
                 start: new Date(startMs),
                 end: displayEndMs != null ? new Date(displayEndMs) : undefined,
-                title: await this.makeTooltipAsync(evt, parsed),
+                title: this.makeTooltip(evt, parsed),
                 type: itemType,
                 className: classes.length > 0 ? classes.join(' ') : undefined,
                 group: groupId,
                 style,
                 progress: evt.progress
             });
-        }
+        });
 
         return { items, groups: groupsDS, legend };
     }
@@ -916,39 +758,22 @@ export class TimelineRenderer {
         if (this.filters.milestonesOnly && !evt.isMilestone) {
             return false;
         }
-
+        
         // Character filter
         if (this.filters.characters && this.filters.characters.size > 0) {
             const hasMatchingChar = evt.characters?.some(c => this.filters.characters && this.filters.characters.has(c));
             if (!hasMatchingChar) return false;
         }
-
+        
         // Location filter
         if (this.filters.locations && this.filters.locations.size > 0) {
             if (!evt.location || !this.filters.locations.has(evt.location)) return false;
         }
-
+        
         // Group filter
         if (this.filters.groups && this.filters.groups.size > 0) {
             const hasMatchingGroup = evt.groups?.some(g => this.filters.groups && this.filters.groups.has(g));
             if (!hasMatchingGroup) return false;
-        }
-
-        // Tag filter
-        if (this.filters.tags && this.filters.tags.size > 0) {
-            const hasMatchingTag = evt.tags?.some(t => this.filters.tags && this.filters.tags.has(t));
-            if (!hasMatchingTag) return false;
-        }
-
-        // Era filter (check if event falls within selected eras)
-        if (this.filters.eras && this.filters.eras.size > 0) {
-            const eras = this.plugin.settings.timelineEras || [];
-            const selectedEras = eras.filter(era => this.filters.eras && this.filters.eras.has(era.id));
-            const eventInEra = selectedEras.some(era => {
-                const eventsInEra = EraManager.getEventsInEra(era, [evt]);
-                return eventsInEra.length > 0;
-            });
-            if (!eventInEra) return false;
         }
 
         return true;
@@ -958,75 +783,13 @@ export class TimelineRenderer {
      * Make tooltip for event
      */
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    private async makeTooltipAsync(evt: Event, parsed: any): Promise<string> {
-        const parts: string[] = [evt.name];
-        const dt = parsed?.start ? toDisplay(parsed.start, undefined, parsed.isBCE, parsed.originalYear) : (evt.dateTime || '');
-        if (dt) parts.push(dt);
-        if (evt.location) parts.push(`@ ${evt.location}`);
-        if (evt.description) parts.push(evt.description.length > 120 ? evt.description.slice(0, 120) + '…' : evt.description);
-        return parts.filter(Boolean).join(' \n');
-    }
-
     private makeTooltip(evt: Event, parsed: any): string {
-        // Synchronous version for backwards compatibility - will be async in tooltip generation
         const parts: string[] = [evt.name];
         const dt = parsed?.start ? toDisplay(parsed.start, undefined, parsed.isBCE, parsed.originalYear) : (evt.dateTime || '');
         if (dt) parts.push(dt);
         if (evt.location) parts.push(`@ ${evt.location}`);
         if (evt.description) parts.push(evt.description.length > 120 ? evt.description.slice(0, 120) + '…' : evt.description);
         return parts.filter(Boolean).join(' \n');
-    }
-
-    /**
-     * Add era backgrounds to the timeline
-     */
-    private addEraBackgrounds(referenceDate: Date): void {
-        if (!this.timeline) return;
-
-        const eras = this.plugin.settings.timelineEras || [];
-        const visibleEras = EraManager.getVisibleEras(eras);
-
-        if (visibleEras.length === 0) return;
-
-        try {
-            // Create background items for each era
-            const backgroundItems: any[] = [];
-
-            for (const era of visibleEras) {
-                const startParsed = parseEventDate(era.startDate, { referenceDate });
-                const endParsed = parseEventDate(era.endDate, { referenceDate });
-
-                if (!startParsed.start || !endParsed.start) {
-                    console.warn(`Skipping era "${era.name}" - invalid dates`);
-                    continue;
-                }
-
-                const startMs = toMillis(startParsed.start);
-                const endMs = toMillis(endParsed.start);
-
-                if (startMs == null || endMs == null) continue;
-
-                // Create background item
-                backgroundItems.push({
-                    id: `era-bg-${era.id}`,
-                    start: new Date(startMs),
-                    end: new Date(endMs),
-                    type: 'background',
-                    className: 'timeline-era-background',
-                    style: `background-color: ${era.color || 'rgba(200, 200, 200, 0.2)'};`,
-                    content: era.name,
-                    title: `${era.name}\n${era.startDate} → ${era.endDate}${era.description ? '\n' + era.description : ''}`
-                });
-            }
-
-            // Add background items to timeline
-            if (backgroundItems.length > 0) {
-                const backgroundDataSet = new DataSet(backgroundItems);
-                this.timeline.setItems(backgroundDataSet, true); // true = add to existing items
-            }
-        } catch (error) {
-            console.error('Error adding era backgrounds:', error);
-        }
     }
 
     /**
@@ -1041,4 +804,3 @@ export class TimelineRenderer {
         return `rgba(${r}, ${g}, ${b}, ${alpha})`;
     }
 }
-
