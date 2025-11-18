@@ -3076,6 +3076,8 @@ body.mod-rtl .storyteller-group-members {
 /* Gantt milestone bars */
 .storyteller-timeline-modal .vis-item.gantt-bar.timeline-milestone {
   border-width: 2px;
+  border-left-width: 4px;
+  border-right-width: 4px;
   min-height: 36px;
 }
 
@@ -3837,6 +3839,14 @@ body.mod-rtl .storyteller-group-members {
   border-left-width: 4px;
   border-right-width: 4px;
   min-width: 100px;
+}
+
+/* Gantt milestone bars in view */
+.storyteller-timeline-view .vis-item.gantt-bar.timeline-milestone {
+  border-width: 2px;
+  border-left-width: 4px;
+  border-right-width: 4px;
+  min-height: 36px;
 }
 
 .storyteller-timeline-view .vis-item.gantt-bar .vis-item-overflow {
