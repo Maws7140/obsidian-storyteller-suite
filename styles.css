@@ -2787,7 +2787,7 @@ body.mod-rtl .storyteller-group-members {
 /* Milestone styling */
 .storyteller-timeline-modal .vis-item.timeline-milestone {
   background: linear-gradient(135deg, #FFD700 0%, #FFA500 100%) !important;
-  border: 3px solid #FF8C00 !important;
+  border: 2px solid #FF8C00 !important;
   font-weight: bold;
   box-shadow: 0 4px 12px rgba(255, 215, 0, 0.4);
   padding: 4px 10px !important;
@@ -3073,9 +3073,9 @@ body.mod-rtl .storyteller-group-members {
   stroke: var(--interactive-accent);
 }
 
-/* Gantt milestone bars have thicker borders */
+/* Gantt milestone bars */
 .storyteller-timeline-modal .vis-item.gantt-bar.timeline-milestone {
-  border-width: 4px;
+  border-width: 2px;
   min-height: 36px;
 }
 
