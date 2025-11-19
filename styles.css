@@ -2805,7 +2805,8 @@ body.mod-rtl .storyteller-group-members {
 }
 
 /* Fix for milestone line width - ensure it's not too thick */
-.vis-item.timeline-milestone .vis-line {
+/* Use higher specificity to override the general vis-point rules above */
+.storyteller-timeline-modal .vis-item.vis-point.timeline-milestone .vis-line {
   width: 0 !important;
   max-width: 0 !important;
   border: none !important;
@@ -2815,7 +2816,7 @@ body.mod-rtl .storyteller-group-members {
   transform: none !important;
 }
 
-.vis-item.timeline-milestone .vis-dot {
+.storyteller-timeline-modal .vis-item.vis-point.timeline-milestone .vis-dot {
   border: 1px solid #FF8C00 !important;
   background: #FFD700 !important;
   box-shadow: none !important;
@@ -3807,7 +3808,8 @@ body.mod-rtl .storyteller-group-members {
 }
 
 /* Fix for milestone line width - ensure it's not too thick */
-.vis-item.timeline-milestone .vis-line {
+/* Use higher specificity to override the general vis-point rules above */
+.storyteller-timeline-view .vis-item.vis-point.timeline-milestone .vis-line {
   width: 0 !important;
   max-width: 0 !important;
   border: none !important;
@@ -3817,7 +3819,7 @@ body.mod-rtl .storyteller-group-members {
   transform: none !important;
 }
 
-.vis-item.timeline-milestone .vis-dot {
+.storyteller-timeline-view .vis-item.vis-point.timeline-milestone .vis-dot {
   border: 1px solid #FF8C00 !important;
   background: #FFD700 !important;
   box-shadow: none !important;
