@@ -2820,6 +2820,7 @@ body.mod-rtl .storyteller-group-members {
   border: 1px solid #FF8C00 !important;
   background: #FFD700 !important;
   box-shadow: none !important;
+  padding: 0 !important;
 }
 
 /* Narrative Markers - Flashbacks */
