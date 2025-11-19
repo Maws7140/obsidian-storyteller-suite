@@ -571,10 +571,10 @@ export class TimelineRenderer {
             // Content with milestone icon
             const content = isMilestone ? '⭐ ' + evt.name : evt.name;
 
-            // Item type - milestones always use 'box' to show content without range bars
+            // Item type - milestones use 'point' to show as a dot
             let itemType: string;
             if (isMilestone) {
-                itemType = 'box';
+                itemType = 'point';
             } else if (this.options.ganttMode) {
                 itemType = 'range';
             } else {
