@@ -3787,21 +3787,16 @@ body.mod-rtl .storyteller-group-members {
   pointer-events: none;
 }
 
-/* Timeline View Milestones */
+/* Timeline View Milestones - point type styling */
 .storyteller-timeline-view .vis-item.timeline-milestone {
-  background: linear-gradient(135deg, #FFD700 0%, #FFA500 100%) !important;
-  border: 2px solid #FF8C00 !important;
   font-weight: 600;
-  box-shadow: 0 4px 12px rgba(255, 215, 0, 0.4);
-  padding: 0 !important;
-  min-height: 32px;
-  display: flex;
-  align-items: center;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
 }
 
 .storyteller-timeline-view .vis-item.timeline-milestone:hover {
-  box-shadow: 0 6px 16px rgba(255, 215, 0, 0.6);
-  transform: scale(1.05);
+  transform: none;
 }
 
 /* Fix for all timeline point item stems - ensure they're thin lines */
@@ -3824,10 +3819,12 @@ body.mod-rtl .storyteller-group-members {
 }
 
 .storyteller-timeline-view .vis-item.vis-point.timeline-milestone .vis-dot {
-  border: 1px solid #FF8C00 !important;
+  border: 2px solid #FF8C00 !important;
   background: #FFD700 !important;
-  box-shadow: none !important;
-  padding: 0 !important;
+  box-shadow: 0 2px 6px rgba(255, 215, 0, 0.5) !important;
+  width: 14px !important;
+  height: 14px !important;
+  border-radius: 50% !important;
 }
 
 /* Timeline View Gantt Bar Styles */
