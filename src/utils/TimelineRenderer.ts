@@ -50,7 +50,6 @@ export class TimelineRenderer {
     private timeline: any = null;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     private dependencyArrows: any = null;
-    private wheelHandler: ((e: WheelEvent) => void) | null = null;
 
     // Configuration
     private options: TimelineRendererOptions;
@@ -275,11 +274,6 @@ export class TimelineRenderer {
      * Destroy timeline and clean up
      */
     destroy(): void {
-        // Remove wheel handler
-        if (this.wheelHandler) {
-            this.container.removeEventListener('wheel', this.wheelHandler);
-            this.wheelHandler = null;
-        }
         if (this.dependencyArrows) {
             try {
                 this.dependencyArrows.removeArrows();
@@ -323,7 +317,7 @@ export class TimelineRenderer {
                 stack: this.options.stackEnabled,
                 stackSubgroups: true,
                 margin: { item: itemMargin, axis: 20 },
-                zoomable: false, // Disable default zoom - we handle it with custom cursor-centered zoom
+                zoomable: true,
                 zoomMin: dayMs,
                 zoomMax: 1000 * yearMs,
                 multiselect: true,
@@ -431,50 +425,6 @@ export class TimelineRenderer {
                     }).open();
                 }
             });
-
-            // Custom wheel handler for cursor-centered zoom
-            // This ensures zooming focuses on where the mouse is positioned
-            const zoomMin = dayMs;
-            const zoomMax = 1000 * yearMs;
-
-            this.wheelHandler = (e: WheelEvent) => {
-                if (!this.timeline) return;
-
-                e.preventDefault();
-                e.stopPropagation();
-
-                // Get current visible range
-                const currentWindow = this.timeline.getWindow();
-                const currentStart = currentWindow.start.getTime();
-                const currentEnd = currentWindow.end.getTime();
-                const currentRange = currentEnd - currentStart;
-
-                // Calculate zoom factor based on scroll direction
-                // Positive deltaY = scroll down = zoom out, Negative deltaY = scroll up = zoom in
-                const zoomFactor = e.deltaY > 0 ? 1.2 : 1 / 1.2;
-
-                // Calculate new range with zoom limits
-                let newRange = currentRange * zoomFactor;
-                newRange = Math.max(zoomMin, Math.min(zoomMax, newRange));
-
-                // Get cursor position relative to the timeline container
-                const rect = this.container.getBoundingClientRect();
-                const cursorX = e.clientX - rect.left;
-                const containerWidth = rect.width;
-
-                // Calculate the time position under the cursor
-                const cursorRatio = cursorX / containerWidth;
-                const cursorTime = currentStart + cursorRatio * currentRange;
-
-                // Calculate new window keeping cursor position fixed
-                const newStart = cursorTime - cursorRatio * newRange;
-                const newEnd = cursorTime + (1 - cursorRatio) * newRange;
-
-                // Apply the new window
-                this.timeline.setWindow(new Date(newStart), new Date(newEnd), { animation: false });
-            };
-
-            this.container.addEventListener('wheel', this.wheelHandler, { passive: false });
 
             // Render dependency arrows in Gantt mode
             if (this.options.ganttMode && this.options.showDependencies) {
