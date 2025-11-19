@@ -3787,24 +3787,9 @@ body.mod-rtl .storyteller-group-members {
   pointer-events: none;
 }
 
-/* Timeline View Milestones - box type styling */
+/* Timeline View Milestones - uses base vis-timeline bar styling */
 .storyteller-timeline-view .vis-item.timeline-milestone {
   font-weight: 600;
-  background: linear-gradient(135deg, rgba(255, 215, 0, 0.25) 0%, rgba(255, 140, 0, 0.2) 100%) !important;
-  border: 2px solid #FFD700 !important;
-  border-radius: 6px;
-  box-shadow: 0 2px 8px rgba(255, 215, 0, 0.3) !important;
-  min-height: 28px;
-  padding: 4px 10px !important;
-}
-
-.storyteller-timeline-view .vis-item.timeline-milestone:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(255, 215, 0, 0.4) !important;
-}
-
-.storyteller-timeline-view .vis-item.timeline-milestone .vis-item-content {
-  color: var(--text-normal);
 }
 
 /* Timeline View Gantt Bar Styles */
