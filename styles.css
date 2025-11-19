@@ -3787,44 +3787,24 @@ body.mod-rtl .storyteller-group-members {
   pointer-events: none;
 }
 
-/* Timeline View Milestones - point type styling */
+/* Timeline View Milestones - box type styling */
 .storyteller-timeline-view .vis-item.timeline-milestone {
   font-weight: 600;
-  background: transparent !important;
-  border: none !important;
-  box-shadow: none !important;
+  background: linear-gradient(135deg, rgba(255, 215, 0, 0.25) 0%, rgba(255, 140, 0, 0.2) 100%) !important;
+  border: 2px solid #FFD700 !important;
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgba(255, 215, 0, 0.3) !important;
+  min-height: 28px;
+  padding: 4px 10px !important;
 }
 
 .storyteller-timeline-view .vis-item.timeline-milestone:hover {
-  transform: none;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(255, 215, 0, 0.4) !important;
 }
 
-/* Fix for all timeline point item stems - ensure they're thin lines */
-.storyteller-timeline-view .vis-item.vis-point .vis-line {
-  width: 2px !important;
-  background: var(--text-muted) !important;
-  box-shadow: none !important;
-}
-
-/* Fix for milestone line width - ensure it's not too thick */
-/* Use higher specificity to override the general vis-point rules above */
-.storyteller-timeline-view .vis-item.vis-point.timeline-milestone .vis-line {
-  width: 0 !important;
-  max-width: 0 !important;
-  border: none !important;
-  border-left: 1px solid #FF8C00 !important;
-  background: transparent !important;
-  box-shadow: none !important;
-  transform: none !important;
-}
-
-.storyteller-timeline-view .vis-item.vis-point.timeline-milestone .vis-dot {
-  border: 2px solid #FF8C00 !important;
-  background: #FFD700 !important;
-  box-shadow: 0 2px 6px rgba(255, 215, 0, 0.5) !important;
-  width: 14px !important;
-  height: 14px !important;
-  border-radius: 50% !important;
+.storyteller-timeline-view .vis-item.timeline-milestone .vis-item-content {
+  color: var(--text-normal);
 }
 
 /* Timeline View Gantt Bar Styles */
