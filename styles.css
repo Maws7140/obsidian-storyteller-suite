@@ -2790,7 +2790,7 @@ body.mod-rtl .storyteller-group-members {
   border: 2px solid #FF8C00 !important;
   font-weight: bold;
   box-shadow: 0 4px 12px rgba(255, 215, 0, 0.4);
-  padding: 4px 10px !important;
+  padding: 0 !important;
 }
 
 .storyteller-timeline-modal .vis-item.timeline-milestone:hover {
@@ -2820,6 +2820,7 @@ body.mod-rtl .storyteller-group-members {
   border: 1px solid #FF8C00 !important;
   background: #FFD700 !important;
   box-shadow: none !important;
+  padding: 0 !important;
 }
 
 /* Narrative Markers - Flashbacks */
