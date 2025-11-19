@@ -3789,15 +3789,18 @@ body.mod-rtl .storyteller-group-members {
 
 /* Timeline View Milestones */
 .storyteller-timeline-view .vis-item.timeline-milestone {
-  padding: 4px 12px;
+  background: linear-gradient(135deg, #FFD700 0%, #FFA500 100%) !important;
+  border: 2px solid #FF8C00 !important;
   font-weight: 600;
-  border-width: 2px;
+  box-shadow: 0 4px 12px rgba(255, 215, 0, 0.4);
+  padding: 0 !important;
   min-height: 32px;
   display: flex;
   align-items: center;
 }
 
 .storyteller-timeline-view .vis-item.timeline-milestone:hover {
+  box-shadow: 0 6px 16px rgba(255, 215, 0, 0.6);
   transform: scale(1.05);
 }
 
@@ -3824,6 +3827,7 @@ body.mod-rtl .storyteller-group-members {
   border: 1px solid #FF8C00 !important;
   background: #FFD700 !important;
   box-shadow: none !important;
+  padding: 0 !important;
 }
 
 /* Timeline View Gantt Bar Styles */
