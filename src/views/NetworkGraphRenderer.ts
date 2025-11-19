@@ -759,6 +759,14 @@ export class NetworkGraphRenderer {
 
         // Update tooltip position when panning/zooming and save viewport state
         this.cy.on('pan zoom', () => {
+            // Clear any pending info panel timeout
+            if (this.infoPanelTimeout) {
+                clearTimeout(this.infoPanelTimeout);
+                this.infoPanelTimeout = null;
+            }
+            // Remove highlighting/dimming when scrolling - this fixes the issue where
+            // scrolling away from a node leaves the graph in a dimmed state
+            this.cy?.elements().removeClass('highlighted dimmed');
             this.hideInfoPanel();
             this.saveViewportState(); // Save user's zoom/pan position
         });
