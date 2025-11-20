@@ -3787,9 +3787,11 @@ body.mod-rtl .storyteller-group-members {
   pointer-events: none;
 }
 
-/* Timeline View Milestones - uses base vis-timeline bar styling */
+/* Timeline View Milestones - gold styling matching base bar structure */
 .storyteller-timeline-view .vis-item.timeline-milestone {
   font-weight: 600;
+  background: linear-gradient(135deg, rgba(255, 215, 0, 0.25) 0%, rgba(255, 140, 0, 0.2) 100%);
+  border-color: #FFD700;
 }
 
 /* Timeline View Gantt Bar Styles */
