@@ -1,26 +1,19 @@
 // Timeline View - Full workspace view for timeline visualization
 // Provides a dedicated panel for viewing and interacting with the story timeline
 
-import { ItemView, WorkspaceLeaf, setIcon, Menu, Setting, DropdownComponent } from 'obsidian';
+import { ItemView, WorkspaceLeaf, setIcon, Menu, DropdownComponent } from 'obsidian';
 import StorytellerSuitePlugin from '../main';
 import { t } from '../i18n/strings';
 import { TimelineRenderer, TimelineFilters } from '../utils/TimelineRenderer';
-import { TimelineTrack } from '../types';
+import { TimelineUIState } from '../types';
 import { TimelineTrackManager } from '../utils/TimelineTrackManager';
+import { TimelineControlsBuilder, TimelineControlCallbacks } from '../utils/TimelineControlsBuilder';
+import { TimelineFilterBuilder, TimelineFilterCallbacks } from '../utils/TimelineFilterBuilder';
 
 export const VIEW_TYPE_TIMELINE = 'storyteller-timeline-view';
 
-export interface TimelineViewState {
-    ganttMode: boolean;
-    groupMode: 'none' | 'location' | 'group' | 'character';
-    filters: TimelineFilters;
-    stackEnabled: boolean;
-    density: number;
-    editMode: boolean;
-    showEras: boolean;
-    currentTrackId?: string;
-    narrativeOrder: boolean;
-}
+// Re-export TimelineUIState as TimelineViewState for backward compatibility
+export type TimelineViewState = TimelineUIState;
 
 /**
  * TimelineView provides a full-screen dedicated view for the timeline
@@ -37,7 +30,11 @@ export class TimelineView extends ItemView {
     plugin: StorytellerSuitePlugin;
     private renderer: TimelineRenderer | null = null;
     private currentState: TimelineViewState;
-    
+
+    // Shared builders
+    private controlsBuilder: TimelineControlsBuilder;
+    private filterBuilder: TimelineFilterBuilder;
+
     // UI Elements
     private toolbarEl: HTMLElement | null = null;
     private filterToggleEl: HTMLElement | null = null;
@@ -46,7 +43,7 @@ export class TimelineView extends ItemView {
     private timelineContainer: HTMLElement | null = null;
     private footerEl: HTMLElement | null = null;
     private footerStatusEl: HTMLElement | null = null;
-    
+
     // State
     private advancedFiltersExpanded = false;
     private resizeObserver: ResizeObserver | null = null;
@@ -54,18 +51,27 @@ export class TimelineView extends ItemView {
     constructor(leaf: WorkspaceLeaf, plugin: StorytellerSuitePlugin) {
         super(leaf);
         this.plugin = plugin;
-        
-        // Initialize default state
-        this.currentState = {
-            ganttMode: false,
-            groupMode: (this.plugin.settings.defaultTimelineGroupMode || 'none') as 'none' | 'location' | 'group' | 'character',
-            filters: {},
-            stackEnabled: this.plugin.settings.defaultTimelineStack ?? true,
-            density: this.plugin.settings.defaultTimelineDensity ?? 50,
-            editMode: false,
-            showEras: false,
-            narrativeOrder: false
+
+        // Initialize default state using shared utility
+        this.currentState = TimelineControlsBuilder.createDefaultState(plugin);
+
+        // Create control callbacks
+        const controlCallbacks: TimelineControlCallbacks = {
+            onStateChange: () => this.updateFooterStatus(),
+            onRendererUpdate: () => this.buildTimeline(),
+            getRenderer: () => this.renderer,
+            getEvents: () => this.plugin.listEvents()
         };
+
+        // Create filter callbacks
+        const filterCallbacks: TimelineFilterCallbacks = {
+            onFilterChange: () => this.updateFooterStatus(),
+            getRenderer: () => this.renderer
+        };
+
+        // Initialize builders
+        this.controlsBuilder = new TimelineControlsBuilder(plugin, this.currentState, controlCallbacks);
+        this.filterBuilder = new TimelineFilterBuilder(plugin, this.currentState, filterCallbacks);
     }
 
     getViewType(): string {
@@ -95,7 +101,7 @@ export class TimelineView extends ItemView {
         // Build each section
         this.buildToolbar();
         this.buildFilterToggle();
-        this.buildAdvancedFilters();
+        await this.buildAdvancedFilters();
         await this.buildTimeline();
         this.buildFooter();
         
@@ -110,46 +116,9 @@ export class TimelineView extends ItemView {
         if (!this.toolbarEl) return;
         this.toolbarEl.empty();
 
-        // Gantt/Timeline toggle button
-        const ganttBtn = this.toolbarEl.createEl('button', {
-            cls: 'clickable-icon storyteller-toolbar-btn',
-            attr: { 
-                'aria-label': this.currentState.ganttMode ? t('timelineView') : t('ganttView'),
-                'title': this.currentState.ganttMode ? t('timelineView') : t('ganttView')
-            }
-        });
-        setIcon(ganttBtn, this.currentState.ganttMode ? 'bar-chart-2' : 'clock');
-        ganttBtn.addEventListener('click', () => {
-            this.currentState.ganttMode = !this.currentState.ganttMode;
-            setIcon(ganttBtn, this.currentState.ganttMode ? 'bar-chart-2' : 'clock');
-            ganttBtn.setAttribute('aria-label', this.currentState.ganttMode ? t('timelineView') : t('ganttView'));
-            ganttBtn.setAttribute('title', this.currentState.ganttMode ? t('timelineView') : t('ganttView'));
-            this.renderer?.setGanttMode(this.currentState.ganttMode);
-            this.updateFooterStatus();
-        });
-
-        // Grouping dropdown (compact)
-        const groupingContainer = this.toolbarEl.createDiv('storyteller-grouping-container');
-        const groupingSelect = groupingContainer.createEl('select', {
-            cls: 'dropdown storyteller-grouping-select',
-            attr: { 'aria-label': 'Grouping mode' }
-        });
-        [
-            { value: 'none', label: t('noGrouping') },
-            { value: 'location', label: t('byLocation') },
-            { value: 'group', label: t('byGroup') },
-            { value: 'character', label: t('byCharacter') }
-        ].forEach(opt => {
-            const option = groupingSelect.createEl('option', { value: opt.value, text: opt.label });
-            if (opt.value === this.currentState.groupMode) {
-                option.selected = true;
-            }
-        });
-        groupingSelect.addEventListener('change', () => {
-            this.currentState.groupMode = groupingSelect.value as 'none' | 'location' | 'group' | 'character';
-            this.renderer?.setGroupMode(this.currentState.groupMode);
-            this.updateFooterStatus();
-        });
+        // Use shared controls builder for common controls
+        this.controlsBuilder.createGanttToggle(this.toolbarEl);
+        this.controlsBuilder.createGroupingDropdown(this.toolbarEl);
 
         // Fork selector dropdown
         const forkContainer = this.toolbarEl.createDiv('storyteller-fork-container');
@@ -235,96 +204,14 @@ export class TimelineView extends ItemView {
             });
         }
 
-        // Fit button
-        const fitBtn = this.toolbarEl.createEl('button', {
-            cls: 'clickable-icon storyteller-toolbar-btn',
-            attr: { 
-                'aria-label': t('fit'),
-                'title': t('fit')
-            }
-        });
-        setIcon(fitBtn, 'maximize-2');
-        fitBtn.addEventListener('click', () => this.renderer?.fitToView());
-
-        // Decade button
-        const decadeBtn = this.toolbarEl.createEl('button', {
-            cls: 'clickable-icon storyteller-toolbar-btn',
-            attr: { 
-                'aria-label': t('decade'),
-                'title': t('decade')
-            }
-        });
-        setIcon(decadeBtn, 'calendar');
-        decadeBtn.addEventListener('click', () => this.renderer?.zoomPresetYears(10));
-
-        // Century button
-        const centuryBtn = this.toolbarEl.createEl('button', {
-            cls: 'clickable-icon storyteller-toolbar-btn',
-            attr: { 
-                'aria-label': t('century'),
-                'title': t('century')
-            }
-        });
-        setIcon(centuryBtn, 'calendar-days');
-        centuryBtn.addEventListener('click', () => this.renderer?.zoomPresetYears(100));
-
-        // Today button
-        const todayBtn = this.toolbarEl.createEl('button', {
-            cls: 'clickable-icon storyteller-toolbar-btn',
-            attr: { 
-                'aria-label': t('today'),
-                'title': t('today')
-            }
-        });
-        setIcon(todayBtn, 'calendar-clock');
-        todayBtn.addEventListener('click', () => this.renderer?.moveToToday());
-
-        // Edit mode toggle
-        const editBtn = this.toolbarEl.createEl('button', {
-            cls: 'clickable-icon storyteller-toolbar-btn',
-            attr: {
-                'aria-label': t('editMode'),
-                'title': t('editModeTooltip')
-            }
-        });
-        setIcon(editBtn, this.currentState.editMode ? 'pencil' : 'lock');
-        editBtn.addEventListener('click', () => {
-            this.currentState.editMode = !this.currentState.editMode;
-            setIcon(editBtn, this.currentState.editMode ? 'pencil' : 'lock');
-            this.renderer?.setEditMode(this.currentState.editMode);
-        });
-
-        // Narrative order toggle
-        const narrativeOrderBtn = this.toolbarEl.createEl('button', {
-            cls: `clickable-icon storyteller-toolbar-btn${this.currentState.narrativeOrder ? ' is-active' : ''}`,
-            attr: {
-                'aria-label': 'Toggle narrative order',
-                'title': this.currentState.narrativeOrder ? 'Show chronological order' : 'Show narrative order'
-            }
-        });
-        setIcon(narrativeOrderBtn, 'book-open');
-        narrativeOrderBtn.addEventListener('click', () => {
-            this.currentState.narrativeOrder = !this.currentState.narrativeOrder;
-            narrativeOrderBtn.toggleClass('is-active', this.currentState.narrativeOrder);
-            narrativeOrderBtn.setAttribute('title', this.currentState.narrativeOrder ? 'Show chronological order' : 'Show narrative order');
-            this.renderer?.setNarrativeOrder(this.currentState.narrativeOrder);
-        });
-
-        // Era backgrounds toggle
-        const eraBtn = this.toolbarEl.createEl('button', {
-            cls: `clickable-icon storyteller-toolbar-btn${this.currentState.showEras ? ' is-active' : ''}`,
-            attr: {
-                'aria-label': 'Toggle era backgrounds',
-                'title': this.currentState.showEras ? 'Hide era backgrounds' : 'Show era backgrounds'
-            }
-        });
-        setIcon(eraBtn, 'layers');
-        eraBtn.addEventListener('click', () => {
-            this.currentState.showEras = !this.currentState.showEras;
-            eraBtn.toggleClass('is-active', this.currentState.showEras);
-            eraBtn.setAttribute('title', this.currentState.showEras ? 'Hide era backgrounds' : 'Show era backgrounds');
-            this.renderer?.setShowEras(this.currentState.showEras);
-        });
+        // Use shared controls for zoom and navigation buttons
+        this.controlsBuilder.createFitButton(this.toolbarEl);
+        this.controlsBuilder.createDecadeButton(this.toolbarEl);
+        this.controlsBuilder.createCenturyButton(this.toolbarEl);
+        this.controlsBuilder.createTodayButton(this.toolbarEl);
+        this.controlsBuilder.createEditModeToggle(this.toolbarEl);
+        this.controlsBuilder.createNarrativeOrderToggle(this.toolbarEl);
+        this.controlsBuilder.createEraToggle(this.toolbarEl);
 
         // Manage eras button
         const manageErasBtn = this.toolbarEl.createEl('button', {
@@ -374,19 +261,8 @@ export class TimelineView extends ItemView {
         setIcon(exportBtn, 'download');
         exportBtn.addEventListener('click', () => this.showExportMenu(exportBtn));
 
-        // Refresh button
-        const refreshBtn = this.toolbarEl.createEl('button', {
-            cls: 'clickable-icon storyteller-toolbar-btn',
-            attr: { 
-                'aria-label': t('refresh'),
-                'title': t('refresh')
-            }
-        });
-        setIcon(refreshBtn, 'refresh-cw');
-        refreshBtn.addEventListener('click', async () => {
-            await this.renderer?.refresh();
-            this.updateFooterStatus();
-        });
+        // Refresh button using shared builder
+        this.controlsBuilder.createRefreshButton(this.toolbarEl);
     }
 
     /**
@@ -432,7 +308,7 @@ export class TimelineView extends ItemView {
     /**
      * Build collapsible advanced filters section
      */
-    private buildAdvancedFilters(): void {
+    private async buildAdvancedFilters(): Promise<void> {
         if (!this.advancedFiltersEl) return;
         this.advancedFiltersEl.empty();
 
@@ -440,123 +316,11 @@ export class TimelineView extends ItemView {
         this.advancedFiltersContent = this.advancedFiltersEl.createDiv('storyteller-advanced-filters-content');
         this.advancedFiltersContent.style.display = this.advancedFiltersExpanded ? 'block' : 'none';
 
-        // Character filter
-        new Setting(this.advancedFiltersContent)
-            .setName(t('filterByCharacter'))
-            .addDropdown(dropdown => {
-                dropdown.addOption('', t('selectCharacterFilter'));
-                // Populate with characters from events
-                const allCharacters = new Set<string>();
-                this.plugin.listEvents().then(events => {
-                    events.forEach(e => {
-                        if (e.characters) e.characters.forEach(c => allCharacters.add(c));
-                    });
-                    Array.from(allCharacters).sort().forEach(char => {
-                        dropdown.addOption(char, char);
-                    });
-                });
-                dropdown.setValue('');
-                dropdown.onChange(value => {
-                    if (value) {
-                        if (!this.currentState.filters.characters) {
-                            this.currentState.filters.characters = new Set();
-                        }
-                        this.currentState.filters.characters.add(value);
-                        this.renderer?.applyFilters(this.currentState.filters);
-                        this.updateFooterStatus();
-                        dropdown.setValue('');
-                    }
-                });
-            });
+        // Get events for filter population
+        const events = await this.plugin.listEvents();
 
-        // Location filter
-        new Setting(this.advancedFiltersContent)
-            .setName(t('filterByLocation'))
-            .addDropdown(dropdown => {
-                dropdown.addOption('', t('selectLocationFilter'));
-                const allLocations = new Set<string>();
-                this.plugin.listEvents().then(events => {
-                    events.forEach(e => {
-                        if (e.location) allLocations.add(e.location);
-                    });
-                    Array.from(allLocations).sort().forEach(loc => {
-                        dropdown.addOption(loc, loc);
-                    });
-                });
-                dropdown.setValue('');
-                dropdown.onChange(value => {
-                    if (value) {
-                        if (!this.currentState.filters.locations) {
-                            this.currentState.filters.locations = new Set();
-                        }
-                        this.currentState.filters.locations.add(value);
-                        this.renderer?.applyFilters(this.currentState.filters);
-                        this.updateFooterStatus();
-                        dropdown.setValue('');
-                    }
-                });
-            });
-
-        // Group filter
-        new Setting(this.advancedFiltersContent)
-            .setName(t('filterByGroup'))
-            .addDropdown(dropdown => {
-                dropdown.addOption('', t('selectGroupFilter'));
-                const groups = this.plugin.getGroups();
-                groups.forEach(g => {
-                    dropdown.addOption(g.id, g.name);
-                });
-                dropdown.setValue('');
-                dropdown.onChange(value => {
-                    if (value) {
-                        if (!this.currentState.filters.groups) {
-                            this.currentState.filters.groups = new Set();
-                        }
-                        this.currentState.filters.groups.add(value);
-                        this.renderer?.applyFilters(this.currentState.filters);
-                        this.updateFooterStatus();
-                        dropdown.setValue('');
-                    }
-                });
-            });
-
-        // Tag filter
-        new Setting(this.advancedFiltersContent)
-            .setName('Filter by Tag')
-            .addDropdown(dropdown => {
-                dropdown.addOption('', 'Select tag...');
-                const allTags = new Set<string>();
-                this.plugin.listEvents().then(events => {
-                    events.forEach(e => {
-                        if (e.tags) e.tags.forEach(t => allTags.add(t));
-                    });
-                    Array.from(allTags).sort().forEach(tag => {
-                        dropdown.addOption(tag, tag);
-                    });
-                });
-                dropdown.setValue('');
-                dropdown.onChange(value => {
-                    if (value) {
-                        if (!this.currentState.filters.tags) {
-                            this.currentState.filters.tags = new Set();
-                        }
-                        this.currentState.filters.tags.add(value);
-                        this.renderer?.applyFilters(this.currentState.filters);
-                        this.updateFooterStatus();
-                        dropdown.setValue('');
-                    }
-                });
-            });
-
-        // Clear all filters button
-        new Setting(this.advancedFiltersContent)
-            .addButton(button => button
-                .setButtonText(t('clearAllFilters'))
-                .onClick(() => {
-                    this.currentState.filters = {};
-                    this.renderer?.applyFilters(this.currentState.filters);
-                    this.updateFooterStatus();
-                }));
+        // Use shared filter builder for all filter controls
+        this.filterBuilder.buildFilterPanel(this.advancedFiltersContent, events);
     }
 
     /**
