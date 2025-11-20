@@ -1772,3 +1772,46 @@ export interface LocationSensoryProfile {
     notes?: string;
 }
 
+/**
+ * Shared UI state for timeline components (View and Modal)
+ * This interface unifies state management across different timeline implementations
+ */
+export interface TimelineUIState {
+    /** Whether Gantt chart view is enabled */
+    ganttMode: boolean;
+    /** Grouping mode for events */
+    groupMode: 'none' | 'location' | 'group' | 'character';
+    /** Active filters */
+    filters: TimelineUIFilters;
+    /** Whether event stacking is enabled */
+    stackEnabled: boolean;
+    /** Density setting (0-100) */
+    density: number;
+    /** Whether edit mode (drag to reschedule) is enabled */
+    editMode: boolean;
+    /** Whether era backgrounds are shown */
+    showEras: boolean;
+    /** Current track ID being viewed */
+    currentTrackId?: string;
+    /** Whether narrative order is enabled */
+    narrativeOrder: boolean;
+}
+
+/**
+ * Filter state for timeline UI components
+ */
+export interface TimelineUIFilters {
+    /** Filter by characters */
+    characters?: Set<string>;
+    /** Filter by locations */
+    locations?: Set<string>;
+    /** Filter by groups */
+    groups?: Set<string>;
+    /** Show only milestones */
+    milestonesOnly?: boolean;
+    /** Filter by tags */
+    tags?: Set<string>;
+    /** Filter by eras */
+    eras?: Set<string>;
+}
+
