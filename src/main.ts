@@ -126,6 +126,11 @@ import { StoryTemplateGalleryModal } from './templates/modals/StoryTemplateGalle
     storyBoardColorBy?: 'status' | 'chapter' | 'none';
     storyBoardShowEdges?: boolean;
 
+    /** Timeline tracks for multi-track visualization */
+    timelineTracks?: TimelineTrack[];
+    /** Timeline eras/periods for grouping events */
+    timelineEras?: TimelineEra[];
+
     /** Map settings */
     enableFrontmatterMarkers?: boolean;
     enableDataViewMarkers?: boolean;
