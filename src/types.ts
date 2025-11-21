@@ -397,6 +397,9 @@ export interface Event {
         narrativeContext?: string;
     };
 
+    /** Narrative sequence number for non-chronological ordering (0-based index) */
+    narrativeSequence?: number;
+
     /** ID of the map where this event is primarily displayed
      * @deprecated Map functionality has been deprecated */
     mapId?: string;
