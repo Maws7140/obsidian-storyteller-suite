@@ -683,6 +683,9 @@ export class NetworkGraphRenderer {
         this.cy.on('mouseover', 'node', (evt) => {
             const node = evt.target;
 
+            // Clear all old highlights immediately to prevent stale highlights when moving quickly between nodes
+            this.cy?.elements().removeClass('highlighted dimmed');
+
             // Get all neighbors of the hovered node (nodes connected to it)
             const neighbors = node.neighborhood('node');
 
