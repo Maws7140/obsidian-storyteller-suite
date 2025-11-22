@@ -1,70 +1,23 @@
-import { App, FuzzySuggestModal, Notice, prepareFuzzySearch, FuzzyMatch } from 'obsidian';
+import { App } from 'obsidian';
 import { PlotItem } from '../types';
 import StorytellerSuitePlugin from '../main';
 import { t } from '../i18n/strings';
+import { BaseEntitySuggestModal } from './BaseEntitySuggestModal';
 
-export class PlotItemSuggestModal extends FuzzySuggestModal<PlotItem> {
-	plugin: StorytellerSuitePlugin;
-	onChoose: (item: PlotItem) => void;
-    items: PlotItem[] = [];
-
+export class PlotItemSuggestModal extends BaseEntitySuggestModal<PlotItem> {
 	constructor(app: App, plugin: StorytellerSuitePlugin, onChoose: (item: PlotItem) => void) {
-		super(app);
-		this.plugin = plugin;
-		this.onChoose = onChoose;
-		this.setPlaceholder(t('selectItemPh'));
+		super(app, plugin, onChoose, t('selectItemPh'));
 	}
 
-    async onOpen() {
-        super.onOpen();
-        try {
-            this.items = await this.plugin.listPlotItems();
-        } catch (error) {
-            console.error('Storyteller Suite: Error fetching items for suggester:', error);
-            new Notice(t('errorLoadingItems'));
-            this.items = [];
-        }
-        // Force-refresh suggestions so initial list shows without typing
-        setTimeout(() => {
-            if (this.inputEl) {
-                try { (this as any).setQuery?.(''); } catch {}
-                try { this.inputEl.dispatchEvent(new window.Event('input')); } catch {}
-            }
-            try { (this as any).onInputChanged?.(); } catch {}
-        }, 0);
-        setTimeout(() => {
-            if (this.inputEl) {
-                try { (this as any).setQuery?.(''); } catch {}
-                try { this.inputEl.dispatchEvent(new window.Event('input')); } catch {}
-            }
-            try { (this as any).onInputChanged?.(); } catch {}
-        }, 50);
-    }
+	async loadItems(): Promise<PlotItem[]> {
+		return await this.plugin.listPlotItems();
+	}
 
-    // Show all items initially; fuzzy-match when there is a query
-    getSuggestions(query: string): FuzzyMatch<PlotItem>[] {
-        const items = this.getItems();
-        if (!query) {
-            return items.map((it) => ({ item: it, match: { score: 0, matches: [] } }));
-        }
-        const fuzzy = prepareFuzzySearch(query);
-        return items
-            .map((it) => {
-                const match = fuzzy(this.getItemText(it));
-                return match ? ({ item: it, match } as FuzzyMatch<PlotItem>) : null;
-            })
-            .filter((fm): fm is FuzzyMatch<PlotItem> => !!fm);
-    }
-
-	getItems(): PlotItem[] {
-		return this.items;
+	getErrorMessage(): string {
+		return t('errorLoadingItems');
 	}
 
 	getItemText(item: PlotItem): string {
 		return item.name || 'Unnamed item';
-	}
-
-	onChooseItem(item: PlotItem, evt: MouseEvent | KeyboardEvent): void {
-		this.onChoose(item);
 	}
 }

@@ -1,55 +1,24 @@
-import { App, FuzzySuggestModal, FuzzyMatch, prepareFuzzySearch } from 'obsidian';
+import { App } from 'obsidian';
 import StorytellerSuitePlugin from '../main';
 import { Group } from '../types';
 import { t } from '../i18n/strings';
+import { BaseEntitySuggestModal } from './BaseEntitySuggestModal';
 
-export class GroupSuggestModal extends FuzzySuggestModal<Group> {
-  private readonly plugin: StorytellerSuitePlugin;
-  private readonly onChoose: (group: Group) => void;
-  private groups: Group[] = [];
+export class GroupSuggestModal extends BaseEntitySuggestModal<Group> {
+	constructor(app: App, plugin: StorytellerSuitePlugin, onChoose: (group: Group) => void) {
+		super(app, plugin, onChoose, t('selectGroupPh'));
+	}
 
-  constructor(app: App, plugin: StorytellerSuitePlugin, onChoose: (group: Group) => void) {
-    super(app);
-    this.plugin = plugin;
-    this.onChoose = onChoose;
-    this.setPlaceholder(t('selectGroupPh'));
-  }
+	async loadItems(): Promise<Group[]> {
+		// GroupSuggestModal uses synchronous getGroups(), so wrap it in Promise.resolve
+		return Promise.resolve(this.plugin.getGroups());
+	}
 
-  // Load groups when opened to ensure freshness
-  onOpen(): void {
-    super.onOpen();
-    try {
-      this.groups = this.plugin.getGroups();
-    } catch (e) {
-      this.groups = [];
-    }
-    // Force initial render of suggestions
-    setTimeout(() => {
-      try { (this as any).setQuery?.(''); } catch {}
-      try { this.inputEl?.dispatchEvent(new window.Event('input')); } catch {}
-      try { (this as any).onInputChanged?.(); } catch {}
-    }, 0);
-  }
+	getErrorMessage(): string {
+		return 'Error loading groups';
+	}
 
-  getItems(): Group[] { return this.groups; }
-
-  getItemText(item: Group): string { return item.name || 'Unnamed group'; }
-
-  getSuggestions(query: string): FuzzyMatch<Group>[] {
-    const items = this.getItems();
-    if (!query) return items.map(g => ({ item: g, match: { score: 0, matches: [] } }));
-    const fuzzy = prepareFuzzySearch(query);
-    return items
-      .map(g => {
-        const match = fuzzy(this.getItemText(g));
-        return match ? ({ item: g, match } as FuzzyMatch<Group>) : null;
-      })
-      .filter((fm): fm is FuzzyMatch<Group> => !!fm);
-  }
-
-  onChooseItem(item: Group, _evt: MouseEvent | KeyboardEvent): void {
-    this.onChoose(item);
-  }
+	getItemText(item: Group): string {
+		return item.name || 'Unnamed group';
+	}
 }
-
-
