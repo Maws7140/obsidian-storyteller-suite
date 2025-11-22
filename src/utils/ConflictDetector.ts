@@ -1,5 +1,5 @@
 import { DateTime } from 'luxon';
-import type { Event, TimelineConflict, Character } from '../types';
+import type { Event, TimelineConflict, Character, ConflictEntity } from '../types';
 import { parseEventDate } from './DateParsing';
 
 /**
@@ -325,16 +325,49 @@ export class ConflictDetector {
      * Convert conflicts to TimelineConflict format for storage
      */
     static toStorageFormat(conflicts: DetectedConflict[]): TimelineConflict[] {
-        return conflicts.map(c => ({
-            id: c.id,
-            type: c.type,
-            affectedEvents: c.events.map(e => e.id || e.name),
-            affectedCharacter: c.character,
-            severity: c.severity,
-            description: c.message,
-            detectedAt: new Date().toISOString(),
-            resolved: false
-        }));
+        return conflicts.map(c => {
+            const entities: ConflictEntity[] = [];
+
+            // Add character as entity if present
+            if (c.character) {
+                entities.push({
+                    entityId: c.character,
+                    entityType: 'character',
+                    entityName: c.character
+                });
+            }
+
+            // Convert severity from 'error' | 'warning' | 'info' to 'critical' | 'moderate' | 'minor'
+            const severity = c.severity === 'error' ? 'critical' : c.severity === 'warning' ? 'moderate' : 'minor';
+
+            // Map ConflictType to TimelineConflict type
+            let conflictType: 'location' | 'death' | 'age' | 'causality' | 'custom';
+            switch (c.type) {
+                case 'location':
+                    conflictType = 'location';
+                    break;
+                case 'temporal':
+                case 'dependency':
+                    conflictType = 'causality';
+                    break;
+                case 'character':
+                    conflictType = 'age'; // Character conflicts often relate to age/timeline issues
+                    break;
+                default:
+                    conflictType = 'custom';
+            }
+
+            return {
+                id: c.id,
+                type: conflictType,
+                severity: severity as 'minor' | 'moderate' | 'critical',
+                entities: entities,
+                events: c.events.map(e => e.id || e.name),
+                description: c.message,
+                dismissed: false,
+                detected: new Date().toISOString()
+            };
+        });
     }
 
     /**

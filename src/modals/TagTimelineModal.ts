@@ -79,7 +79,7 @@ export class TagTimelineModal extends Modal {
         this.addStyles();
     }
 
-    private async renderOptions(containerEl: HTMLElement): void {
+    private async renderOptions(containerEl: HTMLElement): Promise<void> {
         const optionsEl = containerEl.createDiv({ cls: 'storyteller-tag-timeline-options' });
         optionsEl.createEl('h3', { text: 'Options' });
 
