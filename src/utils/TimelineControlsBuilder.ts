@@ -100,7 +100,8 @@ export class TimelineControlsBuilder {
             { value: 'none', label: t('noGrouping') },
             { value: 'location', label: t('byLocation') },
             { value: 'group', label: t('byGroup') },
-            { value: 'character', label: t('byCharacter') }
+            { value: 'character', label: t('byCharacter') },
+            { value: 'track', label: 'By Track' }
         ].forEach(opt => {
             const option = select.createEl('option', { value: opt.value, text: opt.label });
             if (opt.value === this.state.groupMode) {
@@ -109,7 +110,7 @@ export class TimelineControlsBuilder {
         });
 
         select.addEventListener('change', () => {
-            this.state.groupMode = select.value as 'none' | 'location' | 'group' | 'character';
+            this.state.groupMode = select.value as 'none' | 'location' | 'group' | 'character' | 'track';
             this.callbacks.getRenderer()?.setGroupMode(this.state.groupMode);
             this.callbacks.onStateChange();
         });
