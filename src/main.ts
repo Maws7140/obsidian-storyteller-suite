@@ -60,6 +60,13 @@ import { getTemplateSections } from './utils/EntityTemplates';
 import { LeafletCodeBlockProcessor } from './leaflet/processor';
 import { TemplateStorageManager } from './templates/TemplateStorageManager';
 import { StoryTemplateGalleryModal } from './templates/modals/StoryTemplateGalleryModal';
+import { TrackManagerModal } from './modals/TrackManagerModal';
+import { EraManagerModal } from './modals/EraManagerModal';
+import { ConflictViewModal } from './modals/ConflictViewModal';
+import { TagTimelineModal } from './modals/TagTimelineModal';
+import { ConflictDetector } from './utils/ConflictDetector';
+import { TimelineTrackManager } from './utils/TimelineTrackManager';
+import { EraManager } from './utils/EraManager';
 
 /**
  * Plugin settings interface defining all configurable options
@@ -125,6 +132,13 @@ import { StoryTemplateGalleryModal } from './templates/modals/StoryTemplateGalle
     storyBoardCardHeight?: number;
     storyBoardColorBy?: 'status' | 'chapter' | 'none';
     storyBoardShowEdges?: boolean;
+
+    /** Timeline tracks for multi-track visualization */
+    timelineTracks?: TimelineTrack[];
+    /** Timeline eras/periods for grouping events */
+    timelineEras?: TimelineEra[];
+    /** Auto-detect conflicts when saving events (default: true) */
+    autoDetectConflicts?: boolean;
 
     /** Map settings */
     enableFrontmatterMarkers?: boolean;
@@ -344,6 +358,8 @@ export default class StorytellerSuitePlugin extends Plugin {
     private folderResolver: FolderResolver | null = null;
     private leafletProcessor: LeafletCodeBlockProcessor;
     templateManager: TemplateStorageManager;
+    trackManager: TimelineTrackManager;
+    eraManager: EraManager;
 
     /** Sanitize the one-story base folder so it is vault-relative and never a leading slash. */
     private sanitizeBaseFolderPath(input?: string): string {
@@ -587,6 +603,13 @@ export default class StorytellerSuitePlugin extends Plugin {
 			this.settings.templateStorageFolder || 'StorytellerSuite/Templates'
 		);
 		await this.templateManager.initialize();
+
+		// Initialize timeline managers
+		this.trackManager = new TimelineTrackManager(this);
+		this.eraManager = new EraManager(this);
+
+		// Initialize default tracks if none exist
+		await this.trackManager.initializeDefaultTracks();
 
 		// Apply mobile CSS classes to the document body
 		this.applyMobilePlatformClasses();
@@ -1100,10 +1123,18 @@ export default class StorytellerSuitePlugin extends Plugin {
 		// Timeline era management
 		this.addCommand({
 			id: 'manage-timeline-eras',
-			name: 'Manage timeline eras',
-			callback: async () => {
-				const { EraListModal } = await import('./modals/EraListModal');
-				new EraListModal(this.app, this).open();
+			name: 'Manage timeline eras & periods',
+			callback: () => {
+				const eras = this.settings.timelineEras || [];
+				new EraManagerModal(
+					this.app,
+					this,
+					eras,
+					async (updatedEras) => {
+						this.settings.timelineEras = updatedEras;
+						await this.saveSettings();
+					}
+				).open();
 			}
 		});
 
@@ -1111,19 +1142,62 @@ export default class StorytellerSuitePlugin extends Plugin {
 		this.addCommand({
 			id: 'manage-timeline-tracks',
 			name: 'Manage timeline tracks',
+			callback: () => {
+				const tracks = this.settings.timelineTracks || [];
+				new TrackManagerModal(
+					this.app,
+					this,
+					tracks,
+					async (updatedTracks) => {
+						this.settings.timelineTracks = updatedTracks;
+						await this.saveSettings();
+					}
+				).open();
+			}
+		});
+
+		// Detect timeline conflicts
+		this.addCommand({
+			id: 'detect-timeline-conflicts',
+			name: 'Detect timeline conflicts',
 			callback: async () => {
-				const { TrackListModal } = await import('./modals/TrackListModal');
-				new TrackListModal(this.app, this).open();
+				const events = await this.listEvents();
+				const conflicts = ConflictDetector.detectAllConflicts(events);
+				new ConflictViewModal(this.app, this, conflicts).open();
+
+				// Show quick summary
+				const errorCount = conflicts.filter(c => c.severity === 'error').length;
+				const warningCount = conflicts.filter(c => c.severity === 'warning').length;
+
+				if (conflicts.length === 0) {
+					new Notice('✓ No timeline conflicts detected');
+				} else {
+					new Notice(`Found ${errorCount} error(s), ${warningCount} warning(s)`);
+				}
 			}
 		});
 
 		// Generate events from tags
 		this.addCommand({
 			id: 'generate-events-from-tags',
-			name: 'Generate events from tags',
+			name: 'Generate timeline from tags',
+			callback: () => {
+				new TagTimelineModal(this.app, this).open();
+			}
+		});
+
+		// Auto-generate timeline tracks
+		this.addCommand({
+			id: 'auto-generate-tracks',
+			name: 'Auto-generate timeline tracks',
 			callback: async () => {
-				const { TagBasedEventModal } = await import('./modals/TagBasedEventModal');
-				new TagBasedEventModal(this.app, this).open();
+				const count = await this.trackManager.generateEntityTracks({
+					characters: true,
+					locations: true,
+					groups: true,
+					hideByDefault: true
+				});
+				new Notice(`Generated ${count} timeline track(s)`);
 			}
 		});
 
@@ -2599,7 +2673,39 @@ export default class StorytellerSuitePlugin extends Plugin {
 			await this.app.vault.create(finalFilePath, mdContent);
 			new Notice('Note created with standard sections for easy editing.');
 		}
-		
+
+		// Auto-detect conflicts if enabled
+		if (this.settings.autoDetectConflicts !== false) {  // Default to true
+			try {
+				const allEvents = await this.listEvents();
+				const conflicts = ConflictDetector.detectAllConflicts(allEvents);
+				const eventConflicts = ConflictDetector.getConflictsForEvent(
+					event.name,
+					conflicts
+				);
+
+				if (eventConflicts.length > 0) {
+					const errorCount = eventConflicts.filter(c => c.severity === 'error').length;
+					const warningCount = eventConflicts.filter(c => c.severity === 'warning').length;
+
+					if (errorCount > 0) {
+						new Notice(
+							`⚠️ Event saved with ${errorCount} conflict(s). Use "Detect timeline conflicts" to review.`,
+							5000
+						);
+					} else if (warningCount > 0) {
+						new Notice(
+							`⚠ Event saved with ${warningCount} warning(s)`,
+							3000
+						);
+					}
+				}
+			} catch (error) {
+				// Don't fail save if conflict detection fails
+				console.warn('Conflict detection failed:', error);
+			}
+		}
+
 		this.app.metadataCache.trigger("dataview:refresh-views");
 	}
 
