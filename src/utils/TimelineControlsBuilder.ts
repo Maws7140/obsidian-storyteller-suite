@@ -6,6 +6,11 @@ import { t } from '../i18n/strings';
 import StorytellerSuitePlugin from '../main';
 import { TimelineRenderer } from './TimelineRenderer';
 import { TimelineUIState, TimelineUIFilters, Event } from '../types';
+import { TrackManagerModal } from '../modals/TrackManagerModal';
+import { EraManagerModal } from '../modals/EraManagerModal';
+import { ConflictViewModal } from '../modals/ConflictViewModal';
+import { TagTimelineModal } from '../modals/TagTimelineModal';
+import { ConflictDetector } from './ConflictDetector';
 
 /**
  * Callbacks for control state changes
@@ -95,7 +100,8 @@ export class TimelineControlsBuilder {
             { value: 'none', label: t('noGrouping') },
             { value: 'location', label: t('byLocation') },
             { value: 'group', label: t('byGroup') },
-            { value: 'character', label: t('byCharacter') }
+            { value: 'character', label: t('byCharacter') },
+            { value: 'track', label: 'By Track' }
         ].forEach(opt => {
             const option = select.createEl('option', { value: opt.value, text: opt.label });
             if (opt.value === this.state.groupMode) {
@@ -104,7 +110,7 @@ export class TimelineControlsBuilder {
         });
 
         select.addEventListener('change', () => {
-            this.state.groupMode = select.value as 'none' | 'location' | 'group' | 'character';
+            this.state.groupMode = select.value as 'none' | 'location' | 'group' | 'character' | 'track';
             this.callbacks.getRenderer()?.setGroupMode(this.state.groupMode);
             this.callbacks.onStateChange();
         });
@@ -365,5 +371,119 @@ export class TimelineControlsBuilder {
      */
     getPlugin(): StorytellerSuitePlugin {
         return this.plugin;
+    }
+
+    /**
+     * Create manage tracks button
+     */
+    createManageTracksButton(container: HTMLElement): HTMLButtonElement {
+        const btn = container.createEl('button', {
+            cls: 'clickable-icon storyteller-toolbar-btn',
+            attr: {
+                'aria-label': 'Manage timeline tracks',
+                'title': 'Manage timeline tracks'
+            }
+        });
+        setIcon(btn, 'layers-2');
+
+        btn.addEventListener('click', () => {
+            const tracks = this.plugin.settings.timelineTracks || [];
+            new TrackManagerModal(
+                this.plugin.app,
+                this.plugin,
+                tracks,
+                async (updatedTracks) => {
+                    this.plugin.settings.timelineTracks = updatedTracks;
+                    await this.plugin.saveSettings();
+                    this.callbacks.onRendererUpdate();
+                }
+            ).open();
+        });
+
+        return btn;
+    }
+
+    /**
+     * Create manage eras button
+     */
+    createManageErasButton(container: HTMLElement): HTMLButtonElement {
+        const btn = container.createEl('button', {
+            cls: 'clickable-icon storyteller-toolbar-btn',
+            attr: {
+                'aria-label': 'Manage timeline eras',
+                'title': 'Manage timeline eras & periods'
+            }
+        });
+        setIcon(btn, 'calendar-range');
+
+        btn.addEventListener('click', () => {
+            const eras = this.plugin.settings.timelineEras || [];
+            new EraManagerModal(
+                this.plugin.app,
+                this.plugin,
+                eras,
+                async (updatedEras) => {
+                    this.plugin.settings.timelineEras = updatedEras;
+                    await this.plugin.saveSettings();
+                    this.callbacks.onRendererUpdate();
+                }
+            ).open();
+        });
+
+        return btn;
+    }
+
+    /**
+     * Create check conflicts button
+     */
+    createCheckConflictsButton(container: HTMLElement): HTMLButtonElement {
+        const btn = container.createEl('button', {
+            cls: 'clickable-icon storyteller-toolbar-btn',
+            attr: {
+                'aria-label': 'Check timeline conflicts',
+                'title': 'Detect timeline conflicts'
+            }
+        });
+        setIcon(btn, 'alert-triangle');
+
+        btn.addEventListener('click', async () => {
+            const eventsPromise = this.callbacks.getEvents();
+            const events = Array.isArray(eventsPromise) ? eventsPromise : await eventsPromise;
+            const conflicts = ConflictDetector.detectAllConflicts(events);
+
+            new ConflictViewModal(this.plugin.app, this.plugin, conflicts).open();
+
+            // Show quick summary
+            const errorCount = conflicts.filter(c => c.severity === 'error').length;
+            const warningCount = conflicts.filter(c => c.severity === 'warning').length;
+
+            if (conflicts.length === 0) {
+                new Notice('✓ No timeline conflicts detected');
+            } else {
+                new Notice(`Found ${errorCount} error(s), ${warningCount} warning(s)`);
+            }
+        });
+
+        return btn;
+    }
+
+    /**
+     * Create generate from tags button
+     */
+    createGenerateFromTagsButton(container: HTMLElement): HTMLButtonElement {
+        const btn = container.createEl('button', {
+            cls: 'clickable-icon storyteller-toolbar-btn',
+            attr: {
+                'aria-label': 'Generate timeline from tags',
+                'title': 'Generate events from tagged notes'
+            }
+        });
+        setIcon(btn, 'hash');
+
+        btn.addEventListener('click', () => {
+            new TagTimelineModal(this.plugin.app, this.plugin).open();
+        });
+
+        return btn;
     }
 }
