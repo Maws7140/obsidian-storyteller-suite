@@ -1783,7 +1783,7 @@ export interface TimelineUIState {
     /** Whether Gantt chart view is enabled */
     ganttMode: boolean;
     /** Grouping mode for events */
-    groupMode: 'none' | 'location' | 'group' | 'character';
+    groupMode: 'none' | 'location' | 'group' | 'character' | 'track';
     /** Active filters */
     filters: TimelineUIFilters;
     /** Whether event stacking is enabled */
