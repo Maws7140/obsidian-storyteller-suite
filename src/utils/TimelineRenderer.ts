@@ -863,11 +863,11 @@ export class TimelineRenderer {
             if (!this.shouldIncludeEvent(evt)) return;
 
             const markers = evt.narrativeMarkers;
-            if (!markers || !markers.frameEvent) return;
+            if (!markers || !markers.targetEvent) return;
 
             // Find the frame event index
             const frameIdx = this.events.findIndex(e =>
-                this.sanitizeEventId(e.name) === this.sanitizeEventId(markers.frameEvent || '')
+                this.sanitizeEventId(e.name) === this.sanitizeEventId(markers.targetEvent || '')
             );
 
             if (frameIdx === -1) return;
