@@ -191,82 +191,6 @@ export class EventModal extends Modal {
                 }).open();
             }));
 
-        // --- Narrative Markers (for non-linear storytelling) ---
-        if (!this.event.narrativeMarkers) {
-            this.event.narrativeMarkers = {};
-        }
-
-        new Setting(contentEl)
-            .setName('Flashback')
-            .setDesc('Mark this event as a flashback (occurs earlier than narrated)')
-            .addToggle(toggle => toggle
-                .setValue(this.event.narrativeMarkers?.isFlashback || false)
-                .onChange(value => {
-                    if (!this.event.narrativeMarkers) this.event.narrativeMarkers = {};
-                    this.event.narrativeMarkers.isFlashback = value;
-                }));
-
-        new Setting(contentEl)
-            .setName('Flash-forward')
-            .setDesc('Mark this event as a flash-forward (occurs later than narrated)')
-            .addToggle(toggle => toggle
-                .setValue(this.event.narrativeMarkers?.isFlashforward || false)
-                .onChange(value => {
-                    if (!this.event.narrativeMarkers) this.event.narrativeMarkers = {};
-                    this.event.narrativeMarkers.isFlashforward = value;
-                }));
-
-        new Setting(contentEl)
-            .setName('Narrative Date')
-            .setDesc('When this event is narrated in the story (if different from chronological date)')
-            .addText(text => text
-                .setValue(this.event.narrativeMarkers?.narrativeDate || '')
-                .setPlaceholder('e.g., 2024-01-15')
-                .onChange(value => {
-                    if (!this.event.narrativeMarkers) this.event.narrativeMarkers = {};
-                    this.event.narrativeMarkers.narrativeDate = value || undefined;
-                }));
-
-        const targetEventSetting = new Setting(contentEl)
-            .setName('Frame Event')
-            .setDesc('The event from which this flashback/flash-forward is told');
-        const targetEventDisplay = targetEventSetting.controlEl.createSpan({
-            text: this.event.narrativeMarkers?.targetEvent || 'None',
-            cls: 'storyteller-modal-target-event'
-        });
-        targetEventSetting.addButton(button => button
-            .setButtonText('Select Event')
-            .onClick(() => {
-                new EventSuggestModal(this.app, this.plugin, (selectedEvent) => {
-                    if (selectedEvent && selectedEvent.name) {
-                        if (!this.event.narrativeMarkers) this.event.narrativeMarkers = {};
-                        this.event.narrativeMarkers.targetEvent = selectedEvent.name;
-                        targetEventDisplay.setText(selectedEvent.name);
-                    }
-                }).open();
-            }))
-            .addButton(button => button
-                .setButtonText('Clear')
-                .onClick(() => {
-                    if (!this.event.narrativeMarkers) this.event.narrativeMarkers = {};
-                    this.event.narrativeMarkers.targetEvent = undefined;
-                    targetEventDisplay.setText('None');
-                }));
-
-        new Setting(contentEl)
-            .setName('Narrative Context')
-            .setDesc('Description of how this event is narrated or framed in the story')
-            .addTextArea(text => {
-                text
-                    .setValue(this.event.narrativeMarkers?.narrativeContext || '')
-                    .setPlaceholder('e.g., "Told by the protagonist in a fever dream"')
-                    .onChange(value => {
-                        if (!this.event.narrativeMarkers) this.event.narrativeMarkers = {};
-                        this.event.narrativeMarkers.narrativeContext = value || undefined;
-                    });
-                text.inputEl.rows = 3;
-            });
-
         let imagePathDesc: HTMLElement;
         new Setting(contentEl)
             .setName(t('image'))
@@ -543,17 +467,30 @@ export class EventModal extends Modal {
                     this.event.narrativeMarkers.narrativeDate = value || undefined;
                 }));
 
-        new Setting(contentEl)
+        const targetEventSetting = new Setting(contentEl)
             .setName('Target Event')
-            .setDesc('The event from which this flashback/flash-forward is told')
-            .addText(text => text
-                .setPlaceholder('Event ID or name')
-                .setValue(this.event.narrativeMarkers?.targetEvent || '')
-                .onChange(value => {
-                    if (!this.event.narrativeMarkers) {
-                        this.event.narrativeMarkers = {};
+            .setDesc('The event from which this flashback/flash-forward is told');
+        const targetEventDisplay = targetEventSetting.controlEl.createSpan({
+            text: this.event.narrativeMarkers?.targetEvent || 'None',
+            cls: 'storyteller-modal-target-event'
+        });
+        targetEventSetting.addButton(button => button
+            .setButtonText('Select Event')
+            .onClick(() => {
+                new EventSuggestModal(this.app, this.plugin, (selectedEvent) => {
+                    if (selectedEvent && selectedEvent.name) {
+                        if (!this.event.narrativeMarkers) this.event.narrativeMarkers = {};
+                        this.event.narrativeMarkers.targetEvent = selectedEvent.name;
+                        targetEventDisplay.setText(selectedEvent.name);
                     }
-                    this.event.narrativeMarkers.targetEvent = value || undefined;
+                }).open();
+            }))
+            .addButton(button => button
+                .setButtonText('Clear')
+                .onClick(() => {
+                    if (!this.event.narrativeMarkers) this.event.narrativeMarkers = {};
+                    this.event.narrativeMarkers.targetEvent = undefined;
+                    targetEventDisplay.setText('None');
                 }));
 
         new Setting(contentEl)
