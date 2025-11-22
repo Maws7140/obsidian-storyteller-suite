@@ -133,13 +133,6 @@ import { EraManager } from './utils/EraManager';
     storyBoardColorBy?: 'status' | 'chapter' | 'none';
     storyBoardShowEdges?: boolean;
 
-    /** Timeline tracks for multi-track visualization */
-    timelineTracks?: TimelineTrack[];
-    /** Timeline eras/periods for grouping events */
-    timelineEras?: TimelineEra[];
-    /** Auto-detect conflicts when saving events (default: true) */
-    autoDetectConflicts?: boolean;
-
     /** Map settings */
     enableFrontmatterMarkers?: boolean;
     enableDataViewMarkers?: boolean;
