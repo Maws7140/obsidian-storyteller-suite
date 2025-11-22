@@ -6,6 +6,7 @@ import StorytellerSuitePlugin from '../main';
 import { Event } from '../types';
 import { parseEventDate, toMillis, toDisplay } from './DateParsing';
 import { EventModal } from '../modals/EventModal';
+import { ConflictDetector, DetectedConflict } from './ConflictDetector';
 
 // @ts-ignore: vis-timeline is bundled dependency
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -19,7 +20,7 @@ import Arrow from '../vendor/timeline-arrows.js';
 
 export interface TimelineRendererOptions {
     ganttMode?: boolean;
-    groupMode?: 'none' | 'location' | 'group' | 'character';
+    groupMode?: 'none' | 'location' | 'group' | 'character' | 'track';
     showDependencies?: boolean;
     stackEnabled?: boolean;
     density?: number;
@@ -121,7 +122,7 @@ export class TimelineRenderer {
     /**
      * Update grouping mode
      */
-    setGroupMode(mode: 'none' | 'location' | 'group' | 'character'): void {
+    setGroupMode(mode: 'none' | 'location' | 'group' | 'character' | 'track'): void {
         this.options.groupMode = mode;
         this.render();
     }
@@ -444,6 +445,16 @@ export class TimelineRenderer {
                     // Non-critical, continue without arrows
                 }
             }
+
+            // Render narrative connector lines
+            if (this.narrativeOrder) {
+                try {
+                    this.renderNarrativeConnectors();
+                } catch (connectorError) {
+                    console.warn('Storyteller Suite: Error rendering narrative connectors:', connectorError);
+                    // Non-critical, continue without connectors
+                }
+            }
         } catch (error) {
             console.error('Storyteller Suite: Fatal error in timeline rendering:', error);
             new Notice('Timeline could not be rendered. Check console for details.');
@@ -471,6 +482,29 @@ export class TimelineRenderer {
         const legend: Array<{ key: string; label: string; color: string }> = [];
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         let groupsDS: any | undefined;
+
+        // Detect conflicts for all events
+        const allConflicts = ConflictDetector.detectAllConflicts(this.events);
+        const conflictsByEvent = new Map<string, DetectedConflict[]>();
+
+        // Group conflicts by event name for quick lookup
+        allConflicts.forEach(conflict => {
+            conflict.events.forEach(event => {
+                const existing = conflictsByEvent.get(event.name) || [];
+                existing.push(conflict);
+                conflictsByEvent.set(event.name, existing);
+            });
+        });
+
+        // Sort events by narrative order if enabled
+        let eventsToRender = [...this.events];
+        if (this.narrativeOrder) {
+            eventsToRender.sort((a, b) => {
+                const seqA = a.narrativeSequence ?? Number.MAX_SAFE_INTEGER;
+                const seqB = b.narrativeSequence ?? Number.MAX_SAFE_INTEGER;
+                return seqA - seqB;
+            });
+        }
 
         // Build grouping map and colors
         const keyToColor = new Map<string, string>();
@@ -522,12 +556,34 @@ export class TimelineRenderer {
                 keyToLabel.set('__unassigned__', 'No character');
                 groupsDS.add({ id: '__unassigned__', content: 'No character' });
                 legend.push({ key: '__unassigned__', label: 'No character', color: noneColor });
+            } else if (this.options.groupMode === 'track') {
+                const tracks = this.plugin.settings.timelineTracks || [];
+                const visibleTracks = tracks.filter(t => t.visible !== false);
+
+                visibleTracks.forEach((track, i) => {
+                    const color = track.color || this.palette[i % this.palette.length];
+                    keyToColor.set(track.id, color);
+                    keyToLabel.set(track.id, track.name);
+                    groupsDS.add({ id: track.id, content: track.name });
+                    legend.push({ key: track.id, label: track.name, color });
+                });
+
+                // Add a default track for unassigned events
+                const defaultColor = '#64748B';
+                keyToColor.set('__no_track__', defaultColor);
+                keyToLabel.set('__no_track__', 'Unassigned');
+                groupsDS.add({ id: '__no_track__', content: 'Unassigned' });
+                legend.push({ key: '__no_track__', label: 'Unassigned', color: defaultColor });
             }
         }
 
         // Build items
-        this.events.forEach((evt, idx) => {
+        eventsToRender.forEach((evt) => {
             if (!this.shouldIncludeEvent(evt)) return;
+
+            // Find original index in this.events for ID mapping
+            const originalIdx = this.events.findIndex(e => e === evt);
+            if (originalIdx === -1) return;
 
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const parsed = evt.dateTime ? parseEventDate(evt.dateTime, { referenceDate }) : { error: 'empty' } as any;
@@ -547,6 +603,27 @@ export class TimelineRenderer {
             } else if (this.options.groupMode === 'character') {
                 groupId = (evt.characters && evt.characters.length > 0) ? evt.characters[0] : '__unassigned__';
                 color = keyToColor.get(groupId);
+            } else if (this.options.groupMode === 'track') {
+                const tracks = this.plugin.settings.timelineTracks || [];
+                const visibleTracks = tracks.filter(t => t.visible !== false);
+
+                // Find the first matching track for this event
+                const matchingTrack = visibleTracks.find(track => {
+                    if (track.type === 'global') return true;
+                    if (track.type === 'character' && track.entityId) {
+                        return evt.characters?.includes(track.entityId);
+                    }
+                    if (track.type === 'location' && track.entityId) {
+                        return evt.location === track.entityId;
+                    }
+                    if (track.type === 'group' && track.entityId) {
+                        return evt.groups?.includes(track.entityId);
+                    }
+                    return false;
+                });
+
+                groupId = matchingTrack ? matchingTrack.id : '__no_track__';
+                color = keyToColor.get(groupId);
             }
 
             const approx = !!parsed.approximate;
@@ -564,12 +641,43 @@ export class TimelineRenderer {
             if (approx) classes.push('is-approx');
             if (isMilestone) classes.push('timeline-milestone');
             if (this.options.ganttMode) classes.push('gantt-bar');
-            
-            // Style
+
+            // Detect narrative markers (flashback/flash-forward)
+            const isFlashback = evt.narrativeMarkers?.isFlashback || false;
+            const isFlashforward = evt.narrativeMarkers?.isFlashforward || false;
+
+            if (isFlashback) classes.push('narrative-flashback');
+            if (isFlashforward) classes.push('narrative-flashforward');
+
+            // Style - narrative marker styles are handled by CSS classes
             const style = color ? `background-color:${this.hexWithAlpha(color, 0.18)};border-color:${color};` : '';
-            
-            // Content with milestone icon
-            const content = isMilestone ? '⭐ ' + evt.name : evt.name;
+
+            // Check for conflicts
+            const eventConflicts = conflictsByEvent.get(evt.name) || [];
+            const hasConflicts = eventConflicts.length > 0;
+            const hasErrors = eventConflicts.some(c => c.severity === 'error');
+            const hasWarnings = eventConflicts.some(c => c.severity === 'warning');
+
+            // Add narrative sequence number when in narrative order mode
+            let content = evt.name;
+            if (this.narrativeOrder && evt.narrativeSequence !== undefined) {
+                content = `[${evt.narrativeSequence}] ${content}`;
+                classes.push('has-narrative-sequence');
+            }
+
+            // Add conflict badges to content
+            if (hasErrors) {
+                content = '⚠️ ' + content;
+                classes.push('has-conflict-error');
+            } else if (hasWarnings) {
+                content = '⚠ ' + content;
+                classes.push('has-conflict-warning');
+            }
+
+            // Add narrative marker icons
+            if (isFlashback) content = '↶ ' + content;
+            if (isFlashforward) content = '↷ ' + content;
+            if (isMilestone) content = '⭐ ' + content;
 
             // Item type - milestones use 'box' to show as a bar
             let itemType: string;
@@ -582,11 +690,11 @@ export class TimelineRenderer {
             }
 
             items.add({
-                id: idx,
+                id: originalIdx,
                 content: content,
                 start: new Date(startMs),
                 end: displayEndMs != null ? new Date(displayEndMs) : undefined,
-                title: this.makeTooltip(evt, parsed),
+                title: this.makeTooltip(evt, parsed, eventConflicts),
                 type: itemType,
                 className: classes.length > 0 ? classes.join(' ') : undefined,
                 group: groupId,
@@ -696,12 +804,33 @@ export class TimelineRenderer {
      * Make tooltip for event
      */
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    private makeTooltip(evt: Event, parsed: any): string {
+    private makeTooltip(evt: Event, parsed: any, conflicts: DetectedConflict[] = []): string {
         const parts: string[] = [evt.name];
         const dt = parsed?.start ? toDisplay(parsed.start, undefined, parsed.isBCE, parsed.originalYear) : (evt.dateTime || '');
         if (dt) parts.push(dt);
         if (evt.location) parts.push(`@ ${evt.location}`);
         if (evt.description) parts.push(evt.description.length > 120 ? evt.description.slice(0, 120) + '…' : evt.description);
+
+        // Add conflict information
+        if (conflicts.length > 0) {
+            const errors = conflicts.filter(c => c.severity === 'error');
+            const warnings = conflicts.filter(c => c.severity === 'warning');
+
+            if (errors.length > 0) {
+                parts.push('');
+                parts.push(`⚠️ ${errors.length} ERROR(S):`);
+                errors.slice(0, 3).forEach(c => parts.push(`  • ${c.message}`));
+                if (errors.length > 3) parts.push(`  ... and ${errors.length - 3} more`);
+            }
+
+            if (warnings.length > 0) {
+                parts.push('');
+                parts.push(`⚠ ${warnings.length} WARNING(S):`);
+                warnings.slice(0, 3).forEach(c => parts.push(`  • ${c.message}`));
+                if (warnings.length > 3) parts.push(`  ... and ${warnings.length - 3} more`);
+            }
+        }
+
         return parts.filter(Boolean).join(' \n');
     }
 
@@ -715,5 +844,108 @@ export class TimelineRenderer {
         const g = parseInt(m[2], 16);
         const b = parseInt(m[3], 16);
         return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+    }
+
+    /**
+     * Render narrative connector lines between events and their frame events
+     */
+    private renderNarrativeConnectors(): void {
+        if (!this.timeline) return;
+
+        // Remove existing connectors if any
+        const existingConnectors = this.container.querySelectorAll('.narrative-connector-svg');
+        existingConnectors.forEach(el => el.remove());
+
+        // Find all events with frame event references
+        const connectors: Array<{ fromIdx: number; toIdx: number; type: 'flashback' | 'flashforward' }> = [];
+
+        this.events.forEach((evt, idx) => {
+            if (!this.shouldIncludeEvent(evt)) return;
+
+            const markers = evt.narrativeMarkers;
+            if (!markers || !markers.frameEvent) return;
+
+            // Find the frame event index
+            const frameIdx = this.events.findIndex(e =>
+                this.sanitizeEventId(e.name) === this.sanitizeEventId(markers.frameEvent || '')
+            );
+
+            if (frameIdx === -1) return;
+            if (!this.shouldIncludeEvent(this.events[frameIdx])) return;
+
+            const type = markers.isFlashback ? 'flashback' : markers.isFlashforward ? 'flashforward' : null;
+            if (type) {
+                connectors.push({ fromIdx: idx, toIdx: frameIdx, type });
+            }
+        });
+
+        if (connectors.length === 0) return;
+
+        // Create SVG overlay
+        const timelineContent = this.container.querySelector('.vis-timeline') as HTMLElement;
+        if (!timelineContent) return;
+
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.classList.add('narrative-connector-svg');
+        svg.style.position = 'absolute';
+        svg.style.top = '0';
+        svg.style.left = '0';
+        svg.style.width = '100%';
+        svg.style.height = '100%';
+        svg.style.pointerEvents = 'none';
+        svg.style.zIndex = '1';
+        timelineContent.appendChild(svg);
+
+        // Draw connectors
+        connectors.forEach(({ fromIdx, toIdx, type }) => {
+            const fromEl = this.container.querySelector(`[data-id="${fromIdx}"]`) as HTMLElement;
+            const toEl = this.container.querySelector(`[data-id="${toIdx}"]`) as HTMLElement;
+
+            if (!fromEl || !toEl) return;
+
+            // Get positions
+            const fromRect = fromEl.getBoundingClientRect();
+            const toRect = toEl.getBoundingClientRect();
+            const containerRect = timelineContent.getBoundingClientRect();
+
+            const x1 = fromRect.left - containerRect.left + fromRect.width / 2;
+            const y1 = fromRect.top - containerRect.top + fromRect.height / 2;
+            const x2 = toRect.left - containerRect.left + toRect.width / 2;
+            const y2 = toRect.top - containerRect.top + toRect.height / 2;
+
+            // Create curved path
+            const dx = x2 - x1;
+            const dy = y2 - y1;
+            const curve = Math.abs(dx) * 0.3;
+
+            const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            const d = `M ${x1} ${y1} C ${x1 + curve} ${y1}, ${x2 - curve} ${y2}, ${x2} ${y2}`;
+            path.setAttribute('d', d);
+            path.setAttribute('fill', 'none');
+            path.setAttribute('stroke', type === 'flashback' ? '#8B5C2E' : '#2563EB');
+            path.setAttribute('stroke-width', '2');
+            path.setAttribute('stroke-dasharray', '5,5');
+            path.setAttribute('opacity', '0.6');
+            path.classList.add('narrative-connector-line');
+
+            // Add arrowhead
+            const marker = document.createElementNS('http://www.w3.org/2000/svg', 'marker');
+            const markerId = `arrow-${type}-${fromIdx}-${toIdx}`;
+            marker.setAttribute('id', markerId);
+            marker.setAttribute('markerWidth', '10');
+            marker.setAttribute('markerHeight', '10');
+            marker.setAttribute('refX', '5');
+            marker.setAttribute('refY', '5');
+            marker.setAttribute('orient', 'auto');
+
+            const arrowPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            arrowPath.setAttribute('d', 'M 0 0 L 10 5 L 0 10 z');
+            arrowPath.setAttribute('fill', type === 'flashback' ? '#8B5C2E' : '#2563EB');
+            marker.appendChild(arrowPath);
+
+            svg.appendChild(marker);
+            path.setAttribute('marker-end', `url(#${markerId})`);
+            svg.appendChild(path);
+        });
     }
 }

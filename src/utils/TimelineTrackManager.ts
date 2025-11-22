@@ -1,10 +1,231 @@
 import type { Event, TimelineTrack, Character, Location } from '../types';
+import type StorytellerSuitePlugin from '../main';
 
 /**
  * Utility class for managing timeline tracks
- * Handles track creation, filtering, and event assignment
+ * Handles track creation, filtering, event assignment, and persistence
  */
 export class TimelineTrackManager {
+    private plugin: StorytellerSuitePlugin;
+
+    constructor(plugin: StorytellerSuitePlugin) {
+        this.plugin = plugin;
+    }
+
+    /**
+     * Get all tracks from settings
+     */
+    async getTracks(): Promise<TimelineTrack[]> {
+        return this.plugin.settings.timelineTracks || [];
+    }
+
+    /**
+     * Save tracks to settings
+     */
+    async saveTracks(tracks: TimelineTrack[]): Promise<void> {
+        this.plugin.settings.timelineTracks = tracks;
+        await this.plugin.saveSettings();
+    }
+
+    /**
+     * Add a new track
+     */
+    async addTrack(track: TimelineTrack): Promise<TimelineTrack> {
+        const tracks = await this.getTracks();
+
+        // Validate
+        const validation = TimelineTrackManager.validateTrack(track);
+        if (!validation.valid) {
+            throw new Error(`Invalid track: ${validation.errors.join(', ')}`);
+        }
+
+        // Ensure unique ID
+        if (!track.id) {
+            track.id = `track-${Date.now()}`;
+        }
+
+        // Check for duplicate ID
+        if (tracks.find(t => t.id === track.id)) {
+            track.id = `track-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        }
+
+        // Set sort order if not provided
+        if (track.sortOrder === undefined) {
+            const maxOrder = Math.max(...tracks.map(t => t.sortOrder || 0), -1);
+            track.sortOrder = maxOrder + 1;
+        }
+
+        tracks.push(track);
+        await this.saveTracks(tracks);
+        return track;
+    }
+
+    /**
+     * Update an existing track
+     */
+    async updateTrack(trackId: string, updates: Partial<TimelineTrack>): Promise<TimelineTrack | null> {
+        const tracks = await this.getTracks();
+        const trackIndex = tracks.findIndex(t => t.id === trackId);
+
+        if (trackIndex === -1) {
+            return null;
+        }
+
+        const updatedTrack = { ...tracks[trackIndex], ...updates, id: trackId };
+
+        // Validate
+        const validation = TimelineTrackManager.validateTrack(updatedTrack);
+        if (!validation.valid) {
+            throw new Error(`Invalid track: ${validation.errors.join(', ')}`);
+        }
+
+        tracks[trackIndex] = updatedTrack;
+        await this.saveTracks(tracks);
+        return updatedTrack;
+    }
+
+    /**
+     * Delete a track
+     */
+    async deleteTrack(trackId: string): Promise<boolean> {
+        const tracks = await this.getTracks();
+        const filtered = tracks.filter(t => t.id !== trackId);
+
+        if (filtered.length === tracks.length) {
+            return false; // Track not found
+        }
+
+        await this.saveTracks(filtered);
+        return true;
+    }
+
+    /**
+     * Get a track by ID
+     */
+    async getTrack(trackId: string): Promise<TimelineTrack | null> {
+        const tracks = await this.getTracks();
+        return tracks.find(t => t.id === trackId) || null;
+    }
+
+    /**
+     * Reorder tracks
+     */
+    async reorderTracks(trackIds: string[]): Promise<void> {
+        const tracks = await this.getTracks();
+        const trackMap = new Map(tracks.map(t => [t.id, t]));
+
+        const reorderedTracks: TimelineTrack[] = [];
+        trackIds.forEach((id, index) => {
+            const track = trackMap.get(id);
+            if (track) {
+                track.sortOrder = index;
+                reorderedTracks.push(track);
+                trackMap.delete(id);
+            }
+        });
+
+        // Add any tracks not in the reorder list at the end
+        trackMap.forEach(track => {
+            track.sortOrder = reorderedTracks.length;
+            reorderedTracks.push(track);
+        });
+
+        await this.saveTracks(reorderedTracks);
+    }
+
+    /**
+     * Toggle track visibility
+     */
+    async toggleTrackVisibility(trackId: string): Promise<boolean> {
+        const track = await this.getTrack(trackId);
+        if (!track) return false;
+
+        track.visible = !track.visible;
+        await this.updateTrack(trackId, { visible: track.visible });
+        return track.visible;
+    }
+
+    /**
+     * Initialize default tracks if none exist
+     */
+    async initializeDefaultTracks(): Promise<void> {
+        const tracks = await this.getTracks();
+        if (tracks.length > 0) return;
+
+        const defaultTracks: TimelineTrack[] = [
+            TimelineTrackManager.createGlobalTrack()
+        ];
+
+        await this.saveTracks(defaultTracks);
+    }
+
+    /**
+     * Auto-generate tracks from current entities
+     */
+    async generateEntityTracks(options: {
+        characters?: boolean;
+        locations?: boolean;
+        groups?: boolean;
+        hideByDefault?: boolean;
+    } = {}): Promise<number> {
+        const {
+            characters: includeCharacters = false,
+            locations: includeLocations = false,
+            groups: includeGroups = false,
+            hideByDefault = true
+        } = options;
+
+        const tracks = await this.getTracks();
+        let addedCount = 0;
+
+        if (includeCharacters) {
+            const characters = await this.plugin.listCharacters();
+            const characterTracks = TimelineTrackManager.createCharacterTracks(characters);
+            for (const track of characterTracks) {
+                // Check if track already exists
+                if (!tracks.find(t => t.id === track.id)) {
+                    track.visible = !hideByDefault;
+                    await this.addTrack(track);
+                    addedCount++;
+                }
+            }
+        }
+
+        if (includeLocations) {
+            const locations = await this.plugin.listLocations();
+            const locationTracks = TimelineTrackManager.createLocationTracks(locations);
+            for (const track of locationTracks) {
+                if (!tracks.find(t => t.id === track.id)) {
+                    track.visible = !hideByDefault;
+                    await this.addTrack(track);
+                    addedCount++;
+                }
+            }
+        }
+
+        if (includeGroups) {
+            const groups = this.plugin.settings.groups || [];
+            const groupTracks = groups.map((group, index) => ({
+                id: `track-group-${group.id}`,
+                name: `${group.name} Timeline`,
+                type: 'group' as const,
+                entityId: group.id,
+                description: `Events for ${group.name}`,
+                color: group.color || TimelineTrackManager.generateTrackColor(index),
+                sortOrder: index + 2000,
+                visible: !hideByDefault
+            }));
+
+            for (const track of groupTracks) {
+                if (!tracks.find(t => t.id === track.id)) {
+                    await this.addTrack(track);
+                    addedCount++;
+                }
+            }
+        }
+
+        return addedCount;
+    }
     /**
      * Filter events based on track criteria
      */

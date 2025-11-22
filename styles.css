@@ -2857,6 +2857,29 @@ body.mod-rtl .storyteller-group-members {
   box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
 }
 
+/* Conflict badges */
+.storyteller-timeline-modal .vis-item.has-conflict-error,
+.storyteller-timeline-view .vis-item.has-conflict-error {
+  border-color: var(--text-error) !important;
+  border-width: 2px !important;
+}
+
+.storyteller-timeline-modal .vis-item.has-conflict-error:hover,
+.storyteller-timeline-view .vis-item.has-conflict-error:hover {
+  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.4);
+}
+
+.storyteller-timeline-modal .vis-item.has-conflict-warning,
+.storyteller-timeline-view .vis-item.has-conflict-warning {
+  border-color: var(--text-warning) !important;
+  border-width: 2px !important;
+}
+
+.storyteller-timeline-modal .vis-item.has-conflict-warning:hover,
+.storyteller-timeline-view .vis-item.has-conflict-warning:hover {
+  box-shadow: 0 4px 12px rgba(234, 179, 8, 0.4);
+}
+
 /* Era backgrounds */
 .storyteller-timeline-modal .vis-item.timeline-era-background,
 .storyteller-timeline-view .vis-item.timeline-era-background {
