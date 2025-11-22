@@ -87,7 +87,7 @@ export class TagTimelineGenerator {
         const cache = this.app.metadataCache.getFileCache(file);
 
         // Check if file has any of the target tags
-        const fileTags = getAllTags(cache) || [];
+        const fileTags = cache ? getAllTags(cache) || [] : [];
         const hasTargetTag = options.tags.length === 0 ||
             fileTags.some(tag => options.tags.includes(tag));
 
@@ -421,7 +421,7 @@ export class TagTimelineGenerator {
 
         for (const file of files) {
             const cache = this.app.metadataCache.getFileCache(file);
-            const tags = getAllTags(cache) || [];
+            const tags = cache ? getAllTags(cache) || [] : [];
             tags.forEach(tag => allTags.add(tag));
         }
 
@@ -437,7 +437,7 @@ export class TagTimelineGenerator {
 
         for (const file of files) {
             const cache = this.app.metadataCache.getFileCache(file);
-            const tags = getAllTags(cache) || [];
+            const tags = cache ? getAllTags(cache) || [] : [];
             tags.forEach(tag => {
                 tagCounts.set(tag, (tagCounts.get(tag) || 0) + 1);
             });
