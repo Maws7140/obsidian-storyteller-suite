@@ -60,6 +60,13 @@ import { getTemplateSections } from './utils/EntityTemplates';
 import { LeafletCodeBlockProcessor } from './leaflet/processor';
 import { TemplateStorageManager } from './templates/TemplateStorageManager';
 import { StoryTemplateGalleryModal } from './templates/modals/StoryTemplateGalleryModal';
+import { TrackManagerModal } from './modals/TrackManagerModal';
+import { EraManagerModal } from './modals/EraManagerModal';
+import { ConflictViewModal } from './modals/ConflictViewModal';
+import { TagTimelineModal } from './modals/TagTimelineModal';
+import { ConflictDetector } from './utils/ConflictDetector';
+import { TimelineTrackManager } from './utils/TimelineTrackManager';
+import { EraManager } from './utils/EraManager';
 
 /**
  * Plugin settings interface defining all configurable options
@@ -349,6 +356,8 @@ export default class StorytellerSuitePlugin extends Plugin {
     private folderResolver: FolderResolver | null = null;
     private leafletProcessor: LeafletCodeBlockProcessor;
     templateManager: TemplateStorageManager;
+    trackManager: TimelineTrackManager;
+    eraManager: EraManager;
 
     /** Sanitize the one-story base folder so it is vault-relative and never a leading slash. */
     private sanitizeBaseFolderPath(input?: string): string {
@@ -592,6 +601,13 @@ export default class StorytellerSuitePlugin extends Plugin {
 			this.settings.templateStorageFolder || 'StorytellerSuite/Templates'
 		);
 		await this.templateManager.initialize();
+
+		// Initialize timeline managers
+		this.trackManager = new TimelineTrackManager(this);
+		this.eraManager = new EraManager(this);
+
+		// Initialize default tracks if none exist
+		await this.trackManager.initializeDefaultTracks();
 
 		// Apply mobile CSS classes to the document body
 		this.applyMobilePlatformClasses();
@@ -1105,10 +1121,18 @@ export default class StorytellerSuitePlugin extends Plugin {
 		// Timeline era management
 		this.addCommand({
 			id: 'manage-timeline-eras',
-			name: 'Manage timeline eras',
-			callback: async () => {
-				const { EraListModal } = await import('./modals/EraListModal');
-				new EraListModal(this.app, this).open();
+			name: 'Manage timeline eras & periods',
+			callback: () => {
+				const eras = this.settings.timelineEras || [];
+				new EraManagerModal(
+					this.app,
+					this,
+					eras,
+					async (updatedEras) => {
+						this.settings.timelineEras = updatedEras;
+						await this.saveSettings();
+					}
+				).open();
 			}
 		});
 
@@ -1116,19 +1140,62 @@ export default class StorytellerSuitePlugin extends Plugin {
 		this.addCommand({
 			id: 'manage-timeline-tracks',
 			name: 'Manage timeline tracks',
+			callback: () => {
+				const tracks = this.settings.timelineTracks || [];
+				new TrackManagerModal(
+					this.app,
+					this,
+					tracks,
+					async (updatedTracks) => {
+						this.settings.timelineTracks = updatedTracks;
+						await this.saveSettings();
+					}
+				).open();
+			}
+		});
+
+		// Detect timeline conflicts
+		this.addCommand({
+			id: 'detect-timeline-conflicts',
+			name: 'Detect timeline conflicts',
 			callback: async () => {
-				const { TrackListModal } = await import('./modals/TrackListModal');
-				new TrackListModal(this.app, this).open();
+				const events = await this.listEvents();
+				const conflicts = ConflictDetector.detectAllConflicts(events);
+				new ConflictViewModal(this.app, this, conflicts).open();
+
+				// Show quick summary
+				const errorCount = conflicts.filter(c => c.severity === 'error').length;
+				const warningCount = conflicts.filter(c => c.severity === 'warning').length;
+
+				if (conflicts.length === 0) {
+					new Notice('✓ No timeline conflicts detected');
+				} else {
+					new Notice(`Found ${errorCount} error(s), ${warningCount} warning(s)`);
+				}
 			}
 		});
 
 		// Generate events from tags
 		this.addCommand({
 			id: 'generate-events-from-tags',
-			name: 'Generate events from tags',
+			name: 'Generate timeline from tags',
+			callback: () => {
+				new TagTimelineModal(this.app, this).open();
+			}
+		});
+
+		// Auto-generate timeline tracks
+		this.addCommand({
+			id: 'auto-generate-tracks',
+			name: 'Auto-generate timeline tracks',
 			callback: async () => {
-				const { TagBasedEventModal } = await import('./modals/TagBasedEventModal');
-				new TagBasedEventModal(this.app, this).open();
+				const count = await this.trackManager.generateEntityTracks({
+					characters: true,
+					locations: true,
+					groups: true,
+					hideByDefault: true
+				});
+				new Notice(`Generated ${count} timeline track(s)`);
 			}
 		});
 
