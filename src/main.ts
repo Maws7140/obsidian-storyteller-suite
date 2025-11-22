@@ -137,6 +137,8 @@ import { EraManager } from './utils/EraManager';
     timelineTracks?: TimelineTrack[];
     /** Timeline eras/periods for grouping events */
     timelineEras?: TimelineEra[];
+    /** Auto-detect conflicts when saving events (default: true) */
+    autoDetectConflicts?: boolean;
 
     /** Map settings */
     enableFrontmatterMarkers?: boolean;
@@ -2671,7 +2673,39 @@ export default class StorytellerSuitePlugin extends Plugin {
 			await this.app.vault.create(finalFilePath, mdContent);
 			new Notice('Note created with standard sections for easy editing.');
 		}
-		
+
+		// Auto-detect conflicts if enabled
+		if (this.settings.autoDetectConflicts !== false) {  // Default to true
+			try {
+				const allEvents = await this.listEvents();
+				const conflicts = ConflictDetector.detectAllConflicts(allEvents);
+				const eventConflicts = ConflictDetector.getConflictsForEvent(
+					event.name,
+					conflicts
+				);
+
+				if (eventConflicts.length > 0) {
+					const errorCount = eventConflicts.filter(c => c.severity === 'error').length;
+					const warningCount = eventConflicts.filter(c => c.severity === 'warning').length;
+
+					if (errorCount > 0) {
+						new Notice(
+							`⚠️ Event saved with ${errorCount} conflict(s). Use "Detect timeline conflicts" to review.`,
+							5000
+						);
+					} else if (warningCount > 0) {
+						new Notice(
+							`⚠ Event saved with ${warningCount} warning(s)`,
+							3000
+						);
+					}
+				}
+			} catch (error) {
+				// Don't fail save if conflict detection fails
+				console.warn('Conflict detection failed:', error);
+			}
+		}
+
 		this.app.metadataCache.trigger("dataview:refresh-views");
 	}
 
