@@ -9,6 +9,7 @@ import { TimelineUIState } from '../types';
 import { TimelineTrackManager } from '../utils/TimelineTrackManager';
 import { TimelineControlsBuilder, TimelineControlCallbacks } from '../utils/TimelineControlsBuilder';
 import { TimelineFilterBuilder, TimelineFilterCallbacks } from '../utils/TimelineFilterBuilder';
+import { ConflictDetector } from '../utils/ConflictDetector';
 
 export const VIEW_TYPE_TIMELINE = 'storyteller-timeline-view';
 
@@ -182,17 +183,9 @@ export class TimelineView extends ItemView {
                     async () => {
                         // Re-scan callback
                         const events = await this.plugin.listEvents();
-                        const characters = await this.plugin.listCharacters();
-                        const locations = await this.plugin.listLocations();
-                        const causalityLinks = this.plugin.getCausalityLinks();
 
-                        const { ConflictDetector } = await import('../utils/ConflictDetection');
-                        const newConflicts = ConflictDetector.detectConflicts(
-                            events,
-                            characters,
-                            locations,
-                            causalityLinks
-                        );
+                        const detectedConflicts = ConflictDetector.detectAllConflicts(events);
+                        const newConflicts = ConflictDetector.toStorageFormat(detectedConflicts);
 
                         this.plugin.settings.timelineConflicts = newConflicts;
                         await this.plugin.saveSettings();

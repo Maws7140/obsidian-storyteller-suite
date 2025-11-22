@@ -1700,17 +1700,9 @@ export default class StorytellerSuitePlugin extends Plugin {
 				new Notice('Scanning timeline for conflicts...');
 
 				const events = await this.listEvents();
-				const characters = await this.listCharacters();
-				const locations = await this.listLocations();
-				const causalityLinks = this.getCausalityLinks();
 
-				const { ConflictDetector } = await import('./utils/ConflictDetection');
-				const conflicts = ConflictDetector.detectConflicts(
-					events,
-					characters,
-					locations,
-					causalityLinks
-				);
+				const detectedConflicts = ConflictDetector.detectAllConflicts(events);
+				const conflicts = ConflictDetector.toStorageFormat(detectedConflicts);
 
 				this.settings.timelineConflicts = conflicts;
 				await this.saveSettings();
@@ -1727,17 +1719,9 @@ export default class StorytellerSuitePlugin extends Plugin {
 						// Re-scan callback - re-run conflict detection
 						new Notice('Re-scanning timeline for conflicts...');
 						const events = await this.listEvents();
-						const characters = await this.listCharacters();
-						const locations = await this.listLocations();
-						const causalityLinks = this.getCausalityLinks();
 
-						const { ConflictDetector } = await import('./utils/ConflictDetection');
-						const newConflicts = ConflictDetector.detectConflicts(
-							events,
-							characters,
-							locations,
-							causalityLinks
-						);
+						const detectedConflicts = ConflictDetector.detectAllConflicts(events);
+						const newConflicts = ConflictDetector.toStorageFormat(detectedConflicts);
 
 						this.settings.timelineConflicts = newConflicts;
 						await this.saveSettings();
@@ -1768,17 +1752,9 @@ export default class StorytellerSuitePlugin extends Plugin {
 						// Re-scan callback - re-run conflict detection
 						new Notice('Re-scanning timeline for conflicts...');
 						const events = await this.listEvents();
-						const characters = await this.listCharacters();
-						const locations = await this.listLocations();
-						const causalityLinks = this.getCausalityLinks();
 
-						const { ConflictDetector } = await import('./utils/ConflictDetection');
-						const newConflicts = ConflictDetector.detectConflicts(
-							events,
-							characters,
-							locations,
-							causalityLinks
-						);
+						const detectedConflicts = ConflictDetector.detectAllConflicts(events);
+						const newConflicts = ConflictDetector.toStorageFormat(detectedConflicts);
 
 						this.settings.timelineConflicts = newConflicts;
 						await this.saveSettings();
