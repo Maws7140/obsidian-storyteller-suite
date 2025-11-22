@@ -1,12 +1,206 @@
 import { DateTime } from 'luxon';
 import type { Event, TimelineEra } from '../types';
 import { parseEventDate } from './DateParsing';
+import type StorytellerSuitePlugin from '../main';
 
 /**
  * Utility class for managing timeline eras
- * Handles era-based filtering, overlap detection, and event assignment
+ * Handles era-based filtering, overlap detection, event assignment, and persistence
  */
 export class EraManager {
+    private plugin: StorytellerSuitePlugin;
+
+    constructor(plugin: StorytellerSuitePlugin) {
+        this.plugin = plugin;
+    }
+
+    /**
+     * Get all eras from settings
+     */
+    async getEras(): Promise<TimelineEra[]> {
+        return this.plugin.settings.timelineEras || [];
+    }
+
+    /**
+     * Save eras to settings
+     */
+    async saveEras(eras: TimelineEra[]): Promise<void> {
+        this.plugin.settings.timelineEras = eras;
+        await this.plugin.saveSettings();
+    }
+
+    /**
+     * Add a new era
+     */
+    async addEra(era: TimelineEra): Promise<TimelineEra> {
+        const eras = await this.getEras();
+
+        // Validate
+        const validation = EraManager.validateEra(era);
+        if (!validation.valid) {
+            throw new Error(`Invalid era: ${validation.errors.join(', ')}`);
+        }
+
+        // Ensure unique ID
+        if (!era.id) {
+            era.id = `era-${Date.now()}`;
+        }
+
+        // Check for duplicate ID
+        if (eras.find(e => e.id === era.id)) {
+            era.id = `era-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        }
+
+        // Set sort order if not provided
+        if (era.sortOrder === undefined) {
+            const maxOrder = Math.max(...eras.map(e => e.sortOrder || 0), -1);
+            era.sortOrder = maxOrder + 1;
+        }
+
+        eras.push(era);
+        await this.saveEras(eras);
+        return era;
+    }
+
+    /**
+     * Update an existing era
+     */
+    async updateEra(eraId: string, updates: Partial<TimelineEra>): Promise<TimelineEra | null> {
+        const eras = await this.getEras();
+        const eraIndex = eras.findIndex(e => e.id === eraId);
+
+        if (eraIndex === -1) {
+            return null;
+        }
+
+        const updatedEra = { ...eras[eraIndex], ...updates, id: eraId };
+
+        // Validate
+        const validation = EraManager.validateEra(updatedEra);
+        if (!validation.valid) {
+            throw new Error(`Invalid era: ${validation.errors.join(', ')}`);
+        }
+
+        eras[eraIndex] = updatedEra;
+        await this.saveEras(eras);
+        return updatedEra;
+    }
+
+    /**
+     * Delete an era
+     */
+    async deleteEra(eraId: string): Promise<boolean> {
+        const eras = await this.getEras();
+
+        // Remove parent reference from children
+        eras.forEach(era => {
+            if (era.parentEraId === eraId) {
+                era.parentEraId = undefined;
+            }
+        });
+
+        const filtered = eras.filter(e => e.id !== eraId);
+
+        if (filtered.length === eras.length - 1) {
+            await this.saveEras(filtered);
+            return true;
+        }
+
+        return false; // Era not found
+    }
+
+    /**
+     * Get an era by ID
+     */
+    async getEra(eraId: string): Promise<TimelineEra | null> {
+        const eras = await this.getEras();
+        return eras.find(e => e.id === eraId) || null;
+    }
+
+    /**
+     * Get all child eras of a parent era (hierarchical support)
+     */
+    async getChildEras(parentEraId: string): Promise<TimelineEra[]> {
+        const eras = await this.getEras();
+        return eras.filter(e => e.parentEraId === parentEraId);
+    }
+
+    /**
+     * Get top-level eras (no parent)
+     */
+    async getTopLevelEras(): Promise<TimelineEra[]> {
+        const eras = await this.getEras();
+        return eras.filter(e => !e.parentEraId);
+    }
+
+    /**
+     * Get hierarchical era tree
+     */
+    async getEraHierarchy(): Promise<Array<{ era: TimelineEra; children: TimelineEra[] }>> {
+        const eras = await this.getEras();
+        const topLevel = eras.filter(e => !e.parentEraId);
+
+        return topLevel.map(era => ({
+            era,
+            children: eras.filter(e => e.parentEraId === era.id)
+        }));
+    }
+
+    /**
+     * Toggle era visibility
+     */
+    async toggleEraVisibility(eraId: string): Promise<boolean> {
+        const era = await this.getEra(eraId);
+        if (!era) return false;
+
+        era.visible = !era.visible;
+        await this.updateEra(eraId, { visible: era.visible });
+        return era.visible;
+    }
+
+    /**
+     * Auto-assign events to all eras
+     */
+    async autoAssignEventsToAllEras(): Promise<number> {
+        const eras = await this.getEras();
+        const events = await this.plugin.listEvents();
+
+        const eraEventMap = EraManager.autoAssignEventsToEras(events, eras);
+
+        let assignedCount = 0;
+        for (const [eraId, eventIds] of eraEventMap) {
+            const era = await this.getEra(eraId);
+            if (era) {
+                era.events = eventIds;
+                await this.updateEra(eraId, { events: eventIds });
+                assignedCount += eventIds.length;
+            }
+        }
+
+        return assignedCount;
+    }
+
+    /**
+     * Get era statistics
+     */
+    async getEraStats(eraId: string): Promise<{
+        eventCount: number;
+        duration: string;
+        childCount: number;
+    } | null> {
+        const era = await this.getEra(eraId);
+        if (!era) return null;
+
+        const children = await this.getChildEras(eraId);
+        const events = await this.plugin.listEvents();
+        const eventsInEra = EraManager.getEventsInEra(era, events);
+
+        return {
+            eventCount: eventsInEra.length,
+            duration: EraManager.getEraDuration(era),
+            childCount: children.length
+        };
+    }
     /**
      * Get all eras that overlap with a given date range
      */
