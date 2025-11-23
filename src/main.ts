@@ -1392,6 +1392,17 @@ export default class StorytellerSuitePlugin extends Plugin {
 			}
 		});
 
+		// Import command
+		this.addCommand({
+			id: 'import-story',
+			name: 'Import story/chapters',
+			callback: () => {
+				import('./modals/ImportConfigModal').then(({ ImportConfigModal }) => {
+					new ImportConfigModal(this.app, this).open();
+				});
+			}
+		});
+
 		// Scene management commands
 		this.addCommand({
 			id: 'create-new-scene',
