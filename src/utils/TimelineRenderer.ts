@@ -620,6 +620,52 @@ export class TimelineRenderer {
                     if (track.type === 'group' && track.entityId) {
                         return evt.groups?.includes(track.entityId);
                     }
+                    if (track.type === 'custom' && track.filterCriteria) {
+                        // Check if event matches custom track's filter criteria
+                        const criteria = track.filterCriteria;
+                        let matches = true;
+
+                        if (criteria.characters && criteria.characters.length > 0) {
+                            const hasCharacter = criteria.characters.some(char =>
+                                evt.characters?.includes(char)
+                            );
+                            if (!hasCharacter) matches = false;
+                        }
+
+                        if (criteria.locations && criteria.locations.length > 0) {
+                            if (!evt.location || !criteria.locations.includes(evt.location)) {
+                                matches = false;
+                            }
+                        }
+
+                        if (criteria.tags && criteria.tags.length > 0) {
+                            const hasTag = criteria.tags.some(tag =>
+                                evt.tags?.includes(tag)
+                            );
+                            if (!hasTag) matches = false;
+                        }
+
+                        if (criteria.groups && criteria.groups.length > 0) {
+                            const hasGroup = criteria.groups.some(group =>
+                                evt.groups?.includes(group)
+                            );
+                            if (!hasGroup) matches = false;
+                        }
+
+                        if (criteria.status && criteria.status.length > 0) {
+                            if (!evt.status || !criteria.status.includes(evt.status)) {
+                                matches = false;
+                            }
+                        }
+
+                        if (criteria.milestonesOnly === true) {
+                            if (!evt.isMilestone) {
+                                matches = false;
+                            }
+                        }
+
+                        return matches;
+                    }
                     return false;
                 });
 
