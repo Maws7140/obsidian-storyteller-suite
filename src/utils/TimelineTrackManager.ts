@@ -204,7 +204,7 @@ export class TimelineTrackManager {
         }
 
         if (includeGroups) {
-            const groups = this.plugin.settings.groups || [];
+            const groups = this.plugin.getGroups();
             const groupTracks = groups.map((group, index) => ({
                 id: `track-group-${group.id}`,
                 name: `${group.name} Timeline`,
