@@ -1,7 +1,7 @@
 import { App, Modal, Setting, Notice, ButtonComponent } from 'obsidian';
 import type StorytellerSuitePlugin from '../main';
 import type { TimelineConflict } from '../types';
-import { ConflictDetector } from '../utils/ConflictDetection';
+import { ConflictDetector } from '../utils/ConflictDetector';
 
 /**
  * Modal for displaying and managing detected timeline conflicts

@@ -37,6 +37,7 @@ export interface TimelineFilters {
     milestonesOnly?: boolean;
     tags?: Set<string>;
     eras?: Set<string>;
+    forkId?: string;
 }
 
 /**
@@ -779,22 +780,33 @@ export class TimelineRenderer {
         if (this.filters.milestonesOnly && !evt.isMilestone) {
             return false;
         }
-        
+
         // Character filter
         if (this.filters.characters && this.filters.characters.size > 0) {
             const hasMatchingChar = evt.characters?.some(c => this.filters.characters && this.filters.characters.has(c));
             if (!hasMatchingChar) return false;
         }
-        
+
         // Location filter
         if (this.filters.locations && this.filters.locations.size > 0) {
             if (!evt.location || !this.filters.locations.has(evt.location)) return false;
         }
-        
+
         // Group filter
         if (this.filters.groups && this.filters.groups.size > 0) {
             const hasMatchingGroup = evt.groups?.some(g => this.filters.groups && this.filters.groups.has(g));
             if (!hasMatchingGroup) return false;
+        }
+
+        // Fork filter
+        if (this.filters.forkId) {
+            const fork = this.plugin.getTimelineFork(this.filters.forkId);
+            if (fork) {
+                // Check if event is in this fork's events list
+                const eventIdentifier = evt.id || evt.name;
+                const isInFork = fork.forkEvents?.includes(eventIdentifier);
+                if (!isInFork) return false;
+            }
         }
 
         return true;

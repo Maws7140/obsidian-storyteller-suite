@@ -38,6 +38,9 @@ export class ConflictDetector {
         // Detect character location conflicts
         conflicts.push(...this.detectCharacterLocationConflicts(events));
 
+        // Detect death conflicts (character appearing after death)
+        conflicts.push(...this.detectDeathConflicts(events));
+
         // Detect dependency conflicts
         conflicts.push(...this.detectDependencyConflicts(events));
 
@@ -101,6 +104,69 @@ export class ConflictDetector {
                 }
             }
         }
+
+        return conflicts;
+    }
+
+    /**
+     * Detect characters appearing alive after death events
+     * Looks for events tagged with death-related keywords and checks if character appears in later events
+     */
+    static detectDeathConflicts(events: Event[]): DetectedConflict[] {
+        const conflicts: DetectedConflict[] = [];
+
+        // Find characters who have death events
+        const characterDeaths = new Map<string, { event: Event; date: DateTime }>();
+
+        events.forEach(event => {
+            if (!event.characters || !event.dateTime) return;
+
+            // Check if this is a death event
+            const isDeath = event.name.toLowerCase().includes('death') ||
+                          event.description?.toLowerCase().includes('dies') ||
+                          event.description?.toLowerCase().includes('died') ||
+                          event.description?.toLowerCase().includes('killed') ||
+                          event.tags?.some(tag => tag.toLowerCase().includes('death'));
+
+            if (isDeath) {
+                const parsed = parseEventDate(event.dateTime);
+                if (parsed.start) {
+                    event.characters.forEach(char => {
+                        const existing = characterDeaths.get(char);
+                        // Store earliest death for each character
+                        if (!existing || parsed.start! < existing.date) {
+                            characterDeaths.set(char, { event, date: parsed.start! });
+                        }
+                    });
+                }
+            }
+        });
+
+        // Check for events where dead characters appear
+        characterDeaths.forEach((deathInfo, character) => {
+            const postDeathEvents = events.filter(evt => {
+                if (!evt.characters?.includes(character)) return false;
+                if (!evt.dateTime) return false;
+                if (evt === deathInfo.event) return false; // Skip the death event itself
+
+                const evtDate = parseEventDate(evt.dateTime);
+                return evtDate.start && evtDate.start > deathInfo.date;
+            });
+
+            if (postDeathEvents.length > 0) {
+                conflicts.push({
+                    id: `conflict-death-${character}-${Date.now()}`,
+                    type: 'character',
+                    severity: 'error',
+                    message: `${character} appears in events after their death`,
+                    events: [deathInfo.event, ...postDeathEvents],
+                    character,
+                    details: {
+                        description: `${character} died in "${deathInfo.event.name}" (${deathInfo.event.dateTime}) but appears in ${postDeathEvents.length} event(s) after death: ${postDeathEvents.map(e => e.name).join(', ')}`
+                    }
+                });
+            }
+        });
 
         return conflicts;
     }
@@ -368,6 +434,43 @@ export class ConflictDetector {
                 detected: new Date().toISOString()
             };
         });
+    }
+
+    /**
+     * Get a human-readable description of conflict severity
+     */
+    static getSeverityDescription(severity: 'error' | 'warning' | 'info'): string {
+        switch (severity) {
+            case 'error':
+                return 'Error - Major timeline inconsistency that breaks narrative logic';
+            case 'warning':
+                return 'Warning - Potential issue that should be reviewed';
+            case 'info':
+                return 'Info - Minor inconsistency or suggestion for improvement';
+            default:
+                return 'Unknown severity level';
+        }
+    }
+
+    /**
+     * Get conflict type icon for UI display
+     */
+    static getConflictIcon(type: string): string {
+        switch (type) {
+            case 'location':
+                return '📍';
+            case 'character':
+            case 'death':
+                return '💀';
+            case 'temporal':
+            case 'age':
+                return '📅';
+            case 'dependency':
+            case 'causality':
+                return '🔗';
+            default:
+                return '⚠️';
+        }
     }
 
     /**
