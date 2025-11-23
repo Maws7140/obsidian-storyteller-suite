@@ -146,19 +146,30 @@ export class TimelineView extends ItemView {
             }
         });
 
-        forkSelect.addEventListener('change', () => {
+        forkSelect.addEventListener('change', async () => {
             const selectedFork = forkSelect.value;
-            // TODO: Filter events by fork
-            // For now, just show a notice
+            this.currentState.currentForkId = selectedFork === 'main' ? undefined : selectedFork;
+
             if (selectedFork === 'main') {
-                // Show all events
+                // Show all events - clear any fork filters
+                this.currentState.filters = {
+                    ...this.currentState.filters,
+                    forkId: undefined
+                };
             } else {
                 // Filter to fork-specific events
                 const fork = this.plugin.getTimelineFork(selectedFork);
                 if (fork) {
-                    // Future: filter events by fork
+                    this.currentState.filters = {
+                        ...this.currentState.filters,
+                        forkId: fork.id
+                    };
                 }
             }
+
+            // Rebuild timeline with new filters
+            await this.buildTimeline();
+            this.updateFooterStatus();
         });
 
         // Conflict warnings badge (if conflicts exist)
@@ -182,17 +193,9 @@ export class TimelineView extends ItemView {
                     async () => {
                         // Re-scan callback
                         const events = await this.plugin.listEvents();
-                        const characters = await this.plugin.listCharacters();
-                        const locations = await this.plugin.listLocations();
-                        const causalityLinks = this.plugin.getCausalityLinks();
-
-                        const { ConflictDetector } = await import('../utils/ConflictDetection');
-                        const newConflicts = ConflictDetector.detectConflicts(
-                            events,
-                            characters,
-                            locations,
-                            causalityLinks
-                        );
+                        const { ConflictDetector } = await import('../utils/ConflictDetector');
+                        const detectedConflicts = ConflictDetector.detectAllConflicts(events);
+                        const newConflicts = ConflictDetector.toStorageFormat(detectedConflicts);
 
                         this.plugin.settings.timelineConflicts = newConflicts;
                         await this.plugin.saveSettings();
@@ -391,22 +394,52 @@ export class TimelineView extends ItemView {
         // Apply track's filter criteria to current filters
         const newFilters: TimelineFilters = { ...this.currentState.filters };
 
-        if (track.filterCriteria) {
+        // Handle different track types
+        if (track.type === 'global') {
+            // Global track shows all events - clear filters
+            newFilters.characters = undefined;
+            newFilters.locations = undefined;
+            newFilters.groups = undefined;
+            newFilters.tags = undefined;
+            newFilters.milestonesOnly = false;
+        } else if (track.type === 'character' && track.entityId) {
+            // Character track - filter by specific character
+            newFilters.characters = new Set([track.entityId]);
+            newFilters.locations = undefined;
+            newFilters.groups = undefined;
+        } else if (track.type === 'location' && track.entityId) {
+            // Location track - filter by specific location
+            newFilters.locations = new Set([track.entityId]);
+            newFilters.characters = undefined;
+            newFilters.groups = undefined;
+        } else if (track.type === 'group' && track.entityId) {
+            // Group track - filter by specific group
+            newFilters.groups = new Set([track.entityId]);
+            newFilters.characters = undefined;
+            newFilters.locations = undefined;
+        } else if (track.type === 'custom' && track.filterCriteria) {
+            // Custom track - use filter criteria
             if (track.filterCriteria.characters && track.filterCriteria.characters.length > 0) {
                 newFilters.characters = new Set(track.filterCriteria.characters);
+            } else {
+                newFilters.characters = undefined;
             }
             if (track.filterCriteria.locations && track.filterCriteria.locations.length > 0) {
                 newFilters.locations = new Set(track.filterCriteria.locations);
+            } else {
+                newFilters.locations = undefined;
             }
             if (track.filterCriteria.groups && track.filterCriteria.groups.length > 0) {
                 newFilters.groups = new Set(track.filterCriteria.groups);
+            } else {
+                newFilters.groups = undefined;
             }
             if (track.filterCriteria.tags && track.filterCriteria.tags.length > 0) {
                 newFilters.tags = new Set(track.filterCriteria.tags);
+            } else {
+                newFilters.tags = undefined;
             }
-            if (track.filterCriteria.milestonesOnly) {
-                newFilters.milestonesOnly = true;
-            }
+            newFilters.milestonesOnly = track.filterCriteria.milestonesOnly || false;
         }
 
         this.currentState.filters = newFilters;

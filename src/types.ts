@@ -1796,6 +1796,8 @@ export interface TimelineUIState {
     showEras: boolean;
     /** Current track ID being viewed */
     currentTrackId?: string;
+    /** Current fork ID being viewed */
+    currentForkId?: string;
     /** Whether narrative order is enabled */
     narrativeOrder: boolean;
 }
@@ -1816,5 +1818,7 @@ export interface TimelineUIFilters {
     tags?: Set<string>;
     /** Filter by eras */
     eras?: Set<string>;
+    /** Filter by fork ID */
+    forkId?: string;
 }
 

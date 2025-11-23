@@ -33,10 +33,10 @@ export class TrackManagerModal extends Modal {
         contentEl.empty();
         contentEl.addClass('storyteller-track-manager');
 
-        // Load entities for filters
+        // Load entities for filters (story-specific)
         this.characters = await this.plugin.listCharacters();
         this.locations = await this.plugin.listLocations();
-        this.groups = this.plugin.settings.groups || [];
+        this.groups = this.plugin.getGroups();
 
         // Title
         contentEl.createEl('h2', { text: t('manageTimelineTracks') || 'Manage Timeline Tracks' });
