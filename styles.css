@@ -2786,8 +2786,9 @@ body.mod-rtl .storyteller-group-members {
 
 /* Milestone styling */
 .storyteller-timeline-modal .vis-item.timeline-milestone {
+  --milestone-color: #FF8C00; /* Default color, can be overridden by inline style */
   background: linear-gradient(135deg, #FFD700 0%, #FFA500 100%) !important;
-  border: 2px solid #FF8C00 !important;
+  border: 2px solid var(--milestone-color) !important;
   font-weight: bold;
   box-shadow: 0 4px 12px rgba(255, 215, 0, 0.4);
   padding: 0 !important;
@@ -2810,14 +2811,14 @@ body.mod-rtl .storyteller-group-members {
   width: 0 !important;
   max-width: 0 !important;
   border: none !important;
-  border-left: 1px solid #FF8C00 !important;
+  border-left: 1px solid var(--milestone-color, #FF8C00) !important;
   background: transparent !important;
   box-shadow: none !important;
   transform: none !important;
 }
 
 .storyteller-timeline-modal .vis-item.vis-point.timeline-milestone .vis-dot {
-  border: 1px solid #FF8C00 !important;
+  border: 1px solid var(--milestone-color, #FF8C00) !important;
   background: #FFD700 !important;
   box-shadow: none !important;
   padding: 0 !important;
@@ -3812,9 +3813,10 @@ body.mod-rtl .storyteller-group-members {
 
 /* Timeline View Milestones - gold styling matching base bar structure */
 .storyteller-timeline-view .vis-item.timeline-milestone {
+  --milestone-color: #FFD700; /* Default color, can be overridden by inline style */
   font-weight: 600;
   background: linear-gradient(135deg, rgba(255, 215, 0, 0.25) 0%, rgba(255, 140, 0, 0.2) 100%);
-  border-color: #FFD700;
+  border-color: var(--milestone-color);
 }
 
 /* Timeline View Gantt Bar Styles */
