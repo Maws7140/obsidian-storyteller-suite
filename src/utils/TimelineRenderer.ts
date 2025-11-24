@@ -697,7 +697,8 @@ export class TimelineRenderer {
             if (isFlashforward) classes.push('narrative-flashforward');
 
             // Style - narrative marker styles are handled by CSS classes
-            const style = color ? `background-color:${this.hexWithAlpha(color, 0.18)};border-color:${color};` : '';
+            // For milestones, don't apply group colors - they should always be orange/gold
+            const style = (color && !isMilestone) ? `background-color:${this.hexWithAlpha(color, 0.18)};border-color:${color};` : '';
 
             // Check for conflicts
             const eventConflicts = conflictsByEvent.get(evt.name) || [];
