@@ -368,18 +368,9 @@ export class DashboardView extends ItemView {
         // --- Group for selector and button (mobile-optimized layout) ---
         const selectorButtonGroup = headerTopRow.createDiv('storyteller-selector-button-group');
         
-        if (PlatformUtils.isMobile() && !PlatformUtils.isTablet()) {
-            // Stack vertically on mobile phones
-            selectorButtonGroup.style.display = 'flex';
-            selectorButtonGroup.style.flexDirection = 'column';
-            selectorButtonGroup.style.gap = '0.75rem';
-            selectorButtonGroup.style.width = '100%';
-        } else {
-            // Horizontal layout for desktop and tablets
-            selectorButtonGroup.style.display = 'flex';
-            selectorButtonGroup.style.alignItems = 'center';
-            selectorButtonGroup.style.gap = '0.5em';
-        }
+        // Remove inline styles that force vertical stacking.
+        // We will handle layout entirely in CSS (styles.css).
+
 
         // --- Story Selector or Custom Folders Indicator (mobile-optimized) ---
         const storySelector = selectorButtonGroup.createEl('select', { cls: 'storyteller-story-selector' });
