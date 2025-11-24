@@ -80,6 +80,17 @@ export class TimelineControlsBuilder {
             btn.setAttribute('aria-label', this.state.ganttMode ? t('timelineView') : t('ganttView'));
             btn.setAttribute('title', this.state.ganttMode ? t('timelineView') : t('ganttView'));
             this.callbacks.getRenderer()?.setGanttMode(this.state.ganttMode);
+            
+            // Toggle gantt-mode class on the timeline view container
+            const timelineView = container.closest('.storyteller-timeline-view');
+            if (timelineView) {
+                if (this.state.ganttMode) {
+                    timelineView.addClass('gantt-mode');
+                } else {
+                    timelineView.removeClass('gantt-mode');
+                }
+            }
+            
             this.callbacks.onStateChange();
         });
 
