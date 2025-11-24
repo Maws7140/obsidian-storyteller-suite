@@ -28,6 +28,7 @@ export interface TimelineRendererOptions {
     editMode?: boolean;
     showEras?: boolean;
     narrativeOrder?: boolean;
+    onConflictsDetected?: (conflicts: DetectedConflict[]) => void;
 }
 
 export interface TimelineFilters {
@@ -486,6 +487,12 @@ export class TimelineRenderer {
 
         // Detect conflicts for all events
         const allConflicts = ConflictDetector.detectAllConflicts(this.events);
+        
+        // Notify listener
+        if (this.options.onConflictsDetected) {
+            this.options.onConflictsDetected(allConflicts);
+        }
+
         const conflictsByEvent = new Map<string, DetectedConflict[]>();
 
         // Group conflicts by event name for quick lookup

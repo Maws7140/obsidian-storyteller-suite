@@ -9,6 +9,7 @@ import { TimelineUIState } from '../types';
 import { TimelineTrackManager } from '../utils/TimelineTrackManager';
 import { TimelineControlsBuilder, TimelineControlCallbacks } from '../utils/TimelineControlsBuilder';
 import { TimelineFilterBuilder, TimelineFilterCallbacks } from '../utils/TimelineFilterBuilder';
+import { ConflictDetector, DetectedConflict } from '../utils/ConflictDetector';
 
 export const VIEW_TYPE_TIMELINE = 'storyteller-timeline-view';
 
@@ -196,17 +197,7 @@ export class TimelineView extends ItemView {
                     this.plugin,
                     conflicts,
                     async () => {
-                        // Re-scan callback
-                        const events = await this.plugin.listEvents();
-                        const { ConflictDetector } = await import('../utils/ConflictDetector');
-                        const detectedConflicts = ConflictDetector.detectAllConflicts(events);
-                        const newConflicts = ConflictDetector.toStorageFormat(detectedConflicts);
-
-                        this.plugin.settings.timelineConflicts = newConflicts;
-                        await this.plugin.saveSettings();
-
-                        // Rebuild toolbar to update badge
-                        this.buildToolbar();
+                        await this.refresh();
                     }
                 ).open();
             });
@@ -350,11 +341,36 @@ export class TimelineView extends ItemView {
             editMode: this.currentState.editMode,
             showEras: this.currentState.showEras,
             narrativeOrder: this.currentState.narrativeOrder,
-            defaultGanttDuration: this.plugin.settings.ganttDefaultDuration ?? 1
+            defaultGanttDuration: this.plugin.settings.ganttDefaultDuration ?? 1,
+            onConflictsDetected: (conflicts) => this.handleConflicts(conflicts)
         });
 
         await this.renderer.initialize();
         this.renderer.applyFilters(this.currentState.filters);
+    }
+
+    /**
+     * Handle detected conflicts from renderer
+     */
+    private async handleConflicts(conflicts: DetectedConflict[]): Promise<void> {
+        const newConflicts = ConflictDetector.toStorageFormat(conflicts);
+        const currentConflicts = this.plugin.settings.timelineConflicts || [];
+        
+        // Merge to preserve dismissed status
+        const mergedConflicts = newConflicts.map(newC => {
+            const existing = currentConflicts.find(c => c.id === newC.id);
+            if (existing) {
+                return { ...newC, dismissed: existing.dismissed };
+            }
+            return newC;
+        });
+
+        // Only update if changed
+        if (JSON.stringify(mergedConflicts) !== JSON.stringify(currentConflicts)) {
+            this.plugin.settings.timelineConflicts = mergedConflicts;
+            await this.plugin.saveSettings();
+            this.buildToolbar();
+        }
     }
 
     /**

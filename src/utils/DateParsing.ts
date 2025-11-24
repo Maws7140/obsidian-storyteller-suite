@@ -227,7 +227,23 @@ function inferPrecisionFromLuxon(dt: DateTime): ParsedPrecision {
   // 1) ISO
   const iso = DateTime.fromISO(text, { zone: opts.timezone as any });
   if (iso.isValid) {
-    return { start: iso, precision: inferPrecisionFromLuxon(iso), approximate };
+    // Infer precision from the text format if possible, as Luxon loses this info
+    let precision: ParsedPrecision = 'day';
+    const trimmed = text.trim();
+    
+    if (/^\d{4}$/.test(trimmed)) {
+        precision = 'year';
+    } else if (/^\d{4}-\d{2}$/.test(trimmed)) {
+        precision = 'month';
+    } else if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+        precision = 'day';
+    } else if (trimmed.includes('T') || (trimmed.includes(':') && trimmed.includes(' '))) {
+        precision = 'time';
+    } else {
+        precision = inferPrecisionFromLuxon(iso);
+    }
+
+    return { start: iso, precision, approximate };
   }
 
   // 2) SQL
