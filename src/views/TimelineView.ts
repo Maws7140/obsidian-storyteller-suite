@@ -90,6 +90,11 @@ export class TimelineView extends ItemView {
         const container = this.containerEl.children[1] as HTMLElement;
         container.empty();
         container.addClass('storyteller-timeline-view');
+        
+        // Add gantt-mode class if enabled
+        if (this.currentState.ganttMode) {
+            container.addClass('gantt-mode');
+        }
 
         // Create main sections with flex layout
         this.toolbarEl = container.createDiv('storyteller-timeline-toolbar');

@@ -340,9 +340,9 @@ export class TimelineRenderer {
             this.container.style.overflow = 'visible';
 
             // Add explicit item height in Gantt mode for consistent bar sizing
-            if (this.options.ganttMode) {
-                timelineOptions.height = '40px';
-            }
+            // if (this.options.ganttMode) {
+            //    timelineOptions.height = '40px';
+            // }
 
             // Enable drag-and-drop editing when in edit mode
             if (this.options.editMode) {
@@ -696,8 +696,20 @@ export class TimelineRenderer {
             if (isFlashback) classes.push('narrative-flashback');
             if (isFlashforward) classes.push('narrative-flashforward');
 
-            // Style - narrative marker styles are handled by CSS classes
-            const style = color ? `background-color:${this.hexWithAlpha(color, 0.18)};border-color:${color};` : '';
+            // Style
+            let style = '';
+            if (color) {
+                if (isMilestone) {
+                    // For milestones: set color property to the event color for currentColor inheritance
+                    style = `color:${color};background-color:${color};border-color:${color};`;
+                } else {
+                    // Semi-transparent background for ranges
+                    style = `background-color:${this.hexWithAlpha(color, 0.18)};border-color:${color};`;
+                }
+            } else if (isMilestone) {
+                // Default orange for milestones
+                style = `color:#ff8c00;background-color:#ff8c00;border-color:#ff8c00;`;
+            }
 
             // Check for conflicts
             const eventConflicts = conflictsByEvent.get(evt.name) || [];
@@ -726,7 +738,7 @@ export class TimelineRenderer {
             if (isFlashforward) content = '↷ ' + content;
             if (isMilestone) content = '⭐ ' + content;
 
-            // Item type - milestones use 'box' to show as a bar
+            // Item type - milestones use 'box' to show with a stem
             let itemType: string;
             if (isMilestone) {
                 itemType = 'box';
