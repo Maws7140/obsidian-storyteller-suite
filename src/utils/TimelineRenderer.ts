@@ -696,20 +696,9 @@ export class TimelineRenderer {
             if (isFlashback) classes.push('narrative-flashback');
             if (isFlashforward) classes.push('narrative-flashforward');
 
-            // Style
-            let style = '';
-            if (color) {
-                if (isMilestone) {
-                    // For milestones: set color property to the event color for currentColor inheritance
-                    style = `color:${color};background-color:${color};border-color:${color};`;
-                } else {
-                    // Semi-transparent background for ranges
-                    style = `background-color:${this.hexWithAlpha(color, 0.18)};border-color:${color};`;
-                }
-            } else if (isMilestone) {
-                // Default orange for milestones
-                style = `color:#ff8c00;background-color:#ff8c00;border-color:#ff8c00;`;
-            }
+            // Style - narrative marker styles are handled by CSS classes
+            // For milestones, don't apply group colors - they should always be orange/gold
+            const style = (color && !isMilestone) ? `background-color:${this.hexWithAlpha(color, 0.18)};border-color:${color};` : '';
 
             // Check for conflicts
             const eventConflicts = conflictsByEvent.get(evt.name) || [];
