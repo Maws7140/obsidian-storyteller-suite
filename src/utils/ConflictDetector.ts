@@ -87,8 +87,12 @@ export class ConflictDetector {
 
                     const overlap = this.checkEventOverlap(event1, event2);
                     if (overlap) {
+                        // Use event IDs or names for stable conflict IDs
+                        const id1 = event1.id || event1.name.replace(/[^a-zA-Z0-9]/g, '');
+                        const id2 = event2.id || event2.name.replace(/[^a-zA-Z0-9]/g, '');
+                        
                         conflicts.push({
-                            id: `conflict-${character}-${i}-${j}`,
+                            id: `conflict-${character}-${id1}-${id2}`,
                             type: 'location',
                             severity: overlap.approximate ? 'warning' : 'error',
                             message: `${character} is in two different locations at the same time`,
@@ -154,8 +158,10 @@ export class ConflictDetector {
             });
 
             if (postDeathEvents.length > 0) {
+                const deathId = deathInfo.event.id || deathInfo.event.name.replace(/[^a-zA-Z0-9]/g, '');
+                
                 conflicts.push({
-                    id: `conflict-death-${character}-${Date.now()}`,
+                    id: `conflict-death-${character}-${deathId}`,
                     type: 'character',
                     severity: 'error',
                     message: `${character} appears in events after their death`,
@@ -261,8 +267,11 @@ export class ConflictDetector {
                 // Check if they're at the exact same time (within 1 minute)
                 const diffMinutes = Math.abs(date2.start.diff(date1.start, 'minutes').minutes);
                 if (diffMinutes < 1) {
+                    const id1 = m1.id || m1.name.replace(/[^a-zA-Z0-9]/g, '');
+                    const id2 = m2.id || m2.name.replace(/[^a-zA-Z0-9]/g, '');
+                    
                     conflicts.push({
-                        id: `conflict-temporal-milestone-${i}-${j}`,
+                        id: `conflict-temporal-milestone-${id1}-${id2}`,
                         type: 'temporal',
                         severity: 'info',
                         message: `Multiple milestones at the same time`,
@@ -295,13 +304,34 @@ export class ConflictDetector {
 
         if (!date1.start || !date2.start) return null;
 
-        // Determine end times (use event duration or default to 1 hour)
-        const end1 = date1.end || date1.start.plus({ hours: 1 });
-        const end2 = date2.end || date2.start.plus({ hours: 1 });
+        // Normalize range based on precision
+        const normalizeRange = (date: typeof date1) => {
+            let start = date.start!;
+            let end = date.end;
+
+            if (date.precision === 'day') {
+                start = start.startOf('day');
+                if (!end) end = start.plus({ days: 1 });
+            } else if (date.precision === 'month') {
+                start = start.startOf('month');
+                if (!end) end = start.plus({ months: 1 });
+            } else if (date.precision === 'year') {
+                start = start.startOf('year');
+                if (!end) end = start.plus({ years: 1 });
+            } else {
+                // Time precision
+                if (!end) end = start.plus({ hours: 1 });
+            }
+            
+            return { start, end: end! };
+        };
+
+        const range1 = normalizeRange(date1);
+        const range2 = normalizeRange(date2);
 
         // Check for overlap
-        const overlapStart = DateTime.max(date1.start, date2.start);
-        const overlapEnd = DateTime.min(end1, end2);
+        const overlapStart = DateTime.max(range1.start, range2.start);
+        const overlapEnd = DateTime.min(range1.end, range2.end);
 
         if (overlapStart < overlapEnd) {
             return {
