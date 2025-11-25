@@ -69,11 +69,9 @@ export class NetworkGraphRenderer {
         }
 
         // Special handling for colors with calc() or invalid HSL
-        if ((varName.includes('color') || varName.includes('border')) && value) {
-            // If the value contains calc() inside hsl/rgb, it's invalid for Cytoscape
-            if (value.includes('calc(')) {
-                value = fallbacks[varName] || '#808080';
-            }
+        // Cytoscape doesn't support calc() in any CSS value, so use fallback
+        if (value && value.includes('calc(')) {
+            value = fallbacks[varName] || '#808080';
         }
 
         return value || fallbacks[varName] || '#808080';
@@ -303,8 +301,7 @@ export class NetworkGraphRenderer {
             style: this.getCytoscapeStyle(),
             layout: this.getLayoutOptions('cose'),
             minZoom: 0.2,
-            maxZoom: 4,
-            wheelSensitivity: 0.3 // Moderate sensitivity - not too fast, not too slow
+            maxZoom: 4
         });
 
         // Apply initial zoom adjustment after layout completes

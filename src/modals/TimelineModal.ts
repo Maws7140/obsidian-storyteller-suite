@@ -95,7 +95,7 @@ export class TimelineModal extends Modal {
         filterPanel.style.display = this.filterPanelVisible ? 'block' : 'none';
 
         // Use shared filter builder for all filter controls
-        this.filterBuilder.buildFilterPanel(filterPanel, this.events);
+        await this.filterBuilder.buildFilterPanel(filterPanel, this.events);
 
         // Active filter chips
         this.filterChipsEl = contentEl.createDiv('storyteller-filter-chips');

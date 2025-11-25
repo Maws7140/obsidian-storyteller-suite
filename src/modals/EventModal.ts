@@ -26,6 +26,7 @@ export class EventModal extends Modal {
     isNew: boolean;
     private _groupRefreshInterval: number | null = null;
     private groupSelectorContainer: HTMLElement | null = null;
+    private forkSelectorContainer: HTMLElement | null = null;
 
     // Elements to update dynamically
     charactersListEl: HTMLElement;
@@ -484,96 +485,6 @@ export class EventModal extends Modal {
                 }).open();
             }));
 
-        // --- Narrative Markers (Flashback/Flash-forward) ---
-        contentEl.createEl('h3', { text: 'Narrative Markers' });
-        contentEl.createEl('p', {
-            text: 'Mark this event as a flashback or flash-forward for non-linear storytelling',
-            cls: 'storyteller-modal-description'
-        });
-
-        // Initialize narrativeMarkers if not present
-        if (!this.event.narrativeMarkers) {
-            this.event.narrativeMarkers = {};
-        }
-
-        new Setting(contentEl)
-            .setName('Flashback')
-            .setDesc('This event is told as a flashback')
-            .addToggle(toggle => toggle
-                .setValue(this.event.narrativeMarkers?.isFlashback || false)
-                .onChange(value => {
-                    if (!this.event.narrativeMarkers) {
-                        this.event.narrativeMarkers = {};
-                    }
-                    this.event.narrativeMarkers.isFlashback = value;
-                    if (value && this.event.narrativeMarkers.isFlashforward) {
-                        // Can't be both flashback and flash-forward
-                        this.event.narrativeMarkers.isFlashforward = false;
-                        new Notice('Disabled flash-forward (event cannot be both)');
-                    }
-                }));
-
-        new Setting(contentEl)
-            .setName('Flash-forward')
-            .setDesc('This event is told as a flash-forward')
-            .addToggle(toggle => toggle
-                .setValue(this.event.narrativeMarkers?.isFlashforward || false)
-                .onChange(value => {
-                    if (!this.event.narrativeMarkers) {
-                        this.event.narrativeMarkers = {};
-                    }
-                    this.event.narrativeMarkers.isFlashforward = value;
-                    if (value && this.event.narrativeMarkers.isFlashback) {
-                        // Can't be both flashback and flash-forward
-                        this.event.narrativeMarkers.isFlashback = false;
-                        new Notice('Disabled flashback (event cannot be both)');
-                    }
-                }));
-
-        new Setting(contentEl)
-            .setName('Narrative Date')
-            .setDesc('When this event is narrated in the story (vs when it chronologically occurred)')
-            .addText(text => text
-                .setPlaceholder('e.g., "2024-06-15", "Chapter 3"')
-                .setValue(this.event.narrativeMarkers?.narrativeDate || '')
-                .onChange(value => {
-                    if (!this.event.narrativeMarkers) {
-                        this.event.narrativeMarkers = {};
-                    }
-                    this.event.narrativeMarkers.narrativeDate = value || undefined;
-                }));
-
-        new Setting(contentEl)
-            .setName('Target Event')
-            .setDesc('The event from which this flashback/flash-forward is told')
-            .addText(text => text
-                .setPlaceholder('Event ID or name')
-                .setValue(this.event.narrativeMarkers?.targetEvent || '')
-                .onChange(value => {
-                    if (!this.event.narrativeMarkers) {
-                        this.event.narrativeMarkers = {};
-                    }
-                    this.event.narrativeMarkers.targetEvent = value || undefined;
-                }));
-
-        new Setting(contentEl)
-            .setName('Narrative Context')
-            .setDesc('Description of the narrative framing')
-            .setClass('storyteller-modal-setting-vertical')
-            .addTextArea(text => {
-                text
-                    .setPlaceholder('e.g., "Told through John\'s memory while in prison"')
-                    .setValue(this.event.narrativeMarkers?.narrativeContext || '')
-                    .onChange(value => {
-                        if (!this.event.narrativeMarkers) {
-                            this.event.narrativeMarkers = {};
-                        }
-                        this.event.narrativeMarkers.narrativeContext = value || undefined;
-                    });
-                text.inputEl.rows = 2;
-                text.inputEl.addClass('storyteller-modal-textarea');
-            });
-
         // --- Era Membership ---
         contentEl.createEl('h3', { text: 'Timeline Eras' });
         const eras = this.plugin.settings.timelineEras || [];
@@ -664,6 +575,18 @@ export class EventModal extends Modal {
                 this.renderGroupSelector(this.groupSelectorContainer);
             }
         }, 2000);
+
+        // --- Timeline Forks ---
+        const forks = this.plugin.getTimelineForks();
+        if (forks.length > 0) {
+            contentEl.createEl('h3', { text: 'Timeline Forks' });
+            contentEl.createEl('p', {
+                text: 'Assign this event to alternate timeline forks',
+                cls: 'storyteller-modal-description'
+            });
+            this.forkSelectorContainer = contentEl.createDiv('storyteller-fork-selector-container');
+            this.renderForkSelector(this.forkSelectorContainer);
+        }
 
         // --- Action Buttons ---
         const buttonsSetting = new Setting(contentEl).setClass('storyteller-modal-buttons');
@@ -875,6 +798,71 @@ export class EventModal extends Modal {
                 });
             }
         })();
+    }
+
+    renderForkSelector(container: HTMLElement) {
+        container.empty();
+        const allForks = this.plugin.getTimelineForks();
+        const eventIdentifier = this.event.id || this.event.name;
+
+        // Get forks that already contain this event
+        const selectedForkIds = new Set<string>();
+        allForks.forEach(fork => {
+            if (fork.forkEvents?.includes(eventIdentifier)) {
+                selectedForkIds.add(fork.id);
+            }
+        });
+
+        new Setting(container)
+            .setName('Timeline Forks')
+            .setDesc('Add this event to alternate timelines')
+            .addDropdown(dropdown => {
+                dropdown.addOption('', '-- Select a fork --');
+                allForks.forEach(fork => {
+                    // Only show forks that don't already contain this event
+                    if (!selectedForkIds.has(fork.id)) {
+                        dropdown.addOption(fork.id, fork.name);
+                    }
+                });
+                dropdown.setValue('');
+                dropdown.onChange(async (forkId) => {
+                    if (forkId) {
+                        await this.plugin.addEventToFork(forkId, eventIdentifier);
+                        selectedForkIds.add(forkId);
+                        this.renderForkSelector(container);
+                    }
+                });
+            });
+
+        // Show selected forks as removable tags
+        if (selectedForkIds.size > 0) {
+            const selectedDiv = container.createDiv('selected-forks');
+            selectedDiv.style.marginTop = '8px';
+            allForks.filter(f => selectedForkIds.has(f.id)).forEach(fork => {
+                const tag = selectedDiv.createSpan({ cls: 'fork-tag' });
+                tag.style.display = 'inline-flex';
+                tag.style.alignItems = 'center';
+                tag.style.padding = '2px 8px';
+                tag.style.marginRight = '4px';
+                tag.style.marginBottom = '4px';
+                tag.style.borderRadius = '4px';
+                tag.style.backgroundColor = fork.color || '#666';
+                tag.style.color = '#fff';
+                tag.style.fontSize = '12px';
+
+                tag.createSpan({ text: fork.name });
+
+                const removeBtn = tag.createSpan({ text: ' x', cls: 'remove-fork-btn' });
+                removeBtn.style.cursor = 'pointer';
+                removeBtn.style.marginLeft = '4px';
+                removeBtn.style.fontWeight = 'bold';
+                removeBtn.onclick = async () => {
+                    await this.plugin.removeEventFromFork(fork.id, eventIdentifier);
+                    selectedForkIds.delete(fork.id);
+                    this.renderForkSelector(container);
+                };
+            });
+        }
     }
 
     private async applyTemplateToEvent(template: Template): Promise<void> {

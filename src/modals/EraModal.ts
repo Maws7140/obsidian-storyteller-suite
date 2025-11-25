@@ -107,17 +107,17 @@ export class EraModal extends Modal {
             });
 
         // Color
+        let colorPickerComponent: any;
         new Setting(contentEl)
             .setName('Background Color')
-            .setDesc('Color for timeline visualization (hex or CSS color)')
-            .addText(text => {
-                text
-                    .setPlaceholder('#RRGGBB or hsl(h, s%, l%)')
-                    .setValue(this.era.color || '')
+            .setDesc('Color for timeline visualization')
+            .addColorPicker(colorPicker => {
+                colorPickerComponent = colorPicker;
+                colorPicker
+                    .setValue(this.era.color || EraManager.generateEraColor())
                     .onChange(value => {
-                        this.era.color = value || EraManager.generateEraColor();
+                        this.era.color = value;
                     });
-                text.inputEl.style.width = '150px';
             })
             .addButton(button => button
                 .setButtonText('Random')
@@ -125,10 +125,8 @@ export class EraModal extends Modal {
                 .onClick(() => {
                     const randomColor = EraManager.generateEraColor();
                     this.era.color = randomColor;
-                    // Update the input field
-                    const inputEl = contentEl.querySelector('input[placeholder*="RRGGBB"]') as HTMLInputElement;
-                    if (inputEl) {
-                        inputEl.value = randomColor;
+                    if (colorPickerComponent) {
+                        colorPickerComponent.setValue(randomColor);
                     }
                     new Notice(`Color set to ${randomColor}`);
                 }));
