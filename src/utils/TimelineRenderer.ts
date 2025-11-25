@@ -3,7 +3,7 @@
 
 import { App, Notice } from 'obsidian';
 import StorytellerSuitePlugin from '../main';
-import { Event } from '../types';
+import { Event, Location } from '../types';
 import { parseEventDate, toMillis, toDisplay } from './DateParsing';
 import { EventModal } from '../modals/EventModal';
 import { ConflictDetector, DetectedConflict } from './ConflictDetector';
@@ -58,6 +58,7 @@ export class TimelineRenderer {
     private options: TimelineRendererOptions;
     private filters: TimelineFilters = {};
     private events: Event[] = [];
+    private locations: Location[] = [];
 
     // Era and narrative order configuration
     private showEras: boolean = false;
@@ -94,6 +95,7 @@ export class TimelineRenderer {
      */
     async initialize(): Promise<void> {
         this.events = await this.plugin.listEvents();
+        this.locations = await this.plugin.listLocations();
         await this.render();
     }
 
@@ -321,6 +323,9 @@ export class TimelineRenderer {
                 stackSubgroups: true,
                 margin: { item: itemMargin, axis: 20 },
                 zoomable: true,
+                zoomFriction: 10,
+                zoomKey: 'ctrlKey',
+                horizontalScroll: true,
                 zoomMin: dayMs,
                 zoomMax: 1000 * yearMs,
                 multiselect: true,
@@ -353,6 +358,36 @@ export class TimelineRenderer {
                     remove: false,
                     add: false
                 };
+                
+                // Add proper onMove callback for drag-and-drop
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                timelineOptions.onMove = async (item: any, callback: (item: any) => void) => {
+                    const event = this.events[item.id];
+                    if (!event) {
+                        callback(null); // Cancel move if event not found
+                        return;
+                    }
+                    
+                    const startDate = new Date(item.start);
+                    const endDate = item.end ? new Date(item.end) : null;
+                    
+                    // Update event dateTime - handle both range and point events (milestones)
+                    if (endDate && !event.isMilestone) {
+                        event.dateTime = `${startDate.toISOString()} to ${endDate.toISOString()}`;
+                    } else {
+                        event.dateTime = startDate.toISOString();
+                    }
+                    
+                    try {
+                        await this.plugin.saveEvent(event);
+                        new Notice(`Event "${event.name}" rescheduled`);
+                        callback(item); // Confirm the move
+                    } catch (error) {
+                        console.error('Error saving event after drag:', error);
+                        new Notice('Error saving event changes');
+                        callback(null); // Cancel move on error
+                    }
+                };
             }
 
             // Create timeline with error handling
@@ -383,37 +418,6 @@ export class TimelineRenderer {
                     console.warn('Storyteller Suite: Could not set current time marker:', timeError);
                 }
             }
-
-            // Handle drag-and-drop changes when in edit mode
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            this.timeline.on('changed', async (props: any) => {
-                if (!this.options.editMode) return;
-                if (!props || !props.items || props.items.length === 0) return;
-                
-                const updatedItemId = props.items[0];
-                const updatedItem = items.get(updatedItemId);
-                if (!updatedItem) return;
-                
-                const event = this.events[updatedItemId];
-                if (!event) return;
-                
-                const startDate = new Date(updatedItem.start);
-                const endDate = updatedItem.end ? new Date(updatedItem.end) : null;
-                
-                if (endDate) {
-                    event.dateTime = `${startDate.toISOString()} to ${endDate.toISOString()}`;
-                } else {
-                    event.dateTime = startDate.toISOString();
-                }
-                
-                try {
-                    await this.plugin.saveEvent(event);
-                    new Notice(`Event "${event.name}" rescheduled`);
-                } catch (error) {
-                    console.error('Error saving event after drag:', error);
-                    new Notice('Error saving event changes');
-                }
-            });
 
             // Handle double-click to edit
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -539,11 +543,13 @@ export class TimelineRenderer {
                 const uniqueLocations = Array.from(new Set(this.events.map(e => e.location || 'Unspecified')));
                 uniqueLocations.forEach((loc, i) => {
                     const id = loc || 'Unspecified';
+                    // Resolve location ID to display name
+                    const displayName = id === 'Unspecified' ? 'Unspecified' : this.resolveLocationName(id);
                     const color = this.palette[i % this.palette.length];
                     keyToColor.set(id, color);
-                    keyToLabel.set(id, loc || 'Unspecified');
-                    groupsDS.add({ id, content: loc || 'Unspecified' });
-                    legend.push({ key: id, label: loc || 'Unspecified', color });
+                    keyToLabel.set(id, displayName);
+                    groupsDS.add({ id, content: displayName });
+                    legend.push({ key: id, label: displayName, color });
                 });
             } else if (this.options.groupMode === 'character') {
                 const uniqueCharacters = new Set<string>();
@@ -683,9 +689,11 @@ export class TimelineRenderer {
             const approx = !!parsed.approximate;
             const isMilestone = !!evt.isMilestone;
             
-            // Gantt mode: ensure all events have duration (but not milestones)
+            // Gantt mode: ensure all events have duration
             let displayEndMs = endMs;
-            if (this.options.ganttMode && displayEndMs == null && !isMilestone) {
+            if (this.options.ganttMode && displayEndMs == null) {
+                // Both milestones and regular events use the same default duration
+                // This ensures milestones are visible at all zoom levels
                 const durationMs = (this.options.defaultGanttDuration || 1) * 24 * 60 * 60 * 1000;
                 displayEndMs = startMs + durationMs;
             }
@@ -693,8 +701,13 @@ export class TimelineRenderer {
             // Build CSS classes
             const classes: string[] = [];
             if (approx) classes.push('is-approx');
-            if (isMilestone) classes.push('timeline-milestone');
-            if (this.options.ganttMode) classes.push('gantt-bar');
+            if (isMilestone) {
+                classes.push('timeline-milestone');
+                // Add gantt-milestone class for Gantt-specific milestone styling (no stem/dot)
+                if (this.options.ganttMode) classes.push('gantt-milestone');
+            }
+            // Only apply gantt-bar class to non-milestone events - milestones should remain as point events
+            if (this.options.ganttMode && !isMilestone) classes.push('gantt-bar');
 
             // Detect narrative markers (flashback/flash-forward)
             const isFlashback = evt.narrativeMarkers?.isFlashback || false;
@@ -714,7 +727,12 @@ export class TimelineRenderer {
             const hasWarnings = eventConflicts.some(c => c.severity === 'warning');
 
             // Add narrative sequence number when in narrative order mode
-            let content = evt.name;
+            // Safeguard: ensure content is never empty - use fallback if name is missing or whitespace-only
+            const eventName = evt.name?.trim();
+            let content = eventName || '(Untitled Event)';
+            if (!eventName) {
+                console.warn(`Storyteller Suite: Event at index ${originalIdx} has no name. File: ${evt.filePath || 'unknown'}`);
+            }
             if (this.narrativeOrder && evt.narrativeSequence !== undefined) {
                 content = `[${evt.narrativeSequence}] ${content}`;
                 classes.push('has-narrative-sequence');
@@ -734,12 +752,14 @@ export class TimelineRenderer {
             if (isFlashforward) content = '↷ ' + content;
             if (isMilestone) content = '⭐ ' + content;
 
-            // Item type - milestones use 'box' to show with a stem
+            // Item type - determines how item renders
+            // In Gantt mode: use 'range' for all items (including milestones) to avoid stems/dots
+            // In Timeline mode: milestones use 'box' (with stem), others use 'range' or 'box' based on end date
             let itemType: string;
-            if (isMilestone) {
-                itemType = 'box';
-            } else if (this.options.ganttMode) {
+            if (this.options.ganttMode) {
                 itemType = 'range';
+            } else if (isMilestone) {
+                itemType = 'box';
             } else {
                 itemType = displayEndMs != null ? 'range' : 'box';
             }
@@ -757,6 +777,37 @@ export class TimelineRenderer {
                 progress: evt.progress
             });
         });
+
+        // Add era background items when showEras is enabled
+        if (this.showEras) {
+            const eras = this.plugin.settings.timelineEras || [];
+            const visibleEras = eras.filter(era => era.visible !== false);
+
+            visibleEras.forEach((era, index) => {
+                if (!era.startDate || !era.endDate) return;
+
+                const eraStartParsed = parseEventDate(era.startDate, { referenceDate });
+                const eraEndParsed = parseEventDate(era.endDate, { referenceDate });
+                
+                const eraStartMs = toMillis(eraStartParsed?.start);
+                const eraEndMs = toMillis(eraEndParsed?.start);
+
+                if (eraStartMs == null || eraEndMs == null) return;
+
+                // Create background item for the era
+                items.add({
+                    id: `era-${era.id}`,
+                    content: era.name,
+                    start: new Date(eraStartMs),
+                    end: new Date(eraEndMs),
+                    type: 'background',
+                    className: 'timeline-era-background',
+                    style: era.color 
+                        ? `background-color: ${era.color}; opacity: 0.3;`
+                        : `background-color: ${this.palette[index % this.palette.length]}; opacity: 0.2;`
+                });
+            });
+        }
 
         return { items, groups: groupsDS, legend };
     }
@@ -853,17 +904,42 @@ export class TimelineRenderer {
         }
 
         // Fork filter
+        const eventIdentifier = evt.id || evt.name;
         if (this.filters.forkId) {
+            // Viewing a specific fork - only show events in that fork
             const fork = this.plugin.getTimelineFork(this.filters.forkId);
             if (fork) {
-                // Check if event is in this fork's events list
-                const eventIdentifier = evt.id || evt.name;
                 const isInFork = fork.forkEvents?.includes(eventIdentifier);
                 if (!isInFork) return false;
             }
+        } else {
+            // Main timeline - exclude events that belong to any fork
+            const allForks = this.plugin.getTimelineForks();
+            const isInAnyFork = allForks.some(fork => 
+                fork.forkEvents?.includes(eventIdentifier)
+            );
+            if (isInAnyFork) return false;
         }
 
         return true;
+    }
+
+    /**
+     * Resolve a location ID or name to its display name
+     */
+    private resolveLocationName(locationValue: string): string {
+        // First, try to find by ID
+        const locationById = this.locations.find(loc => loc.id === locationValue);
+        if (locationById) {
+            return locationById.name;
+        }
+        // If not found by ID, try to find by name (in case it's already a name)
+        const locationByName = this.locations.find(loc => loc.name === locationValue);
+        if (locationByName) {
+            return locationByName.name;
+        }
+        // Return original value if no match found
+        return locationValue;
     }
 
     /**
@@ -871,10 +947,10 @@ export class TimelineRenderer {
      */
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     private makeTooltip(evt: Event, parsed: any, conflicts: DetectedConflict[] = []): string {
-        const parts: string[] = [evt.name];
+        const parts: string[] = [evt.name || '(Untitled Event)'];
         const dt = parsed?.start ? toDisplay(parsed.start, undefined, parsed.isBCE, parsed.originalYear) : (evt.dateTime || '');
         if (dt) parts.push(dt);
-        if (evt.location) parts.push(`@ ${evt.location}`);
+        if (evt.location) parts.push(`@ ${this.resolveLocationName(evt.location)}`);
         if (evt.description) parts.push(evt.description.length > 120 ? evt.description.slice(0, 120) + '…' : evt.description);
 
         // Add conflict information

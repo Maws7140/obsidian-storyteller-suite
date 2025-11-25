@@ -7,7 +7,6 @@ import StorytellerSuitePlugin from '../main';
 import { TimelineRenderer } from './TimelineRenderer';
 import { TimelineUIState, TimelineUIFilters, Event } from '../types';
 import { TrackManagerModal } from '../modals/TrackManagerModal';
-import { EraManagerModal } from '../modals/EraManagerModal';
 import { ConflictViewModal } from '../modals/ConflictViewModal';
 import { TagTimelineModal } from '../modals/TagTimelineModal';
 import { ConflictDetector } from './ConflictDetector';
@@ -427,18 +426,9 @@ export class TimelineControlsBuilder {
         });
         setIcon(btn, 'calendar-range');
 
-        btn.addEventListener('click', () => {
-            const eras = this.plugin.settings.timelineEras || [];
-            new EraManagerModal(
-                this.plugin.app,
-                this.plugin,
-                eras,
-                async (updatedEras) => {
-                    this.plugin.settings.timelineEras = updatedEras;
-                    await this.plugin.saveSettings();
-                    this.callbacks.onRendererUpdate();
-                }
-            ).open();
+        btn.addEventListener('click', async () => {
+            const { EraListModal } = await import('../modals/EraListModal');
+            new EraListModal(this.plugin.app, this.plugin).open();
         });
 
         return btn;

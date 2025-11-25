@@ -1273,6 +1273,28 @@ If your plugin does not need CSS, delete this file.
 .storyteller-timeline-view .vis-range {
   border-radius: 6px;
 }
+
+/* Gantt bar styling - ensures proper bar display and visible labels */
+.vis-item.gantt-bar {
+  min-width: 100px;
+  min-height: 28px;
+  border-width: 2px;
+  border-radius: 4px;
+}
+
+.vis-item.gantt-bar .vis-item-content {
+  overflow: visible;
+  white-space: nowrap;
+  padding: 4px 8px;
+  font-weight: 500;
+}
+
+/* Override max-width restriction in Gantt mode */
+.storyteller-timeline-modal .vis-item.gantt-bar,
+.storyteller-timeline-view .vis-item.gantt-bar {
+  max-width: none;
+}
+
 .storyteller-timeline-modal .vis-grid.vis-odd,
 .storyteller-timeline-view .vis-grid.vis-odd,
 .storyteller-timeline-modal .vis-grid.vis-even,
@@ -1290,20 +1312,87 @@ If your plugin does not need CSS, delete this file.
   background-color: var(--interactive-accent);
 }
 
-/* Milestone stem - use currentColor to inherit from parent's color property */
+/* Event item text overflow handling - prevent bleeding into other items/eras */
+.storyteller-timeline-modal .vis-item .vis-item-content,
+.storyteller-timeline-view .vis-item .vis-item-content {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+/* For box-type items, limit width based on zoom level */
+.storyteller-timeline-modal .vis-item.vis-box,
+.storyteller-timeline-view .vis-item.vis-box {
+  max-width: 300px;
+  overflow: hidden;
+}
+
+/* Era background label styling */
+.storyteller-timeline-modal .vis-item.vis-background,
+.storyteller-timeline-view .vis-item.vis-background {
+  pointer-events: none;
+}
+
+.storyteller-timeline-modal .vis-item.vis-background .vis-item-content,
+.storyteller-timeline-view .vis-item.vis-background .vis-item-content {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  opacity: 0.7;
+  padding: 4px 8px;
+  position: absolute;
+  top: 2px;
+  left: 4px;
+}
+
+/* Milestone styling - golden/amber color scheme */
+.vis-item.timeline-milestone {
+  background: linear-gradient(135deg, #d4a017 0%, #ffd700 50%, #d4a017 100%) !important;
+  border-color: #b8860b !important;
+  color: #1a1a1a !important;
+  font-weight: 600;
+  box-shadow: 0 2px 8px rgba(212, 160, 23, 0.4);
+}
+
+/* Milestone stem - gold color */
 .vis-item.timeline-milestone .vis-line {
-  border-left-color: currentColor !important;
+  border-left-color: #d4a017 !important;
+  border-left-width: 2px !important;
 }
 
-/* Milestone dot - use currentColor to inherit from parent's color property */
+/* Milestone dot - gold color */
 .vis-item.timeline-milestone .vis-dot {
-  border-color: currentColor !important;
-  background-color: currentColor !important;
+  border-color: #d4a017 !important;
+  background-color: #ffd700 !important;
+  box-shadow: 0 0 6px rgba(255, 215, 0, 0.6);
 }
 
-/* Keep text white for readability */
+/* Milestone text - dark for contrast on gold background */
 .vis-item.timeline-milestone .vis-item-content {
-  color: white !important;
+  color: #1a1a1a !important;
+}
+
+/* Milestone hover state */
+.vis-item.timeline-milestone:hover {
+  box-shadow: 0 4px 12px rgba(212, 160, 23, 0.6);
+  transform: translateY(-2px);
+}
+
+/* Gantt mode milestone styling - visible bar with text */
+.vis-item.gantt-milestone {
+  min-width: 100px;
+  min-height: 26px;
+  border-radius: 4px !important;
+  border-left: 4px solid #b8860b !important;
+}
+
+.vis-item.gantt-milestone .vis-item-content {
+  overflow: visible;
+  white-space: nowrap;
+  padding: 4px 8px;
 }
 
 /* Toolbar and legend */
@@ -1540,33 +1629,42 @@ If your plugin does not need CSS, delete this file.
   position: relative;
 }
 
+/* ==============================================
+   IMPROVED DASHBOARD HEADER v2.2
+   Theme-aware, polished header with visual hierarchy
+   ============================================== */
+
 .storyteller-dashboard-header {
   display: flex;
   flex-direction: column;
   align-items: stretch;
   justify-content: flex-start;
-  background: var(--background-primary);
+  /* Use theme background */
+  background-color: var(--background-primary);
+  /* Theme-aware border */
   border-bottom: 1px solid var(--background-modifier-border);
-  box-shadow: 0 2px 6px 0 rgba(0,0,0,0.04);
-  padding: 0.5em 1em 0.25em 0.5em;
-  min-height: 3.2em;
+  box-shadow: 0 1px 3px var(--background-modifier-box-shadow, rgba(0, 0, 0, 0.04));
+  padding: 0.75em 1em 0.5em 1em;
+  min-height: 3.5em;
   margin-bottom: 0;
   box-sizing: border-box;
   width: 100%;
-  gap: 0.25em;
-  position: relative; /* Changed from sticky to relative */
-  /* Use Obsidian's official z-index layer system */
+  gap: 0.4em;
+  position: relative;
   z-index: var(--layer-status-bar, 15);
-  /* Ensure it doesn't get clipped */
   flex-shrink: 0;
+  /* Accent bar at the top using theme accent */
+  border-top: 3px solid var(--interactive-accent);
 }
 
+/* Header Top Row */
 .storyteller-dashboard-header-top {
   display: flex;
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
-  gap: 0.5em;
+  gap: 0.75em;
+  width: 100%;
 }
 
 /* Controls group (Search, Filter, Buttons) - Horizontal Layout */
@@ -1898,81 +1996,118 @@ body.mod-rtl .storyteller-group-members {
   }
 }
 
+/* Selector + Button Group */
 .storyteller-selector-button-group {
   display: flex;
   align-items: center;
   gap: 0.5em;
-  flex-wrap: wrap; /* allow selector + button to wrap */
+  flex-wrap: nowrap;
   min-width: 0;
   max-width: 100%;
   flex: 1 1 auto;
 }
-.storyteller-selector-button-group .storyteller-story-selector { flex: 0 0 auto; min-width: 0; width: max-content; }
-.storyteller-selector-button-group .storyteller-new-story-btn { flex: 0 0 auto; }
 
-/* Update header to use new group and improve flex behavior */
-.storyteller-dashboard-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: nowrap;
-  gap: 1em;
-  width: 100%;
+/* Header flex behavior override */
+.storyteller-dashboard-header-top {
   min-width: 0;
   box-sizing: border-box;
 }
 
+/* Dashboard Title - Theme-aware typography */
 .storyteller-dashboard-title {
   display: flex;
   align-items: center;
-  font-size: var(--h2, 1.5em);
+  gap: 0.5em;
+  font-size: var(--h3-size, 1.25em);
   font-family: var(--font-interface);
   color: var(--text-normal);
-  font-weight: 700;
+  font-weight: var(--font-bold, 700);
   margin: 0;
-  letter-spacing: 0.01em;
+  letter-spacing: -0.01em;
   min-width: 0;
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 60%;
+  max-width: none;
 }
 
+/* Story Selector - Theme-aware dropdown styling */
 .storyteller-selector-button-group .storyteller-story-selector {
-  margin-left: 0.5em;
-  background: var(--background-secondary);
+  margin-left: 0;
+  background-color: var(--background-secondary);
   color: var(--text-normal);
   border: 1px solid var(--background-modifier-border);
-  border-radius: var(--radius-s);
+  border-radius: var(--radius-m, 8px);
   font-family: var(--font-interface);
-  font-size: 1em;
-  padding: 0.3em 0.8em 0.3em 0.5em;
+  font-size: var(--font-ui-small);
+  font-weight: 500;
+  padding: 0.5em 2.2em 0.5em 0.85em;
   outline: none;
-  transition: border-color 0.18s;
-  min-width: 0;
-  max-width: none;
-  width: max-content; /* fit to text */
+  transition: all 0.15s ease;
+  /* Allow dropdown to expand to fit content */
+  min-width: 120px;
+  max-width: 100%;
+  width: auto;
+  /* Prevent text cutoff - show full text */
   text-overflow: ellipsis;
   overflow: hidden;
+  white-space: nowrap;
+  cursor: pointer;
+  /* Custom dropdown arrow using currentColor for theme compatibility */
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.6em center;
+  background-size: 12px;
 }
 
+.storyteller-selector-button-group .storyteller-story-selector:hover {
+  border-color: var(--interactive-accent);
+  background-color: var(--background-primary-alt, var(--background-primary));
+}
+
+.storyteller-selector-button-group .storyteller-story-selector:focus {
+  border-color: var(--interactive-accent);
+  box-shadow: 0 0 0 2px var(--background-modifier-border-focus, rgba(var(--interactive-accent-rgb, 124, 77, 255), 0.25));
+}
+
+/* Dropdown option styling for theme consistency */
+.storyteller-selector-button-group .storyteller-story-selector option {
+  background-color: var(--background-primary);
+  color: var(--text-normal);
+  padding: 0.5em;
+}
+
+/* New Story Button - Theme-aware CTA styling */
 .storyteller-selector-button-group .storyteller-new-story-btn {
   flex-shrink: 0;
   min-width: 0;
   max-width: none;
   white-space: nowrap;
-  background: var(--interactive-accent);
+  /* Use theme accent color */
+  background-color: var(--interactive-accent);
   color: var(--text-on-accent);
   border: none;
-  border-radius: var(--radius-s);
+  border-radius: var(--radius-m, 6px);
   font-family: var(--font-interface);
-  font-size: 1em;
-  font-weight: 500;
-  padding: 0.3em 0.8em;
+  font-size: var(--font-ui-small);
+  font-weight: 600;
+  padding: 0.5em 1em;
   cursor: pointer;
-  transition: background 0.18s;
+  transition: all 0.15s ease;
   margin-left: 0.5em;
+}
+
+.storyteller-selector-button-group .storyteller-new-story-btn:hover {
+  background-color: var(--interactive-accent-hover);
+  filter: brightness(1.1);
+}
+
+.storyteller-selector-button-group .storyteller-new-story-btn:active {
+  filter: brightness(0.95);
 }
 
 @media (max-width: 600px) {
@@ -1980,23 +2115,30 @@ body.mod-rtl .storyteller-group-members {
     flex-direction: column;
     align-items: stretch;
     gap: 0.5em;
+    padding: 0.5em 0.75em;
+    border-top-width: 2px;
   }
-  .storyteller-dashboard-title { flex: 1 1 100%; max-width: 100%; font-size: 1.1em; }
   
-  /* Force horizontal layout for buttons even on small screens */
+  .storyteller-dashboard-title { 
+    flex: 1 1 100%; 
+    max-width: 100%; 
+    font-size: 1.1em;
+  }
+  
+  /* Horizontal layout for selector and button */
   .storyteller-selector-button-group { 
     width: 100%;
     flex-direction: row;
-    justify-content: space-between;
+    justify-content: flex-start;
     align-items: center;
     gap: 0.5em;
     flex-wrap: nowrap;
   }
   
   .storyteller-selector-button-group .storyteller-new-story-btn { 
-    margin-top: 0;
     margin-left: 0;
     flex: 0 0 auto;
+    padding: 0.4em 0.8em;
   }
   
   .storyteller-selector-button-group .storyteller-story-selector {

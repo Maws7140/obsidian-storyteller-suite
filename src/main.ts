@@ -61,7 +61,6 @@ import { LeafletCodeBlockProcessor } from './leaflet/processor';
 import { TemplateStorageManager } from './templates/TemplateStorageManager';
 import { StoryTemplateGalleryModal } from './templates/modals/StoryTemplateGalleryModal';
 import { TrackManagerModal } from './modals/TrackManagerModal';
-import { EraManagerModal } from './modals/EraManagerModal';
 import { ConflictViewModal } from './modals/ConflictViewModal';
 import { TagTimelineModal } from './modals/TagTimelineModal';
 import { ConflictDetector } from './utils/ConflictDetector';
@@ -1117,17 +1116,9 @@ export default class StorytellerSuitePlugin extends Plugin {
 		this.addCommand({
 			id: 'manage-timeline-eras',
 			name: 'Manage timeline eras & periods',
-			callback: () => {
-				const eras = this.settings.timelineEras || [];
-				new EraManagerModal(
-					this.app,
-					this,
-					eras,
-					async (updatedEras) => {
-						this.settings.timelineEras = updatedEras;
-						await this.saveSettings();
-					}
-				).open();
+			callback: async () => {
+				const { EraListModal } = await import('./modals/EraListModal');
+				new EraListModal(this.app, this).open();
 			}
 		});
 
@@ -1188,7 +1179,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 					characters: true,
 					locations: true,
 					groups: true,
-					hideByDefault: true
+					hideByDefault: false
 				});
 				new Notice(`Generated ${count} timeline track(s)`);
 			}
@@ -1529,6 +1520,15 @@ export default class StorytellerSuitePlugin extends Plugin {
 			}
 		});
 
+		// Open Story Board command - Open the existing story board canvas
+		this.addCommand({
+			id: 'open-story-board',
+			name: 'Open Story Board',
+			callback: async () => {
+				await this.openStoryBoard();
+			}
+		});
+
 		// ============================================================
 		// World-Building Entity Commands
 		// ============================================================
@@ -1652,50 +1652,6 @@ export default class StorytellerSuitePlugin extends Plugin {
 				}
 				new Notice(`${forks.length} timeline fork(s) found`);
 				// TODO: Create TimelineForkListModal for better visualization
-			}
-		});
-
-		// ============================================================
-		// Causality Link Commands
-		// ============================================================
-
-		// Create causality link
-		this.addCommand({
-			id: 'create-causality-link',
-			name: 'Add causality link',
-			callback: () => {
-				if (!this.ensureActiveStoryOrGuide()) return;
-				import('./modals/CausalityLinkModal').then(({ CausalityLinkModal }) => {
-					new CausalityLinkModal(
-						this.app,
-						this,
-						null,
-						async (link) => {
-							this.createCausalityLink(
-								link.causeEvent,
-								link.effectEvent,
-								link.linkType as 'direct' | 'indirect' | 'conditional' | 'catalyst',
-								link.description || '',
-								link.strength
-							);
-						}
-					).open();
-				});
-			}
-		});
-
-		// View causality links
-		this.addCommand({
-			id: 'view-causality-links',
-			name: 'View causality links',
-			callback: () => {
-				const links = this.getCausalityLinks();
-				if (links.length === 0) {
-					new Notice('No causality links yet. Create your first link!');
-					return;
-				}
-				new Notice(`${links.length} causality link(s) found`);
-				// TODO: Create CausalityLinkListModal for better visualization
 			}
 		});
 
@@ -3709,6 +3665,56 @@ export default class StorytellerSuitePlugin extends Plugin {
     }
 
     /**
+     * Add an event to a timeline fork
+     * @param forkId - ID of the fork
+     * @param eventId - ID or name of the event to add
+     */
+    async addEventToFork(forkId: string, eventId: string): Promise<void> {
+        const fork = this.getTimelineFork(forkId);
+        if (!fork) {
+            new Notice(`Error: Timeline fork not found`);
+            return;
+        }
+
+        if (!fork.forkEvents) {
+            fork.forkEvents = [];
+        }
+
+        if (!fork.forkEvents.includes(eventId)) {
+            fork.forkEvents.push(eventId);
+            await this.updateTimelineFork(fork);
+        }
+    }
+
+    /**
+     * Remove an event from a timeline fork
+     * @param forkId - ID of the fork
+     * @param eventId - ID or name of the event to remove
+     */
+    async removeEventFromFork(forkId: string, eventId: string): Promise<void> {
+        const fork = this.getTimelineFork(forkId);
+        if (!fork) {
+            new Notice(`Error: Timeline fork not found`);
+            return;
+        }
+
+        if (fork.forkEvents) {
+            fork.forkEvents = fork.forkEvents.filter(id => id !== eventId);
+            await this.updateTimelineFork(fork);
+        }
+    }
+
+    /**
+     * Get all forks that contain a specific event
+     * @param eventId - ID or name of the event
+     * @returns Array of forks containing the event
+     */
+    getForksForEvent(eventId: string): TimelineFork[] {
+        const forks = this.getTimelineForks();
+        return forks.filter(fork => fork.forkEvents?.includes(eventId));
+    }
+
+    /**
      * Generate a random color for timeline fork visualization
      * @returns Hex color string
      */
@@ -4107,6 +4113,47 @@ export default class StorytellerSuitePlugin extends Plugin {
 		} catch (error) {
 			console.error('Error updating story board:', error);
 			new Notice('Error updating story board. See console for details.');
+		}
+	}
+
+	/**
+	 * Open the existing story board canvas
+	 * Creates the story board if it doesn't exist
+	 */
+	async openStoryBoard(): Promise<void> {
+		try {
+			const canvasPath = this.getStoryBoardPath();
+			const existingFile = this.app.vault.getAbstractFileByPath(canvasPath);
+
+			if (!(existingFile instanceof TFile)) {
+				// Story board doesn't exist - ask if user wants to create it
+				const { ConfirmModal } = await import('./modals/ui/ConfirmModal');
+				let userConfirmed = false;
+				await new Promise<void>((resolve) => {
+					new ConfirmModal(this.app, {
+						title: 'Create Story Board?',
+						body: 'No story board found. Would you like to create one?',
+						onConfirm: () => {
+							userConfirmed = true;
+							resolve();
+						}
+					}).open();
+					setTimeout(() => resolve(), 100);
+				});
+
+				if (userConfirmed) {
+					await this.createStoryBoard();
+				}
+				return;
+			}
+
+			// Open the canvas file
+			const leaf = this.app.workspace.getLeaf(false);
+			await leaf.openFile(existingFile);
+
+		} catch (error) {
+			console.error('Error opening story board:', error);
+			new Notice('Error opening story board. See console for details.');
 		}
 	}
 
