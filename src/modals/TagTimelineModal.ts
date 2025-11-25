@@ -1,6 +1,6 @@
 import { App, Modal, Setting, Notice } from 'obsidian';
 import { TagTimelineGenerator, TagTimelineOptions, GeneratedEventPreview } from '../utils/TagTimelineGenerator';
-import { Event } from '../types';
+import { Event, Location } from '../types';
 import { t } from '../i18n/strings';
 import StorytellerSuitePlugin from '../main';
 
@@ -13,6 +13,7 @@ export class TagTimelineModal extends Modal {
     private selectedTags: string[] = [];
     private previews: GeneratedEventPreview[] = [];
     private previewListEl: HTMLElement | null = null;
+    private locations: Location[] = [];
     private options: TagTimelineOptions = {
         tags: [],
         dateStrategy: 'auto',
@@ -32,6 +33,9 @@ export class TagTimelineModal extends Modal {
         const { contentEl } = this;
         contentEl.empty();
         contentEl.addClass('storyteller-tag-timeline-generator');
+
+        // Load locations for name resolution
+        this.locations = await this.plugin.listLocations();
 
         // Title
         contentEl.createEl('h2', { text: 'Generate Timeline from Tags' });
@@ -198,6 +202,24 @@ export class TagTimelineModal extends Modal {
             });
     }
 
+    /**
+     * Resolve a location ID or name to its display name
+     */
+    private resolveLocationName(locationValue: string): string {
+        // First, try to find by ID
+        const locationById = this.locations.find(loc => loc.id === locationValue);
+        if (locationById) {
+            return locationById.name;
+        }
+        // If not found by ID, try to find by name (in case it's already a name)
+        const locationByName = this.locations.find(loc => loc.name === locationValue);
+        if (locationByName) {
+            return locationByName.name;
+        }
+        // Return original value if no match found
+        return locationValue;
+    }
+
     private async generatePreview(): Promise<void> {
         new Notice('Scanning notes for tags...');
 
@@ -326,7 +348,7 @@ export class TagTimelineModal extends Modal {
 
         if (preview.event.location) {
             detailsEl.createDiv({
-                text: `Location: ${preview.event.location}`,
+                text: `Location: ${this.resolveLocationName(preview.event.location)}`,
                 cls: 'storyteller-preview-detail'
             });
         }

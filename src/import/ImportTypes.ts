@@ -14,6 +14,11 @@ export type ImportFormat =
     | 'docx'
     | 'json'
     | 'csv'
+    | 'epub'
+    | 'html'
+    | 'rtf'
+    | 'odt'
+    | 'fountain'
     | 'unknown';
 
 /**
@@ -32,6 +37,44 @@ export type ConflictResolution =
     | 'skip'
     | 'rename'
     | 'overwrite';
+
+/**
+ * Content placement options
+ */
+export type ContentPlacement =
+    | 'chapter-summary'  // Store content in chapter summary field
+    | 'scene-files';     // Create scene files for each chapter's content
+
+/**
+ * Entity mapping action
+ */
+export type EntityMappingAction = 'create' | 'link' | 'ignore';
+
+/**
+ * Entity mapping configuration for a single extracted entity
+ */
+export interface EntityMappingConfig {
+    /** Extracted entity name from text */
+    extractedName: string;
+
+    /** Entity type */
+    type: 'character' | 'location';
+
+    /** What to do with this entity */
+    action: EntityMappingAction;
+
+    /** ID of existing entity to link to (when action is 'link') */
+    linkedEntityId?: string;
+
+    /** Name for new entity (when action is 'create', defaults to extractedName) */
+    newEntityName?: string;
+
+    /** Number of occurrences in text */
+    occurrences: number;
+
+    /** Confidence level */
+    confidence: 'high' | 'medium' | 'low';
+}
 
 /**
  * Parsed chapter from document
@@ -178,6 +221,16 @@ export interface ImportConfiguration {
     /** Preserve original formatting */
     preserveFormatting: boolean;
 
+    /** Where to place imported content */
+    contentPlacement: ContentPlacement;
+
+    // Entity extraction
+    /** Whether entity extraction is enabled */
+    entityExtractionEnabled: boolean;
+
+    /** Entity mappings (how to handle extracted entities) */
+    entityMappings: EntityMappingConfig[];
+
     // Metadata
     /** When import was configured */
     configuredAt: string;
@@ -278,3 +331,28 @@ export interface DocumentParser {
     /** Parse the document */
     parse(content: string, fileName: string): ParsedDocument;
 }
+
+/**
+ * Import progress information
+ */
+export interface ImportProgress {
+    /** Current step (e.g., "Creating chapter...") */
+    currentStep: string;
+
+    /** Current item being processed */
+    currentItem: string;
+
+    /** Number of items processed */
+    processed: number;
+
+    /** Total items to process */
+    total: number;
+
+    /** Progress percentage (0-100) */
+    percentage: number;
+}
+
+/**
+ * Progress callback function type
+ */
+export type ImportProgressCallback = (progress: ImportProgress) => void;

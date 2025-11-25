@@ -319,7 +319,7 @@ export class TimelineView extends ItemView {
         const events = await this.plugin.listEvents();
 
         // Use shared filter builder for all filter controls
-        this.filterBuilder.buildFilterPanel(this.advancedFiltersContent, events);
+        await this.filterBuilder.buildFilterPanel(this.advancedFiltersContent, events);
     }
 
     /**
@@ -391,16 +391,20 @@ export class TimelineView extends ItemView {
      * Apply track-based filtering
      */
     private async applyTrackFilter(trackId: string): Promise<void> {
+        // Always start with clean entity filters when switching tracks
+        const newFilters: TimelineFilters = {
+            ...this.currentState.filters,
+            characters: undefined,
+            locations: undefined,
+            groups: undefined,
+            tags: undefined
+        };
+
         if (!trackId) {
             // Clear track filter - show all events
-            this.currentState.filters = {
-                ...this.currentState.filters,
-                characters: undefined,
-                locations: undefined,
-                groups: undefined,
-                tags: undefined
-            };
-            this.renderer?.applyFilters(this.currentState.filters);
+            this.currentState.filters = newFilters;
+            // Rebuild timeline to ensure proper refresh
+            await this.buildTimeline();
             this.updateFooterStatus();
             return;
         }
@@ -409,62 +413,46 @@ export class TimelineView extends ItemView {
         const track = this.plugin.getTimelineTrack(trackId);
         if (!track) {
             console.error(`Track not found: ${trackId}`);
+            // Still rebuild with cleared filters to show all events
+            this.currentState.filters = newFilters;
+            await this.buildTimeline();
+            this.updateFooterStatus();
             return;
         }
 
-        // Apply track's filter criteria to current filters
-        const newFilters: TimelineFilters = { ...this.currentState.filters };
-
         // Handle different track types
         if (track.type === 'global') {
-            // Global track shows all events - clear filters
-            newFilters.characters = undefined;
-            newFilters.locations = undefined;
-            newFilters.groups = undefined;
-            newFilters.tags = undefined;
+            // Global track shows all events - filters already cleared above
             newFilters.milestonesOnly = false;
         } else if (track.type === 'character' && track.entityId) {
             // Character track - filter by specific character
             newFilters.characters = new Set([track.entityId]);
-            newFilters.locations = undefined;
-            newFilters.groups = undefined;
         } else if (track.type === 'location' && track.entityId) {
             // Location track - filter by specific location
             newFilters.locations = new Set([track.entityId]);
-            newFilters.characters = undefined;
-            newFilters.groups = undefined;
         } else if (track.type === 'group' && track.entityId) {
             // Group track - filter by specific group
             newFilters.groups = new Set([track.entityId]);
-            newFilters.characters = undefined;
-            newFilters.locations = undefined;
         } else if (track.type === 'custom' && track.filterCriteria) {
             // Custom track - use filter criteria
             if (track.filterCriteria.characters && track.filterCriteria.characters.length > 0) {
                 newFilters.characters = new Set(track.filterCriteria.characters);
-            } else {
-                newFilters.characters = undefined;
             }
             if (track.filterCriteria.locations && track.filterCriteria.locations.length > 0) {
                 newFilters.locations = new Set(track.filterCriteria.locations);
-            } else {
-                newFilters.locations = undefined;
             }
             if (track.filterCriteria.groups && track.filterCriteria.groups.length > 0) {
                 newFilters.groups = new Set(track.filterCriteria.groups);
-            } else {
-                newFilters.groups = undefined;
             }
             if (track.filterCriteria.tags && track.filterCriteria.tags.length > 0) {
                 newFilters.tags = new Set(track.filterCriteria.tags);
-            } else {
-                newFilters.tags = undefined;
             }
             newFilters.milestonesOnly = track.filterCriteria.milestonesOnly || false;
         }
 
         this.currentState.filters = newFilters;
-        this.renderer?.applyFilters(this.currentState.filters);
+        // Rebuild timeline to ensure proper refresh when switching tracks
+        await this.buildTimeline();
         this.updateFooterStatus();
     }
 

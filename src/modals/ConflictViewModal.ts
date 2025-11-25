@@ -1,6 +1,6 @@
 import { App, Modal, Setting, Notice } from 'obsidian';
 import { DetectedConflict, ConflictDetector } from '../utils/ConflictDetector';
-import { Event } from '../types';
+import { Event, Location } from '../types';
 import { t } from '../i18n/strings';
 import StorytellerSuitePlugin from '../main';
 
@@ -15,6 +15,7 @@ export class ConflictViewModal extends Modal {
     private selectedSeverity: 'all' | 'error' | 'warning' | 'info' = 'all';
     private selectedType: 'all' | 'location' | 'character' | 'temporal' | 'dependency' = 'all';
     private conflictListEl: HTMLElement | null = null;
+    private locations: Location[] = [];
 
     constructor(
         app: App,
@@ -31,6 +32,9 @@ export class ConflictViewModal extends Modal {
         const { contentEl } = this;
         contentEl.empty();
         contentEl.addClass('storyteller-conflict-viewer');
+
+        // Load locations for name resolution
+        this.locations = await this.plugin.listLocations();
 
         // Title
         contentEl.createEl('h2', { text: 'Timeline Conflicts' });
@@ -252,7 +256,7 @@ export class ConflictViewModal extends Modal {
 
                 if (event.location) {
                     eventItem.createSpan({
-                        text: ` @ ${event.location}`,
+                        text: ` @ ${this.resolveLocationName(event.location)}`,
                         cls: 'storyteller-conflict-event-location'
                     });
                 }
@@ -270,8 +274,9 @@ export class ConflictViewModal extends Modal {
 
         // Locations (for location conflicts)
         if (conflict.details.locations && conflict.details.locations.length > 0) {
+            const locationNames = conflict.details.locations.map(loc => this.resolveLocationName(loc));
             detailsEl.createEl('div', {
-                text: `Locations: ${conflict.details.locations.join(', ')}`,
+                text: `Locations: ${locationNames.join(', ')}`,
                 cls: 'storyteller-conflict-locations'
             });
         }
@@ -288,6 +293,24 @@ export class ConflictViewModal extends Modal {
 
     private capitalize(str: string): string {
         return str.charAt(0).toUpperCase() + str.slice(1);
+    }
+
+    /**
+     * Resolve a location ID or name to its display name
+     */
+    private resolveLocationName(locationValue: string): string {
+        // First, try to find by ID
+        const locationById = this.locations.find(loc => loc.id === locationValue);
+        if (locationById) {
+            return locationById.name;
+        }
+        // If not found by ID, try to find by name (in case it's already a name)
+        const locationByName = this.locations.find(loc => loc.name === locationValue);
+        if (locationByName) {
+            return locationByName.name;
+        }
+        // Return original value if no match found
+        return locationValue;
     }
 
     private async openEvent(event: Event): Promise<void> {
