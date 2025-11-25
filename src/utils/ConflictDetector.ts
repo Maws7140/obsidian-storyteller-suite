@@ -101,7 +101,7 @@ export class ConflictDetector {
                             details: {
                                 timeOverlap: overlap.overlap,
                                 locations: [event1.location!, event2.location!],
-                                description: `${character} cannot be at "${event1.location}" and "${event2.location}" simultaneously. Events: "${event1.name}" and "${event2.name}"`
+                                description: `${character} cannot be at two different locations simultaneously. Events: "${event1.name}" and "${event2.name}"`
                             }
                         });
                     }
@@ -311,13 +311,25 @@ export class ConflictDetector {
 
             if (date.precision === 'day') {
                 start = start.startOf('day');
-                if (!end) end = start.plus({ days: 1 });
+                if (!end) {
+                    end = start.plus({ days: 1 });
+                } else {
+                    end = end.startOf('day').plus({ days: 1 });
+                }
             } else if (date.precision === 'month') {
                 start = start.startOf('month');
-                if (!end) end = start.plus({ months: 1 });
+                if (!end) {
+                    end = start.plus({ months: 1 });
+                } else {
+                    end = end.startOf('month').plus({ months: 1 });
+                }
             } else if (date.precision === 'year') {
                 start = start.startOf('year');
-                if (!end) end = start.plus({ years: 1 });
+                if (!end) {
+                    end = start.plus({ years: 1 });
+                } else {
+                    end = end.startOf('year').plus({ years: 1 });
+                }
             } else {
                 // Time precision
                 if (!end) end = start.plus({ hours: 1 });

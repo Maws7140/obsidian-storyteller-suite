@@ -126,6 +126,27 @@ export class DashboardView extends ItemView {
     }
 
     /**
+     * Helper method to resolve a location ID or name to its display name
+     * @param locationValue The location value (could be an ID or name)
+     * @param locations List of available locations to search
+     * @returns The location display name, or the original value if not found
+     */
+    private resolveLocationName(locationValue: string, locations: Location[]): string {
+        // First, try to find by ID
+        const locationById = locations.find(loc => loc.id === locationValue);
+        if (locationById) {
+            return locationById.name;
+        }
+        // If not found by ID, try to find by name (in case it's already a name)
+        const locationByName = locations.find(loc => loc.name === locationValue);
+        if (locationByName) {
+            return locationByName.name;
+        }
+        // Return original value if no match found
+        return locationValue;
+    }
+
+    /**
      * Constructor for the dashboard view
      * @param leaf The workspace leaf that will contain this view
      * @param plugin Reference to the main plugin instance
@@ -774,12 +795,15 @@ export class DashboardView extends ItemView {
             (evt.location || '').toLowerCase().includes(this.currentFilter)
         );
 
+        // Fetch locations to resolve location IDs to names
+        const locations = await this.plugin.listLocations();
+
         const listContainer = container.createDiv('storyteller-list-container storyteller-timeline-container'); // Add timeline class if needed
         if (events.length === 0) {
             listContainer.createEl('p', { text: t('noEventsFound') + (this.currentFilter ? t('matchingFilter') : '') });
             return;
         }
-        this.renderEventList(events, listContainer, container);
+        this.renderEventList(events, listContainer, container, locations);
     }
     /**
      * Render the Items tab content
@@ -846,6 +870,8 @@ export class DashboardView extends ItemView {
         }
 
         let items = await this.plugin.listPlotItems();
+        // Load locations for name resolution
+        const locations = await this.plugin.listLocations();
 
         if (plotCriticalOnly) {
             items = items.filter(item => item.isPlotCritical);
@@ -890,7 +916,9 @@ export class DashboardView extends ItemView {
             }
              if (item.currentLocation) {
                 if(item.currentOwner) extraInfoEl.appendText(' • ');
-                extraInfoEl.createSpan({ text: `Location: ${item.currentLocation}` });
+                // Resolve location ID to display name
+                const locationName = this.resolveLocationName(item.currentLocation, locations);
+                extraInfoEl.createSpan({ text: `Location: ${locationName}` });
             }
 
             const actionsEl = itemEl.createDiv('storyteller-list-item-actions');
@@ -2108,7 +2136,7 @@ export class DashboardView extends ItemView {
         });
     }
 
-    renderEventList(events: Event[], listContainer: HTMLElement, viewContainer: HTMLElement) {
+    renderEventList(events: Event[], listContainer: HTMLElement, viewContainer: HTMLElement, locations: Location[] = []) {
         events.forEach(event => {
             const itemEl = listContainer.createDiv('storyteller-list-item');
 
@@ -2174,7 +2202,9 @@ export class DashboardView extends ItemView {
             }
             if (event.location) {
                 if (event.status) extraInfoEl.appendText(' • '); // Separator
-                extraInfoEl.createSpan({ cls: 'storyteller-list-item-location', text: `@ ${event.location}` });
+                // Resolve location ID to name if possible
+                const locationName = this.resolveLocationName(event.location, locations);
+                extraInfoEl.createSpan({ cls: 'storyteller-list-item-location', text: `@ ${locationName}` });
             }
 
             const actionsEl = itemEl.createDiv('storyteller-list-item-actions');

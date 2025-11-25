@@ -8,8 +8,22 @@ import {
     DocumentParser,
     ParsedDocument,
     ParsedChapter,
+    ParsedScene,
     DocumentMetadata
 } from '../ImportTypes';
+
+/**
+ * Scene break patterns for markdown
+ */
+const SCENE_BREAK_PATTERNS = [
+    /^\s*\*\s*\*\s*\*\s*$/,           // * * *
+    /^\s*\*{3,}\s*$/,                  // ***
+    /^\s*-{3,}\s*$/,                   // --- (horizontal rule)
+    /^\s*~{3,}\s*$/,                   // ~~~
+    /^\s*#{3,}\s*$/,                   // ###
+    /^\s*\.\s*\.\s*\.\s*$/,           // . . .
+    /^\s*={3,}\s*$/,                   // ===
+];
 
 /**
  * Count words in text
@@ -211,17 +225,69 @@ export class MarkdownParser implements DocumentParser {
             // Remove sub-headings from content for word count (optional)
             // We'll keep them for now to preserve structure
 
+            // Detect scenes within chapter
+            const scenes = this.detectScenes(chapterContent);
+
             chapters.push({
                 title: heading.text,
                 number: extractChapterNumber(heading.text),
                 content: chapterContent,
                 wordCount: countWords(chapterContent),
                 startLine,
-                endLine
+                endLine,
+                scenes: scenes.length > 1 ? scenes : undefined
             });
         }
 
         return chapters;
+    }
+
+    /**
+     * Detect scene breaks within chapter content
+     */
+    private detectScenes(content: string): ParsedScene[] {
+        const lines = content.split('\n');
+        const scenes: ParsedScene[] = [];
+        const sceneContents: string[] = [];
+        let currentScene: string[] = [];
+
+        for (const line of lines) {
+            // Check if this line is a scene break
+            const isSceneBreak = SCENE_BREAK_PATTERNS.some(pattern => pattern.test(line));
+
+            if (isSceneBreak) {
+                // Save current scene if it has content
+                if (currentScene.length > 0) {
+                    const sceneText = currentScene.join('\n').trim();
+                    if (sceneText.length > 0) {
+                        sceneContents.push(sceneText);
+                    }
+                }
+                currentScene = [];
+            } else {
+                currentScene.push(line);
+            }
+        }
+
+        // Don't forget the last scene
+        if (currentScene.length > 0) {
+            const sceneText = currentScene.join('\n').trim();
+            if (sceneText.length > 0) {
+                sceneContents.push(sceneText);
+            }
+        }
+
+        // Convert to ParsedScene objects
+        for (let i = 0; i < sceneContents.length; i++) {
+            const sceneContent = sceneContents[i];
+            scenes.push({
+                title: `Scene ${i + 1}`,
+                content: sceneContent,
+                wordCount: countWords(sceneContent)
+            });
+        }
+
+        return scenes;
     }
 
     /**
