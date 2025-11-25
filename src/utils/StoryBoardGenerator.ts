@@ -470,12 +470,56 @@ export class StoryBoardGenerator {
     }
 
     /**
+     * Check if a node is a managed node (scene or header) vs user-created
+     */
+    private isManagedNode(node: CanvasNode): boolean {
+        if (node.type === 'file') {
+            // File nodes with scene-* id pattern are managed
+            return node.id.startsWith('scene-');
+        } else if (node.type === 'text') {
+            // Text nodes with chapter-header-* or status-header-* patterns are managed
+            return node.id.startsWith('chapter-header-') || node.id.startsWith('status-header-');
+        }
+        return false;
+    }
+
+    /**
+     * Get the column X position for a given column index
+     */
+    private getColumnX(columnIndex: number): number {
+        return this.COLUMN_OFFSET + columnIndex * (this.CARD_WIDTH + this.HORIZONTAL_GAP);
+    }
+
+    /**
+     * Get the Y position for a scene at a given row index in a column
+     */
+    private getSceneY(rowIndex: number, showChapterHeaders: boolean): number {
+        const headerOffset = showChapterHeaders ? this.CHAPTER_HEADER_HEIGHT + this.VERTICAL_GAP : 0;
+        return headerOffset + rowIndex * (this.CARD_HEIGHT + this.VERTICAL_GAP);
+    }
+
+    /**
+     * Determine which column a node belongs to based on its X position
+     */
+    private getColumnIndex(node: CanvasNode): number {
+        // Calculate which column the node is in based on its X position
+        const columnWidth = this.CARD_WIDTH + this.HORIZONTAL_GAP;
+        return Math.round((node.x - this.COLUMN_OFFSET) / columnWidth);
+    }
+
+    /**
      * Update existing canvas data with new scenes
      * Preserves manual user edits while adding/removing/updating scenes
      * Automatically repositions scenes when their organizing data changes:
      * - Chapter layout: moves scenes to new chapter column when chapterId changes
      * - Status layout: moves scenes to new status column when status changes
      * - Timeline layout: repositions scenes when dates change
+     * 
+     * Key behaviors:
+     * - User-added nodes (not scene files or headers) are always preserved
+     * - Existing scene positions are preserved unless their chapter/status changed
+     * - New scenes are positioned in their correct column with proper vertical spacing
+     * - Scenes are shifted down when new scenes are added above them in the same column
      */
     updateCanvas(
         existingCanvas: CanvasData,
@@ -483,102 +527,208 @@ export class StoryBoardGenerator {
         chapters: Chapter[],
         options: StoryBoardOptions
     ): CanvasData {
-        // Generate fresh canvas data
+        // Generate fresh canvas data for reference
         const freshCanvas = this.generateCanvas(scenes, chapters, options);
 
-        // Create maps for quick lookup
-        const existingNodesMap = new Map<string, CanvasNode>();
-        const freshNodesMap = new Map<string, CanvasNode>();
-        const sceneFilePaths = new Set<string>();
+        // Separate existing nodes into managed and user-created
+        const existingSceneNodes = new Map<string, CanvasNode>(); // file path -> node
+        const existingHeaderNodes = new Map<string, CanvasNode>(); // id -> node
+        const userCreatedNodes: CanvasNode[] = [];
 
-        // Map existing nodes by their file path (for scene nodes) or id (for headers)
         existingCanvas.nodes.forEach(node => {
             if (node.type === 'file' && node.file) {
-                existingNodesMap.set(node.file, node);
-                sceneFilePaths.add(node.file);
-            } else if (node.type === 'text') {
-                existingNodesMap.set(node.id, node);
+                existingSceneNodes.set(node.file, node);
+            } else if (node.type === 'text' && this.isManagedNode(node)) {
+                existingHeaderNodes.set(node.id, node);
+            } else {
+                // User-created node - preserve it as-is
+                userCreatedNodes.push(node);
             }
         });
 
         // Map fresh nodes for comparison
+        const freshSceneNodes = new Map<string, CanvasNode>();
+        const freshHeaderNodes = new Map<string, CanvasNode>();
+
         freshCanvas.nodes.forEach(node => {
             if (node.type === 'file' && node.file) {
-                freshNodesMap.set(node.file, node);
+                freshSceneNodes.set(node.file, node);
+            } else if (node.type === 'text') {
+                freshHeaderNodes.set(node.id, node);
             }
         });
 
-        // Create updated nodes list
+        // Build the updated nodes list
         const updatedNodes: CanvasNode[] = [];
 
-        // Process fresh nodes
-        freshCanvas.nodes.forEach(freshNode => {
-            if (freshNode.type === 'file' && freshNode.file) {
-                // Scene node
-                const existingNode = existingNodesMap.get(freshNode.file);
-                if (existingNode) {
-                    // Scene exists - check if it should be repositioned due to data changes
-                    const needsReposition = this.shouldReposition(existingNode, freshNode, options.layout);
+        // Track which scenes need repositioning and which keep their positions
+        const scenesToReposition: CanvasNode[] = [];
+        const scenesToPreserve: CanvasNode[] = [];
 
-                    if (needsReposition) {
-                        // Data changed (chapter/status/date) - reposition but avoid overlaps
-                        const newPosition = this.findNonOverlappingPosition(freshNode, updatedNodes);
-                        updatedNodes.push({
-                            ...freshNode,
-                            x: newPosition.x,
-                            y: newPosition.y,
-                            color: freshNode.color,
-                            width: freshNode.width,
-                            height: freshNode.height
-                        });
-                    } else {
-                        // Same chapter - preserve user's position but update color
-                        updatedNodes.push({
-                            ...existingNode,
-                            color: freshNode.color, // Update color in case status changed
-                            width: freshNode.width, // Update dimensions in case settings changed
-                            height: freshNode.height
-                        });
-                    }
-                    sceneFilePaths.delete(freshNode.file); // Mark as processed
-                } else {
-                    // New scene - find non-overlapping position
-                    const newPosition = this.findNonOverlappingPosition(freshNode, updatedNodes);
-                    updatedNodes.push({
+        // Process scene nodes
+        freshSceneNodes.forEach((freshNode, filePath) => {
+            const existingNode = existingSceneNodes.get(filePath);
+            
+            if (existingNode) {
+                // Scene exists - check if it should be repositioned due to data changes
+                const needsReposition = this.shouldReposition(existingNode, freshNode, options.layout);
+
+                if (needsReposition) {
+                    // Chapter/status changed - will need repositioning
+                    scenesToReposition.push({
                         ...freshNode,
-                        x: newPosition.x,
-                        y: newPosition.y
+                        color: freshNode.color
+                    });
+                } else {
+                    // Same column - preserve user's position but update color/dimensions
+                    scenesToPreserve.push({
+                        ...existingNode,
+                        id: freshNode.id, // Keep consistent ID
+                        color: freshNode.color,
+                        width: freshNode.width,
+                        height: freshNode.height
                     });
                 }
-            } else if (freshNode.type === 'text') {
-                // Chapter header
-                const existingHeader = existingNodesMap.get(freshNode.id);
-                if (existingHeader) {
-                    // Header exists - merge updated properties while preserving position
-                    const updatedHeader = {
-                        ...freshNode,
-                        x: existingHeader.x,
-                        y: existingHeader.y
-                    };
-                    updatedNodes.push(updatedHeader);
-                } else {
-                    // New header - find non-overlapping position
-                    const newPosition = this.findNonOverlappingPosition(freshNode, updatedNodes);
-                    updatedNodes.push({
-                        ...freshNode,
-                        x: newPosition.x,
-                        y: newPosition.y
-                    });
-                }
+            } else {
+                // New scene - will need positioning
+                scenesToReposition.push(freshNode);
             }
         });
 
-        // Note: Deleted scenes (remaining in sceneFilePaths) are automatically removed
-        // by not being included in updatedNodes
+        // Add all preserved scenes first
+        updatedNodes.push(...scenesToPreserve);
+
+        // Group scenes to reposition by their target column
+        const scenesByColumn = new Map<number, CanvasNode[]>();
+        
+        scenesToReposition.forEach(scene => {
+            const columnIndex = this.getColumnIndex(scene);
+            if (!scenesByColumn.has(columnIndex)) {
+                scenesByColumn.set(columnIndex, []);
+            }
+            scenesByColumn.get(columnIndex)!.push(scene);
+        });
+
+        // For each column, find available positions and place new scenes
+        scenesByColumn.forEach((columnScenes, columnIndex) => {
+            const columnX = this.getColumnX(columnIndex);
+            
+            // Get existing scenes in this column (from preserved nodes)
+            const existingInColumn = scenesToPreserve.filter(node => {
+                const nodeColumn = this.getColumnIndex(node);
+                return nodeColumn === columnIndex;
+            });
+
+            // Sort existing scenes by Y position
+            existingInColumn.sort((a, b) => a.y - b.y);
+
+            // Sort new scenes by their intended Y position (from fresh canvas)
+            columnScenes.sort((a, b) => a.y - b.y);
+
+            // Calculate occupied Y positions
+            const occupiedRanges = existingInColumn.map(node => ({
+                top: node.y,
+                bottom: node.y + node.height + this.VERTICAL_GAP
+            }));
+
+            // Place each new scene in this column
+            columnScenes.forEach(scene => {
+                // Start from the intended Y position
+                let targetY = scene.y;
+                
+                // Find a non-overlapping Y position by shifting down
+                let attempts = 0;
+                const maxAttempts = 50;
+                
+                while (attempts < maxAttempts) {
+                    const sceneBottom = targetY + scene.height;
+                    
+                    // Check if this position overlaps with any existing scene
+                    let hasOverlap = false;
+                    for (const range of occupiedRanges) {
+                        // Check overlap: not (below existing OR above existing)
+                        if (!(targetY >= range.bottom || sceneBottom <= range.top - this.VERTICAL_GAP)) {
+                            hasOverlap = true;
+                            // Move below this overlapping node
+                            targetY = range.bottom;
+                            break;
+                        }
+                    }
+                    
+                    if (!hasOverlap) {
+                        break;
+                    }
+                    
+                    attempts++;
+                }
+
+                // Add the positioned scene
+                const positionedScene: CanvasNode = {
+                    ...scene,
+                    x: columnX,
+                    y: targetY
+                };
+                updatedNodes.push(positionedScene);
+
+                // Mark this position as occupied
+                occupiedRanges.push({
+                    top: targetY,
+                    bottom: targetY + scene.height + this.VERTICAL_GAP
+                });
+                occupiedRanges.sort((a, b) => a.top - b.top);
+            });
+        });
+
+        // Process header nodes - preserve existing positions, add new headers
+        freshHeaderNodes.forEach((freshHeader, headerId) => {
+            const existingHeader = existingHeaderNodes.get(headerId);
+            
+            if (existingHeader) {
+                // Header exists - preserve position but update content/color
+                updatedNodes.push({
+                    ...freshHeader,
+                    x: existingHeader.x,
+                    y: existingHeader.y
+                });
+            } else {
+                // New header - use fresh position but check for overlaps
+                const newPosition = this.findNonOverlappingPosition(freshHeader, updatedNodes);
+                updatedNodes.push({
+                    ...freshHeader,
+                    x: newPosition.x,
+                    y: newPosition.y
+                });
+            }
+        });
+
+        // Add user-created nodes back - check for overlaps and shift if needed
+        userCreatedNodes.forEach(userNode => {
+            const newPosition = this.findNonOverlappingPosition(userNode, updatedNodes);
+            updatedNodes.push({
+                ...userNode,
+                x: newPosition.x,
+                y: newPosition.y
+            });
+        });
+
+        // Preserve existing edges that reference valid nodes, plus add fresh edges
+        const validNodeIds = new Set(updatedNodes.map(n => n.id));
+        const preservedEdges = existingCanvas.edges.filter(edge => 
+            validNodeIds.has(edge.fromNode) && validNodeIds.has(edge.toNode)
+        );
+
+        // Merge fresh edges with preserved edges, avoiding duplicates
+        const edgeMap = new Map<string, CanvasEdge>();
+        preservedEdges.forEach(edge => edgeMap.set(edge.id, edge));
+        freshCanvas.edges.forEach(edge => {
+            if (!edgeMap.has(edge.id)) {
+                edgeMap.set(edge.id, edge);
+            }
+        });
 
         return {
             nodes: updatedNodes,
-            edges: freshCanvas.edges // Always regenerate edges based on current scene order
+            edges: Array.from(edgeMap.values())
         };
     }
 

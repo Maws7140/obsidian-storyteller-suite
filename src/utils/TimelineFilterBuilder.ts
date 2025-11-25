@@ -5,7 +5,7 @@ import { Setting } from 'obsidian';
 import { t } from '../i18n/strings';
 import StorytellerSuitePlugin from '../main';
 import { TimelineRenderer } from './TimelineRenderer';
-import { TimelineUIState, TimelineUIFilters, Event } from '../types';
+import { TimelineUIState, TimelineUIFilters, Event, Location } from '../types';
 
 /**
  * Callbacks for filter operations
@@ -25,6 +25,7 @@ export class TimelineFilterBuilder {
     private plugin: StorytellerSuitePlugin;
     private state: TimelineUIState;
     private callbacks: TimelineFilterCallbacks;
+    private locations: Location[] = [];
 
     constructor(
         plugin: StorytellerSuitePlugin,
@@ -34,6 +35,31 @@ export class TimelineFilterBuilder {
         this.plugin = plugin;
         this.state = state;
         this.callbacks = callbacks;
+    }
+
+    /**
+     * Load locations for name resolution
+     */
+    async loadLocations(): Promise<void> {
+        this.locations = await this.plugin.listLocations();
+    }
+
+    /**
+     * Resolve a location ID or name to its display name
+     */
+    private resolveLocationName(locationValue: string): string {
+        // First, try to find by ID
+        const locationById = this.locations.find(loc => loc.id === locationValue);
+        if (locationById) {
+            return locationById.name;
+        }
+        // If not found by ID, try to find by name (in case it's already a name)
+        const locationByName = this.locations.find(loc => loc.name === locationValue);
+        if (locationByName) {
+            return locationByName.name;
+        }
+        // Return original value if no match found
+        return locationValue;
     }
 
     /**
@@ -81,8 +107,13 @@ export class TimelineFilterBuilder {
                 events.forEach(e => {
                     if (e.location) allLocations.add(e.location);
                 });
-                Array.from(allLocations).sort().forEach(loc => {
-                    dropdown.addOption(loc, loc);
+                // Sort by resolved names for better UX
+                const sortedLocations = Array.from(allLocations).sort((a, b) => 
+                    this.resolveLocationName(a).localeCompare(this.resolveLocationName(b))
+                );
+                sortedLocations.forEach(loc => {
+                    // Use original value for filter key, but display resolved name
+                    dropdown.addOption(loc, this.resolveLocationName(loc));
                 });
 
                 dropdown.setValue('');
@@ -189,7 +220,10 @@ export class TimelineFilterBuilder {
     /**
      * Build complete filter panel with all filters
      */
-    buildFilterPanel(container: HTMLElement, events: Event[]): void {
+    async buildFilterPanel(container: HTMLElement, events: Event[]): Promise<void> {
+        // Load locations for name resolution
+        await this.loadLocations();
+        
         this.createMilestonesToggle(container);
         this.createCharacterFilter(container, events);
         this.createLocationFilter(container, events);
@@ -217,7 +251,9 @@ export class TimelineFilterBuilder {
 
         // Location chips
         this.state.filters.locations?.forEach(loc => {
-            this.createFilterChip(container, `Location: ${loc}`, () => {
+            // Resolve location ID to display name
+            const locationName = this.resolveLocationName(loc);
+            this.createFilterChip(container, `Location: ${locationName}`, () => {
                 this.state.filters.locations?.delete(loc);
                 this.renderFilterChips(container);
                 this.applyFilters();
