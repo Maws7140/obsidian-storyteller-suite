@@ -86,10 +86,11 @@ export class ImportConfigModal extends Modal {
         const fileInput = fileInputContainer.createEl('input', {
             type: 'file',
             attr: {
-                accept: '.txt,.md,.markdown,.docx,.json,.epub,.html,.htm,.rtf,.odt,.fountain,.spmd'
+                accept: '.txt,.md,.markdown,.docx,.json,.epub,.html,.htm,.rtf,.odt,.fountain,.spmd,.pdf'
             }
         });
         fileInput.addClass('storyteller-file-input');
+        fileInput.style.display = 'none'; // Hide the default file input
 
         const uploadButton = fileInputContainer.createEl('button', {
             text: 'Choose File'
@@ -143,11 +144,21 @@ export class ImportConfigModal extends Modal {
                 } else if (lowerFileName.endsWith('.odt')) {
                     const arrayBuffer = await file.arrayBuffer();
                     const odtParser = this.importManager.getOdtParser();
-                    
+
                     if (odtParser) {
                         this.parsedDocument = await odtParser.parseAsync(arrayBuffer, this.fileName);
                     } else {
                         new Notice('ODT parser not available.');
+                        return;
+                    }
+                } else if (lowerFileName.endsWith('.pdf')) {
+                    const arrayBuffer = await file.arrayBuffer();
+                    const pdfParser = this.importManager.getPdfParser();
+
+                    if (pdfParser) {
+                        this.parsedDocument = await pdfParser.parseAsync(arrayBuffer, this.fileName);
+                    } else {
+                        new Notice('PDF parser not available.');
                         return;
                     }
                 } else {
@@ -176,6 +187,7 @@ export class ImportConfigModal extends Modal {
         ul.createEl('li', { text: 'Markdown (.md) with heading hierarchy (# Chapter 1)' });
         ul.createEl('li', { text: 'Word documents (.docx) with heading styles' });
         ul.createEl('li', { text: 'EPUB e-books (.epub) - standard e-book format' });
+        ul.createEl('li', { text: 'PDF documents (.pdf) with chapter markers' });
         ul.createEl('li', { text: 'HTML files (.html, .htm) with heading structure' });
         ul.createEl('li', { text: 'Rich Text Format (.rtf) with chapter markers' });
         ul.createEl('li', { text: 'OpenDocument Text (.odt) - LibreOffice/OpenOffice' });

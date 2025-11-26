@@ -19,6 +19,7 @@ export type ImportFormat =
     | 'rtf'
     | 'odt'
     | 'fountain'
+    | 'pdf'
     | 'unknown';
 
 /**
