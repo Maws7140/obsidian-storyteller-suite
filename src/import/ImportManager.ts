@@ -24,6 +24,7 @@ import { HtmlParser } from './parsers/HtmlParser';
 import { RtfParser } from './parsers/RtfParser';
 import { OdtParser } from './parsers/OdtParser';
 import { FountainParser } from './parsers/FountainParser';
+import { PdfParser } from './parsers/PdfParser';
 import { Chapter, Scene, Character, Location } from '../types';
 
 /**
@@ -46,7 +47,8 @@ export class ImportManager {
             new HtmlParser(),
             new RtfParser(),
             new OdtParser(),
-            new FountainParser()
+            new FountainParser(),
+            new PdfParser()
         ];
     }
 
@@ -69,6 +71,13 @@ export class ImportManager {
      */
     getOdtParser(): OdtParser | undefined {
         return this.parsers.find(p => p.format === 'odt') as OdtParser | undefined;
+    }
+
+    /**
+     * Get PDF parser for async parsing
+     */
+    getPdfParser(): PdfParser | undefined {
+        return this.parsers.find(p => p.format === 'pdf') as PdfParser | undefined;
     }
 
     /**
@@ -770,7 +779,7 @@ export class ImportManager {
             sourceFileName: fileName,
             format: parsed.format,
             parsedDocument: parsed,
-            targetStoryName: targetStoryName || fileName.replace(/\.(txt|md|docx|json|csv|epub|html|htm|rtf|odt|fountain)$/i, ''),
+            targetStoryName: targetStoryName || fileName.replace(/\.(txt|md|docx|json|csv|epub|html|htm|rtf|odt|fountain|pdf)$/i, ''),
             createNewStory: true,
             chapters,
             draftStrategy: 'separate-stories',
