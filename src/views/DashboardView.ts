@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-inferrable-types */
 /* eslint-disable @typescript-eslint/no-unused-vars */
-import { ItemView, WorkspaceLeaf, Setting, Notice, App, ButtonComponent, TFile, normalizePath, debounce } from 'obsidian'; // Added normalizePath, debounce
+import { ItemView, WorkspaceLeaf, Setting, Notice, App, ButtonComponent, TFile, normalizePath, debounce, Modal } from 'obsidian'; // Added normalizePath, debounce
 import StorytellerSuitePlugin from '../main';
 import { t } from '../i18n/strings';
 // Import necessary modals for button actions (Edit/Create/Detail)
@@ -17,6 +17,13 @@ import { Character, Location, Event, Group, PlotItem, GalleryImage } from '../ty
 import { NewStoryModal } from '../modals/NewStoryModal';
 import { GroupModal } from '../modals/GroupModal';
 import { PlatformUtils } from '../utils/PlatformUtils';
+import {
+    Template,
+    TemplateFilter,
+    TemplateGenre,
+    TemplateCategory
+} from '../templates/TemplateTypes';
+import { TemplateEditorModal } from '../modals/TemplateEditorModal';
 
 /** Unique identifier for the dashboard view type in Obsidian's workspace */
 export const VIEW_TYPE_DASHBOARD = "storyteller-dashboard-view";
@@ -72,6 +79,15 @@ export class DashboardView extends ItemView {
 
     /** Network graph renderer instance for persistence across refreshes */
     private networkGraphRenderer: any = null;
+
+    /** Template library filter state */
+    private templateFilter: TemplateFilter = {
+        showBuiltIn: true,
+        showCustom: true
+    };
+
+    /** Cached templates for the template library tab */
+    private templatesCache: Template[] = [];
 
     /**
      * Helper method to mark search input dismissal intent
@@ -2580,180 +2596,419 @@ export class DashboardView extends ItemView {
 
     /**
      * Render the Templates tab content
-     * Shows template library with filtering and management
+     * Shows full template library with filtering and management inline
      * @param container The container element to render content into
      */
     async renderTemplatesContent(container: HTMLElement) {
         container.empty();
 
-        // Import the template library modal components
-        const { TemplateLibraryModal } = await import('../modals/TemplateLibraryModal');
+        // Refresh templates from manager
+        this.templatesCache = this.plugin.templateManager.getFilteredTemplates(this.templateFilter);
 
-        // Create header
+        // Create header with action button
         const header = container.createDiv('storyteller-templates-header');
-        header.createEl('h3', { text: 'Entity Templates' });
-        header.createEl('p', {
+        header.style.display = 'flex';
+        header.style.justifyContent = 'space-between';
+        header.style.alignItems = 'flex-start';
+        header.style.marginBottom = '1rem';
+
+        const headerText = header.createDiv('storyteller-templates-header-text');
+        headerText.createEl('h3', { text: 'Entity Templates' });
+        headerText.createEl('p', {
             text: 'Browse and manage reusable templates for characters, locations, and other entities.',
             cls: 'storyteller-templates-description'
         });
 
-        // Create action buttons
-        const actionsContainer = container.createDiv('storyteller-templates-actions');
-        actionsContainer.style.display = 'flex';
-        actionsContainer.style.gap = '0.5rem';
-        actionsContainer.style.marginBottom = '1rem';
-
-        const openLibraryBtn = actionsContainer.createEl('button', {
-            text: 'Open Template Library',
+        const createTemplateBtn = header.createEl('button', {
+            text: 'Create New Template',
             cls: 'mod-cta'
         });
-        openLibraryBtn.addEventListener('click', () => {
-            new TemplateLibraryModal(this.app, this.plugin).open();
-        });
-
-        const createTemplateBtn = actionsContainer.createEl('button', {
-            text: 'Create New Template'
-        });
+        createTemplateBtn.style.flexShrink = '0';
         createTemplateBtn.addEventListener('click', () => {
-            const { TemplateEditorModal } = require('../modals/TemplateEditorModal');
             new TemplateEditorModal(
                 this.app,
                 this.plugin,
                 async (template) => {
                     new Notice(`Template "${template.name}" created!`);
-                    await this.renderTemplatesQuickView(container);
+                    await this.renderTemplatesContent(container);
                 }
             ).open();
         });
 
-        // Render quick view of templates
-        await this.renderTemplatesQuickView(container);
+        // Create filter section
+        this.createTemplateFilterSection(container);
+
+        // Create template list
+        this.createTemplateListSection(container);
     }
 
     /**
-     * Render a quick view of available templates
+     * Create the filter section for the template library
      */
-    private async renderTemplatesQuickView(container: HTMLElement) {
-        // Remove existing quick view if it exists
-        const existingQuickView = container.querySelector('.storyteller-templates-quickview');
-        if (existingQuickView) {
-            existingQuickView.remove();
-        }
+    private createTemplateFilterSection(container: HTMLElement): void {
+        const filterContainer = container.createDiv({ cls: 'storyteller-template-library-filters' });
+        filterContainer.style.marginBottom = '1rem';
+        filterContainer.style.padding = '1rem';
+        filterContainer.style.backgroundColor = 'var(--background-secondary)';
+        filterContainer.style.borderRadius = '8px';
 
-        const quickViewContainer = container.createDiv('storyteller-templates-quickview');
+        // Search row
+        const searchRow = filterContainer.createDiv('storyteller-filter-row');
+        searchRow.style.marginBottom = '0.75rem';
 
-        // Get templates from template manager
-        const allTemplates = this.plugin.templateManager.getAllTemplates();
+        const searchLabel = searchRow.createEl('label', { text: 'Search' });
+        searchLabel.style.display = 'block';
+        searchLabel.style.marginBottom = '0.25rem';
+        searchLabel.style.fontWeight = '500';
 
-        if (allTemplates.length === 0) {
-            quickViewContainer.createEl('p', {
-                text: 'No templates available. Create your first template to get started!',
-                cls: 'storyteller-empty-state'
-            });
-            return;
-        }
-
-        // Show summary stats
-        const statsContainer = quickViewContainer.createDiv('storyteller-templates-stats');
-        statsContainer.style.marginBottom = '1rem';
-        statsContainer.style.padding = '1rem';
-        statsContainer.style.backgroundColor = 'var(--background-secondary)';
-        statsContainer.style.borderRadius = '8px';
-
-        const builtInCount = allTemplates.filter(t => t.isBuiltIn).length;
-        const customCount = allTemplates.filter(t => !t.isBuiltIn).length;
-
-        statsContainer.createEl('div', {
-            text: `Total Templates: ${allTemplates.length}`,
-            cls: 'storyteller-stat-item'
+        const searchInput = searchRow.createEl('input', {
+            type: 'text',
+            placeholder: 'Search templates by name, description, or tags...'
         });
-        statsContainer.createEl('div', {
-            text: `Built-in: ${builtInCount} | Custom: ${customCount}`,
-            cls: 'storyteller-stat-item'
+        searchInput.style.width = '100%';
+        searchInput.style.padding = '0.5rem';
+        searchInput.style.borderRadius = '4px';
+        searchInput.style.border = '1px solid var(--background-modifier-border)';
+        searchInput.value = this.templateFilter.searchText || '';
+        searchInput.addEventListener('input', () => {
+            this.templateFilter.searchText = searchInput.value || undefined;
+            this.refreshTemplateList(container);
         });
 
-        // Show recently used templates
-        const recentTemplates = this.plugin.templateManager.getRecentlyUsedTemplates(5);
-        if (recentTemplates.length > 0) {
-            quickViewContainer.createEl('h4', { text: 'Recently Used' });
-            const recentList = quickViewContainer.createDiv('storyteller-templates-recent-list');
-            recentList.style.display = 'grid';
-            recentList.style.gridTemplateColumns = 'repeat(auto-fill, minmax(200px, 1fr))';
-            recentList.style.gap = '0.5rem';
-            recentList.style.marginBottom = '1rem';
+        // Filter options row
+        const filtersRow = filterContainer.createDiv('storyteller-filter-options');
+        filtersRow.style.display = 'flex';
+        filtersRow.style.flexWrap = 'wrap';
+        filtersRow.style.gap = '1rem';
+        filtersRow.style.alignItems = 'flex-end';
 
-            recentTemplates.forEach(template => {
-                this.renderTemplateCard(recentList, template);
-            });
-        }
+        // Genre dropdown
+        const genreGroup = filtersRow.createDiv('storyteller-filter-group');
+        genreGroup.createEl('label', { text: 'Genre' }).style.display = 'block';
+        const genreSelect = genreGroup.createEl('select');
+        genreSelect.style.padding = '0.35rem';
+        genreSelect.style.borderRadius = '4px';
+        genreSelect.createEl('option', { text: 'All Genres', value: '' });
+        const genres: TemplateGenre[] = ['fantasy', 'scifi', 'mystery', 'horror', 'romance', 'historical', 'western', 'thriller', 'custom'];
+        genres.forEach(g => genreSelect.createEl('option', { text: g.charAt(0).toUpperCase() + g.slice(1), value: g }));
+        genreSelect.value = this.templateFilter.genre?.[0] || '';
+        genreSelect.addEventListener('change', () => {
+            this.templateFilter.genre = genreSelect.value ? [genreSelect.value as TemplateGenre] : undefined;
+            this.refreshTemplateList(container);
+        });
 
-        // Show most popular templates
-        const popularTemplates = this.plugin.templateManager.getMostPopularTemplates(5);
-        if (popularTemplates.length > 0 && popularTemplates.some(t => (t.usageCount || 0) > 0)) {
-            quickViewContainer.createEl('h4', { text: 'Most Popular' });
-            const popularList = quickViewContainer.createDiv('storyteller-templates-popular-list');
-            popularList.style.display = 'grid';
-            popularList.style.gridTemplateColumns = 'repeat(auto-fill, minmax(200px, 1fr))';
-            popularList.style.gap = '0.5rem';
+        // Category dropdown
+        const categoryGroup = filtersRow.createDiv('storyteller-filter-group');
+        categoryGroup.createEl('label', { text: 'Category' }).style.display = 'block';
+        const categorySelect = categoryGroup.createEl('select');
+        categorySelect.style.padding = '0.35rem';
+        categorySelect.style.borderRadius = '4px';
+        categorySelect.createEl('option', { text: 'All Categories', value: '' });
+        const categories: TemplateCategory[] = ['single-entity', 'entity-set', 'full-world'];
+        const categoryLabels: Record<TemplateCategory, string> = {
+            'single-entity': 'Single Entity',
+            'entity-set': 'Entity Set',
+            'full-world': 'Full World'
+        };
+        categories.forEach(c => categorySelect.createEl('option', { text: categoryLabels[c], value: c }));
+        categorySelect.value = this.templateFilter.category?.[0] || '';
+        categorySelect.addEventListener('change', () => {
+            this.templateFilter.category = categorySelect.value ? [categorySelect.value as TemplateCategory] : undefined;
+            this.refreshTemplateList(container);
+        });
 
-            popularTemplates.forEach(template => {
-                this.renderTemplateCard(popularList, template);
-            });
-        }
+        // Sort dropdown
+        const sortGroup = filtersRow.createDiv('storyteller-filter-group');
+        sortGroup.createEl('label', { text: 'Sort By' }).style.display = 'block';
+        const sortSelect = sortGroup.createEl('select');
+        sortSelect.style.padding = '0.35rem';
+        sortSelect.style.borderRadius = '4px';
+        sortSelect.createEl('option', { text: 'Name', value: 'name' });
+        sortSelect.createEl('option', { text: 'Usage Count', value: 'usage' });
+        sortSelect.createEl('option', { text: 'Recently Used', value: 'recent' });
+        sortSelect.value = this.templateFilter.sortByUsage ? 'usage' : (this.templateFilter.sortByRecent ? 'recent' : 'name');
+        sortSelect.addEventListener('change', () => {
+            this.templateFilter.sortByUsage = sortSelect.value === 'usage';
+            this.templateFilter.sortByRecent = sortSelect.value === 'recent';
+            this.refreshTemplateList(container);
+        });
+
+        // Toggle row
+        const togglesRow = filterContainer.createDiv('storyteller-filter-toggles');
+        togglesRow.style.display = 'flex';
+        togglesRow.style.gap = '1.5rem';
+        togglesRow.style.marginTop = '0.75rem';
+
+        // Built-in toggle
+        const builtInLabel = togglesRow.createEl('label');
+        builtInLabel.style.display = 'flex';
+        builtInLabel.style.alignItems = 'center';
+        builtInLabel.style.gap = '0.5rem';
+        builtInLabel.style.cursor = 'pointer';
+        const builtInCheck = builtInLabel.createEl('input', { type: 'checkbox' });
+        builtInCheck.checked = this.templateFilter.showBuiltIn !== false;
+        builtInCheck.addEventListener('change', () => {
+            this.templateFilter.showBuiltIn = builtInCheck.checked;
+            this.refreshTemplateList(container);
+        });
+        builtInLabel.createEl('span', { text: 'Show Built-in' });
+
+        // Custom toggle
+        const customLabel = togglesRow.createEl('label');
+        customLabel.style.display = 'flex';
+        customLabel.style.alignItems = 'center';
+        customLabel.style.gap = '0.5rem';
+        customLabel.style.cursor = 'pointer';
+        const customCheck = customLabel.createEl('input', { type: 'checkbox' });
+        customCheck.checked = this.templateFilter.showCustom !== false;
+        customCheck.addEventListener('change', () => {
+            this.templateFilter.showCustom = customCheck.checked;
+            this.refreshTemplateList(container);
+        });
+        customLabel.createEl('span', { text: 'Show Custom' });
     }
 
     /**
-     * Render a template card in the quick view
+     * Refresh the template list based on current filters
      */
-    private renderTemplateCard(container: HTMLElement, template: any) {
-        const card = container.createDiv('storyteller-template-card');
-        card.style.padding = '0.75rem';
+    private refreshTemplateList(container: HTMLElement): void {
+        this.templatesCache = this.plugin.templateManager.getFilteredTemplates(this.templateFilter);
+        
+        // Remove existing list and recreate
+        const existingList = container.querySelector('.storyteller-template-library-list');
+        if (existingList) {
+            existingList.remove();
+        }
+        
+        // Append new list at the end
+        const listSection = this.createTemplateListElement();
+        container.appendChild(listSection);
+    }
+
+    /**
+     * Create the template list section
+     */
+    private createTemplateListSection(container: HTMLElement): void {
+        const listSection = this.createTemplateListElement();
+        container.appendChild(listSection);
+    }
+
+    /**
+     * Create the template list element
+     */
+    private createTemplateListElement(): HTMLElement {
+        const listContainer = document.createElement('div');
+        listContainer.className = 'storyteller-template-library-list';
+
+        if (this.templatesCache.length === 0) {
+            const emptyState = listContainer.createDiv('storyteller-empty-state');
+            emptyState.style.padding = '2rem';
+            emptyState.style.textAlign = 'center';
+            emptyState.style.color = 'var(--text-muted)';
+            emptyState.createEl('p', {
+                text: 'No templates found. Try adjusting your filters or create a new template.'
+            });
+            return listContainer;
+        }
+
+        // Display template count
+        const countEl = listContainer.createEl('p', {
+            text: `Found ${this.templatesCache.length} template${this.templatesCache.length !== 1 ? 's' : ''}`,
+            cls: 'storyteller-template-count'
+        });
+        countEl.style.marginBottom = '0.75rem';
+        countEl.style.color = 'var(--text-muted)';
+
+        // Create template cards grid
+        const cardsGrid = listContainer.createDiv('storyteller-template-cards-grid');
+        cardsGrid.style.display = 'grid';
+        cardsGrid.style.gridTemplateColumns = 'repeat(auto-fill, minmax(280px, 1fr))';
+        cardsGrid.style.gap = '1rem';
+
+        this.templatesCache.forEach(template => {
+            this.renderFullTemplateCard(cardsGrid, template);
+        });
+
+        return listContainer;
+    }
+
+    /**
+     * Render a full template card with all actions
+     */
+    private renderFullTemplateCard(container: HTMLElement, template: Template): void {
+        const card = container.createDiv({ cls: 'storyteller-template-card-full' });
+        card.style.padding = '1rem';
         card.style.backgroundColor = 'var(--background-primary)';
         card.style.border = '1px solid var(--background-modifier-border)';
-        card.style.borderRadius = '6px';
-        card.style.cursor = 'pointer';
-        card.style.transition = 'all 0.2s';
+        card.style.borderRadius = '8px';
 
-        card.addEventListener('mouseenter', () => {
-            card.style.backgroundColor = 'var(--background-modifier-hover)';
-        });
+        // Header
+        const header = card.createDiv('storyteller-template-card-header');
+        header.style.display = 'flex';
+        header.style.justifyContent = 'space-between';
+        header.style.alignItems = 'center';
+        header.style.marginBottom = '0.5rem';
 
-        card.addEventListener('mouseleave', () => {
-            card.style.backgroundColor = 'var(--background-primary)';
-        });
+        header.createEl('h4', { text: template.name }).style.margin = '0';
 
-        card.addEventListener('click', () => {
-            const { TemplateLibraryModal } = require('../modals/TemplateLibraryModal');
-            new TemplateLibraryModal(this.app, this.plugin).open();
-        });
+        if (template.isBuiltIn) {
+            const badge = header.createEl('span', { text: 'Built-in' });
+            badge.style.fontSize = '0.75em';
+            badge.style.padding = '0.2rem 0.5rem';
+            badge.style.backgroundColor = 'var(--interactive-accent)';
+            badge.style.color = 'var(--text-on-accent)';
+            badge.style.borderRadius = '4px';
+        }
 
-        const titleEl = card.createEl('div', {
-            text: template.name,
-            cls: 'storyteller-template-card-title'
-        });
-        titleEl.style.fontWeight = 'bold';
-        titleEl.style.marginBottom = '0.25rem';
+        // Description
+        const desc = card.createEl('p', { text: template.description });
+        desc.style.margin = '0.5rem 0';
+        desc.style.color = 'var(--text-muted)';
+        desc.style.fontSize = '0.9em';
 
-        const metaEl = card.createDiv('storyteller-template-card-meta');
-        metaEl.style.fontSize = '0.85em';
-        metaEl.style.color = 'var(--text-muted)';
+        // Metadata
+        const meta = card.createDiv('storyteller-template-card-meta');
+        meta.style.display = 'flex';
+        meta.style.flexWrap = 'wrap';
+        meta.style.gap = '0.5rem';
+        meta.style.marginBottom = '0.5rem';
+        meta.style.fontSize = '0.85em';
 
-        const categoryBadge = metaEl.createEl('span', { text: template.category });
-        categoryBadge.style.marginRight = '0.5rem';
+        const genreBadge = meta.createEl('span', { text: template.genre });
+        genreBadge.style.padding = '0.15rem 0.4rem';
+        genreBadge.style.backgroundColor = 'var(--background-secondary)';
+        genreBadge.style.borderRadius = '4px';
+
+        const categoryBadge = meta.createEl('span', { text: template.category });
+        categoryBadge.style.padding = '0.15rem 0.4rem';
+        categoryBadge.style.backgroundColor = 'var(--background-secondary)';
+        categoryBadge.style.borderRadius = '4px';
 
         if (template.usageCount && template.usageCount > 0) {
-            metaEl.createEl('span', { text: `Used: ${template.usageCount}x` });
+            const usageBadge = meta.createEl('span', { text: `Used: ${template.usageCount}x` });
+            usageBadge.style.padding = '0.15rem 0.4rem';
+            usageBadge.style.backgroundColor = 'var(--background-secondary)';
+            usageBadge.style.borderRadius = '4px';
         }
 
+        // Entity types
         if (template.entityTypes && template.entityTypes.length > 0) {
-            const typesEl = card.createDiv('storyteller-template-card-types');
-            typesEl.style.marginTop = '0.5rem';
-            typesEl.style.fontSize = '0.75em';
-            typesEl.createEl('span', {
-                text: template.entityTypes.slice(0, 2).join(', '),
-                cls: 'storyteller-template-entity-types'
+            const entityTypesEl = card.createDiv('storyteller-template-card-entity-types');
+            entityTypesEl.style.marginBottom = '0.5rem';
+            entityTypesEl.style.fontSize = '0.85em';
+            entityTypesEl.createEl('span', { text: 'Contains: ' });
+            template.entityTypes.forEach(type => {
+                const typeBadge = entityTypesEl.createEl('span', { text: type });
+                typeBadge.style.marginLeft = '0.25rem';
+                typeBadge.style.padding = '0.1rem 0.3rem';
+                typeBadge.style.backgroundColor = 'var(--interactive-accent)';
+                typeBadge.style.color = 'var(--text-on-accent)';
+                typeBadge.style.borderRadius = '3px';
+                typeBadge.style.fontSize = '0.85em';
             });
         }
+
+        // Tags
+        if (template.tags && template.tags.length > 0) {
+            const tagsEl = card.createDiv('storyteller-template-card-tags');
+            tagsEl.style.display = 'flex';
+            tagsEl.style.flexWrap = 'wrap';
+            tagsEl.style.gap = '0.25rem';
+            tagsEl.style.marginBottom = '0.75rem';
+            template.tags.forEach(tag => {
+                const tagEl = tagsEl.createEl('span', { text: tag });
+                tagEl.style.fontSize = '0.75em';
+                tagEl.style.padding = '0.1rem 0.3rem';
+                tagEl.style.backgroundColor = 'var(--background-modifier-border)';
+                tagEl.style.borderRadius = '3px';
+            });
+        }
+
+        // Actions
+        const actions = card.createDiv('storyteller-template-card-actions');
+        actions.style.display = 'flex';
+        actions.style.flexWrap = 'wrap';
+        actions.style.gap = '0.5rem';
+        actions.style.marginTop = '0.75rem';
+        actions.style.paddingTop = '0.75rem';
+        actions.style.borderTop = '1px solid var(--background-modifier-border)';
+
+        const useButton = actions.createEl('button', { text: 'Use Template', cls: 'mod-cta' });
+        useButton.addEventListener('click', () => this.handleUseTemplate(template));
+
+        if (template.isEditable) {
+            const editButton = actions.createEl('button', { text: 'Edit' });
+            editButton.addEventListener('click', () => this.handleEditTemplate(template, container));
+
+            const deleteButton = actions.createEl('button', { text: 'Delete', cls: 'mod-warning' });
+            deleteButton.addEventListener('click', () => this.handleDeleteTemplate(template, container));
+        }
+
+        const duplicateButton = actions.createEl('button', { text: 'Duplicate' });
+        duplicateButton.addEventListener('click', () => this.handleDuplicateTemplate(template, container));
+    }
+
+    /**
+     * Handle using a template
+     */
+    private handleUseTemplate(template: Template): void {
+        new Notice(`Template "${template.name}" selected. Apply this template from the entity creation modal.`);
+    }
+
+    /**
+     * Handle editing a template
+     */
+    private handleEditTemplate(template: Template, container: HTMLElement): void {
+        new TemplateEditorModal(
+            this.app,
+            this.plugin,
+            async (updatedTemplate) => {
+                await this.renderTemplatesContent(container);
+            },
+            template
+        ).open();
+    }
+
+    /**
+     * Handle deleting a template
+     */
+    private async handleDeleteTemplate(template: Template, container: HTMLElement): Promise<void> {
+        const confirmed = await this.confirmTemplateDelete(template.name);
+        if (confirmed) {
+            try {
+                await this.plugin.templateManager.deleteTemplate(template.id);
+                await this.renderTemplatesContent(container);
+                new Notice(`Template "${template.name}" deleted.`);
+            } catch (error) {
+                console.error('Error deleting template:', error);
+                new Notice(`Failed to delete template: ${(error as Error).message}`);
+            }
+        }
+    }
+
+    /**
+     * Handle duplicating a template
+     */
+    private async handleDuplicateTemplate(template: Template, container: HTMLElement): Promise<void> {
+        try {
+            const newName = `${template.name} (Copy)`;
+            await this.plugin.templateManager.copyTemplate(template.id, newName);
+            new Notice(`Template duplicated as "${newName}"`);
+            await this.renderTemplatesContent(container);
+        } catch (error) {
+            console.error('Error duplicating template:', error);
+            new Notice(`Failed to duplicate template: ${(error as Error).message}`);
+        }
+    }
+
+    /**
+     * Confirmation dialog for template deletion
+     */
+    private async confirmTemplateDelete(templateName: string): Promise<boolean> {
+        return new Promise((resolve) => {
+            const modal = new ConfirmDeleteTemplateModal(this.app, templateName, resolve);
+            modal.open();
+        });
     }
 
     async onClose() {
@@ -2784,5 +3039,49 @@ export class DashboardView extends ItemView {
         }
         
         // Event listeners are automatically cleaned up by registerEvent()
+    }
+}
+
+/**
+ * Confirmation modal for template deletion in dashboard
+ */
+class ConfirmDeleteTemplateModal extends Modal {
+    private templateName: string;
+    private onConfirm: (confirmed: boolean) => void;
+
+    constructor(app: App, templateName: string, onConfirm: (confirmed: boolean) => void) {
+        super(app);
+        this.templateName = templateName;
+        this.onConfirm = onConfirm;
+    }
+
+    onOpen(): void {
+        const { contentEl } = this;
+
+        contentEl.createEl('h2', { text: 'Delete Template?' });
+        contentEl.createEl('p', {
+            text: `Are you sure you want to delete the template "${this.templateName}"? This action cannot be undone.`
+        });
+
+        const buttonContainer = contentEl.createDiv({ cls: 'modal-button-container' });
+        buttonContainer.style.display = 'flex';
+        buttonContainer.style.gap = '0.5rem';
+        buttonContainer.style.justifyContent = 'flex-end';
+        buttonContainer.style.marginTop = '1rem';
+
+        const cancelButton = buttonContainer.createEl('button', { text: 'Cancel' });
+        cancelButton.addEventListener('click', () => {
+            this.onConfirm(false);
+            this.close();
+        });
+
+        const deleteButton = buttonContainer.createEl('button', {
+            text: 'Delete',
+            cls: 'mod-warning'
+        });
+        deleteButton.addEventListener('click', () => {
+            this.onConfirm(true);
+            this.close();
+        });
     }
 }
