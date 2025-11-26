@@ -961,6 +961,7 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                 <li><strong>Command Palette:</strong> "Storyteller: Create new event"</li>
                 <li>Set date/time, add descriptions, outcomes</li>
                 <li>Link to involved characters and locations</li>
+                <li><strong>New:</strong> Mark events as milestones, set progress (0-100%), add dependencies</li>
             </ul>
             <p><strong>Timeline View:</strong></p>
             <ul>
@@ -968,6 +969,28 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                 <li><strong>Command Palette:</strong> "Storyteller: View timeline"</li>
                 <li>See all events chronologically ordered</li>
                 <li>Events stored in <code>Events/</code> folder</li>
+            </ul>`);
+
+        this.addTutorialCollapsible(containerEl, 'Gantt-style timeline features', 
+            `<p><strong>Enhanced Timeline View:</strong></p>
+            <ul>
+                <li><strong>Toggle View:</strong> Switch between classic Timeline and Gantt view using the toggle button</li>
+                <li><strong>Milestones:</strong> Mark important events as milestones (golden styling with star icon)</li>
+                <li><strong>Progress Tracking:</strong> Set completion percentage (0-100%) on events with visual progress bars</li>
+                <li><strong>Dependencies:</strong> Link events to show cause-and-effect relationships with arrows</li>
+            </ul>
+            <p><strong>Drag-and-Drop Rescheduling:</strong></p>
+            <ul>
+                <li>Click the <strong>lock/pencil icon</strong> in the toolbar to enable edit mode</li>
+                <li>Drag events to new dates - changes auto-save</li>
+                <li>Click the icon again to disable editing and lock the timeline</li>
+            </ul>
+            <p><strong>Filtering and Grouping:</strong></p>
+            <ul>
+                <li><strong>Filter Panel:</strong> Click "Filters" to open the collapsible filter panel</li>
+                <li><strong>Filter by:</strong> Character, location, group, or milestones-only</li>
+                <li><strong>Filter Chips:</strong> Click chips to remove individual filters, or "Clear All"</li>
+                <li><strong>Swimlanes:</strong> Group events by location, group, or character</li>
             </ul>`);
 
         this.addTutorialCollapsible(containerEl, 'Plot items management', 
@@ -999,6 +1022,66 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                 <li><strong>Use Cases:</strong> Royal family, specific kingdoms, plot arcs, etc.</li>
             </ul>`);
 
+        this.addTutorialCollapsible(containerEl, 'World-building entities', 
+            `<p><strong>Five Entity Types for Comprehensive Worldbuilding:</strong></p>
+            <ul>
+                <li><strong>Cultures:</strong> Tech level, government type, languages, values, customs, social structure</li>
+                <li><strong>Factions:</strong> Organizations with type, power level, colors, motto, goals, resources</li>
+                <li><strong>Economies:</strong> System type (barter, market, feudal), industries, trade policy</li>
+                <li><strong>Magic Systems:</strong> Type (arcane, divine, natural), rarity, power level, rules, costs</li>
+                <li><strong>Calendars:</strong> Calendar type (solar, lunar), days configuration, weekdays</li>
+            </ul>
+            <p><strong>Creating World-Building Entities:</strong></p>
+            <ul>
+                <li><strong>Command Palette:</strong> "Storyteller: Create new culture/faction/economy/magic system/calendar"</li>
+                <li><strong>View All:</strong> "Storyteller: View cultures/factions/economies/magic systems/calendars"</li>
+                <li>Each entity has dedicated modals with relevant fields</li>
+                <li>Entities stored in their respective folders (e.g., <code>Cultures/</code>, <code>Factions/</code>)</li>
+            </ul>`);
+
+        this.addTutorialCollapsible(containerEl, 'Timeline forks and causality', 
+            `<p><strong>Alternate Timelines (What-If Scenarios):</strong></p>
+            <ul>
+                <li><strong>Create Fork:</strong> Command Palette → "Storyteller: Create timeline fork"</li>
+                <li><strong>Divergence Point:</strong> Select the event where the timeline splits</li>
+                <li><strong>Fork Status:</strong> Track as exploring, canon, abandoned, or merged</li>
+                <li><strong>View Forks:</strong> Use the fork selector dropdown in the timeline view</li>
+            </ul>
+            <p><strong>Causality Links (Cause and Effect):</strong></p>
+            <ul>
+                <li><strong>Add Link:</strong> Command Palette → "Storyteller: Add causality link"</li>
+                <li><strong>Link Types:</strong> Direct, indirect, conditional, or catalyst</li>
+                <li><strong>Strength Levels:</strong> Weak, moderate, strong, or absolute</li>
+                <li>Links help track how events influence each other</li>
+            </ul>
+            <p><strong>Conflict Detection:</strong></p>
+            <ul>
+                <li><strong>Run Detection:</strong> Command Palette → "Storyteller: Detect timeline conflicts"</li>
+                <li><strong>Detects:</strong> Location conflicts (character in multiple places), death conflicts (dead characters appearing later), causality violations (effects before causes)</li>
+                <li><strong>Conflict Badge:</strong> Shows count in timeline toolbar - click to review</li>
+                <li><strong>Actionable:</strong> Each conflict includes suggestions for resolution</li>
+            </ul>`);
+
+        this.addTutorialCollapsible(containerEl, 'Entity templates', 
+            `<p><strong>Create Reusable Templates:</strong></p>
+            <ul>
+                <li><strong>Save as Template:</strong> When editing any entity, save it as a reusable template</li>
+                <li><strong>Template Library:</strong> Command Palette → "Storyteller: Open entity template library"</li>
+                <li><strong>Dashboard Tab:</strong> Access templates from the Templates tab in the dashboard</li>
+            </ul>
+            <p><strong>Built-in Templates:</strong></p>
+            <ul>
+                <li>Character archetypes: Medieval King, Tavern Keeper, Wise Mentor, Cyberpunk Hacker, Detective</li>
+                <li>More templates available for quick character creation</li>
+            </ul>
+            <p><strong>Template Features:</strong></p>
+            <ul>
+                <li><strong>Browse:</strong> Search and filter templates by genre, category, entity type</li>
+                <li><strong>Sort:</strong> By name, usage count, or recently used</li>
+                <li><strong>Usage Tracking:</strong> See which templates you use most often</li>
+                <li><strong>Customize:</strong> Duplicate and modify templates for your needs</li>
+            </ul>`);
+
         this.addTutorialCollapsible(containerEl, 'Story discovery and import', 
             `<p><strong>Automatic Discovery:</strong></p>
             <ul>
@@ -1021,7 +1104,7 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
             `);
 
         this.addTutorialCollapsible(containerEl, 'Keyboard shortcuts and commands', 
-            `<p><strong>All Available Commands (via Ctrl/Cmd + P):</strong></p>
+            `<p><strong>Core Commands (via Ctrl/Cmd + P):</strong></p>
             <ul>
                 <li><strong>Storyteller: Open dashboard</strong> - Main interface</li>
                 <li><strong>Storyteller: Create New Story</strong> - Start a new story project</li>
@@ -1030,6 +1113,24 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                 <li><strong>Storyteller: Open gallery</strong> - Image management</li>
                 <li><strong>Storyteller: Create/Rename/Delete group</strong> - Organization</li>
                 <li><strong>Storyteller: Refresh story discovery</strong> - Import existing folders</li>
+            </ul>
+            <p><strong>World-Building Commands:</strong></p>
+            <ul>
+                <li><strong>Storyteller: Create new culture/faction/economy/magic system/calendar</strong></li>
+                <li><strong>Storyteller: View cultures/factions/economies/magic systems/calendars</strong></li>
+            </ul>
+            <p><strong>Timeline and Causality Commands:</strong></p>
+            <ul>
+                <li><strong>Storyteller: Create timeline fork</strong> - Create alternate timeline</li>
+                <li><strong>Storyteller: View timeline forks</strong> - List all forks</li>
+                <li><strong>Storyteller: Add causality link</strong> - Link cause and effect events</li>
+                <li><strong>Storyteller: View causality links</strong> - List all causal relationships</li>
+                <li><strong>Storyteller: Detect timeline conflicts</strong> - Find inconsistencies</li>
+                <li><strong>Storyteller: View timeline conflicts</strong> - Review existing conflicts</li>
+            </ul>
+            <p><strong>Template Commands:</strong></p>
+            <ul>
+                <li><strong>Storyteller: Open entity template library</strong> - Browse and manage templates</li>
             </ul>
             <p><strong>Tip:</strong> You can assign custom hotkeys to any of these commands in Obsidian's Hotkeys settings!</p>`);
 
@@ -1042,21 +1143,27 @@ StorytellerSuite/
 │       ├── Characters/     (character .md files)
 │       ├── Locations/      (location .md files)
 │       ├── Events/         (event .md files)
-│       └── Items/          (plot item .md files)
-└── GalleryUploads/         (uploaded images)
+│       ├── Items/          (plot item .md files)
+│       ├── Chapters/       (chapter .md files)
+│       ├── Scenes/         (scene .md files)
+│       ├── References/     (reference .md files)
+│       ├── Cultures/       (culture .md files)
+│       ├── Factions/       (faction .md files)
+│       ├── Economies/      (economy .md files)
+│       ├── MagicSystems/   (magic system .md files)
+│       └── Calendars/      (calendar .md files)
+├── GalleryUploads/         (uploaded images)
+└── Templates/              (saved entity templates)
 
 One Story Mode (flattened):
 [Base]/
 ├── Characters/
 ├── Locations/
 ├── Events/
-└── Items/
-
-Custom Folders:
-Characters: [your path]
-Locations:  [your path]
-Events:     [your path]
-Items:      [your path]
+├── Items/
+├── Cultures/
+├── Factions/
+└── ... (all entity folders)
 </code></pre>
             <p><strong>Obsidian Integration:</strong></p>
             <ul>
