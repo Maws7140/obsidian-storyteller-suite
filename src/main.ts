@@ -2077,6 +2077,11 @@ export default class StorytellerSuitePlugin extends Plugin {
 		await this.ensureCharacterFolder();
 		const folderPath = this.getEntityFolder('character');
 		
+		// Ensure character has a stable id for linking
+		if (!character.id) {
+			character.id = Date.now().toString(36) + Math.random().toString(36).substr(2, 6);
+		}
+		
 		// Create safe filename from character name
 		const fileName = `${character.name.replace(/[\\/:"*?<>|]+/g, '')}.md`;
 		const filePath = normalizePath(`${folderPath}/${fileName}`);
@@ -2244,6 +2249,11 @@ export default class StorytellerSuitePlugin extends Plugin {
 	async saveLocation(location: Location): Promise<void> {
 		await this.ensureLocationFolder();
 		const folderPath = this.getEntityFolder('location');
+		
+		// Ensure location has a stable id for linking
+		if (!location.id) {
+			location.id = Date.now().toString(36) + Math.random().toString(36).substr(2, 6);
+		}
 		
 		// Create safe filename from location name
 		const fileName = `${location.name.replace(/[\\/:"*?<>|]+/g, '')}.md`;
