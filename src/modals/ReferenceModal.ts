@@ -6,6 +6,8 @@ import { Reference } from '../types';
 import { GalleryImageSuggestModal } from './GalleryImageSuggestModal';
 import { PromptModal } from './ui/PromptModal';
 import { getWhitelistKeys } from '../yaml/EntitySections';
+import { TemplatePickerModal } from './TemplatePickerModal';
+import { Template } from '../templates/TemplateTypes';
 
 export type ReferenceModalSubmitCallback = (ref: Reference) => Promise<void>;
 export type ReferenceModalDeleteCallback = (ref: Reference) => Promise<void>;
@@ -32,6 +34,29 @@ export class ReferenceModal extends Modal {
         const { contentEl } = this;
         contentEl.empty();
         contentEl.createEl('h2', { text: this.isNew ? t('createReference') : `${t('editReference')} ${this.refData.name}` });
+
+        // --- Template Selector (for new references) ---
+        if (this.isNew) {
+            new Setting(contentEl)
+                .setName('Start from Template')
+                .setDesc('Optionally start with a pre-configured reference template')
+                .addButton(button => button
+                    .setButtonText('Choose Template')
+                    .setTooltip('Select a reference template')
+                    .onClick(() => {
+                        new TemplatePickerModal(
+                            this.app,
+                            this.plugin,
+                            async (template: Template) => {
+                                await this.applyTemplateToReference(template);
+                                this.refresh();
+                                new Notice(`Template "${template.name}" applied`);
+                            },
+                            'reference'
+                        ).open();
+                    })
+                );
+        }
 
         new Setting(contentEl)
             .setName(t('name'))
@@ -192,6 +217,25 @@ export class ReferenceModal extends Modal {
                 this.close();
             })
         );
+    }
+
+    private async applyTemplateToReference(template: Template): Promise<void> {
+        if (!template.entities.references || template.entities.references.length === 0) {
+            new Notice('This template does not contain any references');
+            return;
+        }
+
+        const templateRef = template.entities.references[0];
+
+        Object.keys(templateRef).forEach(key => {
+            if (key !== 'templateId' && key !== 'id' && key !== 'filePath') {
+                (this.refData as any)[key] = (templateRef as any)[key];
+            }
+        });
+    }
+
+    private refresh(): void {
+        this.onOpen();
     }
 
     onClose(): void {
