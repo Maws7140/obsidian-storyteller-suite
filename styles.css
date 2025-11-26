@@ -1202,16 +1202,42 @@ If your plugin does not need CSS, delete this file.
 }
 
 /* --- Timeline Specific --- */
+.storyteller-timeline-view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+/* Ensure toolbar and filters don't take unnecessary space */
+.storyteller-timeline-view .storyteller-timeline-toolbar,
+.storyteller-timeline-view .storyteller-timeline-filter-toggle,
+.storyteller-timeline-view .storyteller-timeline-advanced-filters {
+  flex-shrink: 0;
+}
+
+/* Footer should also not grow */
+.storyteller-timeline-view .storyteller-timeline-footer {
+  flex-shrink: 0;
+}
+
 .storyteller-timeline-date {
     color: var(--text-faint);
     font-size: var(--font-ui-smaller);
 }
 .storyteller-timeline-container {
-  /* Ensure reasonable max height inside modals */
-  max-height: 60vh;
   /* Allow tooltips to overflow container */
   overflow: visible !important;
   position: relative;
+  /* Fill available space in timeline view */
+  flex: 1;
+  min-height: 0;
+}
+
+/* Restrict height only in modals */
+.storyteller-timeline-modal .storyteller-timeline-container {
+  max-height: 60vh;
 }
 
 /* Vis-timeline tooltip fixes - prevent cut-off */
@@ -1235,6 +1261,15 @@ If your plugin does not need CSS, delete this file.
 /* Ensure vis-timeline container doesn't clip */
 .vis-timeline {
   overflow: visible !important;
+}
+
+/* Make vis-timeline fill the container height in timeline view */
+.storyteller-timeline-view .vis-timeline {
+  height: 100% !important;
+}
+
+.storyteller-timeline-view .storyteller-timeline-container .vis-timeline {
+  height: 100% !important;
 }
 
 /* Modernize vis timeline look within plugin modal and view */
