@@ -71,6 +71,14 @@ export class GroupModal extends ResponsiveModal {
     async onOpen() {
         super.onOpen();
 
+        // Load all entities first for link repair
+        await this.loadAllEntities();
+
+        // Repair broken entity links if this is an existing group
+        if (!this.isNew) {
+            await this.repairEntityLinks();
+        }
+
         const { contentEl } = this;
         contentEl.empty();
         contentEl.createEl('h2', { text: this.isNew ? t('createNewGroup') : `${t('editGroup')}: ${this.group.name}` });
@@ -584,6 +592,132 @@ export class GroupModal extends ResponsiveModal {
         this.allPlotItems = await this.plugin.listPlotItems();
         this.allGroups = this.plugin.getGroups();
         this.allCultures = await this.plugin.listCultures();
+    }
+
+    /**
+     * Repair broken entity links with backwards compatibility
+     * Try multiple matching strategies to reconnect entities
+     */
+    async repairEntityLinks() {
+        const brokenLinks: string[] = [];
+        const repairedLinks: string[] = [];
+        const membersToRemove: typeof this.group.members = [];
+        let needsSave = false;
+
+        for (const member of [...this.group.members]) {
+            let found = false;
+            let entity: any = null;
+            let newId: string | undefined;
+
+            // Get the entity list based on type
+            let entityList: any[] = [];
+            switch (member.type) {
+                case 'character':
+                    entityList = this.allCharacters;
+                    break;
+                case 'location':
+                    entityList = this.allLocations;
+                    break;
+                case 'event':
+                    entityList = this.allEvents;
+                    break;
+                case 'item':
+                    entityList = this.allPlotItems;
+                    break;
+            }
+
+            // Strategy 1: Exact ID or name match
+            entity = entityList.find(e => (e.id || e.name) === member.id);
+            if (entity) {
+                found = true;
+                // Update to use ID if we were using name
+                if (!entity.id || member.id === entity.name) {
+                    const correctId = entity.id || entity.name;
+                    if (correctId !== member.id) {
+                        member.id = correctId;
+                        needsSave = true;
+                        repairedLinks.push(`${member.type}: "${entity.name}" (updated reference)`);
+                    }
+                }
+            }
+
+            // Strategy 2: Case-insensitive name match
+            if (!found) {
+                const lowerMemberId = member.id.toLowerCase();
+                entity = entityList.find(e =>
+                    (e.name && e.name.toLowerCase() === lowerMemberId) ||
+                    (e.id && e.id.toLowerCase() === lowerMemberId)
+                );
+                if (entity) {
+                    found = true;
+                    newId = entity.id || entity.name;
+                    if (newId) {
+                        member.id = newId;
+                        needsSave = true;
+                        repairedLinks.push(`${member.type}: "${entity.name}" (case mismatch fixed)`);
+                    }
+                }
+            }
+
+            // Strategy 3: Fuzzy name match (trim whitespace, remove special chars)
+            if (!found) {
+                const normalizedMemberId = member.id.trim().replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+                entity = entityList.find(e => {
+                    const normalizedName = (e.name || '').trim().replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+                    const normalizedId = (e.id || '').trim().replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+                    return normalizedName === normalizedMemberId || normalizedId === normalizedMemberId;
+                });
+                if (entity) {
+                    found = true;
+                    newId = entity.id || entity.name;
+                    if (newId) {
+                        member.id = newId;
+                        needsSave = true;
+                        repairedLinks.push(`${member.type}: "${entity.name}" (name normalized)`);
+                    }
+                }
+            }
+
+            // If still not found, mark for removal
+            if (!found) {
+                brokenLinks.push(`${member.type}: "${member.id}"`);
+                membersToRemove.push(member);
+                needsSave = true;
+            }
+        }
+
+        // Remove broken links
+        if (membersToRemove.length > 0) {
+            this.group.members = this.group.members.filter(m =>
+                !membersToRemove.some(broken =>
+                    broken.type === m.type && broken.id === m.id
+                )
+            );
+        }
+
+        // Save changes if needed
+        if (needsSave && this.group.id) {
+            await this.plugin.updateGroup(this.group.id, this.group as any);
+            await this.plugin.saveSettings();
+        }
+
+        // Notify user of repairs and broken links
+        if (repairedLinks.length > 0) {
+            new Notice(`Repaired ${repairedLinks.length} entity link(s) in group "${this.group.name}"`);
+            console.log('Repaired entity links:', repairedLinks);
+        }
+
+        if (brokenLinks.length > 0) {
+            new Notice(
+                `Removed ${brokenLinks.length} broken link(s) from group "${this.group.name}". ` +
+                `Check console for details.`,
+                5000
+            );
+            console.warn(
+                `Broken entity links removed from group "${this.group.name}":`,
+                brokenLinks
+            );
+        }
     }
 
     renderMemberSelectors(container: HTMLElement) {
