@@ -8,6 +8,8 @@ import { LocationSuggestModal } from './LocationSuggestModal';
 import { EventSuggestModal } from './EventSuggestModal';
 import { GalleryImageSuggestModal } from './GalleryImageSuggestModal';
 import { GroupSuggestModal } from './GroupSuggestModal';
+import { TemplatePickerModal } from './TemplatePickerModal';
+import { Template } from '../templates/TemplateTypes';
 
 export type SceneModalSubmitCallback = (sc: Scene) => Promise<void>;
 export type SceneModalDeleteCallback = (sc: Scene) => Promise<void>;
@@ -33,6 +35,29 @@ export class SceneModal extends Modal {
         const { contentEl } = this;
         contentEl.empty();
         contentEl.createEl('h2', { text: this.isNew ? t('createNewScene') : `${t('editScene')} ${this.scene.name}` });
+
+        // --- Template Selector (for new scenes) ---
+        if (this.isNew) {
+            new Setting(contentEl)
+                .setName('Start from Template')
+                .setDesc('Optionally start with a pre-configured scene template')
+                .addButton(button => button
+                    .setButtonText('Choose Template')
+                    .setTooltip('Select a scene template')
+                    .onClick(() => {
+                        new TemplatePickerModal(
+                            this.app,
+                            this.plugin,
+                            async (template: Template) => {
+                                await this.applyTemplateToScene(template);
+                                this.refresh();
+                                new Notice(`Template "${template.name}" applied`);
+                            },
+                            'scene'
+                        ).open();
+                    })
+                );
+        }
 
         new Setting(contentEl)
             .setName(t('name'))
@@ -324,6 +349,32 @@ export class SceneModal extends Modal {
                     }
                 });
         });
+    }
+
+    private async applyTemplateToScene(template: Template): Promise<void> {
+        if (!template.entities.scenes || template.entities.scenes.length === 0) {
+            new Notice('This template does not contain any scenes');
+            return;
+        }
+
+        const templateScene = template.entities.scenes[0];
+
+        Object.keys(templateScene).forEach(key => {
+            if (key !== 'templateId' && key !== 'id' && key !== 'filePath' && key !== 'chapterId' && key !== 'chapterName') {
+                (this.scene as any)[key] = (templateScene as any)[key];
+            }
+        });
+
+        // Clear relationships as they reference template entities
+        this.scene.linkedCharacters = [];
+        this.scene.linkedLocations = [];
+        this.scene.linkedEvents = [];
+        this.scene.linkedItems = [];
+        this.scene.linkedGroups = [];
+    }
+
+    private refresh(): void {
+        this.onOpen();
     }
 
     onClose(): void { this.contentEl.empty(); }

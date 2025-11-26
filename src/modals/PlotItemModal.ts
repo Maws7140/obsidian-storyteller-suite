@@ -9,6 +9,8 @@ import { CharacterSuggestModal } from './CharacterSuggestModal';
 import { LocationSuggestModal } from './LocationSuggestModal';
 import { EventSuggestModal } from './EventSuggestModal';
 import { PromptModal } from './ui/PromptModal';
+import { TemplatePickerModal } from './TemplatePickerModal';
+import { Template } from '../templates/TemplateTypes';
 
 export type PlotItemModalSubmitCallback = (item: PlotItem) => Promise<void>;
 export type PlotItemModalDeleteCallback = (item: PlotItem) => Promise<void>;
@@ -52,6 +54,29 @@ export class PlotItemModal extends Modal {
         const { contentEl } = this;
         contentEl.empty();
         contentEl.createEl('h2', { text: this.isNew ? t('createItem') : `${t('edit')} ${this.item.name}` });
+
+        // --- Template Selector (for new items) ---
+        if (this.isNew) {
+            new Setting(contentEl)
+                .setName('Start from Template')
+                .setDesc('Optionally start with a pre-configured item template')
+                .addButton(button => button
+                    .setButtonText('Choose Template')
+                    .setTooltip('Select an item template')
+                    .onClick(() => {
+                        new TemplatePickerModal(
+                            this.app,
+                            this.plugin,
+                            async (template: Template) => {
+                                await this.applyTemplateToItem(template);
+                                this.refresh();
+                                new Notice(`Template "${template.name}" applied`);
+                            },
+                            'item'
+                        ).open();
+                    })
+                );
+        }
 
         new Setting(contentEl)
             .setName(t('name'))
@@ -312,6 +337,33 @@ export class PlotItemModal extends Modal {
                 });
             }
         })();
+    }
+
+    private async applyTemplateToItem(template: Template): Promise<void> {
+        if (!template.entities.items || template.entities.items.length === 0) {
+            new Notice('This template does not contain any items');
+            return;
+        }
+
+        const templateItem = template.entities.items[0];
+
+        Object.keys(templateItem).forEach(key => {
+            if (key !== 'templateId' && key !== 'id' && key !== 'filePath') {
+                (this.item as any)[key] = (templateItem as any)[key];
+            }
+        });
+
+        // Clear relationships as they reference template entities
+        this.item.currentOwner = undefined;
+        this.item.pastOwners = [];
+        this.item.currentLocation = undefined;
+        this.item.associatedEvents = [];
+        this.item.groups = [];
+        this.item.connections = [];
+    }
+
+    private refresh(): void {
+        this.onOpen();
     }
 
     onClose() {
