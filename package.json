@@ -1,7 +1,7 @@
 {
 	"name": "storyteller-suite",
-	"version": "1.0.0",
-	"description": "This is a sample plugin for Obsidian (https://obsidian.md)",
+	"version": "1.4.0",
+	"description": "A comprehensive suite for managing characters, locations, events, and galleries for your novels.",
 	"main": "main.js",
 	"scripts": {
 		"dev": "node esbuild.config.mjs",
