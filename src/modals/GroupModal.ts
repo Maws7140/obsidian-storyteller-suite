@@ -597,7 +597,13 @@ export class GroupModal extends ResponsiveModal {
         this.group.members.filter(m => m.type === 'character').forEach(member => {
             const char = this.allCharacters.find(c => (c.id || c.name) === member.id);
             if (char) {
-                const tag = charTagContainer.createSpan({ text: char.name, cls: 'group-tag' });
+                const tag = charTagContainer.createSpan({ cls: 'group-tag' });
+                const nameLink = tag.createEl('a', { text: char.name, cls: 'group-member-link' });
+                nameLink.onclick = (e) => {
+                    e.preventDefault();
+                    const { CharacterModal } = require('./CharacterModal');
+                    new CharacterModal(this.app, this.plugin, char, async () => {}).open();
+                };
                 const removeBtn = tag.createSpan({ text: ' ×', cls: 'remove-group-btn' });
                 removeBtn.onclick = async () => {
                     this.group.members = this.group.members.filter(m => !(m.type === 'character' && m.id === member.id));
@@ -610,10 +616,13 @@ export class GroupModal extends ResponsiveModal {
             btn.setButtonText(t('add'))
                 .setCta()
                 .onClick(() => {
-                    new CharacterSuggestModal(this.app, this.plugin, (selectedChar) => {
+                    new CharacterSuggestModal(this.app, this.plugin, async (selectedChar) => {
                         if (selectedChar && !isMember('character', selectedChar.id || selectedChar.name)) {
                             this.group.members.push({ type: 'character', id: selectedChar.id || selectedChar.name });
-                            this.plugin.addMemberToGroup(this.group.id, 'character', selectedChar.id || selectedChar.name);
+                            // Only update in settings if group already exists (not new)
+                            if (!this.isNew && this.group.id) {
+                                await this.plugin.addMemberToGroup(this.group.id, 'character', selectedChar.id || selectedChar.name);
+                            }
                             this.onOpen();
                         }
                     }).open();
@@ -627,7 +636,13 @@ export class GroupModal extends ResponsiveModal {
         this.group.members.filter(m => m.type === 'location').forEach(member => {
             const loc = this.allLocations.find(l => (l.id || l.name) === member.id);
             if (loc) {
-                const tag = locTagContainer.createSpan({ text: loc.name, cls: 'group-tag' });
+                const tag = locTagContainer.createSpan({ cls: 'group-tag' });
+                const nameLink = tag.createEl('a', { text: loc.name, cls: 'group-member-link' });
+                nameLink.onclick = (e) => {
+                    e.preventDefault();
+                    const { LocationModal } = require('./LocationModal');
+                    new LocationModal(this.app, this.plugin, loc, async () => {}).open();
+                };
                 const removeBtn = tag.createSpan({ text: ' ×', cls: 'remove-group-btn' });
                 removeBtn.onclick = async () => {
                     this.group.members = this.group.members.filter(m => !(m.type === 'location' && m.id === member.id));
@@ -640,10 +655,13 @@ export class GroupModal extends ResponsiveModal {
             btn.setButtonText(t('add'))
                 .setCta()
                 .onClick(() => {
-                    new LocationSuggestModal(this.app, this.plugin, (selectedLoc) => {
+                    new LocationSuggestModal(this.app, this.plugin, async (selectedLoc) => {
                         if (selectedLoc && !isMember('location', selectedLoc.id || selectedLoc.name)) {
                             this.group.members.push({ type: 'location', id: selectedLoc.id || selectedLoc.name });
-                            this.plugin.addMemberToGroup(this.group.id, 'location', selectedLoc.id || selectedLoc.name);
+                            // Only update in settings if group already exists (not new)
+                            if (!this.isNew && this.group.id) {
+                                await this.plugin.addMemberToGroup(this.group.id, 'location', selectedLoc.id || selectedLoc.name);
+                            }
                             this.onOpen();
                         }
                     }).open();
@@ -657,7 +675,13 @@ export class GroupModal extends ResponsiveModal {
         this.group.members.filter(m => m.type === 'event').forEach(member => {
             const evt = this.allEvents.find(e => (e.id || e.name) === member.id);
             if (evt) {
-                const tag = evtTagContainer.createSpan({ text: evt.name, cls: 'group-tag' });
+                const tag = evtTagContainer.createSpan({ cls: 'group-tag' });
+                const nameLink = tag.createEl('a', { text: evt.name, cls: 'group-member-link' });
+                nameLink.onclick = (e) => {
+                    e.preventDefault();
+                    const { EventModal } = require('./EventModal');
+                    new EventModal(this.app, this.plugin, evt, async () => {}).open();
+                };
                 const removeBtn = tag.createSpan({ text: ' ×', cls: 'remove-group-btn' });
                 removeBtn.onclick = async () => {
                     this.group.members = this.group.members.filter(m => !(m.type === 'event' && m.id === member.id));
@@ -670,10 +694,13 @@ export class GroupModal extends ResponsiveModal {
             btn.setButtonText(t('add'))
                 .setCta()
                 .onClick(() => {
-                    new EventSuggestModal(this.app, this.plugin, (selectedEvt) => {
+                    new EventSuggestModal(this.app, this.plugin, async (selectedEvt) => {
                         if (selectedEvt && !isMember('event', selectedEvt.id || selectedEvt.name)) {
                             this.group.members.push({ type: 'event', id: selectedEvt.id || selectedEvt.name });
-                            this.plugin.addMemberToGroup(this.group.id, 'event', selectedEvt.id || selectedEvt.name);
+                            // Only update in settings if group already exists (not new)
+                            if (!this.isNew && this.group.id) {
+                                await this.plugin.addMemberToGroup(this.group.id, 'event', selectedEvt.id || selectedEvt.name);
+                            }
                             this.onOpen();
                         }
                     }).open();
@@ -686,7 +713,13 @@ export class GroupModal extends ResponsiveModal {
         this.group.members.filter(m => m.type === 'item').forEach(member => {
             const item = this.allPlotItems.find(i => (i.id || i.name) === member.id);
             if (item) {
-                const tag = itemTagContainer.createSpan({ text: item.name, cls: 'group-tag' });
+                const tag = itemTagContainer.createSpan({ cls: 'group-tag' });
+                const nameLink = tag.createEl('a', { text: item.name, cls: 'group-member-link' });
+                nameLink.onclick = (e) => {
+                    e.preventDefault();
+                    const { PlotItemModal } = require('./PlotItemModal');
+                    new PlotItemModal(this.app, this.plugin, item, async () => {}).open();
+                };
                 const removeBtn = tag.createSpan({ text: ' ×', cls: 'remove-group-btn' });
                 removeBtn.onclick = async () => {
                     this.group.members = this.group.members.filter(m => !(m.type === 'item' && m.id === member.id));
@@ -697,11 +730,14 @@ export class GroupModal extends ResponsiveModal {
         });
         itemSetting.addButton(btn => {
             btn.setButtonText(t('add')).setCta().onClick(() => {
-                new PlotItemSuggestModal(this.app, this.plugin, (selectedItem) => {
+                new PlotItemSuggestModal(this.app, this.plugin, async (selectedItem) => {
                     const itemId = selectedItem.id || selectedItem.name;
                     if (selectedItem && !this.group.members.some(m => m.type === 'item' && m.id === itemId)) {
                         this.group.members.push({ type: 'item', id: itemId });
-                        this.plugin.addMemberToGroup(this.group.id, 'item', itemId);
+                        // Only update in settings if group already exists (not new)
+                        if (!this.isNew && this.group.id) {
+                            await this.plugin.addMemberToGroup(this.group.id, 'item', itemId);
+                        }
                         this.onOpen();
                     }
                 }).open();
