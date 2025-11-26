@@ -3,6 +3,8 @@ import type { Culture } from '../types';
 import type StorytellerSuitePlugin from '../main';
 import { ResponsiveModal } from './ResponsiveModal';
 import { GalleryImageSuggestModal } from './GalleryImageSuggestModal';
+import { TemplatePickerModal } from './TemplatePickerModal';
+import { Template } from '../templates/TemplateTypes';
 
 export type CultureModalSubmitCallback = (culture: Culture) => Promise<void>;
 export type CultureModalDeleteCallback = (culture: Culture) => Promise<void>;
@@ -66,6 +68,29 @@ export class CultureModal extends ResponsiveModal {
         contentEl.createEl('h2', {
             text: this.isNew ? 'Create Culture' : `Edit Culture: ${this.culture.name}`
         });
+
+        // --- Template Selector (for new cultures) ---
+        if (this.isNew) {
+            new Setting(contentEl)
+                .setName('Start from Template')
+                .setDesc('Optionally start with a pre-configured culture template')
+                .addButton(button => button
+                    .setButtonText('Choose Template')
+                    .setTooltip('Select a culture template')
+                    .onClick(() => {
+                        new TemplatePickerModal(
+                            this.app,
+                            this.plugin,
+                            async (template: Template) => {
+                                await this.applyTemplateToCulture(template);
+                                this.refresh();
+                                new Notice(`Template "${template.name}" applied`);
+                            },
+                            'culture'
+                        ).open();
+                    })
+                );
+        }
 
         // Name (Required)
         new Setting(contentEl)
@@ -303,6 +328,34 @@ export class CultureModal extends ResponsiveModal {
                 })
             );
         }
+    }
+
+    private async applyTemplateToCulture(template: Template): Promise<void> {
+        if (!template.entities.cultures || template.entities.cultures.length === 0) {
+            new Notice('This template does not contain any cultures');
+            return;
+        }
+
+        const templateCulture = template.entities.cultures[0];
+
+        Object.keys(templateCulture).forEach(key => {
+            if (key !== 'templateId' && key !== 'id' && key !== 'filePath') {
+                (this.culture as any)[key] = (templateCulture as any)[key];
+            }
+        });
+
+        // Clear relationships as they reference template entities
+        this.culture.linkedLocations = [];
+        this.culture.linkedCharacters = [];
+        this.culture.linkedEvents = [];
+        this.culture.relatedCultures = [];
+        this.culture.parentCulture = undefined;
+        this.culture.groups = [];
+        this.culture.connections = [];
+    }
+
+    private refresh(): void {
+        this.onOpen();
     }
 
     onClose(): void {

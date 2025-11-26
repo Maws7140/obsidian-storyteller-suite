@@ -3,6 +3,8 @@ import type { MagicSystem } from '../types';
 import type StorytellerSuitePlugin from '../main';
 import { ResponsiveModal } from './ResponsiveModal';
 import { GalleryImageSuggestModal } from './GalleryImageSuggestModal';
+import { TemplatePickerModal } from './TemplatePickerModal';
+import { Template } from '../templates/TemplateTypes';
 
 export type MagicSystemModalSubmitCallback = (magicSystem: MagicSystem) => Promise<void>;
 export type MagicSystemModalDeleteCallback = (magicSystem: MagicSystem) => Promise<void>;
@@ -73,6 +75,29 @@ export class MagicSystemModal extends ResponsiveModal {
         contentEl.createEl('h2', {
             text: this.isNew ? 'Create Magic System' : `Edit Magic System: ${this.magicSystem.name}`
         });
+
+        // --- Template Selector (for new magic systems) ---
+        if (this.isNew) {
+            new Setting(contentEl)
+                .setName('Start from Template')
+                .setDesc('Optionally start with a pre-configured magic system template')
+                .addButton(button => button
+                    .setButtonText('Choose Template')
+                    .setTooltip('Select a magic system template')
+                    .onClick(() => {
+                        new TemplatePickerModal(
+                            this.app,
+                            this.plugin,
+                            async (template: Template) => {
+                                await this.applyTemplateToMagicSystem(template);
+                                this.refresh();
+                                new Notice(`Template "${template.name}" applied`);
+                            },
+                            'magicSystem'
+                        ).open();
+                    })
+                );
+        }
 
         // Name (Required)
         new Setting(contentEl)
@@ -300,6 +325,34 @@ export class MagicSystemModal extends ResponsiveModal {
                 })
             );
         }
+    }
+
+    private async applyTemplateToMagicSystem(template: Template): Promise<void> {
+        if (!template.entities.magicSystems || template.entities.magicSystems.length === 0) {
+            new Notice('This template does not contain any magic systems');
+            return;
+        }
+
+        const templateMagic = template.entities.magicSystems[0];
+
+        Object.keys(templateMagic).forEach(key => {
+            if (key !== 'templateId' && key !== 'id' && key !== 'filePath') {
+                (this.magicSystem as any)[key] = (templateMagic as any)[key];
+            }
+        });
+
+        // Clear relationships as they reference template entities
+        this.magicSystem.linkedCharacters = [];
+        this.magicSystem.linkedLocations = [];
+        this.magicSystem.linkedCultures = [];
+        this.magicSystem.linkedEvents = [];
+        this.magicSystem.linkedItems = [];
+        this.magicSystem.groups = [];
+        this.magicSystem.connections = [];
+    }
+
+    private refresh(): void {
+        this.onOpen();
     }
 
     onClose(): void {

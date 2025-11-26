@@ -41,6 +41,8 @@ export class TemplateStorageManager {
     private async loadBuiltInTemplates(): Promise<void> {
         // Built-in templates will be imported from separate files
         // This allows us to ship them with the plugin
+
+        // Full-world templates
         try {
             const { FANTASY_KINGDOM_TEMPLATE } = await import('./prebuilt/FantasyKingdom');
             this.builtInTemplates.set(FANTASY_KINGDOM_TEMPLATE.id, FANTASY_KINGDOM_TEMPLATE);
@@ -70,6 +72,66 @@ export class TemplateStorageManager {
             });
         } catch (error) {
             console.log('Character templates not yet available:', error);
+        }
+
+        // Load built-in location templates
+        try {
+            const { BUILTIN_LOCATION_TEMPLATES } = await import('./prebuilt/LocationTemplates');
+            BUILTIN_LOCATION_TEMPLATES.forEach(template => {
+                this.builtInTemplates.set(template.id, template);
+            });
+        } catch (error) {
+            console.log('Location templates not yet available:', error);
+        }
+
+        // Load built-in event templates
+        try {
+            const { BUILTIN_EVENT_TEMPLATES } = await import('./prebuilt/EventTemplates');
+            BUILTIN_EVENT_TEMPLATES.forEach(template => {
+                this.builtInTemplates.set(template.id, template);
+            });
+        } catch (error) {
+            console.log('Event templates not yet available:', error);
+        }
+
+        // Load built-in item templates
+        try {
+            const { BUILTIN_ITEM_TEMPLATES } = await import('./prebuilt/ItemTemplates');
+            BUILTIN_ITEM_TEMPLATES.forEach(template => {
+                this.builtInTemplates.set(template.id, template);
+            });
+        } catch (error) {
+            console.log('Item templates not yet available:', error);
+        }
+
+        // Load built-in group templates
+        try {
+            const { BUILTIN_GROUP_TEMPLATES } = await import('./prebuilt/GroupTemplates');
+            BUILTIN_GROUP_TEMPLATES.forEach(template => {
+                this.builtInTemplates.set(template.id, template);
+            });
+        } catch (error) {
+            console.log('Group templates not yet available:', error);
+        }
+
+        // Load built-in worldbuilding templates (Culture, Economy, MagicSystem)
+        try {
+            const { BUILTIN_WORLDBUILDING_TEMPLATES } = await import('./prebuilt/WorldbuildingTemplates');
+            BUILTIN_WORLDBUILDING_TEMPLATES.forEach(template => {
+                this.builtInTemplates.set(template.id, template);
+            });
+        } catch (error) {
+            console.log('Worldbuilding templates not yet available:', error);
+        }
+
+        // Load built-in story structure templates (Chapter, Scene, Reference)
+        try {
+            const { BUILTIN_STORY_STRUCTURE_TEMPLATES } = await import('./prebuilt/StoryStructureTemplates');
+            BUILTIN_STORY_STRUCTURE_TEMPLATES.forEach(template => {
+                this.builtInTemplates.set(template.id, template);
+            });
+        } catch (error) {
+            console.log('Story structure templates not yet available:', error);
         }
     }
 

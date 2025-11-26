@@ -8,6 +8,8 @@ import { CharacterSuggestModal } from './CharacterSuggestModal';
 import { LocationSuggestModal } from './LocationSuggestModal';
 import { EventSuggestModal } from './EventSuggestModal';
 import { PlotItemSuggestModal } from './PlotItemSuggestModal';
+import { TemplatePickerModal } from './TemplatePickerModal';
+import { Template } from '../templates/TemplateTypes';
 
 export type GroupModalSubmitCallback = (group: Group) => Promise<void>;
 export type GroupModalDeleteCallback = (groupId: string) => Promise<void>;
@@ -72,6 +74,29 @@ export class GroupModal extends ResponsiveModal {
         const { contentEl } = this;
         contentEl.empty();
         contentEl.createEl('h2', { text: this.isNew ? t('createNewGroup') : `${t('editGroup')}: ${this.group.name}` });
+
+        // --- Template Selector (for new groups) ---
+        if (this.isNew) {
+            new Setting(contentEl)
+                .setName('Start from Template')
+                .setDesc('Optionally start with a pre-configured group template')
+                .addButton(button => button
+                    .setButtonText('Choose Template')
+                    .setTooltip('Select a group template')
+                    .onClick(() => {
+                        new TemplatePickerModal(
+                            this.app,
+                            this.plugin,
+                            async (template: Template) => {
+                                await this.applyTemplateToGroup(template);
+                                this.refresh();
+                                new Notice(`Template "${template.name}" applied`);
+                            },
+                            'group'
+                        ).open();
+                    })
+                );
+        }
 
         // Load all entities for dropdowns
         await this.loadAllEntities();
@@ -702,6 +727,35 @@ export class GroupModal extends ResponsiveModal {
                 await this.plugin.addMemberToGroup(group.id, member.type, member.id);
             }
         }
+    }
+
+    private async applyTemplateToGroup(template: Template): Promise<void> {
+        if (!template.entities.groups || template.entities.groups.length === 0) {
+            new Notice('This template does not contain any groups');
+            return;
+        }
+
+        const templateGroup = template.entities.groups[0];
+
+        Object.keys(templateGroup).forEach(key => {
+            if (key !== 'templateId' && key !== 'id' && key !== 'filePath' && key !== 'storyId') {
+                (this.group as any)[key] = (templateGroup as any)[key];
+            }
+        });
+
+        // Clear relationships as they reference template entities
+        this.group.members = [];
+        this.group.territories = [];
+        this.group.linkedEvents = [];
+        this.group.parentGroup = undefined;
+        this.group.subgroups = [];
+        this.group.groupRelationships = [];
+        this.group.linkedCulture = undefined;
+        this.group.connections = [];
+    }
+
+    private refresh(): void {
+        this.onOpen();
     }
 
     onClose() {

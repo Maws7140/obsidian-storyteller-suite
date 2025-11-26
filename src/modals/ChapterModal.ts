@@ -10,6 +10,8 @@ import { GalleryImageSuggestModal } from './GalleryImageSuggestModal';
 import { GroupSuggestModal } from './GroupSuggestModal';
 import { PromptModal } from './ui/PromptModal';
 import { getWhitelistKeys } from '../yaml/EntitySections';
+import { TemplatePickerModal } from './TemplatePickerModal';
+import { Template } from '../templates/TemplateTypes';
 
 export type ChapterModalSubmitCallback = (ch: Chapter) => Promise<void>;
 export type ChapterModalDeleteCallback = (ch: Chapter) => Promise<void>;
@@ -35,6 +37,29 @@ export class ChapterModal extends Modal {
         const { contentEl } = this;
         contentEl.empty();
         contentEl.createEl('h2', { text: this.isNew ? t('createNewChapter') : `${t('editChapter')} ${this.chapter.name}` });
+
+        // --- Template Selector (for new chapters) ---
+        if (this.isNew) {
+            new Setting(contentEl)
+                .setName('Start from Template')
+                .setDesc('Optionally start with a pre-configured chapter template')
+                .addButton(button => button
+                    .setButtonText('Choose Template')
+                    .setTooltip('Select a chapter template')
+                    .onClick(() => {
+                        new TemplatePickerModal(
+                            this.app,
+                            this.plugin,
+                            async (template: Template) => {
+                                await this.applyTemplateToChapter(template);
+                                this.refresh();
+                                new Notice(`Template "${template.name}" applied`);
+                            },
+                            'chapter'
+                        ).open();
+                    })
+                );
+        }
 
         new Setting(contentEl)
             .setName(t('name'))
@@ -316,6 +341,32 @@ export class ChapterModal extends Modal {
                     }
                 });
         });
+    }
+
+    private async applyTemplateToChapter(template: Template): Promise<void> {
+        if (!template.entities.chapters || template.entities.chapters.length === 0) {
+            new Notice('This template does not contain any chapters');
+            return;
+        }
+
+        const templateChapter = template.entities.chapters[0];
+
+        Object.keys(templateChapter).forEach(key => {
+            if (key !== 'templateId' && key !== 'id' && key !== 'filePath') {
+                (this.chapter as any)[key] = (templateChapter as any)[key];
+            }
+        });
+
+        // Clear relationships as they reference template entities
+        this.chapter.linkedCharacters = [];
+        this.chapter.linkedLocations = [];
+        this.chapter.linkedEvents = [];
+        this.chapter.linkedItems = [];
+        this.chapter.linkedGroups = [];
+    }
+
+    private refresh(): void {
+        this.onOpen();
     }
 
     onClose(): void { this.contentEl.empty(); }

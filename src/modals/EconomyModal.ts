@@ -3,6 +3,8 @@ import type { Economy } from '../types';
 import type StorytellerSuitePlugin from '../main';
 import { ResponsiveModal } from './ResponsiveModal';
 import { GalleryImageSuggestModal } from './GalleryImageSuggestModal';
+import { TemplatePickerModal } from './TemplatePickerModal';
+import { Template } from '../templates/TemplateTypes';
 
 export type EconomyModalSubmitCallback = (economy: Economy) => Promise<void>;
 export type EconomyModalDeleteCallback = (economy: Economy) => Promise<void>;
@@ -69,6 +71,29 @@ export class EconomyModal extends ResponsiveModal {
         contentEl.createEl('h2', {
             text: this.isNew ? 'Create Economy' : `Edit Economy: ${this.economy.name}`
         });
+
+        // --- Template Selector (for new economies) ---
+        if (this.isNew) {
+            new Setting(contentEl)
+                .setName('Start from Template')
+                .setDesc('Optionally start with a pre-configured economy template')
+                .addButton(button => button
+                    .setButtonText('Choose Template')
+                    .setTooltip('Select an economy template')
+                    .onClick(() => {
+                        new TemplatePickerModal(
+                            this.app,
+                            this.plugin,
+                            async (template: Template) => {
+                                await this.applyTemplateToEconomy(template);
+                                this.refresh();
+                                new Notice(`Template "${template.name}" applied`);
+                            },
+                            'economy'
+                        ).open();
+                    })
+                );
+        }
 
         // Name (Required)
         new Setting(contentEl)
@@ -213,6 +238,33 @@ export class EconomyModal extends ResponsiveModal {
                 })
             );
         }
+    }
+
+    private async applyTemplateToEconomy(template: Template): Promise<void> {
+        if (!template.entities.economies || template.entities.economies.length === 0) {
+            new Notice('This template does not contain any economies');
+            return;
+        }
+
+        const templateEconomy = template.entities.economies[0];
+
+        Object.keys(templateEconomy).forEach(key => {
+            if (key !== 'templateId' && key !== 'id' && key !== 'filePath') {
+                (this.economy as any)[key] = (templateEconomy as any)[key];
+            }
+        });
+
+        // Clear relationships as they reference template entities
+        this.economy.linkedLocations = [];
+        this.economy.linkedFactions = [];
+        this.economy.linkedCultures = [];
+        this.economy.linkedEvents = [];
+        this.economy.groups = [];
+        this.economy.connections = [];
+    }
+
+    private refresh(): void {
+        this.onOpen();
     }
 
     onClose(): void {
