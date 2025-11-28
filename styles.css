@@ -375,21 +375,33 @@ If your plugin does not need CSS, delete this file.
     left: 0;
     right: 0;
     bottom: 0;
-    width: 100vw;
+    /* Use 100% instead of 100vh/100vw to avoid mobile viewport issues */
+    width: 100%;
+    height: 100%;
+    /* Fallback for older browsers, then modern dynamic viewport units for mobile */
     height: 100vh;
+    height: 100dvh; /* Dynamic viewport height - accounts for mobile browser UI */
     max-width: none;
     max-height: none;
     border-radius: 0;
     margin: 0;
     padding: 0;
     transform: none;
+    /* Ensure content is contained and scrollable */
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
 }
 
 .storyteller-modal.mobile-fullscreen .modal-content {
-    height: 100%;
+    flex: 1 1 auto;
     overflow-y: auto;
+    overflow-x: hidden;
     -webkit-overflow-scrolling: touch;
+    /* Account for device safe areas (notches, rounded corners) */
     padding: env(safe-area-inset-top, 0) 1rem env(safe-area-inset-bottom, 0) 1rem;
+    /* Ensure minimum height for content visibility */
+    min-height: 0;
 }
 
 /* Mobile-optimized settings */
@@ -450,8 +462,15 @@ If your plugin does not need CSS, delete this file.
     background-color: var(--background-primary);
     border-top: 1px solid var(--background-modifier-border);
     padding: 1rem;
+    padding-bottom: calc(1rem + env(safe-area-inset-bottom, 0)); /* Account for device safe areas */
     margin: 1rem -1rem -1rem -1rem;
     gap: 0.75rem;
+    z-index: var(--sts-z-sticky, 200);
+    /* Ensure button bar is always visible */
+    flex-shrink: 0;
+    /* Prevent content from pushing it off-screen */
+    align-self: flex-end;
+    width: 100%;
 }
 
 .vertical-button-bar {
@@ -548,14 +567,20 @@ If your plugin does not need CSS, delete this file.
         left: 0;
         right: 0;
         bottom: 0;
-        width: 100vw;
+        /* Use 100% and dynamic viewport units for better mobile compatibility */
+        width: 100%;
+        height: 100%;
         height: 100vh;
+        height: 100dvh; /* Dynamic viewport height - better for mobile */
         max-width: none;
         max-height: none;
         border-radius: 0;
         margin: 0;
         padding: 0;
         transform: none;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
     }
     
     /* Mobile dashboard optimizations */
@@ -722,10 +747,120 @@ If your plugin does not need CSS, delete this file.
 
 @media (min-width: 1025px) {
     /* Desktop styles - keep existing behavior */
-    
+
     .entity-grid {
         grid-template-columns: repeat(3, 1fr);
     }
+}
+
+/* =================================================================
+   ORIENTATION-SPECIFIC MOBILE STYLES
+   ================================================================= */
+
+/* Portrait orientation optimizations for tablets */
+@media (max-width: 768px) and (orientation: portrait) {
+    /* In portrait, prioritize vertical scrolling */
+    .storyteller-modal.mobile-fullscreen .modal-content {
+        padding-left: 0.75rem;
+        padding-right: 0.75rem;
+    }
+
+    /* Ensure button bars don't overlap content */
+    .mobile-button-bar {
+        padding: 0.75rem;
+        padding-bottom: calc(0.75rem + env(safe-area-inset-bottom, 0));
+    }
+
+    /* Make horizontal button bars stack in narrow portrait */
+    .horizontal-button-bar {
+        flex-direction: column;
+    }
+
+    .horizontal-button-bar .mobile-button {
+        width: 100%;
+        margin: 0.25rem 0;
+    }
+
+    /* Reduce map height in portrait to keep controls visible */
+    .storyteller-map-container {
+        max-height: 40vh;
+        max-height: 40dvh;
+    }
+}
+
+/* Landscape orientation optimizations for tablets */
+@media (max-width: 1024px) and (orientation: landscape) {
+    /* In landscape, we have more horizontal space */
+    .horizontal-button-bar {
+        flex-direction: row;
+    }
+
+    /* Maps can be taller in landscape */
+    .storyteller-map-container {
+        max-height: 60vh;
+        max-height: 60dvh;
+    }
+}
+
+/* =================================================================
+   STYLUS & S PEN SUPPORT
+   ================================================================= */
+
+/* Improve touch/stylus interaction for all interactive elements */
+.storyteller-modal,
+.storyteller-modal button,
+.storyteller-modal input,
+.storyteller-modal select,
+.storyteller-modal textarea,
+.mobile-button,
+.storyteller-tab-header,
+.setting-item-control {
+    /* Allow both touch and stylus interactions */
+    touch-action: manipulation;
+    /* Disable browser's double-tap zoom for precise stylus control */
+}
+
+/* Map containers need special touch handling for pan/zoom */
+.storyteller-map-container {
+    /* Allow pinch-zoom and panning with touch/stylus */
+    touch-action: pan-x pan-y pinch-zoom;
+}
+
+/* Better pointer support for different input methods */
+@media (pointer: coarse) {
+    /* Touch/stylus on tablets - increase touch targets */
+    .mobile-button,
+    .storyteller-tab-header,
+    button {
+        min-height: 48px; /* Larger touch targets */
+        min-width: 48px;
+    }
+}
+
+@media (pointer: fine) {
+    /* Mouse or precise stylus - allow smaller targets */
+    .mobile-button,
+    button {
+        min-height: 36px;
+        min-width: 36px;
+    }
+}
+
+/* Support for hover-capable styluses (S Pen Air Actions) */
+@media (hover: hover) and (pointer: fine) {
+    .mobile-button:hover,
+    button:hover {
+        opacity: 0.8;
+        transition: opacity 0.2s ease;
+    }
+}
+
+/* Prevent accidental text selection when using stylus for UI interaction */
+.mobile-button-bar,
+.storyteller-tab-header,
+.modal-button-container {
+    -webkit-user-select: none;
+    user-select: none;
 }
 
 /* =================================================================
