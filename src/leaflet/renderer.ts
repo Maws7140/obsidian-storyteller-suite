@@ -538,6 +538,21 @@ export class LeafletRenderer {
     }
 
     /**
+     * Invalidate map size - forces Leaflet to recalculate dimensions
+     * Called when device orientation changes or container is resized
+     */
+    invalidateSize(): void {
+        if (this.map) {
+            // Small delay to ensure DOM has updated after orientation change
+            setTimeout(() => {
+                if (this.map) {
+                    this.map.invalidateSize();
+                }
+            }, 100);
+        }
+    }
+
+    /**
      * Destroy the map and cleanup
      */
     destroy(): void {
