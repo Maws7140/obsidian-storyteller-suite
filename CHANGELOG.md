@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.4.7
+
+_Release notes to be added_
+
 ## 1.4.0
 
 ### Timeline Gantt-Style Enhancements

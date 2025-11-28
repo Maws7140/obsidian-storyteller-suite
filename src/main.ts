@@ -353,6 +353,10 @@ export default class StorytellerSuitePlugin extends Plugin {
     trackManager: TimelineTrackManager;
     eraManager: EraManager;
 
+    // Mobile/tablet orientation and resize handlers
+    private orientationChangeHandler: (() => void) | null = null;
+    private resizeHandler: (() => void) | null = null;
+
     /** Sanitize the one-story base folder so it is vault-relative and never a leading slash. */
     private sanitizeBaseFolderPath(input?: string): string {
         if (!input) return '';
@@ -657,13 +661,16 @@ export default class StorytellerSuitePlugin extends Plugin {
 		this.app.workspace.onLayoutReady(async () => {
 			await this.discoverExistingStories();
 			await this.initializeOneStoryModeIfNeeded();
-			
+
 			// Run migration for typed relationships (only runs once)
 			if (!this.settings.relationshipsMigrated) {
 				await this.migrateRelationshipsToTyped();
 				this.settings.relationshipsMigrated = true;
 				await this.saveSettings();
 			}
+
+			// Set up mobile/tablet orientation and resize handlers
+			this.setupMobileOrientationHandlers();
 		});
 	}
 
@@ -973,15 +980,31 @@ export default class StorytellerSuitePlugin extends Plugin {
 	/**
 	 * Plugin cleanup - called when the plugin is unloaded
 	 * Obsidian automatically handles view cleanup
+	 * Each cleanup operation is wrapped in try-catch to ensure all cleanups run
 	 */
 	onunload() {
 		// Manual cleanup not needed - Obsidian handles view management
 		// Clean up mobile platform classes to prevent class leakage
-		this.removeMobilePlatformClasses();
+		try {
+			this.removeMobilePlatformClasses();
+		} catch (error) {
+			console.error('Storyteller Suite: Error removing mobile classes during unload', error);
+		}
+
+		// Cleanup orientation and resize handlers
+		try {
+			this.cleanupMobileOrientationHandlers();
+		} catch (error) {
+			console.error('Storyteller Suite: Error cleaning up orientation handlers', error);
+		}
 
 		// Cleanup all active maps
-		if (this.leafletProcessor) {
-			this.leafletProcessor.cleanup();
+		try {
+			if (this.leafletProcessor) {
+				this.leafletProcessor.cleanup();
+			}
+		} catch (error) {
+			console.error('Storyteller Suite: Error cleaning up Leaflet maps', error);
 		}
 	}
 
@@ -4723,8 +4746,83 @@ export default class StorytellerSuitePlugin extends Plugin {
 			return;
 		}
 
-		// Remove all platform-specific classes
-		body.classList.remove('is-mobile', 'is-ios', 'is-android', 'is-desktop', 'storyteller-mobile-enabled');
+		try {
+			// Only remove Storyteller Suite specific class
+			// Leave platform classes (is-mobile, is-ios, etc.) as they may be used by Obsidian core or other plugins
+			if (body.classList.contains('storyteller-mobile-enabled')) {
+				body.classList.remove('storyteller-mobile-enabled');
+			}
+		} catch (error) {
+			// Silently fail to prevent plugin unload from being blocked
+			console.error('Storyteller Suite: Error removing mobile classes', error);
+		}
+	}
+
+	/**
+	 * Sets up orientation change and resize event listeners for mobile/tablet devices
+	 * This ensures maps and modals properly resize when device orientation changes
+	 */
+	private setupMobileOrientationHandlers(): void {
+		// Only set up handlers on mobile/tablet devices
+		if (!PlatformUtils.isMobile()) {
+			return;
+		}
+
+		// Create handler for orientation changes and window resize
+		const handleOrientationChange = () => {
+			// Invalidate all Leaflet map sizes to force recalculation
+			if (this.leafletProcessor) {
+				this.leafletProcessor.invalidateAllMapSizes();
+			}
+
+			// Trigger a layout recalculation for open views
+			this.app.workspace.getLeavesOfType(VIEW_TYPE_TIMELINE).forEach(leaf => {
+				if (leaf.view instanceof TimelineView) {
+					// Timeline view may need to redraw after orientation change
+					leaf.view.refresh();
+				}
+			});
+
+			// Force reflow to apply new CSS media query styles
+			document.body.offsetHeight; // eslint-disable-line @typescript-eslint/no-unused-expressions
+		};
+
+		// Debounced resize handler to avoid excessive recalculations
+		let resizeTimeout: NodeJS.Timeout | null = null;
+		const handleResize = () => {
+			if (resizeTimeout) {
+				clearTimeout(resizeTimeout);
+			}
+			resizeTimeout = setTimeout(() => {
+				handleOrientationChange();
+			}, 150); // 150ms debounce
+		};
+
+		// Store handlers for cleanup
+		this.orientationChangeHandler = handleOrientationChange;
+		this.resizeHandler = handleResize;
+
+		// Listen for orientation changes (mobile/tablet specific)
+		window.addEventListener('orientationchange', this.orientationChangeHandler);
+
+		// Also listen for window resize (works on all devices, including tablets in split-screen)
+		window.addEventListener('resize', this.resizeHandler);
+	}
+
+	/**
+	 * Removes orientation change and resize event listeners
+	 * Called during plugin cleanup
+	 */
+	private cleanupMobileOrientationHandlers(): void {
+		if (this.orientationChangeHandler) {
+			window.removeEventListener('orientationchange', this.orientationChangeHandler);
+			this.orientationChangeHandler = null;
+		}
+
+		if (this.resizeHandler) {
+			window.removeEventListener('resize', this.resizeHandler);
+			this.resizeHandler = null;
+		}
 	}
 }
 
