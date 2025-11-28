@@ -186,6 +186,17 @@ export class LeafletCodeBlockProcessor {
     }
 
     /**
+     * Invalidate all active map sizes
+     * Called when device orientation changes or window is resized
+     * Forces Leaflet to recalculate map dimensions
+     */
+    invalidateAllMapSizes(): void {
+        for (const renderer of this.activeMaps.values()) {
+            renderer.invalidateSize();
+        }
+    }
+
+    /**
      * Cleanup all maps
      */
     cleanup(): void {
