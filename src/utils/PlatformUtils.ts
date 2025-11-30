@@ -115,39 +115,36 @@ export class PlatformUtils {
 
     /**
      * Checks if the current screen is likely a tablet vs phone
-     * This is a heuristic based on actual viewport dimensions and pixel density
+     * This is a heuristic based on viewport dimensions, working in both portrait and landscape
      * @returns true if screen appears to be tablet-sized
      */
     static isTablet(): boolean {
         if (!this.isMobile()) return false;
-        
-        // Get actual viewport dimensions accounting for device pixel ratio
-        const actualWidth = window.innerWidth * (window.devicePixelRatio || 1);
-        const actualHeight = window.innerHeight * (window.devicePixelRatio || 1);
-        const minDimension = Math.min(actualWidth, actualHeight);
-        const maxDimension = Math.max(actualWidth, actualHeight);
-        
-        // Adjust threshold based on pixel density - higher DPI devices need higher thresholds
-        const pixelRatio = window.devicePixelRatio || 1;
-        const baseThreshold = 768;
-        const adjustedThreshold = baseThreshold * Math.max(1, pixelRatio * 0.8);
-        
-        // Tablet if minimum dimension exceeds adjusted threshold
-        const sizeCheck = minDimension > adjustedThreshold;
-        
-        // Refined aspect ratio check - tablets typically have more square-like ratios
-        // Most phones have aspect ratios > 1.8, tablets are usually between 1.2-1.7
-        const aspectRatio = maxDimension / minDimension;
-        const aspectCheck = aspectRatio >= 1.2 && aspectRatio <= 1.8;
-        
-        // Also check for common tablet breakpoints (in CSS pixels)
+
+        // Use CSS pixels directly - more reliable across orientations
         const cssWidth = window.innerWidth;
         const cssHeight = window.innerHeight;
-        const cssMinDimension = Math.min(cssWidth, cssHeight);
-        const commonTabletCheck = cssMinDimension >= 600; // Common tablet breakpoint
-        
-        // Consider it a tablet if it passes size check AND (aspect ratio check OR common breakpoint)
-        return sizeCheck && (aspectCheck || commonTabletCheck);
+
+        // Tablets have minimum dimension >= 600px in CSS pixels
+        const minDimension = Math.min(cssWidth, cssHeight);
+        const maxDimension = Math.max(cssWidth, cssHeight);
+
+        // Screen diagonal approximation (rough tablet detection)
+        // This works regardless of orientation
+        const diagonal = Math.sqrt(cssWidth * cssWidth + cssHeight * cssHeight);
+
+        // Tablet thresholds:
+        // - Min dimension >= 600px (common tablet breakpoint - Google Material Design)
+        // - OR diagonal >= 900px (catches larger tablets like Galaxy Tab S7 FE)
+        const isTabletSize = minDimension >= 600 || diagonal >= 900;
+
+        // Aspect ratio check (tablets are typically 4:3 to 16:10)
+        // This works regardless of orientation
+        // Expanded range: 1.3 to 2.0 to accommodate different tablet formats
+        const aspectRatio = maxDimension / minDimension;
+        const isTabletAspect = aspectRatio >= 1.3 && aspectRatio <= 2.0;
+
+        return isTabletSize && isTabletAspect;
     }
 
     /**

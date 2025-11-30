@@ -754,6 +754,84 @@ If your plugin does not need CSS, delete this file.
 }
 
 /* =================================================================
+   DASHBOARD MODAL RESPONSIVE FIXES (Mobile/Tablet)
+   ================================================================= */
+
+/* Dashboard Modal Container - prevent overflow */
+.storyteller-dashboard-modal {
+    max-height: 90vh;
+    overflow-y: auto;
+}
+
+.storyteller-dashboard-modal .modal-content {
+    overflow-x: hidden;
+}
+
+/* Tab Container with proper scrolling and wrapping */
+.storyteller-tab-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 8px;
+    max-height: 40vh;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    /* Smooth scrolling on mobile */
+    scroll-behavior: smooth;
+    /* Prevent horizontal overflow */
+    overflow-x: hidden;
+}
+
+/* Tab Buttons - proper sizing for touch */
+.storyteller-tab-button {
+    min-width: 80px;
+    min-height: var(--sts-touch-target, 44px);
+    padding: 8px 12px;
+    white-space: nowrap;
+    border-radius: 8px;
+    border: 1px solid var(--background-modifier-border);
+    background-color: var(--background-primary);
+    color: var(--text-normal);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-size: var(--font-ui-small);
+    font-weight: 500;
+    /* Touch interaction improvements */
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.storyteller-tab-button:hover {
+    background-color: var(--background-modifier-hover);
+    border-color: var(--interactive-accent);
+}
+
+.storyteller-tab-button.is-active {
+    background-color: var(--interactive-accent);
+    color: var(--text-on-accent);
+    border-color: var(--interactive-accent);
+    font-weight: 600;
+}
+
+/* Content Container */
+.storyteller-content-container {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 1rem;
+}
+
+/* Android-specific touch improvements */
+.is-android .storyteller-tab-container {
+    touch-action: pan-y;
+}
+
+.is-android .storyteller-dashboard-modal {
+    /* Better scroll performance on Android */
+    will-change: scroll-position;
+}
+
+/* =================================================================
    ORIENTATION-SPECIFIC MOBILE STYLES
    ================================================================= */
 
@@ -785,6 +863,36 @@ If your plugin does not need CSS, delete this file.
     .storyteller-map-container {
         max-height: 40vh;
         max-height: 40dvh;
+    }
+
+    /* Dashboard-specific portrait fixes */
+    .storyteller-dashboard-modal {
+        max-width: 95vw;
+    }
+
+    .storyteller-tab-container {
+        max-height: 35vh;
+        /* Ensure tabs wrap in portrait */
+        flex-wrap: wrap !important;
+    }
+}
+
+/* Tablet-specific portrait mode improvements */
+@media (min-width: 600px) and (max-width: 1024px) and (orientation: portrait) {
+    /* Tablets in portrait - optimize for larger screens but vertical layout */
+    .tablet-optimized.is-mobile .storyteller-dashboard-modal {
+        padding: 12px;
+        max-width: 90vw;
+    }
+
+    .tablet-optimized.is-mobile .storyteller-tab-container {
+        max-height: 30vh;
+        padding: 12px;
+    }
+
+    .tablet-optimized.is-mobile .storyteller-tab-button {
+        min-width: 100px;
+        padding: 10px 16px;
     }
 }
 
