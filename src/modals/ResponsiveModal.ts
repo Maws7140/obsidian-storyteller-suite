@@ -40,6 +40,43 @@ export abstract class ResponsiveModal extends Modal {
         if (PlatformUtils.isTablet()) {
             this.modalEl.addClass('tablet-optimized');
         }
+
+        // Set up pointer event handlers for stylus support (S-Pen, Apple Pencil, etc.)
+        this.setupPointerEvents();
+    }
+
+    /**
+     * Sets up pointer event handlers for stylus support
+     * Handles both touch and stylus input (S-Pen, Apple Pencil, etc.)
+     */
+    private setupPointerEvents(): void {
+        if (!PlatformUtils.isMobile()) return;
+
+        // Handle pointer down for stylus-specific interactions
+        this.modalEl.addEventListener('pointerdown', (evt: PointerEvent) => {
+            // Check if this is a stylus/pen input
+            if (evt.pointerType === 'pen') {
+                // Trigger lighter haptic feedback for stylus
+                this.triggerHapticFeedback('light');
+            }
+        });
+
+        // Handle pointer move for stylus hover states (S-Pen supports hover)
+        this.modalEl.addEventListener('pointermove', (evt: PointerEvent) => {
+            if (evt.pointerType === 'pen') {
+                // Stylus is hovering - we could add visual feedback here if needed
+                // S-Pen supports hover detection without contact
+            }
+        });
+
+        // Prevent default touch behaviors that might interfere with stylus
+        this.modalEl.addEventListener('touchstart', (evt: TouchEvent) => {
+            // Allow stylus to work smoothly
+            if (evt.touches.length === 1) {
+                // Single touch/stylus - don't prevent default to allow native behavior
+                return;
+            }
+        }, { passive: true });
     }
 
     /**
