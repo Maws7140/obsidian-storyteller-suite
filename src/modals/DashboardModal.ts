@@ -7,6 +7,9 @@ import { PlatformUtils } from '../utils/PlatformUtils';
 
 export class DashboardModal extends ResponsiveModal {
     plugin: StorytellerSuitePlugin;
+    private currentTab: string = 'characters';
+    private tabContainer: HTMLElement;
+    private contentContainer: HTMLElement;
 
     constructor(app: App, plugin: StorytellerSuitePlugin) {
         super(app);
@@ -16,12 +19,83 @@ export class DashboardModal extends ResponsiveModal {
 
     onOpen() {
         super.onOpen(); // Call ResponsiveModal's mobile optimizations
-        
+
         const { contentEl } = this;
         contentEl.empty();
+
+        // Create header
         contentEl.createEl('h2', { text: t('dashboardTitle') });
 
-        new Setting(contentEl)
+        // Create scrollable tab container
+        this.tabContainer = contentEl.createEl('div', {
+            cls: 'storyteller-tab-container'
+        });
+
+        // Create content container
+        this.contentContainer = contentEl.createEl('div', {
+            cls: 'storyteller-content-container'
+        });
+
+        // Define tabs with icons
+        const tabs = [
+            { id: 'characters', label: t('characters'), icon: '👤' },
+            { id: 'locations', label: t('locations'), icon: '📍' },
+            { id: 'events', label: t('events'), icon: '📅' },
+            { id: 'gallery', label: t('gallery'), icon: '🖼️' }
+        ];
+
+        // Create tab buttons
+        tabs.forEach(tab => {
+            const tabBtn = this.tabContainer.createEl('button', {
+                cls: 'storyteller-tab-button',
+                text: `${tab.icon} ${tab.label}`
+            });
+
+            // Mark first tab as active
+            if (tab.id === this.currentTab) {
+                tabBtn.addClass('is-active');
+            }
+
+            tabBtn.addEventListener('click', () => {
+                this.switchToTab(tab.id);
+
+                // Update active states
+                this.tabContainer.querySelectorAll('.storyteller-tab-button').forEach(btn => {
+                    btn.removeClass('is-active');
+                });
+                tabBtn.addClass('is-active');
+
+                // Trigger haptic feedback on mobile
+                this.triggerHapticFeedback('light');
+            });
+        });
+
+        // Load first tab by default
+        this.switchToTab(this.currentTab);
+    }
+
+    private switchToTab(tabId: string) {
+        this.currentTab = tabId;
+        this.contentContainer.empty();
+
+        switch (tabId) {
+            case 'characters':
+                this.renderCharactersTab();
+                break;
+            case 'locations':
+                this.renderLocationsTab();
+                break;
+            case 'events':
+                this.renderEventsTab();
+                break;
+            case 'gallery':
+                this.renderGalleryTab();
+                break;
+        }
+    }
+
+    private renderCharactersTab() {
+        new Setting(this.contentContainer)
             .setName(t('characters'))
             .setDesc(t('manageCharactersDesc'))
             .addButton(button => button
@@ -42,8 +116,10 @@ export class DashboardModal extends ResponsiveModal {
                         new Notice(t('noteCreatedWithSections'));
                     }).open();
                 }));
+    }
 
-        new Setting(contentEl)
+    private renderLocationsTab() {
+        new Setting(this.contentContainer)
             .setName(t('locations'))
             .setDesc(t('manageLocationsDesc'))
             .addButton(button => button
@@ -64,8 +140,10 @@ export class DashboardModal extends ResponsiveModal {
                         new Notice(t('noteCreatedWithSections'));
                     }).open();
                 }));
+    }
 
-        new Setting(contentEl)
+    private renderEventsTab() {
+        new Setting(this.contentContainer)
             .setName(t('events'))
             .setDesc(t('manageEventsDesc'))
             .addButton(button => button
@@ -86,26 +164,10 @@ export class DashboardModal extends ResponsiveModal {
                         new Notice(t('noteCreatedWithSections'));
                     }).open();
                 }));
+    }
 
-        // TODO: Maps feature - to be reimplemented
-        // new Setting(contentEl)
-        //     .setName('Maps')
-        //     .setDesc('Create and manage interactive maps for your story')
-        //     .addButton(button => button
-        //         .setButtonText('View Maps')
-        //         .setCta()
-        //         .onClick(async () => {
-        //             this.close();
-        //             // Maps feature to be implemented
-        //         }))
-        //     .addButton(button => button
-        //         .setButtonText(t('createNew'))
-        //         .onClick(async () => {
-        //             this.close();
-        //             // Maps feature to be implemented
-        //         }));
-
-        new Setting(contentEl)
+    private renderGalleryTab() {
+        new Setting(this.contentContainer)
             .setName(t('gallery'))
             .setDesc(t('manageImagesDesc'))
             .addButton(button => button
@@ -115,8 +177,6 @@ export class DashboardModal extends ResponsiveModal {
                     this.close();
                     new (await import('./GalleryModal')).GalleryModal(this.app, this.plugin).open();
                 }));
-            // Add Image button might be better suited inside the gallery view itself
-
     }
 
     onClose() {
