@@ -44,7 +44,7 @@ export class MagicSystemListModal extends Modal {
     onOpen() {
         const { contentEl } = this;
         contentEl.empty();
-        contentEl.createEl('h2', { text: 'Magic Systems' });
+        contentEl.createEl('h2', { text: t('magicSystems') });
 
         // Create container for the magic system list (stored for filtering)
         this.listContainer = contentEl.createDiv('storyteller-list-container');
@@ -53,7 +53,7 @@ export class MagicSystemListModal extends Modal {
         const searchInput = new Setting(contentEl)
             .setName(t('search'))
             .addText(text => {
-                text.setPlaceholder('Search magic systems...')
+                text.setPlaceholder(t('searchMagicSystems'))
                     .onChange(value => this.renderList(value.toLowerCase(), this.listContainer));
             });
 
@@ -65,7 +65,7 @@ export class MagicSystemListModal extends Modal {
             .addButton(button => {
                 const hasActiveStory = !!this.plugin.getActiveStory();
                 button
-                    .setButtonText('Create Magic System')
+                    .setButtonText(t('createMagicSystem'))
                     .setCta()
                     .onClick(() => {
                         if (!this.plugin.getActiveStory()) {
@@ -75,7 +75,7 @@ export class MagicSystemListModal extends Modal {
                         this.close();
                         new MagicSystemModal(this.app, this.plugin, null, async (magicSystemData: MagicSystem) => {
                             await this.plugin.saveMagicSystem(magicSystemData);
-                            new Notice(`Magic System "${magicSystemData.name}" created.`);
+                            new Notice(t('magicSystemCreated', magicSystemData.name));
                             new Notice(t('noteCreatedWithSections'));
                         }).open();
                     });
@@ -104,7 +104,7 @@ export class MagicSystemListModal extends Modal {
 
         // Handle empty results
         if (filteredMagicSystems.length === 0) {
-            container.createEl('p', { text: 'No magic systems found' + (filter ? ' matching filter' : '') });
+            container.createEl('p', { text: t('noMagicSystemsFound') + (filter ? t('matchingFilter') : '') });
             return;
         }
 
@@ -143,7 +143,7 @@ export class MagicSystemListModal extends Modal {
                     this.close(); // Close list modal
                     new MagicSystemModal(this.app, this.plugin, magicSystem, async (updatedData: MagicSystem) => {
                         await this.plugin.saveMagicSystem(updatedData);
-                        new Notice(`Magic System "${updatedData.name}" updated.`);
+                        new Notice(t('magicSystemUpdated', updatedData.name));
                         // Could optionally reopen list modal
                     }).open();
                 });
@@ -155,14 +155,14 @@ export class MagicSystemListModal extends Modal {
                 .setClass('mod-warning') // Visual warning styling
                 .onClick(async () => {
                     // Simple confirmation dialog
-                    if (confirm(`Delete magic system "${magicSystem.name}"? (Moved to trash)`)) {
+                    if (confirm(t('confirmDeleteMagicSystem', magicSystem.name))) {
                         if (magicSystem.filePath) {
                             await this.plugin.deleteMagicSystem(magicSystem.filePath);
                             // Update local magic system list and re-render
                             this.magicSystems = this.magicSystems.filter(m => m.filePath !== magicSystem.filePath);
                             this.renderList(filter, container);
                         } else {
-                            new Notice(`Cannot delete magic system without file path.`);
+                            new Notice(t('cannotDeleteWithoutPath'));
                         }
                     }
                 });
@@ -173,7 +173,7 @@ export class MagicSystemListModal extends Modal {
                 .setTooltip(t('openNote'))
                 .onClick(() => {
                     if (!magicSystem.filePath) {
-                        new Notice(`Cannot open note without file path.`);
+                        new Notice(t('cannotOpenWithoutPath'));
                         return;
                     }
 

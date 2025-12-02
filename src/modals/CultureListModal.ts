@@ -44,7 +44,7 @@ export class CultureListModal extends Modal {
     onOpen() {
         const { contentEl } = this;
         contentEl.empty();
-        contentEl.createEl('h2', { text: 'Cultures' });
+        contentEl.createEl('h2', { text: t('cultures') });
 
         // Create container for the culture list (stored for filtering)
         this.listContainer = contentEl.createDiv('storyteller-list-container');
@@ -53,7 +53,7 @@ export class CultureListModal extends Modal {
         const searchInput = new Setting(contentEl)
             .setName(t('search'))
             .addText(text => {
-                text.setPlaceholder('Search cultures...')
+                text.setPlaceholder(t('searchCultures'))
                     .onChange(value => this.renderList(value.toLowerCase(), this.listContainer));
             });
 
@@ -65,7 +65,7 @@ export class CultureListModal extends Modal {
             .addButton(button => {
                 const hasActiveStory = !!this.plugin.getActiveStory();
                 button
-                    .setButtonText('Create Culture')
+                    .setButtonText(t('createCulture'))
                     .setCta()
                     .onClick(() => {
                         if (!this.plugin.getActiveStory()) {
@@ -75,7 +75,7 @@ export class CultureListModal extends Modal {
                         this.close();
                         new CultureModal(this.app, this.plugin, null, async (cultureData: Culture) => {
                             await this.plugin.saveCulture(cultureData);
-                            new Notice(`Culture "${cultureData.name}" created.`);
+                            new Notice(t('cultureCreated', cultureData.name));
                             new Notice(t('noteCreatedWithSections'));
                         }).open();
                     });
@@ -104,7 +104,7 @@ export class CultureListModal extends Modal {
 
         // Handle empty results
         if (filteredCultures.length === 0) {
-            container.createEl('p', { text: 'No cultures found' + (filter ? ' matching filter' : '') });
+            container.createEl('p', { text: t('noCulturesFound') + (filter ? t('matchingFilter') : '') });
             return;
         }
 
@@ -143,7 +143,7 @@ export class CultureListModal extends Modal {
                     this.close(); // Close list modal
                     new CultureModal(this.app, this.plugin, culture, async (updatedData: Culture) => {
                         await this.plugin.saveCulture(updatedData);
-                        new Notice(`Culture "${updatedData.name}" updated.`);
+                        new Notice(t('cultureUpdated', updatedData.name));
                         // Could optionally reopen list modal
                     }).open();
                 });
@@ -155,14 +155,14 @@ export class CultureListModal extends Modal {
                 .setClass('mod-warning') // Visual warning styling
                 .onClick(async () => {
                     // Simple confirmation dialog
-                    if (confirm(`Delete culture "${culture.name}"? (Moved to trash)`)) {
+                    if (confirm(t('confirmDeleteCulture', culture.name))) {
                         if (culture.filePath) {
                             await this.plugin.deleteCulture(culture.filePath);
                             // Update local culture list and re-render
                             this.cultures = this.cultures.filter(c => c.filePath !== culture.filePath);
                             this.renderList(filter, container);
                         } else {
-                            new Notice(`Cannot delete culture without file path.`);
+                            new Notice(t('cannotDeleteWithoutPath'));
                         }
                     }
                 });
@@ -173,7 +173,7 @@ export class CultureListModal extends Modal {
                 .setTooltip(t('openNote'))
                 .onClick(() => {
                     if (!culture.filePath) {
-                        new Notice(`Cannot open note without file path.`);
+                        new Notice(t('cannotOpenWithoutPath'));
                         return;
                     }
 

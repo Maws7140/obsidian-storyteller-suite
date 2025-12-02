@@ -42,28 +42,28 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
 
         // --- Dashboard Tab Visibility ---
         new Setting(containerEl)
-            .setName('Dashboard Tab Visibility')
+            .setName(t('dashboardTabVisibility'))
             .setHeading();
 
         new Setting(containerEl)
-            .setDesc('Choose which tabs to show in the dashboard sidebar. Hidden tabs will not appear in the tab bar.');
+            .setDesc(t('dashboardTabVisibilityDesc'));
 
         // Define all available tabs with their display names
         const availableTabs = [
-            { id: 'characters', name: 'Characters' },
-            { id: 'locations', name: 'Locations' },
-            { id: 'events', name: 'Timeline/Events' },
-            { id: 'items', name: 'Plot Items' },
-            { id: 'network', name: 'Network Graph' },
-            { id: 'gallery', name: 'Gallery' },
-            { id: 'groups', name: 'Groups' },
-            { id: 'references', name: 'References' },
-            { id: 'chapters', name: 'Chapters' },
-            { id: 'scenes', name: 'Scenes' },
-            { id: 'cultures', name: 'Cultures' },
-            { id: 'economies', name: 'Economies' },
-            { id: 'magicsystems', name: 'Magic Systems' },
-            { id: 'templates', name: 'Templates' }
+            { id: 'characters', name: t('characters') },
+            { id: 'locations', name: t('locations') },
+            { id: 'events', name: t('timeline') },
+            { id: 'items', name: t('items') },
+            { id: 'network', name: t('networkGraph') },
+            { id: 'gallery', name: t('gallery') },
+            { id: 'groups', name: t('groups') },
+            { id: 'references', name: t('references') },
+            { id: 'chapters', name: t('chapters') },
+            { id: 'scenes', name: t('scenes') },
+            { id: 'cultures', name: t('cultures') },
+            { id: 'economies', name: t('economies') },
+            { id: 'magicsystems', name: t('magicSystems') },
+            { id: 'templates', name: t('templates') }
         ];
 
         // Create a toggle for each tab
@@ -75,7 +75,7 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                 .setName(tab.name)
                 .addToggle(toggle => toggle
                     .setValue(isVisible)
-                    .setTooltip(isVisible ? 'Tab is visible' : 'Tab is hidden')
+                    .setTooltip(isVisible ? t('tabIsVisible') : t('tabIsHidden'))
                     .onChange(async (value) => {
                         const hidden = this.plugin.settings.hiddenDashboardTabs || [];
 
@@ -90,7 +90,8 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                         }
 
                         await this.plugin.saveSettings();
-                        new Notice(`${tab.name} tab ${value ? 'shown' : 'hidden'}. Refresh the dashboard to see changes.`);
+                        const noticeText = value ? t('tabShown', tab.name) : t('tabHidden', tab.name);
+                        new Notice(noticeText + t('refreshDashboardToSeeChanges'));
                     })
                 );
         });
@@ -316,18 +317,18 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                 .onChange(async (v) => { this.plugin.settings.showTimelineLegend = v; await this.plugin.saveSettings(); }));
 
         // Gantt View Settings
-        containerEl.createEl('h3', { text: 'Gantt View Settings' });
+        containerEl.createEl('h3', { text: t('ganttViewSettings') });
 
         new Setting(containerEl)
-            .setName('Show progress bars in Gantt view')
-            .setDesc('Display progress bar overlays on Gantt bars to visualize event completion.')
+            .setName(t('showProgressBarsInGantt'))
+            .setDesc(t('showProgressBarsInGanttDesc'))
             .addToggle(t => t
                 .setValue(this.plugin.settings.ganttShowProgressBars ?? true)
                 .onChange(async (v) => { this.plugin.settings.ganttShowProgressBars = v; await this.plugin.saveSettings(); }));
 
         new Setting(containerEl)
-            .setName('Default Gantt duration (days)')
-            .setDesc('Default duration in days for events without an end date when shown in Gantt view.')
+            .setName(t('defaultGanttDuration'))
+            .setDesc(t('defaultGanttDurationDesc'))
             .addText(text => text
                 .setPlaceholder('1')
                 .setValue(String(this.plugin.settings.ganttDefaultDuration ?? 1))
@@ -340,12 +341,12 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                 }));
 
         new Setting(containerEl)
-            .setName('Dependency arrow style')
-            .setDesc('Visual style for dependency arrows between events in Gantt view.')
+            .setName(t('dependencyArrowStyle'))
+            .setDesc(t('dependencyArrowStyleDesc'))
             .addDropdown(dd => dd
-                .addOption('solid', 'Solid')
-                .addOption('dashed', 'Dashed')
-                .addOption('dotted', 'Dotted')
+                .addOption('solid', t('solid'))
+                .addOption('dashed', t('dashed'))
+                .addOption('dotted', t('dotted'))
                 .setValue(this.plugin.settings.ganttArrowStyle ?? 'solid')
                 .onChange(async (v: 'solid' | 'dashed' | 'dotted') => {
                     this.plugin.settings.ganttArrowStyle = v;
@@ -740,12 +741,12 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
 
         // --- Map Settings Section ---
         new Setting(containerEl)
-            .setName('Map Settings')
+            .setName(t('mapSettings'))
             .setHeading();
 
         new Setting(containerEl)
-            .setName('Enable frontmatter markers')
-            .setDesc('Auto-generate markers from notes with location or mapmarkers in frontmatter')
+            .setName(t('enableFrontmatterMarkers'))
+            .setDesc(t('enableFrontmatterMarkersDesc'))
             .addToggle(toggle => toggle
                 .setValue(!!this.plugin.settings.enableFrontmatterMarkers)
                 .onChange(async (value) => {
@@ -755,8 +756,8 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
             );
 
         new Setting(containerEl)
-            .setName('Enable DataView markers')
-            .setDesc('Auto-generate markers from DataView queries (requires DataView plugin)')
+            .setName(t('enableDataViewMarkers'))
+            .setDesc(t('enableDataViewMarkersDesc'))
             .addToggle(toggle => toggle
                 .setValue(!!this.plugin.settings.enableDataViewMarkers)
                 .onChange(async (value) => {
