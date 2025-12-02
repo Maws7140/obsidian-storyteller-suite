@@ -175,7 +175,7 @@ export class CultureModal extends ResponsiveModal {
         // Status
         new Setting(contentEl)
             .setName(t('status'))
-            .setDesc(t('status'))
+            .setDesc(t('cultureStatusDesc'))
             .addDropdown(dropdown => dropdown
                 .addOptions({
                     'thriving': t('thriving'),
@@ -215,7 +215,7 @@ export class CultureModal extends ResponsiveModal {
         // Description (Markdown Section)
         new Setting(contentEl)
             .setName(t('description'))
-            .setDesc(t('cultureNameDesc'))
+            .setDesc(t('cultureDescriptionDesc'))
             .setClass('storyteller-modal-setting-vertical')
             .addTextArea(text => {
                 text.setValue(this.culture.description || '')
@@ -263,7 +263,7 @@ export class CultureModal extends ResponsiveModal {
         // History (Markdown Section)
         new Setting(contentEl)
             .setName(t('history'))
-            .setDesc(t('history'))
+            .setDesc(t('cultureHistoryDesc'))
             .setClass('storyteller-modal-setting-vertical')
             .addTextArea(text => {
                 text.setValue(this.culture.history || '')

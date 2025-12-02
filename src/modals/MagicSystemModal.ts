@@ -195,7 +195,7 @@ export class MagicSystemModal extends ResponsiveModal {
         // Status
         new Setting(contentEl)
             .setName(t('status'))
-            .setDesc(t('status'))
+            .setDesc(t('magicSystemStatusDesc'))
             .addDropdown(dropdown => dropdown
                 .addOptions({
                     'active': t('active'),
@@ -212,7 +212,7 @@ export class MagicSystemModal extends ResponsiveModal {
         // Description (Markdown Section)
         new Setting(contentEl)
             .setName(t('description'))
-            .setDesc(t('magicSystemNameDesc'))
+            .setDesc(t('magicSystemDescriptionDesc'))
             .setClass('storyteller-modal-setting-vertical')
             .addTextArea(text => {
                 text.setValue(this.magicSystem.description || '')
@@ -284,7 +284,7 @@ export class MagicSystemModal extends ResponsiveModal {
         // History (Markdown Section)
         new Setting(contentEl)
             .setName(t('history'))
-            .setDesc(t('history'))
+            .setDesc(t('magicSystemHistoryDesc'))
             .setClass('storyteller-modal-setting-vertical')
             .addTextArea(text => {
                 text.setValue(this.magicSystem.history || '')
