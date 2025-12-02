@@ -81,7 +81,7 @@ import { EraManager } from './utils/EraManager';
     /** Whether to show the tutorial section in settings */
     showTutorial: boolean;
     /** UI language setting */
-    language: 'en' | 'zh';
+    language: string;
     /** When true, use user-provided folders instead of generated story folders */
     enableCustomEntityFolders?: boolean;
     /** Optional per-entity custom folders (used when enableCustomEntityFolders is true) */
