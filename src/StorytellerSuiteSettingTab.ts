@@ -3,7 +3,7 @@ import StorytellerSuitePlugin from './main';
 import { NewStoryModal } from './modals/NewStoryModal';
 import { EditStoryModal } from './modals/EditStoryModal';
 import { FolderSuggestModal } from './modals/FolderSuggestModal';
-import { setLocale, t } from './i18n/strings';
+import { setLocale, t, getAvailableLanguages, getLanguageName, isLanguageAvailable } from './i18n/strings';
 
 export class StorytellerSuiteSettingTab extends PluginSettingTab {
     plugin: StorytellerSuitePlugin;
@@ -28,16 +28,26 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
             .setName(t('language'))
             .setDesc(t('selectLanguage'))
             .addDropdown(dropdown => {
-                dropdown
-                    .addOption('en', t('english'))
-                    .addOption('zh', t('chinese'))
-                    .setValue(this.plugin.settings.language)
-                    .onChange(async (value) => {
-                        this.plugin.settings.language = value as 'en' | 'zh';
-                        await this.plugin.saveSettings();
-                        setLocale(value as 'en' | 'zh');
-                        new Notice(t('languageChanged'));
-                    });
+                // Add all available languages dynamically
+                const availableLanguages = getAvailableLanguages();
+                availableLanguages.forEach(lang => {
+                    dropdown.addOption(lang, getLanguageName(lang));
+                });
+                
+                // Set current value, defaulting to 'en' if current language is not available
+                const currentLang = isLanguageAvailable(this.plugin.settings.language) 
+                    ? this.plugin.settings.language 
+                    : 'en';
+                dropdown.setValue(currentLang);
+                
+                dropdown.onChange(async (value) => {
+                    this.plugin.settings.language = value;
+                    await this.plugin.saveSettings();
+                    setLocale(value);
+                    new Notice(t('languageChanged'));
+                    // Refresh the settings tab to show updated language
+                    this.display();
+                });
             });
 
         // --- Dashboard Tab Visibility ---
@@ -888,8 +898,8 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
         // Tutorial introduction
         const tutorialDesc = createDiv();
         tutorialDesc.innerHTML = `
-            <p><strong>Welcome to Storyteller Suite!</strong> This plugin helps you organize and manage all aspects of your stories. Here's how to get started:</p>
-            <p><em>Tip: Click any section below to expand detailed instructions and examples.</em></p>
+            <p><strong>${t('tutorialWelcome')}</strong> ${t('tutorialWelcomeDesc')}</p>
+            <p><em>${t('tutorialTip')}</em></p>
         `;
         tutorialDesc.style.marginBottom = '1em';
         tutorialDesc.style.padding = '0.75em';
@@ -899,245 +909,245 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
         containerEl.appendChild(tutorialDesc);
 
         // Collapsible sections for different topics
-        this.addTutorialCollapsible(containerEl, 'Dashboard and ribbon icon', 
-            `<p><strong>Access the Dashboard:</strong></p>
+        this.addTutorialCollapsible(containerEl, t('tutorialDashboardTitle'), 
+            `<p><strong>${t('tutorialDashboardAccess')}</strong></p>
             <ul>
-                <li>Click the <strong>book-open icon</strong> in the left ribbon (sidebar)</li>
-                <li>Use Command Palette: <kbd>Ctrl/Cmd + P</kbd> → "Storyteller: Open dashboard"</li>
-                <li>The dashboard is your central hub for managing all story elements</li>
+                <li>${t('tutorialDashboardRibbon')}</li>
+                <li>${t('tutorialDashboardCommand')}</li>
+                <li>${t('tutorialDashboardHub')}</li>
             </ul>`);
 
-        this.addTutorialCollapsible(containerEl, 'Story management', 
-            `<p><strong>Creating Your First Story:</strong></p>
+        this.addTutorialCollapsible(containerEl, t('tutorialStoryTitle'), 
+            `<p><strong>${t('tutorialStoryCreating')}</strong></p>
             <ul>
-                <li>Use the <strong>"Create New Story"</strong> button below (hidden when <em>One Story Mode</em> is enabled)</li>
-                <li>Or from Command Palette: "Storyteller: Create New Story"</li>
-                <li>Give your story a name and description</li>
-                <li>By default, the plugin creates folders at <code>StorytellerSuite/Stories/YourStoryName/</code></li>
+                <li>${t('tutorialStoryButton')}</li>
+                <li>${t('tutorialStoryCommand')}</li>
+                <li>${t('tutorialStoryName')}</li>
+                <li>${t('tutorialStoryDefault')}</li>
             </ul>
-            <p><strong>Managing Stories:</strong></p>
+            <p><strong>${t('tutorialStoryManaging')}</strong></p>
             <ul>
-                <li>Switch between stories using the <strong>"Set Active"</strong> button</li>
-                <li>Edit story details with the pencil icon</li>
-                <li>Delete stories with the trash icon (this only removes from plugin, not your files)</li>
+                <li>${t('tutorialStorySwitch')}</li>
+                <li>${t('tutorialStoryEdit')}</li>
+                <li>${t('tutorialStoryDelete')}</li>
             </ul>
-            <p><strong>Immediate activation tip:</strong> Creating a story from <em>Settings</em> updates the settings list immediately, but the dashboard's story dropdown may not refresh until you reopen the dashboard. For instant activation and UI refresh, use the dashboard/command palette action <em>"Storyteller: Create New Story"</em>, or close/reopen the dashboard via <em>"Storyteller: Open dashboard"</em>.</p>
-            <p><strong>One Story Mode:</strong> When enabled in settings, the interface is simplified to a single-story layout and the <em>New story</em> button is hidden. Content is organized under a single base folder.</p>`);
+            <p><strong>${t('tutorialStoryActivation')}</strong></p>
+            <p><strong>${t('tutorialStoryOneMode')}</strong></p>`);
 
-        this.addTutorialCollapsible(containerEl, 'Character management', 
-            `<p><strong>Creating Characters:</strong></p>
+        this.addTutorialCollapsible(containerEl, t('tutorialCharacterTitle'), 
+            `<p><strong>${t('tutorialCharacterCreating')}</strong></p>
             <ul>
-                <li><strong>Dashboard:</strong> Click "Create Character" button</li>
-                <li><strong>Command Palette:</strong> "Storyteller: Create new character"</li>
-                <li>Fill in character details, backstory, relationships</li>
-                <li>Add profile images from your vault</li>
+                <li>${t('tutorialCharacterDashboard')}</li>
+                <li>${t('tutorialCharacterCommand')}</li>
+                <li>${t('tutorialCharacterDetails')}</li>
+                <li>${t('tutorialCharacterImages')}</li>
             </ul>
-            <p><strong>Managing Characters:</strong></p>
+            <p><strong>${t('tutorialCharacterManaging')}</strong></p>
             <ul>
-                <li><strong>View All:</strong> Dashboard → "View Characters" or Command Palette → "Storyteller: View characters"</li>
-                <li><strong>Edit:</strong> Click character name in dashboard or character list</li>
-                <li><strong>Delete:</strong> Use the trash icon (moves to Obsidian trash)</li>
-                <li>Characters are stored as markdown files in <code>Characters/</code> folder</li>
+                <li>${t('tutorialCharacterView')}</li>
+                <li>${t('tutorialCharacterEdit')}</li>
+                <li>${t('tutorialCharacterDelete')}</li>
+                <li>${t('tutorialCharacterStorage')}</li>
             </ul>`);
 
-        this.addTutorialCollapsible(containerEl, 'Location management', 
-            `<p><strong>Creating Locations:</strong></p>
+        this.addTutorialCollapsible(containerEl, t('tutorialLocationTitle'), 
+            `<p><strong>${t('tutorialLocationCreating')}</strong></p>
             <ul>
-                <li><strong>Dashboard:</strong> Click "Create Location" button</li>
-                <li><strong>Command Palette:</strong> "Storyteller: Create new location"</li>
-                <li>Add descriptions, history, region, location type</li>
-                <li>Link to related characters and events</li>
+                <li>${t('tutorialLocationDashboard')}</li>
+                <li>${t('tutorialLocationCommand')}</li>
+                <li>${t('tutorialLocationDetails')}</li>
+                <li>${t('tutorialLocationLink')}</li>
             </ul>
-            <p><strong>Managing Locations:</strong></p>
+            <p><strong>${t('tutorialLocationManaging')}</strong></p>
             <ul>
-                <li><strong>View All:</strong> Dashboard → "View Locations" or Command Palette → "Storyteller: View locations"</li>
-                <li>Locations are stored in <code>Locations/</code> folder as markdown files</li>
-                <li>Edit by clicking location name, delete with trash icon</li>
+                <li>${t('tutorialLocationView')}</li>
+                <li>${t('tutorialLocationStorage')}</li>
+                <li>${t('tutorialLocationEdit')}</li>
             </ul>`);
 
-        this.addTutorialCollapsible(containerEl, 'Event and timeline management', 
-            `<p><strong>Creating Events:</strong></p>
+        this.addTutorialCollapsible(containerEl, t('tutorialEventTitle'), 
+            `<p><strong>${t('tutorialEventCreating')}</strong></p>
             <ul>
-                <li><strong>Dashboard:</strong> Click "Create Event" button</li>
-                <li><strong>Command Palette:</strong> "Storyteller: Create new event"</li>
-                <li>Set date/time, add descriptions, outcomes</li>
-                <li>Link to involved characters and locations</li>
-                <li><strong>New:</strong> Mark events as milestones, set progress (0-100%), add dependencies</li>
+                <li>${t('tutorialEventDashboard')}</li>
+                <li>${t('tutorialEventCommand')}</li>
+                <li>${t('tutorialEventDetails')}</li>
+                <li>${t('tutorialEventLink')}</li>
+                <li>${t('tutorialEventNew')}</li>
             </ul>
-            <p><strong>Timeline View:</strong></p>
+            <p><strong>${t('tutorialEventTimeline')}</strong></p>
             <ul>
-                <li><strong>Dashboard:</strong> Click "View Timeline" button</li>
-                <li><strong>Command Palette:</strong> "Storyteller: View timeline"</li>
-                <li>See all events chronologically ordered</li>
-                <li>Events stored in <code>Events/</code> folder</li>
+                <li>${t('tutorialEventTimelineDashboard')}</li>
+                <li>${t('tutorialEventTimelineCommand')}</li>
+                <li>${t('tutorialEventTimelineSee')}</li>
+                <li>${t('tutorialEventStorage')}</li>
             </ul>`);
 
-        this.addTutorialCollapsible(containerEl, 'Gantt-style timeline features', 
-            `<p><strong>Enhanced Timeline View:</strong></p>
+        this.addTutorialCollapsible(containerEl, t('tutorialGanttTitle'), 
+            `<p><strong>${t('tutorialGanttEnhanced')}</strong></p>
             <ul>
-                <li><strong>Toggle View:</strong> Switch between classic Timeline and Gantt view using the toggle button</li>
-                <li><strong>Milestones:</strong> Mark important events as milestones (golden styling with star icon)</li>
-                <li><strong>Progress Tracking:</strong> Set completion percentage (0-100%) on events with visual progress bars</li>
-                <li><strong>Dependencies:</strong> Link events to show cause-and-effect relationships with arrows</li>
+                <li>${t('tutorialGanttToggle')}</li>
+                <li>${t('tutorialGanttMilestones')}</li>
+                <li>${t('tutorialGanttProgress')}</li>
+                <li>${t('tutorialGanttDependencies')}</li>
             </ul>
-            <p><strong>Drag-and-Drop Rescheduling:</strong></p>
+            <p><strong>${t('tutorialGanttDrag')}</strong></p>
             <ul>
-                <li>Click the <strong>lock/pencil icon</strong> in the toolbar to enable edit mode</li>
-                <li>Drag events to new dates - changes auto-save</li>
-                <li>Click the icon again to disable editing and lock the timeline</li>
+                <li>${t('tutorialGanttLock')}</li>
+                <li>${t('tutorialGanttDragEvents')}</li>
+                <li>${t('tutorialGanttDisable')}</li>
             </ul>
-            <p><strong>Filtering and Grouping:</strong></p>
+            <p><strong>${t('tutorialGanttFiltering')}</strong></p>
             <ul>
-                <li><strong>Filter Panel:</strong> Click "Filters" to open the collapsible filter panel</li>
-                <li><strong>Filter by:</strong> Character, location, group, or milestones-only</li>
-                <li><strong>Filter Chips:</strong> Click chips to remove individual filters, or "Clear All"</li>
-                <li><strong>Swimlanes:</strong> Group events by location, group, or character</li>
+                <li>${t('tutorialGanttFilterPanel')}</li>
+                <li>${t('tutorialGanttFilterBy')}</li>
+                <li>${t('tutorialGanttFilterChips')}</li>
+                <li>${t('tutorialGanttSwimlanes')}</li>
             </ul>`);
 
-        this.addTutorialCollapsible(containerEl, 'Plot items management', 
-            `<p><strong>Managing Important Objects:</strong></p>
+        this.addTutorialCollapsible(containerEl, t('tutorialPlotTitle'), 
+            `<p><strong>${t('tutorialPlotManaging')}</strong></p>
             <ul>
-                <li><strong>Create:</strong> Dashboard → "Create Plot Item" or Command Palette → "Storyteller: Create new plot item"</li>
-                <li><strong>Mark Critical:</strong> Use the "Plot Critical" checkbox for key story items</li>
-                <li><strong>Track Ownership:</strong> Link current owner, past owners, and location</li>
-                <li><strong>View All:</strong> Dashboard → "View Plot Items" or Command Palette → "Storyteller: View plot items"</li>
-                <li>Items stored in <code>Items/</code> folder</li>
+                <li>${t('tutorialPlotCreate')}</li>
+                <li>${t('tutorialPlotCritical')}</li>
+                <li>${t('tutorialPlotOwnership')}</li>
+                <li>${t('tutorialPlotView')}</li>
+                <li>${t('tutorialPlotStorage')}</li>
             </ul>`);
 
-        this.addTutorialCollapsible(containerEl, 'Gallery management', 
-            `<p><strong>Image Organization:</strong></p>
+        this.addTutorialCollapsible(containerEl, t('tutorialGalleryTitle'), 
+            `<p><strong>${t('tutorialGalleryOrganization')}</strong></p>
             <ul>
-                <li><strong>Access:</strong> Dashboard → "Gallery" button or Command Palette → "Storyteller: Open gallery"</li>
-                <li><strong>Upload:</strong> Drag & drop images directly into the gallery</li>
-                <li><strong>Organize:</strong> Add tags, categories, descriptions to images</li>
-                <li><strong>Link:</strong> Easily reference gallery images in character/location profiles</li>
-                <li>Configure upload folder below (default: <code>StorytellerSuite/GalleryUploads</code>)</li>
+                <li>${t('tutorialGalleryAccess')}</li>
+                <li>${t('tutorialGalleryUpload')}</li>
+                <li>${t('tutorialGalleryOrganize')}</li>
+                <li>${t('tutorialGalleryLink')}</li>
+                <li>${t('tutorialGalleryConfig')}</li>
             </ul>`);
 
-        this.addTutorialCollapsible(containerEl, 'Groups and organization', 
-            `<p><strong>Organizing with Groups:</strong></p>
+        this.addTutorialCollapsible(containerEl, t('tutorialGroupsTitle'), 
+            `<p><strong>${t('tutorialGroupsOrganizing')}</strong></p>
             <ul>
-                <li><strong>Create Groups:</strong> Command Palette → "Storyteller: Create group"</li>
-                <li><strong>Add Members:</strong> Characters, locations, events, and items can be grouped</li>
-                <li><strong>Manage:</strong> Rename with "Storyteller: Rename group", delete with "Storyteller: Delete group"</li>
-                <li><strong>Use Cases:</strong> Royal family, specific kingdoms, plot arcs, etc.</li>
+                <li>${t('tutorialGroupsCreate')}</li>
+                <li>${t('tutorialGroupsAdd')}</li>
+                <li>${t('tutorialGroupsManage')}</li>
+                <li>${t('tutorialGroupsUseCases')}</li>
             </ul>`);
 
-        this.addTutorialCollapsible(containerEl, 'World-building entities', 
-            `<p><strong>Five Entity Types for Comprehensive Worldbuilding:</strong></p>
+        this.addTutorialCollapsible(containerEl, t('tutorialWorldTitle'), 
+            `<p><strong>${t('tutorialWorldFive')}</strong></p>
             <ul>
-                <li><strong>Cultures:</strong> Tech level, government type, languages, values, customs, social structure</li>
-                <li><strong>Factions:</strong> Organizations with type, power level, colors, motto, goals, resources</li>
-                <li><strong>Economies:</strong> System type (barter, market, feudal), industries, trade policy</li>
-                <li><strong>Magic Systems:</strong> Type (arcane, divine, natural), rarity, power level, rules, costs</li>
-                <li><strong>Calendars:</strong> Calendar type (solar, lunar), days configuration, weekdays</li>
+                <li>${t('tutorialWorldCultures')}</li>
+                <li>${t('tutorialWorldFactions')}</li>
+                <li>${t('tutorialWorldEconomies')}</li>
+                <li>${t('tutorialWorldMagic')}</li>
+                <li>${t('tutorialWorldCalendars')}</li>
             </ul>
-            <p><strong>Creating World-Building Entities:</strong></p>
+            <p><strong>${t('tutorialWorldCreating')}</strong></p>
             <ul>
-                <li><strong>Command Palette:</strong> "Storyteller: Create new culture/faction/economy/magic system/calendar"</li>
-                <li><strong>View All:</strong> "Storyteller: View cultures/factions/economies/magic systems/calendars"</li>
-                <li>Each entity has dedicated modals with relevant fields</li>
-                <li>Entities stored in their respective folders (e.g., <code>Cultures/</code>, <code>Factions/</code>)</li>
+                <li>${t('tutorialWorldCommand')}</li>
+                <li>${t('tutorialWorldView')}</li>
+                <li>${t('tutorialWorldModals')}</li>
+                <li>${t('tutorialWorldStorage')}</li>
             </ul>`);
 
-        this.addTutorialCollapsible(containerEl, 'Timeline forks and causality', 
-            `<p><strong>Alternate Timelines (What-If Scenarios):</strong></p>
+        this.addTutorialCollapsible(containerEl, t('tutorialTimelineTitle'), 
+            `<p><strong>${t('tutorialTimelineAlternate')}</strong></p>
             <ul>
-                <li><strong>Create Fork:</strong> Command Palette → "Storyteller: Create timeline fork"</li>
-                <li><strong>Divergence Point:</strong> Select the event where the timeline splits</li>
-                <li><strong>Fork Status:</strong> Track as exploring, canon, abandoned, or merged</li>
-                <li><strong>View Forks:</strong> Use the fork selector dropdown in the timeline view</li>
+                <li>${t('tutorialTimelineCreateFork')}</li>
+                <li>${t('tutorialTimelineDivergence')}</li>
+                <li>${t('tutorialTimelineForkStatus')}</li>
+                <li>${t('tutorialTimelineViewForks')}</li>
             </ul>
-            <p><strong>Causality Links (Cause and Effect):</strong></p>
+            <p><strong>${t('tutorialTimelineCausality')}</strong></p>
             <ul>
-                <li><strong>Add Link:</strong> Command Palette → "Storyteller: Add causality link"</li>
-                <li><strong>Link Types:</strong> Direct, indirect, conditional, or catalyst</li>
-                <li><strong>Strength Levels:</strong> Weak, moderate, strong, or absolute</li>
-                <li>Links help track how events influence each other</li>
+                <li>${t('tutorialTimelineAddLink')}</li>
+                <li>${t('tutorialTimelineLinkTypes')}</li>
+                <li>${t('tutorialTimelineStrength')}</li>
+                <li>${t('tutorialTimelineLinksHelp')}</li>
             </ul>
-            <p><strong>Conflict Detection:</strong></p>
+            <p><strong>${t('tutorialTimelineConflict')}</strong></p>
             <ul>
-                <li><strong>Run Detection:</strong> Command Palette → "Storyteller: Detect timeline conflicts"</li>
-                <li><strong>Detects:</strong> Location conflicts (character in multiple places), death conflicts (dead characters appearing later), causality violations (effects before causes)</li>
-                <li><strong>Conflict Badge:</strong> Shows count in timeline toolbar - click to review</li>
-                <li><strong>Actionable:</strong> Each conflict includes suggestions for resolution</li>
+                <li>${t('tutorialTimelineRunDetection')}</li>
+                <li>${t('tutorialTimelineDetects')}</li>
+                <li>${t('tutorialTimelineBadge')}</li>
+                <li>${t('tutorialTimelineActionable')}</li>
             </ul>`);
 
-        this.addTutorialCollapsible(containerEl, 'Entity templates', 
-            `<p><strong>Create Reusable Templates:</strong></p>
+        this.addTutorialCollapsible(containerEl, t('tutorialTemplatesTitle'), 
+            `<p><strong>${t('tutorialTemplatesCreate')}</strong></p>
             <ul>
-                <li><strong>Save as Template:</strong> When editing any entity, save it as a reusable template</li>
-                <li><strong>Template Library:</strong> Command Palette → "Storyteller: Open entity template library"</li>
-                <li><strong>Dashboard Tab:</strong> Access templates from the Templates tab in the dashboard</li>
+                <li>${t('tutorialTemplatesSave')}</li>
+                <li>${t('tutorialTemplatesLibrary')}</li>
+                <li>${t('tutorialTemplatesDashboard')}</li>
             </ul>
-            <p><strong>Built-in Templates:</strong></p>
+            <p><strong>${t('tutorialTemplatesBuiltIn')}</strong></p>
             <ul>
-                <li>Character archetypes: Medieval King, Tavern Keeper, Wise Mentor, Cyberpunk Hacker, Detective</li>
-                <li>More templates available for quick character creation</li>
+                <li>${t('tutorialTemplatesArchetypes')}</li>
+                <li>${t('tutorialTemplatesMore')}</li>
             </ul>
-            <p><strong>Template Features:</strong></p>
+            <p><strong>${t('tutorialTemplatesFeatures')}</strong></p>
             <ul>
-                <li><strong>Browse:</strong> Search and filter templates by genre, category, entity type</li>
-                <li><strong>Sort:</strong> By name, usage count, or recently used</li>
-                <li><strong>Usage Tracking:</strong> See which templates you use most often</li>
-                <li><strong>Customize:</strong> Duplicate and modify templates for your needs</li>
+                <li>${t('tutorialTemplatesBrowse')}</li>
+                <li>${t('tutorialTemplatesSort')}</li>
+                <li>${t('tutorialTemplatesUsage')}</li>
+                <li>${t('tutorialTemplatesCustomize')}</li>
             </ul>`);
 
-        this.addTutorialCollapsible(containerEl, 'Story discovery and import', 
-            `<p><strong>Automatic Discovery:</strong></p>
+        this.addTutorialCollapsible(containerEl, t('tutorialDiscoveryTitle'), 
+            `<p><strong>${t('tutorialDiscoveryAutomatic')}</strong></p>
             <ul>
-                <li>Plugin automatically detects existing <code>StorytellerSuite/Stories/</code> folders</li>
-                <li><strong>Manual Refresh:</strong> Command Palette → "Storyteller: Refresh story discovery"</li>
-                <li>Import existing story folders without losing data</li>
-                <li>Useful when moving stories between vaults</li>
+                <li>${t('tutorialDiscoveryDetects')}</li>
+                <li>${t('tutorialDiscoveryManual')}</li>
+                <li>${t('tutorialDiscoveryImport')}</li>
+                <li>${t('tutorialDiscoveryUseful')}</li>
             </ul>`);
 
         // New: Recommended workflow for custom folders
-        this.addTutorialCollapsible(containerEl, 'Custom folders: recommended manual workflow',
-            `<p><strong>Simple, reliable setup for custom folders:</strong></p>
+        this.addTutorialCollapsible(containerEl, t('tutorialCustomTitle'),
+            `<p><strong>${t('tutorialCustomSimple')}</strong></p>
             <ol>
-                <li><strong>Create your story folder and subfolders manually</strong> in your vault (e.g., <code>Creative/Writing/My_Story/Characters</code>, <code>Locations</code>, <code>Events</code>, etc.).</li>
-                <li>In Settings → Storyteller Suite → enable <strong>Use custom entity folders</strong>. Optionally set a <strong>Story root folder</strong> template for convenience.</li>
-                <li>Open the dashboard and use <strong>"Create new story"</strong>. After creation, <strong>refresh/activate</strong> the dashboard. The plugin will recognize your manual story folder as the active story.</li>
-                <li>Use <strong>Preview resolved folders</strong> in settings to confirm the exact paths the plugin will use.</li>
+                <li>${t('tutorialCustomStep1')}</li>
+                <li>${t('tutorialCustomStep2')}</li>
+                <li>${t('tutorialCustomStep3')}</li>
+                <li>${t('tutorialCustomStep4')}</li>
             </ol>
-            <p><strong>Switching stories in custom-folder mode:</strong> Use the <em>story dropdown at the top of the dashboard</em> to change the active story. Then go to <em>Settings → Storyteller Suite</em> and <strong>manually assign per‑entity folders</strong> for that story . Sorry I know this is a bit janky.</p>
+            <p><strong>${t('tutorialCustomSwitching')}</strong></p>
             `);
 
-        this.addTutorialCollapsible(containerEl, 'Keyboard shortcuts and commands', 
-            `<p><strong>Core Commands (via Ctrl/Cmd + P):</strong></p>
+        this.addTutorialCollapsible(containerEl, t('tutorialShortcutsTitle'), 
+            `<p><strong>${t('tutorialShortcutsCore')}</strong></p>
             <ul>
-                <li><strong>Storyteller: Open dashboard</strong> - Main interface</li>
-                <li><strong>Storyteller: Create New Story</strong> - Start a new story project</li>
-                <li><strong>Storyteller: Create new character/location/event/plot item</strong></li>
-                <li><strong>Storyteller: View characters/locations/timeline/plot items</strong></li>
-                <li><strong>Storyteller: Open gallery</strong> - Image management</li>
-                <li><strong>Storyteller: Create/Rename/Delete group</strong> - Organization</li>
-                <li><strong>Storyteller: Refresh story discovery</strong> - Import existing folders</li>
+                <li>${t('tutorialShortcutsOpen')}</li>
+                <li>${t('tutorialShortcutsNewStory')}</li>
+                <li>${t('tutorialShortcutsCreate')}</li>
+                <li>${t('tutorialShortcutsView')}</li>
+                <li>${t('tutorialShortcutsGallery')}</li>
+                <li>${t('tutorialShortcutsGroup')}</li>
+                <li>${t('tutorialShortcutsRefresh')}</li>
             </ul>
-            <p><strong>World-Building Commands:</strong></p>
+            <p><strong>${t('tutorialShortcutsWorld')}</strong></p>
             <ul>
-                <li><strong>Storyteller: Create new culture/faction/economy/magic system/calendar</strong></li>
-                <li><strong>Storyteller: View cultures/factions/economies/magic systems/calendars</strong></li>
+                <li>${t('tutorialShortcutsWorldCreate')}</li>
+                <li>${t('tutorialShortcutsWorldView')}</li>
             </ul>
-            <p><strong>Timeline and Causality Commands:</strong></p>
+            <p><strong>${t('tutorialShortcutsTimeline')}</strong></p>
             <ul>
-                <li><strong>Storyteller: Create timeline fork</strong> - Create alternate timeline</li>
-                <li><strong>Storyteller: View timeline forks</strong> - List all forks</li>
-                <li><strong>Storyteller: Add causality link</strong> - Link cause and effect events</li>
-                <li><strong>Storyteller: View causality links</strong> - List all causal relationships</li>
-                <li><strong>Storyteller: Detect timeline conflicts</strong> - Find inconsistencies</li>
-                <li><strong>Storyteller: View timeline conflicts</strong> - Review existing conflicts</li>
+                <li>${t('tutorialShortcutsTimelineFork')}</li>
+                <li>${t('tutorialShortcutsTimelineViewForks')}</li>
+                <li>${t('tutorialShortcutsTimelineLink')}</li>
+                <li>${t('tutorialShortcutsTimelineViewLinks')}</li>
+                <li>${t('tutorialShortcutsTimelineDetect')}</li>
+                <li>${t('tutorialShortcutsTimelineViewConflicts')}</li>
             </ul>
-            <p><strong>Template Commands:</strong></p>
+            <p><strong>${t('tutorialShortcutsTemplate')}</strong></p>
             <ul>
-                <li><strong>Storyteller: Open entity template library</strong> - Browse and manage templates</li>
+                <li>${t('tutorialShortcutsTemplateLibrary')}</li>
             </ul>
-            <p><strong>Tip:</strong> You can assign custom hotkeys to any of these commands in Obsidian's Hotkeys settings!</p>`);
+            <p><strong>${t('tutorialShortcutsTip')}</strong></p>`);
 
-        this.addTutorialCollapsible(containerEl, 'File structure and integration', 
-            `<p><strong>How Your Files Are Organized:</strong></p>
-            <pre><code>Default (multi-story):
+        this.addTutorialCollapsible(containerEl, t('tutorialFileTitle'), 
+            `<p><strong>${t('tutorialFileOrganized')}</strong></p>
+            <pre><code>${t('tutorialFileDefault')}
 StorytellerSuite/
 ├── Stories/
 │   └── YourStoryName/
@@ -1156,7 +1166,7 @@ StorytellerSuite/
 ├── GalleryUploads/         (uploaded images)
 └── Templates/              (saved entity templates)
 
-One Story Mode (flattened):
+${t('tutorialFileOneMode')}
 [Base]/
 ├── Characters/
 ├── Locations/
@@ -1166,15 +1176,15 @@ One Story Mode (flattened):
 ├── Factions/
 └── ... (all entity folders)
 </code></pre>
-            <p><strong>Obsidian Integration:</strong></p>
+            <p><strong>${t('tutorialFileIntegration')}</strong></p>
             <ul>
-                <li>All data stored as <strong>markdown files</strong> with frontmatter</li>
-                <li>Fully compatible with <strong>Dataview plugin</strong> for custom queries</li>
-                <li>Use <strong>[[wiki links]]</strong> to connect characters, locations, events</li>
-                <li>Files are <strong>readable and editable</strong> even without the plugin</li>
-                <li><strong>Backup safe:</strong> Your data is never locked in a proprietary format</li>
+                <li>${t('tutorialFileMarkdown')}</li>
+                <li>${t('tutorialFileDataview')}</li>
+                <li>${t('tutorialFileWikiLinks')}</li>
+                <li>${t('tutorialFileReadable')}</li>
+                <li>${t('tutorialFileBackup')}</li>
             </ul>
-            <p><strong>Tip:</strong> Configure these modes in Settings → Storyteller Suite under <em>Use custom entity folders</em> and <em>One Story Mode</em>. The <em>New story</em> button is hidden automatically in One Story Mode.</p>`);
+            <p><strong>${t('tutorialFileTip')}</strong></p>`);
     }
 
     /**
