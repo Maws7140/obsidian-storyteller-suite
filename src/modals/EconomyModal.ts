@@ -155,7 +155,7 @@ export class EconomyModal extends ResponsiveModal {
         // Status
         new Setting(contentEl)
             .setName(t('status'))
-            .setDesc(t('economicSystemDesc'))
+            .setDesc(t('economyStatusDesc'))
             .addDropdown(dropdown => dropdown
                 .addOptions({
                     'booming': t('booming'),
@@ -173,7 +173,7 @@ export class EconomyModal extends ResponsiveModal {
         // Description (Markdown Section)
         new Setting(contentEl)
             .setName(t('description'))
-            .setDesc(t('economicSystemDesc'))
+            .setDesc(t('economyDescriptionDesc'))
             .setClass('storyteller-modal-setting-vertical')
             .addTextArea(text => {
                 text.setValue(this.economy.description || '')
