@@ -44,7 +44,7 @@ export class EconomyListModal extends Modal {
     onOpen() {
         const { contentEl } = this;
         contentEl.empty();
-        contentEl.createEl('h2', { text: 'Economies' });
+        contentEl.createEl('h2', { text: t('economies') });
 
         // Create container for the economy list (stored for filtering)
         this.listContainer = contentEl.createDiv('storyteller-list-container');
@@ -53,7 +53,7 @@ export class EconomyListModal extends Modal {
         const searchInput = new Setting(contentEl)
             .setName(t('search'))
             .addText(text => {
-                text.setPlaceholder('Search economies...')
+                text.setPlaceholder(t('searchEconomies'))
                     .onChange(value => this.renderList(value.toLowerCase(), this.listContainer));
             });
 
@@ -65,7 +65,7 @@ export class EconomyListModal extends Modal {
             .addButton(button => {
                 const hasActiveStory = !!this.plugin.getActiveStory();
                 button
-                    .setButtonText('Create Economy')
+                    .setButtonText(t('createEconomy'))
                     .setCta()
                     .onClick(() => {
                         if (!this.plugin.getActiveStory()) {
@@ -75,7 +75,7 @@ export class EconomyListModal extends Modal {
                         this.close();
                         new EconomyModal(this.app, this.plugin, null, async (economyData: Economy) => {
                             await this.plugin.saveEconomy(economyData);
-                            new Notice(`Economy "${economyData.name}" created.`);
+                            new Notice(t('economyCreated', economyData.name));
                             new Notice(t('noteCreatedWithSections'));
                         }).open();
                     });
@@ -104,7 +104,7 @@ export class EconomyListModal extends Modal {
 
         // Handle empty results
         if (filteredEconomies.length === 0) {
-            container.createEl('p', { text: 'No economies found' + (filter ? ' matching filter' : '') });
+            container.createEl('p', { text: t('noEconomiesFound') + (filter ? t('matchingFilter') : '') });
             return;
         }
 
@@ -145,7 +145,7 @@ export class EconomyListModal extends Modal {
                     this.close(); // Close list modal
                     new EconomyModal(this.app, this.plugin, economy, async (updatedData: Economy) => {
                         await this.plugin.saveEconomy(updatedData);
-                        new Notice(`Economy "${updatedData.name}" updated.`);
+                        new Notice(t('economyUpdated', updatedData.name));
                         // Could optionally reopen list modal
                     }).open();
                 });
@@ -157,14 +157,14 @@ export class EconomyListModal extends Modal {
                 .setClass('mod-warning') // Visual warning styling
                 .onClick(async () => {
                     // Simple confirmation dialog
-                    if (confirm(`Delete economy "${economy.name}"? (Moved to trash)`)) {
+                    if (confirm(t('confirmDeleteEconomy', economy.name))) {
                         if (economy.filePath) {
                             await this.plugin.deleteEconomy(economy.filePath);
                             // Update local economy list and re-render
                             this.economies = this.economies.filter(e => e.filePath !== economy.filePath);
                             this.renderList(filter, container);
                         } else {
-                            new Notice(`Cannot delete economy without file path.`);
+                            new Notice(t('cannotDeleteWithoutPath'));
                         }
                     }
                 });
@@ -175,7 +175,7 @@ export class EconomyListModal extends Modal {
                 .setTooltip(t('openNote'))
                 .onClick(() => {
                     if (!economy.filePath) {
-                        new Notice(`Cannot open note without file path.`);
+                        new Notice(t('cannotOpenWithoutPath'));
                         return;
                     }
 

@@ -5,6 +5,7 @@ import { ResponsiveModal } from './ResponsiveModal';
 import { GalleryImageSuggestModal } from './GalleryImageSuggestModal';
 import { TemplatePickerModal } from './TemplatePickerModal';
 import { Template } from '../templates/TemplateTypes';
+import { t } from '../i18n/strings';
 
 export type CultureModalSubmitCallback = (culture: Culture) => Promise<void>;
 export type CultureModalDeleteCallback = (culture: Culture) => Promise<void>;
@@ -66,17 +67,17 @@ export class CultureModal extends ResponsiveModal {
         contentEl.empty();
 
         contentEl.createEl('h2', {
-            text: this.isNew ? 'Create Culture' : `Edit Culture: ${this.culture.name}`
+            text: this.isNew ? t('createNewCulture') : `${t('editCulture')}: ${this.culture.name}`
         });
 
         // --- Template Selector (for new cultures) ---
         if (this.isNew) {
             new Setting(contentEl)
-                .setName('Start from Template')
-                .setDesc('Optionally start with a pre-configured culture template')
+                .setName(t('startFromTemplate'))
+                .setDesc(t('startFromTemplateDesc'))
                 .addButton(button => button
-                    .setButtonText('Choose Template')
-                    .setTooltip('Select a culture template')
+                    .setButtonText(t('chooseTemplate'))
+                    .setTooltip(t('selectTemplate'))
                     .onClick(() => {
                         new TemplatePickerModal(
                             this.app,
@@ -84,7 +85,7 @@ export class CultureModal extends ResponsiveModal {
                             async (template: Template) => {
                                 await this.applyTemplateToCulture(template);
                                 this.refresh();
-                                new Notice(`Template "${template.name}" applied`);
+                                new Notice(t('templateApplied', template.name));
                             },
                             'culture'
                         ).open();
@@ -94,8 +95,8 @@ export class CultureModal extends ResponsiveModal {
 
         // Name (Required)
         new Setting(contentEl)
-            .setName('Name')
-            .setDesc('Name of the culture or society')
+            .setName(t('name'))
+            .setDesc(t('cultureNameDesc'))
             .addText(text => {
                 text.setValue(this.culture.name)
                     .onChange(value => this.culture.name = value);
@@ -105,46 +106,46 @@ export class CultureModal extends ResponsiveModal {
         // Profile Image
         let imagePathDesc: HTMLElement;
         new Setting(contentEl)
-            .setName('Profile Image')
+            .setName(t('profileImage'))
             .setDesc('')
             .then(setting => {
                 imagePathDesc = setting.descEl.createEl('small', {
-                    text: `Current: ${this.culture.profileImagePath || 'None'}`
+                    text: t('currentValue', this.culture.profileImagePath || t('none'))
                 });
             })
             .addButton(button => button
-                .setButtonText('Select')
+                .setButtonText(t('select'))
                 .onClick(() => {
                     new GalleryImageSuggestModal(this.app, this.plugin, (selectedImage) => {
                         const path = selectedImage ? selectedImage.filePath : '';
                         this.culture.profileImagePath = path || undefined;
-                        imagePathDesc.setText(`Current: ${this.culture.profileImagePath || 'None'}`);
+                        imagePathDesc.setText(t('currentValue', this.culture.profileImagePath || t('none')));
                     }).open();
                 })
             )
             .addButton(button => button
-                .setButtonText('Clear')
+                .setButtonText(t('clear'))
                 .onClick(() => {
                     this.culture.profileImagePath = undefined;
-                    imagePathDesc.setText('Current: None');
+                    imagePathDesc.setText(t('currentValue', t('none')));
                 })
             );
 
         // Technology Level
         new Setting(contentEl)
-            .setName('Technology Level')
-            .setDesc('Technological advancement of the culture')
+            .setName(t('techLevel'))
+            .setDesc(t('techLevelDesc'))
             .addDropdown(dropdown => dropdown
                 .addOptions({
-                    'stone-age': 'Stone Age',
-                    'bronze-age': 'Bronze Age',
-                    'iron-age': 'Iron Age',
-                    'medieval': 'Medieval',
-                    'renaissance': 'Renaissance',
-                    'industrial': 'Industrial',
-                    'modern': 'Modern',
-                    'futuristic': 'Futuristic',
-                    'custom': 'Custom'
+                    'stone-age': t('stoneAge'),
+                    'bronze-age': t('bronzeAge'),
+                    'iron-age': t('ironAge'),
+                    'medieval': t('medieval'),
+                    'renaissance': t('renaissance'),
+                    'industrial': t('industrial'),
+                    'modern': t('modern'),
+                    'futuristic': t('futuristic'),
+                    'custom': t('custom')
                 })
                 .setValue(this.culture.techLevel || 'medieval')
                 .onChange(value => this.culture.techLevel = value)
@@ -152,20 +153,20 @@ export class CultureModal extends ResponsiveModal {
 
         // Government Type
         new Setting(contentEl)
-            .setName('Government Type')
-            .setDesc('Political system and leadership structure')
+            .setName(t('governmentType'))
+            .setDesc(t('governmentTypeDesc'))
             .addDropdown(dropdown => dropdown
                 .addOptions({
-                    'monarchy': 'Monarchy',
-                    'democracy': 'Democracy',
-                    'republic': 'Republic',
-                    'theocracy': 'Theocracy',
-                    'tribal': 'Tribal',
-                    'empire': 'Empire',
-                    'feudal': 'Feudal',
-                    'oligarchy': 'Oligarchy',
-                    'anarchy': 'Anarchy',
-                    'custom': 'Custom'
+                    'monarchy': t('monarchy'),
+                    'democracy': t('democracy'),
+                    'republic': t('republic'),
+                    'theocracy': t('theocracy'),
+                    'tribal': t('tribal'),
+                    'empire': t('empire'),
+                    'feudal': t('feudal'),
+                    'oligarchy': t('oligarchy'),
+                    'anarchy': t('anarchy'),
+                    'custom': t('custom')
                 })
                 .setValue(this.culture.governmentType || 'monarchy')
                 .onChange(value => this.culture.governmentType = value)
@@ -173,16 +174,16 @@ export class CultureModal extends ResponsiveModal {
 
         // Status
         new Setting(contentEl)
-            .setName('Status')
-            .setDesc('Current state of the culture')
+            .setName(t('status'))
+            .setDesc(t('status'))
             .addDropdown(dropdown => dropdown
                 .addOptions({
-                    'thriving': 'Thriving',
-                    'stable': 'Stable',
-                    'declining': 'Declining',
-                    'extinct': 'Extinct',
-                    'emerging': 'Emerging',
-                    'custom': 'Custom'
+                    'thriving': t('thriving'),
+                    'stable': t('stable'),
+                    'declining': t('declining'),
+                    'extinct': t('extinct'),
+                    'emerging': t('emerging'),
+                    'custom': t('custom')
                 })
                 .setValue(this.culture.status || 'thriving')
                 .onChange(value => this.culture.status = value)
@@ -190,8 +191,8 @@ export class CultureModal extends ResponsiveModal {
 
         // Languages (comma-separated)
         new Setting(contentEl)
-            .setName('Languages')
-            .setDesc('Comma-separated list of languages spoken (e.g., Common, Elvish, Dwarvish)')
+            .setName(t('languages'))
+            .setDesc(t('languagesDesc'))
             .addText(text => text
                 .setValue(this.culture.languages?.join(', ') || '')
                 .onChange(value => {
@@ -204,8 +205,8 @@ export class CultureModal extends ResponsiveModal {
 
         // Population
         new Setting(contentEl)
-            .setName('Population')
-            .setDesc('Estimated population size (e.g., "10,000" or "Large")')
+            .setName(t('population'))
+            .setDesc(t('populationDesc'))
             .addText(text => text
                 .setValue(this.culture.population || '')
                 .onChange(value => this.culture.population = value)
@@ -213,8 +214,8 @@ export class CultureModal extends ResponsiveModal {
 
         // Description (Markdown Section)
         new Setting(contentEl)
-            .setName('Description')
-            .setDesc('Overview of the culture and its characteristics')
+            .setName(t('description'))
+            .setDesc(t('cultureNameDesc'))
             .setClass('storyteller-modal-setting-vertical')
             .addTextArea(text => {
                 text.setValue(this.culture.description || '')
@@ -225,8 +226,8 @@ export class CultureModal extends ResponsiveModal {
 
         // Values & Beliefs (Markdown Section)
         new Setting(contentEl)
-            .setName('Values & Beliefs')
-            .setDesc('Core cultural values, worldview, and philosophical beliefs')
+            .setName(t('valuesBeliefs'))
+            .setDesc(t('valuesBeliefsDesc'))
             .setClass('storyteller-modal-setting-vertical')
             .addTextArea(text => {
                 text.setValue(this.culture.values || '')
@@ -237,8 +238,8 @@ export class CultureModal extends ResponsiveModal {
 
         // Religion (Markdown Section)
         new Setting(contentEl)
-            .setName('Religion')
-            .setDesc('Religious beliefs, practices, and deities worshipped')
+            .setName(t('religion'))
+            .setDesc(t('religionDesc'))
             .setClass('storyteller-modal-setting-vertical')
             .addTextArea(text => {
                 text.setValue(this.culture.religion || '')
@@ -249,8 +250,8 @@ export class CultureModal extends ResponsiveModal {
 
         // Social Structure (Markdown Section)
         new Setting(contentEl)
-            .setName('Social Structure')
-            .setDesc('Class hierarchy, social organization, and caste systems')
+            .setName(t('socialStructure'))
+            .setDesc(t('socialStructureDesc'))
             .setClass('storyteller-modal-setting-vertical')
             .addTextArea(text => {
                 text.setValue(this.culture.socialStructure || '')
@@ -261,8 +262,8 @@ export class CultureModal extends ResponsiveModal {
 
         // History (Markdown Section)
         new Setting(contentEl)
-            .setName('History')
-            .setDesc('Origins, major historical events, and cultural evolution')
+            .setName(t('history'))
+            .setDesc(t('history'))
             .setClass('storyteller-modal-setting-vertical')
             .addTextArea(text => {
                 text.setValue(this.culture.history || '')
@@ -273,8 +274,8 @@ export class CultureModal extends ResponsiveModal {
 
         // Naming Conventions (Markdown Section)
         new Setting(contentEl)
-            .setName('Naming Conventions')
-            .setDesc('How members of this culture name people, places, and things')
+            .setName(t('namingConventions'))
+            .setDesc(t('namingConventionsDesc'))
             .setClass('storyteller-modal-setting-vertical')
             .addTextArea(text => {
                 text.setValue(this.culture.namingConventions || '')
@@ -285,8 +286,8 @@ export class CultureModal extends ResponsiveModal {
 
         // Customs (Markdown Section)
         new Setting(contentEl)
-            .setName('Customs & Traditions')
-            .setDesc('Cultural practices, ceremonies, holidays, and traditions')
+            .setName(t('customsTraditions'))
+            .setDesc(t('customsTraditionsDesc'))
             .setClass('storyteller-modal-setting-vertical')
             .addTextArea(text => {
                 text.setValue(this.culture.customs || '')
@@ -299,11 +300,11 @@ export class CultureModal extends ResponsiveModal {
         const buttonsSetting = new Setting(contentEl);
 
         buttonsSetting.addButton(button => button
-            .setButtonText('Save')
+            .setButtonText(t('save'))
             .setCta()
             .onClick(async () => {
                 if (!this.culture.name) {
-                    new Notice('Culture name is required');
+                    new Notice(t('cultureNameRequired'));
                     return;
                 }
                 await this.onSubmit(this.culture);
@@ -312,13 +313,13 @@ export class CultureModal extends ResponsiveModal {
         );
 
         buttonsSetting.addButton(button => button
-            .setButtonText('Cancel')
+            .setButtonText(t('cancel'))
             .onClick(() => this.close())
         );
 
         if (!this.isNew && this.onDelete) {
             buttonsSetting.addButton(button => button
-                .setButtonText('Delete')
+                .setButtonText(t('delete'))
                 .setWarning()
                 .onClick(async () => {
                     if (this.onDelete) {
@@ -332,7 +333,7 @@ export class CultureModal extends ResponsiveModal {
 
     private async applyTemplateToCulture(template: Template): Promise<void> {
         if (!template.entities.cultures || template.entities.cultures.length === 0) {
-            new Notice('This template does not contain any cultures');
+            new Notice(t('noTemplatesAvailable'));
             return;
         }
 
