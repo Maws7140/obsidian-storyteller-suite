@@ -5,6 +5,7 @@ import { ResponsiveModal } from './ResponsiveModal';
 import { GalleryImageSuggestModal } from './GalleryImageSuggestModal';
 import { TemplatePickerModal } from './TemplatePickerModal';
 import { Template } from '../templates/TemplateTypes';
+import { t } from '../i18n/strings';
 
 export type EconomyModalSubmitCallback = (economy: Economy) => Promise<void>;
 export type EconomyModalDeleteCallback = (economy: Economy) => Promise<void>;
@@ -69,17 +70,17 @@ export class EconomyModal extends ResponsiveModal {
         contentEl.empty();
 
         contentEl.createEl('h2', {
-            text: this.isNew ? 'Create Economy' : `Edit Economy: ${this.economy.name}`
+            text: this.isNew ? t('createNewEconomy') : `${t('editEconomy')}: ${this.economy.name}`
         });
 
         // --- Template Selector (for new economies) ---
         if (this.isNew) {
             new Setting(contentEl)
-                .setName('Start from Template')
-                .setDesc('Optionally start with a pre-configured economy template')
+                .setName(t('startFromTemplate'))
+                .setDesc(t('startFromTemplateDesc'))
                 .addButton(button => button
-                    .setButtonText('Choose Template')
-                    .setTooltip('Select an economy template')
+                    .setButtonText(t('chooseTemplate'))
+                    .setTooltip(t('selectTemplate'))
                     .onClick(() => {
                         new TemplatePickerModal(
                             this.app,
@@ -87,7 +88,7 @@ export class EconomyModal extends ResponsiveModal {
                             async (template: Template) => {
                                 await this.applyTemplateToEconomy(template);
                                 this.refresh();
-                                new Notice(`Template "${template.name}" applied`);
+                                new Notice(t('templateApplied', template.name));
                             },
                             'economy'
                         ).open();
@@ -97,8 +98,8 @@ export class EconomyModal extends ResponsiveModal {
 
         // Name (Required)
         new Setting(contentEl)
-            .setName('Name')
-            .setDesc('Name of the economic system (e.g., "Kingdom of Eldoria Economy")')
+            .setName(t('name'))
+            .setDesc(t('economyNameDesc'))
             .addText(text => {
                 text.setValue(this.economy.name)
                     .onChange(value => this.economy.name = value);
@@ -108,44 +109,44 @@ export class EconomyModal extends ResponsiveModal {
         // Profile Image
         let imagePathDesc: HTMLElement;
         new Setting(contentEl)
-            .setName('Representative Image')
+            .setName(t('representativeImage'))
             .setDesc('')
             .then(setting => {
                 imagePathDesc = setting.descEl.createEl('small', {
-                    text: `Current: ${this.economy.profileImagePath || 'None'}`
+                    text: t('currentValue', this.economy.profileImagePath || t('none'))
                 });
             })
             .addButton(button => button
-                .setButtonText('Select')
+                .setButtonText(t('select'))
                 .onClick(() => {
                     new GalleryImageSuggestModal(this.app, this.plugin, (selectedImage) => {
                         const path = selectedImage ? selectedImage.filePath : '';
                         this.economy.profileImagePath = path || undefined;
-                        imagePathDesc.setText(`Current: ${this.economy.profileImagePath || 'None'}`);
+                        imagePathDesc.setText(t('currentValue', this.economy.profileImagePath || t('none')));
                     }).open();
                 })
             )
             .addButton(button => button
-                .setButtonText('Clear')
+                .setButtonText(t('clear'))
                 .onClick(() => {
                     this.economy.profileImagePath = undefined;
-                    imagePathDesc.setText('Current: None');
+                    imagePathDesc.setText(t('currentValue', t('none')));
                 })
             );
 
         // Economic System
         new Setting(contentEl)
-            .setName('Economic System')
-            .setDesc('Type of economic organization')
+            .setName(t('economicSystem'))
+            .setDesc(t('economicSystemDesc'))
             .addDropdown(dropdown => dropdown
                 .addOptions({
-                    'barter': 'Barter Economy',
-                    'market': 'Market Economy',
-                    'command': 'Command Economy',
-                    'mixed': 'Mixed Economy',
-                    'feudal': 'Feudal Economy',
-                    'gift': 'Gift Economy',
-                    'custom': 'Custom'
+                    'barter': t('barterEconomy'),
+                    'market': t('marketEconomy'),
+                    'command': t('commandEconomy'),
+                    'mixed': t('mixedEconomy'),
+                    'feudal': t('feudalEconomy'),
+                    'gift': t('giftEconomy'),
+                    'custom': t('custom')
                 })
                 .setValue(this.economy.economicSystem || 'market')
                 .onChange(value => this.economy.economicSystem = value)
@@ -153,17 +154,17 @@ export class EconomyModal extends ResponsiveModal {
 
         // Status
         new Setting(contentEl)
-            .setName('Status')
-            .setDesc('Current economic health')
+            .setName(t('status'))
+            .setDesc(t('economicSystemDesc'))
             .addDropdown(dropdown => dropdown
                 .addOptions({
-                    'booming': 'Booming',
-                    'growing': 'Growing',
-                    'stable': 'Stable',
-                    'recession': 'Recession',
-                    'depression': 'Depression',
-                    'recovering': 'Recovering',
-                    'custom': 'Custom'
+                    'booming': t('booming'),
+                    'growing': t('growing'),
+                    'stable': t('stable'),
+                    'recession': t('recession'),
+                    'depression': t('depression'),
+                    'recovering': t('recovering'),
+                    'custom': t('custom')
                 })
                 .setValue(this.economy.status || 'stable')
                 .onChange(value => this.economy.status = value)
@@ -171,8 +172,8 @@ export class EconomyModal extends ResponsiveModal {
 
         // Description (Markdown Section)
         new Setting(contentEl)
-            .setName('Description')
-            .setDesc('Overview of the economic system')
+            .setName(t('description'))
+            .setDesc(t('economicSystemDesc'))
             .setClass('storyteller-modal-setting-vertical')
             .addTextArea(text => {
                 text.setValue(this.economy.description || '')
@@ -183,8 +184,8 @@ export class EconomyModal extends ResponsiveModal {
 
         // Industries (Markdown Section)
         new Setting(contentEl)
-            .setName('Industries')
-            .setDesc('Major industries, production, and economic activities')
+            .setName(t('industries'))
+            .setDesc(t('industriesDesc'))
             .setClass('storyteller-modal-setting-vertical')
             .addTextArea(text => {
                 text.setValue(this.economy.industries || '')
@@ -195,8 +196,8 @@ export class EconomyModal extends ResponsiveModal {
 
         // Taxation (Markdown Section)
         new Setting(contentEl)
-            .setName('Taxation & Trade Policy')
-            .setDesc('Tax system, trade regulations, and economic policies')
+            .setName(t('taxation'))
+            .setDesc(t('taxationDesc'))
             .setClass('storyteller-modal-setting-vertical')
             .addTextArea(text => {
                 text.setValue(this.economy.taxation || '')
@@ -209,11 +210,11 @@ export class EconomyModal extends ResponsiveModal {
         const buttonsSetting = new Setting(contentEl);
 
         buttonsSetting.addButton(button => button
-            .setButtonText('Save')
+            .setButtonText(t('save'))
             .setCta()
             .onClick(async () => {
                 if (!this.economy.name) {
-                    new Notice('Economy name is required');
+                    new Notice(t('economyNameRequired'));
                     return;
                 }
                 await this.onSubmit(this.economy);
@@ -222,13 +223,13 @@ export class EconomyModal extends ResponsiveModal {
         );
 
         buttonsSetting.addButton(button => button
-            .setButtonText('Cancel')
+            .setButtonText(t('cancel'))
             .onClick(() => this.close())
         );
 
         if (!this.isNew && this.onDelete) {
             buttonsSetting.addButton(button => button
-                .setButtonText('Delete')
+                .setButtonText(t('delete'))
                 .setWarning()
                 .onClick(async () => {
                     if (this.onDelete) {
@@ -242,7 +243,7 @@ export class EconomyModal extends ResponsiveModal {
 
     private async applyTemplateToEconomy(template: Template): Promise<void> {
         if (!template.entities.economies || template.entities.economies.length === 0) {
-            new Notice('This template does not contain any economies');
+            new Notice(t('noTemplatesAvailable'));
             return;
         }
 

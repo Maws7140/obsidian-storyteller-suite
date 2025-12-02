@@ -5,6 +5,7 @@ import { ResponsiveModal } from './ResponsiveModal';
 import { GalleryImageSuggestModal } from './GalleryImageSuggestModal';
 import { TemplatePickerModal } from './TemplatePickerModal';
 import { Template } from '../templates/TemplateTypes';
+import { t } from '../i18n/strings';
 
 export type MagicSystemModalSubmitCallback = (magicSystem: MagicSystem) => Promise<void>;
 export type MagicSystemModalDeleteCallback = (magicSystem: MagicSystem) => Promise<void>;
@@ -73,17 +74,17 @@ export class MagicSystemModal extends ResponsiveModal {
         contentEl.empty();
 
         contentEl.createEl('h2', {
-            text: this.isNew ? 'Create Magic System' : `Edit Magic System: ${this.magicSystem.name}`
+            text: this.isNew ? t('createNewMagicSystem') : `${t('editMagicSystem')}: ${this.magicSystem.name}`
         });
 
         // --- Template Selector (for new magic systems) ---
         if (this.isNew) {
             new Setting(contentEl)
-                .setName('Start from Template')
-                .setDesc('Optionally start with a pre-configured magic system template')
+                .setName(t('startFromTemplate'))
+                .setDesc(t('startFromTemplateDesc'))
                 .addButton(button => button
-                    .setButtonText('Choose Template')
-                    .setTooltip('Select a magic system template')
+                    .setButtonText(t('chooseTemplate'))
+                    .setTooltip(t('selectTemplate'))
                     .onClick(() => {
                         new TemplatePickerModal(
                             this.app,
@@ -91,7 +92,7 @@ export class MagicSystemModal extends ResponsiveModal {
                             async (template: Template) => {
                                 await this.applyTemplateToMagicSystem(template);
                                 this.refresh();
-                                new Notice(`Template "${template.name}" applied`);
+                                new Notice(t('templateApplied', template.name));
                             },
                             'magicSystem'
                         ).open();
@@ -101,8 +102,8 @@ export class MagicSystemModal extends ResponsiveModal {
 
         // Name (Required)
         new Setting(contentEl)
-            .setName('Name')
-            .setDesc('Name of the magic system (e.g., "Arcane Arts", "Divine Magic")')
+            .setName(t('name'))
+            .setDesc(t('magicSystemNameDesc'))
             .addText(text => {
                 text.setValue(this.magicSystem.name)
                     .onChange(value => this.magicSystem.name = value);
@@ -112,47 +113,47 @@ export class MagicSystemModal extends ResponsiveModal {
         // Profile Image
         let imagePathDesc: HTMLElement;
         new Setting(contentEl)
-            .setName('Representative Image')
+            .setName(t('representativeImage'))
             .setDesc('')
             .then(setting => {
                 imagePathDesc = setting.descEl.createEl('small', {
-                    text: `Current: ${this.magicSystem.profileImagePath || 'None'}`
+                    text: t('currentValue', this.magicSystem.profileImagePath || t('none'))
                 });
             })
             .addButton(button => button
-                .setButtonText('Select')
+                .setButtonText(t('select'))
                 .onClick(() => {
                     new GalleryImageSuggestModal(this.app, this.plugin, (selectedImage) => {
                         const path = selectedImage ? selectedImage.filePath : '';
                         this.magicSystem.profileImagePath = path || undefined;
-                        imagePathDesc.setText(`Current: ${this.magicSystem.profileImagePath || 'None'}`);
+                        imagePathDesc.setText(t('currentValue', this.magicSystem.profileImagePath || t('none')));
                     }).open();
                 })
             )
             .addButton(button => button
-                .setButtonText('Clear')
+                .setButtonText(t('clear'))
                 .onClick(() => {
                     this.magicSystem.profileImagePath = undefined;
-                    imagePathDesc.setText('Current: None');
+                    imagePathDesc.setText(t('currentValue', t('none')));
                 })
             );
 
         // System Type
         new Setting(contentEl)
-            .setName('System Type')
-            .setDesc('Source or category of magical power')
+            .setName(t('systemType'))
+            .setDesc(t('systemTypeDesc'))
             .addDropdown(dropdown => dropdown
                 .addOptions({
-                    'arcane': 'Arcane (Learned)',
-                    'divine': 'Divine (Faith-based)',
-                    'natural': 'Natural (Nature/Druidic)',
-                    'psionic': 'Psionic (Mind Powers)',
-                    'blood': 'Blood Magic',
-                    'elemental': 'Elemental',
-                    'necromancy': 'Necromancy',
-                    'alchemy': 'Alchemy',
-                    'rune': 'Rune Magic',
-                    'custom': 'Custom'
+                    'arcane': t('arcane'),
+                    'divine': t('divine'),
+                    'natural': t('natural'),
+                    'psionic': t('psionic'),
+                    'blood': t('bloodMagic'),
+                    'elemental': t('elemental'),
+                    'necromancy': t('necromancy'),
+                    'alchemy': t('alchemy'),
+                    'rune': t('runeMagic'),
+                    'custom': t('custom')
                 })
                 .setValue(this.magicSystem.systemType || 'arcane')
                 .onChange(value => this.magicSystem.systemType = value)
@@ -160,16 +161,16 @@ export class MagicSystemModal extends ResponsiveModal {
 
         // Rarity
         new Setting(contentEl)
-            .setName('Rarity')
-            .setDesc('How common is magic in the world?')
+            .setName(t('rarity'))
+            .setDesc(t('rarityDesc'))
             .addDropdown(dropdown => dropdown
                 .addOptions({
-                    'ubiquitous': 'Ubiquitous (Everyone has it)',
-                    'common': 'Common (Many have it)',
-                    'uncommon': 'Uncommon (Some have it)',
-                    'rare': 'Rare (Few have it)',
-                    'legendary': 'Legendary (Almost none)',
-                    'custom': 'Custom'
+                    'ubiquitous': t('ubiquitous'),
+                    'common': t('common'),
+                    'uncommon': t('uncommon'),
+                    'rare': t('rare'),
+                    'legendary': t('legendary'),
+                    'custom': t('custom')
                 })
                 .setValue(this.magicSystem.rarity || 'common')
                 .onChange(value => this.magicSystem.rarity = value)
@@ -177,15 +178,15 @@ export class MagicSystemModal extends ResponsiveModal {
 
         // Power Level
         new Setting(contentEl)
-            .setName('Power Level')
-            .setDesc('Overall potency of this magic system')
+            .setName(t('powerLevel'))
+            .setDesc(t('powerLevelDesc'))
             .addDropdown(dropdown => dropdown
                 .addOptions({
-                    'low': 'Low (Subtle effects)',
-                    'moderate': 'Moderate (Noticeable effects)',
-                    'high': 'High (Powerful effects)',
-                    'godlike': 'Godlike (Reality-bending)',
-                    'custom': 'Custom'
+                    'low': t('low'),
+                    'moderate': t('moderate'),
+                    'high': t('high'),
+                    'godlike': t('godlike'),
+                    'custom': t('custom')
                 })
                 .setValue(this.magicSystem.powerLevel || 'moderate')
                 .onChange(value => this.magicSystem.powerLevel = value)
@@ -193,16 +194,16 @@ export class MagicSystemModal extends ResponsiveModal {
 
         // Status
         new Setting(contentEl)
-            .setName('Status')
-            .setDesc('Current state of the magic system')
+            .setName(t('status'))
+            .setDesc(t('status'))
             .addDropdown(dropdown => dropdown
                 .addOptions({
-                    'active': 'Active',
-                    'forbidden': 'Forbidden',
-                    'lost': 'Lost Knowledge',
-                    'declining': 'Declining',
-                    'resurgent': 'Resurgent',
-                    'custom': 'Custom'
+                    'active': t('active'),
+                    'forbidden': t('forbidden'),
+                    'lost': t('lostKnowledge'),
+                    'declining': t('declining'),
+                    'resurgent': t('resurgent'),
+                    'custom': t('custom')
                 })
                 .setValue(this.magicSystem.status || 'active')
                 .onChange(value => this.magicSystem.status = value)
@@ -210,8 +211,8 @@ export class MagicSystemModal extends ResponsiveModal {
 
         // Description (Markdown Section)
         new Setting(contentEl)
-            .setName('Description')
-            .setDesc('Overview of how magic works in this system')
+            .setName(t('description'))
+            .setDesc(t('magicSystemNameDesc'))
             .setClass('storyteller-modal-setting-vertical')
             .addTextArea(text => {
                 text.setValue(this.magicSystem.description || '')
@@ -222,8 +223,8 @@ export class MagicSystemModal extends ResponsiveModal {
 
         // Rules (Markdown Section)
         new Setting(contentEl)
-            .setName('Rules & Mechanics')
-            .setDesc('How magic is used, cast, or channeled')
+            .setName(t('rulesMechanics'))
+            .setDesc(t('rulesMechanicsDesc'))
             .setClass('storyteller-modal-setting-vertical')
             .addTextArea(text => {
                 text.setValue(this.magicSystem.rules || '')
@@ -234,8 +235,8 @@ export class MagicSystemModal extends ResponsiveModal {
 
         // Source (Markdown Section)
         new Setting(contentEl)
-            .setName('Source')
-            .setDesc('Where does magical power come from?')
+            .setName(t('source'))
+            .setDesc(t('sourceDesc'))
             .setClass('storyteller-modal-setting-vertical')
             .addTextArea(text => {
                 text.setValue(this.magicSystem.source || '')
@@ -246,8 +247,8 @@ export class MagicSystemModal extends ResponsiveModal {
 
         // Costs (Markdown Section)
         new Setting(contentEl)
-            .setName('Costs & Consequences')
-            .setDesc('What does using magic cost the caster?')
+            .setName(t('costsConsequences'))
+            .setDesc(t('costsConsequencesDesc'))
             .setClass('storyteller-modal-setting-vertical')
             .addTextArea(text => {
                 text.setValue(this.magicSystem.costs || '')
@@ -258,8 +259,8 @@ export class MagicSystemModal extends ResponsiveModal {
 
         // Limitations (Markdown Section)
         new Setting(contentEl)
-            .setName('Limitations')
-            .setDesc('What are the boundaries and restrictions of this magic?')
+            .setName(t('limitations'))
+            .setDesc(t('limitationsDesc'))
             .setClass('storyteller-modal-setting-vertical')
             .addTextArea(text => {
                 text.setValue(this.magicSystem.limitations || '')
@@ -270,8 +271,8 @@ export class MagicSystemModal extends ResponsiveModal {
 
         // Training (Markdown Section)
         new Setting(contentEl)
-            .setName('Training & Learning')
-            .setDesc('How is magic learned and mastered?')
+            .setName(t('trainingLearning'))
+            .setDesc(t('trainingLearningDesc'))
             .setClass('storyteller-modal-setting-vertical')
             .addTextArea(text => {
                 text.setValue(this.magicSystem.training || '')
@@ -282,8 +283,8 @@ export class MagicSystemModal extends ResponsiveModal {
 
         // History (Markdown Section)
         new Setting(contentEl)
-            .setName('History')
-            .setDesc('Origins and evolution of this magic system')
+            .setName(t('history'))
+            .setDesc(t('history'))
             .setClass('storyteller-modal-setting-vertical')
             .addTextArea(text => {
                 text.setValue(this.magicSystem.history || '')
@@ -296,11 +297,11 @@ export class MagicSystemModal extends ResponsiveModal {
         const buttonsSetting = new Setting(contentEl);
 
         buttonsSetting.addButton(button => button
-            .setButtonText('Save')
+            .setButtonText(t('save'))
             .setCta()
             .onClick(async () => {
                 if (!this.magicSystem.name) {
-                    new Notice('Magic system name is required');
+                    new Notice(t('magicSystemNameRequired'));
                     return;
                 }
                 await this.onSubmit(this.magicSystem);
@@ -309,13 +310,13 @@ export class MagicSystemModal extends ResponsiveModal {
         );
 
         buttonsSetting.addButton(button => button
-            .setButtonText('Cancel')
+            .setButtonText(t('cancel'))
             .onClick(() => this.close())
         );
 
         if (!this.isNew && this.onDelete) {
             buttonsSetting.addButton(button => button
-                .setButtonText('Delete')
+                .setButtonText(t('delete'))
                 .setWarning()
                 .onClick(async () => {
                     if (this.onDelete) {
@@ -329,7 +330,7 @@ export class MagicSystemModal extends ResponsiveModal {
 
     private async applyTemplateToMagicSystem(template: Template): Promise<void> {
         if (!template.entities.magicSystems || template.entities.magicSystems.length === 0) {
-            new Notice('This template does not contain any magic systems');
+            new Notice(t('noTemplatesAvailable'));
             return;
         }
 

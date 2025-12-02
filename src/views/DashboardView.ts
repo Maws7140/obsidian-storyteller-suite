@@ -183,10 +183,10 @@ export class DashboardView extends ItemView {
             { id: 'references', label: t('references'), renderFn: this.renderReferencesContent.bind(this) },
             { id: 'chapters', label: t('chapters'), renderFn: this.renderChaptersContent.bind(this) },
             { id: 'scenes', label: t('scenes'), renderFn: this.renderScenesContent.bind(this) },
-            { id: 'cultures', label: 'Cultures', renderFn: this.renderCulturesContent.bind(this) },
-            { id: 'economies', label: 'Economies', renderFn: this.renderEconomiesContent.bind(this) },
-            { id: 'magicsystems', label: 'Magic Systems', renderFn: this.renderMagicSystemsContent.bind(this) },
-            { id: 'templates', label: 'Templates', renderFn: this.renderTemplatesContent.bind(this) },
+            { id: 'cultures', label: t('cultures'), renderFn: this.renderCulturesContent.bind(this) },
+            { id: 'economies', label: t('economies'), renderFn: this.renderEconomiesContent.bind(this) },
+            { id: 'magicsystems', label: t('magicSystems'), renderFn: this.renderMagicSystemsContent.bind(this) },
+            { id: 'templates', label: t('templates'), renderFn: this.renderTemplatesContent.bind(this) },
         ];
 
         this.debouncedRefreshActiveTab = debounce(this.refreshActiveTab.bind(this), 200, true);
@@ -2359,14 +2359,14 @@ export class DashboardView extends ItemView {
 
     async renderCulturesContent(container: HTMLElement) {
         container.empty();
-        this.renderHeaderControls(container, 'Cultures', async (filter: string) => {
+        this.renderHeaderControls(container, t('cultures'), async (filter: string) => {
             this.currentFilter = filter;
             await this.renderCulturesList(container);
         }, () => {
             import('../modals/CultureModal').then(({ CultureModal }) => {
                 new CultureModal(this.app, this.plugin, null, async (culture) => {
                     await this.plugin.saveCulture(culture);
-                    new Notice(`Culture "${culture.name}" created.`);
+                    new Notice(t('cultureCreated', culture.name));
                 }).open();
             });
         }, t('createNew'));
@@ -2387,7 +2387,7 @@ export class DashboardView extends ItemView {
 
         const listContainer = container.createDiv('storyteller-list-container');
         if (cultures.length === 0) {
-            listContainer.createEl('p', { text: 'No cultures found' + (this.currentFilter ? ' matching filter' : '') });
+            listContainer.createEl('p', { text: t('noCulturesFound') + (this.currentFilter ? t('matchingFilter') : '') });
             return;
         }
 
@@ -2420,14 +2420,14 @@ export class DashboardView extends ItemView {
                 import('../modals/CultureModal').then(({ CultureModal }) => {
                     new CultureModal(this.app, this.plugin, culture, async (updated) => {
                         await this.plugin.saveCulture(updated);
-                        new Notice(`Culture "${updated.name}" updated.`);
+                        new Notice(t('cultureUpdated', updated.name));
                     }, async (toDelete) => {
                         if (toDelete.filePath) await this.plugin.deleteCulture(toDelete.filePath);
                     }).open();
                 });
             });
             this.addDeleteButton(actionsEl, async () => {
-                if (culture.filePath && confirm(`Delete culture "${culture.name}"?`)) {
+                if (culture.filePath && confirm(t('confirmDeleteCulture', culture.name))) {
                     await this.plugin.deleteCulture(culture.filePath);
                 }
             });
@@ -2438,14 +2438,14 @@ export class DashboardView extends ItemView {
 
     async renderEconomiesContent(container: HTMLElement) {
         container.empty();
-        this.renderHeaderControls(container, 'Economies', async (filter: string) => {
+        this.renderHeaderControls(container, t('economies'), async (filter: string) => {
             this.currentFilter = filter;
             await this.renderEconomiesList(container);
         }, () => {
             import('../modals/EconomyModal').then(({ EconomyModal }) => {
                 new EconomyModal(this.app, this.plugin, null, async (economy) => {
                     await this.plugin.saveEconomy(economy);
-                    new Notice(`Economy "${economy.name}" created.`);
+                    new Notice(t('economyCreated', economy.name));
                 }).open();
             });
         }, t('createNew'));
@@ -2466,7 +2466,7 @@ export class DashboardView extends ItemView {
 
         const listContainer = container.createDiv('storyteller-list-container');
         if (economies.length === 0) {
-            listContainer.createEl('p', { text: 'No economies found' + (this.currentFilter ? ' matching filter' : '') });
+            listContainer.createEl('p', { text: t('noEconomiesFound') + (this.currentFilter ? t('matchingFilter') : '') });
             return;
         }
 
@@ -2501,14 +2501,14 @@ export class DashboardView extends ItemView {
                 import('../modals/EconomyModal').then(({ EconomyModal }) => {
                     new EconomyModal(this.app, this.plugin, economy, async (updated) => {
                         await this.plugin.saveEconomy(updated);
-                        new Notice(`Economy "${updated.name}" updated.`);
+                        new Notice(t('economyUpdated', updated.name));
                     }, async (toDelete) => {
                         if (toDelete.filePath) await this.plugin.deleteEconomy(toDelete.filePath);
                     }).open();
                 });
             });
             this.addDeleteButton(actionsEl, async () => {
-                if (economy.filePath && confirm(`Delete economy "${economy.name}"?`)) {
+                if (economy.filePath && confirm(t('confirmDeleteEconomy', economy.name))) {
                     await this.plugin.deleteEconomy(economy.filePath);
                 }
             });
@@ -2518,14 +2518,14 @@ export class DashboardView extends ItemView {
 
     async renderMagicSystemsContent(container: HTMLElement) {
         container.empty();
-        this.renderHeaderControls(container, 'Magic Systems', async (filter: string) => {
+        this.renderHeaderControls(container, t('magicSystems'), async (filter: string) => {
             this.currentFilter = filter;
             await this.renderMagicSystemsList(container);
         }, () => {
             import('../modals/MagicSystemModal').then(({ MagicSystemModal }) => {
                 new MagicSystemModal(this.app, this.plugin, null, async (magicSystem) => {
                     await this.plugin.saveMagicSystem(magicSystem);
-                    new Notice(`Magic System "${magicSystem.name}" created.`);
+                    new Notice(t('magicSystemCreated', magicSystem.name));
                 }).open();
             });
         }, t('createNew'));
@@ -2546,7 +2546,7 @@ export class DashboardView extends ItemView {
 
         const listContainer = container.createDiv('storyteller-list-container');
         if (magicSystems.length === 0) {
-            listContainer.createEl('p', { text: 'No magic systems found' + (this.currentFilter ? ' matching filter' : '') });
+            listContainer.createEl('p', { text: t('noMagicSystemsFound') + (this.currentFilter ? t('matchingFilter') : '') });
             return;
         }
 
@@ -2579,14 +2579,14 @@ export class DashboardView extends ItemView {
                 import('../modals/MagicSystemModal').then(({ MagicSystemModal }) => {
                     new MagicSystemModal(this.app, this.plugin, magicSystem, async (updated) => {
                         await this.plugin.saveMagicSystem(updated);
-                        new Notice(`Magic System "${updated.name}" updated.`);
+                        new Notice(t('magicSystemUpdated', updated.name));
                     }, async (toDelete) => {
                         if (toDelete.filePath) await this.plugin.deleteMagicSystem(toDelete.filePath);
                     }).open();
                 });
             });
             this.addDeleteButton(actionsEl, async () => {
-                if (magicSystem.filePath && confirm(`Delete magic system "${magicSystem.name}"?`)) {
+                if (magicSystem.filePath && confirm(t('confirmDeleteMagicSystem', magicSystem.name))) {
                     await this.plugin.deleteMagicSystem(magicSystem.filePath);
                 }
             });
@@ -2613,14 +2613,14 @@ export class DashboardView extends ItemView {
         header.style.marginBottom = '1rem';
 
         const headerText = header.createDiv('storyteller-templates-header-text');
-        headerText.createEl('h3', { text: 'Entity Templates' });
+        headerText.createEl('h3', { text: t('entityTemplates') });
         headerText.createEl('p', {
-            text: 'Browse and manage reusable templates for characters, locations, and other entities.',
+            text: t('browseManageTemplates'),
             cls: 'storyteller-templates-description'
         });
 
         const createTemplateBtn = header.createEl('button', {
-            text: 'Create New Template',
+            text: t('createNewTemplate'),
             cls: 'mod-cta'
         });
         createTemplateBtn.style.flexShrink = '0';
@@ -2629,7 +2629,7 @@ export class DashboardView extends ItemView {
                 this.app,
                 this.plugin,
                 async (template) => {
-                    new Notice(`Template "${template.name}" created!`);
+                    new Notice(t('templateCreated', template.name));
                     await this.renderTemplatesContent(container);
                 }
             ).open();
@@ -2656,14 +2656,14 @@ export class DashboardView extends ItemView {
         const searchRow = filterContainer.createDiv('storyteller-filter-row');
         searchRow.style.marginBottom = '0.75rem';
 
-        const searchLabel = searchRow.createEl('label', { text: 'Search' });
+        const searchLabel = searchRow.createEl('label', { text: t('searchTemplates') });
         searchLabel.style.display = 'block';
         searchLabel.style.marginBottom = '0.25rem';
         searchLabel.style.fontWeight = '500';
 
         const searchInput = searchRow.createEl('input', {
             type: 'text',
-            placeholder: 'Search templates by name, description, or tags...'
+            placeholder: t('searchTemplatesPlaceholder')
         });
         searchInput.style.width = '100%';
         searchInput.style.padding = '0.5rem';
@@ -2684,11 +2684,11 @@ export class DashboardView extends ItemView {
 
         // Genre dropdown
         const genreGroup = filtersRow.createDiv('storyteller-filter-group');
-        genreGroup.createEl('label', { text: 'Genre' }).style.display = 'block';
+        genreGroup.createEl('label', { text: t('genre') }).style.display = 'block';
         const genreSelect = genreGroup.createEl('select');
         genreSelect.style.padding = '0.35rem';
         genreSelect.style.borderRadius = '4px';
-        genreSelect.createEl('option', { text: 'All Genres', value: '' });
+        genreSelect.createEl('option', { text: t('allGenres'), value: '' });
         const genres: TemplateGenre[] = ['fantasy', 'scifi', 'mystery', 'horror', 'romance', 'historical', 'western', 'thriller', 'custom'];
         genres.forEach(g => genreSelect.createEl('option', { text: g.charAt(0).toUpperCase() + g.slice(1), value: g }));
         genreSelect.value = this.templateFilter.genre?.[0] || '';
@@ -2699,16 +2699,16 @@ export class DashboardView extends ItemView {
 
         // Category dropdown
         const categoryGroup = filtersRow.createDiv('storyteller-filter-group');
-        categoryGroup.createEl('label', { text: 'Category' }).style.display = 'block';
+        categoryGroup.createEl('label', { text: t('templateCategory') }).style.display = 'block';
         const categorySelect = categoryGroup.createEl('select');
         categorySelect.style.padding = '0.35rem';
         categorySelect.style.borderRadius = '4px';
-        categorySelect.createEl('option', { text: 'All Categories', value: '' });
+        categorySelect.createEl('option', { text: t('allTemplateCategories'), value: '' });
         const categories: TemplateCategory[] = ['single-entity', 'entity-set', 'full-world'];
         const categoryLabels: Record<TemplateCategory, string> = {
-            'single-entity': 'Single Entity',
-            'entity-set': 'Entity Set',
-            'full-world': 'Full World'
+            'single-entity': t('singleEntity'),
+            'entity-set': t('entitySet'),
+            'full-world': t('fullWorld')
         };
         categories.forEach(c => categorySelect.createEl('option', { text: categoryLabels[c], value: c }));
         categorySelect.value = this.templateFilter.category?.[0] || '';
@@ -2719,13 +2719,13 @@ export class DashboardView extends ItemView {
 
         // Sort dropdown
         const sortGroup = filtersRow.createDiv('storyteller-filter-group');
-        sortGroup.createEl('label', { text: 'Sort By' }).style.display = 'block';
+        sortGroup.createEl('label', { text: t('sortBy') }).style.display = 'block';
         const sortSelect = sortGroup.createEl('select');
         sortSelect.style.padding = '0.35rem';
         sortSelect.style.borderRadius = '4px';
-        sortSelect.createEl('option', { text: 'Name', value: 'name' });
-        sortSelect.createEl('option', { text: 'Usage Count', value: 'usage' });
-        sortSelect.createEl('option', { text: 'Recently Used', value: 'recent' });
+        sortSelect.createEl('option', { text: t('sortByName'), value: 'name' });
+        sortSelect.createEl('option', { text: t('sortByUsage'), value: 'usage' });
+        sortSelect.createEl('option', { text: t('sortByRecent'), value: 'recent' });
         sortSelect.value = this.templateFilter.sortByUsage ? 'usage' : (this.templateFilter.sortByRecent ? 'recent' : 'name');
         sortSelect.addEventListener('change', () => {
             this.templateFilter.sortByUsage = sortSelect.value === 'usage';
@@ -2751,7 +2751,7 @@ export class DashboardView extends ItemView {
             this.templateFilter.showBuiltIn = builtInCheck.checked;
             this.refreshTemplateList(container);
         });
-        builtInLabel.createEl('span', { text: 'Show Built-in' });
+        builtInLabel.createEl('span', { text: t('showBuiltIn') });
 
         // Custom toggle
         const customLabel = togglesRow.createEl('label');
@@ -2765,7 +2765,7 @@ export class DashboardView extends ItemView {
             this.templateFilter.showCustom = customCheck.checked;
             this.refreshTemplateList(container);
         });
-        customLabel.createEl('span', { text: 'Show Custom' });
+        customLabel.createEl('span', { text: t('showCustom') });
     }
 
     /**
@@ -2806,14 +2806,14 @@ export class DashboardView extends ItemView {
             emptyState.style.textAlign = 'center';
             emptyState.style.color = 'var(--text-muted)';
             emptyState.createEl('p', {
-                text: 'No templates found. Try adjusting your filters or create a new template.'
+                text: t('noTemplatesFound')
             });
             return listContainer;
         }
 
         // Display template count
         const countEl = listContainer.createEl('p', {
-            text: `Found ${this.templatesCache.length} template${this.templatesCache.length !== 1 ? 's' : ''}`,
+            text: t('foundXTemplates', this.templatesCache.length),
             cls: 'storyteller-template-count'
         });
         countEl.style.marginBottom = '0.75rem';
@@ -2852,7 +2852,7 @@ export class DashboardView extends ItemView {
         header.createEl('h4', { text: template.name }).style.margin = '0';
 
         if (template.isBuiltIn) {
-            const badge = header.createEl('span', { text: 'Built-in' });
+            const badge = header.createEl('span', { text: t('builtIn') });
             badge.style.fontSize = '0.75em';
             badge.style.padding = '0.2rem 0.5rem';
             badge.style.backgroundColor = 'var(--interactive-accent)';
@@ -2885,7 +2885,7 @@ export class DashboardView extends ItemView {
         categoryBadge.style.borderRadius = '4px';
 
         if (template.usageCount && template.usageCount > 0) {
-            const usageBadge = meta.createEl('span', { text: `Used: ${template.usageCount}x` });
+            const usageBadge = meta.createEl('span', { text: t('usedXTimes', template.usageCount) });
             usageBadge.style.padding = '0.15rem 0.4rem';
             usageBadge.style.backgroundColor = 'var(--background-secondary)';
             usageBadge.style.borderRadius = '4px';
@@ -2896,7 +2896,7 @@ export class DashboardView extends ItemView {
             const entityTypesEl = card.createDiv('storyteller-template-card-entity-types');
             entityTypesEl.style.marginBottom = '0.5rem';
             entityTypesEl.style.fontSize = '0.85em';
-            entityTypesEl.createEl('span', { text: 'Contains: ' });
+            entityTypesEl.createEl('span', { text: t('contains') });
             template.entityTypes.forEach(type => {
                 const typeBadge = entityTypesEl.createEl('span', { text: type });
                 typeBadge.style.marginLeft = '0.25rem';
@@ -2933,18 +2933,18 @@ export class DashboardView extends ItemView {
         actions.style.paddingTop = '0.75rem';
         actions.style.borderTop = '1px solid var(--background-modifier-border)';
 
-        const useButton = actions.createEl('button', { text: 'Use Template', cls: 'mod-cta' });
+        const useButton = actions.createEl('button', { text: t('useTemplate'), cls: 'mod-cta' });
         useButton.addEventListener('click', () => this.handleUseTemplate(template));
 
         if (template.isEditable) {
-            const editButton = actions.createEl('button', { text: 'Edit' });
+            const editButton = actions.createEl('button', { text: t('edit') });
             editButton.addEventListener('click', () => this.handleEditTemplate(template, container));
 
-            const deleteButton = actions.createEl('button', { text: 'Delete', cls: 'mod-warning' });
+            const deleteButton = actions.createEl('button', { text: t('delete'), cls: 'mod-warning' });
             deleteButton.addEventListener('click', () => this.handleDeleteTemplate(template, container));
         }
 
-        const duplicateButton = actions.createEl('button', { text: 'Duplicate' });
+        const duplicateButton = actions.createEl('button', { text: t('duplicate') });
         duplicateButton.addEventListener('click', () => this.handleDuplicateTemplate(template, container));
     }
 
@@ -2952,7 +2952,7 @@ export class DashboardView extends ItemView {
      * Handle using a template
      */
     private handleUseTemplate(template: Template): void {
-        new Notice(`Template "${template.name}" selected. Apply this template from the entity creation modal.`);
+        new Notice(t('templateSelected', template.name));
     }
 
     /**
@@ -2978,10 +2978,10 @@ export class DashboardView extends ItemView {
             try {
                 await this.plugin.templateManager.deleteTemplate(template.id);
                 await this.renderTemplatesContent(container);
-                new Notice(`Template "${template.name}" deleted.`);
+                new Notice(t('templateDeleted', template.name));
             } catch (error) {
                 console.error('Error deleting template:', error);
-                new Notice(`Failed to delete template: ${(error as Error).message}`);
+                new Notice(t('failedToDeleteTemplate', (error as Error).message));
             }
         }
     }
@@ -2991,13 +2991,13 @@ export class DashboardView extends ItemView {
      */
     private async handleDuplicateTemplate(template: Template, container: HTMLElement): Promise<void> {
         try {
-            const newName = `${template.name} (Copy)`;
+            const newName = `${template.name}${t('templateCopySuffix')}`;
             await this.plugin.templateManager.copyTemplate(template.id, newName);
-            new Notice(`Template duplicated as "${newName}"`);
+            new Notice(t('templateDuplicated', newName));
             await this.renderTemplatesContent(container);
         } catch (error) {
             console.error('Error duplicating template:', error);
-            new Notice(`Failed to duplicate template: ${(error as Error).message}`);
+            new Notice(t('failedToDuplicateTemplate', (error as Error).message));
         }
     }
 
@@ -3058,9 +3058,9 @@ class ConfirmDeleteTemplateModal extends Modal {
     onOpen(): void {
         const { contentEl } = this;
 
-        contentEl.createEl('h2', { text: 'Delete Template?' });
+        contentEl.createEl('h2', { text: t('deleteTemplate') });
         contentEl.createEl('p', {
-            text: `Are you sure you want to delete the template "${this.templateName}"? This action cannot be undone.`
+            text: t('confirmDeleteTemplate', this.templateName)
         });
 
         const buttonContainer = contentEl.createDiv({ cls: 'modal-button-container' });
@@ -3069,14 +3069,14 @@ class ConfirmDeleteTemplateModal extends Modal {
         buttonContainer.style.justifyContent = 'flex-end';
         buttonContainer.style.marginTop = '1rem';
 
-        const cancelButton = buttonContainer.createEl('button', { text: 'Cancel' });
+        const cancelButton = buttonContainer.createEl('button', { text: t('cancel') });
         cancelButton.addEventListener('click', () => {
             this.onConfirm(false);
             this.close();
         });
 
         const deleteButton = buttonContainer.createEl('button', {
-            text: 'Delete',
+            text: t('delete'),
             cls: 'mod-warning'
         });
         deleteButton.addEventListener('click', () => {
