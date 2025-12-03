@@ -735,7 +735,7 @@ export class DashboardView extends ItemView {
                 new Notice(`Location "${loc.name}" created.`);
                 // Manual refresh removed - automatic vault event refresh will handle this
             }).open();
-        });
+        }, t('createLocation'));
 
         await this.renderLocationsList(container);
     }
@@ -1192,7 +1192,7 @@ export class DashboardView extends ItemView {
         // Timeline filters
         const timelineFilterSetting = new Setting(filtersContainer)
             .setName(t('filterByTimeline'))
-            .setDesc(t('timelineStart') + ' / ' + t('timelineEnd'));
+            .setDesc(t('timelineStart') + t('timelineRangeSeparator') + t('timelineEnd'));
 
         const timelineContainer = timelineFilterSetting.controlEl.createDiv();
         timelineContainer.style.display = 'flex';

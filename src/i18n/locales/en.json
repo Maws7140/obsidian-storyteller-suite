@@ -318,6 +318,7 @@
   "graphFilters": "Graph filters",
   "timelineStart": "Timeline start",
   "timelineEnd": "Timeline end",
+  "timelineRangeSeparator": " / ",
   "selectEntityTypes": "Select entity types",
   "applyFilters": "Apply filters",
   "resetFilters": "Reset filters",
