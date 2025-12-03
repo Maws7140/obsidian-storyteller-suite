@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.5.1
+
+_Release notes to be added_
+
 ## 1.5.0
 
 _Release notes to be added_
