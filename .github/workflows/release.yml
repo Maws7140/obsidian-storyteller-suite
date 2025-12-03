@@ -1,0 +1,169 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., 1.5.2)'
+        required: true
+        type: string
+      release_notes:
+        description: 'Release notes (optional)'
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+env:
+  PLUGIN_NAME: storyteller-suite
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18.x'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Update version files
+        run: |
+          VERSION="${{ inputs.version }}"
+          
+          # Read current minAppVersion from manifest.json
+          CURRENT_MIN_APP=$(node -e "const m=require('./manifest.json'); console.log(m.minAppVersion)")
+          
+          # Calculate new minAppVersion based on pattern (increment patch version)
+          NEW_MIN_APP=$(node -e "
+            const current = '$CURRENT_MIN_APP';
+            const parts = current.split('.');
+            parts[2] = String(parseInt(parts[2]) + 1);
+            console.log(parts.join('.'));
+          ")
+          
+          # Update package.json version
+          npm version $VERSION --no-git-tag-version
+          
+          # Update manifest.json version and minAppVersion
+          node -e "
+            const fs = require('fs');
+            const manifest = JSON.parse(fs.readFileSync('manifest.json', 'utf8'));
+            manifest.version = '$VERSION';
+            manifest.minAppVersion = '$NEW_MIN_APP';
+            fs.writeFileSync('manifest.json', JSON.stringify(manifest, null, '\t') + '\n');
+          "
+          
+          # Update versions.json with new version
+          node -e "
+            const fs = require('fs');
+            const versions = JSON.parse(fs.readFileSync('versions.json', 'utf8'));
+            versions['$VERSION'] = '$NEW_MIN_APP';
+            fs.writeFileSync('versions.json', JSON.stringify(versions, null, '\t') + '\n');
+          "
+          
+          # Update CHANGELOG.md
+          if [ -n "${{ inputs.release_notes }}" ]; then
+            node -e "
+              const fs = require('fs');
+              const changelog = fs.readFileSync('CHANGELOG.md', 'utf8');
+              const notes = \`${{ inputs.release_notes }}\`.replace(/\`/g, '\\`');
+              const newEntry = \`## $VERSION\n\n\${notes}\n\n\`;
+              const updated = changelog.replace(/^# Changelog\n\n/, \`# Changelog\n\n\${newEntry}\`);
+              fs.writeFileSync('CHANGELOG.md', updated);
+            "
+          else
+            node -e "
+              const fs = require('fs');
+              const changelog = fs.readFileSync('CHANGELOG.md', 'utf8');
+              const newEntry = \`## $VERSION\n\n_Release notes to be added_\n\n\`;
+              const updated = changelog.replace(/^# Changelog\n\n/, \`# Changelog\n\n\${newEntry}\`);
+              fs.writeFileSync('CHANGELOG.md', updated);
+            "
+          fi
+          
+          # Display updated files for verification
+          echo "Updated files:"
+          cat package.json | grep '"version"'
+          cat manifest.json | grep '"version"'
+          tail -3 versions.json
+
+      - name: Run type check
+        run: npm run build -- --noEmit || tsc -p tsconfig.json --noEmit
+
+      - name: Build plugin
+        run: npm run build
+
+      - name: Verify build artifacts
+        run: |
+          if [ ! -f "main.js" ]; then
+            echo "Error: main.js not found after build"
+            exit 1
+          fi
+          if [ ! -f "manifest.json" ]; then
+            echo "Error: manifest.json not found"
+            exit 1
+          fi
+          if [ ! -f "styles.css" ]; then
+            echo "Warning: styles.css not found"
+          fi
+
+      - name: Create release package
+        run: |
+          mkdir -p ${{ env.PLUGIN_NAME }}
+          cp main.js manifest.json ${{ env.PLUGIN_NAME }}/
+          if [ -f "styles.css" ]; then
+            cp styles.css ${{ env.PLUGIN_NAME }}/
+          fi
+          zip -r ${{ env.PLUGIN_NAME }}-${{ inputs.version }}.zip ${{ env.PLUGIN_NAME }}/
+          ls -lh ${{ env.PLUGIN_NAME }}-${{ inputs.version }}.zip
+
+      - name: Commit and tag version changes
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add package.json manifest.json versions.json CHANGELOG.md
+          git commit -m "chore: bump version to ${{ inputs.version }}" || exit 0
+          
+          # Create and push tag
+          git tag -a "v${{ inputs.version }}" -m "Release ${{ inputs.version }}"
+          git push origin HEAD || true
+          git push origin "v${{ inputs.version }}"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ inputs.version }}
+          name: Release ${{ inputs.version }}
+          body: |
+            ## Changes in ${{ inputs.version }}
+            
+            ${{ inputs.release_notes || 'See CHANGELOG.md for details.' }}
+            
+            ## Installation
+            
+            1. Download the `${{ env.PLUGIN_NAME }}-${{ inputs.version }}.zip` file
+            2. Extract it to your Obsidian vault's `.obsidian/plugins/${{ env.PLUGIN_NAME }}/` folder
+            3. Restart Obsidian or reload the plugin
+            
+            ## Files
+            
+            - `main.js` - Main plugin file
+            - `manifest.json` - Plugin manifest
+            - `styles.css` - Plugin styles (if present)
+          files: |
+            ${{ env.PLUGIN_NAME }}-${{ inputs.version }}.zip
+            main.js
+            manifest.json
+          draft: false
+          prerelease: false
+

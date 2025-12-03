@@ -318,6 +318,7 @@
   "graphFilters": "图谱筛选",
   "timelineStart": "时间线开始",
   "timelineEnd": "时间线结束",
+  "timelineRangeSeparator": " 至 ",
   "selectEntityTypes": "选择实体类型",
   "applyFilters": "应用筛选",
   "resetFilters": "重置筛选",
