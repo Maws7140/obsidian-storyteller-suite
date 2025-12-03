@@ -254,9 +254,9 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
             .addDropdown(dd => dd
                 .addOption('flatten', t('flattenCustomFields'))
                 .addOption('nested', t('nestedCustomFields'))
-                .setValue((this.plugin.settings as any).customFieldsMode || 'flatten')
+                .setValue(this.plugin.settings.customFieldsMode || 'flatten')
                 .onChange(async (v) => {
-                    (this.plugin.settings as any).customFieldsMode = (v as any);
+                    this.plugin.settings.customFieldsMode = v as 'flatten' | 'nested';
                     await this.plugin.saveSettings();
                 }));
 
@@ -297,14 +297,14 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
             .addDropdown(dd => dd
                 .addOptions({ none: t('noGrouping'), location: t('byLocation'), group: t('byGroup') })
                 .setValue(this.plugin.settings.defaultTimelineGroupMode || 'none')
-                .onChange(async (v) => { this.plugin.settings.defaultTimelineGroupMode = v as any; await this.plugin.saveSettings(); }));
+                .onChange(async (v) => { this.plugin.settings.defaultTimelineGroupMode = v as 'none' | 'location' | 'group'; await this.plugin.saveSettings(); }));
 
         new Setting(containerEl)
             .setName(t('defaultZoomPreset'))
             .addDropdown(dd => dd
                 .addOptions({ none: t('noneOption'), fit: t('fitOption'), decade: t('decadeOption'), century: t('centuryOption') })
                 .setValue(this.plugin.settings.defaultTimelineZoomPreset || 'none')
-                .onChange(async (v) => { this.plugin.settings.defaultTimelineZoomPreset = v as any; await this.plugin.saveSettings(); }));
+                .onChange(async (v) => { this.plugin.settings.defaultTimelineZoomPreset = v as 'none' | 'decade' | 'century' | 'fit'; await this.plugin.saveSettings(); }));
 
         new Setting(containerEl)
             .setName(t('defaultStacking'))
@@ -414,7 +414,7 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                 .addButton(btn => btn
                     .setButtonText(t('previewBtn'))
                     .onClick(async () => {
-                        const resolver = (this.plugin as any).buildResolver?.() || null;
+                        const resolver = this.plugin.getFolderResolver() || null;
                         if (!resolver) return;
                         const results = resolver.resolveAll();
                         const table = containerEl.createEl('pre');

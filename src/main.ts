@@ -243,7 +243,7 @@ export default class StorytellerSuitePlugin extends Plugin {
         return true;
     }
     /** Build a resolver using current settings */
-    private buildResolver(): FolderResolver {
+    public getFolderResolver(): FolderResolver {
         const options: FolderResolverOptions = {
             enableCustomEntityFolders: this.settings.enableCustomEntityFolders,
             storyRootFolderTemplate: this.settings.storyRootFolderTemplate,
@@ -332,7 +332,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 
     /** Resolve all folders; if any error, return a summary message for the user. */
     private resolveAllEntityFoldersOrExplain(): { ok: boolean; results: ReturnType<FolderResolver['resolveAll']>; message?: string } {
-        const resolver = this.buildResolver();
+        const resolver = this.getFolderResolver();
         const results = resolver.resolveAll();
         const errors: string[] = [];
         for (const [k, v] of Object.entries(results)) {
@@ -397,7 +397,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 	 * Helper: Get the folder path for a given entity type in the active story
 	 */
     getEntityFolder(type: 'character' | 'location' | 'event' | 'item' | 'reference' | 'chapter' | 'scene' | 'map' | 'culture' | 'faction' | 'economy' | 'magicSystem' | 'calendar'): string {
-        const resolver = this.buildResolver();
+        const resolver = this.getFolderResolver();
         return resolver.getEntityFolder(type);
     }
 
