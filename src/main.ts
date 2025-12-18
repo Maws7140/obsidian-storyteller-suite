@@ -4550,7 +4550,7 @@ export default class StorytellerSuitePlugin extends Plugin {
                 if ((this.settings.stories?.length || 0) > 0 && hasSeedNames) {
                     // Determine if there are any entity markdown files under resolved folders
                     const allMd = this.app.vault.getMarkdownFiles();
-                    const resolved = this.buildResolver().resolveAll();
+                    const resolved = this.getFolderResolver().resolveAll();
                     const prefixes: string[] = Object.values(resolved)
                         .map(v => (v as any).path as string | undefined)
                         .filter((p): p is string => !!p)

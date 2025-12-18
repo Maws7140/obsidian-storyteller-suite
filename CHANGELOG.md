@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.5.2
+
+Fixed zoom issues 
 ## 1.5.1
 
 _Release notes to be added_

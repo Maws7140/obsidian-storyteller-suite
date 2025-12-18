@@ -656,12 +656,25 @@ If your plugin does not need CSS, delete this file.
     }
     
     /* Mobile search and filter improvements */
-    .search-input,
-    input[type="text"],
-    input[type="search"],
-    input[type="date"],
-    textarea,
-    select {
+    /* Scoped to plugin containers to prevent bleeding into Obsidian UI */
+    .storyteller-responsive-modal .search-input,
+    .storyteller-responsive-modal input[type="text"],
+    .storyteller-responsive-modal input[type="search"],
+    .storyteller-responsive-modal input[type="date"],
+    .storyteller-responsive-modal textarea,
+    .storyteller-responsive-modal select,
+    .storyteller-modal .search-input,
+    .storyteller-modal input[type="text"],
+    .storyteller-modal input[type="search"],
+    .storyteller-modal input[type="date"],
+    .storyteller-modal textarea,
+    .storyteller-modal select,
+    .view-type-storyteller-dashboard-view .search-input,
+    .view-type-storyteller-dashboard-view input[type="text"],
+    .view-type-storyteller-dashboard-view input[type="search"],
+    .view-type-storyteller-dashboard-view input[type="date"],
+    .view-type-storyteller-dashboard-view textarea,
+    .view-type-storyteller-dashboard-view select {
         font-size: 16px !important; /* Prevent iOS zoom */
         min-height: var(--sts-touch-target, 44px);
         padding: 12px 16px;
@@ -683,12 +696,24 @@ If your plugin does not need CSS, delete this file.
         transition: all 0.2s ease;
     }
     
-    .search-input:focus,
-    input[type="text"]:focus,
-    input[type="search"]:focus,
-    input[type="date"]:focus,
-    textarea:focus,
-    select:focus {
+    .storyteller-responsive-modal .search-input:focus,
+    .storyteller-responsive-modal input[type="text"]:focus,
+    .storyteller-responsive-modal input[type="search"]:focus,
+    .storyteller-responsive-modal input[type="date"]:focus,
+    .storyteller-responsive-modal textarea:focus,
+    .storyteller-responsive-modal select:focus,
+    .storyteller-modal .search-input:focus,
+    .storyteller-modal input[type="text"]:focus,
+    .storyteller-modal input[type="search"]:focus,
+    .storyteller-modal input[type="date"]:focus,
+    .storyteller-modal textarea:focus,
+    .storyteller-modal select:focus,
+    .view-type-storyteller-dashboard-view .search-input:focus,
+    .view-type-storyteller-dashboard-view input[type="text"]:focus,
+    .view-type-storyteller-dashboard-view input[type="search"]:focus,
+    .view-type-storyteller-dashboard-view input[type="date"]:focus,
+    .view-type-storyteller-dashboard-view textarea:focus,
+    .view-type-storyteller-dashboard-view select:focus {
         /* Enhanced focus styling for mobile */
         border-color: var(--interactive-accent);
         box-shadow: 0 0 0 3px rgba(var(--interactive-accent-rgb, 100, 100, 255), 0.1);
