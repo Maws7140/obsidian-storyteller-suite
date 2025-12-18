@@ -317,6 +317,19 @@ export class TimelineRenderer {
             const dayMs = 24 * 60 * 60 * 1000;
             const yearMs = 365.25 * dayMs;
 
+            // Calculate dynamic zoomMax based on actual event date range
+            const dateRange = this.getDateRange();
+            let calculatedZoomMax = 1000 * yearMs; // default fallback
+            const maxZoomMax = 10000 * yearMs; // vis-timeline's recommended maximum (10,000 years)
+            
+            if (dateRange) {
+                const timeSpan = dateRange.end.getTime() - dateRange.start.getTime();
+                // Apply 2x padding for comfortable viewing
+                calculatedZoomMax = Math.max(timeSpan * 2, 1000 * yearMs);
+                // Cap at vis-timeline's recommended maximum (10,000 years)
+                calculatedZoomMax = Math.min(calculatedZoomMax, maxZoomMax);
+            }
+
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const timelineOptions: any = {
                 stack: this.options.stackEnabled,
@@ -327,7 +340,7 @@ export class TimelineRenderer {
                 zoomKey: 'ctrlKey',
                 horizontalScroll: true,
                 zoomMin: dayMs,
-                zoomMax: 1000 * yearMs,
+                zoomMax: calculatedZoomMax,
                 multiselect: true,
                 orientation: 'bottom' as const,
                 tooltip: {
