@@ -8,6 +8,7 @@ import type StorytellerSuitePlugin from '../../main';
 import { Template, TemplateFilter, TemplateGenre, TemplateCategory } from '../TemplateTypes';
 import { TemplateStorageManager } from '../TemplateStorageManager';
 import { StoryTemplateDetailModal } from './StoryTemplateDetailModal';
+import { TemplateEditorModal } from '../../modals/TemplateEditorModal';
 
 export class StoryTemplateGalleryModal extends Modal {
     plugin: StorytellerSuitePlugin;
@@ -278,9 +279,19 @@ export class StoryTemplateGalleryModal extends Modal {
 
         new ButtonComponent(footer)
             .setButtonText('Create Custom Template')
+            .setCta()
             .onClick(() => {
-                // TODO: Open template builder
-                new Notice('Custom template builder coming soon!');
+                this.close();
+                new TemplateEditorModal(
+                    this.app,
+                    this.plugin,
+                    null, // null = create new template
+                    async (template) => {
+                        new Notice(`Template "${template.name}" created! You can now use it.`);
+                        // Reopen gallery to show new template
+                        new StoryTemplateGalleryModal(this.app, this.plugin, this.templateManager).open();
+                    }
+                ).open();
             });
     }
 
