@@ -1,5 +1,32 @@
 # Changelog
 
+## 1.5.3
+
+### Template System Enhancements
+- Add **Save Note as Template** feature - convert any existing note into a reusable template via command palette or modal
+- Add **Note-based Templates** - templates can now be stored as markdown files in `StorytellerSuite/Templates/Notes/` for easier editing and version control
+- Add **Template Variable Editor** modal for creating and editing template variables with support for:
+  - Multiple variable types (text, number, boolean, select, multiselect)
+  - Default values and descriptions
+  - Custom options for select/multiselect variables
+- Add **Variable Substitution System** - use `{{variableName}}` syntax in templates for dynamic content replacement during application
+- Enhance **Template Editor Modal** with improved UI and functionality for editing all template properties
+- Add **Template Application Modal** with enhanced support for:
+  - Custom YAML field substitution
+  - Section content variable replacement
+  - Variable validation and error handling
+- Add **Template Entity Detail Modal** for previewing template entity details before application
+- Add **Template Preview Renderer** utility for rendering template previews
+- Add **Template Migration** support for updating existing templates to new formats
+- Enhance template application process to handle custom fields and section content more robustly
+- Add new command: "Storyteller Suite: Save Current Note as Template"
+
+### Code Quality and Maintenance
+- Enhanced localization for all template-related features and actions
+- Removed obsolete documentation files (implementation guides, mobile testing guides, deprecated feature docs)
+- Improved code organization and cleanup
+- Updated .gitignore to include template-related file patterns
+
 ## 1.5.2
 
 Fixed zoom issues 
