@@ -97,13 +97,9 @@ Storyteller Suite supports multiple languages! Currently available:
 
 ### Contributing Translations
 
-We welcome translations for other languages! Priority languages include:
+We welcome translations for other languages!
 
-**Tier 1 (High Priority):**
-- Spanish (es), French (fr), German (de), Portuguese (pt), Japanese (ja), Korean (ko)
 
-**Tier 2 (Medium Priority):**
-- Italian (it), Russian (ru), Dutch (nl), Polish (pl), Turkish (tr), Arabic (ar)
 
 See `TRANSLATION_GUIDE.md` for detailed instructions on how to contribute translations. Template files are available in `src/i18n/locales/` for the top priority languages.
 
