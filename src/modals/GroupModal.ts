@@ -907,11 +907,24 @@ export class GroupModal extends ResponsiveModal {
 
         const templateGroup = template.entities.groups[0];
 
-        Object.keys(templateGroup).forEach(key => {
-            if (key !== 'templateId' && key !== 'id' && key !== 'filePath' && key !== 'storyId') {
-                (this.group as any)[key] = (templateGroup as any)[key];
+        // Extract template-specific fields
+        const { templateId, sectionContent, customYamlFields, id, filePath, storyId, ...entityData } = templateGroup as any;
+
+        // Apply base entity fields
+        Object.assign(this.group, entityData);
+
+        // Apply custom YAML fields if they exist
+        if (customYamlFields) {
+            Object.assign(this.group, customYamlFields);
+        }
+
+        // Apply section content if it exists (map section names to lowercase properties)
+        if (sectionContent) {
+            for (const [sectionName, content] of Object.entries(sectionContent)) {
+                const propName = sectionName.toLowerCase().replace(/\s+/g, '');
+                (this.group as any)[propName] = content;
             }
-        });
+        }
 
         // Clear relationships as they reference template entities
         this.group.members = [];
