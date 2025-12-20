@@ -351,11 +351,24 @@ export class ChapterModal extends Modal {
 
         const templateChapter = template.entities.chapters[0];
 
-        Object.keys(templateChapter).forEach(key => {
-            if (key !== 'templateId' && key !== 'id' && key !== 'filePath') {
-                (this.chapter as any)[key] = (templateChapter as any)[key];
+        // Extract template-specific fields
+        const { templateId, sectionContent, customYamlFields, id, filePath, ...entityData } = templateChapter as any;
+
+        // Apply base entity fields
+        Object.assign(this.chapter, entityData);
+
+        // Apply custom YAML fields if they exist
+        if (customYamlFields) {
+            Object.assign(this.chapter, customYamlFields);
+        }
+
+        // Apply section content if it exists (map section names to lowercase properties)
+        if (sectionContent) {
+            for (const [sectionName, content] of Object.entries(sectionContent)) {
+                const propName = sectionName.toLowerCase().replace(/\s+/g, '');
+                (this.chapter as any)[propName] = content;
             }
-        });
+        }
 
         // Clear relationships as they reference template entities
         this.chapter.linkedCharacters = [];

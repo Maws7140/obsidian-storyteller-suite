@@ -55,6 +55,18 @@ export interface ConversionOptions {
 
     /** Fields to exclude from template */
     excludeFields?: string[];
+
+    /** Whether to include section content (Description, Backstory, etc.) */
+    includeSectionContent?: boolean;
+
+    /** Whether to include custom YAML fields not in core entity structure */
+    includeCustomYaml?: boolean;
+
+    /** Section content to include (if provided externally) */
+    sectionContent?: Record<string, string>;
+
+    /** Custom YAML fields to include (if provided externally) */
+    customYamlFields?: Record<string, any>;
 }
 
 export class EntityToTemplateConverter {
@@ -347,6 +359,28 @@ export class EntityToTemplateConverter {
             options.excludeFields.forEach(field => {
                 delete converted[field];
             });
+        }
+
+        // Add section content if provided (old format)
+        if (options.includeSectionContent && options.sectionContent) {
+            converted.sectionContent = options.sectionContent;
+        }
+
+        // Add custom YAML fields if provided (old format)
+        if (options.includeCustomYaml && options.customYamlFields) {
+            converted.customYamlFields = options.customYamlFields;
+        }
+
+        // Generate new format (yamlContent and markdownContent) from entity
+        // This ensures new templates use the simplified format
+        try {
+            // Dynamic import to avoid circular dependencies
+            const { entityToYaml, entityToMarkdown } = require('../utils/TemplatePreviewRenderer');
+            converted.yamlContent = entityToYaml(converted);
+            converted.markdownContent = entityToMarkdown(converted);
+        } catch (error) {
+            console.warn('Failed to generate yamlContent/markdownContent:', error);
+            // Fallback: keep old format if conversion fails
         }
 
         return converted as TemplateEntity<T>;

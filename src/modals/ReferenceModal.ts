@@ -227,11 +227,24 @@ export class ReferenceModal extends Modal {
 
         const templateRef = template.entities.references[0];
 
-        Object.keys(templateRef).forEach(key => {
-            if (key !== 'templateId' && key !== 'id' && key !== 'filePath') {
-                (this.refData as any)[key] = (templateRef as any)[key];
+        // Extract template-specific fields
+        const { templateId, sectionContent, customYamlFields, id, filePath, ...entityData } = templateRef as any;
+
+        // Apply base entity fields
+        Object.assign(this.refData, entityData);
+
+        // Apply custom YAML fields if they exist
+        if (customYamlFields) {
+            Object.assign(this.refData, customYamlFields);
+        }
+
+        // Apply section content if it exists (map section names to lowercase properties)
+        if (sectionContent) {
+            for (const [sectionName, content] of Object.entries(sectionContent)) {
+                const propName = sectionName.toLowerCase().replace(/\s+/g, '');
+                (this.refData as any)[propName] = content;
             }
-        });
+        }
     }
 
     private refresh(): void {

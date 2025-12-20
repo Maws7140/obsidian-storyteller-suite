@@ -2628,6 +2628,7 @@ export class DashboardView extends ItemView {
             new TemplateEditorModal(
                 this.app,
                 this.plugin,
+                null, // null = new template
                 async (template) => {
                     new Notice(t('templateCreated', template.name));
                     await this.renderTemplatesContent(container);
@@ -2933,8 +2934,8 @@ export class DashboardView extends ItemView {
         actions.style.paddingTop = '0.75rem';
         actions.style.borderTop = '1px solid var(--background-modifier-border)';
 
-        const useButton = actions.createEl('button', { text: t('useTemplate'), cls: 'mod-cta' });
-        useButton.addEventListener('click', () => this.handleUseTemplate(template));
+        const applyButton = actions.createEl('button', { text: t('applyTemplate'), cls: 'mod-cta' });
+        applyButton.addEventListener('click', () => this.handleUseTemplate(template));
 
         if (template.isEditable) {
             const editButton = actions.createEl('button', { text: t('edit') });
@@ -2951,8 +2952,11 @@ export class DashboardView extends ItemView {
     /**
      * Handle using a template
      */
-    private handleUseTemplate(template: Template): void {
-        new Notice(t('templateSelected', template.name));
+    private async handleUseTemplate(template: Template): Promise<void> {
+        console.log('DashboardView: handleUseTemplate called with template:', template.name);
+        // Apply the template with variable collection prompt
+        await this.plugin.applyTemplateWithPrompt(template);
+        console.log('DashboardView: applyTemplateWithPrompt completed');
     }
 
     /**
@@ -2962,10 +2966,10 @@ export class DashboardView extends ItemView {
         new TemplateEditorModal(
             this.app,
             this.plugin,
+            template,
             async (updatedTemplate) => {
                 await this.renderTemplatesContent(container);
-            },
-            template
+            }
         ).open();
     }
 

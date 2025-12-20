@@ -347,11 +347,24 @@ export class PlotItemModal extends Modal {
 
         const templateItem = template.entities.items[0];
 
-        Object.keys(templateItem).forEach(key => {
-            if (key !== 'templateId' && key !== 'id' && key !== 'filePath') {
-                (this.item as any)[key] = (templateItem as any)[key];
+        // Extract template-specific fields
+        const { templateId, sectionContent, customYamlFields, id, filePath, ...itemData } = templateItem as any;
+
+        // Apply base item fields
+        Object.assign(this.item, itemData);
+
+        // Apply custom YAML fields if they exist
+        if (customYamlFields) {
+            Object.assign(this.item, customYamlFields);
+        }
+
+        // Apply section content if it exists (map section names to lowercase properties)
+        if (sectionContent) {
+            for (const [sectionName, content] of Object.entries(sectionContent)) {
+                const propName = sectionName.toLowerCase().replace(/\s+/g, '');
+                (this.item as any)[propName] = content;
             }
-        });
+        }
 
         // Clear relationships as they reference template entities
         this.item.currentOwner = undefined;

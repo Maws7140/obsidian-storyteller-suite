@@ -874,12 +874,24 @@ export class EventModal extends Modal {
         // Get the first event from the template
         const templateEvt = template.entities.events[0];
 
-        // Apply template fields to current event (excluding templateId, id, filePath)
-        Object.keys(templateEvt).forEach(key => {
-            if (key !== 'templateId' && key !== 'id' && key !== 'filePath') {
-                (this.event as any)[key] = (templateEvt as any)[key];
+        // Extract template-specific fields
+        const { templateId, sectionContent, customYamlFields, id, filePath, ...evtData } = templateEvt as any;
+
+        // Apply base event fields
+        Object.assign(this.event, evtData);
+
+        // Apply custom YAML fields if they exist
+        if (customYamlFields) {
+            Object.assign(this.event, customYamlFields);
+        }
+
+        // Apply section content if it exists (map section names to lowercase properties)
+        if (sectionContent) {
+            for (const [sectionName, content] of Object.entries(sectionContent)) {
+                const propName = sectionName.toLowerCase().replace(/\s+/g, '');
+                (this.event as any)[propName] = content;
             }
-        });
+        }
 
         // Clear relationships as they reference template entities
         this.event.characters = [];

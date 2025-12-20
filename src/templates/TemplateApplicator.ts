@@ -3,7 +3,7 @@
  * Handles applying templates to stories with complete relationship mapping
  */
 
-import { Notice } from 'obsidian';
+import { Notice, parseYaml } from 'obsidian';
 import type StorytellerSuitePlugin from '../main';
 import {
     Template,
@@ -26,6 +26,8 @@ import {
     Reference,
     TypedRelationship
 } from '../types';
+import { VariableSubstitution } from './VariableSubstitution';
+import { parseSectionsFromMarkdown } from '../yaml/EntitySections';
 
 export class TemplateApplicator {
     private plugin: StorytellerSuitePlugin;
@@ -44,6 +46,8 @@ export class TemplateApplicator {
         template: Template,
         options: TemplateApplicationOptions
     ): Promise<TemplateApplicationResult> {
+        console.log('TemplateApplicator: Starting applyTemplate with:', { templateName: template.name, options });
+
         const result: TemplateApplicationResult = {
             success: false,
             idMap: new Map(),
@@ -76,17 +80,25 @@ export class TemplateApplicator {
                 });
             }
 
-            // Apply variable values if provided (Phase 5)
+            // Apply variable values if provided
             const variableValues = options.variableValues || {};
+            console.log('TemplateApplicator: Variable values:', variableValues);
+
+            // Substitute variables in template entities
+            const substitutedTemplate = this.substituteTemplateVariables(template, variableValues);
+            console.log('TemplateApplicator: Substituted template entities:', substitutedTemplate.entities);
 
             // Filter entities based on selection
-            const filteredEntities = this.filterEntities(template.entities, options.includeEntities);
+            const filteredEntities = this.filterEntities(substitutedTemplate.entities, options.includeEntities);
+            console.log('TemplateApplicator: Filtered entities:', filteredEntities);
 
             // Phase 1: Create all groups first (they need IDs for other entities)
             if (filteredEntities.groups && filteredEntities.groups.length > 0) {
+                console.log(`TemplateApplicator: Creating ${filteredEntities.groups.length} groups`);
                 result.created.groups = await this.createGroups(
                     filteredEntities.groups,
-                    options.storyId
+                    options.storyId,
+                    options.fieldOverrides
                 );
             }
 
@@ -94,9 +106,13 @@ export class TemplateApplicator {
             const creationPromises: Promise<any>[] = [];
 
             if (filteredEntities.characters && filteredEntities.characters.length > 0) {
+                console.log(`TemplateApplicator: Creating ${filteredEntities.characters.length} characters`);
                 creationPromises.push(
                     this.createCharacters(filteredEntities.characters, options.storyId, options.fieldOverrides)
-                        .then(chars => result.created.characters = chars)
+                        .then(chars => {
+                            console.log(`TemplateApplicator: Created ${chars.length} characters`);
+                            result.created.characters = chars;
+                        })
                 );
             }
 
@@ -150,9 +166,13 @@ export class TemplateApplicator {
             }
 
             if (filteredEntities.scenes && filteredEntities.scenes.length > 0) {
+                console.log(`TemplateApplicator: Creating ${filteredEntities.scenes.length} scenes`);
                 creationPromises.push(
                     this.createScenes(filteredEntities.scenes, options.storyId, options.fieldOverrides)
-                        .then(scenes => result.created.scenes = scenes)
+                        .then(scenes => {
+                            console.log(`TemplateApplicator: Created ${scenes.length} scenes`);
+                            result.created.scenes = scenes;
+                        })
                 );
             }
 
@@ -164,13 +184,18 @@ export class TemplateApplicator {
             }
 
             // Wait for all entity creation
+            console.log('TemplateApplicator: Waiting for all entity creation promises...');
             await Promise.all(creationPromises);
+            console.log('TemplateApplicator: All entities created:', result.created);
 
             // Phase 3: Map all relationships now that all entities exist
+            console.log('TemplateApplicator: Mapping relationships...');
             await this.mapAllRelationships(result.created, options.mergeRelationships || false);
 
             // Phase 4: Save all entities with mapped relationships
+            console.log('TemplateApplicator: Saving all entities...');
             await this.saveAllEntities(result.created);
+            console.log('TemplateApplicator: All entities saved');
 
             // Success!
             result.success = true;
@@ -298,20 +323,29 @@ export class TemplateApplicator {
      */
     private async createGroups(
         templateGroups: TemplateEntity<Group>[],
-        storyId: string
+        storyId: string,
+        overrides?: Map<string, Partial<any>>
     ): Promise<Group[]> {
         const groups: Group[] = [];
 
         for (const templateGroup of templateGroups) {
-            const { templateId, ...groupData } = templateGroup;
+            const { templateId } = templateGroup;
+            const { fields, sections } = this.processTemplateEntity(templateGroup);
 
+            const override = overrides?.get(templateId);
             const group: Group = {
-                ...groupData,
-                id: this.generateId(),
+                ...fields,
+                ...override,
+                id: override?.id || this.generateId(),
                 storyId,
-                // Don't map relationships yet - will do in phase 3
-                members: (groupData as any).members || []
+                members: (fields as any).members || []
             } as Group;
+
+            // Apply sections to entity properties
+            for (const [sectionName, content] of Object.entries(sections)) {
+                const propName = sectionName.toLowerCase().replace(/\s+/g, '');
+                (group as any)[propName] = content;
+            }
 
             // Store mapping
             this.idMap.set(templateId, group.id!);
@@ -331,6 +365,60 @@ export class TemplateApplicator {
     /**
      * Create characters
      */
+    /**
+     * Process template entity to extract fields from new format (yamlContent/markdownContent) or old format
+     */
+    private processTemplateEntity<T>(templateEntity: TemplateEntity<T>): { fields: any; sections: Record<string, string> } {
+        const { templateId, yamlContent, markdownContent, sectionContent, customYamlFields, ...rest } = templateEntity as any;
+        
+        let fields: any = { ...rest };
+        let sections: Record<string, string> = {};
+
+        // Handle new format: yamlContent and markdownContent
+        if (yamlContent && typeof yamlContent === 'string') {
+            try {
+                const parsed = parseYaml(yamlContent);
+                if (parsed && typeof parsed === 'object') {
+                    fields = { ...fields, ...parsed };
+                }
+            } catch (error) {
+                console.warn('Failed to parse yamlContent:', error);
+            }
+        } else if (customYamlFields) {
+            // Old format: merge custom YAML fields
+            fields = { ...fields, ...customYamlFields };
+        }
+
+        // Handle new format: markdownContent
+        if (markdownContent && typeof markdownContent === 'string') {
+            try {
+                const parsedSections = parseSectionsFromMarkdown(`---\n---\n\n${markdownContent}`);
+                sections = parsedSections;
+                
+                // Map well-known sections to entity properties
+                if ('Description' in parsedSections) {
+                    (fields as any).description = parsedSections['Description'];
+                }
+                if ('Backstory' in parsedSections) {
+                    (fields as any).backstory = parsedSections['Backstory'];
+                }
+            } catch (error) {
+                console.warn('Failed to parse markdownContent:', error);
+            }
+        } else if (sectionContent) {
+            // Old format: use sectionContent
+            sections = sectionContent;
+            
+            // Map section content to individual properties
+            for (const [sectionName, content] of Object.entries(sectionContent)) {
+                const propName = sectionName.toLowerCase().replace(/\s+/g, '');
+                (fields as any)[propName] = content;
+            }
+        }
+
+        return { fields, sections };
+    }
+
     private async createCharacters(
         templateChars: TemplateEntity<Character>[],
         storyId: string,
@@ -339,20 +427,35 @@ export class TemplateApplicator {
         const characters: Character[] = [];
 
         for (const templateChar of templateChars) {
-            const { templateId, ...charData } = templateChar;
+            const { templateId } = templateChar;
             const override = overrides?.get(templateId);
+            const { fields, sections } = this.processTemplateEntity(templateChar);
 
             const character: Character = {
-                ...charData,
+                ...fields,
                 ...override,
-                id: this.generateId(),
-                // Don't map relationships yet - will do in phase 3
+                id: override?.id || this.generateId(),
                 relationships: [],
                 locations: [],
                 events: [],
                 groups: [],
                 connections: []
             } as Character;
+
+            // Apply sections to entity properties (for backward compatibility with save methods)
+            for (const [sectionName, content] of Object.entries(sections)) {
+                const propName = sectionName.toLowerCase().replace(/\s+/g, '');
+                (character as any)[propName] = content;
+            }
+
+            // Store all template sections for saveCharacter to use (hidden property)
+            // This preserves all sections from note-based templates, not just Description/Backstory
+            Object.defineProperty(character, '_templateSections', {
+                value: sections,
+                enumerable: false,
+                writable: true,
+                configurable: true
+            });
 
             // Store mapping
             this.idMap.set(templateId, character.id!);
@@ -375,17 +478,31 @@ export class TemplateApplicator {
         const locations: Location[] = [];
 
         for (const templateLoc of templateLocs) {
-            const { templateId, ...locData } = templateLoc;
+            const { templateId } = templateLoc;
             const override = overrides?.get(templateId);
+            const { fields, sections } = this.processTemplateEntity(templateLoc);
 
             const location: Location = {
-                ...locData,
+                ...fields,
                 ...override,
-                id: this.generateId(),
-                // Don't map relationships yet
+                id: override?.id || this.generateId(),
                 groups: [],
                 connections: []
             } as Location;
+
+            // Apply sections to entity properties
+            for (const [sectionName, content] of Object.entries(sections)) {
+                const propName = sectionName.toLowerCase().replace(/\s+/g, '');
+                (location as any)[propName] = content;
+            }
+
+            // Store all template sections for saveLocation to use (hidden property)
+            Object.defineProperty(location, '_templateSections', {
+                value: sections,
+                enumerable: false,
+                writable: true,
+                configurable: true
+            });
 
             // Store mapping
             this.idMap.set(templateId, location.id!);
@@ -408,19 +525,33 @@ export class TemplateApplicator {
         const events: Event[] = [];
 
         for (const templateEvt of templateEvents) {
-            const { templateId, ...evtData } = templateEvt;
+            const { templateId } = templateEvt;
             const override = overrides?.get(templateId);
+            const { fields, sections } = this.processTemplateEntity(templateEvt);
 
             const event: Event = {
-                ...evtData,
+                ...fields,
                 ...override,
-                id: this.generateId(),
-                // Don't map relationships yet
+                id: override?.id || this.generateId(),
                 characters: [],
                 groups: [],
                 connections: [],
                 dependencies: []
             } as Event;
+
+            // Apply sections to entity properties
+            for (const [sectionName, content] of Object.entries(sections)) {
+                const propName = sectionName.toLowerCase().replace(/\s+/g, '');
+                (event as any)[propName] = content;
+            }
+
+            // Store all template sections for saveEvent to use (hidden property)
+            Object.defineProperty(event, '_templateSections', {
+                value: sections,
+                enumerable: false,
+                writable: true,
+                configurable: true
+            });
 
             // Store mapping
             this.idMap.set(templateId, event.id!);
@@ -443,19 +574,33 @@ export class TemplateApplicator {
         const items: PlotItem[] = [];
 
         for (const templateItem of templateItems) {
-            const { templateId, ...itemData } = templateItem;
+            const { templateId } = templateItem;
             const override = overrides?.get(templateId);
+            const { fields, sections } = this.processTemplateEntity(templateItem);
 
             const item: PlotItem = {
-                ...itemData,
+                ...fields,
                 ...override,
-                id: this.generateId(),
-                isPlotCritical: (itemData as any).isPlotCritical || false,
-                // Don't map relationships yet
+                id: override?.id || this.generateId(),
+                isPlotCritical: (fields as any).isPlotCritical || false,
                 associatedEvents: [],
                 groups: [],
                 connections: []
             } as PlotItem;
+
+            // Apply sections to entity properties
+            for (const [sectionName, content] of Object.entries(sections)) {
+                const propName = sectionName.toLowerCase().replace(/\s+/g, '');
+                (item as any)[propName] = content;
+            }
+
+            // Store all template sections for savePlotItem to use (hidden property)
+            Object.defineProperty(item, '_templateSections', {
+                value: sections,
+                enumerable: false,
+                writable: true,
+                configurable: true
+            });
 
             // Store mapping
             this.idMap.set(templateId, item.id!);
@@ -478,19 +623,33 @@ export class TemplateApplicator {
         const cultures: Culture[] = [];
 
         for (const templateCult of templateCultures) {
-            const { templateId, ...cultData } = templateCult;
+            const { templateId } = templateCult;
             const override = overrides?.get(templateId);
+            const { fields, sections } = this.processTemplateEntity(templateCult);
 
             const culture: Culture = {
-                ...cultData,
+                ...fields,
                 ...override,
                 id: this.generateId(),
-                // Don't map relationships yet
                 linkedLocations: [],
                 linkedCharacters: [],
                 linkedEvents: [],
                 relatedCultures: []
             } as Culture;
+
+            // Apply sections to entity properties
+            for (const [sectionName, content] of Object.entries(sections)) {
+                const propName = sectionName.toLowerCase().replace(/\s+/g, '');
+                (culture as any)[propName] = content;
+            }
+
+            // Store all template sections for saveCulture to use (hidden property)
+            Object.defineProperty(culture, '_templateSections', {
+                value: sections,
+                enumerable: false,
+                writable: true,
+                configurable: true
+            });
 
             // Store mapping
             this.idMap.set(templateId, culture.id!);
@@ -513,19 +672,33 @@ export class TemplateApplicator {
         const economies: Economy[] = [];
 
         for (const templateEcon of templateEconomies) {
-            const { templateId, ...econData } = templateEcon;
+            const { templateId } = templateEcon;
             const override = overrides?.get(templateId);
+            const { fields, sections } = this.processTemplateEntity(templateEcon);
 
             const economy: Economy = {
-                ...econData,
+                ...fields,
                 ...override,
-                id: this.generateId(),
-                // Don't map relationships yet
+                id: override?.id || this.generateId(),
                 linkedLocations: [],
                 linkedFactions: [],
                 linkedCultures: [],
                 linkedEvents: []
             } as Economy;
+
+            // Apply sections to entity properties
+            for (const [sectionName, content] of Object.entries(sections)) {
+                const propName = sectionName.toLowerCase().replace(/\s+/g, '');
+                (economy as any)[propName] = content;
+            }
+
+            // Store all template sections for saveEconomy to use (hidden property)
+            Object.defineProperty(economy, '_templateSections', {
+                value: sections,
+                enumerable: false,
+                writable: true,
+                configurable: true
+            });
 
             // Store mapping
             this.idMap.set(templateId, economy.id!);
@@ -548,20 +721,34 @@ export class TemplateApplicator {
         const magicSystems: MagicSystem[] = [];
 
         for (const templateMagic of templateMagicSystems) {
-            const { templateId, ...magicData } = templateMagic;
+            const { templateId } = templateMagic;
             const override = overrides?.get(templateId);
+            const { fields, sections } = this.processTemplateEntity(templateMagic);
 
             const magicSystem: MagicSystem = {
-                ...magicData,
+                ...fields,
                 ...override,
-                id: this.generateId(),
-                // Don't map relationships yet
+                id: override?.id || this.generateId(),
                 linkedCharacters: [],
                 linkedLocations: [],
                 linkedCultures: [],
                 linkedEvents: [],
                 linkedItems: []
             } as MagicSystem;
+
+            // Apply sections to entity properties
+            for (const [sectionName, content] of Object.entries(sections)) {
+                const propName = sectionName.toLowerCase().replace(/\s+/g, '');
+                (magicSystem as any)[propName] = content;
+            }
+
+            // Store all template sections for saveMagicSystem to use (hidden property)
+            Object.defineProperty(magicSystem, '_templateSections', {
+                value: sections,
+                enumerable: false,
+                writable: true,
+                configurable: true
+            });
 
             // Store mapping
             this.idMap.set(templateId, magicSystem.id!);
@@ -584,20 +771,34 @@ export class TemplateApplicator {
         const chapters: Chapter[] = [];
 
         for (const templateChap of templateChapters) {
-            const { templateId, ...chapData } = templateChap;
+            const { templateId } = templateChap;
             const override = overrides?.get(templateId);
+            const { fields, sections } = this.processTemplateEntity(templateChap);
 
             const chapter: Chapter = {
-                ...chapData,
+                ...fields,
                 ...override,
-                id: this.generateId(),
-                // Don't map relationships yet
+                id: override?.id || this.generateId(),
                 linkedCharacters: [],
                 linkedLocations: [],
                 linkedEvents: [],
                 linkedItems: [],
                 linkedGroups: []
             } as Chapter;
+
+            // Apply sections to entity properties
+            for (const [sectionName, content] of Object.entries(sections)) {
+                const propName = sectionName.toLowerCase().replace(/\s+/g, '');
+                (chapter as any)[propName] = content;
+            }
+
+            // Store all template sections for saveChapter to use (hidden property)
+            Object.defineProperty(chapter, '_templateSections', {
+                value: sections,
+                enumerable: false,
+                writable: true,
+                configurable: true
+            });
 
             // Store mapping
             this.idMap.set(templateId, chapter.id!);
@@ -620,20 +821,34 @@ export class TemplateApplicator {
         const scenes: Scene[] = [];
 
         for (const templateScene of templateScenes) {
-            const { templateId, ...sceneData } = templateScene;
+            const { templateId } = templateScene;
             const override = overrides?.get(templateId);
+            const { fields, sections } = this.processTemplateEntity(templateScene);
 
             const scene: Scene = {
-                ...sceneData,
+                ...fields,
                 ...override,
-                id: this.generateId(),
-                // Don't map relationships yet
+                id: override?.id || this.generateId(),
                 linkedCharacters: [],
                 linkedLocations: [],
                 linkedEvents: [],
                 linkedItems: [],
                 linkedGroups: []
             } as Scene;
+
+            // Apply sections to entity properties
+            for (const [sectionName, content] of Object.entries(sections)) {
+                const propName = sectionName.toLowerCase().replace(/\s+/g, '');
+                (scene as any)[propName] = content;
+            }
+
+            // Store all template sections for saveScene to use (hidden property)
+            Object.defineProperty(scene, '_templateSections', {
+                value: sections,
+                enumerable: false,
+                writable: true,
+                configurable: true
+            });
 
             // Store mapping
             this.idMap.set(templateId, scene.id!);
@@ -656,14 +871,29 @@ export class TemplateApplicator {
         const references: Reference[] = [];
 
         for (const templateRef of templateRefs) {
-            const { templateId, ...refData } = templateRef;
+            const { templateId } = templateRef;
             const override = overrides?.get(templateId);
+            const { fields, sections } = this.processTemplateEntity(templateRef);
 
             const reference: Reference = {
-                ...refData,
+                ...fields,
                 ...override,
-                id: this.generateId()
+                id: override?.id || this.generateId()
             } as Reference;
+
+            // Apply sections to entity properties
+            for (const [sectionName, content] of Object.entries(sections)) {
+                const propName = sectionName.toLowerCase().replace(/\s+/g, '');
+                (reference as any)[propName] = content;
+            }
+
+            // Store all template sections for saveReference to use (hidden property)
+            Object.defineProperty(reference, '_templateSections', {
+                value: sections,
+                enumerable: false,
+                writable: true,
+                configurable: true
+            });
 
             // Store mapping
             this.idMap.set(templateId, reference.id!);
@@ -917,6 +1147,60 @@ export class TemplateApplicator {
 
         // Wait for all saves
         await Promise.all(savePromises);
+    }
+
+    /**
+     * Substitute template variables in all entities
+     */
+    private substituteTemplateVariables(
+        template: Template,
+        variableValues: Record<string, any>
+    ): Template {
+        // If no variables or no variable values, return original template
+        if (!template.variables || template.variables.length === 0 || Object.keys(variableValues).length === 0) {
+            return template;
+        }
+
+        // Clone the template to avoid mutations
+        const clonedTemplate: Template = JSON.parse(JSON.stringify(template));
+
+        // Substitute variables in all entity types
+        const allWarnings: string[] = [];
+
+        // Helper to substitute entity arrays
+        const substituteEntityArray = <T>(entities: TemplateEntity<T>[] | undefined): TemplateEntity<T>[] | undefined => {
+            if (!entities || entities.length === 0) return entities;
+
+            return entities.map(entity => {
+                const result = VariableSubstitution.substituteEntity(entity, variableValues, false);
+
+                if (result.warnings.length > 0) {
+                    allWarnings.push(...result.warnings);
+                }
+
+                return result.value as TemplateEntity<T>;
+            });
+        };
+
+        // Substitute in all entity types
+        clonedTemplate.entities.characters = substituteEntityArray(clonedTemplate.entities.characters);
+        clonedTemplate.entities.locations = substituteEntityArray(clonedTemplate.entities.locations);
+        clonedTemplate.entities.events = substituteEntityArray(clonedTemplate.entities.events);
+        clonedTemplate.entities.items = substituteEntityArray(clonedTemplate.entities.items);
+        clonedTemplate.entities.groups = substituteEntityArray(clonedTemplate.entities.groups);
+        clonedTemplate.entities.cultures = substituteEntityArray(clonedTemplate.entities.cultures);
+        clonedTemplate.entities.economies = substituteEntityArray(clonedTemplate.entities.economies);
+        clonedTemplate.entities.magicSystems = substituteEntityArray(clonedTemplate.entities.magicSystems);
+        clonedTemplate.entities.chapters = substituteEntityArray(clonedTemplate.entities.chapters);
+        clonedTemplate.entities.scenes = substituteEntityArray(clonedTemplate.entities.scenes);
+        clonedTemplate.entities.references = substituteEntityArray(clonedTemplate.entities.references);
+
+        // Log warnings if any
+        if (allWarnings.length > 0) {
+            console.warn('Template variable substitution warnings:', allWarnings);
+        }
+
+        return clonedTemplate;
     }
 
     /**

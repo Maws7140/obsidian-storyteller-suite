@@ -339,11 +339,24 @@ export class CultureModal extends ResponsiveModal {
 
         const templateCulture = template.entities.cultures[0];
 
-        Object.keys(templateCulture).forEach(key => {
-            if (key !== 'templateId' && key !== 'id' && key !== 'filePath') {
-                (this.culture as any)[key] = (templateCulture as any)[key];
+        // Extract template-specific fields
+        const { templateId, sectionContent, customYamlFields, id, filePath, ...entityData } = templateCulture as any;
+
+        // Apply base entity fields
+        Object.assign(this.culture, entityData);
+
+        // Apply custom YAML fields if they exist
+        if (customYamlFields) {
+            Object.assign(this.culture, customYamlFields);
+        }
+
+        // Apply section content if it exists (map section names to lowercase properties)
+        if (sectionContent) {
+            for (const [sectionName, content] of Object.entries(sectionContent)) {
+                const propName = sectionName.toLowerCase().replace(/\s+/g, '');
+                (this.culture as any)[propName] = content;
             }
-        });
+        }
 
         // Clear relationships as they reference template entities
         this.culture.linkedLocations = [];

@@ -2837,3 +2837,975 @@ body.mod-rtl .storyteller-group-members {
 }
 
 /* Priority 1: Status Bar for node/edge counts */
+
+/* ============================================
+   TEMPLATE EDITOR MODALS
+   Variable Editor & Template Editor Styling
+   ============================================ */
+
+/* Template Editor Modal */
+.storyteller-template-editor-modal .modal {
+  width: 90vw;
+  max-width: 1000px;
+  height: 85vh;
+}
+
+.storyteller-template-editor {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  gap: 1rem;
+}
+
+/* Template Editor Header */
+.template-editor-header {
+  border-bottom: 1px solid var(--background-modifier-border);
+  padding-bottom: 1rem;
+  margin-bottom: 1rem;
+}
+
+.template-editor-header h2 {
+  margin: 0 0 0.5rem 0;
+  color: var(--text-normal);
+}
+
+.template-editor-warning {
+  background: var(--background-modifier-error);
+  color: var(--text-error);
+  padding: 0.75rem;
+  border-radius: 6px;
+  margin-top: 0.5rem;
+  font-size: 0.9em;
+}
+
+/* Template Editor Tabs */
+.template-editor-tabs {
+  display: flex;
+  gap: 0.5rem;
+  border-bottom: 1px solid var(--background-modifier-border);
+  padding-bottom: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.template-editor-tab {
+  padding: 0.5rem 1rem;
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 0.95em;
+  transition: all 0.2s ease;
+}
+
+.template-editor-tab:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.template-editor-tab.active {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  border-color: var(--interactive-accent);
+}
+
+/* Template Editor Content */
+.template-editor-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 0.5rem;
+}
+
+.template-editor-section {
+  padding: 0.5rem;
+}
+
+/* Entity Add Section */
+.template-entity-add-section {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  margin-bottom: 1rem;
+  padding: 1rem;
+  background: var(--background-secondary);
+  border-radius: 6px;
+}
+
+.template-entity-add-section select {
+  flex: 1;
+  padding: 0.5rem;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  background: var(--background-primary);
+  color: var(--text-normal);
+}
+
+/* Entities List */
+.template-entities-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.template-entity-type-section {
+  margin-bottom: 1.5rem;
+}
+
+.template-entity-type-section h4 {
+  margin: 0 0 0.75rem 0;
+  color: var(--text-accent);
+  font-size: 1.1em;
+  font-weight: 600;
+}
+
+/* Entity Card */
+.template-entity-card {
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  padding: 1rem;
+  margin-bottom: 0.5rem;
+  transition: box-shadow 0.2s ease;
+}
+
+.template-entity-card:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.template-entity-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+
+.template-entity-name {
+  font-weight: 600;
+  color: var(--text-normal);
+  font-size: 1.05em;
+}
+
+.template-entity-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.template-entity-btn,
+.template-entity-btn-danger {
+  padding: 0.4rem 0.8rem;
+  border-radius: 4px;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-primary);
+  color: var(--text-normal);
+  cursor: pointer;
+  font-size: 0.85em;
+  transition: all 0.2s ease;
+}
+
+.template-entity-btn:hover {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  border-color: var(--interactive-accent);
+}
+
+.template-entity-btn-danger:hover {
+  background: var(--text-error);
+  color: white;
+  border-color: var(--text-error);
+}
+
+.template-entity-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.template-entity-description {
+  color: var(--text-muted);
+  font-size: 0.9em;
+  line-height: 1.4;
+  margin: 0;
+}
+
+.template-entity-meta {
+  color: var(--text-faint);
+  font-size: 0.85em;
+}
+
+/* Variables List */
+.template-variables-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.template-variable-card {
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  padding: 1rem;
+  transition: box-shadow 0.2s ease;
+}
+
+.template-variable-card:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.template-variable-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.template-variable-header strong {
+  color: var(--text-normal);
+  font-size: 1.05em;
+}
+
+.template-variable-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.template-variable-btn,
+.template-variable-btn-danger {
+  padding: 0.4rem 0.8rem;
+  border-radius: 4px;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-primary);
+  color: var(--text-normal);
+  cursor: pointer;
+  font-size: 0.85em;
+  transition: all 0.2s ease;
+}
+
+.template-variable-btn:hover {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  border-color: var(--interactive-accent);
+}
+
+.template-variable-btn-danger:hover {
+  background: var(--text-error);
+  color: white;
+  border-color: var(--text-error);
+}
+
+.template-variable-syntax {
+  font-family: var(--font-monospace);
+  font-size: 0.9em;
+  color: var(--text-accent);
+  margin: 0.25rem 0;
+  background: var(--background-primary-alt);
+  padding: 0.25rem 0.5rem;
+  border-radius: 3px;
+  display: inline-block;
+}
+
+.template-variable-type {
+  color: var(--text-muted);
+  font-size: 0.85em;
+  margin: 0.25rem 0;
+}
+
+.template-variable-desc {
+  color: var(--text-muted);
+  font-size: 0.9em;
+  line-height: 1.4;
+  margin: 0.5rem 0 0 0;
+}
+
+.template-variable-default,
+.template-variable-options {
+  color: var(--text-faint);
+  font-size: 0.85em;
+  margin: 0.25rem 0;
+  font-style: italic;
+}
+
+/* Preview Tab */
+.template-preview-stats {
+  background: var(--background-secondary);
+  padding: 1rem;
+  border-radius: 6px;
+  margin-bottom: 1.5rem;
+  display: flex;
+  gap: 2rem;
+}
+
+.template-preview-stats p {
+  margin: 0;
+  font-size: 1.1em;
+  color: var(--text-normal);
+}
+
+.template-preview-entities {
+  margin-top: 1rem;
+}
+
+.template-preview-entities h4 {
+  margin: 0 0 1rem 0;
+  color: var(--text-normal);
+  font-size: 1.15em;
+}
+
+.template-preview-type-section {
+  margin-bottom: 1.5rem;
+}
+
+.template-preview-type-section h5 {
+  margin: 0 0 0.75rem 0;
+  color: var(--text-accent);
+  font-size: 1em;
+  font-weight: 600;
+}
+
+.template-preview-entity {
+  background: var(--background-secondary);
+  padding: 0.75rem;
+  border-radius: 4px;
+  margin-bottom: 0.5rem;
+  border-left: 3px solid var(--interactive-accent);
+}
+
+.template-preview-entity strong {
+  color: var(--text-normal);
+  display: block;
+  margin-bottom: 0.5rem;
+}
+
+.template-preview-entity p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.9em;
+  line-height: 1.4;
+}
+
+/* Empty State */
+.template-empty-state {
+  text-align: center;
+  padding: 2rem;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+/* Template Editor Footer */
+.template-editor-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--background-modifier-border);
+  margin-top: auto;
+}
+
+.template-editor-footer button {
+  padding: 0.6rem 1.5rem;
+  border-radius: 6px;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-secondary);
+  color: var(--text-normal);
+  cursor: pointer;
+  font-size: 0.95em;
+  transition: all 0.2s ease;
+}
+
+.template-editor-footer button:hover {
+  background: var(--background-modifier-hover);
+}
+
+.template-editor-footer button.mod-cta {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  border-color: var(--interactive-accent);
+}
+
+.template-editor-footer button.mod-cta:hover {
+  background: var(--interactive-accent-hover);
+}
+
+/* ============================================
+   TEMPLATE VARIABLE EDITOR MODAL
+   ============================================ */
+
+.storyteller-variable-editor-modal .modal {
+  width: 90vw;
+  max-width: 700px;
+  max-height: 85vh;
+}
+
+.variable-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.variable-editor-header {
+  border-bottom: 1px solid var(--background-modifier-border);
+  padding-bottom: 1rem;
+}
+
+.variable-editor-header h2 {
+  margin: 0 0 0.5rem 0;
+  color: var(--text-normal);
+}
+
+.variable-editor-subtitle {
+  color: var(--text-muted);
+  font-size: 0.9em;
+  line-height: 1.4;
+  margin: 0;
+}
+
+.variable-editor-form {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 0.5rem;
+}
+
+/* Variable Options Section */
+.variable-options-section {
+  margin: 1.5rem 0;
+  padding: 1rem;
+  background: var(--background-secondary);
+  border-radius: 6px;
+}
+
+.variable-options-section h4 {
+  margin: 0 0 0.5rem 0;
+  color: var(--text-normal);
+  font-size: 1em;
+}
+
+.variable-options-textarea {
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  background: var(--background-primary);
+  color: var(--text-normal);
+  font-family: var(--font-text);
+  resize: vertical;
+  margin-top: 0.5rem;
+}
+
+/* Variable Usage Section */
+.variable-usage-section {
+  margin: 1.5rem 0;
+  padding: 1rem;
+  background: var(--background-secondary-alt);
+  border-radius: 6px;
+  border-left: 3px solid var(--interactive-accent);
+}
+
+.variable-usage-section h4 {
+  margin: 0 0 0.75rem 0;
+  color: var(--text-normal);
+  font-size: 1em;
+}
+
+.variable-usage-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.variable-usage-item {
+  padding: 0.5rem 0.75rem;
+  background: var(--background-primary);
+  border-radius: 4px;
+}
+
+.variable-usage-location {
+  font-size: 0.9em;
+  color: var(--text-muted);
+  font-family: var(--font-monospace);
+}
+
+.variable-usage-empty {
+  padding: 1rem;
+  background: var(--background-secondary);
+  border-radius: 6px;
+  margin: 1rem 0;
+}
+
+.variable-usage-empty p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.9em;
+}
+
+/* Example Preview Section */
+.variable-example-preview {
+  margin: 1.5rem 0;
+  padding: 1rem;
+  background: var(--background-primary-alt);
+  border-radius: 6px;
+}
+
+.variable-example-preview h4 {
+  margin: 0 0 0.75rem 0;
+  color: var(--text-normal);
+  font-size: 1em;
+}
+
+.variable-example-code {
+  display: block;
+  padding: 0.75rem;
+  background: var(--code-background);
+  color: var(--code-normal);
+  font-family: var(--font-monospace);
+  font-size: 0.9em;
+  border-radius: 4px;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  margin: 0.5rem 0;
+}
+
+/* Variable Editor Footer */
+.variable-editor-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--background-modifier-border);
+  margin-top: auto;
+}
+
+.variable-editor-footer button {
+  padding: 0.6rem 1.5rem;
+  border-radius: 6px;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-secondary);
+  color: var(--text-normal);
+  cursor: pointer;
+  font-size: 0.95em;
+  transition: all 0.2s ease;
+}
+
+.variable-editor-footer button:hover {
+  background: var(--background-modifier-hover);
+}
+
+.variable-editor-footer button.mod-cta {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  border-color: var(--interactive-accent);
+}
+
+.variable-editor-footer button.mod-cta:hover {
+  background: var(--interactive-accent-hover);
+}
+
+/* ============================================
+   ENTITY DETAIL EDITOR MODAL
+   ============================================ */
+
+.storyteller-entity-detail-modal .modal {
+  width: 90vw;
+  max-width: 900px;
+  height: 85vh;
+}
+
+.entity-detail-editor {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  gap: 1rem;
+}
+
+.entity-detail-header {
+  border-bottom: 1px solid var(--background-modifier-border);
+  padding-bottom: 1rem;
+}
+
+.entity-detail-header h2 {
+  margin: 0 0 0.5rem 0;
+  color: var(--text-normal);
+}
+
+.entity-detail-subtitle {
+  color: var(--text-muted);
+  font-size: 0.9em;
+  line-height: 1.4;
+  margin: 0;
+}
+
+/* Entity Detail Tabs */
+.entity-detail-tabs {
+  display: flex;
+  gap: 0.5rem;
+  border-bottom: 1px solid var(--background-modifier-border);
+  padding-bottom: 0.5rem;
+}
+
+.entity-detail-tab {
+  padding: 0.5rem 1rem;
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 0.95em;
+  transition: all 0.2s ease;
+}
+
+.entity-detail-tab:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.entity-detail-tab.active {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  border-color: var(--interactive-accent);
+}
+
+/* Entity Detail Content */
+.entity-detail-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 0.5rem;
+}
+
+.entity-detail-section {
+  padding: 0.5rem;
+}
+
+.entity-detail-section h3 {
+  margin: 0 0 1rem 0;
+  color: var(--text-normal);
+  font-size: 1.15em;
+}
+
+/* Section Editor */
+.entity-section-editor {
+  margin-bottom: 1.5rem;
+}
+
+.entity-section-editor h4 {
+  margin: 0 0 0.5rem 0;
+  color: var(--text-accent);
+  font-size: 1em;
+  font-weight: 600;
+}
+
+.entity-section-textarea {
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  background: var(--background-primary);
+  color: var(--text-normal);
+  font-family: var(--font-text);
+  resize: vertical;
+  line-height: 1.5;
+}
+
+/* Custom Fields */
+.custom-fields-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.custom-field-item {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  padding: 0.75rem;
+  background: var(--background-secondary);
+  border-radius: 4px;
+}
+
+.custom-field-name {
+  flex: 1;
+  padding: 0.5rem;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  background: var(--background-primary);
+  color: var(--text-normal);
+  font-family: var(--font-monospace);
+  font-size: 0.9em;
+}
+
+.custom-field-value {
+  flex: 2;
+  padding: 0.5rem;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  background: var(--background-primary);
+  color: var(--text-normal);
+}
+
+.custom-field-delete {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  background: var(--background-primary);
+  color: var(--text-error);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.custom-field-delete:hover {
+  background: var(--text-error);
+  color: white;
+  border-color: var(--text-error);
+}
+
+.entity-detail-empty {
+  text-align: center;
+  padding: 2rem;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+/* Entity Detail Footer */
+.entity-detail-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--background-modifier-border);
+  margin-top: auto;
+}
+
+.entity-detail-footer button {
+  padding: 0.6rem 1.5rem;
+  border-radius: 6px;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-secondary);
+  color: var(--text-normal);
+  cursor: pointer;
+  font-size: 0.95em;
+  transition: all 0.2s ease;
+}
+
+.entity-detail-footer button:hover {
+  background: var(--background-modifier-hover);
+}
+
+.entity-detail-footer button.mod-cta {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  border-color: var(--interactive-accent);
+}
+
+.entity-detail-footer button.mod-cta:hover {
+  background: var(--interactive-accent-hover);
+}
+
+/* ============================================
+   MOBILE/TABLET RESPONSIVE ADJUSTMENTS
+   ============================================ */
+
+@media (max-width: 768px) {
+  .storyteller-template-editor-modal .modal,
+  .storyteller-variable-editor-modal .modal,
+  .storyteller-entity-detail-modal .modal {
+    width: 95vw;
+    height: 90vh;
+  }
+
+  .template-editor-tabs,
+  .entity-detail-tabs {
+    flex-wrap: wrap;
+  }
+
+  .template-editor-tab,
+  .entity-detail-tab {
+    flex: 1;
+    min-width: 120px;
+    text-align: center;
+    font-size: 0.85em;
+  }
+
+  .template-entity-add-section {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .template-preview-stats {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .custom-field-item {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .custom-field-name,
+  .custom-field-value {
+    width: 100%;
+  }
+}
+
+/* ============================================
+   TEMPLATE APPLICATION MODAL
+   Modal for collecting variable values when applying templates
+   ============================================ */
+
+.storyteller-template-application-modal .modal {
+  width: 90vw;
+  max-width: 700px;
+  max-height: 85vh;
+}
+
+.template-application {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+/* Header */
+.template-application-header {
+  border-bottom: 1px solid var(--background-modifier-border);
+  padding-bottom: 1rem;
+}
+
+.template-application-header h2 {
+  margin: 0 0 0.5rem 0;
+  color: var(--text-normal);
+}
+
+.template-application-subtitle {
+  color: var(--text-muted);
+  font-size: 0.9em;
+  line-height: 1.4;
+  margin: 0;
+}
+
+/* Template Info */
+.template-application-info {
+  background: var(--background-secondary);
+  padding: 1rem;
+  border-radius: 6px;
+  margin: 0.5rem 0;
+}
+
+.template-application-stats {
+  display: flex;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.75rem;
+}
+
+.template-stat {
+  font-size: 0.9em;
+  color: var(--text-muted);
+}
+
+.template-application-instruction {
+  margin: 0.75rem 0 0 0;
+  color: var(--text-normal);
+  font-weight: 500;
+}
+
+/* Variables Form */
+.template-application-form {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.template-variable-input {
+  background: var(--background-primary);
+  padding: 0.75rem;
+  border-radius: 6px;
+  border: 1px solid var(--background-modifier-border);
+  transition: border-color 0.2s ease;
+}
+
+.template-variable-input:hover {
+  border-color: var(--interactive-accent);
+}
+
+.template-required-indicator {
+  color: var(--text-error);
+  font-weight: bold;
+  margin-left: 0.25rem;
+}
+
+.template-variable-example {
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+.template-variable-usage-hint {
+  color: var(--text-faint);
+  font-size: 0.85em;
+  font-style: italic;
+}
+
+/* No Variables Message */
+.template-application-no-variables {
+  padding: 2rem;
+  text-align: center;
+}
+
+.template-application-message {
+  color: var(--text-muted);
+  font-size: 0.95em;
+  margin: 0;
+}
+
+/* Footer */
+.template-application-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--background-modifier-border);
+  margin-top: auto;
+}
+
+.template-application-footer button {
+  padding: 0.6rem 1.5rem;
+  border-radius: 6px;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-secondary);
+  color: var(--text-normal);
+  cursor: pointer;
+  font-size: 0.95em;
+  transition: all 0.2s ease;
+}
+
+.template-application-footer button:hover {
+  background: var(--background-modifier-hover);
+}
+
+.template-application-footer button.mod-cta {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  border-color: var(--interactive-accent);
+}
+
+.template-application-footer button.mod-cta:hover {
+  background: var(--interactive-accent-hover);
+}
+
+/* Mobile Responsive */
+@media (max-width: 768px) {
+  .storyteller-template-application-modal .modal {
+    width: 95vw;
+    height: 90vh;
+  }
+
+  .template-application-stats {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .template-variable-input {
+    padding: 0.5rem;
+  }
+}

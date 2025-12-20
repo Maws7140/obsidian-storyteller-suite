@@ -21,17 +21,20 @@ export const MEDIEVAL_TAVERN_TEMPLATE: Template = {
     entities: {
         locations: [{
             templateId: 'TAVERN_LOC_1',
-            name: '',
-            description: 'A warm and inviting establishment with a crackling fireplace, worn wooden tables, and the smell of hearty stew wafting from the kitchen. Travelers and locals alike gather here to share tales and warm their spirits.',
-            history: 'This tavern has stood for generations, witnessing countless stories unfold within its walls. Many famous adventurers have passed through, leaving their mark on its legend.',
-            locationType: 'Tavern',
-            region: '',
-            status: 'Active',
-            customFields: {
-                capacity: '40 patrons',
-                specialty: 'Local ale and hearty stew',
-                atmosphere: 'Warm and welcoming'
-            }
+            yamlContent: `name: ""
+locationType: "Tavern"
+region: ""
+status: "Active"
+capacity: "40 patrons"
+specialty: "Local ale and hearty stew"
+atmosphere: "Warm and welcoming"`,
+            markdownContent: `## Description
+
+A warm and inviting establishment with a crackling fireplace, worn wooden tables, and the smell of hearty stew wafting from the kitchen. Travelers and locals alike gather here to share tales and warm their spirits.
+
+## History
+
+This tavern has stood for generations, witnessing countless stories unfold within its walls. Many famous adventurers have passed through, leaving their mark on its legend.`
         }]
     },
     entityTypes: ['location'],
@@ -55,17 +58,20 @@ export const ANCIENT_CASTLE_TEMPLATE: Template = {
     entities: {
         locations: [{
             templateId: 'CASTLE_LOC_1',
-            name: '',
-            description: 'A massive stone fortress perched atop a strategic hill, its weathered walls bearing witness to centuries of siege and celebration. Towers reach toward the sky while banners flutter from the battlements.',
-            history: 'Built during an age of constant warfare, this castle has served as both a symbol of power and a last refuge for the realm. Its dungeons hold dark secrets, while its great hall has hosted legendary feasts.',
-            locationType: 'Castle',
-            region: '',
-            status: 'Occupied',
-            customFields: {
-                defenses: 'Thick walls, moat, drawbridge, towers',
-                garrison: 'Royal guard and household knights',
-                notable_features: 'Great hall, throne room, armory, dungeons'
-            }
+            yamlContent: `name: ""
+locationType: "Castle"
+region: ""
+status: "Occupied"
+defenses: "Thick walls, moat, drawbridge, towers"
+garrison: "Royal guard and household knights"
+notable_features: "Great hall, throne room, armory, dungeons"`,
+            markdownContent: `## Description
+
+A massive stone fortress perched atop a strategic hill, its weathered walls bearing witness to centuries of siege and celebration. Towers reach toward the sky while banners flutter from the battlements.
+
+## History
+
+Built during an age of constant warfare, this castle has served as both a symbol of power and a last refuge for the realm. Its dungeons hold dark secrets, while its great hall has hosted legendary feasts.`
         }]
     },
     entityTypes: ['location'],
@@ -89,17 +95,20 @@ export const ENCHANTED_FOREST_TEMPLATE: Template = {
     entities: {
         locations: [{
             templateId: 'FOREST_LOC_1',
-            name: '',
-            description: 'Ancient trees stretch toward a canopy that filters sunlight into ethereal beams. The air hums with latent magic, and strange lights dance between the branches at twilight. Paths shift and change, confounding those who enter without respect.',
-            history: 'Long before recorded history, this forest was old. The trees remember when the first peoples walked the land, and they guard secrets that predate civilization itself.',
-            locationType: 'Forest',
-            region: '',
-            status: 'Untamed',
-            customFields: {
-                magical_properties: 'Reality-bending paths, sentient flora',
-                inhabitants: 'Fey creatures, ancient spirits',
-                danger_level: 'High for the unwary'
-            }
+            yamlContent: `name: ""
+locationType: "Forest"
+region: ""
+status: "Untamed"
+magical_properties: "Reality-bending paths, sentient flora"
+inhabitants: "Fey creatures, ancient spirits"
+danger_level: "High for the unwary"`,
+            markdownContent: `## Description
+
+Ancient trees stretch toward a canopy that filters sunlight into ethereal beams. The air hums with latent magic, and strange lights dance between the branches at twilight. Paths shift and change, confounding those who enter without respect.
+
+## History
+
+Long before recorded history, this forest was old. The trees remember when the first peoples walked the land, and they guard secrets that predate civilization itself.`
         }]
     },
     entityTypes: ['location'],
@@ -123,17 +132,20 @@ export const BUSTLING_MARKETPLACE_TEMPLATE: Template = {
     entities: {
         locations: [{
             templateId: 'MARKET_LOC_1',
-            name: '',
-            description: 'A cacophony of voices haggling over prices fills the air as merchants display their wares in colorful stalls. The smell of exotic spices mingles with fresh bread and leather goods. Every corner holds a new discovery.',
-            history: 'This marketplace grew from a simple crossroads trading post into the commercial heart of the region. Merchants from distant lands converge here, making it a melting pot of cultures and goods.',
-            locationType: 'Marketplace',
-            region: '',
-            status: 'Thriving',
-            customFields: {
-                goods_available: 'Food, weapons, armor, exotic items, magical reagents',
-                peak_hours: 'Morning to midday',
-                notable_merchants: 'Various specialized vendors'
-            }
+            yamlContent: `name: ""
+locationType: "Marketplace"
+region: ""
+status: "Thriving"
+goods_available: "Food, weapons, armor, exotic items, magical reagents"
+peak_hours: "Morning to midday"
+notable_merchants: "Various specialized vendors"`,
+            markdownContent: `## Description
+
+A cacophony of voices haggling over prices fills the air as merchants display their wares in colorful stalls. The smell of exotic spices mingles with fresh bread and leather goods. Every corner holds a new discovery.
+
+## History
+
+This marketplace grew from a simple crossroads trading post into the commercial heart of the region. Merchants from distant lands converge here, making it a melting pot of cultures and goods.`
         }]
     },
     entityTypes: ['location'],
@@ -157,17 +169,20 @@ export const ANCIENT_RUINS_TEMPLATE: Template = {
     entities: {
         locations: [{
             templateId: 'RUINS_LOC_1',
-            name: '',
-            description: 'Weathered stone columns reach toward the sky like skeletal fingers, surrounding collapsed chambers half-buried in earth and vegetation. Faded murals hint at the glory that once was, while darkness pools in the depths below.',
-            history: 'Once a magnificent temple or palace of a civilization now lost to time. What catastrophe befell its builders remains a mystery, but their legacy lingers in the form of hidden chambers, ancient traps, and treasures waiting to be discovered.',
-            locationType: 'Ruins',
-            region: '',
-            status: 'Abandoned',
-            customFields: {
-                age: 'Thousands of years old',
-                hazards: 'Unstable structures, ancient traps, guardians',
-                treasures: 'Artifacts, knowledge, magical items'
-            }
+            yamlContent: `name: ""
+locationType: "Ruins"
+region: ""
+status: "Abandoned"
+age: "Thousands of years old"
+hazards: "Unstable structures, ancient traps, guardians"
+treasures: "Artifacts, knowledge, magical items"`,
+            markdownContent: `## Description
+
+Weathered stone columns reach toward the sky like skeletal fingers, surrounding collapsed chambers half-buried in earth and vegetation. Faded murals hint at the glory that once was, while darkness pools in the depths below.
+
+## History
+
+Once a magnificent temple or palace of a civilization now lost to time. What catastrophe befell its builders remains a mystery, but their legacy lingers in the form of hidden chambers, ancient traps, and treasures waiting to be discovered.`
         }]
     },
     entityTypes: ['location'],
@@ -191,17 +206,20 @@ export const CYBERPUNK_NIGHTCLUB_TEMPLATE: Template = {
     entities: {
         locations: [{
             templateId: 'CLUB_LOC_1',
-            name: '',
-            description: 'Pulsing neon lights cut through synthetic fog as bass thrums through the floor. Holographic displays advertise designer drugs while chrome-plated bouncers monitor the crowd. In the VIP section, deals that shape the city are made in whispered conversations.',
-            history: 'Built in the shell of an old manufacturing plant, this club became the neutral ground where corporate agents, street gangs, and fixers conduct business. Everyone who matters in the underground scene passes through eventually.',
-            locationType: 'Nightclub',
-            region: '',
-            status: 'Active',
-            customFields: {
-                owner: 'Anonymous syndicate',
-                security: 'Armed bouncers, facial recognition, weapon scanners',
-                services: 'Entertainment, black market connections, information brokering'
-            }
+            yamlContent: `name: ""
+locationType: "Nightclub"
+region: ""
+status: "Active"
+owner: "Anonymous syndicate"
+security: "Armed bouncers, facial recognition, weapon scanners"
+services: "Entertainment, black market connections, information brokering"`,
+            markdownContent: `## Description
+
+Pulsing neon lights cut through synthetic fog as bass thrums through the floor. Holographic displays advertise designer drugs while chrome-plated bouncers monitor the crowd. In the VIP section, deals that shape the city are made in whispered conversations.
+
+## History
+
+Built in the shell of an old manufacturing plant, this club became the neutral ground where corporate agents, street gangs, and fixers conduct business. Everyone who matters in the underground scene passes through eventually.`
         }]
     },
     entityTypes: ['location'],

@@ -57,10 +57,41 @@ export type TemplateEntityType =
 
 /**
  * Template entity - includes templateId for relationship mapping
+ * and optional section content and custom YAML fields
  */
 export type TemplateEntity<T> = Partial<T> & {
     /** Temporary ID used within template for relationship mapping */
     templateId: string;
+
+    /**
+     * Raw YAML frontmatter content as a string
+     * This is the preferred format for new templates
+     * Example: "name: {{characterName}}\nstatus: Alive\ntraits: [Brave, Loyal]"
+     */
+    yamlContent?: string;
+
+    /**
+     * Raw markdown body content as a string
+     * This is the preferred format for new templates
+     * Example: "## Description\nA brave knight...\n\n## Backstory\nBorn in..."
+     */
+    markdownContent?: string;
+
+    /**
+     * Section content for markdown body (e.g., Description, Backstory, History)
+     * Maps section names to their content
+     * Example: { "Description": "A brave knight...", "Backstory": "Born in..." }
+     * @deprecated Use markdownContent instead. Kept for backward compatibility.
+     */
+    sectionContent?: Record<string, string>;
+
+    /**
+     * Custom YAML fields not in the core entity structure
+     * Allows templates to define arbitrary frontmatter fields
+     * Example: { "customRating": 5, "customTags": ["tag1", "tag2"] }
+     * @deprecated Use yamlContent instead. Kept for backward compatibility.
+     */
+    customYamlFields?: Record<string, any>;
 };
 
 /**

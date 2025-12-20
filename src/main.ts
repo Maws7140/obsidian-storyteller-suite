@@ -59,6 +59,9 @@ import { PlatformUtils } from './utils/PlatformUtils';
 import { getTemplateSections } from './utils/EntityTemplates';
 import { LeafletCodeBlockProcessor } from './leaflet/processor';
 import { TemplateStorageManager } from './templates/TemplateStorageManager';
+import { TemplateNoteManager } from './templates/TemplateNoteManager';
+import { SaveNoteAsTemplateCommand } from './commands/SaveNoteAsTemplateCommand';
+import { Template, TemplateApplicationOptions, TemplateApplicationResult } from './templates/TemplateTypes';
 import { StoryTemplateGalleryModal } from './templates/modals/StoryTemplateGalleryModal';
 import { TrackManagerModal } from './modals/TrackManagerModal';
 import { ConflictViewModal } from './modals/ConflictViewModal';
@@ -350,6 +353,7 @@ export default class StorytellerSuitePlugin extends Plugin {
     private folderResolver: FolderResolver | null = null;
     private leafletProcessor: LeafletCodeBlockProcessor;
     templateManager: TemplateStorageManager;
+    templateNoteManager: TemplateNoteManager;
     trackManager: TimelineTrackManager;
     eraManager: EraManager;
 
@@ -600,6 +604,35 @@ export default class StorytellerSuitePlugin extends Plugin {
 		);
 		await this.templateManager.initialize();
 
+		// Initialize template note manager
+		this.templateNoteManager = new TemplateNoteManager(
+			this.app,
+			this.templateManager,
+			`${this.settings.templateStorageFolder || 'StorytellerSuite/Templates'}/Notes`
+		);
+		await this.templateNoteManager.initialize();
+
+		// Connect note manager to storage manager
+		this.templateManager.setTemplateNoteManager(this.templateNoteManager);
+
+		// Register file watcher to sync note changes to JSON
+		this.registerEvent(
+			this.app.vault.on('modify', async (file) => {
+				if (file instanceof TFile && file.extension === 'md') {
+					// Check if this is a template note
+					const notesFolder = `${this.settings.templateStorageFolder || 'StorytellerSuite/Templates'}/Notes`;
+					if (file.path.startsWith(notesFolder)) {
+						// Sync note changes to JSON
+						try {
+							await this.templateNoteManager.handleNoteChange(file);
+						} catch (error) {
+							console.error('Error syncing template note:', error);
+						}
+					}
+				}
+			})
+		);
+
 		// Initialize timeline managers
 		this.trackManager = new TimelineTrackManager(this);
 		this.eraManager = new EraManager(this);
@@ -649,6 +682,12 @@ export default class StorytellerSuitePlugin extends Plugin {
 		this.addRibbonIcon('book-open', 'Open storyteller dashboard', () => {
 			this.activateView();
 		}).addClass('storyteller-suite-ribbon-class');
+
+		// Add ribbon icon for template library
+		this.addRibbonIcon('layers', 'Apply template to story', async () => {
+			const { TemplateLibraryModal } = await import('./modals/TemplateLibraryModal');
+			new TemplateLibraryModal(this.app, this).open();
+		}).addClass('storyteller-suite-template-ribbon');
 
 		// Register command palette commands
 		this.registerCommands();
@@ -1057,6 +1096,16 @@ export default class StorytellerSuitePlugin extends Plugin {
 			name: 'Browse story templates',
 			callback: () => {
 				new StoryTemplateGalleryModal(this.app, this, this.templateManager).open();
+			}
+		});
+
+		// --- Template Library Command ---
+		this.addCommand({
+			id: 'open-template-library',
+			name: 'Apply template to story',
+			callback: async () => {
+				const { TemplateLibraryModal } = await import('./modals/TemplateLibraryModal');
+				new TemplateLibraryModal(this.app, this).open();
 			}
 		});
 
@@ -1760,6 +1809,15 @@ export default class StorytellerSuitePlugin extends Plugin {
 				new TemplateLibraryModal(this.app, this).open();
 			}
 		});
+
+		// Save current note as template
+		this.addCommand({
+			id: 'save-note-as-template',
+			name: 'Save current note as template',
+			callback: () => {
+				SaveNoteAsTemplateCommand.execute(this);
+			}
+		});
 	}
 
 	/**
@@ -2166,25 +2224,39 @@ export default class StorytellerSuitePlugin extends Plugin {
 			? stringifyYamlWithLogging(finalFrontmatter, originalFrontmatter, `Character: ${character.name}`)
 			: '';
 
-		// Build sections from templates + provided data
+		// Build sections from templates + provided data + TEMPLATE sections
 		const providedSections = {
 			Description: description !== undefined ? description : '',
 			Backstory: backstory !== undefined ? backstory : ''
 		};
-		const templateSections = getTemplateSections('character', providedSections);
-		
+
+		// Check for template-provided sections (from TemplateApplicator)
+		const templateOnlySections = (character as any)._templateSections || {};
+
+		const defaultSections = getTemplateSections('character', providedSections);
+
 		// When updating existing files, preserve existing sections but allow overriding with provided data
 		// This ensures empty fields can be saved and don't get overwritten by existing content
+		// Merge priority: default < template < existing < provided
 		let allSections: Record<string, string>;
 		if (existingFile && existingFile instanceof TFile) {
-			// Start with existing sections, then apply template sections, then apply provided sections
-			allSections = { ...existingSections, ...templateSections };
+			// Start with default sections, apply template sections, then existing, then provided
+			allSections = {
+				...defaultSections,
+				...templateOnlySections,  // Template-provided sections
+				...existingSections
+			};
 			// Explicitly override with provided sections (including empty ones)
 			Object.entries(providedSections).forEach(([key, value]) => {
 				allSections[key] = value;
 			});
 		} else {
-			allSections = templateSections;
+			// New file: default < template < provided
+			allSections = {
+				...defaultSections,
+				...templateOnlySections,  // Template-provided sections
+				...providedSections
+			};
 		}
 
 		// Generate Markdown
@@ -2338,15 +2410,21 @@ export default class StorytellerSuitePlugin extends Plugin {
 			? stringifyYamlWithLogging(finalFrontmatter, originalFrontmatter, `Location: ${location.name}`)
 			: '';
 
-		// Build sections from templates + provided data
+		// Build sections from templates + provided data + TEMPLATE sections
 		const providedSections = {
 			Description: description || '',
 			History: history || ''
 		};
-		const templateSections = getTemplateSections('location', providedSections);
+
+		// Check for template-provided sections (from TemplateApplicator)
+		const templateOnlySections = (location as any)._templateSections || {};
+
+		const defaultSections = getTemplateSections('location', providedSections);
+
+		// Merge priority: default < template < existing < provided
 		const allSections: Record<string, string> = (existingFile && existingFile instanceof TFile)
-			? { ...templateSections, ...existingSections }
-			: templateSections;
+			? { ...defaultSections, ...templateOnlySections, ...existingSections, ...providedSections }
+			: { ...defaultSections, ...templateOnlySections, ...providedSections };
 
 		// Generate Markdown
 		let mdContent = `---\n${frontmatterString}---\n\n`;
@@ -2621,10 +2699,16 @@ export default class StorytellerSuitePlugin extends Plugin {
 			Description: description || '',
 			Outcome: outcome || ''
 		};
-		const templateSections = getTemplateSections('event', providedSections);
+
+		// Check for template-provided sections (from TemplateApplicator)
+		const templateOnlySections = (event as any)._templateSections || {};
+
+		const defaultSections = getTemplateSections('event', providedSections);
+
+		// Merge priority: default < template < existing < provided
 		const allSections: Record<string, string> = (existingFile && existingFile instanceof TFile)
-			? { ...templateSections, ...existingSections }
-			: templateSections;
+			? { ...defaultSections, ...templateOnlySections, ...existingSections, ...providedSections }
+			: { ...defaultSections, ...templateOnlySections, ...providedSections };
 
 		// Generate Markdown
 		let mdContent = `---\n${frontmatterString}---\n\n`;
@@ -4700,6 +4784,123 @@ export default class StorytellerSuitePlugin extends Plugin {
       // no-op
     }
   }
+
+	/**
+	 * Apply template with variable collection
+	 * Opens modal to collect variable values if template has variables,
+	 * then applies the template to the current story
+	 */
+	async applyTemplateWithPrompt(
+		template: Template,
+		options?: Partial<TemplateApplicationOptions>
+	): Promise<void> {
+		console.log('applyTemplateWithPrompt called with template:', template.name);
+
+		// Ensure we have an active story
+		const activeStory = this.getActiveStory();
+		console.log('Active story:', activeStory);
+
+		if (!activeStory) {
+			new Notice('Please select or create a story first');
+			return;
+		}
+
+		// Always show modal for entity naming (and variable collection if needed)
+		const { TemplateApplicationModal } = await import('./modals/TemplateApplicationModal');
+
+			new TemplateApplicationModal(
+				this.app,
+				this,
+				template,
+				async (variableValues: any, entityFileNames: any[]) => {
+					console.log('Variable values collected:', variableValues);
+					console.log('Entity file names:', entityFileNames);
+					
+					// Build field overrides from entity file names (file name becomes entity name)
+					const fieldOverrides = new Map<string, Partial<any>>();
+					entityFileNames.forEach(entityInfo => {
+						const override: Partial<any> = {};
+						if (entityInfo.fileName) {
+							override.name = entityInfo.fileName;
+						}
+						if (Object.keys(override).length > 0) {
+							fieldOverrides.set(entityInfo.templateId, override);
+						}
+					});
+
+				// Apply template with variable values and field overrides
+				await this.applyTemplateInternal(
+					template,
+					activeStory.id,
+					variableValues,
+					{ ...options, fieldOverrides }
+				);
+			}
+		).open();
+	}
+
+	/**
+	 * Internal method to apply template with variable values
+	 */
+	private async applyTemplateInternal(
+		template: Template,
+		storyId: string,
+		variableValues: Record<string, any>,
+		additionalOptions?: Partial<TemplateApplicationOptions>
+	): Promise<void> {
+		console.log('applyTemplateInternal called:', { templateName: template.name, storyId, variableValues });
+
+		try {
+			const { TemplateApplicator } = await import('./templates/TemplateApplicator');
+
+			const applicator = new TemplateApplicator(this);
+
+			const options: TemplateApplicationOptions = {
+				storyId,
+				mode: 'merge',
+				variableValues,
+				...additionalOptions
+			};
+
+			console.log('Applying template with options:', options);
+			const result = await applicator.applyTemplate(template, options);
+			console.log('Template application result:', result);
+
+			if (result.success) {
+				const entityCount = this.countCreatedEntities(result.created);
+				console.log('Template applied successfully, created entities:', entityCount);
+				new Notice(`Template "${template.name}" applied successfully! Created ${entityCount} entities.`);
+
+				// Refresh views if needed
+				this.app.workspace.trigger('storyteller:entities-changed');
+			} else {
+				console.error('Template application failed:', result.error);
+				new Notice(`Failed to apply template: ${result.error || 'Unknown error'}`);
+			}
+		} catch (error) {
+			console.error('Error applying template:', error);
+			new Notice(`Error applying template: ${error.message}`);
+		}
+	}
+
+	/**
+	 * Count total entities created from template application
+	 */
+	private countCreatedEntities(created: TemplateApplicationResult['created']): number {
+		let count = 0;
+		count += created.characters.length;
+		count += created.locations.length;
+		count += created.events.length;
+		count += created.items.length;
+		count += created.groups.length;
+		count += created.cultures.length;
+		count += created.economies.length;
+		count += created.magicSystems.length;
+		count += created.chapters.length;
+		count += created.scenes.length;
+		count += created.references.length;
+		return count;
+	}
 
 	/**
 	 * Save current plugin settings to Obsidian's data store

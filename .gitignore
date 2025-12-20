@@ -1,6 +1,9 @@
 # vscode
 .vscode 
 
+# Claude
+.claude
+
 # Intellij
 *.iml
 .idea
@@ -43,3 +46,4 @@ TIMELINE_GANTT_IMPLEMENTATION_SUMMARY.md
 docs/
 Obsidian/
 examples/
+javalent-obsidian-leaflet-8a5edab282632443.txt

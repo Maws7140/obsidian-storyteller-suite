@@ -21,16 +21,19 @@ export const MEDIEVAL_KING_TEMPLATE: Template = {
     entities: {
         characters: [{
             templateId: 'KING_1',
-            name: '',
-            description: 'A wise and experienced ruler who has led the kingdom through many challenges.',
-            traits: ['Wise', 'Authoritative', 'Strategic', 'Diplomatic'],
-            backstory: 'Born into royalty, trained from youth in the arts of leadership and warfare.',
-            status: 'Alive',
-            customFields: {
-                title: 'King',
-                age: '50',
-                reign: '25 years'
-            }
+            yamlContent: `name: ""
+status: "Alive"
+traits: ["Wise", "Authoritative", "Strategic", "Diplomatic"]
+title: "King"
+age: "50"
+reign: "25 years"`,
+            markdownContent: `## Description
+
+A wise and experienced ruler who has led the kingdom through many challenges.
+
+## Backstory
+
+Born into royalty, trained from youth in the arts of leadership and warfare.`
         }]
     },
     entityTypes: ['character'],
@@ -54,15 +57,18 @@ export const TAVERN_KEEPER_TEMPLATE: Template = {
     entities: {
         characters: [{
             templateId: 'TAVERN_1',
-            name: '',
-            description: 'A jovial and welcoming tavern keeper with a knack for remembering faces and stories.',
-            traits: ['Friendly', 'Observant', 'Talkative', 'Resourceful'],
-            backstory: 'Has run the local tavern for many years, hearing countless tales from travelers.',
-            status: 'Alive',
-            customFields: {
-                occupation: 'Tavern Keeper',
-                specialty: 'Ale brewing and local gossip'
-            }
+            yamlContent: `name: ""
+status: "Alive"
+traits: ["Friendly", "Observant", "Talkative", "Resourceful"]
+occupation: "Tavern Keeper"
+specialty: "Ale brewing and local gossip"`,
+            markdownContent: `## Description
+
+A jovial and welcoming tavern keeper with a knack for remembering faces and stories.
+
+## Backstory
+
+Has run the local tavern for many years, hearing countless tales from travelers.`
         }]
     },
     entityTypes: ['character'],
@@ -86,15 +92,18 @@ export const WISE_MENTOR_TEMPLATE: Template = {
     entities: {
         characters: [{
             templateId: 'MENTOR_1',
-            name: '',
-            description: 'An elderly figure with vast knowledge and experience, dedicated to guiding the next generation.',
-            traits: ['Wise', 'Patient', 'Knowledgeable', 'Mysterious'],
-            backstory: 'A former hero/scholar who now passes on their wisdom to worthy students.',
-            status: 'Alive',
-            customFields: {
-                age: '70',
-                specialization: 'Ancient knowledge and combat training'
-            }
+            yamlContent: `name: ""
+status: "Alive"
+traits: ["Wise", "Patient", "Knowledgeable", "Mysterious"]
+age: "70"
+specialization: "Ancient knowledge and combat training"`,
+            markdownContent: `## Description
+
+An elderly figure with vast knowledge and experience, dedicated to guiding the next generation.
+
+## Backstory
+
+A former hero/scholar who now passes on their wisdom to worthy students.`
         }]
     },
     entityTypes: ['character'],
@@ -118,16 +127,19 @@ export const CYBERPUNK_HACKER_TEMPLATE: Template = {
     entities: {
         characters: [{
             templateId: 'HACKER_1',
-            name: '',
-            description: 'A cybernetically enhanced hacker who moves effortlessly through virtual and physical spaces.',
-            traits: ['Tech-savvy', 'Paranoid', 'Resourceful', 'Anti-authority'],
-            backstory: 'Grew up in the neon-lit streets of the megacity, learning to survive through code and cunning.',
-            status: 'Alive',
-            customFields: {
-                occupation: 'Freelance Netrunner',
-                augmentations: 'Neural implants, enhanced reflexes',
-                specialty: 'Corporate data extraction'
-            }
+            yamlContent: `name: ""
+status: "Alive"
+traits: ["Tech-savvy", "Paranoid", "Resourceful", "Anti-authority"]
+occupation: "Freelance Netrunner"
+augmentations: "Neural implants, enhanced reflexes"
+specialty: "Corporate data extraction"`,
+            markdownContent: `## Description
+
+A cybernetically enhanced hacker who moves effortlessly through virtual and physical spaces.
+
+## Backstory
+
+Grew up in the neon-lit streets of the megacity, learning to survive through code and cunning.`
         }]
     },
     entityTypes: ['character'],
@@ -151,16 +163,19 @@ export const DETECTIVE_TEMPLATE: Template = {
     entities: {
         characters: [{
             templateId: 'DETECTIVE_1',
-            name: '',
-            description: 'A methodical investigator with an eye for detail and a knack for uncovering the truth.',
-            traits: ['Observant', 'Analytical', 'Persistent', 'Cynical'],
-            backstory: 'Years of experience on the force have honed their investigative skills and jaded their worldview.',
-            status: 'Alive',
-            customFields: {
-                occupation: 'Detective',
-                specialty: 'Homicide investigations',
-                cases_solved: '47'
-            }
+            yamlContent: `name: ""
+status: "Alive"
+traits: ["Observant", "Analytical", "Persistent", "Cynical"]
+occupation: "Detective"
+specialty: "Homicide investigations"
+cases_solved: "47"`,
+            markdownContent: `## Description
+
+A methodical investigator with an eye for detail and a knack for uncovering the truth.
+
+## Backstory
+
+Years of experience on the force have honed their investigative skills and jaded their worldview.`
         }]
     },
     entityTypes: ['character'],
