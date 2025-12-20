@@ -21,15 +21,18 @@ export const LEGENDARY_SWORD_TEMPLATE: Template = {
     entities: {
         items: [{
             templateId: 'SWORD_ITEM_1',
-            name: '',
-            isPlotCritical: true,
-            description: 'A blade of extraordinary craftsmanship that gleams with an inner light. Runes etched along its length pulse with ancient magic, and it feels perfectly balanced in the hand of its destined wielder.',
-            history: 'Forged in ages past by master smiths using techniques now lost to time, this sword has been wielded by heroes throughout history. Each bearer has added to its legend, and it is said to choose its own master.',
-            customFields: {
-                material: 'Enchanted steel, dragon bone hilt',
-                abilities: 'Enhanced cutting power, magical resistance',
-                curse_or_blessing: 'Only responds to those deemed worthy'
-            }
+            yamlContent: `name: ""
+isPlotCritical: true
+material: "Enchanted steel, dragon bone hilt"
+abilities: "Enhanced cutting power, magical resistance"
+curse_or_blessing: "Only responds to those deemed worthy"`,
+            markdownContent: `## Description
+
+A blade of extraordinary craftsmanship that gleams with an inner light. Runes etched along its length pulse with ancient magic, and it feels perfectly balanced in the hand of its destined wielder.
+
+## History
+
+Forged in ages past by master smiths using techniques now lost to time, this sword has been wielded by heroes throughout history. Each bearer has added to its legend, and it is said to choose its own master.`
         }]
     },
     entityTypes: ['item'],
@@ -53,15 +56,18 @@ export const ANCIENT_TOME_TEMPLATE: Template = {
     entities: {
         items: [{
             templateId: 'TOME_ITEM_1',
-            name: '',
-            isPlotCritical: true,
-            description: 'Bound in weathered leather that seems to absorb light, this tome is filled with dense script in an ancient language. Some pages are blank to most eyes but reveal their secrets to those who know the proper rituals.',
-            history: 'Written by a powerful sorcerer who sought to preserve dangerous knowledge, this tome has been hidden, stolen, and fought over for centuries. Many who have read its contents have been changed forever.',
-            customFields: {
-                contents: 'Forbidden spells, lost history, prophecies',
-                danger_level: 'High - corrupting influence',
-                protection: 'Magical locks, guardian enchantments'
-            }
+            yamlContent: `name: ""
+isPlotCritical: true
+contents: "Forbidden spells, lost history, prophecies"
+danger_level: "High - corrupting influence"
+protection: "Magical locks, guardian enchantments"`,
+            markdownContent: `## Description
+
+Bound in weathered leather that seems to absorb light, this tome is filled with dense script in an ancient language. Some pages are blank to most eyes but reveal their secrets to those who know the proper rituals.
+
+## History
+
+Written by a powerful sorcerer who sought to preserve dangerous knowledge, this tome has been hidden, stolen, and fought over for centuries. Many who have read its contents have been changed forever.`
         }]
     },
     entityTypes: ['item'],
@@ -85,15 +91,18 @@ export const ROYAL_CROWN_TEMPLATE: Template = {
     entities: {
         items: [{
             templateId: 'CROWN_ITEM_1',
-            name: '',
-            isPlotCritical: true,
-            description: 'A masterwork of the jeweler\'s art, this crown is set with precious gems that catch the light with every movement. More than mere decoration, it is the physical embodiment of the right to rule.',
-            history: 'Passed down through generations of rulers, this crown has witnessed the rise and fall of dynasties. To possess it is to hold a claim to the throne that many would kill for.',
-            customFields: {
-                materials: 'Gold, precious gems, ancient metals',
-                symbolic_power: 'Legitimacy, divine right, authority',
-                magical_properties: 'May grant wisdom or protection to true rulers'
-            }
+            yamlContent: `name: ""
+isPlotCritical: true
+materials: "Gold, precious gems, ancient metals"
+symbolic_power: "Legitimacy, divine right, authority"
+magical_properties: "May grant wisdom or protection to true rulers"`,
+            markdownContent: `## Description
+
+A masterwork of the jeweler's art, this crown is set with precious gems that catch the light with every movement. More than mere decoration, it is the physical embodiment of the right to rule.
+
+## History
+
+Passed down through generations of rulers, this crown has witnessed the rise and fall of dynasties. To possess it is to hold a claim to the throne that many would kill for.`
         }]
     },
     entityTypes: ['item'],
@@ -117,15 +126,18 @@ export const MYSTERIOUS_KEY_TEMPLATE: Template = {
     entities: {
         items: [{
             templateId: 'KEY_ITEM_1',
-            name: '',
-            isPlotCritical: true,
-            description: 'An ornate key of unusual design, crafted from a metal that never tarnishes. Its teeth form a pattern that seems to shift when viewed from different angles, and it is warm to the touch.',
-            history: 'The lock this key opens has been lost to memory, but legends speak of a sealed vault, a forbidden door, or a prison meant to hold something terrible. Finding what it unlocks may be a blessing or a curse.',
-            customFields: {
-                material: 'Unknown alloy, possibly magical',
-                unlocks: 'Unknown - requires investigation',
-                clues: 'Symbols match ancient ruins or prophecy'
-            }
+            yamlContent: `name: ""
+isPlotCritical: true
+material: "Unknown alloy, possibly magical"
+unlocks: "Unknown - requires investigation"
+clues: "Symbols match ancient ruins or prophecy"`,
+            markdownContent: `## Description
+
+An ornate key of unusual design, crafted from a metal that never tarnishes. Its teeth form a pattern that seems to shift when viewed from different angles, and it is warm to the touch.
+
+## History
+
+The lock this key opens has been lost to memory, but legends speak of a sealed vault, a forbidden door, or a prison meant to hold something terrible. Finding what it unlocks may be a blessing or a curse.`
         }]
     },
     entityTypes: ['item'],
@@ -149,15 +161,18 @@ export const HEALING_POTION_TEMPLATE: Template = {
     entities: {
         items: [{
             templateId: 'POTION_ITEM_1',
-            name: '',
-            isPlotCritical: false,
-            description: 'A crystal vial containing a luminescent red liquid that swirls with its own inner light. The potion smells faintly of herbs and honey, and a single sip can close wounds and restore strength.',
-            history: 'Brewed by skilled alchemists using rare ingredients, healing potions are valuable commodities in a world where injury and illness are constant threats.',
-            customFields: {
-                ingredients: 'Rare herbs, phoenix tears, blessed water',
-                effects: 'Rapid healing of wounds, restoration of energy',
-                side_effects: 'None when properly brewed'
-            }
+            yamlContent: `name: ""
+isPlotCritical: false
+ingredients: "Rare herbs, phoenix tears, blessed water"
+effects: "Rapid healing of wounds, restoration of energy"
+side_effects: "None when properly brewed"`,
+            markdownContent: `## Description
+
+A crystal vial containing a luminescent red liquid that swirls with its own inner light. The potion smells faintly of herbs and honey, and a single sip can close wounds and restore strength.
+
+## History
+
+Brewed by skilled alchemists using rare ingredients, healing potions are valuable commodities in a world where injury and illness are constant threats.`
         }]
     },
     entityTypes: ['item'],
@@ -181,15 +196,18 @@ export const CURSED_ARTIFACT_TEMPLATE: Template = {
     entities: {
         items: [{
             templateId: 'CURSED_ITEM_1',
-            name: '',
-            isPlotCritical: true,
-            description: 'An object of dark beauty that draws the eye despite an instinctive sense of wrongness. Those who possess it find themselves reluctant to part with it, even as misfortune begins to gather around them.',
-            history: 'Created through forbidden rituals or tainted by tragic events, this artifact carries a curse that affects all who claim ownership. Some seek it for its power, willing to pay any price.',
-            customFields: {
-                curse_effects: 'Misfortune, corruption, obsession',
-                benefits: 'Enhanced abilities or forbidden knowledge',
-                breaking_the_curse: 'Requires specific conditions or sacrifice'
-            }
+            yamlContent: `name: ""
+isPlotCritical: true
+curse_effects: "Misfortune, corruption, obsession"
+benefits: "Enhanced abilities or forbidden knowledge"
+breaking_the_curse: "Requires specific conditions or sacrifice"`,
+            markdownContent: `## Description
+
+An object of dark beauty that draws the eye despite an instinctive sense of wrongness. Those who possess it find themselves reluctant to part with it, even as misfortune begins to gather around them.
+
+## History
+
+Created through forbidden rituals or tainted by tragic events, this artifact carries a curse that affects all who claim ownership. Some seek it for its power, willing to pay any price.`
         }]
     },
     entityTypes: ['item'],

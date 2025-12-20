@@ -24,30 +24,43 @@ export const FANTASY_KINGDOM_TEMPLATE: Template = {
         characters: [
             {
                 templateId: 'CHAR_001',
-                name: 'King Aldric Stormhaven',
-                description: 'The aging but wise ruler of the Kingdom of Arendor. Known for his just governance and strategic mind.',
-                backstory: 'Born into House Stormhaven, Aldric ascended to the throne at age 30 after his father\'s passing. His 24-year reign has been marked by prosperity and peace, though shadows gather at the borders.',
-                traits: ['Wise', 'Just', 'Strategic', 'Diplomatic', 'Aging'],
-                status: 'Alive',
-                affiliation: 'House Stormhaven',
-                customFields: {
-                    age: '54',
-                    title: 'King of Arendor',
-                    weapon: 'Ceremonial Longsword'
-                },
-                relationships: [
-                    { target: 'CHAR_002', type: 'romantic', label: 'spouse' },
-                    { target: 'CHAR_003', type: 'family', label: 'son' },
-                    { target: 'CHAR_004', type: 'ally', label: 'trusts completely' },
-                    { target: 'CHAR_005', type: 'ally', label: 'advisor' }
-                ],
-                locations: ['LOC_001', 'LOC_002'],
-                events: ['EVENT_001', 'EVENT_005'],
-                groups: ['GROUP_001'],
-                connections: [
-                    { target: 'LOC_001', type: 'ally', label: 'resides' },
-                    { target: 'GROUP_001', type: 'ally', label: 'leads' }
-                ]
+                yamlContent: `name: "King Aldric Stormhaven"
+traits: ["Wise", "Just", "Strategic", "Diplomatic", "Aging"]
+status: "Alive"
+affiliation: "House Stormhaven"
+age: "54"
+title: "King of Arendor"
+weapon: "Ceremonial Longsword"
+relationships:
+  - target: "CHAR_002"
+    type: "romantic"
+    label: "spouse"
+  - target: "CHAR_003"
+    type: "family"
+    label: "son"
+  - target: "CHAR_004"
+    type: "ally"
+    label: "trusts completely"
+  - target: "CHAR_005"
+    type: "ally"
+    label: "advisor"
+locations: ["LOC_001", "LOC_002"]
+events: ["EVENT_001", "EVENT_005"]
+groups: ["GROUP_001"]
+connections:
+  - target: "LOC_001"
+    type: "ally"
+    label: "resides"
+  - target: "GROUP_001"
+    type: "ally"
+    label: "leads"`,
+                markdownContent: `## Description
+
+The aging but wise ruler of the Kingdom of Arendor. Known for his just governance and strategic mind.
+
+## Backstory
+
+Born into House Stormhaven, Aldric ascended to the throne at age 30 after his father's passing. His 24-year reign has been marked by prosperity and peace, though shadows gather at the borders.`
             },
             {
                 templateId: 'CHAR_002',

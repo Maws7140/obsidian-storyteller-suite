@@ -249,11 +249,24 @@ export class EconomyModal extends ResponsiveModal {
 
         const templateEconomy = template.entities.economies[0];
 
-        Object.keys(templateEconomy).forEach(key => {
-            if (key !== 'templateId' && key !== 'id' && key !== 'filePath') {
-                (this.economy as any)[key] = (templateEconomy as any)[key];
+        // Extract template-specific fields
+        const { templateId, sectionContent, customYamlFields, id, filePath, ...entityData } = templateEconomy as any;
+
+        // Apply base entity fields
+        Object.assign(this.economy, entityData);
+
+        // Apply custom YAML fields if they exist
+        if (customYamlFields) {
+            Object.assign(this.economy, customYamlFields);
+        }
+
+        // Apply section content if it exists (map section names to lowercase properties)
+        if (sectionContent) {
+            for (const [sectionName, content] of Object.entries(sectionContent)) {
+                const propName = sectionName.toLowerCase().replace(/\s+/g, '');
+                (this.economy as any)[propName] = content;
             }
-        });
+        }
 
         // Clear relationships as they reference template entities
         this.economy.linkedLocations = [];

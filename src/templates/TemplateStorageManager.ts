@@ -18,10 +18,18 @@ export class TemplateStorageManager {
     private builtInTemplates: Map<string, Template> = new Map();
     private userTemplates: Map<string, Template> = new Map();
     private templateFolder: string;
+    private templateNoteManager: any; // TemplateNoteManager instance
 
     constructor(app: App, templateFolder: string = 'StorytellerSuite/Templates') {
         this.app = app;
         this.templateFolder = templateFolder;
+    }
+
+    /**
+     * Set the template note manager instance
+     */
+    setTemplateNoteManager(noteManager: any): void {
+        this.templateNoteManager = noteManager;
     }
 
     /**
@@ -33,6 +41,8 @@ export class TemplateStorageManager {
 
         // Load user templates from vault
         await this.loadUserTemplates();
+
+        // Note-based templates are loaded separately by TemplateNoteManager
     }
 
     /**
@@ -265,13 +275,21 @@ export class TemplateStorageManager {
     }
 
     /**
-     * Get all templates (built-in and user)
+     * Get all templates (built-in, user JSON, and note-based)
      */
     getAllTemplates(): Template[] {
-        return [
+        const templates = [
             ...Array.from(this.builtInTemplates.values()),
             ...Array.from(this.userTemplates.values())
         ];
+
+        // Add note-based templates if note manager is available
+        if (this.templateNoteManager) {
+            const noteTemplates = this.templateNoteManager.getAllNoteTemplates();
+            templates.push(...noteTemplates);
+        }
+
+        return templates;
     }
 
     /**
@@ -352,7 +370,21 @@ export class TemplateStorageManager {
      * Get template by ID
      */
     getTemplate(id: string): Template | undefined {
-        return this.builtInTemplates.get(id) || this.userTemplates.get(id);
+        // Check built-in templates
+        const builtIn = this.builtInTemplates.get(id);
+        if (builtIn) return builtIn;
+
+        // Check user JSON templates
+        const user = this.userTemplates.get(id);
+        if (user) return user;
+
+        // Check note-based templates
+        if (this.templateNoteManager) {
+            const noteTemplate = this.templateNoteManager.getNoteTemplate(id);
+            if (noteTemplate) return noteTemplate;
+        }
+
+        return undefined;
     }
 
     /**
@@ -440,6 +472,7 @@ export class TemplateStorageManager {
 
     /**
      * Copy template (useful for creating editable version of built-in)
+     * Automatically migrates old format templates to new format
      */
     async copyTemplate(sourceId: string, newName: string): Promise<Template> {
         const source = this.getTemplate(sourceId);
@@ -447,8 +480,16 @@ export class TemplateStorageManager {
             throw new Error('Source template not found');
         }
 
-        const newTemplate: Template = {
-            ...JSON.parse(JSON.stringify(source)), // Deep clone
+        // Deep clone
+        let newTemplate: Template = JSON.parse(JSON.stringify(source));
+        
+        // Migrate to new format if needed
+        const { TemplateMigrator } = await import('./TemplateMigrator');
+        newTemplate = TemplateMigrator.migrateTemplateToNewFormat(newTemplate);
+        
+        // Update metadata
+        newTemplate = {
+            ...newTemplate,
             id: `custom-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
             name: newName,
             author: 'User',
