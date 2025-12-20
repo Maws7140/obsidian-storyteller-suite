@@ -359,11 +359,24 @@ export class SceneModal extends Modal {
 
         const templateScene = template.entities.scenes[0];
 
-        Object.keys(templateScene).forEach(key => {
-            if (key !== 'templateId' && key !== 'id' && key !== 'filePath' && key !== 'chapterId' && key !== 'chapterName') {
-                (this.scene as any)[key] = (templateScene as any)[key];
+        // Extract template-specific fields
+        const { templateId, sectionContent, customYamlFields, id, filePath, chapterId, chapterName, ...entityData } = templateScene as any;
+
+        // Apply base entity fields
+        Object.assign(this.scene, entityData);
+
+        // Apply custom YAML fields if they exist
+        if (customYamlFields) {
+            Object.assign(this.scene, customYamlFields);
+        }
+
+        // Apply section content if it exists (map section names to lowercase properties)
+        if (sectionContent) {
+            for (const [sectionName, content] of Object.entries(sectionContent)) {
+                const propName = sectionName.toLowerCase().replace(/\s+/g, '');
+                (this.scene as any)[propName] = content;
             }
-        });
+        }
 
         // Clear relationships as they reference template entities
         this.scene.linkedCharacters = [];

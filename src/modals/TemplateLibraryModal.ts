@@ -185,6 +185,7 @@ export class TemplateLibraryModal extends ResponsiveModal {
 
     private createTemplateCard(container: HTMLElement, template: Template): void {
         const card = container.createDiv({ cls: 'template-card' });
+        const isNoteBased = (template as any).isNoteBased === true;
 
         // Header
         const header = card.createDiv({ cls: 'template-card-header' });
@@ -192,6 +193,10 @@ export class TemplateLibraryModal extends ResponsiveModal {
 
         if (template.isBuiltIn) {
             header.createEl('span', { text: 'Built-in', cls: 'template-badge template-badge-builtin' });
+        }
+
+        if (isNoteBased) {
+            header.createEl('span', { text: 'Note-based', cls: 'template-badge template-badge-note' });
         }
 
         // Description
@@ -229,19 +234,32 @@ export class TemplateLibraryModal extends ResponsiveModal {
         // Actions
         const actions = card.createDiv({ cls: 'template-card-actions' });
 
-        const useButton = actions.createEl('button', { text: 'Use Template', cls: 'mod-cta' });
-        useButton.addEventListener('click', () => this.handleUseTemplate(template));
+        const applyButton = actions.createEl('button', { text: 'Apply Template', cls: 'mod-cta' });
+        applyButton.addEventListener('click', () => this.handleUseTemplate(template));
 
-        if (template.isEditable) {
-            const editButton = actions.createEl('button', { text: 'Edit' });
-            editButton.addEventListener('click', () => this.handleEditTemplate(template));
+        if (isNoteBased) {
+            // Note-based template actions
+            const editInObsidianButton = actions.createEl('button', { text: 'Edit in Obsidian' });
+            editInObsidianButton.addEventListener('click', () => this.handleEditNoteTemplate(template));
+
+            const convertButton = actions.createEl('button', { text: 'Convert to Full Template' });
+            convertButton.addEventListener('click', () => this.handleConvertToFullTemplate(template));
 
             const deleteButton = actions.createEl('button', { text: 'Delete', cls: 'mod-warning' });
-            deleteButton.addEventListener('click', () => this.handleDeleteTemplate(template));
-        }
+            deleteButton.addEventListener('click', () => this.handleDeleteNoteTemplate(template));
+        } else {
+            // JSON template actions
+            if (template.isEditable) {
+                const editButton = actions.createEl('button', { text: 'Edit' });
+                editButton.addEventListener('click', () => this.handleEditTemplate(template));
 
-        const duplicateButton = actions.createEl('button', { text: 'Duplicate' });
-        duplicateButton.addEventListener('click', () => this.handleDuplicateTemplate(template));
+                const deleteButton = actions.createEl('button', { text: 'Delete', cls: 'mod-warning' });
+                deleteButton.addEventListener('click', () => this.handleDeleteTemplate(template));
+            }
+
+            const duplicateButton = actions.createEl('button', { text: 'Duplicate' });
+            duplicateButton.addEventListener('click', () => this.handleDuplicateTemplate(template));
+        }
     }
 
     private refreshAndDisplay(): void {
@@ -249,24 +267,43 @@ export class TemplateLibraryModal extends ResponsiveModal {
         this.displayContent();
     }
 
-    private handleUseTemplate(template: Template): void {
+    private async handleUseTemplate(template: Template): Promise<void> {
+        console.log('TemplateLibraryModal: handleUseTemplate called with template:', template.name);
+
+        // Check if there's an active story
+        const activeStory = this.plugin.getActiveStory();
+        console.log('TemplateLibraryModal: Active story:', activeStory);
+
+        if (!activeStory) {
+            new Notice('Please select or create a story first before applying a template.');
+            return;
+        }
+
+        // If onTemplateSelected callback is provided, use it (for entity creation modals)
         if (this.onTemplateSelected) {
+            console.log('TemplateLibraryModal: Using onTemplateSelected callback');
             this.onTemplateSelected(template);
             this.close();
-        } else {
-            new Notice('Template selected. Apply this template from the entity creation modal.');
-            this.close();
+            return;
         }
+
+        // Otherwise, apply the template directly to the story
+        console.log('TemplateLibraryModal: Closing modal and applying template');
+        this.close(); // Close the library modal first
+
+        // Apply template with variable collection prompt
+        await this.plugin.applyTemplateWithPrompt(template);
+        console.log('TemplateLibraryModal: applyTemplateWithPrompt completed');
     }
 
     private handleEditTemplate(template: Template): void {
         new TemplateEditorModal(
             this.app,
             this.plugin,
+            template,
             async (updatedTemplate) => {
                 this.refreshAndDisplay();
-            },
-            template
+            }
         ).open();
     }
 
@@ -302,10 +339,59 @@ export class TemplateLibraryModal extends ResponsiveModal {
         new TemplateEditorModal(
             this.app,
             this.plugin,
+            null, // null = new template
             async (newTemplate) => {
                 this.refreshAndDisplay();
             }
         ).open();
+    }
+
+    private handleEditNoteTemplate(template: Template): void {
+        const noteFilePath = (template as any).noteFilePath;
+        if (noteFilePath) {
+            // Open the note file in Obsidian
+            const file = this.app.vault.getAbstractFileByPath(noteFilePath);
+            if (file) {
+                this.app.workspace.openLinkText(noteFilePath, '', true);
+                this.close();
+            } else {
+                new Notice('Template note file not found');
+            }
+        } else {
+            new Notice('Template note file path not available');
+        }
+    }
+
+    private handleConvertToFullTemplate(template: Template): void {
+        // Convert note-based template to full template editor format
+        // This opens the template in the full editor, allowing conversion
+        new TemplateEditorModal(
+            this.app,
+            this.plugin,
+            template,
+            async (updatedTemplate) => {
+                // After saving, the template will be in JSON format
+                // Optionally delete the note-based version
+                this.refreshAndDisplay();
+            }
+        ).open();
+    }
+
+    private async handleDeleteNoteTemplate(template: Template): Promise<void> {
+        const confirmed = await this.confirmDelete(template.name);
+        if (confirmed) {
+            try {
+                if (this.plugin.templateNoteManager) {
+                    await this.plugin.templateNoteManager.deleteNoteTemplate(template.id);
+                } else {
+                    await this.plugin.templateManager.deleteTemplate(template.id);
+                }
+                this.refreshAndDisplay();
+            } catch (error) {
+                console.error('Error deleting note template:', error);
+                new Notice(`Failed to delete template: ${error.message}`);
+            }
+        }
     }
 
     private async confirmDelete(templateName: string): Promise<boolean> {
