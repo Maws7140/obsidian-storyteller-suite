@@ -21,23 +21,35 @@ export const THIEVES_GUILD_TEMPLATE: Template = {
     entities: {
         groups: [{
             templateId: 'THIEVES_GROUP_1',
-            id: '',
-            storyId: '',
-            name: '',
-            description: 'A network of thieves, smugglers, and information brokers operating from the shadows. Members follow a strict code of conduct and share profits according to guild law.',
-            groupType: 'guild',
-            history: 'Founded generations ago by legendary thieves who realized cooperation was more profitable than competition. The guild has survived purges and crackdowns through careful planning and well-placed bribes.',
-            structure: 'Hierarchical with a Guildmaster at the top, lieutenants managing districts, and specialists handling specific operations.',
-            goals: 'Control the criminal underworld, accumulate wealth, protect members from authorities.',
-            resources: 'Safehouses, fence networks, blackmail material, skilled operatives.',
-            status: 'Active',
-            motto: 'What\'s yours is mine, what\'s mine is hidden.',
-            members: [],
-            customFields: {
-                influence: 'Extensive in urban areas',
-                reputation: 'Feared and respected in criminal circles',
-                services: 'Theft, smuggling, information gathering'
-            }
+            yamlContent: `id: ""
+storyId: ""
+name: ""
+groupType: "guild"
+status: "Active"
+motto: "What's yours is mine, what's mine is hidden."
+members: []
+influence: "Extensive in urban areas"
+reputation: "Feared and respected in criminal circles"
+services: "Theft, smuggling, information gathering"`,
+            markdownContent: `## Description
+
+A network of thieves, smugglers, and information brokers operating from the shadows. Members follow a strict code of conduct and share profits according to guild law.
+
+## History
+
+Founded generations ago by legendary thieves who realized cooperation was more profitable than competition. The guild has survived purges and crackdowns through careful planning and well-placed bribes.
+
+## Structure
+
+Hierarchical with a Guildmaster at the top, lieutenants managing districts, and specialists handling specific operations.
+
+## Goals
+
+Control the criminal underworld, accumulate wealth, protect members from authorities.
+
+## Resources
+
+Safehouses, fence networks, blackmail material, skilled operatives.`
         }]
     },
     entityTypes: ['group'],
@@ -61,25 +73,37 @@ export const KNIGHTLY_ORDER_TEMPLATE: Template = {
     entities: {
         groups: [{
             templateId: 'KNIGHTS_GROUP_1',
-            id: '',
-            storyId: '',
-            name: '',
-            description: 'An elite brotherhood of warriors sworn to uphold justice and protect the realm. Members undergo rigorous training and adhere to a strict code of chivalry.',
-            groupType: 'military',
-            history: 'Established by a legendary hero to defend the kingdom against a great threat. The order has since become a symbol of martial excellence and noble virtue.',
-            structure: 'Grand Master leads the order, with Knight Commanders overseeing regional chapters. Initiates must prove themselves before earning knighthood.',
-            goals: 'Defend the innocent, uphold justice, maintain the peace.',
-            resources: 'Fortresses, trained knights, noble patronage, sacred relics.',
-            status: 'Active',
-            militaryPower: 75,
-            politicalInfluence: 60,
-            motto: 'Honor above all.',
-            members: [],
-            customFields: {
-                entry_requirements: 'Noble birth or exceptional valor',
-                patron_deity: 'God of justice or warfare',
-                notable_traditions: 'Vigil before knighting, sacred oaths'
-            }
+            yamlContent: `id: ""
+storyId: ""
+name: ""
+groupType: "military"
+status: "Active"
+militaryPower: 75
+politicalInfluence: 60
+motto: "Honor above all."
+members: []
+entry_requirements: "Noble birth or exceptional valor"
+patron_deity: "God of justice or warfare"
+notable_traditions: "Vigil before knighting, sacred oaths"`,
+            markdownContent: `## Description
+
+An elite brotherhood of warriors sworn to uphold justice and protect the realm. Members undergo rigorous training and adhere to a strict code of chivalry.
+
+## History
+
+Established by a legendary hero to defend the kingdom against a great threat. The order has since become a symbol of martial excellence and noble virtue.
+
+## Structure
+
+Grand Master leads the order, with Knight Commanders overseeing regional chapters. Initiates must prove themselves before earning knighthood.
+
+## Goals
+
+Defend the innocent, uphold justice, maintain the peace.
+
+## Resources
+
+Fortresses, trained knights, noble patronage, sacred relics.`
         }]
     },
     entityTypes: ['group'],
@@ -103,25 +127,37 @@ export const MERCHANT_CONSORTIUM_TEMPLATE: Template = {
     entities: {
         groups: [{
             templateId: 'MERCHANT_GROUP_1',
-            id: '',
-            storyId: '',
-            name: '',
-            description: 'A coalition of the wealthiest and most influential merchants, working together to control trade routes, set prices, and influence policy. Gold is their sword and contracts their shield.',
-            groupType: 'organization',
-            history: 'Formed when competing merchant families realized cooperation would be more profitable than cutthroat competition. They now wield economic power that rivals noble houses.',
-            structure: 'Council of senior merchants makes major decisions, with specialized committees handling different trade sectors.',
-            goals: 'Maximize profits, control trade, influence government policy.',
-            resources: 'Vast wealth, trade networks, warehouses, ships, political connections.',
-            status: 'Active',
-            economicPower: 90,
-            politicalInfluence: 70,
-            motto: 'Prosperity through partnership.',
-            members: [],
-            customFields: {
-                headquarters: 'Major trading hub',
-                primary_goods: 'Varied - spices, textiles, metals, exotic goods',
-                influence_methods: 'Lobbying, bribes, economic pressure'
-            }
+            yamlContent: `id: ""
+storyId: ""
+name: ""
+groupType: "organization"
+status: "Active"
+economicPower: 90
+politicalInfluence: 70
+motto: "Prosperity through partnership."
+members: []
+headquarters: "Major trading hub"
+primary_goods: "Varied - spices, textiles, metals, exotic goods"
+influence_methods: "Lobbying, bribes, economic pressure"`,
+            markdownContent: `## Description
+
+A coalition of the wealthiest and most influential merchants, working together to control trade routes, set prices, and influence policy. Gold is their sword and contracts their shield.
+
+## History
+
+Formed when competing merchant families realized cooperation would be more profitable than cutthroat competition. They now wield economic power that rivals noble houses.
+
+## Structure
+
+Council of senior merchants makes major decisions, with specialized committees handling different trade sectors.
+
+## Goals
+
+Maximize profits, control trade, influence government policy.
+
+## Resources
+
+Vast wealth, trade networks, warehouses, ships, political connections.`
         }]
     },
     entityTypes: ['group'],
@@ -145,23 +181,35 @@ export const SECRET_CULT_TEMPLATE: Template = {
     entities: {
         groups: [{
             templateId: 'CULT_GROUP_1',
-            id: '',
-            storyId: '',
-            name: '',
-            description: 'A clandestine organization devoted to forbidden practices and dark worship. Members are bound by blood oaths and fear of terrible consequences for betrayal.',
-            groupType: 'religious',
-            history: 'Founded by those who discovered forbidden truths and sought power beyond mortal understanding. The cult has survived persecution by operating in absolute secrecy.',
-            structure: 'High Priest leads secret ceremonies, with inner circle members knowing the full truth while outer members are kept ignorant of darker practices.',
-            goals: 'Accumulate forbidden power, summon or serve dark entities, achieve transcendence.',
-            resources: 'Hidden temples, devoted followers, forbidden artifacts, dark magic.',
-            status: 'Active',
-            motto: 'In darkness, truth. In sacrifice, power.',
-            members: [],
-            customFields: {
-                deity_or_entity: 'Dark god, demon, or cosmic horror',
-                initiation_rites: 'Blood oaths, forbidden knowledge revelation',
-                public_facade: 'May appear as legitimate organization'
-            }
+            yamlContent: `id: ""
+storyId: ""
+name: ""
+groupType: "religious"
+status: "Active"
+motto: "In darkness, truth. In sacrifice, power."
+members: []
+deity_or_entity: "Dark god, demon, or cosmic horror"
+initiation_rites: "Blood oaths, forbidden knowledge revelation"
+public_facade: "May appear as legitimate organization"`,
+            markdownContent: `## Description
+
+A clandestine organization devoted to forbidden practices and dark worship. Members are bound by blood oaths and fear of terrible consequences for betrayal.
+
+## History
+
+Founded by those who discovered forbidden truths and sought power beyond mortal understanding. The cult has survived persecution by operating in absolute secrecy.
+
+## Structure
+
+High Priest leads secret ceremonies, with inner circle members knowing the full truth while outer members are kept ignorant of darker practices.
+
+## Goals
+
+Accumulate forbidden power, summon or serve dark entities, achieve transcendence.
+
+## Resources
+
+Hidden temples, devoted followers, forbidden artifacts, dark magic.`
         }]
     },
     entityTypes: ['group'],
@@ -185,25 +233,37 @@ export const REBEL_MOVEMENT_TEMPLATE: Template = {
     entities: {
         groups: [{
             templateId: 'REBEL_GROUP_1',
-            id: '',
-            storyId: '',
-            name: '',
-            description: 'A loose coalition of freedom fighters, idealists, and the oppressed united against tyranny. They strike from the shadows and vanish before retaliation comes.',
-            groupType: 'political',
-            history: 'Born from injustice when ordinary people could no longer endure oppression. What began as scattered resistance has grown into a coordinated movement.',
-            structure: 'Cell-based organization to prevent infiltration. Leaders known only by code names, with limited contact between cells.',
-            goals: 'Overthrow the tyrannical regime, establish just governance, protect the common people.',
-            resources: 'Safe houses, sympathizers, guerrilla fighters, stolen supplies.',
-            status: 'Active',
-            militaryPower: 40,
-            politicalInfluence: 30,
-            motto: 'Freedom or death.',
-            members: [],
-            customFields: {
-                tactics: 'Guerrilla warfare, sabotage, propaganda',
-                support_base: 'Common people, disillusioned soldiers',
-                primary_enemy: 'Current regime and its enforcers'
-            }
+            yamlContent: `id: ""
+storyId: ""
+name: ""
+groupType: "political"
+status: "Active"
+militaryPower: 40
+politicalInfluence: 30
+motto: "Freedom or death."
+members: []
+tactics: "Guerrilla warfare, sabotage, propaganda"
+support_base: "Common people, disillusioned soldiers"
+primary_enemy: "Current regime and its enforcers"`,
+            markdownContent: `## Description
+
+A loose coalition of freedom fighters, idealists, and the oppressed united against tyranny. They strike from the shadows and vanish before retaliation comes.
+
+## History
+
+Born from injustice when ordinary people could no longer endure oppression. What began as scattered resistance has grown into a coordinated movement.
+
+## Structure
+
+Cell-based organization to prevent infiltration. Leaders known only by code names, with limited contact between cells.
+
+## Goals
+
+Overthrow the tyrannical regime, establish just governance, protect the common people.
+
+## Resources
+
+Safe houses, sympathizers, guerrilla fighters, stolen supplies.`
         }]
     },
     entityTypes: ['group'],

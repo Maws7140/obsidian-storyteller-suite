@@ -744,6 +744,7 @@
   "usedXTimes": "Used: {0}x",
   "contains": "Contains: ",
   "useTemplate": "Use Template",
+  "applyTemplate": "Apply Template",
   "duplicate": "Duplicate",
   "templateSelected": "Template \"{0}\" selected. Apply this template from the entity creation modal.",
   "templateDeleted": "Template \"{0}\" deleted.",

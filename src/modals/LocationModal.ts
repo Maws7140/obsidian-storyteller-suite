@@ -571,12 +571,24 @@ export class LocationModal extends ResponsiveModal {
         // Get the first location from the template
         const templateLoc = template.entities.locations[0];
 
-        // Apply template fields to current location (excluding templateId, id, filePath)
-        Object.keys(templateLoc).forEach(key => {
-            if (key !== 'templateId' && key !== 'id' && key !== 'filePath') {
-                (this.location as any)[key] = (templateLoc as any)[key];
+        // Extract template-specific fields
+        const { templateId, sectionContent, customYamlFields, id, filePath, ...locData } = templateLoc as any;
+
+        // Apply base location fields
+        Object.assign(this.location, locData);
+
+        // Apply custom YAML fields if they exist
+        if (customYamlFields) {
+            Object.assign(this.location, customYamlFields);
+        }
+
+        // Apply section content if it exists (map section names to lowercase properties)
+        if (sectionContent) {
+            for (const [sectionName, content] of Object.entries(sectionContent)) {
+                const propName = sectionName.toLowerCase().replace(/\s+/g, '');
+                (this.location as any)[propName] = content;
             }
-        });
+        }
 
         // Clear relationships as they reference template entities
         this.location.connections = [];
