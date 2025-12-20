@@ -513,12 +513,24 @@ export class CharacterModal extends ResponsiveModal {
         // Get the first character from the template
         const templateChar = template.entities.characters[0];
 
-        // Apply template fields to current character (excluding templateId, id, filePath)
-        Object.keys(templateChar).forEach(key => {
-            if (key !== 'templateId' && key !== 'id' && key !== 'filePath') {
-                (this.character as any)[key] = (templateChar as any)[key];
+        // Extract template-specific fields
+        const { templateId, sectionContent, customYamlFields, id, filePath, ...charData } = templateChar as any;
+
+        // Apply base character fields
+        Object.assign(this.character, charData);
+
+        // Apply custom YAML fields if they exist
+        if (customYamlFields) {
+            Object.assign(this.character, customYamlFields);
+        }
+
+        // Apply section content if it exists (map section names to lowercase properties)
+        if (sectionContent) {
+            for (const [sectionName, content] of Object.entries(sectionContent)) {
+                const propName = sectionName.toLowerCase().replace(/\s+/g, '');
+                (this.character as any)[propName] = content;
             }
-        });
+        }
 
         // Clear relationships as they reference template entities
         this.character.relationships = [];

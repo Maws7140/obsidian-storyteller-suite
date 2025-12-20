@@ -336,11 +336,24 @@ export class MagicSystemModal extends ResponsiveModal {
 
         const templateMagic = template.entities.magicSystems[0];
 
-        Object.keys(templateMagic).forEach(key => {
-            if (key !== 'templateId' && key !== 'id' && key !== 'filePath') {
-                (this.magicSystem as any)[key] = (templateMagic as any)[key];
+        // Extract template-specific fields
+        const { templateId, sectionContent, customYamlFields, id, filePath, ...entityData } = templateMagic as any;
+
+        // Apply base entity fields
+        Object.assign(this.magicSystem, entityData);
+
+        // Apply custom YAML fields if they exist
+        if (customYamlFields) {
+            Object.assign(this.magicSystem, customYamlFields);
+        }
+
+        // Apply section content if it exists (map section names to lowercase properties)
+        if (sectionContent) {
+            for (const [sectionName, content] of Object.entries(sectionContent)) {
+                const propName = sectionName.toLowerCase().replace(/\s+/g, '');
+                (this.magicSystem as any)[propName] = content;
             }
-        });
+        }
 
         // Clear relationships as they reference template entities
         this.magicSystem.linkedCharacters = [];

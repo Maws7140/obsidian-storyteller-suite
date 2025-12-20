@@ -25,10 +25,12 @@ export const OPENING_CHAPTER_TEMPLATE: Template = {
     entities: {
         chapters: [{
             templateId: 'OPENING_CHAP_1',
-            name: '',
-            number: 1,
-            summary: 'Introduce the protagonist in their ordinary world, establish the setting\'s tone and atmosphere, and plant the seeds of the central conflict. End with an inciting incident that disrupts normalcy.',
-            tags: ['opening', 'introduction', 'inciting-incident']
+            yamlContent: `name: ""
+number: 1
+tags: ["opening", "introduction", "inciting-incident"]`,
+            markdownContent: `## Summary
+
+Introduce the protagonist in their ordinary world, establish the setting's tone and atmosphere, and plant the seeds of the central conflict. End with an inciting incident that disrupts normalcy.`
         }]
     },
     entityTypes: ['chapter'],
@@ -52,9 +54,11 @@ export const CLIMAX_CHAPTER_TEMPLATE: Template = {
     entities: {
         chapters: [{
             templateId: 'CLIMAX_CHAP_1',
-            name: '',
-            summary: 'All story threads converge as the protagonist faces their greatest challenge. Stakes are at their highest, and the outcome will determine everything. This is the point of no return.',
-            tags: ['climax', 'crisis', 'confrontation']
+            yamlContent: `name: ""
+tags: ["climax", "crisis", "confrontation"]`,
+            markdownContent: `## Summary
+
+All story threads converge as the protagonist faces their greatest challenge. Stakes are at their highest, and the outcome will determine everything. This is the point of no return.`
         }]
     },
     entityTypes: ['chapter'],
@@ -78,9 +82,11 @@ export const RESOLUTION_CHAPTER_TEMPLATE: Template = {
     entities: {
         chapters: [{
             templateId: 'RESOLUTION_CHAP_1',
-            name: '',
-            summary: 'Show the aftermath of the climax and how the world has changed. Resolve remaining subplots, demonstrate character growth, and leave readers with a satisfying sense of closure (or setup for sequel).',
-            tags: ['resolution', 'aftermath', 'conclusion']
+            yamlContent: `name: ""
+tags: ["resolution", "aftermath", "conclusion"]`,
+            markdownContent: `## Summary
+
+Show the aftermath of the climax and how the world has changed. Resolve remaining subplots, demonstrate character growth, and leave readers with a satisfying sense of closure (or setup for sequel).`
         }]
     },
     entityTypes: ['chapter'],
@@ -108,16 +114,17 @@ export const ACTION_SCENE_TEMPLATE: Template = {
     entities: {
         scenes: [{
             templateId: 'ACTION_SCENE_1',
-            name: '',
-            status: 'Draft',
-            content: '',
-            beats: [
-                'Setup: Establish stakes and combatants',
-                'Escalation: Initial clash and complications',
-                'Crisis: Moment when defeat seems likely',
-                'Turn: Protagonist finds advantage or makes sacrifice',
-                'Resolution: Outcome and immediate consequences'
-            ]
+            yamlContent: `name: ""
+status: "Draft"
+beats:
+  - "Setup: Establish stakes and combatants"
+  - "Escalation: Initial clash and complications"
+  - "Crisis: Moment when defeat seems likely"
+  - "Turn: Protagonist finds advantage or makes sacrifice"
+  - "Resolution: Outcome and immediate consequences"`,
+            markdownContent: `## Content
+
+`
         }]
     },
     entityTypes: ['scene'],
@@ -141,16 +148,17 @@ export const DIALOGUE_SCENE_TEMPLATE: Template = {
     entities: {
         scenes: [{
             templateId: 'DIALOGUE_SCENE_1',
-            name: '',
-            status: 'Draft',
-            content: '',
-            beats: [
-                'Context: Establish setting and why characters are meeting',
-                'Opening: Initial exchange sets tone',
-                'Development: Core information or conflict emerges',
-                'Tension: Disagreement, revelation, or emotional peak',
-                'Conclusion: Resolution or cliff-hanger, characters part with changed dynamic'
-            ]
+            yamlContent: `name: ""
+status: "Draft"
+beats:
+  - "Context: Establish setting and why characters are meeting"
+  - "Opening: Initial exchange sets tone"
+  - "Development: Core information or conflict emerges"
+  - "Tension: Disagreement, revelation, or emotional peak"
+  - "Conclusion: Resolution or cliff-hanger, characters part with changed dynamic"`,
+            markdownContent: `## Content
+
+`
         }]
     },
     entityTypes: ['scene'],
@@ -174,16 +182,17 @@ export const REVELATION_SCENE_TEMPLATE: Template = {
     entities: {
         scenes: [{
             templateId: 'REVELATION_SCENE_1',
-            name: '',
-            status: 'Draft',
-            content: '',
-            beats: [
-                'Setup: Character pursues information or stumbles onto clues',
-                'Building: Pieces come together, tension mounts',
-                'The Reveal: Truth comes to light - show don\'t tell',
-                'Reaction: Character processes implications',
-                'New Direction: How this changes the protagonist\'s goals or understanding'
-            ]
+            yamlContent: `name: ""
+status: "Draft"
+beats:
+  - "Setup: Character pursues information or stumbles onto clues"
+  - "Building: Pieces come together, tension mounts"
+  - "The Reveal: Truth comes to light - show don't tell"
+  - "Reaction: Character processes implications"
+  - "New Direction: How this changes the protagonist's goals or understanding"`,
+            markdownContent: `## Content
+
+`
         }]
     },
     entityTypes: ['scene'],
@@ -207,16 +216,17 @@ export const EMOTIONAL_SCENE_TEMPLATE: Template = {
     entities: {
         scenes: [{
             templateId: 'EMOTIONAL_SCENE_1',
-            name: '',
-            status: 'Draft',
-            content: '',
-            beats: [
-                'Trigger: Something prompts emotional response',
-                'Internal: Character\'s thoughts and feelings',
-                'Expression: How emotions manifest externally',
-                'Interaction: Other characters respond or contribute',
-                'Processing: Character reaches understanding or decision'
-            ]
+            yamlContent: `name: ""
+status: "Draft"
+beats:
+  - "Trigger: Something prompts emotional response"
+  - "Internal: Character's thoughts and feelings"
+  - "Expression: How emotions manifest externally"
+  - "Interaction: Other characters respond or contribute"
+  - "Processing: Character reaches understanding or decision"`,
+            markdownContent: `## Content
+
+`
         }]
     },
     entityTypes: ['scene'],
@@ -244,10 +254,33 @@ export const LANGUAGE_REFERENCE_TEMPLATE: Template = {
     entities: {
         references: [{
             templateId: 'LANGUAGE_REF_1',
-            name: '',
-            category: 'Language',
-            tags: ['language', 'names', 'worldbuilding'],
-            content: '## Overview\nDescribe the language family, influences, and where it is spoken.\n\n## Phonetics\nCommon sounds, forbidden combinations, accent patterns.\n\n## Naming Conventions\n- Male names:\n- Female names:\n- Family/clan names:\n- Place names:\n\n## Common Words\n| Word | Meaning |\n|------|--------|\n| | |\n\n## Grammar Notes\nBasic structure and rules for constructing phrases.'
+            yamlContent: `name: ""
+category: "Language"
+tags: ["language", "names", "worldbuilding"]`,
+            markdownContent: `## Overview
+
+Describe the language family, influences, and where it is spoken.
+
+## Phonetics
+
+Common sounds, forbidden combinations, accent patterns.
+
+## Naming Conventions
+
+- Male names:
+- Female names:
+- Family/clan names:
+- Place names:
+
+## Common Words
+
+| Word | Meaning |
+|------|--------|
+| | |
+
+## Grammar Notes
+
+Basic structure and rules for constructing phrases.`
         }]
     },
     entityTypes: ['reference'],
@@ -271,10 +304,32 @@ export const TIMELINE_REFERENCE_TEMPLATE: Template = {
     entities: {
         references: [{
             templateId: 'TIMELINE_REF_1',
-            name: '',
-            category: 'History',
-            tags: ['timeline', 'history', 'chronology'],
-            content: '## Calendar System\nDescribe how time is measured in your world.\n\n## Ages/Eras\n### First Age\nKey events and characteristics.\n\n### Second Age\nKey events and characteristics.\n\n## Major Events Timeline\n| Date | Event | Significance |\n|------|-------|-------------|\n| | | |\n\n## Current Year\nWhere the story takes place in the timeline.'
+            yamlContent: `name: ""
+category: "History"
+tags: ["timeline", "history", "chronology"]`,
+            markdownContent: `## Calendar System
+
+Describe how time is measured in your world.
+
+## Ages/Eras
+
+### First Age
+
+Key events and characteristics.
+
+### Second Age
+
+Key events and characteristics.
+
+## Major Events Timeline
+
+| Date | Event | Significance |
+|------|-------|-------------|
+| | | |
+
+## Current Year
+
+Where the story takes place in the timeline.`
         }]
     },
     entityTypes: ['reference'],
