@@ -1,0 +1,7 @@
+# Merge strategy for generated files - we'll regenerate these
+package-lock.json merge=ours
+
+# Local configuration files - keep local version
+.claude/settings.local.json merge=ours
+
+
