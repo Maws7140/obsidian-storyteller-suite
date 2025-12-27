@@ -277,6 +277,7 @@ export class TemplateEntityDetailModal extends ResponsiveModal {
             event: 'Event',
             item: 'Item',
             group: 'Group',
+            map: 'Map',
             culture: 'Culture',
             economy: 'Economy',
             magicSystem: 'Magic System',

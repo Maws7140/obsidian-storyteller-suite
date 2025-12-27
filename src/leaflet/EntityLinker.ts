@@ -1,0 +1,247 @@
+import { App, TFile, normalizePath } from 'obsidian';
+import { MarkerDefinition } from './types';
+import type StorytellerSuitePlugin from '../main';
+import { StoryMap as Map } from '../types';
+import { buildFrontmatter, getWhitelistKeys } from '../yaml/EntitySections';
+import { stringifyYamlWithLogging } from '../utils/YamlSerializer';
+import { parseSectionsFromMarkdown } from '../yaml/EntitySections';
+
+/**
+ * Entity Linker
+ * Manages bidirectional linking between maps and entities
+ */
+export class EntityLinker {
+    constructor(
+        private app: App,
+        private plugin: StorytellerSuitePlugin
+    ) {}
+
+    /**
+     * Link an entity to a map by updating entity frontmatter
+     */
+    async linkEntityToMap(
+        entityType: 'character' | 'location' | 'event' | 'item' | 'group',
+        entityName: string,
+        mapId: string,
+        markerId: string,
+        coordinates?: [number, number]
+    ): Promise<void> {
+        const entity = await this.findEntity(entityType, entityName);
+        if (!entity || !entity.filePath) return;
+
+        const file = this.app.vault.getAbstractFileByPath(entity.filePath);
+        if (!(file instanceof TFile)) return;
+
+        // Read existing content
+        const content = await this.app.vault.read(file);
+        const sections = parseSectionsFromMarkdown(content);
+        const { parseFrontmatterFromContent } = await import('../yaml/EntitySections');
+        const existingFrontmatter = parseFrontmatterFromContent(content) || {};
+
+        // Update frontmatter
+        const updatedFrontmatter: Record<string, unknown> = {
+            ...existingFrontmatter,
+            mapId: mapId,
+            markerId: markerId,
+            relatedMapIds: this.addToArray(existingFrontmatter.relatedMapIds as string[] | undefined, mapId)
+        };
+
+        // Add coordinates if provided
+        if (coordinates) {
+            updatedFrontmatter.mapCoordinates = coordinates;
+        }
+
+        // Build frontmatter using whitelist
+        // Note: 'group' is not a standard entity type - groups are stored in settings
+        const entityTypeForWhitelist = entityType === 'group' ? 'faction' : entityType;
+        const whitelist = getWhitelistKeys(entityTypeForWhitelist as any);
+        const finalFrontmatter = buildFrontmatter(entityTypeForWhitelist as any, updatedFrontmatter, whitelist, {
+            customFieldsMode: 'flatten',
+            originalFrontmatter: existingFrontmatter
+        });
+
+        // Serialize and save
+        const frontmatterString = Object.keys(finalFrontmatter).length > 0
+            ? stringifyYamlWithLogging(finalFrontmatter, existingFrontmatter, `${entityType}: ${entityName}`)
+            : '';
+
+        const mdContent = `---\n${frontmatterString}---\n\n` +
+            Object.entries(sections)
+                .map(([key, value]) => `## ${key}\n${value || ''}`)
+                .join('\n\n') + '\n';
+
+        await this.app.vault.modify(file, mdContent);
+        this.app.metadataCache.trigger("dataview:refresh-views");
+    }
+
+    /**
+     * Unlink an entity from a map
+     */
+    async unlinkEntityFromMap(
+        entityType: 'character' | 'location' | 'event' | 'item' | 'group',
+        entityName: string,
+        mapId: string
+    ): Promise<void> {
+        const entity = await this.findEntity(entityType, entityName);
+        if (!entity || !entity.filePath) return;
+
+        const file = this.app.vault.getAbstractFileByPath(entity.filePath);
+        if (!(file instanceof TFile)) return;
+
+        const content = await this.app.vault.read(file);
+        const sections = parseSectionsFromMarkdown(content);
+        const { parseFrontmatterFromContent } = await import('../yaml/EntitySections');
+        const existingFrontmatter = parseFrontmatterFromContent(content) || {};
+
+        // Remove mapId if it matches
+        if (existingFrontmatter.mapId === mapId) {
+            delete existingFrontmatter.mapId;
+            delete existingFrontmatter.markerId;
+        }
+
+        // Remove from relatedMapIds
+        if (Array.isArray(existingFrontmatter.relatedMapIds)) {
+            const filtered = (existingFrontmatter.relatedMapIds as string[]).filter(id => id !== mapId);
+            if (filtered.length === 0) {
+                delete existingFrontmatter.relatedMapIds;
+            } else {
+                existingFrontmatter.relatedMapIds = filtered;
+            }
+        }
+
+        // Build and save
+        // Note: 'group' is not a standard entity type - groups are stored in settings
+        const entityTypeForWhitelist = entityType === 'group' ? 'faction' : entityType;
+        const whitelist = getWhitelistKeys(entityTypeForWhitelist as any);
+        const finalFrontmatter = buildFrontmatter(entityTypeForWhitelist as any, existingFrontmatter, whitelist, {
+            customFieldsMode: 'flatten',
+            originalFrontmatter: existingFrontmatter
+        });
+
+        const frontmatterString = Object.keys(finalFrontmatter).length > 0
+            ? stringifyYamlWithLogging(finalFrontmatter, existingFrontmatter, `${entityType}: ${entityName}`)
+            : '';
+
+        const mdContent = `---\n${frontmatterString}---\n\n` +
+            Object.entries(sections)
+                .map(([key, value]) => `## ${key}\n${value || ''}`)
+                .join('\n\n') + '\n';
+
+        await this.app.vault.modify(file, mdContent);
+        this.app.metadataCache.trigger("dataview:refresh-views");
+    }
+
+    /**
+     * Update map's linked entities list
+     */
+    async updateMapLinkedEntities(map: Map, markers: MarkerDefinition[]): Promise<void> {
+        if (!map.filePath) return;
+
+        const file = this.app.vault.getAbstractFileByPath(map.filePath);
+        if (!(file instanceof TFile)) return;
+
+        // Extract entity names from markers
+        const linkedLocations: string[] = [];
+        const linkedCharacters: string[] = [];
+        const linkedEvents: string[] = [];
+        const linkedItems: string[] = [];
+        const linkedGroups: string[] = [];
+
+        for (const marker of markers) {
+            if (!marker.link) continue;
+            const linkPath = marker.link.replace(/[\[\]]/g, '');
+            const entityFile = this.app.metadataCache.getFirstLinkpathDest(linkPath, map.filePath);
+            if (!entityFile) continue;
+
+            // Try to determine entity type from file path
+            const folderPath = normalizePath(entityFile.path.substring(0, entityFile.path.lastIndexOf('/')));
+            const entityFolder = this.plugin.getEntityFolder('location');
+            if (folderPath === normalizePath(entityFolder)) {
+                linkedLocations.push(linkPath);
+            } else {
+                // Could be other entity types - would need to check all folders
+                // For now, we'll update based on marker type
+                if (marker.type === 'location') linkedLocations.push(linkPath);
+                else if (marker.type === 'character') linkedCharacters.push(linkPath);
+                else if (marker.type === 'event') linkedEvents.push(linkPath);
+                else if (marker.type === 'item') linkedItems.push(linkPath);
+            }
+        }
+
+        // Read existing content
+        const content = await this.app.vault.read(file);
+        const sections = parseSectionsFromMarkdown(content);
+        const { parseFrontmatterFromContent } = await import('../yaml/EntitySections');
+        const existingFrontmatter = parseFrontmatterFromContent(content) || {};
+
+        // Update linked entities
+        const updatedFrontmatter = {
+            ...existingFrontmatter,
+            linkedLocations: linkedLocations.length > 0 ? linkedLocations : undefined,
+            linkedCharacters: linkedCharacters.length > 0 ? linkedCharacters : undefined,
+            linkedEvents: linkedEvents.length > 0 ? linkedEvents : undefined,
+            linkedItems: linkedItems.length > 0 ? linkedItems : undefined,
+            linkedGroups: linkedGroups.length > 0 ? linkedGroups : undefined
+        };
+
+        // Build and save
+        const whitelist = getWhitelistKeys('map');
+        const finalFrontmatter = buildFrontmatter('map', updatedFrontmatter, whitelist, {
+            customFieldsMode: 'flatten',
+            originalFrontmatter: existingFrontmatter
+        });
+
+        const frontmatterString = Object.keys(finalFrontmatter).length > 0
+            ? stringifyYamlWithLogging(finalFrontmatter, existingFrontmatter, `Map: ${map.name}`)
+            : '';
+
+        const mdContent = `---\n${frontmatterString}---\n\n` +
+            Object.entries(sections)
+                .map(([key, value]) => `## ${key}\n${value || ''}`)
+                .join('\n\n') + '\n';
+
+        await this.app.vault.modify(file, mdContent);
+        this.app.metadataCache.trigger("dataview:refresh-views");
+    }
+
+    /**
+     * Find an entity by name
+     */
+    private async findEntity(
+        entityType: 'character' | 'location' | 'event' | 'item' | 'group',
+        entityName: string
+    ): Promise<any | null> {
+        switch (entityType) {
+            case 'character': {
+                const chars = await this.plugin.listCharacters();
+                return chars.find(c => c.name === entityName) || null;
+            }
+            case 'location': {
+                const locs = await this.plugin.listLocations();
+                return locs.find(l => l.name === entityName) || null;
+            }
+            case 'event': {
+                const events = await this.plugin.listEvents();
+                return events.find(e => e.name === entityName) || null;
+            }
+            case 'item': {
+                const items = await this.plugin.listPlotItems();
+                return items.find(i => i.name === entityName) || null;
+            }
+            case 'group': {
+                const groups = this.plugin.settings.groups || [];
+                return groups.find(g => g.name === entityName) || null;
+            }
+        }
+    }
+
+    /**
+     * Add value to array, creating array if needed
+     */
+    private addToArray(arr: string[] | undefined, value: string): string[] {
+        if (!arr) return [value];
+        if (arr.includes(value)) return arr;
+        return [...arr, value];
+    }
+}
+

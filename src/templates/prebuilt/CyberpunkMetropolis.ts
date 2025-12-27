@@ -689,6 +689,7 @@ export const CYBERPUNK_METROPOLIS_TEMPLATE: Template = {
             event: 4,
             item: 2,
             group: 4,
+            map: 0,
             culture: 0,
             economy: 1,
             magicSystem: 1,

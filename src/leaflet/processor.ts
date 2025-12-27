@@ -16,7 +16,7 @@ import type StorytellerSuitePlugin from '../main';
  */
 export class LeafletCodeBlockProcessor {
     // Track active maps for cleanup
-    private activeMaps: Map<string, LeafletRenderer> = new Map();
+    private activeMaps: globalThis.Map<string, LeafletRenderer> = new globalThis.Map();
 
     constructor(private plugin: StorytellerSuitePlugin) {}
 
@@ -40,7 +40,19 @@ export class LeafletCodeBlockProcessor {
     ): Promise<void> {
         try {
             // Parse YAML parameters
-            const params = parseBlockParameters(source);
+            let params = parseBlockParameters(source);
+
+            // If mapId is provided, load config from Map entity
+            if (params.mapId) {
+                const mapEntity = await this.loadMapFromEntity(params.mapId, ctx.sourcePath);
+                if (mapEntity) {
+                    // Merge: inline params override entity config
+                    params = this.mergeMapConfig(mapEntity, params);
+                } else {
+                    this.renderError(el, `Map entity not found: ${params.mapId}`);
+                    return;
+                }
+            }
 
             // Validate required parameters
             const validationError = this.validateParameters(params);
@@ -57,7 +69,7 @@ export class LeafletCodeBlockProcessor {
             // Create map container
             const container = this.createMapContainer(el, params);
 
-            // Create and initialize renderer
+            // Create renderer
             const renderer = new LeafletRenderer(
                 this.plugin,
                 container,
@@ -65,19 +77,23 @@ export class LeafletCodeBlockProcessor {
                 ctx
             );
 
-            // Initialize the map
-            await renderer.initialize();
+            // Register renderer as child component for proper lifecycle management
+            // Following javalent-obsidian-leaflet pattern: renderer implements Component
+            // This ensures onload() is called automatically when the component is added to the DOM
+            // onload() will handle initialization - no need to call initialize() manually
+            ctx.addChild(renderer as any);
 
             // Track the map
             this.activeMaps.set(params.id, renderer);
 
-            // Register cleanup on section unload
-            ctx.addChild({
-                onunload: () => {
-                    renderer.destroy();
-                    this.activeMaps.delete(params.id!);
-                }
-            } as any);
+            // Clean up tracking when renderer is unloaded
+            renderer.register(() => {
+                this.activeMaps.delete(params.id!);
+            });
+
+            // Note: No manual initialization needed here
+            // The onload() lifecycle method will be called automatically by Obsidian
+            // when the component is added to the DOM via ctx.addChild()
 
         } catch (error) {
             console.error('Error rendering storyteller-map:', error);
@@ -127,6 +143,7 @@ export class LeafletCodeBlockProcessor {
 
     /**
      * Create the map container element
+     * Ensures container has explicit dimensions before returning
      */
     private createMapContainer(
         el: HTMLElement,
@@ -138,12 +155,18 @@ export class LeafletCodeBlockProcessor {
         const height = params.height ?? 500;
         const width = params.width ?? '100%';
 
+        // Ensure explicit pixel dimensions for Leaflet
+        // If percentage-based, set a minimum to ensure Leaflet can calculate
         container.style.height = typeof height === 'number' ? `${height}px` : height;
         container.style.width = typeof width === 'number' ? `${width}px` : width;
         container.style.position = 'relative';
+        container.style.minHeight = typeof height === 'number' ? `${height}px` : '500px';
+        container.style.minWidth = typeof width === 'number' ? `${width}px` : '100px';
 
-        // Add map ID as data attribute
+        // Set the actual id attribute for Leaflet to use
+        // Following standard Leaflet pattern: L.map('id-string')
         if (params.id) {
+            container.id = params.id;
             container.dataset.mapId = params.id;
         }
 
@@ -204,5 +227,74 @@ export class LeafletCodeBlockProcessor {
             renderer.destroy();
         }
         this.activeMaps.clear();
+    }
+
+    /**
+     * Load map configuration from Map entity
+     */
+    private async loadMapFromEntity(mapId: string, sourcePath: string): Promise<any | null> {
+        // Extract map name from link
+        const mapName = mapId.replace(/[\[\]]/g, '').split('|')[0];
+        
+        // Try to find the map entity
+        const map = await this.plugin.getMapByName(mapName);
+        if (!map) {
+            // Try by ID
+            const mapById = await this.plugin.getMapById(mapName);
+            return mapById;
+        }
+        
+        return map;
+    }
+
+    /**
+     * Merge map entity config with inline parameters
+     * Inline parameters override entity config
+     */
+    private mergeMapConfig(mapEntity: any, inlineParams: BlockParameters): BlockParameters {
+        const merged: BlockParameters = {
+            // Start with entity config
+            type: mapEntity.type || 'image',
+            image: mapEntity.backgroundImagePath || mapEntity.image,
+            lat: mapEntity.lat || mapEntity.center?.[0],
+            long: mapEntity.long || mapEntity.center?.[1],
+            defaultZoom: mapEntity.defaultZoom,
+            minZoom: mapEntity.minZoom,
+            maxZoom: mapEntity.maxZoom,
+            tileServer: mapEntity.tileServer,
+            darkMode: mapEntity.darkMode,
+            width: mapEntity.width,
+            height: mapEntity.height,
+            bounds: mapEntity.bounds,
+            id: mapEntity.id,
+            // Override with inline params
+            ...inlineParams
+        };
+
+        // Merge markers: combine entity markers with inline markers
+        if (mapEntity.markers && Array.isArray(mapEntity.markers)) {
+            const entityMarkers = mapEntity.markers.map((m: any) => {
+                if (typeof m === 'string') return m;
+                // Convert marker object to string format
+                const coords = m.lat !== undefined && m.lng !== undefined
+                    ? `${m.lat},${m.lng}`
+                    : m.loc ? `${m.loc[0]},${m.loc[1]}` : '';
+                const parts = [coords];
+                if (m.link) parts.push(m.link);
+                if (m.description) parts.push(m.description);
+                return parts.join(',');
+            });
+            
+            if (inlineParams.marker) {
+                const inlineMarkers = Array.isArray(inlineParams.marker)
+                    ? inlineParams.marker
+                    : [inlineParams.marker];
+                merged.marker = [...entityMarkers, ...inlineMarkers];
+            } else {
+                merged.marker = entityMarkers;
+            }
+        }
+
+        return merged;
     }
 }

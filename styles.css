@@ -4,13 +4,765 @@
    ================================================================= */
 
 /* ============================================
-   MAP CONTAINER BACKGROUND OVERRIDE
+   LEAFLET CSS IMPORT (if not bundled via esbuild)
+   ============================================
+   If Leaflet CSS is not being bundled via esbuild,
+   uncomment the line below to import it directly.
+   Note: Currently imported in main.ts and renderer.ts
+   ============================================ */
+/* @import 'leaflet/dist/leaflet.css'; */
+
+/* ============================================
+   CRITICAL LEAFLET CSS FIXES FOR OBSIDIAN
+   ============================================
+   
+   Obsidian's global CSS applies styles to all img elements
+   that break Leaflet tile positioning. These overrides are
+   REQUIRED for Leaflet to work correctly in Obsidian plugins.
    ============================================ */
 
-/* Remove default Leaflet checkered/gray background */
-.leaflet-container {
-  background: transparent !important;
+/* ===========================================
+   1. CORE LEAFLET CSS (if not bundled)
+   ===========================================
+   If you're not importing leaflet.css via your build system,
+   you need these core styles. The most critical ones are
+   included here.
+*/
+
+.leaflet-pane,
+.leaflet-tile,
+.leaflet-marker-icon,
+.leaflet-marker-shadow,
+.leaflet-tile-container,
+.leaflet-pane > svg,
+.leaflet-pane > canvas,
+.leaflet-zoom-box,
+.leaflet-image-layer,
+.leaflet-layer {
+    position: absolute;
+    left: 0;
+    top: 0;
 }
+
+.leaflet-container {
+    overflow: hidden;
+    position: relative !important;
+    background: transparent !important;
+}
+
+.leaflet-tile,
+.leaflet-marker-icon,
+.leaflet-marker-shadow {
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    user-select: none;
+    -webkit-user-drag: none;
+}
+
+.leaflet-tile-container {
+    pointer-events: none;
+}
+
+/* ===========================================
+   2. OBSIDIAN-SPECIFIC IMAGE OVERRIDES
+   ===========================================
+   These are CRITICAL. Obsidian themes apply global img styles
+   that break Leaflet tiles. We must reset them.
+*/
+
+/* Reset ALL image styles within leaflet containers */
+.leaflet-container img {
+    max-width: none !important;
+    max-height: none !important;
+    width: auto !important;
+    height: auto !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    border: none !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    object-fit: unset !important;
+    display: block !important;
+}
+
+/* Specific tile image fixes */
+.leaflet-tile {
+    filter: inherit;
+    visibility: inherit;
+    max-width: none !important;
+    max-height: none !important;
+}
+
+.leaflet-tile-pane img {
+    max-width: none !important;
+    max-height: none !important;
+    object-fit: unset !important;
+    border-radius: 0 !important;
+}
+
+/* ===========================================
+   3. MAP VIEW CONTAINER STYLES
+   ===========================================
+   Your MapView needs proper flex layout and positioning.
+*/
+
+.storyteller-map-view {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    width: 100%;
+    overflow: hidden;
+}
+
+.storyteller-map-toolbar {
+    display: flex;
+    align-items: center;
+    padding: 4px 8px;
+    border-bottom: 1px solid var(--background-modifier-border);
+    flex-shrink: 0;
+}
+
+.storyteller-map-toolbar-spacer {
+    flex: 1;
+}
+
+.storyteller-toolbar-btn {
+    margin: 0 2px;
+}
+
+.storyteller-map-selector {
+    display: flex;
+    align-items: center;
+    padding: 8px;
+    border-bottom: 1px solid var(--background-modifier-border);
+    flex-shrink: 0;
+}
+
+.storyteller-map-selector-label {
+    margin-right: 8px;
+}
+
+.storyteller-map-selector-dropdown {
+    flex: 1;
+    max-width: 300px;
+}
+
+/* CRITICAL: Map container positioning */
+.storyteller-map-container {
+    flex: 1;
+    position: relative !important;  /* REQUIRED for absolute children */
+    overflow: hidden !important;
+    min-height: 200px;
+}
+
+/* The actual Leaflet container inside */
+.storyteller-map-container .leaflet-map-container,
+.storyteller-map-container .leaflet-container {
+    position: absolute !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    z-index: 1;
+}
+
+/* Entity Bar - Bottom toolbar for adding entities to map */
+.storyteller-map-entity-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border-top: 1px solid var(--background-modifier-border);
+    background: var(--background-secondary);
+    flex-shrink: 0;
+}
+
+.entity-bar-label {
+    font-weight: 600;
+    color: var(--text-normal);
+    margin-right: 4px;
+    font-size: var(--font-ui-smaller);
+}
+
+.entity-bar-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 4px;
+    background: var(--background-primary);
+    color: var(--text-normal);
+    cursor: pointer;
+    font-size: var(--font-ui-smaller);
+    transition: background 0.2s ease;
+}
+
+.entity-bar-btn:hover {
+    background: var(--background-modifier-hover);
+}
+
+.entity-bar-btn:active {
+    background: var(--background-modifier-active);
+}
+
+.entity-bar-btn svg {
+    width: 16px;
+    height: 16px;
+}
+
+.entity-bar-spacer {
+    flex: 1;
+}
+
+.entity-bar-quick-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: auto;
+}
+
+.entity-bar-btn-small {
+    padding: 4px 8px;
+    min-width: auto;
+}
+
+.storyteller-map-footer {
+    display: flex;
+    align-items: center;
+    padding: 4px 8px;
+    border-top: 1px solid var(--background-modifier-border);
+    font-size: var(--font-ui-smaller);
+    color: var(--text-muted);
+    flex-shrink: 0;
+}
+
+.storyteller-map-error {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: var(--text-error);
+    padding: 20px;
+    text-align: center;
+}
+
+/* ===========================================
+   4. ADDITIONAL LEAFLET COMPONENT RESETS
+   ===========================================
+   Ensure other Leaflet components aren't affected by Obsidian CSS
+*/
+
+.leaflet-control-container {
+    position: absolute;
+}
+
+.leaflet-control {
+    position: relative;
+    z-index: 800;
+    pointer-events: auto;
+}
+
+.leaflet-top,
+.leaflet-bottom {
+    position: absolute;
+    z-index: 1000;
+    pointer-events: none;
+}
+
+.leaflet-top {
+    top: 0;
+}
+
+.leaflet-right {
+    right: 0;
+}
+
+.leaflet-bottom {
+    bottom: 0;
+}
+
+.leaflet-left {
+    left: 0;
+}
+
+/* Popup and tooltip fixes */
+.leaflet-popup-content-wrapper,
+.leaflet-popup-tip {
+    background: var(--background-primary);
+    color: var(--text-normal);
+}
+
+.leaflet-popup-content {
+    margin: 13px 19px;
+    line-height: 1.4;
+}
+
+/* Attribution styling for Obsidian */
+.leaflet-control-attribution {
+    background: var(--background-secondary);
+    color: var(--text-muted);
+    font-size: 10px;
+    padding: 0 5px;
+}
+
+.leaflet-control-attribution a {
+    color: var(--text-accent);
+}
+
+/* Zoom controls */
+.leaflet-control-zoom a {
+    background: var(--background-primary);
+    color: var(--text-normal);
+    border-color: var(--background-modifier-border);
+}
+
+.leaflet-control-zoom a:hover {
+    background: var(--background-secondary);
+}
+
+/* ===========================================
+   5. DARK MODE COMPATIBILITY
+   ===========================================
+*/
+
+.leaflet-container .dark-mode {
+    filter: brightness(0.6) invert(1) contrast(3) hue-rotate(200deg) saturate(0.3) brightness(0.7);
+}
+
+/* ===========================================
+   6. LOCATION PICKER STYLES
+   ===========================================
+*/
+
+.storyteller-location-picker {
+    position: relative;
+}
+
+.current-selection {
+    padding: 8px;
+    background: var(--background-secondary);
+    border-radius: 4px;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.selection-label {
+    font-weight: 600;
+    color: var(--text-normal);
+}
+
+.selection-path {
+    flex: 1;
+    color: var(--text-muted);
+    font-size: 0.9em;
+}
+
+.clear-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 1.2em;
+    padding: 0 4px;
+}
+
+.clear-btn:hover {
+    color: var(--text-error);
+}
+
+.selection-empty {
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+.dropdown-trigger {
+    padding: 8px 12px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: var(--background-primary);
+}
+
+.dropdown-trigger:hover {
+    background: var(--background-modifier-hover);
+}
+
+.dropdown-arrow {
+    font-size: 0.8em;
+    color: var(--text-muted);
+}
+
+.dropdown-content {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: var(--background-primary);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 4px;
+    max-height: 300px;
+    overflow-y: auto;
+    z-index: 100;
+    margin-top: 4px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.dropdown-content.hidden {
+    display: none;
+}
+
+.location-search {
+    width: 100%;
+    padding: 8px;
+    border: none;
+    border-bottom: 1px solid var(--background-modifier-border);
+    background: var(--background-primary);
+    color: var(--text-normal);
+}
+
+.location-tree {
+    padding: 4px 0;
+}
+
+.tree-item {
+    padding: 6px 8px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.tree-item:hover {
+    background: var(--background-modifier-hover);
+}
+
+.tree-children.hidden {
+    display: none;
+}
+
+.expand-icon {
+    width: 16px;
+    cursor: pointer;
+    user-select: none;
+}
+
+.expand-spacer {
+    width: 16px;
+}
+
+.location-icon {
+    font-size: 1.1em;
+}
+
+.location-name {
+    flex: 1;
+}
+
+/* ===========================================
+   7. MAP POPUP STYLES
+   ===========================================
+*/
+
+.storyteller-map-popup .leaflet-popup-content-wrapper {
+    border-radius: 8px;
+    padding: 0;
+}
+
+.storyteller-location-popup {
+    min-width: 200px;
+}
+
+.popup-header {
+    padding: 12px;
+    border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.popup-path {
+    font-size: 11px;
+    color: var(--text-muted);
+    display: block;
+    margin-bottom: 4px;
+}
+
+.popup-title {
+    margin: 0;
+    font-size: 16px;
+}
+
+.popup-type {
+    font-size: 11px;
+    background: var(--background-secondary);
+    padding: 2px 6px;
+    border-radius: 4px;
+    text-transform: capitalize;
+    display: inline-block;
+    margin-top: 4px;
+}
+
+.popup-section {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.popup-section h4 {
+    margin: 0 0 8px 0;
+    font-size: 12px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+}
+
+.popup-entity-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.popup-entity-list li {
+    padding: 4px 0;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.popup-entity-list li:hover {
+    color: var(--text-accent);
+}
+
+.entity-icon {
+    font-size: 1.1em;
+}
+
+.entity-rel {
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+.popup-more {
+    font-style: italic;
+    color: var(--text-muted);
+    cursor: default;
+}
+
+.popup-more:hover {
+    color: var(--text-muted);
+}
+
+.popup-actions {
+    padding: 8px 12px;
+    display: flex;
+    gap: 8px;
+}
+
+.popup-btn {
+    flex: 1;
+    padding: 6px 8px;
+    font-size: 12px;
+    border-radius: 4px;
+    border: 1px solid var(--background-modifier-border);
+    background: var(--background-secondary);
+    cursor: pointer;
+    color: var(--text-normal);
+}
+
+.popup-btn:hover {
+    background: var(--background-modifier-hover);
+}
+
+.storyteller-entity-popup {
+    min-width: 180px;
+}
+
+/* ===========================================
+   8. ADD ENTITY MODAL STYLES
+   ===========================================
+*/
+
+.storyteller-add-entity-modal {
+    padding: 20px;
+}
+
+.search-container {
+    margin-bottom: 16px;
+}
+
+.storyteller-search-input {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 4px;
+    background: var(--background-primary);
+    color: var(--text-normal);
+}
+
+.relationship-container {
+    margin-bottom: 16px;
+}
+
+.relationship-container label {
+    display: block;
+    margin-bottom: 4px;
+    font-weight: 600;
+}
+
+.storyteller-select {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 4px;
+    background: var(--background-primary);
+    color: var(--text-normal);
+}
+
+.results-container {
+    max-height: 300px;
+    overflow-y: auto;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 4px;
+    padding: 8px;
+}
+
+.entity-result-item {
+    padding: 8px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border-radius: 4px;
+    margin-bottom: 4px;
+}
+
+.entity-result-item:hover {
+    background: var(--background-modifier-hover);
+}
+
+.entity-result-item .entity-icon {
+    font-size: 1.2em;
+}
+
+.entity-result-item .entity-name {
+    flex: 1;
+}
+
+.no-results {
+    padding: 16px;
+    text-align: center;
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+/* ===========================================
+   9. LOCATION MODAL ADDITIONAL STYLES
+   ===========================================
+*/
+
+.storyteller-map-bindings,
+.storyteller-location-entities,
+.storyteller-child-locations {
+    margin: 12px 0;
+}
+
+.storyteller-map-bindings-list,
+.storyteller-entities-list,
+.storyteller-children-list {
+    list-style: none;
+    padding: 0;
+    margin: 8px 0;
+}
+
+.storyteller-map-bindings-list li,
+.storyteller-entities-list li,
+.storyteller-children-list li {
+    padding: 8px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 4px;
+    margin-bottom: 4px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.storyteller-children-list li {
+    cursor: pointer;
+}
+
+.storyteller-children-list li:hover {
+    background: var(--background-modifier-hover);
+}
+
+.map-id,
+.entity-type,
+.child-name {
+    font-weight: 600;
+}
+
+.map-coords,
+.entity-id {
+    color: var(--text-muted);
+    font-size: 0.9em;
+}
+
+.remove-binding-btn,
+.remove-entity-btn {
+    margin-left: auto;
+    padding: 4px 8px;
+    font-size: 0.85em;
+    background: var(--background-modifier-error);
+    color: var(--text-error);
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.remove-binding-btn:hover,
+.remove-entity-btn:hover {
+    background: var(--background-modifier-error-hover);
+}
+
+.no-bindings,
+.no-entities,
+.no-children {
+    padding: 16px;
+    text-align: center;
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+.storyteller-location-history {
+    margin: 12px 0;
+}
+
+.storyteller-location-history-list {
+    list-style: none;
+    padding: 0;
+    margin: 8px 0;
+}
+
+.storyteller-location-history-list li {
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--background-modifier-border);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.location-relationship {
+    color: var(--text-muted);
+    font-size: 0.9em;
+    font-style: italic;
+}
+
+/* ============================================
+   MAP CONTAINER BACKGROUND OVERRIDE
+   ============================================ */
 
 /* Error message styling for map initialization failures */
 .storyteller-error-message {
@@ -87,6 +839,7 @@
    STORYTELLER MAP CONTAINER
    ============================================ */
 
+/* Code block map container - for embedded maps in notes */
 .storyteller-map-container {
   width: 100%;
   height: 500px;
@@ -95,8 +848,59 @@
   overflow: hidden;
   margin: 1em 0;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  position: relative;
 }
 
+/* Ensure Leaflet container fills the storyteller container */
+.storyteller-map-container .leaflet-container {
+  width: 100%;
+  height: 100%;
+}
+
+/* Image overlay styling - improve image quality and rendering */
+.storyteller-map-image-overlay {
+  /* Improve image quality for high-res displays */
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: crisp-edges;
+  /* Prevent interaction with overlay to allow map dragging */
+  pointer-events: none;
+  /* Ensure proper opacity */
+  opacity: 1;
+}
+
+/* Leaflet image overlay - ensure it doesn't tile/repeat */
+.storyteller-map-container .leaflet-image-layer {
+  /* Prevent image from repeating */
+  background-repeat: no-repeat !important;
+  background-size: contain !important;
+  /* Ensure image uses object-fit instead of background */
+  object-fit: fill !important;
+  /* Ensure proper positioning */
+  object-position: 0 0 !important;
+}
+
+/* Leaflet panes - ensure proper z-index stacking */
+.storyteller-map-container .leaflet-pane {
+  z-index: auto;
+}
+
+.storyteller-map-container .leaflet-overlay-pane {
+  z-index: 400;
+}
+
+.storyteller-map-container .leaflet-shadow-pane {
+  z-index: 500;
+}
+
+.storyteller-map-container .leaflet-marker-pane {
+  z-index: 600;
+}
+
+.storyteller-map-container .leaflet-popup-pane {
+  z-index: 700;
+}
+
+/* Map error styling */
 .storyteller-map-error {
   padding: 1em;
   border: 1px solid var(--background-modifier-error);
@@ -955,8 +1759,8 @@ If your plugin does not need CSS, delete this file.
 
 /* Map containers need special touch handling for pan/zoom */
 .storyteller-map-container {
-    /* Allow pinch-zoom and panning with touch/stylus */
-    touch-action: pan-x pan-y pinch-zoom;
+    /* Let Leaflet handle all pointer events to prevent scroll conflicts */
+    touch-action: none;
 }
 
 /* Better pointer support for different input methods */
@@ -3808,4 +4612,225 @@ body.mod-rtl .storyteller-group-members {
   .template-variable-input {
     padding: 0.5rem;
   }
+}
+
+/* ========================
+   Map View Styles
+   ======================== */
+
+/* Map View Container */
+.storyteller-map-view {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    padding: 0;
+    overflow: hidden;
+}
+
+/* Map Toolbar */
+.storyteller-map-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--background-modifier-border);
+    flex-shrink: 0;
+    background: var(--background-primary);
+}
+
+.storyteller-map-toolbar .storyteller-toolbar-spacer {
+    flex-grow: 1;
+}
+
+.storyteller-map-toolbar .storyteller-toolbar-btn {
+    padding: 6px;
+    background: transparent;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.storyteller-map-toolbar .storyteller-toolbar-btn:hover {
+    background: var(--background-modifier-hover);
+}
+
+/* Map Selector */
+.storyteller-map-selector {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--background-modifier-border);
+    flex-shrink: 0;
+    background: var(--background-primary);
+}
+
+.storyteller-map-selector-label {
+    font-weight: 600;
+    color: var(--text-normal);
+    margin: 0;
+}
+
+.storyteller-map-selector-dropdown {
+    flex-grow: 1;
+    max-width: 400px;
+}
+
+.storyteller-map-selector-dropdown select {
+    width: 100%;
+}
+
+/* MapView Panel - Map Container - Fills remaining space */
+/* Scope this to .storyteller-map-view to avoid conflicts with code block containers */
+.storyteller-map-view .storyteller-map-container {
+    flex-grow: 1;
+    position: relative;
+    overflow: hidden;
+    background: var(--background-secondary);
+    /* Override code block styles when inside MapView */
+    height: auto !important;
+    border: none !important;
+    border-radius: 0 !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+}
+
+.storyteller-map-view .storyteller-map-container .leaflet-map-container {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100%;
+    height: 100%;
+}
+
+/* Error display */
+.storyteller-map-error {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: var(--text-error);
+    font-size: 1.1em;
+    padding: 20px;
+    text-align: center;
+}
+
+/* Map Footer */
+.storyteller-map-footer {
+    padding: 6px 12px;
+    border-top: 1px solid var(--background-modifier-border);
+    font-size: 0.9em;
+    color: var(--text-muted);
+    flex-shrink: 0;
+    background: var(--background-primary);
+}
+
+.storyteller-map-footer-status {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+/* Fullscreen support - when sidebars closed */
+.workspace-leaf.mod-active .storyteller-map-view {
+    height: 100%;
+}
+
+/* Ensure Leaflet controls are visible */
+.storyteller-map-view .leaflet-control {
+    z-index: 1000;
+}
+
+.storyteller-map-view .leaflet-popup {
+    z-index: 2000;
+}
+
+/* Mobile responsiveness */
+@media (max-width: 768px) {
+    .storyteller-map-toolbar {
+        flex-wrap: wrap;
+        padding: 6px 8px;
+    }
+
+    .storyteller-map-selector {
+        flex-direction: column;
+        align-items: stretch;
+        padding: 8px;
+    }
+
+    .storyteller-map-selector-dropdown {
+        max-width: 100%;
+    }
+}
+
+/* ============================================
+   PLACEMENT MODE OVERLAY
+   ============================================
+   Styles for the click-to-place entity workflow
+   ============================================ */
+
+.storyteller-placement-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 9999;
+    pointer-events: none; /* Allow clicks to pass through to map */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.storyteller-placement-instruction {
+    background: var(--background-primary);
+    border: 2px solid var(--interactive-accent);
+    border-radius: 12px;
+    padding: 24px 32px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+    text-align: center;
+    animation: placement-fade-in 0.2s ease-out;
+    max-width: 90%;
+}
+
+.placement-icon {
+    font-size: 48px;
+    margin-bottom: 12px;
+    animation: placement-pulse 2s ease-in-out infinite;
+}
+
+.placement-text {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text-normal);
+    margin-bottom: 8px;
+}
+
+.placement-hint {
+    font-size: 14px;
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+@keyframes placement-fade-in {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes placement-pulse {
+    0%, 100% {
+        transform: scale(1);
+    }
+    50% {
+        transform: scale(1.1);
+    }
 }

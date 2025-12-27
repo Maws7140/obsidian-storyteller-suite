@@ -514,6 +514,7 @@ export const MURDER_MYSTERY_TEMPLATE: Template = {
             event: 5,
             item: 4,
             group: 0,
+            map: 0,
             culture: 0,
             economy: 0,
             magicSystem: 0,

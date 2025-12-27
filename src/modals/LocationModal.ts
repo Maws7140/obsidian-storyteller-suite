@@ -7,6 +7,9 @@ import StorytellerSuitePlugin from '../main';
 import { t } from '../i18n/strings';
 import { GalleryImageSuggestModal } from './GalleryImageSuggestModal';
 import { LocationSuggestModal } from './LocationSuggestModal';
+import { LocationPicker } from '../components/LocationPicker';
+import { LocationService } from '../services/LocationService';
+import { AddEntityToLocationModal } from './AddEntityToLocationModal';
 // TODO: Maps feature - MapSuggestModal to be reimplemented
 // import { MapSuggestModal } from './MapSuggestModal';
 import { ResponsiveModal } from './ResponsiveModal';
@@ -57,7 +60,7 @@ export class LocationModal extends ResponsiveModal {
         this.modalEl.addClass('storyteller-location-modal');
     }
 
-    onOpen() {
+    async onOpen() {
         super.onOpen(); // Call ResponsiveModal's mobile optimizations
 
         const { contentEl } = this;
@@ -135,6 +138,27 @@ export class LocationModal extends ResponsiveModal {
                 .setValue(this.location.locationType || '')
                 .onChange(value => { this.location.locationType = value || undefined; }));
 
+        // --- Hierarchical Location Type ---
+        new Setting(contentEl)
+            .setName('Hierarchy Type')
+            .setDesc('Type in the location hierarchy (world, continent, city, building, etc.)')
+            .addDropdown(dropdown => {
+                dropdown
+                    .addOption('', 'None')
+                    .addOption('world', 'World')
+                    .addOption('continent', 'Continent')
+                    .addOption('region', 'Region')
+                    .addOption('city', 'City')
+                    .addOption('district', 'District')
+                    .addOption('building', 'Building')
+                    .addOption('room', 'Room')
+                    .addOption('custom', 'Custom')
+                    .setValue(this.location.type || '')
+                    .onChange(value => {
+                        this.location.type = (value || undefined) as Location['type'];
+                    });
+            });
+
         new Setting(contentEl)
             .setName(t('region'))
             .setDesc(t('locationRegionDesc'))
@@ -149,41 +173,32 @@ export class LocationModal extends ResponsiveModal {
                 .setValue(this.location.status || '')
                 .onChange(value => { this.location.status = value || undefined; }));
 
-        // --- Parent Location ---
-        let parentLocationDesc: HTMLElement;
-        new Setting(contentEl)
-            .setName(t('parentLocation'))
-            .setDesc('')
-            .then(setting => {
-                parentLocationDesc = setting.descEl.createEl('small', { text: t('currentValue', this.location.parentLocation || t('none')) });
-                setting.descEl.addClass('storyteller-modal-setting-vertical');
-            })
-            .addButton(button => button
-                .setButtonText(t('selectParentLocation'))
-                .setTooltip(t('parentLocationDesc'))
-                .onClick(() => {
-                    new LocationSuggestModal(this.app, this.plugin, async (selectedLocation) => {
-                        if (selectedLocation) {
-                            // Check for circular reference
-                            if (await this.wouldCreateCircularReference(selectedLocation.name)) {
-                                new Notice(t('circularLocationError'));
-                                return;
-                            }
-                            this.location.parentLocation = selectedLocation.name;
-                        } else {
-                            this.location.parentLocation = undefined;
-                        }
-                        parentLocationDesc.setText(`Current: ${this.location.parentLocation || 'None'}`);
-                    }).open();
-                }))
-            .addButton(button => button
-                .setIcon('cross')
-                .setTooltip(t('clearParentLocation'))
-                .setClass('mod-warning')
-                .onClick(() => {
+        // --- Parent Location (Hierarchical) ---
+        contentEl.createEl('h3', { text: 'Parent Location' });
+        const parentLocationContainer = contentEl.createDiv('storyteller-location-picker-container');
+        const locationService = new LocationService(this.plugin);
+        new LocationPicker(
+            this.plugin,
+            parentLocationContainer,
+            this.location.parentLocationId,
+            async (locationId: string) => {
+                if (locationId) {
+                    // Check for circular reference
+                    if (await this.wouldCreateCircularReferenceById(locationId)) {
+                        new Notice('Cannot set parent to a descendant location (would create circular reference)');
+                        return;
+                    }
+                }
+                this.location.parentLocationId = locationId || undefined;
+                // Also update legacy parentLocation for backward compatibility
+                if (locationId) {
+                    const parent = await locationService.getLocation(locationId);
+                    this.location.parentLocation = parent?.name;
+                } else {
                     this.location.parentLocation = undefined;
-                    parentLocationDesc.setText(`Current: ${this.location.parentLocation || 'None'}`);
-                }));
+                }
+            }
+        );
 
         // --- Profile Image ---
         let imagePathDesc: HTMLElement;
@@ -252,7 +267,151 @@ export class LocationModal extends ResponsiveModal {
                     imagePathDesc.setText(`Current: ${this.location.profileImagePath || 'None'}`);
                 }));
 
-        // --- Maps Section ---
+        // --- Map Bindings ---
+        contentEl.createEl('h3', { text: 'Map Bindings' });
+        const mapBindingsContainer = contentEl.createDiv('storyteller-map-bindings');
+        
+        if (this.location.mapBindings && this.location.mapBindings.length > 0) {
+            const bindingsList = mapBindingsContainer.createEl('ul', { cls: 'storyteller-map-bindings-list' });
+            for (const binding of this.location.mapBindings) {
+                const li = bindingsList.createEl('li');
+                li.innerHTML = `
+                    <span class="map-id">${binding.mapId}</span>
+                    <span class="map-coords">[${binding.coordinates[0]}, ${binding.coordinates[1]}]</span>
+                    <button class="remove-binding-btn">Remove</button>
+                `;
+                li.querySelector('.remove-binding-btn')?.addEventListener('click', async () => {
+                    await locationService.removeMapBinding(this.location.id || this.location.name, binding.mapId);
+                    this.refresh();
+                });
+            }
+        } else {
+            mapBindingsContainer.createDiv({ text: 'No map bindings', cls: 'no-bindings' });
+        }
+        
+        new Setting(contentEl)
+            .addButton(button => button
+                .setButtonText('Add Map Binding')
+                .setIcon('plus')
+                .onClick(() => {
+                    new Notice('Add map binding functionality - select map and coordinates');
+                    // TODO: Implement map binding modal
+                }));
+
+        // --- Entities at Location ---
+        contentEl.createEl('h3', { text: 'Entities Here' });
+        const entitiesContainer = contentEl.createDiv('storyteller-location-entities');
+        
+        if (this.location.entityRefs && this.location.entityRefs.length > 0) {
+            const entitiesList = entitiesContainer.createEl('ul', { cls: 'storyteller-entities-list' });
+            for (const entityRef of this.location.entityRefs) {
+                const li = entitiesList.createEl('li');
+                li.innerHTML = `
+                    <span class="entity-type">${entityRef.entityType}</span>
+                    <span class="entity-id">${entityRef.entityId}</span>
+                    ${entityRef.relationship ? `<span class="entity-rel">(${entityRef.relationship})</span>` : ''}
+                    <button class="remove-entity-btn">Remove</button>
+                `;
+                li.querySelector('.remove-entity-btn')?.addEventListener('click', async () => {
+                    await locationService.removeEntityFromLocation(
+                        this.location.id || this.location.name,
+                        entityRef.entityId
+                    );
+                    this.refresh();
+                });
+            }
+        } else {
+            entitiesContainer.createDiv({ text: 'No entities at this location', cls: 'no-entities' });
+        }
+        
+        new Setting(contentEl)
+            .addButton(button => button
+                .setButtonText('Add Character')
+                .setIcon('user')
+                .onClick(() => {
+                    new AddEntityToLocationModal(
+                        this.app,
+                        this.plugin,
+                        this.location,
+                        'character',
+                        async (entityId, relationship) => {
+                            await locationService.addEntityToLocation(
+                                this.location.id || this.location.name,
+                                { entityId, entityType: 'character', relationship }
+                            );
+                            this.refresh();
+                        }
+                    ).open();
+                }))
+            .addButton(button => button
+                .setButtonText('Add Event')
+                .setIcon('calendar')
+                .onClick(() => {
+                    new AddEntityToLocationModal(
+                        this.app,
+                        this.plugin,
+                        this.location,
+                        'event',
+                        async (entityId, relationship) => {
+                            await locationService.addEntityToLocation(
+                                this.location.id || this.location.name,
+                                { entityId, entityType: 'event', relationship }
+                            );
+                            this.refresh();
+                        }
+                    ).open();
+                }))
+            .addButton(button => button
+                .setButtonText('Add Item')
+                .setIcon('box')
+                .onClick(() => {
+                    new AddEntityToLocationModal(
+                        this.app,
+                        this.plugin,
+                        this.location,
+                        'item',
+                        async (entityId, relationship) => {
+                            await locationService.addEntityToLocation(
+                                this.location.id || this.location.name,
+                                { entityId, entityType: 'item', relationship }
+                            );
+                            this.refresh();
+                        }
+                    ).open();
+                }));
+
+        // --- Child Locations ---
+        contentEl.createEl('h3', { text: 'Child Locations' });
+        const childLocationsContainer = contentEl.createDiv('storyteller-child-locations');
+        
+        if (this.location.childLocationIds && this.location.childLocationIds.length > 0) {
+            const childrenList = childLocationsContainer.createEl('ul', { cls: 'storyteller-children-list' });
+            // Load all child locations in parallel
+            const childPromises = this.location.childLocationIds.map(childId => 
+                locationService.getLocation(childId)
+            );
+            const children = await Promise.all(childPromises);
+            
+            for (const child of children) {
+                if (child) {
+                    const li = childrenList.createEl('li');
+                    li.innerHTML = `<span class="child-name">${child.name}</span>`;
+                    li.addEventListener('click', () => {
+                        // Open child location modal
+                        new LocationModal(
+                            this.app,
+                            this.plugin,
+                            child,
+                            async (updated) => await this.plugin.saveLocation(updated)
+                        ).open();
+                    });
+                }
+            }
+        } else {
+            childLocationsContainer.createDiv({ text: 'No child locations', cls: 'no-children' });
+        }
+
+        // --- Maps Section (Legacy) ---
         // TODO: Maps feature - to be reimplemented
         // contentEl.createEl('h3', { text: 'Maps' });
 
@@ -519,6 +678,19 @@ export class LocationModal extends ResponsiveModal {
                 });
             }
         })();
+    }
+
+    /**
+     * Check if setting a parent location by ID would create a circular reference
+     */
+    private async wouldCreateCircularReferenceById(locationId: string): Promise<boolean> {
+        const locationService = new LocationService(this.plugin);
+        const currentId = this.location.id || this.location.name;
+        if (locationId === currentId) {
+            return true;
+        }
+        const descendants = await locationService.getLocationDescendants(currentId);
+        return descendants.some(d => (d.id || d.name) === locationId);
     }
 
     /**
