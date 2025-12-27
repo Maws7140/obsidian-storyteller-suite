@@ -1,6 +1,6 @@
 import { App, Setting, Notice } from 'obsidian'; // Import Notice
 import StorytellerSuitePlugin from '../main'; // Import the plugin class
-import { Character, Location, Event, Map as StoryMap } from '../types'; // Import types
+import { Character, Location, Event, StoryMap } from '../types'; // Import types
 import { ResponsiveModal } from './ResponsiveModal';
 import { t } from '../i18n/strings';
 import { PlatformUtils } from '../utils/PlatformUtils';
@@ -41,6 +41,7 @@ export class DashboardModal extends ResponsiveModal {
             { id: 'characters', label: t('characters'), icon: '👤' },
             { id: 'locations', label: t('locations'), icon: '📍' },
             { id: 'events', label: t('events'), icon: '📅' },
+            { id: 'maps', label: 'Maps', icon: '🗺️' },
             { id: 'gallery', label: t('gallery'), icon: '🖼️' }
         ];
 
@@ -87,6 +88,9 @@ export class DashboardModal extends ResponsiveModal {
                 break;
             case 'events':
                 this.renderEventsTab();
+                break;
+            case 'maps':
+                this.renderMapsTab();
                 break;
             case 'gallery':
                 this.renderGalleryTab();
@@ -163,6 +167,31 @@ export class DashboardModal extends ResponsiveModal {
                         new Notice(t('created', t('event'), evt.name));
                         new Notice(t('noteCreatedWithSections'));
                     }).open();
+                }));
+    }
+
+    private renderMapsTab() {
+        new Setting(this.contentContainer)
+            .setName('Maps')
+            .setDesc('Manage and view your story maps')
+            .addButton(button => button
+                .setButtonText('View Maps')
+                .setCta()
+                .onClick(async () => {
+                    this.close();
+                    const maps = await this.plugin.listMaps();
+                    new (await import('./MapListModal')).MapListModal(this.app, this.plugin, maps).open();
+                }))
+            .addButton(button => button
+                .setButtonText(t('createNew'))
+                .onClick(async () => {
+                    this.close();
+                    if (!this.plugin.getActiveStory()) {
+                        new Notice(t('selectOrCreateStoryFirst'));
+                        return;
+                    }
+                    const { openMapModal } = await import('../utils/MapModalHelper');
+                    openMapModal(this.app, this.plugin, null);
                 }));
     }
 

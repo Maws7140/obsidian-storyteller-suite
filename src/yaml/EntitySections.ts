@@ -27,20 +27,26 @@ export type EntityType =
 const FRONTMATTER_WHITELISTS: Record<EntityType, Set<string>> = {
   character: new Set([
     'id', 'name', 'traits', 'relationships', 'locations', 'events',
-    'status', 'affiliation', 'groups', 'profileImagePath', 'customFields', 'connections'
+    'currentLocationId', 'locationHistory',
+    'status', 'affiliation', 'groups', 'profileImagePath', 'customFields', 'connections',
+    'mapCoordinates', 'mapId', 'markerId', 'relatedMapIds', 'mapIcon', 'mapColor'
   ]),
   location: new Set([
-    'id', 'name', 'locationType', 'region', 'status', 'parentLocation',
-    'groups', 'profileImagePath', 'customFields', 'connections'
+    'id', 'name', 'locationType', 'type', 'region', 'status', 'parentLocation', 'parentLocationId',
+    'childLocationIds', 'mapBindings', 'entityRefs',
+    'groups', 'profileImagePath', 'customFields', 'connections',
+    'mapCoordinates', 'mapId', 'markerId', 'relatedMapIds', 'mapIcon', 'mapColor'
   ]),
   event: new Set([
     'id', 'name', 'dateTime', 'characters', 'location', 'status',
     'groups', 'profileImagePath', 'customFields', 'connections',
-    'isMilestone', 'dependencies', 'progress', 'tags', 'narrativeMarkers', 'narrativeSequence'
+    'isMilestone', 'dependencies', 'progress', 'tags', 'narrativeMarkers', 'narrativeSequence',
+    'mapCoordinates', 'mapId', 'markerId', 'relatedMapIds', 'mapIcon', 'mapColor'
   ]),
   item: new Set([
     'id', 'name', 'isPlotCritical', 'currentOwner', 'pastOwners',
-    'currentLocation', 'associatedEvents', 'groups', 'profileImagePath', 'customFields', 'connections'
+    'currentLocation', 'associatedEvents', 'groups', 'profileImagePath', 'customFields', 'connections',
+    'mapCoordinates', 'mapId', 'markerId', 'relatedMapIds', 'mapIcon', 'mapColor'
   ]),
   reference: new Set([
     'id', 'name', 'category', 'tags', 'profileImagePath'
@@ -54,32 +60,38 @@ const FRONTMATTER_WHITELISTS: Record<EntityType, Set<string>> = {
     'linkedCharacters', 'linkedLocations', 'linkedEvents', 'linkedItems', 'linkedGroups'
   ]),
   map: new Set([
-    'id', 'name', 'scale', 'parentMapId', 'childMapIds', 'backgroundImagePath', 'mapData',
+    'id', 'name', 'description', 'scale', 'parentMapId', 'childMapIds', 'correspondingLocationId', 'backgroundImagePath', 'mapData',
     'width', 'height', 'defaultZoom', 'center', 'bounds', 'markers', 'layers',
-    'gridEnabled', 'gridSize', 'profileImagePath', 'linkedLocations', 'groups', 'customFields',
-    'created', 'modified'
+    'gridEnabled', 'gridSize', 'profileImagePath', 'linkedLocations', 'linkedCharacters', 'linkedEvents',
+    'linkedItems', 'linkedGroups', 'groups', 'customFields', 'created', 'modified',
+    'type', 'image', 'lat', 'long', 'minZoom', 'maxZoom', 'tileServer', 'darkMode',
+    'geojsonFiles', 'gpxFiles', 'tileSubdomains', 'tileAttribution', 'markerFiles', 'markerFolders', 'markerTags'
   ]),
   culture: new Set([
     'id', 'name', 'profileImagePath', 'languages', 'techLevel', 'governmentType', 'status',
     'population', 'linkedLocations', 'linkedCharacters', 'linkedEvents', 'relatedCultures',
-    'parentCulture', 'groups', 'customFields', 'connections'
+    'parentCulture', 'groups', 'customFields', 'connections',
+    'mapCoordinates', 'mapId', 'markerId', 'relatedMapIds', 'mapIcon', 'mapColor'
   ]),
   faction: new Set([
     'id', 'name', 'profileImagePath', 'factionType', 'strength', 'status', 'militaryPower',
     'economicPower', 'politicalInfluence', 'colors', 'emblem', 'motto', 'members',
     'territories', 'factionRelationships', 'linkedEvents', 'linkedCulture', 'parentFaction',
-    'subfactions', 'groups', 'customFields', 'connections'
+    'subfactions', 'groups', 'customFields', 'connections',
+    'mapCoordinates', 'mapId', 'markerId', 'relatedMapIds', 'mapIcon', 'mapColor'
   ]),
   economy: new Set([
     'id', 'name', 'profileImagePath', 'economicSystem', 'status', 'currencies', 'resources',
     'tradeRoutes', 'linkedLocations', 'linkedFactions', 'linkedCultures', 'linkedEvents',
-    'groups', 'customFields', 'connections'
+    'groups', 'customFields', 'connections',
+    'mapCoordinates', 'mapId', 'markerId', 'relatedMapIds', 'mapIcon', 'mapColor'
   ]),
   magicSystem: new Set([
     'id', 'name', 'profileImagePath', 'systemType', 'rarity', 'powerLevel', 'status',
     'materials', 'categories', 'abilities', 'consistencyRules', 'linkedCharacters',
     'linkedLocations', 'linkedCultures', 'linkedEvents', 'linkedItems', 'groups',
-    'customFields', 'connections'
+    'customFields', 'connections',
+    'mapCoordinates', 'mapId', 'markerId', 'relatedMapIds', 'mapIcon', 'mapColor'
   ]),
   calendar: new Set([
     'id', 'name', 'profileImagePath', 'calendarType', 'status', 'epoch', 'eras',

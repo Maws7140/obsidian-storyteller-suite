@@ -248,6 +248,19 @@ export interface Character {
     /** Names/links of locations associated with this character */
     locations?: string[];
     
+    /** ID of the character's current location */
+    currentLocationId?: string;
+    
+    /** History of locations the character has been to, with relationships and time ranges */
+    locationHistory?: Array<{
+        locationId: string;
+        relationship: string;
+        timeRange?: {
+            start?: string;
+            end?: string;
+        };
+    }>;
+    
     /** Names/links of events this character was involved in */
     events?: string[];
     
@@ -265,6 +278,47 @@ export interface Character {
     
     /** Typed connections to other entities for network graph */
     connections?: TypedRelationship[];
+}
+
+/**
+ * Map binding representing a location's appearance on a specific map
+ * Allows locations to appear on multiple maps with different coordinates and zoom ranges
+ */
+export interface MapBinding {
+    /** ID of the map this location appears on */
+    mapId: string;
+    
+    /** Coordinates [lat, lng] for real-world maps or [x, y] for image-based maps */
+    coordinates: [number, number];
+    
+    /** Optional marker type identifier */
+    markerType?: string;
+    
+    /** Optional custom marker icon */
+    markerIcon?: string;
+    
+    /** Optional zoom range [minZoom, maxZoom] - marker only visible between these zoom levels */
+    zoomRange?: [number, number];
+}
+
+/**
+ * Entity reference representing an entity (character, event, item, etc.) at a location
+ */
+export interface EntityRef {
+    /** ID of the entity */
+    entityId: string;
+    
+    /** Type of entity */
+    entityType: 'character' | 'event' | 'item' | 'culture' | 'organization' | 'custom';
+    
+    /** Relationship description (e.g., "lives here", "works here", "visited") */
+    relationship?: string;
+    
+    /** Optional time range when entity was/is at this location */
+    timeRange?: {
+        start?: string;
+        end?: string;
+    };
 }
 
 /**
@@ -293,6 +347,9 @@ export interface Location {
     /** Type or category of location (e.g., "City", "Forest", "Tavern") */
     locationType?: string;
     
+    /** Hierarchical location type for multi-level organization */
+    type?: 'world' | 'continent' | 'region' | 'city' | 'district' | 'building' | 'room' | 'custom';
+    
     /** Parent region, area, or broader geographical context */
     region?: string;
     
@@ -302,8 +359,24 @@ export interface Location {
     /** Path to a representative image of the location within the vault */
     profileImagePath?: string;
     
-    /** Name or identifier of the parent location that contains this location */
+    /** Name or identifier of the parent location that contains this location
+     * @deprecated Use parentLocationId instead. Kept for backward compatibility during migration. */
     parentLocation?: string;
+    
+    /** ID of the parent location in the hierarchy (ID-based reference) */
+    parentLocationId?: string;
+    
+    /** Array of child location IDs (locations contained within this location) */
+    childLocationIds?: string[];
+    
+    /** Map bindings - locations can appear on multiple maps with different coordinates */
+    mapBindings?: MapBinding[];
+
+    /** ID of the map that represents this location (bidirectional link with StoryMap.correspondingLocationId) */
+    correspondingMapId?: string;
+
+    /** Entities currently at this location (characters, events, items, etc.) */
+    entityRefs?: EntityRef[];
     
     /** Array of group ids this location belongs to */
     groups?: string[];
@@ -312,11 +385,11 @@ export interface Location {
     connections?: TypedRelationship[];
     
     /** Primary map ID where this location is featured
-     * @deprecated Map functionality has been deprecated */
+     * @deprecated Map functionality has been deprecated - use mapBindings instead */
     mapId?: string;
     
     /** Additional maps where this location appears
-     * @deprecated Map functionality has been deprecated */
+     * @deprecated Map functionality has been deprecated - use mapBindings instead */
     relatedMapIds?: string[];
     
     /** Marker IDs representing this location on various maps
@@ -606,6 +679,12 @@ export interface MapMarker {
     /** Name or identifier of linked location entity */
     locationName?: string;
 
+    /** ID of linked location entity (ID-based reference) */
+    linkedLocationId?: string;
+
+    /** Direct entity references pinned to this marker (for entities without location) */
+    linkedEntityRefs?: EntityRef[];
+
     /** Name or identifier of linked event entity */
     eventName?: string;
 
@@ -675,9 +754,8 @@ export interface MapLayer {
  * Map entity representing an interactive geographical or spatial map
  * Maps can display locations, support custom drawings, and organize hierarchically
  * Stored as markdown files with frontmatter and JSON data
- * @deprecated Map functionality has been deprecated and will be removed in a future version
  */
-export interface Map {
+export interface StoryMap {
     /** Unique identifier for the map */
     id?: string;
     
@@ -695,6 +773,9 @@ export interface Map {
     
     /** IDs of child maps at smaller scales */
     childMapIds?: string[];
+    
+    /** ID of the corresponding location for this map (maps always have a location) */
+    correspondingLocationId?: string;
     
     /** Path to background image file for the map */
     backgroundImagePath?: string;
@@ -760,8 +841,41 @@ export interface Map {
     /** Path to thumbnail image for map browser */
     profileImagePath?: string;
     
-    /** Names of locations featured on this map */
+    /** Names/IDs of locations featured on this map */
     linkedLocations?: string[];
+    
+    /** Names/IDs of characters featured on this map */
+    linkedCharacters?: string[];
+    
+    /** Names/IDs of events featured on this map */
+    linkedEvents?: string[];
+    
+    /** Names/IDs of plot items featured on this map */
+    linkedItems?: string[];
+    
+    /** Names/IDs of groups featured on this map */
+    linkedGroups?: string[];
+    
+    /** Map type: 'image' for image-based maps, 'real' for real-world maps */
+    type?: 'image' | 'real';
+    
+    /** Image path for image-based maps (alternative to backgroundImagePath) */
+    image?: string;
+    
+    /** Initial latitude for real-world maps */
+    lat?: number;
+    
+    /** Initial longitude for real-world maps */
+    long?: number;
+    
+    /** Minimum zoom level */
+    minZoom?: number;
+    
+    /** Maximum zoom level */
+    maxZoom?: number;
+    
+    /** Whether dark mode tiles are enabled */
+    darkMode?: boolean;
     
     /** Array of group ids this map belongs to */
     groups?: string[];

@@ -434,6 +434,7 @@ export class TemplateApplicationModal extends ResponsiveModal {
             event: 'events',
             item: 'items',
             group: 'groups',
+            map: 'maps',
             culture: 'cultures',
             economy: 'economies',
             magicSystem: 'magicSystems',

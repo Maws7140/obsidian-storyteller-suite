@@ -9,7 +9,16 @@
       "Bash(npm uninstall:*)",
       "Bash(npm install:*)",
       "WebSearch",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "WebFetch(domain:i.imgur.com)",
+      "WebFetch(domain:leafletjs.com)",
+      "Bash(git checkout:*)",
+      "Bash(done)",
+      "Bash(cmd.exe /c \"npm run build\")",
+      "Bash(ls:*)",
+      "Bash(cmd.exe /c \"cd C:\\\\Users\\\\Lilly\\\\OneDrive\\\\Desktop\\\\Test\\\\.obsidian\\\\plugins\\\\obsidian-storyteller-suite && npm run build\")",
+      "Bash(cmd.exe /c \"cd C:\\\\Users\\\\Lilly\\\\OneDrive\\\\Desktop\\\\Test\\\\.obsidian\\\\plugins\\\\obsidian-storyteller-suite && dir main.js\")",
+      "Bash(git stash:*)"
     ],
     "deny": [],
     "ask": []

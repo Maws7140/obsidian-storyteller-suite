@@ -64,7 +64,7 @@ export interface BlockParameters {
  */
 export interface MarkerDefinition {
     id?: string;
-    type: 'default' | 'location' | 'character' | 'event';
+    type: 'default' | 'location' | 'character' | 'event' | 'item' | 'group';
 
     // Position
     loc: LatLngExpression | [string | number, string | number]; // Coords or percent for image maps
@@ -88,6 +88,11 @@ export interface MarkerDefinition {
 
     // Metadata
     mutable?: boolean;  // Can be edited/deleted
+    
+    // Entity linking
+    entityType?: 'character' | 'location' | 'event' | 'item' | 'group';
+    entityId?: string;
+    entityName?: string;
 }
 
 /**

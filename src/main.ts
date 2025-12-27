@@ -8,11 +8,12 @@ import * as L from 'leaflet';
 // Expose Leaflet to the global scope so plugins can use it
 (window as any).L = L;
 
-// Now import Leaflet plugins (they expect window.L to exist)
-import 'leaflet-draw/dist/leaflet.draw.css';
-import 'leaflet-draw/dist/leaflet.draw';
-import 'leaflet.markercluster/dist/MarkerCluster.css';
-import 'leaflet.markercluster/dist/MarkerCluster.Default.css';
+// Leaflet plugins disabled - causing marker initialization errors
+// import 'leaflet-draw/dist/leaflet.draw.css';
+// import 'leaflet-draw/dist/leaflet.draw';
+// import 'leaflet.markercluster/dist/MarkerCluster.css';
+// import 'leaflet.markercluster/dist/MarkerCluster.Default.css';
+// import 'leaflet.markercluster/dist/leaflet.markercluster';
 
 import { App, Notice, Plugin, TFile, TFolder, normalizePath, stringifyYaml, WorkspaceLeaf } from 'obsidian';
 import { parseEventDate, toMillis } from './utils/DateParsing';
@@ -27,8 +28,8 @@ import {
     Character, Location, Event, GalleryImage, GalleryData, Story, Group, PlotItem, Reference, Chapter, Scene,
     Culture, Economy, MagicSystem,
     TimelineFork, CausalityLink, TimelineConflict, TimelineEra, TimelineTrack,
-    PacingAnalysis, WritingSession, StoryAnalytics, LocationSensoryProfile
-    /* DEPRECATED: Map as StoryMap */
+    PacingAnalysis, WritingSession, StoryAnalytics, LocationSensoryProfile,
+    StoryMap
 } from './types';
 import { CharacterListModal } from './modals/CharacterListModal';
 import { LocationModal } from './modals/LocationModal';
@@ -41,6 +42,7 @@ import { DashboardView, VIEW_TYPE_DASHBOARD } from './views/DashboardView';
 import { NetworkGraphView, VIEW_TYPE_NETWORK_GRAPH } from './views/NetworkGraphView';
 import { TimelineView, VIEW_TYPE_TIMELINE } from './views/TimelineView';
 import { AnalyticsDashboardView, VIEW_TYPE_ANALYTICS } from './views/AnalyticsDashboardView';
+import { MapView, VIEW_TYPE_MAP } from './views/MapView';
 // DEPRECATED: Map functionality has been deprecated
 // import { MapEditorView, VIEW_TYPE_MAP_EDITOR } from './views/MapEditorView';
 import { GalleryImageSuggestModal } from './modals/GalleryImageSuggestModal';
@@ -271,7 +273,7 @@ export default class StorytellerSuitePlugin extends Plugin {
      * - Preserves values without overriding existing `customFields` entries
      */
     private normalizeEntityCustomFields<T extends { customFields?: Record<string, string> }>(
-        entityType: 'character' | 'location' | 'event' | 'item',
+        entityType: 'character' | 'location' | 'event' | 'item' | 'map',
         entity: T
     ): T {
         if (!entity) return entity;
@@ -285,7 +287,8 @@ export default class StorytellerSuitePlugin extends Plugin {
             item: ['description', 'history'],
             reference: ['content'],
             chapter: ['summary'],
-            scene: ['content']
+            scene: ['content'],
+            map: ['description']
         };
         for (const k of (derivedByType[entityType] || [])) reserved.add(k);
         const mode = this.settings.customFieldsMode ?? 'flatten';
@@ -669,6 +672,12 @@ export default class StorytellerSuitePlugin extends Plugin {
 		this.registerView(
 			VIEW_TYPE_ANALYTICS,
 			(leaf) => new AnalyticsDashboardView(leaf, this)
+		);
+
+		// Register the map view for interactive map visualization
+		this.registerView(
+			VIEW_TYPE_MAP,
+			(leaf) => new MapView(leaf, this)
 		);
 
 		// DEPRECATED: Map functionality has been deprecated
@@ -1353,6 +1362,15 @@ export default class StorytellerSuitePlugin extends Plugin {
 			}
 		});
 
+		// Map view command
+		this.addCommand({
+			id: 'open-map-view',
+			name: 'Open map view',
+			callback: async () => {
+				await this.activateMapView();
+			}
+		});
+
 		// DEPRECATED: Map functionality has been deprecated
 		// Map management commands
 		// this.addCommand({
@@ -1975,7 +1993,7 @@ export default class StorytellerSuitePlugin extends Plugin {
     async parseFile<T>(
         file: TFile,
         typeDefaults: Partial<T>,
-        entityType: 'character' | 'location' | 'event' | 'item' | 'reference' | 'chapter' | 'scene' | 'culture' | 'faction' | 'economy' | 'magicSystem' | 'calendar'
+        entityType: 'character' | 'location' | 'event' | 'item' | 'reference' | 'chapter' | 'scene' | 'culture' | 'faction' | 'economy' | 'magicSystem' | 'calendar' | 'map'
     ): Promise<T | null> {
 		try {
 			// Read file content for markdown sections
@@ -2174,11 +2192,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		// Handle renaming if filePath is present and name changed
 		let finalFilePath = filePath;
 		if (currentFilePath && currentFilePath !== filePath) {
-			const existingFile = this.app.vault.getAbstractFileByPath(currentFilePath);
-			if (existingFile && existingFile instanceof TFile) {
-				await this.app.fileManager.renameFile(existingFile, filePath);
-				finalFilePath = filePath;
-			}
+			finalFilePath = await this.safeRenameFile(currentFilePath, filePath, 'Location');
 		}
 
 		// Check if file exists and read existing frontmatter and sections for preservation
@@ -2361,11 +2375,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		// Handle renaming if filePath is present and name changed
 		let finalFilePath = filePath;
 		if (currentFilePath && currentFilePath !== filePath) {
-			const existingFile = this.app.vault.getAbstractFileByPath(currentFilePath);
-			if (existingFile && existingFile instanceof TFile) {
-				await this.app.fileManager.renameFile(existingFile, filePath);
-				finalFilePath = filePath;
-			}
+			finalFilePath = await this.safeRenameFile(currentFilePath, filePath, 'Location');
 		}
 
 		// Check if file exists and read existing frontmatter and sections for preservation
@@ -2540,27 +2550,134 @@ export default class StorytellerSuitePlugin extends Plugin {
 	 * @deprecated Map functionality has been deprecated
 	 */
 	async ensureMapFolder(): Promise<void> {
-		console.warn('DEPRECATED: Map functionality has been deprecated');
-		// Stub implementation for backward compatibility
+		await this.ensureFolder(this.getEntityFolder('map'));
 	}
 
 	/**
 	 * Build frontmatter for map entity
-	 * @deprecated Map functionality has been deprecated
 	 */
-	private buildFrontmatterForMap(map: Partial<any>, originalFrontmatter?: Record<string, unknown>): Record<string, unknown> {
-		console.warn('DEPRECATED: Map functionality has been deprecated');
-		return {};
+	private buildFrontmatterForMap(map: Partial<StoryMap>, originalFrontmatter?: Record<string, unknown>): Record<string, unknown> {
+		const preserve = new Set<string>(Object.keys(map || {}));
+		const mode = this.settings.customFieldsMode ?? 'flatten';
+		return buildFrontmatter('map', map, preserve, { customFieldsMode: mode, originalFrontmatter }) as Record<string, any>;
+	}
+	/**
+	 * Safely rename a file, deleting the destination if it already exists
+	 * Prevents "Destination file already exists!" errors during file operations
+	 * @param currentFilePath The current path of the file
+	 * @param newFilePath The new path for the file
+	 * @param entityType The type of entity being renamed (for logging)
+	 * @returns The final file path after renaming
+	 */
+	private async safeRenameFile(currentFilePath: string, newFilePath: string, entityType: string): Promise<string> {
+		const existingFile = this.app.vault.getAbstractFileByPath(currentFilePath);
+		if (!existingFile || !(existingFile instanceof TFile)) {
+			return newFilePath;
+		}
+
+		// Check if destination already exists
+		const destinationFile = this.app.vault.getAbstractFileByPath(newFilePath);
+		if (destinationFile && destinationFile instanceof TFile) {
+			// Destination exists, delete it before renaming (name collision)
+			console.log(`safe${entityType}Rename: Deleting existing file at destination: ${newFilePath}`);
+			await this.app.vault.delete(destinationFile);
+		}
+
+		// Rename the file
+		await this.app.fileManager.renameFile(existingFile, newFilePath);
+		return newFilePath;
 	}
 
 	/**
 	 * Save a map to the vault as a markdown file (in the active story)
 	 * @param map The map data to save
-	 * @deprecated Map functionality has been deprecated
 	 */
-	async saveMap(map: any): Promise<void> {
-		console.warn('DEPRECATED: Map functionality has been deprecated');
-		new Notice('Map functionality has been deprecated');
+	async saveMap(map: StoryMap): Promise<void> {
+		await this.ensureMapFolder();
+		const folderPath = this.getEntityFolder('map');
+
+		// Ensure map has a stable id for linking
+		if (!map.id) {
+			map.id = Date.now().toString(36) + Math.random().toString(36).substr(2, 6);
+		}
+
+		// Create safe filename from map name
+		const fileName = `${map.name.replace(/[\\:"*?<>|]+/g, '')}.md`;
+		const filePath = normalizePath(`${folderPath}/${fileName}`);
+
+		// Separate content fields from frontmatter fields
+		const { filePath: currentFilePath, description, ...rest } = map as any;
+		if ((rest as any).sections) delete (rest as any).sections;
+
+		// Handle renaming if filePath is present and name changed
+		let finalFilePath = filePath;
+		if (currentFilePath && currentFilePath !== filePath) {
+			finalFilePath = await this.safeRenameFile(currentFilePath, filePath, 'Map');
+		}
+
+		// Check if file exists and read existing frontmatter and sections
+		const existingFile = this.app.vault.getAbstractFileByPath(finalFilePath);
+		let existingSections: Record<string, string> = {};
+		let originalFrontmatter: Record<string, unknown> | undefined;
+		if (existingFile && existingFile instanceof TFile) {
+			try {
+				const existingContent = await this.app.vault.cachedRead(existingFile);
+				existingSections = parseSectionsFromMarkdown(existingContent);
+
+				const { parseFrontmatterFromContent } = await import('./yaml/EntitySections');
+				const directFrontmatter = parseFrontmatterFromContent(existingContent);
+				const fileCache = this.app.metadataCache.getFileCache(existingFile);
+				const cachedFrontmatter = fileCache?.frontmatter as Record<string, unknown> | undefined;
+
+				if (directFrontmatter || cachedFrontmatter) {
+					originalFrontmatter = { ...(cachedFrontmatter || {}), ...(directFrontmatter || {}) };
+				}
+			} catch (error) {
+				console.warn(`Error reading existing map file: ${error}`);
+			}
+		}
+
+		// Build frontmatter
+		const finalFrontmatter = this.buildFrontmatterForMap(rest, originalFrontmatter);
+
+		// Use custom serializer
+		const frontmatterString = Object.keys(finalFrontmatter).length > 0
+			? stringifyYamlWithLogging(finalFrontmatter, originalFrontmatter, `Map: ${map.name}`)
+			: '';
+
+		// Build sections
+		const providedSections = {
+			Description: description || ''
+		};
+
+		const templateOnlySections = (map as any)._templateSections || {};
+		const defaultSections = getTemplateSections('map', providedSections);
+
+		const allSections: Record<string, string> = (existingFile && existingFile instanceof TFile)
+			? { ...defaultSections, ...templateOnlySections, ...existingSections, ...providedSections }
+			: { ...defaultSections, ...templateOnlySections, ...providedSections };
+
+		// Assemble final markdown
+		let content = '';
+		if (frontmatterString) {
+			content += `---\n${frontmatterString}---\n\n`;
+		}
+
+		for (const [sectionName, sectionContent] of Object.entries(allSections)) {
+			if (sectionContent && sectionContent.trim()) {
+				content += `## ${sectionName}\n${sectionContent}\n\n`;
+			}
+		}
+
+		// Write to vault
+		if (existingFile && existingFile instanceof TFile) {
+			await this.app.vault.modify(existingFile, content);
+		} else {
+			await this.app.vault.create(finalFilePath, content);
+		}
+
+		// Update filePath on the map object
+		(map as any).filePath = finalFilePath;
 	}
 
 	/**
@@ -2568,20 +2685,94 @@ export default class StorytellerSuitePlugin extends Plugin {
 	 * @returns Array of map objects sorted by name
 	 * @deprecated Map functionality has been deprecated
 	 */
-	async listMaps(): Promise<any[]> {
-		console.warn('DEPRECATED: Map functionality has been deprecated');
-		return [];
+	async listMaps(): Promise<StoryMap[]> {
+		await this.ensureMapFolder();
+		const folderPath = this.getEntityFolder('map');
+		
+		// Use vault.getMarkdownFiles() instead of folder.children for immediate file detection
+		const allFiles = this.app.vault.getMarkdownFiles();
+		const prefix = normalizePath(folderPath) + '/';
+		const files = allFiles.filter(file => 
+			file.path.startsWith(prefix) && 
+			file.extension === 'md'
+		);
+		
+		// Parse each map file
+		const maps: StoryMap[] = [];
+		for (const file of files) {
+			let mapData = await this.parseFile<StoryMap>(file, { name: '', markers: [], scale: 'custom' }, 'map');
+			if (mapData) {
+				mapData = this.normalizeEntityCustomFields('map', mapData);
+				if (mapData) {
+					maps.push(mapData);
+				}
+			}
+		}
+		
+		// Return sorted by name
+		return maps.sort((a, b) => a.name.localeCompare(b.name));
 	}
 
 	/**
 	 * Get a single map by ID
 	 * @param mapId The ID of the map to retrieve
 	 * @returns The map object or null if not found
-	 * @deprecated Map functionality has been deprecated
 	 */
-	async getMap(mapId: string): Promise<any | null> {
-		console.warn('DEPRECATED: Map functionality has been deprecated');
-		return null;
+	async getMap(mapId: string): Promise<StoryMap | null> {
+		const maps = await this.listMaps();
+		return maps.find(m => m.id === mapId || m.name === mapId) || null;
+	}
+
+	/**
+	 * Get a map by name
+	 */
+	async getMapByName(name: string): Promise<StoryMap | null> {
+		const maps = await this.listMaps();
+		return maps.find(m => m.name === name) || null;
+	}
+
+	/**
+	 * Get a map by ID
+	 */
+	async getMapById(id: string): Promise<StoryMap | null> {
+		const maps = await this.listMaps();
+		return maps.find(m => m.id === id) || null;
+	}
+
+	/**
+	 * Activate map view (stub for compatibility)
+	 */
+	async activateMapView(mapId?: string): Promise<void> {
+		const { workspace } = this.app;
+
+		// Check if a map view already exists
+		const existingLeaves = workspace.getLeavesOfType(VIEW_TYPE_MAP);
+
+		if (existingLeaves.length > 0) {
+			// Reveal existing map view
+			const leaf = existingLeaves[0];
+			workspace.revealLeaf(leaf);
+			
+			// If a specific map ID is provided, load it
+			if (mapId && leaf.view instanceof MapView) {
+				await leaf.view.loadMap(mapId);
+			}
+			return;
+		}
+
+		// Create new leaf for map view in main editor area (as a tab)
+		const leaf = workspace.getLeaf('tab');
+		if (leaf) {
+			await leaf.setViewState({
+				type: VIEW_TYPE_MAP,
+				active: true,
+				state: mapId ? { mapId } : undefined
+			});
+			workspace.revealLeaf(leaf);
+		} else {
+			console.error("Storyteller Suite: Could not create workspace leaf for map view.");
+			new Notice("Error opening map view: Could not create workspace leaf.");
+		}
 	}
 
 	/**
@@ -2645,11 +2836,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 
 		let finalFilePath = filePath;
 		if (currentFilePath && currentFilePath !== filePath) {
-			const existingFile = this.app.vault.getAbstractFileByPath(currentFilePath);
-			if (existingFile && existingFile instanceof TFile) {
-				await this.app.fileManager.renameFile(existingFile, filePath);
-				finalFilePath = filePath;
-			}
+			finalFilePath = await this.safeRenameFile(currentFilePath, filePath, 'Location');
 		}
 
 		// Check if file exists and read existing frontmatter and sections for preservation
@@ -2845,11 +3032,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 
 		let finalFilePath = filePath;
 		if (currentFilePath && currentFilePath !== filePath) {
-			const existingFile = this.app.vault.getAbstractFileByPath(currentFilePath);
-			if (existingFile instanceof TFile) {
-				await this.app.fileManager.renameFile(existingFile, filePath);
-				finalFilePath = filePath;
-			}
+			finalFilePath = await this.safeRenameFile(currentFilePath, filePath, 'Location');
 		}
 
 		// Check if file exists and read existing frontmatter and sections for preservation
@@ -2981,11 +3164,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		// Handle rename
 		let finalFilePath = filePath;
 		if (currentFilePath && currentFilePath !== filePath) {
-			const existing = this.app.vault.getAbstractFileByPath(currentFilePath);
-			if (existing && existing instanceof TFile) {
-				await this.app.fileManager.renameFile(existing, filePath);
-				finalFilePath = filePath;
-			}
+			finalFilePath = await this.safeRenameFile(currentFilePath, filePath, 'File');
 		}
 
 		// Check if file exists and read existing frontmatter and sections for preservation
@@ -3098,11 +3277,7 @@ export default class StorytellerSuitePlugin extends Plugin {
         // Rename if needed
         let finalFilePath = filePath;
         if (currentFilePath && currentFilePath !== filePath) {
-            const existing = this.app.vault.getAbstractFileByPath(currentFilePath);
-            if (existing && existing instanceof TFile) {
-                await this.app.fileManager.renameFile(existing, filePath);
-                finalFilePath = filePath;
-            }
+            finalFilePath = await this.safeRenameFile(currentFilePath, filePath, 'File');
         }
 
         // Check if file exists and read existing frontmatter and sections for preservation
@@ -3232,11 +3407,7 @@ export default class StorytellerSuitePlugin extends Plugin {
         // Rename if needed
         let finalFilePath = filePath;
         if (currentFilePath && currentFilePath !== filePath) {
-            const existing = this.app.vault.getAbstractFileByPath(currentFilePath);
-            if (existing && existing instanceof TFile) {
-                await this.app.fileManager.renameFile(existing, filePath);
-                finalFilePath = filePath;
-            }
+            finalFilePath = await this.safeRenameFile(currentFilePath, filePath, 'File');
         }
 
         // Check if file exists and read existing frontmatter and sections for preservation
@@ -3355,11 +3526,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 
         let finalFilePath = filePath;
         if (currentFilePath && currentFilePath !== filePath) {
-            const existingFile = this.app.vault.getAbstractFileByPath(currentFilePath);
-            if (existingFile && existingFile instanceof TFile) {
-                await this.app.fileManager.renameFile(existingFile, filePath);
-                finalFilePath = filePath;
-            }
+            finalFilePath = await this.safeRenameFile(currentFilePath, filePath, 'File');
         }
 
         const existingFile = this.app.vault.getAbstractFileByPath(finalFilePath);
@@ -3474,11 +3641,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 
         let finalFilePath = filePath;
         if (currentFilePath && currentFilePath !== filePath) {
-            const existingFile = this.app.vault.getAbstractFileByPath(currentFilePath);
-            if (existingFile && existingFile instanceof TFile) {
-                await this.app.fileManager.renameFile(existingFile, filePath);
-                finalFilePath = filePath;
-            }
+            finalFilePath = await this.safeRenameFile(currentFilePath, filePath, 'File');
         }
 
         const existingFile = this.app.vault.getAbstractFileByPath(finalFilePath);
@@ -3589,11 +3752,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 
         let finalFilePath = filePath;
         if (currentFilePath && currentFilePath !== filePath) {
-            const existingFile = this.app.vault.getAbstractFileByPath(currentFilePath);
-            if (existingFile && existingFile instanceof TFile) {
-                await this.app.fileManager.renameFile(existingFile, filePath);
-                finalFilePath = filePath;
-            }
+            finalFilePath = await this.safeRenameFile(currentFilePath, filePath, 'File');
         }
 
         const existingFile = this.app.vault.getAbstractFileByPath(finalFilePath);
