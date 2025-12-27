@@ -75,6 +75,7 @@ export class TemplateNoteManager {
             event: 'Events',
             item: 'Items',
             group: 'Groups',
+            map: 'Maps',
             culture: 'Cultures',
             economy: 'Economies',
             magicSystem: 'MagicSystems',

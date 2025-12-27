@@ -1,6 +1,8 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { App, Setting, Notice, TextAreaComponent, TextComponent, ButtonComponent } from 'obsidian';
 import { Character, Group } from '../types'; // Assumes Character type has relationships?: string[], associatedLocations?: string[], associatedEvents?: string[]
+import { LocationPicker } from '../components/LocationPicker';
+import { LocationService } from '../services/LocationService';
 import { getWhitelistKeys } from '../yaml/EntitySections';
 import StorytellerSuitePlugin from '../main';
 import { t } from '../i18n/strings';
@@ -49,7 +51,7 @@ export class CharacterModal extends ResponsiveModal {
         this.modalEl.addClass('storyteller-character-modal');
     }
 
-    onOpen() {
+    async onOpen() {
         super.onOpen(); // Call the parent's mobile optimizations
 
         const { contentEl } = this;
@@ -215,6 +217,61 @@ export class CharacterModal extends ResponsiveModal {
             .addText(text => text
                 .setValue(this.character.affiliation || '')
                 .onChange(value => { this.character.affiliation = value || undefined; }));
+
+        // --- Current Location ---
+        contentEl.createEl('h3', { text: 'Location' });
+        const locationContainer = contentEl.createDiv('storyteller-location-picker-container');
+        const locationService = new LocationService(this.plugin);
+        new LocationPicker(
+            this.plugin,
+            locationContainer,
+            this.character.currentLocationId,
+            async (locationId: string) => {
+                this.character.currentLocationId = locationId || undefined;
+                if (locationId) {
+                    // Add to location history if moving to a new location
+                    if (!this.character.locationHistory) {
+                        this.character.locationHistory = [];
+                    }
+                    const existingEntry = this.character.locationHistory.find(
+                        h => h.locationId === locationId
+                    );
+                    if (!existingEntry) {
+                        this.character.locationHistory.push({
+                            locationId,
+                            relationship: 'moved to'
+                        });
+                    }
+                }
+            }
+        );
+
+        // --- Location History ---
+        if (this.character.locationHistory && this.character.locationHistory.length > 0) {
+            const historyContainer = contentEl.createDiv('storyteller-location-history');
+            historyContainer.createEl('h4', { text: 'Location History' });
+            const historyList = historyContainer.createEl('ul', { cls: 'storyteller-location-history-list' });
+            
+            // Load all locations in parallel
+            const locationPromises = this.character.locationHistory.map(entry => 
+                locationService.getLocation(entry.locationId)
+            );
+            const locations = await Promise.all(locationPromises);
+            
+            for (let i = 0; i < this.character.locationHistory.length; i++) {
+                const entry = this.character.locationHistory[i];
+                const location = locations[i];
+                const li = historyList.createEl('li');
+                if (location) {
+                    li.innerHTML = `
+                        <span class="location-name">${location.name}</span>
+                        <span class="location-relationship">${entry.relationship}</span>
+                    `;
+                } else {
+                    li.textContent = entry.locationId;
+                }
+            }
+        }
 
         // --- Groups ---
         this.groupSelectorContainer = contentEl.createDiv('storyteller-group-selector-container');

@@ -713,6 +713,7 @@ Born into House Stormhaven, Aldric ascended to the throne at age 30 after his fa
             event: 5,
             item: 1,
             group: 3,
+            map: 0,
             culture: 1,
             economy: 1,
             magicSystem: 1,

@@ -13,7 +13,7 @@ import { PlotItemModal } from '../modals/PlotItemModal';
 import { ImageDetailModal } from '../modals/ImageDetailModal';
 // Remove ImageSuggestModal import as we replace its usage
 // import { ImageSuggestModal } from '../modals/GalleryModal';
-import { Character, Location, Event, Group, PlotItem, GalleryImage } from '../types'; // Import types
+import { Character, Location, Event, Group, PlotItem, GalleryImage, StoryMap } from '../types'; // Import types
 import { NewStoryModal } from '../modals/NewStoryModal';
 import { GroupModal } from '../modals/GroupModal';
 import { PlatformUtils } from '../utils/PlatformUtils';
@@ -177,6 +177,7 @@ export class DashboardView extends ItemView {
             { id: 'locations', label: t('locations'), renderFn: this.renderLocationsContent.bind(this) },
             { id: 'events', label: t('timeline'), renderFn: this.renderEventsContent.bind(this) },
             { id: 'items', label: t('items'), renderFn: this.renderItemsContent.bind(this) },
+            { id: 'maps', label: 'Maps', renderFn: this.renderMapsContent.bind(this) },
             { id: 'network', label: t('networkGraph'), renderFn: this.renderNetworkContent.bind(this) },
             { id: 'gallery', label: t('gallery'), renderFn: this.renderGalleryContent.bind(this) },
             { id: 'groups', label: t('groups'), renderFn: this.renderGroupsContent.bind(this) },
@@ -952,6 +953,94 @@ export class DashboardView extends ItemView {
                 }
             });
             this.addOpenFileButton(actionsEl, item.filePath);
+        });
+    }
+
+    /**
+     * Render the Maps tab content
+     * Shows list of maps with create/edit functionality
+     * @param container The container element to render content into
+     */
+    async renderMapsContent(container: HTMLElement) {
+        container.empty();
+        this.renderHeaderControls(container, 'Maps', async (filter: string) => {
+            this.currentFilter = filter;
+            await this.renderMapsList(container);
+        }, () => {
+            if (!this.plugin.getActiveStory()) {
+                new Notice(t('selectOrCreateStoryFirst'));
+                return;
+            }
+            import('../utils/MapModalHelper').then(({ openMapModal }) => {
+                openMapModal(this.app, this.plugin, null);
+            });
+        }, t('createNew'));
+
+        await this.renderMapsList(container);
+    }
+
+    /**
+     * Render just the maps list (without header controls)
+     */
+    private async renderMapsList(container: HTMLElement) {
+        const existingListContainer = container.querySelector('.storyteller-list-container');
+        if (existingListContainer) existingListContainer.remove();
+
+        const maps = (await this.plugin.listMaps()).filter(m =>
+            m.name.toLowerCase().includes(this.currentFilter) ||
+            (m.description || '').toLowerCase().includes(this.currentFilter) ||
+            (m.type || '').toLowerCase().includes(this.currentFilter)
+        );
+
+        const listContainer = container.createDiv('storyteller-list-container');
+        if (maps.length === 0) {
+            listContainer.createEl('p', { text: 'No maps found.' + (this.currentFilter ? ' Try a different search.' : '') });
+            return;
+        }
+
+        maps.forEach(map => {
+            const itemEl = listContainer.createDiv('storyteller-list-item');
+
+            const pfpContainer = itemEl.createDiv('storyteller-list-item-pfp');
+            if (map.profileImagePath) {
+                const imgEl = pfpContainer.createEl('img');
+                imgEl.src = this.getImageSrc(map.profileImagePath);
+                imgEl.alt = map.name;
+            } else {
+                pfpContainer.createDiv({ cls: 'storyteller-pfp-placeholder', text: '🗺️' });
+            }
+
+            const infoEl = itemEl.createDiv('storyteller-list-item-info');
+            infoEl.createEl('strong', { text: map.name });
+
+            const meta = infoEl.createDiv('storyteller-list-item-extra');
+            if (map.type) meta.createSpan({ text: `Type: ${map.type}` });
+            if (map.markers && map.markers.length > 0) {
+                meta.createSpan({ text: ` • Markers: ${map.markers.length}` });
+            }
+
+            if (map.description) {
+                const preview = map.description.length > 120 ? map.description.substring(0, 120) + '…' : map.description;
+                infoEl.createEl('p', { text: preview });
+            }
+
+            const actionsEl = itemEl.createDiv('storyteller-list-item-actions');
+            this.addEditButton(actionsEl, () => {
+                import('../utils/MapModalHelper').then(({ openMapModal }) => {
+                    openMapModal(this.app, this.plugin, map, {
+                        onDelete: async () => {
+                            // Refresh the list after deletion
+                            await this.renderMapsList(this.tabContentContainer);
+                        }
+                    });
+                });
+            });
+            this.addDeleteButton(actionsEl, async () => {
+                if (map.filePath && confirm(`Delete map "${map.name}"?`)) {
+                    await this.plugin.deleteMap(map.filePath);
+                }
+            });
+            this.addOpenFileButton(actionsEl, map.filePath);
         });
     }
 

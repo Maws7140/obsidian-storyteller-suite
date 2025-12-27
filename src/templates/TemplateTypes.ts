@@ -14,7 +14,8 @@ import {
     MagicSystem,
     Chapter,
     Scene,
-    Reference
+    Reference,
+    StoryMap
 } from '../types';
 
 /**
@@ -48,6 +49,7 @@ export type TemplateEntityType =
     | 'event'
     | 'item'
     | 'group'
+    | 'map'
     | 'culture'
     | 'economy'
     | 'magicSystem'
@@ -174,6 +176,7 @@ export interface TemplateEntities {
     events?: TemplateEntity<Event>[];
     items?: TemplateEntity<PlotItem>[];
     groups?: TemplateEntity<Group>[];
+    maps?: TemplateEntity<StoryMap>[];
     cultures?: TemplateEntity<Culture>[];
     economies?: TemplateEntity<Economy>[];
     magicSystems?: TemplateEntity<MagicSystem>[];

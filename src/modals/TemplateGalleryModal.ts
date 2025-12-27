@@ -4,7 +4,7 @@
  */
 
 import { App, Modal, ButtonComponent, setIcon } from 'obsidian';
-import { MapTemplate, Map as StoryMap } from '../types';
+import { MapTemplate, StoryMap } from '../types';
 // TODO: Maps feature - MapTemplates to be reimplemented
 // import { getAllTemplates, getTemplateCategories, applyTemplate } from '../utils/MapTemplates';
 import StorytellerSuitePlugin from '../main';

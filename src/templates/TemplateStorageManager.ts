@@ -143,6 +143,16 @@ export class TemplateStorageManager {
         } catch (error) {
             console.log('Story structure templates not yet available:', error);
         }
+
+        // Load built-in map templates
+        try {
+            const { MAP_TEMPLATES } = await import('./prebuilt/MapTemplates');
+            MAP_TEMPLATES.forEach(template => {
+                this.builtInTemplates.set(template.id, template);
+            });
+        } catch (error) {
+            console.log('Map templates not yet available:', error);
+        }
     }
 
     /**
@@ -229,6 +239,7 @@ export class TemplateStorageManager {
             event: 'Events',
             item: 'Items',
             group: 'Groups',
+            map: 'Maps',
             culture: 'Cultures',
             economy: 'Economies',
             magicSystem: 'MagicSystems',
@@ -523,6 +534,7 @@ export class TemplateStorageManager {
             event: entities.events?.length || 0,
             item: entities.items?.length || 0,
             group: entities.groups?.length || 0,
+            map: (entities as any).maps?.length || 0,
             culture: entities.cultures?.length || 0,
             economy: entities.economies?.length || 0,
             magicSystem: entities.magicSystems?.length || 0,

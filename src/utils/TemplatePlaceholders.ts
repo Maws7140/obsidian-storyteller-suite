@@ -234,6 +234,12 @@ export class TemplatePlaceholderProcessor {
                 description: 'Describe the group\'s purpose and structure...',
                 groupType: 'faction'
             },
+            map: {
+                name: 'Enter map name...',
+                description: 'Describe the map...',
+                type: 'image',
+                scale: 'custom'
+            },
             culture: {
                 name: 'Enter culture name...',
                 description: 'Describe the culture...'
