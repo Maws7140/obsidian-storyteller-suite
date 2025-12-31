@@ -18,7 +18,8 @@
       "Bash(ls:*)",
       "Bash(cmd.exe /c \"cd C:\\\\Users\\\\Lilly\\\\OneDrive\\\\Desktop\\\\Test\\\\.obsidian\\\\plugins\\\\obsidian-storyteller-suite && npm run build\")",
       "Bash(cmd.exe /c \"cd C:\\\\Users\\\\Lilly\\\\OneDrive\\\\Desktop\\\\Test\\\\.obsidian\\\\plugins\\\\obsidian-storyteller-suite && dir main.js\")",
-      "Bash(git stash:*)"
+      "Bash(git stash:*)",
+      "WebFetch(domain:github.com)"
     ],
     "deny": [],
     "ask": []

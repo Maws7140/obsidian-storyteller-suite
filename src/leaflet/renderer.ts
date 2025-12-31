@@ -4,10 +4,12 @@ import 'leaflet/dist/leaflet.css';
 import * as L from 'leaflet';
 import { Component, MarkdownPostProcessorContext, Notice, TFile } from 'obsidian';
 import type StorytellerSuitePlugin from '../main';
-import type { BlockParameters, MarkerDefinition, MapOptions } from './types';
+import type { BlockParameters, MarkerDefinition, MapOptions, TileMetadata } from './types';
 import { extractLinkPath, parseMarkerString } from './utils/parser';
+import { RasterCoords } from './utils/RasterCoords';
 import { EntityMarkerDiscovery } from './EntityMarkerDiscovery';
 import { MapEntityRenderer } from './MapEntityRenderer';
+import { ObsidianTileLayer } from './ObsidianTileLayer';
 
 /**
  * Core Leaflet Map Renderer
@@ -28,6 +30,10 @@ export class LeafletRenderer extends Component {
     private isInitialized: boolean = false;
     private initializationPromise: Promise<void> | null = null;
     private mapEntityRenderer: MapEntityRenderer | null = null;
+    private imageWidth: number = 0;
+    private imageHeight: number = 0;
+    private imageBounds: L.LatLngBounds | null = null;
+    private wheelHandler: ((e: WheelEvent) => void) | null = null;
 
     constructor(
         private plugin: StorytellerSuitePlugin,
@@ -70,7 +76,10 @@ export class LeafletRenderer extends Component {
             await this.waitForContainerDimensions();
 
             // Create map based on type
-            if (this.params.type === 'image') {
+            // Default to 'image' if type is not specified but image param exists
+            const mapType = this.params.type || (this.params.image ? 'image' : 'real');
+            
+            if (mapType === 'image') {
                 await this.initializeImageMap();
             } else {
                 await this.initializeRealMap();
@@ -94,15 +103,13 @@ export class LeafletRenderer extends Component {
                 }
             }
 
-            // Fit bounds if needed
-            this.fitBounds();
+            // Note: fitBounds is already called in initializeImageMap/initializeRealMap
+            // Don't call it again here as it can interfere with centering
 
             this.isInitialized = true;
-
-            // Call invalidateSize after initialization to ensure proper rendering
-            requestAnimationFrame(() => {
-                this.invalidateSize();
-            });
+            
+            // Note: invalidateSize is already called in initializeImageMap
+            // Don't call it again here as it can reset the view
 
         } catch (error) {
             console.error('Error initializing map:', error);
@@ -113,14 +120,26 @@ export class LeafletRenderer extends Component {
     /**
      * Wait for container to have computed dimensions
      * This ensures Leaflet initializes with proper dimensions
+     * Times out after 5 seconds to prevent infinite waiting
      */
     private async waitForContainerDimensions(): Promise<void> {
-        return new Promise((resolve) => {
+        return new Promise((resolve, reject) => {
+            const startTime = Date.now();
+            const timeout = 5000; // 5 second timeout
+            
             const checkDimensions = () => {
                 const rect = this.containerEl.getBoundingClientRect();
                 const hasDimensions = rect.width > 0 && rect.height > 0;
 
                 if (hasDimensions) {
+                    console.log('[LeafletRenderer] Container dimensions ready:', rect.width, 'x', rect.height);
+                    resolve();
+                } else if (Date.now() - startTime > timeout) {
+                    // Timeout - try to continue with default dimensions
+                    console.warn('[LeafletRenderer] Timeout waiting for container dimensions, using defaults');
+                    // Set explicit dimensions as fallback
+                    this.containerEl.style.minHeight = '500px';
+                    this.containerEl.style.minWidth = '100%';
                     resolve();
                 } else {
                     // Use requestAnimationFrame to wait for next layout cycle
@@ -135,6 +154,7 @@ export class LeafletRenderer extends Component {
 
     /**
      * Setup ResizeObserver to watch for container size changes
+     * Note: MapView also has a ResizeObserver, so we use a flag to prevent conflicts
      */
     private setupResizeObserver(): void {
         if (typeof ResizeObserver === 'undefined') {
@@ -142,13 +162,30 @@ export class LeafletRenderer extends Component {
             return;
         }
 
-        this.resizeObserver = new ResizeObserver(() => {
-            if (this.map && this.isInitialized) {
-                // Debounce invalidateSize calls
-                requestAnimationFrame(() => {
-                    this.invalidateSize();
-                });
+        let resizeTimeout: ReturnType<typeof setTimeout> | null = null;
+        let lastWidth = 0;
+        let lastHeight = 0;
+
+        this.resizeObserver = new ResizeObserver((entries) => {
+            if (!this.map || !this.isInitialized) return;
+            
+            // Only react to actual size changes, not just observer triggers
+            const entry = entries[0];
+            if (!entry) return;
+            
+            const { width, height } = entry.contentRect;
+            if (width === lastWidth && height === lastHeight) return;
+            
+            lastWidth = width;
+            lastHeight = height;
+
+            // Debounce to prevent rapid fire during animations
+            if (resizeTimeout) {
+                clearTimeout(resizeTimeout);
             }
+            resizeTimeout = setTimeout(() => {
+                this.invalidateSize();
+            }, 100);
         });
 
         this.resizeObserver.observe(this.containerEl);
@@ -156,107 +193,335 @@ export class LeafletRenderer extends Component {
 
     /**
      * Initialize an image-based map
+     * 
+     * Based on official Leaflet CRS.Simple tutorial:
+     * https://leafletjs.com/examples/crs-simple/crs-simple.html
+     * 
+     * Key principles:
+     * 1. CRS.Simple uses [y, x] coordinates (like [lat, lng])
+     * 2. At zoom 0, 1 map unit = 1 pixel
+     * 3. For large images, use negative minZoom to zoom out
+     * 4. Image bounds [[0,0], [height, width]] puts origin at top-left
+     * 5. fitBounds() centers the image and calculates proper zoom
+     */
+    /**
+     * Initialize image-based map
+     * Automatically detects if tiles exist and uses appropriate rendering method
      */
     private async initializeImageMap(): Promise<void> {
         if (!this.params.image) {
             throw new Error('Image parameter required for image maps');
         }
 
-        console.log('[LeafletRenderer] Initializing image map with image:', this.params.image);
+        console.log('[LeafletRenderer] === INITIALIZING IMAGE MAP ===');
+        console.log('[LeafletRenderer] Image param:', this.params.image);
 
         // Resolve image path
         const imagePath = extractLinkPath(this.params.image);
-        console.log('[LeafletRenderer] Resolved image path:', imagePath);
-
+        console.log('[LeafletRenderer] Extracted image path:', imagePath);
+        
         const imageFile = this.plugin.app.metadataCache.getFirstLinkpathDest(
             imagePath,
             this.ctx.sourcePath
         );
 
         if (!imageFile) {
-            console.error('[LeafletRenderer] Image file not found:', imagePath);
-            throw new Error(`Image not found: ${imagePath}`);
-        }
-
-        console.log('[LeafletRenderer] Found image file:', imageFile.path);
-
-        // Get image URL using the correct Obsidian API
-        // CRITICAL: Use vault.adapter.getResourcePath() not vault.getResourcePath()
-        // This matches the pattern used in NetworkGraphRenderer, DashboardView, and GalleryModal
-        const imageUrl = this.plugin.app.vault.adapter.getResourcePath(imageFile.path);
-        console.log('[LeafletRenderer] Image resource URL:', imageUrl);
-
-        // Load image to get dimensions
-        try {
-            const { width, height } = await this.loadImageDimensions(imageUrl);
-            console.log('[LeafletRenderer] Image dimensions:', { width, height });
-
-            // Calculate bounds for Leaflet Simple CRS
-            // Simple CRS uses pixel coordinates with origin at top-left
-            // Bounds format: [[south, west], [north, east]] or [[minY, minX], [maxY, maxX]]
-            // For images: top-left is [0, 0] and bottom-right is [height, width]
-            const bounds = L.latLngBounds(
-                [0, 0],           // Top-left corner
-                [height, width]   // Bottom-right corner
-            );
-
-            console.log('[LeafletRenderer] Calculated bounds:', bounds.toBBoxString());
-
-            // Ensure container has an ID for Leaflet
-            if (!this.containerEl.id) {
-                this.containerEl.id = `leaflet-map-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+            // Try to find the file directly by path as fallback
+            const directFile = this.plugin.app.vault.getAbstractFileByPath(imagePath);
+            if (directFile instanceof TFile) {
+                console.log('[LeafletRenderer] Found image via direct path lookup:', directFile.path);
+                await this.initializeImageMapWithPath(directFile.path);
+                return;
             }
-
-            // Create map with Simple CRS (non-geographic) using L.map() with ID string
-            // DON'T set initial zoom/center - let fitBounds handle it!
-            // This prevents the tiling/repeating issue
-            this.map = L.map(this.containerEl.id, {
-                crs: L.CRS.Simple,
-                minZoom: this.params.minZoom ?? -2,
-                maxZoom: this.params.maxZoom ?? 3,
-                attributionControl: false,
-                zoomControl: true,
-                // Smooth zoom options optimized for trackpad/mouse wheel
-                zoomDelta: 0.25,
-                zoomSnap: 0,  // No snapping = completely fluid
-                wheelPxPerZoomLevel: 150,  // Reduced sensitivity for smoother scrolling
-                wheelDebounceTime: 100,  // Increased debounce to prevent event stacking
-                zoomAnimation: true,
-                fadeAnimation: true,
-                markerZoomAnimation: false,  // Disabled to reduce lag with many markers
-                // Smooth panning with reduced inertia
-                inertia: true,
-                inertiaDeceleration: 2000,  // Reduced for more predictable panning
-                inertiaMaxSpeed: 1000  // Reduced for better control
-                // NOTE: No initial zoom, center, or maxBounds set here
-                // These interfere with fitBounds()
-            });
-
-            console.log('[LeafletRenderer] Created map with Simple CRS using ID:', this.containerEl.id);
-
-            // Add image overlay using L.imageOverlay() factory
-            this.imageOverlay = L.imageOverlay(imageUrl, bounds, {
-                interactive: false,
-                className: 'storyteller-map-image-overlay'
-            }).addTo(this.map);
-
-            console.log('[LeafletRenderer] Added image overlay with bounds:', bounds.toBBoxString());
-
-            // Fit to image bounds - this sets the correct zoom and center
-            // Do this AFTER adding the overlay
-            this.map.fitBounds(bounds);
-
-            // AFTER fitBounds, set maxBounds to prevent panning outside
-            this.map.setMaxBounds(bounds.pad(0.1));
-
-            console.log('[LeafletRenderer] Fitted map to bounds and set max bounds');
-
-            console.log('[LeafletRenderer] Image map initialization complete');
-
-        } catch (error) {
-            console.error('[LeafletRenderer] Error loading image dimensions:', error);
-            throw new Error(`Failed to load image: ${error.message}`);
+            
+            console.error('[LeafletRenderer] Image not found. Searched path:', imagePath);
+            console.error('[LeafletRenderer] Source path context:', this.ctx.sourcePath);
+            throw new Error(`Image not found: ${imagePath}. Check that the image file exists and the path is correct.`);
         }
+
+        console.log('[LeafletRenderer] Resolved image file:', imageFile.path);
+        await this.initializeImageMapWithPath(imageFile.path);
+    }
+
+    /**
+     * Initialize image map with a resolved file path
+     * Separated to allow direct path initialization as fallback
+     */
+    private async initializeImageMapWithPath(imagePath: string): Promise<void> {
+        try {
+            // Check if tiles exist for this image
+            const tileInfo = await this.checkForTiles(imagePath);
+
+            if (tileInfo) {
+                // Tiles found - use tile-based rendering
+                console.log('[LeafletRenderer] Tiles found, using tiled rendering');
+                await this.initializeTiledMap(imagePath, tileInfo);
+            } else {
+                // No tiles - use standard imageOverlay
+                console.log('[LeafletRenderer] No tiles found, using standard imageOverlay');
+                await this.initializeStandardImageMap(imagePath);
+            }
+        } catch (error) {
+            console.error('[LeafletRenderer] Map initialization failed:', error);
+            // Try standard rendering as last resort
+            try {
+                console.log('[LeafletRenderer] Attempting fallback to standard image overlay...');
+                await this.initializeStandardImageMap(imagePath);
+            } catch (fallbackError) {
+                console.error('[LeafletRenderer] Fallback also failed:', fallbackError);
+                throw new Error(`Failed to render image map: ${error.message}`);
+            }
+        }
+    }
+
+    /**
+     * Check if tiles exist for an image
+     * @param imagePath - Vault path to image
+     * @returns TileMetadata if tiles exist, null otherwise
+     */
+    private async checkForTiles(imagePath: string): Promise<TileMetadata | null> {
+        try {
+            // Calculate image hash (same algorithm as TileGenerator)
+            const imageData = await this.plugin.app.vault.adapter.readBinary(imagePath);
+            const hashBuffer = await crypto.subtle.digest('SHA-256', imageData);
+            const hash = Array.from(new Uint8Array(hashBuffer))
+                .map(b => b.toString(16).padStart(2, '0'))
+                .join('')
+                .substring(0, 16);
+
+            // Check for metadata file
+            const metadataPath = `StorytellerSuite/MapTiles/${hash}/metadata.json`;
+            const metadataFile = this.plugin.app.vault.getAbstractFileByPath(metadataPath);
+
+            if (metadataFile instanceof TFile) {
+                const content = await this.plugin.app.vault.read(metadataFile);
+                const metadata = JSON.parse(content) as TileMetadata;
+                console.log('[LeafletRenderer] Tile metadata found:', metadata);
+                return metadata;
+            }
+        } catch (error) {
+            console.log('[LeafletRenderer] No tiles found for image:', error);
+        }
+
+        return null;
+    }
+
+    /**
+     * Initialize map using pre-generated tiles
+     * Uses L.tileLayer with ObsidianTileLayer for optimal performance
+     */
+    private async initializeTiledMap(
+        imagePath: string,
+        tileInfo: TileMetadata
+    ): Promise<void> {
+        this.imageWidth = tileInfo.width;
+        this.imageHeight = tileInfo.height;
+
+        // Create a custom CRS that matches how tiles were generated
+        // The tile generator creates tiles where:
+        // - At maxZoom, the image is at native resolution (1 pixel = 1 coordinate unit)
+        // - Each lower zoom level halves the resolution
+        // We need to create a CRS where tile coordinates match this scheme
+        
+        // Calculate the scale factor based on maxZoom
+        // At maxZoom, we want 1 tile to cover tileSize pixels of the original image
+        // The transformation maps pixel coordinates to the tileSize-based system Leaflet expects
+        const maxZoom = tileInfo.maxZoom;
+        const tileSize = tileInfo.tileSize;
+        
+        // Create custom CRS for the tiled image
+        // The scale at each zoom level should be: 2^(zoom - maxZoom) * tileSize
+        // This means at maxZoom, scale = tileSize, which gives us 1:1 pixel mapping
+        const customCRS = L.extend({}, L.CRS.Simple, {
+            // The transformation: we need to flip Y axis (images have Y=0 at top)
+            // and scale coordinates to match tile coordinates
+            transformation: new L.Transformation(1 / tileSize, 0, -1 / tileSize, tileInfo.height / tileSize),
+            
+            // Scale function - at zoom Z, scale is 2^(Z - maxZoom)
+            // This matches how tiles were generated
+            scale: function(zoom: number): number {
+                return Math.pow(2, zoom);
+            },
+            
+            zoom: function(scale: number): number {
+                return Math.log(scale) / Math.LN2;
+            }
+        });
+
+        console.log('[LeafletRenderer] Created custom CRS for tiled map');
+        console.log('[LeafletRenderer] Image dimensions:', tileInfo.width, 'x', tileInfo.height);
+        console.log('[LeafletRenderer] Tile size:', tileSize);
+        console.log('[LeafletRenderer] Max zoom:', maxZoom);
+
+        // Create map with custom CRS
+        this.map = L.map(this.containerEl, {
+            zoomSnap: 0,
+            zoomDelta: 0.25,
+            scrollWheelZoom: true,
+            zoomAnimation: true,
+            attributionControl: false,
+            zoomControl: true,
+            crs: customCRS,
+            minZoom: tileInfo.minZoom,
+            maxZoom: tileInfo.maxZoom
+        });
+
+        // Define bounds in pixel coordinates
+        // In our coordinate system: (0,0) is top-left, (width, height) is bottom-right
+        const bounds: L.LatLngBoundsExpression = [[0, 0], [tileInfo.height, tileInfo.width]];
+        this.imageBounds = L.latLngBounds(bounds);
+
+        // Create and add custom tile layer
+        const basePath = `StorytellerSuite/MapTiles/${tileInfo.imageHash}`;
+        console.log('[LeafletRenderer] Creating tile layer with basePath:', basePath);
+        
+        const tileLayer = new ObsidianTileLayer(
+            this.plugin,
+            tileInfo.imageHash,
+            basePath,
+            {
+                minZoom: tileInfo.minZoom,
+                maxZoom: tileInfo.maxZoom,
+                tileSize: tileInfo.tileSize,
+                noWrap: true,
+                bounds: this.imageBounds,
+                keepBuffer: 2,
+                updateWhenIdle: false,
+                updateWhenZooming: true
+            }
+        );
+
+        console.log('[LeafletRenderer] Adding tile layer to map...');
+        tileLayer.addTo(this.map);
+        console.log('[LeafletRenderer] Tile layer added');
+
+        // Wait for DOM to be ready
+        await new Promise(resolve => requestAnimationFrame(resolve));
+
+        // Calculate center point
+        const centerLat = tileInfo.height / 2;
+        const centerLng = tileInfo.width / 2;
+
+        // Set initial view - start at middle zoom level to ensure tiles load
+        const initialZoom = Math.floor((tileInfo.minZoom + tileInfo.maxZoom) / 2);
+
+        // Invalidate size and set view
+        this.map.invalidateSize({ animate: false });
+        this.map.setView([centerLat, centerLng], initialZoom, { animate: false });
+
+        // Force a tile redraw after setting view
+        tileLayer.redraw();
+
+        // Log final state
+        const finalZoom = this.map.getZoom();
+        const finalCenter = this.map.getCenter();
+        const mapSize = this.map.getSize();
+        const mapBounds = this.map.getBounds();
+        console.log('[LeafletRenderer] === TILED MAP READY ===');
+        console.log('[LeafletRenderer] Zoom range:', tileInfo.minZoom, 'to', tileInfo.maxZoom);
+        console.log('[LeafletRenderer] Tile size:', tileInfo.tileSize);
+        console.log('[LeafletRenderer] Final zoom:', finalZoom.toFixed(2));
+        console.log('[LeafletRenderer] Final center:', [finalCenter.lat.toFixed(1), finalCenter.lng.toFixed(1)]);
+        console.log('[LeafletRenderer] Map pixel size:', mapSize.x, 'x', mapSize.y);
+        console.log('[LeafletRenderer] Current map bounds:', mapBounds.getSouthWest(), mapBounds.getNorthEast());
+        console.log('[LeafletRenderer] Image bounds:', bounds);
+        console.log('[LeafletRenderer] Container dimensions:', this.containerEl.offsetWidth, 'x', this.containerEl.offsetHeight);
+    }
+
+    /**
+     * Initialize map using standard L.imageOverlay
+     * Used for small images or when tiles don't exist
+     */
+    private async initializeStandardImageMap(imagePath: string): Promise<void> {
+        console.log('[LeafletRenderer] initializeStandardImageMap called with path:', imagePath);
+        
+        // Verify file exists before attempting to get resource path
+        const imageFile = this.plugin.app.vault.getAbstractFileByPath(imagePath);
+        if (!imageFile) {
+            throw new Error(`Image file not found in vault: ${imagePath}`);
+        }
+        
+        const imageUrl = this.plugin.app.vault.adapter.getResourcePath(imagePath);
+        console.log('[LeafletRenderer] Resource URL generated:', imageUrl ? imageUrl.substring(0, 100) + '...' : 'NULL');
+        
+        if (!imageUrl) {
+            throw new Error(`Failed to get resource path for image: ${imagePath}`);
+        }
+
+        // Load image dimensions
+        console.log('[LeafletRenderer] Loading image dimensions...');
+        const { width, height } = await this.loadImageDimensions(imageUrl);
+        console.log('[LeafletRenderer] Image dimensions:', width, 'x', height);
+
+        if (width === 0 || height === 0) {
+            throw new Error(`Image has invalid dimensions: ${width}x${height}`);
+        }
+
+        // Store for later use
+        this.imageWidth = width;
+        this.imageHeight = height;
+
+        // Get container dimensions
+        const containerRect = this.containerEl.getBoundingClientRect();
+        const containerWidth = containerRect.width || 800;
+        const containerHeight = containerRect.height || 600;
+        console.log('[LeafletRenderer] Container dimensions:', containerWidth, 'x', containerHeight);
+
+        if (containerWidth === 0 || containerHeight === 0) {
+            console.warn('[LeafletRenderer] Container has zero dimensions, using defaults');
+        }
+
+        // Create map instance (needed for RasterCoords)
+        console.log('[LeafletRenderer] Creating Leaflet map instance...');
+        this.map = L.map(this.containerEl, {
+            zoomSnap: 0,
+            zoomDelta: 0.25,
+            scrollWheelZoom: true,
+            zoomAnimation: true,
+            attributionControl: false,
+            zoomControl: true,
+            crs: L.CRS.Simple
+        });
+
+        // Initialize RasterCoords helper
+        const rc = new RasterCoords(this.map, width, height);
+        rc.setup();
+
+        // Calculate zoom range
+        // Fix: Use a generous minZoom to ensure the image can always be fully fitted
+        // The previous calculation (getMaxZoom() - 5) might not be enough for large images in small containers
+        const minZoom = -10; 
+        const maxZoom = rc.getMaxZoom() + 3;
+
+        console.log('[LeafletRenderer] Zoom config:', { minZoom, maxZoom, maxNativeZoom: rc.getMaxZoom() });
+
+        this.map.setMinZoom(minZoom);
+        this.map.setMaxZoom(maxZoom);
+
+        // Add image overlay
+        const bounds: L.LatLngBoundsExpression = [[0, 0], [height, width]];
+        this.imageBounds = L.latLngBounds(bounds);
+
+        console.log('[LeafletRenderer] Adding image overlay with bounds:', bounds);
+        this.imageOverlay = L.imageOverlay(imageUrl, bounds).addTo(this.map);
+
+        // Wait for DOM
+        await new Promise(resolve => requestAnimationFrame(resolve));
+
+        // Invalidate size and fit bounds
+        this.map.invalidateSize({ animate: false });
+        this.map.fitBounds(bounds, {
+            padding: [20, 20],
+            animate: false
+        });
+
+        // Log final state
+        const finalZoom = this.map.getZoom();
+        const finalCenter = this.map.getCenter();
+        console.log('[LeafletRenderer] === STANDARD IMAGE MAP READY ===');
+        console.log('[LeafletRenderer] Final zoom:', finalZoom.toFixed(2));
+        console.log('[LeafletRenderer] Final center:', finalCenter ? `[${finalCenter.lat.toFixed(1)}, ${finalCenter.lng.toFixed(1)}]` : 'N/A');
+        console.log('[LeafletRenderer] Bounds:', bounds);
     }
 
     /**
@@ -287,18 +552,21 @@ export class LeafletRenderer extends Component {
         // Create map using L.map() factory function with element directly
         // Using element instead of ID ensures Leaflet can find it
         this.map = L.map(this.containerEl, {
+            // CRITICAL: Explicitly enable scroll wheel zoom
+            scrollWheelZoom: true,
             // Smooth zoom options optimized for trackpad/mouse wheel
-            zoomDelta: 0.25,
-            zoomSnap: 0,  // No snapping = completely fluid
-            wheelPxPerZoomLevel: 150,  // Reduced sensitivity for smoother scrolling
-            wheelDebounceTime: 100,  // Increased debounce to prevent event stacking
+            zoomDelta: 0.1,           // Smaller increments for finer control
+            zoomSnap: 0,              // No snapping = completely fluid
+            wheelPxPerZoomLevel: 120, // Higher = slower zoom, smoother trackpad feel
+            // NOTE: Removed wheelDebounceTime - it causes choppy/stuttery zoom!
             zoomAnimation: true,
             fadeAnimation: true,
-            markerZoomAnimation: false,  // Disabled to reduce lag with many markers
-            // Smooth panning with reduced inertia
+            markerZoomAnimation: true,
+            // Smooth panning
             inertia: true,
-            inertiaDeceleration: 2000,  // Reduced for more predictable panning
-            inertiaMaxSpeed: 1000  // Reduced for better control
+            inertiaDeceleration: 3000,
+            inertiaMaxSpeed: 1500,
+            easeLinearity: 0.25
         }).setView(center, this.params.defaultZoom ?? 13);
 
         // Set zoom limits
@@ -596,10 +864,12 @@ export class LeafletRenderer extends Component {
         const tuple = loc as [string | number, string | number];
 
         if (isPercent && this.params.type === 'image' && this.imageOverlay) {
-            // Convert percentage to pixel coordinates
+            // Convert percentage to coordinates
+            // Bounds are [[0, 0], [height, width]]
+            // So 0% = 0, 100% = full dimension
             const bounds = this.imageOverlay.getBounds();
-            const height = bounds.getNorth();
-            const width = bounds.getEast();
+            const height = bounds.getNorth(); // = image height (since south is 0)
+            const width = bounds.getEast();   // = image width (since west is 0)
 
             const xPercent = typeof tuple[1] === 'string'
                 ? parseFloat(tuple[1].replace('%', ''))
@@ -608,6 +878,8 @@ export class LeafletRenderer extends Component {
                 ? parseFloat(tuple[0].replace('%', ''))
                 : tuple[0];
 
+            // Convert percentage to coordinates
+            // 0% -> 0, 100% -> full dimension
             return L.latLng(
                 (yPercent / 100) * height,
                 (xPercent / 100) * width
@@ -799,9 +1071,23 @@ export class LeafletRenderer extends Component {
             // Use requestAnimationFrame to ensure DOM has updated
             requestAnimationFrame(() => {
                 if (this.map) {
-                    this.map.invalidateSize();
+                    this.map.invalidateSize({ animate: false });
                 }
             });
+        }
+    }
+
+    /**
+     * Fit the map view to show the entire image
+     * Useful for resetting the view or after resize
+     */
+    fitToImage(): void {
+        if (!this.map || !this.imageOverlay) return;
+        
+        const bounds = this.imageOverlay.getBounds();
+        if (bounds.isValid()) {
+            // For image maps, just fit without extra padding
+            this.map.fitBounds(bounds);
         }
     }
 
@@ -822,17 +1108,24 @@ export class LeafletRenderer extends Component {
      * Following javalent-obsidian-leaflet pattern
      */
     onload(): void {
-        console.log('[LeafletRenderer] onload() called - component added to DOM');
-
+        console.log('[LeafletRenderer] onload() called, isInitialized:', this.isInitialized);
+        
         // If map hasn't been initialized yet, initialize it now
         // This ensures the container is in the DOM before initialization
         // Use a small delay to ensure the container has been properly reflowed
         if (!this.isInitialized && !this.initializationPromise) {
             // Use setTimeout instead of requestAnimationFrame for more reliable timing
             // This gives the browser time to fully process the DOM insertion and layout
-            setTimeout(() => {
-                console.log('[LeafletRenderer] Starting initialization after onload delay');
-                this.initialize();
+            setTimeout(async () => {
+                try {
+                    console.log('[LeafletRenderer] Starting delayed initialization...');
+                    await this.initialize();
+                    console.log('[LeafletRenderer] Initialization complete');
+                } catch (error) {
+                    console.error('[LeafletRenderer] Initialization failed in onload:', error);
+                    // Show error in the container
+                    this.showErrorInContainer(`Map initialization failed: ${error.message || error}`);
+                }
             }, 50); // 50ms delay for DOM reflow
         } else if (this.isInitialized && this.map) {
             // If already initialized, invalidate size to ensure proper rendering
@@ -840,6 +1133,30 @@ export class LeafletRenderer extends Component {
                 this.invalidateSize();
             });
         }
+    }
+
+    /**
+     * Display an error message in the map container
+     */
+    private showErrorInContainer(message: string): void {
+        if (!this.containerEl) return;
+        
+        this.containerEl.empty();
+        const errorDiv = this.containerEl.createDiv('storyteller-map-error');
+        errorDiv.style.padding = '1em';
+        errorDiv.style.border = '1px solid var(--background-modifier-error)';
+        errorDiv.style.borderRadius = '4px';
+        errorDiv.style.backgroundColor = 'var(--background-modifier-error)';
+        errorDiv.style.color = 'var(--text-error)';
+        errorDiv.style.textAlign = 'center';
+
+        const title = errorDiv.createEl('strong');
+        title.textContent = 'Map Error: ';
+
+        const text = errorDiv.createSpan();
+        text.textContent = message;
+        
+        console.error('[LeafletRenderer] Error displayed in container:', message);
     }
 
     /**

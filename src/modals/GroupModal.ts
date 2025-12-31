@@ -4,6 +4,7 @@ import { Group, Character, Location, Event, PlotItem, GroupMemberDetails, GroupR
 import StorytellerSuitePlugin from '../main';
 import { ResponsiveModal } from './ResponsiveModal';
 import { GalleryImageSuggestModal } from './GalleryImageSuggestModal';
+import { addImageSelectionButtons } from '../utils/ImageSelectionHelper';
 import { CharacterSuggestModal } from './CharacterSuggestModal';
 import { LocationSuggestModal } from './LocationSuggestModal';
 import { EventSuggestModal } from './EventSuggestModal';
@@ -173,55 +174,26 @@ export class GroupModal extends ResponsiveModal {
 
         // Profile Image
         let imagePathDesc: HTMLElement | null = null;
-        new Setting(contentEl)
+        const profileImageSetting = new Setting(contentEl)
             .setName(t('profileImage'))
             .then(s => {
                 imagePathDesc = s.descEl.createEl('small', { text: `Current: ${this.group.profileImagePath || 'None'}` });
                 s.descEl.addClass('storyteller-modal-setting-vertical');
-            })
-            .addButton(btn => btn
-                .setButtonText(t('select'))
-                .setTooltip(t('selectFromGallery'))
-                .onClick(() => {
-                    new GalleryImageSuggestModal(this.app, this.plugin, (img) => {
-                        this.group.profileImagePath = img?.filePath;
-                        if (imagePathDesc) imagePathDesc.setText(`Current: ${this.group.profileImagePath || 'None'}`);
-                    }).open();
-                }))
-            .addButton(btn => btn
-                .setButtonText(t('upload'))
-                .setTooltip(t('uploadImage'))
-                .onClick(async () => {
-                    const input = document.createElement('input');
-                    input.type = 'file';
-                    input.accept = 'image/*';
-                    input.onchange = async () => {
-                        const file = input.files?.[0];
-                        if (!file) return;
-                        try {
-                            await this.plugin.ensureFolder(this.plugin.settings.galleryUploadFolder);
-                            const name = file.name.replace(/[\\/:"*?<>|#^[\]]+/g, '').replace(/\s+/g, '_');
-                            const filePath = `${this.plugin.settings.galleryUploadFolder}/${Date.now()}_${name}`;
-                            const buf = await file.arrayBuffer();
-                            await this.app.vault.createBinary(filePath, buf);
-                            this.group.profileImagePath = filePath;
-                            if (imagePathDesc) imagePathDesc.setText(`Current: ${filePath}`);
-                            new Notice(t('imageUploaded', name));
-                        } catch (e) {
-                            console.error('Upload failed', e);
-                            new Notice(t('errorUploadingImage'));
-                        }
-                    };
-                    input.click();
-                }))
-            .addButton(btn => btn
-                .setIcon('cross')
-                .setTooltip(t('clearImage'))
-                .setClass('mod-warning')
-                .onClick(() => {
-                    this.group.profileImagePath = undefined;
-                    if (imagePathDesc) imagePathDesc.setText(`Current: None`);
-                }));
+            });
+        
+        // Add image selection buttons (Gallery, Upload, Vault, Clear)
+        addImageSelectionButtons(
+            profileImageSetting,
+            this.app,
+            this.plugin,
+            {
+                currentPath: this.group.profileImagePath,
+                onSelect: (path) => {
+                    this.group.profileImagePath = path;
+                },
+                descriptionEl: imagePathDesc || undefined
+            }
+        );
 
         // === MEMBERS ===
         contentEl.createEl('h3', { text: t('members') });

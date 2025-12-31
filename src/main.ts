@@ -175,6 +175,13 @@ import { EraManager } from './utils/EraManager';
     templateStorageFolder?: string;
     showBuiltInTemplates?: boolean;
     showCommunityTemplates?: boolean;
+
+    /** Image tiling settings */
+    tiling?: {
+        autoGenerateThreshold: number;      // Default: 2000px
+        tileSize: number;                   // Default: 256px
+        showProgressNotifications: boolean; // Default: true
+    };
 }
 
 /**
@@ -230,7 +237,12 @@ import { EraManager } from './utils/EraManager';
     hiddenDashboardTabs: [],
     templateStorageFolder: 'StorytellerSuite/Templates',
     showBuiltInTemplates: true,
-    showCommunityTemplates: false
+    showCommunityTemplates: false,
+    tiling: {
+        autoGenerateThreshold: 2000,  // Generate tiles for images > 2000x2000px
+        tileSize: 256,                 // Standard tile size
+        showProgressNotifications: true // Show progress during generation
+    }
 }
 
 /**
@@ -1980,6 +1992,120 @@ export default class StorytellerSuitePlugin extends Plugin {
                 console.error(errorMsg);
                 throw new Error(errorMsg);
             }
+        }
+    }
+
+    /**
+     * Check if image needs tiles and trigger generation if needed
+     * Called automatically after image upload
+     *
+     * @param imagePath - Vault path to uploaded image
+     * @param imageData - Image ArrayBuffer for dimension checking
+     */
+    async maybeTriggerTileGeneration(
+        imagePath: string,
+        imageData: ArrayBuffer
+    ): Promise<void> {
+        try {
+            // Check if tiling is enabled
+            const threshold = this.settings.tiling?.autoGenerateThreshold || -1;
+            if (threshold < 0) {
+                // Tiling disabled
+                return;
+            }
+
+            // Get image dimensions
+            const dimensions = await this.getImageDimensions(imageData);
+            console.log(`[TileGeneration] Image dimensions: ${dimensions.width}x${dimensions.height}`);
+
+            // Check if image exceeds threshold
+            if (dimensions.width < threshold && dimensions.height < threshold) {
+                console.log(`[TileGeneration] Image below threshold (${threshold}px), skipping`);
+                return;
+            }
+
+            // Show notification
+            new Notice(`Generating map tiles for ${dimensions.width}x${dimensions.height}px image...`);
+
+            // Import and create tile generator
+            const { TileGenerator } = await import('./leaflet/TileGenerator');
+            const tileGenerator = new TileGenerator(this.app, this);
+
+            // Generate tiles (run in background, don't await)
+            tileGenerator.generateTiles(imagePath, {
+                onProgress: (progress) => {
+                    if (this.settings.tiling?.showProgressNotifications) {
+                        this.updateTileProgressNotice(progress);
+                    }
+                }
+            }).then(() => {
+                new Notice('Map tiles generated successfully!');
+            }).catch((error) => {
+                console.error('[TileGeneration] Failed:', error);
+                new Notice('Failed to generate map tiles: ' + error.message);
+            });
+
+        } catch (error) {
+            console.error('[TileGeneration] Error:', error);
+        }
+    }
+
+    /**
+     * Get dimensions of image from ArrayBuffer
+     * Loads image in memory to read native dimensions
+     *
+     * @param imageData - Image file data
+     * @returns Image width and height
+     */
+    private async getImageDimensions(
+        imageData: ArrayBuffer
+    ): Promise<{ width: number; height: number }> {
+        return new Promise((resolve, reject) => {
+            const blob = new Blob([imageData]);
+            const url = URL.createObjectURL(blob);
+            const img = new Image();
+
+            img.onload = () => {
+                URL.revokeObjectURL(url);
+                resolve({
+                    width: img.naturalWidth || img.width,
+                    height: img.naturalHeight || img.height
+                });
+            };
+
+            img.onerror = () => {
+                URL.revokeObjectURL(url);
+                reject(new Error('Failed to load image for dimension check'));
+            };
+
+            img.src = url;
+        });
+    }
+
+    /**
+     * Update progress notice during tile generation
+     * Reuses same notice to avoid spam
+     */
+    private tileProgressNotice?: Notice;
+    private updateTileProgressNotice(progress: {
+        percentComplete: number;
+        tilesGenerated: number;
+        totalTiles: number;
+    }): void {
+        const message = `Generating tiles: ${progress.percentComplete}% (${progress.tilesGenerated}/${progress.totalTiles})`;
+
+        if (!this.tileProgressNotice) {
+            this.tileProgressNotice = new Notice(message, 0); // 0 = don't auto-dismiss
+        } else {
+            this.tileProgressNotice.setMessage(message);
+        }
+
+        // Hide notice when complete
+        if (progress.percentComplete >= 100) {
+            setTimeout(() => {
+                this.tileProgressNotice?.hide();
+                this.tileProgressNotice = undefined;
+            }, 2000);
         }
     }
 

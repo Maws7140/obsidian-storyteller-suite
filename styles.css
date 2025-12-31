@@ -879,6 +879,29 @@
   object-position: 0 0 !important;
 }
 
+/* Image layer as background - ensure it covers entire area */
+.storyteller-map-container .leaflet-image-layer-background {
+  /* CRITICAL: Don't override Leaflet's positioning - it uses absolute positioning and transforms */
+  /* width and height are set by Leaflet based on bounds */
+  /* Leaflet uses CSS transforms to scale the image in place - don't interfere with this */
+  /* No background color - image should be the background */
+  background-color: transparent !important;
+  /* Ensure proper z-index - should be below markers but above tilePane background */
+  z-index: 200 !important;
+  /* Ensure image is visible */
+  opacity: 1 !important;
+  visibility: visible !important;
+  display: block !important;
+  /* CRITICAL: Don't override transform - Leaflet handles scaling via CSS transforms */
+  /* Don't set position: fixed or any positioning that would interfere with Leaflet's transforms */
+}
+
+/* Tile pane for image maps - should be transparent */
+.storyteller-map-container .leaflet-tile-pane {
+  background-color: transparent !important;
+  z-index: 100 !important;
+}
+
 /* Leaflet panes - ensure proper z-index stacking */
 .storyteller-map-container .leaflet-pane {
   z-index: auto;

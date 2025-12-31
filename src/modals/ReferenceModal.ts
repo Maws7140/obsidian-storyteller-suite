@@ -4,6 +4,7 @@ import { t } from '../i18n/strings';
 import StorytellerSuitePlugin from '../main';
 import { Reference } from '../types';
 import { GalleryImageSuggestModal } from './GalleryImageSuggestModal';
+import { addImageSelectionButtons } from '../utils/ImageSelectionHelper';
 import { PromptModal } from './ui/PromptModal';
 import { getWhitelistKeys } from '../yaml/EntitySections';
 import { TemplatePickerModal } from './TemplatePickerModal';
@@ -87,61 +88,26 @@ export class ReferenceModal extends Modal {
             );
 
         let imageDescEl: HTMLElement | null = null;
-        new Setting(contentEl)
+        const profileImageSetting = new Setting(contentEl)
             .setName(t('profileImage'))
             .then(s => {
                 imageDescEl = s.descEl.createEl('small', { text: t('currentValue', this.refData.profileImagePath || t('none')) });
                 s.descEl.addClass('storyteller-modal-setting-vertical');
-            })
-            .addButton(btn => btn
-                .setButtonText(t('select'))
-                .setTooltip(t('selectFromGallery'))
-                .onClick(() => {
-                    new GalleryImageSuggestModal(this.app, this.plugin, (img) => {
-                        this.refData.profileImagePath = img?.filePath;
-                        if (imageDescEl) imageDescEl.setText(`Current: ${this.refData.profileImagePath || 'None'}`);
-                    }).open();
-                })
-            )
-            .addButton(btn => btn
-                .setButtonText(t('upload'))
-                .setTooltip(t('uploadImage'))
-                .onClick(async () => {
-                    const input = document.createElement('input');
-                    input.type = 'file';
-                    input.accept = 'image/*';
-                    input.onchange = async () => {
-                        const file = input.files?.[0];
-                        if (!file) return;
-                        try {
-                            const uploadFolder = this.plugin.settings.galleryUploadFolder;
-                            await this.plugin.ensureFolder(uploadFolder);
-                            const timestamp = Date.now();
-                            const sanitizedName = file.name.replace(/[^\w\s.-]/g, '').replace(/\s+/g, '_');
-                            const fileName = `${timestamp}_${sanitizedName}`;
-                            const filePath = `${uploadFolder}/${fileName}`;
-                            const arrayBuffer = await file.arrayBuffer();
-                            await this.app.vault.createBinary(filePath, arrayBuffer);
-                            this.refData.profileImagePath = filePath;
-                            if (imageDescEl) imageDescEl.setText(`Current: ${filePath}`);
-                            new Notice(t('imageUploaded', fileName));
-                        } catch (e) {
-                            console.error('Upload failed', e);
-                            new Notice(t('errorUploadingImage'));
-                        }
-                    };
-                    input.click();
-                })
-            )
-            .addButton(btn => btn
-                .setIcon('cross')
-                .setClass('mod-warning')
-                .setTooltip(t('clearImage'))
-                .onClick(() => {
-                    this.refData.profileImagePath = undefined;
-                    if (imageDescEl) imageDescEl.setText(`${t('current')}: ${t('none')}`);
-                })
-            );
+            });
+        
+        // Add image selection buttons (Gallery, Upload, Vault, Clear)
+        addImageSelectionButtons(
+            profileImageSetting,
+            this.app,
+            this.plugin,
+            {
+                currentPath: this.refData.profileImagePath,
+                onSelect: (path) => {
+                    this.refData.profileImagePath = path;
+                },
+                descriptionEl: imageDescEl || undefined
+            }
+        );
 
         new Setting(contentEl)
             .setName(t('content') || 'Content')
