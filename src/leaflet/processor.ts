@@ -39,8 +39,11 @@ export class LeafletCodeBlockProcessor {
         ctx: MarkdownPostProcessorContext
     ): Promise<void> {
         try {
+            console.log('[LeafletProcessor] Processing code block, source:', source.substring(0, 100));
+            
             // Parse YAML parameters
             let params = parseBlockParameters(source);
+            console.log('[LeafletProcessor] Parsed params:', JSON.stringify(params, null, 2));
 
             // If mapId is provided, load config from Map entity
             if (params.mapId) {
@@ -48,6 +51,7 @@ export class LeafletCodeBlockProcessor {
                 if (mapEntity) {
                     // Merge: inline params override entity config
                     params = this.mergeMapConfig(mapEntity, params);
+                    console.log('[LeafletProcessor] Merged with map entity config');
                 } else {
                     this.renderError(el, `Map entity not found: ${params.mapId}`);
                     return;
@@ -66,6 +70,8 @@ export class LeafletCodeBlockProcessor {
                 params.id = this.generateMapId(ctx);
             }
 
+            console.log('[LeafletProcessor] Creating map container...');
+            
             // Create map container
             const container = this.createMapContainer(el, params);
 
@@ -91,15 +97,16 @@ export class LeafletCodeBlockProcessor {
                 this.activeMaps.delete(params.id!);
             });
 
+            console.log('[LeafletProcessor] Map renderer created and registered');
             // Note: No manual initialization needed here
             // The onload() lifecycle method will be called automatically by Obsidian
             // when the component is added to the DOM via ctx.addChild()
 
         } catch (error) {
-            console.error('Error rendering storyteller-map:', error);
+            console.error('[LeafletProcessor] Error rendering storyteller-map:', error);
             this.renderError(
                 el,
-                `Failed to render map: ${error.message}`
+                `Failed to render map: ${error.message || error}`
             );
         }
     }

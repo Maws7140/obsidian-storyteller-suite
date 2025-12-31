@@ -885,9 +885,21 @@ export interface StoryMap {
     
     /** ISO string of creation date */
     created?: string;
-    
+
     /** ISO string of last modification date */
     modified?: string;
+
+    /** Image tiling configuration for performance with large images */
+    tiling?: {
+        enabled: boolean;
+        imageHash?: string;
+        tilePath?: string;
+        maxZoom?: number;
+        minZoom?: number;
+        generatedAt?: number;
+        generationMethod?: 'gdal2tiles' | 'canvas' | 'none';
+        originalDimensions?: { width: number; height: number };
+    };
 }
 
 /**

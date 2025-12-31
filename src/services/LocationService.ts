@@ -3,6 +3,7 @@
  * Provides methods for navigating and manipulating the location tree structure
  */
 
+import { requestUrl } from 'obsidian';
 import type StorytellerSuitePlugin from '../main';
 import type { Location, MapBinding, EntityRef, Character } from '../types';
 
@@ -432,5 +433,446 @@ export class LocationService {
             errors
         };
     }
+
+    // =========================================================================
+    // Real-World Map Location Methods
+    // =========================================================================
+
+    /**
+     * Find an existing location by name (case-insensitive, supports partial matching)
+     * Prioritizes exact matches, then partial matches
+     * @param searchName The name to search for
+     * @returns The matching location or null if not found
+     */
+    async findLocationByName(searchName: string): Promise<Location | null> {
+        if (!searchName) return null;
+        
+        const allLocations = await this.plugin.listLocations();
+        const searchLower = searchName.toLowerCase().trim();
+        
+        // First, try exact match (case-insensitive)
+        let match = allLocations.find(loc => 
+            loc.name.toLowerCase().trim() === searchLower
+        );
+        
+        if (match) return match;
+        
+        // Second, try if search name contains or is contained in location name
+        match = allLocations.find(loc => {
+            const locLower = loc.name.toLowerCase().trim();
+            return locLower.includes(searchLower) || searchLower.includes(locLower);
+        });
+        
+        return match || null;
+    }
+
+    /**
+     * Find location by OSM place ID (for precise matching of geocoded locations)
+     * @param osmPlaceId The OpenStreetMap place ID
+     * @returns The matching location or null
+     */
+    async findLocationByOsmPlaceId(osmPlaceId: string): Promise<Location | null> {
+        if (!osmPlaceId) return null;
+        
+        const allLocations = await this.plugin.listLocations();
+        return allLocations.find(loc => 
+            loc.customFields?.osmPlaceId === osmPlaceId
+        ) || null;
+    }
+
+    /**
+     * Reverse geocode coordinates to get location name (simple version)
+     * Uses OpenStreetMap Nominatim API
+     * @param lat Latitude
+     * @param lng Longitude
+     * @returns Location name or null if not found
+     */
+    async reverseGeocode(lat: number, lng: number): Promise<string | null> {
+        const result = await this.reverseGeocodeDetailed(lat, lng);
+        return result?.name || null;
+    }
+
+    /**
+     * Enhanced reverse geocode that returns full place information
+     * Used for matching existing locations and creating detailed new ones
+     * Uses Obsidian's requestUrl to bypass CORS restrictions
+     * @param lat Latitude
+     * @param lng Longitude
+     * @returns Detailed geocode result with full hierarchy or null
+     */
+    async reverseGeocodeDetailed(lat: number, lng: number): Promise<GeocodeResult | null> {
+        try {
+            const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`;
+
+            // Use Obsidian's requestUrl to bypass CORS restrictions
+            const response = await requestUrl({
+                url: url,
+                method: 'GET',
+                headers: {
+                    'User-Agent': 'Obsidian-Storyteller-Suite/1.0'
+                }
+            });
+
+            // requestUrl returns data directly in response.json
+            const data = response.json;
+            if (!data || data.error) {
+                console.warn('Nominatim returned error:', data?.error);
+                return null;
+            }
+
+            const address = data.address || {};
+
+            // Build hierarchy from address components
+            const building = address.tourism || address.amenity || address.building || 
+                           address.shop || address.historic || address.railway || 
+                           address.aeroway || address.office || address.craft;
+            
+            const neighborhood = address.neighbourhood || address.suburb || address.quarter;
+            const city = address.city || address.town || address.village || address.hamlet || address.municipality;
+            const region = address.state || address.province || address.county || address.region;
+            const country = address.country;
+            const continent = getContinent(country);
+
+            // Build a meaningful default name (most specific available)
+            const name = building || neighborhood || city || region || country || data.display_name;
+
+            return {
+                name: name || data.display_name,
+                displayName: data.display_name,
+                placeId: String(data.place_id),
+                type: data.type || 'place',
+                hierarchy: {
+                    building,
+                    neighborhood,
+                    city,
+                    region,
+                    country,
+                    continent
+                },
+                // Legacy fields
+                city,
+                state: region,
+                country
+            };
+        } catch (error) {
+            console.error('Reverse geocoding error:', error);
+            return null;
+        }
+    }
+
+    /**
+     * Select the appropriate location name based on level preference and zoom
+     * @param geoResult The geocode result with hierarchy
+     * @param level The requested location level ('auto' or specific level)
+     * @param zoom Current map zoom level (used when level is 'auto')
+     * @returns The selected name and inferred type
+     */
+    selectLocationByLevel(
+        geoResult: GeocodeResult, 
+        level: LocationLevel, 
+        zoom?: number
+    ): { name: string; type: Location['type'] } {
+        const h = geoResult.hierarchy;
+        
+        // If auto, determine level from zoom
+        let effectiveLevel = level;
+        if (level === 'auto' && zoom !== undefined) {
+            if (zoom >= 16) {
+                effectiveLevel = 'building';
+            } else if (zoom >= 14) {
+                effectiveLevel = 'neighborhood';
+            } else if (zoom >= 10) {
+                effectiveLevel = 'city';
+            } else if (zoom >= 6) {
+                effectiveLevel = 'region';
+            } else if (zoom >= 3) {
+                effectiveLevel = 'country';
+            } else {
+                effectiveLevel = 'continent';
+            }
+            console.log(`[LocationService] Auto-detected level from zoom ${zoom}: ${effectiveLevel}`);
+        }
+
+        // Select based on level, falling back to more general if specific not available
+        switch (effectiveLevel) {
+            case 'building':
+                if (h.building) return { name: h.building, type: 'building' };
+                if (h.neighborhood) return { name: h.neighborhood, type: 'district' };
+                if (h.city) return { name: h.city, type: 'city' };
+                break;
+            case 'neighborhood':
+                if (h.neighborhood) return { name: h.neighborhood, type: 'district' };
+                if (h.city) return { name: h.city, type: 'city' };
+                break;
+            case 'city':
+                if (h.city) return { name: h.city, type: 'city' };
+                if (h.region) return { name: h.region, type: 'region' };
+                break;
+            case 'region':
+                if (h.region) return { name: h.region, type: 'region' };
+                if (h.country) return { name: h.country, type: 'region' };
+                break;
+            case 'country':
+                if (h.country) return { name: h.country, type: 'region' };
+                if (h.continent) return { name: h.continent, type: 'continent' };
+                break;
+            case 'continent':
+                if (h.continent) return { name: h.continent, type: 'continent' };
+                if (h.country) return { name: h.country, type: 'region' };
+                break;
+        }
+
+        // Fallback to default name
+        return { name: geoResult.name, type: this.inferLocationType(geoResult.type) };
+    }
+
+    /**
+     * Find or create a location for a real-world map placement
+     * This is the main entry point for world map entity placement
+     * 
+     * Workflow:
+     * 1. Reverse geocode the coordinates to get place information
+     * 2. Select appropriate name based on level preference and zoom
+     * 3. Search for existing location by name (fuzzy match)
+     * 4. If found, add map binding if needed and return existing location
+     * 5. If not found, create new location with full geocoded data
+     * 
+     * @param mapId The map ID
+     * @param coordinates The clicked coordinates [lat, lng]
+     * @param entityInfo Info about the entity being placed (for description)
+     * @param options Optional level and zoom settings
+     * @returns The found or created location and whether it was newly created
+     */
+    async findOrCreateForRealWorldMap(
+        mapId: string,
+        coordinates: [number, number],
+        entityInfo: { type: string; name: string },
+        options?: { level?: LocationLevel; zoom?: number }
+    ): Promise<{ location: Location; isNew: boolean; selectedLevel?: string }> {
+        const level = options?.level || 'auto';
+        const zoom = options?.zoom;
+
+        // Step 1: Reverse geocode to get place information
+        console.log('[LocationService] Reverse geocoding coordinates:', coordinates);
+        const geoResult = await this.reverseGeocodeDetailed(coordinates[0], coordinates[1]);
+        
+        if (!geoResult) {
+            console.warn('[LocationService] Reverse geocoding failed, creating location with coordinates');
+            // Fallback: create location with coordinate-based name
+            const coordText = `${coordinates[0].toFixed(4)}, ${coordinates[1].toFixed(4)}`;
+            const locationId = `loc-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+            
+            const newLocation: Location = {
+                id: locationId,
+                name: `Location at ${coordText}`,
+                description: `Auto-created location for ${entityInfo.type} "${entityInfo.name}"`,
+                type: 'custom',
+                mapBindings: [{
+                    mapId: mapId,
+                    coordinates: coordinates
+                }]
+            };
+            
+            await this.plugin.saveLocation(newLocation);
+            return { location: newLocation, isNew: true };
+        }
+
+        // Step 2: Select appropriate name based on level/zoom
+        const selected = this.selectLocationByLevel(geoResult, level, zoom);
+        console.log('[LocationService] Selected location:', selected.name, 'at level:', level, 'zoom:', zoom);
+        
+        // Log available hierarchy for debugging
+        console.log('[LocationService] Available hierarchy:', geoResult.hierarchy);
+        
+        // Step 3: Search for existing location by name
+        let existingLocation = await this.findLocationByName(selected.name);
+        
+        // Also try OSM place ID for exact matches
+        if (!existingLocation) {
+            existingLocation = await this.findLocationByOsmPlaceId(geoResult.placeId);
+        }
+        
+        if (existingLocation) {
+            console.log('[LocationService] Found existing location:', existingLocation.name);
+            
+            // Check if this location already has a binding for this map
+            const hasBinding = existingLocation.mapBindings?.some(b => b.mapId === mapId);
+            
+            if (!hasBinding) {
+                // Add map binding to existing location
+                await this.addMapBinding(
+                    existingLocation.id || existingLocation.name,
+                    mapId,
+                    coordinates
+                );
+                console.log('[LocationService] Added map binding to existing location');
+            }
+            
+            return { location: existingLocation, isNew: false, selectedLevel: level };
+        }
+        
+        // Step 4: Create new location with selected name
+        console.log('[LocationService] No existing location found, creating new:', selected.name);
+        const locationId = `loc-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        
+        // Build a rich description with full hierarchy
+        const h = geoResult.hierarchy;
+        const descParts = [`Real-world location: ${geoResult.displayName}`];
+        if (h.building && h.building !== selected.name) descParts.push(`Building: ${h.building}`);
+        if (h.neighborhood && h.neighborhood !== selected.name) descParts.push(`Neighborhood: ${h.neighborhood}`);
+        if (h.city && h.city !== selected.name) descParts.push(`City: ${h.city}`);
+        if (h.region && h.region !== selected.name) descParts.push(`Region: ${h.region}`);
+        if (h.country && h.country !== selected.name) descParts.push(`Country: ${h.country}`);
+        if (h.continent) descParts.push(`Continent: ${h.continent}`);
+        
+        const newLocation: Location = {
+            id: locationId,
+            name: selected.name,
+            description: descParts.join('\n'),
+            type: selected.type,
+            region: h.region || h.country,
+            mapBindings: [{
+                mapId: mapId,
+                coordinates: coordinates
+            }],
+            // Store OSM data and hierarchy for future reference
+            // Only include defined values to satisfy Record<string, string> type
+            customFields: Object.fromEntries(
+                Object.entries({
+                    osmPlaceId: geoResult.placeId,
+                    osmType: geoResult.type,
+                    osmDisplayName: geoResult.displayName,
+                    hierarchyCity: h.city,
+                    hierarchyRegion: h.region,
+                    hierarchyCountry: h.country,
+                    hierarchyContinent: h.continent
+                }).filter(([_, v]) => v !== undefined)
+            ) as Record<string, string>
+        };
+        
+        await this.plugin.saveLocation(newLocation);
+        return { location: newLocation, isNew: true, selectedLevel: level };
+    }
+
+    /**
+     * Infer a location type from OSM type string
+     * Maps OpenStreetMap place types to our location type hierarchy
+     */
+    private inferLocationType(osmType: string): Location['type'] {
+        const typeMap: Record<string, Location['type']> = {
+            'city': 'city',
+            'town': 'city',
+            'village': 'city',
+            'hamlet': 'city',
+            'suburb': 'district',
+            'neighbourhood': 'district',
+            'quarter': 'district',
+            'building': 'building',
+            'house': 'building',
+            'amenity': 'building',
+            'shop': 'building',
+            'tourism': 'building',
+            'historic': 'building',
+            'hotel': 'building',
+            'restaurant': 'building',
+            'country': 'region',
+            'state': 'region',
+            'county': 'region',
+            'province': 'region',
+            'continent': 'continent',
+            'room': 'room'
+        };
+        return typeMap[osmType] || 'custom';
+    }
 }
 
+/**
+ * Location level for granularity control
+ */
+export type LocationLevel = 'auto' | 'building' | 'neighborhood' | 'city' | 'region' | 'country' | 'continent';
+
+/**
+ * Result from reverse geocoding a coordinate
+ * Contains all available hierarchy levels from the address
+ */
+export interface GeocodeResult {
+    /** Best name for the location (based on what OSM returns as primary) */
+    name: string;
+    /** Full display name from OSM */
+    displayName: string;
+    /** OpenStreetMap place ID (unique identifier) */
+    placeId: string;
+    /** OSM type (city, building, etc.) */
+    type: string;
+    
+    /** All available address hierarchy levels */
+    hierarchy: {
+        building?: string;      // Building, amenity, shop, tourism, historic
+        neighborhood?: string;  // Neighbourhood, suburb
+        city?: string;          // City, town, village
+        region?: string;        // State, province, county
+        country?: string;       // Country
+        continent?: string;     // Continent (derived from country)
+    };
+    
+    /** Legacy fields for backward compatibility */
+    city?: string;
+    state?: string;
+    country?: string;
+}
+
+/**
+ * Mapping of countries to continents for continent-level location detection
+ */
+const COUNTRY_TO_CONTINENT: Record<string, string> = {
+    // Africa
+    'Ghana': 'Africa', 'Nigeria': 'Africa', 'Kenya': 'Africa', 'South Africa': 'Africa',
+    'Egypt': 'Africa', 'Morocco': 'Africa', 'Ethiopia': 'Africa', 'Tanzania': 'Africa',
+    'Algeria': 'Africa', 'Sudan': 'Africa', 'Uganda': 'Africa', 'Mozambique': 'Africa',
+    'Madagascar': 'Africa', 'Cameroon': 'Africa', 'Angola': 'Africa', 'Niger': 'Africa',
+    'Mali': 'Africa', 'Senegal': 'Africa', 'Zimbabwe': 'Africa', 'Rwanda': 'Africa',
+    'Tunisia': 'Africa', 'Libya': 'Africa', 'Zambia': 'Africa', 'Botswana': 'Africa',
+    
+    // Europe
+    'United Kingdom': 'Europe', 'France': 'Europe', 'Germany': 'Europe', 'Italy': 'Europe',
+    'Spain': 'Europe', 'Poland': 'Europe', 'Romania': 'Europe', 'Netherlands': 'Europe',
+    'Belgium': 'Europe', 'Greece': 'Europe', 'Portugal': 'Europe', 'Sweden': 'Europe',
+    'Hungary': 'Europe', 'Austria': 'Europe', 'Switzerland': 'Europe', 'Norway': 'Europe',
+    'Ireland': 'Europe', 'Denmark': 'Europe', 'Finland': 'Europe', 'Czech Republic': 'Europe',
+    'Ukraine': 'Europe', 'Russia': 'Europe', 'Turkey': 'Europe',
+    
+    // Asia
+    'China': 'Asia', 'India': 'Asia', 'Japan': 'Asia', 'South Korea': 'Asia',
+    'Indonesia': 'Asia', 'Pakistan': 'Asia', 'Bangladesh': 'Asia', 'Vietnam': 'Asia',
+    'Thailand': 'Asia', 'Myanmar': 'Asia', 'Malaysia': 'Asia', 'Philippines': 'Asia',
+    'Saudi Arabia': 'Asia', 'United Arab Emirates': 'Asia', 'Iran': 'Asia', 'Iraq': 'Asia',
+    'Israel': 'Asia', 'Singapore': 'Asia', 'Hong Kong': 'Asia', 'Taiwan': 'Asia',
+    
+    // North America
+    'United States': 'North America', 'United States of America': 'North America',
+    'Canada': 'North America', 'Mexico': 'North America', 'Guatemala': 'North America',
+    'Cuba': 'North America', 'Haiti': 'North America', 'Dominican Republic': 'North America',
+    'Honduras': 'North America', 'Nicaragua': 'North America', 'El Salvador': 'North America',
+    'Costa Rica': 'North America', 'Panama': 'North America', 'Jamaica': 'North America',
+    
+    // South America
+    'Brazil': 'South America', 'Argentina': 'South America', 'Colombia': 'South America',
+    'Peru': 'South America', 'Venezuela': 'South America', 'Chile': 'South America',
+    'Ecuador': 'South America', 'Bolivia': 'South America', 'Paraguay': 'South America',
+    'Uruguay': 'South America', 'Guyana': 'South America', 'Suriname': 'South America',
+    
+    // Oceania
+    'Australia': 'Oceania', 'New Zealand': 'Oceania', 'Papua New Guinea': 'Oceania',
+    'Fiji': 'Oceania', 'Solomon Islands': 'Oceania', 'Vanuatu': 'Oceania',
+    
+    // Antarctica
+    'Antarctica': 'Antarctica'
+};
+
+/**
+ * Get continent from country name
+ */
+function getContinent(country: string | undefined): string | undefined {
+    if (!country) return undefined;
+    return COUNTRY_TO_CONTINENT[country] || undefined;
+}

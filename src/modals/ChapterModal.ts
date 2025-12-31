@@ -7,6 +7,7 @@ import { CharacterSuggestModal } from './CharacterSuggestModal';
 import { LocationSuggestModal } from './LocationSuggestModal';
 import { EventSuggestModal } from './EventSuggestModal';
 import { GalleryImageSuggestModal } from './GalleryImageSuggestModal';
+import { addImageSelectionButtons } from '../utils/ImageSelectionHelper';
 import { GroupSuggestModal } from './GroupSuggestModal';
 import { PromptModal } from './ui/PromptModal';
 import { getWhitelistKeys } from '../yaml/EntitySections';
@@ -93,62 +94,26 @@ export class ChapterModal extends Modal {
             );
 
         let imageDescEl: HTMLElement | null = null;
-        new Setting(contentEl)
+        const profileImageSetting = new Setting(contentEl)
             .setName(t('profileImage'))
             .then(s => {
                 imageDescEl = s.descEl.createEl('small', { text: t('currentValue', this.chapter.profileImagePath || t('none')) });
                 s.descEl.addClass('storyteller-modal-setting-vertical');
-            })
-            .addButton(btn => btn
-                .setButtonText(t('select'))
-                .setTooltip(t('selectFromGallery'))
-                .onClick(() => {
-                    new GalleryImageSuggestModal(this.app, this.plugin, (img) => {
-                        this.chapter.profileImagePath = img?.filePath;
-                        if (imageDescEl) imageDescEl.setText(`Current: ${this.chapter.profileImagePath || 'None'}`);
-                    }).open();
-                })
-            )
-            .addButton(btn => btn
-                .setButtonText(t('upload'))
-                .setTooltip(t('uploadImage'))
-                .onClick(async () => {
-                    const fileInput = document.createElement('input');
-                    fileInput.type = 'file';
-                    fileInput.accept = 'image/*';
-                    fileInput.onchange = async () => {
-                        const file = fileInput.files?.[0];
-                        if (file) {
-                            try {
-                                const uploadFolder = this.plugin.settings.galleryUploadFolder;
-                                await this.plugin.ensureFolder(uploadFolder);
-                                const timestamp = Date.now();
-                                const sanitizedName = file.name.replace(/[^\w\s.-]/g, '').replace(/\s+/g, '_');
-                                const fileName = `${timestamp}_${sanitizedName}`;
-                                const filePath = `${uploadFolder}/${fileName}`;
-                                const arrayBuffer = await file.arrayBuffer();
-                                await this.app.vault.createBinary(filePath, arrayBuffer);
-                                this.chapter.profileImagePath = filePath;
-                                if (imageDescEl) imageDescEl.setText(`Current: ${filePath}`);
-                                new Notice(t('imageUploaded', fileName));
-                            } catch (error) {
-                                console.error('Error uploading image:', error);
-                                new Notice(t('errorUploadingImage'));
-                            }
-                        }
-                    };
-                    fileInput.click();
-                })
-            )
-            .addButton(btn => btn
-                .setIcon('cross')
-                .setClass('mod-warning')
-                .setTooltip(t('clearImage'))
-                .onClick(() => {
-                    this.chapter.profileImagePath = undefined;
-                    if (imageDescEl) imageDescEl.setText(`${t('current')}: ${t('none')}`);
-                })
-            );
+            });
+        
+        // Add image selection buttons (Gallery, Upload, Vault, Clear)
+        addImageSelectionButtons(
+            profileImageSetting,
+            this.app,
+            this.plugin,
+            {
+                currentPath: this.chapter.profileImagePath,
+                onSelect: (path) => {
+                    this.chapter.profileImagePath = path;
+                },
+                descriptionEl: imageDescEl || undefined
+            }
+        );
 
         new Setting(contentEl)
             .setName(t('summary') || 'Summary')

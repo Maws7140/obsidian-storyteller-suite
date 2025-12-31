@@ -6,6 +6,7 @@ import { Group } from '../types';
 import StorytellerSuitePlugin from '../main';
 import { t } from '../i18n/strings';
 import { GalleryImageSuggestModal } from './GalleryImageSuggestModal';
+import { addImageSelectionButtons } from '../utils/ImageSelectionHelper';
 import { LocationSuggestModal } from './LocationSuggestModal';
 import { LocationPicker } from '../components/LocationPicker';
 import { LocationService } from '../services/LocationService';
@@ -201,71 +202,30 @@ export class LocationModal extends ResponsiveModal {
         );
 
         // --- Profile Image ---
-        let imagePathDesc: HTMLElement;
-        new Setting(contentEl)
+        const profileImageSetting = new Setting(contentEl)
             .setName(t('image'))
             .setDesc('')
             .then(setting => {
-                imagePathDesc = setting.descEl.createEl('small', { text: t('currentValue', this.location.profileImagePath || t('none')) });
                 setting.descEl.addClass('storyteller-modal-setting-vertical');
-            })
-            .addButton(button => button
-                .setButtonText(t('selectBtn'))
-                .setTooltip('Select from gallery')
-                .onClick(() => {
-                    new GalleryImageSuggestModal(this.app, this.plugin, (selectedImage) => {
-                        const path = selectedImage ? selectedImage.filePath : '';
-                        this.location.profileImagePath = path || undefined;
-                        imagePathDesc.setText(`Current: ${this.location.profileImagePath || 'None'}`);
-                    }).open();
-                }))
-            .addButton(button => button
-                .setButtonText(t('upload'))
-                .setTooltip(t('uploadImage'))
-                .onClick(async () => {
-                    const fileInput = document.createElement('input');
-                    fileInput.type = 'file';
-                    fileInput.accept = 'image/*';
-                    fileInput.onchange = async () => {
-                        const file = fileInput.files?.[0];
-                        if (file) {
-                            try {
-                                // Ensure upload folder exists
-                                await this.plugin.ensureFolder(this.plugin.settings.galleryUploadFolder);
-                                
-                                // Create unique filename
-                                const timestamp = Date.now();
-                                const sanitizedName = file.name.replace(/[^\w\s.-]/g, '').replace(/\s+/g, '_');
-                                const fileName = `${timestamp}_${sanitizedName}`;
-                                const filePath = `${this.plugin.settings.galleryUploadFolder}/${fileName}`;
-                                
-                                // Read file as array buffer
-                                const arrayBuffer = await file.arrayBuffer();
-                                
-                                // Save to vault
-                                await this.app.vault.createBinary(filePath, arrayBuffer);
-                                
-                                // Update location and UI
-                                this.location.profileImagePath = filePath;
-                                imagePathDesc.setText(`Current: ${filePath}`);
-                                
-                                new Notice(t('imageUploaded', fileName));
-                            } catch (error) {
-                                console.error('Error uploading image:', error);
-                                new Notice(t('errorUploadingImage'));
-                            }
-                        }
-                    };
-                    fileInput.click();
-                }))
-            .addButton(button => button
-                .setIcon('cross')
-                .setTooltip('Clear image')
-                .setClass('mod-warning')
-                .onClick(() => {
-                    this.location.profileImagePath = undefined;
-                    imagePathDesc.setText(`Current: ${this.location.profileImagePath || 'None'}`);
-                }));
+            });
+        
+        const imagePathDesc = profileImageSetting.descEl.createEl('small', { 
+            text: t('currentValue', this.location.profileImagePath || t('none')) 
+        });
+        
+        // Add image selection buttons (Gallery, Upload, Vault, Clear)
+        addImageSelectionButtons(
+            profileImageSetting,
+            this.app,
+            this.plugin,
+            {
+                currentPath: this.location.profileImagePath,
+                onSelect: (path) => {
+                    this.location.profileImagePath = path;
+                },
+                descriptionEl: imagePathDesc
+            }
+        );
 
         // --- Map Bindings ---
         contentEl.createEl('h3', { text: 'Map Bindings' });
