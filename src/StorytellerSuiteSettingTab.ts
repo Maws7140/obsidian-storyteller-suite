@@ -840,6 +840,88 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                 });
         }
 
+        // --- Map Tile Settings ---
+        containerEl.createEl('h3', { text: 'Map Tile Settings' });
+
+        new Setting(containerEl)
+            .setName('Auto-generate tiles')
+            .setDesc('Automatically generate tiles for large images on upload')
+            .addToggle(toggle => toggle
+                .setValue((this.plugin.settings.tiling?.autoGenerateThreshold || 0) > 0)
+                .onChange(async (value) => {
+                    if (!this.plugin.settings.tiling) {
+                        this.plugin.settings.tiling = {
+                            autoGenerateThreshold: 2000,
+                            tileSize: 256,
+                            showProgressNotifications: true
+                        };
+                    }
+                    this.plugin.settings.tiling.autoGenerateThreshold = value ? 2000 : -1;
+                    await this.plugin.saveSettings();
+                })
+            );
+
+        new Setting(containerEl)
+            .setName('Size threshold')
+            .setDesc('Generate tiles for images larger than this (width or height in pixels)')
+            .addText(text => text
+                .setPlaceholder('2000')
+                .setValue(String(this.plugin.settings.tiling?.autoGenerateThreshold || 2000))
+                .onChange(async (value) => {
+                    const num = parseInt(value);
+                    if (!isNaN(num) && num > 0) {
+                        if (!this.plugin.settings.tiling) {
+                            this.plugin.settings.tiling = {
+                                autoGenerateThreshold: 2000,
+                                tileSize: 256,
+                                showProgressNotifications: true
+                            };
+                        }
+                        this.plugin.settings.tiling.autoGenerateThreshold = num;
+                        await this.plugin.saveSettings();
+                    }
+                })
+            );
+
+        new Setting(containerEl)
+            .setName('Tile size')
+            .setDesc('Tile dimensions in pixels (256 is standard, don\'t change unless you know what you\'re doing)')
+            .addDropdown(dropdown => dropdown
+                .addOption('128', '128px')
+                .addOption('256', '256px (recommended)')
+                .addOption('512', '512px')
+                .setValue(String(this.plugin.settings.tiling?.tileSize || 256))
+                .onChange(async (value) => {
+                    if (!this.plugin.settings.tiling) {
+                        this.plugin.settings.tiling = {
+                            autoGenerateThreshold: 2000,
+                            tileSize: 256,
+                            showProgressNotifications: true
+                        };
+                    }
+                    this.plugin.settings.tiling.tileSize = parseInt(value);
+                    await this.plugin.saveSettings();
+                })
+            );
+
+        new Setting(containerEl)
+            .setName('Show progress notifications')
+            .setDesc('Display progress notifications during tile generation')
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings.tiling?.showProgressNotifications ?? true)
+                .onChange(async (value) => {
+                    if (!this.plugin.settings.tiling) {
+                        this.plugin.settings.tiling = {
+                            autoGenerateThreshold: 2000,
+                            tileSize: 256,
+                            showProgressNotifications: true
+                        };
+                    }
+                    this.plugin.settings.tiling.showProgressNotifications = value;
+                    await this.plugin.saveSettings();
+                })
+            );
+
         // --- Tutorial Settings ---
         new Setting(containerEl)
             .setName(t('showTutorialSection'))

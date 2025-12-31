@@ -12,6 +12,7 @@ import { TemplatePickerModal } from './TemplatePickerModal';
 import { Template } from '../templates/TemplateTypes';
 import { LocationSuggestModal } from './LocationSuggestModal';
 import { MapHierarchyManager } from '../utils/MapHierarchyManager';
+import { addImageSelectionButtons } from '../utils/ImageSelectionHelper';
 
 export type MapModalSubmitCallback = (map: Map) => Promise<void>;
 export type MapModalDeleteCallback = (map: Map) => Promise<void>;
@@ -189,36 +190,31 @@ export class MapModal extends ResponsiveModal {
         if (this.map.type === 'image') {
             contentEl.createEl('h3', { text: 'Image Map Settings' });
 
-            let imagePathDesc: HTMLElement;
-            new Setting(contentEl)
+            const backgroundImageSetting = new Setting(contentEl)
                 .setName('Background Image')
                 .setDesc('')
                 .then(setting => {
-                    imagePathDesc = setting.descEl.createEl('small', {
-                        text: `Current: ${this.map.backgroundImagePath || this.map.image || 'None'}`
-                    });
                     setting.descEl.addClass('storyteller-modal-setting-vertical');
-                })
-                .addButton(button => button
-                    .setButtonText('Select Image')
-                    .setTooltip('Select from gallery')
-                    .onClick(() => {
-                        new GalleryImageSuggestModal(this.app, this.plugin, (selectedImage) => {
-                            const path = selectedImage ? selectedImage.filePath : '';
-                            this.map.backgroundImagePath = path || undefined;
-                            this.map.image = path || undefined;
-                            imagePathDesc.setText(`Current: ${this.map.backgroundImagePath || 'None'}`);
-                        }).open();
-                    }))
-                .addButton(button => button
-                    .setIcon('cross')
-                    .setTooltip('Clear image')
-                    .setClass('mod-warning')
-                    .onClick(() => {
-                        this.map.backgroundImagePath = undefined;
-                        this.map.image = undefined;
-                        imagePathDesc.setText(`Current: None`);
-                    }));
+                });
+            
+            const imagePathDesc = backgroundImageSetting.descEl.createEl('small', {
+                text: `Current: ${this.map.backgroundImagePath || this.map.image || 'None'}`
+            });
+            
+            // Add image selection buttons (Gallery, Upload, Vault, Clear)
+            addImageSelectionButtons(
+                backgroundImageSetting,
+                this.app,
+                this.plugin,
+                {
+                    currentPath: this.map.backgroundImagePath || this.map.image,
+                    onSelect: (path) => {
+                        this.map.backgroundImagePath = path;
+                        this.map.image = path;
+                    },
+                    descriptionEl: imagePathDesc
+                }
+            );
 
             new Setting(contentEl)
                 .setName('Width')
@@ -318,34 +314,30 @@ export class MapModal extends ResponsiveModal {
                 }));
 
         // Profile Image
-        let profileImageDesc: HTMLElement;
-        new Setting(contentEl)
+        const profileImageSetting = new Setting(contentEl)
             .setName('Thumbnail Image')
             .setDesc('')
             .then(setting => {
-                profileImageDesc = setting.descEl.createEl('small', {
-                    text: `Current: ${this.map.profileImagePath || 'None'}`
-                });
                 setting.descEl.addClass('storyteller-modal-setting-vertical');
-            })
-            .addButton(button => button
-                .setButtonText('Select')
-                .setTooltip('Select from gallery')
-                .onClick(() => {
-                    new GalleryImageSuggestModal(this.app, this.plugin, (selectedImage) => {
-                        const path = selectedImage ? selectedImage.filePath : '';
-                        this.map.profileImagePath = path || undefined;
-                        profileImageDesc.setText(`Current: ${this.map.profileImagePath || 'None'}`);
-                    }).open();
-                }))
-            .addButton(button => button
-                .setIcon('cross')
-                .setTooltip('Clear image')
-                .setClass('mod-warning')
-                .onClick(() => {
-                    this.map.profileImagePath = undefined;
-                    profileImageDesc.setText(`Current: None`);
-                }));
+            });
+        
+        const profileImageDesc = profileImageSetting.descEl.createEl('small', {
+            text: `Current: ${this.map.profileImagePath || 'None'}`
+        });
+        
+        // Add image selection buttons (Gallery, Upload, Vault, Clear)
+        addImageSelectionButtons(
+            profileImageSetting,
+            this.app,
+            this.plugin,
+            {
+                currentPath: this.map.profileImagePath,
+                onSelect: (path) => {
+                    this.map.profileImagePath = path;
+                },
+                descriptionEl: profileImageDesc
+            }
+        );
 
         // Custom Fields
         contentEl.createEl('h3', { text: t('customFields') });

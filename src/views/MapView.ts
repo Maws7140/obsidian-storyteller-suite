@@ -7,7 +7,7 @@ import { StoryMap } from '../types';
 import { t } from '../i18n/strings';
 import { LeafletRenderer } from '../leaflet/renderer';
 import { BlockParameters } from '../leaflet/types';
-import { LocationService } from '../services/LocationService';
+import { LocationService, LocationLevel } from '../services/LocationService';
 import { LocationSuggestModal } from '../modals/LocationSuggestModal';
 import { CharacterSuggestModal } from '../modals/CharacterSuggestModal';
 import { EventSuggestModal } from '../modals/EventSuggestModal';
@@ -44,14 +44,17 @@ export class MapView extends ItemView {
 
     // Controls
     private mapDropdown: DropdownComponent | null = null;
+    private locationLevelDropdown: DropdownComponent | null = null;
 
     // State
     private resizeObserver: ResizeObserver | null = null;
     private currentZoom = 2;
+    private locationLevelMode: LocationLevel = 'auto';
     private placementMode: { type: 'location' | 'character' | 'event' | 'item' | null } = { type: null };
     private placementClickHandler: ((e: L.LeafletMouseEvent) => void) | null = null;
     private placementOverlay: HTMLElement | null = null;
     private escapeHandler: ((e: KeyboardEvent) => void) | null = null;
+    private _savedCenter: { lat: number; lng: number } | null = null;
 
     constructor(leaf: WorkspaceLeaf, plugin: StorytellerSuitePlugin) {
         super(leaf);
@@ -365,6 +368,53 @@ export class MapView extends ItemView {
         addItemBtn.createSpan({ text: 'Item' });
         addItemBtn.onclick = () => this.showAddItemModal();
 
+        // Location Level dropdown (only for real-world maps)
+        const isRealWorldMap = this.currentMap && (
+            this.currentMap.type === 'real' ||
+            this.currentMap.osmLayer === true ||
+            this.currentMap.tileServer?.includes('openstreetmap') ||
+            this.currentMap.tileServer?.includes('tile')
+        );
+
+        if (isRealWorldMap) {
+            // Separator
+            this.entityBarEl.createDiv('entity-bar-separator');
+
+            // Location level container
+            const levelContainer = this.entityBarEl.createDiv('entity-bar-level-container');
+            
+            const levelLabel = levelContainer.createEl('label', {
+                cls: 'entity-bar-level-label',
+                attr: { title: 'Control the granularity of auto-created locations' }
+            });
+            setIcon(levelLabel, 'layers');
+            levelLabel.createSpan({ text: ' Level:' });
+
+            const dropdownContainer = levelContainer.createDiv('entity-bar-level-dropdown');
+            this.locationLevelDropdown = new DropdownComponent(dropdownContainer);
+            
+            // Add options
+            this.locationLevelDropdown.addOption('auto', '🔍 Auto (by zoom)');
+            this.locationLevelDropdown.addOption('building', '🏛️ Building');
+            this.locationLevelDropdown.addOption('neighborhood', '🏘️ Neighborhood');
+            this.locationLevelDropdown.addOption('city', '🏙️ City');
+            this.locationLevelDropdown.addOption('region', '🗺️ Region/State');
+            this.locationLevelDropdown.addOption('country', '🏳️ Country');
+            this.locationLevelDropdown.addOption('continent', '🌍 Continent');
+
+            this.locationLevelDropdown.setValue(this.locationLevelMode);
+            this.locationLevelDropdown.onChange((value) => {
+                this.locationLevelMode = value as LocationLevel;
+                console.log('[MapView] Location level mode changed to:', value);
+                // Update footer and dropdown label to reflect new selection
+                this.updateFooterStatus();
+                this.updateLocationLevelDropdownLabel();
+            });
+
+            // Initial label update
+            setTimeout(() => this.updateLocationLevelDropdownLabel(), 100);
+        }
+
         // Spacer
         this.entityBarEl.createDiv('entity-bar-spacer');
 
@@ -392,6 +442,64 @@ export class MapView extends ItemView {
         });
         setIcon(refreshBtn, 'refresh-cw');
         refreshBtn.onclick = () => this.refresh();
+    }
+
+    /**
+     * Get the effective location level based on current zoom
+     * Used for auto mode to determine what granularity to use
+     */
+    private getEffectiveLevelForZoom(zoom: number): LocationLevel {
+        if (zoom >= 16) return 'building';
+        if (zoom >= 14) return 'neighborhood';
+        if (zoom >= 10) return 'city';
+        if (zoom >= 6) return 'region';
+        if (zoom >= 3) return 'country';
+        return 'continent';
+    }
+
+    /**
+     * Get display label for a location level
+     */
+    private getLevelDisplayLabel(level: LocationLevel, includeEmoji = true): string {
+        const labels: Record<LocationLevel, { emoji: string; text: string }> = {
+            'auto': { emoji: '🔍', text: 'Auto' },
+            'building': { emoji: '🏛️', text: 'Building' },
+            'neighborhood': { emoji: '🏘️', text: 'Neighborhood' },
+            'city': { emoji: '🏙️', text: 'City' },
+            'region': { emoji: '🗺️', text: 'Region' },
+            'country': { emoji: '🏳️', text: 'Country' },
+            'continent': { emoji: '🌍', text: 'Continent' }
+        };
+        const l = labels[level];
+        return includeEmoji ? `${l.emoji} ${l.text}` : l.text;
+    }
+
+    /**
+     * Update the location level dropdown label to show effective level when in Auto mode
+     * Called on zoom changes to give real-time feedback
+     */
+    private updateLocationLevelDropdownLabel(): void {
+        if (!this.locationLevelDropdown) return;
+        
+        const currentZoom = this.leafletRenderer?.getMap()?.getZoom() || this.currentZoom;
+        
+        // Update footer status with zoom info
+        this.updateFooterStatus();
+
+        // If in auto mode, update the dropdown to show effective level
+        if (this.locationLevelMode === 'auto') {
+            const effectiveLevel = this.getEffectiveLevelForZoom(currentZoom);
+            const effectiveLabel = this.getLevelDisplayLabel(effectiveLevel, false);
+            
+            // Update the 'auto' option text to show current effective level
+            const selectEl = this.locationLevelDropdown.selectEl;
+            if (selectEl) {
+                const autoOption = selectEl.querySelector('option[value="auto"]');
+                if (autoOption) {
+                    autoOption.textContent = `🔍 Auto → ${effectiveLabel} (z${Math.round(currentZoom)})`;
+                }
+            }
+        }
     }
 
     /**
@@ -605,85 +713,86 @@ export class MapView extends ItemView {
                         );
                         new Notice(`Added ${selectedCharacter.name} to map at [${coordinates[0].toFixed(2)}, ${coordinates[1].toFixed(2)}]`);
                     } else {
-                        // Character has no location - try to find location at clicked coordinates
-                        const foundLocation = await locationService.findLocationAtCoordinates(
-                            mapId,
-                            coordinates,
-                            this.getCoordinateTolerance()
+                        // Character has no location - find or create one at clicked coordinates
+                        
+                        // Check if this is a real-world map
+                        const isRealWorldMap = this.currentMap && (
+                            this.currentMap.type === 'real' ||
+                            this.currentMap.osmLayer === true ||
+                            this.currentMap.tileServer?.includes('openstreetmap') ||
+                            this.currentMap.tileServer?.includes('tile')
                         );
 
-                        if (foundLocation) {
-                            // Auto-assign existing location to character
-                            selectedCharacter.currentLocationId = foundLocation.id || foundLocation.name;
-                            await this.plugin.saveCharacter(selectedCharacter);
+                        let targetLocation: any;
+                        let isNewLocation = false;
 
-                            // Add character to location's entityRefs
-                            await locationService.moveEntityToLocation(
-                                selectedCharacter.id || selectedCharacter.name,
-                                'character',
-                                foundLocation.id || foundLocation.name
+                        if (isRealWorldMap) {
+                            // For real-world maps: use geocoding to find/create location by place name
+                            // Pass current zoom and level preference for granularity control
+                            const currentZoom = this.leafletRenderer?.getMap()?.getZoom() || this.currentZoom;
+                            console.log('Real-world map detected, using geocode-based location matching');
+                            console.log('Level mode:', this.locationLevelMode, 'Zoom:', currentZoom);
+                            
+                            const result = await locationService.findOrCreateForRealWorldMap(
+                                mapId,
+                                coordinates,
+                                { type: 'character', name: selectedCharacter.name },
+                                { level: this.locationLevelMode, zoom: currentZoom }
                             );
-
-                            new Notice(`Character placed at "${foundLocation.name}"`);
+                            targetLocation = result.location;
+                            isNewLocation = result.isNew;
                         } else {
-                            // No location found - create a new location at these coordinates
-                            const coordText = `${coordinates[0].toFixed(2)}, ${coordinates[1].toFixed(2)}`;
-                            const locationId = `loc-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-
-                            // For real-world maps, try to get the location name from reverse geocoding
-                            let locationName = `${selectedCharacter.name}'s Location`;
-                            let locationDescription = `Auto-created location for ${selectedCharacter.name} at coordinates [${coordText}]`;
-
-                            // Check if this is a real-world map (multiple indicators)
-                            const isRealWorldMap = this.currentMap && (
-                                this.currentMap.type === 'real' ||
-                                this.currentMap.osmLayer === true ||
-                                this.currentMap.tileServer?.includes('openstreetmap') ||
-                                this.currentMap.tileServer?.includes('tile')
+                            // For image maps: use coordinate proximity matching
+                            console.log('Image map detected, using coordinate-based matching');
+                            const foundLocation = await locationService.findLocationAtCoordinates(
+                                mapId,
+                                coordinates,
+                                this.getCoordinateTolerance()
                             );
 
-                            if (isRealWorldMap) {
-                                console.log('Real-world map detected, attempting reverse geocoding at:', coordinates);
-                                try {
-                                    const geoName = await this.reverseGeocode(coordinates[0], coordinates[1]);
-                                    if (geoName) {
-                                        locationName = geoName;
-                                        locationDescription = `${geoName} - Auto-created for ${selectedCharacter.name}`;
-                                        console.log('Location named from geocoding:', geoName);
-                                    } else {
-                                        console.warn('Reverse geocoding returned null');
-                                    }
-                                } catch (error) {
-                                    console.warn('Reverse geocoding failed:', error);
-                                }
+                            if (foundLocation) {
+                                targetLocation = foundLocation;
+                                isNewLocation = false;
                             } else {
-                                console.log('Image map detected, using default location name');
+                                // Create new location for image map
+                                const coordText = `${coordinates[0].toFixed(2)}, ${coordinates[1].toFixed(2)}`;
+                                const locationId = `loc-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+                                targetLocation = {
+                                    id: locationId,
+                                    name: `${selectedCharacter.name}'s Location`,
+                                    description: `Auto-created location for ${selectedCharacter.name} at coordinates [${coordText}]`,
+                                    type: 'custom',
+                                    mapBindings: [{
+                                        mapId: mapId,
+                                        coordinates: coordinates
+                                    }]
+                                };
+
+                                await this.plugin.saveLocation(targetLocation as any);
+                                isNewLocation = true;
                             }
+                        }
 
-                            const newLocation = {
-                                id: locationId,
-                                name: locationName,
-                                description: locationDescription,
-                                type: 'point-of-interest',
-                                mapBindings: [{
-                                    mapId: mapId,
-                                    coordinates: coordinates
-                                }],
-                                entityRefs: [{
-                                    entityId: selectedCharacter.id || selectedCharacter.name,
-                                    entityType: 'character' as const,
-                                    relationship: 'located here'
-                                }]
-                            };
+                        // Assign character to the location
+                        const locationId = targetLocation.id || targetLocation.name;
+                        selectedCharacter.currentLocationId = locationId;
+                        await this.plugin.saveCharacter(selectedCharacter);
 
-                            // Save the new location
-                            await this.plugin.saveLocation(newLocation as any);
+                        // Add character to location's entityRefs
+                        await locationService.addEntityToLocation(
+                            locationId,
+                            {
+                                entityId: selectedCharacter.id || selectedCharacter.name,
+                                entityType: 'character',
+                                relationship: 'located here'
+                            }
+                        );
 
-                            // Assign to character using the location ID
-                            selectedCharacter.currentLocationId = locationId;
-                            await this.plugin.saveCharacter(selectedCharacter);
-
-                            new Notice(`Created new location "${newLocation.name}" for ${selectedCharacter.name}`);
+                        if (isNewLocation) {
+                            new Notice(`Created location "${targetLocation.name}" for ${selectedCharacter.name}`);
+                        } else {
+                            new Notice(`Character placed at existing location "${targetLocation.name}"`);
                         }
                     }
 
@@ -751,82 +860,86 @@ export class MapView extends ItemView {
                         );
                         new Notice(`Added ${selectedEvent.name} to map at [${coordinates[0].toFixed(2)}, ${coordinates[1].toFixed(2)}]`);
                     } else {
-                        // Event has no location - try to find location at clicked coordinates
-                        const foundLocation = await locationService.findLocationAtCoordinates(
-                            mapId,
-                            coordinates,
-                            this.getCoordinateTolerance()
+                        // Event has no location - find or create one at clicked coordinates
+                        
+                        // Check if this is a real-world map
+                        const isRealWorldMap = this.currentMap && (
+                            this.currentMap.type === 'real' ||
+                            this.currentMap.osmLayer === true ||
+                            this.currentMap.tileServer?.includes('openstreetmap') ||
+                            this.currentMap.tileServer?.includes('tile')
                         );
 
-                        if (foundLocation) {
-                            // Auto-assign existing location to event
-                            selectedEvent.location = foundLocation.id || foundLocation.name;
-                            await this.plugin.saveEvent(selectedEvent);
+                        let targetLocation: any;
+                        let isNewLocation = false;
 
-                            // Add event to location's entityRefs
-                            await locationService.addEntityToLocation(
-                                foundLocation.id || foundLocation.name,
-                                {
-                                    entityId: selectedEvent.id || selectedEvent.name,
-                                    entityType: 'event',
-                                    relationship: 'occurred here'
-                                }
+                        if (isRealWorldMap) {
+                            // For real-world maps: use geocoding to find/create location by place name
+                            // Pass current zoom and level preference for granularity control
+                            const currentZoom = this.leafletRenderer?.getMap()?.getZoom() || this.currentZoom;
+                            console.log('Real-world map detected, using geocode-based location matching');
+                            console.log('Level mode:', this.locationLevelMode, 'Zoom:', currentZoom);
+                            
+                            const result = await locationService.findOrCreateForRealWorldMap(
+                                mapId,
+                                coordinates,
+                                { type: 'event', name: selectedEvent.name },
+                                { level: this.locationLevelMode, zoom: currentZoom }
                             );
-
-                            new Notice(`Event placed at "${foundLocation.name}"`);
+                            targetLocation = result.location;
+                            isNewLocation = result.isNew;
                         } else {
-                            // No location found - create a new location at these coordinates
-                            const coordText = `${coordinates[0].toFixed(2)}, ${coordinates[1].toFixed(2)}`;
-                            const locationId = `loc-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-
-                            // For real-world maps, try to get the location name from reverse geocoding
-                            let locationName = `${selectedEvent.name} Location`;
-                            let locationDescription = `Auto-created location for event "${selectedEvent.name}" at coordinates [${coordText}]`;
-
-                            // Check if this is a real-world map
-                            const isRealWorldMap = this.currentMap && (
-                                this.currentMap.type === 'real' ||
-                                this.currentMap.osmLayer === true ||
-                                this.currentMap.tileServer?.includes('openstreetmap') ||
-                                this.currentMap.tileServer?.includes('tile')
+                            // For image maps: use coordinate proximity matching
+                            console.log('Image map detected, using coordinate-based matching');
+                            const foundLocation = await locationService.findLocationAtCoordinates(
+                                mapId,
+                                coordinates,
+                                this.getCoordinateTolerance()
                             );
 
-                            if (isRealWorldMap) {
-                                try {
-                                    const geoName = await this.reverseGeocode(coordinates[0], coordinates[1]);
-                                    if (geoName) {
-                                        locationName = geoName;
-                                        locationDescription = `${geoName} - Auto-created for event "${selectedEvent.name}"`;
-                                    }
-                                } catch (error) {
-                                    console.warn('Reverse geocoding failed:', error);
-                                }
+                            if (foundLocation) {
+                                targetLocation = foundLocation;
+                                isNewLocation = false;
+                            } else {
+                                // Create new location for image map
+                                const coordText = `${coordinates[0].toFixed(2)}, ${coordinates[1].toFixed(2)}`;
+                                const locationId = `loc-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+                                targetLocation = {
+                                    id: locationId,
+                                    name: `${selectedEvent.name} Location`,
+                                    description: `Auto-created location for event "${selectedEvent.name}" at coordinates [${coordText}]`,
+                                    type: 'custom',
+                                    mapBindings: [{
+                                        mapId: mapId,
+                                        coordinates: coordinates
+                                    }]
+                                };
+
+                                await this.plugin.saveLocation(targetLocation as any);
+                                isNewLocation = true;
                             }
+                        }
 
-                            const newLocation = {
-                                id: locationId,
-                                name: locationName,
-                                description: locationDescription,
-                                type: 'point-of-interest',
-                                mapBindings: [{
-                                    mapId: mapId,
-                                    coordinates: coordinates
-                                }],
-                                entityRefs: [{
-                                    entityId: selectedEvent.id || selectedEvent.name,
-                                    entityType: 'event' as const,
-                                    relationship: 'occurred here'
-                                }]
-                            };
+                        // Assign event to the location
+                        const locationId = targetLocation.id || targetLocation.name;
+                        selectedEvent.location = locationId;
+                        await this.plugin.saveEvent(selectedEvent);
 
-                            // Save the new location
-                            await this.plugin.saveLocation(newLocation as any);
+                        // Add event to location's entityRefs
+                        await locationService.addEntityToLocation(
+                            locationId,
+                            {
+                                entityId: selectedEvent.id || selectedEvent.name,
+                                entityType: 'event',
+                                relationship: 'occurred here'
+                            }
+                        );
 
-                            // Assign to event using the location ID
-                            selectedEvent.location = locationId;
-                            await this.plugin.saveEvent(selectedEvent);
-
-                            new Notice(`Created new location "${newLocation.name}" for ${selectedEvent.name}`);
+                        if (isNewLocation) {
+                            new Notice(`Created location "${targetLocation.name}" for ${selectedEvent.name}`);
+                        } else {
+                            new Notice(`Event placed at existing location "${targetLocation.name}"`);
                         }
                     }
 
@@ -894,82 +1007,86 @@ export class MapView extends ItemView {
                         );
                         new Notice(`Added ${selectedItem.name} to map at [${coordinates[0].toFixed(2)}, ${coordinates[1].toFixed(2)}]`);
                     } else {
-                        // Item has no location - try to find location at clicked coordinates
-                        const foundLocation = await locationService.findLocationAtCoordinates(
-                            mapId,
-                            coordinates,
-                            this.getCoordinateTolerance()
+                        // Item has no location - find or create one at clicked coordinates
+                        
+                        // Check if this is a real-world map
+                        const isRealWorldMap = this.currentMap && (
+                            this.currentMap.type === 'real' ||
+                            this.currentMap.osmLayer === true ||
+                            this.currentMap.tileServer?.includes('openstreetmap') ||
+                            this.currentMap.tileServer?.includes('tile')
                         );
 
-                        if (foundLocation) {
-                            // Auto-assign existing location to item
-                            selectedItem.currentLocation = foundLocation.id || foundLocation.name;
-                            await this.plugin.savePlotItem(selectedItem);
+                        let targetLocation: any;
+                        let isNewLocation = false;
 
-                            // Add item to location's entityRefs
-                            await locationService.addEntityToLocation(
-                                foundLocation.id || foundLocation.name,
-                                {
-                                    entityId: selectedItem.id || selectedItem.name,
-                                    entityType: 'item',
-                                    relationship: 'located here'
-                                }
+                        if (isRealWorldMap) {
+                            // For real-world maps: use geocoding to find/create location by place name
+                            // Pass current zoom and level preference for granularity control
+                            const currentZoom = this.leafletRenderer?.getMap()?.getZoom() || this.currentZoom;
+                            console.log('Real-world map detected, using geocode-based location matching');
+                            console.log('Level mode:', this.locationLevelMode, 'Zoom:', currentZoom);
+                            
+                            const result = await locationService.findOrCreateForRealWorldMap(
+                                mapId,
+                                coordinates,
+                                { type: 'item', name: selectedItem.name },
+                                { level: this.locationLevelMode, zoom: currentZoom }
                             );
-
-                            new Notice(`Item placed at "${foundLocation.name}"`);
+                            targetLocation = result.location;
+                            isNewLocation = result.isNew;
                         } else {
-                            // No location found - create a new location at these coordinates
-                            const coordText = `${coordinates[0].toFixed(2)}, ${coordinates[1].toFixed(2)}`;
-                            const locationId = `loc-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-
-                            // For real-world maps, try to get the location name from reverse geocoding
-                            let locationName = `${selectedItem.name} Location`;
-                            let locationDescription = `Auto-created location for item "${selectedItem.name}" at coordinates [${coordText}]`;
-
-                            // Check if this is a real-world map
-                            const isRealWorldMap = this.currentMap && (
-                                this.currentMap.type === 'real' ||
-                                this.currentMap.osmLayer === true ||
-                                this.currentMap.tileServer?.includes('openstreetmap') ||
-                                this.currentMap.tileServer?.includes('tile')
+                            // For image maps: use coordinate proximity matching
+                            console.log('Image map detected, using coordinate-based matching');
+                            const foundLocation = await locationService.findLocationAtCoordinates(
+                                mapId,
+                                coordinates,
+                                this.getCoordinateTolerance()
                             );
 
-                            if (isRealWorldMap) {
-                                try {
-                                    const geoName = await this.reverseGeocode(coordinates[0], coordinates[1]);
-                                    if (geoName) {
-                                        locationName = geoName;
-                                        locationDescription = `${geoName} - Auto-created for item "${selectedItem.name}"`;
-                                    }
-                                } catch (error) {
-                                    console.warn('Reverse geocoding failed:', error);
-                                }
+                            if (foundLocation) {
+                                targetLocation = foundLocation;
+                                isNewLocation = false;
+                            } else {
+                                // Create new location for image map
+                                const coordText = `${coordinates[0].toFixed(2)}, ${coordinates[1].toFixed(2)}`;
+                                const locationId = `loc-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+                                targetLocation = {
+                                    id: locationId,
+                                    name: `${selectedItem.name} Location`,
+                                    description: `Auto-created location for item "${selectedItem.name}" at coordinates [${coordText}]`,
+                                    type: 'custom',
+                                    mapBindings: [{
+                                        mapId: mapId,
+                                        coordinates: coordinates
+                                    }]
+                                };
+
+                                await this.plugin.saveLocation(targetLocation as any);
+                                isNewLocation = true;
                             }
+                        }
 
-                            const newLocation = {
-                                id: locationId,
-                                name: locationName,
-                                description: locationDescription,
-                                type: 'point-of-interest',
-                                mapBindings: [{
-                                    mapId: mapId,
-                                    coordinates: coordinates
-                                }],
-                                entityRefs: [{
-                                    entityId: selectedItem.id || selectedItem.name,
-                                    entityType: 'item' as const,
-                                    relationship: 'located here'
-                                }]
-                            };
+                        // Assign item to the location
+                        const locationId = targetLocation.id || targetLocation.name;
+                        selectedItem.currentLocation = locationId;
+                        await this.plugin.savePlotItem(selectedItem);
 
-                            // Save the new location
-                            await this.plugin.saveLocation(newLocation as any);
+                        // Add item to location's entityRefs
+                        await locationService.addEntityToLocation(
+                            locationId,
+                            {
+                                entityId: selectedItem.id || selectedItem.name,
+                                entityType: 'item',
+                                relationship: 'located here'
+                            }
+                        );
 
-                            // Assign to item using the location ID
-                            selectedItem.currentLocation = locationId;
-                            await this.plugin.savePlotItem(selectedItem);
-
-                            new Notice(`Created new location "${newLocation.name}" for ${selectedItem.name}`);
+                        if (isNewLocation) {
+                            new Notice(`Created location "${targetLocation.name}" for ${selectedItem.name}`);
+                        } else {
+                            new Notice(`Item placed at existing location "${targetLocation.name}"`);
                         }
                     }
 
@@ -1014,8 +1131,28 @@ export class MapView extends ItemView {
         const parts: string[] = [];
 
         // Map type
-        const type = this.currentMap.type === 'real' ? 'Real-world' : 'Image-based';
+        const isRealWorldMap = this.currentMap.type === 'real' ||
+            this.currentMap.osmLayer === true ||
+            this.currentMap.tileServer?.includes('openstreetmap') ||
+            this.currentMap.tileServer?.includes('tile');
+        
+        const type = isRealWorldMap ? 'Real-world' : 'Image-based';
         parts.push(type);
+
+        // For real-world maps, show zoom level and effective location level
+        if (isRealWorldMap) {
+            const currentZoom = this.leafletRenderer?.getMap()?.getZoom() || this.currentZoom;
+            parts.push(`Zoom: ${Math.round(currentZoom)}`);
+            
+            if (this.locationLevelMode === 'auto') {
+                const effectiveLevel = this.getEffectiveLevelForZoom(currentZoom);
+                const levelLabel = this.getLevelDisplayLabel(effectiveLevel, false);
+                parts.push(`Level: ${levelLabel}`);
+            } else {
+                const levelLabel = this.getLevelDisplayLabel(this.locationLevelMode, false);
+                parts.push(`Level: ${levelLabel}`);
+            }
+        }
 
         // Scale
         if (this.currentMap.scale) {
@@ -1043,61 +1180,6 @@ export class MapView extends ItemView {
             return 0.001; // ~111 meters at equator
         } else {
             return 20; // 20 pixels for image maps
-        }
-    }
-
-    /**
-     * Reverse geocode coordinates to get location name (for real-world maps)
-     * Uses OpenStreetMap Nominatim API
-     * @param lat Latitude
-     * @param lng Longitude
-     * @returns Location name or null if not found
-     */
-    private async reverseGeocode(lat: number, lng: number): Promise<string | null> {
-        try {
-            // Use Nominatim API for reverse geocoding
-            const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=14`;
-
-            const response = await fetch(url, {
-                headers: {
-                    'User-Agent': 'Obsidian-Storyteller-Suite/1.0'
-                }
-            });
-
-            if (!response.ok) {
-                return null;
-            }
-
-            const data = await response.json();
-
-            // Try to build a meaningful name from the address components
-            const address = data.address;
-            if (!address) {
-                return data.display_name || null;
-            }
-
-            // Prefer specific locations over general areas
-            const name =
-                address.tourism ||           // Tourist attraction
-                address.amenity ||           // Amenity (restaurant, etc.)
-                address.building ||          // Building name
-                address.shop ||              // Shop
-                address.historic ||          // Historic site
-                address.railway ||           // Train station
-                address.aeroway ||           // Airport
-                address.neighbourhood ||     // Neighborhood
-                address.suburb ||            // Suburb
-                address.village ||           // Village
-                address.town ||              // Town
-                address.city ||              // City
-                address.state ||             // State/Province
-                address.country ||           // Country
-                data.display_name;           // Fallback to full display name
-
-            return name || null;
-        } catch (error) {
-            console.error('Reverse geocoding error:', error);
-            return null;
         }
     }
 
@@ -1144,6 +1226,16 @@ export class MapView extends ItemView {
     private async renderMap(): Promise<void> {
         if (!this.mapContainer || !this.currentMap) return;
 
+        // Clean up existing renderer before creating new one
+        if (this.leafletRenderer) {
+            try {
+                await this.leafletRenderer.onunload();
+            } catch (e) {
+                console.warn('Error cleaning up old renderer:', e);
+            }
+            this.leafletRenderer = null;
+        }
+
         this.mapContainer.empty();
 
         // CRITICAL FIX: Parent container must have position:relative for absolute children
@@ -1151,24 +1243,33 @@ export class MapView extends ItemView {
         this.mapContainer.style.position = 'relative';
         this.mapContainer.style.overflow = 'hidden';
 
-        // Create Leaflet container with explicit sizing and ID
+        // Create Leaflet container with explicit sizing
         const leafletContainer = this.mapContainer.createDiv('leaflet-map-container');
-        leafletContainer.style.width = '100%';
-        leafletContainer.style.height = '100%';
+        
+        // CRITICAL: Set explicit dimensions - Leaflet needs real pixel values, not percentages
         leafletContainer.style.position = 'absolute';
         leafletContainer.style.top = '0';
         leafletContainer.style.left = '0';
-        leafletContainer.style.minHeight = '400px'; // Ensure minimum height
-        leafletContainer.style.backgroundColor = 'transparent'; // Ensure background is transparent
-        
+        leafletContainer.style.right = '0';
+        leafletContainer.style.bottom = '0';
+        leafletContainer.style.width = '100%';
+        leafletContainer.style.height = '100%';
+        leafletContainer.style.minHeight = '400px';
+
+        // Use transparent background for image maps, grey for real-world maps
+        const isImageMap = this.currentMap.type === 'image' || this.currentMap.image;
+        leafletContainer.style.backgroundColor = isImageMap
+            ? 'transparent'
+            : 'var(--background-secondary)';
+
         // CRITICAL: Add inline style tag to override Obsidian's global img styles
         // This is essential because Obsidian themes apply max-width, object-fit, etc.
         // to all img elements which breaks Leaflet tile positioning
         this.injectLeafletCSSOverrides(leafletContainer);
 
-        // Set ID for Leaflet to use (following standard pattern)
+        // Use stable ID based on map ID only (no Date.now() - causes issues)
         const mapId = this.currentMap.id || this.currentMap.name;
-        leafletContainer.id = `map-view-${mapId}-${Date.now()}`;
+        leafletContainer.id = `map-view-${mapId.replace(/[^a-zA-Z0-9]/g, '-')}`;
 
         // Convert map entity to block parameters
         const params = this.mapToBlockParams(this.currentMap);
@@ -1210,32 +1311,98 @@ export class MapView extends ItemView {
             // Register as child component to trigger lifecycle (like code block processor)
             mockContext.addChild(this.leafletRenderer);
 
-            // Add zoom/pan state tracking after map is initialized
+            // CRITICAL: Prevent Obsidian from intercepting events when using the map
+            // 
+            // Key insight from esm7 (Obsidian Map View author):
+            // Leaflet 1.8+ listens for events at a higher level (document), so calling
+            // stopPropagation on the map element blocks Leaflet itself from receiving events.
+            // 
+            // Solution: Add event listener at DOCUMENT level, check if event is on map,
+            // then stopPropagation. This lets Leaflet handle the event first, then
+            // prevents Obsidian from also handling it.
+            // 
+            // Reference: https://github.com/Leaflet/Leaflet/discussions/8972
+
+            // Wheel events for scroll zoom
+            // Custom zoom handler that zooms from center (not mouse position)
+            // Must be at document level to work with Leaflet 1.8+ event handling
+            let wheelTimeout: NodeJS.Timeout | null = null;
+            let wheelDelta = 0;
+
+            const wheelHandler = (ev: WheelEvent) => {
+                const targetNode = ev.target as Node;
+                const isEventOnMap = ev.target === leafletContainer || leafletContainer.contains(targetNode);
+                if (isEventOnMap) {
+                    // Prevent default scroll and Obsidian handling
+                    ev.preventDefault();
+                    ev.stopPropagation();
+
+                    // Accumulate wheel delta for smooth zooming
+                    wheelDelta += ev.deltaY;
+
+                    // Debounce wheel events
+                    if (wheelTimeout) {
+                        clearTimeout(wheelTimeout);
+                    }
+
+                    wheelTimeout = setTimeout(() => {
+                        const map = this.leafletRenderer?.getMap();
+                        if (!map) return;
+
+                        // Calculate zoom change (negative deltaY = zoom in, positive = zoom out)
+                        const zoomChange = -wheelDelta / 80;  // 80 pixels per zoom level
+                        const currentZoom = map.getZoom();
+                        const currentCenter = map.getCenter();
+
+                        // Calculate new zoom level and clamp to min/max
+                        const minZoom = map.getMinZoom();
+                        const maxZoom = map.getMaxZoom();
+                        let newZoom = currentZoom + (zoomChange * 0.25);  // 0.25 for fine control
+                        newZoom = Math.max(minZoom, Math.min(maxZoom, newZoom));
+
+                        // Zoom to new level, keeping the same center (prevents panning!)
+                        map.setView(currentCenter, newZoom, { animate: false });
+
+                        // Reset accumulator
+                        wheelDelta = 0;
+                    }, 40);  // 40ms debounce
+                }
+            };
+            document.addEventListener('wheel', wheelHandler, { passive: false });
+            
+            // Touch events for mobile panning
+            const touchMoveHandler = (ev: TouchEvent) => {
+                const targetNode = ev.target as Node;
+                const isEventOnMap = ev.target === leafletContainer || leafletContainer.contains(targetNode);
+                if (isEventOnMap) {
+                    ev.stopPropagation();
+                }
+            };
+            document.addEventListener('touchmove', touchMoveHandler);
+
+            // Store handlers for cleanup
+            (this as any)._wheelHandler = wheelHandler;
+            (this as any)._touchMoveHandler = touchMoveHandler;
+
+            // Make container focusable for keyboard navigation
+            leafletContainer.tabIndex = 0;
+
+            // Add zoom/pan event handlers after a short delay
             setTimeout(() => {
                 const map = this.leafletRenderer?.getMap();
                 if (map) {
                     map.on('zoomend', () => {
                         this.saveMapViewState();
+                        this.updateLocationLevelDropdownLabel();
                     });
 
                     map.on('moveend', () => {
                         this.saveMapViewState();
                     });
+
+                    this.updateLocationLevelDropdownLabel();
                 }
             }, 100);
-
-            // Fix sizing after initialization - multiple calls handle Obsidian's async layout
-            const invalidateSizes = () => {
-                if (this.leafletRenderer) {
-                    this.leafletRenderer.invalidateSize();
-                }
-            };
-            
-            // Immediate + delayed calls to ensure tiles render correctly
-            invalidateSizes();
-            setTimeout(invalidateSizes, 100);
-            setTimeout(invalidateSizes, 300);
-            setTimeout(invalidateSizes, 500);
 
         } catch (error) {
             console.error('Error rendering map:', error);
@@ -1317,6 +1484,108 @@ export class MapView extends ItemView {
                 bottom: 0 !important;
                 width: 100% !important;
                 height: 100% !important;
+            }
+
+            /* Entity avatar markers with images */
+            .storyteller-entity-avatar {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-weight: bold;
+                font-size: 12px;
+                color: #fff;
+                text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+            }
+
+            .storyteller-entity-avatar img {
+                max-width: none !important;
+                max-height: none !important;
+                width: 100% !important;
+                height: 100% !important;
+                border-radius: 50% !important;
+                object-fit: cover !important;
+            }
+
+            .storyteller-entity-marker.has-image {
+                filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
+            }
+
+            .storyteller-entity-marker.has-image:hover {
+                transform: scale(1.1);
+                z-index: 1000 !important;
+            }
+
+            /* Entity marker hover effects */
+            .storyteller-entity-marker {
+                transition: transform 0.15s ease-out;
+            }
+
+            .storyteller-entity-marker:hover {
+                transform: scale(1.15);
+                z-index: 1000 !important;
+            }
+
+            /* Location marker styles */
+            .storyteller-location-marker {
+                transition: transform 0.15s ease-out;
+            }
+
+            .storyteller-location-marker:hover {
+                transform: scale(1.1);
+            }
+
+            /* Image overlay for image-based maps */
+            .storyteller-map-image-overlay {
+                pointer-events: none !important;
+            }
+
+            /* CRITICAL: Ensure Leaflet captures wheel/touch events */
+            .leaflet-container {
+                touch-action: none !important;
+                outline: none !important;
+                /* Prevent scroll chaining to parent elements */
+                overscroll-behavior: contain !important;
+            }
+
+            /* Prevent Obsidian workspace from capturing scroll on map */
+            .leaflet-map-container {
+                overflow: hidden !important;
+                touch-action: none !important;
+                /* Prevent scroll chaining */
+                overscroll-behavior: contain !important;
+            }
+
+            /* Map container also needs overscroll-behavior */
+            .storyteller-map-container {
+                overscroll-behavior: contain !important;
+            }
+
+            /* Allow wheel events on the map pane */
+            .leaflet-map-pane,
+            .leaflet-tile-pane,
+            .leaflet-overlay-pane,
+            .leaflet-shadow-pane,
+            .leaflet-marker-pane,
+            .leaflet-tooltip-pane,
+            .leaflet-popup-pane {
+                pointer-events: auto !important;
+            }
+
+            /* But disable pointer events on overlay images so they don't block */
+            .leaflet-overlay-pane img,
+            .leaflet-image-layer {
+                pointer-events: none !important;
+            }
+
+            /* Ensure zoom controls are clickable */
+            .leaflet-control-zoom,
+            .leaflet-control-zoom a {
+                pointer-events: auto !important;
+            }
+
+            /* Make sure the map container itself captures events */
+            .storyteller-map-view .storyteller-map-container {
+                pointer-events: auto !important;
             }
         `;
         
@@ -1425,21 +1694,26 @@ export class MapView extends ItemView {
 
     /**
      * Setup resize observer for responsive layout
+     * Uses debouncing to prevent rapid invalidateSize calls
      */
     private setupResizeObserver(): void {
-        if (this.mapContainer) {
-            this.resizeObserver = new ResizeObserver(() => {
-                if (this.leafletRenderer) {
-                    this.leafletRenderer.invalidateSize();
-                }
-            });
-            this.resizeObserver.observe(this.mapContainer);
-        }
+        // Temporarily disabled to debug zoom bounce issue
+        return;
     }
 
     async onClose(): Promise<void> {
         // Clean up placement mode
         this.disablePlacementMode();
+
+        // Clean up document-level event handlers
+        if ((this as any)._wheelHandler) {
+            document.removeEventListener('wheel', (this as any)._wheelHandler);
+            (this as any)._wheelHandler = null;
+        }
+        if ((this as any)._touchMoveHandler) {
+            document.removeEventListener('touchmove', (this as any)._touchMoveHandler);
+            (this as any)._touchMoveHandler = null;
+        }
 
         // Clean up resize observer
         if (this.resizeObserver) {
@@ -1457,6 +1731,10 @@ export class MapView extends ItemView {
     /**
      * Save current map view state (zoom and center position)
      * Called automatically when user zooms or pans the map
+     * 
+     * NOTE: We only update instance variables, NOT Obsidian's view state.
+     * Calling setViewState() triggers setState() which calls loadMap(),
+     * creating an infinite re-initialization loop.
      */
     private saveMapViewState(): void {
         const map = this.leafletRenderer?.getMap();
@@ -1465,33 +1743,21 @@ export class MapView extends ItemView {
         const zoom = map.getZoom();
         const center = map.getCenter();
 
-        // Update instance variable
+        // Update instance variables only - don't call setViewState()
         this.currentZoom = zoom;
-
-        // Save to workspace state (persists across sessions)
-        // Note: This updates Obsidian's view state which is automatically persisted
-        this.leaf?.setViewState({
-            type: VIEW_TYPE_MAP,
-            state: {
-                mapId: this.currentMap?.id || this.currentMap?.name,
-                zoom: zoom,
-                center: {
-                    lat: center.lat,
-                    lng: center.lng
-                }
-            }
-        });
+        
+        // Store in a private variable for later use in getState()
+        this._savedCenter = { lat: center.lat, lng: center.lng };
     }
 
     /**
      * Get state for persistence
      */
     getState(): any {
-        const map = this.leafletRenderer?.getMap();
         return {
             mapId: this.currentMap?.id || this.currentMap?.name,
             zoom: this.currentZoom,
-            center: map?.getCenter()
+            center: this._savedCenter || this.leafletRenderer?.getMap()?.getCenter()
         };
     }
 
@@ -1499,19 +1765,24 @@ export class MapView extends ItemView {
      * Set state from persistence
      */
     async setState(state: any, result: any): Promise<void> {
-        if (state?.mapId) {
+        // Guard: Don't reload if we already have this map loaded
+        const currentMapId = this.currentMap?.id || this.currentMap?.name;
+        if (state?.mapId && state.mapId !== currentMapId) {
             await this.loadMap(state.mapId);
+        }
 
-            // Restore zoom and position after map loads
+        // Restore zoom and position after map loads (or if same map)
+        if (state?.zoom !== undefined) {
             setTimeout(() => {
                 const map = this.leafletRenderer?.getMap();
-                if (map && state.zoom !== undefined) {
+                if (map) {
                     map.setView(
                         state.center || map.getCenter(),
                         state.zoom,
                         { animate: false }  // Instant restore
                     );
                     this.currentZoom = state.zoom;
+                    this._savedCenter = state.center || null;
                 }
             }, 200);  // Small delay to ensure map is fully initialized
         }

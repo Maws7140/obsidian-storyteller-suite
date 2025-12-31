@@ -3,6 +3,7 @@ import { App, Modal, Setting, Notice, TextAreaComponent } from 'obsidian';
 import { PlotItem, Group } from '../types';
 import StorytellerSuitePlugin from '../main';
 import { GalleryImageSuggestModal } from './GalleryImageSuggestModal';
+import { addImageSelectionButtons } from '../utils/ImageSelectionHelper';
 import { getWhitelistKeys } from '../yaml/EntitySections';
 import { t } from '../i18n/strings';
 import { CharacterSuggestModal } from './CharacterSuggestModal';
@@ -96,69 +97,30 @@ export class PlotItemModal extends Modal {
                 .onChange(value => this.item.isPlotCritical = value)
             );
         
-        let imagePathDesc: HTMLElement;
-        new Setting(contentEl)
+        const profileImageSetting = new Setting(contentEl)
             .setName(t('itemImage'))
             .setDesc('')
             .then(setting => {
-                imagePathDesc = setting.descEl.createEl('small', { text: t('currentValue', this.item.profileImagePath || t('none')) });
                 setting.descEl.addClass('storyteller-modal-setting-vertical');
-            })
-            .addButton(button => button
-                .setButtonText(t('select'))
-                .setTooltip(t('selectFromGallery'))
-                .onClick(() => {
-                    new GalleryImageSuggestModal(this.app, this.plugin, (selectedImage) => {
-                        const path = selectedImage ? selectedImage.filePath : undefined;
-                        this.item.profileImagePath = path;
-                        imagePathDesc.setText(`Current: ${path || 'None'}`);
-                    }).open();
-                })
-            )
-            .addButton(button => button
-                .setButtonText(t('upload'))
-                .setTooltip(t('uploadImage'))
-                .onClick(async () => {
-                    const fileInput = document.createElement('input');
-                    fileInput.type = 'file';
-                    fileInput.accept = 'image/*';
-                    fileInput.onchange = async () => {
-                        const file = fileInput.files?.[0];
-                        if (file) {
-                            try {
-                                const uploadFolder = this.plugin.settings.galleryUploadFolder;
-                                await this.plugin.ensureFolder(uploadFolder);
-                                
-                                const timestamp = Date.now();
-                                const sanitizedName = file.name.replace(/[^\w\s.-]/g, '').replace(/\s+/g, '_');
-                                const fileName = `${timestamp}_${sanitizedName}`;
-                                const filePath = `${uploadFolder}/${fileName}`;
-                                
-                                const arrayBuffer = await file.arrayBuffer();
-                                await this.app.vault.createBinary(filePath, arrayBuffer);
-                                
-                                this.item.profileImagePath = filePath;
-                                imagePathDesc.setText(`Current: ${filePath}`);
-                                
-                                new Notice(t('imageUploaded', fileName));
-                            } catch (error) {
-                                console.error('Error uploading image:', error);
-                                new Notice(t('errorUploadingImage'));
-                            }
-                        }
-                    };
-                    fileInput.click();
-                })
-            )
-            .addButton(button => button
-                .setIcon('cross')
-                .setTooltip(t('clearImage'))
-                .setClass('mod-warning')
-                .onClick(() => {
-                    this.item.profileImagePath = undefined;
-                    imagePathDesc.setText(`Current: ${this.item.profileImagePath || 'None'}`);
-                })
-            );
+            });
+        
+        const imagePathDesc = profileImageSetting.descEl.createEl('small', { 
+            text: t('currentValue', this.item.profileImagePath || t('none')) 
+        });
+        
+        // Add image selection buttons (Gallery, Upload, Vault, Clear)
+        addImageSelectionButtons(
+            profileImageSetting,
+            this.app,
+            this.plugin,
+            {
+                currentPath: this.item.profileImagePath,
+                onSelect: (path) => {
+                    this.item.profileImagePath = path;
+                },
+                descriptionEl: imagePathDesc
+            }
+        );
 
         new Setting(contentEl)
             .setName(t('description'))

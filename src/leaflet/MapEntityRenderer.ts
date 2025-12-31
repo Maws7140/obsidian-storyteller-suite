@@ -401,7 +401,11 @@ export class MapEntityRenderer {
 
         if (!entity) return null;
 
-        const icon = this.getEntityMarkerIcon(entityRef.entityType);
+        // Get entity image URL if available
+        const imagePath = this.getEntityImagePath(entity, entityRef.entityType);
+        const imageUrl = imagePath ? this.getImageUrl(imagePath) : null;
+
+        const icon = this.getEntityMarkerIcon(entityRef.entityType, imageUrl, entity.name);
         const marker = L.marker(coordinates, {
             icon,
             title: entity.name
@@ -470,40 +474,112 @@ export class MapEntityRenderer {
     }
 
     /**
-     * Get entity marker icon
+     * Get entity marker icon - shows entity image as circular avatar if available
+     * @param entityType Type of entity (character, event, item)
+     * @param imageUrl Optional image URL to display
+     * @param entityName Entity name for fallback initials
      */
-    private getEntityMarkerIcon(entityType: string): L.DivIcon {
+    private getEntityMarkerIcon(entityType: string, imageUrl?: string | null, entityName?: string): L.DivIcon {
+        const colors: Record<string, { bg: string; border: string }> = {
+            character: { bg: '#ef4444', border: '#dc2626' },
+            event: { bg: '#f59e0b', border: '#d97706' },
+            item: { bg: '#10b981', border: '#059669' }
+        };
+        
+        const color = colors[entityType] || colors.character;
+        
+        // If we have an image, show it as a circular avatar
+        if (imageUrl) {
+            const iconHtml = `
+                <div class="storyteller-entity-avatar" style="
+                    width: 36px;
+                    height: 36px;
+                    border-radius: 50%;
+                    border: 3px solid ${color.border};
+                    box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+                    overflow: hidden;
+                    background-color: ${color.bg};
+                ">
+                    <img src="${imageUrl}" alt="" style="
+                        width: 100%;
+                        height: 100%;
+                        object-fit: cover;
+                    " onerror="this.style.display='none'; this.parentElement.innerHTML='${this.getInitials(entityName)}'"/>
+                </div>
+            `;
+
+            return L.divIcon({
+                html: iconHtml,
+                className: `storyteller-entity-marker storyteller-entity-${entityType} has-image`,
+                iconSize: [36, 36],
+                iconAnchor: [18, 36],
+                popupAnchor: [0, -36]
+            });
+        }
+
+        // Fallback to SVG icons
         const icons: Record<string, string> = {
             character: `
-                <svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                    <circle cx="12" cy="8" r="4" fill="#ef4444" stroke="#fff" stroke-width="1.5"/>
-                    <path d="M12 14c-4 0-7 2-7 4v2h14v-2c0-2-3-4-7-4z" fill="#ef4444" stroke="#fff" stroke-width="1.5"/>
+                <svg width="28" height="28" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="12" cy="12" r="11" fill="${color.bg}" stroke="#fff" stroke-width="2"/>
+                    <circle cx="12" cy="9" r="3.5" fill="#fff"/>
+                    <path d="M12 14c-3.5 0-6 1.5-6 3.5v1h12v-1c0-2-2.5-3.5-6-3.5z" fill="#fff"/>
                 </svg>
             `,
             event: `
-                <svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"
-                          fill="none" stroke="#f59e0b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <svg width="28" height="28" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="12" cy="12" r="11" fill="${color.bg}" stroke="#fff" stroke-width="2"/>
+                    <path d="M8 7v10M12 5v14M16 8v8" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
                 </svg>
             `,
             item: `
-                <svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                    <rect x="6" y="4" width="12" height="16" rx="2" fill="#10b981" stroke="#fff" stroke-width="1.5"/>
-                    <path d="M9 8h6M9 12h6M9 16h4" stroke="#fff" stroke-width="1.5" stroke-linecap="round"/>
+                <svg width="28" height="28" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="12" cy="12" r="11" fill="${color.bg}" stroke="#fff" stroke-width="2"/>
+                    <rect x="8" y="6" width="8" height="12" rx="1" fill="none" stroke="#fff" stroke-width="2"/>
+                    <path d="M10 9h4M10 12h4M10 15h2" stroke="#fff" stroke-width="1.5" stroke-linecap="round"/>
                 </svg>
             `
         };
 
         const iconHtml = icons[entityType] || icons.character;
-        const color = entityType === 'character' ? '#ef4444' : entityType === 'event' ? '#f59e0b' : '#10b981';
 
         return L.divIcon({
             html: iconHtml,
             className: `storyteller-entity-marker storyteller-entity-${entityType}`,
-            iconSize: [24, 24],
-            iconAnchor: [12, 24],
-            popupAnchor: [0, -24]
+            iconSize: [28, 28],
+            iconAnchor: [14, 28],
+            popupAnchor: [0, -28]
         });
+    }
+
+    /**
+     * Get initials from entity name for fallback display
+     */
+    private getInitials(name?: string): string {
+        if (!name) return '?';
+        const words = name.trim().split(/\s+/);
+        if (words.length === 1) {
+            return words[0].substring(0, 2).toUpperCase();
+        }
+        return (words[0][0] + words[words.length - 1][0]).toUpperCase();
+    }
+
+    /**
+     * Get image path from an entity based on its type
+     */
+    private getEntityImagePath(entity: Character | Event | PlotItem, entityType: string): string | null {
+        switch (entityType) {
+            case 'character':
+                return (entity as Character).profileImagePath || null;
+            case 'item':
+                return (entity as PlotItem).profileImagePath || null;
+            case 'event':
+                // Events use images array - return first image
+                const eventImages = (entity as Event).images;
+                return eventImages && eventImages.length > 0 ? eventImages[0] : null;
+            default:
+                return null;
+        }
     }
 
     /**
@@ -995,4 +1071,5 @@ export class MapEntityRenderer {
         this.entityMarkers.clear();
     }
 }
+
 

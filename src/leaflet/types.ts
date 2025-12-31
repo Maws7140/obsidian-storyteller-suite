@@ -336,3 +336,64 @@ export interface LeafletMapSettings {
     markerClusterRadius: number;
     debounceTime: number; // Milliseconds
 }
+
+/**
+ * Metadata for generated map tiles
+ * Stored as metadata.json in the tile directory
+ */
+export interface TileMetadata {
+    /** Original image width in pixels */
+    width: number;
+
+    /** Original image height in pixels */
+    height: number;
+
+    /** Tile size in pixels (typically 256) */
+    tileSize: number;
+
+    /** Minimum zoom level generated */
+    minZoom: number;
+
+    /** Maximum zoom level generated */
+    maxZoom: number;
+
+    /** SHA-256 hash of source image (used for directory naming) */
+    imageHash: string;
+
+    /** Path to source image in vault */
+    sourcePath: string;
+
+    /** Timestamp when tiles were generated */
+    generatedAt: number;
+
+    /** Generation method used */
+    method: 'gdal2tiles' | 'canvas';
+
+    /** Plugin version that generated tiles */
+    version: string;
+}
+
+/**
+ * Progress information during tile generation
+ */
+export interface TileGenerationProgress {
+    /** Current zoom level being processed */
+    currentZoom: number;
+
+    /** Total number of zoom levels */
+    totalZoomLevels: number;
+
+    /** Progress percentage (0-100) */
+    percentComplete: number;
+
+    /** Number of tiles generated so far */
+    tilesGenerated: number;
+
+    /** Total tiles that will be generated */
+    totalTiles: number;
+}
+
+/**
+ * Callback function type for tile generation progress updates
+ */
+export type ProgressCallback = (progress: TileGenerationProgress) => void;
