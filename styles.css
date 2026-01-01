@@ -582,6 +582,74 @@
 }
 
 /* ===========================================
+   7b. MAP MARKER STACKING STYLES
+   ===========================================
+*/
+
+/* Wrapper for marker content */
+.storyteller-marker-wrapper {
+    position: relative;
+    display: inline-block;
+}
+
+/* Badge showing entity count on location markers */
+.storyteller-entity-count-badge {
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 4px;
+    background: #22c55e;
+    color: #fff;
+    font-size: 11px;
+    font-weight: 600;
+    border-radius: 9px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+    border: 2px solid #fff;
+    z-index: 10;
+}
+
+/* Badge showing stack count on entity markers */
+.storyteller-stack-badge {
+    position: absolute;
+    top: -4px;
+    right: -4px;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 3px;
+    background: #8b5cf6;
+    color: #fff;
+    font-size: 10px;
+    font-weight: 600;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+    border: 2px solid #fff;
+    z-index: 10;
+}
+
+/* Stacked entity markers */
+.storyteller-entity-marker.stacked {
+    z-index: 500 !important;
+}
+
+/* Entity avatar positioning for stacked markers */
+.storyteller-entity-avatar {
+    position: relative;
+}
+
+/* Location marker with entities gets a subtle glow */
+.storyteller-location-marker.has-entities {
+    filter: drop-shadow(0 0 4px rgba(34, 197, 94, 0.5));
+}
+
+/* ===========================================
    8. ADD ENTITY MODAL STYLES
    ===========================================
 */
@@ -704,10 +772,15 @@
     font-weight: 600;
 }
 
-.map-coords,
-.entity-id {
+.map-coords {
     color: var(--text-muted);
     font-size: 0.9em;
+}
+
+.entity-name,
+.map-id {
+    flex: 1;
+    font-weight: 500;
 }
 
 .remove-binding-btn,
@@ -4797,10 +4870,10 @@ body.mod-rtl .storyteller-group-members {
 
 .storyteller-placement-overlay {
     position: absolute;
-    top: 0;
+    top: 20px;
     left: 0;
     right: 0;
-    bottom: 0;
+    bottom: auto;
     z-index: 9999;
     pointer-events: none; /* Allow clicks to pass through to map */
     display: flex;
@@ -4810,32 +4883,36 @@ body.mod-rtl .storyteller-group-members {
 
 .storyteller-placement-instruction {
     background: var(--background-primary);
-    border: 2px solid var(--interactive-accent);
-    border-radius: 12px;
-    padding: 24px 32px;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+    border: 1px solid var(--interactive-accent);
+    border-radius: 20px;
+    padding: 8px 20px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
     text-align: center;
     animation: placement-fade-in 0.2s ease-out;
     max-width: 90%;
+    display: flex;
+    align-items: center;
+    gap: 10px;
 }
 
 .placement-icon {
-    font-size: 48px;
-    margin-bottom: 12px;
+    font-size: 20px;
+    margin-bottom: 0;
     animation: placement-pulse 2s ease-in-out infinite;
 }
 
 .placement-text {
-    font-size: 18px;
+    font-size: 14px;
     font-weight: 600;
     color: var(--text-normal);
-    margin-bottom: 8px;
+    margin-bottom: 0;
 }
 
 .placement-hint {
-    font-size: 14px;
+    font-size: 12px;
     color: var(--text-muted);
     font-style: italic;
+    margin-left: 4px;
 }
 
 @keyframes placement-fade-in {
@@ -4857,3 +4934,536 @@ body.mod-rtl .storyteller-group-members {
         transform: scale(1.1);
     }
 }
+
+/* Location Selection Modal - Compact for map usage */
+.storyteller-location-selection-modal {
+    width: 400px !important;
+    max-width: 90vw !important;
+    height: auto !important;
+}
+
+.storyteller-location-selection-modal .prompt-input {
+    margin-bottom: 8px;
+}
+
+.storyteller-location-selection-modal .prompt-results {
+    max-height: 300px;
+}
+
+/* ===========================================
+   COMPILE TAB STYLES
+   ===========================================
+   Styles for the manuscript compilation interface
+*/
+
+.storyteller-compile-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.storyteller-compile-header h3 {
+    margin: 0;
+    font-size: 1.2em;
+}
+
+.storyteller-draft-selector {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.storyteller-draft-selector select {
+    padding: 4px 8px;
+    border-radius: 4px;
+    background: var(--background-secondary);
+    color: var(--text-normal);
+    border: 1px solid var(--background-modifier-border);
+    min-width: 150px;
+}
+
+.storyteller-draft-selector button {
+    padding: 4px 10px;
+    border-radius: 4px;
+    background: var(--interactive-accent);
+    color: var(--text-on-accent);
+    border: none;
+    cursor: pointer;
+}
+
+.storyteller-draft-selector button:hover {
+    background: var(--interactive-accent-hover);
+}
+
+.storyteller-compile-stats {
+    margin-bottom: 20px;
+}
+
+.storyteller-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+    gap: 12px;
+}
+
+.storyteller-stat-item {
+    background: var(--background-secondary);
+    padding: 12px;
+    border-radius: 8px;
+    text-align: center;
+}
+
+.storyteller-stat-value {
+    font-size: 1.5em;
+    font-weight: 600;
+    color: var(--text-accent);
+}
+
+.storyteller-stat-label {
+    font-size: 0.85em;
+    color: var(--text-muted);
+    margin-top: 4px;
+}
+
+.storyteller-scene-order {
+    margin-bottom: 20px;
+}
+
+.storyteller-scene-order h4 {
+    margin-bottom: 12px;
+}
+
+.storyteller-ordered-scene-list {
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.storyteller-ordered-scene-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background: var(--background-primary);
+    border-bottom: 1px solid var(--background-modifier-border);
+    transition: background 0.15s ease;
+}
+
+.storyteller-ordered-scene-item:last-child {
+    border-bottom: none;
+}
+
+.storyteller-ordered-scene-item:hover {
+    background: var(--background-secondary);
+}
+
+.storyteller-ordered-scene-item input[type="checkbox"] {
+    margin: 0;
+    flex-shrink: 0;
+}
+
+.storyteller-ordered-scene-info {
+    flex: 1;
+    cursor: pointer;
+    min-width: 0;
+}
+
+.storyteller-scene-name {
+    font-weight: 500;
+    color: var(--text-normal);
+}
+
+.storyteller-scene-chapter {
+    font-size: 0.85em;
+    color: var(--text-muted);
+    margin-left: 4px;
+}
+
+.storyteller-ordered-scene-actions {
+    display: flex;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+.storyteller-ordered-scene-actions button {
+    padding: 2px 6px;
+    font-size: 0.9em;
+    background: var(--background-modifier-hover);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 4px;
+    cursor: pointer;
+    color: var(--text-muted);
+    line-height: 1;
+}
+
+.storyteller-ordered-scene-actions button:hover {
+    background: var(--interactive-accent);
+    color: var(--text-on-accent);
+    border-color: var(--interactive-accent);
+}
+
+.storyteller-compile-actions {
+    margin-top: 20px;
+    padding-top: 16px;
+    border-top: 1px solid var(--background-modifier-border);
+}
+
+.storyteller-compile-actions h4 {
+    margin-bottom: 12px;
+}
+
+.storyteller-compile-actions button.mod-cta {
+    font-size: 1em;
+    padding: 10px 20px;
+}
+
+/* Word count status bar */
+.storyteller-word-count-status {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.85em;
+    color: var(--text-muted);
+}
+
+.storyteller-word-count-status.goal-reached {
+    color: var(--text-success);
+}
+
+/* Compile progress indicator */
+.storyteller-compile-progress {
+    margin-top: 12px;
+    padding: 12px;
+    background: var(--background-secondary);
+    border-radius: 8px;
+}
+
+.storyteller-compile-progress-bar {
+    height: 8px;
+    background: var(--background-modifier-border);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.storyteller-compile-progress-fill {
+    height: 100%;
+    background: var(--interactive-accent);
+    transition: width 0.3s ease;
+}
+
+.storyteller-compile-progress-text {
+    margin-top: 8px;
+    font-size: 0.85em;
+    color: var(--text-muted);
+    text-align: center;
+}
+
+/* Scene order header with actions */
+.storyteller-scene-order-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+.storyteller-scene-order-header h4 {
+    margin: 0;
+}
+
+.storyteller-scene-order-actions {
+    display: flex;
+    gap: 6px;
+}
+
+.storyteller-scene-order-actions button {
+    padding: 4px 8px;
+    font-size: 0.9em;
+    background: var(--background-modifier-hover);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.storyteller-scene-order-actions button:hover {
+    background: var(--interactive-accent);
+    color: var(--text-on-accent);
+}
+
+/* Chapter dividers in scene list */
+.storyteller-chapter-divider {
+    padding: 8px 12px;
+    background: var(--background-secondary-alt);
+    border-bottom: 1px solid var(--background-modifier-border);
+    font-weight: 600;
+    font-size: 0.9em;
+    color: var(--text-accent);
+}
+
+.storyteller-chapter-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+/* Empty draft state */
+.storyteller-empty-draft {
+    padding: 24px;
+    text-align: center;
+    background: var(--background-secondary);
+    border-radius: 8px;
+}
+
+.storyteller-empty-draft p {
+    margin-bottom: 12px;
+    color: var(--text-muted);
+}
+
+/* Scene word count display */
+.storyteller-scene-wordcount {
+    font-size: 0.85em;
+    color: var(--text-muted);
+    margin-left: 4px;
+}
+
+/* Workflow selector */
+.storyteller-workflow-selector {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.storyteller-workflow-select {
+    flex: 1;
+    padding: 6px 10px;
+    border-radius: 4px;
+    background: var(--background-secondary);
+    color: var(--text-normal);
+    border: 1px solid var(--background-modifier-border);
+    font-size: 0.95em;
+}
+
+.storyteller-workflow-description {
+    font-size: 0.85em;
+    color: var(--text-muted);
+    font-style: italic;
+    margin-bottom: 12px;
+    padding: 8px;
+    background: var(--background-secondary);
+    border-radius: 4px;
+}
+
+/* ============================================
+   CHAPTER-GROUPED SCENES & CHAPTERS UI
+   ============================================ */
+
+.storyteller-chapter-group {
+    margin-bottom: 8px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 8px;
+    overflow: hidden;
+    background: var(--background-primary);
+}
+
+.storyteller-chapter-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 14px;
+    background: var(--background-secondary);
+    cursor: pointer;
+    border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.storyteller-chapter-header:hover {
+    background: var(--background-secondary-alt);
+}
+
+.storyteller-chapter-header-compact {
+    padding: 8px 12px;
+}
+
+.storyteller-chapter-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    transition: transform 0.15s ease;
+    color: var(--text-muted);
+}
+
+.storyteller-chapter-toggle.collapsed {
+    transform: rotate(-90deg);
+}
+
+.storyteller-chapter-toggle svg {
+    width: 16px;
+    height: 16px;
+}
+
+.storyteller-chapter-title-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: 1;
+}
+
+.storyteller-chapter-title-row strong {
+    font-size: 1em;
+    color: var(--text-normal);
+}
+
+.storyteller-chapter-scene-count {
+    font-size: 0.8em;
+    color: var(--text-muted);
+    background: var(--background-modifier-border);
+    padding: 2px 8px;
+    border-radius: 10px;
+}
+
+.storyteller-chapter-summary {
+    font-size: 0.85em;
+    color: var(--text-muted);
+    margin: 4px 0 0 0;
+    line-height: 1.3;
+}
+
+.storyteller-chapter-scenes {
+    padding: 8px 12px 12px 36px;
+    background: var(--background-primary);
+}
+
+.storyteller-chapter-scenes .storyteller-list-item,
+.storyteller-chapter-scenes .storyteller-scene-item {
+    margin: 6px 0;
+    padding: 8px 12px;
+    background: var(--background-secondary);
+    border-radius: 6px;
+    border: 1px solid transparent;
+}
+
+.storyteller-chapter-scenes .storyteller-list-item:hover,
+.storyteller-chapter-scenes .storyteller-scene-item:hover {
+    border-color: var(--interactive-accent);
+    background: var(--background-secondary-alt);
+}
+
+.storyteller-scene-item .storyteller-list-item-info strong {
+    font-size: 0.95em;
+}
+
+.storyteller-scene-preview {
+    font-size: 0.8em;
+    color: var(--text-muted);
+    margin: 4px 0 0 0;
+    line-height: 1.3;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 400px;
+}
+
+.storyteller-no-scenes {
+    font-size: 0.85em;
+    color: var(--text-faint);
+    font-style: italic;
+    padding: 8px 0;
+    margin: 0;
+}
+
+.storyteller-add-scene-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    margin-top: 8px;
+    color: var(--text-muted);
+    font-size: 0.85em;
+    cursor: pointer;
+    border-radius: 4px;
+    transition: all 0.15s ease;
+}
+
+.storyteller-add-scene-btn:hover {
+    background: var(--background-secondary);
+    color: var(--interactive-accent);
+}
+
+.storyteller-add-scene-btn svg {
+    width: 14px;
+    height: 14px;
+}
+
+.storyteller-unassigned-group {
+    border-color: var(--text-faint);
+    opacity: 0.85;
+}
+
+.storyteller-unassigned-group .storyteller-chapter-header {
+    background: var(--background-primary-alt);
+}
+
+.storyteller-unassigned-badge {
+    background: var(--text-faint) !important;
+}
+
+.storyteller-status-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 0.75em;
+    font-weight: 500;
+    text-transform: uppercase;
+}
+
+.storyteller-status-draft {
+    background: var(--background-modifier-border);
+    color: var(--text-muted);
+}
+
+.storyteller-status-wip,
+.storyteller-status-in-progress {
+    background: rgba(var(--color-yellow-rgb), 0.2);
+    color: var(--color-yellow);
+}
+
+.storyteller-status-revised,
+.storyteller-status-editing {
+    background: rgba(var(--color-blue-rgb), 0.2);
+    color: var(--color-blue);
+}
+
+.storyteller-status-complete,
+.storyteller-status-done,
+.storyteller-status-final {
+    background: rgba(var(--color-green-rgb), 0.2);
+    color: var(--color-green);
+}
+
+.storyteller-assign-chapter-btn {
+    padding: 4px 8px;
+    font-size: 0.8em;
+    background: var(--interactive-accent);
+    color: var(--text-on-accent);
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.storyteller-assign-chapter-btn:hover {
+    opacity: 0.9;
+}
+
+.storyteller-chapter-assign-select {
+    padding: 4px 8px;
+    font-size: 0.85em;
+    border-radius: 4px;
+    background: var(--background-secondary);
+    color: var(--text-normal);
+    border: 1px solid var(--interactive-accent);
+}
+
+

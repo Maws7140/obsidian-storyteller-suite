@@ -71,6 +71,7 @@ import { TagTimelineModal } from './modals/TagTimelineModal';
 import { ConflictDetector } from './utils/ConflictDetector';
 import { TimelineTrackManager } from './utils/TimelineTrackManager';
 import { EraManager } from './utils/EraManager';
+import { LocationMigration } from './utils/LocationMigration';
 
 /**
  * Plugin settings interface defining all configurable options
@@ -182,6 +183,43 @@ import { EraManager } from './utils/EraManager';
         tileSize: number;                   // Default: 256px
         showProgressNotifications: boolean; // Default: true
     };
+
+    // ============================================================
+    // Manuscript & Compile System Settings (Longform-inspired)
+    // ============================================================
+    
+    /** Story drafts for manuscript management */
+    storyDrafts?: import('./types').StoryDraft[];
+    
+    /** Currently active draft ID */
+    activeDraftId?: string;
+    
+    /** Compile workflows */
+    compileWorkflows?: import('./types').CompileWorkflow[];
+    
+    /** Default compile workflow name */
+    defaultCompileWorkflow?: string;
+    
+    /** Daily word count goal */
+    dailyWordCountGoal?: number;
+    
+    /** Whether to show word count in status bar */
+    showWordCountInStatusBar?: boolean;
+    
+    /** Whether to notify when word count goal is reached */
+    notifyOnGoalReached?: boolean;
+    
+    /** Whether to count word deletions toward goal */
+    countDeletionsForGoal?: boolean;
+    
+    /** Daily writing statistics */
+    dailyWritingStats?: import('./types').DailyWritingStats[];
+    
+    /** User compile scripts folder path */
+    compileScriptsFolder?: string;
+    
+    /** Default manuscript output folder */
+    manuscriptOutputFolder?: string;
 }
 
 /**
@@ -242,7 +280,19 @@ import { EraManager } from './utils/EraManager';
         autoGenerateThreshold: 2000,  // Generate tiles for images > 2000x2000px
         tileSize: 256,                 // Standard tile size
         showProgressNotifications: true // Show progress during generation
-    }
+    },
+    // Manuscript & Compile defaults
+    storyDrafts: [],
+    activeDraftId: undefined,
+    compileWorkflows: [],
+    defaultCompileWorkflow: 'Default Workflow',
+    dailyWordCountGoal: 1000,
+    showWordCountInStatusBar: true,
+    notifyOnGoalReached: true,
+    countDeletionsForGoal: false,
+    dailyWritingStats: [],
+    compileScriptsFolder: 'StorytellerSuite/CompileScripts',
+    manuscriptOutputFolder: 'StorytellerSuite/Manuscripts'
 }
 
 /**
@@ -1848,6 +1898,252 @@ export default class StorytellerSuitePlugin extends Plugin {
 				SaveNoteAsTemplateCommand.execute(this);
 			}
 		});
+
+		// ============================================================
+		// Manuscript & Compile Commands (Longform-inspired)
+		// ============================================================
+
+		// Navigate to next scene
+		this.addCommand({
+			id: 'next-scene',
+			name: 'Go to next scene in manuscript',
+			callback: async () => {
+				const { SceneOrderManager } = await import('./compile');
+				const manager = new SceneOrderManager(this);
+				const success = await manager.navigateToNextScene();
+				if (!success) {
+					new Notice('No next scene available');
+				}
+			}
+		});
+
+		// Navigate to previous scene
+		this.addCommand({
+			id: 'previous-scene',
+			name: 'Go to previous scene in manuscript',
+			callback: async () => {
+				const { SceneOrderManager } = await import('./compile');
+				const manager = new SceneOrderManager(this);
+				const success = await manager.navigateToPreviousScene();
+				if (!success) {
+					new Notice('No previous scene available');
+				}
+			}
+		});
+
+		// Compile manuscript
+		this.addCommand({
+			id: 'compile-manuscript',
+			name: 'Compile manuscript',
+			callback: async () => {
+				const activeStory = this.settings.stories.find(s => s.id === this.settings.activeStoryId);
+				if (!activeStory) {
+					new Notice('No active story selected');
+					return;
+				}
+
+				const { CompileEngine, SceneOrderManager } = await import('./compile');
+				const sceneManager = new SceneOrderManager(this);
+				const draft = sceneManager.getActiveDraft(activeStory);
+				
+				if (!draft) {
+					new Notice('No draft available. Create a draft first.');
+					return;
+				}
+
+				const engine = new CompileEngine(this.app, this);
+				new Notice('Compiling manuscript...');
+				
+				// Get or create default workflow
+				const workflow = engine.createDefaultWorkflow();
+				
+				try {
+					const result = await engine.compile(draft, workflow);
+					if (result.success) {
+						const wordCount = result.stats?.wordCount ?? 0;
+						new Notice(`Manuscript compiled! ${wordCount} words`);
+					} else {
+						new Notice(`Compile failed: ${result.error || 'Unknown error'}`);
+					}
+				} catch (error) {
+					console.error('Compile error:', error);
+					new Notice(`Compile failed: ${error}`);
+				}
+			}
+		});
+
+		// Create new draft
+		this.addCommand({
+			id: 'create-draft',
+			name: 'Create new manuscript draft',
+			callback: async () => {
+				const activeStory = this.settings.stories.find(s => s.id === this.settings.activeStoryId);
+				if (!activeStory) {
+					new Notice('No active story selected');
+					return;
+				}
+
+				const { SceneOrderManager } = await import('./compile');
+				const manager = new SceneOrderManager(this);
+				const existingDrafts = manager.getDraftsForStory(activeStory.id);
+				const draftNumber = existingDrafts.length + 1;
+				const draftName = `Draft ${draftNumber}`;
+				
+				await manager.createDraft(activeStory, draftName);
+				new Notice(`Created "${draftName}"`);
+			}
+		});
+
+		// Indent current scene
+		this.addCommand({
+			id: 'indent-scene',
+			name: 'Indent current scene in draft',
+			callback: async () => {
+				const { SceneOrderManager } = await import('./compile');
+				const manager = new SceneOrderManager(this);
+				const currentScene = await manager.getCurrentScene();
+				
+				if (!currentScene || !currentScene.id) {
+					new Notice('No scene file active');
+					return;
+				}
+
+				const story = manager.getStoryForScene(currentScene);
+				if (!story) {
+					new Notice('Could not determine story for scene');
+					return;
+				}
+
+				const draft = manager.getActiveDraft(story);
+				if (!draft) {
+					new Notice('No draft available');
+					return;
+				}
+
+				const success = await manager.indentScene(draft, currentScene.id);
+				if (success) {
+					new Notice('Scene indented');
+				} else {
+					new Notice('Cannot indent scene further');
+				}
+			}
+		});
+
+		// Unindent current scene
+		this.addCommand({
+			id: 'unindent-scene',
+			name: 'Unindent current scene in draft',
+			callback: async () => {
+				const { SceneOrderManager } = await import('./compile');
+				const manager = new SceneOrderManager(this);
+				const currentScene = await manager.getCurrentScene();
+				
+				if (!currentScene || !currentScene.id) {
+					new Notice('No scene file active');
+					return;
+				}
+
+				const story = manager.getStoryForScene(currentScene);
+				if (!story) {
+					new Notice('Could not determine story for scene');
+					return;
+				}
+
+				const draft = manager.getActiveDraft(story);
+				if (!draft) {
+					new Notice('No draft available');
+					return;
+				}
+
+				const success = await manager.unindentScene(draft, currentScene.id);
+				if (success) {
+					new Notice('Scene unindented');
+				} else {
+					new Notice('Cannot unindent scene further');
+				}
+			}
+		});
+
+		// Toggle scene in compile
+		this.addCommand({
+			id: 'toggle-scene-compile',
+			name: 'Toggle scene include in compile',
+			callback: async () => {
+				const { SceneOrderManager } = await import('./compile');
+				const manager = new SceneOrderManager(this);
+				const currentScene = await manager.getCurrentScene();
+				
+				if (!currentScene || !currentScene.id) {
+					new Notice('No scene file active');
+					return;
+				}
+
+				const story = manager.getStoryForScene(currentScene);
+				if (!story) {
+					new Notice('Could not determine story for scene');
+					return;
+				}
+
+				const draft = manager.getActiveDraft(story);
+				if (!draft) {
+					new Notice('No draft available');
+					return;
+				}
+
+				await manager.toggleSceneInCompile(draft, currentScene.id);
+				const ref = draft.sceneOrder.find(s => s.sceneId === currentScene.id);
+				const status = ref?.includeInCompile ? 'included' : 'excluded';
+				new Notice(`Scene ${status} from compile`);
+			}
+		});
+
+		// Show word count
+		this.addCommand({
+			id: 'show-word-count',
+			name: 'Show manuscript word count',
+			callback: async () => {
+				const activeStory = this.settings.stories.find(s => s.id === this.settings.activeStoryId);
+				if (!activeStory) {
+					new Notice('No active story selected');
+					return;
+				}
+
+				const { WordCountTracker, SceneOrderManager } = await import('./compile');
+				const sceneManager = new SceneOrderManager(this);
+				const wordTracker = new WordCountTracker(this);
+				
+				const draft = sceneManager.getActiveDraft(activeStory);
+				if (draft) {
+					const wordCount = await sceneManager.calculateDraftWordCount(draft);
+					new Notice(`📖 ${activeStory.name} - ${draft.name}\n${wordTracker.formatWordCount(wordCount)} words`);
+				} else {
+					const wordCount = await wordTracker.getStoryWordCount(activeStory);
+					new Notice(`📖 ${activeStory.name}\n${wordTracker.formatWordCount(wordCount)} words`);
+				}
+			}
+		});
+
+		// Data Migration Command
+		this.addCommand({
+			id: 'migrate-location-data',
+			name: 'Migrate location data (fix map bindings & entity refs)',
+			callback: async () => {
+				new Notice('Starting location data migration...');
+				try {
+					const migration = new LocationMigration(this);
+					const result = await migration.migrateAllLocations();
+					if (result.errors.length > 0) {
+						new Notice(`Migration completed with ${result.errors.length} errors. Check console for details.`);
+						console.error('Migration errors:', result.errors);
+					} else {
+						new Notice(`Migration complete! Updated ${result.migrated} location(s).`);
+					}
+				} catch (error) {
+					console.error('Migration failed:', error);
+					new Notice(`Migration failed: ${error}`);
+				}
+			}
+		});
 	}
 
 	/**
@@ -1942,17 +2238,14 @@ export default class StorytellerSuitePlugin extends Plugin {
 		}
 	}
 
-	// DEPRECATED: Map functionality has been deprecated
 	/**
 	 * Open the map editor view
-	 * If a map editor already exists, focuses it and optionally loads a specific map
-	 * Otherwise, creates a new map editor view in a panel
+	 * @deprecated Use activateMapView() instead - MapEditorView has been replaced by MapView
 	 * @param mapId Optional map ID to load in the editor
-	 * @deprecated Map functionality has been deprecated
 	 */
 	async openMapEditor(mapId?: string): Promise<void> {
-		console.warn('DEPRECATED: Map functionality has been deprecated');
-		new Notice('Map functionality has been deprecated');
+		// Redirect to the new MapView
+		await this.activateMapView(mapId);
 	}
 
 	/**
@@ -2904,31 +3197,196 @@ export default class StorytellerSuitePlugin extends Plugin {
 	/**
 	 * Delete a map file by moving it to trash
 	 * @param filePath Path to the map file to delete
-	 * @deprecated Map functionality has been deprecated
 	 */
 	async deleteMap(filePath: string): Promise<void> {
-		console.warn('DEPRECATED: Map functionality has been deprecated');
-		new Notice('Map functionality has been deprecated');
+		const file = this.app.vault.getAbstractFileByPath(normalizePath(filePath));
+		if (file instanceof TFile) {
+			// First, get the map data to find its ID
+			const mapData = await this.parseFile<StoryMap>(file, { name: '', markers: [], scale: 'custom' }, 'map');
+			const mapId = mapData?.id || mapData?.name;
+
+			// Clean up all references to this map if we have an ID
+			if (mapId) {
+				// Remove map bindings from all locations that reference this map
+				const locations = await this.listLocations();
+				for (const location of locations) {
+					let needsSave = false;
+
+					// Remove from mapBindings
+					if (location.mapBindings && location.mapBindings.length > 0) {
+						const originalLength = location.mapBindings.length;
+						location.mapBindings = location.mapBindings.filter(b => b.mapId !== mapId);
+						if (location.mapBindings.length !== originalLength) {
+							needsSave = true;
+						}
+					}
+
+					// Clear correspondingMapId if it points to this map
+					if (location.correspondingMapId === mapId) {
+						location.correspondingMapId = undefined;
+						needsSave = true;
+					}
+
+					if (needsSave) {
+						await this.saveLocation(location);
+					}
+				}
+
+				// Update parent/child map references in other maps
+				const maps = await this.listMaps();
+				for (const otherMap of maps) {
+					if (otherMap.filePath === filePath) continue; // Skip the map being deleted
+					
+					let needsSave = false;
+
+					// Remove from parent reference
+					if (otherMap.parentMapId === mapId) {
+						otherMap.parentMapId = undefined;
+						needsSave = true;
+					}
+
+					// Remove from child references
+					if (otherMap.childMapIds && otherMap.childMapIds.includes(mapId)) {
+						otherMap.childMapIds = otherMap.childMapIds.filter(id => id !== mapId);
+						needsSave = true;
+					}
+
+					if (needsSave) {
+						await this.saveMap(otherMap);
+					}
+				}
+			}
+
+			// Now delete the file
+			await this.app.vault.trash(file, true);
+			new Notice(`Map "${file.basename}" deleted and references cleaned up.`);
+			this.app.metadataCache.trigger("dataview:refresh-views");
+		} else {
+			new Notice(`Error: Could not find map file to delete at ${filePath}`);
+		}
 	}
 
 	/**
 	 * Link a location to a map
 	 * @param locationName Name of the location to link
 	 * @param mapId ID of the map to link to
-	 * @deprecated Map functionality has been deprecated
+	 * @deprecated Use LocationService.addMapBinding instead
 	 */
 	async linkLocationToMap(locationName: string, mapId: string): Promise<void> {
-		console.warn('DEPRECATED: Map functionality has been deprecated');
+		console.warn('DEPRECATED: Use LocationService.addMapBinding instead');
 	}
 
 	/**
 	 * Unlink a location from a map
 	 * @param locationName Name of the location to unlink
 	 * @param mapId ID of the map to unlink from
-	 * @deprecated Map functionality has been deprecated
+	 * @deprecated Use LocationService.removeMapBinding instead
 	 */
 	async unlinkLocationFromMap(locationName: string, mapId: string): Promise<void> {
-		console.warn('DEPRECATED: Map functionality has been deprecated');
+		console.warn('DEPRECATED: Use LocationService.removeMapBinding instead');
+	}
+
+	/**
+	 * Remove an entity from a map (and update both the location and entity data)
+	 * This comprehensive removal:
+	 * 1. Removes the entity from the location's entityRefs array
+	 * 2. Clears the entity's location reference (currentLocationId, location, currentLocation)
+	 * @param entityId ID of the entity to remove
+	 * @param entityType Type of entity (character, event, item)
+	 * @param locationId ID of the location to remove the entity from
+	 * @returns Promise that resolves when removal is complete
+	 */
+	async removeEntityFromMap(
+		entityId: string,
+		entityType: 'character' | 'event' | 'item',
+		locationId: string
+	): Promise<void> {
+		try {
+			// Step 1: Remove from location's entityRefs
+			const locations = await this.listLocations();
+			const location = locations.find(l => (l.id || l.name) === locationId);
+			
+			if (location && location.entityRefs) {
+				const originalLength = location.entityRefs.length;
+				location.entityRefs = location.entityRefs.filter(
+					ref => !(ref.entityId === entityId && ref.entityType === entityType)
+				);
+				
+				if (location.entityRefs.length !== originalLength) {
+					await this.saveLocation(location);
+				}
+			}
+
+			// Step 2: Clear the entity's location reference
+			switch (entityType) {
+				case 'character': {
+					const characters = await this.listCharacters();
+					const character = characters.find(c => (c.id || c.name) === entityId);
+					if (character && character.currentLocationId === locationId) {
+						character.currentLocationId = undefined;
+						await this.saveCharacter(character);
+					}
+					break;
+				}
+				case 'event': {
+					const events = await this.listEvents();
+					const event = events.find(e => (e.id || e.name) === entityId);
+					if (event) {
+						// Events store location as string (name/link), so we need to check if it matches
+						const locationName = location?.name;
+						if (event.location === locationId || event.location === locationName) {
+							event.location = undefined;
+							await this.saveEvent(event);
+						}
+					}
+					break;
+				}
+				case 'item': {
+					const items = await this.listPlotItems();
+					const item = items.find(i => (i.id || i.name) === entityId);
+					if (item) {
+						// Items store currentLocation as string (name/link)
+						const locationName = location?.name;
+						if (item.currentLocation === locationId || item.currentLocation === locationName) {
+							item.currentLocation = undefined;
+							await this.savePlotItem(item);
+						}
+					}
+					break;
+				}
+			}
+
+			// Get entity name for notice
+			let entityName = entityId;
+			switch (entityType) {
+				case 'character': {
+					const chars = await this.listCharacters();
+					const char = chars.find(c => (c.id || c.name) === entityId);
+					entityName = char?.name || entityId;
+					break;
+				}
+				case 'event': {
+					const events = await this.listEvents();
+					const event = events.find(e => (e.id || e.name) === entityId);
+					entityName = event?.name || entityId;
+					break;
+				}
+				case 'item': {
+					const items = await this.listPlotItems();
+					const item = items.find(i => (i.id || i.name) === entityId);
+					entityName = item?.name || entityId;
+					break;
+				}
+			}
+
+			new Notice(`Removed ${entityName} from ${location?.name || locationId}`);
+			this.app.metadataCache.trigger("dataview:refresh-views");
+			
+		} catch (error) {
+			console.error('Error removing entity from map:', error);
+			new Notice(`Error removing entity: ${error}`);
+			throw error;
+		}
 	}
 
 	/**

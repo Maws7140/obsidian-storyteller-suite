@@ -213,6 +213,18 @@ export interface Scene {
     linkedEvents?: string[];
     linkedItems?: string[];
     linkedGroups?: string[];
+    
+    // Manuscript/Compile fields (Longform-inspired)
+    /** Cached word count of scene content */
+    wordCount?: number;
+    /** Target word count for this scene */
+    targetWordCount?: number;
+    /** Whether to include in manuscript compilation */
+    includeInCompile?: boolean;
+    /** Scene synopsis for outline view */
+    synopsis?: string;
+    /** Point of view character for this scene */
+    povCharacter?: string;
 }
 
 
@@ -288,6 +300,9 @@ export interface MapBinding {
     /** ID of the map this location appears on */
     mapId: string;
     
+    /** Human-readable name of the map (for display in Properties) */
+    mapName?: string;
+    
     /** Coordinates [lat, lng] for real-world maps or [x, y] for image-based maps */
     coordinates: [number, number];
     
@@ -307,6 +322,9 @@ export interface MapBinding {
 export interface EntityRef {
     /** ID of the entity */
     entityId: string;
+    
+    /** Human-readable name of the entity (for display in Properties) */
+    entityName?: string;
     
     /** Type of entity */
     entityType: 'character' | 'event' | 'item' | 'culture' | 'organization' | 'custom';
@@ -1946,5 +1964,296 @@ export interface TimelineUIFilters {
     eras?: Set<string>;
     /** Filter by fork ID */
     forkId?: string;
+}
+
+// ============================================================
+// Manuscript & Compile System Types (Longform-inspired)
+// ============================================================
+
+/**
+ * Story Draft - supports multiple versions/drafts of a manuscript
+ * Each draft maintains its own scene ordering and compile workflow
+ */
+export interface StoryDraft {
+    /** Unique identifier */
+    id: string;
+    
+    /** ID of the story this draft belongs to */
+    storyId: string;
+    
+    /** Display name of the draft (e.g., "First Draft", "Revision 2") */
+    name: string;
+    
+    /** Draft number for ordering (1, 2, 3...) */
+    draftNumber: number;
+    
+    /** Ordered list of scenes with nesting information */
+    sceneOrder: IndentedSceneRef[];
+    
+    /** Active compile workflow name */
+    workflow?: string;
+    
+    /** Draft-level word count target */
+    wordCountGoal?: number;
+    
+    /** ISO string of creation date */
+    created: string;
+    
+    /** ISO string of last modification date */
+    modified: string;
+}
+
+/**
+ * Reference to a scene within a draft's ordered list
+ * Supports nesting/indentation for hierarchical organization
+ */
+export interface IndentedSceneRef {
+    /** Reference to Scene entity by ID or name */
+    sceneId: string;
+    
+    /** Indentation level (0 = top-level, 1+ = nested under previous) */
+    indent: number;
+    
+    /** Whether to include this scene in compilation */
+    includeInCompile: boolean;
+}
+
+/**
+ * Compile workflow defining a series of processing steps
+ */
+export interface CompileWorkflow {
+    /** Unique identifier */
+    id: string;
+    
+    /** Display name of the workflow */
+    name: string;
+    
+    /** Description of what this workflow produces */
+    description?: string;
+    
+    /** Ordered list of compile steps */
+    steps: CompileStepConfig[];
+}
+
+/**
+ * Configuration for a single compile step
+ */
+export interface CompileStepConfig {
+    /** Unique identifier for this step instance */
+    id: string;
+    
+    /** Type of compile step */
+    stepType: CompileStepType;
+    
+    /** Whether this step is enabled */
+    enabled: boolean;
+    
+    /** Step-specific options */
+    options: Record<string, unknown>;
+}
+
+/**
+ * Available compile step types
+ */
+export type CompileStepType = 
+    | 'strip-frontmatter'
+    | 'prepend-scene-title'
+    | 'prepend-chapter-title'
+    | 'remove-wikilinks'
+    | 'remove-comments'
+    | 'remove-strikethroughs'
+    | 'insert-separator'
+    | 'concatenate'
+    | 'concatenate-by-chapter'
+    | 'add-title-page'
+    | 'strip-scene-titles'
+    | 'extract-content-section'
+    | 'extract-beat-sheet'
+    | 'clean-content'
+    | 'apply-template'
+    | 'convert-to-plain-text'
+    | 'normalize-scene-separators'
+    | 'export-markdown'
+    | 'export-html'
+    | 'custom-regex'
+    | 'user-script';
+
+/**
+ * Step kind determines when in the pipeline a step runs
+ */
+export type CompileStepKind = 'scene' | 'join' | 'manuscript';
+
+/**
+ * Input for scene-level compile steps
+ */
+export interface SceneCompileInput {
+    /** Path to the scene file */
+    path: string;
+    
+    /** Scene file name */
+    name: string;
+    
+    /** Text contents of the scene */
+    contents: string;
+    
+    /** Scene's indentation level in the draft */
+    indentLevel: number;
+    
+    /** Scene's position in the ordered list (0-based) */
+    index: number;
+    
+    /** Chapter name if scene is assigned to a chapter */
+    chapterName?: string;
+    
+    /** Scene number (e.g., "1", "1.1", "2.3.1") */
+    sceneNumber?: string;
+}
+
+/**
+ * Input for manuscript-level compile steps
+ */
+export interface ManuscriptCompileInput {
+    /** Combined text contents */
+    contents: string;
+}
+
+/**
+ * Context passed to compile steps
+ */
+export interface CompileContext {
+    /** Current step kind */
+    kind: CompileStepKind;
+    
+    /** Step option values */
+    optionValues: Record<string, unknown>;
+    
+    /** Path to the project/story folder */
+    projectPath: string;
+    
+    /** The draft being compiled */
+    draft: StoryDraft;
+    
+    /** Story metadata */
+    story: Story;
+    
+    /** Obsidian App instance */
+    app: any;
+}
+
+/**
+ * Result of a compile operation
+ */
+export interface CompileResult {
+    /** Whether compilation succeeded */
+    success: boolean;
+    
+    /** Final manuscript content (if successful) */
+    manuscript?: string;
+    
+    /** Output file path (if exported) */
+    outputPath?: string;
+    
+    /** Error message (if failed) */
+    error?: string;
+    
+    /** Statistics about the compilation */
+    stats?: {
+        sceneCount: number;
+        wordCount: number;
+        characterCount: number;
+        compileDuration: number;
+    };
+}
+
+/**
+ * Definition of a compile step (for built-in and user steps)
+ */
+export interface CompileStepDefinition {
+    /** Unique step type identifier */
+    id: CompileStepType | string;
+    
+    /** Display name */
+    name: string;
+    
+    /** Description of what the step does */
+    description: string;
+    
+    /** Which kinds this step supports */
+    availableKinds: CompileStepKind[];
+    
+    /** Configurable options for the step */
+    options: CompileStepOption[];
+    
+    /** The compile function */
+    compile: (
+        input: SceneCompileInput[] | ManuscriptCompileInput,
+        context: CompileContext
+    ) => Promise<SceneCompileInput[] | ManuscriptCompileInput>;
+}
+
+/**
+ * Option definition for compile steps
+ */
+export interface CompileStepOption {
+    /** Unique option identifier */
+    id: string;
+    
+    /** Display name */
+    name: string;
+    
+    /** Description of the option */
+    description: string;
+    
+    /** Option type */
+    type: 'text' | 'boolean' | 'number' | 'select';
+    
+    /** Default value */
+    default: string | boolean | number;
+    
+    /** For select type: available choices */
+    choices?: { value: string; label: string }[];
+}
+
+/**
+ * Word count goal configuration
+ */
+export interface WordCountGoal {
+    /** Target word count */
+    target: number;
+    
+    /** Goal type */
+    type: 'daily' | 'session' | 'draft' | 'scene';
+    
+    /** Whether to count deletions toward goal */
+    countDeletions: boolean;
+    
+    /** Whether to show notification when goal is reached */
+    notifyOnComplete: boolean;
+}
+
+/**
+ * Daily writing statistics
+ */
+export interface DailyWritingStats {
+    /** Date in ISO format (YYYY-MM-DD) */
+    date: string;
+    
+    /** Words written */
+    wordsWritten: number;
+    
+    /** Words deleted */
+    wordsDeleted: number;
+    
+    /** Net word change */
+    netWords: number;
+    
+    /** Time spent writing (minutes) */
+    timeSpent: number;
+    
+    /** Scenes edited */
+    scenesEdited: string[];
+    
+    /** Whether daily goal was met */
+    goalMet: boolean;
 }
 
