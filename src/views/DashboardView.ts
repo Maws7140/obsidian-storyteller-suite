@@ -184,6 +184,7 @@ export class DashboardView extends ItemView {
             { id: 'references', label: t('references'), renderFn: this.renderReferencesContent.bind(this) },
             { id: 'chapters', label: t('chapters'), renderFn: this.renderChaptersContent.bind(this) },
             { id: 'scenes', label: t('scenes'), renderFn: this.renderScenesContent.bind(this) },
+            { id: 'compile', label: t('compile'), renderFn: this.renderCompileContent.bind(this) },
             { id: 'cultures', label: t('cultures'), renderFn: this.renderCulturesContent.bind(this) },
             { id: 'economies', label: t('economies'), renderFn: this.renderEconomiesContent.bind(this) },
             { id: 'magicsystems', label: t('magicSystems'), renderFn: this.renderMagicSystemsContent.bind(this) },
@@ -1918,12 +1919,12 @@ export class DashboardView extends ItemView {
         });
     }
 
-    /** Render the Chapters tab content */
+    /** Render the Chapters tab content - now shows scenes grouped under each chapter */
     async renderChaptersContent(container: HTMLElement) {
         container.empty();
         this.renderHeaderControls(container, 'Chapters', async (filter: string) => {
             this.currentFilter = filter;
-            await this.renderChaptersList(container);
+            await this.renderChaptersWithScenesList(container);
         }, () => {
             import('../modals/ChapterModal').then(({ ChapterModal }) => {
                 new ChapterModal(this.app, this.plugin, null, async (ch) => {
@@ -1933,10 +1934,167 @@ export class DashboardView extends ItemView {
             });
         }, t('createNew'));
 
-        await this.renderChaptersList(container);
+        await this.renderChaptersWithScenesList(container);
     }
 
-    /** Render just the chapters list (without header controls) */
+    /** Render chapters with their scenes nested underneath */
+    private async renderChaptersWithScenesList(container: HTMLElement) {
+        const existingListContainer = container.querySelector('.storyteller-list-container');
+        if (existingListContainer) existingListContainer.remove();
+
+        const chapters = (await this.plugin.listChapters()).filter(ch =>
+            ch.name.toLowerCase().includes(this.currentFilter) ||
+            ('' + (ch.number ?? '')).toLowerCase().includes(this.currentFilter) ||
+            (ch.summary || '').toLowerCase().includes(this.currentFilter) ||
+            (ch.tags || []).join(' ').toLowerCase().includes(this.currentFilter)
+        );
+
+        const allScenes = await this.plugin.listScenes();
+
+        const listContainer = container.createDiv('storyteller-list-container');
+        if (chapters.length === 0) {
+            listContainer.createEl('p', { text: t('noChaptersFound') + (this.currentFilter ? t('matchingFilter') : '') });
+            return;
+        }
+
+        // Sort chapters by number if available
+        chapters.sort((a, b) => (a.number ?? 999) - (b.number ?? 999));
+
+        chapters.forEach(ch => {
+            // Chapter header item
+            const chapterGroup = listContainer.createDiv('storyteller-chapter-group');
+            const chapterHeader = chapterGroup.createDiv('storyteller-chapter-header');
+            
+            // Expand/collapse toggle
+            const toggleBtn = chapterHeader.createDiv('storyteller-chapter-toggle');
+            toggleBtn.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M7 10l5 5 5-5z"/></svg>';
+            
+            const pfpContainer = chapterHeader.createDiv('storyteller-list-item-pfp');
+            if (ch.profileImagePath) {
+                const imgEl = pfpContainer.createEl('img');
+                try {
+                    imgEl.src = this.getImageSrc(ch.profileImagePath);
+                    imgEl.alt = ch.name;
+                } catch (e) {
+                    pfpContainer.createSpan({ text: '?' });
+                }
+            } else {
+                const badge = pfpContainer.createDiv({ cls: 'storyteller-pfp-placeholder', text: (ch.number ?? '?').toString() });
+                badge.title = 'Chapter number';
+            }
+
+            const infoEl = chapterHeader.createDiv('storyteller-list-item-info');
+            const title = ch.number != null ? `Chapter ${ch.number}: ${ch.name}` : ch.name;
+            
+            // Get scenes for this chapter
+            const chapterScenes = allScenes.filter(sc => 
+                sc.chapterId === ch.id || sc.chapterName === ch.name
+            );
+            
+            const titleRow = infoEl.createDiv('storyteller-chapter-title-row');
+            titleRow.createEl('strong', { text: title });
+            titleRow.createSpan({ cls: 'storyteller-chapter-scene-count', text: `${chapterScenes.length} scene${chapterScenes.length !== 1 ? 's' : ''}` });
+            
+            if (ch.summary) {
+                const preview = ch.summary.length > 100 ? ch.summary.substring(0, 100) + '…' : ch.summary;
+                infoEl.createEl('p', { text: preview, cls: 'storyteller-chapter-summary' });
+            }
+
+            const actionsEl = chapterHeader.createDiv('storyteller-list-item-actions');
+            this.addEditButton(actionsEl, () => {
+                import('../modals/ChapterModal').then(({ ChapterModal }) => {
+                    new ChapterModal(this.app, this.plugin, ch, async (updated) => {
+                        await this.plugin.saveChapter(updated);
+                        new Notice(`Chapter "${updated.name}" updated.`);
+                    }, async (toDelete) => {
+                        if (toDelete.filePath) await this.plugin.deleteChapter(toDelete.filePath);
+                    }).open();
+                });
+            });
+            this.addDeleteButton(actionsEl, async () => {
+                if (ch.filePath && confirm(`Delete chapter "${ch.name}"?`)) {
+                    await this.plugin.deleteChapter(ch.filePath);
+                }
+            });
+            this.addOpenFileButton(actionsEl, ch.filePath);
+
+            // Scenes container (nested under chapter)
+            const scenesContainer = chapterGroup.createDiv('storyteller-chapter-scenes');
+            
+            if (chapterScenes.length === 0) {
+                scenesContainer.createEl('p', { cls: 'storyteller-no-scenes', text: 'No scenes in this chapter' });
+            } else {
+                chapterScenes.forEach(sc => {
+                    this.renderSceneItem(scenesContainer, sc, true);
+                });
+            }
+            
+            // Add scene button for this chapter
+            const addSceneBtn = scenesContainer.createDiv('storyteller-add-scene-btn');
+            addSceneBtn.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>';
+            addSceneBtn.createSpan({ text: 'Add scene to this chapter' });
+            addSceneBtn.onclick = () => {
+                import('../modals/SceneModal').then(({ SceneModal }) => {
+                    const newScene = { chapterId: ch.id, chapterName: ch.name } as any;
+                    new SceneModal(this.app, this.plugin, newScene, async (sc) => {
+                        sc.chapterId = ch.id;
+                        sc.chapterName = ch.name;
+                        await this.plugin.saveScene(sc);
+                        new Notice(`Scene "${sc.name}" created in chapter "${ch.name}".`);
+                        await this.renderChaptersWithScenesList(container);
+                    }).open();
+                });
+            };
+
+            // Toggle expand/collapse
+            let isExpanded = true;
+            toggleBtn.onclick = (e) => {
+                e.stopPropagation();
+                isExpanded = !isExpanded;
+                scenesContainer.style.display = isExpanded ? 'block' : 'none';
+                toggleBtn.classList.toggle('collapsed', !isExpanded);
+            };
+        });
+
+        // Show unassigned scenes section
+        const unassignedScenes = allScenes.filter(sc => 
+            !sc.chapterId && !sc.chapterName
+        ).filter(sc =>
+            sc.name.toLowerCase().includes(this.currentFilter) ||
+            (sc.content || '').toLowerCase().includes(this.currentFilter)
+        );
+
+        if (unassignedScenes.length > 0) {
+            const unassignedGroup = listContainer.createDiv('storyteller-chapter-group storyteller-unassigned-group');
+            const unassignedHeader = unassignedGroup.createDiv('storyteller-chapter-header');
+            
+            const toggleBtn = unassignedHeader.createDiv('storyteller-chapter-toggle');
+            toggleBtn.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M7 10l5 5 5-5z"/></svg>';
+            
+            const pfpContainer = unassignedHeader.createDiv('storyteller-list-item-pfp');
+            pfpContainer.createDiv({ cls: 'storyteller-pfp-placeholder storyteller-unassigned-badge', text: '?' });
+            
+            const infoEl = unassignedHeader.createDiv('storyteller-list-item-info');
+            const titleRow = infoEl.createDiv('storyteller-chapter-title-row');
+            titleRow.createEl('strong', { text: 'Unassigned Scenes' });
+            titleRow.createSpan({ cls: 'storyteller-chapter-scene-count', text: `${unassignedScenes.length} scene${unassignedScenes.length !== 1 ? 's' : ''}` });
+
+            const scenesContainer = unassignedGroup.createDiv('storyteller-chapter-scenes');
+            unassignedScenes.forEach(sc => {
+                this.renderSceneItem(scenesContainer, sc, true, chapters);
+            });
+
+            let isExpanded = true;
+            toggleBtn.onclick = (e) => {
+                e.stopPropagation();
+                isExpanded = !isExpanded;
+                scenesContainer.style.display = isExpanded ? 'block' : 'none';
+                toggleBtn.classList.toggle('collapsed', !isExpanded);
+            };
+        }
+    }
+
+    /** Render just the chapters list (without header controls) - legacy flat view */
     private async renderChaptersList(container: HTMLElement) {
         const existingListContainer = container.querySelector('.storyteller-list-container');
         if (existingListContainer) existingListContainer.remove();
@@ -2003,12 +2161,12 @@ export class DashboardView extends ItemView {
         });
     }
 
-    /** Render the Scenes tab content */
+    /** Render the Scenes tab content - now groups by chapter */
     async renderScenesContent(container: HTMLElement) {
         container.empty();
         this.renderHeaderControls(container, 'Scenes', async (filter: string) => {
             this.currentFilter = filter;
-            await this.renderScenesList(container);
+            await this.renderScenesGroupedByChapter(container);
         }, () => {
             import('../modals/SceneModal').then(({ SceneModal }) => {
                 new SceneModal(this.app, this.plugin, null, async (sc) => {
@@ -2018,10 +2176,220 @@ export class DashboardView extends ItemView {
             });
         }, t('createNew'));
 
-        await this.renderScenesList(container);
+        await this.renderScenesGroupedByChapter(container);
     }
 
-    /** Render just the scenes list */
+    /** Render scenes grouped by chapter */
+    private async renderScenesGroupedByChapter(container: HTMLElement) {
+        const existingListContainer = container.querySelector('.storyteller-list-container');
+        if (existingListContainer) existingListContainer.remove();
+
+        const allScenes = (await this.plugin.listScenes()).filter(sc =>
+            sc.name.toLowerCase().includes(this.currentFilter) ||
+            (sc.content || '').toLowerCase().includes(this.currentFilter) ||
+            (sc.status || '').toLowerCase().includes(this.currentFilter) ||
+            (sc.chapterName || '').toLowerCase().includes(this.currentFilter) ||
+            (sc.tags || []).join(' ').toLowerCase().includes(this.currentFilter)
+        );
+
+        const chapters = await this.plugin.listChapters();
+        chapters.sort((a, b) => (a.number ?? 999) - (b.number ?? 999));
+
+        const listContainer = container.createDiv('storyteller-list-container');
+        
+        if (allScenes.length === 0) {
+            listContainer.createEl('p', { text: t('noScenesFound' as any) || ('No scenes found.' + (this.currentFilter ? t('matchingFilter') : '')) });
+            return;
+        }
+
+        // Group scenes by chapter
+        const scenesByChapter = new Map<string, { chapter: typeof chapters[0] | null; scenes: typeof allScenes }>();
+        
+        // Initialize with chapters
+        for (const ch of chapters) {
+            scenesByChapter.set(ch.id || ch.name, { chapter: ch, scenes: [] });
+        }
+        scenesByChapter.set('__unassigned__', { chapter: null, scenes: [] });
+
+        // Assign scenes to chapters
+        for (const sc of allScenes) {
+            const chapterKey = sc.chapterId || sc.chapterName;
+            if (chapterKey && scenesByChapter.has(chapterKey)) {
+                scenesByChapter.get(chapterKey)!.scenes.push(sc);
+            } else if (chapterKey) {
+                // Try to find by name
+                const foundChapter = chapters.find(c => c.name === sc.chapterName || c.id === sc.chapterId);
+                if (foundChapter) {
+                    const key = foundChapter.id || foundChapter.name;
+                    if (!scenesByChapter.has(key)) {
+                        scenesByChapter.set(key, { chapter: foundChapter, scenes: [] });
+                    }
+                    scenesByChapter.get(key)!.scenes.push(sc);
+                } else {
+                    scenesByChapter.get('__unassigned__')!.scenes.push(sc);
+                }
+            } else {
+                scenesByChapter.get('__unassigned__')!.scenes.push(sc);
+            }
+        }
+
+        // Render each chapter group (only those with scenes or if filter is empty)
+        for (const [key, { chapter, scenes }] of scenesByChapter) {
+            if (key === '__unassigned__') continue; // Handle unassigned separately
+            if (scenes.length === 0 && this.currentFilter) continue; // Skip empty chapters when filtering
+
+            const chapterGroup = listContainer.createDiv('storyteller-chapter-group');
+            const chapterHeader = chapterGroup.createDiv('storyteller-chapter-header storyteller-chapter-header-compact');
+            
+            // Expand/collapse toggle
+            const toggleBtn = chapterHeader.createDiv('storyteller-chapter-toggle');
+            toggleBtn.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M7 10l5 5 5-5z"/></svg>';
+            
+            const infoEl = chapterHeader.createDiv('storyteller-list-item-info');
+            const chapterNum = chapter?.number ?? '?';
+            const chapterName = chapter?.name ?? 'Unknown Chapter';
+            const title = `Chapter ${chapterNum}: ${chapterName}`;
+            
+            const titleRow = infoEl.createDiv('storyteller-chapter-title-row');
+            titleRow.createEl('strong', { text: title });
+            titleRow.createSpan({ cls: 'storyteller-chapter-scene-count', text: `${scenes.length} scene${scenes.length !== 1 ? 's' : ''}` });
+
+            // Scenes container
+            const scenesContainer = chapterGroup.createDiv('storyteller-chapter-scenes');
+            
+            if (scenes.length === 0) {
+                scenesContainer.createEl('p', { cls: 'storyteller-no-scenes', text: 'No scenes in this chapter' });
+            } else {
+                scenes.forEach(sc => {
+                    this.renderSceneItem(scenesContainer, sc, false);
+                });
+            }
+
+            // Toggle expand/collapse
+            let isExpanded = true;
+            toggleBtn.onclick = (e) => {
+                e.stopPropagation();
+                isExpanded = !isExpanded;
+                scenesContainer.style.display = isExpanded ? 'block' : 'none';
+                toggleBtn.classList.toggle('collapsed', !isExpanded);
+            };
+        }
+
+        // Render unassigned scenes
+        const unassigned = scenesByChapter.get('__unassigned__')!.scenes;
+        if (unassigned.length > 0) {
+            const unassignedGroup = listContainer.createDiv('storyteller-chapter-group storyteller-unassigned-group');
+            const unassignedHeader = unassignedGroup.createDiv('storyteller-chapter-header storyteller-chapter-header-compact');
+            
+            const toggleBtn = unassignedHeader.createDiv('storyteller-chapter-toggle');
+            toggleBtn.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M7 10l5 5 5-5z"/></svg>';
+            
+            const infoEl = unassignedHeader.createDiv('storyteller-list-item-info');
+            const titleRow = infoEl.createDiv('storyteller-chapter-title-row');
+            titleRow.createEl('strong', { text: 'Unassigned Scenes' });
+            titleRow.createSpan({ cls: 'storyteller-chapter-scene-count', text: `${unassigned.length} scene${unassigned.length !== 1 ? 's' : ''}` });
+
+            const scenesContainer = unassignedGroup.createDiv('storyteller-chapter-scenes');
+            unassigned.forEach(sc => {
+                this.renderSceneItem(scenesContainer, sc, false, chapters);
+            });
+
+            let isExpanded = true;
+            toggleBtn.onclick = (e) => {
+                e.stopPropagation();
+                isExpanded = !isExpanded;
+                scenesContainer.style.display = isExpanded ? 'block' : 'none';
+                toggleBtn.classList.toggle('collapsed', !isExpanded);
+            };
+        }
+    }
+
+    /** Helper to render a single scene item */
+    private renderSceneItem(container: HTMLElement, sc: any, showChapterAssign: boolean, chapters?: any[]) {
+        const itemEl = container.createDiv('storyteller-list-item storyteller-scene-item');
+
+        const pfpContainer = itemEl.createDiv('storyteller-list-item-pfp');
+        if (sc.profileImagePath) {
+            const imgEl = pfpContainer.createEl('img');
+            try {
+                imgEl.src = this.getImageSrc(sc.profileImagePath);
+                imgEl.alt = sc.name;
+            } catch (e) {
+                pfpContainer.createSpan({ text: '?' });
+            }
+        } else {
+            pfpContainer.createDiv({ cls: 'storyteller-pfp-placeholder', text: sc.name.substring(0, 1) });
+        }
+
+        const infoEl = itemEl.createDiv('storyteller-list-item-info');
+        infoEl.createEl('strong', { text: sc.name });
+        
+        const meta = infoEl.createDiv('storyteller-list-item-extra');
+        if (sc.status) {
+            const statusBadge = meta.createSpan({ cls: `storyteller-status-badge storyteller-status-${(sc.status || 'draft').toLowerCase().replace(/\s+/g, '-')}`, text: sc.status });
+        }
+        if (sc.tags && sc.tags.length > 0) {
+            meta.createSpan({ text: sc.tags.map((t: string) => `#${t}`).join(' ') });
+        }
+        
+        if (sc.content) {
+            const preview = sc.content.length > 80 ? sc.content.substring(0, 80) + '…' : sc.content;
+            infoEl.createEl('p', { cls: 'storyteller-scene-preview', text: preview });
+        }
+
+        const actionsEl = itemEl.createDiv('storyteller-list-item-actions');
+        
+        // Chapter assignment dropdown for unassigned scenes
+        if (showChapterAssign && chapters && !sc.chapterId && !sc.chapterName) {
+            const assignBtn = actionsEl.createEl('button', { cls: 'storyteller-assign-chapter-btn', text: 'Assign' });
+            assignBtn.onclick = async () => {
+                const select = container.createEl('select', { cls: 'storyteller-chapter-assign-select' });
+                select.createEl('option', { value: '', text: 'Select chapter...' });
+                chapters.forEach(ch => {
+                    select.createEl('option', { value: ch.id || ch.name, text: `${ch.number ?? '?'}. ${ch.name}` });
+                });
+                select.onchange = async () => {
+                    const selectedChapter = chapters.find(c => (c.id || c.name) === select.value);
+                    if (selectedChapter) {
+                        sc.chapterId = selectedChapter.id;
+                        sc.chapterName = selectedChapter.name;
+                        await this.plugin.saveScene(sc);
+                        new Notice(`Scene assigned to chapter "${selectedChapter.name}"`);
+                        // Refresh the view
+                        const tabContent = container.closest('.storyteller-tab-content');
+                        if (tabContent) {
+                            if (tabContent.classList.contains('chapters-content')) {
+                                await this.renderChaptersWithScenesList(tabContent as HTMLElement);
+                            } else {
+                                await this.renderScenesGroupedByChapter(tabContent as HTMLElement);
+                            }
+                        }
+                    }
+                };
+                assignBtn.replaceWith(select);
+                select.focus();
+            };
+        }
+        
+        this.addEditButton(actionsEl, () => {
+            import('../modals/SceneModal').then(({ SceneModal }) => {
+                new SceneModal(this.app, this.plugin, sc, async (updated) => {
+                    await this.plugin.saveScene(updated);
+                    new Notice(`Scene "${updated.name}" updated.`);
+                }, async (toDelete) => {
+                    if (toDelete.filePath) await this.plugin.deleteScene(toDelete.filePath);
+                }).open();
+            });
+        });
+        this.addDeleteButton(actionsEl, async () => {
+            if (sc.filePath && confirm(`Delete scene "${sc.name}"?`)) {
+                await this.plugin.deleteScene(sc.filePath);
+            }
+        });
+        this.addOpenFileButton(actionsEl, sc.filePath);
+    }
+
+    /** Render just the scenes list - legacy flat view */
     private async renderScenesList(container: HTMLElement) {
         const existingListContainer = container.querySelector('.storyteller-list-container');
         if (existingListContainer) existingListContainer.remove();
@@ -2114,6 +2482,291 @@ export class DashboardView extends ItemView {
             });
             this.addOpenFileButton(actionsEl, sc.filePath);
         });
+    }
+
+    /** Render the Compile/Manuscript tab content */
+    async renderCompileContent(container: HTMLElement) {
+        container.empty();
+        
+        // Get active story
+        const activeStory = this.plugin.settings.stories.find(s => s.id === this.plugin.settings.activeStoryId);
+        if (!activeStory) {
+            container.createEl('p', { text: t('noStorySelected') });
+            return;
+        }
+
+        // Import compile utilities
+        const { SceneOrderManager, WordCountTracker, CompileEngine } = await import('../compile');
+        const sceneManager = new SceneOrderManager(this.plugin);
+        const wordTracker = new WordCountTracker(this.plugin);
+
+        // Get drafts for this story
+        const drafts = sceneManager.getDraftsForStory(activeStory.id);
+        const activeDraft = sceneManager.getActiveDraft(activeStory);
+
+        // Header with draft selector
+        const headerEl = container.createDiv('storyteller-compile-header');
+        headerEl.createEl('h3', { text: t('manuscript') });
+        
+        // Draft selector
+        const draftSelectorEl = headerEl.createDiv('storyteller-draft-selector');
+        draftSelectorEl.createSpan({ text: `${t('draft')}: ` });
+        
+        if (drafts.length === 0) {
+            const createBtn = draftSelectorEl.createEl('button', { text: t('createFirstDraft') });
+            createBtn.onclick = async () => {
+                await sceneManager.createDraft(activeStory, 'First Draft');
+                await this.renderCompileContent(container);
+            };
+        } else {
+            const draftSelect = draftSelectorEl.createEl('select');
+            drafts.forEach(draft => {
+                const opt = draftSelect.createEl('option', { value: draft.id, text: draft.name });
+                if (activeDraft && draft.id === activeDraft.id) {
+                    opt.selected = true;
+                }
+            });
+            draftSelect.onchange = async () => {
+                await sceneManager.setActiveDraft(draftSelect.value);
+                await this.renderCompileContent(container);
+            };
+            
+            // New draft button
+            const newDraftBtn = draftSelectorEl.createEl('button', { text: '+' });
+            newDraftBtn.title = t('createNewDraft');
+            newDraftBtn.onclick = async () => {
+                const draftNumber = drafts.length + 1;
+                await sceneManager.createDraft(activeStory, `Draft ${draftNumber}`);
+                await this.renderCompileContent(container);
+            };
+            
+            // Sync button - discovers new scenes and removes deleted ones
+            const syncBtn = draftSelectorEl.createEl('button', { text: '🔄' });
+            syncBtn.title = t('syncScenes');
+            syncBtn.onclick = async () => {
+                if (activeDraft) {
+                    const result = await sceneManager.syncDraftWithScenes(activeDraft);
+                    if (result.added.length > 0 || result.removed.length > 0) {
+                        new Notice(`Synced: ${result.added.length} added, ${result.removed.length} removed`);
+                    } else {
+                        new Notice('Draft is up to date');
+                    }
+                    await this.renderCompileContent(container);
+                }
+            };
+        }
+
+        // Statistics section
+        const statsEl = container.createDiv('storyteller-compile-stats');
+        
+        if (activeDraft) {
+            const stats = await sceneManager.getDraftStatistics(activeDraft);
+            const orderedScenes = await sceneManager.getOrderedScenes(activeDraft);
+            
+            const statsGrid = statsEl.createDiv('storyteller-stats-grid');
+            
+            // Word count
+            const wordStatEl = statsGrid.createDiv('storyteller-stat-item');
+            wordStatEl.createDiv({ cls: 'storyteller-stat-value', text: wordTracker.formatWordCount(stats.totalWords) });
+            wordStatEl.createDiv({ cls: 'storyteller-stat-label', text: t('words') });
+            
+            // Scene count
+            const sceneStatEl = statsGrid.createDiv('storyteller-stat-item');
+            sceneStatEl.createDiv({ cls: 'storyteller-stat-value', text: `${stats.includedScenes}/${stats.totalScenes}` });
+            sceneStatEl.createDiv({ cls: 'storyteller-stat-label', text: t('scenes') });
+            
+            // Chapter count
+            const chapterStatEl = statsGrid.createDiv('storyteller-stat-item');
+            chapterStatEl.createDiv({ cls: 'storyteller-stat-value', text: `${stats.chapterCount}` });
+            chapterStatEl.createDiv({ cls: 'storyteller-stat-label', text: t('chapterCount') });
+            
+            // Writing streak
+            const streak = wordTracker.getWritingStreak();
+            const streakStatEl = statsGrid.createDiv('storyteller-stat-item');
+            streakStatEl.createDiv({ cls: 'storyteller-stat-value', text: `${streak}` });
+            streakStatEl.createDiv({ cls: 'storyteller-stat-label', text: t('dayStreak') });
+            
+            // Daily goal progress
+            const goalProgress = wordTracker.getDailyGoalProgress();
+            const goalStatEl = statsGrid.createDiv('storyteller-stat-item');
+            goalStatEl.createDiv({ cls: 'storyteller-stat-value', text: `${Math.round(goalProgress)}%` });
+            goalStatEl.createDiv({ cls: 'storyteller-stat-label', text: t('dailyGoal') });
+        }
+
+        // Scene ordering section
+        if (activeDraft) {
+            const sceneOrderEl = container.createDiv('storyteller-scene-order');
+            
+            // Scene order header with action buttons
+            const sceneOrderHeader = sceneOrderEl.createDiv('storyteller-scene-order-header');
+            sceneOrderHeader.createEl('h4', { text: t('sceneOrder') });
+            
+            const sceneOrderActions = sceneOrderHeader.createDiv('storyteller-scene-order-actions');
+            
+            // Reorder by chapter button
+            const reorderBtn = sceneOrderActions.createEl('button', { text: '📚' });
+            reorderBtn.title = t('reorderByChapter');
+            reorderBtn.onclick = async () => {
+                await sceneManager.reorderByChapter(activeDraft);
+                new Notice('Scenes reordered by chapter');
+                await this.renderCompileContent(container);
+            };
+            
+            const orderedScenes = await sceneManager.getOrderedScenes(activeDraft);
+            const sceneListEl = sceneOrderEl.createDiv('storyteller-ordered-scene-list');
+            
+            if (orderedScenes.length === 0) {
+                const emptyEl = sceneListEl.createDiv('storyteller-empty-draft');
+                emptyEl.createEl('p', { text: t('noScenesInDraft') });
+                
+                // Add auto-populate button if there are scenes available
+                const allScenes = await this.plugin.listScenes();
+                if (allScenes.length > 0) {
+                    const populateBtn = emptyEl.createEl('button', { 
+                        text: `🔄 Add ${allScenes.length} existing scene${allScenes.length > 1 ? 's' : ''}`,
+                        cls: 'mod-cta'
+                    });
+                    populateBtn.onclick = async () => {
+                        await sceneManager.autoPopulateDraft(activeDraft);
+                        await this.renderCompileContent(container);
+                    };
+                }
+            } else {
+                // Group scenes by chapter for visual clarity
+                let currentChapter: string | undefined = undefined;
+                
+                for (const orderedScene of orderedScenes) {
+                    const sceneChapter = orderedScene.chapterName || t('unassigned');
+                    
+                    // Add chapter separator if chapter changed
+                    if (sceneChapter !== currentChapter) {
+                        currentChapter = sceneChapter;
+                        const chapterDivider = sceneListEl.createDiv('storyteller-chapter-divider');
+                        chapterDivider.createSpan({ text: `📖 ${currentChapter}`, cls: 'storyteller-chapter-label' });
+                    }
+                    
+                    const sceneEl = sceneListEl.createDiv('storyteller-ordered-scene-item');
+                    sceneEl.style.paddingLeft = `${(orderedScene.indentLevel + 1) * 16}px`;
+                    
+                    // Include checkbox
+                    const sceneId = orderedScene.scene.id || orderedScene.scene.name;
+                    const ref = activeDraft.sceneOrder.find(s => s.sceneId === sceneId);
+                    const checkbox = sceneEl.createEl('input', { type: 'checkbox' });
+                    checkbox.checked = ref?.includeInCompile ?? true;
+                    checkbox.onclick = async () => {
+                        await sceneManager.toggleSceneInCompile(activeDraft, sceneId);
+                    };
+                    
+                    // Scene info
+                    const infoEl = sceneEl.createDiv('storyteller-ordered-scene-info');
+                    infoEl.createSpan({ text: orderedScene.scene.name, cls: 'storyteller-scene-name' });
+                    
+                    // Show word count if available
+                    if (orderedScene.scene.wordCount) {
+                        infoEl.createSpan({ 
+                            text: ` (${wordTracker.formatWordCount(orderedScene.scene.wordCount)})`, 
+                            cls: 'storyteller-scene-wordcount' 
+                        });
+                    }
+                    
+                    // Click to open
+                    infoEl.onclick = () => {
+                        if (orderedScene.scene.filePath) {
+                            this.app.workspace.openLinkText(orderedScene.scene.filePath, '', false);
+                        }
+                    };
+                    
+                    // Movement buttons
+                    const actionsEl = sceneEl.createDiv('storyteller-ordered-scene-actions');
+                    
+                    const upBtn = actionsEl.createEl('button', { text: '↑' });
+                    upBtn.title = t('moveUp');
+                    upBtn.onclick = async () => {
+                        await sceneManager.moveSceneUp(activeDraft, sceneId);
+                        await this.renderCompileContent(container);
+                    };
+                    
+                    const downBtn = actionsEl.createEl('button', { text: '↓' });
+                    downBtn.title = t('moveDown');
+                    downBtn.onclick = async () => {
+                        await sceneManager.moveSceneDown(activeDraft, sceneId);
+                        await this.renderCompileContent(container);
+                    };
+                    
+                    const indentBtn = actionsEl.createEl('button', { text: '→' });
+                    indentBtn.title = t('indent');
+                    indentBtn.onclick = async () => {
+                        await sceneManager.indentScene(activeDraft, sceneId);
+                        await this.renderCompileContent(container);
+                    };
+                    
+                    const unindentBtn = actionsEl.createEl('button', { text: '←' });
+                    unindentBtn.title = t('unindent');
+                    unindentBtn.onclick = async () => {
+                        await sceneManager.unindentScene(activeDraft, sceneId);
+                        await this.renderCompileContent(container);
+                    };
+                }
+            }
+        }
+
+        // Compile actions section
+        const compileActionsEl = container.createDiv('storyteller-compile-actions');
+        compileActionsEl.createEl('h4', { text: t('compile') });
+        
+        // Workflow selector
+        const workflowSelectorEl = compileActionsEl.createDiv('storyteller-workflow-selector');
+        workflowSelectorEl.createSpan({ text: `${t('exportFormat')}: ` });
+        
+        const engine = new CompileEngine(this.app, this.plugin);
+        const presetWorkflows = engine.getPresetWorkflows();
+        
+        const workflowSelect = workflowSelectorEl.createEl('select', { cls: 'storyteller-workflow-select' });
+        presetWorkflows.forEach(workflow => {
+            const opt = workflowSelect.createEl('option', { 
+                value: workflow.id, 
+                text: workflow.name 
+            });
+            if (workflow.description) {
+                opt.title = workflow.description;
+            }
+        });
+        
+        // Compile button
+        const compileBtn = compileActionsEl.createEl('button', { text: `📖 ${t('compileManuscript')}`, cls: 'mod-cta' });
+        compileBtn.onclick = async () => {
+            if (!activeDraft) {
+                new Notice(t('noDraftAvailable'));
+                return;
+            }
+            
+            const selectedWorkflowId = workflowSelect.value;
+            const workflow = engine.getWorkflowById(selectedWorkflowId) || engine.createDefaultWorkflow();
+            
+            new Notice(`${t('compiling')} (${workflow.name})`);
+            
+            try {
+                const result = await engine.compile(activeDraft, workflow);
+                if (result.success) {
+                    const wordCount = result.stats?.wordCount ?? 0;
+                    new Notice(`${t('compileComplete')} ${wordCount} ${t('words').toLowerCase()}`);
+                } else {
+                    new Notice(`${t('compileFailed')}: ${result.error || 'Unknown error'}`);
+                }
+            } catch (error) {
+                console.error('Compile error:', error);
+                new Notice(`${t('compileFailed')}: ${error}`);
+            }
+        };
+        
+        // Workflow description
+        const workflowDescEl = compileActionsEl.createDiv('storyteller-workflow-description');
+        workflowDescEl.setText(presetWorkflows[0]?.description || '');
+        
+        workflowSelect.onchange = () => {
+            const selectedWorkflow = presetWorkflows.find(w => w.id === workflowSelect.value);
+            workflowDescEl.setText(selectedWorkflow?.description || '');
+        };
     }
 
     renderCharacterList(characters: Character[], listContainer: HTMLElement, viewContainer: HTMLElement) {

@@ -68,6 +68,40 @@ export class LocationModal extends ResponsiveModal {
         contentEl.empty();
         contentEl.createEl('h2', { text: this.isNew ? t('createNewLocation') : `${t('edit')} ${this.location.name}` });
 
+        // Load entity lists for name resolution
+        const [maps, characters, events, plotItems] = await Promise.all([
+            this.plugin.listMaps(),
+            this.plugin.listCharacters(),
+            this.plugin.listEvents(),
+            this.plugin.listPlotItems()
+        ]);
+
+        // Helper to resolve map ID to name
+        const getMapName = (mapId: string): string => {
+            const map = maps.find(m => m.id === mapId || m.name === mapId);
+            return map?.name || mapId;
+        };
+
+        // Helper to resolve entity ID to name based on type
+        const getEntityName = (entityId: string, entityType: string): string => {
+            switch (entityType) {
+                case 'character': {
+                    const char = characters.find(c => c.id === entityId || c.name === entityId);
+                    return char?.name || entityId;
+                }
+                case 'event': {
+                    const event = events.find(e => e.id === entityId || e.name === entityId);
+                    return event?.name || entityId;
+                }
+                case 'item': {
+                    const item = plotItems.find(i => i.id === entityId || i.name === entityId);
+                    return item?.name || entityId;
+                }
+                default:
+                    return entityId;
+            }
+        };
+
         // --- Template Selector (for new locations) ---
         if (this.isNew) {
             new Setting(contentEl)
@@ -235,8 +269,9 @@ export class LocationModal extends ResponsiveModal {
             const bindingsList = mapBindingsContainer.createEl('ul', { cls: 'storyteller-map-bindings-list' });
             for (const binding of this.location.mapBindings) {
                 const li = bindingsList.createEl('li');
+                const mapName = getMapName(binding.mapId);
                 li.innerHTML = `
-                    <span class="map-id">${binding.mapId}</span>
+                    <span class="map-id">${mapName}</span>
                     <span class="map-coords">[${binding.coordinates[0]}, ${binding.coordinates[1]}]</span>
                     <button class="remove-binding-btn">Remove</button>
                 `;
@@ -266,19 +301,28 @@ export class LocationModal extends ResponsiveModal {
             const entitiesList = entitiesContainer.createEl('ul', { cls: 'storyteller-entities-list' });
             for (const entityRef of this.location.entityRefs) {
                 const li = entitiesList.createEl('li');
+                const entityName = getEntityName(entityRef.entityId, entityRef.entityType);
+                const supportedTypes = ['character', 'event', 'item'];
+                const isSupportedType = supportedTypes.includes(entityRef.entityType);
+                
                 li.innerHTML = `
                     <span class="entity-type">${entityRef.entityType}</span>
-                    <span class="entity-id">${entityRef.entityId}</span>
+                    <span class="entity-name">${entityName}</span>
                     ${entityRef.relationship ? `<span class="entity-rel">(${entityRef.relationship})</span>` : ''}
-                    <button class="remove-entity-btn">Remove</button>
+                    ${isSupportedType ? '<button class="remove-entity-btn">Remove</button>' : ''}
                 `;
-                li.querySelector('.remove-entity-btn')?.addEventListener('click', async () => {
-                    await locationService.removeEntityFromLocation(
-                        this.location.id || this.location.name,
-                        entityRef.entityId
-                    );
-                    this.refresh();
-                });
+                
+                if (isSupportedType) {
+                    li.querySelector('.remove-entity-btn')?.addEventListener('click', async () => {
+                        // Use comprehensive removal that also clears entity's location reference
+                        await this.plugin.removeEntityFromMap(
+                            entityRef.entityId,
+                            entityRef.entityType as 'character' | 'event' | 'item',
+                            this.location.id || this.location.name
+                        );
+                        this.refresh();
+                    });
+                }
             }
         } else {
             entitiesContainer.createDiv({ text: 'No entities at this location', cls: 'no-entities' });
