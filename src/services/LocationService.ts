@@ -170,10 +170,21 @@ export class LocationService {
             location.mapBindings = [];
         }
 
+        // Resolve map name for human-readable display in Properties
+        let mapName: string | undefined;
+        try {
+            const maps = await this.plugin.listMaps();
+            const map = maps.find(m => (m.id || m.name) === mapId);
+            mapName = map?.name;
+        } catch (e) {
+            console.warn('Could not resolve map name for binding:', e);
+        }
+
         // Check if binding already exists for this map
         const existingIndex = location.mapBindings.findIndex(b => b.mapId === mapId);
         const binding: MapBinding = {
             mapId,
+            mapName,
             coordinates,
             markerType: options?.markerType,
             markerIcon: options?.markerIcon,
@@ -198,6 +209,49 @@ export class LocationService {
 
         location.mapBindings = location.mapBindings.filter(b => b.mapId !== mapId);
         await this.plugin.saveLocation(location);
+    }
+
+    /**
+     * Find all locations at or near specific coordinates on a map
+     * Uses proximity-based matching with configurable tolerance
+     * @param mapId The map ID to search on
+     * @param coordinates The [x, y] or [lat, lng] coordinates to search near
+     * @param tolerance Distance tolerance (pixels for image maps, degrees for real-world maps)
+     * @returns Array of locations within tolerance, sorted by distance
+     */
+    async findLocationsAtCoordinates(
+        mapId: string,
+        coordinates: [number, number],
+        tolerance: number
+    ): Promise<Location[]> {
+        const allLocations = await this.plugin.listLocations();
+
+        // Filter locations that have bindings on this map
+        const locationsOnMap = allLocations.filter(loc =>
+            loc.mapBindings?.some(binding => binding.mapId === mapId)
+        );
+
+        if (locationsOnMap.length === 0) {
+            return [];
+        }
+
+        const nearbyLocations: { location: Location; distance: number }[] = [];
+
+        for (const location of locationsOnMap) {
+            const binding = location.mapBindings!.find(b => b.mapId === mapId);
+            if (!binding) continue;
+
+            const distance = this.calculateDistance(coordinates, binding.coordinates);
+
+            if (distance <= tolerance) {
+                nearbyLocations.push({ location, distance });
+            }
+        }
+
+        // Sort by distance
+        nearbyLocations.sort((a, b) => a.distance - b.distance);
+
+        return nearbyLocations.map(item => item.location);
     }
 
     /**
@@ -268,15 +322,47 @@ export class LocationService {
             location.entityRefs = [];
         }
 
+        // Resolve entity name for human-readable display in Properties
+        let entityName: string | undefined;
+        try {
+            switch (entityRef.entityType) {
+                case 'character': {
+                    const characters = await this.plugin.listCharacters();
+                    const char = characters.find(c => (c.id || c.name) === entityRef.entityId);
+                    entityName = char?.name;
+                    break;
+                }
+                case 'event': {
+                    const events = await this.plugin.listEvents();
+                    const event = events.find(e => (e.id || e.name) === entityRef.entityId);
+                    entityName = event?.name;
+                    break;
+                }
+                case 'item': {
+                    const items = await this.plugin.listPlotItems();
+                    const item = items.find(i => (i.id || i.name) === entityRef.entityId);
+                    entityName = item?.name;
+                    break;
+                }
+            }
+        } catch (e) {
+            console.warn('Could not resolve entity name for ref:', e);
+        }
+
         // Check if entity already exists at this location
         const existingIndex = location.entityRefs.findIndex(
             e => e.entityId === entityRef.entityId && e.entityType === entityRef.entityType
         );
 
+        const refWithName: EntityRef = {
+            ...entityRef,
+            entityName
+        };
+
         if (existingIndex >= 0) {
-            location.entityRefs[existingIndex] = entityRef;
+            location.entityRefs[existingIndex] = refWithName;
         } else {
-            location.entityRefs.push(entityRef);
+            location.entityRefs.push(refWithName);
         }
 
         await this.plugin.saveLocation(location);
