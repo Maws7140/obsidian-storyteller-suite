@@ -120,7 +120,59 @@ export class LocationMigration {
         // Step 3: Update childLocationIds
         await this.updateChildLocationIds(migrated);
 
+        // Step 4: Populate readable names in mapBindings and entityRefs
+        migrated = await this.populateReadableNames(migrated);
+
         return migrated;
+    }
+
+    /**
+     * Populate human-readable names in mapBindings and entityRefs for better UX in Properties
+     */
+    async populateReadableNames(location: Location): Promise<Location> {
+        // Populate map names in mapBindings
+        if (location.mapBindings && location.mapBindings.length > 0) {
+            const maps = await this.plugin.listMaps();
+            for (const binding of location.mapBindings) {
+                if (!binding.mapName) {
+                    const map = maps.find(m => (m.id || m.name) === binding.mapId);
+                    if (map) {
+                        binding.mapName = map.name;
+                    }
+                }
+            }
+        }
+
+        // Populate entity names in entityRefs
+        if (location.entityRefs && location.entityRefs.length > 0) {
+            const characters = await this.plugin.listCharacters();
+            const events = await this.plugin.listEvents();
+            const items = await this.plugin.listPlotItems();
+
+            for (const ref of location.entityRefs) {
+                if (!ref.entityName) {
+                    switch (ref.entityType) {
+                        case 'character': {
+                            const char = characters.find(c => (c.id || c.name) === ref.entityId);
+                            if (char) ref.entityName = char.name;
+                            break;
+                        }
+                        case 'event': {
+                            const event = events.find(e => (e.id || e.name) === ref.entityId);
+                            if (event) ref.entityName = event.name;
+                            break;
+                        }
+                        case 'item': {
+                            const item = items.find(i => (i.id || i.name) === ref.entityId);
+                            if (item) ref.entityName = item.name;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        return location;
     }
 
     /**
@@ -137,7 +189,9 @@ export class LocationMigration {
                 const needsMigration = 
                     (location.parentLocation && !location.parentLocationId) ||
                     (location.mapId && (!location.mapBindings || location.mapBindings.length === 0)) ||
-                    (!location.childLocationIds);
+                    (!location.childLocationIds) ||
+                    (location.mapBindings?.some(b => !b.mapName)) ||
+                    (location.entityRefs?.some(r => !r.entityName));
 
                 if (needsMigration) {
                     const migratedLocation = await this.migrateLocation(location);
@@ -182,6 +236,13 @@ export class LocationMigration {
                 return true;
             }
             if (!location.childLocationIds) {
+                return true;
+            }
+            // Check if mapBindings or entityRefs need readable names
+            if (location.mapBindings?.some(b => !b.mapName)) {
+                return true;
+            }
+            if (location.entityRefs?.some(r => !r.entityName)) {
                 return true;
             }
         }

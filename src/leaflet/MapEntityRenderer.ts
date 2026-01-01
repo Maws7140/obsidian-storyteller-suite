@@ -287,6 +287,28 @@ export class MapEntityRenderer {
     }
 
     /**
+     * Check if two coordinates are at the same position (within small tolerance)
+     */
+    private areCoordinatesEqual(coord1: [number, number], coord2: [number, number], tolerance: number = 0.0001): boolean {
+        return Math.abs(coord1[0] - coord2[0]) < tolerance && Math.abs(coord1[1] - coord2[1]) < tolerance;
+    }
+
+    /**
+     * Calculate offset for stacked markers to spread them in a circular pattern
+     */
+    private calculateStackOffset(index: number, total: number): [number, number] {
+        if (total <= 1) return [0, 0];
+        
+        // Spread markers in a circle around the center
+        const radius = 15; // pixels
+        const angle = (2 * Math.PI * index) / total;
+        return [
+            Math.cos(angle) * radius,
+            Math.sin(angle) * radius
+        ];
+    }
+
+    /**
      * Render entities on the map based on their locations
      */
     async renderEntitiesForMap(mapId: string): Promise<void> {
@@ -300,12 +322,42 @@ export class MapEntityRenderer {
         itemsLayer.clearLayers();
         this.entityMarkers.clear();
 
+        // Group entities by coordinate to detect stacking
+        const entityGroups: Map<string, { entityRef: EntityRef; coordinates: [number, number]; location: Location }[]> = new Map();
+
         for (const location of locations) {
             const binding = location.mapBindings?.find(b => b.mapId === mapId);
             if (!binding || !location.entityRefs) continue;
 
+            const coordKey = `${binding.coordinates[0].toFixed(4)},${binding.coordinates[1].toFixed(4)}`;
+            
             for (const entityRef of location.entityRefs) {
-                const marker = await this.createEntityMarker(entityRef, binding.coordinates, location);
+                if (!entityGroups.has(coordKey)) {
+                    entityGroups.set(coordKey, []);
+                }
+                entityGroups.get(coordKey)!.push({
+                    entityRef,
+                    coordinates: binding.coordinates,
+                    location
+                });
+            }
+        }
+
+        // Render entities with offset for stacked ones
+        for (const [coordKey, entities] of entityGroups) {
+            const totalAtLocation = entities.length;
+            
+            for (let i = 0; i < entities.length; i++) {
+                const { entityRef, coordinates, location } = entities[i];
+                const offset = this.calculateStackOffset(i, totalAtLocation);
+                
+                const marker = await this.createEntityMarker(
+                    entityRef, 
+                    coordinates, 
+                    location,
+                    totalAtLocation > 1 ? { stackIndex: i, stackTotal: totalAtLocation, offset } : undefined
+                );
+                
                 if (marker) {
                     switch (entityRef.entityType) {
                         case 'character':
@@ -370,7 +422,8 @@ export class MapEntityRenderer {
     private async createEntityMarker(
         entityRef: EntityRef,
         coordinates: [number, number],
-        location: Location
+        location: Location,
+        stackInfo?: { stackIndex: number; stackTotal: number; offset: [number, number] }
     ): Promise<L.Marker | null> {
         let entity: Character | Event | PlotItem | null = null;
 
@@ -405,7 +458,7 @@ export class MapEntityRenderer {
         const imagePath = this.getEntityImagePath(entity, entityRef.entityType);
         const imageUrl = imagePath ? this.getImageUrl(imagePath) : null;
 
-        const icon = this.getEntityMarkerIcon(entityRef.entityType, imageUrl, entity.name);
+        const icon = this.getEntityMarkerIcon(entityRef.entityType, imageUrl, entity.name, stackInfo);
         const marker = L.marker(coordinates, {
             icon,
             title: entity.name
@@ -418,8 +471,9 @@ export class MapEntityRenderer {
             className: 'storyteller-map-popup'
         });
 
-        // Build tooltip for hover - quick info
-        const tooltipContent = this.buildEntityTooltip(entity, entityRef);
+        // Build tooltip for hover - quick info including stack position if stacked
+        const stackLabel = stackInfo ? ` (${stackInfo.stackIndex + 1}/${stackInfo.stackTotal})` : '';
+        const tooltipContent = this.buildEntityTooltip(entity, entityRef) + stackLabel;
         marker.bindTooltip(tooltipContent, {
             direction: 'top',
             offset: [0, -20],
@@ -438,6 +492,13 @@ export class MapEntityRenderer {
             }
         });
 
+        // Context menu for entity marker
+        marker.on('contextmenu', (e) => {
+            if (entity) {
+                this.showEntityContextMenu(e, entity, entityRef, location);
+            }
+        });
+
         return marker;
     }
 
@@ -445,10 +506,16 @@ export class MapEntityRenderer {
      * Get location marker icon
      */
     private getLocationMarkerIcon(location: Location, binding: MapBinding): L.Icon | L.DivIcon {
+        // Count entities at this location
+        const entityCount = location.entityRefs?.length || 0;
+        const entityBadge = entityCount > 0 
+            ? `<span class="storyteller-entity-count-badge">${entityCount}</span>` 
+            : '';
+
         if (binding.markerIcon) {
             // Custom icon specified
             return L.divIcon({
-                html: binding.markerIcon,
+                html: `<div class="storyteller-marker-wrapper">${binding.markerIcon}${entityBadge}</div>`,
                 className: 'storyteller-custom-marker',
                 iconSize: [32, 32],
                 iconAnchor: [16, 32]
@@ -458,15 +525,18 @@ export class MapEntityRenderer {
         // Default location icon
         const color = '#3b82f6';
         const iconHtml = `
-            <svg width="32" height="32" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <circle cx="12" cy="10" r="8" fill="${color}" stroke="#fff" stroke-width="2"/>
-                <circle cx="12" cy="10" r="3" fill="#fff"/>
-            </svg>
+            <div class="storyteller-marker-wrapper">
+                <svg width="32" height="32" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="12" cy="10" r="8" fill="${color}" stroke="#fff" stroke-width="2"/>
+                    <circle cx="12" cy="10" r="3" fill="#fff"/>
+                </svg>
+                ${entityBadge}
+            </div>
         `;
 
         return L.divIcon({
             html: iconHtml,
-            className: 'storyteller-location-marker',
+            className: `storyteller-location-marker${entityCount > 0 ? ' has-entities' : ''}`,
             iconSize: [32, 32],
             iconAnchor: [16, 32],
             popupAnchor: [0, -32]
@@ -478,8 +548,14 @@ export class MapEntityRenderer {
      * @param entityType Type of entity (character, event, item)
      * @param imageUrl Optional image URL to display
      * @param entityName Entity name for fallback initials
+     * @param stackInfo Optional stacking information for offset positioning
      */
-    private getEntityMarkerIcon(entityType: string, imageUrl?: string | null, entityName?: string): L.DivIcon {
+    private getEntityMarkerIcon(
+        entityType: string, 
+        imageUrl?: string | null, 
+        entityName?: string,
+        stackInfo?: { stackIndex: number; stackTotal: number; offset: [number, number] }
+    ): L.DivIcon {
         const colors: Record<string, { bg: string; border: string }> = {
             character: { bg: '#ef4444', border: '#dc2626' },
             event: { bg: '#f59e0b', border: '#d97706' },
@@ -487,6 +563,16 @@ export class MapEntityRenderer {
         };
         
         const color = colors[entityType] || colors.character;
+        
+        // Calculate transform for stacked markers
+        const transform = stackInfo && stackInfo.stackTotal > 1
+            ? `transform: translate(${stackInfo.offset[0]}px, ${stackInfo.offset[1]}px);`
+            : '';
+        
+        // Show stack badge on first marker only when there are multiple
+        const stackBadge = stackInfo && stackInfo.stackIndex === 0 && stackInfo.stackTotal > 1
+            ? `<span class="storyteller-stack-badge">${stackInfo.stackTotal}</span>`
+            : '';
         
         // If we have an image, show it as a circular avatar
         if (imageUrl) {
@@ -499,18 +585,21 @@ export class MapEntityRenderer {
                     box-shadow: 0 2px 6px rgba(0,0,0,0.3);
                     overflow: hidden;
                     background-color: ${color.bg};
+                    ${transform}
+                    position: relative;
                 ">
                     <img src="${imageUrl}" alt="" style="
                         width: 100%;
                         height: 100%;
                         object-fit: cover;
                     " onerror="this.style.display='none'; this.parentElement.innerHTML='${this.getInitials(entityName)}'"/>
+                    ${stackBadge}
                 </div>
             `;
 
             return L.divIcon({
                 html: iconHtml,
-                className: `storyteller-entity-marker storyteller-entity-${entityType} has-image`,
+                className: `storyteller-entity-marker storyteller-entity-${entityType} has-image${stackInfo && stackInfo.stackTotal > 1 ? ' stacked' : ''}`,
                 iconSize: [36, 36],
                 iconAnchor: [18, 36],
                 popupAnchor: [0, -36]
@@ -520,24 +609,27 @@ export class MapEntityRenderer {
         // Fallback to SVG icons
         const icons: Record<string, string> = {
             character: `
-                <svg width="28" height="28" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <svg width="28" height="28" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" style="${transform}">
                     <circle cx="12" cy="12" r="11" fill="${color.bg}" stroke="#fff" stroke-width="2"/>
                     <circle cx="12" cy="9" r="3.5" fill="#fff"/>
                     <path d="M12 14c-3.5 0-6 1.5-6 3.5v1h12v-1c0-2-2.5-3.5-6-3.5z" fill="#fff"/>
                 </svg>
+                ${stackBadge}
             `,
             event: `
-                <svg width="28" height="28" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <svg width="28" height="28" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" style="${transform}">
                     <circle cx="12" cy="12" r="11" fill="${color.bg}" stroke="#fff" stroke-width="2"/>
                     <path d="M8 7v10M12 5v14M16 8v8" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
                 </svg>
+                ${stackBadge}
             `,
             item: `
-                <svg width="28" height="28" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <svg width="28" height="28" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" style="${transform}">
                     <circle cx="12" cy="12" r="11" fill="${color.bg}" stroke="#fff" stroke-width="2"/>
                     <rect x="8" y="6" width="8" height="12" rx="1" fill="none" stroke="#fff" stroke-width="2"/>
                     <path d="M10 9h4M10 12h4M10 15h2" stroke="#fff" stroke-width="1.5" stroke-linecap="round"/>
                 </svg>
+                ${stackBadge}
             `
         };
 
@@ -545,7 +637,7 @@ export class MapEntityRenderer {
 
         return L.divIcon({
             html: iconHtml,
-            className: `storyteller-entity-marker storyteller-entity-${entityType}`,
+            className: `storyteller-entity-marker storyteller-entity-${entityType}${stackInfo && stackInfo.stackTotal > 1 ? ' stacked' : ''}`,
             iconSize: [28, 28],
             iconAnchor: [14, 28],
             popupAnchor: [0, -28]
@@ -1054,6 +1146,120 @@ export class MapEntityRenderer {
                     new Notice('Edit marker position functionality coming soon');
                 });
         });
+
+        menu.showAtMouseEvent(e.originalEvent);
+    }
+
+    /**
+     * Show context menu for entity marker
+     */
+    private showEntityContextMenu(
+        e: L.LeafletMouseEvent,
+        entity: Character | Event | PlotItem,
+        entityRef: EntityRef,
+        location: Location
+    ): void {
+        const menu = new Menu();
+        const entityId = entity.id || entity.name;
+        const locationId = location.id || location.name;
+        const entityTypeName = entityRef.entityType.charAt(0).toUpperCase() + entityRef.entityType.slice(1);
+        
+        // Check if this is a supported entity type for removal
+        const supportedTypes: ('character' | 'event' | 'item')[] = ['character', 'event', 'item'];
+        const isSupportedType = supportedTypes.includes(entityRef.entityType as 'character' | 'event' | 'item');
+
+        menu.addItem(item => {
+            item.setTitle(`Open ${entityTypeName} Note`)
+                .setIcon('file-text')
+                .onClick(() => {
+                    if (entity.filePath) {
+                        this.plugin.app.workspace.openLinkText(entity.filePath, '', true);
+                    }
+                });
+        });
+
+        menu.addItem(item => {
+            item.setTitle('View Location')
+                .setIcon('map-pin')
+                .onClick(() => {
+                    if (location.filePath) {
+                        this.plugin.app.workspace.openLinkText(location.filePath, '', true);
+                    }
+                });
+        });
+
+        menu.addSeparator();
+
+        menu.addItem(item => {
+            item.setTitle(`Edit ${entityTypeName}`)
+                .setIcon('edit')
+                .onClick(() => {
+                    // Open the appropriate modal based on entity type
+                    switch (entityRef.entityType) {
+                        case 'character':
+                            const { CharacterModal } = require('../modals/CharacterModal');
+                            new CharacterModal(this.plugin.app, this.plugin, entity as Character, async (updated) => {
+                                await this.plugin.saveCharacter(updated);
+                                new Notice(`${updated.name} updated`);
+                            }).open();
+                            break;
+                        case 'event':
+                            const { EventModal } = require('../modals/EventModal');
+                            new EventModal(this.plugin.app, this.plugin, entity as Event, async (updated) => {
+                                await this.plugin.saveEvent(updated);
+                                new Notice(`${updated.name} updated`);
+                            }).open();
+                            break;
+                        case 'item':
+                            const { PlotItemModal } = require('../modals/PlotItemModal');
+                            new PlotItemModal(this.plugin.app, this.plugin, entity as PlotItem, async (updated) => {
+                                await this.plugin.savePlotItem(updated);
+                                new Notice(`${updated.name} updated`);
+                            }).open();
+                            break;
+                    }
+                });
+        });
+
+        menu.addSeparator();
+
+        // Only show remove option for supported entity types
+        if (isSupportedType) {
+            menu.addItem(item => {
+                item.setTitle('Remove from Map')
+                    .setIcon('trash-2')
+                    .onClick(async () => {
+                        // Confirmation
+                        const confirmed = confirm(
+                            `Remove "${entity.name}" from "${location.name}"?\n\n` +
+                            `This will:\n` +
+                            `• Remove the marker from this map\n` +
+                            `• Clear the ${entityRef.entityType}'s location reference\n\n` +
+                            `The ${entityRef.entityType} itself will NOT be deleted.`
+                        );
+
+                        if (confirmed) {
+                            try {
+                                await this.plugin.removeEntityFromMap(
+                                    entityId,
+                                    entityRef.entityType as 'character' | 'event' | 'item',
+                                    locationId
+                                );
+
+                                // Refresh the map to remove the marker
+                                // Get current map ID and refresh
+                                const mapView = this.plugin.app.workspace.getLeavesOfType('storyteller-map-view')[0];
+                                if (mapView && mapView.view && 'refreshEntities' in mapView.view) {
+                                    await (mapView.view as any).refreshEntities();
+                                }
+                            } catch (error) {
+                                console.error('Error removing entity from map:', error);
+                                new Notice(`Error: ${error}`);
+                            }
+                        }
+                    });
+            });
+        }
 
         menu.showAtMouseEvent(e.originalEvent);
     }

@@ -2,6 +2,7 @@
 // Provides a dedicated panel for viewing and interacting with story maps
 
 import { ItemView, WorkspaceLeaf, setIcon, Menu, DropdownComponent, Notice } from 'obsidian';
+import * as L from 'leaflet';
 import StorytellerSuitePlugin from '../main';
 import { StoryMap } from '../types';
 import { t } from '../i18n/strings';
@@ -9,6 +10,7 @@ import { LeafletRenderer } from '../leaflet/renderer';
 import { BlockParameters } from '../leaflet/types';
 import { LocationService, LocationLevel } from '../services/LocationService';
 import { LocationSuggestModal } from '../modals/LocationSuggestModal';
+import { LocationSelectionModal } from '../modals/LocationSelectionModal';
 import { CharacterSuggestModal } from '../modals/CharacterSuggestModal';
 import { EventSuggestModal } from '../modals/EventSuggestModal';
 import { PlotItemSuggestModal } from '../modals/PlotItemSuggestModal';
@@ -744,15 +746,57 @@ export class MapView extends ItemView {
                         } else {
                             // For image maps: use coordinate proximity matching
                             console.log('Image map detected, using coordinate-based matching');
-                            const foundLocation = await locationService.findLocationAtCoordinates(
+                            const nearbyLocations = await locationService.findLocationsAtCoordinates(
                                 mapId,
                                 coordinates,
                                 this.getCoordinateTolerance()
                             );
 
-                            if (foundLocation) {
-                                targetLocation = foundLocation;
-                                isNewLocation = false;
+                            if (nearbyLocations.length > 0) {
+                                const result = await new Promise<any | 'create-new' | null>((resolve) => {
+                                    let selected = false;
+                                    const modal = new LocationSelectionModal(this.app, nearbyLocations, (res) => {
+                                        selected = true;
+                                        resolve(res);
+                                    });
+                                    const originalOnClose = modal.onClose;
+                                    modal.onClose = () => {
+                                        originalOnClose.call(modal);
+                                        if (!selected) resolve(null);
+                                    };
+                                    modal.open();
+                                });
+
+                                if (!result) return; // User cancelled
+
+                                if (result === 'create-new') {
+                                    // Create new location for image map
+                                    const coordText = `${coordinates[0].toFixed(2)}, ${coordinates[1].toFixed(2)}`;
+                                    const locationId = `loc-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+                                    targetLocation = {
+                                        id: locationId,
+                                        name: `${selectedCharacter.name}'s Location`,
+                                        description: `Auto-created location for ${selectedCharacter.name} at coordinates [${coordText}]`,
+                                        type: 'custom',
+                                        mapBindings: [{
+                                            mapId: mapId,
+                                            coordinates: coordinates
+                                        }]
+                                    };
+
+                                    await this.plugin.saveLocation(targetLocation as any);
+                                    isNewLocation = true;
+                                } else {
+                                    targetLocation = result;
+                                    isNewLocation = false;
+                                    // Add map binding for existing location at the clicked coordinates
+                                    await locationService.addMapBinding(
+                                        result.id || result.name,
+                                        mapId,
+                                        coordinates
+                                    );
+                                }
                             } else {
                                 // Create new location for image map
                                 const coordText = `${coordinates[0].toFixed(2)}, ${coordinates[1].toFixed(2)}`;
@@ -891,15 +935,57 @@ export class MapView extends ItemView {
                         } else {
                             // For image maps: use coordinate proximity matching
                             console.log('Image map detected, using coordinate-based matching');
-                            const foundLocation = await locationService.findLocationAtCoordinates(
+                            const nearbyLocations = await locationService.findLocationsAtCoordinates(
                                 mapId,
                                 coordinates,
                                 this.getCoordinateTolerance()
                             );
 
-                            if (foundLocation) {
-                                targetLocation = foundLocation;
-                                isNewLocation = false;
+                            if (nearbyLocations.length > 0) {
+                                const result = await new Promise<any | 'create-new' | null>((resolve) => {
+                                    let selected = false;
+                                    const modal = new LocationSelectionModal(this.app, nearbyLocations, (res) => {
+                                        selected = true;
+                                        resolve(res);
+                                    });
+                                    const originalOnClose = modal.onClose;
+                                    modal.onClose = () => {
+                                        originalOnClose.call(modal);
+                                        if (!selected) resolve(null);
+                                    };
+                                    modal.open();
+                                });
+
+                                if (!result) return; // User cancelled
+
+                                if (result === 'create-new') {
+                                    // Create new location for image map
+                                    const coordText = `${coordinates[0].toFixed(2)}, ${coordinates[1].toFixed(2)}`;
+                                    const locationId = `loc-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+                                    targetLocation = {
+                                        id: locationId,
+                                        name: `${selectedEvent.name} Location`,
+                                        description: `Auto-created location for event "${selectedEvent.name}" at coordinates [${coordText}]`,
+                                        type: 'custom',
+                                        mapBindings: [{
+                                            mapId: mapId,
+                                            coordinates: coordinates
+                                        }]
+                                    };
+
+                                    await this.plugin.saveLocation(targetLocation as any);
+                                    isNewLocation = true;
+                                } else {
+                                    targetLocation = result;
+                                    isNewLocation = false;
+                                    // Add map binding for existing location at the clicked coordinates
+                                    await locationService.addMapBinding(
+                                        result.id || result.name,
+                                        mapId,
+                                        coordinates
+                                    );
+                                }
                             } else {
                                 // Create new location for image map
                                 const coordText = `${coordinates[0].toFixed(2)}, ${coordinates[1].toFixed(2)}`;
@@ -1038,15 +1124,57 @@ export class MapView extends ItemView {
                         } else {
                             // For image maps: use coordinate proximity matching
                             console.log('Image map detected, using coordinate-based matching');
-                            const foundLocation = await locationService.findLocationAtCoordinates(
+                            const nearbyLocations = await locationService.findLocationsAtCoordinates(
                                 mapId,
                                 coordinates,
                                 this.getCoordinateTolerance()
                             );
 
-                            if (foundLocation) {
-                                targetLocation = foundLocation;
-                                isNewLocation = false;
+                            if (nearbyLocations.length > 0) {
+                                const result = await new Promise<any | 'create-new' | null>((resolve) => {
+                                    let selected = false;
+                                    const modal = new LocationSelectionModal(this.app, nearbyLocations, (res) => {
+                                        selected = true;
+                                        resolve(res);
+                                    });
+                                    const originalOnClose = modal.onClose;
+                                    modal.onClose = () => {
+                                        originalOnClose.call(modal);
+                                        if (!selected) resolve(null);
+                                    };
+                                    modal.open();
+                                });
+
+                                if (!result) return; // User cancelled
+
+                                if (result === 'create-new') {
+                                    // Create new location for image map
+                                    const coordText = `${coordinates[0].toFixed(2)}, ${coordinates[1].toFixed(2)}`;
+                                    const locationId = `loc-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+                                    targetLocation = {
+                                        id: locationId,
+                                        name: `${selectedItem.name} Location`,
+                                        description: `Auto-created location for item "${selectedItem.name}" at coordinates [${coordText}]`,
+                                        type: 'custom',
+                                        mapBindings: [{
+                                            mapId: mapId,
+                                            coordinates: coordinates
+                                        }]
+                                    };
+
+                                    await this.plugin.saveLocation(targetLocation as any);
+                                    isNewLocation = true;
+                                } else {
+                                    targetLocation = result;
+                                    isNewLocation = false;
+                                    // Add map binding for existing location at the clicked coordinates
+                                    await locationService.addMapBinding(
+                                        result.id || result.name,
+                                        mapId,
+                                        coordinates
+                                    );
+                                }
                             } else {
                                 // Create new location for image map
                                 const coordText = `${coordinates[0].toFixed(2)}, ${coordinates[1].toFixed(2)}`;
@@ -1169,17 +1297,46 @@ export class MapView extends ItemView {
 
     /**
      * Get coordinate tolerance for proximity matching based on map type
-     * @returns Distance tolerance (pixels for image maps, degrees for real-world maps)
+     * Calculates tolerance dynamically based on current zoom level to ensure
+     * a consistent screen-pixel click area (approx 400px radius)
+     * @returns Distance tolerance in map units (pixels for image maps, degrees for real-world maps)
      */
     private getCoordinateTolerance(): number {
-        if (!this.currentMap) {
-            return 20; // Default to image map tolerance
+        const map = this.leafletRenderer?.getMap();
+        
+        // Fallback if map not ready
+        if (!this.currentMap || !map) {
+            return this.currentMap?.type === 'real' ? 0.001 : 400;
         }
 
-        if (this.currentMap.type === 'real') {
-            return 0.001; // ~111 meters at equator
-        } else {
-            return 20; // 20 pixels for image maps
+        // Target tolerance in screen pixels (radius)
+        // Increased to 400px to ensure easy selection even on large/tiled maps
+        const screenPixels = 400;
+
+        try {
+            // Calculate how many map units correspond to 'screenPixels' at current zoom
+            const center = map.getCenter();
+            const centerPoint = map.latLngToContainerPoint(center);
+            
+            // Point 'screenPixels' away to the right
+            const offsetPoint = L.point(centerPoint.x + screenPixels, centerPoint.y);
+            const offsetLatLng = map.containerPointToLatLng(offsetPoint);
+            
+            if (this.currentMap.type === 'real') {
+                // For real-world maps, calculate distance in degrees
+                const dLat = offsetLatLng.lat - center.lat;
+                const dLng = offsetLatLng.lng - center.lng;
+                return Math.sqrt(dLat*dLat + dLng*dLng);
+            } else {
+                // For image maps (CRS.Simple), calculate distance in map pixels
+                // Note: In CRS.Simple, lat is y, lng is x
+                const dx = offsetLatLng.lng - center.lng;
+                const dy = offsetLatLng.lat - center.lat;
+                return Math.sqrt(dx*dx + dy*dy);
+            }
+        } catch (e) {
+            console.warn('Error calculating dynamic tolerance:', e);
+            return this.currentMap.type === 'real' ? 0.001 : 400;
         }
     }
 

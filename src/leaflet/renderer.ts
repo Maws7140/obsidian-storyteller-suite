@@ -1099,6 +1099,8 @@ export class LeafletRenderer extends Component {
         if (!this.mapEntityRenderer || !this.params.mapId) return;
 
         const mapId = this.params.mapId;
+        // Refresh both locations and entities to ensure markers appear at correct positions
+        await this.mapEntityRenderer.renderLocationsForMap(mapId);
         await this.mapEntityRenderer.renderEntitiesForMap(mapId);
     }
 
