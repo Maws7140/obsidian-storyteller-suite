@@ -948,6 +948,7 @@
   "tutorialFileWikiLinks": "Usa <strong>[[enlaces wiki]]</strong> para conectar personajes, ubicaciones, eventos",
   "tutorialFileReadable": "Los archivos son <strong>legibles y editables</strong> incluso sin el complemento",
   "tutorialFileBackup": "<strong>Seguro para respaldo:</strong> Tus datos nunca están bloqueados en un formato propietario",
-  "tutorialFileTip": "Consejo: Configura estos modos en Configuración → Storyteller Suite bajo <em>Usar carpetas de entidades personalizadas</em> y <em>Modo una sola historia</em>. El botón <em>Nueva historia</em> está oculto automáticamente en Modo una sola historia."
+  "tutorialFileTip": "Consejo: Configura estos modos en Configuración → Storyteller Suite bajo <em>Usar carpetas de entidades personalizadas</em> y <em>Modo una sola historia</em>. El botón <em>Nueva historia</em> está oculto automáticamente en Modo una sola historia.",
+  "defaultTemplateApplied": "Plantilla predeterminada aplicada."
 }
 

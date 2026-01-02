@@ -747,6 +747,166 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                     comp.inputEl.addEventListener('click', openSuggest);
                     return comp;
                 });
+
+            new Setting(containerEl)
+                .setName(t('culturesFolder'))
+                .setDesc(t('culturesFolderDesc'))
+                .addText(text => {
+                    const comp = text
+                        .setPlaceholder(t('culturesFolderPh'))
+                        .setValue(this.plugin.settings.cultureFolderPath || '')
+                        .onChange(async (value) => {
+                            this.plugin.settings.cultureFolderPath = value;
+                            await this.plugin.saveSettings();
+                        });
+                    let suppress = false;
+                    const openSuggest = () => {
+                        if (suppress) return;
+                        const modal = new FolderSuggestModal(
+                            this.app,
+                            async (folderPath) => {
+                                this.plugin.settings.cultureFolderPath = folderPath;
+                                comp.setValue(folderPath);
+                                await this.plugin.saveSettings();
+                            },
+                            () => {
+                                suppress = true;
+                                setTimeout(() => { suppress = false; }, 300);
+                                setTimeout(() => comp.inputEl.focus(), 0);
+                            }
+                        );
+                        modal.open();
+                    };
+                    comp.inputEl.addEventListener('keydown', (e: KeyboardEvent) => {
+                        if (e.key === 'ArrowDown' || (e.ctrlKey && e.key.toLowerCase() === ' ')) {
+                            e.preventDefault();
+                            openSuggest();
+                        }
+                    });
+                    comp.inputEl.addEventListener('focus', openSuggest);
+                    comp.inputEl.addEventListener('click', openSuggest);
+                    return comp;
+                });
+
+            new Setting(containerEl)
+                .setName(t('economiesFolder'))
+                .setDesc(t('economiesFolderDesc'))
+                .addText(text => {
+                    const comp = text
+                        .setPlaceholder(t('economiesFolderPh'))
+                        .setValue(this.plugin.settings.economyFolderPath || '')
+                        .onChange(async (value) => {
+                            this.plugin.settings.economyFolderPath = value;
+                            await this.plugin.saveSettings();
+                        });
+                    let suppress = false;
+                    const openSuggest = () => {
+                        if (suppress) return;
+                        const modal = new FolderSuggestModal(
+                            this.app,
+                            async (folderPath) => {
+                                this.plugin.settings.economyFolderPath = folderPath;
+                                comp.setValue(folderPath);
+                                await this.plugin.saveSettings();
+                            },
+                            () => {
+                                suppress = true;
+                                setTimeout(() => { suppress = false; }, 300);
+                                setTimeout(() => comp.inputEl.focus(), 0);
+                            }
+                        );
+                        modal.open();
+                    };
+                    comp.inputEl.addEventListener('keydown', (e: KeyboardEvent) => {
+                        if (e.key === 'ArrowDown' || (e.ctrlKey && e.key.toLowerCase() === ' ')) {
+                            e.preventDefault();
+                            openSuggest();
+                        }
+                    });
+                    comp.inputEl.addEventListener('focus', openSuggest);
+                    comp.inputEl.addEventListener('click', openSuggest);
+                    return comp;
+                });
+
+            new Setting(containerEl)
+                .setName(t('factionsFolder'))
+                .setDesc(t('factionsFolderDesc'))
+                .addText(text => {
+                    const comp = text
+                        .setPlaceholder(t('factionsFolderPh'))
+                        .setValue(this.plugin.settings.factionFolderPath || '')
+                        .onChange(async (value) => {
+                            this.plugin.settings.factionFolderPath = value;
+                            await this.plugin.saveSettings();
+                        });
+                    let suppress = false;
+                    const openSuggest = () => {
+                        if (suppress) return;
+                        const modal = new FolderSuggestModal(
+                            this.app,
+                            async (folderPath) => {
+                                this.plugin.settings.factionFolderPath = folderPath;
+                                comp.setValue(folderPath);
+                                await this.plugin.saveSettings();
+                            },
+                            () => {
+                                suppress = true;
+                                setTimeout(() => { suppress = false; }, 300);
+                                setTimeout(() => comp.inputEl.focus(), 0);
+                            }
+                        );
+                        modal.open();
+                    };
+                    comp.inputEl.addEventListener('keydown', (e: KeyboardEvent) => {
+                        if (e.key === 'ArrowDown' || (e.ctrlKey && e.key.toLowerCase() === ' ')) {
+                            e.preventDefault();
+                            openSuggest();
+                        }
+                    });
+                    comp.inputEl.addEventListener('focus', openSuggest);
+                    comp.inputEl.addEventListener('click', openSuggest);
+                    return comp;
+                });
+
+            new Setting(containerEl)
+                .setName(t('magicSystemsFolder'))
+                .setDesc(t('magicSystemsFolderDesc'))
+                .addText(text => {
+                    const comp = text
+                        .setPlaceholder(t('magicSystemsFolderPh'))
+                        .setValue(this.plugin.settings.magicSystemFolderPath || '')
+                        .onChange(async (value) => {
+                            this.plugin.settings.magicSystemFolderPath = value;
+                            await this.plugin.saveSettings();
+                        });
+                    let suppress = false;
+                    const openSuggest = () => {
+                        if (suppress) return;
+                        const modal = new FolderSuggestModal(
+                            this.app,
+                            async (folderPath) => {
+                                this.plugin.settings.magicSystemFolderPath = folderPath;
+                                comp.setValue(folderPath);
+                                await this.plugin.saveSettings();
+                            },
+                            () => {
+                                suppress = true;
+                                setTimeout(() => { suppress = false; }, 300);
+                                setTimeout(() => comp.inputEl.focus(), 0);
+                            }
+                        );
+                        modal.open();
+                    };
+                    comp.inputEl.addEventListener('keydown', (e: KeyboardEvent) => {
+                        if (e.key === 'ArrowDown' || (e.ctrlKey && e.key.toLowerCase() === ' ')) {
+                            e.preventDefault();
+                            openSuggest();
+                        }
+                    });
+                    comp.inputEl.addEventListener('focus', openSuggest);
+                    comp.inputEl.addEventListener('click', openSuggest);
+                    return comp;
+                });
         }
 
         // --- Map Settings Section ---

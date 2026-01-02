@@ -1,8 +1,9 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
-import { App, Modal, Notice, Setting, TextAreaComponent, ButtonComponent } from 'obsidian';
+import { App, Modal, Notice, Setting, TextAreaComponent, ButtonComponent, parseYaml } from 'obsidian';
 import { t } from '../i18n/strings';
 import StorytellerSuitePlugin from '../main';
 import { Scene } from '../types';
+import { parseSectionsFromMarkdown } from '../yaml/EntitySections';
 import { CharacterSuggestModal } from './CharacterSuggestModal';
 import { LocationSuggestModal } from './LocationSuggestModal';
 import { EventSuggestModal } from './EventSuggestModal';
@@ -43,8 +44,39 @@ export class SceneModal extends Modal {
             if (defaultTemplateId) {
                 const defaultTemplate = this.plugin.templateManager?.getTemplate(defaultTemplateId);
                 if (defaultTemplate) {
-                    await this.applyTemplateToScene(defaultTemplate);
-                    new Notice(t('applyingDefaultTemplate'));
+                    // If template has variables or multiple entities, use TemplateApplicationModal
+                    if ((defaultTemplate.variables && defaultTemplate.variables.length > 0) ||
+                        this.hasMultipleEntities(defaultTemplate)) {
+                        await new Promise<void>((resolve) => {
+                            import('./TemplateApplicationModal').then(({ TemplateApplicationModal }) => {
+                                new TemplateApplicationModal(
+                                    this.app,
+                                    this.plugin,
+                                    defaultTemplate,
+                                    async (variableValues, entityFileNames) => {
+                                        try {
+                                            await this.applyTemplateToSceneWithVariables(defaultTemplate, variableValues);
+                                            new Notice('Default template applied');
+                                            this.refresh();
+                                        } catch (error) {
+                                            console.error('[SceneModal] Error applying template:', error);
+                                            new Notice('Error applying default template');
+                                        }
+                                        resolve();
+                                    }
+                                ).open();
+                            });
+                        });
+                    } else {
+                        // No variables, apply directly
+                        try {
+                            await this.applyTemplateToScene(defaultTemplate);
+                            new Notice('Default template applied');
+                        } catch (error) {
+                            console.error('[SceneModal] Error applying template:', error);
+                            new Notice('Error applying default template');
+                        }
+                    }
                 }
             }
         }
@@ -96,7 +128,7 @@ export class SceneModal extends Modal {
                         this.scene.chapterId = picked?.id;
                         this.scene.chapterName = picked?.name;
                     }
-                    this.onOpen();
+                    void this.onOpen();
                 });
             });
 
@@ -328,6 +360,17 @@ export class SceneModal extends Modal {
         });
     }
 
+    private hasMultipleEntities(template: Template): boolean {
+        let entityCount = 0;
+        if (template.entities.scenes?.length) entityCount += template.entities.scenes.length;
+        if (template.entities.characters?.length) entityCount += template.entities.characters.length;
+        if (template.entities.locations?.length) entityCount += template.entities.locations.length;
+        if (template.entities.events?.length) entityCount += template.entities.events.length;
+        if (template.entities.items?.length) entityCount += template.entities.items.length;
+        if (template.entities.groups?.length) entityCount += template.entities.groups.length;
+        return entityCount > 1;
+    }
+
     private async applyTemplateToScene(template: Template): Promise<void> {
         if (!template.entities.scenes || template.entities.scenes.length === 0) {
             new Notice('This template does not contain any scenes');
@@ -335,25 +378,87 @@ export class SceneModal extends Modal {
         }
 
         const templateScene = template.entities.scenes[0];
+        await this.applyProcessedTemplateToScene(templateScene);
+    }
 
-        // Extract template-specific fields
-        const { templateId, sectionContent, customYamlFields, id, filePath, chapterId, chapterName, ...entityData } = templateScene as any;
-
-        // Apply base entity fields
-        Object.assign(this.scene, entityData);
-
-        // Apply custom YAML fields if they exist
-        if (customYamlFields) {
-            Object.assign(this.scene, customYamlFields);
+    private async applyTemplateToSceneWithVariables(template: Template, variableValues: Record<string, any>): Promise<void> {
+        if (!template.entities.scenes || template.entities.scenes.length === 0) {
+            new Notice('This template does not contain any scenes');
+            return;
         }
 
-        // Apply section content if it exists (map section names to lowercase properties)
-        if (sectionContent) {
+        // Get the first scene from the template
+        let templateScene = template.entities.scenes[0];
+
+        // Substitute variables with user-provided values
+        const { VariableSubstitution } = await import('../templates/VariableSubstitution');
+        const substitutionResult = VariableSubstitution.substituteEntity(
+            templateScene,
+            variableValues,
+            false // non-strict mode
+        );
+        templateScene = substitutionResult.value;
+
+        if (substitutionResult.warnings.length > 0) {
+            console.warn('[SceneModal] Variable substitution warnings:', substitutionResult.warnings);
+        }
+
+        // Apply the substituted template
+        await this.applyProcessedTemplateToScene(templateScene);
+    }
+
+    private async applyProcessedTemplateToScene(templateScene: any): Promise<void> {
+        const { templateId, yamlContent, markdownContent, sectionContent, customYamlFields, id, filePath, chapterId, chapterName, ...rest } = templateScene as any;
+
+        let fields: any = { ...rest };
+
+        // Handle new format: yamlContent (parse YAML string)
+        if (yamlContent && typeof yamlContent === 'string') {
+            try {
+                const parsed = parseYaml(yamlContent);
+                if (parsed && typeof parsed === 'object') {
+                    fields = { ...fields, ...parsed };
+                }
+                console.log('[SceneModal] Parsed YAML fields:', parsed);
+            } catch (error) {
+                console.warn('[SceneModal] Failed to parse yamlContent:', error);
+            }
+        } else if (customYamlFields) {
+            // Old format: merge custom YAML fields
+            fields = { ...fields, ...customYamlFields };
+        }
+
+        // Handle new format: markdownContent (parse sections)
+        if (markdownContent && typeof markdownContent === 'string') {
+            try {
+                const parsedSections = parseSectionsFromMarkdown(`---\n---\n\n${markdownContent}`);
+
+                // Map well-known sections to entity properties
+                if ('Content' in parsedSections) {
+                    fields.content = parsedSections['Content'];
+                }
+                if ('Beat Sheet' in parsedSections) {
+                    // Parse beat sheet as array
+                    const beatText = parsedSections['Beat Sheet'];
+                    if (beatText) {
+                        fields.beats = beatText.split('\n').map(s => s.trim()).filter(Boolean);
+                    }
+                }
+                console.log('[SceneModal] Parsed markdown sections:', parsedSections);
+            } catch (error) {
+                console.warn('[SceneModal] Failed to parse markdownContent:', error);
+            }
+        } else if (sectionContent) {
+            // Old format: apply section content
             for (const [sectionName, content] of Object.entries(sectionContent)) {
                 const propName = sectionName.toLowerCase().replace(/\s+/g, '');
-                (this.scene as any)[propName] = content;
+                (fields as any)[propName] = content;
             }
         }
+
+        // Apply all fields to the scene
+        Object.assign(this.scene, fields);
+        console.log('[SceneModal] Final scene after template:', this.scene);
 
         // Clear relationships as they reference template entities
         this.scene.linkedCharacters = [];
@@ -364,7 +469,7 @@ export class SceneModal extends Modal {
     }
 
     private refresh(): void {
-        this.onOpen();
+        void this.onOpen();
     }
 
     onClose(): void { this.contentEl.empty(); }
