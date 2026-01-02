@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
-import { App, Modal, Notice, Setting, TextAreaComponent, ButtonComponent } from 'obsidian';
+import { App, Modal, Notice, Setting, TextAreaComponent, ButtonComponent, parseYaml } from 'obsidian';
 import { t } from '../i18n/strings';
 import StorytellerSuitePlugin from '../main';
 import { Chapter, Character, Location, Event, PlotItem, Group } from '../types';
@@ -10,7 +10,7 @@ import { GalleryImageSuggestModal } from './GalleryImageSuggestModal';
 import { addImageSelectionButtons } from '../utils/ImageSelectionHelper';
 import { GroupSuggestModal } from './GroupSuggestModal';
 import { PromptModal } from './ui/PromptModal';
-import { getWhitelistKeys } from '../yaml/EntitySections';
+import { getWhitelistKeys, parseSectionsFromMarkdown } from '../yaml/EntitySections';
 import { TemplatePickerModal } from './TemplatePickerModal';
 import { Template } from '../templates/TemplateTypes';
 
@@ -45,8 +45,39 @@ export class ChapterModal extends Modal {
             if (defaultTemplateId) {
                 const defaultTemplate = this.plugin.templateManager?.getTemplate(defaultTemplateId);
                 if (defaultTemplate) {
-                    await this.applyTemplateToChapter(defaultTemplate);
-                    new Notice(t('applyingDefaultTemplate'));
+                    // If template has variables or multiple entities, use TemplateApplicationModal
+                    if ((defaultTemplate.variables && defaultTemplate.variables.length > 0) ||
+                        this.hasMultipleEntities(defaultTemplate)) {
+                        await new Promise<void>((resolve) => {
+                            import('./TemplateApplicationModal').then(({ TemplateApplicationModal }) => {
+                                new TemplateApplicationModal(
+                                    this.app,
+                                    this.plugin,
+                                    defaultTemplate,
+                                    async (variableValues, entityFileNames) => {
+                                        try {
+                                            await this.applyTemplateToChapterWithVariables(defaultTemplate, variableValues);
+                                            new Notice('Default template applied');
+                                            this.refresh();
+                                        } catch (error) {
+                                            console.error('[ChapterModal] Error applying template:', error);
+                                            new Notice('Error applying default template');
+                                        }
+                                        resolve();
+                                    }
+                                ).open();
+                            });
+                        });
+                    } else {
+                        // No variables, apply directly
+                        try {
+                            await this.applyTemplateToChapter(defaultTemplate);
+                            new Notice('Default template applied');
+                        } catch (error) {
+                            console.error('[ChapterModal] Error applying template:', error);
+                            new Notice('Error applying default template');
+                        }
+                    }
                 }
             }
         }
@@ -320,6 +351,17 @@ export class ChapterModal extends Modal {
         });
     }
 
+    private hasMultipleEntities(template: Template): boolean {
+        let entityCount = 0;
+        if (template.entities.chapters?.length) entityCount += template.entities.chapters.length;
+        if (template.entities.characters?.length) entityCount += template.entities.characters.length;
+        if (template.entities.locations?.length) entityCount += template.entities.locations.length;
+        if (template.entities.events?.length) entityCount += template.entities.events.length;
+        if (template.entities.items?.length) entityCount += template.entities.items.length;
+        if (template.entities.groups?.length) entityCount += template.entities.groups.length;
+        return entityCount > 1;
+    }
+
     private async applyTemplateToChapter(template: Template): Promise<void> {
         if (!template.entities.chapters || template.entities.chapters.length === 0) {
             new Notice('This template does not contain any chapters');
@@ -327,25 +369,80 @@ export class ChapterModal extends Modal {
         }
 
         const templateChapter = template.entities.chapters[0];
+        await this.applyProcessedTemplateToChapter(templateChapter);
+    }
 
-        // Extract template-specific fields
-        const { templateId, sectionContent, customYamlFields, id, filePath, ...entityData } = templateChapter as any;
-
-        // Apply base entity fields
-        Object.assign(this.chapter, entityData);
-
-        // Apply custom YAML fields if they exist
-        if (customYamlFields) {
-            Object.assign(this.chapter, customYamlFields);
+    private async applyTemplateToChapterWithVariables(template: Template, variableValues: Record<string, any>): Promise<void> {
+        if (!template.entities.chapters || template.entities.chapters.length === 0) {
+            new Notice('This template does not contain any chapters');
+            return;
         }
 
-        // Apply section content if it exists (map section names to lowercase properties)
-        if (sectionContent) {
+        // Get the first chapter from the template
+        let templateChapter = template.entities.chapters[0];
+
+        // Substitute variables with user-provided values
+        const { VariableSubstitution } = await import('../templates/VariableSubstitution');
+        const substitutionResult = VariableSubstitution.substituteEntity(
+            templateChapter,
+            variableValues,
+            false // non-strict mode
+        );
+        templateChapter = substitutionResult.value;
+
+        if (substitutionResult.warnings.length > 0) {
+            console.warn('[ChapterModal] Variable substitution warnings:', substitutionResult.warnings);
+        }
+
+        // Apply the substituted template
+        await this.applyProcessedTemplateToChapter(templateChapter);
+    }
+
+    private async applyProcessedTemplateToChapter(templateChapter: any): Promise<void> {
+        const { templateId, yamlContent, markdownContent, sectionContent, customYamlFields, id, filePath, ...rest } = templateChapter as any;
+
+        let fields: any = { ...rest };
+
+        // Handle new format: yamlContent (parse YAML string)
+        if (yamlContent && typeof yamlContent === 'string') {
+            try {
+                const parsed = parseYaml(yamlContent);
+                if (parsed && typeof parsed === 'object') {
+                    fields = { ...fields, ...parsed };
+                }
+                console.log('[ChapterModal] Parsed YAML fields:', parsed);
+            } catch (error) {
+                console.warn('[ChapterModal] Failed to parse yamlContent:', error);
+            }
+        } else if (customYamlFields) {
+            // Old format: merge custom YAML fields
+            fields = { ...fields, ...customYamlFields };
+        }
+
+        // Handle new format: markdownContent (parse sections)
+        if (markdownContent && typeof markdownContent === 'string') {
+            try {
+                const parsedSections = parseSectionsFromMarkdown(`---\n---\n\n${markdownContent}`);
+
+                // Map well-known sections to entity properties
+                if ('Summary' in parsedSections) {
+                    fields.summary = parsedSections['Summary'];
+                }
+                console.log('[ChapterModal] Parsed markdown sections:', parsedSections);
+            } catch (error) {
+                console.warn('[ChapterModal] Failed to parse markdownContent:', error);
+            }
+        } else if (sectionContent) {
+            // Old format: apply section content
             for (const [sectionName, content] of Object.entries(sectionContent)) {
                 const propName = sectionName.toLowerCase().replace(/\s+/g, '');
-                (this.chapter as any)[propName] = content;
+                (fields as any)[propName] = content;
             }
         }
+
+        // Apply all fields to the chapter
+        Object.assign(this.chapter, fields);
+        console.log('[ChapterModal] Final chapter after template:', this.chapter);
 
         // Clear relationships as they reference template entities
         this.chapter.linkedCharacters = [];
@@ -356,7 +453,7 @@ export class ChapterModal extends Modal {
     }
 
     private refresh(): void {
-        this.onOpen();
+        void this.onOpen();
     }
 
     onClose(): void { this.contentEl.empty(); }

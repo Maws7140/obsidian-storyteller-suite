@@ -141,6 +141,8 @@ import { LocationMigration } from './utils/LocationMigration';
     /** Map settings */
     enableFrontmatterMarkers?: boolean;
     enableDataViewMarkers?: boolean;
+    /** Persisted map view states (zoom/center) per map ID */
+    mapViewStates?: Record<string, { zoom: number; center: { lat: number; lng: number } }>;
 
     /** Timeline & Causality */
     timelineForks?: TimelineFork[];
@@ -261,6 +263,7 @@ import { LocationMigration } from './utils/LocationMigration';
     sanitizedSeedData: false,
     enableFrontmatterMarkers: false,
     enableDataViewMarkers: false,
+    mapViewStates: {},
     customFieldsMode: 'flatten',
     relationshipsMigrated: false,
     timelineForks: [],
@@ -274,6 +277,10 @@ import { LocationMigration } from './utils/LocationMigration';
     writingSessions: [],
     trackWritingSessions: false,
     enableWorldBuilding: true,
+    cultureFolderPath: '',
+    economyFolderPath: '',
+    factionFolderPath: '',
+    magicSystemFolderPath: '',
     enableSensoryProfiles: true,
     hiddenDashboardTabs: [],
     templateStorageFolder: 'StorytellerSuite/Templates',
@@ -326,6 +333,10 @@ export default class StorytellerSuitePlugin extends Plugin {
             chapterFolderPath: this.settings.chapterFolderPath,
             sceneFolderPath: this.settings.sceneFolderPath,
             mapFolderPath: this.settings.mapFolderPath,
+            cultureFolderPath: this.settings.cultureFolderPath,
+            economyFolderPath: this.settings.economyFolderPath,
+            factionFolderPath: this.settings.factionFolderPath,
+            magicSystemFolderPath: this.settings.magicSystemFolderPath,
             enableOneStoryMode: this.settings.enableOneStoryMode,
             oneStoryBaseFolder: this.settings.oneStoryBaseFolder,
         };
@@ -3173,6 +3184,46 @@ export default class StorytellerSuitePlugin extends Plugin {
 	}
 
 	/**
+	 * Get saved map view state (zoom and center position) for a specific map
+	 * Used to restore the user's last position when reopening a map
+	 * @param mapId The map ID or name
+	 * @returns The saved view state or null if none exists
+	 */
+	getMapViewState(mapId: string): { zoom: number; center: { lat: number; lng: number } } | null {
+		if (!mapId || !this.settings.mapViewStates) return null;
+		return this.settings.mapViewStates[mapId] || null;
+	}
+
+	/**
+	 * Save map view state (zoom and center position) for a specific map
+	 * Called when user pans or zooms the map to remember their position
+	 * Uses debouncing to avoid excessive writes
+	 * @param mapId The map ID or name
+	 * @param zoom The current zoom level
+	 * @param center The current center coordinates
+	 */
+	async saveMapViewState(mapId: string, zoom: number, center: { lat: number; lng: number }): Promise<void> {
+		if (!mapId) return;
+		
+		// Initialize mapViewStates if not present
+		if (!this.settings.mapViewStates) {
+			this.settings.mapViewStates = {};
+		}
+
+		// Only save if values have actually changed to reduce writes
+		const existing = this.settings.mapViewStates[mapId];
+		if (existing &&
+			Math.abs(existing.zoom - zoom) < 0.01 &&
+			Math.abs(existing.center.lat - center.lat) < 0.0001 &&
+			Math.abs(existing.center.lng - center.lng) < 0.0001) {
+			return; // No significant change
+		}
+
+		this.settings.mapViewStates[mapId] = { zoom, center };
+		await this.saveSettings();
+	}
+
+	/**
 	 * Activate map view (stub for compatibility)
 	 */
 	async activateMapView(mapId?: string): Promise<void> {
@@ -3496,9 +3547,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 			: { ...defaultSections, ...templateOnlySections, ...providedSections };
 
 		// Generate Markdown
-		let mdContent = frontmatterString
-			? `---\n${frontmatterString}\n---\n\n`
-			: `---\n---\n\n`;
+		let mdContent = `---\n${frontmatterString}---\n\n`;
 		mdContent += Object.entries(allSections)
 			.map(([key, content]) => `## ${key}\n${content || ''}`)
 			.join('\n\n');

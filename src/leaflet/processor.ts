@@ -65,9 +65,9 @@ export class LeafletCodeBlockProcessor {
                 return;
             }
 
-            // Generate unique ID if not provided
+            // Generate stable ID if not provided
             if (!params.id) {
-                params.id = this.generateMapId(ctx);
+                params.id = this.generateMapId(ctx, el, params);
             }
 
             console.log('[LeafletProcessor] Creating map container...');
@@ -137,15 +137,22 @@ export class LeafletCodeBlockProcessor {
     }
 
     /**
-     * Generate a unique map ID based on context
+     * Generate a stable map ID based on context
+     * Uses file path + image path or section info for stability across reloads
      */
-    private generateMapId(ctx: MarkdownPostProcessorContext): string {
+    private generateMapId(ctx: MarkdownPostProcessorContext, el: HTMLElement, params: BlockParameters): string {
         const filePath = ctx.sourcePath;
-        const timestamp = Date.now();
-        const random = Math.random().toString(36).substr(2, 5);
-
-        // Create ID from file path, timestamp and random suffix
-        return `map-${filePath.replace(/[^a-zA-Z0-9]/g, '-')}-${timestamp}-${random}`;
+        
+        // Use image path or mapId as a stable identifier if available
+        const contentId = params.image || params.mapId || '';
+        
+        // Get section info for position-based stability when no other identifier
+        const sectionInfo = ctx.getSectionInfo(el);
+        const lineNum = sectionInfo?.lineStart ?? 0;
+        
+        // Create stable ID from file path + content identifier + line number
+        const baseId = `${filePath}-${contentId}-${lineNum}`.replace(/[^a-zA-Z0-9]/g, '-');
+        return `map-${baseId}`;
     }
 
     /**
