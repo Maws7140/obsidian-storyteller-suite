@@ -948,6 +948,7 @@
   "tutorialFileWikiLinks": "Utilisez les <strong>[[liens wiki]]</strong> pour connecter les personnages, lieux, événements",
   "tutorialFileReadable": "Les fichiers sont <strong>lisibles et modifiables</strong> même sans le plugin",
   "tutorialFileBackup": "<strong>Sécurité de sauvegarde :</strong> Vos données ne sont jamais verrouillées dans un format propriétaire",
-  "tutorialFileTip": "Astuce : Configurez ces modes dans Paramètres → Storyteller Suite sous <em>Utiliser des dossiers d'entités personnalisés</em> et <em>Mode une seule histoire</em>. Le bouton <em>Nouvelle histoire</em> est masqué automatiquement en Mode une seule histoire."
+  "tutorialFileTip": "Astuce : Configurez ces modes dans Paramètres → Storyteller Suite sous <em>Utiliser des dossiers d'entités personnalisés</em> et <em>Mode une seule histoire</em>. Le bouton <em>Nouvelle histoire</em> est masqué automatiquement en Mode une seule histoire.",
+  "defaultTemplateApplied": "Modèle par défaut appliqué."
 }
 

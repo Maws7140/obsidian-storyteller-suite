@@ -1,12 +1,12 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
-import { App, Modal, Notice, Setting, TextAreaComponent } from 'obsidian';
+import { App, Modal, Notice, Setting, TextAreaComponent, parseYaml } from 'obsidian';
 import { t } from '../i18n/strings';
 import StorytellerSuitePlugin from '../main';
 import { Reference } from '../types';
 import { GalleryImageSuggestModal } from './GalleryImageSuggestModal';
 import { addImageSelectionButtons } from '../utils/ImageSelectionHelper';
 import { PromptModal } from './ui/PromptModal';
-import { getWhitelistKeys } from '../yaml/EntitySections';
+import { getWhitelistKeys, parseSectionsFromMarkdown } from '../yaml/EntitySections';
 import { TemplatePickerModal } from './TemplatePickerModal';
 import { Template } from '../templates/TemplateTypes';
 
@@ -42,8 +42,39 @@ export class ReferenceModal extends Modal {
             if (defaultTemplateId) {
                 const defaultTemplate = this.plugin.templateManager?.getTemplate(defaultTemplateId);
                 if (defaultTemplate) {
-                    await this.applyTemplateToReference(defaultTemplate);
-                    new Notice(t('applyingDefaultTemplate'));
+                    // If template has variables or multiple entities, use TemplateApplicationModal
+                    if ((defaultTemplate.variables && defaultTemplate.variables.length > 0) ||
+                        this.hasMultipleEntities(defaultTemplate)) {
+                        await new Promise<void>((resolve) => {
+                            import('./TemplateApplicationModal').then(({ TemplateApplicationModal }) => {
+                                new TemplateApplicationModal(
+                                    this.app,
+                                    this.plugin,
+                                    defaultTemplate,
+                                    async (variableValues, entityFileNames) => {
+                                        try {
+                                            await this.applyTemplateToReferenceWithVariables(defaultTemplate, variableValues);
+                                            new Notice('Default template applied');
+                                            this.refresh();
+                                        } catch (error) {
+                                            console.error('[ReferenceModal] Error applying template:', error);
+                                            new Notice('Error applying default template');
+                                        }
+                                        resolve();
+                                    }
+                                ).open();
+                            });
+                        });
+                    } else {
+                        // No variables, apply directly
+                        try {
+                            await this.applyTemplateToReference(defaultTemplate);
+                            new Notice('Default template applied');
+                        } catch (error) {
+                            console.error('[ReferenceModal] Error applying template:', error);
+                            new Notice('Error applying default template');
+                        }
+                    }
                 }
             }
         }
@@ -197,6 +228,17 @@ export class ReferenceModal extends Modal {
         );
     }
 
+    private hasMultipleEntities(template: Template): boolean {
+        let entityCount = 0;
+        if (template.entities.references?.length) entityCount += template.entities.references.length;
+        if (template.entities.characters?.length) entityCount += template.entities.characters.length;
+        if (template.entities.locations?.length) entityCount += template.entities.locations.length;
+        if (template.entities.events?.length) entityCount += template.entities.events.length;
+        if (template.entities.items?.length) entityCount += template.entities.items.length;
+        if (template.entities.groups?.length) entityCount += template.entities.groups.length;
+        return entityCount > 1;
+    }
+
     private async applyTemplateToReference(template: Template): Promise<void> {
         if (!template.entities.references || template.entities.references.length === 0) {
             new Notice('This template does not contain any references');
@@ -204,29 +246,84 @@ export class ReferenceModal extends Modal {
         }
 
         const templateRef = template.entities.references[0];
+        await this.applyProcessedTemplateToReference(templateRef);
+    }
 
-        // Extract template-specific fields
-        const { templateId, sectionContent, customYamlFields, id, filePath, ...entityData } = templateRef as any;
-
-        // Apply base entity fields
-        Object.assign(this.refData, entityData);
-
-        // Apply custom YAML fields if they exist
-        if (customYamlFields) {
-            Object.assign(this.refData, customYamlFields);
+    private async applyTemplateToReferenceWithVariables(template: Template, variableValues: Record<string, any>): Promise<void> {
+        if (!template.entities.references || template.entities.references.length === 0) {
+            new Notice('This template does not contain any references');
+            return;
         }
 
-        // Apply section content if it exists (map section names to lowercase properties)
-        if (sectionContent) {
+        // Get the first reference from the template
+        let templateRef = template.entities.references[0];
+
+        // Substitute variables with user-provided values
+        const { VariableSubstitution } = await import('../templates/VariableSubstitution');
+        const substitutionResult = VariableSubstitution.substituteEntity(
+            templateRef,
+            variableValues,
+            false // non-strict mode
+        );
+        templateRef = substitutionResult.value;
+
+        if (substitutionResult.warnings.length > 0) {
+            console.warn('[ReferenceModal] Variable substitution warnings:', substitutionResult.warnings);
+        }
+
+        // Apply the substituted template
+        await this.applyProcessedTemplateToReference(templateRef);
+    }
+
+    private async applyProcessedTemplateToReference(templateRef: any): Promise<void> {
+        const { templateId, yamlContent, markdownContent, sectionContent, customYamlFields, id, filePath, ...rest } = templateRef as any;
+
+        let fields: any = { ...rest };
+
+        // Handle new format: yamlContent (parse YAML string)
+        if (yamlContent && typeof yamlContent === 'string') {
+            try {
+                const parsed = parseYaml(yamlContent);
+                if (parsed && typeof parsed === 'object') {
+                    fields = { ...fields, ...parsed };
+                }
+                console.log('[ReferenceModal] Parsed YAML fields:', parsed);
+            } catch (error) {
+                console.warn('[ReferenceModal] Failed to parse yamlContent:', error);
+            }
+        } else if (customYamlFields) {
+            // Old format: merge custom YAML fields
+            fields = { ...fields, ...customYamlFields };
+        }
+
+        // Handle new format: markdownContent (parse sections)
+        if (markdownContent && typeof markdownContent === 'string') {
+            try {
+                const parsedSections = parseSectionsFromMarkdown(`---\n---\n\n${markdownContent}`);
+
+                // Map well-known sections to entity properties
+                if ('Content' in parsedSections) {
+                    fields.content = parsedSections['Content'];
+                }
+                console.log('[ReferenceModal] Parsed markdown sections:', parsedSections);
+            } catch (error) {
+                console.warn('[ReferenceModal] Failed to parse markdownContent:', error);
+            }
+        } else if (sectionContent) {
+            // Old format: apply section content
             for (const [sectionName, content] of Object.entries(sectionContent)) {
                 const propName = sectionName.toLowerCase().replace(/\s+/g, '');
-                (this.refData as any)[propName] = content;
+                (fields as any)[propName] = content;
             }
         }
+
+        // Apply all fields to the reference
+        Object.assign(this.refData, fields);
+        console.log('[ReferenceModal] Final reference after template:', this.refData);
     }
 
     private refresh(): void {
-        this.onOpen();
+        void this.onOpen();
     }
 
     onClose(): void {
