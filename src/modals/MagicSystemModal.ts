@@ -67,7 +67,7 @@ export class MagicSystemModal extends ResponsiveModal {
         this.modalEl.addClass('storyteller-magic-system-modal');
     }
 
-    onOpen(): void {
+    async onOpen(): Promise<void> {
         super.onOpen();
 
         const { contentEl } = this;
@@ -76,6 +76,18 @@ export class MagicSystemModal extends ResponsiveModal {
         contentEl.createEl('h2', {
             text: this.isNew ? t('createNewMagicSystem') : `${t('editMagicSystem')}: ${this.magicSystem.name}`
         });
+
+        // Auto-apply default template for new magic systems
+        if (this.isNew && !this.magicSystem.name) {
+            const defaultTemplateId = this.plugin.settings.defaultTemplates?.['magicSystem'];
+            if (defaultTemplateId) {
+                const defaultTemplate = this.plugin.templateManager?.getTemplate(defaultTemplateId);
+                if (defaultTemplate) {
+                    await this.applyTemplateToMagicSystem(defaultTemplate);
+                    new Notice(t('applyingDefaultTemplate'));
+                }
+            }
+        }
 
         // --- Template Selector (for new magic systems) ---
         if (this.isNew) {

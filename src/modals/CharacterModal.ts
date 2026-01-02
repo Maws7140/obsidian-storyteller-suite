@@ -59,6 +59,18 @@ export class CharacterModal extends ResponsiveModal {
         contentEl.empty();
         contentEl.createEl('h2', { text: this.isNew ? t('createNewCharacter') : `${t('edit')} ${this.character.name}` });
 
+        // Auto-apply default template for new characters
+        if (this.isNew && !this.character.name) {
+            const defaultTemplateId = this.plugin.settings.defaultTemplates?.['character'];
+            if (defaultTemplateId) {
+                const defaultTemplate = this.plugin.templateManager?.getTemplate(defaultTemplateId);
+                if (defaultTemplate) {
+                    await this.applyTemplateToCharacter(defaultTemplate);
+                    new Notice(t('applyingDefaultTemplate'));
+                }
+            }
+        }
+
         // --- Template Selector (for new characters) ---
         if (this.isNew) {
             new Setting(contentEl)
