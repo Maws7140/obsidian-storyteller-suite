@@ -60,7 +60,7 @@ export class CultureModal extends ResponsiveModal {
         this.modalEl.addClass('storyteller-culture-modal');
     }
 
-    onOpen(): void {
+    async onOpen(): Promise<void> {
         super.onOpen();
 
         const { contentEl } = this;
@@ -69,6 +69,18 @@ export class CultureModal extends ResponsiveModal {
         contentEl.createEl('h2', {
             text: this.isNew ? t('createNewCulture') : `${t('editCulture')}: ${this.culture.name}`
         });
+
+        // Auto-apply default template for new cultures
+        if (this.isNew && !this.culture.name) {
+            const defaultTemplateId = this.plugin.settings.defaultTemplates?.['culture'];
+            if (defaultTemplateId) {
+                const defaultTemplate = this.plugin.templateManager?.getTemplate(defaultTemplateId);
+                if (defaultTemplate) {
+                    await this.applyTemplateToCulture(defaultTemplate);
+                    new Notice(t('applyingDefaultTemplate'));
+                }
+            }
+        }
 
         // --- Template Selector (for new cultures) ---
         if (this.isNew) {

@@ -72,6 +72,18 @@ export class GroupModal extends ResponsiveModal {
     async onOpen() {
         super.onOpen();
 
+        // Auto-apply default template for new groups
+        if (this.isNew && !this.group.name) {
+            const defaultTemplateId = this.plugin.settings.defaultTemplates?.['group'];
+            if (defaultTemplateId) {
+                const defaultTemplate = this.plugin.templateManager?.getTemplate(defaultTemplateId);
+                if (defaultTemplate) {
+                    await this.applyTemplateToGroup(defaultTemplate);
+                    new Notice(t('applyingDefaultTemplate'));
+                }
+            }
+        }
+
         // Load all entities first for link repair
         await this.loadAllEntities();
 

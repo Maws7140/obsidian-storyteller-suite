@@ -1,8 +1,8 @@
 ﻿/* eslint-disable @typescript-eslint/no-unused-vars */
-import { App, Modal, Setting, Notice, TextAreaComponent, TextComponent, ButtonComponent } from 'obsidian';
+import { App, Modal, Setting, Notice, TextAreaComponent, TextComponent, ButtonComponent, parseYaml } from 'obsidian';
 import { Event, GalleryImage, Character, Location, Group } from '../types'; // Added Character, Location, Group
 import StorytellerSuitePlugin from '../main';
-import { getWhitelistKeys } from '../yaml/EntitySections';
+import { getWhitelistKeys, parseSectionsFromMarkdown } from '../yaml/EntitySections';
 import { t } from '../i18n/strings';
 import { GalleryImageSuggestModal } from './GalleryImageSuggestModal';
 import { addImageSelectionButtons } from '../utils/ImageSelectionHelper';
@@ -55,10 +55,53 @@ export class EventModal extends Modal {
         this.modalEl.addClass('storyteller-event-modal');
     }
 
-    onOpen() {
+    async onOpen() {
         const { contentEl } = this;
         contentEl.empty();
         contentEl.createEl('h2', { text: this.isNew ? t('createNewEvent') : `${t('edit')} ${this.event.name}` });
+
+        // Auto-apply default template for new events
+        if (this.isNew && !this.event.name) {
+            const defaultTemplateId = this.plugin.settings.defaultTemplates?.['event'];
+            if (defaultTemplateId) {
+                const defaultTemplate = this.plugin.templateManager?.getTemplate(defaultTemplateId);
+                if (defaultTemplate) {
+                    // If template has variables or multiple entities, use TemplateApplicationModal
+                    if ((defaultTemplate.variables && defaultTemplate.variables.length > 0) ||
+                        this.hasMultipleEntities(defaultTemplate)) {
+                        await new Promise<void>((resolve) => {
+                            import('./TemplateApplicationModal').then(({ TemplateApplicationModal }) => {
+                                new TemplateApplicationModal(
+                                    this.app,
+                                    this.plugin,
+                                    defaultTemplate,
+                                    async (variableValues, entityFileNames) => {
+                                        try {
+                                            await this.applyTemplateToEventWithVariables(defaultTemplate, variableValues);
+                                            new Notice(t('applyingDefaultTemplate'));
+                                            this.refresh(); // Refresh to show applied values
+                                        } catch (error) {
+                                            console.error('[EventModal] Error applying template:', error);
+                                            new Notice('Error applying default template');
+                                        }
+                                        resolve();
+                                    }
+                                ).open();
+                            });
+                        });
+                    } else {
+                        // No variables, apply directly
+                        try {
+                            await this.applyTemplateToEvent(defaultTemplate);
+                            new Notice(t('applyingDefaultTemplate'));
+                        } catch (error) {
+                            console.error('[EventModal] Error applying template:', error);
+                            new Notice('Error applying default template');
+                        }
+                    }
+                }
+            }
+        }
 
         // --- Template Selector (for new events) ---
         if (this.isNew) {
@@ -826,33 +869,99 @@ export class EventModal extends Modal {
         }
     }
 
-    private async applyTemplateToEvent(template: Template): Promise<void> {
+    private hasMultipleEntities(template: Template): boolean {
+        const entityCount = Object.values(template.entities).reduce((count, entities) => {
+            return count + (Array.isArray(entities) ? entities.length : 0);
+        }, 0);
+        return entityCount > 1;
+    }
+
+    private async applyTemplateToEventWithVariables(template: Template, variableValues: Record<string, any>): Promise<void> {
         if (!template.entities.events || template.entities.events.length === 0) {
             new Notice('This template does not contain any events');
             return;
         }
 
         // Get the first event from the template
-        const templateEvt = template.entities.events[0];
+        let templateEvt = template.entities.events[0];
 
-        // Extract template-specific fields
-        const { templateId, sectionContent, customYamlFields, id, filePath, ...evtData } = templateEvt as any;
+        // Substitute variables with user-provided values
+        const { VariableSubstitution } = await import('../templates/VariableSubstitution');
+        const substitutionResult = VariableSubstitution.substituteEntity(
+            templateEvt,
+            variableValues,
+            false // non-strict mode
+        );
+        templateEvt = substitutionResult.value;
 
-        // Apply base event fields
-        Object.assign(this.event, evtData);
-
-        // Apply custom YAML fields if they exist
-        if (customYamlFields) {
-            Object.assign(this.event, customYamlFields);
+        if (substitutionResult.warnings.length > 0) {
+            console.warn('[EventModal] Variable substitution warnings:', substitutionResult.warnings);
         }
 
-        // Apply section content if it exists (map section names to lowercase properties)
-        if (sectionContent) {
+        // Apply the substituted template
+        await this.applyProcessedTemplateToEvent(templateEvt);
+    }
+
+    private async applyTemplateToEvent(template: Template): Promise<void> {
+        if (!template.entities.events || template.entities.events.length === 0) {
+            new Notice('This template does not contain any events');
+            return;
+        }
+
+        // Get the first event from the template (no variable substitution)
+        const templateEvt = template.entities.events[0];
+        await this.applyProcessedTemplateToEvent(templateEvt);
+    }
+
+    private async applyProcessedTemplateToEvent(templateEvt: any): Promise<void> {
+
+        const { templateId, yamlContent, markdownContent, sectionContent, customYamlFields, id, filePath, ...rest } = templateEvt as any;
+
+        let fields: any = { ...rest };
+
+        // Handle new format: yamlContent (parse YAML string)
+        if (yamlContent && typeof yamlContent === 'string') {
+            try {
+                const parsed = parseYaml(yamlContent);
+                if (parsed && typeof parsed === 'object') {
+                    fields = { ...fields, ...parsed };
+                }
+                console.log('[EventModal] Parsed YAML fields:', parsed);
+            } catch (error) {
+                console.warn('[EventModal] Failed to parse yamlContent:', error);
+            }
+        } else if (customYamlFields) {
+            // Old format: merge custom YAML fields
+            fields = { ...fields, ...customYamlFields };
+        }
+
+        // Handle new format: markdownContent (parse sections)
+        if (markdownContent && typeof markdownContent === 'string') {
+            try {
+                const parsedSections = parseSectionsFromMarkdown(`---\n---\n\n${markdownContent}`);
+
+                // Map well-known sections to entity properties
+                if ('Description' in parsedSections) {
+                    fields.description = parsedSections['Description'];
+                }
+                if ('Outcome' in parsedSections) {
+                    fields.outcome = parsedSections['Outcome'];
+                }
+                console.log('[EventModal] Parsed markdown sections:', parsedSections);
+            } catch (error) {
+                console.warn('[EventModal] Failed to parse markdownContent:', error);
+            }
+        } else if (sectionContent) {
+            // Old format: apply section content
             for (const [sectionName, content] of Object.entries(sectionContent)) {
                 const propName = sectionName.toLowerCase().replace(/\s+/g, '');
-                (this.event as any)[propName] = content;
+                (fields as any)[propName] = content;
             }
         }
+
+        // Apply all fields to the event
+        Object.assign(this.event, fields);
+        console.log('[EventModal] Final event after template:', this.event);
 
         // Clear relationships as they reference template entities
         this.event.characters = [];

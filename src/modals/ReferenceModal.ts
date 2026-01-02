@@ -31,10 +31,22 @@ export class ReferenceModal extends Modal {
         this.modalEl.addClass('storyteller-reference-modal');
     }
 
-    onOpen(): void {
+    async onOpen(): Promise<void> {
         const { contentEl } = this;
         contentEl.empty();
         contentEl.createEl('h2', { text: this.isNew ? t('createReference') : `${t('editReference')} ${this.refData.name}` });
+
+        // Auto-apply default template for new references
+        if (this.isNew && !this.refData.name) {
+            const defaultTemplateId = this.plugin.settings.defaultTemplates?.['reference'];
+            if (defaultTemplateId) {
+                const defaultTemplate = this.plugin.templateManager?.getTemplate(defaultTemplateId);
+                if (defaultTemplate) {
+                    await this.applyTemplateToReference(defaultTemplate);
+                    new Notice(t('applyingDefaultTemplate'));
+                }
+            }
+        }
 
         // --- Template Selector (for new references) ---
         if (this.isNew) {

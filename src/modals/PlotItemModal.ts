@@ -51,10 +51,22 @@ export class PlotItemModal extends Modal {
         this.modalEl.addClass('storyteller-item-modal');
     }
 
-    onOpen() {
+    async onOpen() {
         const { contentEl } = this;
         contentEl.empty();
         contentEl.createEl('h2', { text: this.isNew ? t('createItem') : `${t('edit')} ${this.item.name}` });
+
+        // Auto-apply default template for new items
+        if (this.isNew && !this.item.name) {
+            const defaultTemplateId = this.plugin.settings.defaultTemplates?.['item'];
+            if (defaultTemplateId) {
+                const defaultTemplate = this.plugin.templateManager?.getTemplate(defaultTemplateId);
+                if (defaultTemplate) {
+                    await this.applyTemplateToItem(defaultTemplate);
+                    new Notice(t('applyingDefaultTemplate'));
+                }
+            }
+        }
 
         // --- Template Selector (for new items) ---
         if (this.isNew) {
