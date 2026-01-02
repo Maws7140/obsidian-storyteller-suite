@@ -189,6 +189,18 @@
   "referencesFolder": "References folder",
   "scenesFolder": "Scenes folder",
   "chaptersFolder": "Chapters folder",
+  "culturesFolder": "Cultures folder",
+  "culturesFolderDesc": "Path for culture markdown files (placeholders allowed: {storyName}, {storySlug}, {storyId})",
+  "culturesFolderPh": "MyStory/Cultures",
+  "economiesFolder": "Economies folder",
+  "economiesFolderDesc": "Path for economy markdown files (placeholders allowed: {storyName}, {storySlug}, {storyId})",
+  "economiesFolderPh": "MyStory/Economies",
+  "factionsFolder": "Factions folder",
+  "factionsFolderDesc": "Path for faction markdown files (placeholders allowed: {storyName}, {storySlug}, {storyId})",
+  "factionsFolderPh": "MyStory/Factions",
+  "magicSystemsFolder": "Magic Systems folder",
+  "magicSystemsFolderDesc": "Path for magic system markdown files (placeholders allowed: {storyName}, {storySlug}, {storyId})",
+  "magicSystemsFolderPh": "MyStory/MagicSystems",
   "oneStoryMode": "One Story Mode",
   "oneStoryBaseFolder": "One Story base folder",
   "showTutorialSection": "Show tutorial section",
@@ -993,6 +1005,7 @@
   "noDefaultTemplate": "None (no template)",
   "defaultTemplateSet": "Default template for {0} set to \"{1}\"",
   "defaultTemplateCleared": "Default template for {0} cleared",
-  "applyingDefaultTemplate": "Applying default template..."
+  "defaultTemplateApplied": "Default template applied.",
+  "defaultTemplateApplyFailed": "Failed to apply default template."
 }
 

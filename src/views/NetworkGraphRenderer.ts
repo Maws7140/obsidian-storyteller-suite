@@ -437,7 +437,11 @@ export class NetworkGraphRenderer {
                         return Math.max(40, Math.min(120, 40 + degree * 8));
                     },
                     'text-wrap': 'wrap',
-                    'text-max-width': '100px'
+                    'text-max-width': '100px',
+                    // Smooth transitions for hover effects
+                    'transition-property': 'opacity, border-width, border-color',
+                    'transition-duration': '150ms',
+                    'transition-timing-function': 'ease-out'
                 }
             },
             // Nodes with images - use image as background
@@ -552,7 +556,11 @@ export class NetworkGraphRenderer {
                     'text-background-shape': 'roundrectangle',
                     'text-outline-color': 'transparent',
                     'text-outline-width': 0,
-                    'font-family': fontFamily
+                    'font-family': fontFamily,
+                    // Smooth transitions for hover effects
+                    'transition-property': 'opacity, width',
+                    'transition-duration': '150ms',
+                    'transition-timing-function': 'ease-out'
                 }
             },
             // Relationship type colors
@@ -666,6 +674,10 @@ export class NetworkGraphRenderer {
         ];
     }
 
+    // Track currently hovered node to prevent redundant updates and race conditions
+    private currentHoveredNode: NodeSingular | null = null;
+    private panZoomTimeout: NodeJS.Timeout | null = null;
+
     // Setup event listeners for graph interactions
     private setupEventListeners(): void {
         if (!this.cy) return;
@@ -680,57 +692,40 @@ export class NetworkGraphRenderer {
         this.cy.on('mouseover', 'node', (evt) => {
             const node = evt.target;
 
-            // Clear all old highlights immediately to prevent stale highlights when moving quickly between nodes
-            this.cy?.elements().removeClass('highlighted dimmed');
+            // Skip if already hovering this node - prevents redundant updates
+            if (this.currentHoveredNode && this.currentHoveredNode.id() === node.id()) {
+                return;
+            }
+            this.currentHoveredNode = node;
 
-            // Get all neighbors of the hovered node (nodes connected to it)
-            const neighbors = node.neighborhood('node');
-
-            // Highlight the node and its connections
-            this.cy?.nodes().forEach(n => {
-                if (n.id() === node.id()) {
-                    // The hovered node itself
-                    n.addClass('highlighted');
-                } else if (neighbors.contains(n)) {
-                    // This node is a neighbor of the hovered node
-                    // Don't dim it, but don't highlight it either (or optionally highlight it)
-                    // For now, we'll leave it normal (not dimmed)
-                } else {
-                    // This node is not connected
-                    n.addClass('dimmed');
-                }
-            });
-
-            this.cy?.edges().forEach(e => {
-                if (e.source().id() === node.id() || e.target().id() === node.id()) {
-                    e.addClass('highlighted');
-                } else {
-                    e.addClass('dimmed');
-                }
-            });
-
-            // Update info panel with slight delay for smooth UX
+            // Cancel any pending hide operation
             if (this.infoPanelTimeout) {
                 clearTimeout(this.infoPanelTimeout);
+                this.infoPanelTimeout = null;
             }
-            this.infoPanelTimeout = setTimeout(() => {
-                this.updateInfoPanel(node);
-            }, 50); // 50ms delay - responsive hover feedback
+
+            // Immediately highlight node and neighbors using batched updates
+            this.highlightNodeAndNeighbors(node);
+
+            // Update info panel immediately (no delay for responsive feedback)
+            this.updateInfoPanel(node);
         });
 
-        this.cy.on('mouseout', 'node', (evt) => {
-            // Don't immediately hide - give time for user to move to info panel
+        this.cy.on('mouseout', 'node', () => {
+            // Don't immediately hide - give time for user to move to info panel or adjacent node
             if (this.infoPanelTimeout) {
                 clearTimeout(this.infoPanelTimeout);
                 this.infoPanelTimeout = null;
             }
             
-            // Delay hiding to allow moving to info panel
+            // Short delay before clearing - allows moving between adjacent nodes smoothly
             this.infoPanelTimeout = setTimeout(() => {
-                // Remove all highlighting
-                this.cy?.elements().removeClass('highlighted dimmed');
-                this.hideInfoPanel();
-            }, 500); // 500ms grace period
+                if (this.currentHoveredNode) {
+                    this.currentHoveredNode = null;
+                    this.cy?.elements().removeClass('highlighted dimmed');
+                    this.hideInfoPanel();
+                }
+            }, 150); // Reduced from 500ms to 150ms - responsive but forgiving
         });
         
         // Keep info panel visible when hovering over it
@@ -744,9 +739,11 @@ export class NetworkGraphRenderer {
             });
             
             this.infoPanelEl.addEventListener('mouseleave', () => {
-                // Hide when leaving the panel
-                this.cy?.elements().removeClass('highlighted dimmed');
-                this.hideInfoPanel();
+                // Only hide if not hovering a node - prevents flicker when moving back
+                if (!this.currentHoveredNode) {
+                    this.cy?.elements().removeClass('highlighted dimmed');
+                    this.hideInfoPanel();
+                }
             });
         }
 
@@ -757,18 +754,38 @@ export class NetworkGraphRenderer {
             this.toggleNodePin(node);
         });
 
-        // Update tooltip position when panning/zooming and save viewport state
+        // Debounced pan/zoom handler - don't immediately clear highlights
         this.cy.on('pan zoom', () => {
-            // Clear any pending info panel timeout
-            if (this.infoPanelTimeout) {
-                clearTimeout(this.infoPanelTimeout);
-                this.infoPanelTimeout = null;
+            // Save viewport state (already debounced internally)
+            this.saveViewportState();
+            
+            // Only clear highlights after pan/zoom settles
+            if (this.panZoomTimeout) {
+                clearTimeout(this.panZoomTimeout);
             }
-            // Remove highlighting/dimming when scrolling - this fixes the issue where
-            // scrolling away from a node leaves the graph in a dimmed state
-            this.cy?.elements().removeClass('highlighted dimmed');
-            this.hideInfoPanel();
-            this.saveViewportState(); // Save user's zoom/pan position
+            this.panZoomTimeout = setTimeout(() => {
+                // Only clear if we're not currently hovering a node
+                if (!this.currentHoveredNode) {
+                    this.cy?.elements().removeClass('highlighted dimmed');
+                    this.hideInfoPanel();
+                }
+            }, 300); // Wait for pan/zoom to settle
+        });
+    }
+
+    // Efficiently highlight a node and its neighbors using batched updates
+    private highlightNodeAndNeighbors(node: NodeSingular): void {
+        if (!this.cy) return;
+
+        // Use Cytoscape's batch API to minimize redraws
+        this.cy.batch(() => {
+            // First, dim everything
+            this.cy!.elements().addClass('dimmed').removeClass('highlighted');
+            
+            // Then highlight the node and its neighborhood
+            node.removeClass('dimmed').addClass('highlighted');
+            node.neighborhood().removeClass('dimmed');
+            node.connectedEdges().removeClass('dimmed').addClass('highlighted');
         });
     }
 

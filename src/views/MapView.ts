@@ -1862,6 +1862,17 @@ export class MapView extends ItemView {
         // Clean up placement mode
         this.disablePlacementMode();
 
+        // Clean up debounce timer for view state persistence
+        if (this._persistViewStateTimeout) {
+            clearTimeout(this._persistViewStateTimeout);
+            // Save immediately if there's a pending save
+            const mapId = this.currentMap?.id || this.currentMap?.name;
+            if (mapId && this._savedCenter) {
+                this.plugin.saveMapViewState(mapId, this.currentZoom, this._savedCenter);
+            }
+            this._persistViewStateTimeout = null;
+        }
+
         // Clean up document-level event handlers
         if ((this as any)._wheelHandler) {
             document.removeEventListener('wheel', (this as any)._wheelHandler);
@@ -1892,6 +1903,8 @@ export class MapView extends ItemView {
      * NOTE: We only update instance variables, NOT Obsidian's view state.
      * Calling setViewState() triggers setState() which calls loadMap(),
      * creating an infinite re-initialization loop.
+     * 
+     * Also persists to plugin settings so position is remembered across sessions.
      */
     private saveMapViewState(): void {
         const map = this.leafletRenderer?.getMap();
@@ -1905,6 +1918,29 @@ export class MapView extends ItemView {
         
         // Store in a private variable for later use in getState()
         this._savedCenter = { lat: center.lat, lng: center.lng };
+
+        // Persist to plugin settings (debounced via the plugin method)
+        const mapId = this.currentMap?.id || this.currentMap?.name;
+        if (mapId) {
+            // Use debouncing to avoid excessive writes during rapid pan/zoom
+            this.debouncedPersistViewState(mapId, zoom, this._savedCenter);
+        }
+    }
+
+    /** Debounce timer for persisting view state */
+    private _persistViewStateTimeout: ReturnType<typeof setTimeout> | null = null;
+
+    /**
+     * Debounced persistence of view state to avoid excessive writes
+     */
+    private debouncedPersistViewState(mapId: string, zoom: number, center: { lat: number; lng: number }): void {
+        if (this._persistViewStateTimeout) {
+            clearTimeout(this._persistViewStateTimeout);
+        }
+        this._persistViewStateTimeout = setTimeout(() => {
+            this.plugin.saveMapViewState(mapId, zoom, center);
+            this._persistViewStateTimeout = null;
+        }, 500); // 500ms debounce
     }
 
     /**

@@ -108,6 +108,12 @@ export class LeafletRenderer extends Component {
 
             this.isInitialized = true;
             
+            // Restore saved map position if available
+            await this.restoreSavedViewState();
+            
+            // Set up position saving for inline maps
+            this.setupPositionSaving();
+            
             // Note: invalidateSize is already called in initializeImageMap
             // Don't call it again here as it can reset the view
 
@@ -863,13 +869,28 @@ export class LeafletRenderer extends Component {
         // Must be a tuple
         const tuple = loc as [string | number, string | number];
 
-        if (isPercent && this.params.type === 'image' && this.imageOverlay) {
+        if (isPercent && this.params.type === 'image') {
             // Convert percentage to coordinates
             // Bounds are [[0, 0], [height, width]]
             // So 0% = 0, 100% = full dimension
-            const bounds = this.imageOverlay.getBounds();
-            const height = bounds.getNorth(); // = image height (since south is 0)
-            const width = bounds.getEast();   // = image width (since west is 0)
+            let height: number;
+            let width: number;
+            
+            if (this.imageOverlay) {
+                const bounds = this.imageOverlay.getBounds();
+                height = bounds.getNorth(); // = image height (since south is 0)
+                width = bounds.getEast();   // = image width (since west is 0)
+            } else if (this.imageWidth && this.imageHeight) {
+                // Fallback for tiled maps where imageOverlay doesn't exist
+                height = this.imageHeight;
+                width = this.imageWidth;
+            } else {
+                // No dimension info available, fall back to direct coordinates
+                return L.latLng(
+                    typeof tuple[0] === 'string' ? parseFloat(tuple[0]) : tuple[0],
+                    typeof tuple[1] === 'string' ? parseFloat(tuple[1]) : tuple[1]
+                );
+            }
 
             const xPercent = typeof tuple[1] === 'string'
                 ? parseFloat(tuple[1].replace('%', ''))
@@ -1094,6 +1115,9 @@ export class LeafletRenderer extends Component {
     /**
      * Refresh entities on the map without reloading the entire map
      * Useful after adding/removing entities
+    /**
+     * Refresh entities on the map without reloading the entire map
+     * Useful after adding/removing entities
      */
     async refreshEntities(): Promise<void> {
         if (!this.mapEntityRenderer || !this.params.mapId) return;
@@ -1102,6 +1126,94 @@ export class LeafletRenderer extends Component {
         // Refresh both locations and entities to ensure markers appear at correct positions
         await this.mapEntityRenderer.renderLocationsForMap(mapId);
         await this.mapEntityRenderer.renderEntitiesForMap(mapId);
+    }
+
+    /**
+     * Restore saved map view state (zoom and center position)
+     * Called during initialization to return user to their last viewed position
+     */
+    private async restoreSavedViewState(): Promise<void> {
+        if (!this.map) return;
+
+        const mapId = (this.params as any).mapId || this.params.id;
+        if (!mapId) return;
+
+        const savedState = this.plugin.getMapViewState(mapId);
+        if (!savedState) {
+            console.log('[LeafletRenderer] No saved view state for map:', mapId);
+            return;
+        }
+
+        console.log('[LeafletRenderer] Restoring saved view state for map:', mapId, savedState);
+
+        try {
+            // Restore view with saved zoom and center
+            this.map.setView(
+                [savedState.center.lat, savedState.center.lng],
+                savedState.zoom,
+                { animate: false }
+            );
+            console.log('[LeafletRenderer] View state restored successfully');
+        } catch (error) {
+            console.warn('[LeafletRenderer] Failed to restore view state:', error);
+        }
+    }
+
+    /**
+     * Get the map ID for this renderer
+     */
+    getMapId(): string | undefined {
+        return (this.params as any).mapId || this.params.id;
+    }
+
+    /**
+     * Set up position saving when user moves/zooms the map
+     * Debounced to avoid too many saves during continuous movement
+     */
+    private setupPositionSaving(): void {
+        if (!this.map) return;
+
+        const mapId = this.getMapId();
+        if (!mapId) return;
+
+        let saveTimeout: ReturnType<typeof setTimeout> | null = null;
+
+        const savePosition = () => {
+            if (!this.map) return;
+            
+            // Clear any pending save
+            if (saveTimeout) {
+                clearTimeout(saveTimeout);
+            }
+
+            // Debounce: wait 500ms after last movement before saving
+            saveTimeout = setTimeout(() => {
+                if (!this.map) return;
+                
+                const zoom = this.map.getZoom();
+                const center = this.map.getCenter();
+                
+                this.plugin.saveMapViewState(mapId, zoom, {
+                    lat: center.lat,
+                    lng: center.lng
+                });
+            }, 500);
+        };
+
+        // Listen for both move and zoom events
+        this.map.on('moveend', savePosition);
+        this.map.on('zoomend', savePosition);
+
+        // Clean up on unload
+        this.register(() => {
+            if (saveTimeout) {
+                clearTimeout(saveTimeout);
+            }
+            if (this.map) {
+                this.map.off('moveend', savePosition);
+                this.map.off('zoomend', savePosition);
+            }
+        });
     }
 
     /**

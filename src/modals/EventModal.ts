@@ -78,7 +78,7 @@ export class EventModal extends Modal {
                                     async (variableValues, entityFileNames) => {
                                         try {
                                             await this.applyTemplateToEventWithVariables(defaultTemplate, variableValues);
-                                            new Notice(t('applyingDefaultTemplate'));
+                                            new Notice(t('defaultTemplateApplied'));
                                             this.refresh(); // Refresh to show applied values
                                         } catch (error) {
                                             console.error('[EventModal] Error applying template:', error);
@@ -87,13 +87,17 @@ export class EventModal extends Modal {
                                         resolve();
                                     }
                                 ).open();
+                            }).catch((error) => {
+                                console.error('[EventModal] Failed to load TemplateApplicationModal:', error);
+                                new Notice('Failed to load template application dialog');
+                                resolve();
                             });
                         });
                     } else {
                         // No variables, apply directly
                         try {
                             await this.applyTemplateToEvent(defaultTemplate);
-                            new Notice(t('applyingDefaultTemplate'));
+                            new Notice(t('defaultTemplateApplied'));
                         } catch (error) {
                             console.error('[EventModal] Error applying template:', error);
                             new Notice('Error applying default template');
@@ -972,7 +976,7 @@ export class EventModal extends Modal {
 
     private refresh(): void {
         // Refresh the modal by reopening it
-        this.onOpen();
+        void this.onOpen();
     }
 
     onClose() {

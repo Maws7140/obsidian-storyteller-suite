@@ -1,10 +1,10 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
-import { App, Modal, Setting, Notice, TextAreaComponent } from 'obsidian';
+import { App, Modal, Setting, Notice, TextAreaComponent, parseYaml } from 'obsidian';
 import { PlotItem, Group } from '../types';
 import StorytellerSuitePlugin from '../main';
 import { GalleryImageSuggestModal } from './GalleryImageSuggestModal';
 import { addImageSelectionButtons } from '../utils/ImageSelectionHelper';
-import { getWhitelistKeys } from '../yaml/EntitySections';
+import { getWhitelistKeys, parseSectionsFromMarkdown } from '../yaml/EntitySections';
 import { t } from '../i18n/strings';
 import { CharacterSuggestModal } from './CharacterSuggestModal';
 import { LocationSuggestModal } from './LocationSuggestModal';
@@ -62,8 +62,39 @@ export class PlotItemModal extends Modal {
             if (defaultTemplateId) {
                 const defaultTemplate = this.plugin.templateManager?.getTemplate(defaultTemplateId);
                 if (defaultTemplate) {
-                    await this.applyTemplateToItem(defaultTemplate);
-                    new Notice(t('applyingDefaultTemplate'));
+                    // If template has variables or multiple entities, use TemplateApplicationModal
+                    if ((defaultTemplate.variables && defaultTemplate.variables.length > 0) ||
+                        this.hasMultipleEntities(defaultTemplate)) {
+                        await new Promise<void>((resolve) => {
+                            import('./TemplateApplicationModal').then(({ TemplateApplicationModal }) => {
+                                new TemplateApplicationModal(
+                                    this.app,
+                                    this.plugin,
+                                    defaultTemplate,
+                                    async (variableValues, entityFileNames) => {
+                                        try {
+                                            await this.applyTemplateToItemWithVariables(defaultTemplate, variableValues);
+                                            new Notice('Default template applied');
+                                            this.refresh();
+                                        } catch (error) {
+                                            console.error('[PlotItemModal] Error applying template:', error);
+                                            new Notice('Error applying default template');
+                                        }
+                                        resolve();
+                                    }
+                                ).open();
+                            });
+                        });
+                    } else {
+                        // No variables, apply directly
+                        try {
+                            await this.applyTemplateToItem(defaultTemplate);
+                            new Notice('Default template applied');
+                        } catch (error) {
+                            console.error('[PlotItemModal] Error applying template:', error);
+                            new Notice('Error applying default template');
+                        }
+                    }
                 }
             }
         }
@@ -313,6 +344,16 @@ export class PlotItemModal extends Modal {
         })();
     }
 
+    private hasMultipleEntities(template: Template): boolean {
+        let entityCount = 0;
+        if (template.entities.items?.length) entityCount += template.entities.items.length;
+        if (template.entities.characters?.length) entityCount += template.entities.characters.length;
+        if (template.entities.locations?.length) entityCount += template.entities.locations.length;
+        if (template.entities.events?.length) entityCount += template.entities.events.length;
+        if (template.entities.groups?.length) entityCount += template.entities.groups.length;
+        return entityCount > 1;
+    }
+
     private async applyTemplateToItem(template: Template): Promise<void> {
         if (!template.entities.items || template.entities.items.length === 0) {
             new Notice('This template does not contain any items');
@@ -320,25 +361,84 @@ export class PlotItemModal extends Modal {
         }
 
         const templateItem = template.entities.items[0];
+        await this.applyProcessedTemplateToItem(templateItem);
+    }
 
-        // Extract template-specific fields
-        const { templateId, sectionContent, customYamlFields, id, filePath, ...itemData } = templateItem as any;
-
-        // Apply base item fields
-        Object.assign(this.item, itemData);
-
-        // Apply custom YAML fields if they exist
-        if (customYamlFields) {
-            Object.assign(this.item, customYamlFields);
+    private async applyTemplateToItemWithVariables(template: Template, variableValues: Record<string, any>): Promise<void> {
+        if (!template.entities.items || template.entities.items.length === 0) {
+            new Notice('This template does not contain any items');
+            return;
         }
 
-        // Apply section content if it exists (map section names to lowercase properties)
-        if (sectionContent) {
+        // Get the first item from the template
+        let templateItem = template.entities.items[0];
+
+        // Substitute variables with user-provided values
+        const { VariableSubstitution } = await import('../templates/VariableSubstitution');
+        const substitutionResult = VariableSubstitution.substituteEntity(
+            templateItem,
+            variableValues,
+            false // non-strict mode
+        );
+        templateItem = substitutionResult.value;
+
+        if (substitutionResult.warnings.length > 0) {
+            console.warn('[PlotItemModal] Variable substitution warnings:', substitutionResult.warnings);
+        }
+
+        // Apply the substituted template
+        await this.applyProcessedTemplateToItem(templateItem);
+    }
+
+    private async applyProcessedTemplateToItem(templateItem: any): Promise<void> {
+        const { templateId, yamlContent, markdownContent, sectionContent, customYamlFields, id, filePath, ...rest } = templateItem as any;
+
+        let fields: any = { ...rest };
+
+        // Handle new format: yamlContent (parse YAML string)
+        if (yamlContent && typeof yamlContent === 'string') {
+            try {
+                const parsed = parseYaml(yamlContent);
+                if (parsed && typeof parsed === 'object') {
+                    fields = { ...fields, ...parsed };
+                }
+                console.log('[PlotItemModal] Parsed YAML fields:', parsed);
+            } catch (error) {
+                console.warn('[PlotItemModal] Failed to parse yamlContent:', error);
+            }
+        } else if (customYamlFields) {
+            // Old format: merge custom YAML fields
+            fields = { ...fields, ...customYamlFields };
+        }
+
+        // Handle new format: markdownContent (parse sections)
+        if (markdownContent && typeof markdownContent === 'string') {
+            try {
+                const parsedSections = parseSectionsFromMarkdown(`---\n---\n\n${markdownContent}`);
+
+                // Map well-known sections to entity properties
+                if ('Description' in parsedSections) {
+                    fields.description = parsedSections['Description'];
+                }
+                if ('History' in parsedSections) {
+                    fields.history = parsedSections['History'];
+                }
+
+                console.log('[PlotItemModal] Parsed markdown sections:', parsedSections);
+            } catch (error) {
+                console.warn('[PlotItemModal] Failed to parse markdownContent:', error);
+            }
+        } else if (sectionContent) {
+            // Old format: apply section content
             for (const [sectionName, content] of Object.entries(sectionContent)) {
                 const propName = sectionName.toLowerCase().replace(/\s+/g, '');
-                (this.item as any)[propName] = content;
+                (fields as any)[propName] = content;
             }
         }
+
+        // Apply all fields to the item
+        Object.assign(this.item, fields);
+        console.log('[PlotItemModal] Final item after template:', this.item);
 
         // Clear relationships as they reference template entities
         this.item.currentOwner = undefined;
@@ -350,7 +450,7 @@ export class PlotItemModal extends Modal {
     }
 
     private refresh(): void {
-        this.onOpen();
+        void this.onOpen();
     }
 
     onClose() {

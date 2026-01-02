@@ -1,4 +1,4 @@
-import { App, Setting, Notice } from 'obsidian';
+import { App, Setting, Notice, parseYaml } from 'obsidian';
 import type { MagicSystem } from '../types';
 import type StorytellerSuitePlugin from '../main';
 import { ResponsiveModal } from './ResponsiveModal';
@@ -6,6 +6,7 @@ import { GalleryImageSuggestModal } from './GalleryImageSuggestModal';
 import { TemplatePickerModal } from './TemplatePickerModal';
 import { Template } from '../templates/TemplateTypes';
 import { t } from '../i18n/strings';
+import { getWhitelistKeys, parseSectionsFromMarkdown } from '../yaml/EntitySections';
 
 export type MagicSystemModalSubmitCallback = (magicSystem: MagicSystem) => Promise<void>;
 export type MagicSystemModalDeleteCallback = (magicSystem: MagicSystem) => Promise<void>;
@@ -83,8 +84,39 @@ export class MagicSystemModal extends ResponsiveModal {
             if (defaultTemplateId) {
                 const defaultTemplate = this.plugin.templateManager?.getTemplate(defaultTemplateId);
                 if (defaultTemplate) {
-                    await this.applyTemplateToMagicSystem(defaultTemplate);
-                    new Notice(t('applyingDefaultTemplate'));
+                    // If template has variables or multiple entities, use TemplateApplicationModal
+                    if ((defaultTemplate.variables && defaultTemplate.variables.length > 0) ||
+                        this.hasMultipleEntities(defaultTemplate)) {
+                        await new Promise<void>((resolve) => {
+                            import('./TemplateApplicationModal').then(({ TemplateApplicationModal }) => {
+                                new TemplateApplicationModal(
+                                    this.app,
+                                    this.plugin,
+                                    defaultTemplate,
+                                    async (variableValues, entityFileNames) => {
+                                        try {
+                                            await this.applyTemplateToMagicSystemWithVariables(defaultTemplate, variableValues);
+                                            new Notice('Default template applied');
+                                            this.refresh();
+                                        } catch (error) {
+                                            console.error('[MagicSystemModal] Error applying template:', error);
+                                            new Notice('Error applying default template');
+                                        }
+                                        resolve();
+                                    }
+                                ).open();
+                            });
+                        });
+                    } else {
+                        // No variables, apply directly
+                        try {
+                            await this.applyTemplateToMagicSystem(defaultTemplate);
+                            new Notice('Default template applied');
+                        } catch (error) {
+                            console.error('[MagicSystemModal] Error applying template:', error);
+                            new Notice('Error applying default template');
+                        }
+                    }
                 }
             }
         }
@@ -340,32 +372,117 @@ export class MagicSystemModal extends ResponsiveModal {
         }
     }
 
+    private hasMultipleEntities(template: Template): boolean {
+        let entityCount = 0;
+        if (template.entities.magicSystems?.length) entityCount += template.entities.magicSystems.length;
+        if (template.entities.characters?.length) entityCount += template.entities.characters.length;
+        if (template.entities.locations?.length) entityCount += template.entities.locations.length;
+        if (template.entities.events?.length) entityCount += template.entities.events.length;
+        if (template.entities.items?.length) entityCount += template.entities.items.length;
+        if (template.entities.groups?.length) entityCount += template.entities.groups.length;
+        return entityCount > 1;
+    }
+
     private async applyTemplateToMagicSystem(template: Template): Promise<void> {
         if (!template.entities.magicSystems || template.entities.magicSystems.length === 0) {
-            new Notice(t('noTemplatesAvailable'));
+            new Notice('This template does not contain any magic systems');
             return;
         }
 
         const templateMagic = template.entities.magicSystems[0];
+        await this.applyProcessedTemplateToMagicSystem(templateMagic);
+    }
 
-        // Extract template-specific fields
-        const { templateId, sectionContent, customYamlFields, id, filePath, ...entityData } = templateMagic as any;
-
-        // Apply base entity fields
-        Object.assign(this.magicSystem, entityData);
-
-        // Apply custom YAML fields if they exist
-        if (customYamlFields) {
-            Object.assign(this.magicSystem, customYamlFields);
+    private async applyTemplateToMagicSystemWithVariables(template: Template, variableValues: Record<string, any>): Promise<void> {
+        if (!template.entities.magicSystems || template.entities.magicSystems.length === 0) {
+            new Notice('This template does not contain any magic systems');
+            return;
         }
 
-        // Apply section content if it exists (map section names to lowercase properties)
-        if (sectionContent) {
+        // Get the first magic system from the template
+        let templateMagic = template.entities.magicSystems[0];
+
+        // Substitute variables with user-provided values
+        const { VariableSubstitution } = await import('../templates/VariableSubstitution');
+        const substitutionResult = VariableSubstitution.substituteEntity(
+            templateMagic,
+            variableValues,
+            false // non-strict mode
+        );
+        templateMagic = substitutionResult.value;
+
+        if (substitutionResult.warnings.length > 0) {
+            console.warn('[MagicSystemModal] Variable substitution warnings:', substitutionResult.warnings);
+        }
+
+        // Apply the substituted template
+        await this.applyProcessedTemplateToMagicSystem(templateMagic);
+    }
+
+    private async applyProcessedTemplateToMagicSystem(templateMagic: any): Promise<void> {
+        const { templateId, yamlContent, markdownContent, sectionContent, customYamlFields, id, filePath, ...rest } = templateMagic as any;
+
+        let fields: any = { ...rest };
+
+        // Handle new format: yamlContent (parse YAML string)
+        if (yamlContent && typeof yamlContent === 'string') {
+            try {
+                const parsed = parseYaml(yamlContent);
+                if (parsed && typeof parsed === 'object') {
+                    fields = { ...fields, ...parsed };
+                }
+                console.log('[MagicSystemModal] Parsed YAML fields:', parsed);
+            } catch (error) {
+                console.warn('[MagicSystemModal] Failed to parse yamlContent:', error);
+            }
+        } else if (customYamlFields) {
+            // Old format: merge custom YAML fields
+            fields = { ...fields, ...customYamlFields };
+        }
+
+        // Handle new format: markdownContent (parse sections)
+        if (markdownContent && typeof markdownContent === 'string') {
+            try {
+                const parsedSections = parseSectionsFromMarkdown(`---\n---\n\n${markdownContent}`);
+
+                // Map well-known sections to entity properties
+                if ('Description' in parsedSections) {
+                    fields.description = parsedSections['Description'];
+                }
+                if ('Rules' in parsedSections) {
+                    fields.rules = parsedSections['Rules'];
+                }
+                if ('Source' in parsedSections) {
+                    fields.source = parsedSections['Source'];
+                }
+                if ('Costs' in parsedSections) {
+                    fields.costs = parsedSections['Costs'];
+                }
+                if ('Limitations' in parsedSections) {
+                    fields.limitations = parsedSections['Limitations'];
+                }
+                if ('Training' in parsedSections) {
+                    fields.training = parsedSections['Training'];
+                }
+                if ('History' in parsedSections) {
+                    fields.history = parsedSections['History'];
+                }
+
+                console.log('[MagicSystemModal] Parsed markdown sections:', parsedSections);
+            } catch (error) {
+                console.warn('[MagicSystemModal] Failed to parse markdownContent:', error);
+            }
+        } else if (sectionContent) {
+            // Old format: apply section content
             for (const [sectionName, content] of Object.entries(sectionContent)) {
                 const propName = sectionName.toLowerCase().replace(/\s+/g, '');
-                (this.magicSystem as any)[propName] = content;
+                (fields as any)[propName] = content;
             }
         }
+
+        // Apply all fields to the magic system
+        Object.assign(this.magicSystem, fields);
+        console.log('[MagicSystemModal] Final magic system after template:', this.magicSystem);
 
         // Clear relationships as they reference template entities
         this.magicSystem.linkedCharacters = [];
@@ -378,7 +495,7 @@ export class MagicSystemModal extends ResponsiveModal {
     }
 
     private refresh(): void {
-        this.onOpen();
+        void this.onOpen();
     }
 
     onClose(): void {

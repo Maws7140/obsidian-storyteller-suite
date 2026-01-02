@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
-import { App, Setting, Notice, TextAreaComponent, TextComponent, ButtonComponent, DropdownComponent, Modal } from 'obsidian';
+import { App, Setting, Notice, TextAreaComponent, TextComponent, ButtonComponent, DropdownComponent, Modal, parseYaml } from 'obsidian';
 import { StoryMap as Map } from '../types';
-import { getWhitelistKeys } from '../yaml/EntitySections';
+import { getWhitelistKeys, parseSectionsFromMarkdown } from '../yaml/EntitySections';
 import { Group } from '../types';
 import StorytellerSuitePlugin from '../main';
 import { t } from '../i18n/strings';
@@ -67,6 +67,49 @@ export class MapModal extends ResponsiveModal {
         const { contentEl } = this;
         contentEl.empty();
         contentEl.createEl('h2', { text: this.isNew ? 'Create New Map' : `Edit ${this.map.name}` });
+
+        // Auto-apply default template for new maps
+        if (this.isNew && !this.map.name) {
+            const defaultTemplateId = this.plugin.settings.defaultTemplates?.['map'];
+            if (defaultTemplateId) {
+                const defaultTemplate = this.plugin.templateManager?.getTemplate(defaultTemplateId);
+                if (defaultTemplate) {
+                    // If template has variables or multiple entities, use TemplateApplicationModal
+                    if ((defaultTemplate.variables && defaultTemplate.variables.length > 0) ||
+                        this.hasMultipleEntities(defaultTemplate)) {
+                        await new Promise<void>((resolve) => {
+                            import('./TemplateApplicationModal').then(({ TemplateApplicationModal }) => {
+                                new TemplateApplicationModal(
+                                    this.app,
+                                    this.plugin,
+                                    defaultTemplate,
+                                    async (variableValues, entityFileNames) => {
+                                        try {
+                                            await this.applyTemplateToMapWithVariables(defaultTemplate, variableValues);
+                                            new Notice('Default template applied');
+                                            this.refresh();
+                                        } catch (error) {
+                                            console.error('[MapModal] Error applying template:', error);
+                                            new Notice('Error applying default template');
+                                        }
+                                        resolve();
+                                    }
+                                ).open();
+                            });
+                        });
+                    } else {
+                        // No variables, apply directly
+                        try {
+                            await this.applyTemplateToMap(defaultTemplate);
+                            new Notice('Default template applied');
+                        } catch (error) {
+                            console.error('[MapModal] Error applying template:', error);
+                            new Notice('Error applying default template');
+                        }
+                    }
+                }
+            }
+        }
 
         // Template Selector (for new maps)
         if (this.isNew) {
@@ -541,38 +584,99 @@ export class MapModal extends ResponsiveModal {
         }
     }
 
+    private hasMultipleEntities(template: Template): boolean {
+        let entityCount = 0;
+        if (template.entities.maps?.length) entityCount += template.entities.maps.length;
+        if (template.entities.characters?.length) entityCount += template.entities.characters.length;
+        if (template.entities.locations?.length) entityCount += template.entities.locations.length;
+        if (template.entities.events?.length) entityCount += template.entities.events.length;
+        if (template.entities.items?.length) entityCount += template.entities.items.length;
+        if (template.entities.groups?.length) entityCount += template.entities.groups.length;
+        return entityCount > 1;
+    }
+
     private async applyTemplateToMap(template: Template): Promise<void> {
         if (!template.entities.maps || template.entities.maps.length === 0) {
             new Notice('This template does not contain any maps');
             return;
         }
 
-        // Get the first map from the template
         const templateMap = template.entities.maps[0];
+        await this.applyProcessedTemplateToMap(templateMap);
+    }
 
-        // Extract template-specific fields
-        const { templateId, sectionContent, customYamlFields, yamlContent, markdownContent, id, filePath, ...mapData } = templateMap as any;
-
-        // Apply base map fields (excluding internal template fields)
-        Object.assign(this.map, mapData);
-
-        // Apply custom YAML fields if they exist (legacy support)
-        if (customYamlFields) {
-            Object.assign(this.map, customYamlFields);
+    private async applyTemplateToMapWithVariables(template: Template, variableValues: Record<string, any>): Promise<void> {
+        if (!template.entities.maps || template.entities.maps.length === 0) {
+            new Notice('This template does not contain any maps');
+            return;
         }
 
-        // Apply section content if it exists (map section names to lowercase properties)
-        if (sectionContent) {
+        // Get the first map from the template
+        let templateMap = template.entities.maps[0];
+
+        // Substitute variables with user-provided values
+        const { VariableSubstitution } = await import('../templates/VariableSubstitution');
+        const substitutionResult = VariableSubstitution.substituteEntity(
+            templateMap,
+            variableValues,
+            false // non-strict mode
+        );
+        templateMap = substitutionResult.value;
+
+        if (substitutionResult.warnings.length > 0) {
+            console.warn('[MapModal] Variable substitution warnings:', substitutionResult.warnings);
+        }
+
+        // Apply the substituted template
+        await this.applyProcessedTemplateToMap(templateMap);
+    }
+
+    private async applyProcessedTemplateToMap(templateMap: any): Promise<void> {
+        const { templateId, yamlContent, markdownContent, sectionContent, customYamlFields, id, filePath, ...rest } = templateMap as any;
+
+        let fields: any = { ...rest };
+
+        // Handle new format: yamlContent (parse YAML string)
+        if (yamlContent && typeof yamlContent === 'string') {
+            try {
+                const parsed = parseYaml(yamlContent);
+                if (parsed && typeof parsed === 'object') {
+                    fields = { ...fields, ...parsed };
+                }
+                console.log('[MapModal] Parsed YAML fields:', parsed);
+            } catch (error) {
+                console.warn('[MapModal] Failed to parse yamlContent:', error);
+            }
+        } else if (customYamlFields) {
+            // Old format: merge custom YAML fields
+            fields = { ...fields, ...customYamlFields };
+        }
+
+        // Handle new format: markdownContent (parse sections)
+        if (markdownContent && typeof markdownContent === 'string') {
+            try {
+                const parsedSections = parseSectionsFromMarkdown(`---\n---\n\n${markdownContent}`);
+
+                // Map well-known sections to entity properties
+                if ('Description' in parsedSections) {
+                    fields.description = parsedSections['Description'];
+                }
+
+                console.log('[MapModal] Parsed markdown sections:', parsedSections);
+            } catch (error) {
+                console.warn('[MapModal] Failed to parse markdownContent:', error);
+            }
+        } else if (sectionContent) {
+            // Old format: apply section content
             for (const [sectionName, content] of Object.entries(sectionContent)) {
                 const propName = sectionName.toLowerCase().replace(/\s+/g, '');
-                (this.map as any)[propName] = content;
+                (fields as any)[propName] = content;
             }
         }
 
-        // Store markdown sections for later use when saving
-        if (markdownContent || sectionContent) {
-            (this.map as any)._templateSections = sectionContent || {};
-        }
+        // Apply all fields to the map
+        Object.assign(this.map, fields);
+        console.log('[MapModal] Final map after template:', this.map);
 
         // Clear entity links as they reference template entities
         this.map.linkedLocations = [];

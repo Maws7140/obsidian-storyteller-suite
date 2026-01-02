@@ -1,10 +1,11 @@
-import { App, Setting, Notice, ButtonComponent } from 'obsidian';
+import { App, Setting, Notice, ButtonComponent, parseYaml } from 'obsidian';
 import { t } from '../i18n/strings';
 import { Group, Character, Location, Event, PlotItem, GroupMemberDetails, GroupRelationship, Culture } from '../types';
 import StorytellerSuitePlugin from '../main';
 import { ResponsiveModal } from './ResponsiveModal';
 import { GalleryImageSuggestModal } from './GalleryImageSuggestModal';
 import { addImageSelectionButtons } from '../utils/ImageSelectionHelper';
+import { getWhitelistKeys, parseSectionsFromMarkdown } from '../yaml/EntitySections';
 import { CharacterSuggestModal } from './CharacterSuggestModal';
 import { LocationSuggestModal } from './LocationSuggestModal';
 import { EventSuggestModal } from './EventSuggestModal';
@@ -78,8 +79,39 @@ export class GroupModal extends ResponsiveModal {
             if (defaultTemplateId) {
                 const defaultTemplate = this.plugin.templateManager?.getTemplate(defaultTemplateId);
                 if (defaultTemplate) {
-                    await this.applyTemplateToGroup(defaultTemplate);
-                    new Notice(t('applyingDefaultTemplate'));
+                    // If template has variables or multiple entities, use TemplateApplicationModal
+                    if ((defaultTemplate.variables && defaultTemplate.variables.length > 0) ||
+                        this.hasMultipleEntities(defaultTemplate)) {
+                        await new Promise<void>((resolve) => {
+                            import('./TemplateApplicationModal').then(({ TemplateApplicationModal }) => {
+                                new TemplateApplicationModal(
+                                    this.app,
+                                    this.plugin,
+                                    defaultTemplate,
+                                    async (variableValues, entityFileNames) => {
+                                        try {
+                                            await this.applyTemplateToGroupWithVariables(defaultTemplate, variableValues);
+                                            new Notice('Default template applied');
+                                            this.refresh();
+                                        } catch (error) {
+                                            console.error('[GroupModal] Error applying template:', error);
+                                            new Notice('Error applying default template');
+                                        }
+                                        resolve();
+                                    }
+                                ).open();
+                            });
+                        });
+                    } else {
+                        // No variables, apply directly
+                        try {
+                            await this.applyTemplateToGroup(defaultTemplate);
+                            new Notice('Default template applied');
+                        } catch (error) {
+                            console.error('[GroupModal] Error applying template:', error);
+                            new Notice('Error applying default template');
+                        }
+                    }
                 }
             }
         }
@@ -161,7 +193,7 @@ export class GroupModal extends ResponsiveModal {
                 .onChange(value => {
                     this.group.groupType = value as any;
                     // Re-render modal to show/hide faction-enhanced sections
-                    this.onOpen();
+                    void this.onOpen();
                 })
             );
 
@@ -390,7 +422,7 @@ export class GroupModal extends ResponsiveModal {
                         .setTooltip('Remove')
                         .onClick(() => {
                             this.group.groupRelationships = this.group.groupRelationships!.filter((_, i) => i !== index);
-                            this.onOpen();
+                            void this.onOpen();
                         })
                     );
             });
@@ -404,7 +436,7 @@ export class GroupModal extends ResponsiveModal {
                             groupName: '',
                             relationshipType: 'neutral'
                         });
-                        this.onOpen();
+                        void this.onOpen();
                     })
                 );
 
@@ -476,7 +508,7 @@ export class GroupModal extends ResponsiveModal {
                         .setTooltip('Remove field')
                         .onClick(() => {
                             delete this.group.customFields![key];
-                            this.onOpen();
+                            void this.onOpen();
                         })
                     );
             });
@@ -488,7 +520,7 @@ export class GroupModal extends ResponsiveModal {
                         if (!this.group.customFields) this.group.customFields = {};
                         const fieldNum = Object.keys(this.group.customFields).length + 1;
                         this.group.customFields[`field${fieldNum}`] = '';
-                        this.onOpen();
+                        void this.onOpen();
                     })
                 );
         }
@@ -726,7 +758,7 @@ export class GroupModal extends ResponsiveModal {
                 removeBtn.onclick = async () => {
                     this.group.members = this.group.members.filter(m => !(m.type === 'character' && m.id === member.id));
                     await this.plugin.removeMemberFromGroup(this.group.id, 'character', member.id);
-                    this.onOpen();
+                    void this.onOpen();
                 };
             }
         });
@@ -741,7 +773,7 @@ export class GroupModal extends ResponsiveModal {
                             if (!this.isNew && this.group.id) {
                                 await this.plugin.addMemberToGroup(this.group.id, 'character', selectedChar.id || selectedChar.name);
                             }
-                            this.onOpen();
+                            void this.onOpen();
                         }
                     }).open();
                 });
@@ -765,7 +797,7 @@ export class GroupModal extends ResponsiveModal {
                 removeBtn.onclick = async () => {
                     this.group.members = this.group.members.filter(m => !(m.type === 'location' && m.id === member.id));
                     await this.plugin.removeMemberFromGroup(this.group.id, 'location', member.id);
-                    this.onOpen();
+                    void this.onOpen();
                 };
             }
         });
@@ -780,7 +812,7 @@ export class GroupModal extends ResponsiveModal {
                             if (!this.isNew && this.group.id) {
                                 await this.plugin.addMemberToGroup(this.group.id, 'location', selectedLoc.id || selectedLoc.name);
                             }
-                            this.onOpen();
+                            void this.onOpen();
                         }
                     }).open();
                 });
@@ -804,7 +836,7 @@ export class GroupModal extends ResponsiveModal {
                 removeBtn.onclick = async () => {
                     this.group.members = this.group.members.filter(m => !(m.type === 'event' && m.id === member.id));
                     await this.plugin.removeMemberFromGroup(this.group.id, 'event', member.id);
-                    this.onOpen();
+                    void this.onOpen();
                 };
             }
         });
@@ -819,7 +851,7 @@ export class GroupModal extends ResponsiveModal {
                             if (!this.isNew && this.group.id) {
                                 await this.plugin.addMemberToGroup(this.group.id, 'event', selectedEvt.id || selectedEvt.name);
                             }
-                            this.onOpen();
+                            void this.onOpen();
                         }
                     }).open();
                 });
@@ -842,7 +874,7 @@ export class GroupModal extends ResponsiveModal {
                 removeBtn.onclick = async () => {
                     this.group.members = this.group.members.filter(m => !(m.type === 'item' && m.id === member.id));
                     await this.plugin.removeMemberFromGroup(this.group.id, 'item', member.id);
-                    this.onOpen();
+                    void this.onOpen();
                 };
             }
         });
@@ -856,7 +888,7 @@ export class GroupModal extends ResponsiveModal {
                         if (!this.isNew && this.group.id) {
                             await this.plugin.addMemberToGroup(this.group.id, 'item', itemId);
                         }
-                        this.onOpen();
+                        void this.onOpen();
                     }
                 }).open();
             });
@@ -883,6 +915,16 @@ export class GroupModal extends ResponsiveModal {
         }
     }
 
+    private hasMultipleEntities(template: Template): boolean {
+        let entityCount = 0;
+        if (template.entities.groups?.length) entityCount += template.entities.groups.length;
+        if (template.entities.characters?.length) entityCount += template.entities.characters.length;
+        if (template.entities.locations?.length) entityCount += template.entities.locations.length;
+        if (template.entities.events?.length) entityCount += template.entities.events.length;
+        if (template.entities.items?.length) entityCount += template.entities.items.length;
+        return entityCount > 1;
+    }
+
     private async applyTemplateToGroup(template: Template): Promise<void> {
         if (!template.entities.groups || template.entities.groups.length === 0) {
             new Notice('This template does not contain any groups');
@@ -890,25 +932,93 @@ export class GroupModal extends ResponsiveModal {
         }
 
         const templateGroup = template.entities.groups[0];
+        await this.applyProcessedTemplateToGroup(templateGroup);
+    }
 
-        // Extract template-specific fields
-        const { templateId, sectionContent, customYamlFields, id, filePath, storyId, ...entityData } = templateGroup as any;
-
-        // Apply base entity fields
-        Object.assign(this.group, entityData);
-
-        // Apply custom YAML fields if they exist
-        if (customYamlFields) {
-            Object.assign(this.group, customYamlFields);
+    private async applyTemplateToGroupWithVariables(template: Template, variableValues: Record<string, any>): Promise<void> {
+        if (!template.entities.groups || template.entities.groups.length === 0) {
+            new Notice('This template does not contain any groups');
+            return;
         }
 
-        // Apply section content if it exists (map section names to lowercase properties)
-        if (sectionContent) {
+        // Get the first group from the template
+        let templateGroup = template.entities.groups[0];
+
+        // Substitute variables with user-provided values
+        const { VariableSubstitution } = await import('../templates/VariableSubstitution');
+        const substitutionResult = VariableSubstitution.substituteEntity(
+            templateGroup,
+            variableValues,
+            false // non-strict mode
+        );
+        templateGroup = substitutionResult.value;
+
+        if (substitutionResult.warnings.length > 0) {
+            console.warn('[GroupModal] Variable substitution warnings:', substitutionResult.warnings);
+        }
+
+        // Apply the substituted template
+        await this.applyProcessedTemplateToGroup(templateGroup);
+    }
+
+    private async applyProcessedTemplateToGroup(templateGroup: any): Promise<void> {
+        const { templateId, yamlContent, markdownContent, sectionContent, customYamlFields, id, filePath, storyId, ...rest } = templateGroup as any;
+
+        let fields: any = { ...rest };
+
+        // Handle new format: yamlContent (parse YAML string)
+        if (yamlContent && typeof yamlContent === 'string') {
+            try {
+                const parsed = parseYaml(yamlContent);
+                if (parsed && typeof parsed === 'object') {
+                    fields = { ...fields, ...parsed };
+                }
+                console.log('[GroupModal] Parsed YAML fields:', parsed);
+            } catch (error) {
+                console.warn('[GroupModal] Failed to parse yamlContent:', error);
+            }
+        } else if (customYamlFields) {
+            // Old format: merge custom YAML fields
+            fields = { ...fields, ...customYamlFields };
+        }
+
+        // Handle new format: markdownContent (parse sections)
+        if (markdownContent && typeof markdownContent === 'string') {
+            try {
+                const parsedSections = parseSectionsFromMarkdown(`---\n---\n\n${markdownContent}`);
+
+                // Map well-known sections to entity properties
+                if ('Description' in parsedSections) {
+                    fields.description = parsedSections['Description'];
+                }
+                if ('Purpose' in parsedSections) {
+                    fields.purpose = parsedSections['Purpose'];
+                }
+                if ('History' in parsedSections) {
+                    fields.history = parsedSections['History'];
+                }
+                if ('Structure' in parsedSections) {
+                    fields.structure = parsedSections['Structure'];
+                }
+                if ('Goals' in parsedSections) {
+                    fields.goals = parsedSections['Goals'];
+                }
+
+                console.log('[GroupModal] Parsed markdown sections:', parsedSections);
+            } catch (error) {
+                console.warn('[GroupModal] Failed to parse markdownContent:', error);
+            }
+        } else if (sectionContent) {
+            // Old format: apply section content
             for (const [sectionName, content] of Object.entries(sectionContent)) {
                 const propName = sectionName.toLowerCase().replace(/\s+/g, '');
-                (this.group as any)[propName] = content;
+                (fields as any)[propName] = content;
             }
         }
+
+        // Apply all fields to the group
+        Object.assign(this.group, fields);
+        console.log('[GroupModal] Final group after template:', this.group);
 
         // Clear relationships as they reference template entities
         this.group.members = [];
@@ -922,7 +1032,7 @@ export class GroupModal extends ResponsiveModal {
     }
 
     private refresh(): void {
-        this.onOpen();
+        void this.onOpen();
     }
 
     onClose() {

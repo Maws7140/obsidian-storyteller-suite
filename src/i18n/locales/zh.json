@@ -949,6 +949,7 @@
   "tutorialFileWikiLinks": "使用<strong>[[wiki 链接]]</strong>连接角色、地点、事件",
   "tutorialFileReadable": "即使没有插件，文件也是<strong>可读和可编辑的</strong>",
   "tutorialFileBackup": "<strong>备份安全：</strong>您的数据永远不会被锁定在专有格式中",
-  "tutorialFileTip": "提示：在设置 → Storyteller Suite 下的<em>使用自定义实体文件夹</em>和<em>单一故事模式</em>中配置这些模式。在单一故事模式下，<em>新故事</em>按钮会自动隐藏。"
+  "tutorialFileTip": "提示：在设置 → Storyteller Suite 下的<em>使用自定义实体文件夹</em>和<em>单一故事模式</em>中配置这些模式。在单一故事模式下，<em>新故事</em>按钮会自动隐藏。",
+  "defaultTemplateApplied": "已应用默认模板。"
 }
 

@@ -1,9 +1,9 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
-import { App, Setting, Notice, TextAreaComponent, TextComponent, ButtonComponent } from 'obsidian';
+import { App, Setting, Notice, TextAreaComponent, TextComponent, ButtonComponent, parseYaml } from 'obsidian';
 import { Character, Group } from '../types'; // Assumes Character type has relationships?: string[], associatedLocations?: string[], associatedEvents?: string[]
 import { LocationPicker } from '../components/LocationPicker';
 import { LocationService } from '../services/LocationService';
-import { getWhitelistKeys } from '../yaml/EntitySections';
+import { getWhitelistKeys, parseSectionsFromMarkdown } from '../yaml/EntitySections';
 import StorytellerSuitePlugin from '../main';
 import { t } from '../i18n/strings';
 import { GalleryImageSuggestModal } from './GalleryImageSuggestModal';
@@ -65,8 +65,39 @@ export class CharacterModal extends ResponsiveModal {
             if (defaultTemplateId) {
                 const defaultTemplate = this.plugin.templateManager?.getTemplate(defaultTemplateId);
                 if (defaultTemplate) {
-                    await this.applyTemplateToCharacter(defaultTemplate);
-                    new Notice(t('applyingDefaultTemplate'));
+                    // If template has variables or multiple entities, use TemplateApplicationModal
+                    if ((defaultTemplate.variables && defaultTemplate.variables.length > 0) ||
+                        this.hasMultipleEntities(defaultTemplate)) {
+                        await new Promise<void>((resolve) => {
+                            import('./TemplateApplicationModal').then(({ TemplateApplicationModal }) => {
+                                new TemplateApplicationModal(
+                                    this.app,
+                                    this.plugin,
+                                    defaultTemplate,
+                                    async (variableValues, entityFileNames) => {
+                                        try {
+                                            await this.applyTemplateToCharacterWithVariables(defaultTemplate, variableValues);
+                                            new Notice('Default template applied');
+                                            this.refresh();
+                                        } catch (error) {
+                                            console.error('[CharacterModal] Error applying template:', error);
+                                            new Notice('Error applying default template');
+                                        }
+                                        resolve();
+                                    }
+                                ).open();
+                            });
+                        });
+                    } else {
+                        // No variables, apply directly
+                        try {
+                            await this.applyTemplateToCharacter(defaultTemplate);
+                            new Notice('Default template applied');
+                        } catch (error) {
+                            console.error('[CharacterModal] Error applying template:', error);
+                            new Notice('Error applying default template');
+                        }
+                    }
                 }
             }
         }
@@ -533,33 +564,104 @@ export class CharacterModal extends ResponsiveModal {
         })();
     }
 
+    private hasMultipleEntities(template: Template): boolean {
+        let entityCount = 0;
+        if (template.entities.characters?.length) entityCount += template.entities.characters.length;
+        if (template.entities.locations?.length) entityCount += template.entities.locations.length;
+        if (template.entities.events?.length) entityCount += template.entities.events.length;
+        if (template.entities.items?.length) entityCount += template.entities.items.length;
+        if (template.entities.groups?.length) entityCount += template.entities.groups.length;
+        return entityCount > 1;
+    }
+
     private async applyTemplateToCharacter(template: Template): Promise<void> {
         if (!template.entities.characters || template.entities.characters.length === 0) {
             new Notice('This template does not contain any characters');
             return;
         }
 
-        // Get the first character from the template
         const templateChar = template.entities.characters[0];
+        await this.applyProcessedTemplateToCharacter(templateChar);
+    }
 
-        // Extract template-specific fields
-        const { templateId, sectionContent, customYamlFields, id, filePath, ...charData } = templateChar as any;
-
-        // Apply base character fields
-        Object.assign(this.character, charData);
-
-        // Apply custom YAML fields if they exist
-        if (customYamlFields) {
-            Object.assign(this.character, customYamlFields);
+    private async applyTemplateToCharacterWithVariables(template: Template, variableValues: Record<string, any>): Promise<void> {
+        if (!template.entities.characters || template.entities.characters.length === 0) {
+            new Notice('This template does not contain any characters');
+            return;
         }
 
-        // Apply section content if it exists (map section names to lowercase properties)
-        if (sectionContent) {
+        // Get the first character from the template
+        let templateChar = template.entities.characters[0];
+
+        // Substitute variables with user-provided values
+        const { VariableSubstitution } = await import('../templates/VariableSubstitution');
+        const substitutionResult = VariableSubstitution.substituteEntity(
+            templateChar,
+            variableValues,
+            false // non-strict mode
+        );
+        templateChar = substitutionResult.value;
+
+        if (substitutionResult.warnings.length > 0) {
+            console.warn('[CharacterModal] Variable substitution warnings:', substitutionResult.warnings);
+        }
+
+        // Apply the substituted template
+        await this.applyProcessedTemplateToCharacter(templateChar);
+    }
+
+    private async applyProcessedTemplateToCharacter(templateChar: any): Promise<void> {
+        const { templateId, yamlContent, markdownContent, sectionContent, customYamlFields, id, filePath, ...rest } = templateChar as any;
+
+        let fields: any = { ...rest };
+
+        // Handle new format: yamlContent (parse YAML string)
+        if (yamlContent && typeof yamlContent === 'string') {
+            try {
+                const parsed = parseYaml(yamlContent);
+                if (parsed && typeof parsed === 'object') {
+                    fields = { ...fields, ...parsed };
+                }
+                console.log('[CharacterModal] Parsed YAML fields:', parsed);
+            } catch (error) {
+                console.warn('[CharacterModal] Failed to parse yamlContent:', error);
+            }
+        } else if (customYamlFields) {
+            // Old format: merge custom YAML fields
+            fields = { ...fields, ...customYamlFields };
+        }
+
+        // Handle new format: markdownContent (parse sections)
+        if (markdownContent && typeof markdownContent === 'string') {
+            try {
+                const parsedSections = parseSectionsFromMarkdown(`---\n---\n\n${markdownContent}`);
+
+                // Map well-known sections to entity properties
+                if ('Description' in parsedSections) {
+                    fields.description = parsedSections['Description'];
+                }
+                if ('Backstory' in parsedSections) {
+                    fields.backstory = parsedSections['Backstory'];
+                }
+                if ('Traits' in parsedSections) {
+                    fields.traits = parsedSections['Traits'];
+                }
+
+                console.log('[CharacterModal] Parsed markdown sections:', parsedSections);
+            } catch (error) {
+                console.warn('[CharacterModal] Failed to parse markdownContent:', error);
+            }
+        } else if (sectionContent) {
+            // Old format: apply section content
             for (const [sectionName, content] of Object.entries(sectionContent)) {
                 const propName = sectionName.toLowerCase().replace(/\s+/g, '');
-                (this.character as any)[propName] = content;
+                (fields as any)[propName] = content;
             }
         }
+
+        // Apply all fields to the character
+        Object.assign(this.character, fields);
+        console.log('[CharacterModal] Final character after template:', this.character);
 
         // Clear relationships as they reference template entities
         this.character.relationships = [];
@@ -569,7 +671,7 @@ export class CharacterModal extends ResponsiveModal {
 
     private refresh(): void {
         // Refresh the modal by reopening it
-        this.onOpen();
+        void this.onOpen();
     }
 
     onClose() {

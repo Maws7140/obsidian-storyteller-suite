@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
-import { App, Setting, Notice, TextAreaComponent, TextComponent, ButtonComponent } from 'obsidian';
+import { App, Setting, Notice, TextAreaComponent, TextComponent, ButtonComponent, parseYaml } from 'obsidian';
 import { Location } from '../types'; // Assumes Location type no longer has charactersPresent, eventsHere, subLocations
-import { getWhitelistKeys } from '../yaml/EntitySections';
+import { getWhitelistKeys, parseSectionsFromMarkdown } from '../yaml/EntitySections';
 import { Group } from '../types';
 import StorytellerSuitePlugin from '../main';
 import { t } from '../i18n/strings';
@@ -74,8 +74,39 @@ export class LocationModal extends ResponsiveModal {
             if (defaultTemplateId) {
                 const defaultTemplate = this.plugin.templateManager?.getTemplate(defaultTemplateId);
                 if (defaultTemplate) {
-                    await this.applyTemplateToLocation(defaultTemplate);
-                    new Notice(t('applyingDefaultTemplate'));
+                    // If template has variables or multiple entities, use TemplateApplicationModal
+                    if ((defaultTemplate.variables && defaultTemplate.variables.length > 0) ||
+                        this.hasMultipleEntities(defaultTemplate)) {
+                        await new Promise<void>((resolve) => {
+                            import('./TemplateApplicationModal').then(({ TemplateApplicationModal }) => {
+                                new TemplateApplicationModal(
+                                    this.app,
+                                    this.plugin,
+                                    defaultTemplate,
+                                    async (variableValues, entityFileNames) => {
+                                        try {
+                                            await this.applyTemplateToLocationWithVariables(defaultTemplate, variableValues);
+                                            new Notice('Default template applied');
+                                            this.refresh();
+                                        } catch (error) {
+                                            console.error('[LocationModal] Error applying template:', error);
+                                            new Notice('Error applying default template');
+                                        }
+                                        resolve();
+                                    }
+                                ).open();
+                            });
+                        });
+                    } else {
+                        // No variables, apply directly
+                        try {
+                            await this.applyTemplateToLocation(defaultTemplate);
+                            new Notice('Default template applied');
+                        } catch (error) {
+                            console.error('[LocationModal] Error applying template:', error);
+                            new Notice('Error applying default template');
+                        }
+                    }
                 }
             }
         }
@@ -750,33 +781,101 @@ export class LocationModal extends ResponsiveModal {
         return false;
     }
 
+    private hasMultipleEntities(template: Template): boolean {
+        let entityCount = 0;
+        if (template.entities.locations?.length) entityCount += template.entities.locations.length;
+        if (template.entities.characters?.length) entityCount += template.entities.characters.length;
+        if (template.entities.events?.length) entityCount += template.entities.events.length;
+        if (template.entities.items?.length) entityCount += template.entities.items.length;
+        if (template.entities.groups?.length) entityCount += template.entities.groups.length;
+        return entityCount > 1;
+    }
+
     private async applyTemplateToLocation(template: Template): Promise<void> {
         if (!template.entities.locations || template.entities.locations.length === 0) {
             new Notice('This template does not contain any locations');
             return;
         }
 
-        // Get the first location from the template
         const templateLoc = template.entities.locations[0];
+        await this.applyProcessedTemplateToLocation(templateLoc);
+    }
 
-        // Extract template-specific fields
-        const { templateId, sectionContent, customYamlFields, id, filePath, ...locData } = templateLoc as any;
-
-        // Apply base location fields
-        Object.assign(this.location, locData);
-
-        // Apply custom YAML fields if they exist
-        if (customYamlFields) {
-            Object.assign(this.location, customYamlFields);
+    private async applyTemplateToLocationWithVariables(template: Template, variableValues: Record<string, any>): Promise<void> {
+        if (!template.entities.locations || template.entities.locations.length === 0) {
+            new Notice('This template does not contain any locations');
+            return;
         }
 
-        // Apply section content if it exists (map section names to lowercase properties)
-        if (sectionContent) {
+        // Get the first location from the template
+        let templateLoc = template.entities.locations[0];
+
+        // Substitute variables with user-provided values
+        const { VariableSubstitution } = await import('../templates/VariableSubstitution');
+        const substitutionResult = VariableSubstitution.substituteEntity(
+            templateLoc,
+            variableValues,
+            false // non-strict mode
+        );
+        templateLoc = substitutionResult.value;
+
+        if (substitutionResult.warnings.length > 0) {
+            console.warn('[LocationModal] Variable substitution warnings:', substitutionResult.warnings);
+        }
+
+        // Apply the substituted template
+        await this.applyProcessedTemplateToLocation(templateLoc);
+    }
+
+    private async applyProcessedTemplateToLocation(templateLoc: any): Promise<void> {
+        const { templateId, yamlContent, markdownContent, sectionContent, customYamlFields, id, filePath, ...rest } = templateLoc as any;
+
+        let fields: any = { ...rest };
+
+        // Handle new format: yamlContent (parse YAML string)
+        if (yamlContent && typeof yamlContent === 'string') {
+            try {
+                const parsed = parseYaml(yamlContent);
+                if (parsed && typeof parsed === 'object') {
+                    fields = { ...fields, ...parsed };
+                }
+                console.log('[LocationModal] Parsed YAML fields:', parsed);
+            } catch (error) {
+                console.warn('[LocationModal] Failed to parse yamlContent:', error);
+            }
+        } else if (customYamlFields) {
+            // Old format: merge custom YAML fields
+            fields = { ...fields, ...customYamlFields };
+        }
+
+        // Handle new format: markdownContent (parse sections)
+        if (markdownContent && typeof markdownContent === 'string') {
+            try {
+                const parsedSections = parseSectionsFromMarkdown(`---\n---\n\n${markdownContent}`);
+
+                // Map well-known sections to entity properties
+                if ('Description' in parsedSections) {
+                    fields.description = parsedSections['Description'];
+                }
+                if ('History' in parsedSections) {
+                    fields.history = parsedSections['History'];
+                }
+
+                console.log('[LocationModal] Parsed markdown sections:', parsedSections);
+            } catch (error) {
+                console.warn('[LocationModal] Failed to parse markdownContent:', error);
+            }
+        } else if (sectionContent) {
+            // Old format: apply section content
             for (const [sectionName, content] of Object.entries(sectionContent)) {
                 const propName = sectionName.toLowerCase().replace(/\s+/g, '');
-                (this.location as any)[propName] = content;
+                (fields as any)[propName] = content;
             }
         }
+
+        // Apply all fields to the location
+        Object.assign(this.location, fields);
+        console.log('[LocationModal] Final location after template:', this.location);
 
         // Clear relationships as they reference template entities
         this.location.connections = [];
@@ -785,7 +884,7 @@ export class LocationModal extends ResponsiveModal {
 
     private refresh(): void {
         // Refresh the modal by reopening it
-        this.onOpen();
+        void this.onOpen();
     }
 
     onClose() {

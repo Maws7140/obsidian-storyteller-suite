@@ -20,8 +20,7 @@
       "Bash(cmd.exe /c \"cd C:\\\\Users\\\\Lilly\\\\OneDrive\\\\Desktop\\\\Test\\\\.obsidian\\\\plugins\\\\obsidian-storyteller-suite && dir main.js\")",
       "Bash(git stash:*)",
       "WebFetch(domain:github.com)",
-      "Bash(git restore:*)",
-      "Bash(echo \"Please paste the template structure by adding this to your console:\nconsole.log\\(''Template event data:'', JSON.stringify\\(plugin.templateManager.getTemplate\\(''custom-1766190250582-qole9oo5b''\\).entities.events[0], null, 2\\)\\)\")"
+      "Bash(git restore -- :*)",
     ],
     "deny": [],
     "ask": []
