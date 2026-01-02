@@ -985,6 +985,14 @@
   "novelSubmissionWorkflow": "Novel Submission",
   "cleanProseWorkflow": "Clean Prose",
   "plainTextWorkflow": "Plain Text",
-  "htmlExportWorkflow": "HTML Export"
+  "htmlExportWorkflow": "HTML Export",
+  "defaultTemplates": "Default Templates",
+  "defaultTemplatesDesc": "Set a default template for each entity type. When creating a new entity, the default template will be automatically applied.",
+  "defaultTemplateFor": "Default template for {0}",
+  "selectDefaultTemplate": "Select default template",
+  "noDefaultTemplate": "None (no template)",
+  "defaultTemplateSet": "Default template for {0} set to \"{1}\"",
+  "defaultTemplateCleared": "Default template for {0} cleared",
+  "applyingDefaultTemplate": "Applying default template..."
 }
 

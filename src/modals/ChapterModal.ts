@@ -34,10 +34,22 @@ export class ChapterModal extends Modal {
         this.modalEl.addClass('storyteller-chapter-modal');
     }
 
-    onOpen(): void {
+    async onOpen(): Promise<void> {
         const { contentEl } = this;
         contentEl.empty();
         contentEl.createEl('h2', { text: this.isNew ? t('createNewChapter') : `${t('editChapter')} ${this.chapter.name}` });
+
+        // Auto-apply default template for new chapters
+        if (this.isNew && !this.chapter.name) {
+            const defaultTemplateId = this.plugin.settings.defaultTemplates?.['chapter'];
+            if (defaultTemplateId) {
+                const defaultTemplate = this.plugin.templateManager?.getTemplate(defaultTemplateId);
+                if (defaultTemplate) {
+                    await this.applyTemplateToChapter(defaultTemplate);
+                    new Notice(t('applyingDefaultTemplate'));
+                }
+            }
+        }
 
         // --- Template Selector (for new chapters) ---
         if (this.isNew) {

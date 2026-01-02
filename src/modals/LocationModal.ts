@@ -68,6 +68,18 @@ export class LocationModal extends ResponsiveModal {
         contentEl.empty();
         contentEl.createEl('h2', { text: this.isNew ? t('createNewLocation') : `${t('edit')} ${this.location.name}` });
 
+        // Auto-apply default template for new locations
+        if (this.isNew && !this.location.name) {
+            const defaultTemplateId = this.plugin.settings.defaultTemplates?.['location'];
+            if (defaultTemplateId) {
+                const defaultTemplate = this.plugin.templateManager?.getTemplate(defaultTemplateId);
+                if (defaultTemplate) {
+                    await this.applyTemplateToLocation(defaultTemplate);
+                    new Notice(t('applyingDefaultTemplate'));
+                }
+            }
+        }
+
         // Load entity lists for name resolution
         const [maps, characters, events, plotItems] = await Promise.all([
             this.plugin.listMaps(),

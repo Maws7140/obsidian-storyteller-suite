@@ -32,10 +32,22 @@ export class SceneModal extends Modal {
         this.modalEl.addClass('storyteller-scene-modal');
     }
 
-    onOpen(): void {
+    async onOpen(): Promise<void> {
         const { contentEl } = this;
         contentEl.empty();
         contentEl.createEl('h2', { text: this.isNew ? t('createNewScene') : `${t('editScene')} ${this.scene.name}` });
+
+        // Auto-apply default template for new scenes
+        if (this.isNew && !this.scene.name) {
+            const defaultTemplateId = this.plugin.settings.defaultTemplates?.['scene'];
+            if (defaultTemplateId) {
+                const defaultTemplate = this.plugin.templateManager?.getTemplate(defaultTemplateId);
+                if (defaultTemplate) {
+                    await this.applyTemplateToScene(defaultTemplate);
+                    new Notice(t('applyingDefaultTemplate'));
+                }
+            }
+        }
 
         // --- Template Selector (for new scenes) ---
         if (this.isNew) {

@@ -922,6 +922,59 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                 })
             );
 
+        // --- Default Templates Section ---
+        new Setting(containerEl)
+            .setName(t('defaultTemplates'))
+            .setHeading();
+
+        new Setting(containerEl)
+            .setDesc(t('defaultTemplatesDesc'));
+
+        // Define entity types that support default templates
+        const entityTypesWithTemplates: Array<{ key: string; label: string }> = [
+            { key: 'character', label: t('character') },
+            { key: 'location', label: t('location') },
+            { key: 'event', label: t('event') },
+            { key: 'item', label: t('item') },
+            { key: 'group', label: t('group') },
+            { key: 'culture', label: t('cultures') },
+            { key: 'economy', label: t('economies') },
+            { key: 'magicSystem', label: t('magicSystems') },
+            { key: 'chapter', label: t('chapter') },
+            { key: 'scene', label: t('scene') },
+            { key: 'reference', label: t('reference') }
+        ];
+
+        // Create a dropdown for each entity type
+        for (const entityType of entityTypesWithTemplates) {
+            const templates = this.plugin.templateManager?.getTemplatesByEntityType(entityType.key as any) || [];
+            const currentTemplateId = this.plugin.settings.defaultTemplates?.[entityType.key] || '';
+            
+            new Setting(containerEl)
+                .setName(t('defaultTemplateFor', entityType.label))
+                .addDropdown(dropdown => {
+                    dropdown.addOption('', t('noDefaultTemplate'));
+                    templates.forEach(template => {
+                        dropdown.addOption(template.id, template.name);
+                    });
+                    dropdown.setValue(currentTemplateId);
+                    dropdown.onChange(async (value) => {
+                        if (!this.plugin.settings.defaultTemplates) {
+                            this.plugin.settings.defaultTemplates = {};
+                        }
+                        if (value) {
+                            this.plugin.settings.defaultTemplates[entityType.key] = value;
+                            const template = templates.find(t => t.id === value);
+                            new Notice(t('defaultTemplateSet', entityType.label, template?.name || value));
+                        } else {
+                            delete this.plugin.settings.defaultTemplates[entityType.key];
+                            new Notice(t('defaultTemplateCleared', entityType.label));
+                        }
+                        await this.plugin.saveSettings();
+                    });
+                });
+        }
+
         // --- Tutorial Settings ---
         new Setting(containerEl)
             .setName(t('showTutorialSection'))

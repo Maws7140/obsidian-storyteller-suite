@@ -63,7 +63,7 @@ export class EconomyModal extends ResponsiveModal {
         this.modalEl.addClass('storyteller-economy-modal');
     }
 
-    onOpen(): void {
+    async onOpen(): Promise<void> {
         super.onOpen();
 
         const { contentEl } = this;
@@ -72,6 +72,18 @@ export class EconomyModal extends ResponsiveModal {
         contentEl.createEl('h2', {
             text: this.isNew ? t('createNewEconomy') : `${t('editEconomy')}: ${this.economy.name}`
         });
+
+        // Auto-apply default template for new economies
+        if (this.isNew && !this.economy.name) {
+            const defaultTemplateId = this.plugin.settings.defaultTemplates?.['economy'];
+            if (defaultTemplateId) {
+                const defaultTemplate = this.plugin.templateManager?.getTemplate(defaultTemplateId);
+                if (defaultTemplate) {
+                    await this.applyTemplateToEconomy(defaultTemplate);
+                    new Notice(t('applyingDefaultTemplate'));
+                }
+            }
+        }
 
         // --- Template Selector (for new economies) ---
         if (this.isNew) {

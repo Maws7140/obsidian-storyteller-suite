@@ -176,6 +176,9 @@ import { LocationMigration } from './utils/LocationMigration';
     templateStorageFolder?: string;
     showBuiltInTemplates?: boolean;
     showCommunityTemplates?: boolean;
+    
+    /** Default templates per entity type - template ID keyed by entity type */
+    defaultTemplates?: Record<string, string>;
 
     /** Image tiling settings */
     tiling?: {
@@ -276,6 +279,7 @@ import { LocationMigration } from './utils/LocationMigration';
     templateStorageFolder: 'StorytellerSuite/Templates',
     showBuiltInTemplates: true,
     showCommunityTemplates: false,
+    defaultTemplates: {},
     tiling: {
         autoGenerateThreshold: 2000,  // Generate tiles for images > 2000x2000px
         tileSize: 256,                 // Standard tile size
@@ -421,6 +425,7 @@ export default class StorytellerSuitePlugin extends Plugin {
     templateNoteManager: TemplateNoteManager;
     trackManager: TimelineTrackManager;
     eraManager: EraManager;
+    private warnedMissingNameFiles: Set<string> = new Set();
 
     // Mobile/tablet orientation and resize handlers
     private orientationChangeHandler: (() => void) | null = null;
@@ -2514,8 +2519,17 @@ export default class StorytellerSuitePlugin extends Plugin {
 
 			// Validate required name field
 			if (!data['name']) {
-				console.warn(`File ${file.path} is missing a name in frontmatter.`);
+				// Only warn once per file to avoid console spam
+				if (!this.warnedMissingNameFiles.has(file.path)) {
+					console.warn(`File ${file.path} is missing a name in frontmatter.`);
+					this.warnedMissingNameFiles.add(file.path);
+				}
 				return null;
+			}
+
+			// Clear warning state if file now has a name
+			if (this.warnedMissingNameFiles.has(file.path)) {
+				this.warnedMissingNameFiles.delete(file.path);
 			}
 
 			return data as T;
@@ -3482,7 +3496,9 @@ export default class StorytellerSuitePlugin extends Plugin {
 			: { ...defaultSections, ...templateOnlySections, ...providedSections };
 
 		// Generate Markdown
-		let mdContent = `---\n${frontmatterString}---\n\n`;
+		let mdContent = frontmatterString
+			? `---\n${frontmatterString}\n---\n\n`
+			: `---\n---\n\n`;
 		mdContent += Object.entries(allSections)
 			.map(([key, content]) => `## ${key}\n${content || ''}`)
 			.join('\n\n');
