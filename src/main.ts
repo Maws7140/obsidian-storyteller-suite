@@ -3204,7 +3204,39 @@ export default class StorytellerSuitePlugin extends Plugin {
 	 */
 	async saveMapViewState(mapId: string, zoom: number, center: { lat: number; lng: number }): Promise<void> {
 		if (!mapId) return;
-		
+
+		// Validate zoom: must be a finite number within valid range (0-30)
+		const MIN_ZOOM = 0;
+		const MAX_ZOOM = 30;
+		if (typeof zoom !== 'number' || !Number.isFinite(zoom)) {
+			console.error(`[StorytellerSuite] saveMapViewState: Invalid zoom value "${zoom}" - must be a finite number`);
+			return;
+		}
+		if (zoom < MIN_ZOOM || zoom > MAX_ZOOM) {
+			console.error(`[StorytellerSuite] saveMapViewState: Zoom value ${zoom} out of range (${MIN_ZOOM}-${MAX_ZOOM})`);
+			return;
+		}
+
+		// Validate center coordinates
+		if (!center || typeof center !== 'object') {
+			console.error(`[StorytellerSuite] saveMapViewState: Invalid center - must be an object with lat and lng`);
+			return;
+		}
+
+		const { lat, lng } = center;
+
+		// Validate coordinates: must be finite numbers
+		// Note: For image maps with custom CRS, coordinates can be in pixel space (thousands),
+		// not geographic lat/lng (-90 to 90). So we only check for finite numbers.
+		if (typeof lat !== 'number' || !Number.isFinite(lat)) {
+			console.error(`[StorytellerSuite] saveMapViewState: Invalid latitude "${lat}" - must be a finite number`);
+			return;
+		}
+		if (typeof lng !== 'number' || !Number.isFinite(lng)) {
+			console.error(`[StorytellerSuite] saveMapViewState: Invalid longitude "${lng}" - must be a finite number`);
+			return;
+		}
+
 		// Initialize mapViewStates if not present
 		if (!this.settings.mapViewStates) {
 			this.settings.mapViewStates = {};
@@ -3214,12 +3246,12 @@ export default class StorytellerSuitePlugin extends Plugin {
 		const existing = this.settings.mapViewStates[mapId];
 		if (existing &&
 			Math.abs(existing.zoom - zoom) < 0.01 &&
-			Math.abs(existing.center.lat - center.lat) < 0.0001 &&
-			Math.abs(existing.center.lng - center.lng) < 0.0001) {
+			Math.abs(existing.center.lat - lat) < 0.0001 &&
+			Math.abs(existing.center.lng - lng) < 0.0001) {
 			return; // No significant change
 		}
 
-		this.settings.mapViewStates[mapId] = { zoom, center };
+		this.settings.mapViewStates[mapId] = { zoom, center: { lat, lng } };
 		await this.saveSettings();
 	}
 

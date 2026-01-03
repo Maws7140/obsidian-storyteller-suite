@@ -26,6 +26,7 @@ export class MapModal extends ResponsiveModal {
     private _groupRefreshInterval: number | null = null;
     private groupSelectorContainer: HTMLElement | null = null;
     private hierarchyManager: MapHierarchyManager;
+    private hasAutoAppliedTemplate = false;
 
     constructor(app: App, plugin: StorytellerSuitePlugin, map: Map | null, onSubmit: MapModalSubmitCallback, onDelete?: MapModalDeleteCallback) {
         super(app);
@@ -68,18 +69,25 @@ export class MapModal extends ResponsiveModal {
         contentEl.empty();
         contentEl.createEl('h2', { text: this.isNew ? 'Create New Map' : `Edit ${this.map.name}` });
 
-        // Auto-apply default template for new maps
-        if (this.isNew && !this.map.name) {
+        // Auto-apply default template for new maps (guarded to prevent infinite loops)
+        if (this.isNew && !this.map.name && !this.hasAutoAppliedTemplate) {
             const defaultTemplateId = this.plugin.settings.defaultTemplates?.['map'];
             if (defaultTemplateId) {
                 const defaultTemplate = this.plugin.templateManager?.getTemplate(defaultTemplateId);
                 if (defaultTemplate) {
-                    // If template has variables or multiple entities, use TemplateApplicationModal
-                    if ((defaultTemplate.variables && defaultTemplate.variables.length > 0) ||
-                        this.hasMultipleEntities(defaultTemplate)) {
+                    this.hasAutoAppliedTemplate = true;
+                    // If template has variables, use TemplateApplicationModal for user input
+                    if (defaultTemplate.variables && defaultTemplate.variables.length > 0) {
                         await new Promise<void>((resolve) => {
+                            let resolved = false;
+                            const safeResolve = () => {
+                                if (!resolved) {
+                                    resolved = true;
+                                    resolve();
+                                }
+                            };
                             import('./TemplateApplicationModal').then(({ TemplateApplicationModal }) => {
-                                new TemplateApplicationModal(
+                                const modal = new TemplateApplicationModal(
                                     this.app,
                                     this.plugin,
                                     defaultTemplate,
@@ -87,14 +95,28 @@ export class MapModal extends ResponsiveModal {
                                         try {
                                             await this.applyTemplateToMapWithVariables(defaultTemplate, variableValues);
                                             new Notice('Default template applied');
+                                            // Ensure map has a name before refresh to prevent re-triggering
+                                            if (!this.map.name) {
+                                                this.map.name = 'Untitled Map';
+                                            }
                                             this.refresh();
                                         } catch (error) {
                                             console.error('[MapModal] Error applying template:', error);
                                             new Notice('Error applying default template');
                                         }
-                                        resolve();
+                                        safeResolve();
                                     }
-                                ).open();
+                                );
+                                // Attach onClose handler to resolve when modal is dismissed/cancelled
+                                const originalOnClose = modal.onClose.bind(modal);
+                                modal.onClose = () => {
+                                    originalOnClose();
+                                    safeResolve();
+                                };
+                                modal.open();
+                            }).catch((error) => {
+                                console.error('[MapModal] Error loading TemplateApplicationModal:', error);
+                                safeResolve();
                             });
                         });
                     } else {
@@ -102,6 +124,10 @@ export class MapModal extends ResponsiveModal {
                         try {
                             await this.applyTemplateToMap(defaultTemplate);
                             new Notice('Default template applied');
+                            // Ensure map has a name to prevent re-triggering
+                            if (!this.map.name) {
+                                this.map.name = 'Untitled Map';
+                            }
                         } catch (error) {
                             console.error('[MapModal] Error applying template:', error);
                             new Notice('Error applying default template');
@@ -124,9 +150,36 @@ export class MapModal extends ResponsiveModal {
                             this.app,
                             this.plugin,
                             async (template: Template) => {
-                                await this.applyTemplateToMap(template);
-                                this.refresh();
-                                new Notice(`Template "${template.name}" applied`);
+                                // Check if template has variables or multiple entities
+                                if ((template.variables && template.variables.length > 0) ||
+                                    this.hasMultipleEntities(template)) {
+                                    // Use TemplateApplicationModal for variable collection
+                                    await new Promise<void>((resolve) => {
+                                        import('./TemplateApplicationModal').then(({ TemplateApplicationModal }) => {
+                                            new TemplateApplicationModal(
+                                                this.app,
+                                                this.plugin,
+                                                template,
+                                                async (variableValues, entityFileNames) => {
+                                                    try {
+                                                        await this.applyTemplateToMapWithVariables(template, variableValues);
+                                                        new Notice(`Template "${template.name}" applied`);
+                                                        this.refresh();
+                                                    } catch (error) {
+                                                        console.error('[MapModal] Error applying template:', error);
+                                                        new Notice('Error applying template');
+                                                    }
+                                                    resolve();
+                                                }
+                                            ).open();
+                                        });
+                                    });
+                                } else {
+                                    // No variables, apply directly
+                                    await this.applyTemplateToMap(template);
+                                    this.refresh();
+                                    new Notice(`Template "${template.name}" applied`);
+                                }
                             },
                             'map' as any
                         ).open();

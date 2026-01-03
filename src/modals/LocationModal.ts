@@ -158,9 +158,36 @@ export class LocationModal extends ResponsiveModal {
                             this.app,
                             this.plugin,
                             async (template: Template) => {
-                                await this.applyTemplateToLocation(template);
-                                this.refresh(); // Refresh the modal to show template values
-                                new Notice(`Template "${template.name}" applied`);
+                                // Check if template has variables or multiple entities
+                                if ((template.variables && template.variables.length > 0) ||
+                                    this.hasMultipleEntities(template)) {
+                                    // Use TemplateApplicationModal for variable collection
+                                    await new Promise<void>((resolve) => {
+                                        import('./TemplateApplicationModal').then(({ TemplateApplicationModal }) => {
+                                            new TemplateApplicationModal(
+                                                this.app,
+                                                this.plugin,
+                                                template,
+                                                async (variableValues, entityFileNames) => {
+                                                    try {
+                                                        await this.applyTemplateToLocationWithVariables(template, variableValues);
+                                                        new Notice(`Template "${template.name}" applied`);
+                                                        this.refresh();
+                                                    } catch (error) {
+                                                        console.error('[LocationModal] Error applying template:', error);
+                                                        new Notice('Error applying template');
+                                                    }
+                                                    resolve();
+                                                }
+                                            ).open();
+                                        });
+                                    });
+                                } else {
+                                    // No variables, apply directly
+                                    await this.applyTemplateToLocation(template);
+                                    this.refresh();
+                                    new Notice(`Template "${template.name}" applied`);
+                                }
                             },
                             'location' // Filter to location templates only
                         ).open();
@@ -782,6 +809,8 @@ export class LocationModal extends ResponsiveModal {
     }
 
     private hasMultipleEntities(template: Template): boolean {
+        if (!template.entities) return false;
+        
         let entityCount = 0;
         if (template.entities.locations?.length) entityCount += template.entities.locations.length;
         if (template.entities.characters?.length) entityCount += template.entities.characters.length;
@@ -851,7 +880,7 @@ export class LocationModal extends ResponsiveModal {
         // Handle new format: markdownContent (parse sections)
         if (markdownContent && typeof markdownContent === 'string') {
             try {
-                const parsedSections = parseSectionsFromMarkdown(`---\n---\n\n${markdownContent}`);
+                const parsedSections = parseSectionsFromMarkdown(markdownContent);
 
                 // Map well-known sections to entity properties
                 if ('Description' in parsedSections) {

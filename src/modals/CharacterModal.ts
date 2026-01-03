@@ -84,6 +84,10 @@ export class CharacterModal extends ResponsiveModal {
                                             new Notice('Error applying default template');
                                         }
                                         resolve();
+                                    },
+                                    () => {
+                                        // User cancelled the template application modal
+                                        resolve();
                                     }
                                 ).open();
                             });
@@ -115,9 +119,36 @@ export class CharacterModal extends ResponsiveModal {
                             this.app,
                             this.plugin,
                             async (template: Template) => {
-                                await this.applyTemplateToCharacter(template);
-                                this.refresh(); // Refresh the modal to show template values
-                                new Notice(`Template "${template.name}" applied`);
+                                // Check if template has variables or multiple entities
+                                if ((template.variables && template.variables.length > 0) ||
+                                    this.hasMultipleEntities(template)) {
+                                    // Use TemplateApplicationModal for variable collection
+                                    await new Promise<void>((resolve) => {
+                                        import('./TemplateApplicationModal').then(({ TemplateApplicationModal }) => {
+                                            new TemplateApplicationModal(
+                                                this.app,
+                                                this.plugin,
+                                                template,
+                                                async (variableValues, entityFileNames) => {
+                                                    try {
+                                                        await this.applyTemplateToCharacterWithVariables(template, variableValues);
+                                                        new Notice(`Template "${template.name}" applied`);
+                                                        this.refresh();
+                                                    } catch (error) {
+                                                        console.error('[CharacterModal] Error applying template:', error);
+                                                        new Notice('Error applying template');
+                                                    }
+                                                    resolve();
+                                                }
+                                            ).open();
+                                        });
+                                    });
+                                } else {
+                                    // No variables, apply directly
+                                    await this.applyTemplateToCharacter(template);
+                                    this.refresh();
+                                    new Notice(`Template "${template.name}" applied`);
+                                }
                             },
                             'character' // Filter to character templates only
                         ).open();
@@ -320,6 +351,11 @@ export class CharacterModal extends ResponsiveModal {
         this.renderCustomFields(customFieldsContainer, this.workingCustomFields);
 
         // --- Real-time group refresh ---
+        // Clear any existing interval to prevent leaks when refresh() calls onOpen()
+        if (this._groupRefreshInterval) {
+            clearInterval(this._groupRefreshInterval);
+            this._groupRefreshInterval = null;
+        }
         this._groupRefreshInterval = window.setInterval(() => {
             if (this.modalEl.isShown() && this.groupSelectorContainer) {
                 this.renderGroupSelector(this.groupSelectorContainer);
@@ -634,7 +670,7 @@ export class CharacterModal extends ResponsiveModal {
         // Handle new format: markdownContent (parse sections)
         if (markdownContent && typeof markdownContent === 'string') {
             try {
-                const parsedSections = parseSectionsFromMarkdown(`---\n---\n\n${markdownContent}`);
+                const parsedSections = parseSectionsFromMarkdown(markdownContent);
 
                 // Map well-known sections to entity properties
                 if ('Description' in parsedSections) {
@@ -644,7 +680,14 @@ export class CharacterModal extends ResponsiveModal {
                     fields.backstory = parsedSections['Backstory'];
                 }
                 if ('Traits' in parsedSections) {
-                    fields.traits = parsedSections['Traits'];
+                    const rawTraits = parsedSections['Traits'];
+                    if (Array.isArray(rawTraits)) {
+                        fields.traits = rawTraits;
+                    } else if (typeof rawTraits === 'string' && rawTraits.trim()) {
+                        fields.traits = rawTraits.split(/[\s,]+/).map(t => t.trim()).filter(t => t.length > 0);
+                    } else {
+                        fields.traits = [];
+                    }
                 }
 
                 console.log('[CharacterModal] Parsed markdown sections:', parsedSections);

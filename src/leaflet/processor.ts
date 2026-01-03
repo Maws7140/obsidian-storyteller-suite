@@ -18,7 +18,37 @@ export class LeafletCodeBlockProcessor {
     // Track active maps for cleanup
     private activeMaps: globalThis.Map<string, LeafletRenderer> = new globalThis.Map();
 
+    // Track per-file map counters for generating unique IDs within a file
+    // Key: filePath + contentId, Value: counter for how many times this combo has been seen
+    private mapIdCounters: globalThis.Map<string, number> = new globalThis.Map();
+
     constructor(private plugin: StorytellerSuitePlugin) {}
+
+    /**
+     * Simple deterministic hash function (djb2 algorithm)
+     * Produces a stable numeric hash from a string
+     */
+    private hashString(str: string): number {
+        let hash = 5381;
+        for (let i = 0; i < str.length; i++) {
+            const char = str.charCodeAt(i);
+            hash = ((hash << 5) + hash) ^ char; // hash * 33 ^ char
+        }
+        return hash >>> 0; // Convert to unsigned 32-bit integer
+    }
+
+    /**
+     * Reset map ID counters for a file
+     * Should be called when a file is re-rendered to ensure consistent counter values
+     */
+    resetFileCounters(filePath: string): void {
+        // Remove all counters for this file
+        for (const key of this.mapIdCounters.keys()) {
+            if (key.startsWith(filePath + '|')) {
+                this.mapIdCounters.delete(key);
+            }
+        }
+    }
 
     /**
      * Register the code block processor with Obsidian
@@ -89,7 +119,13 @@ export class LeafletCodeBlockProcessor {
             // onload() will handle initialization - no need to call initialize() manually
             ctx.addChild(renderer as any);
 
-            // Track the map
+            // Track the map - clean up any existing map with the same ID first
+            const existingMap = this.activeMaps.get(params.id);
+            if (existingMap) {
+                // This shouldn't normally happen with stable IDs, but clean up just in case
+                console.log('[LeafletProcessor] Replacing existing map with ID:', params.id);
+                existingMap.destroy();
+            }
             this.activeMaps.set(params.id, renderer);
 
             // Clean up tracking when renderer is unloaded
@@ -138,21 +174,31 @@ export class LeafletCodeBlockProcessor {
 
     /**
      * Generate a stable map ID based on context
-     * Uses file path + image path or section info for stability across reloads
+     * Uses a deterministic hash of file path + content identifier (image/mapId)
+     * Appends a per-file counter for multiple maps with the same content identifier
      */
     private generateMapId(ctx: MarkdownPostProcessorContext, el: HTMLElement, params: BlockParameters): string {
         const filePath = ctx.sourcePath;
         
-        // Use image path or mapId as a stable identifier if available
-        const contentId = params.image || params.mapId || '';
+        // Use image path or mapId as a stable content identifier
+        const contentId = params.image || params.mapId || 'default';
         
-        // Get section info for position-based stability when no other identifier
-        const sectionInfo = ctx.getSectionInfo(el);
-        const lineNum = sectionInfo?.lineStart ?? 0;
+        // Create a unique key for this file + content combination
+        const counterKey = `${filePath}|${contentId}`;
         
-        // Create stable ID from file path + content identifier + line number
-        const baseId = `${filePath}-${contentId}-${lineNum}`.replace(/[^a-zA-Z0-9]/g, '-');
-        return `map-${baseId}`;
+        // Get and increment the counter for this combination
+        const counter = this.mapIdCounters.get(counterKey) ?? 0;
+        this.mapIdCounters.set(counterKey, counter + 1);
+        
+        // Create stable hash from file path + content identifier
+        const hashInput = `${filePath}:${contentId}`;
+        const hash = this.hashString(hashInput);
+        
+        // Convert hash to hex string and append counter if > 0
+        const hashHex = hash.toString(16);
+        const suffix = counter > 0 ? `-${counter}` : '';
+        
+        return `map-${hashHex}${suffix}`;
     }
 
     /**
@@ -234,13 +280,14 @@ export class LeafletCodeBlockProcessor {
     }
 
     /**
-     * Cleanup all maps
+     * Cleanup all maps and reset counters
      */
     cleanup(): void {
         for (const renderer of this.activeMaps.values()) {
             renderer.destroy();
         }
         this.activeMaps.clear();
+        this.mapIdCounters.clear();
     }
 
     /**

@@ -49,6 +49,13 @@ export class ChapterModal extends Modal {
                     if ((defaultTemplate.variables && defaultTemplate.variables.length > 0) ||
                         this.hasMultipleEntities(defaultTemplate)) {
                         await new Promise<void>((resolve) => {
+                            let resolved = false;
+                            const safeResolve = () => {
+                                if (!resolved) {
+                                    resolved = true;
+                                    resolve();
+                                }
+                            };
                             import('./TemplateApplicationModal').then(({ TemplateApplicationModal }) => {
                                 new TemplateApplicationModal(
                                     this.app,
@@ -63,8 +70,9 @@ export class ChapterModal extends Modal {
                                             console.error('[ChapterModal] Error applying template:', error);
                                             new Notice('Error applying default template');
                                         }
-                                        resolve();
-                                    }
+                                        safeResolve();
+                                    },
+                                    safeResolve // onCancel callback
                                 ).open();
                             });
                         });
@@ -95,9 +103,36 @@ export class ChapterModal extends Modal {
                             this.app,
                             this.plugin,
                             async (template: Template) => {
-                                await this.applyTemplateToChapter(template);
-                                this.refresh();
-                                new Notice(`Template "${template.name}" applied`);
+                                // Check if template has variables or multiple entities
+                                if ((template.variables && template.variables.length > 0) ||
+                                    this.hasMultipleEntities(template)) {
+                                    // Use TemplateApplicationModal for variable collection
+                                    await new Promise<void>((resolve) => {
+                                        import('./TemplateApplicationModal').then(({ TemplateApplicationModal }) => {
+                                            new TemplateApplicationModal(
+                                                this.app,
+                                                this.plugin,
+                                                template,
+                                                async (variableValues, entityFileNames) => {
+                                                    try {
+                                                        await this.applyTemplateToChapterWithVariables(template, variableValues);
+                                                        new Notice(`Template "${template.name}" applied`);
+                                                        this.refresh();
+                                                    } catch (error) {
+                                                        console.error('[ChapterModal] Error applying template:', error);
+                                                        new Notice('Error applying template');
+                                                    }
+                                                    resolve();
+                                                }
+                                            ).open();
+                                        });
+                                    });
+                                } else {
+                                    // No variables, apply directly
+                                    await this.applyTemplateToChapter(template);
+                                    this.refresh();
+                                    new Notice(`Template "${template.name}" applied`);
+                                }
                             },
                             'chapter'
                         ).open();
@@ -422,7 +457,7 @@ export class ChapterModal extends Modal {
         // Handle new format: markdownContent (parse sections)
         if (markdownContent && typeof markdownContent === 'string') {
             try {
-                const parsedSections = parseSectionsFromMarkdown(`---\n---\n\n${markdownContent}`);
+                const parsedSections = parseSectionsFromMarkdown(markdownContent);
 
                 // Map well-known sections to entity properties
                 if ('Summary' in parsedSections) {

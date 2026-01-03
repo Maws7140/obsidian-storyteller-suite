@@ -92,14 +92,24 @@ export class ObsidianTileLayer extends L.TileLayer {
     }
 
     /**
-     * Override createTile to add error handling
+     * Override createTile to add error handling and force visibility
      * Creates the DOM element for a tile
      */
     createTile(coords: L.Coords, done: L.DoneCallback): HTMLElement {
         const tile = document.createElement('img');
 
-        // Set crossOrigin to anonymous to allow canvas operations
+        // CRITICAL: Set explicit styles to ensure tile is visible
+        // Sometimes Leaflet's default styles don't get applied correctly
+        tile.style.width = `${this.options.tileSize || 256}px`;
+        tile.style.height = `${this.options.tileSize || 256}px`;
+        tile.style.display = 'block';
+        tile.style.opacity = '1';
+        tile.style.visibility = 'visible';
+
         L.DomEvent.on(tile, 'load', () => {
+            // CRITICAL: Force tile to be visible after load
+            tile.style.opacity = '1';
+            tile.style.visibility = 'visible';
             done(undefined, tile);
         });
 
@@ -113,5 +123,41 @@ export class ObsidianTileLayer extends L.TileLayer {
         tile.src = this.getTileUrl(coords);
 
         return tile;
+    }
+
+    /**
+     * Override onAdd to force initial tile visibility
+     */
+    onAdd(map: L.Map): this {
+        const result = super.onAdd(map);
+        
+        // Force visibility after adding to map
+        setTimeout(() => {
+            this._forceVisibility();
+        }, 100);
+        
+        return result;
+    }
+
+    /**
+     * Force all tiles to be visible
+     * Works around Leaflet's lazy tile rendering issues
+     */
+    private _forceVisibility(): void {
+        const container = this.getContainer();
+        if (!container) return;
+
+        // Force tile container to be visible
+        container.style.opacity = '1';
+        container.style.visibility = 'visible';
+
+        // Force all tile images to be visible
+        const tiles = container.querySelectorAll('img');
+        tiles.forEach((tile) => {
+            tile.style.opacity = '1';
+            tile.style.visibility = 'visible';
+        });
+
+        console.log(`[ObsidianTileLayer] Forced visibility on ${tiles.length} tiles`);
     }
 }

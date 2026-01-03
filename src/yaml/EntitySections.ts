@@ -248,8 +248,12 @@ export function buildFrontmatter(
 /**
  * Parse all markdown sections from a file body.
  * Returns a map of sectionName -> content (trimmed, without the heading line).
- * Robust against spacing and older formats; if no regex matches but '##' exists, falls back to a manual splitter.
- * Now properly handles empty sections to prevent field bleeding.
+ * 
+ * This function works with or without YAML frontmatter - it only looks for `##` section
+ * headings in the content. Callers do NOT need to inject empty frontmatter markers.
+ * 
+ * Robust against spacing and older formats; properly handles empty sections to prevent
+ * field bleeding between sections.
  */
 export function parseSectionsFromMarkdown(content: string): Record<string, string> {
   const sections: Record<string, string> = {};

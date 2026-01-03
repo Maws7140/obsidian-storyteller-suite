@@ -126,10 +126,42 @@ export class CultureModal extends ResponsiveModal {
                         new TemplatePickerModal(
                             this.app,
                             this.plugin,
-                            (template: Template) => {
-                                this.applyTemplateToCulture(template);
-                                this.refresh();
-                                new Notice(t('templateApplied', template.name));
+                            async (template: Template) => {
+                                // Check if template has variables or multiple entities
+                                if ((template.variables && template.variables.length > 0) ||
+                                    this.hasMultipleEntities(template)) {
+                                    // Use TemplateApplicationModal for variable collection
+                                    await new Promise<void>((resolve) => {
+                                        import('./TemplateApplicationModal').then(({ TemplateApplicationModal }) => {
+                                            new TemplateApplicationModal(
+                                                this.app,
+                                                this.plugin,
+                                                template,
+                                                async (variableValues, entityFileNames) => {
+                                                    try {
+                                                        await this.applyTemplateToCultureWithVariables(template, variableValues);
+                                                        new Notice(t('templateApplied', template.name));
+                                                        this.refresh();
+                                                    } catch (error) {
+                                                        console.error('[CultureModal] Error applying template:', error);
+                                                        new Notice('Error applying template');
+                                                    }
+                                                    resolve();
+                                                }
+                                            ).open();
+                                        });
+                                    });
+                                } else {
+                                    // No variables, apply directly
+                                    try {
+                                        await this.applyTemplateToCulture(template);
+                                        this.refresh();
+                                        new Notice(t('templateApplied', template.name));
+                                    } catch (error) {
+                                        console.error('Failed to apply template to culture:', error);
+                                        new Notice(t('templateApplyFailed', template.name));
+                                    }
+                                }
                             },
                             'culture'
                         ).open();
@@ -446,7 +478,7 @@ export class CultureModal extends ResponsiveModal {
         // Handle new format: markdownContent (parse sections)
         if (markdownContent && typeof markdownContent === 'string') {
             try {
-                const parsedSections = parseSectionsFromMarkdown(`---\n---\n\n${markdownContent}`);
+                const parsedSections = parseSectionsFromMarkdown(markdownContent);
 
                 // Map well-known sections to entity properties
                 if ('Description' in parsedSections) {

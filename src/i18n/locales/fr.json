@@ -714,6 +714,7 @@
   "chooseTemplate": "Choisir un modèle",
   "selectTemplate": "Sélectionner un modèle",
   "templateApplied": "Modèle \"{0}\" appliqué",
+  "templateApplyFailed": "Échec de l'application du modèle \"{0}\"",
   "noTemplatesAvailable": "Ce modèle ne contient aucun élément",
   "cannotDeleteWithoutPath": "Impossible de supprimer sans chemin de fichier.",
   "cannotOpenWithoutPath": "Impossible d'ouvrir la note sans chemin de fichier.",
@@ -949,6 +950,7 @@
   "tutorialFileReadable": "Les fichiers sont <strong>lisibles et modifiables</strong> même sans le plugin",
   "tutorialFileBackup": "<strong>Sécurité de sauvegarde :</strong> Vos données ne sont jamais verrouillées dans un format propriétaire",
   "tutorialFileTip": "Astuce : Configurez ces modes dans Paramètres → Storyteller Suite sous <em>Utiliser des dossiers d'entités personnalisés</em> et <em>Mode une seule histoire</em>. Le bouton <em>Nouvelle histoire</em> est masqué automatiquement en Mode une seule histoire.",
-  "defaultTemplateApplied": "Modèle par défaut appliqué."
+  "defaultTemplateApplied": "Modèle par défaut appliqué.",
+  "errorApplyingDefaultTemplate": "Erreur lors de l'application du modèle par défaut."
 }
 
