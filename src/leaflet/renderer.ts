@@ -27,6 +27,7 @@ export class LeafletRenderer extends Component {
     private layers: globalThis.Map<string, L.LayerGroup> = new globalThis.Map();
     private imageOverlay: L.ImageOverlay | null = null;
     private resizeObserver: ResizeObserver | null = null;
+    private intersectionObserver: IntersectionObserver | null = null;
     private isInitialized: boolean = false;
     private initializationPromise: Promise<void> | null = null;
     private mapEntityRenderer: MapEntityRenderer | null = null;
@@ -34,6 +35,7 @@ export class LeafletRenderer extends Component {
     private imageHeight: number = 0;
     private imageBounds: L.LatLngBounds | null = null;
     private wheelHandler: ((e: WheelEvent) => void) | null = null;
+    private hasRenderedTiles: boolean = false;
 
     constructor(
         private plugin: StorytellerSuitePlugin,
@@ -46,6 +48,10 @@ export class LeafletRenderer extends Component {
         
         // Setup ResizeObserver to watch for container size changes
         this.setupResizeObserver();
+        
+        // Setup IntersectionObserver to detect when map becomes visible
+        // This is critical for ensuring tiles render when scrolling into view
+        this.setupIntersectionObserver();
     }
 
     /**
@@ -105,11 +111,10 @@ export class LeafletRenderer extends Component {
 
             // Note: fitBounds is already called in initializeImageMap/initializeRealMap
             // Don't call it again here as it can interfere with centering
+            // Note: restoreSavedViewState is called BEFORE default positioning in each init method
+            // to avoid visible jump when a saved state exists
 
             this.isInitialized = true;
-            
-            // Restore saved map position if available
-            await this.restoreSavedViewState();
             
             // Set up position saving for inline maps
             this.setupPositionSaving();
@@ -129,23 +134,44 @@ export class LeafletRenderer extends Component {
      * Times out after 5 seconds to prevent infinite waiting
      */
     private async waitForContainerDimensions(): Promise<void> {
-        return new Promise((resolve, reject) => {
+        return new Promise((resolve) => {
             const startTime = Date.now();
             const timeout = 5000; // 5 second timeout
             
             const checkDimensions = () => {
-                const rect = this.containerEl.getBoundingClientRect();
-                const hasDimensions = rect.width > 0 && rect.height > 0;
+                let rect = this.containerEl.getBoundingClientRect();
+                let hasDimensions = rect.width > 0 && rect.height > 0;
+
+                // CRITICAL FIX: If container has no dimensions, force them explicitly
+                // This handles cases where the container uses percentage sizing or flex
+                // but the parent hasn't been laid out yet
+                if (!hasDimensions) {
+                    // Check if parent has dimensions we can use
+                    const parent = this.containerEl.parentElement;
+                    if (parent) {
+                        const parentRect = parent.getBoundingClientRect();
+                        if (parentRect.width > 0 && parentRect.height > 0) {
+                            // Force explicit pixel dimensions based on parent
+                            this.containerEl.style.width = `${parentRect.width}px`;
+                            this.containerEl.style.height = `${parentRect.height}px`;
+                            console.log('[LeafletRenderer] Forced container dimensions from parent:', parentRect.width, 'x', parentRect.height);
+                            resolve();
+                            return;
+                        }
+                    }
+                }
 
                 if (hasDimensions) {
                     console.log('[LeafletRenderer] Container dimensions ready:', rect.width, 'x', rect.height);
                     resolve();
                 } else if (Date.now() - startTime > timeout) {
-                    // Timeout - try to continue with default dimensions
-                    console.warn('[LeafletRenderer] Timeout waiting for container dimensions, using defaults');
-                    // Set explicit dimensions as fallback
+                    // Timeout - force explicit dimensions as fallback
+                    console.warn('[LeafletRenderer] Timeout waiting for container dimensions, forcing defaults');
+                    // Set explicit pixel dimensions - not percentages!
+                    this.containerEl.style.width = '800px';
+                    this.containerEl.style.height = '500px';
                     this.containerEl.style.minHeight = '500px';
-                    this.containerEl.style.minWidth = '100%';
+                    this.containerEl.style.minWidth = '800px';
                     resolve();
                 } else {
                     // Use requestAnimationFrame to wait for next layout cycle
@@ -195,6 +221,182 @@ export class LeafletRenderer extends Component {
         });
 
         this.resizeObserver.observe(this.containerEl);
+    }
+
+    /**
+     * Setup IntersectionObserver to detect when map becomes visible
+     * This ensures tiles render properly when the map scrolls into view
+     * or when the container becomes visible after being hidden
+     */
+    private setupIntersectionObserver(): void {
+        if (typeof IntersectionObserver === 'undefined') {
+            return;
+        }
+
+        this.intersectionObserver = new IntersectionObserver((entries) => {
+            for (const entry of entries) {
+                if (entry.isIntersecting && this.map && this.isInitialized) {
+                    console.log('[LeafletRenderer] Map became visible, forcing tile refresh');
+                    // Force tiles to render when map becomes visible
+                    this.forceTileRefresh();
+                }
+            }
+        }, {
+            // Trigger when any part of the map is visible
+            threshold: [0, 0.1, 0.5, 1.0],
+            // Use root margin to detect slightly before visible
+            rootMargin: '50px'
+        });
+
+        this.intersectionObserver.observe(this.containerEl);
+    }
+
+    /**
+     * Force tile layers to refresh and render
+     * This is the key fix for tiles not rendering until zoom
+     */
+    private forceTileRefresh(): void {
+        if (!this.map || this.hasRenderedTiles) return;
+
+        console.log('[LeafletRenderer] Forcing tile refresh...');
+
+        // Mark that we've triggered a refresh to avoid doing it repeatedly
+        this.hasRenderedTiles = true;
+
+        // Step 1: Invalidate the map size to recalculate dimensions
+        this.map.invalidateSize({ animate: false });
+
+        // Step 2: Force all tile layers to update and be visible
+        this.map.eachLayer((layer: any) => {
+            if (layer._url || layer.getTileUrl || layer instanceof L.TileLayer) {
+                // Force the tile layer to recalculate visible tiles
+                if (layer._resetView) {
+                    layer._resetView();
+                }
+                if (layer._update) {
+                    layer._update();
+                }
+                if (layer.redraw) {
+                    layer.redraw();
+                }
+                
+                // Force visibility on tile container
+                const container = layer.getContainer?.();
+                if (container) {
+                    container.style.opacity = '1';
+                    container.style.visibility = 'visible';
+                    
+                    // Force visibility on all tile images
+                    const tiles = container.querySelectorAll('img');
+                    tiles.forEach((tile: HTMLElement) => {
+                        tile.style.opacity = '1';
+                        tile.style.visibility = 'visible';
+                    });
+                }
+            }
+        });
+
+        // Step 3: Force tile pane visibility
+        const tilePane = this.map.getPane('tilePane');
+        if (tilePane) {
+            tilePane.style.opacity = '1';
+            tilePane.style.visibility = 'visible';
+            tilePane.style.display = 'block';
+        }
+
+        // Step 4: Fire a moveend event to trigger Leaflet's internal tile loading
+        // This simulates what happens when the user zooms
+        this.map.fire('moveend');
+        this.map.fire('zoomend');
+
+        // Step 5: Force a tiny zoom change to trigger Leaflet's internal state update
+        // This is the nuclear option - simulate what zoom does
+        const currentZoom = this.map.getZoom();
+        const currentCenter = this.map.getCenter();
+        
+        // Micro zoom - invisible to user but triggers Leaflet's full update cycle
+        this.map.setView(currentCenter, currentZoom + 0.001, { animate: false });
+        
+        setTimeout(() => {
+            if (this.map) {
+                // Return to original zoom
+                this.map.setView(currentCenter, currentZoom, { animate: false });
+                
+                // Force one more update
+                this.map.invalidateSize({ animate: false });
+                this.map.eachLayer((layer: any) => {
+                    if (layer._update) {
+                        layer._update();
+                    }
+                    if (layer._forceVisibility) {
+                        layer._forceVisibility();
+                    }
+                });
+            }
+        }, 50);
+    }
+
+    /**
+     * Ensure the map has non-zero dimensions before proceeding
+     * This is CRITICAL for tile loading - Leaflet won't request tiles if size is 0x0
+     */
+    private async ensureMapHasDimensions(): Promise<void> {
+        if (!this.map) return;
+
+        const maxAttempts = 100; // 2 seconds max (100 * 20ms)
+        let attempts = 0;
+
+        while (attempts < maxAttempts) {
+            const size = this.map.getSize();
+            
+            if (size.x > 0 && size.y > 0) {
+                console.log(`[LeafletRenderer] Map has dimensions: ${size.x} x ${size.y}`);
+                return;
+            }
+
+            // Try to force dimensions on the container
+            const rect = this.containerEl.getBoundingClientRect();
+            if (rect.width > 0 && rect.height > 0) {
+                // Container has dimensions but map doesn't see them - force invalidate
+                this.containerEl.style.width = `${rect.width}px`;
+                this.containerEl.style.height = `${rect.height}px`;
+                this.map.invalidateSize({ animate: false });
+                
+                const newSize = this.map.getSize();
+                if (newSize.x > 0 && newSize.y > 0) {
+                    console.log(`[LeafletRenderer] Map dimensions after fix: ${newSize.x} x ${newSize.y}`);
+                    return;
+                }
+            }
+
+            // Check parent container
+            const parent = this.containerEl.parentElement;
+            if (parent) {
+                const parentRect = parent.getBoundingClientRect();
+                if (parentRect.width > 0 && parentRect.height > 0) {
+                    // Force container to use parent dimensions
+                    this.containerEl.style.width = `${parentRect.width}px`;
+                    this.containerEl.style.height = `${parentRect.height}px`;
+                    this.map.invalidateSize({ animate: false });
+                    
+                    const newSize = this.map.getSize();
+                    if (newSize.x > 0 && newSize.y > 0) {
+                        console.log(`[LeafletRenderer] Map dimensions from parent: ${newSize.x} x ${newSize.y}`);
+                        return;
+                    }
+                }
+            }
+
+            // Wait and retry
+            await new Promise(resolve => setTimeout(resolve, 20));
+            attempts++;
+        }
+
+        // Last resort: force explicit dimensions
+        console.warn('[LeafletRenderer] Could not get dimensions, forcing 800x600');
+        this.containerEl.style.width = '800px';
+        this.containerEl.style.height = '600px';
+        this.map.invalidateSize({ animate: false });
     }
 
     /**
@@ -398,25 +600,78 @@ export class LeafletRenderer extends Component {
         );
 
         console.log('[LeafletRenderer] Adding tile layer to map...');
+        
+        // CRITICAL FIX: Don't add tile layer until container has real dimensions
+        // Leaflet uses map.getSize() to determine which tiles to load
+        // If size is 0x0, no tiles will be requested
+        await this.ensureMapHasDimensions();
+        
         tileLayer.addTo(this.map);
         console.log('[LeafletRenderer] Tile layer added');
 
-        // Wait for DOM to be ready
-        await new Promise(resolve => requestAnimationFrame(resolve));
+        // CRITICAL FIX: Listen for tile load events - but DON'T call invalidateSize!
+        // invalidateSize can cause tiles to disappear - just log that tiles loaded
+        let tilesLoaded = false;
+        tileLayer.on('load', () => {
+            if (!tilesLoaded) {
+                tilesLoaded = true;
+                console.log('[LeafletRenderer] Tiles loaded successfully');
+                this.hasRenderedTiles = true;
+            }
+        });
 
-        // Calculate center point
-        const centerLat = tileInfo.height / 2;
-        const centerLng = tileInfo.width / 2;
-
-        // Set initial view - start at middle zoom level to ensure tiles load
-        const initialZoom = Math.floor((tileInfo.minZoom + tileInfo.maxZoom) / 2);
-
-        // Invalidate size and set view
+        // Invalidate size to ensure Leaflet recalculates
         this.map.invalidateSize({ animate: false });
-        this.map.setView([centerLat, centerLng], initialZoom, { animate: false });
+
+        // Try to restore saved view state BEFORE default positioning to avoid visible jump
+        const restoredSavedState = this.restoreSavedViewState();
+
+        if (!restoredSavedState) {
+            // No saved state - use default positioning
+            // Calculate center point
+            const centerLat = tileInfo.height / 2;
+            const centerLng = tileInfo.width / 2;
+
+            // Set initial view - start at middle zoom level to ensure tiles load
+            const initialZoom = Math.floor((tileInfo.minZoom + tileInfo.maxZoom) / 2);
+
+            this.map.setView([centerLat, centerLng], initialZoom, { animate: false });
+        }
+
+        // CRITICAL FIX: Force tile pane to be explicitly visible
+        // Sometimes CSS or Leaflet state can hide the tile pane initially
+        const tilePane = this.map.getPane('tilePane');
+        if (tilePane) {
+            tilePane.style.opacity = '1';
+            tilePane.style.visibility = 'visible';
+            tilePane.style.display = 'block';
+            console.log('[LeafletRenderer] Forced tile pane visibility');
+        }
 
         // Force a tile redraw after setting view
         tileLayer.redraw();
+        
+        // Force tile layer to update and request tiles
+        if ((tileLayer as any)._update) {
+            (tileLayer as any)._update();
+        }
+
+        // CRITICAL FIX: Use forceTileRefresh after a short delay
+        setTimeout(() => {
+            if (this.map) {
+                this.hasRenderedTiles = false; // Reset so forceTileRefresh will run
+                this.forceTileRefresh();
+            }
+        }, 100);
+
+        // Additional refresh after a longer delay for reliability
+        setTimeout(() => {
+            if (this.map && !this.hasRenderedTiles) {
+                console.log('[LeafletRenderer] Secondary tile refresh (500ms)...');
+                this.hasRenderedTiles = false;
+                this.forceTileRefresh();
+            }
+        }, 500);
 
         // Log final state
         const finalZoom = this.map.getZoom();
@@ -511,15 +766,46 @@ export class LeafletRenderer extends Component {
         console.log('[LeafletRenderer] Adding image overlay with bounds:', bounds);
         this.imageOverlay = L.imageOverlay(imageUrl, bounds).addTo(this.map);
 
+        // CRITICAL FIX: Listen for image load to trigger invalidateSize
+        // This ensures the map recalculates when image is actually loaded
+        let imageLoaded = false;
+        this.imageOverlay.on('load', () => {
+            if (!imageLoaded) {
+                imageLoaded = true;
+                console.log('[LeafletRenderer] Image loaded, invalidating size...');
+                this.hasRenderedTiles = true;
+                setTimeout(() => {
+                    if (this.map) {
+                        this.map.invalidateSize({ animate: false });
+                    }
+                }, 50);
+            }
+        });
+
         // Wait for DOM
         await new Promise(resolve => requestAnimationFrame(resolve));
 
-        // Invalidate size and fit bounds
+        // Invalidate size first
         this.map.invalidateSize({ animate: false });
-        this.map.fitBounds(bounds, {
-            padding: [20, 20],
-            animate: false
-        });
+
+        // Try to restore saved view state BEFORE default positioning to avoid visible jump
+        const restoredSavedState = this.restoreSavedViewState();
+
+        if (!restoredSavedState) {
+            // No saved state - use default fitBounds
+            this.map.fitBounds(bounds, {
+                padding: [20, 20],
+                animate: false
+            });
+        }
+
+        // Force image overlay to be visible
+        // This addresses similar visibility issues as with tile layers
+        const overlayPane = this.map.getPane('overlayPane');
+        if (overlayPane) {
+            overlayPane.style.opacity = '1';
+            overlayPane.style.visibility = 'visible';
+        }
 
         // Log final state
         const finalZoom = this.map.getZoom();
@@ -1086,6 +1372,7 @@ export class LeafletRenderer extends Component {
     /**
      * Invalidate map size - forces Leaflet to recalculate dimensions
      * Called when device orientation changes or container is resized
+     * CRITICAL: Also updates tile layers to prevent tiles from disappearing
      */
     invalidateSize(): void {
         if (this.map) {
@@ -1093,6 +1380,24 @@ export class LeafletRenderer extends Component {
             requestAnimationFrame(() => {
                 if (this.map) {
                     this.map.invalidateSize({ animate: false });
+
+                    // CRITICAL FIX: Force tile layers to update after invalidateSize
+                    // Without this, tiles can disappear when container resizes
+                    const tileLayers: any[] = [];
+                    this.map.eachLayer((layer: any) => {
+                        if (layer._url || layer.getTileUrl) {
+                            tileLayers.push(layer);
+                        }
+                    });
+
+                    tileLayers.forEach(tileLayer => {
+                        if (tileLayer.redraw) {
+                            tileLayer.redraw();
+                        }
+                        if (tileLayer._update) {
+                            tileLayer._update();
+                        }
+                    });
                 }
             });
         }
@@ -1115,9 +1420,6 @@ export class LeafletRenderer extends Component {
     /**
      * Refresh entities on the map without reloading the entire map
      * Useful after adding/removing entities
-    /**
-     * Refresh entities on the map without reloading the entire map
-     * Useful after adding/removing entities
      */
     async refreshEntities(): Promise<void> {
         if (!this.mapEntityRenderer || !this.params.mapId) return;
@@ -1129,19 +1431,30 @@ export class LeafletRenderer extends Component {
     }
 
     /**
+     * Check if a saved view state exists for this map (synchronous)
+     * Used to determine whether to skip default positioning during initialization
+     */
+    private hasSavedViewState(): boolean {
+        const mapId = (this.params as any).mapId || this.params.id;
+        if (!mapId) return false;
+        return !!this.plugin.getMapViewState(mapId);
+    }
+
+    /**
      * Restore saved map view state (zoom and center position)
      * Called during initialization to return user to their last viewed position
+     * @returns true if a saved state was restored, false otherwise
      */
-    private async restoreSavedViewState(): Promise<void> {
-        if (!this.map) return;
+    private restoreSavedViewState(): boolean {
+        if (!this.map) return false;
 
         const mapId = (this.params as any).mapId || this.params.id;
-        if (!mapId) return;
+        if (!mapId) return false;
 
         const savedState = this.plugin.getMapViewState(mapId);
         if (!savedState) {
             console.log('[LeafletRenderer] No saved view state for map:', mapId);
-            return;
+            return false;
         }
 
         console.log('[LeafletRenderer] Restoring saved view state for map:', mapId, savedState);
@@ -1154,8 +1467,10 @@ export class LeafletRenderer extends Component {
                 { animate: false }
             );
             console.log('[LeafletRenderer] View state restored successfully');
+            return true;
         } catch (error) {
             console.warn('[LeafletRenderer] Failed to restore view state:', error);
+            return false;
         }
     }
 
@@ -1235,6 +1550,16 @@ export class LeafletRenderer extends Component {
                     console.log('[LeafletRenderer] Starting delayed initialization...');
                     await this.initialize();
                     console.log('[LeafletRenderer] Initialization complete');
+                    
+                    // CRITICAL: Force tile refresh after initialization completes
+                    // This ensures tiles render immediately without waiting for user interaction
+                    setTimeout(() => {
+                        if (this.map && this.isInitialized) {
+                            console.log('[LeafletRenderer] Post-initialization tile refresh...');
+                            this.hasRenderedTiles = false;
+                            this.forceTileRefresh();
+                        }
+                    }, 100);
                 } catch (error) {
                     console.error('[LeafletRenderer] Initialization failed in onload:', error);
                     // Show error in the container
@@ -1242,9 +1567,13 @@ export class LeafletRenderer extends Component {
                 }
             }, 50); // 50ms delay for DOM reflow
         } else if (this.isInitialized && this.map) {
-            // If already initialized, invalidate size to ensure proper rendering
+            // If already initialized, invalidate size and force tile refresh
             requestAnimationFrame(() => {
                 this.invalidateSize();
+                // Also force tile refresh in case tiles didn't render
+                if (!this.hasRenderedTiles) {
+                    this.forceTileRefresh();
+                }
             });
         }
     }
@@ -1290,6 +1619,12 @@ export class LeafletRenderer extends Component {
             this.resizeObserver = null;
         }
 
+        // Clean up IntersectionObserver
+        if (this.intersectionObserver) {
+            this.intersectionObserver.disconnect();
+            this.intersectionObserver = null;
+        }
+
         if (this.map) {
             this.map.remove();
             this.map = null;
@@ -1300,6 +1635,7 @@ export class LeafletRenderer extends Component {
         this.imageOverlay = null;
         this.isInitialized = false;
         this.initializationPromise = null;
+        this.hasRenderedTiles = false;
     }
 
     /**

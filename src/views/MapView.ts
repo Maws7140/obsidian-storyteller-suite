@@ -1395,23 +1395,33 @@ export class MapView extends ItemView {
 
         this.mapContainer.empty();
 
+        // CRITICAL FIX: Wait for container to have non-zero dimensions
+        // Without this, Leaflet initializes with 0x0 size and tiles don't render
+        await this.waitForContainerDimensions(this.mapContainer);
+
         // CRITICAL FIX: Parent container must have position:relative for absolute children
         // Without this, tiles will scatter across the viewport
         this.mapContainer.style.position = 'relative';
         this.mapContainer.style.overflow = 'hidden';
 
-        // Create Leaflet container with explicit sizing
+        // Get actual dimensions from parent container
+        const containerRect = this.mapContainer.getBoundingClientRect();
+        const containerWidth = containerRect.width > 0 ? containerRect.width : 800;
+        const containerHeight = containerRect.height > 0 ? containerRect.height : 500;
+
+        // Create Leaflet container with EXPLICIT PIXEL dimensions
+        // Using percentages with absolute positioning can cause 0x0 dimensions
         const leafletContainer = this.mapContainer.createDiv('leaflet-map-container');
         
-        // CRITICAL: Set explicit dimensions - Leaflet needs real pixel values, not percentages
+        // CRITICAL: Set explicit PIXEL dimensions - not percentages!
+        // Leaflet needs real pixel values to calculate which tiles to load
         leafletContainer.style.position = 'absolute';
         leafletContainer.style.top = '0';
         leafletContainer.style.left = '0';
-        leafletContainer.style.right = '0';
-        leafletContainer.style.bottom = '0';
-        leafletContainer.style.width = '100%';
-        leafletContainer.style.height = '100%';
+        leafletContainer.style.width = `${containerWidth}px`;
+        leafletContainer.style.height = `${containerHeight}px`;
         leafletContainer.style.minHeight = '400px';
+        leafletContainer.style.minWidth = '400px';
 
         // Use transparent background for image maps, grey for real-world maps
         const isImageMap = this.currentMap.type === 'image' || this.currentMap.image;
@@ -1560,6 +1570,37 @@ export class MapView extends ItemView {
                     this.updateLocationLevelDropdownLabel();
                 }
             }, 100);
+
+            // CRITICAL FIX: Force invalidateSize after layout completes WITH tile layer updates
+            // Multiple delays handle different layout completion scenarios
+            // IMPORTANT: Must also update tile layers, not just invalidateSize, or tiles disappear
+            const forceMapUpdate = () => {
+                const map = this.leafletRenderer?.getMap();
+                if (map) {
+                    map.invalidateSize({ animate: false });
+
+                    // Force tile layers to update after invalidateSize
+                    const tileLayers: any[] = [];
+                    map.eachLayer((layer: any) => {
+                        if (layer._url || layer.getTileUrl) {
+                            tileLayers.push(layer);
+                        }
+                    });
+
+                    tileLayers.forEach(tileLayer => {
+                        if (tileLayer.redraw) {
+                            tileLayer.redraw();
+                        }
+                        if (tileLayer._update) {
+                            tileLayer._update();
+                        }
+                    });
+                }
+            };
+
+            setTimeout(forceMapUpdate, 150);
+            setTimeout(forceMapUpdate, 300);
+            setTimeout(forceMapUpdate, 500);
 
         } catch (error) {
             console.error('Error rendering map:', error);
@@ -1850,12 +1891,88 @@ export class MapView extends ItemView {
     }
 
     /**
+     * Wait for container to have non-zero dimensions
+     * Critical for Leaflet initialization - it needs real pixel dimensions
+     */
+    private async waitForContainerDimensions(container: HTMLElement, maxAttempts = 50): Promise<void> {
+        let attempts = 0;
+
+        while (attempts < maxAttempts) {
+            const rect = container.getBoundingClientRect();
+
+            if (rect.width > 0 && rect.height > 0) {
+                console.log(`[MapView] Container has dimensions: ${rect.width}x${rect.height}`);
+                return;
+            }
+
+            // Wait a bit and try again
+            await new Promise(resolve => setTimeout(resolve, 20));
+            attempts++;
+        }
+
+        console.warn('[MapView] Container still has no dimensions after waiting, proceeding anyway...');
+    }
+
+    /**
      * Setup resize observer for responsive layout
      * Uses debouncing to prevent rapid invalidateSize calls
      */
     private setupResizeObserver(): void {
-        // Temporarily disabled to debug zoom bounce issue
-        return;
+        if (!this.mapContainer) return;
+
+        let resizeTimeout: NodeJS.Timeout | null = null;
+
+        this.resizeObserver = new ResizeObserver((entries) => {
+            // Debounce resize events to prevent excessive invalidateSize calls
+            if (resizeTimeout) {
+                clearTimeout(resizeTimeout);
+            }
+
+            resizeTimeout = setTimeout(() => {
+                // Update leaflet container dimensions to match parent
+                const leafletContainer = this.mapContainer?.querySelector('.leaflet-map-container') as HTMLElement;
+                if (leafletContainer && this.mapContainer) {
+                    const rect = this.mapContainer.getBoundingClientRect();
+                    if (rect.width > 0 && rect.height > 0) {
+                        leafletContainer.style.width = `${rect.width}px`;
+                        leafletContainer.style.height = `${rect.height}px`;
+                    }
+                }
+
+                const map = this.leafletRenderer?.getMap();
+                if (map) {
+                    console.log('[MapView] ResizeObserver triggered, updating map...');
+                    // Use requestAnimationFrame to ensure DOM has updated
+                    requestAnimationFrame(() => {
+                        if (map) {
+                            map.invalidateSize({ animate: false });
+
+                            // CRITICAL FIX: After resize invalidateSize, force tile layers to update
+                            // Without this, tiles can disappear after initial load
+                            const tileLayers: any[] = [];
+                            map.eachLayer((layer: any) => {
+                                if (layer._url || layer.getTileUrl) {
+                                    tileLayers.push(layer);
+                                }
+                            });
+
+                            tileLayers.forEach(tileLayer => {
+                                if (tileLayer.redraw) {
+                                    tileLayer.redraw();
+                                }
+                                if (tileLayer._update) {
+                                    tileLayer._update();
+                                }
+                            });
+
+                            console.log('[MapView] Forced tile layer update after resize');
+                        }
+                    });
+                }
+            }, 150); // 150ms debounce
+        });
+
+        this.resizeObserver.observe(this.mapContainer);
     }
 
     async onClose(): Promise<void> {

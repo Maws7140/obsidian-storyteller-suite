@@ -715,6 +715,7 @@
   "chooseTemplate": "选择模板",
   "selectTemplate": "选择一个模板",
   "templateApplied": "已应用模板\"{0}\"",
+  "templateApplyFailed": "应用模板\"{0}\"失败",
   "noTemplatesAvailable": "此模板不包含任何项目",
   "cannotDeleteWithoutPath": "没有文件路径无法删除。",
   "cannotOpenWithoutPath": "没有文件路径无法打开笔记。",
@@ -950,6 +951,7 @@
   "tutorialFileReadable": "即使没有插件，文件也是<strong>可读和可编辑的</strong>",
   "tutorialFileBackup": "<strong>备份安全：</strong>您的数据永远不会被锁定在专有格式中",
   "tutorialFileTip": "提示：在设置 → Storyteller Suite 下的<em>使用自定义实体文件夹</em>和<em>单一故事模式</em>中配置这些模式。在单一故事模式下，<em>新故事</em>按钮会自动隐藏。",
-  "defaultTemplateApplied": "已应用默认模板。"
+  "defaultTemplateApplied": "已应用默认模板。",
+  "errorApplyingDefaultTemplate": "应用默认模板时出错。"
 }
 

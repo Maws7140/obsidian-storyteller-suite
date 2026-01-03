@@ -24,20 +24,24 @@ export class TemplateApplicationModal extends ResponsiveModal {
     private plugin: StorytellerSuitePlugin;
     private template: Template;
     private onApply: (variableValues: TemplateVariableValues, entityFileNames: EntityFileName[]) => void;
+    private onCancel?: () => void;
     private variableValues: TemplateVariableValues = {};
     private entityFileNames: EntityFileName[] = [];
     private previewNames: Map<string, string> = new Map(); // templateId -> preview name
+    private didApply = false;
 
     constructor(
         app: App,
         plugin: StorytellerSuitePlugin,
         template: Template,
-        onApply: (variableValues: TemplateVariableValues, entityFileNames: EntityFileName[]) => void
+        onApply: (variableValues: TemplateVariableValues, entityFileNames: EntityFileName[]) => void,
+        onCancel?: () => void
     ) {
         super(app);
         this.plugin = plugin;
         this.template = template;
         this.onApply = onApply;
+        this.onCancel = onCancel;
         
         // Initialize entity file names from template
         this.initializeEntityFileNames();
@@ -459,6 +463,9 @@ export class TemplateApplicationModal extends ResponsiveModal {
     }
 
     private handleApply(): void {
+        // Mark that apply was triggered (prevents onCancel from firing in onClose)
+        this.didApply = true;
+
         // Validate all required variables are filled
         if (this.template.variables) {
             const validationErrors: string[] = [];
@@ -545,5 +552,9 @@ export class TemplateApplicationModal extends ResponsiveModal {
 
     onClose(): void {
         this.contentEl.empty();
+        // If the modal was closed without applying, invoke onCancel
+        if (!this.didApply && this.onCancel) {
+            this.onCancel();
+        }
     }
 }

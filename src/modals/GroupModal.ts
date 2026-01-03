@@ -141,9 +141,36 @@ export class GroupModal extends ResponsiveModal {
                             this.app,
                             this.plugin,
                             async (template: Template) => {
-                                await this.applyTemplateToGroup(template);
-                                this.refresh();
-                                new Notice(`Template "${template.name}" applied`);
+                                // Check if template has variables or multiple entities
+                                if ((template.variables && template.variables.length > 0) ||
+                                    this.hasMultipleEntities(template)) {
+                                    // Use TemplateApplicationModal for variable collection
+                                    await new Promise<void>((resolve) => {
+                                        import('./TemplateApplicationModal').then(({ TemplateApplicationModal }) => {
+                                            new TemplateApplicationModal(
+                                                this.app,
+                                                this.plugin,
+                                                template,
+                                                async (variableValues, entityFileNames) => {
+                                                    try {
+                                                        await this.applyTemplateToGroupWithVariables(template, variableValues);
+                                                        new Notice(`Template "${template.name}" applied`);
+                                                        this.refresh();
+                                                    } catch (error) {
+                                                        console.error('[GroupModal] Error applying template:', error);
+                                                        new Notice('Error applying template');
+                                                    }
+                                                    resolve();
+                                                }
+                                            ).open();
+                                        });
+                                    });
+                                } else {
+                                    // No variables, apply directly
+                                    await this.applyTemplateToGroup(template);
+                                    this.refresh();
+                                    new Notice(`Template "${template.name}" applied`);
+                                }
                             },
                             'group'
                         ).open();
