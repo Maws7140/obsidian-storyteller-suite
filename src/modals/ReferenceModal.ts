@@ -45,25 +45,25 @@ export class ReferenceModal extends Modal {
                     // If template has variables or multiple entities, use TemplateApplicationModal
                     if ((defaultTemplate.variables && defaultTemplate.variables.length > 0) ||
                         this.hasMultipleEntities(defaultTemplate)) {
+                        const { TemplateApplicationModal } = await import('./TemplateApplicationModal');
                         await new Promise<void>((resolve) => {
-                            import('./TemplateApplicationModal').then(({ TemplateApplicationModal }) => {
-                                new TemplateApplicationModal(
-                                    this.app,
-                                    this.plugin,
-                                    defaultTemplate,
-                                    async (variableValues, entityFileNames) => {
-                                        try {
-                                            await this.applyTemplateToReferenceWithVariables(defaultTemplate, variableValues);
-                                            new Notice('Default template applied');
-                                            this.refresh();
-                                        } catch (error) {
-                                            console.error('[ReferenceModal] Error applying template:', error);
-                                            new Notice('Error applying default template');
-                                        }
+                            new TemplateApplicationModal(
+                                this.app,
+                                this.plugin,
+                                defaultTemplate,
+                                async (variableValues, entityFileNames) => {
+                                    try {
+                                        await this.applyTemplateToReferenceWithVariables(defaultTemplate, variableValues);
+                                        new Notice('Default template applied');
+                                    } catch (error) {
+                                        console.error('[ReferenceModal] Error applying template:', error);
+                                        new Notice('Error applying default template');
+                                    } finally {
                                         resolve();
+                                        this.refresh();
                                     }
-                                ).open();
-                            });
+                                }
+                            ).open();
                         });
                     } else {
                         // No variables, apply directly
@@ -92,9 +92,36 @@ export class ReferenceModal extends Modal {
                             this.app,
                             this.plugin,
                             async (template: Template) => {
-                                await this.applyTemplateToReference(template);
-                                this.refresh();
-                                new Notice(`Template "${template.name}" applied`);
+                                // Check if template has variables or multiple entities
+                                if ((template.variables && template.variables.length > 0) ||
+                                    this.hasMultipleEntities(template)) {
+                                    // Use TemplateApplicationModal for variable collection
+                                    await new Promise<void>((resolve) => {
+                                        import('./TemplateApplicationModal').then(({ TemplateApplicationModal }) => {
+                                            new TemplateApplicationModal(
+                                                this.app,
+                                                this.plugin,
+                                                template,
+                                                async (variableValues, entityFileNames) => {
+                                                    try {
+                                                        await this.applyTemplateToReferenceWithVariables(template, variableValues);
+                                                        new Notice(`Template "${template.name}" applied`);
+                                                        this.refresh();
+                                                    } catch (error) {
+                                                        console.error('[ReferenceModal] Error applying template:', error);
+                                                        new Notice('Error applying template');
+                                                    }
+                                                    resolve();
+                                                }
+                                            ).open();
+                                        });
+                                    });
+                                } else {
+                                    // No variables, apply directly
+                                    await this.applyTemplateToReference(template);
+                                    this.refresh();
+                                    new Notice(`Template "${template.name}" applied`);
+                                }
                             },
                             'reference'
                         ).open();
@@ -299,12 +326,60 @@ export class ReferenceModal extends Modal {
         // Handle new format: markdownContent (parse sections)
         if (markdownContent && typeof markdownContent === 'string') {
             try {
-                const parsedSections = parseSectionsFromMarkdown(`---\n---\n\n${markdownContent}`);
+                const parsedSections = parseSectionsFromMarkdown(markdownContent);
 
-                // Map well-known sections to entity properties
-                if ('Content' in parsedSections) {
-                    fields.content = parsedSections['Content'];
+                // Map well-known section names to entity property names
+                const sectionToFieldMap: Record<string, string> = {
+                    'Content': 'content',
+                    'Description': 'description',
+                    'Notes': 'notes',
+                    'Background': 'background',
+                    'History': 'history',
+                    'Appearance': 'appearance',
+                    'Personality': 'personality',
+                    'Relationships': 'relationships',
+                    'Abilities': 'abilities',
+                    'Goals': 'goals',
+                    'Motivations': 'motivations',
+                    'Secrets': 'secrets',
+                    'Quotes': 'quotes',
+                    'Trivia': 'trivia',
+                    'Geography': 'geography',
+                    'Culture': 'culture',
+                    'Economy': 'economy',
+                    'Government': 'government',
+                    'Demographics': 'demographics',
+                    'Climate': 'climate',
+                    'Flora': 'flora',
+                    'Fauna': 'fauna',
+                    'Resources': 'resources',
+                    'Landmarks': 'landmarks',
+                    'Events': 'events',
+                    'Factions': 'factions',
+                    'Conflicts': 'conflicts',
+                    'Timeline': 'timeline',
+                    'Summary': 'summary',
+                };
+
+                // Initialize customFields to collect unmapped sections
+                const customFields: Record<string, string> = {};
+
+                // Loop over all parsed sections
+                for (const [sectionName, sectionContent] of Object.entries(parsedSections)) {
+                    if (sectionName in sectionToFieldMap) {
+                        // Map known section to its entity property
+                        fields[sectionToFieldMap[sectionName]] = sectionContent;
+                    } else {
+                        // Collect unmapped sections into customFields
+                        customFields[sectionName] = sectionContent;
+                    }
                 }
+
+                // Merge customFields into fields if there are any unmapped sections
+                if (Object.keys(customFields).length > 0) {
+                    fields.customFields = { ...(fields.customFields || {}), ...customFields };
+                }
+
                 console.log('[ReferenceModal] Parsed markdown sections:', parsedSections);
             } catch (error) {
                 console.warn('[ReferenceModal] Failed to parse markdownContent:', error);

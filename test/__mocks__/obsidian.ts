@@ -11,7 +11,7 @@ export function stringifyYaml(obj: any): string {
 }
 
 export function parseYaml(yamlString: string): any {
-  return yaml.load(yamlString);
+  return yaml.load(yamlString, { schema: yaml.JSON_SCHEMA });
 }
 
 export class TFolder {
@@ -35,9 +35,14 @@ export class TFile {
   constructor(path: string) {
     this.path = path;
     this.name = path.split('/').pop() || '';
-    const parts = this.name.split('.');
-    this.extension = parts.pop() || '';
-    this.basename = parts.join('.');
+    const dotIndex = this.name.lastIndexOf('.');
+    if (dotIndex > 0) {
+      this.basename = this.name.slice(0, dotIndex);
+      this.extension = this.name.slice(dotIndex + 1);
+    } else {
+      this.basename = this.name;
+      this.extension = '';
+    }
   }
 }
 

@@ -20,7 +20,8 @@
       "Bash(cmd.exe /c \"cd C:\\\\Users\\\\Lilly\\\\OneDrive\\\\Desktop\\\\Test\\\\.obsidian\\\\plugins\\\\obsidian-storyteller-suite && dir main.js\")",
       "Bash(git stash:*)",
       "WebFetch(domain:github.com)",
-      "Bash(git restore -- :*)",
+      "Bash(git restore:*)",
+      "Bash(for modal in EventModal SceneModal ChapterModal ReferenceModal CharacterModal LocationModal PlotItemModal GroupModal CultureModal EconomyModal MagicSystemModal MapModal)"
     ],
     "deny": [],
     "ask": []
