@@ -100,7 +100,7 @@ export class EventModal extends Modal {
                             new Notice(t('defaultTemplateApplied'));
                         } catch (error) {
                             console.error('[EventModal] Error applying template:', error);
-                            new Notice('Error applying default template');
+                            new Notice(t('errorApplyingDefaultTemplate'));
                         }
                     }
                 }
@@ -120,9 +120,36 @@ export class EventModal extends Modal {
                             this.app,
                             this.plugin,
                             async (template: Template) => {
-                                await this.applyTemplateToEvent(template);
-                                this.refresh(); // Refresh the modal to show template values
-                                new Notice(`Template "${template.name}" applied`);
+                                // Check if template has variables or multiple entities
+                                if ((template.variables && template.variables.length > 0) ||
+                                    this.hasMultipleEntities(template)) {
+                                    // Use TemplateApplicationModal for variable collection
+                                    await new Promise<void>((resolve) => {
+                                        import('./TemplateApplicationModal').then(({ TemplateApplicationModal }) => {
+                                            new TemplateApplicationModal(
+                                                this.app,
+                                                this.plugin,
+                                                template,
+                                                async (variableValues, entityFileNames) => {
+                                                    try {
+                                                        await this.applyTemplateToEventWithVariables(template, variableValues);
+                                                        new Notice(`Template "${template.name}" applied`);
+                                                        this.refresh();
+                                                    } catch (error) {
+                                                        console.error('[EventModal] Error applying template:', error);
+                                                        new Notice('Error applying template');
+                                                    }
+                                                    resolve();
+                                                }
+                                            ).open();
+                                        });
+                                    });
+                                } else {
+                                    // No variables, apply directly
+                                    await this.applyTemplateToEvent(template);
+                                    this.refresh();
+                                    new Notice(`Template "${template.name}" applied`);
+                                }
                             },
                             'event' // Filter to event templates only
                         ).open();

@@ -130,9 +130,36 @@ export class EconomyModal extends ResponsiveModal {
                             this.app,
                             this.plugin,
                             async (template: Template) => {
-                                await this.applyTemplateToEconomy(template);
-                                this.refresh();
-                                new Notice(t('templateApplied', template.name));
+                                // Check if template has variables or multiple entities
+                                if ((template.variables && template.variables.length > 0) ||
+                                    this.hasMultipleEntities(template)) {
+                                    // Use TemplateApplicationModal for variable collection
+                                    await new Promise<void>((resolve) => {
+                                        import('./TemplateApplicationModal').then(({ TemplateApplicationModal }) => {
+                                            new TemplateApplicationModal(
+                                                this.app,
+                                                this.plugin,
+                                                template,
+                                                async (variableValues, entityFileNames) => {
+                                                    try {
+                                                        await this.applyTemplateToEconomyWithVariables(template, variableValues);
+                                                        new Notice(t('templateApplied', template.name));
+                                                        this.refresh();
+                                                    } catch (error) {
+                                                        console.error('[EconomyModal] Error applying template:', error);
+                                                        new Notice('Error applying template');
+                                                    }
+                                                    resolve();
+                                                }
+                                            ).open();
+                                        });
+                                    });
+                                } else {
+                                    // No variables, apply directly
+                                    await this.applyTemplateToEconomy(template);
+                                    this.refresh();
+                                    new Notice(t('templateApplied', template.name));
+                                }
                             },
                             'economy'
                         ).open();

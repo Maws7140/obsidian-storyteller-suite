@@ -190,16 +190,16 @@
   "scenesFolder": "Scenes folder",
   "chaptersFolder": "Chapters folder",
   "culturesFolder": "Cultures folder",
-  "culturesFolderDesc": "Path for culture markdown files (placeholders allowed: {storyName}, {storySlug}, {storyId})",
+  "culturesFolderDesc": "Path for cultures markdown files (placeholders allowed: {storyName}, {storySlug}, {storyId})",
   "culturesFolderPh": "MyStory/Cultures",
   "economiesFolder": "Economies folder",
-  "economiesFolderDesc": "Path for economy markdown files (placeholders allowed: {storyName}, {storySlug}, {storyId})",
+  "economiesFolderDesc": "Path for economies markdown files (placeholders allowed: {storyName}, {storySlug}, {storyId})",
   "economiesFolderPh": "MyStory/Economies",
   "factionsFolder": "Factions folder",
-  "factionsFolderDesc": "Path for faction markdown files (placeholders allowed: {storyName}, {storySlug}, {storyId})",
+  "factionsFolderDesc": "Path for factions markdown files (placeholders allowed: {storyName}, {storySlug}, {storyId})",
   "factionsFolderPh": "MyStory/Factions",
   "magicSystemsFolder": "Magic Systems folder",
-  "magicSystemsFolderDesc": "Path for magic system markdown files (placeholders allowed: {storyName}, {storySlug}, {storyId})",
+  "magicSystemsFolderDesc": "Path for magic systems markdown files (placeholders allowed: {storyName}, {storySlug}, {storyId})",
   "magicSystemsFolderPh": "MyStory/MagicSystems",
   "oneStoryMode": "One Story Mode",
   "oneStoryBaseFolder": "One Story base folder",
@@ -729,6 +729,7 @@
   "chooseTemplate": "Choose Template",
   "selectTemplate": "Select a template",
   "templateApplied": "Template \"{0}\" applied",
+  "templateApplyFailed": "Failed to apply template \"{0}\"",
   "noTemplatesAvailable": "This template does not contain any items",
   "cannotDeleteWithoutPath": "Cannot delete without file path.",
   "cannotOpenWithoutPath": "Cannot open note without file path.",
@@ -1006,6 +1007,7 @@
   "defaultTemplateSet": "Default template for {0} set to \"{1}\"",
   "defaultTemplateCleared": "Default template for {0} cleared",
   "defaultTemplateApplied": "Default template applied.",
-  "defaultTemplateApplyFailed": "Failed to apply default template."
+  "defaultTemplateApplyFailed": "Failed to apply default template.",
+  "errorApplyingDefaultTemplate": "Error applying default template."
 }
 

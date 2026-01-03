@@ -27,6 +27,23 @@ describe('EntitySections', () => {
     expect(sections.Backstory).toBe('Story');
   });
 
+  it('parseSectionsFromMarkdown works without frontmatter', () => {
+    // parseSectionsFromMarkdown should handle plain markdown content without
+    // requiring callers to inject empty frontmatter markers (---\n---\n\n)
+    const bodyWithoutFrontmatter = `## Description\nText here\n\n## Backstory\nStory`;
+    const sections = parseSectionsFromMarkdown(bodyWithoutFrontmatter);
+    expect(sections.Description).toBe('Text here');
+    expect(sections.Backstory).toBe('Story');
+  });
+
+  it('parseSectionsFromMarkdown handles content with text before first section', () => {
+    // Content before the first ## heading should be ignored
+    const bodyWithPreamble = `Some intro text\n\n## Description\nText here`;
+    const sections = parseSectionsFromMarkdown(bodyWithPreamble);
+    expect(sections.Description).toBe('Text here');
+    expect(Object.keys(sections)).toHaveLength(1);
+  });
+
   it('toSafeFileName removes illegal characters', () => {
     expect(toSafeFileName('A:/B*C?')).toBe('ABC');
   });
