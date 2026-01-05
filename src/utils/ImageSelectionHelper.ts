@@ -1,12 +1,11 @@
 /**
  * ImageSelectionHelper - Reusable helper for image selection across all modals
- * Provides three options: Gallery selection, File upload from computer, and Vault file selection
+ * Provides two options: Gallery selection and File upload from computer
  */
 
 import { App, Setting, Notice } from 'obsidian';
 import StorytellerSuitePlugin from '../main';
 import { GalleryImageSuggestModal } from '../modals/GalleryImageSuggestModal';
-import { ImageSuggestModal } from '../modals/GalleryModal';
 import { t } from '../i18n/strings';
 
 export interface ImageSelectionOptions {
@@ -16,13 +15,13 @@ export interface ImageSelectionOptions {
     onSelect: (imagePath: string | undefined) => void;
     /** Description element to update with current path */
     descriptionEl?: HTMLElement;
-    /** Whether to show vault file selection option (default: true) */
-    showVaultSelection?: boolean;
+    /** Whether to trigger tile generation for uploaded images (for map images only) */
+    enableTileGeneration?: boolean;
 }
 
 /**
  * Add image selection buttons to a Setting
- * Provides Gallery, Upload, and optionally Vault file selection
+ * Provides Gallery and Upload options
  */
 export function addImageSelectionButtons(
     setting: Setting,
@@ -30,7 +29,7 @@ export function addImageSelectionButtons(
     plugin: StorytellerSuitePlugin,
     options: ImageSelectionOptions
 ): void {
-    const { currentPath, onSelect, descriptionEl, showVaultSelection = true } = options;
+    const { currentPath, onSelect, descriptionEl, enableTileGeneration = false } = options;
 
     // Gallery selection button
     setting.addButton(button => button
@@ -73,8 +72,10 @@ export function addImageSelectionButtons(
                         // Save to vault
                         await app.vault.createBinary(filePath, arrayBuffer);
 
-                        // Trigger tile generation for large images (runs in background)
-                        plugin.maybeTriggerTileGeneration(filePath, arrayBuffer);
+                        // Trigger tile generation for map images if enabled
+                        if (enableTileGeneration) {
+                            plugin.maybeTriggerTileGeneration(filePath, arrayBuffer);
+                        }
 
                         // Call callback with new path
                         onSelect(filePath);
@@ -90,34 +91,6 @@ export function addImageSelectionButtons(
                 }
             };
             fileInput.click();
-        }));
-
-    // Vault file selection button (optional)
-    if (showVaultSelection) {
-        setting.addButton(button => button
-            .setButtonText('From Vault')
-            .setTooltip('Select image file from vault')
-            .onClick(() => {
-                new ImageSuggestModal(app, plugin, (selectedFile) => {
-                    const path = selectedFile.path;
-                    onSelect(path);
-                    if (descriptionEl) {
-                        descriptionEl.setText(`Current: ${path || 'None'}`);
-                    }
-                }).open();
-            }));
-    }
-
-    // Clear button
-    setting.addButton(button => button
-        .setIcon('cross')
-        .setTooltip(t('clearImage'))
-        .setClass('mod-warning')
-        .onClick(() => {
-            onSelect(undefined);
-            if (descriptionEl) {
-                descriptionEl.setText('Current: None');
-            }
         }));
 }
 

@@ -2,7 +2,7 @@ import { App, Setting, Notice, parseYaml } from 'obsidian';
 import type { MagicSystem } from '../types';
 import type StorytellerSuitePlugin from '../main';
 import { ResponsiveModal } from './ResponsiveModal';
-import { GalleryImageSuggestModal } from './GalleryImageSuggestModal';
+import { addImageSelectionButtons } from '../utils/ImageSelectionHelper';
 import { TemplatePickerModal } from './TemplatePickerModal';
 import { Template } from '../templates/TemplateTypes';
 import { t } from '../i18n/strings';
@@ -182,32 +182,25 @@ export class MagicSystemModal extends ResponsiveModal {
             });
 
         // Profile Image
-        let imagePathDesc: HTMLElement;
-        new Setting(contentEl)
+        const profileImageSetting = new Setting(contentEl)
             .setName(t('representativeImage'))
-            .setDesc('')
-            .then(setting => {
-                imagePathDesc = setting.descEl.createEl('small', {
-                    text: t('currentValue', this.magicSystem.profileImagePath || t('none'))
-                });
-            })
-            .addButton(button => button
-                .setButtonText(t('select'))
-                .onClick(() => {
-                    new GalleryImageSuggestModal(this.app, this.plugin, (selectedImage) => {
-                        const path = selectedImage ? selectedImage.filePath : '';
-                        this.magicSystem.profileImagePath = path || undefined;
-                        imagePathDesc.setText(t('currentValue', this.magicSystem.profileImagePath || t('none')));
-                    }).open();
-                })
-            )
-            .addButton(button => button
-                .setButtonText(t('clear'))
-                .onClick(() => {
-                    this.magicSystem.profileImagePath = undefined;
-                    imagePathDesc.setText(t('currentValue', t('none')));
-                })
-            );
+            .setDesc('');
+        const imagePathDesc = profileImageSetting.descEl.createEl('small', {
+            text: t('currentValue', this.magicSystem.profileImagePath || t('none'))
+        });
+        addImageSelectionButtons(
+            profileImageSetting,
+            this.app,
+            this.plugin,
+            {
+                currentPath: this.magicSystem.profileImagePath,
+                onSelect: (path) => {
+                    this.magicSystem.profileImagePath = path;
+                    imagePathDesc.setText(t('currentValue', this.magicSystem.profileImagePath || t('none')));
+                },
+                descriptionEl: imagePathDesc
+            }
+        );
 
         // System Type
         new Setting(contentEl)
