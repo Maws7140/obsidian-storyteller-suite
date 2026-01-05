@@ -1178,6 +1178,202 @@ If your plugin does not need CSS, delete this file.
 }
 
 /* ==============================================
+   NETWORK GRAPH VIEW PANEL STYLES
+   ============================================== */
+
+/* Main view container */
+.storyteller-network-graph-view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background-color: var(--background-primary);
+}
+
+/* Toolbar - compact horizontal bar with icon buttons */
+.storyteller-graph-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 12px;
+  background-color: var(--background-secondary);
+  border-bottom: 1px solid var(--background-modifier-border);
+  flex-shrink: 0;
+}
+
+.storyteller-graph-toolbar .clickable-icon,
+.storyteller-graph-toolbar .storyteller-toolbar-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background-color: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.storyteller-graph-toolbar .clickable-icon:hover,
+.storyteller-graph-toolbar .storyteller-toolbar-btn:hover {
+  background-color: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.storyteller-graph-toolbar .clickable-icon:active,
+.storyteller-graph-toolbar .storyteller-toolbar-btn:active {
+  background-color: var(--background-modifier-active);
+}
+
+/* Export button - themed to match the panel */
+.storyteller-export-button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: none;
+  border-radius: 6px;
+  background-color: var(--interactive-accent);
+  color: var(--text-on-accent);
+  font-size: var(--font-ui-small);
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.15s ease, transform 0.1s ease;
+  flex-direction: row-reverse; /* Icon after text */
+}
+
+.storyteller-export-button:hover {
+  background-color: var(--interactive-accent-hover);
+  transform: translateY(-1px);
+}
+
+.storyteller-export-button:active {
+  transform: translateY(0);
+}
+
+.storyteller-export-button svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* Advanced filters section */
+.storyteller-graph-advanced-filters {
+  background-color: var(--background-secondary);
+  border-bottom: 1px solid var(--background-modifier-border);
+  flex-shrink: 0;
+}
+
+.storyteller-advanced-filters-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  font-weight: 500;
+  user-select: none;
+  transition: background-color 0.15s ease;
+}
+
+.storyteller-advanced-filters-header:hover {
+  background-color: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.storyteller-advanced-filters-header .collapse-icon {
+  display: flex;
+  transition: transform 0.2s ease;
+}
+
+.storyteller-advanced-filters-header.is-expanded .collapse-icon {
+  transform: rotate(90deg);
+}
+
+.storyteller-advanced-filters-content {
+  padding: 12px;
+  border-top: 1px solid var(--background-modifier-border);
+  background-color: var(--background-primary);
+}
+
+.storyteller-filter-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.storyteller-filter-row:last-child {
+  margin-bottom: 0;
+}
+
+.storyteller-filter-row label {
+  font-size: var(--font-ui-smaller);
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.storyteller-filter-row input[type="text"],
+.storyteller-filter-row input[type="date"] {
+  padding: 8px 10px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  background-color: var(--background-primary);
+  color: var(--text-normal);
+  font-size: var(--font-ui-small);
+}
+
+.storyteller-filter-row input:focus {
+  border-color: var(--interactive-accent);
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(var(--interactive-accent-rgb), 0.2);
+}
+
+.storyteller-date-range {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.storyteller-date-range .date-separator {
+  color: var(--text-muted);
+}
+
+.storyteller-date-range input[type="date"] {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Graph container */
+.storyteller-graph-container {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  min-height: 200px;
+}
+
+/* Footer status bar */
+.storyteller-graph-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  background-color: var(--background-secondary);
+  border-top: 1px solid var(--background-modifier-border);
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.storyteller-graph-footer-status {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* ==============================================
    IMPROVED FILTER PANEL LAYOUT
    ============================================== */
 

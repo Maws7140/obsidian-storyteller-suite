@@ -64,7 +64,7 @@ export interface BlockParameters {
  */
 export interface MarkerDefinition {
     id?: string;
-    type: 'default' | 'location' | 'character' | 'event' | 'item' | 'group';
+    type: 'default' | 'location' | 'character' | 'event' | 'item' | 'group' | 'culture' | 'economy' | 'magicsystem' | 'scene' | 'reference';
 
     // Position
     loc: LatLngExpression | [string | number, string | number]; // Coords or percent for image maps

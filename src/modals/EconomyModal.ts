@@ -2,7 +2,7 @@ import { App, Setting, Notice, parseYaml } from 'obsidian';
 import type { Economy } from '../types';
 import type StorytellerSuitePlugin from '../main';
 import { ResponsiveModal } from './ResponsiveModal';
-import { GalleryImageSuggestModal } from './GalleryImageSuggestModal';
+import { addImageSelectionButtons } from '../utils/ImageSelectionHelper';
 import { TemplatePickerModal } from './TemplatePickerModal';
 import { Template } from '../templates/TemplateTypes';
 import { t } from '../i18n/strings';
@@ -178,32 +178,25 @@ export class EconomyModal extends ResponsiveModal {
             });
 
         // Profile Image
-        let imagePathDesc: HTMLElement;
-        new Setting(contentEl)
+        const profileImageSetting = new Setting(contentEl)
             .setName(t('representativeImage'))
-            .setDesc('')
-            .then(setting => {
-                imagePathDesc = setting.descEl.createEl('small', {
-                    text: t('currentValue', this.economy.profileImagePath || t('none'))
-                });
-            })
-            .addButton(button => button
-                .setButtonText(t('select'))
-                .onClick(() => {
-                    new GalleryImageSuggestModal(this.app, this.plugin, (selectedImage) => {
-                        const path = selectedImage ? selectedImage.filePath : '';
-                        this.economy.profileImagePath = path || undefined;
-                        imagePathDesc.setText(t('currentValue', this.economy.profileImagePath || t('none')));
-                    }).open();
-                })
-            )
-            .addButton(button => button
-                .setButtonText(t('clear'))
-                .onClick(() => {
-                    this.economy.profileImagePath = undefined;
-                    imagePathDesc.setText(t('currentValue', t('none')));
-                })
-            );
+            .setDesc('');
+        const imagePathDesc = profileImageSetting.descEl.createEl('small', {
+            text: t('currentValue', this.economy.profileImagePath || t('none'))
+        });
+        addImageSelectionButtons(
+            profileImageSetting,
+            this.app,
+            this.plugin,
+            {
+                currentPath: this.economy.profileImagePath,
+                onSelect: (path) => {
+                    this.economy.profileImagePath = path;
+                    imagePathDesc.setText(t('currentValue', this.economy.profileImagePath || t('none')));
+                },
+                descriptionEl: imagePathDesc
+            }
+        );
 
         // Economic System
         new Setting(contentEl)

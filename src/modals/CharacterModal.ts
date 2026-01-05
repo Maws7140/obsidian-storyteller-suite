@@ -6,7 +6,6 @@ import { LocationService } from '../services/LocationService';
 import { getWhitelistKeys, parseSectionsFromMarkdown } from '../yaml/EntitySections';
 import StorytellerSuitePlugin from '../main';
 import { t } from '../i18n/strings';
-import { GalleryImageSuggestModal } from './GalleryImageSuggestModal';
 import { addImageSelectionButtons } from '../utils/ImageSelectionHelper';
 import { ResponsiveModal } from './ResponsiveModal';
 import { PromptModal } from './ui/PromptModal';

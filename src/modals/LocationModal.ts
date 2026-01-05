@@ -5,12 +5,12 @@ import { getWhitelistKeys, parseSectionsFromMarkdown } from '../yaml/EntitySecti
 import { Group } from '../types';
 import StorytellerSuitePlugin from '../main';
 import { t } from '../i18n/strings';
-import { GalleryImageSuggestModal } from './GalleryImageSuggestModal';
 import { addImageSelectionButtons } from '../utils/ImageSelectionHelper';
 import { LocationSuggestModal } from './LocationSuggestModal';
 import { LocationPicker } from '../components/LocationPicker';
 import { LocationService } from '../services/LocationService';
 import { AddEntityToLocationModal } from './AddEntityToLocationModal';
+import { GalleryImageSuggestModal } from './GalleryImageSuggestModal';
 // TODO: Maps feature - MapSuggestModal to be reimplemented
 // import { MapSuggestModal } from './MapSuggestModal';
 import { ResponsiveModal } from './ResponsiveModal';
@@ -32,6 +32,7 @@ export class LocationModal extends ResponsiveModal {
     isNew: boolean;
     private _groupRefreshInterval: number | null = null;
     private groupSelectorContainer: HTMLElement | null = null;
+    private imagesListEl!: HTMLElement;
 
     constructor(app: App, plugin: StorytellerSuitePlugin, location: Location | null, onSubmit: LocationModalSubmitCallback, onDelete?: LocationModalDeleteCallback) {
         super(app);
@@ -330,6 +331,70 @@ export class LocationModal extends ResponsiveModal {
                 descriptionEl: imagePathDesc
             }
         );
+
+        // --- Associated Images ---
+        const imagesSetting = new Setting(contentEl)
+            .setName(t('associatedImages'))
+            .setDesc(t('imageGallery'));
+        // Store the list container element
+        this.imagesListEl = imagesSetting.controlEl.createDiv('storyteller-modal-list');
+        this.renderImagesList(this.imagesListEl, this.location.images || []); // Initial render
+
+        // Gallery selection button
+        imagesSetting.addButton(button => button
+            .setButtonText(t('select'))
+            .setTooltip(t('selectFromGallery'))
+            .setCta()
+            .onClick(() => {
+                new GalleryImageSuggestModal(this.app, this.plugin, (selectedImage) => {
+                    if (selectedImage && selectedImage.filePath) {
+                        const imagePath = selectedImage.filePath;
+                        if (!this.location.images) {
+                            this.location.images = [];
+                        }
+                        if (!this.location.images.includes(imagePath)) {
+                            this.location.images.push(imagePath);
+                            this.renderImagesList(this.imagesListEl, this.location.images);
+                        }
+                    }
+                }).open();
+            }));
+
+        // Upload button
+        imagesSetting.addButton(button => button
+            .setButtonText(t('upload'))
+            .setTooltip(t('uploadImage'))
+            .onClick(async () => {
+                const fileInput = document.createElement('input');
+                fileInput.type = 'file';
+                fileInput.accept = 'image/*';
+                fileInput.onchange = async () => {
+                    const file = fileInput.files?.[0];
+                    if (file) {
+                        try {
+                            await this.plugin.ensureFolder(this.plugin.settings.galleryUploadFolder);
+                            const timestamp = Date.now();
+                            const sanitizedName = file.name.replace(/[^\w\s.-]/g, '').replace(/\s+/g, '_');
+                            const fileName = `${timestamp}_${sanitizedName}`;
+                            const filePath = `${this.plugin.settings.galleryUploadFolder}/${fileName}`;
+                            const arrayBuffer = await file.arrayBuffer();
+                            await this.app.vault.createBinary(filePath, arrayBuffer);
+                            if (!this.location.images) {
+                                this.location.images = [];
+                            }
+                            if (!this.location.images.includes(filePath)) {
+                                this.location.images.push(filePath);
+                                this.renderImagesList(this.imagesListEl, this.location.images);
+                            }
+                            new Notice(t('imageUploaded', fileName));
+                        } catch (error) {
+                            console.error('Error uploading image:', error);
+                            new Notice(t('errorUploadingImage'));
+                        }
+                    }
+                };
+                fileInput.click();
+            }));
 
         // --- Map Bindings ---
         contentEl.createEl('h3', { text: 'Map Bindings' });
@@ -914,6 +979,31 @@ export class LocationModal extends ResponsiveModal {
     private refresh(): void {
         // Refresh the modal by reopening it
         void this.onOpen();
+    }
+
+    /**
+     * Render the list of associated images
+     */
+    private renderImagesList(container: HTMLElement, images: string[]): void {
+        container.empty();
+        if (!images || images.length === 0) {
+            container.createEl('span', { text: t('none'), cls: 'storyteller-modal-list-empty' });
+            return;
+        }
+        images.forEach((imagePath, index) => {
+            const itemEl = container.createDiv('storyteller-modal-list-item');
+            itemEl.createSpan({ text: imagePath });
+            new ButtonComponent(itemEl)
+                .setClass('storyteller-modal-list-remove')
+                .setTooltip(`Remove ${imagePath}`)
+                .setIcon('cross')
+                .onClick(() => {
+                    if (this.location.images) {
+                        this.location.images.splice(index, 1);
+                        this.renderImagesList(container, this.location.images);
+                    }
+                });
+        });
     }
 
     onClose() {

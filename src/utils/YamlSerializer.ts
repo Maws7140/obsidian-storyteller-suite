@@ -55,7 +55,8 @@ export function stringifyYamlWithEmptyFields(obj: Record<string, unknown>): stri
             yaml = yaml.replace(markerPattern, `$1""`);
         }
     }
-
+    // Ensure trailing newline so frontmatter closing marker is detected by naive parsers
+    if (!yaml.endsWith('\n')) yaml += '\n';
     return yaml;
 }
 

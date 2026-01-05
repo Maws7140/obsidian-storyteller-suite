@@ -3,7 +3,6 @@ import { t } from '../i18n/strings';
 import { Group, Character, Location, Event, PlotItem, GroupMemberDetails, GroupRelationship, Culture } from '../types';
 import StorytellerSuitePlugin from '../main';
 import { ResponsiveModal } from './ResponsiveModal';
-import { GalleryImageSuggestModal } from './GalleryImageSuggestModal';
 import { addImageSelectionButtons } from '../utils/ImageSelectionHelper';
 import { getWhitelistKeys, parseSectionsFromMarkdown } from '../yaml/EntitySections';
 import { CharacterSuggestModal } from './CharacterSuggestModal';

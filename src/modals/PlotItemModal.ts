@@ -2,7 +2,6 @@
 import { App, Modal, Setting, Notice, TextAreaComponent, parseYaml } from 'obsidian';
 import { PlotItem, Group } from '../types';
 import StorytellerSuitePlugin from '../main';
-import { GalleryImageSuggestModal } from './GalleryImageSuggestModal';
 import { addImageSelectionButtons } from '../utils/ImageSelectionHelper';
 import { getWhitelistKeys, parseSectionsFromMarkdown } from '../yaml/EntitySections';
 import { t } from '../i18n/strings';

@@ -1041,6 +1041,14 @@ export class DashboardView extends ItemView {
                     await this.plugin.deleteMap(map.filePath);
                 }
             });
+            // Open in Map View button
+            new ButtonComponent(actionsEl)
+                .setButtonText('Open in View')
+                .setIcon('map')
+                .onClick(async () => {
+                    const mapId = map.id || map.name;
+                    await this.plugin.activateMapView(mapId);
+                });
             this.addOpenFileButton(actionsEl, map.filePath);
         });
     }
@@ -1202,10 +1210,6 @@ export class DashboardView extends ItemView {
 
         createExpandButton(t('openInPanel'), t('openInPanel'), async () => {
             await this.openNetworkGraphInPanel();
-        });
-        
-        createExpandButton(t('openInModal'), t('openInModal'), async () => {
-            await this.openNetworkGraphInModal();
         });
         
         // Create filters container
@@ -3056,6 +3060,17 @@ export class DashboardView extends ItemView {
            });
     }
 
+    /** Add a button that opens the given map in the dedicated Map view */
+    addOpenMapViewButton(container: HTMLElement, mapId: string | undefined) {
+        if (!mapId) return;
+        new ButtonComponent(container)
+            .setIcon('map')
+            .setTooltip('Open in map view')
+            .onClick(async () => {
+                await this.plugin.activateMapView(mapId);
+            });
+    }
+
     /**
      * Open network graph in a dedicated panel view
      */
@@ -3085,18 +3100,6 @@ export class DashboardView extends ItemView {
         }
     }
     
-    /**
-     * Open network graph in a modal overlay
-     */
-    async openNetworkGraphInModal(): Promise<void> {
-        // Import NetworkGraphModal dynamically
-        const { NetworkGraphModal } = await import('../modals/NetworkGraphModal');
-
-        // Create and open the modal
-        const modal = new NetworkGraphModal(this.app, this.plugin);
-        modal.open();
-    }
-
     // ========== Phase 2A: World-Building Entity Render Methods ==========
 
     async renderCulturesContent(container: HTMLElement) {

@@ -115,10 +115,10 @@ export class LeafletRenderer extends Component {
             // to avoid visible jump when a saved state exists
 
             this.isInitialized = true;
-            
+
             // Set up position saving for inline maps
             this.setupPositionSaving();
-            
+
             // Note: invalidateSize is already called in initializeImageMap
             // Don't call it again here as it can reset the view
 
@@ -878,6 +878,21 @@ export class LeafletRenderer extends Component {
             maxZoom: 19
         }).addTo(this.map);
 
+        // CRITICAL: Force map to recognize its size and load tiles immediately
+        // Without this, tiles may not load until user zooms/pans
+        this.map.whenReady(() => {
+            if (this.map) {
+                this.map.invalidateSize({ animate: false });
+
+                // Force tile layers to update after invalidateSize
+                this.map.eachLayer((layer: any) => {
+                    if (layer._url || layer.getTileUrl) {
+                        layer.redraw?.();
+                    }
+                });
+            }
+        });
+
         console.log('[LeafletRenderer] Real-world map initialization complete');
     }
 
@@ -1530,6 +1545,7 @@ export class LeafletRenderer extends Component {
             }
         });
     }
+
 
     /**
      * Component lifecycle: called when component is loaded into DOM

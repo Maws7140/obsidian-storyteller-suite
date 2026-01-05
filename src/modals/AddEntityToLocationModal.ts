@@ -1,11 +1,27 @@
 /**
- * AddEntityToLocationModal - Modal for adding entities (characters, events, items) to locations
+ * AddEntityToLocationModal - Modal for adding entities to locations
+ * Supports: characters, events, items, cultures, economies, magic systems, groups, scenes, references
  */
 
 import { App, Modal } from 'obsidian';
 import type StorytellerSuitePlugin from '../main';
-import type { Location, EntityRef, Character, Event, PlotItem } from '../types';
+import type {
+    Location,
+    EntityRef,
+    Character,
+    Event,
+    PlotItem,
+    Culture,
+    Economy,
+    MagicSystem,
+    Group,
+    Scene,
+    Reference
+} from '../types';
 import { LocationService } from '../services/LocationService';
+
+// Union type for all loadable entities
+type LoadableEntity = Character | Event | PlotItem | Culture | Economy | MagicSystem | Group | Scene | Reference;
 
 export class AddEntityToLocationModal extends Modal {
     private location: Location;
@@ -81,56 +97,73 @@ export class AddEntityToLocationModal extends Modal {
         contentEl.empty();
     }
 
+    /**
+     * Get semantically appropriate relationships for each entity type
+     */
     private getRelationshipsForType(type: string): string[] {
         const relationships: Record<string, string[]> = {
             character: ['lives here', 'works here', 'born here', 'died here', 'visited', 'imprisoned', 'rules'],
             event: ['occurred here', 'started here', 'ended here'],
-            item: ['located here', 'created here', 'hidden here', 'sold here'],
-            culture: ['originates here', 'dominant here', 'minority here'],
-            organization: ['headquartered here', 'operates here', 'founded here']
+            item: ['located here', 'created here', 'hidden here', 'sold here', 'discovered here'],
+            culture: ['originates here', 'dominant here', 'minority here', 'practiced here', 'influences here'],
+            economy: ['based here', 'operates here', 'controls trade here', 'markets here'],
+            magicsystem: ['practiced here', 'originated here', 'forbidden here', 'taught here', 'strongest here'],
+            group: ['headquartered here', 'operates here', 'founded here', 'controls here', 'meets here'],
+            scene: ['set here', 'takes place here', 'filmed here'],
+            reference: ['documented here', 'stored here', 'mentioned here', 'researched here'],
+            custom: ['located here']
         };
         return relationships[type] || ['located here'];
     }
 
-    private async loadEntities(): Promise<(Character | Event | PlotItem)[]> {
+    /**
+     * Load entities of the specified type uniformly
+     */
+    private async loadEntities(): Promise<LoadableEntity[]> {
         switch (this.entityType) {
-            case 'character': {
-                const chars = await this.plugin.listCharacters();
-                return chars as (Character | Event | PlotItem)[];
-            }
-            case 'event': {
-                const events = await this.plugin.listEvents();
-                return events as (Character | Event | PlotItem)[];
-            }
-            case 'item': {
-                const items = await this.plugin.listPlotItems();
-                return items as (Character | Event | PlotItem)[];
-            }
+            case 'character':
+                return await this.plugin.listCharacters();
+            case 'event':
+                return await this.plugin.listEvents();
+            case 'item':
+                return await this.plugin.listPlotItems();
+            case 'culture':
+                return await this.plugin.listCultures();
+            case 'economy':
+                return await this.plugin.listEconomies();
+            case 'magicsystem':
+                return await this.plugin.listMagicSystems();
+            case 'group':
+                return this.plugin.getGroups(); // Note: getGroups, not listGroups
+            case 'scene':
+                return await this.plugin.listScenes();
+            case 'reference':
+                return await this.plugin.listReferences();
             default:
                 return [];
         }
     }
 
-    private renderResults(entities: (Character | Event | PlotItem)[]): void {
+    private renderResults(entities: LoadableEntity[]): void {
         if (!this.resultsContainer) return;
         this.resultsContainer.empty();
-        
+
         // Filter out entities already at this location
         const existingIds = new Set((this.location.entityRefs || []).map(e => e.entityId));
         const available = entities.filter(e => !existingIds.has(e.id || e.name));
-        
+
         if (available.length === 0) {
             this.resultsContainer.createDiv({ text: 'No available entities', cls: 'no-results' });
             return;
         }
-        
+
         for (const entity of available) {
             const item = this.resultsContainer.createDiv({ cls: 'entity-result-item' });
             item.innerHTML = `
                 <span class="entity-icon">${this.getEntityIcon()}</span>
                 <span class="entity-name">${entity.name}</span>
             `;
-            
+
             item.addEventListener('click', () => {
                 if (this.relSelect) {
                     this.onSelect(entity.id || entity.name, this.relSelect.value);
@@ -140,11 +173,20 @@ export class AddEntityToLocationModal extends Modal {
         }
     }
 
+    /**
+     * Get emoji icon for entity type
+     */
     private getEntityIcon(): string {
         const icons: Record<string, string> = {
             character: '👤',
             event: '📅',
-            item: '📦'
+            item: '📦',
+            culture: '🎭',
+            economy: '💰',
+            magicsystem: '✨',
+            group: '👥',
+            scene: '🎬',
+            reference: '📚'
         };
         return icons[this.entityType] || '📌';
     }

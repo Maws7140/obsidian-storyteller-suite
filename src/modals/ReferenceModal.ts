@@ -3,7 +3,6 @@ import { App, Modal, Notice, Setting, TextAreaComponent, parseYaml } from 'obsid
 import { t } from '../i18n/strings';
 import StorytellerSuitePlugin from '../main';
 import { Reference } from '../types';
-import { GalleryImageSuggestModal } from './GalleryImageSuggestModal';
 import { addImageSelectionButtons } from '../utils/ImageSelectionHelper';
 import { PromptModal } from './ui/PromptModal';
 import { getWhitelistKeys, parseSectionsFromMarkdown } from '../yaml/EntitySections';

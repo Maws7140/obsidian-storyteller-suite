@@ -322,16 +322,16 @@ export interface MapBinding {
 export interface EntityRef {
     /** ID of the entity */
     entityId: string;
-    
+
     /** Human-readable name of the entity (for display in Properties) */
     entityName?: string;
-    
+
     /** Type of entity */
-    entityType: 'character' | 'event' | 'item' | 'culture' | 'organization' | 'custom';
-    
+    entityType: 'character' | 'event' | 'item' | 'culture' | 'economy' | 'magicsystem' | 'group' | 'scene' | 'reference' | 'custom';
+
     /** Relationship description (e.g., "lives here", "works here", "visited") */
     relationship?: string;
-    
+
     /** Optional time range when entity was/is at this location */
     timeRange?: {
         start?: string;
@@ -376,7 +376,10 @@ export interface Location {
     
     /** Path to a representative image of the location within the vault */
     profileImagePath?: string;
-    
+
+    /** Paths/links to images associated with this location */
+    images?: string[];
+
     /** Name or identifier of the parent location that contains this location
      * @deprecated Use parentLocationId instead. Kept for backward compatibility during migration. */
     parentLocation?: string;

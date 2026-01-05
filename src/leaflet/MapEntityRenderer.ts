@@ -33,7 +33,7 @@ export class MapEntityRenderer {
      * Initialize layer groups for different entity types
      */
     private initializeLayers(): void {
-        const layerTypes = ['locations', 'portals', 'characters', 'events', 'items', 'custom'];
+        const layerTypes = ['locations', 'portals', 'characters', 'events', 'items', 'groups', 'cultures', 'economies', 'magicsystems', 'scenes', 'references', 'custom'];
 
         for (const type of layerTypes) {
             const layer = L.layerGroup().addTo(this.map);
@@ -316,10 +316,22 @@ export class MapEntityRenderer {
         const charactersLayer = this.markerLayers.get('characters')!;
         const eventsLayer = this.markerLayers.get('events')!;
         const itemsLayer = this.markerLayers.get('items')!;
-        
+        const groupsLayer = this.markerLayers.get('groups')!;
+        const culturesLayer = this.markerLayers.get('cultures')!;
+        const economiesLayer = this.markerLayers.get('economies')!;
+        const magicsystemsLayer = this.markerLayers.get('magicsystems')!;
+        const scenesLayer = this.markerLayers.get('scenes')!;
+        const referencesLayer = this.markerLayers.get('references')!;
+
         charactersLayer.clearLayers();
         eventsLayer.clearLayers();
         itemsLayer.clearLayers();
+        groupsLayer.clearLayers();
+        culturesLayer.clearLayers();
+        economiesLayer.clearLayers();
+        magicsystemsLayer.clearLayers();
+        scenesLayer.clearLayers();
+        referencesLayer.clearLayers();
         this.entityMarkers.clear();
 
         // Group entities by coordinate to detect stacking
@@ -368,6 +380,24 @@ export class MapEntityRenderer {
                             break;
                         case 'item':
                             itemsLayer.addLayer(marker);
+                            break;
+                        case 'group':
+                            groupsLayer.addLayer(marker);
+                            break;
+                        case 'culture':
+                            culturesLayer.addLayer(marker);
+                            break;
+                        case 'economy':
+                            economiesLayer.addLayer(marker);
+                            break;
+                        case 'magicsystem':
+                            magicsystemsLayer.addLayer(marker);
+                            break;
+                        case 'scene':
+                            scenesLayer.addLayer(marker);
+                            break;
+                        case 'reference':
+                            referencesLayer.addLayer(marker);
                             break;
                         default:
                             this.markerLayers.get('custom')?.addLayer(marker);
@@ -551,17 +581,24 @@ export class MapEntityRenderer {
      * @param stackInfo Optional stacking information for offset positioning
      */
     private getEntityMarkerIcon(
-        entityType: string, 
-        imageUrl?: string | null, 
+        entityType: string,
+        imageUrl?: string | null,
         entityName?: string,
         stackInfo?: { stackIndex: number; stackTotal: number; offset: [number, number] }
     ): L.DivIcon {
+        // Uniform color scheme for all entity types with distinct hues
         const colors: Record<string, { bg: string; border: string }> = {
-            character: { bg: '#ef4444', border: '#dc2626' },
-            event: { bg: '#f59e0b', border: '#d97706' },
-            item: { bg: '#10b981', border: '#059669' }
+            character: { bg: '#ef4444', border: '#dc2626' },      // Red
+            event: { bg: '#f59e0b', border: '#d97706' },          // Orange
+            item: { bg: '#10b981', border: '#059669' },           // Green
+            culture: { bg: '#8b5cf6', border: '#7c3aed' },        // Purple
+            economy: { bg: '#eab308', border: '#ca8a04' },        // Yellow
+            magicsystem: { bg: '#06b6d4', border: '#0891b2' },    // Cyan
+            group: { bg: '#3b82f6', border: '#2563eb' },          // Blue
+            scene: { bg: '#ec4899', border: '#db2777' },          // Pink
+            reference: { bg: '#64748b', border: '#475569' }       // Slate
         };
-        
+
         const color = colors[entityType] || colors.character;
         
         // Calculate transform for stacked markers
@@ -606,7 +643,7 @@ export class MapEntityRenderer {
             });
         }
 
-        // Fallback to SVG icons
+        // Uniform SVG icons for all entity types
         const icons: Record<string, string> = {
             character: `
                 <svg width="28" height="28" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" style="${transform}">
@@ -628,6 +665,54 @@ export class MapEntityRenderer {
                     <circle cx="12" cy="12" r="11" fill="${color.bg}" stroke="#fff" stroke-width="2"/>
                     <rect x="8" y="6" width="8" height="12" rx="1" fill="none" stroke="#fff" stroke-width="2"/>
                     <path d="M10 9h4M10 12h4M10 15h2" stroke="#fff" stroke-width="1.5" stroke-linecap="round"/>
+                </svg>
+                ${stackBadge}
+            `,
+            culture: `
+                <svg width="28" height="28" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" style="${transform}">
+                    <circle cx="12" cy="12" r="11" fill="${color.bg}" stroke="#fff" stroke-width="2"/>
+                    <path d="M8 12h8M10 8l2 4 2-4M10 16l2-4 2 4" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                ${stackBadge}
+            `,
+            economy: `
+                <svg width="28" height="28" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" style="${transform}">
+                    <circle cx="12" cy="12" r="11" fill="${color.bg}" stroke="#fff" stroke-width="2"/>
+                    <circle cx="12" cy="12" r="5" fill="none" stroke="#fff" stroke-width="2"/>
+                    <path d="M12 7v10M8 12h8" stroke="#fff" stroke-width="1.5"/>
+                </svg>
+                ${stackBadge}
+            `,
+            magicsystem: `
+                <svg width="28" height="28" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" style="${transform}">
+                    <circle cx="12" cy="12" r="11" fill="${color.bg}" stroke="#fff" stroke-width="2"/>
+                    <path d="M12 5l1.5 4.5h4.5l-3.5 2.5 1.5 4.5-3-2-3 2 1.5-4.5-3.5-2.5h4.5z" fill="#fff"/>
+                </svg>
+                ${stackBadge}
+            `,
+            group: `
+                <svg width="28" height="28" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" style="${transform}">
+                    <circle cx="12" cy="12" r="11" fill="${color.bg}" stroke="#fff" stroke-width="2"/>
+                    <circle cx="8" cy="10" r="2" fill="#fff"/>
+                    <circle cx="16" cy="10" r="2" fill="#fff"/>
+                    <circle cx="12" cy="13" r="2" fill="#fff"/>
+                    <path d="M8 15c0-1 1-2 2-2h4c1 0 2 1 2 2v2H8z" fill="#fff"/>
+                </svg>
+                ${stackBadge}
+            `,
+            scene: `
+                <svg width="28" height="28" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" style="${transform}">
+                    <circle cx="12" cy="12" r="11" fill="${color.bg}" stroke="#fff" stroke-width="2"/>
+                    <path d="M7 10l5-3 5 3v7H7z" fill="#fff"/>
+                    <rect x="10" y="13" width="4" height="4" fill="${color.bg}"/>
+                </svg>
+                ${stackBadge}
+            `,
+            reference: `
+                <svg width="28" height="28" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" style="${transform}">
+                    <circle cx="12" cy="12" r="11" fill="${color.bg}" stroke="#fff" stroke-width="2"/>
+                    <rect x="8" y="6" width="8" height="12" rx="1" fill="none" stroke="#fff" stroke-width="2"/>
+                    <path d="M10 9h4M10 11h4M10 13h3" stroke="#fff" stroke-width="1" stroke-linecap="round"/>
                 </svg>
                 ${stackBadge}
             `
@@ -1060,15 +1145,19 @@ export class MapEntityRenderer {
     }
 
     /**
-     * Get entity icon by type
+     * Get entity icon by type (for popups and lists)
      */
     private getEntityIcon(type: string): string {
         const icons: Record<string, string> = {
             character: '👤',
             event: '📅',
             item: '📦',
-            culture: '🏛️',
-            organization: '🏢',
+            culture: '🎭',
+            economy: '💰',
+            magicsystem: '✨',
+            group: '👥',
+            scene: '🎬',
+            reference: '📚',
             custom: '📌'
         };
         return icons[type] || '📌';
@@ -1092,12 +1181,12 @@ export class MapEntityRenderer {
 
         menu.addSeparator();
 
+        // Add menu items for all entity types uniformly
         menu.addItem(item => {
             item.setTitle('Add Character Here')
                 .setIcon('user')
                 .onClick(() => {
-                    // Will be implemented with modal
-                    new Notice('Add character functionality coming soon');
+                    this.showAddEntityToLocation(location, 'character');
                 });
         });
 
@@ -1105,7 +1194,7 @@ export class MapEntityRenderer {
             item.setTitle('Add Event Here')
                 .setIcon('calendar')
                 .onClick(() => {
-                    new Notice('Add event functionality coming soon');
+                    this.showAddEntityToLocation(location, 'event');
                 });
         });
 
@@ -1113,7 +1202,55 @@ export class MapEntityRenderer {
             item.setTitle('Add Item Here')
                 .setIcon('box')
                 .onClick(() => {
-                    new Notice('Add item functionality coming soon');
+                    this.showAddEntityToLocation(location, 'item');
+                });
+        });
+
+        menu.addItem(item => {
+            item.setTitle('Add Culture Here')
+                .setIcon('theater')
+                .onClick(() => {
+                    this.showAddEntityToLocation(location, 'culture');
+                });
+        });
+
+        menu.addItem(item => {
+            item.setTitle('Add Economy Here')
+                .setIcon('dollar-sign')
+                .onClick(() => {
+                    this.showAddEntityToLocation(location, 'economy');
+                });
+        });
+
+        menu.addItem(item => {
+            item.setTitle('Add Magic System Here')
+                .setIcon('sparkles')
+                .onClick(() => {
+                    this.showAddEntityToLocation(location, 'magicsystem');
+                });
+        });
+
+        menu.addItem(item => {
+            item.setTitle('Add Group Here')
+                .setIcon('users')
+                .onClick(() => {
+                    this.showAddEntityToLocation(location, 'group');
+                });
+        });
+
+        menu.addItem(item => {
+            item.setTitle('Add Scene Here')
+                .setIcon('clapperboard')
+                .onClick(() => {
+                    this.showAddEntityToLocation(location, 'scene');
+                });
+        });
+
+        menu.addItem(item => {
+            item.setTitle('Add Reference Here')
+                .setIcon('book-open')
+                .onClick(() => {
+                    this.showAddEntityToLocation(location, 'reference');
                 });
         });
 
@@ -1163,10 +1300,10 @@ export class MapEntityRenderer {
         const entityId = entity.id || entity.name;
         const locationId = location.id || location.name;
         const entityTypeName = entityRef.entityType.charAt(0).toUpperCase() + entityRef.entityType.slice(1);
-        
-        // Check if this is a supported entity type for removal
-        const supportedTypes: ('character' | 'event' | 'item')[] = ['character', 'event', 'item'];
-        const isSupportedType = supportedTypes.includes(entityRef.entityType as 'character' | 'event' | 'item');
+
+        // All entity types are now supported for removal uniformly
+        const supportedTypes = ['character', 'event', 'item', 'culture', 'economy', 'magicsystem', 'group', 'scene', 'reference'];
+        const isSupportedType = supportedTypes.includes(entityRef.entityType);
 
         menu.addItem(item => {
             item.setTitle(`Open ${entityTypeName} Note`)
@@ -1262,6 +1399,39 @@ export class MapEntityRenderer {
         }
 
         menu.showAtMouseEvent(e.originalEvent);
+    }
+
+    /**
+     * Show modal to add entity to location
+     * Uniform helper for all entity types
+     */
+    private showAddEntityToLocation(location: Location, entityType: string): void {
+        const { AddEntityToLocationModal } = require('../modals/AddEntityToLocationModal');
+        const { LocationService } = require('../services/LocationService');
+
+        const modal = new AddEntityToLocationModal(
+            this.plugin.app,
+            this.plugin,
+            location,
+            entityType,
+            async (entityId: string, relationship: string) => {
+                try {
+                    const locationService = new LocationService(this.plugin);
+                    await locationService.addEntityToLocation(location, entityId, entityType, relationship);
+                    new Notice(`${entityType.charAt(0).toUpperCase() + entityType.slice(1)} added to ${location.name}`);
+
+                    // Refresh map markers
+                    const mapView = this.plugin.app.workspace.getLeavesOfType('storyteller-map-view')[0];
+                    if (mapView && mapView.view && 'refreshMarkers' in mapView.view) {
+                        await (mapView.view as any).refreshMarkers();
+                    }
+                } catch (error) {
+                    console.error('Error adding entity to location:', error);
+                    new Notice(`Failed to add ${entityType}: ${error.message}`);
+                }
+            }
+        );
+        modal.open();
     }
 
     /**

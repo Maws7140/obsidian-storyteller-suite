@@ -1,7 +1,19 @@
 import { App, TFile } from 'obsidian';
 import { MarkerDefinition } from './types';
 import type StorytellerSuitePlugin from '../main';
-import { Character, Location, Event, PlotItem, Group, StoryMap as Map } from '../types';
+import {
+    Character,
+    Location,
+    Event,
+    PlotItem,
+    Culture,
+    Economy,
+    MagicSystem,
+    Group,
+    Scene,
+    Reference,
+    StoryMap as Map
+} from '../types';
 
 /**
  * Entity Marker Discovery
@@ -55,20 +67,26 @@ export class EntityMarkerDiscovery {
 
     /**
      * Discover entities that are linked to a specific map
+     * Uniformly supports all entity types
      */
     private async discoverLinkedEntities(mapId: string): Promise<MarkerDefinition[]> {
         const markers: MarkerDefinition[] = [];
 
         // Get all entities and check if they reference this map
-        const [characters, locations, events, items] = await Promise.all([
+        const [characters, locations, events, items, cultures, economies, magicSystems, scenes, references] = await Promise.all([
             this.plugin.listCharacters().catch(() => [] as Character[]),
             this.plugin.listLocations().catch(() => [] as Location[]),
             this.plugin.listEvents().catch(() => [] as Event[]),
-            this.plugin.listPlotItems().catch(() => [] as PlotItem[])
+            this.plugin.listPlotItems().catch(() => [] as PlotItem[]),
+            this.plugin.listCultures().catch(() => [] as Culture[]),
+            this.plugin.listEconomies().catch(() => [] as Economy[]),
+            this.plugin.listMagicSystems().catch(() => [] as MagicSystem[]),
+            this.plugin.listScenes().catch(() => [] as Scene[]),
+            this.plugin.listReferences().catch(() => [] as Reference[])
         ]);
-        
+
         // Groups are stored in settings, not as entities
-        const groups = this.plugin.settings.groups || [];
+        const groups = this.plugin.getGroups();
 
         // Check characters
         for (const char of characters) {
@@ -122,6 +140,71 @@ export class EntityMarkerDiscovery {
             }
         }
 
+        // Check cultures
+        for (const culture of cultures) {
+            const file = culture.filePath ? this.app.vault.getAbstractFileByPath(culture.filePath) : null;
+            if (file instanceof TFile) {
+                const cache = this.app.metadataCache.getFileCache(file);
+                const fm = cache?.frontmatter as any;
+                if (fm?.mapId === mapId || (Array.isArray(fm?.relatedMapIds) && fm.relatedMapIds.includes(mapId))) {
+                    const marker = await this.entityToMarker(culture, 'culture', file);
+                    if (marker) markers.push(marker);
+                }
+            }
+        }
+
+        // Check economies
+        for (const economy of economies) {
+            const file = economy.filePath ? this.app.vault.getAbstractFileByPath(economy.filePath) : null;
+            if (file instanceof TFile) {
+                const cache = this.app.metadataCache.getFileCache(file);
+                const fm = cache?.frontmatter as any;
+                if (fm?.mapId === mapId || (Array.isArray(fm?.relatedMapIds) && fm.relatedMapIds.includes(mapId))) {
+                    const marker = await this.entityToMarker(economy, 'economy', file);
+                    if (marker) markers.push(marker);
+                }
+            }
+        }
+
+        // Check magic systems
+        for (const magicSystem of magicSystems) {
+            const file = magicSystem.filePath ? this.app.vault.getAbstractFileByPath(magicSystem.filePath) : null;
+            if (file instanceof TFile) {
+                const cache = this.app.metadataCache.getFileCache(file);
+                const fm = cache?.frontmatter as any;
+                if (fm?.mapId === mapId || (Array.isArray(fm?.relatedMapIds) && fm.relatedMapIds.includes(mapId))) {
+                    const marker = await this.entityToMarker(magicSystem, 'magicsystem', file);
+                    if (marker) markers.push(marker);
+                }
+            }
+        }
+
+        // Check scenes
+        for (const scene of scenes) {
+            const file = scene.filePath ? this.app.vault.getAbstractFileByPath(scene.filePath) : null;
+            if (file instanceof TFile) {
+                const cache = this.app.metadataCache.getFileCache(file);
+                const fm = cache?.frontmatter as any;
+                if (fm?.mapId === mapId || (Array.isArray(fm?.relatedMapIds) && fm.relatedMapIds.includes(mapId))) {
+                    const marker = await this.entityToMarker(scene, 'scene', file);
+                    if (marker) markers.push(marker);
+                }
+            }
+        }
+
+        // Check references
+        for (const reference of references) {
+            const file = reference.filePath ? this.app.vault.getAbstractFileByPath(reference.filePath) : null;
+            if (file instanceof TFile) {
+                const cache = this.app.metadataCache.getFileCache(file);
+                const fm = cache?.frontmatter as any;
+                if (fm?.mapId === mapId || (Array.isArray(fm?.relatedMapIds) && fm.relatedMapIds.includes(mapId))) {
+                    const marker = await this.entityToMarker(reference, 'reference', file);
+                    if (marker) markers.push(marker);
+                }
+            }
+        }
+
         // Check groups (factions/organizations)
         // Groups don't have filePath - they're stored in settings
         // We can't create markers for groups directly, but they can be linked via other entities
@@ -131,15 +214,21 @@ export class EntityMarkerDiscovery {
 
     /**
      * Discover entities with mapCoordinates in frontmatter
+     * Uniformly supports all entity types
      */
     private async discoverEntitiesWithCoordinates(): Promise<MarkerDefinition[]> {
         const markers: MarkerDefinition[] = [];
 
-        const [characters, locations, events, items] = await Promise.all([
+        const [characters, locations, events, items, cultures, economies, magicSystems, scenes, references] = await Promise.all([
             this.plugin.listCharacters().catch(() => [] as Character[]),
             this.plugin.listLocations().catch(() => [] as Location[]),
             this.plugin.listEvents().catch(() => [] as Event[]),
             this.plugin.listPlotItems().catch(() => [] as PlotItem[]),
+            this.plugin.listCultures().catch(() => [] as Culture[]),
+            this.plugin.listEconomies().catch(() => [] as Economy[]),
+            this.plugin.listMagicSystems().catch(() => [] as MagicSystem[]),
+            this.plugin.listScenes().catch(() => [] as Scene[]),
+            this.plugin.listReferences().catch(() => [] as Reference[])
         ]);
 
         // Check all entity types for mapCoordinates
@@ -147,7 +236,12 @@ export class EntityMarkerDiscovery {
             ...characters.map(e => ({ entity: e, type: 'character' as const, file: e.filePath })),
             ...locations.map(e => ({ entity: e, type: 'location' as const, file: e.filePath })),
             ...events.map(e => ({ entity: e, type: 'event' as const, file: e.filePath })),
-            ...items.map(e => ({ entity: e, type: 'item' as const, file: e.filePath }))
+            ...items.map(e => ({ entity: e, type: 'item' as const, file: e.filePath })),
+            ...cultures.map(e => ({ entity: e, type: 'culture' as const, file: e.filePath })),
+            ...economies.map(e => ({ entity: e, type: 'economy' as const, file: e.filePath })),
+            ...magicSystems.map(e => ({ entity: e, type: 'magicsystem' as const, file: e.filePath })),
+            ...scenes.map(e => ({ entity: e, type: 'scene' as const, file: e.filePath })),
+            ...references.map(e => ({ entity: e, type: 'reference' as const, file: e.filePath }))
         ];
 
         for (const { entity, type, file } of allEntities) {
@@ -207,8 +301,8 @@ export class EntityMarkerDiscovery {
      * Convert an entity to a marker
      */
     private async entityToMarker(
-        entity: Character | Location | Event | PlotItem | Group,
-        type: 'character' | 'location' | 'event' | 'item' | 'group',
+        entity: Character | Location | Event | PlotItem | Group | Culture | Economy | MagicSystem | Scene | Reference,
+        type: 'character' | 'location' | 'event' | 'item' | 'group' | 'culture' | 'economy' | 'magicsystem' | 'scene' | 'reference',
         file: TFile,
         coords?: [number, number]
     ): Promise<MarkerDefinition | null> {

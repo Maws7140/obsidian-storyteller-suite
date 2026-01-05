@@ -34,12 +34,12 @@ const FRONTMATTER_WHITELISTS: Record<EntityType, Set<string>> = {
   location: new Set([
     'id', 'name', 'locationType', 'type', 'region', 'status', 'parentLocation', 'parentLocationId',
     'childLocationIds', 'mapBindings', 'entityRefs',
-    'groups', 'profileImagePath', 'customFields', 'connections',
+    'groups', 'profileImagePath', 'images', 'customFields', 'connections',
     'mapCoordinates', 'mapId', 'markerId', 'relatedMapIds', 'mapIcon', 'mapColor'
   ]),
   event: new Set([
     'id', 'name', 'dateTime', 'characters', 'location', 'status',
-    'groups', 'profileImagePath', 'customFields', 'connections',
+    'groups', 'profileImagePath', 'images', 'customFields', 'connections',
     'isMilestone', 'dependencies', 'progress', 'tags', 'narrativeMarkers', 'narrativeSequence',
     'mapCoordinates', 'mapId', 'markerId', 'relatedMapIds', 'mapIcon', 'mapColor'
   ]),
@@ -149,8 +149,8 @@ export function buildFrontmatter(
         }
         
         // For new fields, apply filtering logic
-        if (cfVal === null || cfVal === undefined) continue;
-        if (typeof cfVal === 'string' && cfVal.includes('\n')) { unpromoted[cfKey] = cfVal; continue; }
+        if (cfVal === null || cfVal === undefined) continue;        // Skip new empty strings (they should not be preserved unless they existed in original)
+        if (typeof cfVal === 'string' && cfVal === '') continue;        if (typeof cfVal === 'string' && cfVal.includes('\n')) { unpromoted[cfKey] = cfVal; continue; }
         if (Array.isArray(cfVal) && cfVal.length === 0) continue;
         if (typeof cfVal === 'object' && Object.keys(cfVal as any).length === 0) continue;
         // Promote to top-level
@@ -187,6 +187,8 @@ export function buildFrontmatter(
     if (value === null || value === undefined) continue;
 
     if (typeof value === 'string') {
+      // Skip new empty strings (do not preserve unless present in original frontmatter)
+      if (!existedInOriginal && value === '') continue;
       // Exclude multi-line strings from frontmatter; they belong to sections
       if (value.includes('\n')) continue;
       output[key] = value;

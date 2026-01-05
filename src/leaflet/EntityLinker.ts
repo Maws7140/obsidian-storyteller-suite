@@ -18,9 +18,10 @@ export class EntityLinker {
 
     /**
      * Link an entity to a map by updating entity frontmatter
+     * Supports all entity types uniformly
      */
     async linkEntityToMap(
-        entityType: 'character' | 'location' | 'event' | 'item' | 'group',
+        entityType: 'character' | 'location' | 'event' | 'item' | 'group' | 'culture' | 'scene' | 'economy' | 'magicsystem' | 'reference',
         entityName: string,
         mapId: string,
         markerId: string,
@@ -76,9 +77,10 @@ export class EntityLinker {
 
     /**
      * Unlink an entity from a map
+     * Supports all entity types uniformly
      */
     async unlinkEntityFromMap(
-        entityType: 'character' | 'location' | 'event' | 'item' | 'group',
+        entityType: 'character' | 'location' | 'event' | 'item' | 'group' | 'culture' | 'scene' | 'economy' | 'magicsystem' | 'reference',
         entityName: string,
         mapId: string
     ): Promise<void> {
@@ -207,8 +209,11 @@ export class EntityLinker {
     /**
      * Find an entity by name
      */
+    /**
+     * Find entity by type and name - supports all entity types uniformly
+     */
     private async findEntity(
-        entityType: 'character' | 'location' | 'event' | 'item' | 'group',
+        entityType: 'character' | 'location' | 'event' | 'item' | 'group' | 'culture' | 'scene' | 'economy' | 'magicsystem' | 'reference',
         entityName: string
     ): Promise<any | null> {
         switch (entityType) {
@@ -229,9 +234,31 @@ export class EntityLinker {
                 return items.find(i => i.name === entityName) || null;
             }
             case 'group': {
-                const groups = this.plugin.settings.groups || [];
+                const groups = this.plugin.getGroups(); // Use getGroups for consistency
                 return groups.find(g => g.name === entityName) || null;
             }
+            case 'culture': {
+                const cultures = await this.plugin.listCultures();
+                return cultures.find(c => c.name === entityName) || null;
+            }
+            case 'scene': {
+                const scenes = await this.plugin.listScenes();
+                return scenes.find(s => s.name === entityName) || null;
+            }
+            case 'economy': {
+                const economies = await this.plugin.listEconomies();
+                return economies.find(e => e.name === entityName) || null;
+            }
+            case 'magicsystem': {
+                const magicSystems = await this.plugin.listMagicSystems();
+                return magicSystems.find(m => m.name === entityName) || null;
+            }
+            case 'reference': {
+                const references = await this.plugin.listReferences();
+                return references.find(r => r.name === entityName) || null;
+            }
+            default:
+                return null;
         }
     }
 
