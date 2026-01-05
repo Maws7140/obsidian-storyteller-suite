@@ -5,7 +5,6 @@ import { getWhitelistKeys, parseSectionsFromMarkdown } from '../yaml/EntitySecti
 import { Group } from '../types';
 import StorytellerSuitePlugin from '../main';
 import { t } from '../i18n/strings';
-import { GalleryImageSuggestModal } from './GalleryImageSuggestModal';
 import { ResponsiveModal } from './ResponsiveModal';
 import { PromptModal } from './ui/PromptModal';
 import { TemplatePickerModal } from './TemplatePickerModal';
@@ -308,7 +307,8 @@ export class MapModal extends ResponsiveModal {
                         this.map.backgroundImagePath = path;
                         this.map.image = path;
                     },
-                    descriptionEl: imagePathDesc
+                    descriptionEl: imagePathDesc,
+                    enableTileGeneration: true
                 }
             );
 

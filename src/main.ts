@@ -59,7 +59,8 @@ import { MagicSystemModal } from './modals/MagicSystemModal';
 import { MagicSystemListModal } from './modals/MagicSystemListModal';
 import { PlatformUtils } from './utils/PlatformUtils';
 import { getTemplateSections } from './utils/EntityTemplates';
-import { LeafletCodeBlockProcessor } from './leaflet/processor';
+// Removed: Codeblock maps no longer supported - use MapView instead
+// import { LeafletCodeBlockProcessor } from './leaflet/processor';
 import { TemplateStorageManager } from './templates/TemplateStorageManager';
 import { TemplateNoteManager } from './templates/TemplateNoteManager';
 import { SaveNoteAsTemplateCommand } from './commands/SaveNoteAsTemplateCommand';
@@ -431,7 +432,8 @@ export default class StorytellerSuitePlugin extends Plugin {
     }
 	settings: StorytellerSuiteSettings;
     private folderResolver: FolderResolver | null = null;
-    private leafletProcessor: LeafletCodeBlockProcessor;
+    // Removed: Codeblock maps no longer supported
+    // private leafletProcessor: LeafletCodeBlockProcessor;
     templateManager: TemplateStorageManager;
     templateNoteManager: TemplateNoteManager;
     trackManager: TimelineTrackManager;
@@ -724,9 +726,10 @@ export default class StorytellerSuitePlugin extends Plugin {
 		// Apply mobile CSS classes to the document body
 		this.applyMobilePlatformClasses();
 
+		// Removed: Codeblock maps no longer supported - use MapView instead
 		// Initialize and register Leaflet code block processor
-		this.leafletProcessor = new LeafletCodeBlockProcessor(this);
-		this.leafletProcessor.register();
+		// this.leafletProcessor = new LeafletCodeBlockProcessor(this);
+		// this.leafletProcessor.register();
 
 		// Register the main dashboard view with Obsidian's workspace
 		this.registerView(
@@ -1124,14 +1127,15 @@ export default class StorytellerSuitePlugin extends Plugin {
 			console.error('Storyteller Suite: Error cleaning up orientation handlers', error);
 		}
 
+		// Removed: Codeblock maps no longer supported
 		// Cleanup all active maps
-		try {
-			if (this.leafletProcessor) {
-				this.leafletProcessor.cleanup();
-			}
-		} catch (error) {
-			console.error('Storyteller Suite: Error cleaning up Leaflet maps', error);
-		}
+		// try {
+		// 	if (this.leafletProcessor) {
+		// 		this.leafletProcessor.cleanup();
+		// 	}
+		// } catch (error) {
+		// 	console.error('Storyteller Suite: Error cleaning up Leaflet maps', error);
+		// }
 	}
 
 	/**
@@ -2360,6 +2364,45 @@ export default class StorytellerSuitePlugin extends Plugin {
     }
 
     /**
+     * Generate image grid markdown from array of image paths
+     * Creates a responsive grid layout with Obsidian image embeds
+     *
+     * @param images - Array of image file paths
+     * @param columnsPerRow - Number of columns in the grid (default: 3)
+     * @param imageSize - Size of each image in pixels (default: 200)
+     * @returns Markdown string with image grid table
+     */
+    private generateImageGridMarkdown(
+        images: string[] | undefined,
+        columnsPerRow: number = 3,
+        imageSize: number = 200
+    ): string {
+        if (!images || images.length === 0) {
+            return '';
+        }
+
+        // Build table header
+        const headerCells = Array(columnsPerRow).fill('').join(' | ');
+        const separatorCells = Array(columnsPerRow).fill('---').join(' | ');
+        let tableMarkdown = `| ${headerCells} |\n| ${separatorCells} |\n`;
+
+        // Build table rows
+        for (let i = 0; i < images.length; i += columnsPerRow) {
+            const rowImages = images.slice(i, i + columnsPerRow);
+            const cells = rowImages.map(img => `![[${img}\|${imageSize}]]`);
+
+            // Pad row with empty cells if needed
+            while (cells.length < columnsPerRow) {
+                cells.push('');
+            }
+
+            tableMarkdown += `| ${cells.join(' | ')} |\n`;
+        }
+
+        return tableMarkdown;
+    }
+
+    /**
      * Get dimensions of image from ArrayBuffer
      * Loads image in memory to read native dimensions
      *
@@ -2865,7 +2908,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 			: '';
 
 		// Build sections from templates + provided data + TEMPLATE sections
-		const providedSections = {
+		const providedSections: Record<string, string> = {
 			Description: description || '',
 			History: history || ''
 		};
@@ -2876,9 +2919,17 @@ export default class StorytellerSuitePlugin extends Plugin {
 		const defaultSections = getTemplateSections('location', providedSections);
 
 		// Merge priority: default < template < existing < provided
-		const allSections: Record<string, string> = (existingFile && existingFile instanceof TFile)
+		let allSections: Record<string, string> = (existingFile && existingFile instanceof TFile)
 			? { ...defaultSections, ...templateOnlySections, ...existingSections, ...providedSections }
 			: { ...defaultSections, ...templateOnlySections, ...providedSections };
+
+		// Handle Gallery section: auto-generate from images array
+		if (location.images && location.images.length > 0) {
+			allSections.Gallery = this.generateImageGridMarkdown(location.images);
+		} else {
+			// Remove Gallery section if no images exist
+			delete allSections.Gallery;
+		}
 
 		// Generate Markdown
 		let mdContent = `---\n${frontmatterString}---\n\n`;
@@ -3512,7 +3563,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		const filePath = normalizePath(`${folderPath}/${fileName}`);
 
 		// Separate content fields from frontmatter fields (do not let sections leak)
-        const { filePath: currentFilePath, description, outcome, images, ...rest } = event as any;
+        const { filePath: currentFilePath, description, outcome, ...rest } = event as any;
         if ((rest as any).sections) delete (rest as any).sections;
 
 		let finalFilePath = filePath;
@@ -3563,7 +3614,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 			: '';
 
 		// Build sections from templates + provided data
-		const providedSections = {
+		const providedSections: Record<string, string> = {
 			Description: description || '',
 			Outcome: outcome || ''
 		};
@@ -3574,9 +3625,17 @@ export default class StorytellerSuitePlugin extends Plugin {
 		const defaultSections = getTemplateSections('event', providedSections);
 
 		// Merge priority: default < template < existing < provided
-		const allSections: Record<string, string> = (existingFile && existingFile instanceof TFile)
+		let allSections: Record<string, string> = (existingFile && existingFile instanceof TFile)
 			? { ...defaultSections, ...templateOnlySections, ...existingSections, ...providedSections }
 			: { ...defaultSections, ...templateOnlySections, ...providedSections };
+
+		// Handle Gallery section: auto-generate from images array
+		if (event.images && event.images.length > 0) {
+			allSections.Gallery = this.generateImageGridMarkdown(event.images);
+		} else {
+			// Remove Gallery section if no images exist
+			delete allSections.Gallery;
+		}
 
 		// Generate Markdown
 		let mdContent = `---\n${frontmatterString}---\n\n`;
@@ -5811,10 +5870,11 @@ export default class StorytellerSuitePlugin extends Plugin {
 
 		// Create handler for orientation changes and window resize
 		const handleOrientationChange = () => {
+			// Removed: Codeblock maps no longer supported
 			// Invalidate all Leaflet map sizes to force recalculation
-			if (this.leafletProcessor) {
-				this.leafletProcessor.invalidateAllMapSizes();
-			}
+			// if (this.leafletProcessor) {
+			// 	this.leafletProcessor.invalidateAllMapSizes();
+			// }
 
 			// Trigger a layout recalculation for open views
 			this.app.workspace.getLeavesOfType(VIEW_TYPE_TIMELINE).forEach(leaf => {

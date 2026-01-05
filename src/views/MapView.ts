@@ -1,7 +1,7 @@
 // Map View - Full workspace view for interactive map visualization
 // Provides a dedicated panel for viewing and interacting with story maps
 
-import { ItemView, WorkspaceLeaf, setIcon, Menu, DropdownComponent, Notice } from 'obsidian';
+import { ItemView, WorkspaceLeaf, setIcon, Menu, DropdownComponent, Notice, TFile } from 'obsidian';
 import * as L from 'leaflet';
 import StorytellerSuitePlugin from '../main';
 import { StoryMap } from '../types';
@@ -52,7 +52,7 @@ export class MapView extends ItemView {
     private resizeObserver: ResizeObserver | null = null;
     private currentZoom = 2;
     private locationLevelMode: LocationLevel = 'auto';
-    private placementMode: { type: 'location' | 'character' | 'event' | 'item' | null } = { type: null };
+    private placementMode: { type: 'location' | 'character' | 'event' | 'item' | 'culture' | 'economy' | 'magicsystem' | 'group' | 'scene' | 'reference' | null } = { type: null };
     private placementClickHandler: ((e: L.LeafletMouseEvent) => void) | null = null;
     private placementOverlay: HTMLElement | null = null;
     private escapeHandler: ((e: KeyboardEvent) => void) | null = null;
@@ -155,6 +155,26 @@ export class MapView extends ItemView {
                 // Add separator
                 this.toolbarEl.createDiv('storyteller-toolbar-separator');
             }
+        }
+
+        // Open Map Note button (opens the map file in editor)
+        if (this.currentMap && this.currentMap.filePath) {
+            const editNoteBtn = this.toolbarEl.createEl('button', {
+                cls: 'clickable-icon storyteller-toolbar-btn',
+                attr: {
+                    'aria-label': 'Edit map note',
+                    'title': 'Edit map note'
+                }
+            });
+            setIcon(editNoteBtn, 'file-edit');
+            editNoteBtn.onclick = async () => {
+                if (this.currentMap && this.currentMap.filePath) {
+                    const file = this.app.vault.getAbstractFileByPath(this.currentMap.filePath);
+                    if (file instanceof TFile) {
+                        await this.app.workspace.getLeaf(false).openFile(file);
+                    }
+                }
+            };
         }
 
         // Spacer
@@ -370,6 +390,78 @@ export class MapView extends ItemView {
         addItemBtn.createSpan({ text: 'Item' });
         addItemBtn.onclick = () => this.showAddItemModal();
 
+        // Add Culture button
+        const addCultureBtn = this.entityBarEl.createEl('button', {
+            cls: 'entity-bar-btn',
+            attr: {
+                'aria-label': 'Add Culture',
+                'title': 'Add a culture to this map'
+            }
+        });
+        setIcon(addCultureBtn, 'theater');
+        addCultureBtn.createSpan({ text: 'Culture' });
+        addCultureBtn.onclick = () => this.showAddEntityModal('culture');
+
+        // Add Economy button
+        const addEconomyBtn = this.entityBarEl.createEl('button', {
+            cls: 'entity-bar-btn',
+            attr: {
+                'aria-label': 'Add Economy',
+                'title': 'Add an economy to this map'
+            }
+        });
+        setIcon(addEconomyBtn, 'dollar-sign');
+        addEconomyBtn.createSpan({ text: 'Economy' });
+        addEconomyBtn.onclick = () => this.showAddEntityModal('economy');
+
+        // Add Magic System button
+        const addMagicSystemBtn = this.entityBarEl.createEl('button', {
+            cls: 'entity-bar-btn',
+            attr: {
+                'aria-label': 'Add Magic System',
+                'title': 'Add a magic system to this map'
+            }
+        });
+        setIcon(addMagicSystemBtn, 'sparkles');
+        addMagicSystemBtn.createSpan({ text: 'Magic' });
+        addMagicSystemBtn.onclick = () => this.showAddEntityModal('magicsystem');
+
+        // Add Group button
+        const addGroupBtn = this.entityBarEl.createEl('button', {
+            cls: 'entity-bar-btn',
+            attr: {
+                'aria-label': 'Add Group',
+                'title': 'Add a group to this map'
+            }
+        });
+        setIcon(addGroupBtn, 'users');
+        addGroupBtn.createSpan({ text: 'Group' });
+        addGroupBtn.onclick = () => this.showAddEntityModal('group');
+
+        // Add Scene button
+        const addSceneBtn = this.entityBarEl.createEl('button', {
+            cls: 'entity-bar-btn',
+            attr: {
+                'aria-label': 'Add Scene',
+                'title': 'Add a scene to this map'
+            }
+        });
+        setIcon(addSceneBtn, 'clapperboard');
+        addSceneBtn.createSpan({ text: 'Scene' });
+        addSceneBtn.onclick = () => this.showAddEntityModal('scene');
+
+        // Add Reference button
+        const addReferenceBtn = this.entityBarEl.createEl('button', {
+            cls: 'entity-bar-btn',
+            attr: {
+                'aria-label': 'Add Reference',
+                'title': 'Add a reference to this map'
+            }
+        });
+        setIcon(addReferenceBtn, 'book-open');
+        addReferenceBtn.createSpan({ text: 'Reference' });
+        addReferenceBtn.onclick = () => this.showAddEntityModal('reference');
+
         // Location Level dropdown (only for real-world maps)
         const isRealWorldMap = this.currentMap && (
             this.currentMap.type === 'real' ||
@@ -508,7 +600,7 @@ export class MapView extends ItemView {
      * Enable placement mode for clicking on map to place entities
      */
     private enablePlacementMode(
-        entityType: 'location' | 'character' | 'event' | 'item',
+        entityType: 'location' | 'character' | 'event' | 'item' | 'culture' | 'economy' | 'magicsystem' | 'group' | 'scene' | 'reference',
         onPlaceCoordinates: (coordinates: [number, number]) => void
     ): void {
         // Disable any existing placement mode first
@@ -1231,6 +1323,236 @@ export class MapView extends ItemView {
             });
 
             new Notice(`Click map to place ${selectedItem.name}`);
+        }).open();
+    }
+
+    /**
+     * Generic method to add any entity type to map
+     * Handles culture, economy, magicsystem, group, scene, reference uniformly
+     */
+    private async showAddEntityModal(entityType: 'culture' | 'economy' | 'magicsystem' | 'group' | 'scene' | 'reference'): Promise<void> {
+        if (!this.currentMap) return;
+
+        const mapId = this.currentMap.id || this.currentMap.name;
+        const locationService = new LocationService(this.plugin);
+
+        // Get all entities of the specified type
+        let entities: any[] = [];
+        let entityTypeName = '';
+
+        switch (entityType) {
+            case 'culture':
+                entities = await this.plugin.listCultures();
+                entityTypeName = 'Culture';
+                break;
+            case 'economy':
+                entities = await this.plugin.listEconomies();
+                entityTypeName = 'Economy';
+                break;
+            case 'magicsystem':
+                entities = await this.plugin.listMagicSystems();
+                entityTypeName = 'Magic System';
+                break;
+            case 'group':
+                entities = this.plugin.getGroups();
+                entityTypeName = 'Group';
+                break;
+            case 'scene':
+                entities = await this.plugin.listScenes();
+                entityTypeName = 'Scene';
+                break;
+            case 'reference':
+                entities = await this.plugin.listReferences();
+                entityTypeName = 'Reference';
+                break;
+        }
+
+        if (entities.length === 0) {
+            new Notice(`No ${entityTypeName.toLowerCase()}s found. Create one first.`);
+            return;
+        }
+
+        // Create a simple selection modal
+        const { FuzzySuggestModal } = require('obsidian');
+
+        class EntitySelectionModal extends FuzzySuggestModal<any> {
+            constructor(
+                app: any,
+                private entities: any[],
+                private onChoose: (entity: any) => void
+            ) {
+                super(app);
+            }
+
+            getItems(): any[] {
+                return this.entities;
+            }
+
+            getItemText(entity: any): string {
+                return entity.name || entity.id || 'Unnamed';
+            }
+
+            onChooseItem(entity: any, evt: MouseEvent | KeyboardEvent): void {
+                this.onChoose(entity);
+            }
+        }
+
+        new EntitySelectionModal(this.app, entities, async (selectedEntity) => {
+            if (!selectedEntity) return;
+
+            // Enable placement mode - user clicks map to place
+            this.enablePlacementMode(entityType, async (coordinates) => {
+                try {
+                    // Find or create location at coordinates
+                    let targetLocation: any = null;
+                    let isNewLocation = false;
+
+                    // Detect if this is a real-world map
+                    const isRealWorldMap = this.currentMap && (
+                        this.currentMap.type === 'real' ||
+                        this.currentMap.osmLayer === true ||
+                        this.currentMap.tileServer?.includes('openstreetmap') ||
+                        this.currentMap.tileServer?.includes('tile')
+                    );
+
+                    // Use proximity-based matching for all maps
+                    const nearbyLocations = await locationService.findLocationsAtCoordinates(
+                        mapId,
+                        coordinates,
+                        this.getCoordinateTolerance()
+                    );
+
+                    if (nearbyLocations.length > 0) {
+                        if (isRealWorldMap) {
+                            // Real-world maps: automatically use closest location (no modal)
+                            targetLocation = nearbyLocations[0];
+                            isNewLocation = false;
+
+                            // Only add binding if this location doesn't already have one for this map
+                            // This prevents updating coordinates and moving existing pins
+                            const hasBinding = targetLocation.mapBindings?.some((b: any) => b.mapId === mapId);
+                            if (!hasBinding) {
+                                await locationService.addMapBinding(
+                                    targetLocation.id || targetLocation.name,
+                                    mapId,
+                                    coordinates
+                                );
+                            }
+                        } else {
+                            // Image maps: show selection modal to let user choose
+                            const result = await new Promise<any | 'create-new' | null>((resolve) => {
+                                let selected = false;
+                                const { LocationSelectionModal } = require('../modals/LocationSelectionModal');
+                                const modal = new LocationSelectionModal(this.app, nearbyLocations, (res: any) => {
+                                    selected = true;
+                                    resolve(res);
+                                });
+                                const originalOnClose = modal.onClose;
+                                modal.onClose = () => {
+                                    originalOnClose.call(modal);
+                                    if (!selected) resolve(null);
+                                };
+                                modal.open();
+                            });
+
+                            if (!result) return; // User cancelled
+
+                            if (result === 'create-new') {
+                                // User chose to create new location
+                                const coordText = `${coordinates[0].toFixed(2)}, ${coordinates[1].toFixed(2)}`;
+                                const locationId = `loc-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+                                targetLocation = {
+                                    id: locationId,
+                                    name: `${selectedEntity.name} Location`,
+                                    description: `Auto-created location for ${entityTypeName.toLowerCase()} "${selectedEntity.name}" at coordinates [${coordText}]`,
+                                    type: 'custom',
+                                    mapBindings: [{
+                                        mapId: mapId,
+                                        coordinates: coordinates
+                                    }]
+                                };
+
+                                await this.plugin.saveLocation(targetLocation as any);
+                                isNewLocation = true;
+                            } else {
+                                // User selected existing location
+                                targetLocation = result;
+                                isNewLocation = false;
+                                // Add map binding for existing location
+                                await locationService.addMapBinding(
+                                    result.id || result.name,
+                                    mapId,
+                                    coordinates
+                                );
+                            }
+                        }
+                    } else {
+                        // No nearby location - create new one
+                        const coordText = `${coordinates[0].toFixed(2)}, ${coordinates[1].toFixed(2)}`;
+                        const locationId = `loc-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+                        // For real-world maps, try to get location name from reverse geocoding
+                        let locationName = `${selectedEntity.name} Location`;
+                        let locationDescription = `Auto-created location for ${entityTypeName.toLowerCase()} "${selectedEntity.name}" at coordinates [${coordText}]`;
+
+                        if (isRealWorldMap) {
+                            try {
+                                const geoName = await locationService.reverseGeocode(coordinates[0], coordinates[1]);
+                                if (geoName) {
+                                    locationName = geoName;
+                                    locationDescription = `${geoName} - Auto-created for ${entityTypeName.toLowerCase()} "${selectedEntity.name}"`;
+                                }
+                            } catch (error) {
+                                console.warn('Reverse geocoding failed:', error);
+                            }
+                        }
+
+                        targetLocation = {
+                            id: locationId,
+                            name: locationName,
+                            description: locationDescription,
+                            type: 'custom',
+                            mapBindings: [{
+                                mapId: mapId,
+                                coordinates: coordinates
+                            }]
+                        };
+
+                        await this.plugin.saveLocation(targetLocation as any);
+                        isNewLocation = true;
+                    }
+
+                    // Add entity to location
+                    const entityId = selectedEntity.id || selectedEntity.name;
+                    const locationId = targetLocation.id || targetLocation.name;
+
+                    // Add entity to location's entityRefs
+                    await locationService.addEntityToLocation(locationId, {
+                        entityId: entityId,
+                        entityType: entityType,
+                        relationship: 'located here'
+                    });
+
+                    if (isNewLocation) {
+                        new Notice(`${entityTypeName} "${selectedEntity.name}" added to new location on map`);
+                    } else {
+                        new Notice(`${entityTypeName} "${selectedEntity.name}" added to ${targetLocation.name}`);
+                    }
+
+                    // Refresh entities on the map
+                    if (this.leafletRenderer) {
+                        await this.leafletRenderer.refreshEntities();
+                    } else {
+                        await this.refresh();
+                    }
+                } catch (error) {
+                    console.error(`Error adding ${entityTypeName.toLowerCase()} to map:`, error);
+                    new Notice(`Error adding ${entityTypeName.toLowerCase()} to map`);
+                }
+            });
+
+            new Notice(`Click map to place ${selectedEntity.name}`);
         }).open();
     }
 

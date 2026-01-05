@@ -7,7 +7,6 @@ import { parseSectionsFromMarkdown } from '../yaml/EntitySections';
 import { CharacterSuggestModal } from './CharacterSuggestModal';
 import { LocationSuggestModal } from './LocationSuggestModal';
 import { EventSuggestModal } from './EventSuggestModal';
-import { GalleryImageSuggestModal } from './GalleryImageSuggestModal';
 import { addImageSelectionButtons } from '../utils/ImageSelectionHelper';
 import { GroupSuggestModal } from './GroupSuggestModal';
 import { TemplatePickerModal } from './TemplatePickerModal';

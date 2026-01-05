@@ -444,28 +444,59 @@ export class EventModal extends Modal {
         // Store the list container element
         this.imagesListEl = imagesSetting.controlEl.createDiv('storyteller-modal-list');
         this.renderList(this.imagesListEl, this.event.images || [], 'image'); // Initial render
+        // Gallery selection button
         imagesSetting.addButton(button => button
-            .setButtonText(t('addImage'))
+            .setButtonText(t('select'))
             .setTooltip(t('selectFromGallery'))
             .setCta()
             .onClick(() => {
-                // Use the existing GalleryImageSuggestModal
                 new GalleryImageSuggestModal(this.app, this.plugin, (selectedImage) => {
                     if (selectedImage && selectedImage.filePath) {
-                        // Use filePath as the identifier/link
                         const imagePath = selectedImage.filePath;
-                        // Ensure images array exists
                         if (!this.event.images) {
                             this.event.images = [];
                         }
-                        // Add image path if not already present
                         if (!this.event.images.includes(imagePath)) {
                             this.event.images.push(imagePath);
-                            this.renderList(this.imagesListEl, this.event.images, 'image'); // Re-render list
+                            this.renderList(this.imagesListEl, this.event.images, 'image');
                         }
                     }
-                    // No action needed if selectedImage is null (Shift+Enter)
                 }).open();
+            }));
+        // Upload button
+        imagesSetting.addButton(button => button
+            .setButtonText(t('upload'))
+            .setTooltip(t('uploadImage'))
+            .onClick(async () => {
+                const fileInput = document.createElement('input');
+                fileInput.type = 'file';
+                fileInput.accept = 'image/*';
+                fileInput.onchange = async () => {
+                    const file = fileInput.files?.[0];
+                    if (file) {
+                        try {
+                            await this.plugin.ensureFolder(this.plugin.settings.galleryUploadFolder);
+                            const timestamp = Date.now();
+                            const sanitizedName = file.name.replace(/[^\w\s.-]/g, '').replace(/\s+/g, '_');
+                            const fileName = `${timestamp}_${sanitizedName}`;
+                            const filePath = `${this.plugin.settings.galleryUploadFolder}/${fileName}`;
+                            const arrayBuffer = await file.arrayBuffer();
+                            await this.app.vault.createBinary(filePath, arrayBuffer);
+                            if (!this.event.images) {
+                                this.event.images = [];
+                            }
+                            if (!this.event.images.includes(filePath)) {
+                                this.event.images.push(filePath);
+                                this.renderList(this.imagesListEl, this.event.images, 'image');
+                            }
+                            new Notice(t('imageUploaded', fileName));
+                        } catch (error) {
+                            console.error('Error uploading image:', error);
+                            new Notice(t('errorUploadingImage'));
+                        }
+                    }
+                };
+                fileInput.click();
             }));
 
         // --- Tags ---
