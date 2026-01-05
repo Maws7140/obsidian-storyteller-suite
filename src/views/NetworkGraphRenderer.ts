@@ -3,7 +3,7 @@
 
 import cytoscape, { Core, NodeSingular, EdgeSingular } from 'cytoscape';
 import StorytellerSuitePlugin from '../main';
-import { GraphFilters, GraphNode, GraphEdge, Character, Location, Event, PlotItem } from '../types';
+import { GraphFilters, GraphNode, GraphEdge, Character, Location, Event, PlotItem, RelationshipType } from '../types';
 import { 
     extractAllRelationships, 
     buildBidirectionalEdges, 

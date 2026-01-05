@@ -45,6 +45,8 @@ export class NetworkGraphView extends ItemView {
     private advancedFiltersExpanded = false;
     private filterDebounceTimer = 0;
     private resizeObserver: ResizeObserver | null = null;
+    
+    // (keyboard shortcuts removed)
 
     constructor(leaf: WorkspaceLeaf, plugin: StorytellerSuitePlugin) {
         super(leaf);
@@ -84,6 +86,8 @@ export class NetworkGraphView extends ItemView {
         
         // Setup resize observer for responsive layout
         this.setupResizeObserver();
+        
+        // Keyboard shortcuts removed - no keyboard listener attached
     }
 
     /**
@@ -164,16 +168,7 @@ export class NetworkGraphView extends ItemView {
         setIcon(fitBtn, 'maximize-2');
         fitBtn.addEventListener('click', () => this.graphRenderer?.fitToView());
         
-        // Keyboard shortcuts hint
-        const shortcutsBtn = this.toolbarEl.createEl('button', {
-            cls: 'clickable-icon storyteller-toolbar-btn',
-            attr: { 
-                'aria-label': 'Keyboard Shortcuts (?)',
-                'title': 'Keyboard Shortcuts (?)'
-            }
-        });
-        setIcon(shortcutsBtn, 'keyboard');
-        shortcutsBtn.addEventListener('click', () => this.showKeyboardShortcuts());
+        // (keyboard shortcuts button removed)
     }
 
     /**
@@ -499,6 +494,8 @@ export class NetworkGraphView extends ItemView {
     }
 
     async onClose(): Promise<void> {
+        // No keyboard listener to clean up (shortcuts removed)
+        
         // Clean up resize observer
         if (this.resizeObserver) {
             this.resizeObserver.disconnect();
@@ -514,6 +511,11 @@ export class NetworkGraphView extends ItemView {
             this.graphRenderer = null;
         }
     }
+    
+    /**
+     * Handle keyboard shortcuts for the graph view
+     */
+    // keyboard shortcuts removed
 
     /**
      * Refresh the graph with current data
@@ -550,48 +552,5 @@ export class NetworkGraphView extends ItemView {
     /**
      * Show keyboard shortcuts modal
      */
-    private showKeyboardShortcuts(): void {
-        const { Modal } = require('obsidian');
-        
-        class KeyboardShortcutsModal extends Modal {
-            constructor(app: any) {
-                super(app);
-            }
-            
-            onOpen(): void {
-                const { contentEl } = this;
-                contentEl.empty();
-                contentEl.addClass('storyteller-keyboard-shortcuts-modal');
-                
-                contentEl.createEl('h2', { text: 'Keyboard Shortcuts' });
-                
-                const table = contentEl.createEl('table', { cls: 'storyteller-keyboard-shortcuts-table' });
-                
-                const shortcuts = [
-                    { key: 'F', desc: 'Fit graph to view' },
-                    { key: 'Ctrl + E', desc: 'Export graph as image' },
-                    { key: '+', desc: 'Zoom in' },
-                    { key: '-', desc: 'Zoom out' },
-                    { key: 'Click + Drag', desc: 'Pan the graph' },
-                    { key: 'Ctrl + F', desc: 'Focus on search' },
-                    { key: '?', desc: 'Show this help' }
-                ];
-                
-                shortcuts.forEach(({ key, desc }) => {
-                    const row = table.createEl('tr');
-                    const keyCell = row.createEl('td', { cls: 'storyteller-shortcut-key' });
-                    keyCell.setText(key);
-                    const descCell = row.createEl('td', { cls: 'storyteller-shortcut-desc' });
-                    descCell.setText(desc);
-                });
-            }
-            
-            onClose(): void {
-                const { contentEl } = this;
-                contentEl.empty();
-            }
-        }
-        
-        new KeyboardShortcutsModal(this.app).open();
-    }
+    // keyboard shortcuts modal removed
 }
