@@ -135,6 +135,7 @@ export class EntityLinker {
 
     /**
      * Update map's linked entities list
+     * Now supports all entity types uniformly
      */
     async updateMapLinkedEntities(map: Map, markers: MarkerDefinition[]): Promise<void> {
         if (!map.filePath) return;
@@ -142,12 +143,17 @@ export class EntityLinker {
         const file = this.app.vault.getAbstractFileByPath(map.filePath);
         if (!(file instanceof TFile)) return;
 
-        // Extract entity names from markers
+        // Extract entity names from markers - now tracking all entity types
         const linkedLocations: string[] = [];
         const linkedCharacters: string[] = [];
         const linkedEvents: string[] = [];
         const linkedItems: string[] = [];
         const linkedGroups: string[] = [];
+        const linkedCultures: string[] = [];
+        const linkedEconomies: string[] = [];
+        const linkedMagicSystems: string[] = [];
+        const linkedScenes: string[] = [];
+        const linkedReferences: string[] = [];
 
         for (const marker of markers) {
             if (!marker.link) continue;
@@ -161,12 +167,39 @@ export class EntityLinker {
             if (folderPath === normalizePath(entityFolder)) {
                 linkedLocations.push(linkPath);
             } else {
-                // Could be other entity types - would need to check all folders
-                // For now, we'll update based on marker type
-                if (marker.type === 'location') linkedLocations.push(linkPath);
-                else if (marker.type === 'character') linkedCharacters.push(linkPath);
-                else if (marker.type === 'event') linkedEvents.push(linkPath);
-                else if (marker.type === 'item') linkedItems.push(linkPath);
+                // Update based on marker type - now handling all entity types
+                switch (marker.type) {
+                    case 'location':
+                        linkedLocations.push(linkPath);
+                        break;
+                    case 'character':
+                        linkedCharacters.push(linkPath);
+                        break;
+                    case 'event':
+                        linkedEvents.push(linkPath);
+                        break;
+                    case 'item':
+                        linkedItems.push(linkPath);
+                        break;
+                    case 'group':
+                        linkedGroups.push(linkPath);
+                        break;
+                    case 'culture':
+                        linkedCultures.push(linkPath);
+                        break;
+                    case 'economy':
+                        linkedEconomies.push(linkPath);
+                        break;
+                    case 'magicsystem':
+                        linkedMagicSystems.push(linkPath);
+                        break;
+                    case 'scene':
+                        linkedScenes.push(linkPath);
+                        break;
+                    case 'reference':
+                        linkedReferences.push(linkPath);
+                        break;
+                }
             }
         }
 
@@ -176,14 +209,19 @@ export class EntityLinker {
         const { parseFrontmatterFromContent } = await import('../yaml/EntitySections');
         const existingFrontmatter = parseFrontmatterFromContent(content) || {};
 
-        // Update linked entities
+        // Update linked entities - now including all entity types
         const updatedFrontmatter = {
             ...existingFrontmatter,
             linkedLocations: linkedLocations.length > 0 ? linkedLocations : undefined,
             linkedCharacters: linkedCharacters.length > 0 ? linkedCharacters : undefined,
             linkedEvents: linkedEvents.length > 0 ? linkedEvents : undefined,
             linkedItems: linkedItems.length > 0 ? linkedItems : undefined,
-            linkedGroups: linkedGroups.length > 0 ? linkedGroups : undefined
+            linkedGroups: linkedGroups.length > 0 ? linkedGroups : undefined,
+            linkedCultures: linkedCultures.length > 0 ? linkedCultures : undefined,
+            linkedEconomies: linkedEconomies.length > 0 ? linkedEconomies : undefined,
+            linkedMagicSystems: linkedMagicSystems.length > 0 ? linkedMagicSystems : undefined,
+            linkedScenes: linkedScenes.length > 0 ? linkedScenes : undefined,
+            linkedReferences: linkedReferences.length > 0 ? linkedReferences : undefined
         };
 
         // Build and save
@@ -271,4 +309,3 @@ export class EntityLinker {
         return [...arr, value];
     }
 }
-

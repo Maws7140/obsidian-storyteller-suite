@@ -36,11 +36,27 @@ export function addImageSelectionButtons(
         .setButtonText(t('select'))
         .setTooltip(t('selectFromGallery'))
         .onClick(() => {
-            new GalleryImageSuggestModal(app, plugin, (selectedImage) => {
+            new GalleryImageSuggestModal(app, plugin, async (selectedImage) => {
                 const path = selectedImage ? selectedImage.filePath : '';
                 onSelect(path || undefined);
                 if (descriptionEl) {
                     descriptionEl.setText(`Current: ${path || 'None'}`);
+                }
+                
+                // Trigger tile generation for map images if enabled
+                // For map images, always force tile generation regardless of size threshold
+                if (enableTileGeneration && path) {
+                    try {
+                        console.log('[ImageSelection] Tile generation enabled, forcing for map image from gallery:', path);
+                        const imageData = await app.vault.adapter.readBinary(path);
+                        plugin.maybeTriggerTileGeneration(path, imageData, true).catch((error) => {
+                            console.error('[ImageSelection] Failed to trigger tile generation:', error);
+                            new Notice('Warning: Failed to start tile generation. Check console for details.');
+                        });
+                    } catch (error) {
+                        console.error('[ImageSelection] Error reading image for tile generation:', error);
+                        new Notice('Warning: Could not read image for tile generation.');
+                    }
                 }
             }).open();
         }));
@@ -73,8 +89,15 @@ export function addImageSelectionButtons(
                         await app.vault.createBinary(filePath, arrayBuffer);
 
                         // Trigger tile generation for map images if enabled
+                        // For map images, always force tile generation regardless of size threshold
                         if (enableTileGeneration) {
-                            plugin.maybeTriggerTileGeneration(filePath, arrayBuffer);
+                            console.log('[ImageUpload] Tile generation enabled, forcing for map image:', filePath);
+                            plugin.maybeTriggerTileGeneration(filePath, arrayBuffer, true).catch((error) => {
+                                console.error('[ImageUpload] Failed to trigger tile generation:', error);
+                                new Notice('Warning: Failed to start tile generation. Check console for details.');
+                            });
+                        } else {
+                            console.log('[ImageUpload] Tile generation disabled for this upload');
                         }
 
                         // Call callback with new path

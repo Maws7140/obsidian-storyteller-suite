@@ -89,8 +89,8 @@ export interface MarkerDefinition {
     // Metadata
     mutable?: boolean;  // Can be edited/deleted
     
-    // Entity linking
-    entityType?: 'character' | 'location' | 'event' | 'item' | 'group';
+    // Entity linking - updated to include all entity types
+    entityType?: 'character' | 'location' | 'event' | 'item' | 'group' | 'culture' | 'economy' | 'magicsystem' | 'scene' | 'reference';
     entityId?: string;
     entityName?: string;
 }

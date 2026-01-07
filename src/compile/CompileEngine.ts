@@ -228,12 +228,25 @@ export class CompileEngine {
 
             // Read scene content from file if available
             if (scene.filePath) {
-                const file = this.app.vault.getAbstractFileByPath(scene.filePath);
-                if (file instanceof TFile) {
-                    contents = await this.app.vault.read(file);
+                try {
+                    const file = this.app.vault.getAbstractFileByPath(scene.filePath);
+                    if (file instanceof TFile) {
+                        contents = await this.app.vault.read(file);
+                    } else {
+                        console.warn(`[Compile] Scene file not found: ${scene.filePath}`);
+                        contents = ''; // Empty content if file missing
+                    }
+                } catch (error) {
+                    console.error(`[Compile] Error reading scene file ${scene.filePath}:`, error);
+                    contents = ''; // Empty content on read error
                 }
             } else if (scene.content) {
-                contents = scene.content;
+                contents = scene.content || '';
+            }
+
+            // Ensure contents is always a string
+            if (typeof contents !== 'string') {
+                contents = String(contents || '');
             }
 
             // Find the scene reference for indent info
@@ -244,11 +257,11 @@ export class CompileEngine {
 
             inputs.push({
                 path: scene.filePath || '',
-                name: scene.name,
+                name: scene.name || `Scene ${i + 1}`,
                 contents,
                 indentLevel,
                 index: i,
-                chapterName: scene.chapterName,
+                chapterName: scene.chapterName || undefined,
                 sceneNumber: this.calculateSceneNumber(i, indentLevel, draft)
             });
         }
@@ -346,13 +359,15 @@ export class CompileEngine {
     }
 
     /**
-     * Create default workflow
+     * Create Reader Draft workflow - Clean story text for beta readers
+     * Use when: Sending to beta readers or friends
+     * Strips all framework headers, notes, and tool-specific sections
      */
-    public createDefaultWorkflow(): CompileWorkflow {
+    public createReaderDraftWorkflow(): CompileWorkflow {
         return {
-            id: 'default-workflow',
-            name: 'Default Workflow',
-            description: 'Standard manuscript compilation with formatting',
+            id: 'reader-draft-workflow',
+            name: 'Reader Draft',
+            description: 'Clean story text for beta readers (no tool headers or notes)',
             steps: [
                 {
                     id: 'step-1',
@@ -362,35 +377,73 @@ export class CompileEngine {
                 },
                 {
                     id: 'step-2',
-                    stepType: 'prepend-scene-title',
+                    stepType: 'extract-content-section',
                     enabled: true,
                     options: {
-                        format: '## $1',
-                        separator: '\n\n'
+                        contentHeaders: 'Content',
+                        excludeHeaders: 'Beats,Beat Sheet,Notes,Outline,Summary,Synopsis,Research,Character Bible,Worldbuilding,Meta',
+                        headerLevel: 2,
+                        fallbackToAll: true
                     }
                 },
                 {
                     id: 'step-3',
-                    stepType: 'remove-wikilinks',
+                    stepType: 'strip-framework-headers',
                     enabled: true,
                     options: {
-                        keepLinkText: true
+                        frameworkHeaders: 'Content,Beat Sheet,Beats,Notes,Outline,Summary,Synopsis,Research,Character Bible,Worldbuilding,Meta',
+                        headerLevel: 2,
+                        caseSensitive: false
                     }
                 },
                 {
                     id: 'step-4',
-                    stepType: 'concatenate',
+                    stepType: 'clean-content',
                     enabled: true,
                     options: {
-                        separator: '\n\n---\n\n'
+                        removeCallouts: true,
+                        removeCodeBlocks: true,
+                        removeTags: true,
+                        removeBlockIds: true,
+                        normalizeWhitespace: true
                     }
                 },
                 {
                     id: 'step-5',
+                    stepType: 'remove-wikilinks',
+                    enabled: true,
+                    options: {
+                        keepLinkText: true,
+                        removeExternalLinks: true
+                    }
+                },
+                {
+                    id: 'step-6',
+                    stepType: 'remove-comments',
+                    enabled: true,
+                    options: {
+                        removeMarkdownComments: true,
+                        removeHtmlComments: true
+                    }
+                },
+                {
+                    id: 'step-7',
+                    stepType: 'concatenate-by-chapter',
+                    enabled: true,
+                    options: {
+                        chapterFormat: '# Chapter $number: $name',
+                        numberStyle: 'arabic',
+                        sceneSeparator: '\n\n',
+                        chapterSeparator: '\n\n---\n\n',
+                        includeUnassigned: false
+                    }
+                },
+                {
+                    id: 'step-8',
                     stepType: 'export-markdown',
                     enabled: true,
                     options: {
-                        outputPath: 'manuscript.md',
+                        outputPath: '$1-reader-draft.md',
                         openAfterExport: true
                     }
                 }
@@ -399,17 +452,502 @@ export class CompileEngine {
     }
 
     /**
+     * Create Editor Draft workflow - Structured draft with chapters/scenes for editing
+     * Use when: Exporting to Word/Docs/Scrivener for line-editing
+     */
+    public createEditorDraftWorkflow(): CompileWorkflow {
+        return {
+            id: 'editor-draft-workflow',
+            name: 'Editor Draft',
+            description: 'Structured draft with chapters/scenes for editing in Word/Docs',
+            steps: [
+                {
+                    id: 'step-1',
+                    stepType: 'strip-frontmatter',
+                    enabled: true,
+                    options: {}
+                },
+                {
+                    id: 'step-2',
+                    stepType: 'extract-content-section',
+                    enabled: true,
+                    options: {
+                        contentHeaders: 'Content',
+                        excludeHeaders: 'Beats,Beat Sheet,Notes,Outline,Summary,Synopsis,Research',
+                        headerLevel: 2,
+                        fallbackToAll: true
+                    }
+                },
+                {
+                    id: 'step-3',
+                    stepType: 'strip-framework-headers',
+                    enabled: true,
+                    options: {
+                        frameworkHeaders: 'Content,Beat Sheet,Beats,Notes,Outline,Summary,Synopsis,Research',
+                        headerLevel: 2,
+                        caseSensitive: false
+                    }
+                },
+                {
+                    id: 'step-4',
+                    stepType: 'clean-content',
+                    enabled: true,
+                    options: {
+                        removeCallouts: true,
+                        removeCodeBlocks: true,
+                        removeTags: true,
+                        removeBlockIds: true,
+                        normalizeWhitespace: true
+                    }
+                },
+                {
+                    id: 'step-5',
+                    stepType: 'remove-wikilinks',
+                    enabled: true,
+                    options: {
+                        keepLinkText: true,
+                        removeExternalLinks: true
+                    }
+                },
+                {
+                    id: 'step-6',
+                    stepType: 'remove-comments',
+                    enabled: true,
+                    options: {
+                        removeMarkdownComments: true,
+                        removeHtmlComments: true
+                    }
+                },
+                {
+                    id: 'step-7',
+                    stepType: 'prepend-scene-title',
+                    enabled: true,
+                    options: {
+                        format: '## $1',
+                        separator: '\n\n'
+                    }
+                },
+                {
+                    id: 'step-8',
+                    stepType: 'concatenate-by-chapter',
+                    enabled: true,
+                    options: {
+                        chapterFormat: '# Chapter $number: $name',
+                        numberStyle: 'arabic',
+                        sceneSeparator: '\n\n',
+                        chapterSeparator: '\n\n---\n\n',
+                        includeUnassigned: true,
+                        unassignedLabel: '# Additional Scenes'
+                    }
+                },
+                {
+                    id: 'step-9',
+                    stepType: 'export-markdown',
+                    enabled: true,
+                    options: {
+                        outputPath: '$1-editor-draft.md',
+                        openAfterExport: true
+                    }
+                }
+            ]
+        };
+    }
+
+    /**
+     * Create Beat Outline workflow - Beat sheet / outline for plotting and revision
+     * Use when: Planning/revising at the outline level
+     */
+    public createBeatOutlineWorkflow(): CompileWorkflow {
+        return {
+            id: 'beat-outline-workflow',
+            name: 'Beat Outline',
+            description: 'Beat sheet / outline for plotting and revision',
+            steps: [
+                {
+                    id: 'step-1',
+                    stepType: 'strip-frontmatter',
+                    enabled: true,
+                    options: {}
+                },
+                {
+                    id: 'step-2',
+                    stepType: 'extract-beat-sheet',
+                    enabled: true,
+                    options: {
+                        beatHeaders: 'Beat Sheet,Beats,Outline,Story Beats',
+                        headerLevel: 2,
+                        includeSceneName: true,
+                        sceneNameFormat: '### $name',
+                        emptyBeatText: ''
+                    }
+                },
+                {
+                    id: 'step-3',
+                    stepType: 'strip-framework-headers',
+                    enabled: true,
+                    options: {
+                        frameworkHeaders: 'Content,Beat Sheet,Beats,Notes,Outline,Summary,Synopsis,Research',
+                        headerLevel: 2,
+                        caseSensitive: false
+                    }
+                },
+                {
+                    id: 'step-4',
+                    stepType: 'remove-wikilinks',
+                    enabled: true,
+                    options: {
+                        keepLinkText: true,
+                        removeExternalLinks: false
+                    }
+                },
+                {
+                    id: 'step-5',
+                    stepType: 'concatenate-by-chapter',
+                    enabled: true,
+                    options: {
+                        chapterFormat: '## Chapter $number: $name',
+                        numberStyle: 'arabic',
+                        sceneSeparator: '\n\n',
+                        chapterSeparator: '\n\n---\n\n',
+                        includeUnassigned: true,
+                        unassignedLabel: '## Unassigned Scenes'
+                    }
+                },
+                {
+                    id: 'step-6',
+                    stepType: 'add-title-page',
+                    enabled: true,
+                    options: {
+                        format: '# $title - Beat Sheet\n\n*Story outline compiled on $date*\n\n---\n\n',
+                        includeWordCount: false
+                    }
+                },
+                {
+                    id: 'step-7',
+                    stepType: 'export-markdown',
+                    enabled: true,
+                    options: {
+                        outputPath: '$1-beat-outline.md',
+                        openAfterExport: true
+                    }
+                }
+            ]
+        };
+    }
+
+    /**
+     * Create Synopsis workflow - Condensed summary for query packages
+     * Use when: Query packages, overviews, or sharing with agents/editors
+     */
+    public createSynopsisWorkflow(): CompileWorkflow {
+        return {
+            id: 'synopsis-workflow',
+            name: 'Synopsis',
+            description: 'Condensed summary for query packages',
+            steps: [
+                {
+                    id: 'step-1',
+                    stepType: 'strip-frontmatter',
+                    enabled: true,
+                    options: {}
+                },
+                {
+                    id: 'step-2',
+                    stepType: 'extract-beat-sheet',
+                    enabled: true,
+                    options: {
+                        beatHeaders: 'Synopsis,Summary,Outline',
+                        headerLevel: 2,
+                        includeSceneName: false,
+                        sceneNameFormat: '',
+                        emptyBeatText: ''
+                    }
+                },
+                {
+                    id: 'step-3',
+                    stepType: 'strip-framework-headers',
+                    enabled: true,
+                    options: {
+                        frameworkHeaders: 'Content,Beat Sheet,Beats,Notes,Outline,Summary,Synopsis,Research',
+                        headerLevel: 2,
+                        caseSensitive: false
+                    }
+                },
+                {
+                    id: 'step-4',
+                    stepType: 'clean-content',
+                    enabled: true,
+                    options: {
+                        removeCallouts: true,
+                        removeCodeBlocks: true,
+                        removeTags: true,
+                        removeBlockIds: true,
+                        normalizeWhitespace: true
+                    }
+                },
+                {
+                    id: 'step-5',
+                    stepType: 'remove-wikilinks',
+                    enabled: true,
+                    options: {
+                        keepLinkText: true,
+                        removeExternalLinks: true
+                    }
+                },
+                {
+                    id: 'step-6',
+                    stepType: 'remove-comments',
+                    enabled: true,
+                    options: {
+                        removeMarkdownComments: true,
+                        removeHtmlComments: true
+                    }
+                },
+                {
+                    id: 'step-7',
+                    stepType: 'concatenate',
+                    enabled: true,
+                    options: {
+                        separator: '\n\n'
+                    }
+                },
+                {
+                    id: 'step-8',
+                    stepType: 'add-title-page',
+                    enabled: true,
+                    options: {
+                        format: '# $title - Synopsis\n\n*Compiled on $date*\n\n---\n\n',
+                        includeWordCount: true
+                    }
+                },
+                {
+                    id: 'step-9',
+                    stepType: 'export-markdown',
+                    enabled: true,
+                    options: {
+                        outputPath: '$1-synopsis.md',
+                        openAfterExport: true
+                    }
+                }
+            ]
+        };
+    }
+
+    /**
+     * Create Printer Friendly workflow - Formatted for printing
+     * Use when: Printing or creating PDFs for physical review
+     */
+    public createPrinterFriendlyWorkflow(): CompileWorkflow {
+        return {
+            id: 'printer-friendly-workflow',
+            name: 'Printer Friendly',
+            description: 'Formatted for printing or PDF export',
+            steps: [
+                {
+                    id: 'step-1',
+                    stepType: 'strip-frontmatter',
+                    enabled: true,
+                    options: {}
+                },
+                {
+                    id: 'step-2',
+                    stepType: 'extract-content-section',
+                    enabled: true,
+                    options: {
+                        contentHeaders: 'Content',
+                        excludeHeaders: 'Beats,Beat Sheet,Notes,Outline,Summary,Synopsis,Research',
+                        headerLevel: 2,
+                        fallbackToAll: true
+                    }
+                },
+                {
+                    id: 'step-3',
+                    stepType: 'strip-framework-headers',
+                    enabled: true,
+                    options: {
+                        frameworkHeaders: 'Content,Beat Sheet,Beats,Notes,Outline,Summary,Synopsis,Research',
+                        headerLevel: 2,
+                        caseSensitive: false
+                    }
+                },
+                {
+                    id: 'step-4',
+                    stepType: 'clean-content',
+                    enabled: true,
+                    options: {
+                        removeCallouts: true,
+                        removeCodeBlocks: true,
+                        removeTags: true,
+                        removeBlockIds: true,
+                        normalizeWhitespace: true
+                    }
+                },
+                {
+                    id: 'step-5',
+                    stepType: 'remove-wikilinks',
+                    enabled: true,
+                    options: {
+                        keepLinkText: true,
+                        removeExternalLinks: true
+                    }
+                },
+                {
+                    id: 'step-6',
+                    stepType: 'remove-comments',
+                    enabled: true,
+                    options: {
+                        removeMarkdownComments: true,
+                        removeHtmlComments: true
+                    }
+                },
+                {
+                    id: 'step-7',
+                    stepType: 'remove-strikethroughs',
+                    enabled: true,
+                    options: {}
+                },
+                {
+                    id: 'step-8',
+                    stepType: 'normalize-scene-separators',
+                    enabled: true,
+                    options: {
+                        separator: '* * *',
+                        addBlankLines: 1
+                    }
+                },
+                {
+                    id: 'step-9',
+                    stepType: 'concatenate-by-chapter',
+                    enabled: true,
+                    options: {
+                        chapterFormat: '# Chapter $number: $name',
+                        numberStyle: 'arabic',
+                        sceneSeparator: '\n\n',
+                        chapterSeparator: '\n\n\n',
+                        includeUnassigned: false
+                    }
+                },
+                {
+                    id: 'step-10',
+                    stepType: 'add-title-page',
+                    enabled: true,
+                    options: {
+                        format: '# $title\n\n*Compiled on $date*\n\n---\n\n',
+                        includeWordCount: true
+                    }
+                },
+                {
+                    id: 'step-11',
+                    stepType: 'export-markdown',
+                    enabled: true,
+                    options: {
+                        outputPath: '$1-printer-friendly.md',
+                        openAfterExport: true
+                    }
+                }
+            ]
+        };
+    }
+
+    /**
+     * Create Full Export workflow - Everything, including framework headers and metadata
+     * Use when: Power user needs to see exactly how the note is structured
+     */
+    public createFullExportWorkflow(): CompileWorkflow {
+        return {
+            id: 'full-export-workflow',
+            name: 'Full Export',
+            description: 'Everything, including framework headers and metadata',
+            steps: [
+                {
+                    id: 'step-1',
+                    stepType: 'strip-frontmatter',
+                    enabled: true,
+                    options: {}
+                },
+                {
+                    id: 'step-2',
+                    stepType: 'clean-content',
+                    enabled: true,
+                    options: {
+                        removeCallouts: false,
+                        removeCodeBlocks: false,
+                        removeTags: false,
+                        removeBlockIds: false,
+                        normalizeWhitespace: false
+                    }
+                },
+                {
+                    id: 'step-3',
+                    stepType: 'remove-wikilinks',
+                    enabled: true,
+                    options: {
+                        keepLinkText: true,
+                        removeExternalLinks: false
+                    }
+                },
+                {
+                    id: 'step-4',
+                    stepType: 'prepend-scene-title',
+                    enabled: true,
+                    options: {
+                        format: '## $1',
+                        separator: '\n\n'
+                    }
+                },
+                {
+                    id: 'step-5',
+                    stepType: 'concatenate-by-chapter',
+                    enabled: true,
+                    options: {
+                        chapterFormat: '# Chapter $number: $name',
+                        numberStyle: 'arabic',
+                        sceneSeparator: '\n\n---\n\n',
+                        chapterSeparator: '\n\n---\n\n',
+                        includeUnassigned: true,
+                        unassignedLabel: '# Additional Scenes'
+                    }
+                },
+                {
+                    id: 'step-6',
+                    stepType: 'add-title-page',
+                    enabled: true,
+                    options: {
+                        format: '# $title\n\n*Full export compiled on $date*\n\n---\n\n',
+                        includeWordCount: true
+                    }
+                },
+                {
+                    id: 'step-7',
+                    stepType: 'export-markdown',
+                    enabled: true,
+                    options: {
+                        outputPath: '$1-full-export.md',
+                        openAfterExport: true
+                    }
+                }
+            ]
+        };
+    }
+
+    /**
+     * Create default workflow (kept for backward compatibility)
+     */
+    public createDefaultWorkflow(): CompileWorkflow {
+        return this.createReaderDraftWorkflow();
+    }
+
+    /**
      * Get all preset workflows for common export formats
      */
     public getPresetWorkflows(): CompileWorkflow[] {
         return [
-            this.createDefaultWorkflow(),
-            this.createChapterOnlyWorkflow(),
-            this.createNovelSubmissionWorkflow(),
-            this.createBeatSheetWorkflow(),
-            this.createCleanProseWorkflow(),
-            this.createPlainTextWorkflow(),
-            this.createHtmlExportWorkflow()
+            this.createReaderDraftWorkflow(),
+            this.createEditorDraftWorkflow(),
+            this.createBeatOutlineWorkflow(),
+            this.createSynopsisWorkflow(),
+            this.createPrinterFriendlyWorkflow(),
+            this.createFullExportWorkflow()
         ];
     }
 

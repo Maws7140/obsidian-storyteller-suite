@@ -106,6 +106,7 @@ export class LocationService {
     /**
      * Move an entity to a new location
      * Removes entity from old location and adds to new location
+     * EntitySyncService will automatically update location.entityRefs when entity is saved
      */
     async moveEntityToLocation(
         entityId: string,
@@ -113,39 +114,32 @@ export class LocationService {
         newLocationId: string,
         relationship: string = 'located'
     ): Promise<void> {
-        // Remove from old location(s)
-        const allLocations = await this.plugin.listLocations();
-        for (const loc of allLocations) {
-            if (loc.entityRefs) {
-                const idx = loc.entityRefs.findIndex(e => e.entityId === entityId);
-                if (idx !== -1) {
-                    loc.entityRefs.splice(idx, 1);
-                    await this.plugin.saveLocation(loc);
-                }
-            }
-        }
-
-        // Add to new location
-        const newLocation = await this.getLocation(newLocationId);
-        if (newLocation) {
-            if (!newLocation.entityRefs) {
-                newLocation.entityRefs = [];
-            }
-            newLocation.entityRefs.push({
-                entityId,
-                entityType: entityType as EntityRef['entityType'],
-                relationship
-            });
-            await this.plugin.saveLocation(newLocation);
-        }
-
-        // Update entity's currentLocationId if it's a character
+        // Update the entity's location field - EntitySyncService will handle the rest
         if (entityType === 'character') {
             const characters = await this.plugin.listCharacters();
             const character = characters.find(c => (c.id || c.name) === entityId);
             if (character) {
                 character.currentLocationId = newLocationId;
                 await this.plugin.saveCharacter(character);
+                // EntitySyncService will automatically update location.entityRefs
+            }
+        } else if (entityType === 'item') {
+            const items = await this.plugin.listPlotItems();
+            const item = items.find(i => (i.id || i.name) === entityId);
+            if (item) {
+                const newLocation = await this.getLocation(newLocationId);
+                item.currentLocation = newLocation?.name || newLocationId;
+                await this.plugin.savePlotItem(item);
+                // EntitySyncService will automatically update location.entityRefs
+            }
+        } else if (entityType === 'event') {
+            const events = await this.plugin.listEvents();
+            const event = events.find(e => (e.id || e.name) === entityId);
+            if (event) {
+                const newLocation = await this.getLocation(newLocationId);
+                event.location = newLocation?.name || newLocationId;
+                await this.plugin.saveEvent(event);
+                // EntitySyncService will automatically update location.entityRefs
             }
         }
     }
@@ -313,6 +307,7 @@ export class LocationService {
 
     /**
      * Add an entity reference to a location
+     * Also updates the entity's location field for bidirectional sync
      */
     async addEntityToLocation(locationId: string, entityRef: EntityRef): Promise<void> {
         const location = await this.getLocation(locationId);
@@ -330,18 +325,39 @@ export class LocationService {
                     const characters = await this.plugin.listCharacters();
                     const char = characters.find(c => (c.id || c.name) === entityRef.entityId);
                     entityName = char?.name;
+                    // Update character's currentLocationId for bidirectional sync
+                    if (char && char.currentLocationId !== locationId) {
+                        char.currentLocationId = locationId;
+                        await this.plugin.saveCharacter(char);
+                        // EntitySyncService will update location.entityRefs automatically
+                        return; // Early return - sync service handles location update
+                    }
                     break;
                 }
                 case 'event': {
                     const events = await this.plugin.listEvents();
                     const event = events.find(e => (e.id || e.name) === entityRef.entityId);
                     entityName = event?.name;
+                    // Update event's location for bidirectional sync
+                    if (event && event.location !== (location.name || locationId)) {
+                        event.location = location.name || locationId;
+                        await this.plugin.saveEvent(event);
+                        // EntitySyncService will update location.entityRefs automatically
+                        return; // Early return - sync service handles location update
+                    }
                     break;
                 }
                 case 'item': {
                     const items = await this.plugin.listPlotItems();
                     const item = items.find(i => (i.id || i.name) === entityRef.entityId);
                     entityName = item?.name;
+                    // Update item's currentLocation for bidirectional sync
+                    if (item && item.currentLocation !== (location.name || locationId)) {
+                        item.currentLocation = location.name || locationId;
+                        await this.plugin.savePlotItem(item);
+                        // EntitySyncService will update location.entityRefs automatically
+                        return; // Early return - sync service handles location update
+                    }
                     break;
                 }
             }
@@ -349,7 +365,8 @@ export class LocationService {
             console.warn('Could not resolve entity name for ref:', e);
         }
 
-        // Check if entity already exists at this location
+        // Fallback: manually add to location.entityRefs if entity update didn't trigger sync
+        // (This handles cases where the entity's location field is already set correctly)
         const existingIndex = location.entityRefs.findIndex(
             e => e.entityId === entityRef.entityId && e.entityType === entityRef.entityType
         );
@@ -370,11 +387,58 @@ export class LocationService {
 
     /**
      * Remove an entity reference from a location
+     * Also clears the entity's location field for bidirectional sync
      */
     async removeEntityFromLocation(locationId: string, entityId: string): Promise<void> {
         const location = await this.getLocation(locationId);
         if (!location || !location.entityRefs) return;
 
+        // Find the entity ref to determine type
+        const entityRef = location.entityRefs.find(e => e.entityId === entityId);
+        if (!entityRef) return;
+
+        // Clear the entity's location field - EntitySyncService will handle removing from location.entityRefs
+        try {
+            switch (entityRef.entityType) {
+                case 'character': {
+                    const characters = await this.plugin.listCharacters();
+                    const char = characters.find(c => (c.id || c.name) === entityId);
+                    if (char && char.currentLocationId === locationId) {
+                        char.currentLocationId = undefined;
+                        await this.plugin.saveCharacter(char);
+                        // EntitySyncService will automatically remove from location.entityRefs
+                        return; // Early return - sync service handles location update
+                    }
+                    break;
+                }
+                case 'event': {
+                    const events = await this.plugin.listEvents();
+                    const event = events.find(e => (e.id || e.name) === entityId);
+                    if (event && event.location === (location.name || locationId)) {
+                        event.location = undefined;
+                        await this.plugin.saveEvent(event);
+                        // EntitySyncService will automatically remove from location.entityRefs
+                        return; // Early return - sync service handles location update
+                    }
+                    break;
+                }
+                case 'item': {
+                    const items = await this.plugin.listPlotItems();
+                    const item = items.find(i => (i.id || i.name) === entityId);
+                    if (item && item.currentLocation === (location.name || locationId)) {
+                        item.currentLocation = undefined;
+                        await this.plugin.savePlotItem(item);
+                        // EntitySyncService will automatically remove from location.entityRefs
+                        return; // Early return - sync service handles location update
+                    }
+                    break;
+                }
+            }
+        } catch (e) {
+            console.warn('Could not update entity location field:', e);
+        }
+
+        // Fallback: manually remove from location.entityRefs if entity update didn't trigger sync
         location.entityRefs = location.entityRefs.filter(e => e.entityId !== entityId);
         await this.plugin.saveLocation(location);
     }

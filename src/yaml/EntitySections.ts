@@ -49,7 +49,8 @@ const FRONTMATTER_WHITELISTS: Record<EntityType, Set<string>> = {
     'mapCoordinates', 'mapId', 'markerId', 'relatedMapIds', 'mapIcon', 'mapColor'
   ]),
   reference: new Set([
-    'id', 'name', 'category', 'tags', 'profileImagePath'
+    'id', 'name', 'category', 'tags', 'profileImagePath',
+    'mapCoordinates', 'mapId', 'markerId', 'relatedMapIds', 'mapIcon', 'mapColor'
   ]),
   chapter: new Set([
     'id', 'name', 'number', 'tags', 'profileImagePath',
@@ -57,13 +58,15 @@ const FRONTMATTER_WHITELISTS: Record<EntityType, Set<string>> = {
   ]),
   scene: new Set([
     'id', 'name', 'chapterId', 'chapterName', 'status', 'priority', 'tags', 'profileImagePath',
-    'linkedCharacters', 'linkedLocations', 'linkedEvents', 'linkedItems', 'linkedGroups'
+    'linkedCharacters', 'linkedLocations', 'linkedEvents', 'linkedItems', 'linkedGroups',
+    'mapCoordinates', 'mapId', 'markerId', 'relatedMapIds', 'mapIcon', 'mapColor'
   ]),
   map: new Set([
     'id', 'name', 'description', 'scale', 'parentMapId', 'childMapIds', 'correspondingLocationId', 'backgroundImagePath', 'mapData',
     'width', 'height', 'defaultZoom', 'center', 'bounds', 'markers', 'layers',
     'gridEnabled', 'gridSize', 'profileImagePath', 'linkedLocations', 'linkedCharacters', 'linkedEvents',
-    'linkedItems', 'linkedGroups', 'groups', 'customFields', 'created', 'modified',
+    'linkedItems', 'linkedGroups', 'linkedCultures', 'linkedEconomies', 'linkedMagicSystems', 'linkedScenes', 'linkedReferences',
+    'groups', 'customFields', 'created', 'modified',
     'type', 'image', 'lat', 'long', 'minZoom', 'maxZoom', 'tileServer', 'darkMode',
     'geojsonFiles', 'gpxFiles', 'tileSubdomains', 'tileAttribution', 'markerFiles', 'markerFolders', 'markerTags'
   ]),
@@ -358,38 +361,35 @@ export function parseFrontmatterFromContent(content: string): Record<string, unk
           arrayItems.push(item);
           i++;
         }
-        i--; // Back up one since the for loop will increment
+        i--; // Adjust for loop increment
         result[key] = arrayItems;
         continue;
       }
 
-      // Handle empty values (null or empty string) - CRITICAL for empty field preservation
-      if (value === '' || value === 'null' || value === '~') {
-        result[key] = null;
+      // Handle empty value - preserve as empty string
+      if (value === '') {
+        result[key] = '';
         continue;
       }
 
       // Handle quoted strings
       if ((value.startsWith('"') && value.endsWith('"')) ||
           (value.startsWith("'") && value.endsWith("'"))) {
-        result[key] = value.substring(1, value.length - 1);
+        result[key] = value.slice(1, -1);
         continue;
       }
 
       // Handle booleans
-      if (value === 'true') {
-        result[key] = true;
-        continue;
-      }
-      if (value === 'false') {
-        result[key] = false;
-        continue;
-      }
+      if (value === 'true') { result[key] = true; continue; }
+      if (value === 'false') { result[key] = false; continue; }
+
+      // Handle null
+      if (value === 'null' || value === '~') { result[key] = null; continue; }
 
       // Handle numbers
-      const numValue = Number(value);
-      if (!isNaN(numValue) && value !== '') {
-        result[key] = numValue;
+      const num = Number(value);
+      if (!isNaN(num) && value !== '') {
+        result[key] = num;
         continue;
       }
 
@@ -398,16 +398,8 @@ export function parseFrontmatterFromContent(content: string): Record<string, unk
     }
 
     return result;
-  } catch (error) {
-    console.warn('Error parsing frontmatter from content:', error);
+  } catch (e) {
+    console.error('[EntitySections] Failed to parse frontmatter:', e);
     return undefined;
   }
-}
-
-/**
- * Utility to create a safe file name from an entity name.
- */
-export function toSafeFileName(name: string, fallback = 'Untitled'): string {
-  const base = (name && name.trim()) ? name : fallback;
-  return base.replace(/[\\/:"*?<>|#^\[\]{}]+/g, '');
 }

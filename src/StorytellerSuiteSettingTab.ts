@@ -926,12 +926,12 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
             );
 
         new Setting(containerEl)
-            .setName(t('enableDataViewMarkers'))
-            .setDesc(t('enableDataViewMarkersDesc'))
+            .setName(t('locationPinsOpenMap'))
+            .setDesc(t('locationPinsOpenMapDesc'))
             .addToggle(toggle => toggle
-                .setValue(!!this.plugin.settings.enableDataViewMarkers)
+                .setValue(!!this.plugin.settings.locationPinsOpenMap)
                 .onChange(async (value) => {
-                    this.plugin.settings.enableDataViewMarkers = value;
+                    this.plugin.settings.locationPinsOpenMap = value;
                     await this.plugin.saveSettings();
                 })
             );

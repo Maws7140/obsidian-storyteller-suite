@@ -141,7 +141,8 @@ import { LocationMigration } from './utils/LocationMigration';
 
     /** Map settings */
     enableFrontmatterMarkers?: boolean;
-    enableDataViewMarkers?: boolean;
+    /** When enabled, location pins open their corresponding map instead of the location note */
+    locationPinsOpenMap?: boolean;
     /** Persisted map view states (zoom/center) per map ID */
     mapViewStates?: Record<string, { zoom: number; center: { lat: number; lng: number } }>;
 
@@ -263,7 +264,7 @@ import { LocationMigration } from './utils/LocationMigration';
     allowRemoteImages: true,
     sanitizedSeedData: false,
     enableFrontmatterMarkers: false,
-    enableDataViewMarkers: false,
+    locationPinsOpenMap: false,
     mapViewStates: {},
     customFieldsMode: 'flatten',
     relationshipsMigrated: false,
@@ -2314,31 +2315,41 @@ export default class StorytellerSuitePlugin extends Plugin {
      *
      * @param imagePath - Vault path to uploaded image
      * @param imageData - Image ArrayBuffer for dimension checking
+     * @param force - If true, generate tiles regardless of threshold (for map images)
      */
     async maybeTriggerTileGeneration(
         imagePath: string,
-        imageData: ArrayBuffer
+        imageData: ArrayBuffer,
+        force = false
     ): Promise<void> {
         try {
-            // Check if tiling is enabled
+            // Check if tiling is enabled (unless forcing)
             const threshold = this.settings.tiling?.autoGenerateThreshold || -1;
-            if (threshold < 0) {
-                // Tiling disabled
+            console.log(`[TileGeneration] Checking tile generation for: ${imagePath}`);
+            console.log(`[TileGeneration] Current threshold setting: ${threshold}, force: ${force}`);
+            
+            if (!force && threshold < 0) {
+                // Tiling disabled (unless forcing)
+                console.log('[TileGeneration] Tiling is disabled (threshold < 0)');
+                new Notice('Tile generation is disabled. Enable it in plugin settings to auto-generate tiles.');
                 return;
             }
 
             // Get image dimensions
+            console.log('[TileGeneration] Getting image dimensions...');
             const dimensions = await this.getImageDimensions(imageData);
             console.log(`[TileGeneration] Image dimensions: ${dimensions.width}x${dimensions.height}`);
 
-            // Check if image exceeds threshold
-            if (dimensions.width < threshold && dimensions.height < threshold) {
-                console.log(`[TileGeneration] Image below threshold (${threshold}px), skipping`);
+            // Check if image exceeds threshold (unless forcing)
+            if (!force && dimensions.width < threshold && dimensions.height < threshold) {
+                console.log(`[TileGeneration] Image below threshold (${threshold}px), skipping. Image is ${dimensions.width}x${dimensions.height}`);
+                new Notice(`Image (${dimensions.width}x${dimensions.height}px) is below tiling threshold (${threshold}px). Tiles will not be generated.`);
                 return;
             }
 
             // Show notification
-            new Notice(`Generating map tiles for ${dimensions.width}x${dimensions.height}px image...`);
+            const forceMsg = force ? ' (forced for map)' : '';
+            new Notice(`Generating map tiles for ${dimensions.width}x${dimensions.height}px image${forceMsg}...`);
 
             // Import and create tile generator
             const { TileGenerator } = await import('./leaflet/TileGenerator');
@@ -2360,6 +2371,66 @@ export default class StorytellerSuitePlugin extends Plugin {
 
         } catch (error) {
             console.error('[TileGeneration] Error:', error);
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            new Notice(`Tile generation error: ${errorMessage}. Check console for details.`);
+            throw error; // Re-throw so caller can handle it
+        }
+    }
+
+    /**
+     * Force tile generation for a map image and wait for completion
+     * Used when initializing a map that requires tiles
+     *
+     * @param imagePath - Vault path to image
+     * @returns Promise that resolves when tiles are generated
+     */
+    async forceGenerateTilesForMap(imagePath: string): Promise<string> {
+        try {
+            console.log(`[TileGeneration] Force generating tiles for map image: ${imagePath}`);
+            
+            // Read image data once
+            const imageData = await this.app.vault.adapter.readBinary(imagePath);
+            
+            // Check if tiles already exist by calculating hash
+            const hashBuffer = await crypto.subtle.digest('SHA-256', imageData);
+            const hash = Array.from(new Uint8Array(hashBuffer))
+                .map(b => b.toString(16).padStart(2, '0'))
+                .join('')
+                .substring(0, 16);
+            
+            const metadataPath = `StorytellerSuite/MapTiles/${hash}/metadata.json`;
+            const existingMetadata = this.app.vault.getAbstractFileByPath(metadataPath);
+            
+            if (existingMetadata instanceof TFile) {
+                console.log('[TileGeneration] Tiles already exist, skipping generation');
+                return hash;
+            }
+
+            // Get image dimensions for notification
+            const dimensions = await this.getImageDimensions(imageData);
+            new Notice(`Generating map tiles for ${dimensions.width}x${dimensions.height}px image...`);
+
+            // Import and create tile generator
+            const { TileGenerator } = await import('./leaflet/TileGenerator');
+            const tileGenerator = new TileGenerator(this.app, this);
+
+            // Generate tiles and wait for completion
+            const tileHash = await tileGenerator.generateTiles(imagePath, {
+                onProgress: (progress) => {
+                    if (this.settings.tiling?.showProgressNotifications) {
+                        this.updateTileProgressNotice(progress);
+                    }
+                }
+            });
+
+            new Notice('Map tiles generated successfully!');
+            return tileHash;
+
+        } catch (error) {
+            console.error('[TileGeneration] Failed to force generate tiles:', error);
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            new Notice(`Failed to generate map tiles: ${errorMessage}`);
+            throw error;
         }
     }
 
@@ -2686,6 +2757,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		const existingFile = this.app.vault.getAbstractFileByPath(finalFilePath);
 		let existingSections: Record<string, string> = {};
 		let originalFrontmatter: Record<string, unknown> | undefined;
+		let oldCharacter: Character | undefined;
 		if (existingFile && existingFile instanceof TFile) {
 			try {
 				const existingContent = await this.app.vault.cachedRead(existingFile);
@@ -2703,6 +2775,14 @@ export default class StorytellerSuitePlugin extends Plugin {
 				// Direct parsing captures empty values that the cache might miss
 				if (directFrontmatter || cachedFrontmatter) {
 					originalFrontmatter = { ...(cachedFrontmatter || {}), ...(directFrontmatter || {}) };
+				}
+
+				// Load old character for sync comparison (only if not skipping sync)
+				if (!(character as any)._skipSync) {
+					const parsed = await this.parseFile<Character>(existingFile, { name: '' }, 'character');
+					if (parsed) {
+						oldCharacter = this.normalizeEntityCustomFields('character', parsed);
+					}
 				}
 			} catch (error) {
 				console.warn(`Error reading existing character file: ${error}`);
@@ -2777,6 +2857,19 @@ export default class StorytellerSuitePlugin extends Plugin {
 
 		// Update path and refresh
 		character.filePath = finalFilePath;
+		
+		// Sync bidirectional relationships (skip if _skipSync flag is set to prevent recursion)
+		if (!(character as any)._skipSync) {
+			try {
+				const { EntitySyncService } = await import('./services/EntitySyncService');
+				const syncService = new EntitySyncService(this);
+				await syncService.syncEntity('character', character, oldCharacter);
+			} catch (error) {
+				console.error('[saveCharacter] Error syncing relationships:', error);
+				// Don't throw - sync failures shouldn't prevent saves
+			}
+		}
+		
 		this.app.metadataCache.trigger("dataview:refresh-views");
 	}
 
@@ -2818,7 +2911,30 @@ export default class StorytellerSuitePlugin extends Plugin {
 	async deleteCharacter(filePath: string): Promise<void> {
 		const file = this.app.vault.getAbstractFileByPath(normalizePath(filePath));
 		if (file instanceof TFile) {
+			// Get entity ID before deletion for cleanup
+			let characterId: string | undefined;
+			try {
+				const character = await this.parseFile<Character>(file, { name: '' }, 'character');
+				if (character) {
+					characterId = character.id || character.name;
+				}
+			} catch (e) {
+				console.warn('Could not parse character before deletion:', e);
+			}
+
 			await this.app.vault.trash(file, true);
+			
+			// Clean up references via EntitySyncService
+			if (characterId) {
+				try {
+					const { EntitySyncService } = await import('./services/EntitySyncService');
+					const syncService = new EntitySyncService(this);
+					await syncService.handleEntityDeletion('character', characterId);
+				} catch (error) {
+					console.error('[deleteCharacter] Error cleaning up references:', error);
+				}
+			}
+			
 			new Notice(`Character file "${file.basename}" moved to trash.`);
 			this.app.metadataCache.trigger("dataview:refresh-views");
 		} else {
@@ -2869,6 +2985,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		const existingFile = this.app.vault.getAbstractFileByPath(finalFilePath);
 		let existingSections: Record<string, string> = {};
 		let originalFrontmatter: Record<string, unknown> | undefined;
+		let oldLocation: Location | undefined;
 		if (existingFile && existingFile instanceof TFile) {
 			try {
 				const existingContent = await this.app.vault.cachedRead(existingFile);
@@ -2885,6 +3002,14 @@ export default class StorytellerSuitePlugin extends Plugin {
 				// Merge both sources, preferring direct parsing for better empty value handling
 				if (directFrontmatter || cachedFrontmatter) {
 					originalFrontmatter = { ...(cachedFrontmatter || {}), ...(directFrontmatter || {}) };
+				}
+
+				// Load old location for sync comparison (only if not skipping sync)
+				if (!(location as any)._skipSync) {
+					const parsed = await this.parseFile<Location>(existingFile, { name: '' }, 'location');
+					if (parsed) {
+						oldLocation = this.normalizeEntityCustomFields('location', parsed);
+					}
 				}
 			} catch (error) {
 				console.warn(`Error reading existing location file: ${error}`);
@@ -2948,6 +3073,19 @@ export default class StorytellerSuitePlugin extends Plugin {
 		
 		// Update the filePath in the location object
 		location.filePath = finalFilePath;
+		
+		// Sync bidirectional relationships (skip if _skipSync flag is set to prevent recursion)
+		if (!(location as any)._skipSync) {
+			try {
+				const { EntitySyncService } = await import('./services/EntitySyncService');
+				const syncService = new EntitySyncService(this);
+				await syncService.syncEntity('location', location, oldLocation);
+			} catch (error) {
+				console.error('[saveLocation] Error syncing relationships:', error);
+				// Don't throw - sync failures shouldn't prevent saves
+			}
+		}
+		
 		this.app.metadataCache.trigger("dataview:refresh-views");
 	}
 
@@ -2988,7 +3126,30 @@ export default class StorytellerSuitePlugin extends Plugin {
 	async deleteLocation(filePath: string): Promise<void> {
 		const file = this.app.vault.getAbstractFileByPath(normalizePath(filePath));
 		if (file instanceof TFile) {
+			// Get entity ID before deletion for cleanup
+			let locationId: string | undefined;
+			try {
+				const location = await this.parseFile<Location>(file, { name: '' }, 'location');
+				if (location) {
+					locationId = location.id || location.name;
+				}
+			} catch (e) {
+				console.warn('Could not parse location before deletion:', e);
+			}
+
 			await this.app.vault.trash(file, true);
+			
+			// Clean up references via EntitySyncService
+			if (locationId) {
+				try {
+					const { EntitySyncService } = await import('./services/EntitySyncService');
+					const syncService = new EntitySyncService(this);
+					await syncService.handleEntityDeletion('location', locationId);
+				} catch (error) {
+					console.error('[deleteLocation] Error cleaning up references:', error);
+				}
+			}
+			
 			new Notice(`Location file "${file.basename}" moved to trash.`);
 			this.app.metadataCache.trigger("dataview:refresh-views");
 		} else {
@@ -3256,16 +3417,20 @@ export default class StorytellerSuitePlugin extends Plugin {
 	async saveMapViewState(mapId: string, zoom: number, center: { lat: number; lng: number }): Promise<void> {
 		if (!mapId) return;
 
-		// Validate zoom: must be a finite number within valid range (0-30)
-		const MIN_ZOOM = 0;
+		// Validate zoom: must be a finite number
+		// Note: For custom CRS (image maps), zoom can be negative or fractional
+		// We allow a wide range but cap at reasonable limits
+		const MIN_ZOOM = -10;  // Allow negative zoom for custom CRS
 		const MAX_ZOOM = 30;
 		if (typeof zoom !== 'number' || !Number.isFinite(zoom)) {
 			console.error(`[StorytellerSuite] saveMapViewState: Invalid zoom value "${zoom}" - must be a finite number`);
 			return;
 		}
 		if (zoom < MIN_ZOOM || zoom > MAX_ZOOM) {
-			console.error(`[StorytellerSuite] saveMapViewState: Zoom value ${zoom} out of range (${MIN_ZOOM}-${MAX_ZOOM})`);
-			return;
+			// Clamp to valid range instead of rejecting
+			const clampedZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoom));
+			console.warn(`[StorytellerSuite] saveMapViewState: Zoom value ${zoom} out of range, clamping to ${clampedZoom}`);
+			zoom = clampedZoom;
 		}
 
 		// Validate center coordinates
@@ -3403,6 +3568,15 @@ export default class StorytellerSuitePlugin extends Plugin {
 						await this.saveMap(otherMap);
 					}
 				}
+
+				// Clean up map view state
+				if (this.settings.mapViewStates && this.settings.mapViewStates[mapId]) {
+					delete this.settings.mapViewStates[mapId];
+					await this.saveSettings();
+				}
+
+				// Clean up map references from all entity files (characters, events, items, references, scenes, etc.)
+				await this.cleanupMapReferencesFromEntities(mapId);
 			}
 
 			// Now delete the file
@@ -3538,6 +3712,75 @@ export default class StorytellerSuitePlugin extends Plugin {
 	}
 
 	/**
+	 * Clean up map references (mapId, relatedMapIds, mapCoordinates, markerId) from all entity files
+	 * This is called when a map is deleted to remove orphaned references
+	 * @param mapId The ID of the map being deleted
+	 */
+	private async cleanupMapReferencesFromEntities(mapId: string): Promise<void> {
+		// Entity types that can have map references in their frontmatter
+		const entityTypes: Array<{ type: string; folder: string }> = [
+			{ type: 'character', folder: this.getEntityFolder('character') },
+			{ type: 'event', folder: this.getEntityFolder('event') },
+			{ type: 'item', folder: this.getEntityFolder('item') },
+			{ type: 'reference', folder: this.getEntityFolder('reference') },
+			{ type: 'scene', folder: this.getEntityFolder('scene') },
+			{ type: 'culture', folder: this.getEntityFolder('culture') },
+			{ type: 'economy', folder: this.getEntityFolder('economy') },
+			{ type: 'magicSystem', folder: this.getEntityFolder('magicSystem') }
+		];
+
+		let cleanedCount = 0;
+
+		for (const { type, folder } of entityTypes) {
+			try {
+				const folderPath = normalizePath(folder);
+				const allFiles = this.app.vault.getMarkdownFiles();
+				const entityFiles = allFiles.filter(file => 
+					file.path.startsWith(folderPath + '/') && file.extension === 'md'
+				);
+
+				for (const file of entityFiles) {
+					let needsUpdate = false;
+
+					await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
+						// Check if mapId matches the deleted map
+						if (frontmatter.mapId === mapId) {
+							delete frontmatter.mapId;
+							// Also remove markerId and mapCoordinates if they're for this map
+							delete frontmatter.markerId;
+							delete frontmatter.mapCoordinates;
+							needsUpdate = true;
+						}
+
+						// Remove from relatedMapIds array
+						if (Array.isArray(frontmatter.relatedMapIds)) {
+							const originalLength = frontmatter.relatedMapIds.length;
+							frontmatter.relatedMapIds = (frontmatter.relatedMapIds as string[]).filter(id => id !== mapId);
+							if (frontmatter.relatedMapIds.length !== originalLength) {
+								// Remove the array if it's now empty
+								if (frontmatter.relatedMapIds.length === 0) {
+									delete frontmatter.relatedMapIds;
+								}
+								needsUpdate = true;
+							}
+						}
+					});
+
+					if (needsUpdate) {
+						cleanedCount++;
+					}
+				}
+			} catch (error) {
+				console.error(`Error cleaning up map references from ${type} entities:`, error);
+			}
+		}
+
+		if (cleanedCount > 0) {
+			console.log(`Cleaned up map references from ${cleanedCount} entity file(s)`);
+		}
+	}
+
+	/**
 	 * Event Data Management
 	 * Methods for creating, reading, updating, and deleting event entities
 	 */
@@ -3575,6 +3818,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		const existingFile = this.app.vault.getAbstractFileByPath(finalFilePath);
 		let existingSections: Record<string, string> = {};
 		let originalFrontmatter: Record<string, unknown> | undefined;
+		let oldEvent: Event | undefined;
 		if (existingFile && existingFile instanceof TFile) {
 			try {
 				const existingContent = await this.app.vault.cachedRead(existingFile);
@@ -3591,6 +3835,14 @@ export default class StorytellerSuitePlugin extends Plugin {
 				// Merge both sources, preferring direct parsing for better empty value handling
 				if (directFrontmatter || cachedFrontmatter) {
 					originalFrontmatter = { ...(cachedFrontmatter || {}), ...(directFrontmatter || {}) };
+				}
+
+				// Load old event for sync comparison (only if not skipping sync)
+				if (!(event as any)._skipSync) {
+					const parsed = await this.parseFile<Event>(existingFile, { name: '' }, 'event');
+					if (parsed) {
+						oldEvent = this.normalizeEntityCustomFields('event', parsed);
+					}
 				}
 			} catch (error) {
 				console.warn(`Error reading existing event file: ${error}`);
@@ -3683,6 +3935,21 @@ export default class StorytellerSuitePlugin extends Plugin {
 			}
 		}
 
+		// Set filePath for reference
+		event.filePath = finalFilePath;
+
+		// Sync bidirectional relationships (skip if _skipSync flag is set to prevent recursion)
+		if (!(event as any)._skipSync) {
+			try {
+				const { EntitySyncService } = await import('./services/EntitySyncService');
+				const syncService = new EntitySyncService(this);
+				await syncService.syncEntity('event', event, oldEvent);
+			} catch (error) {
+				console.error('[saveEvent] Error syncing relationships:', error);
+				// Don't throw - sync failures shouldn't prevent saves
+			}
+		}
+
 		this.app.metadataCache.trigger("dataview:refresh-views");
 	}
 
@@ -3731,7 +3998,30 @@ export default class StorytellerSuitePlugin extends Plugin {
 	async deleteEvent(filePath: string): Promise<void> {
 		const file = this.app.vault.getAbstractFileByPath(normalizePath(filePath));
 		if (file instanceof TFile) {
+			// Get entity ID before deletion for cleanup
+			let eventId: string | undefined;
+			try {
+				const event = await this.parseFile<Event>(file, { name: '' }, 'event');
+				if (event) {
+					eventId = event.id || event.name;
+				}
+			} catch (e) {
+				console.warn('Could not parse event before deletion:', e);
+			}
+
 			await this.app.vault.trash(file, true);
+			
+			// Clean up references via EntitySyncService
+			if (eventId) {
+				try {
+					const { EntitySyncService } = await import('./services/EntitySyncService');
+					const syncService = new EntitySyncService(this);
+					await syncService.handleEntityDeletion('event', eventId);
+				} catch (error) {
+					console.error('[deleteEvent] Error cleaning up references:', error);
+				}
+			}
+			
 			new Notice(`Event file "${file.basename}" moved to trash.`);
 			this.app.metadataCache.trigger("dataview:refresh-views");
 		} else {
@@ -3779,6 +4069,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		const existingFile = this.app.vault.getAbstractFileByPath(finalFilePath);
 		let existingSections: Record<string, string> = {};
 		let originalFrontmatter: Record<string, unknown> | undefined;
+		let oldItem: PlotItem | undefined;
 		if (existingFile && existingFile instanceof TFile) {
 			try {
 				const existingContent = await this.app.vault.cachedRead(existingFile);
@@ -3795,6 +4086,14 @@ export default class StorytellerSuitePlugin extends Plugin {
 				// Merge both sources, preferring direct parsing for better empty value handling
 				if (directFrontmatter || cachedFrontmatter) {
 					originalFrontmatter = { ...(cachedFrontmatter || {}), ...(directFrontmatter || {}) };
+				}
+
+				// Load old item for sync comparison (only if not skipping sync)
+				if (!(item as any)._skipSync) {
+					const parsed = await this.parseFile<PlotItem>(existingFile, { name: '' }, 'item');
+					if (parsed) {
+						oldItem = this.normalizeEntityCustomFields('item', parsed);
+					}
 				}
 			} catch (error) {
 				console.warn(`Error reading existing item file: ${error}`);
@@ -3843,6 +4142,19 @@ export default class StorytellerSuitePlugin extends Plugin {
 		}
 		
 		item.filePath = finalFilePath;
+		
+		// Sync bidirectional relationships (skip if _skipSync flag is set to prevent recursion)
+		if (!(item as any)._skipSync) {
+			try {
+				const { EntitySyncService } = await import('./services/EntitySyncService');
+				const syncService = new EntitySyncService(this);
+				await syncService.syncEntity('item', item, oldItem);
+			} catch (error) {
+				console.error('[savePlotItem] Error syncing relationships:', error);
+				// Don't throw - sync failures shouldn't prevent saves
+			}
+		}
+		
 		this.app.metadataCache.trigger("dataview:refresh-views");
 	}
 
@@ -3878,7 +4190,30 @@ export default class StorytellerSuitePlugin extends Plugin {
 	async deletePlotItem(filePath: string): Promise<void> {
 		const file = this.app.vault.getAbstractFileByPath(normalizePath(filePath));
 		if (file instanceof TFile) {
+			// Get entity ID before deletion for cleanup
+			let itemId: string | undefined;
+			try {
+				const item = await this.parseFile<PlotItem>(file, { name: '' }, 'item');
+				if (item) {
+					itemId = item.id || item.name;
+				}
+			} catch (e) {
+				console.warn('Could not parse item before deletion:', e);
+			}
+
 			await this.app.vault.trash(file, true);
+			
+			// Clean up references via EntitySyncService
+			if (itemId) {
+				try {
+					const { EntitySyncService } = await import('./services/EntitySyncService');
+					const syncService = new EntitySyncService(this);
+					await syncService.handleEntityDeletion('item', itemId);
+				} catch (error) {
+					console.error('[deletePlotItem] Error cleaning up references:', error);
+				}
+			}
+			
 			new Notice(`Item file "${file.basename}" moved to trash.`);
 			this.app.metadataCache.trigger("dataview:refresh-views");
 		} else {

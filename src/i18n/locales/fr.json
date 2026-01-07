@@ -773,8 +773,6 @@
   "mapSettings": "Paramètres de la carte",
   "enableFrontmatterMarkers": "Activer les marqueurs frontmatter",
   "enableFrontmatterMarkersDesc": "Générer automatiquement des marqueurs à partir de notes avec location ou mapmarkers dans le frontmatter",
-  "enableDataViewMarkers": "Activer les marqueurs DataView",
-  "enableDataViewMarkersDesc": "Générer automatiquement des marqueurs à partir de requêtes DataView (nécessite le plugin DataView)",
   "tutorialWelcome": "Bienvenue dans Storyteller Suite !",
   "tutorialWelcomeDesc": "Ce plugin vous aide à organiser et gérer tous les aspects de vos histoires. Voici comment commencer :",
   "tutorialTip": "Astuce : Cliquez sur n'importe quelle section ci-dessous pour développer les instructions détaillées et les exemples.",

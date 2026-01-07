@@ -71,15 +71,26 @@ export class MapManager {
 
     /**
      * Get maps linked to a specific entity
+     * Now supports all entity types uniformly
      */
-    async getMapsForEntity(entityType: 'location' | 'character' | 'event' | 'item' | 'group', entityName: string): Promise<Map[]> {
+    async getMapsForEntity(
+        entityType: 'location' | 'character' | 'event' | 'item' | 'group' | 'culture' | 'economy' | 'magicsystem' | 'scene' | 'reference',
+        entityName: string
+    ): Promise<Map[]> {
         const maps = await this.listMaps();
-        const fieldMap: Record<typeof entityType, keyof Map> = {
+        
+        // Field mapping for all entity types
+        const fieldMap: Record<string, keyof Map> = {
             location: 'linkedLocations',
             character: 'linkedCharacters',
             event: 'linkedEvents',
             item: 'linkedItems',
-            group: 'linkedGroups'
+            group: 'linkedGroups',
+            culture: 'linkedCultures',
+            economy: 'linkedEconomies',
+            magicsystem: 'linkedMagicSystems',
+            scene: 'linkedScenes',
+            reference: 'linkedReferences'
         };
 
         const field = fieldMap[entityType];
@@ -157,4 +168,3 @@ export class MapManager {
         return lines.join('\n');
     }
 }
-
