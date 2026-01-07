@@ -162,6 +162,8 @@ const removeWikilinksStep: CompileStepDefinition = {
         const removeExternal = context.optionValues.removeExternalLinks === true;
 
         const processText = (text: string): string => {
+            if (!text || typeof text !== 'string') return '';
+            
             let result = text;
             
             // Handle wikilinks: [[link]] or [[link|display]]
@@ -228,6 +230,8 @@ const removeCommentsStep: CompileStepDefinition = {
         const removeHtml = context.optionValues.removeHtmlComments !== false;
 
         const processText = (text: string): string => {
+            if (!text || typeof text !== 'string') return '';
+            
             let result = text;
             
             if (removeMd) {
@@ -267,6 +271,7 @@ const removeStrikethroughsStep: CompileStepDefinition = {
     options: [],
     compile: async (input, context) => {
         const processText = (text: string): string => {
+            if (!text || typeof text !== 'string') return '';
             return text.replace(/~~[^~]+~~/g, '');
         };
 
@@ -651,30 +656,49 @@ const extractContentSectionStep: CompileStepDefinition = {
         const sectionPattern = new RegExp(`^${hashes}\\s+(.+)$`, 'gm');
 
         const extractContent = (text: string): string => {
+            if (!text || typeof text !== 'string') return '';
+            
             // First, strip frontmatter if present
             let content = text.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, '');
             
-            // Find all sections
-            const sections: { header: string; startIndex: number; endIndex: number }[] = [];
+            // Helper to strip markdown formatting from header text for comparison
+            const stripMarkdownFromHeader = (headerText: string): string => {
+                return headerText
+                    .replace(/\*\*([^*]+)\*\*/g, '$1')  // Bold
+                    .replace(/\*([^*]+)\*/g, '$1')     // Italic
+                    .replace(/_([^_]+)_/g, '$1')       // Italic alt
+                    .replace(/`([^`]+)`/g, '$1')        // Code
+                    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // Links
+                    .trim()
+                    .toLowerCase();
+            };
+            
+            // Find all sections at the specified level
+            const sections: { header: string; headerRaw: string; startIndex: number; endIndex: number; headerMatchIndex: number }[] = [];
             let match;
             const regex = new RegExp(`^${hashes}\\s+(.+)$`, 'gm');
             
             while ((match = regex.exec(content)) !== null) {
+                const headerRaw = match[1];
+                const headerClean = stripMarkdownFromHeader(headerRaw);
                 sections.push({
-                    header: match[1].toLowerCase().trim(),
+                    header: headerClean,
+                    headerRaw: headerRaw,
                     startIndex: match.index + match[0].length,
-                    endIndex: content.length // Will be updated
+                    endIndex: content.length, // Will be updated
+                    headerMatchIndex: match.index
                 });
             }
             
-            // Update end indices
+            // Update end indices - find next header at same or higher level
             for (let i = 0; i < sections.length - 1; i++) {
-                // Find the start of the next section header
-                const nextSectionMatch = content.substring(sections[i].startIndex).match(
-                    new RegExp(`\n${hashes}\\s+`)
-                );
-                if (nextSectionMatch) {
-                    sections[i].endIndex = sections[i].startIndex + nextSectionMatch.index!;
+                // Look for next header at same level or higher (smaller number)
+                const searchStart = sections[i].startIndex;
+                const nextHeaderRegex = new RegExp(`\n(#{1,${headerLevel}})\\s+`, 'g');
+                nextHeaderRegex.lastIndex = searchStart;
+                const nextMatch = nextHeaderRegex.exec(content);
+                if (nextMatch) {
+                    sections[i].endIndex = nextMatch.index;
                 }
             }
             
@@ -683,17 +707,24 @@ const extractContentSectionStep: CompileStepDefinition = {
                 const contentParts: string[] = [];
                 
                 for (const section of sections) {
-                    const headerLower = section.header;
+                    // Use exact match or word boundary to avoid false positives
+                    // e.g., "Content" should match "Content" but not "Content Warning"
+                    const isContentSection = contentHeaders.some(ch => {
+                        const chLower = ch.toLowerCase();
+                        // Exact match
+                        if (section.header === chLower) return true;
+                        // Word boundary match (starts with the header followed by space/end)
+                        const wordBoundaryRegex = new RegExp(`^${chLower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:\\s|$)`, 'i');
+                        return wordBoundaryRegex.test(section.header);
+                    });
                     
-                    // Check if this is a content section
-                    const isContentSection = contentHeaders.some(ch => 
-                        headerLower === ch || headerLower.includes(ch)
-                    );
-                    
-                    // Check if this is an excluded section
-                    const isExcludedSection = excludeHeaders.some(eh => 
-                        headerLower === eh || headerLower.includes(eh)
-                    );
+                    // Check if this is an excluded section (same logic)
+                    const isExcludedSection = excludeHeaders.some(eh => {
+                        const ehLower = eh.toLowerCase();
+                        if (section.header === ehLower) return true;
+                        const wordBoundaryRegex = new RegExp(`^${ehLower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:\\s|$)`, 'i');
+                        return wordBoundaryRegex.test(section.header);
+                    });
                     
                     if (isContentSection && !isExcludedSection) {
                         const sectionContent = content
@@ -714,17 +745,20 @@ const extractContentSectionStep: CompileStepDefinition = {
             if (fallbackToAll) {
                 let result = content;
                 
-                // Remove excluded sections
-                for (const section of sections) {
-                    const isExcluded = excludeHeaders.some(eh => 
-                        section.header === eh || section.header.includes(eh)
-                    );
+                // Remove excluded sections (in reverse order to preserve indices)
+                for (let i = sections.length - 1; i >= 0; i--) {
+                    const section = sections[i];
+                    const isExcluded = excludeHeaders.some(eh => {
+                        const ehLower = eh.toLowerCase();
+                        if (section.header === ehLower) return true;
+                        const wordBoundaryRegex = new RegExp(`^${ehLower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:\\s|$)`, 'i');
+                        return wordBoundaryRegex.test(section.header);
+                    });
+                    
                     if (isExcluded) {
-                        // Build pattern to match this section and its content
-                        const sectionText = content.substring(
-                            content.lastIndexOf('\n', content.indexOf(section.header)) + 1,
-                            section.endIndex
-                        );
+                        // Remove from header match to end index
+                        const headerLineEnd = section.headerMatchIndex + hashes.length + 1 + section.headerRaw.length;
+                        const sectionText = content.substring(section.headerMatchIndex, section.endIndex);
                         result = result.replace(sectionText, '');
                     }
                 }
@@ -739,7 +773,7 @@ const extractContentSectionStep: CompileStepDefinition = {
 
         return scenes.map(scene => ({
             ...scene,
-            contents: extractContent(scene.contents)
+            contents: extractContent(scene.contents || '')
         }));
     }
 };
@@ -803,29 +837,46 @@ const extractBeatSheetStep: CompileStepDefinition = {
         const hashes = '#'.repeat(headerLevel);
 
         const extractBeats = (text: string, sceneName: string): string => {
+            if (!text || typeof text !== 'string') return emptyBeatText || '';
+            
             // Strip frontmatter
             let content = text.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, '');
             
-            // Find all sections
+            // Helper to strip markdown formatting from header text
+            const stripMarkdownFromHeader = (headerText: string): string => {
+                return headerText
+                    .replace(/\*\*([^*]+)\*\*/g, '$1')
+                    .replace(/\*([^*]+)\*/g, '$1')
+                    .replace(/_([^_]+)_/g, '$1')
+                    .replace(/`([^`]+)`/g, '$1')
+                    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+                    .trim()
+                    .toLowerCase();
+            };
+            
+            // Find all sections at the specified level
             const sections: { header: string; startIndex: number; endIndex: number }[] = [];
             const regex = new RegExp(`^${hashes}\\s+(.+)$`, 'gm');
             let match;
             
             while ((match = regex.exec(content)) !== null) {
+                const headerRaw = match[1];
+                const headerClean = stripMarkdownFromHeader(headerRaw);
                 sections.push({
-                    header: match[1].toLowerCase().trim(),
+                    header: headerClean,
                     startIndex: match.index + match[0].length,
                     endIndex: content.length
                 });
             }
             
-            // Update end indices
+            // Update end indices - find next header at same or higher level
             for (let i = 0; i < sections.length - 1; i++) {
-                const nextSectionMatch = content.substring(sections[i].startIndex).match(
-                    new RegExp(`\n${hashes}\\s+`)
-                );
-                if (nextSectionMatch) {
-                    sections[i].endIndex = sections[i].startIndex + nextSectionMatch.index!;
+                const searchStart = sections[i].startIndex;
+                const nextHeaderRegex = new RegExp(`\n(#{1,${headerLevel}})\\s+`, 'g');
+                nextHeaderRegex.lastIndex = searchStart;
+                const nextMatch = nextHeaderRegex.exec(content);
+                if (nextMatch) {
+                    sections[i].endIndex = nextMatch.index;
                 }
             }
             
@@ -833,9 +884,15 @@ const extractBeatSheetStep: CompileStepDefinition = {
             const beatParts: string[] = [];
             
             for (const section of sections) {
-                const isBeatSection = beatHeaders.some(bh => 
-                    section.header === bh || section.header.includes(bh)
-                );
+                // Use word boundary matching to avoid false positives
+                const isBeatSection = beatHeaders.some(bh => {
+                    const bhLower = bh.toLowerCase();
+                    // Exact match
+                    if (section.header === bhLower) return true;
+                    // Word boundary match
+                    const wordBoundaryRegex = new RegExp(`^${bhLower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:\\s|$)`, 'i');
+                    return wordBoundaryRegex.test(section.header);
+                });
                 
                 if (isBeatSection) {
                     const sectionContent = content
@@ -852,12 +909,12 @@ const extractBeatSheetStep: CompileStepDefinition = {
             
             if (beatParts.length > 0) {
                 if (includeSceneName) {
-                    result = sceneNameFormat.replace(/\$name/g, sceneName) + '\n\n';
+                    result = sceneNameFormat.replace(/\$name/g, sceneName || 'Untitled Scene') + '\n\n';
                 }
                 result += beatParts.join('\n\n');
             } else if (emptyBeatText) {
                 if (includeSceneName) {
-                    result = sceneNameFormat.replace(/\$name/g, sceneName) + '\n\n';
+                    result = sceneNameFormat.replace(/\$name/g, sceneName || 'Untitled Scene') + '\n\n';
                 }
                 result += emptyBeatText;
             }
@@ -867,8 +924,8 @@ const extractBeatSheetStep: CompileStepDefinition = {
 
         return scenes.map(scene => ({
             ...scene,
-            contents: extractBeats(scene.contents, scene.name)
-        })).filter(scene => scene.contents.trim().length > 0);
+            contents: extractBeats(scene.contents || '', scene.name || 'Untitled Scene')
+        })).filter(scene => scene.contents && scene.contents.trim().length > 0);
     }
 };
 
@@ -925,6 +982,8 @@ const cleanContentStep: CompileStepDefinition = {
         const normalizeWs = context.optionValues.normalizeWhitespace !== false;
 
         const cleanText = (text: string): string => {
+            if (!text || typeof text !== 'string') return '';
+            
             let result = text;
 
             if (removeCodeBlocks) {
@@ -1528,6 +1587,84 @@ const customRegexStep: CompileStepDefinition = {
 };
 
 // ============================================================
+// Strip Framework Headers Step
+// ============================================================
+const stripFrameworkHeadersStep: CompileStepDefinition = {
+    id: 'strip-framework-headers',
+    name: 'Strip Framework Headers',
+    description: 'Removes framework/tool headers like "Content", "Beat Sheet", etc. that are internal to the plugin structure',
+    availableKinds: ['scene', 'manuscript'],
+    options: [
+        {
+            id: 'frameworkHeaders',
+            name: 'Framework Headers to Remove',
+            description: 'Comma-separated list of headers to strip (e.g., "Content,Beat Sheet,Notes")',
+            type: 'text',
+            default: 'Content,Beat Sheet,Beats,Notes,Outline,Summary,Synopsis,Research,Character Bible,Worldbuilding,Meta'
+        },
+        {
+            id: 'headerLevel',
+            name: 'Header Level',
+            description: 'The markdown header level to check (1-6)',
+            type: 'number',
+            default: 2
+        },
+        {
+            id: 'caseSensitive',
+            name: 'Case Sensitive',
+            description: 'Match headers case-sensitively',
+            type: 'boolean',
+            default: false
+        }
+    ],
+    compile: async (input, context) => {
+        const frameworkHeaders = ((context.optionValues.frameworkHeaders as string) || 'Content,Beat Sheet')
+            .split(',')
+            .map(h => h.trim())
+            .filter(h => h.length > 0);
+        const headerLevel = Math.max(1, Math.min(6, (context.optionValues.headerLevel as number) || 2));
+        const caseSensitive = context.optionValues.caseSensitive === true;
+        
+        const hashes = '#'.repeat(headerLevel);
+        
+        const stripHeaders = (text: string): string => {
+            if (!text || typeof text !== 'string') return '';
+            
+            let result = text;
+            
+            for (const header of frameworkHeaders) {
+                // Escape special regex characters
+                const escapedHeader = header.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                // Match header exactly, allowing for optional trailing whitespace and markdown formatting
+                // Also handle headers that might have markdown formatting inside them
+                const pattern = caseSensitive 
+                    ? new RegExp(`^${hashes}\\s+${escapedHeader}(?:\\s*\\*\\*.*?\\*\\*)?(?:\\s*\\*.*?\\*)?(?:\\s*_.*?_)?\\s*$\\n?`, 'gm')
+                    : new RegExp(`^${hashes}\\s+${escapedHeader}(?:\\s*\\*\\*.*?\\*\\*)?(?:\\s*\\*.*?\\*)?(?:\\s*_.*?_)?\\s*$\\n?`, 'gmi');
+                
+                result = result.replace(pattern, '');
+            }
+            
+            // Clean up multiple consecutive newlines
+            result = result.replace(/\n{3,}/g, '\n\n');
+            return result.trim();
+        };
+        
+        if (context.kind === 'scene') {
+            const scenes = input as SceneCompileInput[];
+            return scenes.map(scene => ({
+                ...scene,
+                contents: stripHeaders(scene.contents || '')
+            }));
+        } else {
+            const manuscript = input as ManuscriptCompileInput;
+            return {
+                contents: stripHeaders(manuscript.contents || '')
+            };
+        }
+    }
+};
+
+// ============================================================
 // Export all built-in steps
 // ============================================================
 export const builtInSteps: CompileStepDefinition[] = [
@@ -1548,6 +1685,7 @@ export const builtInSteps: CompileStepDefinition[] = [
     applyTemplateStep,
     convertToPlainTextStep,
     normalizeSceneSeparatorsStep,
+    stripFrameworkHeadersStep,
     exportMarkdownStep,
     exportHtmlStep,
     customRegexStep
@@ -1572,6 +1710,7 @@ export {
     applyTemplateStep,
     convertToPlainTextStep,
     normalizeSceneSeparatorsStep,
+    stripFrameworkHeadersStep,
     exportMarkdownStep,
     exportHtmlStep,
     customRegexStep

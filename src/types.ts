@@ -877,6 +877,21 @@ export interface StoryMap {
     /** Names/IDs of groups featured on this map */
     linkedGroups?: string[];
     
+    /** Names/IDs of cultures featured on this map */
+    linkedCultures?: string[];
+    
+    /** Names/IDs of economies featured on this map */
+    linkedEconomies?: string[];
+    
+    /** Names/IDs of magic systems featured on this map */
+    linkedMagicSystems?: string[];
+    
+    /** Names/IDs of scenes featured on this map */
+    linkedScenes?: string[];
+    
+    /** Names/IDs of references featured on this map */
+    linkedReferences?: string[];
+    
     /** Map type: 'image' for image-based maps, 'real' for real-world maps */
     type?: 'image' | 'real';
     
@@ -2076,6 +2091,7 @@ export type CompileStepType =
     | 'apply-template'
     | 'convert-to-plain-text'
     | 'normalize-scene-separators'
+    | 'strip-framework-headers'
     | 'export-markdown'
     | 'export-html'
     | 'custom-regex'
@@ -2259,4 +2275,3 @@ export interface DailyWritingStats {
     /** Whether daily goal was met */
     goalMet: boolean;
 }
-

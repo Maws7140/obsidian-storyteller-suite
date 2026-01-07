@@ -186,6 +186,7 @@ export class LeafletRenderer extends Component {
 
     /**
      * Setup ResizeObserver to watch for container size changes
+     * Also listens to Obsidian workspace resize events as fallback
      * Note: MapView also has a ResizeObserver, so we use a flag to prevent conflicts
      */
     private setupResizeObserver(): void {
@@ -198,29 +199,46 @@ export class LeafletRenderer extends Component {
         let lastWidth = 0;
         let lastHeight = 0;
 
-        this.resizeObserver = new ResizeObserver((entries) => {
+        const handleResize = () => {
             if (!this.map || !this.isInitialized) return;
             
-            // Only react to actual size changes, not just observer triggers
-            const entry = entries[0];
-            if (!entry) return;
-            
-            const { width, height } = entry.contentRect;
-            if (width === lastWidth && height === lastHeight) return;
-            
-            lastWidth = width;
-            lastHeight = height;
+            // Use requestAnimationFrame to ensure DOM has updated
+            requestAnimationFrame(() => {
+                if (!this.map || !this.isInitialized) return;
+                
+                const rect = this.containerEl.getBoundingClientRect();
+                const { width, height } = rect;
+                
+                // Only react to actual size changes
+                if (width === lastWidth && height === lastHeight) return;
+                
+                lastWidth = width;
+                lastHeight = height;
 
-            // Debounce to prevent rapid fire during animations
-            if (resizeTimeout) {
-                clearTimeout(resizeTimeout);
-            }
-            resizeTimeout = setTimeout(() => {
-                this.invalidateSize();
-            }, 100);
+                // Debounce to prevent rapid fire during animations
+                if (resizeTimeout) {
+                    clearTimeout(resizeTimeout);
+                }
+                resizeTimeout = setTimeout(() => {
+                    this.invalidateSizeWithTileRefresh();
+                }, 150);
+            });
+        };
+
+        this.resizeObserver = new ResizeObserver((entries) => {
+            handleResize();
         });
 
         this.resizeObserver.observe(this.containerEl);
+
+        // CRITICAL FIX: Also listen to Obsidian workspace resize events
+        // This catches sidebar open/close events that ResizeObserver might miss
+        this.registerEvent(this.plugin.app.workspace.on('resize', () => {
+            // Delay slightly to let Obsidian finish its layout update
+            setTimeout(() => {
+                handleResize();
+            }, 100);
+        }));
     }
 
     /**
@@ -454,31 +472,44 @@ export class LeafletRenderer extends Component {
     /**
      * Initialize image map with a resolved file path
      * Separated to allow direct path initialization as fallback
+     * For map images, tiles are required - will generate if missing
      */
     private async initializeImageMapWithPath(imagePath: string): Promise<void> {
         try {
             // Check if tiles exist for this image
-            const tileInfo = await this.checkForTiles(imagePath);
+            let tileInfo = await this.checkForTiles(imagePath);
 
             if (tileInfo) {
                 // Tiles found - use tile-based rendering
                 console.log('[LeafletRenderer] Tiles found, using tiled rendering');
                 await this.initializeTiledMap(imagePath, tileInfo);
             } else {
-                // No tiles - use standard imageOverlay
-                console.log('[LeafletRenderer] No tiles found, using standard imageOverlay');
-                await this.initializeStandardImageMap(imagePath);
+                // No tiles found - generate them first (map images require tiles)
+                console.log('[LeafletRenderer] No tiles found, generating tiles for map image...');
+                new Notice('Generating tiles for map image. This may take a moment...');
+                
+                try {
+                    // Force generate tiles and wait for completion
+                    await this.plugin.forceGenerateTilesForMap(imagePath);
+                    
+                    // Re-check for tiles after generation
+                    tileInfo = await this.checkForTiles(imagePath);
+                    
+                    if (tileInfo) {
+                        console.log('[LeafletRenderer] Tiles generated successfully, using tiled rendering');
+                        await this.initializeTiledMap(imagePath, tileInfo);
+                    } else {
+                        throw new Error('Tile generation completed but tiles not found');
+                    }
+                } catch (tileError) {
+                    console.error('[LeafletRenderer] Failed to generate tiles:', tileError);
+                    throw new Error(`Failed to generate required tiles for map: ${tileError.message}. Map images require tiles to function properly.`);
+                }
             }
         } catch (error) {
             console.error('[LeafletRenderer] Map initialization failed:', error);
-            // Try standard rendering as last resort
-            try {
-                console.log('[LeafletRenderer] Attempting fallback to standard image overlay...');
-                await this.initializeStandardImageMap(imagePath);
-            } catch (fallbackError) {
-                console.error('[LeafletRenderer] Fallback also failed:', fallbackError);
-                throw new Error(`Failed to render image map: ${error.message}`);
-            }
+            // Don't fallback to standard image overlay - map images must use tiles
+            throw new Error(`Failed to initialize map: ${error.message}`);
         }
     }
 
@@ -819,15 +850,39 @@ export class LeafletRenderer extends Component {
     /**
      * Initialize a real-world map
      * Following standard Leaflet pattern: L.map() + L.tileLayer()
+     * 
+     * IMPORTANT:
+     * - If a saved view state exists for this map, we should start from that
+     *   position instead of the default (London) center. This ensures that
+     *   reopening the world map returns the user to their last viewed location.
      */
     private async initializeRealMap(): Promise<void> {
-        // Use default coordinates if not provided (London, UK as a reasonable default)
-        const center: [number, number] = [
-            this.params.lat ?? 51.5074,
-            this.params.long ?? -0.1278
-        ];
+        // Determine map ID so we can check for a saved view state
+        const mapId = (this.params as any).mapId || this.params.id;
 
-        console.log('[LeafletRenderer] Initializing real-world map at', center);
+        // Use saved view state if available; otherwise fall back to defaults
+        const savedState = mapId ? this.plugin.getMapViewState(mapId) : null;
+
+        let initialCenter: [number, number];
+        let initialZoom: number;
+
+        if (savedState) {
+            initialCenter = [savedState.center.lat, savedState.center.lng];
+            initialZoom = savedState.zoom;
+            console.log('[LeafletRenderer] Initializing real-world map from saved view state', {
+                mapId,
+                center: initialCenter,
+                zoom: initialZoom
+            });
+        } else {
+            // Use default coordinates if not provided (London, UK as a reasonable default)
+            initialCenter = [
+                this.params.lat ?? 51.5074,
+                this.params.long ?? -0.1278
+            ];
+            initialZoom = this.params.defaultZoom ?? 13;
+            console.log('[LeafletRenderer] Initializing real-world map at default center', initialCenter, 'zoom', initialZoom);
+        }
 
         // Ensure container has an ID for Leaflet
         if (!this.containerEl.id) {
@@ -859,7 +914,7 @@ export class LeafletRenderer extends Component {
             inertiaDeceleration: 3000,
             inertiaMaxSpeed: 1500,
             easeLinearity: 0.25
-        }).setView(center, this.params.defaultZoom ?? 13);
+        }).setView(initialCenter, initialZoom);
 
         // Set zoom limits
         if (this.params.minZoom !== undefined) this.map.setMinZoom(this.params.minZoom);
@@ -1018,6 +1073,8 @@ export class LeafletRenderer extends Component {
         }
 
         // Default marker SVG based on type
+        // Supports all entity types: location, character, event, item, group,
+        // culture, economy, magicsystem, scene, reference
         switch (markerDef.type) {
             case 'location':
                 return this.createLocationIcon(color);
@@ -1029,6 +1086,16 @@ export class LeafletRenderer extends Component {
                 return this.createItemIcon(color);
             case 'group':
                 return this.createGroupIcon(color);
+            case 'culture':
+                return this.createCultureIcon(color);
+            case 'economy':
+                return this.createEconomyIcon(color);
+            case 'magicsystem':
+                return this.createMagicSystemIcon(color);
+            case 'scene':
+                return this.createSceneIcon(color);
+            case 'reference':
+                return this.createReferenceIcon(color);
             default:
                 return this.createDefaultIcon(color);
         }
@@ -1125,6 +1192,80 @@ export class LeafletRenderer extends Component {
                       stroke-width="1.5"
                       stroke-linecap="round"
                       stroke-linejoin="round"/>
+            </svg>
+        `;
+    }
+
+    /**
+     * Create culture marker icon (theater masks)
+     */
+    private createCultureIcon(color: string): string {
+        return `
+            <svg width="32" height="32" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="9" cy="10" r="6" fill="${color}" stroke="#fff" stroke-width="1.5"/>
+                <circle cx="7" cy="9" r="1" fill="#fff"/>
+                <circle cx="11" cy="9" r="1" fill="#fff"/>
+                <path d="M7 12c1 1 3 1 4 0" stroke="#fff" stroke-width="1" fill="none" stroke-linecap="round"/>
+                <circle cx="15" cy="12" r="5" fill="${color}" stroke="#fff" stroke-width="1.5" opacity="0.8"/>
+                <circle cx="13.5" cy="11" r="0.8" fill="#fff"/>
+                <circle cx="16.5" cy="11" r="0.8" fill="#fff"/>
+                <path d="M14 14c0.8-0.8 2.2-0.8 3 0" stroke="#fff" stroke-width="1" fill="none" stroke-linecap="round"/>
+            </svg>
+        `;
+    }
+
+    /**
+     * Create economy marker icon (coin/currency)
+     */
+    private createEconomyIcon(color: string): string {
+        return `
+            <svg width="32" height="32" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="12" cy="12" r="9" fill="${color}" stroke="#fff" stroke-width="2"/>
+                <text x="12" y="16" text-anchor="middle" fill="#fff" font-size="10" font-weight="bold">$</text>
+            </svg>
+        `;
+    }
+
+    /**
+     * Create magic system marker icon (sparkles/star)
+     */
+    private createMagicSystemIcon(color: string): string {
+        return `
+            <svg width="32" height="32" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path d="M12 2l2.4 7.4h7.6l-6.2 4.5 2.4 7.4-6.2-4.5-6.2 4.5 2.4-7.4-6.2-4.5h7.6z"
+                      fill="${color}"
+                      stroke="#fff"
+                      stroke-width="1.5"
+                      stroke-linejoin="round"/>
+                <circle cx="12" cy="10" r="2" fill="#fff"/>
+            </svg>
+        `;
+    }
+
+    /**
+     * Create scene marker icon (clapperboard)
+     */
+    private createSceneIcon(color: string): string {
+        return `
+            <svg width="32" height="32" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <rect x="3" y="8" width="18" height="12" rx="2" fill="${color}" stroke="#fff" stroke-width="1.5"/>
+                <path d="M3 8l3-4h12l3 4" fill="${color}" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"/>
+                <line x1="6" y1="4" x2="8" y2="8" stroke="#fff" stroke-width="1.5"/>
+                <line x1="11" y1="4" x2="13" y2="8" stroke="#fff" stroke-width="1.5"/>
+                <line x1="16" y1="4" x2="18" y2="8" stroke="#fff" stroke-width="1.5"/>
+            </svg>
+        `;
+    }
+
+    /**
+     * Create reference marker icon (book)
+     */
+    private createReferenceIcon(color: string): string {
+        return `
+            <svg width="32" height="32" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path d="M4 4h6c1 0 2 1 2 2v14c0-1-1-2-2-2H4V4z" fill="${color}" stroke="#fff" stroke-width="1.5"/>
+                <path d="M20 4h-6c-1 0-2 1-2 2v14c0-1 1-2 2-2h6V4z" fill="${color}" stroke="#fff" stroke-width="1.5"/>
+                <line x1="12" y1="6" x2="12" y2="18" stroke="#fff" stroke-width="1"/>
             </svg>
         `;
     }
@@ -1416,6 +1557,87 @@ export class LeafletRenderer extends Component {
                 }
             });
         }
+    }
+
+    /**
+     * Invalidate map size with aggressive tile refresh
+     * Used when sidebars open/close to prevent grey screen
+     * Forces tiles to re-render even if they've already rendered
+     */
+    private invalidateSizeWithTileRefresh(): void {
+        if (!this.map || !this.isInitialized) return;
+
+        console.log('[LeafletRenderer] Invalidating size with tile refresh after resize');
+
+        // Use requestAnimationFrame to ensure DOM has fully updated
+        requestAnimationFrame(() => {
+            if (!this.map) return;
+
+            // Step 1: Invalidate the map size to recalculate dimensions
+            this.map.invalidateSize({ animate: false });
+
+            // Step 2: Force all tile layers to update and be visible
+            this.map.eachLayer((layer: any) => {
+                if (layer._url || layer.getTileUrl || layer instanceof L.TileLayer) {
+                    // Force the tile layer to recalculate visible tiles
+                    if (layer._resetView) {
+                        layer._resetView();
+                    }
+                    if (layer._update) {
+                        layer._update();
+                    }
+                    if (layer.redraw) {
+                        layer.redraw();
+                    }
+                    
+                    // Force visibility on tile container
+                    const container = layer.getContainer?.();
+                    if (container) {
+                        container.style.opacity = '1';
+                        container.style.visibility = 'visible';
+                        container.style.display = 'block';
+                        
+                        // Force visibility on all tile images
+                        const tiles = container.querySelectorAll('img');
+                        tiles.forEach((tile: HTMLElement) => {
+                            tile.style.opacity = '1';
+                            tile.style.visibility = 'visible';
+                        });
+                    }
+                }
+            });
+
+            // Step 3: Force tile pane visibility
+            const tilePane = this.map.getPane('tilePane');
+            if (tilePane) {
+                tilePane.style.opacity = '1';
+                tilePane.style.visibility = 'visible';
+                tilePane.style.display = 'block';
+            }
+
+            // Step 4: Fire events to trigger Leaflet's internal tile loading
+            this.map.fire('moveend');
+            this.map.fire('zoomend');
+
+            // Step 5: Trigger a view update to force tile recalculation
+            // Use a tiny zoom change (invisible to user) to trigger full update cycle
+            const currentZoom = this.map.getZoom();
+            const currentCenter = this.map.getCenter();
+            
+            setTimeout(() => {
+                if (this.map && this.map.getZoom() === currentZoom) {
+                    // Only do micro-zoom if zoom hasn't changed (user didn't zoom manually)
+                    this.map.setView(currentCenter, currentZoom + 0.0001, { animate: false });
+                    
+                    setTimeout(() => {
+                        if (this.map) {
+                            // Return to original zoom
+                            this.map.setView(currentCenter, currentZoom, { animate: false });
+                        }
+                    }, 50);
+                }
+            }, 100);
+        });
     }
 
     /**
