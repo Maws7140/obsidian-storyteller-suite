@@ -1534,6 +1534,10 @@ export class MapView extends ItemView {
                         relationship: 'located here'
                     });
 
+                    // CRITICAL FIX: Also update the entity's frontmatter with map coordinates
+                    // This allows EntityMarkerDiscovery to find and render the entity directly on the map
+                    await this.updateEntityMapBinding(selectedEntity, entityType, mapId, coordinates);
+
                     if (isNewLocation) {
                         new Notice(`${entityTypeName} "${selectedEntity.name}" added to new location on map`);
                     } else {
@@ -1554,6 +1558,60 @@ export class MapView extends ItemView {
 
             new Notice(`Click map to place ${selectedEntity.name}`);
         }).open();
+    }
+
+    /**
+     * Update entity's frontmatter with map binding information
+     * This ensures EntityMarkerDiscovery can find and render the entity directly on the map
+     */
+    private async updateEntityMapBinding(
+        entity: any,
+        entityType: 'culture' | 'economy' | 'magicsystem' | 'group' | 'scene' | 'reference',
+        mapId: string,
+        coordinates: [number, number]
+    ): Promise<void> {
+        // Get the entity's file path
+        const filePath = entity.filePath;
+        if (!filePath) {
+            console.warn(`[MapView] Entity ${entity.name} has no filePath, cannot update map binding`);
+            return;
+        }
+
+        const file = this.app.vault.getAbstractFileByPath(filePath);
+        if (!(file instanceof TFile)) {
+            console.warn(`[MapView] Could not find file for entity ${entity.name} at ${filePath}`);
+            return;
+        }
+
+        try {
+            // Update the entity's frontmatter with map coordinates
+            await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
+                // Set mapId if not already set, or add to relatedMapIds
+                if (!frontmatter.mapId) {
+                    frontmatter.mapId = mapId;
+                } else if (frontmatter.mapId !== mapId) {
+                    // Add to relatedMapIds if different from primary mapId
+                    if (!frontmatter.relatedMapIds) {
+                        frontmatter.relatedMapIds = [];
+                    }
+                    if (!frontmatter.relatedMapIds.includes(mapId)) {
+                        frontmatter.relatedMapIds.push(mapId);
+                    }
+                }
+
+                // Set map coordinates
+                frontmatter.mapCoordinates = coordinates;
+
+                // Generate a marker ID if not present
+                if (!frontmatter.markerId) {
+                    frontmatter.markerId = `${entityType}-${entity.id || entity.name}-${Date.now()}`;
+                }
+            });
+
+            console.log(`[MapView] Updated ${entityType} "${entity.name}" with mapId=${mapId}, coordinates=[${coordinates}]`);
+        } catch (error) {
+            console.error(`[MapView] Error updating entity map binding:`, error);
+        }
     }
 
     /**
@@ -2238,11 +2296,78 @@ export class MapView extends ItemView {
     /**
      * Setup resize observer for responsive layout
      * Uses debouncing to prevent rapid invalidateSize calls
+     * Also listens to Obsidian workspace resize events as fallback
      */
     private setupResizeObserver(): void {
         if (!this.mapContainer) return;
 
         let resizeTimeout: NodeJS.Timeout | null = null;
+
+        const handleResize = () => {
+            // Update leaflet container dimensions to match parent
+            const leafletContainer = this.mapContainer?.querySelector('.leaflet-map-container') as HTMLElement;
+            if (leafletContainer && this.mapContainer) {
+                const rect = this.mapContainer.getBoundingClientRect();
+                if (rect.width > 0 && rect.height > 0) {
+                    leafletContainer.style.width = `${rect.width}px`;
+                    leafletContainer.style.height = `${rect.height}px`;
+                }
+            }
+
+            const map = this.leafletRenderer?.getMap();
+            if (map) {
+                console.log('[MapView] Resize detected, updating map...');
+                // Use requestAnimationFrame to ensure DOM has updated
+                requestAnimationFrame(() => {
+                    if (map) {
+                        map.invalidateSize({ animate: false });
+
+                        // CRITICAL FIX: After resize invalidateSize, force tile layers to update
+                        // Without this, tiles can disappear after initial load or sidebar toggle
+                        const tileLayers: any[] = [];
+                        map.eachLayer((layer: any) => {
+                            if (layer._url || layer.getTileUrl) {
+                                tileLayers.push(layer);
+                            }
+                        });
+
+                        tileLayers.forEach(tileLayer => {
+                            if (tileLayer.redraw) {
+                                tileLayer.redraw();
+                            }
+                            if (tileLayer._update) {
+                                tileLayer._update();
+                            }
+                            if (tileLayer._resetView) {
+                                tileLayer._resetView();
+                            }
+                            
+                            // Force visibility on tile container
+                            const container = tileLayer.getContainer?.();
+                            if (container) {
+                                container.style.opacity = '1';
+                                container.style.visibility = 'visible';
+                                container.style.display = 'block';
+                            }
+                        });
+
+                        // Force tile pane visibility
+                        const tilePane = map.getPane('tilePane');
+                        if (tilePane) {
+                            tilePane.style.opacity = '1';
+                            tilePane.style.visibility = 'visible';
+                            tilePane.style.display = 'block';
+                        }
+
+                        // Fire events to trigger Leaflet's internal tile loading
+                        map.fire('moveend');
+                        map.fire('zoomend');
+
+                        console.log('[MapView] Forced tile layer update after resize');
+                    }
+                });
+            }
+        };
 
         this.resizeObserver = new ResizeObserver((entries) => {
             // Debounce resize events to prevent excessive invalidateSize calls
@@ -2251,50 +2376,25 @@ export class MapView extends ItemView {
             }
 
             resizeTimeout = setTimeout(() => {
-                // Update leaflet container dimensions to match parent
-                const leafletContainer = this.mapContainer?.querySelector('.leaflet-map-container') as HTMLElement;
-                if (leafletContainer && this.mapContainer) {
-                    const rect = this.mapContainer.getBoundingClientRect();
-                    if (rect.width > 0 && rect.height > 0) {
-                        leafletContainer.style.width = `${rect.width}px`;
-                        leafletContainer.style.height = `${rect.height}px`;
-                    }
-                }
-
-                const map = this.leafletRenderer?.getMap();
-                if (map) {
-                    console.log('[MapView] ResizeObserver triggered, updating map...');
-                    // Use requestAnimationFrame to ensure DOM has updated
-                    requestAnimationFrame(() => {
-                        if (map) {
-                            map.invalidateSize({ animate: false });
-
-                            // CRITICAL FIX: After resize invalidateSize, force tile layers to update
-                            // Without this, tiles can disappear after initial load
-                            const tileLayers: any[] = [];
-                            map.eachLayer((layer: any) => {
-                                if (layer._url || layer.getTileUrl) {
-                                    tileLayers.push(layer);
-                                }
-                            });
-
-                            tileLayers.forEach(tileLayer => {
-                                if (tileLayer.redraw) {
-                                    tileLayer.redraw();
-                                }
-                                if (tileLayer._update) {
-                                    tileLayer._update();
-                                }
-                            });
-
-                            console.log('[MapView] Forced tile layer update after resize');
-                        }
-                    });
-                }
+                handleResize();
             }, 150); // 150ms debounce
         });
 
         this.resizeObserver.observe(this.mapContainer);
+
+        // CRITICAL FIX: Also listen to Obsidian workspace resize events
+        // This catches sidebar open/close events that ResizeObserver might miss
+        this.registerEvent(this.app.workspace.on('resize', () => {
+            // Delay slightly to let Obsidian finish its layout update
+            setTimeout(() => {
+                if (resizeTimeout) {
+                    clearTimeout(resizeTimeout);
+                }
+                resizeTimeout = setTimeout(() => {
+                    handleResize();
+                }, 150);
+            }, 100);
+        }));
     }
 
     async onClose(): Promise<void> {

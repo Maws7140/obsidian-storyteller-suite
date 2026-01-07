@@ -773,8 +773,6 @@
   "mapSettings": "Configuración de mapa",
   "enableFrontmatterMarkers": "Habilitar marcadores de frontmatter",
   "enableFrontmatterMarkersDesc": "Generar automáticamente marcadores desde notas con ubicación o mapmarkers en frontmatter",
-  "enableDataViewMarkers": "Habilitar marcadores de DataView",
-  "enableDataViewMarkersDesc": "Generar automáticamente marcadores desde consultas de DataView (requiere el complemento DataView)",
   "tutorialWelcome": "¡Bienvenido a Storyteller Suite!",
   "tutorialWelcomeDesc": "Este complemento te ayuda a organizar y gestionar todos los aspectos de tus historias. Aquí te explicamos cómo empezar:",
   "tutorialTip": "Consejo: Haz clic en cualquier sección a continuación para expandir instrucciones detalladas y ejemplos.",
