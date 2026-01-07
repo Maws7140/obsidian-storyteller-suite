@@ -261,6 +261,7 @@ export class CharacterModal extends ResponsiveModal {
             this.character.currentLocationId,
             async (locationId: string) => {
                 this.character.currentLocationId = locationId || undefined;
+                // Location sync will be handled automatically by EntitySyncService when character is saved
                 if (locationId) {
                     // Add to location history if moving to a new location
                     if (!this.character.locationHistory) {

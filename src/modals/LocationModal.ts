@@ -455,6 +455,13 @@ export class LocationModal extends ResponsiveModal {
                             entityRef.entityType as 'character' | 'event' | 'item',
                             this.location.id || this.location.name
                         );
+                        // Reload location from plugin to get updated entityRefs
+                        const updatedLocation = await locationService.getLocation(
+                            this.location.id || this.location.name
+                        );
+                        if (updatedLocation) {
+                            this.location = updatedLocation;
+                        }
                         this.refresh();
                     });
                 }
@@ -478,6 +485,13 @@ export class LocationModal extends ResponsiveModal {
                                 this.location.id || this.location.name,
                                 { entityId, entityType: 'character', relationship }
                             );
+                            // Reload location from plugin to get updated entityRefs
+                            const updatedLocation = await locationService.getLocation(
+                                this.location.id || this.location.name
+                            );
+                            if (updatedLocation) {
+                                this.location = updatedLocation;
+                            }
                             this.refresh();
                         }
                     ).open();
@@ -496,6 +510,13 @@ export class LocationModal extends ResponsiveModal {
                                 this.location.id || this.location.name,
                                 { entityId, entityType: 'event', relationship }
                             );
+                            // Reload location from plugin to get updated entityRefs
+                            const updatedLocation = await locationService.getLocation(
+                                this.location.id || this.location.name
+                            );
+                            if (updatedLocation) {
+                                this.location = updatedLocation;
+                            }
                             this.refresh();
                         }
                     ).open();
@@ -514,6 +535,13 @@ export class LocationModal extends ResponsiveModal {
                                 this.location.id || this.location.name,
                                 { entityId, entityType: 'item', relationship }
                             );
+                            // Reload location from plugin to get updated entityRefs
+                            const updatedLocation = await locationService.getLocation(
+                                this.location.id || this.location.name
+                            );
+                            if (updatedLocation) {
+                                this.location = updatedLocation;
+                            }
                             this.refresh();
                         }
                     ).open();

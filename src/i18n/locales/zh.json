@@ -774,8 +774,6 @@
   "mapSettings": "地图设置",
   "enableFrontmatterMarkers": "启用前置元数据标记",
   "enableFrontmatterMarkersDesc": "从带有位置或地图标记的前置元数据的笔记中自动生成标记",
-  "enableDataViewMarkers": "启用数据视图标记",
-  "enableDataViewMarkersDesc": "从数据视图查询中自动生成标记（需要数据视图插件）",
   "tutorialWelcome": "欢迎使用 Storyteller Suite！",
   "tutorialWelcomeDesc": "此插件可帮助您组织和管理故事的所有方面。以下是如何开始：",
   "tutorialTip": "提示：点击下面的任何部分以展开详细说明和示例。",
