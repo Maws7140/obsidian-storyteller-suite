@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.5.6
+
+### Documentation and Tutorial Updates
+- Comprehensive tutorial section updates covering all entity types and features
+- Added tutorial sections for References, Chapters & Scenes, and Maps management
+- Updated file structure documentation to include all entity folders
+- Enhanced custom folders tutorial with complete entity type coverage
+
+### Removed Features
+- Removed deprecated Calendar entity type and all related functionality
+- Removed calendar folder configuration from settings
+- Removed calendar references from tutorials and documentation
+
+### Bug Fixes and Corrections
+- Corrected maps tutorial to remove mention of unsupported "draw layers" feature
+- Updated tutorial content to accurately reflect plugin capabilities
+
 ## 1.5.5
 
 ### New: Map System
