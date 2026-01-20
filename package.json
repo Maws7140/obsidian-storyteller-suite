@@ -1,6 +1,6 @@
 {
 	"name": "storyteller-suite",
-	"version": "1.5.3",
+	"version": "1.5.5",
 	"description": "A comprehensive suite for managing characters, locations, events, and galleries for your novels.",
 	"main": "main.js",
 	"scripts": {
