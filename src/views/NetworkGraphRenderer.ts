@@ -3,10 +3,11 @@
 
 import cytoscape, { Core, NodeSingular, EdgeSingular } from 'cytoscape';
 import StorytellerSuitePlugin from '../main';
-import { GraphFilters, GraphNode, GraphEdge, Character, Location, Event, PlotItem, RelationshipType } from '../types';
+import { GraphFilters, GraphNode, GraphEdge, Character, Location, Event, PlotItem, Culture, Economy, MagicSystem, RelationshipType } from '../types';
 import { 
     extractAllRelationships, 
-    buildBidirectionalEdges, 
+    buildBidirectionalEdges,
+    filterRedundantReciprocalEdges, 
     getRelationshipColor, 
     getEntityShape 
 } from '../utils/GraphUtils';
@@ -107,13 +108,19 @@ export class NetworkGraphRenderer {
         const locations = await this.plugin.listLocations();
         const events = await this.plugin.listEvents();
         const items = await this.plugin.listPlotItems();
+        const cultures = await this.plugin.listCultures();
+        const economies = await this.plugin.listEconomies();
+        const magicSystems = await this.plugin.listMagicSystems();
 
         // Apply filters
         const filteredData = this.applyFiltersToEntities(
             characters,
             locations,
             events,
-            items
+            items,
+            cultures,
+            economies,
+            magicSystems
         );
 
         // Build nodes
@@ -145,6 +152,27 @@ export class NetworkGraphRenderer {
                 type: 'item' as const,
                 data: i,
                 imageUrl: i.profileImagePath ? this.getImageSrc(i.profileImagePath) : undefined
+            })),
+            ...filteredData.cultures.map(c => ({
+                id: c.id || c.name,
+                label: c.name,
+                type: 'culture' as const,
+                data: c,
+                imageUrl: c.profileImagePath ? this.getImageSrc(c.profileImagePath) : undefined
+            })),
+            ...filteredData.economies.map(e => ({
+                id: e.id || e.name,
+                label: e.name,
+                type: 'economy' as const,
+                data: e,
+                imageUrl: e.profileImagePath ? this.getImageSrc(e.profileImagePath) : undefined
+            })),
+            ...filteredData.magicSystems.map(m => ({
+                id: m.id || m.name,
+                label: m.name,
+                type: 'magicsystem' as const,
+                data: m,
+                imageUrl: m.profileImagePath ? this.getImageSrc(m.profileImagePath) : undefined
             }))
         ];
 
@@ -153,11 +181,33 @@ export class NetworkGraphRenderer {
             filteredData.characters,
             filteredData.locations,
             filteredData.events,
-            filteredData.items
+            filteredData.items,
+            filteredData.cultures,
+            filteredData.economies,
+            filteredData.magicSystems
         );
 
         // Build bidirectional edges for certain relationship types
         edges = buildBidirectionalEdges(edges);
+
+        // Build entity map for filtering redundant reciprocal edges
+        const entityMap = new Map<string, GraphNode>();
+        nodes.forEach(node => {
+            entityMap.set(node.id, node);
+        });
+
+        // Filter out redundant reciprocal edges (e.g., "owns"/"owned by", "involved"/"involved")
+        edges = filterRedundantReciprocalEdges(edges, entityMap);
+
+        // Final deduplication pass to ensure no duplicates
+        const edgeMap = new Map<string, GraphEdge>();
+        edges.forEach(edge => {
+            const edgeKey = `${edge.source}-${edge.target}-${edge.relationshipType}-${edge.label || ''}`;
+            if (!edgeMap.has(edgeKey)) {
+                edgeMap.set(edgeKey, edge);
+            }
+        });
+        edges = Array.from(edgeMap.values());
 
         return { nodes, edges };
     }
@@ -167,44 +217,40 @@ export class NetworkGraphRenderer {
         characters: Character[],
         locations: Location[],
         events: Event[],
-        items: PlotItem[]
-    ): { characters: Character[], locations: Location[], events: Event[], items: PlotItem[] } {
+        items: PlotItem[],
+        cultures: Culture[],
+        economies: Economy[],
+        magicSystems: MagicSystem[]
+    ): { characters: Character[], locations: Location[], events: Event[], items: PlotItem[], cultures: Culture[], economies: Economy[], magicSystems: MagicSystem[] } {
         let filteredChars = characters;
         let filteredLocs = locations;
         let filteredEvts = events;
         let filteredItems = items;
+        let filteredCultures = cultures;
+        let filteredEconomies = economies;
+        let filteredMagic = magicSystems;
 
         // Filter by entity types
         // If entityTypes is defined (even if empty array), apply filtering
         if (this.currentFilters.entityTypes !== undefined) {
-            if (!this.currentFilters.entityTypes.includes('character')) {
-                filteredChars = [];
-            }
-            if (!this.currentFilters.entityTypes.includes('location')) {
-                filteredLocs = [];
-            }
-            if (!this.currentFilters.entityTypes.includes('event')) {
-                filteredEvts = [];
-            }
-            if (!this.currentFilters.entityTypes.includes('item')) {
-                filteredItems = [];
-            }
+            if (!this.currentFilters.entityTypes.includes('character')) filteredChars = [];
+            if (!this.currentFilters.entityTypes.includes('location')) filteredLocs = [];
+            if (!this.currentFilters.entityTypes.includes('event')) filteredEvts = [];
+            if (!this.currentFilters.entityTypes.includes('item')) filteredItems = [];
+            if (!this.currentFilters.entityTypes.includes('culture')) filteredCultures = [];
+            if (!this.currentFilters.entityTypes.includes('economy')) filteredEconomies = [];
+            if (!this.currentFilters.entityTypes.includes('magicsystem')) filteredMagic = [];
         }
 
         // Filter by groups
         if (this.currentFilters.groups && this.currentFilters.groups.length > 0) {
-            filteredChars = filteredChars.filter(c => 
-                c.groups && c.groups.some(g => this.currentFilters.groups?.includes(g))
-            );
-            filteredLocs = filteredLocs.filter(l => 
-                l.groups && l.groups.some(g => this.currentFilters.groups?.includes(g))
-            );
-            filteredEvts = filteredEvts.filter(e => 
-                e.groups && e.groups.some(g => this.currentFilters.groups?.includes(g))
-            );
-            filteredItems = filteredItems.filter(i => 
-                i.groups && i.groups.some(g => this.currentFilters.groups?.includes(g))
-            );
+            filteredChars = filteredChars.filter(c => c.groups && c.groups.some(g => this.currentFilters.groups?.includes(g)));
+            filteredLocs = filteredLocs.filter(l => l.groups && l.groups.some(g => this.currentFilters.groups?.includes(g)));
+            filteredEvts = filteredEvts.filter(e => e.groups && e.groups.some(g => this.currentFilters.groups?.includes(g)));
+            filteredItems = filteredItems.filter(i => i.groups && i.groups.some(g => this.currentFilters.groups?.includes(g)));
+            filteredCultures = filteredCultures.filter(c => c.groups && c.groups.some(g => this.currentFilters.groups?.includes(g)));
+            filteredEconomies = filteredEconomies.filter(e => e.groups && e.groups.some(g => this.currentFilters.groups?.includes(g)));
+            filteredMagic = filteredMagic.filter(m => m.groups && m.groups.some(g => this.currentFilters.groups?.includes(g)));
         }
 
         // Filter by timeline (events only)
@@ -228,7 +274,10 @@ export class NetworkGraphRenderer {
             characters: filteredChars,
             locations: filteredLocs,
             events: filteredEvts,
-            items: filteredItems
+            items: filteredItems,
+            cultures: filteredCultures,
+            economies: filteredEconomies,
+            magicSystems: filteredMagic
         };
     }
 
@@ -285,7 +334,7 @@ export class NetworkGraphRenderer {
             })),
             ...edges.map(edge => ({
                 data: {
-                    id: `${edge.source}-${edge.target}`,
+                    id: `${edge.source}-${edge.target}-${edge.relationshipType}-${edge.label || ''}`,
                     source: edge.source,
                     target: edge.target,
                     relationshipType: edge.relationshipType,
@@ -484,6 +533,30 @@ export class NetworkGraphRenderer {
                 style: {
                     'shape': 'hexagon',
                     'background-color': '#88CCEE' // Tol muted palette - cyan
+                }
+            },
+            // Culture nodes (tags) - Color-blind friendly purple
+            {
+                selector: 'node[type="culture"]',
+                style: {
+                    'shape': 'tag',
+                    'background-color': '#AA4499' // Tol muted palette - purple
+                }
+            },
+            // Economy nodes (pentagons) - Color-blind friendly green
+            {
+                selector: 'node[type="economy"]',
+                style: {
+                    'shape': 'pentagon',
+                    'background-color': '#117733' // Tol muted palette - green
+                }
+            },
+            // MagicSystem nodes (stars) - Color-blind friendly indigo
+            {
+                selector: 'node[type="magicsystem"]',
+                style: {
+                    'shape': 'star',
+                    'background-color': '#332288' // Tol muted palette - indigo
                 }
             },
             // Visual hierarchy: Hub nodes (degree > 10) - Major characters/locations
@@ -882,7 +955,10 @@ export class NetworkGraphRenderer {
             'character': '👤',
             'location': '📍',
             'event': '⚡',
-            'item': '🎁'
+            'item': '🎁',
+            'culture': '🎭',
+            'economy': '💰',
+            'magicsystem': '✨'
         };
         const icon = typeIcons[type] || '●';
         
@@ -986,7 +1062,10 @@ export class NetworkGraphRenderer {
                 { key: 'character', icon: '👤', label: 'Characters', color: '#CC6677' },
                 { key: 'location', icon: '📍', label: 'Locations', color: '#44AA99' },
                 { key: 'event', icon: '⚡', label: 'Events', color: '#DDCC77' },
-                { key: 'item', icon: '🎁', label: 'Items', color: '#88CCEE' }
+                { key: 'item', icon: '🎁', label: 'Items', color: '#88CCEE' },
+                { key: 'culture', icon: '🎭', label: 'Cultures', color: '#AA4499' },
+                { key: 'economy', icon: '💰', label: 'Economies', color: '#117733' },
+                { key: 'magicsystem', icon: '✨', label: 'Magic', color: '#332288' }
             ];
             
             typeInfo.forEach(({ key, icon, label, color }) => {
@@ -1578,7 +1657,7 @@ export class NetworkGraphRenderer {
             })),
             ...edges.map(edge => ({
                 data: {
-                    id: `${edge.source}-${edge.target}`,
+                    id: `${edge.source}-${edge.target}-${edge.relationshipType}-${edge.label || ''}`,
                     source: edge.source,
                     target: edge.target,
                     relationshipType: edge.relationshipType,

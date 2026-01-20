@@ -127,14 +127,31 @@ export class ObsidianTileLayer extends L.TileLayer {
 
     /**
      * Override onAdd to force initial tile visibility
+     * Now waits for map readiness before forcing visibility
      */
     onAdd(map: L.Map): this {
         const result = super.onAdd(map);
         
-        // Force visibility after adding to map
-        setTimeout(() => {
-            this._forceVisibility();
-        }, 100);
+        // Wait for map to be ready before forcing visibility
+        // This ensures the map is fully initialized and tile container exists
+        map.whenReady(() => {
+            // Use requestAnimationFrame to ensure DOM is updated
+            requestAnimationFrame(() => {
+                // Double-check that tile container exists before forcing visibility
+                const container = this.getContainer();
+                if (container) {
+                    this._forceVisibility();
+                } else {
+                    // Container not ready yet, retry after a short delay
+                    setTimeout(() => {
+                        const retryContainer = this.getContainer();
+                        if (retryContainer) {
+                            this._forceVisibility();
+                        }
+                    }, 100);
+                }
+            });
+        });
         
         return result;
     }

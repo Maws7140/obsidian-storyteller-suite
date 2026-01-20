@@ -360,6 +360,25 @@ export class LocationService {
                     }
                     break;
                 }
+                case 'scene': {
+                    const scenes = await this.plugin.listScenes();
+                    const scene = scenes.find(s => (s.id || s.name) === entityRef.entityId);
+                    entityName = scene?.name;
+                    // Update scene's linkedLocations for bidirectional sync
+                    if (scene) {
+                        if (!scene.linkedLocations) {
+                            scene.linkedLocations = [];
+                        }
+                        const locationName = location.name || locationId;
+                        if (!scene.linkedLocations.includes(locationName)) {
+                            scene.linkedLocations.push(locationName);
+                            await this.plugin.saveScene(scene);
+                            // EntitySyncService will update location.entityRefs automatically
+                            return; // Early return - sync service handles location update
+                        }
+                    }
+                    break;
+                }
             }
         } catch (e) {
             console.warn('Could not resolve entity name for ref:', e);
@@ -430,6 +449,21 @@ export class LocationService {
                         await this.plugin.savePlotItem(item);
                         // EntitySyncService will automatically remove from location.entityRefs
                         return; // Early return - sync service handles location update
+                    }
+                    break;
+                }
+                case 'scene': {
+                    const scenes = await this.plugin.listScenes();
+                    const scene = scenes.find(s => (s.id || s.name) === entityId);
+                    if (scene && scene.linkedLocations) {
+                        const locationName = location.name || locationId;
+                        const index = scene.linkedLocations.indexOf(locationName);
+                        if (index !== -1) {
+                            scene.linkedLocations.splice(index, 1);
+                            await this.plugin.saveScene(scene);
+                            // EntitySyncService will automatically remove from location.entityRefs
+                            return; // Early return - sync service handles location update
+                        }
                     }
                     break;
                 }

@@ -27,7 +27,7 @@ export type EntityType =
 const FRONTMATTER_WHITELISTS: Record<EntityType, Set<string>> = {
   character: new Set([
     'id', 'name', 'traits', 'relationships', 'locations', 'events',
-    'currentLocationId', 'locationHistory',
+    'currentLocationId', 'locationHistory', 'ownedItems', 'cultures', 'magicSystems',
     'status', 'affiliation', 'groups', 'profileImagePath', 'customFields', 'connections',
     'mapCoordinates', 'mapId', 'markerId', 'relatedMapIds', 'mapIcon', 'mapColor'
   ]),
@@ -38,14 +38,14 @@ const FRONTMATTER_WHITELISTS: Record<EntityType, Set<string>> = {
     'mapCoordinates', 'mapId', 'markerId', 'relatedMapIds', 'mapIcon', 'mapColor'
   ]),
   event: new Set([
-    'id', 'name', 'dateTime', 'characters', 'location', 'status',
+    'id', 'name', 'dateTime', 'characters', 'location', 'items', 'cultures', 'magicSystems', 'status',
     'groups', 'profileImagePath', 'images', 'customFields', 'connections',
     'isMilestone', 'dependencies', 'progress', 'tags', 'narrativeMarkers', 'narrativeSequence',
     'mapCoordinates', 'mapId', 'markerId', 'relatedMapIds', 'mapIcon', 'mapColor'
   ]),
   item: new Set([
     'id', 'name', 'isPlotCritical', 'currentOwner', 'pastOwners',
-    'currentLocation', 'associatedEvents', 'groups', 'profileImagePath', 'customFields', 'connections',
+    'currentLocation', 'associatedEvents', 'magicSystems', 'groups', 'profileImagePath', 'customFields', 'connections',
     'mapCoordinates', 'mapId', 'markerId', 'relatedMapIds', 'mapIcon', 'mapColor'
   ]),
   reference: new Set([
@@ -297,6 +297,18 @@ export function parseSectionsFromMarkdown(content: string): Record<string, strin
   if (Object.keys(sections).length > 0) return sections;
 
   return sections;
+}
+
+/**
+ * Convert a string to a safe filename by removing illegal characters.
+ * Removes characters that are not allowed in Windows/Linux filenames.
+ * 
+ * @param filename The filename to sanitize
+ * @returns A safe filename with illegal characters removed
+ */
+export function toSafeFileName(filename: string): string {
+  // Remove illegal characters: < > : " / \ | ? *
+  return filename.replace(/[<>:"/\\|?*]/g, '');
 }
 
 /**

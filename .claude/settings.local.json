@@ -21,7 +21,14 @@
       "Bash(git stash:*)",
       "WebFetch(domain:github.com)",
       "Bash(git restore:*)",
-      "Bash(for modal in EventModal SceneModal ChapterModal ReferenceModal CharacterModal LocationModal PlotItemModal GroupModal CultureModal EconomyModal MagicSystemModal MapModal)"
+      "Bash(for modal in EventModal SceneModal ChapterModal ReferenceModal CharacterModal LocationModal PlotItemModal GroupModal CultureModal EconomyModal MagicSystemModal MapModal)",
+      "Bash(npm run test:ai:bug-finder:*)",
+      "Bash(dir \"C:\\\\Users\\\\Lilly\\\\AppData\\\\Local\\\\Programs\\\\Obsidian\"\" 2>nul || dir \"C:UsersLillyAppDataLocalObsidian\"\")",
+      "Bash(where.exe:*)",
+      "Bash(powershell:*)",
+      "Bash(npm ls:*)",
+      "Bash(timeout /t 30 /nobreak)",
+      "WebFetch(domain:midscenejs.com)"
     ],
     "deny": [],
     "ask": []
