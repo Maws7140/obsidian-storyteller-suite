@@ -28,7 +28,9 @@
       "Bash(powershell:*)",
       "Bash(npm ls:*)",
       "Bash(timeout /t 30 /nobreak)",
-      "WebFetch(domain:midscenejs.com)"
+      "WebFetch(domain:midscenejs.com)",
+      "WebFetch(domain:private-user-images.githubusercontent.com)",
+      "Bash(dir:*)"
     ],
     "deny": [],
     "ask": []

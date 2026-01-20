@@ -88,6 +88,10 @@ export function addImageSelectionButtons(
                         // Save to vault
                         await app.vault.createBinary(filePath, arrayBuffer);
 
+                        // Register uploaded image in gallery so it appears in future selections
+                        const imageTitle = sanitizedName.replace(/\.[^/.]+$/, ''); // Remove extension for title
+                        await plugin.addGalleryImage({ filePath: filePath, title: imageTitle });
+
                         // Trigger tile generation for map images if enabled
                         // For map images, always force tile generation regardless of size threshold
                         if (enableTileGeneration) {
