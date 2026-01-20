@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.5.5
+
+### New: Map System
+- Introducing map support - place any entity type directly on maps (cultures, economies, magic systems, groups, scenes, references)
+- Automatic coordinate storage in entity frontmatter when placing entities on maps
+- Entities with map coordinates are automatically discovered and displayed on map views
+- Support for entities appearing on multiple maps with different coordinates
+
+### Entity Relationship Sync System
+- Automatic bidirectional relationship syncing - update one side, the other updates automatically
+- Works across all entity types (characters, locations, events, items, scenes, cultures, economies, magic systems)
+- Handles edge cases: name changes, missing entities, prevents circular updates, cleans up stale references
+
 ## 1.5.3
 
 ### Template System Enhancements
