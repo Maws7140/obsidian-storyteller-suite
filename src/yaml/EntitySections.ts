@@ -20,8 +20,7 @@ export type EntityType =
   | 'culture'
   | 'faction'
   | 'economy'
-  | 'magicSystem'
-  | 'calendar';
+  | 'magicSystem';
 
 /** Whitelisted frontmatter keys per entity type. */
 const FRONTMATTER_WHITELISTS: Record<EntityType, Set<string>> = {
@@ -95,11 +94,6 @@ const FRONTMATTER_WHITELISTS: Record<EntityType, Set<string>> = {
     'linkedLocations', 'linkedCultures', 'linkedEvents', 'linkedItems', 'groups',
     'customFields', 'connections',
     'mapCoordinates', 'mapId', 'markerId', 'relatedMapIds', 'mapIcon', 'mapColor'
-  ]),
-  calendar: new Set([
-    'id', 'name', 'profileImagePath', 'calendarType', 'status', 'epoch', 'eras',
-    'months', 'daysPerWeek', 'hoursPerDay', 'linkedEvents', 'linkedCultures',
-    'groups', 'customFields', 'connections'
   ])
 };
 

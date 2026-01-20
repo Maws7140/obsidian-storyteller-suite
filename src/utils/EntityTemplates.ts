@@ -68,10 +68,6 @@ export const ENTITY_TEMPLATES: Record<EntityType, Record<string, string>> = {
     Limitations: '',
     Training: '',
     History: '',
-  },
-  calendar: {
-    Description: '',
-    History: '',
   }
 };
 

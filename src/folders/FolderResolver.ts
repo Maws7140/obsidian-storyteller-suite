@@ -1,7 +1,7 @@
 import { normalizePath, TFolder } from 'obsidian';
 import StorytellerSuitePlugin from '../main';
 
-export type EntityFolderType = 'character' | 'location' | 'event' | 'item' | 'reference' | 'chapter' | 'scene' | 'map' | 'culture' | 'faction' | 'economy' | 'magicSystem' | 'calendar';
+export type EntityFolderType = 'character' | 'location' | 'event' | 'item' | 'reference' | 'chapter' | 'scene' | 'map' | 'culture' | 'faction' | 'economy' | 'magicSystem';
 
 export interface FolderResolverOptions {
   enableCustomEntityFolders: boolean | undefined;
@@ -18,7 +18,6 @@ export interface FolderResolverOptions {
   factionFolderPath?: string | undefined;
   economyFolderPath?: string | undefined;
   magicSystemFolderPath?: string | undefined;
-  calendarFolderPath?: string | undefined;
   enableOneStoryMode?: boolean | undefined;
   oneStoryBaseFolder?: string | undefined;
 }
@@ -90,7 +89,6 @@ export class FolderResolver {
       if (type === 'faction')     { const p = prefer(o.factionFolderPath,     'Factions');     if (p) return p; }
       if (type === 'economy')     { const p = prefer(o.economyFolderPath,     'Economies');    if (p) return p; }
       if (type === 'magicSystem') { const p = prefer(o.magicSystemFolderPath, 'MagicSystems'); if (p) return p; }
-      if (type === 'calendar')    { const p = prefer(o.calendarFolderPath,    'Calendars');    if (p) return p; }
     }
 
     if (o.enableOneStoryMode) {
@@ -108,7 +106,6 @@ export class FolderResolver {
       if (type === 'faction')     return `${prefix}Factions`;
       if (type === 'economy')     return `${prefix}Economies`;
       if (type === 'magicSystem') return `${prefix}MagicSystems`;
-      if (type === 'calendar')    return `${prefix}Calendars`;
     }
 
     const story = this.getActiveStory();
@@ -126,7 +123,6 @@ export class FolderResolver {
     if (type === 'faction')     return `${base}/Factions`;
     if (type === 'economy')     return `${base}/Economies`;
     if (type === 'magicSystem') return `${base}/MagicSystems`;
-    if (type === 'calendar')    return `${base}/Calendars`;
     throw new Error('Unknown entity type');
   }
 
@@ -145,7 +141,7 @@ export class FolderResolver {
   resolveAll(): Record<EntityFolderType, { path?: string; error?: string }> {
     const types: EntityFolderType[] = [
       'character', 'location', 'event', 'item', 'reference', 'chapter', 'scene', 'map',
-      'culture', 'faction', 'economy', 'magicSystem', 'calendar'
+      'culture', 'faction', 'economy', 'magicSystem'
     ];
     const out = {} as Record<EntityFolderType, { path?: string; error?: string }>;
     for (const t of types) out[t] = this.tryGetEntityFolder(t);
