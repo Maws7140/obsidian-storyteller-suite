@@ -1,8 +1,8 @@
 {
 	"id": "storyteller-suite",
 	"name": "Storyteller suite",
-	"version": "1.5.3",
-	"minAppVersion": "1.0.11",
+	"version": "1.5.5",
+	"minAppVersion": "1.0.12",
 	"description": "A comprehensive suite for managing characters, locations, events, and galleries for your novels.",
 	"author": "Maws",
 	"authorUrl": "",
