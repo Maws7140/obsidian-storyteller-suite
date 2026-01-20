@@ -341,7 +341,7 @@
     position: relative;
 }
 
-.current-selection {
+.storyteller-location-picker .current-selection {
     padding: 8px;
     background: var(--background-secondary);
     border-radius: 4px;
@@ -351,18 +351,18 @@
     gap: 8px;
 }
 
-.selection-label {
+.storyteller-location-picker .selection-label {
     font-weight: 600;
     color: var(--text-normal);
 }
 
-.selection-path {
+.storyteller-location-picker .selection-path {
     flex: 1;
     color: var(--text-muted);
     font-size: 0.9em;
 }
 
-.clear-btn {
+.storyteller-location-picker .clear-btn {
     background: transparent;
     border: none;
     color: var(--text-muted);
@@ -371,16 +371,16 @@
     padding: 0 4px;
 }
 
-.clear-btn:hover {
+.storyteller-location-picker .clear-btn:hover {
     color: var(--text-error);
 }
 
-.selection-empty {
+.storyteller-location-picker .selection-empty {
     color: var(--text-muted);
     font-style: italic;
 }
 
-.dropdown-trigger {
+.storyteller-location-picker .dropdown-trigger {
     padding: 8px 12px;
     border: 1px solid var(--background-modifier-border);
     border-radius: 4px;
@@ -391,16 +391,16 @@
     background: var(--background-primary);
 }
 
-.dropdown-trigger:hover {
+.storyteller-location-picker .dropdown-trigger:hover {
     background: var(--background-modifier-hover);
 }
 
-.dropdown-arrow {
+.storyteller-location-picker .dropdown-arrow {
     font-size: 0.8em;
     color: var(--text-muted);
 }
 
-.dropdown-content {
+.storyteller-location-picker .dropdown-content {
     position: absolute;
     top: 100%;
     left: 0;
@@ -415,11 +415,11 @@
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
-.dropdown-content.hidden {
+.storyteller-location-picker .dropdown-content.hidden {
     display: none;
 }
 
-.location-search {
+.storyteller-location-picker .location-search {
     width: 100%;
     padding: 8px;
     border: none;
@@ -428,11 +428,11 @@
     color: var(--text-normal);
 }
 
-.location-tree {
+.storyteller-location-picker .location-tree {
     padding: 4px 0;
 }
 
-.tree-item {
+.storyteller-location-picker .tree-item {
     padding: 6px 8px;
     cursor: pointer;
     display: flex;
@@ -440,29 +440,29 @@
     gap: 4px;
 }
 
-.tree-item:hover {
+.storyteller-location-picker .tree-item:hover {
     background: var(--background-modifier-hover);
 }
 
-.tree-children.hidden {
+.storyteller-location-picker .tree-children.hidden {
     display: none;
 }
 
-.expand-icon {
+.storyteller-location-picker .expand-icon {
     width: 16px;
     cursor: pointer;
     user-select: none;
 }
 
-.expand-spacer {
+.storyteller-location-picker .expand-spacer {
     width: 16px;
 }
 
-.location-icon {
+.storyteller-location-picker .location-icon {
     font-size: 1.1em;
 }
 
-.location-name {
+.storyteller-location-picker .location-name {
     flex: 1;
 }
 
@@ -1069,6 +1069,11 @@
     margin-bottom: 8px;
 }
 
+.storyteller-modal-list {
+    max-width: 100%;
+    overflow: hidden;
+}
+
 .storyteller-modal-list-item {
     display: flex;
     align-items: center;
@@ -1078,11 +1083,18 @@
     background: var(--background-secondary);
     border-radius: var(--radius-s);
     border: 1px solid var(--background-modifier-border);
+    max-width: 100%;
+    min-width: 0; /* Allow flex item to shrink below content size */
+    overflow: hidden;
 }
 
 .storyteller-modal-list-item span {
     flex: 1;
     font-size: var(--font-ui-small);
+    min-width: 0; /* Critical: allows text to shrink and ellipsis to work */
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .storyteller-modal-list-remove {
@@ -2157,6 +2169,37 @@ If your plugin does not need CSS, delete this file.
 /* General Plugin Styles */
 .storyteller-suite-ribbon-class {
   color: var(--text-accent); /* Example: Make icon use accent color */
+}
+
+/* ===========================================
+   MODAL OVERFLOW FIX - All Entity Modals
+   ===========================================
+   Prevent long file paths and text from causing
+   horizontal scrollbars in modal dialogs.
+*/
+
+/* General modal overflow prevention - matches all storyteller-*-modal classes */
+[class*="storyteller-"][class*="-modal"] {
+    overflow: hidden;
+}
+
+[class*="storyteller-"][class*="-modal"] .modal-content {
+    overflow-x: hidden;
+    overflow-y: auto;
+    max-width: 100%;
+}
+
+/* Setting item controls should not overflow */
+[class*="storyteller-"][class*="-modal"] .setting-item-control {
+    max-width: 100%;
+    min-width: 0;
+    overflow: hidden;
+}
+
+/* Ensure setting items themselves don't cause overflow */
+[class*="storyteller-"][class*="-modal"] .setting-item {
+    max-width: 100%;
+    min-width: 0;
 }
 
 /* Character Modal Styles */
@@ -5660,6 +5703,53 @@ body.mod-rtl .storyteller-group-members {
     background: var(--background-secondary);
     color: var(--text-normal);
     border: 1px solid var(--interactive-accent);
+}
+
+/* ===========================================
+   GALLERY SECTION - Markdown Note Image Grid
+   ===========================================
+   Styles for the auto-generated ## Gallery section
+   in location/event markdown notes. Creates a
+   responsive CSS grid layout for image embeds.
+*/
+
+/* Target the Gallery section content in reading view */
+.markdown-reading-view h2:has(+ p .internal-embed),
+.markdown-preview-view h2:has(+ p .internal-embed) {
+    margin-bottom: 0.5em;
+}
+
+/* Gallery images container - paragraph following ## Gallery */
+.markdown-reading-view p:has(> .internal-embed.image-embed),
+.markdown-preview-view p:has(> .internal-embed.image-embed) {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    justify-content: flex-start;
+    align-items: flex-start;
+}
+
+/* Individual gallery images */
+.markdown-reading-view p > .internal-embed.image-embed,
+.markdown-preview-view p > .internal-embed.image-embed {
+    margin: 0;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.markdown-reading-view p > .internal-embed.image-embed:hover,
+.markdown-preview-view p > .internal-embed.image-embed:hover {
+    transform: scale(1.02);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+}
+
+.markdown-reading-view p > .internal-embed.image-embed img,
+.markdown-preview-view p > .internal-embed.image-embed img {
+    display: block;
+    border-radius: 8px;
+    object-fit: cover;
 }
 
 

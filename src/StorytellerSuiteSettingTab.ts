@@ -295,9 +295,9 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
         new Setting(containerEl)
             .setName(t('defaultTimelineGrouping'))
             .addDropdown(dd => dd
-                .addOptions({ none: t('noGrouping'), location: t('byLocation'), group: t('byGroup') })
+                .addOptions({ none: t('noGrouping'), location: t('byLocation'), group: t('byGroup'), character: t('byCharacter') })
                 .setValue(this.plugin.settings.defaultTimelineGroupMode || 'none')
-                .onChange(async (v) => { this.plugin.settings.defaultTimelineGroupMode = v as 'none' | 'location' | 'group'; await this.plugin.saveSettings(); }));
+                .onChange(async (v) => { this.plugin.settings.defaultTimelineGroupMode = v as 'none' | 'location' | 'group' | 'character'; await this.plugin.saveSettings(); }));
 
         new Setting(containerEl)
             .setName(t('defaultZoomPreset'))
