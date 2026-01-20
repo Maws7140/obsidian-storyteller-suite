@@ -110,7 +110,7 @@ import { LocationMigration } from './utils/LocationMigration';
      /** Optional override for "today" used in timeline and relative parsing (ISO string yyyy-MM-dd or full ISO) */
      customTodayISO?: string;
      /** Timeline defaults */
-     defaultTimelineGroupMode?: 'none' | 'location' | 'group';
+     defaultTimelineGroupMode?: 'none' | 'location' | 'group' | 'character';
      defaultTimelineZoomPreset?: 'none' | 'decade' | 'century' | 'fit';
      defaultTimelineStack?: boolean;
      defaultTimelineDensity?: number; // 0..100
@@ -2535,40 +2535,26 @@ export default class StorytellerSuitePlugin extends Plugin {
     /**
      * Generate image grid markdown from array of image paths
      * Creates a responsive grid layout with Obsidian image embeds
+     * Uses a div-based CSS grid approach to avoid markdown table pipe conflicts
      *
      * @param images - Array of image file paths
-     * @param columnsPerRow - Number of columns in the grid (default: 3)
      * @param imageSize - Size of each image in pixels (default: 200)
-     * @returns Markdown string with image grid table
+     * @returns Markdown string with image grid
      */
     private generateImageGridMarkdown(
         images: string[] | undefined,
-        columnsPerRow: number = 3,
         imageSize: number = 200
     ): string {
         if (!images || images.length === 0) {
             return '';
         }
 
-        // Build table header
-        const headerCells = Array(columnsPerRow).fill('').join(' | ');
-        const separatorCells = Array(columnsPerRow).fill('---').join(' | ');
-        let tableMarkdown = `| ${headerCells} |\n| ${separatorCells} |\n`;
+        // Use simple image embeds - one per line
+        // Obsidian renders these inline, and our CSS will handle grid layout
+        // This avoids the markdown table pipe character conflict entirely
+        const imageEmbeds = images.map(img => `![[${img}|${imageSize}]]`).join('\n');
 
-        // Build table rows
-        for (let i = 0; i < images.length; i += columnsPerRow) {
-            const rowImages = images.slice(i, i + columnsPerRow);
-            const cells = rowImages.map(img => `![[${img}\|${imageSize}]]`);
-
-            // Pad row with empty cells if needed
-            while (cells.length < columnsPerRow) {
-                cells.push('');
-            }
-
-            tableMarkdown += `| ${cells.join(' | ')} |\n`;
-        }
-
-        return tableMarkdown;
+        return imageEmbeds;
     }
 
     /**
