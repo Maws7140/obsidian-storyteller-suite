@@ -162,7 +162,13 @@ export class MapHierarchyManager {
 
     /**
      * Sync map hierarchy with location hierarchy
-     * Ensures map parentMapId matches the parent location's map
+     *
+     * This now works in **both directions** so that:
+     * - Location.parentLocationId ⇄ Location.childLocationIds remain the source of truth
+     * - Map.parentMapId ⇄ Map.childMapIds are inferred from the corresponding locations
+     * - When only map hierarchy exists (legacy worlds like Fireland), the corresponding
+     *   locations will be given matching parentLocationId values so the hierarchies unify.
+     *
      * @param mapId - ID of the map to sync
      */
     async syncMapLocationHierarchy(mapId: string): Promise<void> {
@@ -176,7 +182,12 @@ export class MapHierarchyManager {
             return;
         }
 
-        let updated = false;
+        let mapUpdated = false;
+        let locationUpdated = false;
+
+        // ---------------------------------------------------------------------
+        // 1) Primary direction: use location hierarchy to enforce map hierarchy
+        // ---------------------------------------------------------------------
 
         // Sync parent: if location has parent, find parent's map
         if (location.parentLocationId) {
@@ -184,7 +195,7 @@ export class MapHierarchyManager {
             if (parentLocation?.correspondingMapId) {
                 if (map.parentMapId !== parentLocation.correspondingMapId) {
                     map.parentMapId = parentLocation.correspondingMapId;
-                    updated = true;
+                    mapUpdated = true;
                 }
             }
         }
@@ -203,13 +214,57 @@ export class MapHierarchyManager {
             const currentChildIds = map.childMapIds || [];
             if (JSON.stringify(currentChildIds.sort()) !== JSON.stringify(childMapIds.sort())) {
                 map.childMapIds = childMapIds;
-                updated = true;
+                mapUpdated = true;
             }
         }
 
-        // Save map if updated
-        if (updated) {
+        // ---------------------------------------------------------------------
+        // 2) Secondary direction: if only map hierarchy exists, repair locations
+        // ---------------------------------------------------------------------
+
+        // If the map already has a parent but the location doesn't,
+        // infer the parent location from the parent map.
+        if (!location.parentLocationId && map.parentMapId) {
+            const parentMap = await this.mapManager.getMapById(map.parentMapId);
+            if (parentMap?.correspondingLocationId) {
+                const parentLocation = await this.locationService.getLocation(parentMap.correspondingLocationId);
+                if (parentLocation) {
+                    location.parentLocationId = parentLocation.id || parentLocation.name;
+                    locationUpdated = true;
+                }
+            }
+        }
+
+        // If the map has explicit child maps but the location has no children,
+        // infer child locations from those maps.
+        if ((!location.childLocationIds || location.childLocationIds.length === 0) && map.childMapIds && map.childMapIds.length > 0) {
+            const childLocIds: string[] = [];
+            for (const childMapId of map.childMapIds) {
+                const childMap = await this.mapManager.getMapById(childMapId);
+                if (childMap?.correspondingLocationId) {
+                    const childLoc = await this.locationService.getLocation(childMap.correspondingLocationId);
+                    if (childLoc) {
+                        childLocIds.push(childLoc.id || childLoc.name);
+                    }
+                }
+            }
+
+            if (childLocIds.length > 0) {
+                location.childLocationIds = childLocIds;
+                locationUpdated = true;
+            }
+        }
+
+        // ---------------------------------------------------------------------
+        // 3) Persist any changes
+        // ---------------------------------------------------------------------
+
+        if (mapUpdated) {
             await this.plugin.saveMap(map);
+        }
+
+        if (locationUpdated) {
+            await this.plugin.saveLocation(location);
         }
     }
 
@@ -247,6 +302,18 @@ export class MapHierarchyManager {
                     await this.plugin.saveLocation(matchingLocation);
                 }
 
+                // If this map already has a parent, try to infer the location parent as well
+                if (!matchingLocation.parentLocationId && map.parentMapId) {
+                    const parentMap = await this.mapManager.getMapById(map.parentMapId);
+                    if (parentMap?.correspondingLocationId) {
+                        const parentLoc = await this.locationService.getLocation(parentMap.correspondingLocationId);
+                        if (parentLoc) {
+                            matchingLocation.parentLocationId = parentLoc.id || parentLoc.name;
+                            await this.plugin.saveLocation(matchingLocation);
+                        }
+                    }
+                }
+
                 await this.plugin.saveMap(map);
                 linked++;
             } else {
@@ -259,6 +326,18 @@ export class MapHierarchyManager {
                     customFields: {},
                     groups: map.groups || []
                 };
+
+                // If this map already has a parent, mirror that relationship
+                // into the new location so location hierarchies are complete.
+                if (map.parentMapId) {
+                    const parentMap = await this.mapManager.getMapById(map.parentMapId);
+                    if (parentMap?.correspondingLocationId) {
+                        const parentLoc = await this.locationService.getLocation(parentMap.correspondingLocationId);
+                        if (parentLoc) {
+                            newLocation.parentLocationId = parentLoc.id || parentLoc.name;
+                        }
+                    }
+                }
 
                 await this.plugin.saveLocation(newLocation);
 

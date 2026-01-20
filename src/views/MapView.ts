@@ -1734,6 +1734,16 @@ export class MapView extends ItemView {
                 return;
             }
 
+            const resolvedMapId = map.id || map.name;
+
+            // Automatically sync map/location hierarchy whenever a map is loaded
+            // This keeps parent/child relationships bidirectionally consistent
+            try {
+                await this.hierarchyManager.syncMapLocationHierarchy(resolvedMapId);
+            } catch (syncError) {
+                console.warn('[MapView] Error syncing map/location hierarchy (non-blocking):', syncError);
+            }
+
             this.currentMap = map;
 
             // Update dropdown

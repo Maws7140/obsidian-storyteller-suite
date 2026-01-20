@@ -19,12 +19,15 @@ export class MapEntityRenderer {
     private locationMarkers: Map<string, L.Marker> = new Map();
     private entityMarkers: Map<string, L.Marker> = new Map();
     private portalMarkers: Map<string, L.Marker> = new Map();
+    private mapId: string;
+    private isMovingMarker: boolean = false;
 
-    constructor(map: L.Map, plugin: StorytellerSuitePlugin) {
+    constructor(map: L.Map, plugin: StorytellerSuitePlugin, mapId: string) {
         this.map = map;
         this.plugin = plugin;
         this.locationService = new LocationService(plugin);
         this.hierarchyManager = new MapHierarchyManager(plugin.app, plugin);
+        this.mapId = mapId;
 
         this.initializeLayers();
     }
@@ -1441,11 +1444,90 @@ export class MapEntityRenderer {
             item.setTitle('Edit Marker Position')
                 .setIcon('move')
                 .onClick(() => {
-                    new Notice('Edit marker position functionality coming soon');
+                    this.startMoveLocationMarker(location);
                 });
         });
 
         menu.showAtMouseEvent(e.originalEvent);
+    }
+
+    /**
+     * Begin interactive move for a location's marker.
+     * User is prompted to click a new position on the map; ESC cancels.
+     */
+    private startMoveLocationMarker(location: Location): void {
+        if (this.isMovingMarker) {
+            new Notice('Finish moving the current marker first.');
+            return;
+        }
+
+        const mapId = this.mapId;
+        if (!mapId) {
+            new Notice('Map ID not available for this marker.');
+            return;
+        }
+
+        const binding = location.mapBindings?.find(b => b.mapId === mapId);
+        const originalCoords = binding?.coordinates as [number, number] | undefined;
+
+        this.isMovingMarker = true;
+        new Notice('Click on the map to set the new marker position (ESC to cancel).');
+
+        const onKeyDown = (evt: KeyboardEvent) => {
+            if (evt.key === 'Escape') {
+                this.map.off('click', onClick as any);
+                document.removeEventListener('keydown', onKeyDown);
+                this.isMovingMarker = false;
+                new Notice('Marker move cancelled');
+            }
+        };
+
+        const onClick = async (e: L.LeafletMouseEvent) => {
+            this.map.off('click', onClick as any);
+            document.removeEventListener('keydown', onKeyDown);
+
+            const newCoords: [number, number] = [e.latlng.lat, e.latlng.lng];
+
+            try {
+                // Persist new coordinates on the location binding
+                await this.locationService.addMapBinding(
+                    location.id || location.name,
+                    mapId,
+                    newCoords
+                );
+
+                // Move the existing marker immediately if we have it
+                const markerKey = location.id || location.name;
+                const marker = this.locationMarkers.get(markerKey);
+                if (marker) {
+                    marker.setLatLng(newCoords);
+                }
+
+                // Refresh locations and entities so stacked markers update correctly
+                await this.renderLocationsForMap(mapId);
+                await this.renderEntitiesForMap(mapId);
+
+                new Notice('Marker position updated.');
+            } catch (error) {
+                console.error('Error moving marker:', error);
+                new Notice('Error updating marker position. See console for details.');
+
+                // Best-effort revert marker position if we changed it
+                if (originalCoords) {
+                    const markerKey = location.id || location.name;
+                    const marker = this.locationMarkers.get(markerKey);
+                    if (marker) {
+                        marker.setLatLng(originalCoords);
+                    }
+                }
+            } finally {
+                this.isMovingMarker = false;
+            }
+        };
+
+        // Use once-style behaviour but keep explicit off() calls for safety
+        this.map.on('click', onClick as any);
+        document.addEventListener('keydown', onKeyDown);
     }
 
     /**

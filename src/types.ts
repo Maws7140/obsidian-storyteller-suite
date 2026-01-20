@@ -41,7 +41,7 @@ export interface GraphFilters {
     /** Filter events before this date */
     timelineEnd?: string;
     /** Filter by entity types to show */
-    entityTypes?: ('character' | 'location' | 'event' | 'item')[];
+    entityTypes?: ('character' | 'location' | 'event' | 'item' | 'culture' | 'economy' | 'magicsystem')[];
 }
 
 /**
@@ -53,9 +53,9 @@ export interface GraphNode {
     /** Display label */
     label: string;
     /** Entity type for styling */
-    type: 'character' | 'location' | 'event' | 'item';
+    type: 'character' | 'location' | 'event' | 'item' | 'culture' | 'economy' | 'magicsystem';
     /** Full entity data */
-    data: Character | Location | Event | PlotItem;
+    data: Character | Location | Event | PlotItem | Culture | Economy | MagicSystem;
     /** Optional image URL for node background */
     imageUrl?: string;
 }
@@ -118,6 +118,9 @@ export interface PlotItem {
     /** Array of group ids this item belongs to */
     groups?: string[];
     
+    /** Links to Magic Systems associated with this item */
+    magicSystems?: string[];
+
     /** Typed connections to other entities for network graph */
     connections?: TypedRelationship[];
 }
@@ -287,6 +290,15 @@ export interface Character {
     
     /** Array of group ids this character belongs to */
     groups?: string[];
+
+    /** IDs of items currently owned by this character */
+    ownedItems?: string[];
+
+    /** IDs of cultures this character belongs to */
+    cultures?: string[];
+
+    /** IDs of magic systems this character uses or is associated with */
+    magicSystems?: string[];
     
     /** Typed connections to other entities for network graph */
     connections?: TypedRelationship[];
@@ -461,6 +473,15 @@ export interface Event {
     
     /** Array of group ids this event belongs to */
     groups?: string[];
+
+    /** IDs of items involved in this event */
+    items?: string[];
+
+    /** IDs of cultures involved in this event */
+    cultures?: string[];
+
+    /** IDs of magic systems involved in this event */
+    magicSystems?: string[];
     
     /** Typed connections to other entities for network graph */
     connections?: TypedRelationship[];

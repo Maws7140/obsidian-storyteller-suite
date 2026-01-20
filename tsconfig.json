@@ -16,6 +16,7 @@
     "allowSyntheticDefaultImports": true,
     "resolveJsonModule": true,
     "forceConsistentCasingInFileNames": true,
+
     "skipLibCheck": true,
     "lib": [
       "DOM",
@@ -30,6 +31,7 @@
   ],
   "exclude": [
     "node_modules", // <--- Only exclude node_modules (and maybe build output folders if needed)
-    "src/vendor/**/*" // Exclude vendor folder from type checking
+    "src/vendor/**/*", // Exclude vendor folder from type checking
+    "**/*.backup.ts" // Exclude backup files from type checking
   ]
 }

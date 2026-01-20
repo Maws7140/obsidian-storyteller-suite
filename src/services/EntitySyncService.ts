@@ -16,18 +16,18 @@
  */
 
 import type StorytellerSuitePlugin from '../main';
-import type { Character, Location, Event, PlotItem, EntityRef } from '../types';
+import type { Character, Location, Event, PlotItem, Scene, EntityRef, Culture, Economy, MagicSystem, TypedRelationship } from '../types';
 
 /**
  * Relationship mapping configuration
  */
 interface RelationshipMapping {
     /** Source entity type */
-    sourceType: 'character' | 'location' | 'event' | 'item';
+    sourceType: 'character' | 'location' | 'event' | 'item' | 'scene' | 'culture' | 'economy' | 'magicsystem';
     /** Field name on source entity */
     sourceField: string;
     /** Target entity type */
-    targetType: 'character' | 'location' | 'event' | 'item';
+    targetType: 'character' | 'location' | 'event' | 'item' | 'scene' | 'culture' | 'economy' | 'magicsystem';
     /** Field name on target entity */
     targetField: string;
     /** Whether this relationship is bidirectional */
@@ -113,6 +113,7 @@ export class EntitySyncService {
             targetType: 'character',
             targetField: 'events',
             bidirectional: true,
+            isArray: true,
             transform: (characterName: string, event: Event) => {
                 // Character.events stores event names, so return event name
                 return event.name || event.id || '';
@@ -122,14 +123,127 @@ export class EntitySyncService {
                 return character.name || character.id || '';
             }
         },
-        // Item ↔ Character (currentOwner ↔ owned items - note: owned items not tracked in Character type yet)
+        // Item ↔ Character (currentOwner ↔ ownedItems[])
         {
             sourceType: 'item',
             sourceField: 'currentOwner',
             targetType: 'character',
-            targetField: 'events', // Placeholder - we'll handle this specially
-            bidirectional: false, // One-way for now since Character doesn't have ownedItems field
-            transform: (ownerName: string, item: PlotItem) => ownerName
+            targetField: 'ownedItems',
+            bidirectional: true,
+            isArray: true,
+            transform: (ownerName: string, item: PlotItem) => item.id || item.name,
+            reverseTransform: (itemId: string, character: Character) => character.name || character.id
+        },
+        // Event ↔ Item (items[] ↔ associatedEvents[])
+        {
+            sourceType: 'event',
+            sourceField: 'items',
+            targetType: 'item',
+            targetField: 'associatedEvents',
+            bidirectional: true,
+            isArray: true,
+            transform: (itemId: string, event: Event) => event.id || event.name,
+            reverseTransform: (eventId: string, item: PlotItem) => item.id || item.name
+        },
+        // Culture ↔ Location (linkedLocations[] ↔ entityRefs)
+        {
+            sourceType: 'culture',
+            sourceField: 'linkedLocations',
+            targetType: 'location',
+            targetField: 'entityRefs',
+            bidirectional: true,
+            transform: (locationId: string, culture: Culture) => ({
+                entityId: culture.id || culture.name,
+                entityType: 'culture' as const,
+                entityName: culture.name,
+                relationship: 'present'
+            }),
+            reverseTransform: (entityRef: EntityRef, location: Location) => location.id || location.name
+        },
+        // Culture ↔ Character (linkedCharacters[] ↔ cultures[])
+        {
+            sourceType: 'culture',
+            sourceField: 'linkedCharacters',
+            targetType: 'character',
+            targetField: 'cultures',
+            bidirectional: true,
+            isArray: true,
+            transform: (characterId: string, culture: Culture) => culture.id || culture.name,
+            reverseTransform: (cultureId: string, character: Character) => character.id || character.name
+        },
+        // Culture ↔ Event (linkedEvents[] ↔ cultures[])
+        {
+            sourceType: 'culture',
+            sourceField: 'linkedEvents',
+            targetType: 'event',
+            targetField: 'cultures',
+            bidirectional: true,
+            isArray: true,
+            transform: (eventId: string, culture: Culture) => culture.id || culture.name,
+            reverseTransform: (cultureId: string, event: Event) => event.id || event.name
+        },
+        // Economy ↔ Location (linkedLocations[] ↔ entityRefs)
+        {
+            sourceType: 'economy',
+            sourceField: 'linkedLocations',
+            targetType: 'location',
+            targetField: 'entityRefs',
+            bidirectional: true,
+            transform: (locationId: string, economy: Economy) => ({
+                entityId: economy.id || economy.name,
+                entityType: 'economy' as const,
+                entityName: economy.name,
+                relationship: 'active'
+            }),
+            reverseTransform: (entityRef: EntityRef, location: Location) => location.id || location.name
+        },
+        // MagicSystem ↔ Location (linkedLocations[] ↔ entityRefs)
+        {
+            sourceType: 'magicsystem',
+            sourceField: 'linkedLocations',
+            targetType: 'location',
+            targetField: 'entityRefs',
+            bidirectional: true,
+            transform: (locationId: string, magic: MagicSystem) => ({
+                entityId: magic.id || magic.name,
+                entityType: 'magicsystem' as const,
+                entityName: magic.name,
+                relationship: 'practiced'
+            }),
+            reverseTransform: (entityRef: EntityRef, location: Location) => location.id || location.name
+        },
+        // MagicSystem ↔ Character (linkedCharacters[] ↔ magicSystems[])
+        {
+            sourceType: 'magicsystem',
+            sourceField: 'linkedCharacters',
+            targetType: 'character',
+            targetField: 'magicSystems',
+            bidirectional: true,
+            isArray: true,
+            transform: (characterId: string, magic: MagicSystem) => magic.id || magic.name,
+            reverseTransform: (magicId: string, character: Character) => character.id || character.name
+        },
+        // MagicSystem ↔ Event (linkedEvents[] ↔ magicSystems[])
+        {
+            sourceType: 'magicsystem',
+            sourceField: 'linkedEvents',
+            targetType: 'event',
+            targetField: 'magicSystems',
+            bidirectional: true,
+            isArray: true,
+            transform: (eventId: string, magic: MagicSystem) => magic.id || magic.name,
+            reverseTransform: (magicId: string, event: Event) => event.id || event.name
+        },
+        // MagicSystem ↔ Item (linkedItems[] ↔ magicSystems[])
+        {
+            sourceType: 'magicsystem',
+            sourceField: 'linkedItems',
+            targetType: 'item',
+            targetField: 'magicSystems',
+            bidirectional: true,
+            isArray: true,
+            transform: (itemId: string, magic: MagicSystem) => magic.id || magic.name,
+            reverseTransform: (magicId: string, item: PlotItem) => item.id || item.name
         },
         // Location ↔ Location (parentLocationId ↔ childLocationIds)
         {
@@ -147,7 +261,78 @@ export class EntitySyncService {
                 // Return the parent location's ID to set as child's parentLocationId
                 return parentLocation.id || parentLocation.name;
             }
-        }
+        },
+        // Scene ↔ Location (linkedLocations[] ↔ entityRefs)
+        {
+            sourceType: 'scene',
+            sourceField: 'linkedLocations',
+            targetType: 'location',
+            targetField: 'entityRefs',
+            bidirectional: true,
+            transform: (locationNameOrId: string, scene: Scene) => ({
+                entityId: scene.id || scene.name,
+                entityType: 'scene' as const,
+                entityName: scene.name,
+                relationship: 'takes place here'
+            }),
+            reverseTransform: (entityRef: EntityRef, location: Location) => {
+                // Scenes store location as name in linkedLocations array, so return location name
+                return location.name;
+            }
+        },
+        // Character ↔ Character (relationships[] ↔ relationships[])
+        // Note: This is self-referential - when Character A has Character B in relationships,
+        // Character B should also have Character A in relationships
+        {
+            sourceType: 'character',
+            sourceField: 'relationships',
+            targetType: 'character',
+            targetField: 'relationships',
+            bidirectional: true,
+            isArray: true,
+            transform: (targetCharRef: string | TypedRelationship, sourceChar: Character) => {
+                // Extract target character ID/name from relationship
+                const targetId = typeof targetCharRef === 'string' 
+                    ? targetCharRef 
+                    : targetCharRef.target;
+                
+                // Return the source character's name/ID to add to target's relationships
+                // We'll add it as a simple string for now (can be enhanced to preserve relationship type)
+                return sourceChar.name || sourceChar.id || '';
+            },
+            reverseTransform: (sourceCharNameOrId: string, targetChar: Character) => {
+                // Return target character's name/ID to add to source's relationships
+                return targetChar.name || targetChar.id || '';
+            }
+        },
+        // Character.locations ↔ Location.entityRefs (for general location associations, not just currentLocationId)
+        {
+            sourceType: 'character',
+            sourceField: 'locations',
+            targetType: 'location',
+            targetField: 'entityRefs',
+            bidirectional: true,
+            isArray: true,
+            transform: (locationNameOrId: string, character: Character) => ({
+                entityId: character.id || character.name,
+                entityType: 'character' as const,
+                entityName: character.name,
+                relationship: 'associated'
+            }),
+            reverseTransform: (entityRef: EntityRef, location: Location) => {
+                // Characters.locations stores location names, so return location name
+                return location.name;
+            }
+        },
+        // Scene ↔ Character (linkedCharacters[] ↔ need to add scenes field to Character)
+        // Since Character doesn't have a scenes field, we'll create a virtual relationship
+        // by storing scene references in a way that can be queried
+        // For now, we'll make it so when Scene.linkedCharacters changes, we update Character
+        // We'll need to add a scenes field to Character type or use a different approach
+        // Scene ↔ Event (linkedEvents[] ↔ need to add scenes field to Event)
+        // Scene ↔ Item (linkedItems[] ↔ need to add scenes field to Item)
+        // Note: These require adding new fields to target entities, which is a larger change
+        // For now, we'll focus on relationships that can work with existing fields
     ];
 
     /**
@@ -157,7 +342,7 @@ export class EntitySyncService {
      * @param oldEntity The previous version of the entity (if available)
      */
     async syncEntity(
-        entityType: 'character' | 'location' | 'event' | 'item',
+        entityType: 'character' | 'location' | 'event' | 'item' | 'scene' | 'culture' | 'economy' | 'magicsystem',
         newEntity: any,
         oldEntity?: any
     ): Promise<void> {
@@ -223,10 +408,22 @@ export class EntitySyncService {
             const newArray = (sourceValue as any[]) || [];
             const oldArray = (oldValue as any[]) || [];
 
-            // Normalize arrays for comparison (trim strings, handle empty values)
+            // Special handling for character relationships which can contain TypedRelationship objects
+            const isRelationshipsField = mapping.sourceField === 'relationships' && mapping.sourceType === 'character';
+            
+            // Normalize arrays for comparison (trim strings, handle empty values, extract IDs from TypedRelationship)
             const normalizeArray = (arr: any[]) => arr
                 .filter(item => item !== null && item !== undefined && item !== '')
-                .map(item => typeof item === 'string' ? item.trim() : item);
+                .map(item => {
+                    if (typeof item === 'string') {
+                        return item.trim();
+                    }
+                    // Handle TypedRelationship objects - extract the target
+                    if (isRelationshipsField && typeof item === 'object' && 'target' in item) {
+                        return typeof item.target === 'string' ? item.target.trim() : item.target;
+                    }
+                    return item;
+                });
 
             const normalizedNew = normalizeArray(newArray);
             const normalizedOld = normalizeArray(oldArray);
@@ -309,6 +506,10 @@ export class EntitySyncService {
         else if (mapping.targetField === 'childLocationIds' && mapping.sourceType === 'location') {
             await this.syncChildLocationIdsReverse(mapping, newEntity, oldEntity);
         }
+        // Generic array sync for other bidirectional relationships
+        else if (mapping.isArray && mapping.bidirectional) {
+            await this.syncArrayFieldReverse(mapping, newEntity, oldEntity);
+        }
     }
 
     /**
@@ -370,6 +571,118 @@ export class EntitySyncService {
     }
 
     /**
+     * Sync reverse relationship for generic array fields
+     */
+    private async syncArrayFieldReverse(
+        mapping: RelationshipMapping,
+        newTarget: any,
+        oldTarget?: any
+    ): Promise<void> {
+        const newArray = (newTarget[mapping.targetField] || []) as any[];
+        const oldArray = (oldTarget?.[mapping.targetField] || []) as any[];
+
+        // Normalize arrays
+        const normalizeArray = (arr: any[]) => arr
+            .filter(item => item !== null && item !== undefined && item !== '')
+            .map(item => typeof item === 'string' ? item.trim() : item);
+
+        const normalizedNew = normalizeArray(newArray);
+        const normalizedOld = normalizeArray(oldArray);
+
+        // Find items that were added
+        const added = normalizedNew.filter(newItem => {
+            if (typeof newItem === 'string') {
+                return !normalizedOld.some(oldItem => 
+                    typeof oldItem === 'string' && 
+                    oldItem.toLowerCase() === newItem.toLowerCase()
+                );
+            }
+            return !normalizedOld.includes(newItem);
+        });
+
+        // Find items that were removed
+        const removed = normalizedOld.filter(oldItem => {
+            if (typeof oldItem === 'string') {
+                return !normalizedNew.some(newItem => 
+                    typeof newItem === 'string' && 
+                    newItem.toLowerCase() === oldItem.toLowerCase()
+                );
+            }
+            return !normalizedNew.includes(oldItem);
+        });
+
+        // Handle added items
+        for (const itemId of added) {
+            try {
+                const sourceEntity = await this.getEntity(mapping.sourceType, itemId);
+                if (sourceEntity && mapping.reverseTransform) {
+                    const valueToSet = mapping.reverseTransform(itemId, newTarget);
+                    
+                    if (Array.isArray((sourceEntity as any)[mapping.sourceField])) {
+                        // Add to array
+                        const arr = (sourceEntity as any)[mapping.sourceField] as any[];
+                        const exists = typeof valueToSet === 'string'
+                            ? arr.some(x => typeof x === 'string' && x.toLowerCase() === valueToSet.toLowerCase())
+                            : arr.includes(valueToSet);
+                            
+                        if (!exists) {
+                            arr.push(valueToSet);
+                            await this.saveEntity(mapping.sourceType, sourceEntity);
+                        }
+                    } else {
+                        // Set scalar
+                        if ((sourceEntity as any)[mapping.sourceField] !== valueToSet) {
+                            (sourceEntity as any)[mapping.sourceField] = valueToSet;
+                            await this.saveEntity(mapping.sourceType, sourceEntity);
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error(`[EntitySyncService] Error adding reverse link for ${itemId}:`, error);
+            }
+        }
+
+        // Handle removed items
+        for (const itemId of removed) {
+             try {
+                const sourceEntity = await this.getEntity(mapping.sourceType, itemId);
+                if (sourceEntity && mapping.reverseTransform) {
+                    const valueToRemove = mapping.reverseTransform(itemId, newTarget);
+                    
+                    if (Array.isArray((sourceEntity as any)[mapping.sourceField])) {
+                        // Remove from array
+                        const arr = (sourceEntity as any)[mapping.sourceField] as any[];
+                        const index = arr.findIndex(x => {
+                            if (typeof x === 'string' && typeof valueToRemove === 'string') {
+                                return x.toLowerCase() === valueToRemove.toLowerCase();
+                            }
+                            return x === valueToRemove;
+                        });
+                            
+                        if (index !== -1) {
+                            arr.splice(index, 1);
+                            await this.saveEntity(mapping.sourceType, sourceEntity);
+                        }
+                    } else {
+                        // Clear scalar (only if it matches what we expect)
+                        const currentValue = (sourceEntity as any)[mapping.sourceField];
+                        const isMatch = typeof currentValue === 'string' && typeof valueToRemove === 'string'
+                             ? currentValue.toLowerCase() === valueToRemove.toLowerCase()
+                             : currentValue === valueToRemove;
+
+                        if (isMatch) {
+                            (sourceEntity as any)[mapping.sourceField] = undefined;
+                            await this.saveEntity(mapping.sourceType, sourceEntity);
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error(`[EntitySyncService] Error removing reverse link for ${itemId}:`, error);
+            }
+        }
+    }
+
+    /**
      * Sync reverse relationship for entityRefs
      */
     private async syncEntityRefsReverse(
@@ -394,7 +707,7 @@ export class EntitySyncService {
         // Entities removed
         for (const ref of oldRefs) {
             if (!newEntityIds.has(ref.entityId) && ref.entityType === mapping.sourceType) {
-                await this.clearSourceEntityFromRef(mapping, ref);
+                await this.clearSourceEntityFromRef(mapping, ref, oldLocation);
             }
         }
     }
@@ -440,7 +753,8 @@ export class EntitySyncService {
      */
     private async clearSourceEntityFromRef(
         mapping: RelationshipMapping,
-        entityRef: EntityRef
+        entityRef: EntityRef,
+        location?: Location
     ): Promise<void> {
         try {
             const sourceEntity = await this.getEntity(mapping.sourceType, entityRef.entityId);
@@ -452,11 +766,31 @@ export class EntitySyncService {
             // For array fields, remove the value instead of clearing the whole field
             if (Array.isArray((sourceEntity as any)[mapping.sourceField])) {
                 const array = (sourceEntity as any)[mapping.sourceField] as any[];
-                // Try to find and remove by both ID and name (for events array)
-                // Get the location to find its name
-                const location = await this.getEntity('location', entityRef.entityId);
-                const valueToRemove = location?.name || entityRef.entityId;
-                const index = array.indexOf(valueToRemove);
+                // Get the location name to remove from the array
+                // For scenes, we need the location name (not ID) to remove from linkedLocations
+                let valueToRemove: string;
+                if (location) {
+                    valueToRemove = location.name || (location.id || '');
+                } else {
+                    // Fallback: try to find location by searching all locations
+                    // This handles edge cases but is less efficient
+                    const locations = await this.plugin.listLocations();
+                    const foundLocation = locations.find(l => 
+                        l.entityRefs?.some(ref => 
+                            ref.entityId === entityRef.entityId && ref.entityType === entityRef.entityType
+                        )
+                    );
+                    valueToRemove = foundLocation?.name || entityRef.entityId;
+                }
+                
+                // Remove from array (case-insensitive for string matching)
+                const index = array.findIndex(item => {
+                    if (typeof item === 'string' && typeof valueToRemove === 'string') {
+                        return item.toLowerCase().trim() === valueToRemove.toLowerCase().trim();
+                    }
+                    return item === valueToRemove;
+                });
+                
                 if (index !== -1) {
                     array.splice(index, 1);
                     await this.saveEntity(mapping.sourceType, sourceEntity);
@@ -481,14 +815,20 @@ export class EntitySyncService {
         if (!oldValue) return; // Skip if value is empty/null/undefined
         
         try {
-            // Special handling for location lookups (events/items use names, characters use IDs)
+            // Extract target ID from TypedRelationship if needed
+            let targetId = oldValue;
+            if (mapping.sourceField === 'relationships' && mapping.sourceType === 'character' && typeof oldValue === 'object' && 'target' in oldValue) {
+                targetId = oldValue.target;
+            }
+            
+            // Special handling for location lookups (events/items/scenes use names, characters use IDs)
             let targetEntity: any;
             if (mapping.targetType === 'location' && 
-                (mapping.sourceType === 'event' || mapping.sourceType === 'item')) {
-                // Events/items reference locations by name, so use special resolver
-                targetEntity = await this.resolveLocationReference(oldValue);
+                (mapping.sourceType === 'event' || mapping.sourceType === 'item' || mapping.sourceType === 'scene')) {
+                // Events/items/scenes reference locations by name, so use special resolver
+                targetEntity = await this.resolveLocationReference(targetId);
             } else {
-                targetEntity = await this.getEntity(mapping.targetType, oldValue);
+                targetEntity = await this.getEntity(mapping.targetType, targetId);
             }
             
             if (!targetEntity) {
@@ -524,15 +864,25 @@ export class EntitySyncService {
                     ? mapping.transform(oldValue, sourceEntity)
                     : sourceEntity.name || sourceEntity.id;
                 
+                // Special handling for character relationships which can contain TypedRelationship objects
+                const isRelationshipsField = mapping.targetField === 'relationships' && mapping.targetType === 'character';
+                
                 // Try exact match first
                 let index = array.indexOf(valueToRemove);
                 
                 // If not found and value is a string, try case-insensitive match
                 if (index === -1 && typeof valueToRemove === 'string') {
-                    index = array.findIndex((item: any) => 
-                        typeof item === 'string' && 
-                        item.toLowerCase().trim() === valueToRemove.toLowerCase().trim()
-                    );
+                    index = array.findIndex((item: any) => {
+                        if (typeof item === 'string') {
+                            return item.toLowerCase().trim() === valueToRemove.toLowerCase().trim();
+                        }
+                        // Handle TypedRelationship objects - check if target matches
+                        if (isRelationshipsField && typeof item === 'object' && 'target' in item) {
+                            const itemTarget = typeof item.target === 'string' ? item.target.trim() : item.target;
+                            return itemTarget.toLowerCase() === valueToRemove.toLowerCase().trim();
+                        }
+                        return false;
+                    });
                 }
                 
                 if (index !== -1) {
@@ -667,14 +1017,20 @@ export class EntitySyncService {
         if (!newValue) return; // Skip if value is empty/null/undefined
         
         try {
-            // Special handling for location lookups (events/items use names, characters use IDs)
+            // Extract target ID from TypedRelationship if needed
+            let targetId = newValue;
+            if (mapping.sourceField === 'relationships' && mapping.sourceType === 'character' && typeof newValue === 'object' && 'target' in newValue) {
+                targetId = newValue.target;
+            }
+            
+            // Special handling for location lookups (events/items/scenes use names, characters use IDs)
             let targetEntity: any;
             if (mapping.targetType === 'location' && 
-                (mapping.sourceType === 'event' || mapping.sourceType === 'item')) {
-                // Events/items reference locations by name, so use special resolver
-                targetEntity = await this.resolveLocationReference(newValue);
+                (mapping.sourceType === 'event' || mapping.sourceType === 'item' || mapping.sourceType === 'scene')) {
+                // Events/items/scenes reference locations by name, so use special resolver
+                targetEntity = await this.resolveLocationReference(targetId);
             } else {
-                targetEntity = await this.getEntity(mapping.targetType, newValue);
+                targetEntity = await this.getEntity(mapping.targetType, targetId);
             }
             
             if (!targetEntity) {
@@ -708,12 +1064,22 @@ export class EntitySyncService {
                     : sourceEntity.name || sourceEntity.id;
                 
                 if (valueToAdd) {
-                    // Check if already exists (case-insensitive for strings)
+                    // Special handling for character relationships which can contain TypedRelationship objects
+                    const isRelationshipsField = mapping.targetField === 'relationships' && mapping.targetType === 'character';
+                    
+                    // Check if already exists (case-insensitive for strings, or check TypedRelationship.target)
                     const exists = typeof valueToAdd === 'string'
-                        ? array.some((item: any) => 
-                            typeof item === 'string' && 
-                            item.toLowerCase().trim() === valueToAdd.toLowerCase().trim()
-                          )
+                        ? array.some((item: any) => {
+                            if (typeof item === 'string') {
+                                return item.toLowerCase().trim() === valueToAdd.toLowerCase().trim();
+                            }
+                            // Handle TypedRelationship objects - check if target matches
+                            if (isRelationshipsField && typeof item === 'object' && 'target' in item) {
+                                const itemTarget = typeof item.target === 'string' ? item.target.trim() : item.target;
+                                return itemTarget.toLowerCase() === valueToAdd.toLowerCase().trim();
+                            }
+                            return false;
+                          })
                         : array.includes(valueToAdd);
                     
                     if (!exists) {
@@ -723,8 +1089,7 @@ export class EntitySyncService {
                 }
             } else if ((targetEntity as any)[mapping.targetField] === undefined) {
                 // Field doesn't exist yet - initialize as array if it should be an array
-                // This handles cases where character.events is undefined
-                if (mapping.targetField === 'events') {
+                if (mapping.isArray || mapping.targetField === 'events') {
                     (targetEntity as any)[mapping.targetField] = [];
                     const valueToAdd = mapping.transform 
                         ? mapping.transform(newValue, sourceEntity)
@@ -745,7 +1110,7 @@ export class EntitySyncService {
      * Handles case-insensitive matching and resolves by both ID and name
      */
     private async getEntity(
-        entityType: 'character' | 'location' | 'event' | 'item',
+        entityType: 'character' | 'location' | 'event' | 'item' | 'scene' | 'culture' | 'economy' | 'magicsystem',
         idOrName: string
     ): Promise<any> {
         if (!idOrName) return null;
@@ -765,6 +1130,18 @@ export class EntitySyncService {
                     break;
                 case 'item':
                     entities = await this.plugin.listPlotItems();
+                    break;
+                case 'scene':
+                    entities = await this.plugin.listScenes();
+                    break;
+                case 'culture':
+                    entities = await this.plugin.listCultures();
+                    break;
+                case 'economy':
+                    entities = await this.plugin.listEconomies();
+                    break;
+                case 'magicsystem':
+                    entities = await this.plugin.listMagicSystems();
                     break;
                 default:
                     return null;
@@ -806,7 +1183,7 @@ export class EntitySyncService {
      * Save an entity (delegates to plugin save methods)
      */
     private async saveEntity(
-        entityType: 'character' | 'location' | 'event' | 'item',
+        entityType: 'character' | 'location' | 'event' | 'item' | 'scene' | 'culture' | 'economy' | 'magicsystem',
         entity: any
     ): Promise<void> {
         try {
@@ -825,6 +1202,18 @@ export class EntitySyncService {
                     break;
                 case 'item':
                     await this.plugin.savePlotItem(entity);
+                    break;
+                case 'scene':
+                    await this.plugin.saveScene(entity);
+                    break;
+                case 'culture':
+                    await this.plugin.saveCulture(entity);
+                    break;
+                case 'economy':
+                    await this.plugin.saveEconomy(entity);
+                    break;
+                case 'magicsystem':
+                    await this.plugin.saveMagicSystem(entity);
                     break;
             }
         } catch (error) {
@@ -864,13 +1253,13 @@ export class EntitySyncService {
      * Handle entity deletion - remove all references
      */
     async handleEntityDeletion(
-        entityType: 'character' | 'location' | 'event' | 'item',
+        entityType: 'character' | 'location' | 'event' | 'item' | 'culture' | 'economy' | 'magicsystem',
         entityId: string
     ): Promise<void> {
         if (!entityId) return;
         
         try {
-            // Find all mappings where this entity type is a target
+            // Find all mappings where this entity type is a target or source
             const relevantMappings = this.relationshipMappings.filter(
                 m => m.targetType === entityType || 
                      (m.sourceType === entityType && m.bidirectional)
@@ -879,8 +1268,60 @@ export class EntitySyncService {
             for (const mapping of relevantMappings) {
                 await this.removeEntityReferences(mapping, entityType, entityId);
             }
+            
+            // Also handle character-to-character relationships (self-referential)
+            if (entityType === 'character') {
+                await this.removeCharacterFromRelationships(entityId);
+            }
         } catch (error) {
             console.error(`[EntitySyncService] Error handling entity deletion:`, error);
+        }
+    }
+    
+    /**
+     * Remove a character from all other characters' relationships arrays
+     */
+    private async removeCharacterFromRelationships(deletedCharacterId: string): Promise<void> {
+        try {
+            const characters = await this.plugin.listCharacters();
+            const deletedChar = characters.find(c => (c.id || c.name) === deletedCharacterId);
+            const deletedName = deletedChar?.name;
+            
+            for (const character of characters) {
+                if ((character.id || character.name) === deletedCharacterId) {
+                    continue; // Skip the deleted character itself
+                }
+                
+                if (!character.relationships || character.relationships.length === 0) {
+                    continue;
+                }
+                
+                let needsUpdate = false;
+                const updatedRelationships = character.relationships.filter((rel: string | TypedRelationship) => {
+                    if (typeof rel === 'string') {
+                        // Check if this string matches the deleted character
+                        if (rel === deletedCharacterId || (deletedName && rel.toLowerCase() === deletedName.toLowerCase())) {
+                            needsUpdate = true;
+                            return false;
+                        }
+                    } else if (typeof rel === 'object' && 'target' in rel) {
+                        // Check if TypedRelationship target matches
+                        const target = rel.target;
+                        if (target === deletedCharacterId || (deletedName && typeof target === 'string' && target.toLowerCase() === deletedName.toLowerCase())) {
+                            needsUpdate = true;
+                            return false;
+                        }
+                    }
+                    return true;
+                });
+                
+                if (needsUpdate) {
+                    character.relationships = updatedRelationships;
+                    await this.saveEntity('character', character);
+                }
+            }
+        } catch (error) {
+            console.error(`[EntitySyncService] Error removing character from relationships:`, error);
         }
     }
 
@@ -889,7 +1330,7 @@ export class EntitySyncService {
      */
     private async removeEntityReferences(
         mapping: RelationshipMapping,
-        deletedType: 'character' | 'location' | 'event' | 'item',
+        deletedType: 'character' | 'location' | 'event' | 'item' | 'culture' | 'economy' | 'magicsystem',
         deletedId: string
     ): Promise<void> {
         try {
@@ -908,6 +1349,15 @@ export class EntitySyncService {
                     break;
                 case 'item':
                     entities = await this.plugin.listPlotItems();
+                    break;
+                case 'culture':
+                    entities = await this.plugin.listCultures();
+                    break;
+                case 'economy':
+                    entities = await this.plugin.listEconomies();
+                    break;
+                case 'magicsystem':
+                    entities = await this.plugin.listMagicSystems();
                     break;
             }
 
@@ -936,16 +1386,26 @@ export class EntitySyncService {
                     }
                 } else if (Array.isArray((entity as any)[mapping.sourceField])) {
                     const array = (entity as any)[mapping.sourceField] as any[];
+                    const isRelationshipsField = mapping.sourceField === 'relationships' && mapping.sourceType === 'character';
+                    
                     // Try exact match first
                     let index = array.indexOf(deletedId);
                     
                     // If not found and we have a name, try name match (case-insensitive)
                     if (index === -1 && deletedName) {
                         const lowerDeletedName = deletedName.toLowerCase().trim();
-                        index = array.findIndex((item: any) => 
-                            typeof item === 'string' && 
-                            item.toLowerCase().trim() === lowerDeletedName
-                        );
+                        index = array.findIndex((item: any) => {
+                            if (typeof item === 'string') {
+                                return item.toLowerCase().trim() === lowerDeletedName;
+                            }
+                            // Handle TypedRelationship objects - check if target matches
+                            if (isRelationshipsField && typeof item === 'object' && 'target' in item) {
+                                const itemTarget = typeof item.target === 'string' ? item.target.trim() : item.target;
+                                return itemTarget === deletedId || 
+                                       (typeof itemTarget === 'string' && itemTarget.toLowerCase() === lowerDeletedName);
+                            }
+                            return false;
+                        });
                     }
                     
                     if (index !== -1) {

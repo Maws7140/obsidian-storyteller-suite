@@ -3,6 +3,8 @@
 
 # Claude
 .claude
+claude/
+gemini/
 
 # Intellij
 *.iml
@@ -10,6 +12,10 @@
 
 # npm
 node_modules
+
+# Environment files
+.env
+.env.example
 
 # Don't include the compiled main.js file in the repo.
 # They should be uploaded to GitHub releases instead.
@@ -47,3 +53,51 @@ docs/
 Obsidian/
 examples/
 javalent-obsidian-leaflet-8a5edab282632443.txt
+# Midscene.js dump files
+midscene_run/dump
+midscene_run/report
+midscene_run/tmp
+midscene_run/log
+
+# Automated testing artifacts and generated files
+test-results/
+test-vault/
+playwright-report/
+.obsidian-cache/
+screenshots/
+coverage/
+.nyc_output/
+
+# Test configuration files (generated/runtime)
+wdio.conf.mjs
+wdio.conf.ts
+vitest.config.ts
+tsconfig.vitest.json
+
+# Test source files and directories
+test/
+
+# Test-related scripts (generated/runtime)
+debug-test.js
+test-parsing.js
+fix-expect-webdriverio.js
+scripts/generate-test-vault.mjs
+scripts/run-e2e-with-7zip.ps1
+scripts/add-7zip-to-path.ps1
+scripts/add-7zip-to-system-path.ps1
+scripts/fix-7zip-path.ps1
+scripts/install-7zip.ps1
+
+# Test documentation (setup/status files)
+AUTOMATED_TESTING_OPTIONS.md
+E2E_SETUP_GUIDE.md
+E2E_SETUP_STATUS.md
+QUICK_START_E2E.md
+SETUP_COMPLETE.md
+TESTING_CHECKLIST.md
+TESTING_SUMMARY.md
+GEMINI_SETUP.md
+
+# Test artifacts and debug files
+obsidian-startup-debug.png
+nul

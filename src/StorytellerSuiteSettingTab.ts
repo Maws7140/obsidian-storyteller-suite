@@ -937,6 +937,18 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
             );
 
         new Setting(containerEl)
+            .setName('Disable Leaflet global exposure')
+            .setDesc('When enabled, prevents Storyteller Suite from exposing Leaflet globally. Use this if you experience conflicts with the standalone Obsidian Leaflet plugin (e.g., distance measurement tool not working). Note: This will require a plugin reload to take effect. Storyteller Suite\'s MapView will continue to work as it imports Leaflet directly.')
+            .addToggle(toggle => toggle
+                .setValue(!!this.plugin.settings.disableLeafletGlobalExposure)
+                .onChange(async (value) => {
+                    this.plugin.settings.disableLeafletGlobalExposure = value;
+                    await this.plugin.saveSettings();
+                    new Notice('Plugin reload required for this setting to take effect. Please restart Obsidian or disable/enable the plugin.');
+                })
+            );
+
+        new Setting(containerEl)
             .setName(t('oneStoryMode'))
             .setDesc(t('oneStoryModeDesc'))
             .addToggle(toggle => toggle

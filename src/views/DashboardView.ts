@@ -370,7 +370,9 @@ export class DashboardView extends ItemView {
         (container as HTMLElement).style.display = 'flex';
         (container as HTMLElement).style.flexDirection = 'column';
         (container as HTMLElement).style.height = '100%';
-        (container as HTMLElement).style.overflow = 'visible'; // Changed from hidden to visible
+        // Let the dedicated content area handle vertical scrolling.
+        // On mobile this prevents the header+tabs from pushing content out of view.
+        (container as HTMLElement).style.overflow = 'hidden';
         (container as HTMLElement).style.minHeight = '0';
         // Create isolated stacking context for proper z-index layering
         (container as HTMLElement).style.isolation = 'isolate';
@@ -587,9 +589,29 @@ export class DashboardView extends ItemView {
     private layoutTabs(): void {
         if (!this.tabHeaderContainer || !this.tabHeaderRibbonEl) return;
 
-        // Prepare container: allow wrapping/growing rows
-        this.tabHeaderRibbonEl.style.flexWrap = 'wrap';
-        (this.tabHeaderRibbonEl.style as any).rowGap = '6px';
+        const isMobile = PlatformUtils.isMobile();
+
+        // Prepare container layout:
+        // - Desktop: tabs can wrap to multiple rows.
+        // - Mobile: force a single horizontal row that scrolls sideways so content stays reachable.
+        if (isMobile) {
+            this.tabHeaderRibbonEl.style.flexWrap = 'nowrap';
+            this.tabHeaderRibbonEl.style.overflowX = 'auto';
+            this.tabHeaderRibbonEl.style.overflowY = 'hidden';
+            this.tabHeaderRibbonEl.style.justifyContent = 'flex-start';
+            (this.tabHeaderRibbonEl.style as any).rowGap = '0px';
+
+            this.tabHeaderContainer.style.overflowX = 'auto';
+            this.tabHeaderContainer.style.overflowY = 'hidden';
+        } else {
+            this.tabHeaderRibbonEl.style.flexWrap = 'wrap';
+            (this.tabHeaderRibbonEl.style as any).rowGap = '6px';
+            this.tabHeaderRibbonEl.style.overflowX = 'visible';
+            this.tabHeaderRibbonEl.style.overflowY = 'visible';
+
+            this.tabHeaderContainer.style.overflowX = 'visible';
+            this.tabHeaderContainer.style.overflowY = 'visible';
+        }
 
         // Reset
         this.tabHeaderRibbonEl.empty();

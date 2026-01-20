@@ -101,7 +101,7 @@ export class LeafletRenderer extends Component {
             if (this.map) {
                 const mapId = (this.params as any).mapId || this.params.id;
                 if (mapId) {
-                    this.mapEntityRenderer = new MapEntityRenderer(this.map, this.plugin);
+                    this.mapEntityRenderer = new MapEntityRenderer(this.map, this.plugin, mapId);
                     // Render locations and entities bound to this map
                     await this.mapEntityRenderer.renderLocationsForMap(mapId);
                     await this.mapEntityRenderer.renderPortalMarkers(mapId);
@@ -270,16 +270,104 @@ export class LeafletRenderer extends Component {
     }
 
     /**
-     * Force tile layers to refresh and render
-     * This is the key fix for tiles not rendering until zoom
+     * Verify that tiles are actually visible in the DOM
+     * Checks if tile containers exist and have loaded tile images
+     * @returns true if tiles are visible, false otherwise
      */
-    private forceTileRefresh(): void {
-        if (!this.map || this.hasRenderedTiles) return;
+    private verifyTilesVisible(): boolean {
+        if (!this.map) return false;
 
-        console.log('[LeafletRenderer] Forcing tile refresh...');
+        let hasVisibleTiles = false;
+        let totalTiles = 0;
+        let loadedTiles = 0;
 
-        // Mark that we've triggered a refresh to avoid doing it repeatedly
-        this.hasRenderedTiles = true;
+        this.map.eachLayer((layer: any) => {
+            if (layer._url || layer.getTileUrl || layer instanceof L.TileLayer) {
+                const container = layer.getContainer?.();
+                if (container) {
+                    // Check tile container visibility
+                    const containerVisible = 
+                        container.style.opacity !== '0' &&
+                        container.style.visibility !== 'hidden' &&
+                        container.style.display !== 'none';
+                    
+                    if (containerVisible) {
+                        const tiles = container.querySelectorAll('img');
+                        totalTiles += tiles.length;
+                        
+                        // Count tiles that are loaded (have src and complete, or are visible)
+                        tiles.forEach((tile: HTMLImageElement) => {
+                            const tileVisible = 
+                                tile.style.opacity !== '0' &&
+                                tile.style.visibility !== 'hidden' &&
+                                tile.style.display !== 'none';
+                            
+                            if (tileVisible && (tile.complete || tile.src)) {
+                                loadedTiles++;
+                            }
+                        });
+                        
+                        hasVisibleTiles = hasVisibleTiles || (tiles.length > 0 && loadedTiles > 0);
+                    }
+                }
+            }
+        });
+
+        // Also check tile pane visibility
+        const tilePane = this.map.getPane('tilePane');
+        const paneVisible = tilePane && 
+            tilePane.style.opacity !== '0' &&
+            tilePane.style.visibility !== 'hidden' &&
+            tilePane.style.display !== 'none';
+
+        const verified = hasVisibleTiles && paneVisible;
+        console.log(`[LeafletRenderer] Tile verification: ${loadedTiles}/${totalTiles} tiles visible, pane visible: ${paneVisible}, verified: ${verified}`);
+        
+        return verified;
+    }
+
+    /**
+     * Retry tile refresh with exponential backoff
+     * @param attempt Current attempt number (1-based)
+     * @param maxAttempts Maximum number of attempts (default: 3)
+     */
+    private retryTileRefresh(attempt: number = 1, maxAttempts: number = 3): void {
+        if (!this.map || attempt > maxAttempts) {
+            console.warn(`[LeafletRenderer] Tile refresh failed after ${maxAttempts} attempts`);
+            return;
+        }
+
+        const delay = Math.pow(2, attempt - 1) * 100; // 100ms, 200ms, 400ms
+        console.log(`[LeafletRenderer] Retrying tile refresh (attempt ${attempt}/${maxAttempts}) in ${delay}ms...`);
+
+        setTimeout(() => {
+            if (!this.map) return;
+
+            // Perform the refresh
+            this.performTileRefresh();
+
+            // Verify after a short delay to allow tiles to load
+            setTimeout(() => {
+                if (!this.map) return;
+
+                if (this.verifyTilesVisible()) {
+                    // Tiles are visible, mark as rendered
+                    this.hasRenderedTiles = true;
+                    console.log(`[LeafletRenderer] Tiles verified visible after attempt ${attempt}`);
+                } else {
+                    // Tiles still not visible, retry
+                    this.retryTileRefresh(attempt + 1, maxAttempts);
+                }
+            }, 200);
+        }, delay);
+    }
+
+    /**
+     * Perform the actual tile refresh operations
+     * Separated from forceTileRefresh() to allow reuse in retry logic
+     */
+    private performTileRefresh(): void {
+        if (!this.map) return;
 
         // Step 1: Invalidate the map size to recalculate dimensions
         this.map.invalidateSize({ animate: false });
@@ -303,12 +391,14 @@ export class LeafletRenderer extends Component {
                 if (container) {
                     container.style.opacity = '1';
                     container.style.visibility = 'visible';
+                    container.style.display = 'block';
                     
                     // Force visibility on all tile images
                     const tiles = container.querySelectorAll('img');
                     tiles.forEach((tile: HTMLElement) => {
                         tile.style.opacity = '1';
                         tile.style.visibility = 'visible';
+                        tile.style.display = 'block';
                     });
                 }
             }
@@ -322,36 +412,63 @@ export class LeafletRenderer extends Component {
             tilePane.style.display = 'block';
         }
 
-        // Step 4: Fire a moveend event to trigger Leaflet's internal tile loading
-        // This simulates what happens when the user zooms
+        // Step 4: Fire Leaflet events to trigger tile loading
+        // Use proper Leaflet events instead of micro-zoom hack
+        this.map.fire('viewreset');
         this.map.fire('moveend');
         this.map.fire('zoomend');
+    }
 
-        // Step 5: Force a tiny zoom change to trigger Leaflet's internal state update
-        // This is the nuclear option - simulate what zoom does
-        const currentZoom = this.map.getZoom();
-        const currentCenter = this.map.getCenter();
-        
-        // Micro zoom - invisible to user but triggers Leaflet's full update cycle
-        this.map.setView(currentCenter, currentZoom + 0.001, { animate: false });
-        
-        setTimeout(() => {
-            if (this.map) {
-                // Return to original zoom
-                this.map.setView(currentCenter, currentZoom, { animate: false });
-                
-                // Force one more update
-                this.map.invalidateSize({ animate: false });
-                this.map.eachLayer((layer: any) => {
-                    if (layer._update) {
-                        layer._update();
-                    }
-                    if (layer._forceVisibility) {
-                        layer._forceVisibility();
-                    }
-                });
+    /**
+     * Force tile layers to refresh and render
+     * This is the key fix for tiles not rendering until zoom
+     * Now waits for map readiness and verifies tiles are actually visible
+     */
+    private forceTileRefresh(): void {
+        if (!this.map) return;
+
+        // Don't proceed if we've already verified tiles are rendered
+        if (this.hasRenderedTiles && this.verifyTilesVisible()) {
+            console.log('[LeafletRenderer] Tiles already verified as visible, skipping refresh');
+            return;
+        }
+
+        console.log('[LeafletRenderer] Forcing tile refresh...');
+
+        // Wait for map to be ready before attempting refresh
+        this.map.whenReady(() => {
+            if (!this.map) return;
+
+            // Verify map has valid dimensions
+            const mapSize = this.map.getSize();
+            if (mapSize.x === 0 || mapSize.y === 0) {
+                console.warn('[LeafletRenderer] Map has zero dimensions, waiting for resize...');
+                // Wait a bit and retry
+                setTimeout(() => {
+                    this.forceTileRefresh();
+                }, 100);
+                return;
             }
-        }, 50);
+
+            // Perform the refresh
+            this.performTileRefresh();
+
+            // Verify tiles are visible after a short delay to allow loading
+            setTimeout(() => {
+                if (!this.map) return;
+
+                if (this.verifyTilesVisible()) {
+                    // Tiles are visible, mark as rendered
+                    this.hasRenderedTiles = true;
+                    console.log('[LeafletRenderer] Tiles verified visible after refresh');
+                } else {
+                    // Tiles not visible yet, start retry logic
+                    console.log('[LeafletRenderer] Tiles not visible after initial refresh, starting retry...');
+                    this.hasRenderedTiles = false; // Reset flag to allow retry
+                    this.retryTileRefresh(1, 3);
+                }
+            }, 200);
+        });
     }
 
     /**
@@ -640,15 +757,40 @@ export class LeafletRenderer extends Component {
         tileLayer.addTo(this.map);
         console.log('[LeafletRenderer] Tile layer added');
 
-        // CRITICAL FIX: Listen for tile load events - but DON'T call invalidateSize!
-        // invalidateSize can cause tiles to disappear - just log that tiles loaded
-        let tilesLoaded = false;
-        tileLayer.on('load', () => {
-            if (!tilesLoaded) {
-                tilesLoaded = true;
-                console.log('[LeafletRenderer] Tiles loaded successfully');
-                this.hasRenderedTiles = true;
+        // Add proper Leaflet event listeners for tile loading
+        let tileLoadCount = 0;
+        let tilesLoadingStarted = false;
+
+        // Listen for when tiles start loading
+        tileLayer.on('loading', () => {
+            if (!tilesLoadingStarted) {
+                tilesLoadingStarted = true;
+                console.log('[LeafletRenderer] Tiles starting to load...');
             }
+        });
+
+        // Listen for each individual tile load
+        tileLayer.on('tileload', () => {
+            tileLoadCount++;
+            console.log(`[LeafletRenderer] Tile loaded (${tileLoadCount} total)`);
+        });
+
+        // Listen for when all visible tiles have loaded
+        tileLayer.on('load', () => {
+            console.log(`[LeafletRenderer] All visible tiles loaded (${tileLoadCount} tiles)`);
+            // Verify tiles are actually visible before marking as rendered
+            setTimeout(() => {
+                if (this.map && this.verifyTilesVisible()) {
+                    this.hasRenderedTiles = true;
+                    console.log('[LeafletRenderer] Tiles verified visible after load event');
+                }
+            }, 100);
+        });
+
+        // Also listen for tile errors to help with debugging
+        // Note: tileerror event passes (error, tile) but TypeScript types are strict about handler signature
+        (tileLayer as any).on('tileerror', (error: any, tile: any) => {
+            console.warn('[LeafletRenderer] Tile load error:', error, tile);
         });
 
         // Invalidate size to ensure Leaflet recalculates
@@ -687,22 +829,22 @@ export class LeafletRenderer extends Component {
             (tileLayer as any)._update();
         }
 
-        // CRITICAL FIX: Use forceTileRefresh after a short delay
-        setTimeout(() => {
-            if (this.map) {
-                this.hasRenderedTiles = false; // Reset so forceTileRefresh will run
-                this.forceTileRefresh();
-            }
-        }, 100);
+        // CRITICAL FIX: Wait for map to be ready before attempting tile refresh
+        // This ensures the map and tile layer are fully initialized
+        this.map.whenReady(() => {
+            if (!this.map) return;
 
-        // Additional refresh after a longer delay for reliability
-        setTimeout(() => {
-            if (this.map && !this.hasRenderedTiles) {
-                console.log('[LeafletRenderer] Secondary tile refresh (500ms)...');
-                this.hasRenderedTiles = false;
-                this.forceTileRefresh();
-            }
-        }, 500);
+            console.log('[LeafletRenderer] Map ready, initiating tile refresh...');
+            // Reset flag to allow forceTileRefresh to run
+            this.hasRenderedTiles = false;
+            
+            // Use requestAnimationFrame to ensure DOM is fully updated
+            requestAnimationFrame(() => {
+                if (this.map) {
+                    this.forceTileRefresh();
+                }
+            });
+        });
 
         // Log final state
         const finalZoom = this.map.getZoom();

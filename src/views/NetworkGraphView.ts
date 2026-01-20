@@ -24,7 +24,7 @@ export class NetworkGraphView extends ItemView {
     plugin: StorytellerSuitePlugin;
     private graphRenderer: NetworkGraphRenderer | null = null;
     private currentFilters: GraphFilters = {
-        entityTypes: ['character', 'location', 'event', 'item']
+        entityTypes: ['character', 'location', 'event', 'item', 'culture', 'economy', 'magicsystem']
     };
     
     // UI Elements
@@ -179,14 +179,17 @@ export class NetworkGraphView extends ItemView {
         this.entityFilterEl.empty();
 
         const entityTypes: Array<{
-            type: 'character' | 'location' | 'event' | 'item';
+            type: 'character' | 'location' | 'event' | 'item' | 'culture' | 'economy' | 'magicsystem';
             icon: string;
             label: string;
         }> = [
             { type: 'character', icon: 'user', label: t('characters') },
             { type: 'location', icon: 'map-pin', label: t('locations') },
             { type: 'event', icon: 'calendar', label: t('events') },
-            { type: 'item', icon: 'package', label: t('items') }
+            { type: 'item', icon: 'package', label: t('items') },
+            { type: 'culture', icon: 'landmark', label: t('cultures') || 'Cultures' },
+            { type: 'economy', icon: 'coins', label: t('economies') || 'Economies' },
+            { type: 'magicsystem', icon: 'sparkles', label: t('magicSystems') || 'Magic' }
         ];
 
         entityTypes.forEach(({ type, icon, label }) => {
@@ -384,18 +387,18 @@ export class NetworkGraphView extends ItemView {
     /**
      * Get currently active entity types from filter buttons
      */
-    private getActiveEntityTypes(): ('character' | 'location' | 'event' | 'item')[] {
-        if (!this.entityFilterEl) return ['character', 'location', 'event', 'item'];
+    private getActiveEntityTypes(): ('character' | 'location' | 'event' | 'item' | 'culture' | 'economy' | 'magicsystem')[] {
+        if (!this.entityFilterEl) return ['character', 'location', 'event', 'item', 'culture', 'economy', 'magicsystem'];
         
         const activeButtons = this.entityFilterEl.querySelectorAll('.storyteller-entity-filter-btn.is-active');
-        const types: ('character' | 'location' | 'event' | 'item')[] = [];
+        const types: ('character' | 'location' | 'event' | 'item' | 'culture' | 'economy' | 'magicsystem')[] = [];
         
         activeButtons.forEach(btn => {
-            const type = btn.getAttribute('data-entity-type') as 'character' | 'location' | 'event' | 'item';
+            const type = btn.getAttribute('data-entity-type') as 'character' | 'location' | 'event' | 'item' | 'culture' | 'economy' | 'magicsystem';
             if (type) types.push(type);
         });
         
-        return types.length > 0 ? types : ['character', 'location', 'event', 'item'];
+        return types.length > 0 ? types : ['character', 'location', 'event', 'item', 'culture', 'economy', 'magicsystem'];
     }
 
     /**
