@@ -5,8 +5,8 @@
 import 'leaflet/dist/leaflet.css';
 import * as L from 'leaflet';
 
-// Expose Leaflet to the global scope so plugins can use it
-(window as any).L = L;
+// Note: Global Leaflet exposure is now conditional and happens in onload() after settings are loaded
+// This prevents conflicts with the standalone Obsidian Leaflet plugin when disableLeafletGlobalExposure is enabled
 
 // Leaflet plugins disabled - causing marker initialization errors
 // import 'leaflet-draw/dist/leaflet.draw.css';
@@ -127,6 +127,8 @@ import { LocationMigration } from './utils/LocationMigration';
     customFieldsMode?: 'flatten' | 'nested';
     /** Internal: set after relationships migration to avoid repeating it */
     relationshipsMigrated?: boolean;
+    /** Internal: set after backfilling bidirectional links (v2.0) */
+    bidirectionalLinksBackfilled?: boolean;
     /** Network graph view zoom level (saved per session) */
     networkGraphZoom?: number;
     /** Network graph view pan position (saved per session) */
@@ -145,6 +147,8 @@ import { LocationMigration } from './utils/LocationMigration';
     locationPinsOpenMap?: boolean;
     /** Persisted map view states (zoom/center) per map ID */
     mapViewStates?: Record<string, { zoom: number; center: { lat: number; lng: number } }>;
+    /** When true, disables global Leaflet exposure to prevent conflicts with standalone Obsidian Leaflet plugin */
+    disableLeafletGlobalExposure?: boolean;
 
     /** Timeline & Causality */
     timelineForks?: TimelineFork[];
@@ -268,6 +272,7 @@ import { LocationMigration } from './utils/LocationMigration';
     mapViewStates: {},
     customFieldsMode: 'flatten',
     relationshipsMigrated: false,
+    bidirectionalLinksBackfilled: false,
     timelineForks: [],
     causalityLinks: [],
     timelineConflicts: [],
@@ -305,7 +310,8 @@ import { LocationMigration } from './utils/LocationMigration';
     countDeletionsForGoal: false,
     dailyWritingStats: [],
     compileScriptsFolder: 'StorytellerSuite/CompileScripts',
-    manuscriptOutputFolder: 'StorytellerSuite/Manuscripts'
+    manuscriptOutputFolder: 'StorytellerSuite/Manuscripts',
+    disableLeafletGlobalExposure: false
 }
 
 /**
@@ -352,7 +358,7 @@ export default class StorytellerSuitePlugin extends Plugin {
      * - Preserves values without overriding existing `customFields` entries
      */
     private normalizeEntityCustomFields<T extends { customFields?: Record<string, string> }>(
-        entityType: 'character' | 'location' | 'event' | 'item' | 'map',
+        entityType: 'character' | 'location' | 'event' | 'item' | 'map' | 'culture' | 'economy' | 'magicSystem',
         entity: T
     ): T {
         if (!entity) return entity;
@@ -367,7 +373,10 @@ export default class StorytellerSuitePlugin extends Plugin {
             reference: ['content'],
             chapter: ['summary'],
             scene: ['content'],
-            map: ['description']
+            map: ['description'],
+            culture: ['description', 'values', 'religion', 'socialStructure', 'history', 'namingConventions', 'customs'],
+            economy: ['description', 'industries', 'taxation'],
+            magicSystem: ['description', 'rules', 'source', 'costs', 'limitations', 'training', 'history']
         };
         for (const k of (derivedByType[entityType] || [])) reserved.add(k);
         const mode = this.settings.customFieldsMode ?? 'flatten';
@@ -672,11 +681,93 @@ export default class StorytellerSuitePlugin extends Plugin {
 	}
 
 	/**
+	 * Backfill bidirectional relationships for all entities
+	 * Ensures consistency of links (e.g. Item owner ↔ Character ownedItems)
+	 * Runs once on update to v2.0
+	 */
+	async backfillBidirectionalRelationships(): Promise<void> {
+		console.log('Storyteller Suite: Starting bidirectional link backfill...');
+		
+		const { EntitySyncService } = await import('./services/EntitySyncService');
+		const syncService = new EntitySyncService(this);
+		let updatedCount = 0;
+
+		try {
+			// Sync Characters
+			const characters = await this.listCharacters();
+			for (const entity of characters) {
+				await syncService.syncEntity('character', entity);
+				updatedCount++;
+			}
+
+			// Sync Locations
+			const locations = await this.listLocations();
+			for (const entity of locations) {
+				await syncService.syncEntity('location', entity);
+				updatedCount++;
+			}
+
+			// Sync Events
+			const events = await this.listEvents();
+			for (const entity of events) {
+				await syncService.syncEntity('event', entity);
+				updatedCount++;
+			}
+
+			// Sync Items
+			const items = await this.listPlotItems();
+			for (const entity of items) {
+				await syncService.syncEntity('item', entity);
+				updatedCount++;
+			}
+
+			// Sync Scenes
+			const scenes = await this.listScenes();
+			for (const entity of scenes) {
+				await syncService.syncEntity('scene', entity);
+				updatedCount++;
+			}
+
+            // Sync Cultures
+            const cultures = await this.listCultures();
+            for (const entity of cultures) {
+                await syncService.syncEntity('culture', entity);
+                updatedCount++;
+            }
+
+            // Sync Economies
+            const economies = await this.listEconomies();
+            for (const entity of economies) {
+                await syncService.syncEntity('economy', entity);
+                updatedCount++;
+            }
+
+            // Sync Magic Systems
+            const magicSystems = await this.listMagicSystems();
+            for (const entity of magicSystems) {
+                await syncService.syncEntity('magicsystem', entity);
+                updatedCount++;
+            }
+
+			console.log(`Storyteller Suite: Backfill complete. Processed ${updatedCount} entities.`);
+            new Notice(`Storyteller: Updated links for ${updatedCount} entities.`);
+		} catch (error) {
+			console.error('Storyteller Suite: Error during bidirectional backfill:', error);
+		}
+	}
+
+	/**
 	 * Plugin initialization - called when the plugin is loaded
 	 * Registers views, commands, UI elements, and mobile adaptations
 	 */
 	async onload() {
 		await this.loadSettings();
+
+		// Conditionally expose Leaflet to global scope to prevent conflicts with standalone Obsidian Leaflet plugin
+		// Only expose if not explicitly disabled in settings (defaults to false for backward compatibility)
+		if (!this.settings.disableLeafletGlobalExposure) {
+			(window as any).L = L;
+		}
 
 		// Initialize locale from settings
 		setLocale(this.settings.language);
@@ -798,6 +889,13 @@ export default class StorytellerSuitePlugin extends Plugin {
 				this.settings.relationshipsMigrated = true;
 				await this.saveSettings();
 			}
+
+            // Run backfill for bidirectional links (only runs once)
+            if (!this.settings.bidirectionalLinksBackfilled) {
+                await this.backfillBidirectionalRelationships();
+                this.settings.bidirectionalLinksBackfilled = true;
+                await this.saveSettings();
+            }
 
 			// Set up mobile/tablet orientation and resize handlers
 			this.setupMobileOrientationHandlers();
@@ -4548,6 +4646,28 @@ export default class StorytellerSuitePlugin extends Plugin {
             const picked = chapters.find(c => c.id === scene.chapterId);
             if (picked) scene.chapterName = picked.name;
         }
+        
+        // Sync bidirectional relationships (skip if _skipSync flag is set to prevent recursion)
+        if (!(scene as any)._skipSync) {
+            try {
+                const { EntitySyncService } = await import('./services/EntitySyncService');
+                const syncService = new EntitySyncService(this);
+                // Get old scene for comparison if file exists
+                let oldScene: Scene | undefined;
+                if (existingFile && existingFile instanceof TFile) {
+                    try {
+                        oldScene = (await this.parseFile<Scene>(existingFile, { name: '' }, 'scene')) || undefined;
+                    } catch (e) {
+                        // Ignore parse errors for old scene
+                    }
+                }
+                await syncService.syncEntity('scene', scene, oldScene);
+            } catch (error) {
+                console.error('[saveScene] Error syncing relationships:', error);
+                // Don't throw - sync failures shouldn't prevent saves
+            }
+        }
+        
         this.app.metadataCache.trigger('dataview:refresh-views');
     }
 
@@ -4607,6 +4727,7 @@ export default class StorytellerSuitePlugin extends Plugin {
         const existingFile = this.app.vault.getAbstractFileByPath(finalFilePath);
         let existingSections: Record<string, string> = {};
         let originalFrontmatter: Record<string, unknown> | undefined;
+        let oldCulture: Culture | undefined;
         if (existingFile && existingFile instanceof TFile) {
             try {
                 const existingContent = await this.app.vault.cachedRead(existingFile);
@@ -4619,6 +4740,14 @@ export default class StorytellerSuitePlugin extends Plugin {
 
                 if (directFrontmatter || cachedFrontmatter) {
                     originalFrontmatter = { ...(cachedFrontmatter || {}), ...(directFrontmatter || {}) };
+                }
+
+                // Load old culture for sync comparison (only if not skipping sync)
+                if (!(culture as any)._skipSync) {
+                    const parsed = await this.parseFile<Culture>(existingFile, { name: '' }, 'culture');
+                    if (parsed) {
+                        oldCulture = this.normalizeEntityCustomFields('culture', parsed);
+                    }
                 }
             } catch (error) {
                 console.warn(`Error reading existing culture file: ${error}`);
@@ -4673,6 +4802,14 @@ export default class StorytellerSuitePlugin extends Plugin {
         }
 
         culture.filePath = finalFilePath;
+
+        // Sync relationships (unless this save was triggered by a sync)
+        if (!(culture as any)._skipSync) {
+            const { EntitySyncService } = await import('./services/EntitySyncService');
+            const syncService = new EntitySyncService(this);
+            await syncService.syncEntity('culture', culture, oldCulture);
+        }
+
         this.app.metadataCache.trigger("dataview:refresh-views");
     }
 
@@ -4722,6 +4859,7 @@ export default class StorytellerSuitePlugin extends Plugin {
         const existingFile = this.app.vault.getAbstractFileByPath(finalFilePath);
         let existingSections: Record<string, string> = {};
         let originalFrontmatter: Record<string, unknown> | undefined;
+        let oldEconomy: Economy | undefined;
         if (existingFile && existingFile instanceof TFile) {
             try {
                 const existingContent = await this.app.vault.cachedRead(existingFile);
@@ -4734,6 +4872,14 @@ export default class StorytellerSuitePlugin extends Plugin {
 
                 if (directFrontmatter || cachedFrontmatter) {
                     originalFrontmatter = { ...(cachedFrontmatter || {}), ...(directFrontmatter || {}) };
+                }
+
+                // Load old economy for sync comparison (only if not skipping sync)
+                if (!(economy as any)._skipSync) {
+                    const parsed = await this.parseFile<Economy>(existingFile, { name: '' }, 'economy');
+                    if (parsed) {
+                        oldEconomy = this.normalizeEntityCustomFields('economy', parsed);
+                    }
                 }
             } catch (error) {
                 console.warn(`Error reading existing economy file: ${error}`);
@@ -4784,6 +4930,14 @@ export default class StorytellerSuitePlugin extends Plugin {
         }
 
         economy.filePath = finalFilePath;
+
+        // Sync relationships (unless this save was triggered by a sync)
+        if (!(economy as any)._skipSync) {
+            const { EntitySyncService } = await import('./services/EntitySyncService');
+            const syncService = new EntitySyncService(this);
+            await syncService.syncEntity('economy', economy, oldEconomy);
+        }
+
         this.app.metadataCache.trigger("dataview:refresh-views");
     }
 
@@ -4833,6 +4987,7 @@ export default class StorytellerSuitePlugin extends Plugin {
         const existingFile = this.app.vault.getAbstractFileByPath(finalFilePath);
         let existingSections: Record<string, string> = {};
         let originalFrontmatter: Record<string, unknown> | undefined;
+        let oldMagicSystem: MagicSystem | undefined;
         if (existingFile && existingFile instanceof TFile) {
             try {
                 const existingContent = await this.app.vault.cachedRead(existingFile);
@@ -4845,6 +5000,14 @@ export default class StorytellerSuitePlugin extends Plugin {
 
                 if (directFrontmatter || cachedFrontmatter) {
                     originalFrontmatter = { ...(cachedFrontmatter || {}), ...(directFrontmatter || {}) };
+                }
+
+                // Load old magic system for sync comparison (only if not skipping sync)
+                if (!(magicSystem as any)._skipSync) {
+                    const parsed = await this.parseFile<MagicSystem>(existingFile, { name: '' }, 'magicSystem');
+                    if (parsed) {
+                        oldMagicSystem = this.normalizeEntityCustomFields('magicSystem', parsed);
+                    }
                 }
             } catch (error) {
                 console.warn(`Error reading existing magic system file: ${error}`);
