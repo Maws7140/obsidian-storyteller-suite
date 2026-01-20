@@ -393,7 +393,11 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                             (this.plugin.settings.itemFolderPath || '').match(/\{story(Name|Slug|Id)\}/i) ||
                             (this.plugin.settings.referenceFolderPath || '').match(/\{story(Name|Slug|Id)\}/i) ||
                             (this.plugin.settings.chapterFolderPath || '').match(/\{story(Name|Slug|Id)\}/i) ||
-                            (this.plugin.settings.sceneFolderPath || '').match(/\{story(Name|Slug|Id)\}/i);
+                            (this.plugin.settings.sceneFolderPath || '').match(/\{story(Name|Slug|Id)\}/i) ||
+                            (this.plugin.settings.cultureFolderPath || '').match(/\{story(Name|Slug|Id)\}/i) ||
+                            (this.plugin.settings.economyFolderPath || '').match(/\{story(Name|Slug|Id)\}/i) ||
+                            (this.plugin.settings.factionFolderPath || '').match(/\{story(Name|Slug|Id)\}/i) ||
+                            (this.plugin.settings.magicSystemFolderPath || '').match(/\{story(Name|Slug|Id)\}/i);
                         if (hasStoryPlaceholder && !this.plugin.settings.activeStoryId) {
                             const banner = containerEl.createDiv({ cls: 'mod-warning' });
                             banner.style.marginTop = '8px';
@@ -1321,6 +1325,57 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                 <li>${t('tutorialPlotStorage')}</li>
             </ul>`);
 
+        this.addTutorialCollapsible(containerEl, t('tutorialReferencesTitle'), 
+            `<p><strong>${t('tutorialReferencesCreating')}</strong></p>
+            <ul>
+                <li>${t('tutorialReferencesDashboard')}</li>
+                <li>${t('tutorialReferencesCommand')}</li>
+                <li>${t('tutorialReferencesDetails')}</li>
+            </ul>
+            <p><strong>${t('tutorialReferencesManaging')}</strong></p>
+            <ul>
+                <li>${t('tutorialReferencesView')}</li>
+                <li>${t('tutorialReferencesStorage')}</li>
+                <li>${t('tutorialReferencesUse')}</li>
+            </ul>`);
+
+        this.addTutorialCollapsible(containerEl, t('tutorialChaptersScenesTitle'), 
+            `<p><strong>${t('tutorialChaptersCreating')}</strong></p>
+            <ul>
+                <li>${t('tutorialChaptersDashboard')}</li>
+                <li>${t('tutorialChaptersCommand')}</li>
+                <li>${t('tutorialChaptersDetails')}</li>
+                <li>${t('tutorialChaptersLink')}</li>
+            </ul>
+            <p><strong>${t('tutorialScenesCreating')}</strong></p>
+            <ul>
+                <li>${t('tutorialScenesDashboard')}</li>
+                <li>${t('tutorialScenesCommand')}</li>
+                <li>${t('tutorialScenesDetails')}</li>
+                <li>${t('tutorialScenesLink')}</li>
+            </ul>
+            <p><strong>${t('tutorialScenesManaging')}</strong></p>
+            <ul>
+                <li>${t('tutorialChaptersView')}</li>
+                <li>${t('tutorialScenesView')}</li>
+                <li>${t('tutorialChaptersStorage')}</li>
+                <li>${t('tutorialScenesStorage')}</li>
+            </ul>`);
+
+        this.addTutorialCollapsible(containerEl, t('tutorialMapsTitle'), 
+            `<p><strong>${t('tutorialMapsCreating')}</strong></p>
+            <ul>
+                <li>${t('tutorialMapsDashboard')}</li>
+                <li>${t('tutorialMapsTypes')}</li>
+                <li>${t('tutorialMapsFeatures')}</li>
+            </ul>
+            <p><strong>${t('tutorialMapsManaging')}</strong></p>
+            <ul>
+                <li>${t('tutorialMapsView')}</li>
+                <li>${t('tutorialMapsStorage')}</li>
+                <li>${t('tutorialMapsFrontmatter')}</li>
+            </ul>`);
+
         this.addTutorialCollapsible(containerEl, t('tutorialGalleryTitle'), 
             `<p><strong>${t('tutorialGalleryOrganization')}</strong></p>
             <ul>
@@ -1347,7 +1402,6 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                 <li>${t('tutorialWorldFactions')}</li>
                 <li>${t('tutorialWorldEconomies')}</li>
                 <li>${t('tutorialWorldMagic')}</li>
-                <li>${t('tutorialWorldCalendars')}</li>
             </ul>
             <p><strong>${t('tutorialWorldCreating')}</strong></p>
             <ul>
@@ -1468,8 +1522,7 @@ StorytellerSuite/
 │       ├── Cultures/       (culture .md files)
 │       ├── Factions/       (faction .md files)
 │       ├── Economies/      (economy .md files)
-│       ├── MagicSystems/   (magic system .md files)
-│       └── Calendars/      (calendar .md files)
+│       └── MagicSystems/   (magic system .md files)
 ├── GalleryUploads/         (uploaded images)
 └── Templates/              (saved entity templates)
 
@@ -1479,9 +1532,13 @@ ${t('tutorialFileOneMode')}
 ├── Locations/
 ├── Events/
 ├── Items/
+├── References/
+├── Chapters/
+├── Scenes/
 ├── Cultures/
 ├── Factions/
-└── ... (all entity folders)
+├── Economies/
+└── MagicSystems/
 </code></pre>
             <p><strong>${t('tutorialFileIntegration')}</strong></p>
             <ul>
