@@ -41,6 +41,7 @@ export class TimelineView extends ItemView {
     private filterToggleEl: HTMLElement | null = null;
     private advancedFiltersEl: HTMLElement | null = null;
     private advancedFiltersContent: HTMLElement | null = null;
+    private filterChipsEl: HTMLElement | null = null;
     private timelineContainer: HTMLElement | null = null;
     private footerEl: HTMLElement | null = null;
     private footerStatusEl: HTMLElement | null = null;
@@ -66,7 +67,12 @@ export class TimelineView extends ItemView {
 
         // Create filter callbacks
         const filterCallbacks: TimelineFilterCallbacks = {
-            onFilterChange: () => this.updateFooterStatus(),
+            onFilterChange: () => {
+                if (this.filterChipsEl) {
+                    this.filterBuilder.renderFilterChips(this.filterChipsEl);
+                }
+                this.updateFooterStatus();
+            },
             getRenderer: () => this.renderer
         };
 
@@ -101,6 +107,7 @@ export class TimelineView extends ItemView {
         this.toolbarEl = container.createDiv('storyteller-timeline-toolbar');
         this.filterToggleEl = container.createDiv('storyteller-timeline-filter-toggle');
         this.advancedFiltersEl = container.createDiv('storyteller-timeline-advanced-filters');
+        this.filterChipsEl = container.createDiv('storyteller-filter-chips');
         this.timelineContainer = container.createDiv('storyteller-timeline-container');
         this.footerEl = container.createDiv('storyteller-timeline-footer');
 
@@ -108,6 +115,10 @@ export class TimelineView extends ItemView {
         this.buildToolbar();
         this.buildFilterToggle();
         await this.buildAdvancedFilters();
+        // Render any active filter chips
+        if (this.filterChipsEl) {
+            this.filterBuilder.renderFilterChips(this.filterChipsEl);
+        }
         await this.buildTimeline();
         this.buildFooter();
         
