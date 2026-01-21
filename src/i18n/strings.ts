@@ -2,6 +2,7 @@ import enJson from './locales/en.json';
 import zhJson from './locales/zh.json';
 import esJson from './locales/es.json';
 import frJson from './locales/fr.json';
+import deJson from './locales/de.json';
 
 // Language registry - add imports here for new languages
 // Note: For new languages, import the JSON file and add to the registry below
@@ -10,6 +11,7 @@ const languageRegistry: Record<string, Record<string, string>> = {
   zh: zhJson as Record<string, string>,
   es: esJson as Record<string, string>,
   fr: frJson as Record<string, string>,
+  de: deJson as Record<string, string>,
 };
 
 // Supported language codes

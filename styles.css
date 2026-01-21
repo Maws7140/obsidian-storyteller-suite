@@ -5752,4 +5752,60 @@ body.mod-rtl .storyteller-group-members {
     object-fit: cover;
 }
 
+/* ===========================================
+   FILTER CHIPS - Active Filter Display
+   ===========================================
+   Displays active filters as removable tags/chips
+   above the timeline for easy visibility and removal.
+*/
+
+.storyteller-filter-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 8px 12px;
+    min-height: 24px;
+}
+
+.storyteller-filter-chips:empty {
+    display: none;
+    padding: 0;
+    min-height: 0;
+}
+
+.filter-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    background: var(--interactive-accent);
+    color: var(--text-on-accent);
+    border-radius: 16px;
+    font-size: var(--font-ui-smaller);
+    font-weight: 500;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.filter-chip:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18);
+}
+
+.filter-chip-remove {
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: bold;
+    line-height: 1;
+    padding: 2px 4px;
+    border-radius: 50%;
+    transition: background 150ms ease;
+    opacity: 0.8;
+}
+
+.filter-chip-remove:hover {
+    background: rgba(0, 0, 0, 0.2);
+    opacity: 1;
+}
+
 
