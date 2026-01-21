@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.5.8
+
+### Localization
+- Added German translation
+
+### Timeline Improvements
+- Updates to Timeline View and Renderer
+
 ## 1.5.6
 
 ### Documentation and Tutorial Updates

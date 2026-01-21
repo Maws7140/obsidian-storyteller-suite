@@ -916,6 +916,12 @@ export class TimelineRenderer {
             if (!hasMatchingGroup) return false;
         }
 
+        // Tag filter
+        if (this.filters.tags && this.filters.tags.size > 0) {
+            const hasMatchingTag = evt.tags?.some(t => this.filters.tags && this.filters.tags.has(t));
+            if (!hasMatchingTag) return false;
+        }
+
         // Fork filter
         const eventIdentifier = evt.id || evt.name;
         if (this.filters.forkId) {
