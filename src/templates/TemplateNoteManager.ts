@@ -13,22 +13,28 @@ export class TemplateNoteManager {
     private templateStorageManager: TemplateStorageManager;
     private notesFolder: string;
     private noteTemplates: Map<string, Template> = new Map();
+    private disableFolderCreation: boolean;
 
     constructor(
         app: App,
         templateStorageManager: TemplateStorageManager,
-        notesFolder: string = 'StorytellerSuite/Templates/Notes'
+        notesFolder: string = 'StorytellerSuite/Templates/Notes',
+        disableFolderCreation: boolean = false
     ) {
         this.app = app;
         this.templateStorageManager = templateStorageManager;
         this.notesFolder = notesFolder;
+        this.disableFolderCreation = disableFolderCreation;
     }
 
     /**
      * Initialize the note template system
      */
     async initialize(): Promise<void> {
-        await this.ensureNotesFolderExists();
+        // Only create folders if not disabled
+        if (!this.disableFolderCreation) {
+            await this.ensureNotesFolderExists();
+        }
         await this.loadNoteTemplates();
     }
 
@@ -241,8 +247,11 @@ export class TemplateNoteManager {
         const safeName = this.generateSafeFileName(metadata.name);
         const targetFilePath = `${targetFolderPath}/${safeName}.md`;
 
-        // Add template metadata to frontmatter
-        const enhancedContent = this.addTemplateMetadataToContent(content, metadata);
+        // Add template metadata to frontmatter (including entityType for reliable detection)
+        const enhancedContent = this.addTemplateMetadataToContent(content, {
+            ...metadata,
+            entityType
+        });
 
         // Create or update the template note file
         const existingFile = this.app.vault.getAbstractFileByPath(targetFilePath);
@@ -280,6 +289,7 @@ export class TemplateNoteManager {
             genre: string;
             category: string;
             tags: string[];
+            entityType?: string;
         }
     ): string {
         let frontmatter: Record<string, any> = {};
@@ -307,6 +317,9 @@ export class TemplateNoteManager {
         frontmatter.templateDescription = metadata.description;
         frontmatter.templateGenre = metadata.genre;
         frontmatter.templateCategory = metadata.category;
+        if (metadata.entityType) {
+            frontmatter.templateEntityType = metadata.entityType;
+        }
         if (metadata.tags.length > 0) {
             frontmatter.templateTags = metadata.tags;
         }
