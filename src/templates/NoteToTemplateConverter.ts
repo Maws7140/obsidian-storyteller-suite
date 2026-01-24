@@ -294,17 +294,23 @@ export class NoteToTemplateConverter {
     ): TemplateEntityType | null {
         // Check frontmatter first
         if (frontmatter) {
-            if (frontmatter.type) {
-                const type = String(frontmatter.type).toLowerCase();
-                if (this.isValidEntityType(type)) {
-                    return type as TemplateEntityType;
-                }
+            // Check templateEntityType (new field we add when saving)
+            if (frontmatter.templateEntityType) {
+                const type = String(frontmatter.templateEntityType);
+                const match = this.findMatchingEntityType(type);
+                if (match) return match;
             }
+            // Check type field
+            if (frontmatter.type) {
+                const type = String(frontmatter.type);
+                const match = this.findMatchingEntityType(type);
+                if (match) return match;
+            }
+            // Check entityType field
             if (frontmatter.entityType) {
-                const type = String(frontmatter.entityType).toLowerCase();
-                if (this.isValidEntityType(type)) {
-                    return type as TemplateEntityType;
-                }
+                const type = String(frontmatter.entityType);
+                const match = this.findMatchingEntityType(type);
+                if (match) return match;
             }
         }
 
@@ -315,23 +321,34 @@ export class NoteToTemplateConverter {
         // Check folder names
         for (const part of pathParts) {
             const normalized = part.replace(/s$/, ''); // Remove plural 's'
-            if (this.isValidEntityType(normalized)) {
-                return normalized as TemplateEntityType;
-            }
+            const match = this.findMatchingEntityType(normalized);
+            if (match) return match;
         }
 
         return null;
     }
 
     /**
-     * Check if string is a valid entity type
+     * Check if string is a valid entity type (case-insensitive)
      */
     private static isValidEntityType(type: string): boolean {
         const validTypes: TemplateEntityType[] = [
             'character', 'location', 'event', 'item', 'group',
             'culture', 'economy', 'magicSystem', 'chapter', 'scene', 'reference'
         ];
-        return validTypes.includes(type as TemplateEntityType);
+        return validTypes.some(validType => validType.toLowerCase() === type.toLowerCase());
+    }
+
+    /**
+     * Find matching entity type (case-insensitive) and return the correctly-cased type
+     */
+    private static findMatchingEntityType(type: string): TemplateEntityType | null {
+        const validTypes: TemplateEntityType[] = [
+            'character', 'location', 'event', 'item', 'group',
+            'culture', 'economy', 'magicSystem', 'chapter', 'scene', 'reference'
+        ];
+        const match = validTypes.find(validType => validType.toLowerCase() === type.toLowerCase());
+        return match || null;
     }
 }
 
