@@ -19,10 +19,12 @@ export class TemplateStorageManager {
     private userTemplates: Map<string, Template> = new Map();
     private templateFolder: string;
     private templateNoteManager: any; // TemplateNoteManager instance
+    private disableFolderCreation: boolean;
 
-    constructor(app: App, templateFolder: string = 'StorytellerSuite/Templates') {
+    constructor(app: App, templateFolder: string = 'StorytellerSuite/Templates', disableFolderCreation: boolean = false) {
         this.app = app;
         this.templateFolder = templateFolder;
+        this.disableFolderCreation = disableFolderCreation;
     }
 
     /**
@@ -161,9 +163,11 @@ export class TemplateStorageManager {
     async loadUserTemplates(): Promise<void> {
         this.userTemplates.clear();
 
-        // Ensure template folder exists
-        await this.ensureTemplateFolderExists();
-        await this.ensureEntityTypeFoldersExist();
+        // Only create folders if not disabled
+        if (!this.disableFolderCreation) {
+            await this.ensureTemplateFolderExists();
+            await this.ensureEntityTypeFoldersExist();
+        }
 
         // Load templates from root template folder (for backward compatibility)
         await this.loadTemplatesFromFolder(this.templateFolder);
