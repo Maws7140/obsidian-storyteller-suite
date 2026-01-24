@@ -1098,10 +1098,22 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                 })
             );
 
-        // --- Default Templates Section ---
+        // --- Template Settings Section ---
         new Setting(containerEl)
             .setName(t('defaultTemplates'))
             .setHeading();
+
+        new Setting(containerEl)
+            .setName('Disable automatic folder creation')
+            .setDesc('Prevent the plugin from creating any folders (StorytellerSuite, Templates, entity folders, etc.) on startup. Enable this if you use your own custom folder structure and don\'t want empty folders created. Folders will still be created when you explicitly create entities. Requires plugin reload.')
+            .addToggle(toggle => toggle
+                .setValue(!!this.plugin.settings.disableAutoFolderCreation)
+                .onChange(async (value) => {
+                    this.plugin.settings.disableAutoFolderCreation = value;
+                    await this.plugin.saveSettings();
+                    new Notice('Plugin reload required for this setting to take effect.');
+                })
+            );
 
         new Setting(containerEl)
             .setDesc(t('defaultTemplatesDesc'));

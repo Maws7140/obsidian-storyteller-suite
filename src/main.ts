@@ -184,6 +184,9 @@ import { LocationMigration } from './utils/LocationMigration';
     templateStorageFolder?: string;
     showBuiltInTemplates?: boolean;
     showCommunityTemplates?: boolean;
+
+    /** Disable automatic folder creation on startup */
+    disableAutoFolderCreation?: boolean;
     
     /** Default templates per entity type - template ID keyed by entity type */
     defaultTemplates?: Record<string, string>;
@@ -293,6 +296,7 @@ import { LocationMigration } from './utils/LocationMigration';
     templateStorageFolder: 'StorytellerSuite/Templates',
     showBuiltInTemplates: true,
     showCommunityTemplates: false,
+    disableAutoFolderCreation: false,
     defaultTemplates: {},
     tiling: {
         autoGenerateThreshold: 2000,  // Generate tiles for images > 2000x2000px
@@ -516,17 +520,19 @@ export default class StorytellerSuitePlugin extends Plugin {
             }
         }
 
-        // Ensure entity folders exist under the current base
-        try {
-            await this.ensureFolder(this.getEntityFolder('character'));
-            await this.ensureFolder(this.getEntityFolder('location'));
-            await this.ensureFolder(this.getEntityFolder('event'));
-            await this.ensureFolder(this.getEntityFolder('item'));
-            await this.ensureFolder(this.getEntityFolder('reference'));
-            await this.ensureFolder(this.getEntityFolder('chapter'));
-            await this.ensureFolder(this.getEntityFolder('scene'));
-        } catch (e) {
-            // Best-effort; errors will surface via Notice in ensureFolder
+        // Ensure entity folders exist under the current base (unless disabled)
+        if (!this.settings.disableAutoFolderCreation) {
+            try {
+                await this.ensureFolder(this.getEntityFolder('character'));
+                await this.ensureFolder(this.getEntityFolder('location'));
+                await this.ensureFolder(this.getEntityFolder('event'));
+                await this.ensureFolder(this.getEntityFolder('item'));
+                await this.ensureFolder(this.getEntityFolder('reference'));
+                await this.ensureFolder(this.getEntityFolder('chapter'));
+                await this.ensureFolder(this.getEntityFolder('scene'));
+            } catch (e) {
+                // Best-effort; errors will surface via Notice in ensureFolder
+            }
         }
 
         // Refresh dashboard if open
@@ -557,13 +563,16 @@ export default class StorytellerSuitePlugin extends Plugin {
 		this.settings.activeStoryId = id;
 		await this.saveSettings();
         // Ensure folders using resolver so all modes are respected (custom, one-story, default)
-        await this.ensureFolder(this.getEntityFolder('character'));
-        await this.ensureFolder(this.getEntityFolder('location'));
-        await this.ensureFolder(this.getEntityFolder('event'));
-        await this.ensureFolder(this.getEntityFolder('item'));
-        await this.ensureFolder(this.getEntityFolder('reference'));
-        await this.ensureFolder(this.getEntityFolder('chapter'));
-        await this.ensureFolder(this.getEntityFolder('scene'));
+        // Skip if auto folder creation is disabled
+        if (!this.settings.disableAutoFolderCreation) {
+            await this.ensureFolder(this.getEntityFolder('character'));
+            await this.ensureFolder(this.getEntityFolder('location'));
+            await this.ensureFolder(this.getEntityFolder('event'));
+            await this.ensureFolder(this.getEntityFolder('item'));
+            await this.ensureFolder(this.getEntityFolder('reference'));
+            await this.ensureFolder(this.getEntityFolder('chapter'));
+            await this.ensureFolder(this.getEntityFolder('scene'));
+        }
 		return story;
 	}
 
@@ -775,7 +784,8 @@ export default class StorytellerSuitePlugin extends Plugin {
 		// Initialize template manager
 		this.templateManager = new TemplateStorageManager(
 			this.app,
-			this.settings.templateStorageFolder || 'StorytellerSuite/Templates'
+			this.settings.templateStorageFolder || 'StorytellerSuite/Templates',
+			this.settings.disableAutoFolderCreation || false
 		);
 		await this.templateManager.initialize();
 
@@ -783,7 +793,8 @@ export default class StorytellerSuitePlugin extends Plugin {
 		this.templateNoteManager = new TemplateNoteManager(
 			this.app,
 			this.templateManager,
-			`${this.settings.templateStorageFolder || 'StorytellerSuite/Templates'}/Notes`
+			`${this.settings.templateStorageFolder || 'StorytellerSuite/Templates'}/Notes`,
+			this.settings.disableAutoFolderCreation || false
 		);
 		await this.templateNoteManager.initialize();
 
@@ -1012,16 +1023,18 @@ export default class StorytellerSuitePlugin extends Plugin {
                     this.settings.stories.push(story);
                     this.settings.activeStoryId = id;
                     await this.saveSettings();
-                    // Ensure folders even if base doesn't exist yet
-                    try {
-                        await this.ensureFolder(this.getEntityFolder('character'));
-                        await this.ensureFolder(this.getEntityFolder('location'));
-                        await this.ensureFolder(this.getEntityFolder('event'));
-                        await this.ensureFolder(this.getEntityFolder('item'));
-                        await this.ensureFolder(this.getEntityFolder('reference'));
-                        await this.ensureFolder(this.getEntityFolder('chapter'));
-                        await this.ensureFolder(this.getEntityFolder('scene'));
-                    } catch {}
+                    // Ensure folders even if base doesn't exist yet (unless disabled)
+                    if (!this.settings.disableAutoFolderCreation) {
+                        try {
+                            await this.ensureFolder(this.getEntityFolder('character'));
+                            await this.ensureFolder(this.getEntityFolder('location'));
+                            await this.ensureFolder(this.getEntityFolder('event'));
+                            await this.ensureFolder(this.getEntityFolder('item'));
+                            await this.ensureFolder(this.getEntityFolder('reference'));
+                            await this.ensureFolder(this.getEntityFolder('chapter'));
+                            await this.ensureFolder(this.getEntityFolder('scene'));
+                        } catch {}
+                    }
                     return { newStories: [story], totalStories: this.settings.stories.length };
                 }
             }
