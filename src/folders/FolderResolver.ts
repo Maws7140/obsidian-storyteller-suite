@@ -77,18 +77,24 @@ export class FolderResolver {
         if (root && fallbackLeaf) return normalizePath(`${root}/${fallbackLeaf}`);
         return undefined;
       };
-      if (type === 'character')   { const p = prefer(o.characterFolderPath,   'Characters');   if (p) return p; }
-      if (type === 'location')    { const p = prefer(o.locationFolderPath,    'Locations');    if (p) return p; }
-      if (type === 'event')       { const p = prefer(o.eventFolderPath,       'Events');       if (p) return p; }
-      if (type === 'item')        { const p = prefer(o.itemFolderPath,        'Items');        if (p) return p; }
-      if (type === 'reference')   { const p = prefer(o.referenceFolderPath,   'References');   if (p) return p; }
-      if (type === 'chapter')     { const p = prefer(o.chapterFolderPath,     'Chapters');     if (p) return p; }
-      if (type === 'scene')       { const p = prefer(o.sceneFolderPath,       'Scenes');       if (p) return p; }
-      if (type === 'map')         { const p = prefer(o.mapFolderPath,         'Maps');         if (p) return p; }
-      if (type === 'culture')     { const p = prefer(o.cultureFolderPath,     'Cultures');     if (p) return p; }
-      if (type === 'faction')     { const p = prefer(o.factionFolderPath,     'Factions');     if (p) return p; }
-      if (type === 'economy')     { const p = prefer(o.economyFolderPath,     'Economies');    if (p) return p; }
-      if (type === 'magicSystem') { const p = prefer(o.magicSystemFolderPath, 'MagicSystems'); if (p) return p; }
+
+      let result: string | undefined;
+      if (type === 'character')   result = prefer(o.characterFolderPath,   'Characters');
+      else if (type === 'location')    result = prefer(o.locationFolderPath,    'Locations');
+      else if (type === 'event')       result = prefer(o.eventFolderPath,       'Events');
+      else if (type === 'item')        result = prefer(o.itemFolderPath,        'Items');
+      else if (type === 'reference')   result = prefer(o.referenceFolderPath,   'References');
+      else if (type === 'chapter')     result = prefer(o.chapterFolderPath,     'Chapters');
+      else if (type === 'scene')       result = prefer(o.sceneFolderPath,       'Scenes');
+      else if (type === 'map')         result = prefer(o.mapFolderPath,         'Maps');
+      else if (type === 'culture')     result = prefer(o.cultureFolderPath,     'Cultures');
+      else if (type === 'faction')     result = prefer(o.factionFolderPath,     'Factions');
+      else if (type === 'economy')     result = prefer(o.economyFolderPath,     'Economies');
+      else if (type === 'magicSystem') result = prefer(o.magicSystemFolderPath, 'MagicSystems');
+
+      // If custom folders are enabled but no path is configured, fall through to default behavior
+      if (result) return result;
+      // Otherwise continue to One Story Mode or Default Mode below
     }
 
     if (o.enableOneStoryMode) {
