@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.6.0
+
+### Bug Fixes
+- Fixed custom entity folders fallback logic when paths are unconfigured
+- Resolved folder resolution issues causing "Create New Chapter" button to malfunction when custom folders enabled but not fully configured
+- Improved control flow in FolderResolver to properly cascade through custom → one-story → default folder modes
+
+## 1.5.9
+
+### Bug Fixes
+- Fixed template persistence issues
+- Added folder creation toggle option
+
 ## 1.5.8
 
 ### Localization
