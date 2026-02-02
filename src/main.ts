@@ -801,6 +801,22 @@ export default class StorytellerSuitePlugin extends Plugin {
 		// Connect note manager to storage manager
 		this.templateManager.setTemplateNoteManager(this.templateNoteManager);
 
+		// Delayed template reload to handle vault/filesystem timing issues
+		// This ensures templates load even if files aren't ready during initial plugin load
+		setTimeout(async () => {
+			try {
+				const beforeCount = this.templateManager.getAllTemplates().filter(t => (t as any).isNoteBased).length;
+				await this.templateNoteManager.loadNoteTemplates();
+				const afterCount = this.templateManager.getAllTemplates().filter(t => (t as any).isNoteBased).length;
+
+				if (afterCount > beforeCount) {
+					console.log(`[StorytellerSuite] Loaded ${afterCount - beforeCount} custom templates after delay`);
+				}
+			} catch (error) {
+				console.error('[StorytellerSuite] Error loading custom templates:', error);
+			}
+		}, 1000); // 1 second delay
+
 		// Register file watcher to sync note changes to JSON
 		this.registerEvent(
 			this.app.vault.on('modify', async (file) => {
@@ -1309,6 +1325,33 @@ export default class StorytellerSuitePlugin extends Plugin {
 			callback: async () => {
 				const { TemplateLibraryModal } = await import('./modals/TemplateLibraryModal');
 				new TemplateLibraryModal(this.app, this).open();
+			}
+		});
+
+		// --- Reload Custom Templates Command ---
+		this.addCommand({
+			id: 'reload-custom-templates',
+			name: 'Reload custom templates',
+			callback: async () => {
+				try {
+					if (!this.templateNoteManager) {
+						new Notice('Template system not initialized');
+						return;
+					}
+
+					const beforeCount = this.templateManager.getAllTemplates().filter(t => (t as any).isNoteBased).length;
+					await this.templateNoteManager.loadNoteTemplates();
+					const afterCount = this.templateManager.getAllTemplates().filter(t => (t as any).isNoteBased).length;
+
+					new Notice(`✓ Loaded ${afterCount} custom template${afterCount !== 1 ? 's' : ''}`);
+
+					if (afterCount > beforeCount) {
+						console.log(`[StorytellerSuite] Loaded ${afterCount - beforeCount} new templates`);
+					}
+				} catch (error) {
+					console.error('[StorytellerSuite] Error reloading templates:', error);
+					new Notice(`✗ Failed to reload templates: ${error.message}`);
+				}
 			}
 		});
 
