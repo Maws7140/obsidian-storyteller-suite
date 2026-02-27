@@ -1,10 +1,11 @@
 # vscode
 .vscode 
 
-# Claude
+# Claude / AI instruction files — keep dev-only tooling out of the public repo
 .claude
 claude/
 gemini/
+CLAUDE.md
 
 # Intellij
 *.iml
@@ -30,6 +31,23 @@ data.json
 # Exclude macOS Finder (System Explorer) View States
 .DS_Store
 
+# Build artifacts / local release packaging
+main.css
+styles.css.backup
+release-*/
+*.zip
+
+# Dev scripts and notes that shouldn't be public
+update_remaining_modals.sh
+create-release-instructions.md
+Plugin guidelines.pdf
+
+# Test reports
+TESTING-REPORT.md
+
+# Midscene.js — exclude entire run directory
+midscene_run/
+
 # Documentation and instruction files
 DEVELOPER_GUIDE.md
 BUGFIX_*.md
@@ -52,7 +70,6 @@ TEMPLATE_SYSTEM_IMPLEMENTATION.md
 TESTING_MAP_EDITOR.md
 TILE_ATTRIBUTION_FIX.md
 TIMELINE_GANTT_IMPLEMENTATION_SUMMARY.md
-docs/
 Obsidian/
 examples/
 javalent-obsidian-leaflet-8a5edab282632443.txt

@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-inferrable-types */
 /* eslint-disable @typescript-eslint/no-unused-vars */
-import { ItemView, WorkspaceLeaf, Setting, Notice, App, ButtonComponent, TFile, normalizePath, debounce, Modal } from 'obsidian'; // Added normalizePath, debounce
+import { ItemView, WorkspaceLeaf, Setting, Notice, App, ButtonComponent, TFile, normalizePath, debounce, Modal, setIcon } from 'obsidian'; // Added normalizePath, debounce
 import StorytellerSuitePlugin from '../main';
 import { t } from '../i18n/strings';
 // Import necessary modals for button actions (Edit/Create/Detail)
@@ -24,6 +24,7 @@ import {
     TemplateCategory
 } from '../templates/TemplateTypes';
 import { TemplateEditorModal } from '../modals/TemplateEditorModal';
+import { EconomyDetailModal } from '../modals/EconomyDetailModal';
 
 /** Unique identifier for the dashboard view type in Obsidian's workspace */
 export const VIEW_TYPE_DASHBOARD = "storyteller-dashboard-view";
@@ -79,6 +80,15 @@ export class DashboardView extends ItemView {
 
     /** Network graph renderer instance for persistence across refreshes */
     private networkGraphRenderer: any = null;
+
+    /** Tab being dragged (ID), null when no drag is in progress */
+    private _draggedTabId: string | null = null;
+
+    /** Persist chapter expand/collapse state across re-renders (Writing tab) */
+    private _chapterCollapseState = new Map<string, boolean>();
+
+    /** Persist chapter-group expand/collapse state across re-renders (Scenes tab) */
+    private _sceneGroupCollapseState = new Map<string, boolean>();
 
     /** Template library filter state */
     private templateFilter: TemplateFilter = {
@@ -182,14 +192,17 @@ export class DashboardView extends ItemView {
             { id: 'gallery', label: t('gallery'), renderFn: this.renderGalleryContent.bind(this) },
             { id: 'groups', label: t('groups'), renderFn: this.renderGroupsContent.bind(this) },
             { id: 'references', label: t('references'), renderFn: this.renderReferencesContent.bind(this) },
-            { id: 'chapters', label: t('chapters'), renderFn: this.renderChaptersContent.bind(this) },
-            { id: 'scenes', label: t('scenes'), renderFn: this.renderScenesContent.bind(this) },
+            { id: 'writing', label: 'Writing', renderFn: this.renderWritingContent.bind(this) },
             { id: 'compile', label: t('compile'), renderFn: this.renderCompileContent.bind(this) },
             { id: 'cultures', label: t('cultures'), renderFn: this.renderCulturesContent.bind(this) },
             { id: 'economies', label: t('economies'), renderFn: this.renderEconomiesContent.bind(this) },
             { id: 'magicsystems', label: t('magicSystems'), renderFn: this.renderMagicSystemsContent.bind(this) },
+            { id: 'compendium', label: 'Compendium', renderFn: this.renderCompendiumContent.bind(this) },
             { id: 'templates', label: t('templates'), renderFn: this.renderTemplatesContent.bind(this) },
+            { id: 'analytics', label: 'Analytics', renderFn: this.renderAnalyticsContent.bind(this) },
         ];
+
+        this.applyTabOrder();
 
         this.debouncedRefreshActiveTab = debounce(this.refreshActiveTab.bind(this), 200, true);
         
@@ -585,6 +598,28 @@ export class DashboardView extends ItemView {
         return this.tabs.filter(tab => !hiddenTabs.includes(tab.id));
     }
 
+    /** Apply saved tab order from settings, appending any new tabs at the end. */
+    private applyTabOrder(): void {
+        const savedOrder = this.plugin.settings.dashboardTabOrder;
+        if (!savedOrder || savedOrder.length === 0) return;
+        const reordered: Array<{ id: string; label: string; renderFn: (container: HTMLElement) => Promise<void> }> = [];
+        for (const id of savedOrder) {
+            const tab = this.tabs.find(t => t.id === id);
+            if (tab) reordered.push(tab);
+        }
+        // Any tabs not yet in saved order (newly added) go at the end
+        for (const tab of this.tabs) {
+            if (!reordered.some(r => r.id === tab.id)) reordered.push(tab);
+        }
+        this.tabs = reordered;
+    }
+
+    /** Persist the current tab order to plugin settings. */
+    private async saveTabOrder(): Promise<void> {
+        this.plugin.settings.dashboardTabOrder = this.tabs.map(t => t.id);
+        await this.plugin.saveSettings();
+    }
+
     /** Render or re-render tabs according to available width (priority+ ribbon) */
     private layoutTabs(): void {
         if (!this.tabHeaderContainer || !this.tabHeaderRibbonEl) return;
@@ -657,6 +692,54 @@ export class DashboardView extends ItemView {
         btn.appendChild(labelSpan);
 
         if (!forMeasure) {
+            btn.setAttribute('draggable', 'true');
+            btn.style.cursor = 'grab';
+
+            btn.addEventListener('dragstart', (e: DragEvent) => {
+                this._draggedTabId = tab.id;
+                if (e.dataTransfer) {
+                    e.dataTransfer.effectAllowed = 'move';
+                    e.dataTransfer.setData('text/plain', tab.id);
+                }
+                btn.style.opacity = '0.45';
+            });
+
+            btn.addEventListener('dragend', () => {
+                this._draggedTabId = null;
+                btn.style.opacity = '';
+                this.tabHeaderRibbonEl?.querySelectorAll('.storyteller-tab-drag-over').forEach(el => {
+                    el.classList.remove('storyteller-tab-drag-over');
+                });
+            });
+
+            btn.addEventListener('dragover', (e: DragEvent) => {
+                if (!this._draggedTabId || this._draggedTabId === tab.id) return;
+                e.preventDefault();
+                if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+                btn.classList.add('storyteller-tab-drag-over');
+            });
+
+            btn.addEventListener('dragleave', () => {
+                btn.classList.remove('storyteller-tab-drag-over');
+            });
+
+            btn.addEventListener('drop', (e: DragEvent) => {
+                e.preventDefault();
+                btn.classList.remove('storyteller-tab-drag-over');
+                const fromId = this._draggedTabId;
+                if (!fromId || fromId === tab.id) return;
+
+                const fromIdx = this.tabs.findIndex(t => t.id === fromId);
+                const toIdx = this.tabs.findIndex(t => t.id === tab.id);
+                if (fromIdx === -1 || toIdx === -1) return;
+
+                const [moved] = this.tabs.splice(fromIdx, 1);
+                this.tabs.splice(toIdx, 0, moved);
+
+                this.layoutTabs();
+                void this.saveTabOrder();
+            });
+
             btn.addEventListener('click', async () => {
                 await this.setActiveTab(tab.id);
             });
@@ -807,10 +890,8 @@ export class DashboardView extends ItemView {
             setting.addButton(button => button
                 .setButtonText(t('viewTimeline'))
                 .setCta()
-                .onClick(async () => {
-                    const events = await this.plugin.listEvents();
-                    const { TimelineModal } = await import('../modals/TimelineModal');
-                    new TimelineModal(this.app as unknown as App, this.plugin, events).open();
+                .onClick(() => {
+                    this.plugin.activateTimelineView();
                 }));
         });
 
@@ -960,6 +1041,18 @@ export class DashboardView extends ItemView {
                 const locationName = this.resolveLocationName(item.currentLocation, locations);
                 extraInfoEl.createSpan({ text: `Location: ${locationName}` });
             }
+            if (item.economicValue) {
+                if (item.currentOwner || item.currentLocation) extraInfoEl.appendText(' • ');
+                extraInfoEl.createSpan({ cls: 'storyteller-item-value-badge', text: item.economicValue });
+            }
+            const tagCount = (item.magicSystems?.length ?? 0) + (item.linkedCultures?.length ?? 0);
+            if (tagCount > 0) {
+                const parts: string[] = [];
+                if (item.magicSystems?.length) parts.push(`${item.magicSystems.length} magic`);
+                if (item.linkedCultures?.length) parts.push(`${item.linkedCultures.length} culture${item.linkedCultures.length > 1 ? 's' : ''}`);
+                if (item.currentOwner || item.currentLocation || item.economicValue) extraInfoEl.appendText(' • ');
+                extraInfoEl.createSpan({ cls: 'storyteller-item-tags', text: parts.join(' · ') });
+            }
 
             const actionsEl = itemEl.createDiv('storyteller-list-item-actions');
             this.addEditButton(actionsEl, () => {
@@ -1030,7 +1123,8 @@ export class DashboardView extends ItemView {
                 imgEl.src = this.getImageSrc(map.profileImagePath);
                 imgEl.alt = map.name;
             } else {
-                pfpContainer.createDiv({ cls: 'storyteller-pfp-placeholder', text: '🗺️' });
+                const pfpPlaceholder = pfpContainer.createDiv({ cls: 'storyteller-pfp-placeholder' });
+                setIcon(pfpPlaceholder, 'map');
             }
 
             const infoEl = itemEl.createDiv('storyteller-list-item-info');
@@ -1583,8 +1677,23 @@ export class DashboardView extends ItemView {
                 const tagsRow = infoDiv.createDiv('storyteller-group-tags');
                 tagsRow.createSpan({ text: (group.tags || []).map(t => `#${t}`).join(' ') });
             }
-            // Actions (Edit button)
+            // Actions (Edit + Go to note)
             const actionsDiv = groupHeader.createDiv('storyteller-group-actions');
+            const goToNoteBtn = actionsDiv.createEl('button', { cls: 'storyteller-group-note-btn' });
+            setIcon(goToNoteBtn, 'file-text');
+            goToNoteBtn.setAttribute('aria-label', 'Go to note');
+            goToNoteBtn.title = 'Open group note';
+            goToNoteBtn.onclick = async (e: MouseEvent) => {
+                e.stopPropagation();
+                const filePath = this.plugin.getGroupFilePath(group.name);
+                if (!filePath) { new Notice('No active story.'); return; }
+                const file = this.app.vault.getAbstractFileByPath(filePath);
+                if (file instanceof TFile) {
+                    await this.app.workspace.openLinkText(filePath, '', false);
+                } else {
+                    new Notice('Group note not found — save the group to create it.');
+                }
+            };
             const editBtn = actionsDiv.createEl('button', { text: t('edit'), cls: 'mod-cta storyteller-group-edit-btn' });
             editBtn.onclick = () => {
                 new GroupModal(
@@ -1615,13 +1724,13 @@ export class DashboardView extends ItemView {
                 event: 'Events',
                 item: 'Items', // ADDED
             };
-            const typeIcons = {
-                character: `👤`,
-                location: `📍`,
-                event: `🕒`,
-                item: `💎`,
-            } as const;
-            
+            const typeIconNames: Record<string, string> = {
+                character: 'user',
+                location: 'map-pin',
+                event: 'clock',
+                item: 'box',
+            };
+
             (['character', 'location', 'event', 'item'] as const).forEach(type => {
                 if (grouped[type].length > 0) {
                     // Section container for grid layout
@@ -1630,7 +1739,9 @@ export class DashboardView extends ItemView {
                     const header = section.createDiv('storyteller-group-entity-header');
                     header.setAttr('role', 'heading');
                     header.setAttr('aria-level', '4');
-                    header.innerHTML = `<span class="storyteller-group-entity-icon">${typeIcons[type]}</span> <span>${typeLabels[type]}</span>`;
+                    const headerIcon = header.createSpan('storyteller-group-entity-icon');
+                    setIcon(headerIcon, typeIconNames[type]);
+                    header.createSpan().setText(typeLabels[type]);
                     // Sublist
                     const list = section.createEl('ul', { cls: 'storyteller-group-entity-list' });
                     grouped[type].forEach(member => {
@@ -1654,10 +1765,10 @@ export class DashboardView extends ItemView {
                         li.textContent = displayName;
                         if (filePath) {
                             li.classList.add('is-link');
-                            li.addEventListener('click', () => {
+                            li.addEventListener('click', (e) => {
+                                e.stopPropagation();
                                 const path = filePath as string;
-                                const file = this.app.vault.getAbstractFileByPath(path);
-                                if (file instanceof TFile) this.app.workspace.getLeaf(false).openFile(file);
+                                this.app.workspace.openLinkText(path, '', false);
                             });
                         }
                     });
@@ -1946,6 +2057,44 @@ export class DashboardView extends ItemView {
     }
 
     /** Render the Chapters tab content - now shows scenes grouped under each chapter */
+    /** Unified Writing tab — chapters with scenes nested, goal banner, dual add buttons */
+    async renderWritingContent(container: HTMLElement) {
+        container.empty();
+        this.renderWritingGoalBanner(container);
+        this.renderHeaderControls(
+            container,
+            'Writing',
+            async (filter: string) => {
+                this.currentFilter = filter;
+                await this.renderChaptersWithScenesList(container);
+            },
+            () => {
+                import('../modals/ChapterModal').then(({ ChapterModal }) => {
+                    new ChapterModal(this.app, this.plugin, null, async (ch) => {
+                        await this.plugin.saveChapter(ch);
+                        new Notice(`Chapter "${ch.name}" created.`);
+                        await this.renderChaptersWithScenesList(container);
+                    }).open();
+                });
+            },
+            'Add Chapter',
+            (s) => {
+                s.addButton(btn => {
+                    btn.setButtonText('Add Scene').onClick(() => {
+                        import('../modals/SceneModal').then(({ SceneModal }) => {
+                            new SceneModal(this.app, this.plugin, null, async (sc) => {
+                                await this.plugin.saveScene(sc);
+                                new Notice(`Scene "${sc.name}" created.`);
+                                await this.renderChaptersWithScenesList(container);
+                            }).open();
+                        });
+                    });
+                });
+            }
+        );
+        await this.renderChaptersWithScenesList(container);
+    }
+
     async renderChaptersContent(container: HTMLElement) {
         container.empty();
         this.renderHeaderControls(container, 'Chapters', async (filter: string) => {
@@ -2018,9 +2167,18 @@ export class DashboardView extends ItemView {
             );
             
             const titleRow = infoEl.createDiv('storyteller-chapter-title-row');
-            titleRow.createEl('strong', { text: title });
+            const chapterTitleEl = titleRow.createEl('strong', { text: title });
+            if (ch.filePath) {
+                chapterTitleEl.addClass('storyteller-chapter-name-link');
+                chapterTitleEl.title = 'Click to open note';
+                chapterTitleEl.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const file = this.app.vault.getAbstractFileByPath(ch.filePath!);
+                    if (file instanceof TFile) this.app.workspace.openLinkText(ch.filePath!, '', false);
+                });
+            }
             titleRow.createSpan({ cls: 'storyteller-chapter-scene-count', text: `${chapterScenes.length} scene${chapterScenes.length !== 1 ? 's' : ''}` });
-            
+
             if (ch.summary) {
                 const preview = ch.summary.length > 100 ? ch.summary.substring(0, 100) + '…' : ch.summary;
                 infoEl.createEl('p', { text: preview, cls: 'storyteller-chapter-summary' });
@@ -2057,8 +2215,9 @@ export class DashboardView extends ItemView {
             
             // Add scene button for this chapter
             const addSceneBtn = scenesContainer.createDiv('storyteller-add-scene-btn');
-            addSceneBtn.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>';
-            addSceneBtn.createSpan({ text: 'Add scene to this chapter' });
+            const addSceneBtnIcon = addSceneBtn.createSpan();
+            setIcon(addSceneBtnIcon, 'plus');
+            addSceneBtn.createSpan({ text: ' Add scene to this chapter' });
             addSceneBtn.onclick = () => {
                 import('../modals/SceneModal').then(({ SceneModal }) => {
                     const newScene = { chapterId: ch.id, chapterName: ch.name } as any;
@@ -2072,11 +2231,17 @@ export class DashboardView extends ItemView {
                 });
             };
 
-            // Toggle expand/collapse
-            let isExpanded = true;
+            // Toggle expand/collapse — persist state across re-renders
+            const chapterKey = ch.id || ch.name;
+            let isExpanded = this._chapterCollapseState.has(chapterKey) ? this._chapterCollapseState.get(chapterKey)! : true;
+            if (!isExpanded) {
+                scenesContainer.style.display = 'none';
+                toggleBtn.classList.add('collapsed');
+            }
             toggleBtn.onclick = (e) => {
                 e.stopPropagation();
                 isExpanded = !isExpanded;
+                this._chapterCollapseState.set(chapterKey, isExpanded);
                 scenesContainer.style.display = isExpanded ? 'block' : 'none';
                 toggleBtn.classList.toggle('collapsed', !isExpanded);
             };
@@ -2110,10 +2275,16 @@ export class DashboardView extends ItemView {
                 this.renderSceneItem(scenesContainer, sc, true, chapters);
             });
 
-            let isExpanded = true;
+            const unassignedKey = '__unassigned__';
+            let isExpanded = this._chapterCollapseState.has(unassignedKey) ? this._chapterCollapseState.get(unassignedKey)! : true;
+            if (!isExpanded) {
+                scenesContainer.style.display = 'none';
+                toggleBtn.classList.add('collapsed');
+            }
             toggleBtn.onclick = (e) => {
                 e.stopPropagation();
                 isExpanded = !isExpanded;
+                this._chapterCollapseState.set(unassignedKey, isExpanded);
                 scenesContainer.style.display = isExpanded ? 'block' : 'none';
                 toggleBtn.classList.toggle('collapsed', !isExpanded);
             };
@@ -2190,6 +2361,10 @@ export class DashboardView extends ItemView {
     /** Render the Scenes tab content - now groups by chapter */
     async renderScenesContent(container: HTMLElement) {
         container.empty();
+
+        // Writing goal banner — surfaces daily goal progress
+        this.renderWritingGoalBanner(container);
+
         this.renderHeaderControls(container, 'Scenes', async (filter: string) => {
             this.currentFilter = filter;
             await this.renderScenesGroupedByChapter(container);
@@ -2280,6 +2455,10 @@ export class DashboardView extends ItemView {
             titleRow.createEl('strong', { text: title });
             titleRow.createSpan({ cls: 'storyteller-chapter-scene-count', text: `${scenes.length} scene${scenes.length !== 1 ? 's' : ''}` });
 
+            // Open chapter note button
+            const chapterActionsEl = chapterHeader.createDiv('storyteller-list-item-actions');
+            this.addOpenFileButton(chapterActionsEl, chapter?.filePath);
+
             // Scenes container
             const scenesContainer = chapterGroup.createDiv('storyteller-chapter-scenes');
             
@@ -2291,11 +2470,16 @@ export class DashboardView extends ItemView {
                 });
             }
 
-            // Toggle expand/collapse
-            let isExpanded = true;
+            // Toggle expand/collapse — persist state across re-renders
+            let isExpanded = this._sceneGroupCollapseState.has(key) ? this._sceneGroupCollapseState.get(key)! : true;
+            if (!isExpanded) {
+                scenesContainer.style.display = 'none';
+                toggleBtn.classList.add('collapsed');
+            }
             toggleBtn.onclick = (e) => {
                 e.stopPropagation();
                 isExpanded = !isExpanded;
+                this._sceneGroupCollapseState.set(key, isExpanded);
                 scenesContainer.style.display = isExpanded ? 'block' : 'none';
                 toggleBtn.classList.toggle('collapsed', !isExpanded);
             };
@@ -2320,10 +2504,16 @@ export class DashboardView extends ItemView {
                 this.renderSceneItem(scenesContainer, sc, false, chapters);
             });
 
-            let isExpanded = true;
+            const sgUnassignedKey = '__unassigned__';
+            let isExpanded = this._sceneGroupCollapseState.has(sgUnassignedKey) ? this._sceneGroupCollapseState.get(sgUnassignedKey)! : true;
+            if (!isExpanded) {
+                scenesContainer.style.display = 'none';
+                toggleBtn.classList.add('collapsed');
+            }
             toggleBtn.onclick = (e) => {
                 e.stopPropagation();
                 isExpanded = !isExpanded;
+                this._sceneGroupCollapseState.set(sgUnassignedKey, isExpanded);
                 scenesContainer.style.display = isExpanded ? 'block' : 'none';
                 toggleBtn.classList.toggle('collapsed', !isExpanded);
             };
@@ -2348,8 +2538,16 @@ export class DashboardView extends ItemView {
         }
 
         const infoEl = itemEl.createDiv('storyteller-list-item-info');
-        infoEl.createEl('strong', { text: sc.name });
-        
+        const nameEl = infoEl.createEl('strong', { text: sc.name });
+        if (sc.filePath) {
+            nameEl.addClass('storyteller-scene-name-link');
+            nameEl.title = 'Click to open note';
+            nameEl.addEventListener('click', () => {
+                const file = this.app.vault.getAbstractFileByPath(sc.filePath);
+                if (file instanceof TFile) this.app.workspace.openLinkText(sc.filePath, '', false);
+            });
+        }
+
         const meta = infoEl.createDiv('storyteller-list-item-extra');
         if (sc.status) {
             const statusBadge = meta.createSpan({ cls: `storyteller-status-badge storyteller-status-${(sc.status || 'draft').toLowerCase().replace(/\s+/g, '-')}`, text: sc.status });
@@ -2479,7 +2677,7 @@ export class DashboardView extends ItemView {
                         if (chapterForScene.filePath) {
                             const file = this.app.vault.getAbstractFileByPath(chapterForScene.filePath);
                             if (file instanceof TFile) {
-                                this.app.workspace.getLeaf(false).openFile(file);
+                                this.app.workspace.openLinkText(chapterForScene.filePath, '', false);
                                 return;
                             }
                         }
@@ -2668,7 +2866,10 @@ export class DashboardView extends ItemView {
                     if (sceneChapter !== currentChapter) {
                         currentChapter = sceneChapter;
                         const chapterDivider = sceneListEl.createDiv('storyteller-chapter-divider');
-                        chapterDivider.createSpan({ text: `📖 ${currentChapter}`, cls: 'storyteller-chapter-label' });
+                        const chapterLabelSpan = chapterDivider.createSpan({ cls: 'storyteller-chapter-label' });
+                        const chapterIcon = chapterLabelSpan.createSpan();
+                        setIcon(chapterIcon, 'book-open');
+                        chapterLabelSpan.appendText(` ${currentChapter}`);
                     }
                     
                     const sceneEl = sceneListEl.createDiv('storyteller-ordered-scene-item');
@@ -2759,7 +2960,9 @@ export class DashboardView extends ItemView {
         });
         
         // Compile button
-        const compileBtn = compileActionsEl.createEl('button', { text: `📖 ${t('compileManuscript')}`, cls: 'mod-cta' });
+        const compileBtn = compileActionsEl.createEl('button', { cls: 'mod-cta' });
+        setIcon(compileBtn.createSpan(), 'book-open');
+        compileBtn.createSpan().setText(` ${t('compileManuscript')}`);
         compileBtn.onclick = async () => {
             if (!activeDraft) {
                 new Notice(t('noDraftAvailable'));
@@ -2793,6 +2996,9 @@ export class DashboardView extends ItemView {
             const selectedWorkflow = presetWorkflows.find(w => w.id === workflowSelect.value);
             workflowDescEl.setText(selectedWorkflow?.description || '');
         };
+
+        // Custom compile steps management
+        await this.renderCustomCompileSteps(container);
     }
 
     renderCharacterList(characters: Character[], listContainer: HTMLElement, viewContainer: HTMLElement) {
@@ -2823,12 +3029,24 @@ export class DashboardView extends ItemView {
 
             // --- Add Extra Info ---
             const extraInfoEl = infoEl.createDiv('storyteller-list-item-extra');
+            if (character.race) {
+                extraInfoEl.createSpan({ cls: 'storyteller-char-attr-chip', text: character.race });
+            }
+            if (character.age) {
+                if (character.race) extraInfoEl.appendText(' · ');
+                extraInfoEl.createSpan({ cls: 'storyteller-char-attr-chip', text: character.age });
+            }
             if (character.status) {
+                if (character.race || character.age) extraInfoEl.appendText(' • ');
                 extraInfoEl.createSpan({ cls: 'storyteller-list-item-status', text: character.status });
             }
             if (character.affiliation) {
-                if (character.status) extraInfoEl.appendText(' • '); // Separator
+                if (character.race || character.age || character.status) extraInfoEl.appendText(' • ');
                 extraInfoEl.createSpan({ cls: 'storyteller-list-item-affiliation', text: character.affiliation });
+            }
+            if (character.balance) {
+                if (character.race || character.age || character.status || character.affiliation) extraInfoEl.appendText(' • ');
+                extraInfoEl.createSpan({ cls: 'storyteller-balance-chip', text: `⚖ ${character.balance}` });
             }
 
             const actionsEl = itemEl.createDiv('storyteller-list-item-actions');
@@ -2896,6 +3114,10 @@ export class DashboardView extends ItemView {
             if (location.status) {
                 if (location.locationType || location.region || location.parentLocation) extraInfoEl.appendText(' • '); // Separator
                 extraInfoEl.createSpan({ cls: 'storyteller-list-item-status', text: `[${location.status}]` });
+            }
+            if (location.balance) {
+                if (location.locationType || location.region || location.parentLocation || location.status) extraInfoEl.appendText(' • ');
+                extraInfoEl.createSpan({ cls: 'storyteller-balance-chip', text: `⚖ ${location.balance}` });
             }
 
             const actionsEl = itemEl.createDiv('storyteller-list-item-actions');
@@ -3075,7 +3297,7 @@ export class DashboardView extends ItemView {
            .onClick(() => {
                const file = this.app.vault.getAbstractFileByPath(filePath);
                if (file instanceof TFile) {
-                   this.app.workspace.getLeaf(false).openFile(file);
+                   this.app.workspace.openLinkText(filePath, '', false);
                } else {
                    new Notice('Could not find the note file.');
                }
@@ -3122,6 +3344,75 @@ export class DashboardView extends ItemView {
         }
     }
     
+    // ========== Custom Compile Steps =========================================
+
+    private async renderCustomCompileSteps(container: HTMLElement): Promise<void> {
+        const section = container.createDiv('storyteller-compile-custom-steps');
+
+        const header = section.createDiv('storyteller-compile-custom-header');
+        header.createEl('h4', { text: 'Custom Compile Steps' });
+
+        const addBtn = header.createEl('button', { cls: 'mod-cta storyteller-compile-add-step-btn' });
+        const addIcon = addBtn.createSpan();
+        setIcon(addIcon, 'plus');
+        addBtn.createSpan({ text: ' Add Step' });
+        addBtn.addEventListener('click', () => this.openCustomStepModal(null, container));
+
+        const steps = this.plugin.settings.customCompileSteps ?? [];
+        if (steps.length === 0) {
+            section.createEl('p', {
+                text: 'No custom steps yet. Add a JavaScript step to extend the compile pipeline.',
+                cls: 'storyteller-compile-custom-empty'
+            });
+            return;
+        }
+
+        const list = section.createDiv('storyteller-compile-custom-list');
+        for (const step of steps) {
+            const row = list.createDiv('storyteller-compile-custom-row');
+
+            const info = row.createDiv('storyteller-compile-custom-info');
+            info.createDiv({ text: step.name, cls: 'storyteller-compile-custom-name' });
+            const meta = info.createDiv({ cls: 'storyteller-compile-custom-meta' });
+            meta.createSpan({ text: step.context, cls: `storyteller-compile-stage storyteller-compile-stage--${step.context}` });
+            if (step.description) meta.createSpan({ text: ` · ${step.description}`, cls: 'storyteller-compile-custom-desc' });
+
+            const actions = row.createDiv('storyteller-compile-custom-actions');
+
+            const editBtn = actions.createEl('button');
+            setIcon(editBtn, 'pencil');
+            editBtn.title = 'Edit step';
+            editBtn.addEventListener('click', () => this.openCustomStepModal(step, container));
+
+            const deleteBtn = actions.createEl('button');
+            setIcon(deleteBtn, 'trash');
+            deleteBtn.title = 'Delete step';
+            deleteBtn.addEventListener('click', async () => {
+                this.plugin.settings.customCompileSteps = (this.plugin.settings.customCompileSteps ?? [])
+                    .filter(s => s.id !== step.id);
+                await this.plugin.saveSettings();
+                await this.renderCompileContent(container);
+            });
+        }
+    }
+
+    private openCustomStepModal(
+        existing: import('../types').CustomCompileStepDef | null,
+        refreshContainer: HTMLElement
+    ): void {
+        import('../modals/CustomCompileStepModal').then(({ CustomCompileStepModal }) => {
+            new CustomCompileStepModal(this.app, existing, async (saved) => {
+                const steps = this.plugin.settings.customCompileSteps ?? [];
+                const idx = steps.findIndex(s => s.id === saved.id);
+                if (idx >= 0) steps[idx] = saved;
+                else steps.push(saved);
+                this.plugin.settings.customCompileSteps = steps;
+                await this.plugin.saveSettings();
+                await this.renderCompileContent(refreshContainer);
+            }).open();
+        });
+    }
+
     // ========== Phase 2A: World-Building Entity Render Methods ==========
 
     async renderCulturesContent(container: HTMLElement) {
@@ -3176,6 +3467,7 @@ export class DashboardView extends ItemView {
             const meta = infoEl.createDiv('storyteller-list-item-extra');
             if (culture.governmentType) meta.createSpan({ text: `Gov: ${culture.governmentType}` });
             if (culture.techLevel) meta.createSpan({ text: ` • Tech: ${culture.techLevel}` });
+            if (culture.balance) meta.createSpan({ cls: 'storyteller-balance-chip', text: ` • ⚖ ${culture.balance}` });
 
             if (culture.values) {
                 const preview = culture.values.length > 120 ? culture.values.substring(0, 120) + '…' : culture.values;
@@ -3228,7 +3520,10 @@ export class DashboardView extends ItemView {
             e.name.toLowerCase().includes(this.currentFilter) ||
             (e.industries || '').toLowerCase().includes(this.currentFilter) ||
             (e.taxation || '').toLowerCase().includes(this.currentFilter) ||
-            (e.economicSystem || '').toLowerCase().includes(this.currentFilter)
+            (e.economicSystem || '').toLowerCase().includes(this.currentFilter) ||
+            (e.linkedCharacters || []).join(' ').toLowerCase().includes(this.currentFilter) ||
+            (e.linkedLocations  || []).join(' ').toLowerCase().includes(this.currentFilter) ||
+            (e.linkedCultures   || []).join(' ').toLowerCase().includes(this.currentFilter)
         );
 
         const listContainer = container.createDiv('storyteller-list-container');
@@ -3238,7 +3533,7 @@ export class DashboardView extends ItemView {
         }
 
         economies.forEach(economy => {
-            const itemEl = listContainer.createDiv('storyteller-list-item');
+            const itemEl = listContainer.createDiv('storyteller-list-item storyteller-economy-item');
 
             const pfpContainer = itemEl.createDiv('storyteller-list-item-pfp');
             if (economy.profileImagePath) {
@@ -3250,17 +3545,51 @@ export class DashboardView extends ItemView {
             }
 
             const infoEl = itemEl.createDiv('storyteller-list-item-info');
-            infoEl.createEl('strong', { text: economy.name });
 
-            const meta = infoEl.createDiv('storyteller-list-item-extra');
-            if (economy.economicSystem) meta.createSpan({ text: `System: ${economy.economicSystem}` });
-            if (economy.currencies && economy.currencies.length > 0) {
-                meta.createSpan({ text: ` • Currencies: ${economy.currencies.length}` });
+            // Title row: name + status badge
+            const titleRow = infoEl.createDiv('storyteller-economy-card-title-row');
+            titleRow.createEl('strong', { text: economy.name });
+            if (economy.status) {
+                const statusKey = economy.status.toLowerCase().replace(/\s+/g, '-');
+                titleRow.createEl('span', {
+                    cls: `storyteller-economy-status-badge is-${statusKey}`,
+                    text: economy.status
+                });
             }
 
-            if (economy.industries) {
-                const preview = economy.industries.length > 120 ? economy.industries.substring(0, 120) + '…' : economy.industries;
+            // Description preview
+            if (economy.description) {
+                const preview = economy.description.length > 100
+                    ? economy.description.substring(0, 100) + '…'
+                    : economy.description;
                 infoEl.createEl('p', { text: preview });
+            }
+
+            // Meta row: system, currency count, trade route count
+            const meta = infoEl.createDiv('storyteller-list-item-extra');
+            if (economy.economicSystem) meta.createSpan({ text: economy.economicSystem });
+            if (economy.currencies && economy.currencies.length > 0) {
+                meta.createSpan({ text: ` • ${economy.currencies.length} ${economy.currencies.length === 1 ? 'currency' : 'currencies'}` });
+            }
+            if (economy.tradeRoutes && economy.tradeRoutes.length > 0) {
+                meta.createSpan({ text: ` • ${economy.tradeRoutes.length} trade ${economy.tradeRoutes.length === 1 ? 'route' : 'routes'}` });
+            }
+
+            // Linked entity count chips
+            const linkedCounts: [string, number][] = [
+                ['chars',    (economy.linkedCharacters || []).length],
+                ['loc',      (economy.linkedLocations  || []).length],
+                ['cultures', (economy.linkedCultures   || []).length],
+            ].filter(([, n]) => n > 0) as [string, number][];
+
+            if (linkedCounts.length > 0) {
+                const linksRow = infoEl.createDiv('storyteller-economy-links-row');
+                for (const [label, count] of linkedCounts) {
+                    linksRow.createEl('span', {
+                        cls: 'storyteller-economy-link-count',
+                        text: `${count} ${label}`
+                    });
+                }
             }
 
             const actionsEl = itemEl.createDiv('storyteller-list-item-actions');
@@ -3280,6 +3609,13 @@ export class DashboardView extends ItemView {
                 }
             });
             this.addOpenFileButton(actionsEl, economy.filePath);
+
+            // Details button — opens rich EconomyDetailModal
+            const detailBtn = actionsEl.createEl('button', { cls: 'clickable-icon', attr: { 'aria-label': 'Details' } });
+            setIcon(detailBtn, 'book-open');
+            detailBtn.addEventListener('click', () => {
+                new EconomyDetailModal(this.app, this.plugin, economy).open();
+            });
         });
     }
 
@@ -3358,6 +3694,112 @@ export class DashboardView extends ItemView {
                 }
             });
             this.addOpenFileButton(actionsEl, magicSystem.filePath);
+        });
+    }
+
+    async renderCompendiumContent(container: HTMLElement) {
+        container.empty();
+        this.renderHeaderControls(container, 'Compendium', async (filter: string) => {
+            this.currentFilter = filter;
+            await this.renderCompendiumList(container);
+        }, () => {
+            import('../modals/CompendiumEntryModal').then(({ CompendiumEntryModal }) => {
+                new CompendiumEntryModal(this.app, this.plugin, null, async (entry) => {
+                    await this.plugin.saveCompendiumEntry(entry);
+                    new Notice(`Entry "${entry.name}" created.`);
+                    await this.renderCompendiumList(container);
+                }).open();
+            });
+        }, 'New Entry');
+
+        await this.renderCompendiumList(container);
+    }
+
+    private async renderCompendiumList(container: HTMLElement) {
+        const existingListContainer = container.querySelector('.storyteller-list-container');
+        if (existingListContainer) existingListContainer.remove();
+
+        const entries = (await this.plugin.listCompendiumEntries()).filter(e =>
+            e.name.toLowerCase().includes(this.currentFilter) ||
+            (e.entryType || '').toLowerCase().includes(this.currentFilter) ||
+            (e.description || '').toLowerCase().includes(this.currentFilter)
+        );
+
+        const listContainer = container.createDiv('storyteller-list-container');
+        if (entries.length === 0) {
+            listContainer.createEl('p', { text: 'No compendium entries found.' + (this.currentFilter ? ' (matching filter)' : '') });
+            return;
+        }
+
+        entries.forEach(entry => {
+            const itemEl = listContainer.createDiv('storyteller-list-item');
+
+            const pfpContainer = itemEl.createDiv('storyteller-list-item-pfp');
+            if (entry.profileImagePath) {
+                const imgEl = pfpContainer.createEl('img');
+                imgEl.src = this.getImageSrc(entry.profileImagePath);
+                imgEl.alt = entry.name;
+            } else {
+                pfpContainer.createDiv({ cls: 'storyteller-pfp-placeholder', text: entry.name.substring(0, 1) });
+            }
+
+            const infoEl = itemEl.createDiv('storyteller-list-item-info');
+            const nameRow = infoEl.createDiv({ cls: 'storyteller-compendium-name-row' });
+            nameRow.createEl('strong', { text: entry.name });
+
+            if (entry.entryType) {
+                nameRow.createSpan({
+                    cls: `storyteller-compendium-badge storyteller-compendium-${entry.entryType}`,
+                    text: entry.entryType
+                });
+            }
+            if (entry.rarity) {
+                nameRow.createSpan({
+                    cls: `storyteller-compendium-badge storyteller-rarity-${entry.rarity}`,
+                    text: entry.rarity
+                });
+            }
+            if (entry.dangerRating && entry.dangerRating !== 'none') {
+                nameRow.createSpan({
+                    cls: `storyteller-compendium-badge storyteller-danger-${entry.dangerRating}`,
+                    text: `⚠ ${entry.dangerRating}`
+                });
+            }
+
+            const meta = infoEl.createDiv('storyteller-list-item-extra');
+            const locCount = entry.linkedLocations?.length ?? 0;
+            const charCount = entry.linkedCharacters?.length ?? 0;
+            if (locCount > 0) meta.createSpan({ text: `${locCount} location${locCount > 1 ? 's' : ''}` });
+            if (charCount > 0) {
+                if (locCount > 0) meta.appendText(' • ');
+                meta.createSpan({ text: `${charCount} character${charCount > 1 ? 's' : ''}` });
+            }
+
+            if (entry.description) {
+                const preview = entry.description.length > 80 ? entry.description.substring(0, 80) + '…' : entry.description;
+                infoEl.createEl('p', { text: preview });
+            }
+
+            const actionsEl = itemEl.createDiv('storyteller-list-item-actions');
+            this.addEditButton(actionsEl, () => {
+                import('../modals/CompendiumEntryModal').then(({ CompendiumEntryModal }) => {
+                    new CompendiumEntryModal(this.app, this.plugin, entry, async (updated) => {
+                        await this.plugin.saveCompendiumEntry(updated);
+                        new Notice(`Entry "${updated.name}" updated.`);
+                        await this.renderCompendiumList(container);
+                    }, async (toDelete) => {
+                        if (toDelete.filePath) await this.plugin.deleteCompendiumEntry(toDelete.filePath);
+                        await this.renderCompendiumList(container);
+                    }).open();
+                });
+            });
+            this.addDeleteButton(actionsEl, async () => {
+                if (entry.filePath && confirm(`Delete "${entry.name}"?`)) {
+                    await this.plugin.deleteCompendiumEntry(entry.filePath);
+                    await this.renderCompendiumList(container);
+                }
+            });
+            this.addOpenFileButton(actionsEl, entry.filePath);
         });
     }
 
@@ -3779,6 +4221,99 @@ export class DashboardView extends ItemView {
         return new Promise((resolve) => {
             const modal = new ConfirmDeleteTemplateModal(this.app, templateName, resolve);
             modal.open();
+        });
+    }
+
+    /** Render daily writing goal progress banner */
+    private renderWritingGoalBanner(container: HTMLElement): void {
+        const goal = this.plugin.settings.dailyWordCountGoal ?? 0;
+        if (!goal || !this.plugin.wordTracker) return;
+
+        const tracker = this.plugin.wordTracker;
+        const todayStats = tracker.getTodayStats();
+        const wordsToday = todayStats?.wordsWritten ?? 0;
+        const pct = Math.min(100, (wordsToday / goal) * 100);
+        const met = wordsToday >= goal;
+        const streak = (tracker as any).getWritingStreak?.() ?? 0;
+
+        const banner = container.createDiv({
+            cls: `storyteller-goal-banner${met ? ' storyteller-goal-banner--met' : ''}`
+        });
+
+        const top = banner.createDiv('storyteller-goal-banner-top');
+
+        const labelEl = top.createDiv('storyteller-goal-banner-label');
+        const labelIcon = labelEl.createSpan();
+        setIcon(labelIcon, met ? 'check-circle' : 'target');
+        labelEl.createSpan({ text: met ? ' Daily goal met!' : ' Daily writing goal' });
+
+        top.createSpan({
+            text: `${wordsToday.toLocaleString()} / ${goal.toLocaleString()} words`,
+            cls: 'storyteller-goal-banner-count'
+        });
+
+        const barEl = banner.createDiv('storyteller-goal-bar');
+        const fillEl = barEl.createDiv('storyteller-goal-fill');
+        fillEl.style.width = `${pct}%`;
+
+        if (streak > 1) {
+            const streakEl = banner.createDiv('storyteller-goal-streak');
+            const streakIcon = streakEl.createSpan();
+            setIcon(streakIcon, 'flame');
+            streakEl.createSpan({ text: ` ${streak}-day streak` });
+        }
+    }
+
+    /** Render the Writing Analytics tab content */
+    async renderAnalyticsContent(container: HTMLElement) {
+        container.empty();
+
+        const header = container.createDiv('storyteller-section-header');
+        header.createEl('h3', { text: 'Writing Analytics' });
+
+        const desc = container.createEl('p', {
+            text: 'Track character screen time, POV distribution, writing velocity, foreshadowing, and more.',
+            cls: 'storyteller-analytics-tab-desc'
+        });
+
+        const cached = this.plugin.settings.analyticsData;
+        if (cached) {
+            const summary = container.createDiv('storyteller-analytics-tab-summary');
+
+            const grid = summary.createDiv('storyteller-analytics-tab-grid');
+
+            const addStat = (label: string, value: string, icon: string) => {
+                const card = grid.createDiv('storyteller-stat-card');
+                const iconEl = card.createDiv('storyteller-stat-icon');
+                setIcon(iconEl, icon);
+                card.createDiv('storyteller-stat-value').setText(value);
+                card.createDiv('storyteller-stat-label').setText(label);
+            };
+
+            addStat('Total Words', (cached.totalWords ?? 0).toLocaleString(), 'file-text');
+            addStat('Characters', (cached.characterScreenTime?.length ?? 0).toString(), 'users');
+            addStat('POVs', (cached.povStats?.length ?? 0).toString(), 'eye');
+            addStat('Foreshadowing', (cached.foreshadowing?.length ?? 0).toString(), 'git-merge');
+
+            const updated = container.createEl('p', {
+                text: `Last updated: ${cached.lastUpdated ? new Date(cached.lastUpdated).toLocaleString() : 'never'}`,
+                cls: 'storyteller-analytics-tab-updated'
+            });
+        } else {
+            container.createEl('p', {
+                text: 'No analytics data yet. Open the dashboard to calculate.',
+                cls: 'u-muted'
+            });
+        }
+
+        const openBtn = container.createEl('button', {
+            cls: 'mod-cta storyteller-analytics-open-btn'
+        });
+        const btnIcon = openBtn.createSpan();
+        setIcon(btnIcon, 'bar-chart-2');
+        openBtn.createSpan({ text: ' Open Analytics Dashboard' });
+        openBtn.addEventListener('click', () => {
+            this.plugin.activateAnalyticsView();
         });
     }
 
