@@ -1,6 +1,9 @@
 name: Setup Labels and Apply to Issues
 
 on:
+  push:
+    branches:
+      - main
   workflow_dispatch:
     inputs:
       apply_to_existing:
@@ -87,9 +90,9 @@ jobs:
                 /not working/, /won'?t/, /can'?t/, /cannot/,
                 /not (being )?(saved|created|updating|working|loading|registering|staying|recognized)/,
                 /aren'?t (working|registering|showing|loading|saving|updating)/,
-                /unable to/, /failed to (load|install)/, /plugin fail/,
+                /unable to/, /\bnot able to\b/, /failed to (load|install)/, /plugin fail/,
                 /wipes?\b/, /wiped\b/, /wont/, /doesn'?t do anything/,
-                /nothing happens/, /no such file/, /enoent/,
+                /nothing happens/, /no such file/, /enoent/, /\bmissing\b/,
               ];
               if (bugPatterns.some(p => p.test(text))) {
                 labels.push('bug');
@@ -101,7 +104,7 @@ jobs:
                 /\brequest\b/, /\bsuggestions?\b/, /\bideas?\b/, /\benhancement\b/,
                 /\bimprovement\b/, /add support/, /\bfeature\b/, /\boffer\b/,
                 /would (it )?be (possible|nice|great|cool)/, /\bwish\b/,
-                /\bproposal\b/, /\bideally\b/, /\[request\]/i,
+                /\bproposal\b/, /\bideally\b/, /\[request\]/i, /\bpossible to have\b/,
               ];
               if (enhancementPatterns.some(p => p.test(text))) {
                 // Always add 'feature request'; add 'enhancement' only for non-bug issues
