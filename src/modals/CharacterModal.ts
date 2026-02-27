@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
-import { App, Setting, Notice, TextAreaComponent, TextComponent, ButtonComponent, parseYaml } from 'obsidian';
+import { App, Setting, Notice, TextAreaComponent, TextComponent, ButtonComponent, parseYaml, TFile, setIcon } from 'obsidian';
 import { Character, Group } from '../types'; // Assumes Character type has relationships?: string[], associatedLocations?: string[], associatedEvents?: string[]
 import { LocationPicker } from '../components/LocationPicker';
 import { LocationService } from '../services/LocationService';
@@ -12,6 +12,7 @@ import { PromptModal } from './ui/PromptModal';
 import { PlatformUtils } from '../utils/PlatformUtils';
 import { TemplatePickerModal } from './TemplatePickerModal';
 import { Template } from '../templates/TemplateTypes';
+import { CharacterSheetPreviewModal } from './CharacterSheetPreviewModal';
 // Placeholder imports for suggesters - these would need to be created
 // import { CharacterSuggestModal } from './CharacterSuggestModal';
 // import { LocationSuggestModal } from './LocationSuggestModal';
@@ -45,6 +46,15 @@ export class CharacterModal extends ResponsiveModal {
         if (!initialCharacter.relationships) initialCharacter.relationships = [];
         // Preserve filePath if editing
         if (character && character.filePath) initialCharacter.filePath = character.filePath;
+        // Preserve _templateSections if set on the source character (non-enumerable, not copied by spread)
+        if (character && (character as any)._templateSections) {
+            Object.defineProperty(initialCharacter, '_templateSections', {
+                value: (character as any)._templateSections,
+                enumerable: false,
+                writable: true,
+                configurable: true
+            });
+        }
         this.character = initialCharacter;
         this.onSubmit = onSubmit;
         this.onDelete = onDelete;
@@ -138,7 +148,8 @@ export class CharacterModal extends ResponsiveModal {
                                                         new Notice('Error applying template');
                                                     }
                                                     resolve();
-                                                }
+                                                },
+                                                resolve
                                             ).open();
                                         });
                                     });
@@ -251,6 +262,55 @@ export class CharacterModal extends ResponsiveModal {
                 .setValue(this.character.affiliation || '')
                 .onChange(value => { this.character.affiliation = value || undefined; }));
 
+        // --- Physical Attributes ---
+        contentEl.createEl('h3', { text: t('physicalAttributes') });
+
+        const attrRow = contentEl.createDiv('storyteller-char-attr-row');
+
+        const genderCol = attrRow.createDiv('storyteller-char-attr-col');
+        new Setting(genderCol)
+            .setName(t('gender'))
+            .addText(text => text
+                .setPlaceholder('e.g., Female, Male, Non-binary')
+                .setValue(this.character.gender || '')
+                .onChange(value => { this.character.gender = value || undefined; }));
+
+        const raceCol = attrRow.createDiv('storyteller-char-attr-col');
+        new Setting(raceCol)
+            .setName(t('race'))
+            .addText(text => text
+                .setPlaceholder('e.g., Human, Elf, Dwarf')
+                .setValue(this.character.race || '')
+                .onChange(value => { this.character.race = value || undefined; }));
+
+        const ageCol = attrRow.createDiv('storyteller-char-attr-col');
+        new Setting(ageCol)
+            .setName(t('age'))
+            .addText(text => text
+                .setPlaceholder('e.g., 34, Ancient, Unknown')
+                .setValue(this.character.age || '')
+                .onChange(value => { this.character.age = value || undefined; }));
+
+        const heightCol = attrRow.createDiv('storyteller-char-attr-col');
+        new Setting(heightCol)
+            .setName(t('height'))
+            .addText(text => text
+                .setPlaceholder("e.g., 5'10\", Tall")
+                .setValue(this.character.height || '')
+                .onChange(value => { this.character.height = value || undefined; }));
+
+        new Setting(contentEl)
+            .setName(t('quirks'))
+            .setClass('storyteller-modal-setting-vertical')
+            .addTextArea(text => {
+                text
+                    .setPlaceholder(t('quirksPh'))
+                    .setValue(this.character.quirks || '')
+                    .onChange(value => { this.character.quirks = value || undefined; });
+                text.inputEl.rows = 3;
+                text.inputEl.addClass('storyteller-modal-textarea');
+            });
+
         // --- Current Location ---
         contentEl.createEl('h3', { text: 'Location' });
         const locationContainer = contentEl.createDiv('storyteller-location-picker-container');
@@ -306,6 +366,87 @@ export class CharacterModal extends ResponsiveModal {
                 }
             }
         }
+
+        // --- Cultures ---
+        contentEl.createEl('h3', { text: 'Cultures' });
+        if (!Array.isArray(this.character.cultures)) this.character.cultures = [];
+        const cultureChips = contentEl.createDiv('storyteller-linked-chips');
+        const renderCultureChips = () => {
+            cultureChips.empty();
+            for (const name of this.character.cultures!) {
+                const chip = cultureChips.createSpan({ cls: 'storyteller-linked-chip' });
+                chip.createSpan({ text: name });
+                const rm = chip.createEl('button', { cls: 'storyteller-chip-remove', attr: { 'aria-label': 'Remove' } });
+                setIcon(rm, 'x');
+                rm.addEventListener('click', () => {
+                    this.character.cultures = this.character.cultures!.filter(n => n !== name);
+                    renderCultureChips();
+                });
+            }
+        };
+        renderCultureChips();
+        const allCulturesForChar = await this.plugin.listCultures();
+        new Setting(contentEl)
+            .setName('Add culture')
+            .addDropdown(dd => {
+                dd.addOption('', '— select culture —');
+                allCulturesForChar.forEach(c => dd.addOption(c.name, c.name));
+                dd.onChange(val => {
+                    if (val && !this.character.cultures!.includes(val)) {
+                        this.character.cultures!.push(val);
+                        renderCultureChips();
+                    }
+                    dd.setValue('');
+                });
+            });
+
+        // --- Finances ---
+        contentEl.createEl('h3', { text: 'Finances' });
+        new Setting(contentEl)
+            .setName('Balance')
+            .setDesc('Current wealth (e.g. "50gp 25sp"). Auto-computed from ledger blocks if present in the note.')
+            .addText(text => text
+                .setValue(this.character.balance || '')
+                .onChange(val => { this.character.balance = val.trim() || undefined; })
+            );
+        if (this.character.ledger && this.character.ledger.length > 0) {
+            const ledgerEl = contentEl.createDiv('storyteller-ledger-preview');
+            ledgerEl.createEl('p', { cls: 'storyteller-ledger-note', text: `${this.character.ledger.length} transaction(s) in note` });
+        }
+
+        // --- Linked Economies ---
+        contentEl.createEl('h3', { text: 'Economies' });
+        if (!Array.isArray(this.character.linkedEconomies)) this.character.linkedEconomies = [];
+        const charEconChips = contentEl.createDiv('storyteller-linked-chips');
+        const renderCharEconChips = () => {
+            charEconChips.empty();
+            for (const name of (this.character.linkedEconomies ?? [])) {
+                const chip = charEconChips.createSpan({ cls: 'storyteller-linked-chip' });
+                chip.createSpan({ text: name });
+                const rm = chip.createEl('button', { cls: 'storyteller-chip-remove', attr: { 'aria-label': 'Remove' } });
+                setIcon(rm, 'x');
+                rm.addEventListener('click', () => {
+                    this.character.linkedEconomies = this.character.linkedEconomies!.filter(n => n !== name);
+                    renderCharEconChips();
+                });
+            }
+        };
+        renderCharEconChips();
+        const allEconomies = await this.plugin.listEconomies();
+        new Setting(contentEl)
+            .setName('Add economy')
+            .addDropdown(dd => {
+                dd.addOption('', '— select economy —');
+                allEconomies.forEach(e => dd.addOption(e.name, e.name));
+                dd.onChange(val => {
+                    if (val && !(this.character.linkedEconomies ?? []).includes(val)) {
+                        if (!Array.isArray(this.character.linkedEconomies)) this.character.linkedEconomies = [];
+                        this.character.linkedEconomies.push(val);
+                        renderCharEconChips();
+                    }
+                    dd.setValue('');
+                });
+            });
 
         // --- Groups ---
         this.groupSelectorContainer = contentEl.createDiv('storyteller-group-selector-container');
@@ -420,6 +561,18 @@ export class CharacterModal extends ResponsiveModal {
         }
 
         buttonsSetting.controlEl.createDiv({ cls: 'storyteller-modal-button-spacer' });
+
+        buttonsSetting.addButton(btn => btn
+            .setButtonText('Character Sheet')
+            .setTooltip('Preview and export a styled character sheet')
+            .onClick(() => {
+                if (!this.character.name?.trim()) {
+                    new Notice('Please enter a character name before generating a sheet.');
+                    return;
+                }
+                new CharacterSheetPreviewModal(this.app, this.plugin, this.character).open();
+            })
+        );
 
         buttonsSetting.addButton(button => button
             .setButtonText(t('cancel'))
@@ -650,6 +803,7 @@ export class CharacterModal extends ResponsiveModal {
         const { templateId, yamlContent, markdownContent, sectionContent, customYamlFields, id, filePath, ...rest } = templateChar as any;
 
         let fields: any = { ...rest };
+        let allTemplateSections: Record<string, string> = {};
 
         // Handle new format: yamlContent (parse YAML string)
         if (yamlContent && typeof yamlContent === 'string') {
@@ -671,6 +825,7 @@ export class CharacterModal extends ResponsiveModal {
         if (markdownContent && typeof markdownContent === 'string') {
             try {
                 const parsedSections = parseSectionsFromMarkdown(markdownContent);
+                allTemplateSections = parsedSections;
 
                 // Map well-known sections to entity properties
                 if ('Description' in parsedSections) {
@@ -696,6 +851,7 @@ export class CharacterModal extends ResponsiveModal {
             }
         } else if (sectionContent) {
             // Old format: apply section content
+            for (const [k, v] of Object.entries(sectionContent)) { allTemplateSections[k as string] = v as string; }
             for (const [sectionName, content] of Object.entries(sectionContent)) {
                 const propName = sectionName.toLowerCase().replace(/\s+/g, '');
                 (fields as any)[propName] = content;
@@ -704,6 +860,14 @@ export class CharacterModal extends ResponsiveModal {
 
         // Apply all fields to the character
         Object.assign(this.character, fields);
+        if (Object.keys(allTemplateSections).length > 0) {
+            Object.defineProperty(this.character, '_templateSections', {
+                value: allTemplateSections,
+                enumerable: false,
+                writable: true,
+                configurable: true
+            });
+        }
         console.log('[CharacterModal] Final character after template:', this.character);
 
         // Clear relationships as they reference template entities
