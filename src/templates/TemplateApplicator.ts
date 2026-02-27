@@ -3,7 +3,7 @@
  * Handles applying templates to stories with complete relationship mapping
  */
 
-import { Notice, parseYaml } from 'obsidian';
+import { Notice, TFile, normalizePath, parseYaml } from 'obsidian';
 import type StorytellerSuitePlugin from '../main';
 import {
     Template,
@@ -34,6 +34,8 @@ export class TemplateApplicator {
     private idMap: Map<string, string> = new Map();
     private groupIdMap: Map<string, string> = new Map();
     private nameToIdMap: Map<string, string> = new Map();
+    /** Maps template entity IDs (e.g. "CHAR_001") → resolved entity name ("King Aldric") */
+    private templateIdToNameMap: Map<string, string> = new Map();
 
     constructor(plugin: StorytellerSuitePlugin) {
         this.plugin = plugin;
@@ -72,6 +74,7 @@ export class TemplateApplicator {
             this.idMap.clear();
             this.groupIdMap.clear();
             this.nameToIdMap.clear();
+            this.templateIdToNameMap.clear();
 
             // Apply user-provided entity mapping
             if (options.entityMapping) {
@@ -431,15 +434,38 @@ export class TemplateApplicator {
             const override = overrides?.get(templateId);
             const { fields, sections } = this.processTemplateEntity(templateChar);
 
+            // If a vault file for this character name already exists, reuse it rather than
+            // overwriting it. This prevents duplicate files and broken links when applying
+            // a template to a vault that already has some of the same characters.
+            const entityName: string = (fields.name as string) || (override?.name as string) || '';
+            if (entityName) {
+                const safeFileName = `${entityName.replace(/[\\/:"*?<>|]+/g, '')}.md`;
+                const folderPath = this.plugin.getEntityFolder('character');
+                const filePath = normalizePath(`${folderPath}/${safeFileName}`);
+                const existingFile = this.plugin.app.vault.getAbstractFileByPath(filePath);
+                if (existingFile instanceof TFile) {
+                    const existing = await this.plugin.parseFile<Character>(existingFile, { name: '' }, 'character');
+                    if (existing) {
+                        const existingId = existing.id || this.generateId();
+                        this.idMap.set(templateId, existingId);
+                        this.nameToIdMap.set(entityName, existingId);
+                        this.templateIdToNameMap.set(templateId, entityName);
+                        characters.push(existing);
+                        continue;
+                    }
+                }
+            }
+
+            // Default arrays first so template fields can override them
             const character: Character = {
-                ...fields,
-                ...override,
-                id: override?.id || this.generateId(),
                 relationships: [],
                 locations: [],
                 events: [],
                 groups: [],
-                connections: []
+                connections: [],
+                ...fields,
+                ...override,
+                id: override?.id || this.generateId(),
             } as Character;
 
             // Apply sections to entity properties (for backward compatibility with save methods)
@@ -460,11 +486,43 @@ export class TemplateApplicator {
             // Store mapping
             this.idMap.set(templateId, character.id!);
             this.nameToIdMap.set(character.name, character.id!);
+            this.templateIdToNameMap.set(templateId, character.name);
 
             characters.push(character);
         }
 
         return characters;
+    }
+
+    /**
+     * Resolve a template entity ID or name to the entity's display name.
+     * Relationship targets in vault notes must be entity names, not generated IDs.
+     */
+    private resolveToName(templateIdOrName: string | undefined): string | undefined {
+        if (!templateIdOrName) return undefined;
+        // Direct template ID → name lookup (e.g. "CHAR_001" → "King Aldric")
+        const name = this.templateIdToNameMap.get(templateIdOrName);
+        if (name) return name;
+        // Already a name (present in nameToIdMap)
+        if (this.nameToIdMap.has(templateIdOrName)) return templateIdOrName;
+        // Unresolvable — return as-is so we don't silently drop values
+        return templateIdOrName;
+    }
+
+    /** Helper: apply sections to entity and store _templateSections */
+    private applyEntitySections(entity: any, sections: Record<string, string>): void {
+        for (const [sectionName, content] of Object.entries(sections)) {
+            const propName = sectionName.toLowerCase().replace(/\s+/g, '');
+            entity[propName] = content;
+        }
+        if (Object.keys(sections).length > 0) {
+            Object.defineProperty(entity, '_templateSections', {
+                value: sections,
+                enumerable: false,
+                writable: true,
+                configurable: true
+            });
+        }
     }
 
     /**
@@ -483,31 +541,17 @@ export class TemplateApplicator {
             const { fields, sections } = this.processTemplateEntity(templateLoc);
 
             const location: Location = {
+                groups: [],
+                connections: [],
                 ...fields,
                 ...override,
                 id: override?.id || this.generateId(),
-                groups: [],
-                connections: []
             } as Location;
 
-            // Apply sections to entity properties
-            for (const [sectionName, content] of Object.entries(sections)) {
-                const propName = sectionName.toLowerCase().replace(/\s+/g, '');
-                (location as any)[propName] = content;
-            }
-
-            // Store all template sections for saveLocation to use (hidden property)
-            Object.defineProperty(location, '_templateSections', {
-                value: sections,
-                enumerable: false,
-                writable: true,
-                configurable: true
-            });
-
-            // Store mapping
+            this.applyEntitySections(location, sections);
             this.idMap.set(templateId, location.id!);
             this.nameToIdMap.set(location.name, location.id!);
-
+            this.templateIdToNameMap.set(templateId, location.name);
             locations.push(location);
         }
 
@@ -530,33 +574,19 @@ export class TemplateApplicator {
             const { fields, sections } = this.processTemplateEntity(templateEvt);
 
             const event: Event = {
-                ...fields,
-                ...override,
-                id: override?.id || this.generateId(),
                 characters: [],
                 groups: [],
                 connections: [],
-                dependencies: []
+                dependencies: [],
+                ...fields,
+                ...override,
+                id: override?.id || this.generateId(),
             } as Event;
 
-            // Apply sections to entity properties
-            for (const [sectionName, content] of Object.entries(sections)) {
-                const propName = sectionName.toLowerCase().replace(/\s+/g, '');
-                (event as any)[propName] = content;
-            }
-
-            // Store all template sections for saveEvent to use (hidden property)
-            Object.defineProperty(event, '_templateSections', {
-                value: sections,
-                enumerable: false,
-                writable: true,
-                configurable: true
-            });
-
-            // Store mapping
+            this.applyEntitySections(event, sections);
             this.idMap.set(templateId, event.id!);
             this.nameToIdMap.set(event.name, event.id!);
-
+            this.templateIdToNameMap.set(templateId, event.name);
             events.push(event);
         }
 
@@ -579,33 +609,19 @@ export class TemplateApplicator {
             const { fields, sections } = this.processTemplateEntity(templateItem);
 
             const item: PlotItem = {
+                isPlotCritical: false,
+                associatedEvents: [],
+                groups: [],
+                connections: [],
                 ...fields,
                 ...override,
                 id: override?.id || this.generateId(),
-                isPlotCritical: (fields as any).isPlotCritical || false,
-                associatedEvents: [],
-                groups: [],
-                connections: []
             } as PlotItem;
 
-            // Apply sections to entity properties
-            for (const [sectionName, content] of Object.entries(sections)) {
-                const propName = sectionName.toLowerCase().replace(/\s+/g, '');
-                (item as any)[propName] = content;
-            }
-
-            // Store all template sections for savePlotItem to use (hidden property)
-            Object.defineProperty(item, '_templateSections', {
-                value: sections,
-                enumerable: false,
-                writable: true,
-                configurable: true
-            });
-
-            // Store mapping
+            this.applyEntitySections(item, sections);
             this.idMap.set(templateId, item.id!);
             this.nameToIdMap.set(item.name, item.id!);
-
+            this.templateIdToNameMap.set(templateId, item.name);
             items.push(item);
         }
 
@@ -628,33 +644,19 @@ export class TemplateApplicator {
             const { fields, sections } = this.processTemplateEntity(templateCult);
 
             const culture: Culture = {
-                ...fields,
-                ...override,
-                id: this.generateId(),
                 linkedLocations: [],
                 linkedCharacters: [],
                 linkedEvents: [],
-                relatedCultures: []
+                relatedCultures: [],
+                ...fields,
+                ...override,
+                id: override?.id || this.generateId(),
             } as Culture;
 
-            // Apply sections to entity properties
-            for (const [sectionName, content] of Object.entries(sections)) {
-                const propName = sectionName.toLowerCase().replace(/\s+/g, '');
-                (culture as any)[propName] = content;
-            }
-
-            // Store all template sections for saveCulture to use (hidden property)
-            Object.defineProperty(culture, '_templateSections', {
-                value: sections,
-                enumerable: false,
-                writable: true,
-                configurable: true
-            });
-
-            // Store mapping
+            this.applyEntitySections(culture, sections);
             this.idMap.set(templateId, culture.id!);
             this.nameToIdMap.set(culture.name, culture.id!);
-
+            this.templateIdToNameMap.set(templateId, culture.name);
             cultures.push(culture);
         }
 
@@ -677,33 +679,19 @@ export class TemplateApplicator {
             const { fields, sections } = this.processTemplateEntity(templateEcon);
 
             const economy: Economy = {
-                ...fields,
-                ...override,
-                id: override?.id || this.generateId(),
                 linkedLocations: [],
                 linkedFactions: [],
                 linkedCultures: [],
-                linkedEvents: []
+                linkedEvents: [],
+                ...fields,
+                ...override,
+                id: override?.id || this.generateId(),
             } as Economy;
 
-            // Apply sections to entity properties
-            for (const [sectionName, content] of Object.entries(sections)) {
-                const propName = sectionName.toLowerCase().replace(/\s+/g, '');
-                (economy as any)[propName] = content;
-            }
-
-            // Store all template sections for saveEconomy to use (hidden property)
-            Object.defineProperty(economy, '_templateSections', {
-                value: sections,
-                enumerable: false,
-                writable: true,
-                configurable: true
-            });
-
-            // Store mapping
+            this.applyEntitySections(economy, sections);
             this.idMap.set(templateId, economy.id!);
             this.nameToIdMap.set(economy.name, economy.id!);
-
+            this.templateIdToNameMap.set(templateId, economy.name);
             economies.push(economy);
         }
 
@@ -726,34 +714,20 @@ export class TemplateApplicator {
             const { fields, sections } = this.processTemplateEntity(templateMagic);
 
             const magicSystem: MagicSystem = {
-                ...fields,
-                ...override,
-                id: override?.id || this.generateId(),
                 linkedCharacters: [],
                 linkedLocations: [],
                 linkedCultures: [],
                 linkedEvents: [],
-                linkedItems: []
+                linkedItems: [],
+                ...fields,
+                ...override,
+                id: override?.id || this.generateId(),
             } as MagicSystem;
 
-            // Apply sections to entity properties
-            for (const [sectionName, content] of Object.entries(sections)) {
-                const propName = sectionName.toLowerCase().replace(/\s+/g, '');
-                (magicSystem as any)[propName] = content;
-            }
-
-            // Store all template sections for saveMagicSystem to use (hidden property)
-            Object.defineProperty(magicSystem, '_templateSections', {
-                value: sections,
-                enumerable: false,
-                writable: true,
-                configurable: true
-            });
-
-            // Store mapping
+            this.applyEntitySections(magicSystem, sections);
             this.idMap.set(templateId, magicSystem.id!);
             this.nameToIdMap.set(magicSystem.name, magicSystem.id!);
-
+            this.templateIdToNameMap.set(templateId, magicSystem.name);
             magicSystems.push(magicSystem);
         }
 
@@ -776,34 +750,20 @@ export class TemplateApplicator {
             const { fields, sections } = this.processTemplateEntity(templateChap);
 
             const chapter: Chapter = {
-                ...fields,
-                ...override,
-                id: override?.id || this.generateId(),
                 linkedCharacters: [],
                 linkedLocations: [],
                 linkedEvents: [],
                 linkedItems: [],
-                linkedGroups: []
+                linkedGroups: [],
+                ...fields,
+                ...override,
+                id: override?.id || this.generateId(),
             } as Chapter;
 
-            // Apply sections to entity properties
-            for (const [sectionName, content] of Object.entries(sections)) {
-                const propName = sectionName.toLowerCase().replace(/\s+/g, '');
-                (chapter as any)[propName] = content;
-            }
-
-            // Store all template sections for saveChapter to use (hidden property)
-            Object.defineProperty(chapter, '_templateSections', {
-                value: sections,
-                enumerable: false,
-                writable: true,
-                configurable: true
-            });
-
-            // Store mapping
+            this.applyEntitySections(chapter, sections);
             this.idMap.set(templateId, chapter.id!);
             this.nameToIdMap.set(chapter.name, chapter.id!);
-
+            this.templateIdToNameMap.set(templateId, chapter.name);
             chapters.push(chapter);
         }
 
@@ -826,34 +786,20 @@ export class TemplateApplicator {
             const { fields, sections } = this.processTemplateEntity(templateScene);
 
             const scene: Scene = {
-                ...fields,
-                ...override,
-                id: override?.id || this.generateId(),
                 linkedCharacters: [],
                 linkedLocations: [],
                 linkedEvents: [],
                 linkedItems: [],
-                linkedGroups: []
+                linkedGroups: [],
+                ...fields,
+                ...override,
+                id: override?.id || this.generateId(),
             } as Scene;
 
-            // Apply sections to entity properties
-            for (const [sectionName, content] of Object.entries(sections)) {
-                const propName = sectionName.toLowerCase().replace(/\s+/g, '');
-                (scene as any)[propName] = content;
-            }
-
-            // Store all template sections for saveScene to use (hidden property)
-            Object.defineProperty(scene, '_templateSections', {
-                value: sections,
-                enumerable: false,
-                writable: true,
-                configurable: true
-            });
-
-            // Store mapping
+            this.applyEntitySections(scene, sections);
             this.idMap.set(templateId, scene.id!);
             this.nameToIdMap.set(scene.name, scene.id!);
-
+            this.templateIdToNameMap.set(templateId, scene.name);
             scenes.push(scene);
         }
 
@@ -878,27 +824,13 @@ export class TemplateApplicator {
             const reference: Reference = {
                 ...fields,
                 ...override,
-                id: override?.id || this.generateId()
+                id: override?.id || this.generateId(),
             } as Reference;
 
-            // Apply sections to entity properties
-            for (const [sectionName, content] of Object.entries(sections)) {
-                const propName = sectionName.toLowerCase().replace(/\s+/g, '');
-                (reference as any)[propName] = content;
-            }
-
-            // Store all template sections for saveReference to use (hidden property)
-            Object.defineProperty(reference, '_templateSections', {
-                value: sections,
-                enumerable: false,
-                writable: true,
-                configurable: true
-            });
-
-            // Store mapping
+            this.applyEntitySections(reference, sections);
             this.idMap.set(templateId, reference.id!);
             this.nameToIdMap.set(reference.name, reference.id!);
-
+            this.templateIdToNameMap.set(templateId, reference.name);
             references.push(reference);
         }
 
@@ -924,7 +856,7 @@ export class TemplateApplicator {
         // Map location relationships
         for (const loc of created.locations) {
             if (loc.parentLocation) {
-                loc.parentLocation = this.resolveId(loc.parentLocation) || loc.parentLocation;
+                loc.parentLocation = this.resolveToName(loc.parentLocation) || loc.parentLocation;
             }
             loc.groups = this.mapGroups(loc.groups);
             loc.connections = this.mapTypedRelationships(loc.connections);
@@ -934,7 +866,7 @@ export class TemplateApplicator {
         for (const evt of created.events) {
             evt.characters = this.mapStringArray(evt.characters);
             if (evt.location) {
-                evt.location = this.resolveId(evt.location) || evt.location;
+                evt.location = this.resolveToName(evt.location) || evt.location;
             }
             evt.groups = this.mapGroups(evt.groups);
             evt.connections = this.mapTypedRelationships(evt.connections);
@@ -944,11 +876,11 @@ export class TemplateApplicator {
         // Map item relationships
         for (const item of created.items) {
             if (item.currentOwner) {
-                item.currentOwner = this.resolveId(item.currentOwner) || item.currentOwner;
+                item.currentOwner = this.resolveToName(item.currentOwner) || item.currentOwner;
             }
             item.pastOwners = this.mapStringArray(item.pastOwners);
             if (item.currentLocation) {
-                item.currentLocation = this.resolveId(item.currentLocation) || item.currentLocation;
+                item.currentLocation = this.resolveToName(item.currentLocation) || item.currentLocation;
             }
             item.associatedEvents = this.mapStringArray(item.associatedEvents);
             item.groups = this.mapGroups(item.groups);
@@ -960,19 +892,19 @@ export class TemplateApplicator {
             if (group.members) {
                 group.members = group.members.map(member => ({
                     ...member,
-                    name: this.resolveId(member.name) || member.name
+                    name: this.resolveToName(member.name) || member.name
                 }));
             }
             group.territories = this.mapStringArray(group.territories);
             group.linkedEvents = this.mapStringArray(group.linkedEvents);
             if (group.parentGroup) {
-                group.parentGroup = this.resolveId(group.parentGroup) || group.parentGroup;
+                group.parentGroup = this.resolveToName(group.parentGroup) || group.parentGroup;
             }
             group.subgroups = this.mapStringArray(group.subgroups);
             if (group.groupRelationships) {
                 group.groupRelationships = group.groupRelationships.map(rel => ({
                     ...rel,
-                    groupName: this.resolveId(rel.groupName) || rel.groupName
+                    groupName: this.resolveToName(rel.groupName) || rel.groupName
                 }));
             }
         }
@@ -984,7 +916,7 @@ export class TemplateApplicator {
             cult.linkedEvents = this.mapStringArray(cult.linkedEvents);
             cult.relatedCultures = this.mapStringArray(cult.relatedCultures);
             if (cult.parentCulture) {
-                cult.parentCulture = this.resolveId(cult.parentCulture) || cult.parentCulture;
+                cult.parentCulture = this.resolveToName(cult.parentCulture) || cult.parentCulture;
             }
         }
 
@@ -1017,7 +949,10 @@ export class TemplateApplicator {
         // Map scene relationships
         for (const scene of created.scenes) {
             if (scene.chapterId) {
+                // Chapter ID must remain a real ID for chapter-scene linking
                 scene.chapterId = this.resolveId(scene.chapterId) || scene.chapterId;
+                // Also update chapterName to the human-readable name
+                scene.chapterName = this.resolveToName(scene.chapterId) || scene.chapterName;
             }
             scene.linkedCharacters = this.mapStringArray(scene.linkedCharacters);
             scene.linkedLocations = this.mapStringArray(scene.linkedLocations);
@@ -1036,17 +971,18 @@ export class TemplateApplicator {
     }
 
     /**
-     * Map array of string IDs
+     * Map array of entity references to entity names.
+     * Vault notes store entity names (not generated IDs) for wiki-link compatibility.
      */
     private mapStringArray(arr: string[] | undefined): string[] {
         if (!arr) return [];
         return arr
-            .map(id => this.resolveId(id) || id)
+            .map(id => this.resolveToName(id) || id)
             .filter(id => id !== undefined);
     }
 
     /**
-     * Map group IDs (groups use actual IDs, not names)
+     * Map group IDs (groups use actual vault IDs, not names)
      */
     private mapGroups(groups: string[] | undefined): string[] {
         if (!groups) return [];
@@ -1056,7 +992,7 @@ export class TemplateApplicator {
     }
 
     /**
-     * Map typed relationships
+     * Map typed relationships — targets become entity names for vault wiki-links
      */
     private mapTypedRelationships(
         connections: TypedRelationship[] | undefined
@@ -1064,12 +1000,12 @@ export class TemplateApplicator {
         if (!connections) return [];
         return connections.map(conn => ({
             ...conn,
-            target: this.resolveId(conn.target) || conn.target
+            target: this.resolveToName(conn.target) || conn.target
         }));
     }
 
     /**
-     * Map character relationships (can be string or TypedRelationship)
+     * Map character relationships — targets become entity names for vault wiki-links
      */
     private mapRelationships(
         relationships: (string | TypedRelationship)[] | undefined
@@ -1077,11 +1013,11 @@ export class TemplateApplicator {
         if (!relationships) return [];
         return relationships.map(rel => {
             if (typeof rel === 'string') {
-                return this.resolveId(rel) || rel;
+                return this.resolveToName(rel) || rel;
             } else {
                 return {
                     ...rel,
-                    target: this.resolveId(rel.target) || rel.target
+                    target: this.resolveToName(rel.target) || rel.target
                 };
             }
         });

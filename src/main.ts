@@ -15,18 +15,18 @@ import * as L from 'leaflet';
 // import 'leaflet.markercluster/dist/MarkerCluster.Default.css';
 // import 'leaflet.markercluster/dist/leaflet.markercluster';
 
-import { App, Notice, Plugin, TFile, TFolder, normalizePath, stringifyYaml, WorkspaceLeaf } from 'obsidian';
+import { App, Notice, Plugin, TFile, TFolder, normalizePath, stringifyYaml, WorkspaceLeaf, debounce } from 'obsidian';
 import { parseEventDate, toMillis } from './utils/DateParsing';
 import { buildFrontmatter, getWhitelistKeys, parseSectionsFromMarkdown } from './yaml/EntitySections';
 import { stringifyYamlWithLogging, validateFrontmatterPreservation } from './utils/YamlSerializer';
 import { setLocale, t } from './i18n/strings';
-import { FolderResolver, FolderResolverOptions } from './folders/FolderResolver';
+import { FolderResolver, FolderResolverOptions, EntityFolderType } from './folders/FolderResolver';
 import { PromptModal } from './modals/ui/PromptModal';
 import { ConfirmModal } from './modals/ui/ConfirmModal';
 import { CharacterModal } from './modals/CharacterModal';
 import {
     Character, Location, Event, GalleryImage, GalleryData, Story, Group, PlotItem, Reference, Chapter, Scene,
-    Culture, Economy, MagicSystem,
+    Culture, Economy, MagicSystem, CompendiumEntry,
     TimelineFork, CausalityLink, TimelineConflict, TimelineEra, TimelineTrack,
     PacingAnalysis, WritingSession, StoryAnalytics, LocationSensoryProfile,
     StoryMap
@@ -57,6 +57,8 @@ import { EconomyModal } from './modals/EconomyModal';
 import { EconomyListModal } from './modals/EconomyListModal';
 import { MagicSystemModal } from './modals/MagicSystemModal';
 import { MagicSystemListModal } from './modals/MagicSystemListModal';
+import { CompendiumEntryModal } from './modals/CompendiumEntryModal';
+import { CompendiumListModal } from './modals/CompendiumListModal';
 import { PlatformUtils } from './utils/PlatformUtils';
 import { getTemplateSections } from './utils/EntityTemplates';
 // Removed: Codeblock maps no longer supported - use MapView instead
@@ -73,6 +75,8 @@ import { ConflictDetector } from './utils/ConflictDetector';
 import { TimelineTrackManager } from './utils/TimelineTrackManager';
 import { EraManager } from './utils/EraManager';
 import { LocationMigration } from './utils/LocationMigration';
+import { WordCountTracker } from './compile';
+import { createLedgerViewExtension, registerLedgerBlockProcessor } from './extensions/LedgerEditorExtension';
 
 /**
  * Plugin settings interface defining all configurable options
@@ -83,6 +87,7 @@ import { LocationMigration } from './utils/LocationMigration';
     activeStoryId: string; // Currently selected story
     galleryUploadFolder: string; // New setting for uploads
     galleryData: GalleryData; // Store gallery metadata here
+    galleryWatchFolder?: string; // Folder to auto-scan for images
     /** Array of all user-defined groups (story-specific) */
     groups: Group[];
     /** Whether to show the tutorial section in settings */
@@ -150,6 +155,10 @@ import { LocationMigration } from './utils/LocationMigration';
     /** When true, disables global Leaflet exposure to prevent conflicts with standalone Obsidian Leaflet plugin */
     disableLeafletGlobalExposure?: boolean;
 
+    /** Timeline watch settings for vault note inclusion */
+    timelineWatchProperty?: string;
+    timelineWatchTag?: string;
+
     /** Timeline & Causality */
     timelineForks?: TimelineFork[];
     causalityLinks?: CausalityLink[];
@@ -172,6 +181,7 @@ import { LocationMigration } from './utils/LocationMigration';
     economyFolderPath?: string;
     factionFolderPath?: string;
     magicSystemFolderPath?: string;
+    groupFolderPath?: string;
 
     /** Sensory Profiles */
     enableSensoryProfiles?: boolean;
@@ -179,6 +189,9 @@ import { LocationMigration } from './utils/LocationMigration';
 
     /** Dashboard tab visibility - array of tab IDs to hide */
     hiddenDashboardTabs?: string[];
+
+    /** Dashboard tab order - persisted array of tab IDs in user-defined order */
+    dashboardTabOrder?: string[];
 
     /** Template system settings */
     templateStorageFolder?: string;
@@ -234,6 +247,17 @@ import { LocationMigration } from './utils/LocationMigration';
     
     /** Default manuscript output folder */
     manuscriptOutputFolder?: string;
+
+    /** User-defined custom compile steps (JavaScript) */
+    customCompileSteps?: import('./types').CustomCompileStepDef[];
+
+    /** Whether to prompt when a new .md file appears in the scene folder */
+    promptNewSceneFiles?: boolean;
+
+    /** User-defined custom character sheet HTML templates */
+    characterSheetTemplates?: import('./utils/CharacterSheetTemplates').CustomSheetTemplate[];
+    /** ID of the default character sheet template ('classic' if unset) */
+    defaultCharacterSheetTemplateId?: string;
 }
 
 /**
@@ -244,6 +268,7 @@ import { LocationMigration } from './utils/LocationMigration';
     activeStoryId: '',
     galleryUploadFolder: 'StorytellerSuite/GalleryUploads',
     galleryData: { images: [] },
+    galleryWatchFolder: '',
     groups: [],
     showTutorial: true,
     language: 'en',
@@ -257,6 +282,7 @@ import { LocationMigration } from './utils/LocationMigration';
     chapterFolderPath: '',
     sceneFolderPath: '',
     mapFolderPath: '',
+    groupFolderPath: '',
     enableOneStoryMode: false,
     oneStoryBaseFolder: 'StorytellerSuite',
     customTodayISO: undefined,
@@ -276,6 +302,8 @@ import { LocationMigration } from './utils/LocationMigration';
     customFieldsMode: 'flatten',
     relationshipsMigrated: false,
     bidirectionalLinksBackfilled: false,
+    timelineWatchProperty: 'timeline-date',
+    timelineWatchTag: 'timeline',
     timelineForks: [],
     causalityLinks: [],
     timelineConflicts: [],
@@ -315,7 +343,11 @@ import { LocationMigration } from './utils/LocationMigration';
     dailyWritingStats: [],
     compileScriptsFolder: 'StorytellerSuite/CompileScripts',
     manuscriptOutputFolder: 'StorytellerSuite/Manuscripts',
-    disableLeafletGlobalExposure: false
+    disableLeafletGlobalExposure: false,
+    characterSheetTemplates: [],
+    defaultCharacterSheetTemplateId: 'classic',
+    customCompileSteps: [],
+    promptNewSceneFiles: true,
 }
 
 /**
@@ -349,6 +381,7 @@ export default class StorytellerSuitePlugin extends Plugin {
             economyFolderPath: this.settings.economyFolderPath,
             factionFolderPath: this.settings.factionFolderPath,
             magicSystemFolderPath: this.settings.magicSystemFolderPath,
+            groupFolderPath: this.settings.groupFolderPath,
             enableOneStoryMode: this.settings.enableOneStoryMode,
             oneStoryBaseFolder: this.settings.oneStoryBaseFolder,
         };
@@ -454,6 +487,12 @@ export default class StorytellerSuitePlugin extends Plugin {
     eraManager: EraManager;
     private warnedMissingNameFiles: Set<string> = new Set();
 
+    /** Word count tracker — Longform-compatible goal tracking */
+    wordTracker: WordCountTracker;
+
+    /** Status bar element showing live word count + daily goal */
+    private statusBarWordCountEl: HTMLElement | null = null;
+
     // Mobile/tablet orientation and resize handlers
     private orientationChangeHandler: (() => void) | null = null;
     private resizeHandler: (() => void) | null = null;
@@ -497,7 +536,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 	/**
 	 * Helper: Get the folder path for a given entity type in the active story
 	 */
-    getEntityFolder(type: 'character' | 'location' | 'event' | 'item' | 'reference' | 'chapter' | 'scene' | 'map' | 'culture' | 'faction' | 'economy' | 'magicSystem'): string {
+    getEntityFolder(type: 'character' | 'location' | 'event' | 'item' | 'reference' | 'chapter' | 'scene' | 'map' | 'culture' | 'faction' | 'economy' | 'magicSystem' | 'group' | 'compendiumEntry'): string {
         const resolver = this.getFolderResolver();
         return resolver.getEntityFolder(type);
     }
@@ -530,6 +569,7 @@ export default class StorytellerSuitePlugin extends Plugin {
                 await this.ensureFolder(this.getEntityFolder('reference'));
                 await this.ensureFolder(this.getEntityFolder('chapter'));
                 await this.ensureFolder(this.getEntityFolder('scene'));
+                await this.ensureFolder(this.getEntityFolder('group'));
             } catch (e) {
                 // Best-effort; errors will surface via Notice in ensureFolder
             }
@@ -772,6 +812,14 @@ export default class StorytellerSuitePlugin extends Plugin {
 	async onload() {
 		await this.loadSettings();
 
+		// Initialize word count tracker
+		this.wordTracker = new WordCountTracker(this);
+
+		// Status bar word count (Longform-compatible)
+		if (this.settings.showWordCountInStatusBar !== false) {
+			this.initStatusBar();
+		}
+
 		// Conditionally expose Leaflet to global scope to prevent conflicts with standalone Obsidian Leaflet plugin
 		// Only expose if not explicitly disabled in settings (defaults to false for backward compatibility)
 		if (!this.settings.disableLeafletGlobalExposure) {
@@ -801,21 +849,21 @@ export default class StorytellerSuitePlugin extends Plugin {
 		// Connect note manager to storage manager
 		this.templateManager.setTemplateNoteManager(this.templateNoteManager);
 
-		// Delayed template reload to handle vault/filesystem timing issues
-		// This ensures templates load even if files aren't ready during initial plugin load
-		setTimeout(async () => {
+		// Reload note-based templates once the workspace is fully ready and vault is indexed.
+		// onLayoutReady fires after all files are indexed, unlike a fixed setTimeout which can
+		// still fire before the vault is ready on large vaults or slow devices.
+		this.app.workspace.onLayoutReady(async () => {
 			try {
 				const beforeCount = this.templateManager.getAllTemplates().filter(t => (t as any).isNoteBased).length;
 				await this.templateNoteManager.loadNoteTemplates();
 				const afterCount = this.templateManager.getAllTemplates().filter(t => (t as any).isNoteBased).length;
-
 				if (afterCount > beforeCount) {
-					console.log(`[StorytellerSuite] Loaded ${afterCount - beforeCount} custom templates after delay`);
+					console.log(`[StorytellerSuite] Loaded ${afterCount - beforeCount} custom templates after layout ready`);
 				}
 			} catch (error) {
 				console.error('[StorytellerSuite] Error loading custom templates:', error);
 			}
-		}, 1000); // 1 second delay
+		});
 
 		// Register file watcher to sync note changes to JSON
 		this.registerEvent(
@@ -904,11 +952,86 @@ export default class StorytellerSuitePlugin extends Plugin {
 		// Add settings tab for user configuration
 		this.addSettingTab(new StorytellerSuiteSettingTab(this.app, this));
 
+		// Register interactive widget for ```ledger fenced blocks
+		this.registerEditorExtension(createLedgerViewExtension());
+		registerLedgerBlockProcessor(this.app, this);
+
+		// Track vault renames to keep gallery filePath references up to date
+		this.registerEvent(
+			this.app.vault.on('rename', async (file, oldPath) => {
+				if (!this.settings.galleryData?.images) return;
+				let changed = false;
+				for (const img of this.settings.galleryData.images) {
+					if (img.filePath === oldPath) {
+						img.filePath = file.path;
+						changed = true;
+					}
+				}
+				if (changed) await this.saveSettings();
+			})
+		);
+
+		// Auto-add new images dropped into the watch folder
+		this.registerEvent(
+			this.app.vault.on('create', async (file) => {
+				if (!(file instanceof TFile)) return;
+				const watchFolder = this.settings.galleryWatchFolder?.trim();
+				if (!watchFolder || !file.path.startsWith(watchFolder)) return;
+				const IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'avif']);
+				if (!IMAGE_EXTS.has(file.extension?.toLowerCase())) return;
+
+				if (!this.settings.galleryData) this.settings.galleryData = { images: [] };
+				if (!this.settings.galleryData.images) this.settings.galleryData.images = [];
+
+				const exists = this.settings.galleryData.images.some(img => img.filePath === file.path);
+				if (!exists) {
+					const id = `gallery-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+					this.settings.galleryData.images.push({
+						id,
+						filePath: file.path,
+						title: file.basename,
+						caption: '',
+						description: '',
+						tags: []
+					});
+					await this.saveSettings();
+				}
+			})
+		);
+
+		// Detect new .md files in the scene folder and offer to add as a scene
+		this.registerEvent(
+			this.app.vault.on('create', async (file) => {
+				if (!(file instanceof TFile) || file.extension !== 'md') return;
+				if (!this.settings.promptNewSceneFiles) return;
+				if (!this.getActiveStory()) return;
+
+				const sceneFolder = this.getEntityFolder('scene');
+				if (!file.path.startsWith(sceneFolder + '/')) return;
+
+				// Small delay for metadata cache to settle
+				await new Promise<void>(resolve => setTimeout(resolve, 600));
+
+				// Skip if already tracked in any draft
+				const tracked = (this.settings.storyDrafts ?? [])
+					.flatMap(d => d.sceneOrder ?? [])
+					.some(s => s.sceneId === file.basename || s.sceneId === file.path);
+				if (tracked) return;
+
+				await this.promptAddAsScene(file);
+			})
+		);
 
 		// Perform story discovery and ensure one-story seeding after workspace is ready
 		this.app.workspace.onLayoutReady(async () => {
 			await this.discoverExistingStories();
 			await this.initializeOneStoryModeIfNeeded();
+
+			// Sync any images already present in the watch folder
+			await this.syncGalleryWatchFolder();
+
+			// Migrate existing settings.groups to vault files (idempotent)
+			await this.migrateGroupsToVault();
 
 			// Run migration for typed relationships (only runs once)
 			if (!this.settings.relationshipsMigrated) {
@@ -1239,6 +1362,84 @@ export default class StorytellerSuitePlugin extends Plugin {
 	 * Obsidian automatically handles view cleanup
 	 * Each cleanup operation is wrapped in try-catch to ensure all cleanups run
 	 */
+	// ─── Status Bar ─────────────────────────────────────────────────────────────
+
+	private initStatusBar(): void {
+		this.statusBarWordCountEl = this.addStatusBarItem();
+		this.statusBarWordCountEl.addClass('storyteller-wordcount-bar');
+		this.statusBarWordCountEl.title = 'Storyteller Suite — click to open Writing Analytics';
+		this.statusBarWordCountEl.style.cursor = 'pointer';
+		this.statusBarWordCountEl.addEventListener('click', () => this.activateAnalyticsView());
+
+		const debouncedUpdate = debounce(() => this.updateStatusBar(), 800, false);
+
+		this.registerEvent(
+			this.app.workspace.on('active-leaf-change', () => debouncedUpdate())
+		);
+
+		this.registerEvent(
+			this.app.vault.on('modify', (file) => {
+				if (this.app.workspace.getActiveFile()?.path === file.path) debouncedUpdate();
+			})
+		);
+
+		this.app.workspace.onLayoutReady(() => this.updateStatusBar());
+	}
+
+	private async updateStatusBar(): Promise<void> {
+		if (!this.statusBarWordCountEl) return;
+
+		const activeFile = this.app.workspace.getActiveFile();
+		if (!activeFile || activeFile.extension !== 'md') {
+			this.statusBarWordCountEl.empty();
+			return;
+		}
+
+		try {
+			const content = await this.app.vault.cachedRead(activeFile);
+			const wordCount = this.wordTracker.countWords(content);
+			const goal = this.settings.dailyWordCountGoal ?? 0;
+			const todayWords = this.wordTracker.getTodayStats()?.wordsWritten ?? 0;
+
+			this.statusBarWordCountEl.empty();
+
+			const docSpan = this.statusBarWordCountEl.createSpan({ cls: 'storyteller-bar-doc' });
+			docSpan.setText(`${wordCount.toLocaleString()} words`);
+
+			if (goal > 0) {
+				this.statusBarWordCountEl.createSpan({ cls: 'storyteller-bar-sep', text: ' · ' });
+				const goalSpan = this.statusBarWordCountEl.createSpan({ cls: 'storyteller-bar-goal' });
+				const pct = Math.min(100, Math.round((todayWords / goal) * 100));
+				goalSpan.setText(`${todayWords.toLocaleString()} / ${goal.toLocaleString()} today (${pct}%)`);
+				if (todayWords >= goal) goalSpan.addClass('storyteller-bar-goal--met');
+			}
+		} catch {
+			this.statusBarWordCountEl.empty();
+		}
+	}
+
+	// ─── New-File Scene Prompt ────────────────────────────────────────────────
+
+	private async promptAddAsScene(file: TFile): Promise<void> {
+		const activeDraftId = this.settings.activeDraftId;
+		const activeDraft = this.settings.storyDrafts?.find(d => d.id === activeDraftId);
+		if (!activeDraft) return;
+
+		new ConfirmModal(this.app, {
+			title: `Add "${file.basename}" to draft?`,
+			body: `"${file.basename}" was created in your scene folder. Add it to "${activeDraft.name}"?`,
+			confirmText: 'Add as scene',
+			onConfirm: async () => {
+				const { SceneOrderManager } = await import('./compile');
+				const manager = new SceneOrderManager(this);
+				await manager.addSceneToDraft(activeDraft, file.basename);
+				new Notice(`Added "${file.basename}" to ${activeDraft.name}`);
+				const leaves = this.app.workspace.getLeavesOfType('storyteller-dashboard-view');
+				if (leaves.length > 0) (leaves[0].view as any).refreshActiveTab?.();
+			}
+		}).open();
+	}
+
 	onunload() {
 		// Manual cleanup not needed - Obsidian handles view management
 		// Clean up mobile platform classes to prevent class leakage
@@ -1374,6 +1575,23 @@ export default class StorytellerSuitePlugin extends Plugin {
 			callback: async () => {
 				const characters = await this.listCharacters();
 				new CharacterListModal(this.app, this, characters).open();
+			}
+		});
+
+		this.addCommand({
+			id: 'generate-character-sheet',
+			name: 'Generate character sheet',
+			callback: async () => {
+				const characters = await this.listCharacters();
+				if (characters.length === 0) {
+					new Notice('No characters found in the active story.');
+					return;
+				}
+				const { CharacterSuggestModal } = await import('./modals/CharacterSuggestModal');
+				const { CharacterSheetPreviewModal } = await import('./modals/CharacterSheetPreviewModal');
+				new CharacterSuggestModal(this.app, this, (character) => {
+					new CharacterSheetPreviewModal(this.app, this, character).open();
+				}).open();
 			}
 		});
 
@@ -1596,6 +1814,28 @@ export default class StorytellerSuitePlugin extends Plugin {
 			callback: async () => {
 				const magicSystems = await this.listMagicSystems();
 				new MagicSystemListModal(this.app, this, magicSystems).open();
+			}
+		});
+
+		// Compendium management commands
+		this.addCommand({
+			id: 'create-new-compendium-entry',
+			name: 'Create new compendium entry',
+			callback: async () => {
+				if (!this.ensureActiveStoryOrGuide()) return;
+				new CompendiumEntryModal(this.app, this, null, async (entry: CompendiumEntry) => {
+					await this.saveCompendiumEntry(entry);
+					new Notice(t('compendiumEntryCreated', entry.name));
+				}).open();
+			}
+		});
+
+		this.addCommand({
+			id: 'view-compendium',
+			name: 'View compendium',
+			callback: async () => {
+				const entries = await this.listCompendiumEntries();
+				new CompendiumListModal(this.app, this, entries).open();
 			}
 		});
 
@@ -1875,18 +2115,6 @@ export default class StorytellerSuitePlugin extends Plugin {
 			}
 		});
 
-		// View Cultures
-		this.addCommand({
-			id: 'view-cultures',
-			name: 'View cultures',
-			callback: async () => {
-				const cultures = await this.listCultures();
-				new Notice(`${cultures.length} culture(s) found`);
-				// TODO: Create CultureListModal for better visualization
-			}
-		});
-
-
 		// Create Economy
 		this.addCommand({
 			id: 'create-new-economy',
@@ -1902,17 +2130,6 @@ export default class StorytellerSuitePlugin extends Plugin {
 			}
 		});
 
-		// View Economies
-		this.addCommand({
-			id: 'view-economies',
-			name: 'View economies',
-			callback: async () => {
-				const economies = await this.listEconomies();
-				new Notice(`${economies.length} economy/economies found`);
-				// TODO: Create EconomyListModal for better visualization
-			}
-		});
-
 		// Create Magic System
 		this.addCommand({
 			id: 'create-new-magic-system',
@@ -1925,17 +2142,6 @@ export default class StorytellerSuitePlugin extends Plugin {
 						new Notice(`Magic System "${magicSystem.name}" created.`);
 					}).open();
 				});
-			}
-		});
-
-		// View Magic Systems
-		this.addCommand({
-			id: 'view-magic-systems',
-			name: 'View magic systems',
-			callback: async () => {
-				const magicSystems = await this.listMagicSystems();
-				new Notice(`${magicSystems.length} magic system(s) found`);
-				// TODO: Create MagicSystemListModal for better visualization
 			}
 		});
 
@@ -2682,12 +2888,13 @@ export default class StorytellerSuitePlugin extends Plugin {
     async parseFile<T>(
         file: TFile,
         typeDefaults: Partial<T>,
-        entityType: 'character' | 'location' | 'event' | 'item' | 'reference' | 'chapter' | 'scene' | 'culture' | 'faction' | 'economy' | 'magicSystem' | 'map'
+        entityType: 'character' | 'location' | 'event' | 'item' | 'reference' | 'chapter' | 'scene' | 'culture' | 'faction' | 'economy' | 'magicSystem' | 'map' | 'compendiumEntry'
     ): Promise<T | null> {
 		try {
 			// Read file content for markdown sections
 			const content = await this.app.vault.cachedRead(file);
-            const allSections = (await import('./yaml/EntitySections')).parseSectionsFromMarkdown(content);
+            const { parseSectionsFromMarkdown, WIKI_LINK_ARRAY_FIELDS } = await import('./yaml/EntitySections');
+            const allSections = parseSectionsFromMarkdown(content);
 
 			// Get cached frontmatter from Obsidian's metadata cache
 			const fileCache = this.app.metadataCache.getFileCache(file);
@@ -2779,8 +2986,31 @@ export default class StorytellerSuitePlugin extends Plugin {
 				data['events'] = events;
 			}
 
+            // Parse ```ledger blocks for entities that support balance tracking
+            if (entityType === 'character' || entityType === 'location' || entityType === 'culture') {
+                const { extractLedgerEntries, computeBalance, formatBalance } = await import('./utils/LedgerParser');
+                const entries = extractLedgerEntries(content);
+                if (entries.length > 0) {
+                    data['ledger'] = entries;
+                    // Recompute balance from ledger if no manual balance is set
+                    if (!data['balance']) {
+                        data['balance'] = formatBalance(computeBalance(entries));
+                    }
+                }
+            }
+
             // Do not carry forward a raw sections map on the entity; only mapped fields are kept
             if ((data as any).sections) delete (data as any).sections;
+
+            // Strip [[...]] wikilink brackets from linked entity arrays — stored with brackets
+            // in YAML for Obsidian Graph/Properties support, but used internally as plain names
+            for (const field of WIKI_LINK_ARRAY_FIELDS) {
+                if (Array.isArray(data[field])) {
+                    data[field] = (data[field] as unknown[]).map((v: unknown) =>
+                        typeof v === 'string' ? v.replace(/^\[\[(.*)\]\]$/, '$1') : v
+                    );
+                }
+            }
 
 			// Validate required name field
 			if (!data['name']) {
@@ -2864,6 +3094,12 @@ export default class StorytellerSuitePlugin extends Plugin {
         return buildFrontmatter('magicSystem', src, preserve, { customFieldsMode: mode, originalFrontmatter }) as Record<string, any>;
     }
 
+    private buildFrontmatterForCompendiumEntry(src: any, originalFrontmatter?: Record<string, unknown>): Record<string, any> {
+        const preserve = new Set<string>(Object.keys(src || {}));
+        const mode = this.settings.customFieldsMode ?? 'flatten';
+        return buildFrontmatter('compendiumEntry', src, preserve, { customFieldsMode: mode, originalFrontmatter }) as Record<string, any>;
+    }
+
 
 	/**
 	 * Save a character to the vault as a markdown file (in the active story)
@@ -2884,7 +3120,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		const filePath = normalizePath(`${folderPath}/${fileName}`);
 
 		// Separate content fields from frontmatter fields (do not let sections leak)
-        const { filePath: currentFilePath, backstory, description, ...rest } = character as any;
+        const { filePath: currentFilePath, backstory, description, ledger: _charLedger, ...rest } = character as any;
         if ((rest as any).sections) delete (rest as any).sections;
 
 		// Handle renaming if filePath is present and name changed
@@ -3024,11 +3260,12 @@ export default class StorytellerSuitePlugin extends Plugin {
         // Use vault.getMarkdownFiles() instead of folder.children for immediate file detection
         const allFiles = this.app.vault.getMarkdownFiles();
         const prefix = normalizePath(folderPath) + '/';
-        const files = allFiles.filter(file => 
-            file.path.startsWith(prefix) && 
-            file.extension === 'md'
+        const files = allFiles.filter(file =>
+            file.path.startsWith(prefix) &&
+            file.extension === 'md' &&
+            !file.path.slice(prefix.length).includes('/')
         );
-		
+
 		// Parse each character file
 		const characters: Character[] = [];
         for (const file of files) {
@@ -3112,7 +3349,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		const filePath = normalizePath(`${folderPath}/${fileName}`);
 
 		// Separate content fields from frontmatter fields (do not let sections leak)
-        const { filePath: currentFilePath, history, description, ...rest } = location as any;
+        const { filePath: currentFilePath, history, description, ledger: _locLedger, ...rest } = location as any;
         if ((rest as any).sections) delete (rest as any).sections;
 
 		// Handle renaming if filePath is present and name changed
@@ -3240,11 +3477,12 @@ export default class StorytellerSuitePlugin extends Plugin {
         // Use vault.getMarkdownFiles() instead of folder.children for immediate file detection
         const allFiles = this.app.vault.getMarkdownFiles();
         const prefix = normalizePath(folderPath) + '/';
-        const files = allFiles.filter(file => 
-            file.path.startsWith(prefix) && 
-            file.extension === 'md'
+        const files = allFiles.filter(file =>
+            file.path.startsWith(prefix) &&
+            file.extension === 'md' &&
+            !file.path.slice(prefix.length).includes('/')
         );
-		
+
 		// Parse each location file
 		const locations: Location[] = [];
         for (const file of files) {
@@ -3488,11 +3726,12 @@ export default class StorytellerSuitePlugin extends Plugin {
 		// Use vault.getMarkdownFiles() instead of folder.children for immediate file detection
 		const allFiles = this.app.vault.getMarkdownFiles();
 		const prefix = normalizePath(folderPath) + '/';
-		const files = allFiles.filter(file => 
-			file.path.startsWith(prefix) && 
-			file.extension === 'md'
+		const files = allFiles.filter(file =>
+			file.path.startsWith(prefix) &&
+			file.extension === 'md' &&
+			!file.path.slice(prefix.length).includes('/')
 		);
-		
+
 		// Parse each map file
 		const maps: StoryMap[] = [];
 		for (const file of files) {
@@ -3858,16 +4097,22 @@ export default class StorytellerSuitePlugin extends Plugin {
 	 */
 	private async cleanupMapReferencesFromEntities(mapId: string): Promise<void> {
 		// Entity types that can have map references in their frontmatter
-		const entityTypes: Array<{ type: string; folder: string }> = [
-			{ type: 'character', folder: this.getEntityFolder('character') },
-			{ type: 'event', folder: this.getEntityFolder('event') },
-			{ type: 'item', folder: this.getEntityFolder('item') },
-			{ type: 'reference', folder: this.getEntityFolder('reference') },
-			{ type: 'scene', folder: this.getEntityFolder('scene') },
-			{ type: 'culture', folder: this.getEntityFolder('culture') },
-			{ type: 'economy', folder: this.getEntityFolder('economy') },
-			{ type: 'magicSystem', folder: this.getEntityFolder('magicSystem') }
+		// Build list safely, skipping any entity types that can't resolve folders
+		const entityTypes: Array<{ type: string; folder: string }> = [];
+		const typesToCheck: Array<EntityFolderType> = [
+			'character', 'event', 'item', 'reference', 'scene',
+			'culture', 'economy', 'magicSystem'
 		];
+
+		for (const type of typesToCheck) {
+			try {
+				const folder = this.getEntityFolder(type);
+				entityTypes.push({ type, folder });
+			} catch (error) {
+				// Skip entity types that can't resolve (e.g., no active story and no custom path)
+				console.debug(`[StorytellerSuite] Skipping ${type} folder in map cleanup: ${error.message}`);
+			}
+		}
 
 		let cleanedCount = 0;
 
@@ -4103,11 +4348,12 @@ export default class StorytellerSuitePlugin extends Plugin {
         
         const allFiles = this.app.vault.getMarkdownFiles();
         const prefix = normalizePath(folderPath) + '/';
-        const files = allFiles.filter(file => 
-            file.path.startsWith(prefix) && 
-            file.extension === 'md'
+        const files = allFiles.filter(file =>
+            file.path.startsWith(prefix) &&
+            file.extension === 'md' &&
+            !file.path.slice(prefix.length).includes('/')
         );
-		
+
 		const events: Event[] = [];
         for (const file of files) {
             let eventData = await this.parseFile<Event>(file, { name: '' }, 'event');
@@ -4197,7 +4443,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		const fileName = `${item.name.replace(/[\\/:"*?<>|]+/g, '')}.md`;
 		const filePath = normalizePath(`${folderPath}/${fileName}`);
 
-        const { filePath: currentFilePath, description, history, ...rest } = item as any;
+        const { filePath: currentFilePath, description, history, culturalSignificance, magicProperties, ...rest } = item as any;
         if ((rest as any).sections) delete (rest as any).sections;
 
 		let finalFilePath = filePath;
@@ -4259,7 +4505,9 @@ export default class StorytellerSuitePlugin extends Plugin {
 		// Build sections from templates + provided data
 		const providedSections = {
 			Description: description || '',
-			History: history || ''
+			History: history || '',
+			'Cultural Significance': culturalSignificance || '',
+			'Magic Properties': magicProperties || '',
 		};
 		const templateSections = getTemplateSections('item', providedSections);
 		const allSections: Record<string, string> = (existingFile && existingFile instanceof TFile)
@@ -4307,10 +4555,11 @@ export default class StorytellerSuitePlugin extends Plugin {
     const folderPath = this.getEntityFolder('item');
 		const allFiles = this.app.vault.getMarkdownFiles();
         const prefix = normalizePath(folderPath) + '/';
-        const files = allFiles.filter(file => 
-            file.path.startsWith(prefix) && 
-			file.extension === 'md'
-		);
+        const files = allFiles.filter(file =>
+            file.path.startsWith(prefix) &&
+            file.extension === 'md' &&
+            !file.path.slice(prefix.length).includes('/')
+        );
 
 		const items: PlotItem[] = [];
         for (const file of files) {
@@ -4499,6 +4748,7 @@ export default class StorytellerSuitePlugin extends Plugin {
         const existingFile = this.app.vault.getAbstractFileByPath(finalFilePath);
         let existingSections: Record<string, string> = {};
         let originalFrontmatter: Record<string, unknown> | undefined;
+        let oldChapter: Chapter | undefined;
         if (existingFile && existingFile instanceof TFile) {
             const fileCache = this.app.metadataCache.getFileCache(existingFile);
             originalFrontmatter = fileCache?.frontmatter as Record<string, unknown> | undefined;
@@ -4507,6 +4757,15 @@ export default class StorytellerSuitePlugin extends Plugin {
                 existingSections = parseSectionsFromMarkdown(existingContent);
             } catch (e) {
                 console.warn('Error reading existing chapter file', e);
+            }
+            // Load old chapter for sync diff (only when not already inside a sync operation)
+            if (!(chapter as any)._skipSync) {
+                try {
+                    const parsed = await this.parseFile<Chapter>(existingFile, { name: '' }, 'chapter');
+                    if (parsed) oldChapter = parsed;
+                } catch (e) {
+                    console.warn('[saveChapter] Could not load old chapter for sync', e);
+                }
             }
         }
 
@@ -4549,6 +4808,16 @@ export default class StorytellerSuitePlugin extends Plugin {
         }
         chapter.filePath = finalFilePath;
         this.app.metadataCache.trigger('dataview:refresh-views');
+
+        if (!(chapter as any)._skipSync) {
+            try {
+                const { EntitySyncService } = await import('./services/EntitySyncService');
+                const syncService = new EntitySyncService(this);
+                await syncService.syncEntity('chapter', chapter, oldChapter);
+            } catch (error) {
+                console.error('[saveChapter] Error syncing relationships:', error);
+            }
+        }
     }
 
     /** List all chapters (sorted by number then name) */
@@ -4601,6 +4870,10 @@ export default class StorytellerSuitePlugin extends Plugin {
 
     async ensureMagicSystemFolder(): Promise<void> {
         await this.ensureFolder(this.getEntityFolder('magicSystem'));
+    }
+
+    async ensureCompendiumFolder(): Promise<void> {
+        await this.ensureFolder(this.getEntityFolder('compendiumEntry'));
     }
 
 
@@ -4758,7 +5031,7 @@ export default class StorytellerSuitePlugin extends Plugin {
         const fileName = `${culture.name.replace(/[\\/:"*?<>|]+/g, '')}.md`;
         const filePath = normalizePath(`${folderPath}/${fileName}`);
 
-        const { filePath: currentFilePath, description, values, religion, socialStructure, history, namingConventions, customs, ...rest } = culture as any;
+        const { filePath: currentFilePath, description, values, religion, socialStructure, history, namingConventions, customs, ledger: _cultLedger, ...rest } = culture as any;
         if ((rest as any).sections) delete (rest as any).sections;
 
         let finalFilePath = filePath;
@@ -4847,9 +5120,13 @@ export default class StorytellerSuitePlugin extends Plugin {
 
         // Sync relationships (unless this save was triggered by a sync)
         if (!(culture as any)._skipSync) {
-            const { EntitySyncService } = await import('./services/EntitySyncService');
-            const syncService = new EntitySyncService(this);
-            await syncService.syncEntity('culture', culture, oldCulture);
+            try {
+                const { EntitySyncService } = await import('./services/EntitySyncService');
+                const syncService = new EntitySyncService(this);
+                await syncService.syncEntity('culture', culture, oldCulture);
+            } catch (error) {
+                console.error('[saveCulture] Error syncing relationships:', error);
+            }
         }
 
         this.app.metadataCache.trigger("dataview:refresh-views");
@@ -5008,6 +5285,126 @@ export default class StorytellerSuitePlugin extends Plugin {
     }
 
     /**
+     * CompendiumEntry Data Management
+     */
+
+    async saveCompendiumEntry(entry: CompendiumEntry): Promise<void> {
+        await this.ensureCompendiumFolder();
+        const folderPath = this.getEntityFolder('compendiumEntry');
+
+        const fileName = `${entry.name.replace(/[\\/:"*?<>|]+/g, '')}.md`;
+        const filePath = normalizePath(`${folderPath}/${fileName}`);
+
+        const { filePath: currentFilePath, description, behavior, properties, history, dimorphism, huntingNotes, ...rest } = entry as any;
+        if ((rest as any).sections) delete (rest as any).sections;
+
+        let finalFilePath = filePath;
+        if (currentFilePath && currentFilePath !== filePath) {
+            finalFilePath = await this.safeRenameFile(currentFilePath, filePath, 'File');
+        }
+
+        const existingFile = this.app.vault.getAbstractFileByPath(finalFilePath);
+        let existingSections: Record<string, string> = {};
+        let originalFrontmatter: Record<string, unknown> | undefined;
+        let oldEntry: CompendiumEntry | undefined;
+        if (existingFile && existingFile instanceof TFile) {
+            try {
+                const existingContent = await this.app.vault.cachedRead(existingFile);
+                existingSections = parseSectionsFromMarkdown(existingContent);
+
+                const { parseFrontmatterFromContent } = await import('./yaml/EntitySections');
+                const directFrontmatter = parseFrontmatterFromContent(existingContent);
+                const fileCache = this.app.metadataCache.getFileCache(existingFile);
+                const cachedFrontmatter = fileCache?.frontmatter as Record<string, unknown> | undefined;
+
+                if (directFrontmatter || cachedFrontmatter) {
+                    originalFrontmatter = { ...(cachedFrontmatter || {}), ...(directFrontmatter || {}) };
+                }
+
+                if (!(entry as any)._skipSync) {
+                    const parsed = await this.parseFile<CompendiumEntry>(existingFile, { name: '' }, 'compendiumEntry');
+                    if (parsed) oldEntry = parsed;
+                }
+            } catch (error) {
+                console.warn(`[saveCompendiumEntry] Error reading existing file: ${error}`);
+            }
+        }
+
+        const finalFrontmatter = this.buildFrontmatterForCompendiumEntry(rest, originalFrontmatter);
+
+        const frontmatterString = Object.keys(finalFrontmatter).length > 0
+            ? stringifyYamlWithLogging(finalFrontmatter, originalFrontmatter, `CompendiumEntry: ${entry.name}`)
+            : '';
+
+        const providedSections = {
+            Description: description !== undefined ? description : '',
+            'Behavior & Ecology': behavior !== undefined ? behavior : '',
+            Properties: properties !== undefined ? properties : '',
+            'History & Lore': history !== undefined ? history : '',
+            Dimorphism: dimorphism !== undefined ? dimorphism : '',
+            'Hunting Notes': huntingNotes !== undefined ? huntingNotes : ''
+        };
+        const templateSections = getTemplateSections('compendiumEntry', providedSections);
+
+        let allSections: Record<string, string>;
+        if (existingFile && existingFile instanceof TFile) {
+            allSections = { ...existingSections, ...templateSections };
+            Object.entries(providedSections).forEach(([key, value]) => {
+                allSections[key] = value;
+            });
+        } else {
+            allSections = templateSections;
+        }
+
+        let mdContent = `---\n${frontmatterString}---\n\n`;
+        mdContent += Object.entries(allSections)
+            .map(([key, content]) => `## ${key}\n${content || ''}`)
+            .join('\n\n');
+        if (!mdContent.endsWith('\n')) mdContent += '\n';
+
+        if (existingFile && existingFile instanceof TFile) {
+            await this.app.vault.modify(existingFile, mdContent);
+        } else {
+            await this.app.vault.create(finalFilePath, mdContent);
+            new Notice('Note created with standard sections for easy editing.');
+        }
+
+        entry.filePath = finalFilePath;
+
+        if (!(entry as any)._skipSync) {
+            const { EntitySyncService } = await import('./services/EntitySyncService');
+            const syncService = new EntitySyncService(this);
+            await syncService.syncEntity('compendiumentry', entry, oldEntry);
+        }
+
+        this.app.metadataCache.trigger('dataview:refresh-views');
+    }
+
+    async listCompendiumEntries(): Promise<CompendiumEntry[]> {
+        await this.ensureCompendiumFolder();
+        const folderPath = this.getEntityFolder('compendiumEntry');
+        const allFiles = this.app.vault.getMarkdownFiles();
+        const files = allFiles.filter(f => f.path.startsWith(folderPath + '/') && f.extension === 'md');
+        const entries: CompendiumEntry[] = [];
+        for (const file of files) {
+            const data = await this.parseFile<CompendiumEntry>(file, { name: '' }, 'compendiumEntry');
+            if (data) entries.push(data);
+        }
+        return entries.sort((a, b) => a.name.localeCompare(b.name));
+    }
+
+    async deleteCompendiumEntry(filePath: string): Promise<void> {
+        const file = this.app.vault.getAbstractFileByPath(normalizePath(filePath));
+        if (file instanceof TFile) {
+            await this.app.vault.trash(file, true);
+            new Notice(`Compendium entry "${file.basename}" moved to trash.`);
+            this.app.metadataCache.trigger('dataview:refresh-views');
+        } else {
+            new Notice(`Error: Could not find compendium entry file to delete at ${filePath}`);
+        }
+    }
+
+    /**
      * MagicSystem Data Management
      */
 
@@ -5105,6 +5502,16 @@ export default class StorytellerSuitePlugin extends Plugin {
 
         magicSystem.filePath = finalFilePath;
         this.app.metadataCache.trigger("dataview:refresh-views");
+
+        if (!(magicSystem as any)._skipSync) {
+            try {
+                const { EntitySyncService } = await import('./services/EntitySyncService');
+                const syncService = new EntitySyncService(this);
+                await syncService.syncEntity('magicsystem', magicSystem, oldMagicSystem);
+            } catch (error) {
+                console.error('[saveMagicSystem] Error syncing relationships:', error);
+            }
+        }
     }
 
     async listMagicSystems(): Promise<MagicSystem[]> {
@@ -5749,6 +6156,48 @@ export default class StorytellerSuitePlugin extends Plugin {
 	}
 
 	/**
+	 * Scan the configured watch folder and add any images not yet in the gallery.
+	 * Uses the filename (without extension) as the default title.
+	 */
+	async syncGalleryWatchFolder(): Promise<void> {
+		const watchFolder = this.settings.galleryWatchFolder?.trim();
+		if (!watchFolder) return;
+
+		const folder = this.app.vault.getAbstractFileByPath(watchFolder);
+		if (!folder) return;
+
+		const IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'avif']);
+		const files = this.app.vault.getFiles().filter(f => {
+			const ext = f.extension?.toLowerCase();
+			return IMAGE_EXTS.has(ext) && f.path.startsWith(watchFolder);
+		});
+
+		if (!this.settings.galleryData) this.settings.galleryData = { images: [] };
+		if (!this.settings.galleryData.images) this.settings.galleryData.images = [];
+
+		let added = 0;
+		for (const file of files) {
+			const alreadyExists = this.settings.galleryData.images.some(
+				img => img.filePath === file.path
+			);
+			if (!alreadyExists) {
+				const id = `gallery-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+				this.settings.galleryData.images.push({
+					id,
+					filePath: file.path,
+					title: file.basename,
+					caption: '',
+					description: '',
+					tags: []
+				});
+				added++;
+			}
+		}
+
+		if (added > 0) await this.saveSettings();
+	}
+
+	/**
 	 * Add a new image to the gallery
 	 * Generates a unique ID and saves to plugin settings
 	 * @param imageData Image metadata without ID
@@ -5822,6 +6271,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		const group: Group = { id, storyId: activeStory.id, name, description, color, members: [] };
 		this.settings.groups.push(group);
 		await this.saveSettings();
+		await this.saveGroupToFile(group);
 		this.emitGroupsChanged();
 		return group;
 	}
@@ -5839,6 +6289,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		if (updates.description !== undefined) group.description = updates.description;
 		if (updates.color !== undefined) group.color = updates.color;
 		await this.saveSettings();
+		await this.saveGroupToFile(group);
 		this.emitGroupsChanged();
 	}
 
@@ -5853,11 +6304,13 @@ export default class StorytellerSuitePlugin extends Plugin {
 		const group = this.settings.groups.find(g => g.id === id && g.storyId === activeStory.id);
 		if (!group) throw new Error('Group not found');
 		
+		const groupName = group.name;
 		// Remove group from settings
 		this.settings.groups = this.settings.groups.filter(g => g.id !== id);
 		// Remove group id from all member entities
 		await this.removeGroupIdFromAllEntities(id);
 		await this.saveSettings();
+		await this.deleteGroupFile(groupName);
 		this.emitGroupsChanged();
 	}
 
@@ -5873,7 +6326,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 	/**
 	 * Add a member (character, event, or location) to a group
 	 */
-	async addMemberToGroup(groupId: string, memberType: 'character' | 'event' | 'location' | 'item', memberId: string): Promise<void> {
+	async addMemberToGroup(groupId: string, memberType: 'character' | 'event' | 'location' | 'item' | 'compendiumEntry', memberId: string): Promise<void> {
 		const activeStory = this.getActiveStory();
 		if (!activeStory) throw new Error('No active story selected');
 		
@@ -5886,13 +6339,14 @@ export default class StorytellerSuitePlugin extends Plugin {
 		// Update the entity's groups array
 		await this.addGroupIdToEntity(memberType, memberId, groupId);
 		await this.saveSettings();
+		await this.saveGroupToFile(group);
 		this.emitGroupsChanged();
 	}
 
 	/**
 	 * Remove a member from a group
 	 */
-	async removeMemberFromGroup(groupId: string, memberType: 'character' | 'event' | 'location' | 'item', memberId: string): Promise<void> {
+	async removeMemberFromGroup(groupId: string, memberType: 'character' | 'event' | 'location' | 'item' | 'compendiumEntry', memberId: string): Promise<void> {
 		const activeStory = this.getActiveStory();
 		if (!activeStory) throw new Error('No active story selected');
 		
@@ -5902,7 +6356,231 @@ export default class StorytellerSuitePlugin extends Plugin {
 		// Update the entity's groups array
 		await this.removeGroupIdFromEntity(memberType, memberId, groupId);
 		await this.saveSettings();
+		await this.saveGroupToFile(group);
 		this.emitGroupsChanged();
+	}
+
+	// ─── Group Vault File Helpers ──────────────────────────────────────────
+
+	/**
+	 * Build the safe filename for a group's vault note.
+	 */
+	private groupFileName(name: string): string {
+		return `${name.replace(/[\\/:"*?<>|]+/g, '').trim()}.md`;
+	}
+
+	/** Returns the vault path for a group's note, or null if no active story. */
+	getGroupFilePath(groupName: string): string | null {
+		try {
+			const folderPath = this.getEntityFolder('group');
+			return normalizePath(`${folderPath}/${this.groupFileName(groupName)}`);
+		} catch {
+			return null;
+		}
+	}
+
+	/**
+	 * Serialize a group to a vault markdown file (frontmatter + sections).
+	 * Creates or overwrites the file.
+	 */
+	async saveGroupToFile(group: Group): Promise<void> {
+		try {
+			const folderPath = this.getEntityFolder('group');
+			await this.ensureFolder(folderPath);
+			const fileName = this.groupFileName(group.name);
+			const filePath = normalizePath(`${folderPath}/${fileName}`);
+
+			// Build frontmatter object (scalar / array fields only)
+			const fm: Record<string, unknown> = {
+				'storyteller-type': 'group',
+				'storyteller-id': group.id,
+				'storyteller-story-id': group.storyId,
+				name: group.name,
+			};
+			if (group.color)             fm['color']              = group.color;
+			if (group.groupType)         fm['group-type']         = group.groupType;
+			if (group.tags?.length)      fm['tags']               = group.tags;
+			if (group.profileImagePath)  fm['profile-image']      = group.profileImagePath;
+			if (group.strength)          fm['strength']           = group.strength;
+			if (group.status)            fm['status']             = group.status;
+			if (group.emblem)            fm['emblem']             = group.emblem;
+			if (group.motto)             fm['motto']              = group.motto;
+			if (group.militaryPower !== undefined) fm['military-power']   = group.militaryPower;
+			if (group.economicPower !== undefined) fm['economic-power']   = group.economicPower;
+			if (group.politicalInfluence !== undefined) fm['political-influence'] = group.politicalInfluence;
+			if (group.colors?.length)    fm['colors']             = group.colors;
+			if (group.territories?.length) fm['territories']      = group.territories;
+			if (group.linkedEvents?.length) fm['linked-events']   = group.linkedEvents;
+			if (group.linkedCulture)     fm['linked-culture']     = group.linkedCulture;
+			if (group.parentGroup)       fm['parent-group']       = group.parentGroup;
+			if (group.subgroups?.length) fm['subgroups']          = group.subgroups;
+			if (group.members?.length)   fm['members']            = group.members.map(m => {
+				const obj: Record<string, unknown> = { type: m.type };
+				if (m.name) obj['name'] = m.name;
+				obj['id'] = m.id;
+				if ((m as any).role) obj['role'] = (m as any).role;
+				return obj;
+			});
+			if (group.groupRelationships?.length) fm['group-relationships'] = group.groupRelationships;
+			if (group.connections?.length) fm['connections']      = group.connections;
+			if (group.customFields && Object.keys(group.customFields).length) {
+				fm['custom-fields'] = group.customFields;
+			}
+
+			// Serialize frontmatter
+
+			const fmStr = stringifyYaml(fm).trim();
+
+			// Build markdown body sections
+			const sections: string[] = [];
+			if (group.description) sections.push(`## Description\n\n${group.description}`);
+			if (group.history)     sections.push(`## History\n\n${group.history}`);
+			if (group.structure)   sections.push(`## Structure\n\n${group.structure}`);
+			if (group.goals)       sections.push(`## Goals\n\n${group.goals}`);
+			if (group.resources)   sections.push(`## Resources\n\n${group.resources}`);
+
+			const content = `---\n${fmStr}\n---\n\n${sections.join('\n\n')}\n`.trimEnd() + '\n';
+
+			const existing = this.app.vault.getAbstractFileByPath(filePath);
+			if (existing instanceof TFile) {
+				await this.app.vault.modify(existing, content);
+			} else {
+				await this.app.vault.create(filePath, content);
+			}
+		} catch (err) {
+			console.error('[saveGroupToFile] Failed to write group file:', err);
+		}
+	}
+
+	/**
+	 * Delete the vault file for a group (by name). No-ops if file is missing.
+	 */
+	async deleteGroupFile(groupName: string): Promise<void> {
+		try {
+			const folderPath = this.getEntityFolder('group');
+			const filePath = normalizePath(`${folderPath}/${this.groupFileName(groupName)}`);
+			const file = this.app.vault.getAbstractFileByPath(filePath);
+			if (file instanceof TFile) {
+				await this.app.vault.trash(file, true);
+			}
+		} catch (err) {
+			console.error('[deleteGroupFile] Failed to delete group file:', err);
+		}
+	}
+
+	/**
+	 * Persist all fields of a group (including faction-enhanced ones) to both
+	 * settings.groups and the vault markdown file.
+	 * Use this from GroupModal instead of the Object.assign + saveSettings() pattern.
+	 */
+	async saveGroupFull(group: Group): Promise<void> {
+		const idx = this.settings.groups.findIndex(g => g.id === group.id);
+		if (idx !== -1) {
+			Object.assign(this.settings.groups[idx], group);
+		} else {
+			this.settings.groups.push({ ...group });
+		}
+		await this.saveSettings();
+		await this.saveGroupToFile(group);
+		this.emitGroupsChanged?.();
+	}
+
+	/**
+	 * Scan the vault's Groups folder for group files and rebuild the in-memory cache.
+	 * Handles external edits to group files made outside of the plugin.
+	 */
+	async syncGroupsFromVault(): Promise<void> {
+		try {
+
+			const allFiles = this.app.vault.getMarkdownFiles();
+			const groupFiles = allFiles.filter(f => {
+				const cache = this.app.metadataCache.getFileCache(f);
+				return cache?.frontmatter?.['storyteller-type'] === 'group';
+			});
+
+			if (groupFiles.length === 0) return;
+
+			let changed = false;
+			for (const file of groupFiles) {
+				const cache = this.app.metadataCache.getFileCache(file);
+				const fm = cache?.frontmatter;
+				if (!fm) continue;
+				const id: string = fm['storyteller-id'];
+				const storyId: string = fm['storyteller-story-id'];
+				if (!id || !storyId) continue;
+
+				// Parse description/history/etc from markdown sections
+				let description = '', history = '', structure = '', goals = '', resources = '';
+				try {
+					const content = await this.app.vault.cachedRead(file);
+					
+					const sections = parseSectionsFromMarkdown(content);
+					description = sections['Description'] ?? '';
+					history     = sections['History']     ?? '';
+					structure   = sections['Structure']   ?? '';
+					goals       = sections['Goals']       ?? '';
+					resources   = sections['Resources']   ?? '';
+				} catch (_) {}
+
+				const fromFile: Group = {
+					id,
+					storyId,
+					name:               fm['name']                ?? file.basename,
+					color:              fm['color'],
+					groupType:          fm['group-type'],
+					tags:               fm['tags']               ?? [],
+					profileImagePath:   fm['profile-image'],
+					strength:           fm['strength'],
+					status:             fm['status'],
+					emblem:             fm['emblem'],
+					motto:              fm['motto'],
+					militaryPower:      fm['military-power'],
+					economicPower:      fm['economic-power'],
+					politicalInfluence: fm['political-influence'],
+					colors:             fm['colors'],
+					territories:        fm['territories'],
+					linkedEvents:       fm['linked-events'],
+					linkedCulture:      fm['linked-culture'],
+					parentGroup:        fm['parent-group'],
+					subgroups:          fm['subgroups'],
+					members:            fm['members']             ?? [],
+					groupRelationships: fm['group-relationships'],
+					connections:        fm['connections'],
+					customFields:       fm['custom-fields'],
+					description,
+					history,
+					structure,
+					goals,
+					resources,
+				};
+
+				const idx = this.settings.groups.findIndex(g => g.id === id);
+				if (idx !== -1) {
+					Object.assign(this.settings.groups[idx], fromFile);
+					changed = true;
+				} else {
+					this.settings.groups.push(fromFile);
+					changed = true;
+				}
+			}
+
+			if (changed) {
+				await this.saveSettings();
+				this.emitGroupsChanged?.();
+			}
+		} catch (err) {
+			console.error('[syncGroupsFromVault] Error syncing groups from vault:', err);
+		}
+	}
+
+	/**
+	 * Migrate all existing settings.groups to vault markdown files (one-time, idempotent).
+	 */
+	async migrateGroupsToVault(): Promise<void> {
+		if (!this.settings.groups || this.settings.groups.length === 0) return;
+		for (const group of this.settings.groups) {
+			await this.saveGroupToFile(group);
+		}
 	}
 
 	/**
@@ -5946,7 +6624,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 	/**
 	 * Add a group id to an entity's groups array
 	 */
-    async addGroupIdToEntity(type: 'character' | 'event' | 'location' | 'item', id: string, groupId: string): Promise<void> {
+    async addGroupIdToEntity(type: 'character' | 'event' | 'location' | 'item' | 'compendiumEntry', id: string, groupId: string): Promise<void> {
         if (type === 'character') {
             const characters = await this.listCharacters();
             const character = characters.find(c => (c.id || c.name) === id);
@@ -5988,13 +6666,23 @@ export default class StorytellerSuitePlugin extends Plugin {
                     await this.savePlotItem(item);
                 }
             }
+        } else if (type === 'compendiumEntry') {
+            const entries = await this.listCompendiumEntries();
+            const entry = entries.find(e => (e.id || e.name) === id);
+            if (entry) {
+                if (!entry.groups) entry.groups = [];
+                if (!entry.groups.includes(groupId)) {
+                    entry.groups.push(groupId);
+                    await this.saveCompendiumEntry(entry);
+                }
+            }
         }
     }
 
 	/**
 	 * Remove a group id from an entity's groups array
 	 */
-    private async removeGroupIdFromEntity(type: 'character' | 'event' | 'location' | 'item', id: string, groupId: string): Promise<void> {
+    private async removeGroupIdFromEntity(type: 'character' | 'event' | 'location' | 'item' | 'compendiumEntry', id: string, groupId: string): Promise<void> {
         if (type === 'character') {
             const characters = await this.listCharacters();
             const character = characters.find(c => (c.id || c.name) === id);
@@ -6023,6 +6711,13 @@ export default class StorytellerSuitePlugin extends Plugin {
             if (item && item.groups && item.groups.includes(groupId)) {
                 item.groups = item.groups.filter(gid => gid !== groupId);
                 await this.savePlotItem(item);
+            }
+        } else if (type === 'compendiumEntry') {
+            const entries = await this.listCompendiumEntries();
+            const entry = entries.find(e => (e.id || e.name) === id);
+            if (entry && entry.groups && entry.groups.includes(groupId)) {
+                entry.groups = entry.groups.filter(gid => gid !== groupId);
+                await this.saveCompendiumEntry(entry);
             }
         }
     }
@@ -6185,6 +6880,7 @@ export default class StorytellerSuitePlugin extends Plugin {
         if (!('referenceFolderPath' in this.settings)) { (this.settings as any).referenceFolderPath = DEFAULT_SETTINGS.referenceFolderPath as any; settingsUpdated = true; }
         if (!('chapterFolderPath' in this.settings)) { (this.settings as any).chapterFolderPath = DEFAULT_SETTINGS.chapterFolderPath as any; settingsUpdated = true; }
         if (!('sceneFolderPath' in this.settings)) { (this.settings as any).sceneFolderPath = DEFAULT_SETTINGS.sceneFolderPath as any; settingsUpdated = true; }
+        if (!('groupFolderPath' in this.settings)) { this.settings.groupFolderPath = DEFAULT_SETTINGS.groupFolderPath; settingsUpdated = true; }
         if (!this.settings.groups) {
             this.settings.groups = [];
             settingsUpdated = true;
