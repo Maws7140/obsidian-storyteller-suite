@@ -1,0 +1,185 @@
+name: Setup Labels and Apply to Issues
+
+on:
+  workflow_dispatch:
+    inputs:
+      apply_to_existing:
+        description: "Apply labels to all existing issues"
+        required: false
+        default: "true"
+        type: choice
+        options:
+          - "true"
+          - "false"
+
+jobs:
+  setup-labels:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create and update labels
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const labels = [
+              { name: 'bug',           color: 'd73a4a', description: "Something isn't working" },
+              { name: 'enhancement',   color: 'a2eeef', description: 'New feature or request' },
+              { name: 'feature request', color: '84b6eb', description: 'Request for new functionality' },
+              { name: 'documentation', color: '0075ca', description: 'Improvements or additions to documentation' },
+              { name: 'help wanted',   color: '008672', description: 'Extra attention is needed' },
+              { name: 'question',      color: 'd876e3', description: 'Further information is requested' },
+              { name: 'duplicate',     color: 'cfd3d7', description: 'This issue or pull request already exists' },
+              { name: 'wontfix',       color: 'ffffff', description: 'This will not be worked on' },
+              { name: 'good first issue', color: '7057ff', description: 'Good for newcomers' },
+              { name: 'invalid',       color: 'e4e669', description: "This doesn't seem right" },
+              { name: 'in progress',   color: 'fbca04', description: 'Currently being worked on' },
+            ];
+
+            for (const label of labels) {
+              try {
+                await github.rest.issues.getLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  name: label.name,
+                });
+                await github.rest.issues.updateLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  name: label.name,
+                  color: label.color,
+                  description: label.description,
+                });
+                console.log(`Updated label: ${label.name}`);
+              } catch (e) {
+                if (e.status === 404) {
+                  await github.rest.issues.createLabel({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    name: label.name,
+                    color: label.color,
+                    description: label.description,
+                  });
+                  console.log(`Created label: ${label.name}`);
+                } else {
+                  throw e;
+                }
+              }
+            }
+
+      - name: Apply labels to existing issues
+        if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.apply_to_existing == 'true' }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // Determine labels for an issue based on its title and body
+            function classifyIssue(title, body) {
+              const text = (title + ' ' + (body || '')).toLowerCase();
+              const labels = [];
+
+              // Bug indicators
+              const bugPatterns = [
+                /\bbug\b/, /\berror\b/, /\bfail(ed|ure|s)?\b/, /\bbroken\b/, /\bcrash\b/,
+                /doesn'?t (work|seem|do|show|open|save|load|register|update|stay|function)/,
+                /does not (work|open|save|load|register|update|stay|function|do)/,
+                /not working/, /won'?t/, /can'?t/, /cannot/,
+                /not (being )?(saved|created|updating|working|loading|registering|staying|recognized)/,
+                /aren'?t (working|registering|showing|loading|saving|updating)/,
+                /unable to/, /failed to (load|install)/, /plugin fail/,
+                /wipes?\b/, /wiped\b/, /wont/, /doesn'?t do anything/,
+                /nothing happens/, /no such file/, /enoent/,
+              ];
+              if (bugPatterns.some(p => p.test(text))) {
+                labels.push('bug');
+              }
+
+              // Enhancement / Feature request indicators
+              // NOTE: keep these patterns in sync with auto-label.yml
+              const enhancementPatterns = [
+                /\brequest\b/, /\bsuggestions?\b/, /\bideas?\b/, /\benhancement\b/,
+                /\bimprovement\b/, /add support/, /\bfeature\b/, /\boffer\b/,
+                /would (it )?be (possible|nice|great|cool)/, /\bwish\b/,
+                /\bproposal\b/, /\bideally\b/, /\[request\]/i,
+              ];
+              if (enhancementPatterns.some(p => p.test(text))) {
+                // Always add 'feature request'; add 'enhancement' only for non-bug issues
+                labels.push('feature request');
+                if (!labels.includes('bug')) {
+                  labels.push('enhancement');
+                }
+              }
+
+              // Documentation indicators
+              const docPatterns = [
+                /\bdocumentation\b/, /\bdocs\b/, /\bguide\b/, /\btutorial\b/,
+                /\bcss\b/, /css adjustment/, /visual adjustment/, /\bsnippet\b/,
+              ];
+              if (docPatterns.some(p => p.test(text))) {
+                labels.push('documentation');
+              }
+
+              // Question / help indicators
+              const questionPatterns = [
+                /\?/, /\bquestion\b/, /is there a way/, /how (to|do i|can i)/,
+                /is it possible/, /\bmanaging\b/, /\bhow\b.*\bwork/,
+                /is there a setting/, /is it implemented/,
+              ];
+              if (questionPatterns.some(p => p.test(text))) {
+                labels.push('question');
+              }
+
+              // Help wanted
+              const helpPatterns = [
+                /\bhelp\b/, /\bstuck\b/, /\bconfused\b/,
+                /failed to (install|load)/, /installation fail/,
+                /help wanted/, /can'?t install/,
+              ];
+              if (helpPatterns.some(p => p.test(text))) {
+                labels.push('help wanted');
+              }
+
+              // Deduplicate and return
+              return [...new Set(labels)];
+            }
+
+            // Fetch all issues (open + closed), paginated
+            let page = 1;
+            let allIssues = [];
+            while (true) {
+              const { data } = await github.rest.issues.listForRepo({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                state: 'all',
+                per_page: 100,
+                page,
+              });
+              if (data.length === 0) break;
+              // Filter out pull requests
+              allIssues = allIssues.concat(data.filter(i => !i.pull_request));
+              if (data.length < 100) break;
+              page++;
+            }
+
+            console.log(`Found ${allIssues.length} issues to process`);
+
+            for (const issue of allIssues) {
+              const existingLabels = issue.labels.map(l => l.name);
+              const newLabels = classifyIssue(issue.title, issue.body);
+
+              // Only add labels that aren't already present
+              const labelsToAdd = newLabels.filter(l => !existingLabels.includes(l));
+
+              if (labelsToAdd.length > 0) {
+                await github.rest.issues.addLabels({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issue.number,
+                  labels: labelsToAdd,
+                });
+                console.log(`Issue #${issue.number} "${issue.title}": added [${labelsToAdd.join(', ')}]`);
+              } else {
+                console.log(`Issue #${issue.number} "${issue.title}": already labeled or no match`);
+              }
+            }
