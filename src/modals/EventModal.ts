@@ -85,7 +85,8 @@ export class EventModal extends Modal {
                                             new Notice('Error applying default template');
                                         }
                                         resolve();
-                                    }
+                                    },
+                                    resolve
                                 ).open();
                             }).catch((error) => {
                                 console.error('[EventModal] Failed to load TemplateApplicationModal:', error);
@@ -140,7 +141,8 @@ export class EventModal extends Modal {
                                                         new Notice('Error applying template');
                                                     }
                                                     resolve();
-                                                }
+                                                },
+                                                resolve
                                             ).open();
                                         });
                                     });
@@ -980,6 +982,7 @@ export class EventModal extends Modal {
         const { templateId, yamlContent, markdownContent, sectionContent, customYamlFields, id, filePath, ...rest } = templateEvt as any;
 
         let fields: any = { ...rest };
+        let allTemplateSections: Record<string, string> = {};
 
         // Handle new format: yamlContent (parse YAML string)
         if (yamlContent && typeof yamlContent === 'string') {
@@ -1001,6 +1004,7 @@ export class EventModal extends Modal {
         if (markdownContent && typeof markdownContent === 'string') {
             try {
                 const parsedSections = parseSectionsFromMarkdown(`---\n---\n\n${markdownContent}`);
+                allTemplateSections = parsedSections;
 
                 // Map well-known sections to entity properties
                 if ('Description' in parsedSections) {
@@ -1015,6 +1019,7 @@ export class EventModal extends Modal {
             }
         } else if (sectionContent) {
             // Old format: apply section content
+            for (const [k, v] of Object.entries(sectionContent)) { allTemplateSections[k as string] = v as string; }
             for (const [sectionName, content] of Object.entries(sectionContent)) {
                 const propName = sectionName.toLowerCase().replace(/\s+/g, '');
                 (fields as any)[propName] = content;
@@ -1023,6 +1028,14 @@ export class EventModal extends Modal {
 
         // Apply all fields to the event
         Object.assign(this.event, fields);
+        if (Object.keys(allTemplateSections).length > 0) {
+            Object.defineProperty(this.event, '_templateSections', {
+                value: allTemplateSections,
+                enumerable: false,
+                writable: true,
+                configurable: true
+            });
+        }
         console.log('[EventModal] Final event after template:', this.event);
 
         // Clear relationships as they reference template entities

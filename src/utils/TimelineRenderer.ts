@@ -1,9 +1,9 @@
 // Timeline Renderer - Shared rendering logic for Timeline Modal and Timeline View
 // Handles vis-timeline initialization, dataset building, Gantt mode, dependencies, and interactions
 
-import { App, Notice } from 'obsidian';
+import { App, Notice, TFile } from 'obsidian';
 import StorytellerSuitePlugin from '../main';
-import { Event, Location } from '../types';
+import { Event, Location, Scene } from '../types';
 import { parseEventDate, toMillis, toDisplay } from './DateParsing';
 import { EventModal } from '../modals/EventModal';
 import { ConflictDetector, DetectedConflict } from './ConflictDetector';
@@ -29,6 +29,7 @@ export interface TimelineRendererOptions {
     showEras?: boolean;
     narrativeOrder?: boolean;
     onConflictsDetected?: (conflicts: DetectedConflict[]) => void;
+    onEventSelected?: (event: Event | null) => void;
 }
 
 export interface TimelineFilters {
@@ -59,6 +60,12 @@ export class TimelineRenderer {
     private filters: TimelineFilters = {};
     private events: Event[] = [];
     private locations: Location[] = [];
+    private scenes: Scene[] = [];
+    private showScenes = false;
+    private watchedNotes: Array<{name: string, date: string, filePath: string}> = [];
+    private showWatchedNotes = false;
+    private itemIdToEventIndex = new Map<string | number, number>();
+    private eventIndexToItemIds = new Map<number, Array<string | number>>();
 
     // Era and narrative order configuration
     private showEras: boolean = false;
@@ -96,6 +103,7 @@ export class TimelineRenderer {
     async initialize(): Promise<void> {
         this.events = await this.plugin.listEvents();
         this.locations = await this.plugin.listLocations();
+        await this.loadOptionalTimelineSources();
         await this.render();
     }
 
@@ -104,7 +112,27 @@ export class TimelineRenderer {
      */
     async refresh(): Promise<void> {
         this.events = await this.plugin.listEvents();
+        await this.loadOptionalTimelineSources();
         await this.render();
+    }
+
+    /**
+     * Load non-critical timeline sources (scenes + watched notes) without breaking core event rendering.
+     */
+    private async loadOptionalTimelineSources(): Promise<void> {
+        try {
+            this.scenes = await this.plugin.listScenes();
+        } catch (error) {
+            this.scenes = [];
+            console.warn('Storyteller Suite: Failed to load scenes for timeline. Continuing without scenes.', error);
+        }
+
+        try {
+            this.watchedNotes = this.scanWatchedNotes();
+        } catch (error) {
+            this.watchedNotes = [];
+            console.warn('Storyteller Suite: Failed to scan watched notes for timeline. Continuing without watched notes.', error);
+        }
     }
 
     /**
@@ -167,6 +195,53 @@ export class TimelineRenderer {
     }
 
     /**
+     * Toggle scene items on the timeline
+     */
+    setShowScenes(val: boolean): void {
+        this.showScenes = val;
+        this.render();
+    }
+
+    /**
+     * Toggle watched vault note items on the timeline
+     */
+    setShowWatchedNotes(val: boolean): void {
+        this.showWatchedNotes = val;
+        this.render();
+    }
+
+    /**
+     * Scan vault for notes matching the configured watch property or tag
+     */
+    private scanWatchedNotes(): Array<{name: string, date: string, filePath: string}> {
+        const prop = this.plugin.settings.timelineWatchProperty || 'timeline-date';
+        const tag = (this.plugin.settings.timelineWatchTag || 'timeline').replace(/^#/, '');
+        const results: Array<{name: string, date: string, filePath: string}> = [];
+        for (const file of this.app.vault.getMarkdownFiles()) {
+            const cache = this.app.metadataCache.getFileCache(file);
+            if (!cache) continue;
+            const fm = cache.frontmatter;
+            const dateVal = fm?.[prop];
+            const hasProp = dateVal && typeof dateVal === 'string';
+            const hasTag = cache.tags?.some(t => t.tag === '#' + tag);
+            if (hasProp) {
+                results.push({
+                    name: fm?.title || file.basename,
+                    date: dateVal as string,
+                    filePath: file.path
+                });
+            } else if (hasTag && fm?.date && typeof fm.date === 'string') {
+                results.push({
+                    name: fm?.title || file.basename,
+                    date: fm.date as string,
+                    filePath: file.path
+                });
+            }
+        }
+        return results;
+    }
+
+    /**
      * Set visible range (zoom/pan position)
      */
     setVisibleRange(start: Date, end: Date): void {
@@ -189,6 +264,115 @@ export class TimelineRenderer {
     setDensity(density: number): void {
         this.options.density = density;
         this.render();
+    }
+
+    private registerEventItem(itemId: string | number, eventIndex: number): void {
+        this.itemIdToEventIndex.set(itemId, eventIndex);
+        const ids = this.eventIndexToItemIds.get(eventIndex) || [];
+        ids.push(itemId);
+        this.eventIndexToItemIds.set(eventIndex, ids);
+    }
+
+    private resolveEventIndexFromItemId(itemId: unknown): number | null {
+        if (typeof itemId !== 'string' && typeof itemId !== 'number') return null;
+        const mapped = this.itemIdToEventIndex.get(itemId);
+        return typeof mapped === 'number' ? mapped : null;
+    }
+
+    private findEventIndex(event: Event): number {
+        return this.events.findIndex((candidate) =>
+            candidate === event
+            || (event.id != null && candidate.id === event.id)
+            || (
+                (candidate.name || '') === (event.name || '')
+                && (candidate.dateTime || '') === (event.dateTime || '')
+                && (candidate.location || '') === (event.location || '')
+            )
+        );
+    }
+
+    private buildEventSearchText(evt: Event): string {
+        return [
+            evt.name || '',
+            evt.dateTime || '',
+            evt.location || '',
+            ...(evt.characters || []),
+            ...(evt.groups || []),
+            ...(evt.tags || [])
+        ].join(' ').toLowerCase();
+    }
+
+    private scoreEventQuery(evt: Event, q: string): number {
+        const name = (evt.name || '').toLowerCase();
+        const hay = this.buildEventSearchText(evt);
+        if (!hay.includes(q)) return -1;
+        if (name === q) return 1000;
+        if (name.startsWith(q)) return 800;
+        if (name.includes(q)) return 500;
+        return 100;
+    }
+
+    /**
+     * Get currently visible events with active filters applied and sorted by date
+     */
+    getVisibleEvents(): Event[] {
+        const referenceDate = this.plugin.getReferenceTodayDate();
+        return this.events
+            .filter(evt => this.shouldIncludeEvent(evt))
+            .slice()
+            .sort((a, b) => {
+                const da = a.dateTime ? parseEventDate(a.dateTime, { referenceDate }) : null;
+                const db = b.dateTime ? parseEventDate(b.dateTime, { referenceDate }) : null;
+                const ma = toMillis(da?.start);
+                const mb = toMillis(db?.start);
+                if (ma == null && mb == null) return (a.name || '').localeCompare(b.name || '');
+                if (ma == null) return 1;
+                if (mb == null) return -1;
+                return ma - mb;
+            });
+    }
+
+    searchVisibleEvents(query: string, limit = 12): Event[] {
+        const q = (query || '').trim().toLowerCase();
+        if (!q) return [];
+        return this.getVisibleEvents()
+            .map(evt => ({ evt, score: this.scoreEventQuery(evt, q) }))
+            .filter(entry => entry.score >= 0)
+            .sort((a, b) => b.score - a.score)
+            .slice(0, limit)
+            .map(entry => entry.evt);
+    }
+
+    /**
+     * Focus timeline on a specific event
+     */
+    focusEvent(event: Event): boolean {
+        if (!this.timeline || !event) return false;
+        const idx = this.findEventIndex(event);
+        if (idx === -1) return false;
+        const itemIds = this.eventIndexToItemIds.get(idx) || [idx];
+
+        try {
+            this.timeline.setSelection([itemIds[0]], { focus: true, animation: { duration: 220, easingFunction: 'easeInOutQuad' } });
+            const parsed = event.dateTime ? parseEventDate(event.dateTime, { referenceDate: this.plugin.getReferenceTodayDate() }) : null;
+            const startMs = toMillis(parsed?.start);
+            if (startMs != null) {
+                this.timeline.moveTo(new Date(startMs), { animation: { duration: 220, easingFunction: 'easeInOutQuad' } });
+            }
+            return true;
+        } catch {
+            return false;
+        }
+    }
+
+    /**
+     * Find and focus first visible event matching search query
+     */
+    focusEventByQuery(query: string): Event | null {
+        const match = this.searchVisibleEvents(query, 1)[0];
+        if (!match) return null;
+        this.focusEvent(match);
+        return match;
     }
 
     /**
@@ -240,8 +424,217 @@ export class TimelineRenderer {
      * Export timeline as image
      */
     async exportAsImage(format: 'png' | 'jpg'): Promise<void> {
-        // TODO: Implement export functionality
-        new Notice(`Export as ${format.toUpperCase()} not yet implemented`);
+        const timelineEl = this.container.querySelector('.vis-timeline') as HTMLElement | null;
+        if (!timelineEl) {
+            new Notice('No timeline visible to export.');
+            return;
+        }
+        try {
+            // Serialize the timeline DOM to SVG-backed canvas via inline serialization
+            const { default: domtoimage } = await import('dom-to-image' as any).catch(() => null) || { default: null };
+            if (domtoimage) {
+                const dataUrl = format === 'png'
+                    ? await domtoimage.toPng(timelineEl)
+                    : await domtoimage.toJpeg(timelineEl, { quality: 0.92 });
+                this.downloadDataUrl(dataUrl, `timeline.${format}`);
+            } else {
+                // Fallback: render a clean image via canvas
+                await this.exportAsCanvasImage(format);
+            }
+        } catch {
+            await this.exportAsCanvasImage(format);
+        }
+    }
+
+    private async exportAsCanvasImage(format: 'png' | 'jpg'): Promise<void> {
+        const events = this.events
+            .filter(e => this.shouldIncludeEvent(e))
+            .filter(e => e.dateTime)
+            .sort((a, b) => {
+                const refDate = this.plugin.getReferenceTodayDate(); const da = a.dateTime ? parseEventDate(a.dateTime, { referenceDate: refDate }) : null;
+                const db = b.dateTime ? parseEventDate(b.dateTime, { referenceDate: refDate }) : null;
+                return (toMillis(da?.start) || 0) - (toMillis(db?.start) || 0);
+            });
+
+        if (events.length === 0) {
+            new Notice('No dated events to export.');
+            return;
+        }
+
+        const W = 1200, ROW = 28, PADDING = 48, LABEL_W = 220;
+        const H = PADDING * 2 + events.length * ROW;
+        const canvas = document.createElement('canvas');
+        canvas.width = W; canvas.height = H;
+        const ctx = canvas.getContext('2d')!;
+
+        // Background
+        ctx.fillStyle = format === 'jpg' ? '#1e1e2e' : 'transparent';
+        if (format === 'jpg') ctx.fillRect(0, 0, W, H);
+
+        ctx.fillStyle = '#1e1e2e';
+        ctx.fillRect(0, 0, W, H);
+
+        // Title
+        ctx.fillStyle = '#cdd6f4';
+        ctx.font = 'bold 16px sans-serif';
+        const story = this.plugin.getActiveStory();
+        ctx.fillText(`${story?.name || 'Story'} — Timeline`, PADDING, 28);
+
+        // Draw events
+        events.forEach((evt, i) => {
+            const y = PADDING + i * ROW + ROW / 2;
+            const color = this.palette[i % this.palette.length];
+
+            // Dot
+            ctx.beginPath();
+            ctx.arc(LABEL_W + PADDING, y, 5, 0, Math.PI * 2);
+            ctx.fillStyle = color;
+            ctx.fill();
+
+            // Date label
+            ctx.fillStyle = '#a6adc8';
+            ctx.font = '12px monospace';
+            ctx.textAlign = 'right';
+            ctx.fillText(evt.dateTime || '', LABEL_W + PADDING - 12, y + 4);
+
+            // Event name
+            ctx.fillStyle = '#cdd6f4';
+            ctx.font = '13px sans-serif';
+            ctx.textAlign = 'left';
+            ctx.fillText(evt.name, LABEL_W + PADDING + 14, y + 4);
+        });
+
+        const mimeType = format === 'png' ? 'image/png' : 'image/jpeg';
+        this.downloadDataUrl(canvas.toDataURL(mimeType, 0.92), `timeline.${format}`);
+    }
+
+    private downloadDataUrl(dataUrl: string, filename: string): void {
+        const a = document.createElement('a');
+        a.href = dataUrl;
+        a.download = filename;
+        a.click();
+        new Notice(`Timeline exported as ${filename}`);
+    }
+
+    async exportAsCsv(): Promise<void> {
+        const events = this.events
+            .filter(e => this.shouldIncludeEvent(e))
+            .sort((a, b) => {
+                const refDate = this.plugin.getReferenceTodayDate(); const da = a.dateTime ? parseEventDate(a.dateTime, { referenceDate: refDate }) : null;
+                const db = b.dateTime ? parseEventDate(b.dateTime, { referenceDate: refDate }) : null;
+                return (toMillis(da?.start) || 0) - (toMillis(db?.start) || 0);
+            });
+
+        const escape = (s?: string) => `"${(s || '').replace(/"/g, '""')}"`;
+        const rows = [
+            ['Name', 'Date', 'Status', 'Location', 'Characters', 'Description'].map(escape).join(','),
+            ...events.map(e => [
+                escape(e.name),
+                escape(e.dateTime),
+                escape(e.status),
+                escape(e.location),
+                escape((e.characters || []).join('; ')),
+                escape(e.description)
+            ].join(','))
+        ];
+
+        const story = this.plugin.getActiveStory();
+        const fileName = `${story?.name || 'timeline'}-events.csv`;
+        const folderPath = story ? this.plugin.getEntityFolder('event') : 'StorytellerSuite';
+        const filePath = `${folderPath}/${fileName}`;
+
+        try {
+            const existing = this.app.vault.getAbstractFileByPath(filePath);
+            const content = rows.join('\n');
+            if (existing) {
+                if (existing instanceof TFile) await this.app.vault.modify(existing, content);
+            } else {
+                await this.app.vault.create(filePath, content);
+            }
+            new Notice(`Timeline exported to ${filePath}`);
+        } catch (e) {
+            new Notice('Failed to write CSV export.');
+            console.error('[TimelineRenderer] CSV export error:', e);
+        }
+    }
+
+    async exportAsJson(): Promise<void> {
+        const events = this.events
+            .filter(e => this.shouldIncludeEvent(e))
+            .sort((a, b) => {
+                const refDate = this.plugin.getReferenceTodayDate(); const da = a.dateTime ? parseEventDate(a.dateTime, { referenceDate: refDate }) : null;
+                const db = b.dateTime ? parseEventDate(b.dateTime, { referenceDate: refDate }) : null;
+                return (toMillis(da?.start) || 0) - (toMillis(db?.start) || 0);
+            })
+            .map(e => ({
+                name: e.name,
+                date: e.dateTime,
+                status: e.status,
+                location: e.location,
+                characters: e.characters || [],
+                description: e.description,
+                outcome: e.outcome
+            }));
+
+        const story = this.plugin.getActiveStory();
+        const fileName = `${story?.name || 'timeline'}-events.json`;
+        const folderPath = story ? this.plugin.getEntityFolder('event') : 'StorytellerSuite';
+        const filePath = `${folderPath}/${fileName}`;
+
+        try {
+            const existing = this.app.vault.getAbstractFileByPath(filePath);
+            const content = JSON.stringify({ story: story?.name, exportedAt: new Date().toISOString(), events }, null, 2);
+            if (existing) {
+                if (existing instanceof TFile) await this.app.vault.modify(existing, content);
+            } else {
+                await this.app.vault.create(filePath, content);
+            }
+            new Notice(`Timeline exported to ${filePath}`);
+        } catch (e) {
+            new Notice('Failed to write JSON export.');
+            console.error('[TimelineRenderer] JSON export error:', e);
+        }
+    }
+
+    async exportAsMarkdown(): Promise<void> {
+        const events = this.events
+            .filter(e => this.shouldIncludeEvent(e))
+            .sort((a, b) => {
+                const refDate = this.plugin.getReferenceTodayDate(); const da = a.dateTime ? parseEventDate(a.dateTime, { referenceDate: refDate }) : null;
+                const db = b.dateTime ? parseEventDate(b.dateTime, { referenceDate: refDate }) : null;
+                return (toMillis(da?.start) || 0) - (toMillis(db?.start) || 0);
+            });
+
+        const story = this.plugin.getActiveStory();
+        const lines: string[] = [
+            `# ${story?.name || 'Story'} — Timeline`,
+            `> Exported ${new Date().toLocaleDateString()}`,
+            '',
+            '| Date | Event | Status | Location | Characters |',
+            '|------|-------|--------|----------|------------|',
+            ...events.map(e =>
+                `| ${e.dateTime || '—'} | ${e.name} | ${e.status || '—'} | ${e.location || '—'} | ${(e.characters || []).join(', ') || '—'} |`
+            ),
+            ''
+        ];
+
+        const fileName = `${story?.name || 'timeline'}-timeline.md`;
+        const folderPath = story ? this.plugin.getEntityFolder('event') : 'StorytellerSuite';
+        const filePath = `${folderPath}/${fileName}`;
+
+        try {
+            const existing = this.app.vault.getAbstractFileByPath(filePath);
+            const content = lines.join('\n');
+            if (existing) {
+                if (existing instanceof TFile) await this.app.vault.modify(existing, content);
+            } else {
+                await this.app.vault.create(filePath, content);
+            }
+            new Notice(`Timeline exported to ${filePath}`);
+        } catch (e) {
+            new Notice('Failed to write Markdown export.');
+            console.error('[TimelineRenderer] Markdown export error:', e);
+        }
     }
 
     /**
@@ -304,16 +697,27 @@ export class TimelineRenderer {
         try {
             // Clear existing timeline
             this.destroy();
+            this.container.classList.add('storyteller-timeline-container');
+            this.container.classList.toggle('sts-gantt-mode', !!this.options.ganttMode);
+            this.container.classList.toggle('sts-timeline-mode', !this.options.ganttMode);
 
             const referenceDate = this.plugin.getReferenceTodayDate();
             const build = this.buildDatasets(referenceDate);
             const items = build.items;
             const groups = build.groups;
+            const hasGroups = !!groups && (
+                (typeof (groups as any).length === 'number' && (groups as any).length > 0) ||
+                (typeof (groups as any).getIds === 'function' && (groups as any).getIds().length > 0)
+            );
 
             // Timeline options
-            // In Gantt mode, use larger margins for better bar visibility
-            const baseMargin = this.options.ganttMode ? 15 : 4;
-            const itemMargin = baseMargin + Math.round((this.options.density || 50) / 6);
+            // Modern spacing: give items plenty of breathing room vertically
+            const grouped = !!(this.options.groupMode && this.options.groupMode !== 'none' && hasGroups);
+            const baseMargin = this.options.ganttMode ? 10 : 8;
+            const itemMargin = {
+                horizontal: this.options.ganttMode ? 10 : 12,
+                vertical: baseMargin + Math.round((this.options.density || 50) / 8)
+            };
             const dayMs = 24 * 60 * 60 * 1000;
             const yearMs = 365.25 * dayMs;
 
@@ -332,13 +736,21 @@ export class TimelineRenderer {
 
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const timelineOptions: any = {
-                stack: this.options.stackEnabled,
+                stack: grouped ? true : this.options.stackEnabled,
                 stackSubgroups: true,
-                margin: { item: itemMargin, axis: 20 },
+                margin: { item: itemMargin, axis: 32 },
                 zoomable: true,
                 zoomFriction: 10,
                 zoomKey: 'ctrlKey',
                 horizontalScroll: true,
+                // In grouped mode, require Shift for horizontal wheel panning so
+                // vertical lane scrolling does not intermittently win wheel events.
+                horizontalScrollKey: grouped ? 'shiftKey' : undefined,
+                verticalScroll: grouped,
+                verticalScrollSticky: false,
+                // Keep rows in vis-timeline's native auto mode to avoid
+                // horizontal-scroll desync where box/point stems can mis-anchor.
+                groupHeightMode: 'auto',
                 zoomMin: dayMs,
                 zoomMax: calculatedZoomMax,
                 multiselect: true,
@@ -354,9 +766,6 @@ export class TimelineRenderer {
                     return `<div class="timeline-progress" style="width:${item.progress}%"></div>`;
                 }
             };
-
-            // Ensure container doesn't clip tooltips
-            this.container.style.overflow = 'visible';
 
             // Add explicit item height in Gantt mode for consistent bar sizing
             // if (this.options.ganttMode) {
@@ -403,22 +812,36 @@ export class TimelineRenderer {
                 };
             }
 
-            // Create timeline with error handling
+            // Create timeline with error handling (retry with safe options if advanced options fail)
             try {
                 this.timeline = groups 
                     ? new Timeline(this.container, items, groups, timelineOptions)
                     : new Timeline(this.container, items, timelineOptions);
             } catch (timelineError) {
-                console.error('Storyteller Suite: Error creating vis-timeline:', timelineError);
-                new Notice('Timeline rendering failed. Check console for details.');
-                // Create a fallback message in the container
-                this.container.empty();
-                this.container.createDiv('storyteller-timeline-error', div => {
-                    div.createEl('h3', { text: 'Timeline Error' });
-                    div.createEl('p', { text: 'Failed to render timeline. This may be due to invalid date formats or vis-timeline configuration issues.' });
-                    div.createEl('p', { text: 'Check the developer console (Ctrl+Shift+I) for more details.' });
-                });
-                return;
+                console.warn('Storyteller Suite: Primary vis-timeline options failed, retrying with safe options.', timelineError);
+                try {
+                    const safeOptions = {
+                        ...timelineOptions,
+                        verticalScroll: undefined,
+                        verticalScrollSticky: undefined,
+                        groupHeightMode: undefined,
+                        stackSubgroups: undefined
+                    };
+                    this.timeline = groups
+                        ? new Timeline(this.container, items, groups, safeOptions)
+                        : new Timeline(this.container, items, safeOptions);
+                } catch (safeError) {
+                    console.error('Storyteller Suite: Error creating vis-timeline (safe fallback failed):', safeError);
+                    new Notice('Timeline rendering failed. Check console for details.');
+                    // Create a fallback message in the container
+                    this.container.empty();
+                    this.container.createDiv('storyteller-timeline-error', div => {
+                        div.createEl('h3', { text: 'Timeline Error' });
+                        div.createEl('p', { text: 'Failed to render timeline. This may be due to invalid date formats or vis-timeline configuration issues.' });
+                        div.createEl('p', { text: 'Check the developer console (Ctrl+Shift+I) for more details.' });
+                    });
+                    return;
+                }
             }
 
             // Set custom current time bar
@@ -436,7 +859,8 @@ export class TimelineRenderer {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             this.timeline.on('doubleClick', (props: any) => {
                 if (props.item != null) {
-                    const idx = props.item as number;
+                    const idx = this.resolveEventIndexFromItemId(props.item);
+                    if (idx == null) return;
                     const event = this.events[idx];
                     new EventModal(this.app, this.plugin, event, async (updatedData: Event) => {
                         await this.plugin.saveEvent(updatedData);
@@ -444,6 +868,37 @@ export class TimelineRenderer {
                         await this.refresh();
                     }).open();
                 }
+            });
+
+            // Handle selection for synchronized list/search UX
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            this.timeline.on('select', (props: any) => {
+                try {
+                    const selectedId = Array.isArray(props?.items) ? props.items[0] : undefined;
+                    const selectedIdx = this.resolveEventIndexFromItemId(selectedId);
+                    if (selectedIdx != null) {
+                        const selected = this.events[selectedIdx] || null;
+                        this.options.onEventSelected?.(selected);
+                    } else {
+                        this.options.onEventSelected?.(null);
+                    }
+                } catch {
+                    this.options.onEventSelected?.(null);
+                }
+            });
+
+            // Grouped timelines can drift a frame during horizontal pan/scroll.
+            // Force a lightweight redraw after range changes so stems/boxes remain anchored.
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            this.timeline.on('rangechanged', (_props: any) => {
+                if (!grouped) return;
+                window.requestAnimationFrame(() => {
+                    try {
+                        this.timeline?.redraw?.();
+                    } catch {
+                        // Non-fatal
+                    }
+                });
             });
 
             // Render dependency arrows in Gantt mode
@@ -488,6 +943,19 @@ export class TimelineRenderer {
     }
 
     /**
+     * Create a styled DOM element for group labels (sidebar chips)
+     */
+    private createGroupLabel(text: string, color: string): HTMLElement {
+        const el = document.createElement('div');
+        el.className = 'sts-group-chip';
+        el.innerText = text;
+        el.style.backgroundColor = this.hexWithAlpha(color, 0.15);
+        el.style.color = color;
+        el.style.borderColor = this.hexWithAlpha(color, 0.4);
+        return el;
+    }
+
+    /**
      * Build datasets for vis-timeline
      */
     private buildDatasets(referenceDate: Date): {
@@ -501,6 +969,8 @@ export class TimelineRenderer {
         const legend: Array<{ key: string; label: string; color: string }> = [];
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         let groupsDS: any | undefined;
+        this.itemIdToEventIndex.clear();
+        this.eventIndexToItemIds.clear();
 
         // Detect conflicts for all events
         const allConflicts = ConflictDetector.detectAllConflicts(this.events);
@@ -534,24 +1004,28 @@ export class TimelineRenderer {
         // Build grouping map and colors
         const keyToColor = new Map<string, string>();
         const keyToLabel = new Map<string, string>();
+        const groupDefinitions = new Map<string, { id: string; label: string; color: string; content: HTMLElement }>();
+        const usedGroupIds = new Set<string>();
+        const registerGroup = (id: string, label: string, color: string) => {
+            keyToColor.set(id, color);
+            keyToLabel.set(id, label);
+            groupDefinitions.set(id, {
+                id,
+                label,
+                color,
+                content: this.createGroupLabel(label, color)
+            });
+        };
 
         if (this.options.groupMode !== 'none') {
-            groupsDS = new DataSet();
-            
             if (this.options.groupMode === 'group') {
                 const groups = this.plugin.getGroups();
                 groups.forEach((g, i) => {
                     const color = g.color || this.palette[i % this.palette.length];
-                    keyToColor.set(g.id, color);
-                    keyToLabel.set(g.id, g.name);
-                    groupsDS.add({ id: g.id, content: g.name });
-                    legend.push({ key: g.id, label: g.name, color });
+                    registerGroup(g.id, g.name, color);
                 });
                 const noneColor = '#64748B';
-                keyToColor.set('__ungrouped__', noneColor);
-                keyToLabel.set('__ungrouped__', 'Ungrouped');
-                groupsDS.add({ id: '__ungrouped__', content: 'Ungrouped' });
-                legend.push({ key: '__ungrouped__', label: 'Ungrouped', color: noneColor });
+                registerGroup('__ungrouped__', 'Ungrouped', noneColor);
             } else if (this.options.groupMode === 'location') {
                 const uniqueLocations = Array.from(new Set(this.events.map(e => e.location || 'Unspecified')));
                 uniqueLocations.forEach((loc, i) => {
@@ -559,10 +1033,7 @@ export class TimelineRenderer {
                     // Resolve location ID to display name
                     const displayName = id === 'Unspecified' ? 'Unspecified' : this.resolveLocationName(id);
                     const color = this.palette[i % this.palette.length];
-                    keyToColor.set(id, color);
-                    keyToLabel.set(id, displayName);
-                    groupsDS.add({ id, content: displayName });
-                    legend.push({ key: id, label: displayName, color });
+                    registerGroup(id, displayName, color);
                 });
             } else if (this.options.groupMode === 'character') {
                 const uniqueCharacters = new Set<string>();
@@ -573,34 +1044,22 @@ export class TimelineRenderer {
                 });
                 Array.from(uniqueCharacters).forEach((char, i) => {
                     const color = this.palette[i % this.palette.length];
-                    keyToColor.set(char, color);
-                    keyToLabel.set(char, char);
-                    groupsDS.add({ id: char, content: char });
-                    legend.push({ key: char, label: char, color });
+                    registerGroup(char, char, color);
                 });
                 const noneColor = '#64748B';
-                keyToColor.set('__unassigned__', noneColor);
-                keyToLabel.set('__unassigned__', 'No character');
-                groupsDS.add({ id: '__unassigned__', content: 'No character' });
-                legend.push({ key: '__unassigned__', label: 'No character', color: noneColor });
+                registerGroup('__unassigned__', 'No character', noneColor);
             } else if (this.options.groupMode === 'track') {
                 const tracks = this.plugin.settings.timelineTracks || [];
                 const visibleTracks = tracks.filter(t => t.visible !== false);
 
                 visibleTracks.forEach((track, i) => {
                     const color = track.color || this.palette[i % this.palette.length];
-                    keyToColor.set(track.id, color);
-                    keyToLabel.set(track.id, track.name);
-                    groupsDS.add({ id: track.id, content: track.name });
-                    legend.push({ key: track.id, label: track.name, color });
+                    registerGroup(track.id, track.name, color);
                 });
 
                 // Add a default track for unassigned events
                 const defaultColor = '#64748B';
-                keyToColor.set('__no_track__', defaultColor);
-                keyToLabel.set('__no_track__', 'Unassigned');
-                groupsDS.add({ id: '__no_track__', content: 'Unassigned' });
-                legend.push({ key: '__no_track__', label: 'Unassigned', color: defaultColor });
+                registerGroup('__no_track__', 'Unassigned', defaultColor);
             }
         }
 
@@ -619,17 +1078,14 @@ export class TimelineRenderer {
             if (startMs == null) return;
 
             // Determine grouping
-            let groupId: string | undefined;
-            let color: string | undefined;
+            let baseGroupId: string | undefined;
+            let baseColor: string | undefined;
             if (this.options.groupMode === 'group') {
-                groupId = (evt.groups && evt.groups.length > 0) ? evt.groups[0] : '__ungrouped__';
-                color = keyToColor.get(groupId);
+                baseGroupId = (evt.groups && evt.groups.length > 0) ? evt.groups[0] : '__ungrouped__';
+                baseColor = keyToColor.get(baseGroupId);
             } else if (this.options.groupMode === 'location') {
-                groupId = evt.location || 'Unspecified';
-                color = keyToColor.get(groupId);
-            } else if (this.options.groupMode === 'character') {
-                groupId = (evt.characters && evt.characters.length > 0) ? evt.characters[0] : '__unassigned__';
-                color = keyToColor.get(groupId);
+                baseGroupId = evt.location || 'Unspecified';
+                baseColor = keyToColor.get(baseGroupId);
             } else if (this.options.groupMode === 'track') {
                 const tracks = this.plugin.settings.timelineTracks || [];
                 const visibleTracks = tracks.filter(t => t.visible !== false);
@@ -695,8 +1151,8 @@ export class TimelineRenderer {
                     return false;
                 });
 
-                groupId = matchingTrack ? matchingTrack.id : '__no_track__';
-                color = keyToColor.get(groupId);
+                baseGroupId = matchingTrack ? matchingTrack.id : '__no_track__';
+                baseColor = keyToColor.get(baseGroupId);
             }
 
             const approx = !!parsed.approximate;
@@ -721,6 +1177,11 @@ export class TimelineRenderer {
             }
             // Only apply gantt-bar class to non-milestone events - milestones should remain as point events
             if (this.options.ganttMode && !isMilestone) classes.push('gantt-bar');
+            const statusSlug = (evt.status || '')
+                .toLowerCase()
+                .replace(/[^a-z0-9]+/g, '-')
+                .replace(/^-+|-+$/g, '');
+            if (statusSlug) classes.push(`sts-status-${statusSlug}`);
 
             // Detect narrative markers (flashback/flash-forward)
             const isFlashback = evt.narrativeMarkers?.isFlashback || false;
@@ -728,10 +1189,9 @@ export class TimelineRenderer {
 
             if (isFlashback) classes.push('narrative-flashback');
             if (isFlashforward) classes.push('narrative-flashforward');
-
-            // Style - narrative marker styles are handled by CSS classes
-            // For milestones, don't apply group colors - they should always be orange/gold
-            const style = (color && !isMilestone) ? `background-color:${this.hexWithAlpha(color, 0.18)};border-color:${color};` : '';
+            if (isFlashback || isFlashforward) classes.push('timeline-has-narrative-flag');
+            if (isMilestone && isFlashback) classes.push('timeline-milestone-flashback');
+            if (isMilestone && isFlashforward) classes.push('timeline-milestone-flashforward');
 
             // Check for conflicts
             const eventConflicts = conflictsByEvent.get(evt.name) || [];
@@ -741,55 +1201,137 @@ export class TimelineRenderer {
 
             // Add narrative sequence number when in narrative order mode
             // Safeguard: ensure content is never empty - use fallback if name is missing or whitespace-only
-            const eventName = evt.name?.trim();
-            let content = eventName || '(Untitled Event)';
-            if (!eventName) {
+            const eventName = (evt.name?.trim() || '(Untitled Event)');
+            let contentText = eventName;
+            
+            if (!evt.name?.trim()) {
                 console.warn(`Storyteller Suite: Event at index ${originalIdx} has no name. File: ${evt.filePath || 'unknown'}`);
             }
             if (this.narrativeOrder && evt.narrativeSequence !== undefined) {
-                content = `[${evt.narrativeSequence}] ${content}`;
+                contentText = `[${evt.narrativeSequence}] ${contentText}`;
                 classes.push('has-narrative-sequence');
             }
 
-            // Add conflict badges to content
+            // Determine text marker for compatibility across vis-timeline versions
+            const markerParts: string[] = [];
             if (hasErrors) {
-                content = '⚠️ ' + content;
+                markerParts.push('!!');
                 classes.push('has-conflict-error');
             } else if (hasWarnings) {
-                content = '⚠ ' + content;
+                markerParts.push('!');
                 classes.push('has-conflict-warning');
             }
-
-            // Add narrative marker icons
-            if (isFlashback) content = '↶ ' + content;
-            if (isFlashforward) content = '↷ ' + content;
-            if (isMilestone) content = '⭐ ' + content;
+            if (isMilestone) markerParts.push('\u2605');
+            if (isFlashback) markerParts.push('\u21b6');
+            if (isFlashforward) markerParts.push('\u21b7');
+            if (this.options.ganttMode && markerParts.length === 0) markerParts.push('\u25ae');
+            const marker = markerParts.length > 0 ? `${markerParts.join(' ')} ` : '';
+            const itemContent = `${marker}${contentText}`.trim();
 
             // Item type - determines how item renders
             // In Gantt mode: use 'range' for all items (including milestones) to avoid stems/dots
-            // In Timeline mode: milestones use 'box' (with stem), others use 'range' or 'box' based on end date
+            // In Timeline mode: use box for instant events (keeps stem support) and range when an end date exists
             let itemType: string;
             if (this.options.ganttMode) {
                 itemType = 'range';
-            } else if (isMilestone) {
-                itemType = 'box';
             } else {
                 itemType = displayEndMs != null ? 'range' : 'box';
             }
 
-            items.add({
-                id: originalIdx,
-                content: content,
-                start: new Date(startMs),
-                end: displayEndMs != null ? new Date(displayEndMs) : undefined,
-                title: this.makeTooltip(evt, parsed, eventConflicts),
-                type: itemType,
-                className: classes.length > 0 ? classes.join(' ') : undefined,
-                group: groupId,
-                style,
-                progress: evt.progress
+            // Character-group mode: replicate multi-character events into each matching lane.
+            const groupTargets: Array<{ id?: string; color?: string; label?: string }> = [];
+            if (this.options.groupMode === 'character') {
+                const uniqueChars = Array.from(new Set(
+                    (evt.characters || [])
+                        .map(c => (c || '').trim())
+                        .filter(c => c.length > 0)
+                ));
+                const characterGroupIds = uniqueChars.length > 0 ? uniqueChars : ['__unassigned__'];
+                characterGroupIds.forEach(charId => {
+                    groupTargets.push({
+                        id: charId,
+                        color: keyToColor.get(charId),
+                        label: keyToLabel.get(charId) || charId
+                    });
+                });
+            } else {
+                groupTargets.push({
+                    id: baseGroupId,
+                    color: baseColor,
+                    label: baseGroupId ? (keyToLabel.get(baseGroupId) || baseGroupId) : undefined
+                });
+            }
+
+            groupTargets.forEach((target, targetIdx) => {
+                if (target.id) usedGroupIds.add(target.id);
+
+                const itemId: string | number = targetIdx === 0
+                    ? originalIdx
+                    : `${originalIdx}::char::${this.sanitizeEventId(target.id || 'group')}:${targetIdx}`;
+
+                // Use a more opaque group background so stem lines behind cards
+                // do not bleed through and look visually detached in grouped mode.
+                const groupBgAlpha = isMilestone ? 0.82 : 0.9;
+                const style = target.color
+                    ? `--sts-group-color:${target.color};--sts-group-bg:${this.hexWithAlpha(target.color, groupBgAlpha)};background-color:${this.hexWithAlpha(target.color, groupBgAlpha)};border-color:${target.color};`
+                    : '';
+
+                const laneContent = (
+                    this.options.groupMode === 'character' && groupTargets.length > 1 && target.label
+                ) ? `${itemContent} [${target.label}]` : itemContent;
+
+                items.add({
+                    id: itemId,
+                    content: laneContent,
+                    start: new Date(startMs),
+                    end: displayEndMs != null ? new Date(displayEndMs) : undefined,
+                    title: this.makeTooltip(evt, parsed, eventConflicts),
+                    type: itemType,
+                    className: classes.length > 0 ? classes.join(' ') : undefined,
+                    group: target.id,
+                    style,
+                    progress: evt.progress
+                });
+                this.registerEventItem(itemId, originalIdx);
             });
         });
+
+        // Add scene items when showScenes is enabled
+        if (this.showScenes) {
+            const referenceDate2 = referenceDate;
+            this.scenes.forEach((scene, sceneIdx) => {
+                if (!scene.date) return;
+                const parsed = parseEventDate(scene.date, { referenceDate: referenceDate2 });
+                const startMs = toMillis(parsed?.start);
+                if (startMs == null) return;
+
+                items.add({
+                    id: `scene-${scene.id || scene.filePath || scene.name || sceneIdx}`,
+                    content: `SCN ${scene.name || '(Untitled Scene)'}`,
+                    start: new Date(startMs),
+                    className: 'storyteller-timeline-scene',
+                    type: 'point'
+                });
+            });
+        }
+
+        // Add watched vault note items when showWatchedNotes is enabled
+        if (this.showWatchedNotes) {
+            const referenceDate3 = referenceDate;
+            this.watchedNotes.forEach((note, noteIdx) => {
+                const parsed = parseEventDate(note.date, { referenceDate: referenceDate3 });
+                const startMs = toMillis(parsed?.start);
+                if (startMs == null) return;
+
+                items.add({
+                    id: `note-${note.filePath || noteIdx}`,
+                    content: `NOTE ${note.name || '(Untitled Note)'}`,
+                    start: new Date(startMs),
+                    className: 'storyteller-timeline-note',
+                    type: 'point'
+                });
+            });
+        }
 
         // Add era background items when showEras is enabled
         if (this.showEras) {
@@ -820,6 +1362,24 @@ export class TimelineRenderer {
                         : `background-color: ${this.palette[index % this.palette.length]}; opacity: 0.2;`
                 });
             });
+        }
+
+        // Only keep groups that have at least one visible/renderable event item.
+        if (this.options.groupMode !== 'none') {
+            const activeGroups = Array.from(groupDefinitions.values())
+                .filter(group => usedGroupIds.has(group.id));
+
+            if (activeGroups.length > 0) {
+                groupsDS = new DataSet();
+                legend.length = 0;
+                activeGroups.forEach(group => {
+                    groupsDS!.add({ id: group.id, content: group.content });
+                    legend.push({ key: group.id, label: group.label, color: group.color });
+                });
+            } else {
+                groupsDS = undefined;
+                legend.length = 0;
+            }
         }
 
         return { items, groups: groupsDS, legend };
@@ -1110,3 +1670,5 @@ export class TimelineRenderer {
         });
     }
 }
+
+

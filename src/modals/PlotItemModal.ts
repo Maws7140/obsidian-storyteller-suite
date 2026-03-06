@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
-import { App, Modal, Setting, Notice, TextAreaComponent, parseYaml } from 'obsidian';
+import { App, Modal, Setting, Notice, TextAreaComponent, parseYaml, setIcon } from 'obsidian';
 import { PlotItem, Group } from '../types';
 import StorytellerSuitePlugin from '../main';
 import { addImageSelectionButtons } from '../utils/ImageSelectionHelper';
@@ -39,10 +39,14 @@ export class PlotItemModal extends Modal {
             customFields: {}
         };
 
-        if (!initialItem.pastOwners) initialItem.pastOwners = [];
-        if (!initialItem.associatedEvents) initialItem.associatedEvents = [];
+        if (!Array.isArray(initialItem.pastOwners)) initialItem.pastOwners = [];
+        if (!Array.isArray(initialItem.associatedEvents)) initialItem.associatedEvents = [];
         if (!initialItem.customFields) initialItem.customFields = {};
-        if (!initialItem.groups) initialItem.groups = []; // Ensure groups array is initialized
+        if (!Array.isArray(initialItem.groups)) initialItem.groups = []; // Ensure groups array is initialized
+        if (!Array.isArray(initialItem.magicSystems)) initialItem.magicSystems = [];
+        if (!Array.isArray(initialItem.linkedCharacters)) initialItem.linkedCharacters = [];
+        if (!Array.isArray(initialItem.linkedEconomies)) initialItem.linkedEconomies = [];
+        if (!Array.isArray(initialItem.linkedCultures)) initialItem.linkedCultures = [];
 
         this.item = initialItem;
         this.onSubmit = onSubmit;
@@ -80,7 +84,8 @@ export class PlotItemModal extends Modal {
                                             new Notice('Error applying default template');
                                         }
                                         resolve();
-                                    }
+                                    },
+                                    resolve
                                 ).open();
                             });
                         });
@@ -131,7 +136,8 @@ export class PlotItemModal extends Modal {
                                                         new Notice('Error applying template');
                                                     }
                                                     resolve();
-                                                }
+                                                },
+                                                resolve
                                             ).open();
                                         });
                                     });
@@ -212,6 +218,12 @@ export class PlotItemModal extends Modal {
             });
         
         contentEl.createEl('h3', { text: t('relationships') });
+        if (this.item.currentOwner && this.item.currentLocation) {
+            contentEl.createEl('p', {
+                cls: 'storyteller-modal-hint storyteller-item-owner-location-warning',
+                text: `This item has both an owner (${this.item.currentOwner}) and a location (${this.item.currentLocation}).`,
+            });
+        }
 
         new Setting(contentEl)
             .setName(t('currentOwner'))
@@ -220,6 +232,13 @@ export class PlotItemModal extends Modal {
                 .setButtonText(t('selectOwner'))
                 .onClick(() => {
                     new CharacterSuggestModal(this.app, this.plugin, (char) => {
+                        if (this.item.currentLocation) {
+                            new Notice(
+                                `${this.item.name || 'This item'} is currently at ${this.item.currentLocation}. ` +
+                                `Assigning an owner may conflict with location tracking.`,
+                                7000
+                            );
+                        }
                         this.item.currentOwner = char.name;
                         this.onOpen(); // Re-render to update the description
                     }).open();
@@ -279,6 +298,13 @@ export class PlotItemModal extends Modal {
                 .setButtonText(t('selectLocation'))
                 .onClick(() => {
                     new LocationSuggestModal(this.app, this.plugin, (loc) => {
+                        if (this.item.currentOwner && loc) {
+                            new Notice(
+                                `${this.item.name || 'This item'} is currently owned by ${this.item.currentOwner}. ` +
+                                `Assigning a location may conflict with ownership tracking.`,
+                                7000
+                            );
+                        }
                         this.item.currentLocation = loc ? loc.name : undefined;
                         this.onOpen(); // Re-render to update the description
                     }).open();
@@ -286,8 +312,351 @@ export class PlotItemModal extends Modal {
             );
             
 
-        // TODO: Add UI for pastOwners and associatedEvents lists
-        
+        // --- Past Owners ---
+        contentEl.createEl('h3', { text: t('pastOwners') });
+        const pastOwnersContainer = contentEl.createDiv('storyteller-past-owners-container');
+        const renderPastOwners = () => {
+            pastOwnersContainer.empty();
+            if (this.item.pastOwners && this.item.pastOwners.length > 0) {
+                const listDiv = pastOwnersContainer.createDiv('storyteller-tags-list');
+                this.item.pastOwners.forEach((owner, idx) => {
+                    const tag = listDiv.createSpan({ text: owner, cls: 'storyteller-tag' });
+                    const removeBtn = tag.createSpan({ text: ' ×', cls: 'remove-tag-btn' });
+                    removeBtn.onclick = () => {
+                        this.item.pastOwners!.splice(idx, 1);
+                        renderPastOwners();
+                    };
+                });
+            }
+            new Setting(pastOwnersContainer)
+                .addButton(btn => btn
+                    .setButtonText(t('addPastOwner'))
+                    .setIcon('user-plus')
+                    .onClick(() => {
+                        new CharacterSuggestModal(this.app, this.plugin, (char) => {
+                            if (!Array.isArray(this.item.pastOwners)) this.item.pastOwners = [];
+                            if (!this.item.pastOwners.includes(char.name)) {
+                                this.item.pastOwners.push(char.name);
+                            }
+                            renderPastOwners();
+                        }).open();
+                    })
+                );
+        };
+        renderPastOwners();
+
+        // --- Associated Events ---
+        contentEl.createEl('h3', { text: t('associatedEvents') });
+        const assocEventsContainer = contentEl.createDiv('storyteller-assoc-events-container');
+        const renderAssocEvents = () => {
+            assocEventsContainer.empty();
+            if (this.item.associatedEvents && this.item.associatedEvents.length > 0) {
+                const listDiv = assocEventsContainer.createDiv('storyteller-tags-list');
+                this.item.associatedEvents.forEach((eventName, idx) => {
+                    const tag = listDiv.createSpan({ text: eventName, cls: 'storyteller-tag' });
+                    const removeBtn = tag.createSpan({ text: ' ×', cls: 'remove-tag-btn' });
+                    removeBtn.onclick = () => {
+                        this.item.associatedEvents!.splice(idx, 1);
+                        renderAssocEvents();
+                    };
+                });
+            }
+            new Setting(assocEventsContainer)
+                .addButton(btn => btn
+                    .setButtonText(t('addAssociatedEvent'))
+                    .setIcon('calendar-plus')
+                    .onClick(() => {
+                        new EventSuggestModal(this.app, this.plugin, (evt) => {
+                            if (!Array.isArray(this.item.associatedEvents)) this.item.associatedEvents = [];
+                            if (!this.item.associatedEvents.includes(evt.name)) {
+                                this.item.associatedEvents.push(evt.name);
+                            }
+                            renderAssocEvents();
+                        }).open();
+                    })
+                );
+        };
+        renderAssocEvents();
+
+        // --- Associated Characters (multiple owners/associations) ---
+        contentEl.createEl('h3', { text: 'Associated Characters' });
+        contentEl.createEl('p', {
+            cls: 'storyteller-modal-hint',
+            text: 'Characters with a claim or connection to this item beyond the primary bearer.'
+        });
+        if (!Array.isArray(this.item.linkedCharacters)) this.item.linkedCharacters = [];
+        const charChips = contentEl.createDiv('storyteller-linked-chips');
+        const renderCharChips = () => {
+            charChips.empty();
+            for (const name of (this.item.linkedCharacters ?? [])) {
+                const chip = charChips.createSpan({ cls: 'storyteller-linked-chip' });
+                chip.createSpan({ text: name });
+                const rm = chip.createEl('button', { cls: 'storyteller-chip-remove', attr: { 'aria-label': 'Remove' } });
+                setIcon(rm, 'x');
+                rm.addEventListener('click', () => {
+                    this.item.linkedCharacters = this.item.linkedCharacters!.filter(n => n !== name);
+                    renderCharChips();
+                });
+            }
+        };
+        renderCharChips();
+        const allCharsForItem = await this.plugin.listCharacters();
+        new Setting(contentEl)
+            .setName('Add associated character')
+            .addDropdown(dd => {
+                dd.addOption('', '— select character —');
+                allCharsForItem.forEach(c => dd.addOption(c.name, c.name));
+                dd.onChange(val => {
+                    if (val && !(this.item.linkedCharacters ?? []).includes(val)) {
+                        if (!Array.isArray(this.item.linkedCharacters)) this.item.linkedCharacters = [];
+                        this.item.linkedCharacters.push(val);
+                        renderCharChips();
+                    }
+                    dd.setValue('');
+                });
+            });
+
+        // --- Magic Systems ---
+        contentEl.createEl('h3', { text: 'Magic Systems' });
+        if (!Array.isArray(this.item.magicSystems)) this.item.magicSystems = [];
+        const magicChips = contentEl.createDiv('storyteller-linked-chips');
+        const renderMagicChips = () => {
+            magicChips.empty();
+            for (const name of (this.item.magicSystems ?? [])) {
+                const chip = magicChips.createSpan({ cls: 'storyteller-linked-chip' });
+                chip.createSpan({ text: name });
+                const rm = chip.createEl('button', { cls: 'storyteller-chip-remove', attr: { 'aria-label': 'Remove' } });
+                setIcon(rm, 'x');
+                rm.addEventListener('click', () => {
+                    this.item.magicSystems = this.item.magicSystems!.filter(n => n !== name);
+                    renderMagicChips();
+                });
+            }
+        };
+        renderMagicChips();
+        const allMagicSystems = await this.plugin.listMagicSystems();
+        new Setting(contentEl)
+            .setName('Add magic system')
+            .addDropdown(dd => {
+                dd.addOption('', '— select magic system —');
+                allMagicSystems.forEach(m => dd.addOption(m.name, m.name));
+                dd.onChange(val => {
+                    if (val && !(this.item.magicSystems ?? []).includes(val)) {
+                        if (!Array.isArray(this.item.magicSystems)) this.item.magicSystems = [];
+                        this.item.magicSystems.push(val);
+                        renderMagicChips();
+                    }
+                    dd.setValue('');
+                });
+            });
+
+        // --- Magic Properties ---
+        new Setting(contentEl)
+            .setName('Magic properties')
+            .setDesc('Magical effects, abilities, and lore of this item')
+            .setClass('storyteller-modal-setting-vertical')
+            .addTextArea(text => {
+                text.setValue(this.item.magicProperties || '')
+                    .onChange(value => { this.item.magicProperties = value || undefined; });
+                text.inputEl.rows = 4;
+                text.inputEl.style.width = '100%';
+            });
+
+        // --- Economic Value ---
+        contentEl.createEl('h3', { text: 'Economic Value' });
+        new Setting(contentEl)
+            .setName('Value')
+            .setDesc('Monetary or trade value (e.g. "500gp", "priceless", "worthless")')
+            .addText(text => {
+                text.setValue(this.item.economicValue || '')
+                    .onChange(value => { this.item.economicValue = value || undefined; });
+                text.inputEl.placeholder = '500gp';
+            });
+        if (!Array.isArray(this.item.linkedEconomies)) this.item.linkedEconomies = [];
+        const econChips = contentEl.createDiv('storyteller-linked-chips');
+        const renderEconChips = () => {
+            econChips.empty();
+            for (const name of (this.item.linkedEconomies ?? [])) {
+                const chip = econChips.createSpan({ cls: 'storyteller-linked-chip' });
+                chip.createSpan({ text: name });
+                const rm = chip.createEl('button', { cls: 'storyteller-chip-remove', attr: { 'aria-label': 'Remove' } });
+                setIcon(rm, 'x');
+                rm.addEventListener('click', () => {
+                    this.item.linkedEconomies = this.item.linkedEconomies!.filter(n => n !== name);
+                    renderEconChips();
+                });
+            }
+        };
+        renderEconChips();
+        const allEconomies = await this.plugin.listEconomies();
+        new Setting(contentEl)
+            .setName('Traded in economy')
+            .addDropdown(dd => {
+                dd.addOption('', '— select economy —');
+                allEconomies.forEach(e => dd.addOption(e.name, e.name));
+                dd.onChange(val => {
+                    if (val && !(this.item.linkedEconomies ?? []).includes(val)) {
+                        if (!Array.isArray(this.item.linkedEconomies)) this.item.linkedEconomies = [];
+                        this.item.linkedEconomies.push(val);
+                        renderEconChips();
+                    }
+                    dd.setValue('');
+                });
+            });
+
+        // --- Cultural Significance ---
+        contentEl.createEl('h3', { text: 'Cultural Significance' });
+        new Setting(contentEl)
+            .setName('Significance')
+            .setDesc('Cultural importance, symbolism, and meaning')
+            .setClass('storyteller-modal-setting-vertical')
+            .addTextArea(text => {
+                text.setValue(this.item.culturalSignificance || '')
+                    .onChange(value => { this.item.culturalSignificance = value || undefined; });
+                text.inputEl.rows = 3;
+                text.inputEl.style.width = '100%';
+            });
+        if (!Array.isArray(this.item.linkedCultures)) this.item.linkedCultures = [];
+        const cultChips = contentEl.createDiv('storyteller-linked-chips');
+        const renderCultChips = () => {
+            cultChips.empty();
+            for (const name of (this.item.linkedCultures ?? [])) {
+                const chip = cultChips.createSpan({ cls: 'storyteller-linked-chip' });
+                chip.createSpan({ text: name });
+                const rm = chip.createEl('button', { cls: 'storyteller-chip-remove', attr: { 'aria-label': 'Remove' } });
+                setIcon(rm, 'x');
+                rm.addEventListener('click', () => {
+                    this.item.linkedCultures = this.item.linkedCultures!.filter(n => n !== name);
+                    renderCultChips();
+                });
+            }
+        };
+        renderCultChips();
+        const allCultures = await this.plugin.listCultures();
+        new Setting(contentEl)
+            .setName('Significant to culture')
+            .addDropdown(dd => {
+                dd.addOption('', '— select culture —');
+                allCultures.forEach(c => dd.addOption(c.name, c.name));
+                dd.onChange(val => {
+                    if (val && !(this.item.linkedCultures ?? []).includes(val)) {
+                        if (!Array.isArray(this.item.linkedCultures)) this.item.linkedCultures = [];
+                        this.item.linkedCultures.push(val);
+                        renderCultChips();
+                    }
+                    dd.setValue('');
+                });
+            });
+
+        // --- Campaign Use ---
+        const campaignHdr = contentEl.createDiv('storyteller-campaign-use-header');
+        campaignHdr.createEl('h3', { text: 'Campaign Use' });
+        const campaignToggle = campaignHdr.createEl('button', { cls: 'storyteller-campaign-use-toggle' });
+        const campaignBody = contentEl.createDiv('storyteller-campaign-use-body');
+        const isCampaignExpanded = !!(
+            this.item.itemType || this.item.itemRarity || this.item.consumedOnUse ||
+            this.item.campaignEffect || this.item.grantsFlag ||
+            this.item.navigatesToScene || this.item.useRequiresLocation || this.item.useRequiresFlag
+        );
+        if (!isCampaignExpanded) campaignBody.hide();
+        campaignToggle.textContent = isCampaignExpanded ? 'Hide' : 'Show';
+        campaignToggle.addEventListener('click', () => {
+            if (campaignBody.isShown()) { campaignBody.hide(); campaignToggle.textContent = 'Show'; }
+            else { campaignBody.show(); campaignToggle.textContent = 'Hide'; }
+        });
+
+        contentEl.createEl('p', {
+            cls: 'storyteller-modal-hint',
+            text: 'Define what happens when this item is used during a campaign session.',
+        });
+
+        new Setting(campaignBody)
+            .setName('Item type')
+            .setDesc('D&D item category')
+            .addDropdown(dd => {
+                dd.addOption('', '— none —');
+                for (const t of ['weapon', 'armor', 'consumable', 'tool', 'key', 'treasure', 'other']) {
+                    dd.addOption(t, t.charAt(0).toUpperCase() + t.slice(1));
+                }
+                dd.setValue(this.item.itemType ?? '');
+                dd.onChange(v => { this.item.itemType = (v || undefined) as any; });
+            });
+
+        new Setting(campaignBody)
+            .setName('Rarity')
+            .setDesc('D&D rarity tier')
+            .addDropdown(dd => {
+                dd.addOption('', '— none —');
+                for (const r of ['common', 'uncommon', 'rare', 'very rare', 'legendary', 'artifact']) {
+                    dd.addOption(r, r.charAt(0).toUpperCase() + r.slice(1));
+                }
+                dd.setValue(this.item.itemRarity ?? '');
+                dd.onChange(v => { this.item.itemRarity = (v || undefined) as any; });
+            });
+
+        new Setting(campaignBody)
+            .setName('Consumed on use')
+            .setDesc('Remove from party inventory when used')
+            .addToggle(t => t.setValue(this.item.consumedOnUse ?? false).onChange(v => { this.item.consumedOnUse = v; }));
+
+        new Setting(campaignBody)
+            .setName('Use effect')
+            .setDesc('DM description shown when this item is used')
+            .addTextArea(ta => {
+                ta.setValue(this.item.campaignEffect ?? '')
+                    .onChange(v => { this.item.campaignEffect = v || undefined; });
+                ta.inputEl.rows = 3;
+                ta.inputEl.style.width = '100%';
+            });
+
+        new Setting(campaignBody)
+            .setName('Sets flag on use')
+            .setDesc('Session flag to set when item is used (e.g. "bribed-barkeep")')
+            .addText(t => {
+                t.setPlaceholder('flag-name')
+                    .setValue(this.item.grantsFlag ?? '')
+                    .onChange(v => { this.item.grantsFlag = v.trim() || undefined; });
+            });
+
+        // Navigates-to-scene dropdown
+        const sceneWrap = campaignBody.createDiv();
+        const allScenesForItem = await this.plugin.listScenes().catch(() => [] as import('../types').Scene[]);
+        new Setting(sceneWrap)
+            .setName('Navigates to scene')
+            .setDesc('Open this scene when item is used (e.g. a key that unlocks a room)')
+            .addDropdown(dd => {
+                dd.addOption('', '— none —');
+                for (const s of allScenesForItem.sort((a, b) => a.name.localeCompare(b.name))) {
+                    dd.addOption(s.name, s.name);
+                }
+                dd.setValue(this.item.navigatesToScene ?? '');
+                dd.onChange(v => { this.item.navigatesToScene = v || undefined; });
+            });
+
+        // Requires-location dropdown
+        const locWrap = campaignBody.createDiv();
+        const allLocsForItem = await this.plugin.listLocations().catch(() => [] as import('../types').Location[]);
+        new Setting(locWrap)
+            .setName('Can only be used at')
+            .setDesc('Location name where this item can be used (empty = usable anywhere)')
+            .addDropdown(dd => {
+                dd.addOption('', '— anywhere —');
+                for (const l of allLocsForItem.sort((a, b) => a.name.localeCompare(b.name))) {
+                    dd.addOption(l.name, l.name);
+                }
+                dd.setValue(this.item.useRequiresLocation ?? '');
+                dd.onChange(v => { this.item.useRequiresLocation = v || undefined; });
+            });
+
+        new Setting(campaignBody)
+            .setName('Requires flag to use')
+            .setDesc('Session flag that must be set before this item can be used')
+            .addText(t => {
+                t.setPlaceholder('flag-name')
+                    .setValue(this.item.useRequiresFlag ?? '')
+                    .onChange(v => { this.item.useRequiresFlag = v.trim() || undefined; });
+            });
+
         // --- Action Buttons at bottom ---
         const buttonsSetting = new Setting(contentEl).setClass('storyteller-modal-buttons');
         if (!this.isNew && this.onDelete) {
@@ -420,6 +789,7 @@ export class PlotItemModal extends Modal {
         const { templateId, yamlContent, markdownContent, sectionContent, customYamlFields, id, filePath, ...rest } = templateItem as any;
 
         let fields: any = { ...rest };
+        let allTemplateSections: Record<string, string> = {};
 
         // Handle new format: yamlContent (parse YAML string)
         if (yamlContent && typeof yamlContent === 'string') {
@@ -441,6 +811,7 @@ export class PlotItemModal extends Modal {
         if (markdownContent && typeof markdownContent === 'string') {
             try {
                 const parsedSections = parseSectionsFromMarkdown(`---\n---\n\n${markdownContent}`);
+                allTemplateSections = parsedSections;
 
                 // Map well-known sections to entity properties
                 if ('Description' in parsedSections) {
@@ -449,6 +820,12 @@ export class PlotItemModal extends Modal {
                 if ('History' in parsedSections) {
                     fields.history = parsedSections['History'];
                 }
+                if ('Cultural Significance' in parsedSections) {
+                    fields.culturalSignificance = parsedSections['Cultural Significance'];
+                }
+                if ('Magic Properties' in parsedSections) {
+                    fields.magicProperties = parsedSections['Magic Properties'];
+                }
 
                 console.log('[PlotItemModal] Parsed markdown sections:', parsedSections);
             } catch (error) {
@@ -456,6 +833,7 @@ export class PlotItemModal extends Modal {
             }
         } else if (sectionContent) {
             // Old format: apply section content
+            for (const [k, v] of Object.entries(sectionContent)) { allTemplateSections[k as string] = v as string; }
             for (const [sectionName, content] of Object.entries(sectionContent)) {
                 const propName = sectionName.toLowerCase().replace(/\s+/g, '');
                 (fields as any)[propName] = content;
@@ -464,6 +842,14 @@ export class PlotItemModal extends Modal {
 
         // Apply all fields to the item
         Object.assign(this.item, fields);
+        if (Object.keys(allTemplateSections).length > 0) {
+            Object.defineProperty(this.item, '_templateSections', {
+                value: allTemplateSections,
+                enumerable: false,
+                writable: true,
+                configurable: true
+            });
+        }
         console.log('[PlotItemModal] Final item after template:', this.item);
 
         // Clear relationships as they reference template entities
@@ -473,6 +859,10 @@ export class PlotItemModal extends Modal {
         this.item.associatedEvents = [];
         this.item.groups = [];
         this.item.connections = [];
+        this.item.magicSystems = [];
+        this.item.linkedCharacters = [];
+        this.item.linkedEconomies = [];
+        this.item.linkedCultures = [];
     }
 
     private refresh(): void {

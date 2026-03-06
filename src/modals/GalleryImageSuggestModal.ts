@@ -3,9 +3,12 @@ import { GalleryImage } from '../types';
 import StorytellerSuitePlugin from '../main';
 import { t } from '../i18n/strings';
 
+const IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'avif']);
+
 export class GalleryImageSuggestModal extends FuzzySuggestModal<GalleryImage> {
     plugin: StorytellerSuitePlugin;
     onChoose: (image: GalleryImage | null) => void; // Allow null for clearing
+    private images: GalleryImage[] = [];
 
     constructor(app: App, plugin: StorytellerSuitePlugin, onChoose: (image: GalleryImage | null) => void) {
         super(app);
@@ -18,6 +21,25 @@ export class GalleryImageSuggestModal extends FuzzySuggestModal<GalleryImage> {
 
     async onOpen() {
         super.onOpen();
+
+        // Registered gallery images (have titles, tags, etc.)
+        const registered = this.plugin.getGalleryImages();
+        const registeredPaths = new Set(registered.map(img => img.filePath));
+
+        // Any image file in the vault not already registered
+        const vaultImages: GalleryImage[] = this.app.vault.getFiles()
+            .filter(f => IMAGE_EXTS.has(f.extension?.toLowerCase()) && !registeredPaths.has(f.path))
+            .map(f => ({
+                id: f.path,
+                filePath: f.path,
+                title: f.basename,
+                caption: '',
+                description: '',
+                tags: []
+            }));
+
+        this.images = [...registered, ...vaultImages];
+
         // Force-refresh suggestions so initial list shows without typing
         setTimeout(() => {
             if (this.inputEl) {
@@ -52,7 +74,7 @@ export class GalleryImageSuggestModal extends FuzzySuggestModal<GalleryImage> {
     }
 
     getItems(): GalleryImage[] {
-        return this.plugin.getGalleryImages();
+        return this.images;
     }
 
     getItemText(item: GalleryImage): string {

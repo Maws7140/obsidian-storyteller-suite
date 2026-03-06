@@ -13,7 +13,7 @@ import { PlotItemModal } from '../modals/PlotItemModal';
 import { ImageDetailModal } from '../modals/ImageDetailModal';
 // Remove ImageSuggestModal import as we replace its usage
 // import { ImageSuggestModal } from '../modals/GalleryModal';
-import { Character, Location, Event, Group, PlotItem, GalleryImage, StoryMap } from '../types'; // Import types
+import { Character, Location, Event, Group, PlotItem, GalleryImage, StoryMap, Book, IndentedSceneRef, StoryDraft, CompileWorkflow } from '../types'; // Import types
 import { NewStoryModal } from '../modals/NewStoryModal';
 import { GroupModal } from '../modals/GroupModal';
 import { PlatformUtils } from '../utils/PlatformUtils';
@@ -25,6 +25,8 @@ import {
 } from '../templates/TemplateTypes';
 import { TemplateEditorModal } from '../modals/TemplateEditorModal';
 import { EconomyDetailModal } from '../modals/EconomyDetailModal';
+import { WritingViewRenderers } from './WritingViewRenderers';
+import type { CompileEngine as CompileEngineType } from '../compile';
 
 /** Unique identifier for the dashboard view type in Obsidian's workspace */
 export const VIEW_TYPE_DASHBOARD = "storyteller-dashboard-view";
@@ -84,11 +86,21 @@ export class DashboardView extends ItemView {
     /** Tab being dragged (ID), null when no drag is in progress */
     private _draggedTabId: string | null = null;
 
+    /** Active view mode in the Writing tab */
+    private _writingViewMode: 'list' | 'board' | 'arc' | 'heatmap' | 'holes' = 'list';
+    /** Shared renderer instance for the four writing analysis views */
+    private _writingRenderers: import('./WritingViewRenderers').WritingViewRenderers | null = null;
+
     /** Persist chapter expand/collapse state across re-renders (Writing tab) */
     private _chapterCollapseState = new Map<string, boolean>();
 
     /** Persist chapter-group expand/collapse state across re-renders (Scenes tab) */
     private _sceneGroupCollapseState = new Map<string, boolean>();
+
+    /** Persist per-tab scroll positions (supports nested scrollable regions) */
+    private _tabScrollPositions = new Map<string, { top: number; targetSelector?: string }>();
+    /** Guard to avoid clobbering saved scroll positions during tab re-render */
+    private _suppressScrollCapture = false;
 
     /** Template library filter state */
     private templateFilter: TemplateFilter = {
@@ -198,6 +210,8 @@ export class DashboardView extends ItemView {
             { id: 'economies', label: t('economies'), renderFn: this.renderEconomiesContent.bind(this) },
             { id: 'magicsystems', label: t('magicSystems'), renderFn: this.renderMagicSystemsContent.bind(this) },
             { id: 'compendium', label: 'Compendium', renderFn: this.renderCompendiumContent.bind(this) },
+            { id: 'books', label: 'Books', renderFn: this.renderBooksContent.bind(this) },
+            { id: 'campaign', label: 'Campaign', renderFn: this.renderCampaignContent.bind(this) },
             { id: 'templates', label: t('templates'), renderFn: this.renderTemplatesContent.bind(this) },
             { id: 'analytics', label: 'Analytics', renderFn: this.renderAnalyticsContent.bind(this) },
         ];
@@ -340,10 +354,15 @@ export class DashboardView extends ItemView {
         const searchInputValue = this.currentSearchInput?.value || '';
         const searchInputWasFocused = document.activeElement === this.currentSearchInput;
         
-        const activeTab = this.tabs.find(tab => tab.id === this.activeTabId);
+        const currentTabId = this.activeTabId;
+        this.captureTabScrollState(currentTabId);
+
+        const activeTab = this.tabs.find(tab => tab.id === currentTabId);
         if (activeTab) {
             try {
+                this._suppressScrollCapture = true;
                 await activeTab.renderFn(this.tabContentContainer);
+                await this.restoreTabScroll(currentTabId);
                 
                 // Restore search input state after refresh (mobile optimization)
                 if (PlatformUtils.isMobile() && (searchInputValue || searchInputWasFocused)) {
@@ -361,6 +380,8 @@ export class DashboardView extends ItemView {
                 }
             } catch (error) {
                 console.error(`Storyteller Suite: Error refreshing active tab ${this.activeTabId}:`, error);
+            } finally {
+                this._suppressScrollCapture = false;
             }
         }
     }
@@ -522,6 +543,11 @@ export class DashboardView extends ItemView {
         this.tabContentContainer.style.overflowY = 'auto';
         this.tabContentContainer.style.overflowX = 'hidden';
         this.tabContentContainer.style.height = 'auto'; // Allow content to expand
+        this.registerDomEvent(this.tabContentContainer, 'scroll', (evt: globalThis.Event) => {
+            if (this._suppressScrollCapture) return;
+            const target = evt.target instanceof HTMLElement ? evt.target : this.tabContentContainer;
+            this.captureTabScrollState(this.activeTabId, target);
+        }, { capture: true, passive: true });
 
         // Initial active state - use first visible tab if current tab is hidden
         const visibleTabs = this.getVisibleTabs();
@@ -749,15 +775,91 @@ export class DashboardView extends ItemView {
 
     // More dropdown removed
 
+    private captureTabScrollState(tabId: string, sourceEl?: HTMLElement): void {
+        if (!this.tabContentContainer) return;
+        const candidate = sourceEl ?? this.tabContentContainer;
+
+        const isScrollable = (el: HTMLElement) => {
+            if (el === this.tabContentContainer) return true;
+            const style = window.getComputedStyle(el);
+            const oy = style.overflowY;
+            const allowsScroll = oy === 'auto' || oy === 'scroll' || oy === 'overlay';
+            return allowsScroll && el.scrollHeight > el.clientHeight + 1;
+        };
+
+        let targetEl: HTMLElement = this.tabContentContainer;
+        if (candidate !== this.tabContentContainer && this.tabContentContainer.contains(candidate) && isScrollable(candidate)) {
+            targetEl = candidate;
+        }
+
+        if (targetEl === this.tabContentContainer) {
+            // Fallback scan: if a nested scroller currently holds position, prefer it.
+            const nested = Array.from(this.tabContentContainer.querySelectorAll<HTMLElement>('*'))
+                .filter(el => isScrollable(el) && el.scrollTop > 0)
+                .sort((a, b) => b.scrollTop - a.scrollTop)[0];
+            if (nested) targetEl = nested;
+        }
+
+        if (targetEl === this.tabContentContainer) {
+            this._tabScrollPositions.set(tabId, { top: this.tabContentContainer.scrollTop });
+            return;
+        }
+
+        const firstClass = Array.from(targetEl.classList)[0];
+        const targetSelector = firstClass ? `.${firstClass}` : undefined;
+        this._tabScrollPositions.set(tabId, {
+            top: targetEl.scrollTop,
+            targetSelector
+        });
+    }
+
+    private async restoreTabScroll(tabId: string): Promise<void> {
+        if (!this.tabContentContainer) return;
+        const saved = this._tabScrollPositions.get(tabId);
+        const target = saved?.top ?? 0;
+        await new Promise<void>((resolve) => {
+            requestAnimationFrame(() => {
+                if (!this.tabContentContainer) {
+                    resolve();
+                    return;
+                }
+                let restored = false;
+                if (saved?.targetSelector) {
+                    const nested = this.tabContentContainer.querySelector<HTMLElement>(saved.targetSelector);
+                    if (nested) {
+                        nested.scrollTop = target;
+                        restored = true;
+                    }
+                }
+                if (!restored) {
+                    this.tabContentContainer.scrollTop = target;
+                }
+                resolve();
+            });
+        });
+    }
+
     private async setActiveTab(tabId: string) {
         const tab = this.tabs.find(t => t.id === tabId);
         if (!tab) return;
+        const previousTabId = this.activeTabId;
+        if (this.tabContentContainer) {
+            this.captureTabScrollState(previousTabId);
+        }
         // Update state
         this.activeTabId = tabId;
         this.currentFilter = '';
         this.currentSearchInput = null;
-        // Render content
-        await tab.renderFn(this.tabContentContainer);
+        // Mark tab context for CSS entity card accent colors
+        this.tabContentContainer.setAttr('data-tab', tabId);
+        // Render content and restore scroll without capturing intermediate resets
+        this._suppressScrollCapture = true;
+        try {
+            await tab.renderFn(this.tabContentContainer);
+            await this.restoreTabScroll(tabId);
+        } finally {
+            this._suppressScrollCapture = false;
+        }
         // Update styles
         this.syncActiveTabStyles();
     }
@@ -2056,24 +2158,86 @@ export class DashboardView extends ItemView {
         });
     }
 
-    /** Render the Chapters tab content - now shows scenes grouped under each chapter */
-    /** Unified Writing tab — chapters with scenes nested, goal banner, dual add buttons */
+    /** Render the Writing tab — includes view mode switcher */
     async renderWritingContent(container: HTMLElement) {
         container.empty();
         this.renderWritingGoalBanner(container);
+
+        // ── View mode switcher ─────────────────────────────────────────────
+        const switcher = container.createDiv('storyteller-writing-switcher');
+        const modes: Array<{ id: typeof this._writingViewMode; icon: string; label: string }> = [
+            { id: 'list',    icon: 'list',           label: 'List'     },
+            { id: 'board',   icon: 'columns-3',      label: 'Board'    },
+            { id: 'arc',     icon: 'activity',       label: 'Arc'      },
+            { id: 'heatmap', icon: 'grid',           label: 'Heatmap'  },
+            { id: 'holes',   icon: 'shield-alert',   label: 'Holes'    },
+        ];
+        const renderActive = async () => {
+            const existing = container.querySelector('.storyteller-writing-view-body');
+            if (existing) existing.remove();
+            const body = container.createDiv('storyteller-writing-view-body');
+            switch (this._writingViewMode) {
+                case 'list':    await this.renderChaptersWithScenesList(body); break;
+                case 'board':   await this.renderKanbanBoard(body); break;
+                case 'arc':     await this.renderArcChart(body); break;
+                case 'heatmap': await this.renderHeatmap(body); break;
+                case 'holes':   await this.renderPlotHoles(body); break;
+            }
+        };
+        // Pop-out button — created first so updatePopOut can reference it
+        const popOutBtn = switcher.createEl('button', {
+            cls: 'storyteller-switcher-btn storyteller-switcher-popout',
+        });
+
+        // Updates the pop-out button to reflect the currently active view mode
+        const updatePopOut = () => {
+            popOutBtn.empty();
+            const panelMode = this._writingViewMode === 'list' ? 'board' : this._writingViewMode;
+            const modeInfo = modes.find(m => m.id === panelMode) ?? modes[1];
+            setIcon(popOutBtn.createSpan(''), modeInfo.icon);
+            const lbl = popOutBtn.createSpan({ cls: 'storyteller-popout-label' });
+            lbl.setText(`Open ${modeInfo.label}`);
+            setIcon(popOutBtn.createSpan(''), 'panel-right-open');
+            popOutBtn.title = `Open ${modeInfo.label} in panel`;
+        };
+
+        modes.forEach(m => {
+            const btn = switcher.createEl('button', {
+                cls: `storyteller-switcher-btn${this._writingViewMode === m.id ? ' is-active' : ''}`
+            });
+            setIcon(btn.createSpan(), m.icon);
+            btn.createSpan({ text: m.label });
+            btn.onclick = async () => {
+                this._writingViewMode = m.id;
+                switcher.querySelectorAll('.storyteller-switcher-btn:not(.storyteller-switcher-popout)')
+                    .forEach(b => b.removeClass('is-active'));
+                btn.addClass('is-active');
+                updatePopOut();
+                await renderActive();
+            };
+        });
+
+        updatePopOut(); // set initial state
+
+        popOutBtn.onclick = () => {
+            const mode = this._writingViewMode === 'list' ? 'board' : this._writingViewMode;
+            (this.plugin as any).activateWritingPanelView(mode);
+        };
+
+        // ── Header controls (search + add buttons, only for list/board) ──
         this.renderHeaderControls(
             container,
             'Writing',
             async (filter: string) => {
                 this.currentFilter = filter;
-                await this.renderChaptersWithScenesList(container);
+                await renderActive();
             },
             () => {
                 import('../modals/ChapterModal').then(({ ChapterModal }) => {
                     new ChapterModal(this.app, this.plugin, null, async (ch) => {
                         await this.plugin.saveChapter(ch);
                         new Notice(`Chapter "${ch.name}" created.`);
-                        await this.renderChaptersWithScenesList(container);
+                        await renderActive();
                     }).open();
                 });
             },
@@ -2085,14 +2249,20 @@ export class DashboardView extends ItemView {
                             new SceneModal(this.app, this.plugin, null, async (sc) => {
                                 await this.plugin.saveScene(sc);
                                 new Notice(`Scene "${sc.name}" created.`);
-                                await this.renderChaptersWithScenesList(container);
+                                await renderActive();
                             }).open();
                         });
                     });
                 });
+                s.addButton(btn => {
+                    btn.setIcon('layout-dashboard').setTooltip('Open Story Board canvas').onClick(async () => {
+                        await this.plugin.openStoryBoard();
+                    });
+                });
             }
         );
-        await this.renderChaptersWithScenesList(container);
+
+        await renderActive();
     }
 
     async renderChaptersContent(container: HTMLElement) {
@@ -2177,7 +2347,27 @@ export class DashboardView extends ItemView {
                     if (file instanceof TFile) this.app.workspace.openLinkText(ch.filePath!, '', false);
                 });
             }
+            // Inline edit button — always visible on the chapter title row
+            const chapterEditBtn = titleRow.createEl('button', { cls: 'storyteller-chapter-inline-edit' });
+            setIcon(chapterEditBtn, 'pencil');
+            chapterEditBtn.title = 'Edit chapter';
+            chapterEditBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                import('../modals/ChapterModal').then(({ ChapterModal }) => {
+                    new ChapterModal(this.app, this.plugin, ch, async (updated) => {
+                        await this.plugin.saveChapter(updated);
+                        new Notice(`Chapter "${updated.name}" updated.`);
+                        await this.renderChaptersWithScenesList(container);
+                    }, async (toDelete) => {
+                        if (toDelete.filePath) await this.plugin.deleteChapter(toDelete.filePath);
+                        await this.renderChaptersWithScenesList(container);
+                    }).open();
+                });
+            });
             titleRow.createSpan({ cls: 'storyteller-chapter-scene-count', text: `${chapterScenes.length} scene${chapterScenes.length !== 1 ? 's' : ''}` });
+            if (ch.bookName) {
+                titleRow.createSpan({ cls: 'storyteller-meta-badge storyteller-book-badge', text: ch.bookName });
+            }
 
             if (ch.summary) {
                 const preview = ch.summary.length > 100 ? ch.summary.substring(0, 100) + '…' : ch.summary;
@@ -2453,6 +2643,25 @@ export class DashboardView extends ItemView {
             
             const titleRow = infoEl.createDiv('storyteller-chapter-title-row');
             titleRow.createEl('strong', { text: title });
+            // Inline edit button — always visible
+            if (chapter) {
+                const chapterEditBtn2 = titleRow.createEl('button', { cls: 'storyteller-chapter-inline-edit' });
+                setIcon(chapterEditBtn2, 'pencil');
+                chapterEditBtn2.title = 'Edit chapter';
+                chapterEditBtn2.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    import('../modals/ChapterModal').then(({ ChapterModal }) => {
+                        new ChapterModal(this.app, this.plugin, chapter, async (updated) => {
+                            await this.plugin.saveChapter(updated);
+                            new Notice(`Chapter "${updated.name}" updated.`);
+                            await this.renderScenesGroupedByChapter(container);
+                        }, async (toDelete) => {
+                            if (toDelete.filePath) await this.plugin.deleteChapter(toDelete.filePath);
+                            await this.renderScenesGroupedByChapter(container);
+                        }).open();
+                    });
+                });
+            }
             titleRow.createSpan({ cls: 'storyteller-chapter-scene-count', text: `${scenes.length} scene${scenes.length !== 1 ? 's' : ''}` });
 
             // Open chapter note button
@@ -2550,12 +2759,28 @@ export class DashboardView extends ItemView {
 
         const meta = infoEl.createDiv('storyteller-list-item-extra');
         if (sc.status) {
-            const statusBadge = meta.createSpan({ cls: `storyteller-status-badge storyteller-status-${(sc.status || 'draft').toLowerCase().replace(/\s+/g, '-')}`, text: sc.status });
+            meta.createSpan({ cls: `storyteller-status-badge storyteller-status-${(sc.status || 'draft').toLowerCase().replace(/\s+/g, '-')}`, text: sc.status });
+        }
+        if (sc.povCharacter) {
+            const pov = meta.createSpan({ cls: 'storyteller-scene-pov-badge' });
+            setIcon(pov.createSpan(''), 'eye');
+            pov.createSpan({ text: ` ${sc.povCharacter}` });
+        }
+        if (sc.emotion) {
+            meta.createSpan({ text: sc.emotion, cls: `storyteller-scene-emotion-chip storyteller-emotion-${sc.emotion}` });
         }
         if (sc.tags && sc.tags.length > 0) {
-            meta.createSpan({ text: sc.tags.map((t: string) => `#${t}`).join(' ') });
+            meta.createSpan({ text: sc.tags.map((tag: string) => `#${tag}`).join(' ') });
         }
-        
+
+        if (sc.intensity !== undefined && sc.intensity !== null) {
+            const barWrap = infoEl.createDiv('storyteller-intensity-bar');
+            const pct = Math.round(((Number(sc.intensity) + 10) / 20) * 100);
+            const fill = barWrap.createDiv('storyteller-intensity-fill');
+            fill.style.width = `${pct}%`;
+            fill.title = `Intensity: ${sc.intensity}`;
+        }
+
         if (sc.content) {
             const preview = sc.content.length > 80 ? sc.content.substring(0, 80) + '…' : sc.content;
             infoEl.createEl('p', { cls: 'storyteller-scene-preview', text: preview });
@@ -2946,18 +3171,100 @@ export class DashboardView extends ItemView {
         workflowSelectorEl.createSpan({ text: `${t('exportFormat')}: ` });
         
         const engine = new CompileEngine(this.app, this.plugin);
-        const presetWorkflows = engine.getPresetWorkflows();
-        
+        const allWorkflows = engine.getAllWorkflows();
+        const customWorkflows = this.plugin.settings.compileWorkflows ?? [];
+        const selectedWorkflow = engine.resolveWorkflowForDraft(activeDraft);
+
         const workflowSelect = workflowSelectorEl.createEl('select', { cls: 'storyteller-workflow-select' });
-        presetWorkflows.forEach(workflow => {
-            const opt = workflowSelect.createEl('option', { 
-                value: workflow.id, 
-                text: workflow.name 
+        allWorkflows.forEach(workflow => {
+            const isCustom = customWorkflows.some(saved => saved.id === workflow.id);
+            const opt = workflowSelect.createEl('option', {
+                value: workflow.id,
+                text: isCustom ? `${workflow.name} (Custom)` : workflow.name
             });
             if (workflow.description) {
                 opt.title = workflow.description;
             }
+            if (workflow.id === selectedWorkflow.id) {
+                opt.selected = true;
+            }
         });
+
+        const workflowDescEl = compileActionsEl.createDiv('storyteller-workflow-description');
+        const workflowControlsEl = compileActionsEl.createDiv('storyteller-workflow-controls');
+        const editWorkflowBtn = workflowControlsEl.createEl('button');
+        const setDefaultWorkflowBtn = workflowControlsEl.createEl('button');
+        setDefaultWorkflowBtn.setText('Set Default');
+        const deleteWorkflowBtn = workflowControlsEl.createEl('button');
+        deleteWorkflowBtn.setText('Delete Workflow');
+        const workflowStatusEl = compileActionsEl.createDiv('storyteller-workflow-status');
+
+        const refreshWorkflowUi = () => {
+            const currentWorkflow = engine.getWorkflowById(workflowSelect.value) || engine.resolveWorkflowForDraft(activeDraft);
+            const isCustom = customWorkflows.some(saved => saved.id === currentWorkflow.id);
+            workflowDescEl.setText(currentWorkflow.description || '');
+            editWorkflowBtn.setText(isCustom ? 'Edit Workflow' : 'Customize Workflow');
+            deleteWorkflowBtn.style.display = isCustom ? '' : 'none';
+
+            const statusBits: string[] = [isCustom ? 'Custom workflow' : 'Preset workflow'];
+            if (engine.getWorkflowById(this.plugin.settings.defaultCompileWorkflow || '')?.id === currentWorkflow.id) {
+                statusBits.push('Default');
+            }
+            if (activeDraft && engine.getWorkflowById(activeDraft.workflow || '')?.id === currentWorkflow.id) {
+                statusBits.push(`Draft: ${activeDraft.name}`);
+            }
+            workflowStatusEl.setText(statusBits.join(' | '));
+        };
+
+        editWorkflowBtn.addEventListener('click', () => {
+            const currentWorkflow = engine.getWorkflowById(workflowSelect.value) || engine.resolveWorkflowForDraft(activeDraft);
+            const isCustom = customWorkflows.some(saved => saved.id === currentWorkflow.id);
+            const workflowToEdit = isCustom
+                ? this.cloneCompileWorkflow(currentWorkflow)
+                : this.createCustomWorkflowFromSource(currentWorkflow);
+            this.openCompileWorkflowModal(
+                engine,
+                workflowToEdit,
+                isCustom ? 'edit' : 'create',
+                container,
+                activeDraft
+            );
+        });
+
+        setDefaultWorkflowBtn.addEventListener('click', async () => {
+            this.plugin.settings.defaultCompileWorkflow = workflowSelect.value;
+            await this.plugin.saveSettings();
+            refreshWorkflowUi();
+            new Notice('Default compile workflow updated.');
+        });
+
+        deleteWorkflowBtn.addEventListener('click', async () => {
+            const currentWorkflow = engine.getWorkflowById(workflowSelect.value);
+            if (!currentWorkflow) return;
+            if (!customWorkflows.some(saved => saved.id === currentWorkflow.id)) return;
+            if (!confirm(`Delete compile workflow "${currentWorkflow.name}"?`)) return;
+
+            this.plugin.settings.compileWorkflows = customWorkflows.filter(workflow => workflow.id !== currentWorkflow.id);
+            if (this.plugin.settings.defaultCompileWorkflow === currentWorkflow.id) {
+                this.plugin.settings.defaultCompileWorkflow = engine.createDefaultWorkflow().id;
+            }
+            (this.plugin.settings.storyDrafts ?? []).forEach(draft => {
+                if (draft.workflow === currentWorkflow.id) {
+                    draft.workflow = this.plugin.settings.defaultCompileWorkflow;
+                }
+            });
+            await this.plugin.saveSettings();
+            await this.renderCompileContent(container);
+        });
+
+        workflowSelect.onchange = async () => {
+            if (activeDraft) {
+                activeDraft.workflow = workflowSelect.value;
+                activeDraft.modified = new Date().toISOString();
+                await this.plugin.saveSettings();
+            }
+            refreshWorkflowUi();
+        };
         
         // Compile button
         const compileBtn = compileActionsEl.createEl('button', { cls: 'mod-cta' });
@@ -2969,8 +3276,7 @@ export class DashboardView extends ItemView {
                 return;
             }
             
-            const selectedWorkflowId = workflowSelect.value;
-            const workflow = engine.getWorkflowById(selectedWorkflowId) || engine.createDefaultWorkflow();
+            const workflow = engine.resolveWorkflowForDraft(activeDraft, workflowSelect.value);
             
             new Notice(`${t('compiling')} (${workflow.name})`);
             
@@ -2988,14 +3294,7 @@ export class DashboardView extends ItemView {
             }
         };
         
-        // Workflow description
-        const workflowDescEl = compileActionsEl.createDiv('storyteller-workflow-description');
-        workflowDescEl.setText(presetWorkflows[0]?.description || '');
-        
-        workflowSelect.onchange = () => {
-            const selectedWorkflow = presetWorkflows.find(w => w.id === workflowSelect.value);
-            workflowDescEl.setText(selectedWorkflow?.description || '');
-        };
+        refreshWorkflowUi();
 
         // Custom compile steps management
         await this.renderCustomCompileSteps(container);
@@ -3030,22 +3329,19 @@ export class DashboardView extends ItemView {
             // --- Add Extra Info ---
             const extraInfoEl = infoEl.createDiv('storyteller-list-item-extra');
             if (character.race) {
-                extraInfoEl.createSpan({ cls: 'storyteller-char-attr-chip', text: character.race });
+                extraInfoEl.createSpan({ cls: 'storyteller-meta-badge storyteller-char-race-badge', text: character.race });
             }
             if (character.age) {
-                if (character.race) extraInfoEl.appendText(' · ');
-                extraInfoEl.createSpan({ cls: 'storyteller-char-attr-chip', text: character.age });
+                extraInfoEl.createSpan({ cls: 'storyteller-meta-badge storyteller-char-age-badge', text: character.age });
             }
             if (character.status) {
-                if (character.race || character.age) extraInfoEl.appendText(' • ');
-                extraInfoEl.createSpan({ cls: 'storyteller-list-item-status', text: character.status });
+                const statusSlug = character.status.toLowerCase().replace(/\s+/g, '-');
+                extraInfoEl.createSpan({ cls: `storyteller-meta-badge storyteller-char-status-badge storyteller-char-status-${statusSlug}`, text: character.status });
             }
             if (character.affiliation) {
-                if (character.race || character.age || character.status) extraInfoEl.appendText(' • ');
-                extraInfoEl.createSpan({ cls: 'storyteller-list-item-affiliation', text: character.affiliation });
+                extraInfoEl.createSpan({ cls: 'storyteller-meta-badge storyteller-affiliation-badge', text: character.affiliation });
             }
             if (character.balance) {
-                if (character.race || character.age || character.status || character.affiliation) extraInfoEl.appendText(' • ');
                 extraInfoEl.createSpan({ cls: 'storyteller-balance-chip', text: `⚖ ${character.balance}` });
             }
 
@@ -3101,22 +3397,20 @@ export class DashboardView extends ItemView {
             // --- Add Extra Info ---
             const extraInfoEl = infoEl.createDiv('storyteller-list-item-extra');
             if (location.locationType) {
-                extraInfoEl.createSpan({ cls: 'storyteller-list-item-type', text: location.locationType });
+                const typeSlug = location.locationType.toLowerCase().replace(/\s+/g, '-');
+                extraInfoEl.createSpan({ cls: `storyteller-meta-badge storyteller-loc-type-badge storyteller-loctype-${typeSlug}`, text: location.locationType });
             }
             if (location.region) {
-                if (location.locationType) extraInfoEl.appendText(' • '); // Separator
-                extraInfoEl.createSpan({ cls: 'storyteller-list-item-region', text: `(${location.region})` });
+                extraInfoEl.createSpan({ cls: 'storyteller-meta-badge storyteller-loc-region-badge', text: location.region });
             }
             if (location.parentLocation) {
-                if (location.locationType || location.region) extraInfoEl.appendText(' • '); // Separator
-                extraInfoEl.createSpan({ cls: 'storyteller-list-item-parent', text: `within ${location.parentLocation}` });
+                extraInfoEl.createSpan({ cls: 'storyteller-meta-badge storyteller-loc-parent-badge', text: `↑ ${location.parentLocation}` });
             }
             if (location.status) {
-                if (location.locationType || location.region || location.parentLocation) extraInfoEl.appendText(' • '); // Separator
-                extraInfoEl.createSpan({ cls: 'storyteller-list-item-status', text: `[${location.status}]` });
+                const statusSlug = location.status.toLowerCase().replace(/\s+/g, '-');
+                extraInfoEl.createSpan({ cls: `storyteller-meta-badge storyteller-loc-status-badge storyteller-loc-status-${statusSlug}`, text: location.status });
             }
             if (location.balance) {
-                if (location.locationType || location.region || location.parentLocation || location.status) extraInfoEl.appendText(' • ');
                 extraInfoEl.createSpan({ cls: 'storyteller-balance-chip', text: `⚖ ${location.balance}` });
             }
 
@@ -3203,14 +3497,16 @@ export class DashboardView extends ItemView {
 
             // --- Add Extra Info ---
             const extraInfoEl = infoEl.createDiv('storyteller-list-item-extra');
+            if ((event as any).isMilestone) {
+                extraInfoEl.createSpan({ cls: 'storyteller-meta-badge storyteller-event-milestone-badge', text: 'Milestone' });
+            }
             if (event.status) {
-                extraInfoEl.createSpan({ cls: 'storyteller-list-item-status', text: `[${event.status}]` });
+                const statusSlug = event.status.toLowerCase().replace(/\s+/g, '-');
+                extraInfoEl.createSpan({ cls: `storyteller-meta-badge storyteller-event-status-badge storyteller-event-status-${statusSlug}`, text: event.status });
             }
             if (event.location) {
-                if (event.status) extraInfoEl.appendText(' • '); // Separator
-                // Resolve location ID to name if possible
                 const locationName = this.resolveLocationName(event.location, locations);
-                extraInfoEl.createSpan({ cls: 'storyteller-list-item-location', text: `@ ${locationName}` });
+                extraInfoEl.createSpan({ cls: 'storyteller-meta-badge storyteller-event-location-badge', text: locationName });
             }
 
             const actionsEl = itemEl.createDiv('storyteller-list-item-actions');
@@ -3346,6 +3642,68 @@ export class DashboardView extends ItemView {
     
     // ========== Custom Compile Steps =========================================
 
+    private cloneCompileWorkflow(workflow: CompileWorkflow): CompileWorkflow {
+        return {
+            ...workflow,
+            steps: workflow.steps.map(step => ({
+                ...step,
+                options: { ...step.options }
+            }))
+        };
+    }
+
+    private createCustomWorkflowFromSource(source?: CompileWorkflow): CompileWorkflow {
+        const fallback: CompileWorkflow = {
+            id: `workflow-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            name: 'Custom Workflow',
+            description: '',
+            steps: []
+        };
+
+        if (!source) return fallback;
+
+        const cloned = this.cloneCompileWorkflow(source);
+        return {
+            ...cloned,
+            id: `workflow-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            name: `${source.name} Copy`
+        };
+    }
+
+    private openCompileWorkflowModal(
+        engine: CompileEngineType,
+        workflow: CompileWorkflow,
+        mode: 'create' | 'edit',
+        refreshContainer: HTMLElement,
+        activeDraft?: StoryDraft
+    ): void {
+        import('../modals/CompileWorkflowModal').then(({ CompileWorkflowModal }) => {
+            new CompileWorkflowModal(this.app, {
+                workflow,
+                availableSteps: engine.getAvailableSteps(),
+                mode,
+                onSave: async (savedWorkflow) => {
+                    const workflows = [...(this.plugin.settings.compileWorkflows ?? [])];
+                    const existingIndex = workflows.findIndex(workflow => workflow.id === savedWorkflow.id);
+                    if (existingIndex >= 0) {
+                        workflows[existingIndex] = savedWorkflow;
+                    } else {
+                        workflows.push(savedWorkflow);
+                    }
+                    this.plugin.settings.compileWorkflows = workflows;
+
+                    if (activeDraft) {
+                        activeDraft.workflow = savedWorkflow.id;
+                        activeDraft.modified = new Date().toISOString();
+                    }
+
+                    await this.plugin.saveSettings();
+                    await this.renderCompileContent(refreshContainer);
+                }
+            }).open();
+        });
+    }
+
     private async renderCustomCompileSteps(container: HTMLElement): Promise<void> {
         const section = container.createDiv('storyteller-compile-custom-steps');
 
@@ -3388,8 +3746,13 @@ export class DashboardView extends ItemView {
             setIcon(deleteBtn, 'trash');
             deleteBtn.title = 'Delete step';
             deleteBtn.addEventListener('click', async () => {
+                const stepTypeToRemove = `custom:${step.id}`;
                 this.plugin.settings.customCompileSteps = (this.plugin.settings.customCompileSteps ?? [])
                     .filter(s => s.id !== step.id);
+                this.plugin.settings.compileWorkflows = (this.plugin.settings.compileWorkflows ?? []).map(workflow => ({
+                    ...workflow,
+                    steps: workflow.steps.filter(savedStep => savedStep.stepType !== stepTypeToRemove)
+                }));
                 await this.plugin.saveSettings();
                 await this.renderCompileContent(container);
             });
@@ -3402,7 +3765,7 @@ export class DashboardView extends ItemView {
     ): void {
         import('../modals/CustomCompileStepModal').then(({ CustomCompileStepModal }) => {
             new CustomCompileStepModal(this.app, existing, async (saved) => {
-                const steps = this.plugin.settings.customCompileSteps ?? [];
+                const steps = [...(this.plugin.settings.customCompileSteps ?? [])];
                 const idx = steps.findIndex(s => s.id === saved.id);
                 if (idx >= 0) steps[idx] = saved;
                 else steps.push(saved);
@@ -3465,9 +3828,9 @@ export class DashboardView extends ItemView {
             infoEl.createEl('strong', { text: culture.name });
 
             const meta = infoEl.createDiv('storyteller-list-item-extra');
-            if (culture.governmentType) meta.createSpan({ text: `Gov: ${culture.governmentType}` });
-            if (culture.techLevel) meta.createSpan({ text: ` • Tech: ${culture.techLevel}` });
-            if (culture.balance) meta.createSpan({ cls: 'storyteller-balance-chip', text: ` • ⚖ ${culture.balance}` });
+            if (culture.governmentType) meta.createSpan({ cls: 'storyteller-meta-badge storyteller-gov-badge', text: culture.governmentType });
+            if (culture.techLevel) meta.createSpan({ cls: 'storyteller-meta-badge storyteller-tech-badge', text: culture.techLevel });
+            if (culture.balance) meta.createSpan({ cls: 'storyteller-balance-chip', text: `⚖ ${culture.balance}` });
 
             if (culture.values) {
                 const preview = culture.values.length > 120 ? culture.values.substring(0, 120) + '…' : culture.values;
@@ -3669,8 +4032,11 @@ export class DashboardView extends ItemView {
             infoEl.createEl('strong', { text: magicSystem.name });
 
             const meta = infoEl.createDiv('storyteller-list-item-extra');
-            if (magicSystem.systemType) meta.createSpan({ text: `Type: ${magicSystem.systemType}` });
-            if (magicSystem.rarity) meta.createSpan({ text: ` • Rarity: ${magicSystem.rarity}` });
+            if (magicSystem.systemType) meta.createSpan({ cls: 'storyteller-meta-badge storyteller-magic-type-badge', text: magicSystem.systemType });
+            if (magicSystem.rarity) {
+                const raritySlug = magicSystem.rarity.toLowerCase();
+                meta.createSpan({ cls: `storyteller-meta-badge storyteller-rarity-${raritySlug}`, text: magicSystem.rarity });
+            }
 
             if (magicSystem.rules) {
                 const preview = magicSystem.rules.length > 120 ? magicSystem.rules.substring(0, 120) + '…' : magicSystem.rules;
@@ -3801,6 +4167,167 @@ export class DashboardView extends ItemView {
             });
             this.addOpenFileButton(actionsEl, entry.filePath);
         });
+    }
+
+    // ─── Books ─────────────────────────────────────────────────────────────────
+
+    async renderBooksContent(container: HTMLElement) {
+        container.empty();
+        this.renderHeaderControls(container, 'Books', async (filter: string) => {
+            this.currentFilter = filter;
+            await this.renderBooksList(container);
+        }, () => {
+            import('../modals/BookModal').then(({ BookModal }) => {
+                new BookModal(this.app, this.plugin, null, async (book) => {
+                    await this.plugin.saveBook(book);
+                    new Notice(`Book "${book.name}" created.`);
+                    await this.renderBooksList(container);
+                }).open();
+            });
+        }, 'New Book');
+
+        await this.renderBooksList(container);
+    }
+
+    private async renderBooksList(container: HTMLElement) {
+        const existingListContainer = container.querySelector('.storyteller-list-container');
+        if (existingListContainer) existingListContainer.remove();
+
+        const f = this.currentFilter.toLowerCase();
+        const allBooks = await this.plugin.listBooks();
+        const allChapters = await this.plugin.listChapters();
+        const allScenes = await this.plugin.listScenes();
+
+        const books = allBooks.filter(b =>
+            b.name.toLowerCase().includes(f) ||
+            (b.series || '').toLowerCase().includes(f) ||
+            (b.genre || '').toLowerCase().includes(f) ||
+            (b.description || '').toLowerCase().includes(f)
+        );
+
+        const listContainer = container.createDiv('storyteller-list-container');
+        if (books.length === 0) {
+            listContainer.createEl('p', { text: 'No books found.' + (f ? ' (filter active)' : '') });
+            return;
+        }
+
+        for (const book of books) {
+            const bookChapters = allChapters
+                .filter(c => c.bookId === book.id)
+                .sort((a, b) => (a.number ?? 999) - (b.number ?? 999));
+            const bookSceneCount = allScenes.filter(s =>
+                bookChapters.some(c => c.id === s.chapterId)
+            ).length;
+
+            const itemEl = listContainer.createDiv('storyteller-list-item storyteller-book-card');
+
+            // Cover image
+            const pfpContainer = itemEl.createDiv('storyteller-list-item-pfp');
+            if (book.coverImagePath) {
+                const imgEl = pfpContainer.createEl('img');
+                try { imgEl.src = this.getImageSrc(book.coverImagePath); imgEl.alt = book.name; } catch (_) { pfpContainer.createSpan({ text: '📖' }); }
+            } else {
+                pfpContainer.createDiv({ cls: 'storyteller-pfp-placeholder', text: (book.bookNumber ?? '?').toString() });
+            }
+
+            const infoEl = itemEl.createDiv('storyteller-list-item-info');
+
+            // Title row
+            const titleRow = infoEl.createDiv('storyteller-list-item-title');
+            titleRow.createEl('strong', { text: book.name, cls: 'storyteller-list-item-name' });
+            if (book.series) {
+                titleRow.createSpan({ cls: 'storyteller-meta-badge storyteller-book-badge', text: book.series });
+            }
+            if (book.bookNumber != null) {
+                titleRow.createSpan({ cls: 'storyteller-meta-badge', text: `Book ${book.bookNumber}` });
+            }
+            if (book.status) {
+                const statusSlug = book.status.toLowerCase().replace(/\s+/g, '-');
+                titleRow.createSpan({ cls: `storyteller-meta-badge storyteller-book-status-${statusSlug}`, text: book.status });
+            }
+
+            // Stats
+            const statsRow = infoEl.createDiv('storyteller-list-item-extra');
+            statsRow.createSpan({ cls: 'storyteller-meta-badge', text: `${bookChapters.length} chapter${bookChapters.length !== 1 ? 's' : ''}` });
+            statsRow.createSpan({ cls: 'storyteller-meta-badge', text: `${bookSceneCount} scene${bookSceneCount !== 1 ? 's' : ''}` });
+            if (book.genre) statsRow.createSpan({ cls: 'storyteller-meta-badge', text: book.genre });
+
+            // Description preview
+            if (book.description) {
+                const preview = book.description.length > 100 ? book.description.substring(0, 100) + '…' : book.description;
+                infoEl.createEl('p', { text: preview, cls: 'storyteller-list-item-preview' });
+            }
+
+            // Actions
+            const actionsEl = itemEl.createDiv('storyteller-list-item-actions');
+
+            // Compile Book button
+            const compileBtn = actionsEl.createEl('button', { cls: 'storyteller-action-btn' });
+            setIcon(compileBtn, 'book-open');
+            compileBtn.title = 'Compile this book into a draft';
+            compileBtn.addEventListener('click', async () => {
+                const sceneRefs: IndentedSceneRef[] = [];
+                for (const ch of bookChapters) {
+                    const chScenes = allScenes
+                        .filter(s => s.chapterId === ch.id)
+                        .sort((a, b) => (a.priority ?? 999) - (b.priority ?? 999));
+                    for (const sc of chScenes) {
+                        sceneRefs.push({ sceneId: sc.id ?? sc.name, indent: 0, includeInCompile: sc.includeInCompile ?? true });
+                    }
+                }
+                if (sceneRefs.length === 0) {
+                    new Notice(`No scenes found for "${book.name}". Add chapters and scenes first.`);
+                    return;
+                }
+                const activeStory = this.plugin.settings.stories?.find(s => s.id === this.plugin.settings.activeStoryId);
+                const now = new Date().toISOString();
+                const draft: StoryDraft = {
+                    id: Date.now().toString(36) + Math.random().toString(36).substr(2, 5),
+                    storyId: this.plugin.settings.activeStoryId ?? 'default',
+                    name: `${book.name} — Draft`,
+                    draftNumber: Date.now(),
+                    sceneOrder: sceneRefs,
+                    created: now,
+                    modified: now,
+                };
+                if (!this.plugin.settings.storyDrafts) this.plugin.settings.storyDrafts = [];
+                this.plugin.settings.storyDrafts.push(draft);
+                await this.plugin.saveSettings();
+                new Notice(`Draft created for "${book.name}" with ${sceneRefs.length} scenes. Switch to the Compile tab.`);
+            });
+
+            this.addEditButton(actionsEl, () => {
+                import('../modals/BookModal').then(({ BookModal }) => {
+                    new BookModal(this.app, this.plugin, book, async (updated) => {
+                        await this.plugin.saveBook(updated);
+                        new Notice(`Book "${updated.name}" saved.`);
+                        await this.renderBooksList(container);
+                    }, async (toDelete) => {
+                        if (toDelete.filePath) await this.plugin.deleteBook(toDelete.filePath);
+                        await this.renderBooksList(container);
+                    }).open();
+                });
+            });
+            this.addDeleteButton(actionsEl, async () => {
+                if (book.filePath && confirm(`Delete book "${book.name}"? Chapters will be unlinked.`)) {
+                    await this.plugin.deleteBook(book.filePath);
+                    await this.renderBooksList(container);
+                }
+            });
+            this.addOpenFileButton(actionsEl, book.filePath);
+
+            // Nested chapter list (compact, expand/collapse)
+            if (bookChapters.length > 0) {
+                const chaptersContainer = itemEl.createDiv('storyteller-book-chapters-list');
+                for (const ch of bookChapters) {
+                    const chSceneCount = allScenes.filter(s => s.chapterId === ch.id).length;
+                    const chRow = chaptersContainer.createDiv('storyteller-book-chapter-row');
+                    chRow.createSpan({ cls: 'storyteller-book-chapter-num', text: ch.number != null ? `Ch.${ch.number}` : '—' });
+                    chRow.createSpan({ cls: 'storyteller-book-chapter-name', text: ch.name });
+                    chRow.createSpan({ cls: 'storyteller-meta-badge', text: `${chSceneCount}sc` });
+                }
+            }
+        }
     }
 
     /**
@@ -4317,6 +4844,37 @@ export class DashboardView extends ItemView {
         });
     }
 
+    // ─────────────────────────────────────────────────────────────────────────
+    //  Writing tab — alternate view renderers (delegates to WritingViewRenderers)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    private _getWritingRenderers(): WritingViewRenderers {
+        if (!this._writingRenderers) {
+            this._writingRenderers = new WritingViewRenderers(this.app, this.plugin);
+        }
+        return this._writingRenderers;
+    }
+
+    /** Render Kanban board — delegates to WritingViewRenderers */
+    private async renderKanbanBoard(container: HTMLElement) {
+        await this._getWritingRenderers().renderKanbanBoard(container, this.currentFilter);
+    }
+
+    /** Render intensity/emotion arc chart — delegates to WritingViewRenderers */
+    private async renderArcChart(container: HTMLElement) {
+        await this._getWritingRenderers().renderArcChart(container);
+    }
+
+    /** Render character presence heatmap — delegates to WritingViewRenderers */
+    private async renderHeatmap(container: HTMLElement) {
+        await this._getWritingRenderers().renderHeatmap(container);
+    }
+
+    /** Detect and surface potential plot holes — delegates to WritingViewRenderers */
+    private async renderPlotHoles(container: HTMLElement) {
+        await this._getWritingRenderers().renderPlotHoles(container);
+    }
+
     async onClose() {
         // Clean up file input if it exists
         this.fileInput?.remove();
@@ -4343,8 +4901,106 @@ export class DashboardView extends ItemView {
             this.networkGraphRenderer.destroy();
             this.networkGraphRenderer = null;
         }
-        
+
         // Event listeners are automatically cleaned up by registerEvent()
+    }
+
+    // ─── Campaign Tab ─────────────────────────────────────────────────────────
+
+    async renderCampaignContent(container: HTMLElement): Promise<void> {
+        container.empty();
+
+        this.renderHeaderControls(container, 'Campaign', async (filter: string) => {
+            this.currentFilter = filter;
+            await this.renderCampaignList(container);
+        }, () => {
+            import('../modals/CampaignSessionModal').then(({ CampaignSessionModal }) => {
+                new CampaignSessionModal(this.app, this.plugin, async (session) => {
+                    await this.renderCampaignList(container);
+                }).open();
+            });
+        }, 'New Session');
+
+        // Scene graph secondary button — inject into header after render
+        const headerRow = container.querySelector('.storyteller-header-controls') as HTMLElement | null;
+        if (headerRow) {
+            const graphBtn = headerRow.createEl('button', { cls: 'storyteller-header-secondary-btn', text: 'Scene Graph' });
+            setIcon(graphBtn.createSpan(), 'git-branch');
+            graphBtn.addEventListener('click', () => {
+                this.plugin.activateSceneGraphView();
+            });
+        }
+
+        await this.renderCampaignList(container);
+    }
+
+    private async renderCampaignList(container: HTMLElement): Promise<void> {
+        const existingList = container.querySelector('.storyteller-list-container');
+        if (existingList) existingList.remove();
+
+        let sessions: import('../types').CampaignSession[] = [];
+        try { sessions = await this.plugin.listSessions(); } catch { /* no active story */ }
+
+        const f = this.currentFilter.toLowerCase();
+        const filtered = sessions.filter(s =>
+            s.name.toLowerCase().includes(f) ||
+            (s.currentSceneName ?? '').toLowerCase().includes(f)
+        );
+
+        const listContainer = container.createDiv('storyteller-list-container');
+
+        if (filtered.length === 0) {
+            listContainer.createEl('p', { text: 'No sessions found. Click "New Session" to start a campaign.' });
+            return;
+        }
+
+        for (const sess of filtered) {
+            const itemEl = listContainer.createDiv('storyteller-list-item');
+
+            const iconEl = itemEl.createDiv('storyteller-list-item-pfp');
+            const iconInner = iconEl.createDiv({ cls: 'storyteller-pfp-placeholder' });
+            setIcon(iconInner, 'swords');
+
+            const infoEl = itemEl.createDiv('storyteller-list-item-info');
+            const titleRow = infoEl.createDiv('storyteller-list-item-title');
+            titleRow.createEl('strong', { text: sess.name, cls: 'storyteller-list-item-name' });
+            const statusSlug = (sess.status ?? 'active').replace(/\s+/g, '-');
+            titleRow.createSpan({ cls: `storyteller-meta-badge storyteller-campaign-status-${statusSlug}`, text: sess.status ?? 'active' });
+
+            const extraEl = infoEl.createDiv('storyteller-list-item-extra');
+            if (sess.currentSceneName) extraEl.createSpan({ cls: 'storyteller-meta-badge', text: `Scene: ${sess.currentSceneName}` });
+            if (sess.partyCharacterNames?.length) extraEl.createSpan({ cls: 'storyteller-meta-badge', text: `Party: ${sess.partyCharacterNames.join(', ')}` });
+            if (sess.modified) extraEl.createSpan({ cls: 'storyteller-meta-badge', text: new Date(sess.modified).toLocaleDateString() });
+
+            const actionsEl = itemEl.createDiv('storyteller-list-item-actions');
+
+            const resumeBtn = actionsEl.createEl('button', { cls: 'storyteller-list-item-btn mod-cta', text: 'Resume' });
+            resumeBtn.addEventListener('click', () => {
+                import('../views/CampaignView').then(({ VIEW_TYPE_CAMPAIGN }) => {
+                    this.plugin.activateCampaignView(sess);
+                });
+            });
+
+            if (sess.filePath) {
+                const openBtn = actionsEl.createEl('button', { cls: 'storyteller-list-item-btn' });
+                setIcon(openBtn, 'file-text');
+                openBtn.setAttribute('aria-label', 'Open session note');
+                openBtn.addEventListener('click', () => {
+                    const file = this.app.vault.getAbstractFileByPath(sess.filePath!);
+                    if (file) this.app.workspace.openLinkText(file.name, '', true);
+                });
+
+                const delBtn = actionsEl.createEl('button', { cls: 'storyteller-list-item-btn mod-warning' });
+                setIcon(delBtn, 'trash');
+                delBtn.setAttribute('aria-label', 'Delete session');
+                delBtn.addEventListener('click', async () => {
+                    if (confirm(`Delete session "${sess.name}"?`)) {
+                        await this.plugin.deleteSession(sess.filePath!);
+                        await this.renderCampaignList(container);
+                    }
+                });
+            }
+        }
     }
 }
 

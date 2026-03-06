@@ -43,9 +43,35 @@ function inferPrecisionFromLuxon(dt: DateTime): ParsedPrecision {
   return 'year';
 }
 
-/** Try CE/BCE patterns first, then Luxon ISO, SQL, Chrono (casual), then ad-hoc formats. */export function parseEventDate(input?: string, opts: ParseOptions = {}): ParsedEventDate {
-  if (!input || !input.trim()) return { error: 'empty' };
-  const text = input.trim();
+function coerceDateInput(input: unknown): string | undefined {
+  if (input == null) return undefined;
+  if (typeof input === 'string') return input.trim();
+  if (input instanceof Date) return input.toISOString();
+  if (typeof input === 'number' || typeof input === 'bigint') return String(input);
+  if (Array.isArray(input)) {
+    const joined = input
+      .map((part) => (part == null ? '' : String(part).trim()))
+      .filter(Boolean)
+      .join(' to ');
+    return joined || undefined;
+  }
+  if (typeof input === 'object') {
+    const maybe = input as Record<string, unknown>;
+    // Common range-like shapes in YAML/JSON frontmatter
+    if (typeof maybe.dateTime === 'string') return maybe.dateTime.trim();
+    const start = maybe.start != null ? String(maybe.start).trim() : '';
+    const end = maybe.end != null ? String(maybe.end).trim() : '';
+    if (start && end) return `${start} to ${end}`;
+    if (start) return start;
+    if (end) return end;
+  }
+  const text = String(input).trim();
+  return text && text !== '[object Object]' ? text : undefined;
+}
+
+/** Try CE/BCE patterns first, then Luxon ISO, SQL, Chrono (casual), then ad-hoc formats. */export function parseEventDate(input?: unknown, opts: ParseOptions = {}): ParsedEventDate {
+  const text = coerceDateInput(input);
+  if (!text) return { error: 'empty' };
   const approximate = APPROX_RE.test(text);
 
   // 0) CE date detection

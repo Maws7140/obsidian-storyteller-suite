@@ -1,4 +1,4 @@
-import { App, Setting, Notice, TextAreaComponent, parseYaml } from 'obsidian';
+import { App, Setting, Notice, TextAreaComponent, parseYaml, setIcon } from 'obsidian';
 import type { Culture } from '../types';
 import type StorytellerSuitePlugin from '../main';
 import { ResponsiveModal } from './ResponsiveModal';
@@ -49,10 +49,15 @@ export class CultureModal extends ResponsiveModal {
 
         if (!this.culture.customFields) this.culture.customFields = {};
         if (!this.culture.languages) this.culture.languages = [];
-        if (!this.culture.linkedLocations) this.culture.linkedLocations = [];
-        if (!this.culture.linkedCharacters) this.culture.linkedCharacters = [];
-        if (!this.culture.linkedEvents) this.culture.linkedEvents = [];
-        if (!this.culture.relatedCultures) this.culture.relatedCultures = [];
+        // Normalize: bad sync data may have stored scalar strings instead of arrays —
+        // reset any non-array value so the chip renderer doesn't iterate over characters
+        if (!Array.isArray(this.culture.linkedLocations)) this.culture.linkedLocations = [];
+        if (!Array.isArray(this.culture.linkedCharacters)) this.culture.linkedCharacters = [];
+        if (!Array.isArray(this.culture.linkedEvents)) this.culture.linkedEvents = [];
+        if (!Array.isArray(this.culture.linkedEconomies)) this.culture.linkedEconomies = [];
+        if (!Array.isArray(this.culture.relatedCultures)) this.culture.relatedCultures = [];
+        if (!Array.isArray(this.culture.linkedMagicSystems)) this.culture.linkedMagicSystems = [];
+        if (!Array.isArray(this.culture.linkedItems)) this.culture.linkedItems = [];
         if (!this.culture.groups) this.culture.groups = [];
         if (!this.culture.connections) this.culture.connections = [];
 
@@ -365,6 +370,122 @@ export class CultureModal extends ResponsiveModal {
                 text.inputEl.style.width = '100%';
             });
 
+        // --- Linked Characters ---
+        contentEl.createEl('h3', { text: 'Characters' });
+        const charChips = contentEl.createDiv('storyteller-linked-chips');
+        const renderCharChips = () => {
+            charChips.empty();
+            for (const name of (this.culture.linkedCharacters ?? [])) {
+                const chip = charChips.createSpan({ cls: 'storyteller-linked-chip' });
+                chip.createSpan({ text: name });
+                const rm = chip.createEl('button', { cls: 'storyteller-chip-remove', attr: { 'aria-label': 'Remove' } });
+                setIcon(rm, 'x');
+                rm.addEventListener('click', () => {
+                    this.culture.linkedCharacters = this.culture.linkedCharacters!.filter(n => n !== name);
+                    renderCharChips();
+                });
+            }
+        };
+        renderCharChips();
+        const allCharacters = await this.plugin.listCharacters();
+        new Setting(contentEl)
+            .setName('Add character')
+            .addDropdown(dd => {
+                dd.addOption('', '— select character —');
+                allCharacters.forEach(c => dd.addOption(c.name, c.name));
+                dd.onChange(val => {
+                    if (val && !(this.culture.linkedCharacters ?? []).includes(val)) {
+                        if (!this.culture.linkedCharacters) this.culture.linkedCharacters = [];
+                        this.culture.linkedCharacters.push(val);
+                        renderCharChips();
+                    }
+                    dd.setValue('');
+                });
+            });
+
+        // --- Linked Locations ---
+        contentEl.createEl('h3', { text: 'Locations' });
+        const locChips = contentEl.createDiv('storyteller-linked-chips');
+        const renderLocChips = () => {
+            locChips.empty();
+            for (const name of (this.culture.linkedLocations ?? [])) {
+                const chip = locChips.createSpan({ cls: 'storyteller-linked-chip' });
+                chip.createSpan({ text: name });
+                const rm = chip.createEl('button', { cls: 'storyteller-chip-remove', attr: { 'aria-label': 'Remove' } });
+                setIcon(rm, 'x');
+                rm.addEventListener('click', () => {
+                    this.culture.linkedLocations = this.culture.linkedLocations!.filter(n => n !== name);
+                    renderLocChips();
+                });
+            }
+        };
+        renderLocChips();
+        const allLocations = await this.plugin.listLocations();
+        new Setting(contentEl)
+            .setName('Add location')
+            .addDropdown(dd => {
+                dd.addOption('', '— select location —');
+                allLocations.forEach(l => dd.addOption(l.name, l.name));
+                dd.onChange(val => {
+                    if (val && !(this.culture.linkedLocations ?? []).includes(val)) {
+                        if (!this.culture.linkedLocations) this.culture.linkedLocations = [];
+                        this.culture.linkedLocations.push(val);
+                        renderLocChips();
+                    }
+                    dd.setValue('');
+                });
+            });
+
+        // --- Finances ---
+        contentEl.createEl('h3', { text: 'Finances' });
+        new Setting(contentEl)
+            .setName('Collective Wealth')
+            .setDesc('Economic wealth of this culture (e.g. "10000gp"). Auto-computed from ledger blocks if present.')
+            .addText(text => text
+                .setValue(this.culture.balance || '')
+                .onChange(val => { this.culture.balance = val.trim() || undefined; })
+            );
+        if (this.culture.ledger && this.culture.ledger.length > 0) {
+            contentEl.createDiv('storyteller-ledger-preview').createEl('p', {
+                cls: 'storyteller-ledger-note',
+                text: `${this.culture.ledger.length} transaction(s) in note`
+            });
+        }
+
+        // --- Linked Economies ---
+        contentEl.createEl('h3', { text: 'Economies' });
+        if (!this.culture.linkedEconomies) this.culture.linkedEconomies = [];
+        const cultEconChips = contentEl.createDiv('storyteller-linked-chips');
+        const renderCultEconChips = () => {
+            cultEconChips.empty();
+            for (const name of (this.culture.linkedEconomies ?? [])) {
+                const chip = cultEconChips.createSpan({ cls: 'storyteller-linked-chip' });
+                chip.createSpan({ text: name });
+                const rm = chip.createEl('button', { cls: 'storyteller-chip-remove', attr: { 'aria-label': 'Remove' } });
+                setIcon(rm, 'x');
+                rm.addEventListener('click', () => {
+                    this.culture.linkedEconomies = this.culture.linkedEconomies!.filter(n => n !== name);
+                    renderCultEconChips();
+                });
+            }
+        };
+        renderCultEconChips();
+        const allEconomiesForCult = await this.plugin.listEconomies();
+        new Setting(contentEl)
+            .setName('Add economy')
+            .addDropdown(dd => {
+                dd.addOption('', '— select economy —');
+                allEconomiesForCult.forEach(e => dd.addOption(e.name, e.name));
+                dd.onChange(val => {
+                    if (val && !(this.culture.linkedEconomies ?? []).includes(val)) {
+                        if (!this.culture.linkedEconomies) this.culture.linkedEconomies = [];
+                        this.culture.linkedEconomies.push(val);
+                        renderCultEconChips();
+                    }
+                    dd.setValue('');
+                });
+            });
+
         // Buttons
         const buttonsSetting = new Setting(contentEl);
 
@@ -451,6 +572,7 @@ export class CultureModal extends ResponsiveModal {
         const { templateId, yamlContent, markdownContent, sectionContent, customYamlFields, id, filePath, ...rest } = templateCulture as any;
 
         let fields: any = { ...rest };
+        let allTemplateSections: Record<string, string> = {};
 
         // Handle new format: yamlContent (parse YAML string)
         if (yamlContent && typeof yamlContent === 'string') {
@@ -472,6 +594,7 @@ export class CultureModal extends ResponsiveModal {
         if (markdownContent && typeof markdownContent === 'string') {
             try {
                 const parsedSections = parseSectionsFromMarkdown(markdownContent);
+                allTemplateSections = parsedSections;
 
                 // Map well-known sections to entity properties
                 if ('Description' in parsedSections) {
@@ -499,6 +622,7 @@ export class CultureModal extends ResponsiveModal {
             }
         } else if (sectionContent) {
             // Old format: apply section content
+            for (const [k, v] of Object.entries(sectionContent)) { allTemplateSections[k as string] = v as string; }
             for (const [sectionName, content] of Object.entries(sectionContent)) {
                 const propName = sectionName.toLowerCase().replace(/\s+/g, '');
                 (fields as any)[propName] = content;
@@ -507,12 +631,21 @@ export class CultureModal extends ResponsiveModal {
 
         // Apply all fields to the culture
         Object.assign(this.culture, fields);
+        if (Object.keys(allTemplateSections).length > 0) {
+            Object.defineProperty(this.culture, '_templateSections', {
+                value: allTemplateSections,
+                enumerable: false,
+                writable: true,
+                configurable: true
+            });
+        }
         console.log('[CultureModal] Final culture after template:', this.culture);
 
         // Clear relationships as they reference template entities
         this.culture.linkedLocations = [];
         this.culture.linkedCharacters = [];
         this.culture.linkedEvents = [];
+        this.culture.linkedEconomies = [];
         this.culture.relatedCultures = [];
         this.culture.parentCulture = undefined;
         this.culture.groups = [];

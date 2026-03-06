@@ -614,11 +614,10 @@ export class MapView extends ItemView {
             const instruction = this.placementOverlay.createDiv('storyteller-placement-instruction');
 
             const entityTypeText = entityType.charAt(0).toUpperCase() + entityType.slice(1);
-            instruction.innerHTML = `
-                <div class="placement-icon">📍</div>
-                <div class="placement-text">Click map to place ${entityTypeText}</div>
-                <div class="placement-hint">Press ESC to cancel</div>
-            `;
+            const placementIcon = instruction.createDiv('placement-icon');
+            setIcon(placementIcon, 'map-pin');
+            instruction.createDiv({ text: `Click map to place ${entityTypeText}`, cls: 'placement-text' });
+            instruction.createDiv({ text: 'Press ESC to cancel', cls: 'placement-hint' });
         }
 
         // Change cursor to crosshair

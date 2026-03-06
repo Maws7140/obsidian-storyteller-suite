@@ -92,6 +92,7 @@ export class SceneOrderManager {
             name,
             draftNumber: maxDraftNumber + 1,
             sceneOrder: [],
+            workflow: this.plugin.settings.defaultCompileWorkflow,
             created: now,
             modified: now
         };
@@ -101,6 +102,7 @@ export class SceneOrderManager {
             const sourceDraft = this.getStoryDrafts().find(d => d.id === copyFromDraftId);
             if (sourceDraft) {
                 newDraft.sceneOrder = JSON.parse(JSON.stringify(sourceDraft.sceneOrder));
+                newDraft.workflow = sourceDraft.workflow || this.plugin.settings.defaultCompileWorkflow;
             }
         } else {
             // Build scene order from existing chapters and scenes
@@ -613,7 +615,7 @@ export class SceneOrderManager {
      */
     async navigateToNextScene(): Promise<boolean> {
         const currentScene = await this.getCurrentScene();
-        if (!currentScene || !currentScene.id) return false;
+        if (!currentScene) return false;
 
         const story = this.getStoryForScene(currentScene);
         if (!story) return false;
@@ -621,7 +623,8 @@ export class SceneOrderManager {
         const draft = this.getActiveDraft(story);
         if (!draft) return false;
 
-        const currentIndex = draft.sceneOrder.findIndex(s => s.sceneId === currentScene.id);
+        const sceneKey = currentScene.id || currentScene.name;
+        const currentIndex = draft.sceneOrder.findIndex(s => s.sceneId === sceneKey);
         if (currentIndex < 0 || currentIndex >= draft.sceneOrder.length - 1) return false;
 
         const nextRef = draft.sceneOrder[currentIndex + 1];
@@ -641,7 +644,7 @@ export class SceneOrderManager {
      */
     async navigateToPreviousScene(): Promise<boolean> {
         const currentScene = await this.getCurrentScene();
-        if (!currentScene || !currentScene.id) return false;
+        if (!currentScene) return false;
 
         const story = this.getStoryForScene(currentScene);
         if (!story) return false;
@@ -649,7 +652,8 @@ export class SceneOrderManager {
         const draft = this.getActiveDraft(story);
         if (!draft) return false;
 
-        const currentIndex = draft.sceneOrder.findIndex(s => s.sceneId === currentScene.id);
+        const sceneKey = currentScene.id || currentScene.name;
+        const currentIndex = draft.sceneOrder.findIndex(s => s.sceneId === sceneKey);
         if (currentIndex <= 0) return false;
 
         const prevRef = draft.sceneOrder[currentIndex - 1];

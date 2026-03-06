@@ -29,6 +29,9 @@ export class EntityLinker {
     ): Promise<void> {
         const entity = await this.findEntity(entityType, entityName);
         if (!entity || !entity.filePath) return;
+        const maps = await this.plugin.listMaps().catch(() => [] as Map[]);
+        const linkedMap = maps.find(map => (map.id ?? map.name) === mapId);
+        const mapRef = linkedMap?.name ?? mapId;
 
         const file = this.app.vault.getAbstractFileByPath(entity.filePath);
         if (!(file instanceof TFile)) return;
@@ -42,9 +45,9 @@ export class EntityLinker {
         // Update frontmatter
         const updatedFrontmatter: Record<string, unknown> = {
             ...existingFrontmatter,
-            mapId: mapId,
+            mapId: mapRef,
             markerId: markerId,
-            relatedMapIds: this.addToArray(existingFrontmatter.relatedMapIds as string[] | undefined, mapId)
+            relatedMapIds: this.addToArray(existingFrontmatter.relatedMapIds as string[] | undefined, mapRef)
         };
 
         // Add coordinates if provided
@@ -86,6 +89,9 @@ export class EntityLinker {
     ): Promise<void> {
         const entity = await this.findEntity(entityType, entityName);
         if (!entity || !entity.filePath) return;
+        const maps = await this.plugin.listMaps().catch(() => [] as Map[]);
+        const linkedMap = maps.find(map => (map.id ?? map.name) === mapId);
+        const mapRef = linkedMap?.name ?? mapId;
 
         const file = this.app.vault.getAbstractFileByPath(entity.filePath);
         if (!(file instanceof TFile)) return;
@@ -96,14 +102,14 @@ export class EntityLinker {
         const existingFrontmatter = parseFrontmatterFromContent(content) || {};
 
         // Remove mapId if it matches
-        if (existingFrontmatter.mapId === mapId) {
+        if (existingFrontmatter.mapId === mapId || existingFrontmatter.mapId === mapRef) {
             delete existingFrontmatter.mapId;
             delete existingFrontmatter.markerId;
         }
 
         // Remove from relatedMapIds
         if (Array.isArray(existingFrontmatter.relatedMapIds)) {
-            const filtered = (existingFrontmatter.relatedMapIds as string[]).filter(id => id !== mapId);
+            const filtered = (existingFrontmatter.relatedMapIds as string[]).filter(id => id !== mapId && id !== mapRef);
             if (filtered.length === 0) {
                 delete existingFrontmatter.relatedMapIds;
             } else {

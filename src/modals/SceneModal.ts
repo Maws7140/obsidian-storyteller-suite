@@ -5,12 +5,14 @@ import StorytellerSuitePlugin from '../main';
 import { Scene } from '../types';
 import { parseSectionsFromMarkdown } from '../yaml/EntitySections';
 import { CharacterSuggestModal } from './CharacterSuggestModal';
+import { SceneSuggestModal } from './SceneSuggestModal';
 import { LocationSuggestModal } from './LocationSuggestModal';
 import { EventSuggestModal } from './EventSuggestModal';
 import { addImageSelectionButtons } from '../utils/ImageSelectionHelper';
 import { GroupSuggestModal } from './GroupSuggestModal';
 import { TemplatePickerModal } from './TemplatePickerModal';
 import { Template } from '../templates/TemplateTypes';
+import { getTrackedItemOwner } from '../utils/ItemOwnership';
 
 export type SceneModalSubmitCallback = (sc: Scene) => Promise<void>;
 export type SceneModalDeleteCallback = (sc: Scene) => Promise<void>;
@@ -62,7 +64,8 @@ export class SceneModal extends Modal {
                                             new Notice('Error applying default template');
                                         }
                                         resolve();
-                                    }
+                                    },
+                                    resolve
                                 ).open();
                             });
                         });
@@ -113,7 +116,8 @@ export class SceneModal extends Modal {
                                                         new Notice('Error applying template');
                                                     }
                                                     resolve();
-                                                }
+                                                },
+                                                resolve
                                             ).open();
                                         });
                                     });
@@ -159,6 +163,15 @@ export class SceneModal extends Modal {
             });
 
         new Setting(contentEl)
+            .setName('Date')
+            .setDesc('Optional date to show this scene on the timeline (same format as events)')
+            .addText(text => text
+                .setPlaceholder('e.g. 2024-01-15 or Year 3, Day 12')
+                .setValue(this.scene.date || '')
+                .onChange(v => { this.scene.date = v.trim() || undefined; })
+            );
+
+        new Setting(contentEl)
             .setName(t('status'))
             .addDropdown(dd => dd
                 .addOptions({ Draft: 'Draft', Outline: 'Outline', WIP: 'WIP', Revised: 'Revised', Final: 'Final' })
@@ -176,6 +189,72 @@ export class SceneModal extends Modal {
                     this.scene.priority = Number.isFinite(n) ? n : undefined;
                 })
             );
+
+        // POV character
+        new Setting(contentEl)
+            .setName('POV Character')
+            .setDesc(this.scene.povCharacter || 'None')
+            .addButton(btn => btn
+                .setButtonText(this.scene.povCharacter ? 'Change' : 'Set POV')
+                .onClick(() => {
+                    new CharacterSuggestModal(this.app, this.plugin, (ch) => {
+                        this.scene.povCharacter = ch.name;
+                        void this.onOpen();
+                    }).open();
+                })
+            )
+            .addButton(btn => btn
+                .setIcon('cross')
+                .setTooltip('Clear POV')
+                .onClick(() => { this.scene.povCharacter = undefined; void this.onOpen(); })
+            );
+
+        // Emotion
+        new Setting(contentEl)
+            .setName('Emotional tone')
+            .addDropdown(dd => dd
+                .addOptions({
+                    '': '— none —',
+                    tense: 'Tense',
+                    joyful: 'Joyful',
+                    sorrowful: 'Sorrowful',
+                    mysterious: 'Mysterious',
+                    hopeful: 'Hopeful',
+                    fearful: 'Fearful',
+                    angry: 'Angry',
+                    romantic: 'Romantic',
+                    melancholic: 'Melancholic',
+                    neutral: 'Neutral',
+                })
+                .setValue(this.scene.emotion || '')
+                .onChange(v => { this.scene.emotion = (v as any) || undefined; })
+            );
+
+        // Intensity
+        new Setting(contentEl)
+            .setName(`Intensity: ${this.scene.intensity ?? 0}`)
+            .setDesc('Narrative intensity — calm (−10) to climactic (+10)')
+            .addSlider(sl => sl
+                .setLimits(-10, 10, 1)
+                .setValue(this.scene.intensity ?? 0)
+                .setDynamicTooltip()
+                .onChange(v => {
+                    this.scene.intensity = v;
+                    sl.sliderEl.closest('.setting-item')?.querySelector('.setting-item-name')!
+                        .setText(`Intensity: ${v}`);
+                })
+            );
+
+        // Synopsis
+        new Setting(contentEl)
+            .setName('Synopsis')
+            .setClass('storyteller-modal-setting-vertical')
+            .addTextArea(ta => {
+                ta.setPlaceholder('One-line summary of this scene…')
+                  .setValue(this.scene.synopsis || '')
+                  .onChange(v => { this.scene.synopsis = v.trim() || undefined; });
+                ta.inputEl.rows = 3;
+            });
 
         new Setting(contentEl)
             .setName(t('tags') || 'Tags')
@@ -246,7 +325,7 @@ export class SceneModal extends Modal {
         this.renderLinkedEntities(charactersListEl, this.scene.linkedCharacters, 'characters');
         charactersSetting.addButton(btn => btn.setButtonText(t('add')).onClick(() => {
             new CharacterSuggestModal(this.app, this.plugin, (ch) => {
-                if (!this.scene.linkedCharacters) this.scene.linkedCharacters = [];
+                if (!Array.isArray(this.scene.linkedCharacters)) this.scene.linkedCharacters = [];
                 if (!this.scene.linkedCharacters.includes(ch.name)) this.scene.linkedCharacters.push(ch.name);
                 this.renderLinkedEntities(charactersListEl, this.scene.linkedCharacters, 'characters');
             }).open();
@@ -259,7 +338,7 @@ export class SceneModal extends Modal {
         locationsSetting.addButton(btn => btn.setButtonText(t('add')).onClick(() => {
             new LocationSuggestModal(this.app, this.plugin, (loc) => {
                 if (!loc) return;
-                if (!this.scene.linkedLocations) this.scene.linkedLocations = [];
+                if (!Array.isArray(this.scene.linkedLocations)) this.scene.linkedLocations = [];
                 if (!this.scene.linkedLocations.includes(loc.name)) this.scene.linkedLocations.push(loc.name);
                 this.renderLinkedEntities(locationsListEl, this.scene.linkedLocations, 'locations');
             }).open();
@@ -271,7 +350,7 @@ export class SceneModal extends Modal {
         this.renderLinkedEntities(eventsListEl, this.scene.linkedEvents, 'events');
         eventsSetting.addButton(btn => btn.setButtonText(t('add')).onClick(() => {
             new EventSuggestModal(this.app, this.plugin, (evt) => {
-                if (!this.scene.linkedEvents) this.scene.linkedEvents = [];
+                if (!Array.isArray(this.scene.linkedEvents)) this.scene.linkedEvents = [];
                 if (!this.scene.linkedEvents.includes(evt.name)) this.scene.linkedEvents.push(evt.name);
                 this.renderLinkedEntities(eventsListEl, this.scene.linkedEvents, 'events');
             }).open();
@@ -283,8 +362,17 @@ export class SceneModal extends Modal {
         this.renderLinkedEntities(itemsListEl, this.scene.linkedItems, 'items');
         itemsSetting.addButton(btn => btn.setButtonText(t('add')).onClick(async () => {
             const { PlotItemSuggestModal } = await import('./PlotItemSuggestModal');
-            new PlotItemSuggestModal(this.app, this.plugin, (item) => {
-                if (!this.scene.linkedItems) this.scene.linkedItems = [];
+            new PlotItemSuggestModal(this.app, this.plugin, async (item) => {
+                const characters = await this.plugin.listCharacters().catch(() => []);
+                const trackedOwner = getTrackedItemOwner(item, characters);
+                if (trackedOwner) {
+                    new Notice(
+                        `${item.name} is currently in ${trackedOwner}'s inventory. ` +
+                        `You can still link it to this scene, but ownership remains tracked on the character.`,
+                        7000
+                    );
+                }
+                if (!Array.isArray(this.scene.linkedItems)) this.scene.linkedItems = [];
                 if (!this.scene.linkedItems.includes(item.name)) this.scene.linkedItems.push(item.name);
                 this.renderLinkedEntities(itemsListEl, this.scene.linkedItems, 'items');
             }).open();
@@ -296,11 +384,45 @@ export class SceneModal extends Modal {
         this.renderLinkedEntities(groupsListEl, this.scene.linkedGroups, 'groups');
         groupsSetting.addButton(btn => btn.setButtonText(t('add')).onClick(() => {
             new GroupSuggestModal(this.app, this.plugin, (g) => {
-                if (!this.scene.linkedGroups) this.scene.linkedGroups = [];
+                if (!Array.isArray(this.scene.linkedGroups)) this.scene.linkedGroups = [];
                 if (!this.scene.linkedGroups.includes(g.id)) this.scene.linkedGroups.push(g.id);
                 this.renderLinkedEntities(groupsListEl, this.scene.linkedGroups, 'groups');
             }).open();
         }));
+
+        // Setup / Payoff scene links
+        contentEl.createEl('h3', { text: 'Setup & Payoff' });
+
+        const setupSetting = new Setting(contentEl)
+            .setName('Sets up scenes')
+            .setDesc('This scene plants seeds paid off by these scenes');
+        const setupListEl = setupSetting.controlEl.createDiv('storyteller-modal-linked-entities');
+        this.renderLinkedEntities(setupListEl, this.scene.setupScenes, 'setupScenes');
+        setupSetting.addButton(btn => btn.setButtonText('Add').onClick(() => {
+            new SceneSuggestModal(this.app, this.plugin, (sc) => {
+                if (!Array.isArray(this.scene.setupScenes)) this.scene.setupScenes = [];
+                if (!this.scene.setupScenes.includes(sc.name)) this.scene.setupScenes.push(sc.name);
+                this.renderLinkedEntities(setupListEl, this.scene.setupScenes, 'setupScenes');
+            }).open();
+        }));
+
+        const payoffSetting = new Setting(contentEl)
+            .setName('Paid off by scenes')
+            .setDesc('These scenes resolve what this scene foreshadows');
+        const payoffListEl = payoffSetting.controlEl.createDiv('storyteller-modal-linked-entities');
+        this.renderLinkedEntities(payoffListEl, this.scene.payoffScenes, 'payoffScenes');
+        payoffSetting.addButton(btn => btn.setButtonText('Add').onClick(() => {
+            new SceneSuggestModal(this.app, this.plugin, (sc) => {
+                if (!Array.isArray(this.scene.payoffScenes)) this.scene.payoffScenes = [];
+                if (!this.scene.payoffScenes.includes(sc.name)) this.scene.payoffScenes.push(sc.name);
+                this.renderLinkedEntities(payoffListEl, this.scene.payoffScenes, 'payoffScenes');
+            }).open();
+        }));
+
+        // --- Branches section (only shown for existing scenes that have a file) ---
+        if (!this.isNew && this.scene.filePath) {
+            this.renderBranchesSection(contentEl);
+        }
 
         const buttons = new Setting(contentEl).setClass('storyteller-modal-buttons');
         if (!this.isNew && this.onDelete) {
@@ -381,6 +503,18 @@ export class SceneModal extends Modal {
                                 this.renderLinkedEntities(container, this.scene.linkedGroups, entityType);
                             }
                             break;
+                        case 'setupScenes':
+                            if (this.scene.setupScenes) {
+                                this.scene.setupScenes.splice(index, 1);
+                                this.renderLinkedEntities(container, this.scene.setupScenes, entityType);
+                            }
+                            break;
+                        case 'payoffScenes':
+                            if (this.scene.payoffScenes) {
+                                this.scene.payoffScenes.splice(index, 1);
+                                this.renderLinkedEntities(container, this.scene.payoffScenes, entityType);
+                            }
+                            break;
                     }
                 });
         });
@@ -437,6 +571,7 @@ export class SceneModal extends Modal {
         const { templateId, yamlContent, markdownContent, sectionContent, customYamlFields, id, filePath, chapterId, chapterName, ...rest } = templateScene as any;
 
         let fields: any = { ...rest };
+        let allTemplateSections: Record<string, string> = {};
 
         // Handle new format: yamlContent (parse YAML string)
         if (yamlContent && typeof yamlContent === 'string') {
@@ -458,6 +593,7 @@ export class SceneModal extends Modal {
         if (markdownContent && typeof markdownContent === 'string') {
             try {
                 const parsedSections = parseSectionsFromMarkdown(`---\n---\n\n${markdownContent}`);
+                allTemplateSections = parsedSections;
 
                 // Map well-known sections to entity properties
                 if ('Content' in parsedSections) {
@@ -476,6 +612,7 @@ export class SceneModal extends Modal {
             }
         } else if (sectionContent) {
             // Old format: apply section content
+            for (const [k, v] of Object.entries(sectionContent)) { allTemplateSections[k as string] = v as string; }
             for (const [sectionName, content] of Object.entries(sectionContent)) {
                 const propName = sectionName.toLowerCase().replace(/\s+/g, '');
                 (fields as any)[propName] = content;
@@ -484,6 +621,14 @@ export class SceneModal extends Modal {
 
         // Apply all fields to the scene
         Object.assign(this.scene, fields);
+        if (Object.keys(allTemplateSections).length > 0) {
+            Object.defineProperty(this.scene, '_templateSections', {
+                value: allTemplateSections,
+                enumerable: false,
+                writable: true,
+                configurable: true
+            });
+        }
         console.log('[SceneModal] Final scene after template:', this.scene);
 
         // Clear relationships as they reference template entities
@@ -492,6 +637,55 @@ export class SceneModal extends Modal {
         this.scene.linkedEvents = [];
         this.scene.linkedItems = [];
         this.scene.linkedGroups = [];
+    }
+
+    private renderBranchesSection(contentEl: HTMLElement): void {
+        const section = contentEl.createDiv('storyteller-branches-section');
+        const hdr = section.createDiv('storyteller-branches-section-header');
+        const iconSpan = hdr.createSpan();
+        import('obsidian').then(({ setIcon }) => setIcon(iconSpan, 'git-branch'));
+        hdr.createSpan({ text: ' Branches' });
+
+        const summaryEl = section.createDiv('storyteller-branches-summary');
+
+        // Load branches from the scene file asynchronously
+        if (this.scene.filePath) {
+            const { TFile } = require('obsidian') as typeof import('obsidian');
+            const file = this.app.vault.getAbstractFileByPath(this.scene.filePath);
+            if (file instanceof TFile) {
+                this.app.vault.cachedRead(file).then(content => {
+                    import('../utils/BranchParser').then(({ extractBranchesFromMarkdown }) => {
+                        const branches = extractBranchesFromMarkdown(content);
+                        summaryEl.empty();
+                        if (branches.length === 0) {
+                            summaryEl.createEl('p', { cls: 'storyteller-modal-list-empty', text: 'No branches defined.' });
+                        } else {
+                            for (const b of branches) {
+                                const row = summaryEl.createDiv('storyteller-branch-summary-row');
+                                row.createSpan({ text: b.label });
+                                if (b.target) row.createSpan({ cls: 'storyteller-branch-summary-target', text: ` → ${b.target}` });
+                                if (b.dice) row.createSpan({ cls: 'storyteller-branch-dice-tag', text: ` 🎲${b.dice}` });
+                                if (b.requiresItem) row.createSpan({ cls: 'storyteller-branch-item-tag', text: ` 🔑${b.requiresItem}` });
+                            }
+                        }
+                    });
+                });
+            }
+        }
+
+        new Setting(section)
+            .addButton(btn => btn
+                .setButtonText('Edit Branches & Encounter Table')
+                .setIcon('pencil')
+                .onClick(() => {
+                    import('./BranchEditorModal').then(({ BranchEditorModal }) => {
+                        new BranchEditorModal(this.app, this.plugin, this.scene.filePath!, () => {
+                            // Re-render the branches summary after the editor closes
+                            this.renderBranchesSection(contentEl);
+                        }).open();
+                    });
+                })
+            );
     }
 
     private refresh(): void {

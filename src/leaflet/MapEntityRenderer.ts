@@ -4,7 +4,7 @@
  */
 
 import * as L from 'leaflet';
-import { Menu, Notice, TFile } from 'obsidian';
+import { Menu, Notice, TFile, getIcon, setIcon } from 'obsidian';
 import type StorytellerSuitePlugin from '../main';
 import type { Location, MapBinding, EntityRef, Character, Event, PlotItem, StoryMap, Scene, Culture, Economy, MagicSystem, Reference } from '../types';
 import { LocationService } from '../services/LocationService';
@@ -229,7 +229,6 @@ export class MapEntityRenderer {
                 </defs>
                 <circle cx="20" cy="20" r="16" fill="url(#portalGradient)" stroke="#fbbf24" stroke-width="3"/>
                 <path d="M20 8 L20 32 M8 20 L32 20" stroke="#fbbf24" stroke-width="2" opacity="0.7"/>
-                <text x="20" y="26" font-size="16" text-anchor="middle" fill="white">🗺️</text>
             </svg>
         `;
 
@@ -249,34 +248,28 @@ export class MapEntityRenderer {
         const container = document.createElement('div');
         container.className = 'storyteller-portal-popup';
 
-        container.innerHTML = `
-            <div class="popup-header portal-header">
-                <span class="popup-icon">🗺️</span>
-                <h3 class="popup-title">${childMap.name}</h3>
-                <span class="popup-badge">Child Map</span>
-            </div>
-            <div class="popup-content">
-                <p class="popup-description">${childMap.description || 'No description'}</p>
-                <div class="popup-info">
-                    <span class="info-label">Scale:</span>
-                    <span class="info-value">${childMap.scale || 'custom'}</span>
-                </div>
-                <div class="popup-info">
-                    <span class="info-label">Type:</span>
-                    <span class="info-value">${childMap.type || 'image'}</span>
-                </div>
-            </div>
-            <div class="popup-actions">
-                <button class="popup-btn popup-btn-primary">
-                    <span class="btn-icon">↓</span> Zoom to Map
-                </button>
-            </div>
-        `;
+        const header = container.createDiv('popup-header portal-header');
+        const portalIcon = header.createSpan('popup-icon');
+        setIcon(portalIcon, 'map');
+        header.createEl('h3', { text: childMap.name, cls: 'popup-title' });
+        header.createSpan({ text: 'Child Map', cls: 'popup-badge' });
+
+        const content = container.createDiv('popup-content');
+        content.createEl('p', { text: childMap.description || 'No description', cls: 'popup-description' });
+        const scaleInfo = content.createDiv('popup-info');
+        scaleInfo.createSpan({ text: 'Scale:', cls: 'info-label' });
+        scaleInfo.createSpan({ text: childMap.scale || 'custom', cls: 'info-value' });
+        const typeInfo = content.createDiv('popup-info');
+        typeInfo.createSpan({ text: 'Type:', cls: 'info-label' });
+        typeInfo.createSpan({ text: childMap.type || 'image', cls: 'info-value' });
+
+        const actions = container.createDiv('popup-actions');
+        const button = actions.createEl('button', { cls: 'popup-btn popup-btn-primary' });
+        setIcon(button, 'arrow-down');
+        button.appendText(' Zoom to Map');
 
         // Add click handler to button
-        const button = container.querySelector('.popup-btn-primary');
-        if (button) {
-            button.addEventListener('click', async () => {
+        button.addEventListener('click', async () => {
                 const mapView = this.plugin.app.workspace.getLeavesOfType('storyteller-map-view')[0];
                 if (mapView && mapView.view && 'loadMap' in mapView.view) {
                     const mapId = childMap.id || childMap.name;
@@ -284,7 +277,6 @@ export class MapEntityRenderer {
                     new Notice(`Navigated to ${childMap.name}`);
                 }
             });
-        }
 
         return container;
     }
@@ -523,33 +515,8 @@ export class MapEntityRenderer {
             className: 'storyteller-map-popup'
         });
 
-        // Click handler - open location note or map
-        marker.on('click', async (e) => {
-            // Close popup first
-            marker.closePopup();
-            
-            // Check if setting is enabled and location has a corresponding map
-            if (this.plugin.settings.locationPinsOpenMap && location.correspondingMapId) {
-                try {
-                    const map = await this.plugin.getMap(location.correspondingMapId);
-                    if (map) {
-                        // Open map view
-                        await this.plugin.activateMapView(location.correspondingMapId);
-                        return;
-                    }
-                } catch (error) {
-                    console.error('Error opening map for location:', error);
-                    // Fall through to opening note if map doesn't exist or error occurs
-                }
-            }
-            
-            // Fall back to opening location note (default behavior)
-            if (location.filePath) {
-                // Open note in new tab if Ctrl/Cmd is held, otherwise same tab
-                const newLeaf = e.originalEvent.ctrlKey || e.originalEvent.metaKey;
-                this.plugin.app.workspace.openLinkText(location.filePath, '', newLeaf);
-            }
-        });
+        // Click opens the popup (Leaflet default behaviour).
+        // Navigation is handled by the "Open Note" button inside the popup.
 
         // Context menu for quick actions
         marker.on('contextmenu', (e) => {
@@ -662,17 +629,8 @@ export class MapEntityRenderer {
             className: 'storyteller-map-tooltip'
         });
 
-        // Click handler - open entity note
-        marker.on('click', (e) => {
-            // Open the entity note on click
-            if (entity?.filePath) {
-                // Close popup first
-                marker.closePopup();
-                // Open note in new tab if Ctrl/Cmd is held, otherwise same tab
-                const newLeaf = e.originalEvent.ctrlKey || e.originalEvent.metaKey;
-                this.plugin.app.workspace.openLinkText(entity.filePath, '', newLeaf);
-            }
-        });
+        // Click opens the popup (Leaflet default behaviour).
+        // Navigation is handled by the action button inside the popup.
 
         // Context menu for entity marker
         marker.on('contextmenu', (e) => {
@@ -950,7 +908,9 @@ export class MapEntityRenderer {
                 const child = await this.locationService.getLocation(childId);
                 if (child) {
                     const li = childList.createEl('li');
-                    li.innerHTML = `<span class="entity-icon">📍</span> ${child.name}`;
+                    const childIcon = li.createSpan('entity-icon');
+                    setIcon(childIcon, 'map-pin');
+                    li.appendText(` ${child.name}`);
                     li.onclick = () => {
                         if (child.filePath) {
                             this.plugin.app.workspace.openLinkText(child.filePath, '', true);
@@ -1106,7 +1066,7 @@ export class MapEntityRenderer {
             const locationSection = container.createDiv('popup-section');
             locationSection.innerHTML = `
                 <div class="popup-field">
-                    <span class="popup-field-label">📍 Location:</span>
+                    <span class="popup-field-label">Location:</span>
                     <span class="popup-field-value">${location.name}</span>
                 </div>
             `;
@@ -1170,8 +1130,8 @@ export class MapEntityRenderer {
                 <span class="popup-type">Event</span>
             </div>
             <div class="popup-section">
-                ${location ? `<p>📍 At: <strong>${location.name}</strong></p>` : ''}
-                ${event.dateTime ? `<p>📅 Date: <strong>${event.dateTime}</strong></p>` : ''}
+                ${location ? `<p>At: <strong>${location.name}</strong></p>` : ''}
+                ${event.dateTime ? `<p>Date: <strong>${event.dateTime}</strong></p>` : ''}
                 ${event.description ? `<p class="popup-description">${this.truncateText(event.description, 100)}</p>` : ''}
             </div>
         `;
@@ -1283,7 +1243,7 @@ export class MapEntityRenderer {
             let tooltip = `<strong>${event.name}</strong>`;
 
             if (event.dateTime) {
-                tooltip += `<br>📅 ${event.dateTime}`;
+                tooltip += `<br>${event.dateTime}`;
             }
 
             return tooltip;
@@ -1309,22 +1269,23 @@ export class MapEntityRenderer {
     }
 
     /**
-     * Get entity icon by type (for popups and lists)
+     * Get entity icon SVG by type (for popups and lists)
      */
     private getEntityIcon(type: string): string {
         const icons: Record<string, string> = {
-            character: '👤',
-            event: '📅',
-            item: '📦',
-            culture: '🎭',
-            economy: '💰',
-            magicsystem: '✨',
-            group: '👥',
-            scene: '🎬',
-            reference: '📚',
-            custom: '📌'
+            character: 'user',
+            event: 'calendar',
+            item: 'box',
+            culture: 'landmark',
+            economy: 'coins',
+            magicsystem: 'wand',
+            group: 'users',
+            scene: 'film',
+            reference: 'book-open',
+            custom: 'map-pin',
         };
-        return icons[type] || '📌';
+        const iconName = icons[type] ?? 'map-pin';
+        return getIcon(iconName)?.outerHTML ?? '';
     }
 
     /**

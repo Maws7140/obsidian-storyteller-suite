@@ -114,21 +114,21 @@ export class TemplateApplicationModal extends ResponsiveModal {
 
         const stats = infoBox.createDiv('template-application-stats');
         stats.createEl('span', {
-            text: `📦 ${entityCount} entity type${entityCount !== 1 ? 's' : ''}`,
+            text: `${entityCount} entity type${entityCount !== 1 ? 's' : ''}`,
             cls: 'template-stat'
         });
         stats.createEl('span', {
-            text: `🔧 ${variableCount} variable${variableCount !== 1 ? 's' : ''}`,
+            text: `${variableCount} variable${variableCount !== 1 ? 's' : ''}`,
             cls: 'template-stat'
         });
         stats.createEl('span', {
-            text: `🏷️ ${this.template.genre}`,
+            text: this.template.genre,
             cls: 'template-stat'
         });
 
         if (variableCount > 0) {
             infoBox.createEl('p', {
-                text: '📝 Please fill in the following variables to customize this template:',
+                text: 'Please fill in the following variables to customize this template:',
                 cls: 'template-application-instruction'
             });
         }
@@ -258,7 +258,7 @@ export class TemplateApplicationModal extends ResponsiveModal {
     private renderNoVariablesMessage(container: HTMLElement): void {
         const messageBox = container.createDiv('template-application-no-variables');
         messageBox.createEl('p', {
-            text: '✨ This template has no customizable variables. It will be applied with default values.',
+            text: 'This template has no customizable variables. It will be applied with default values.',
             cls: 'template-application-message'
         });
     }

@@ -97,11 +97,11 @@ jobs:
           cat manifest.json | grep '"version"'
           tail -3 versions.json
 
-      - name: Run type check
-        run: npm run build -- --noEmit || tsc -p tsconfig.json --noEmit
+      - name: Type check
+        run: npx tsc -p tsconfig.json --noEmit
 
       - name: Build plugin
-        run: npm run build
+        run: node esbuild.config.mjs production
 
       - name: Verify build artifacts
         run: |

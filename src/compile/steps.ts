@@ -1323,7 +1323,7 @@ const exportMarkdownStep: CompileStepDefinition = {
         }
 
         // Build full path
-        const fullPath = normalizePath(`${context.projectPath}/${outputPath}`);
+        const fullPath = normalizePath(context.projectPath ? `${context.projectPath}/${outputPath}` : outputPath);
 
         // Create or update file
         const app = context.app as App;
@@ -1442,7 +1442,7 @@ ${html}
         }
 
         // Build full path
-        const fullPath = normalizePath(`${context.projectPath}/${outputPath}`);
+        const fullPath = normalizePath(context.projectPath ? `${context.projectPath}/${outputPath}` : outputPath);
 
         // Create or update file
         const app = context.app as App;
