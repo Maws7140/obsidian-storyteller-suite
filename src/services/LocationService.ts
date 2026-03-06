@@ -3,9 +3,10 @@
  * Provides methods for navigating and manipulating the location tree structure
  */
 
-import { requestUrl } from 'obsidian';
+import { Notice, requestUrl } from 'obsidian';
 import type StorytellerSuitePlugin from '../main';
-import type { Location, MapBinding, EntityRef, Character } from '../types';
+import type { Location, MapBinding, EntityRef, Character, PlotItem } from '../types';
+import { getTrackedItemOwner } from '../utils/ItemOwnership';
 
 export interface GetEntitiesAtLocationOptions {
     /** Include entities from child locations */
@@ -19,6 +20,27 @@ export class LocationService {
 
     constructor(plugin: StorytellerSuitePlugin) {
         this.plugin = plugin;
+    }
+
+    private async warnIfItemHasTrackedOwner(item: PlotItem): Promise<void> {
+        const characters = await this.plugin.listCharacters().catch(() => [] as Character[]);
+        const trackedOwner = getTrackedItemOwner(item, characters);
+        if (!trackedOwner) return;
+
+        if (item.currentOwner) {
+            new Notice(
+                `${item.name} is currently owned by ${item.currentOwner}. ` +
+                `Setting its location may conflict with ownership tracking.`,
+                7000
+            );
+            return;
+        }
+
+        new Notice(
+            `${item.name} is currently in ${trackedOwner}'s inventory. ` +
+            `Setting its location may conflict with ownership tracking.`,
+            7000
+        );
     }
 
     /**
@@ -128,6 +150,14 @@ export class LocationService {
             const item = items.find(i => (i.id || i.name) === entityId);
             if (item) {
                 const newLocation = await this.getLocation(newLocationId);
+                await this.warnIfItemHasTrackedOwner(item);
+                if (item.currentLocation && item.currentLocation !== (newLocation?.name || newLocationId)) {
+                    new Notice(
+                        `${item.name} was previously at ${item.currentLocation}. ` +
+                        `It will be moved to ${newLocation?.name || newLocationId}.`,
+                        7000
+                    );
+                }
                 item.currentLocation = newLocation?.name || newLocationId;
                 await this.plugin.savePlotItem(item);
                 // EntitySyncService will automatically update location.entityRefs
@@ -353,6 +383,14 @@ export class LocationService {
                     entityName = item?.name;
                     // Update item's currentLocation for bidirectional sync
                     if (item && item.currentLocation !== (location.name || locationId)) {
+                        await this.warnIfItemHasTrackedOwner(item);
+                        if (item.currentLocation && item.currentLocation !== (location.name || locationId)) {
+                            new Notice(
+                                `${item.name} was previously at ${item.currentLocation}. ` +
+                                `It will be moved to ${location.name || locationId}.`,
+                                7000
+                            );
+                        }
                         item.currentLocation = location.name || locationId;
                         await this.plugin.savePlotItem(item);
                         // EntitySyncService will update location.entityRefs automatically

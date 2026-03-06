@@ -1,4 +1,4 @@
-import { App, Modal, Setting, Notice } from 'obsidian';
+import { App, Modal, Setting, Notice, setIcon } from 'obsidian';
 import { TimelineEra, Event } from '../types';
 import { t } from '../i18n/strings';
 import StorytellerSuitePlugin from '../main';
@@ -168,19 +168,19 @@ export class EraManagerModal extends Modal {
 
         // Visibility toggle
         const visibilityBtn = headerEl.createEl('button', {
-            text: era.visible ? '👁' : '👁‍🗨',
             cls: 'storyteller-era-visibility-btn'
         });
+        setIcon(visibilityBtn, era.visible ? 'eye' : 'eye-off');
         visibilityBtn.addEventListener('click', () => {
             era.visible = !era.visible;
-            visibilityBtn.setText(era.visible ? '👁' : '👁‍🗨');
+            setIcon(visibilityBtn, era.visible ? 'eye' : 'eye-off');
         });
 
         // Delete button
         const deleteBtn = headerEl.createEl('button', {
-            text: '🗑',
             cls: 'storyteller-era-delete-btn'
         });
+        setIcon(deleteBtn, 'trash');
         deleteBtn.addEventListener('click', () => {
             this.deleteEra(era.id);
         });

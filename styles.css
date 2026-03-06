@@ -100,6 +100,31 @@
     border-radius: 0 !important;
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   STORYTELLER SUITE — DESIGN SYSTEM TOKENS
+   ═══════════════════════════════════════════════════════════════════════════ */
+:root {
+    /* Entity type accent colors */
+    --sts-character:    #64b5f6;
+    --sts-location:     #66bb6a;
+    --sts-culture:      #ff9800;
+    --sts-economy:      #fdd835;
+    --sts-event:        #ef5350;
+    --sts-item:         #ab47bc;
+    --sts-magicsystem:  #ec407a;
+    --sts-compendium:   #4db6ac;
+    --sts-book:         #7986cb;
+    --sts-scene:        #78909c;
+    --sts-chapter:      var(--interactive-accent);
+
+    /* Scene status colors */
+    --sts-status-outline:  #78909c;
+    --sts-status-draft:    #42a5f5;
+    --sts-status-wip:      #ffa726;
+    --sts-status-revised:  #ab47bc;
+    --sts-status-final:    #66bb6a;
+}
+
 /* ===========================================
    3. MAP VIEW CONTAINER STYLES
    ===========================================
@@ -718,6 +743,28 @@
 
 .entity-result-item .entity-name {
     flex: 1;
+}
+
+.entity-result-text {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.entity-result-item .entity-meta {
+    color: var(--text-muted);
+    font-size: 0.78em;
+    line-height: 1.2;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.storyteller-item-owner-location-warning {
+    margin: 0 0 0.6rem;
+    color: var(--color-orange);
 }
 
 .no-results {
@@ -2608,15 +2655,18 @@ If your plugin does not need CSS, delete this file.
     color: var(--text-faint);
     display: flex;
     flex-wrap: wrap;
-    gap: var(--size-4-2);
+    gap: 0.3rem;
+    margin-top: 0.15rem;
 }
 
 .storyteller-list-item-extra span {
-    padding: var(--size-4-0) var(--size-4-2); /* Padding for tags */
-    border-radius: var(--radius-s);
-    background-color: var(--background-modifier-border); /* Tag background */
-    color: var(--text-muted); /* Tag text color */
-    white-space: nowrap; /* Prevent tags from breaking mid-word */
+    padding: 1px 6px;
+    border-radius: 3px;
+    background-color: var(--background-modifier-border);
+    color: var(--text-muted);
+    white-space: nowrap;
+    font-size: 0.77em;
+    font-weight: 500;
 }
 
 /* Example: Styling for status tags */
@@ -2657,7 +2707,103 @@ If your plugin does not need CSS, delete this file.
     /* Styles for the text placeholder */
 }
 
+/* Row highlighting */
+.storyteller-timeline-modal .vis-group:hover,
+.storyteller-timeline-view .vis-group:hover {
+    background: rgba(var(--interactive-accent-rgb), 0.05);
+}
+
+.storyteller-timeline-modal .vis-label:hover,
+.storyteller-timeline-view .vis-label:hover {
+    background: var(--background-modifier-hover);
+}
+
+/* Conflict Badge in Toolbar */
+.storyteller-conflict-badge {
+    position: relative;
+    color: var(--text-error) !important;
+    background: rgba(var(--text-error-rgb), 0.1) !important;
+    border-radius: 6px !important;
+    padding: 2px 8px !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 4px !important;
+    border: 1px solid rgba(var(--text-error-rgb), 0.2) !important;
+}
+
+.storyteller-conflict-badge:hover {
+    background: rgba(var(--text-error-rgb), 0.2) !important;
+    border-color: var(--text-error) !important;
+}
+
+.storyteller-badge-count {
+    font-size: 11px;
+    font-weight: 700;
+    font-family: var(--font-interface-monospace);
+}
+
+.storyteller-badge-icon svg {
+    width: 14px;
+    height: 14px;
+}
+
+/* Timeline Tooltip Overrides */
+.vis-tooltip {
+    border: 1px solid var(--background-modifier-border) !important;
+    background-color: var(--background-primary) !important;
+    border-radius: 8px !important;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25) !important;
+    padding: 12px !important;
+    backdrop-filter: blur(8px) !important;
+    -webkit-backdrop-filter: blur(8px) !important;
+}
+
+/* Modernize the horizontal axis */
+.vis-time-axis .vis-grid.vis-vertical {
+    border-left: 1px solid var(--background-modifier-border-focus);
+    opacity: 0.3;
+}
+
+.vis-time-axis .vis-text {
+    font-family: var(--font-interface-monospace);
+    font-size: 11px;
+    font-weight: 500;
+}
+
+/* Timeline Custom Scrollbar */
+.storyteller-timeline-container::-webkit-scrollbar {
+    height: 8px;
+    width: 8px;
+}
+
+.storyteller-timeline-container::-webkit-scrollbar-thumb {
+    background: var(--background-modifier-border);
+    border-radius: 4px;
+}
+
+.storyteller-timeline-container::-webkit-scrollbar-thumb:hover {
+    background: var(--background-modifier-border-focus);
+}
+
 /* --- Timeline Specific --- */
+/* ═══════════════════════════════════════════════════════════════════════════
+   STORYTELLER SUITE — CHRONOS GLASS DESIGN SYSTEM
+   ═══════════════════════════════════════════════════════════════════════════ */
+:root {
+    /* Chronos Glass Tokens */
+    --sts-timeline-bg: rgba(var(--background-primary-rgb), 0.65);
+    --sts-glass-blur: blur(12px);
+    --sts-item-radius: 10px;
+    --sts-item-shadow: 0 4px 12px rgba(0, 0, 0, 0.1), 0 1px 3px rgba(0, 0, 0, 0.08);
+    --sts-item-hover-shadow: 0 8px 24px rgba(0, 0, 0, 0.2), 0 2px 6px rgba(0, 0, 0, 0.12);
+    --sts-item-border: 1px solid rgba(var(--interactive-accent-rgb), 0.2);
+    --sts-item-border-hover: 1px solid rgba(var(--interactive-accent-rgb), 0.45);
+    
+    /* Typography */
+    --sts-font-timeline-title: 600 13px var(--font-ui);
+    --sts-font-timeline-meta: 400 11px var(--font-interface-monospace);
+}
+
 .storyteller-timeline-view {
   display: flex;
   flex-direction: column;
@@ -2683,8 +2829,8 @@ If your plugin does not need CSS, delete this file.
     font-size: var(--font-ui-smaller);
 }
 .storyteller-timeline-container {
-  /* Allow tooltips to overflow container */
-  overflow: visible !important;
+  /* Keep timeline geometry clipped to its frame; tooltip is handled by .vis-tooltip */
+  overflow: hidden !important;
   position: relative;
   /* Fill available space in timeline view */
   flex: 1;
@@ -2714,9 +2860,9 @@ If your plugin does not need CSS, delete this file.
   pointer-events: none !important;
 }
 
-/* Ensure vis-timeline container doesn't clip */
+/* Keep timeline internals bounded; tooltip remains absolute/z-indexed */
 .vis-timeline {
-  overflow: visible !important;
+  overflow: hidden !important;
 }
 
 /* Make vis-timeline fill the container height in timeline view */
@@ -2728,188 +2874,29 @@ If your plugin does not need CSS, delete this file.
   height: 100% !important;
 }
 
-/* Modernize vis timeline look within plugin modal and view */
-.storyteller-timeline-modal .vis-timeline,
-.storyteller-timeline-view .vis-timeline {
-  border-radius: 8px;
-  border: 1px solid var(--background-modifier-border);
-  background: var(--background-primary);
-}
-.storyteller-timeline-modal .vis-item,
-.storyteller-timeline-view .vis-item {
-  border-radius: 6px;
-  border-width: 1px;
-  padding: 4px 8px;
-  color: var(--text-normal);
-  background: var(--background-secondary);
-  border-color: var(--interactive-accent);
-  transition: transform 120ms ease, box-shadow 120ms ease, background 120ms ease;
-  font-size: 13px;
-  line-height: 1.4;
-}
-.storyteller-timeline-modal .vis-item.is-approx,
-.storyteller-timeline-view .vis-item.is-approx {
-  border-style: dashed;
-  opacity: 0.85;
-}
-.storyteller-timeline-modal .vis-item:hover,
-.storyteller-timeline-view .vis-item:hover,
-.storyteller-timeline-modal .vis-item.vis-selected,
-.storyteller-timeline-view .vis-item.vis-selected {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 8px rgba(0,0,0,0.25);
-  z-index: 100;
-}
-.storyteller-timeline-modal .vis-range,
-.storyteller-timeline-view .vis-range {
-  border-radius: 6px;
-}
-
-/* Gantt bar styling - ensures proper bar display and visible labels */
-.vis-item.gantt-bar {
-  min-width: 100px;
-  min-height: 28px;
-  border-width: 2px;
-  border-radius: 4px;
-}
-
-.vis-item.gantt-bar .vis-item-content {
-  overflow: visible;
-  white-space: nowrap;
-  padding: 4px 8px;
-  font-weight: 500;
-}
-
-/* Override max-width restriction in Gantt mode */
-.storyteller-timeline-modal .vis-item.gantt-bar,
-.storyteller-timeline-view .vis-item.gantt-bar {
-  max-width: none;
-}
-
-.storyteller-timeline-modal .vis-grid.vis-odd,
-.storyteller-timeline-view .vis-grid.vis-odd,
-.storyteller-timeline-modal .vis-grid.vis-even,
-.storyteller-timeline-view .vis-grid.vis-even {
-  border-color: var(--background-modifier-border);
-}
-.storyteller-timeline-modal .vis-time-axis .vis-text,
-.storyteller-timeline-view .vis-time-axis .vis-text {
-  color: var(--text-muted);
-  visibility: visible;
-  display: inline-block;
-}
-.storyteller-timeline-modal .vis-current-time,
-.storyteller-timeline-view .vis-current-time {
-  background-color: var(--interactive-accent);
-}
-
-/* Event item text overflow handling - prevent bleeding into other items/eras */
-.storyteller-timeline-modal .vis-item .vis-item-content,
-.storyteller-timeline-view .vis-item .vis-item-content {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 100%;
-}
-
-/* For box-type items, limit width based on zoom level */
-.storyteller-timeline-modal .vis-item.vis-box,
-.storyteller-timeline-view .vis-item.vis-box {
-  max-width: 300px;
-  overflow: hidden;
-}
-
-/* Era background label styling */
-.storyteller-timeline-modal .vis-item.vis-background,
-.storyteller-timeline-view .vis-item.vis-background {
-  pointer-events: none;
-}
-
-.storyteller-timeline-modal .vis-item.vis-background .vis-item-content,
-.storyteller-timeline-view .vis-item.vis-background .vis-item-content {
-  color: var(--text-muted);
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  opacity: 0.7;
-  padding: 4px 8px;
-  position: absolute;
-  top: 2px;
-  left: 4px;
-}
-
-/* Milestone styling - golden/amber color scheme */
-.vis-item.timeline-milestone {
-  background: linear-gradient(135deg, #d4a017 0%, #ffd700 50%, #d4a017 100%) !important;
-  border-color: #b8860b !important;
-  color: #1a1a1a !important;
-  font-weight: 600;
-  box-shadow: 0 2px 8px rgba(212, 160, 23, 0.4);
-}
-
-/* Milestone stem - gold color */
-.vis-item.timeline-milestone .vis-line {
-  border-left-color: #d4a017 !important;
-  border-left-width: 2px !important;
-}
-
-/* Milestone dot - gold color */
-.vis-item.timeline-milestone .vis-dot {
-  border-color: #d4a017 !important;
-  background-color: #ffd700 !important;
-  box-shadow: 0 0 6px rgba(255, 215, 0, 0.6);
-}
-
-/* Milestone text - dark for contrast on gold background */
-.vis-item.timeline-milestone .vis-item-content {
-  color: #1a1a1a !important;
-}
-
-/* Milestone hover state */
-.vis-item.timeline-milestone:hover {
-  box-shadow: 0 4px 12px rgba(212, 160, 23, 0.6);
-  transform: translateY(-2px);
-}
-
-/* Scene timeline items - purple */
-.storyteller-timeline-scene {
-  background: #7c3aed40 !important;
-  border-color: #7c3aed !important;
-  color: #c4b5fd !important;
-}
-
-/* Vault note timeline items - green */
-.storyteller-timeline-note {
-  background: #05966940 !important;
-  border-color: #059669 !important;
-  color: #6ee7b7 !important;
-}
-
-/* Gantt mode milestone styling - visible bar with text */
-.vis-item.gantt-milestone {
-  min-width: 100px;
-  min-height: 26px;
-  border-radius: 4px !important;
-  border-left: 4px solid #b8860b !important;
-}
-
-.vis-item.gantt-milestone .vis-item-content {
-  overflow: visible;
-  white-space: nowrap;
-  padding: 4px 8px;
-}
-
-/* Toolbar and legend */
-.storyteller-timeline-toolbar {
+.storyteller-timeline-filter-toggle {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: 0.5em;
-  padding: 0.5em;
-  background: var(--background-secondary);
+  gap: 12px;
+  padding: 6px 12px;
+  background: var(--background-secondary-alt);
   border-bottom: 1px solid var(--background-modifier-border);
-  min-height: 44px;
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+}
+
+.storyteller-timeline-toolbar .storyteller-toolbar-btn {
+    border-radius: 6px;
+    transition: all 0.1s ease;
+}
+
+.storyteller-timeline-toolbar .storyteller-toolbar-btn.is-active {
+    background: var(--interactive-accent);
+    color: var(--text-on-accent);
+}
+
+.storyteller-timeline-toolbar .storyteller-toolbar-btn.is-active:hover {
+    background: var(--interactive-accent-hover);
 }
 
 .storyteller-timeline-toolbar .setting-item-control {
@@ -2948,13 +2935,13 @@ If your plugin does not need CSS, delete this file.
 .storyteller-timeline-toolbar .setting-item-info {
   display: none; /* remove empty label column so controls can center */
 }
-.storyteller-timeline-toolbar .setting-item-control {
+.storyteller-timeline-modal .storyteller-timeline-toolbar .setting-item-control {
   display: flex;
   align-items: center;
   gap: 6px;
   flex-wrap: wrap;
-  justify-content: center; /* center controls horizontally */
-  width: 100%;
+  justify-content: flex-start;
+  width: auto;
 }
 .storyteller-timeline-toolbar select {
   max-width: 160px;
@@ -7514,6 +7501,24 @@ body.mod-rtl .storyteller-group-members {
     height: 14px;
 }
 
+.storyteller-workflow-controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: center;
+    margin-top: 0.75rem;
+}
+
+.storyteller-workflow-controls button {
+    white-space: nowrap;
+}
+
+.storyteller-workflow-status {
+    margin-top: 0.5rem;
+    color: var(--text-muted);
+    font-size: 0.8rem;
+}
+
 /* ════════════════════════════════════════════════════════════
    CUSTOM COMPILE STEP MODAL
    ════════════════════════════════════════════════════════════ */
@@ -7641,6 +7646,81 @@ body.mod-rtl .storyteller-group-members {
     display: flex;
     justify-content: flex-end;
     gap: 0.5rem;
+}
+
+.storyteller-compile-workflow-modal {
+    max-width: 760px;
+}
+
+.storyteller-compile-workflow-description {
+    color: var(--text-muted);
+    margin-bottom: 1rem;
+}
+
+.storyteller-compile-workflow-add-row {
+    display: flex;
+    gap: 0.75rem;
+    align-items: center;
+}
+
+.storyteller-compile-workflow-add-row select {
+    flex: 1;
+}
+
+.storyteller-compile-workflow-steps {
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+    margin-top: 1rem;
+}
+
+.storyteller-compile-workflow-step {
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 10px;
+    padding: 0.9rem;
+    background: var(--background-secondary);
+}
+
+.storyteller-compile-workflow-step-header {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    align-items: flex-start;
+}
+
+.storyteller-compile-workflow-step-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.storyteller-compile-workflow-step-desc {
+    margin-top: 0.35rem;
+    color: var(--text-muted);
+    font-size: 0.8rem;
+}
+
+.storyteller-compile-workflow-step-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+}
+
+.storyteller-compile-workflow-step-actions button {
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 6px;
+    background: var(--background-primary);
+    padding: 0.3rem 0.55rem;
+    cursor: pointer;
+}
+
+.storyteller-compile-workflow-step-actions button:disabled {
+    cursor: default;
+    opacity: 0.45;
+}
+
+.storyteller-compile-workflow-options {
+    margin-top: 0.75rem;
 }
 
 /* ===========================================
@@ -8222,3 +8302,1444 @@ body.mod-rtl .storyteller-group-members {
     border-radius: 3px;
     padding: 1px 5px;
 }
+
+/* ─── Writing tab view switcher ──────────────────────────────────────────────── */
+.storyteller-writing-switcher {
+    display: flex;
+    gap: 0.25rem;
+    padding: 0.35rem 0.5rem;
+    background: var(--background-secondary);
+    border-radius: 6px;
+    margin-bottom: 0.5rem;
+    flex-wrap: wrap;
+}
+.storyteller-switcher-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.2rem 0.65rem;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--text-muted);
+    border: none;
+    cursor: pointer;
+    font-size: 0.83em;
+    transition: background 0.12s, color 0.12s;
+}
+.storyteller-switcher-btn:hover {
+    background: var(--background-modifier-hover);
+    color: var(--text-normal);
+}
+.storyteller-switcher-btn.is-active {
+    background: var(--interactive-accent);
+    color: var(--text-on-accent);
+}
+
+/* ─── Scene POV / emotion / intensity ───────────────────────────────────────── */
+.storyteller-scene-pov-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.15rem;
+    font-size: 0.77em;
+    color: var(--text-muted);
+    background: var(--background-secondary);
+    padding: 1px 5px;
+    border-radius: 3px;
+}
+.storyteller-scene-emotion-chip {
+    display: inline-block;
+    padding: 1px 6px;
+    border-radius: 10px;
+    font-size: 0.72em;
+    font-weight: 600;
+    text-transform: capitalize;
+}
+.storyteller-emotion-tense       { background: rgba(239,83,80,0.18);   color: #ef5350; }
+.storyteller-emotion-joyful      { background: rgba(253,216,53,0.2);   color: #c6a800; }
+.storyteller-emotion-sorrowful   { background: rgba(92,107,192,0.18);  color: #7986cb; }
+.storyteller-emotion-mysterious  { background: rgba(171,71,188,0.18);  color: #ba68c8; }
+.storyteller-emotion-hopeful     { background: rgba(102,187,106,0.18); color: #66bb6a; }
+.storyteller-emotion-fearful     { background: rgba(141,110,99,0.18);  color: #a1887f; }
+.storyteller-emotion-angry       { background: rgba(244,81,30,0.18);   color: #f4511e; }
+.storyteller-emotion-romantic    { background: rgba(236,64,122,0.18);  color: #ec407a; }
+.storyteller-emotion-melancholic { background: rgba(120,144,156,0.18); color: #90a4ae; }
+.storyteller-emotion-neutral     { background: var(--background-secondary); color: var(--text-muted); }
+.storyteller-intensity-bar {
+    height: 4px;
+    background: var(--background-modifier-border);
+    border-radius: 2px;
+    overflow: hidden;
+    margin-top: 4px;
+    width: 80px;
+}
+.storyteller-intensity-fill {
+    height: 100%;
+    background: var(--interactive-accent);
+    border-radius: 2px;
+}
+
+/* ─── Kanban board ───────────────────────────────────────────────────────────── */
+.storyteller-kanban-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.4rem 0.2rem 0.5rem;
+}
+.storyteller-kanban-label {
+    font-size: 0.83em;
+    color: var(--text-muted);
+    margin-right: 0.15rem;
+}
+.storyteller-kanban-group-btn {
+    padding: 0.15rem 0.6rem;
+    border-radius: 4px;
+    background: var(--background-secondary);
+    color: var(--text-muted);
+    border: 1px solid var(--background-modifier-border);
+    cursor: pointer;
+    font-size: 0.8em;
+    transition: all 0.12s;
+}
+.storyteller-kanban-group-btn.is-active {
+    background: var(--interactive-accent);
+    color: var(--text-on-accent);
+    border-color: var(--interactive-accent);
+}
+.storyteller-kanban-board {
+    display: flex;
+    gap: 0.65rem;
+    overflow-x: auto;
+    padding-bottom: 0.5rem;
+    min-height: 180px;
+    align-items: flex-start;
+}
+.storyteller-kanban-col {
+    min-width: 200px;
+    max-width: 235px;
+    flex-shrink: 0;
+    background: var(--background-secondary);
+    border-radius: 8px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--background-modifier-border);
+}
+.storyteller-kanban-col-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.38rem 0.6rem;
+    background: rgba(255,255,255,0.04);
+    font-size: 0.8em;
+    font-weight: 600;
+    border-bottom: 3px solid var(--col-color, var(--background-modifier-border));
+    color: var(--col-color, var(--text-muted));
+}
+.storyteller-kanban-col-count {
+    background: rgba(0,0,0,0.18);
+    color: var(--col-color, var(--text-muted));
+    border-radius: 10px;
+    padding: 0 6px;
+    font-size: 0.82em;
+}
+.storyteller-kanban-col-body {
+    padding: 0.4rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    flex: 1;
+    overflow-y: auto;
+    max-height: 460px;
+    transition: background 0.1s;
+}
+.storyteller-kanban-col-body.storyteller-kanban-drop-over {
+    background: rgba(255,255,255,0.06);
+    outline: 2px dashed var(--interactive-accent);
+    outline-offset: -3px;
+}
+.storyteller-kanban-card {
+    background: var(--background-primary);
+    border-radius: 6px;
+    padding: 0.45rem 0.5rem;
+    border: 1px solid var(--background-modifier-border);
+    border-left: 3px solid var(--card-status-color, var(--background-modifier-border));
+    cursor: grab;
+    transition: opacity 0.15s, box-shadow 0.12s;
+}
+.storyteller-kanban-card.storyteller-kanban-card-dragging {
+    opacity: 0.45;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.35);
+}
+
+/* Status column accent colors */
+.storyteller-kanban-col-sts-outline  { --col-color: var(--sts-status-outline); }
+.storyteller-kanban-col-sts-draft    { --col-color: var(--sts-status-draft); }
+.storyteller-kanban-col-sts-wip      { --col-color: var(--sts-status-wip); }
+.storyteller-kanban-col-sts-revised  { --col-color: var(--sts-status-revised); }
+.storyteller-kanban-col-sts-final    { --col-color: var(--sts-status-final); }
+/* Status card left-border accent colors */
+.storyteller-kanban-card-sts-outline  { --card-status-color: var(--sts-status-outline); }
+.storyteller-kanban-card-sts-draft    { --card-status-color: var(--sts-status-draft); }
+.storyteller-kanban-card-sts-wip      { --card-status-color: var(--sts-status-wip); }
+.storyteller-kanban-card-sts-revised  { --card-status-color: var(--sts-status-revised); }
+.storyteller-kanban-card-sts-final    { --card-status-color: var(--sts-status-final); }
+.storyteller-kanban-card-title {
+    display: block;
+    font-size: 0.86em;
+    cursor: pointer;
+    color: var(--text-normal);
+    margin-bottom: 0.3rem;
+    line-height: 1.35;
+}
+.storyteller-kanban-card-title:hover {
+    color: var(--interactive-accent);
+    text-decoration: underline;
+}
+.storyteller-kanban-card-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.2rem;
+    margin-bottom: 0.25rem;
+}
+.storyteller-kanban-chapter-label {
+    font-size: 0.74em;
+    color: var(--text-muted);
+    background: var(--background-secondary);
+    border-radius: 3px;
+    padding: 1px 5px;
+}
+.storyteller-kanban-card-actions {
+    display: flex;
+    gap: 0.2rem;
+    margin-top: 0.3rem;
+}
+.storyteller-kanban-action-btn {
+    padding: 2px 5px;
+    border-radius: 3px;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    font-size: 0.82em;
+}
+.storyteller-kanban-action-btn:hover {
+    background: var(--background-modifier-hover);
+    color: var(--text-normal);
+}
+.storyteller-kanban-empty {
+    color: var(--text-faint);
+    font-size: 0.8em;
+    text-align: center;
+    padding: 0.8rem 0;
+}
+.storyteller-intensity-mini {
+    height: 3px;
+    background: var(--background-modifier-border);
+    border-radius: 2px;
+    overflow: hidden;
+    margin-top: 0.3rem;
+}
+
+/* ─── Arc chart ──────────────────────────────────────────────────────────────── */
+.storyteller-arc-wrapper { padding: 0.5rem 0.25rem; }
+.storyteller-arc-title { margin: 0 0 0.5rem 0.25rem; font-size: 0.93em; color: var(--text-normal); font-weight: 600; }
+.storyteller-arc-svg { display: block; width: 100%; overflow: visible; }
+.storyteller-arc-dot {
+    cursor: pointer;
+    transition: r 0.12s;
+}
+.storyteller-arc-dot:hover { r: 9; }
+/* Emotion stats row */
+.storyteller-arc-stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 0.5rem;
+    padding: 0.4rem 0.25rem 0.2rem;
+    margin-top: 0.2rem;
+    border-top: 1px solid var(--background-modifier-border);
+}
+.storyteller-arc-stat-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+    font-size: 0.75em;
+    padding: 1px 6px;
+    border-radius: 10px;
+    font-weight: 600;
+}
+.storyteller-arc-stat-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    display: inline-block;
+    flex-shrink: 0;
+}
+.storyteller-arc-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem 0.75rem;
+    margin-top: 0.4rem;
+    padding: 0.3rem 0.25rem;
+    font-size: 0.74em;
+    border-top: 1px solid var(--background-modifier-border);
+}
+.storyteller-arc-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 0.28rem;
+    color: var(--text-muted);
+}
+.storyteller-arc-legend-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    display: inline-block;
+    flex-shrink: 0;
+}
+
+/* ─── Character presence heatmap ─────────────────────────────────────────────── */
+.storyteller-heatmap-wrapper { padding: 0.5rem; }
+.storyteller-heatmap-title { margin: 0 0 0.4rem; font-size: 0.93em; color: var(--text-normal); }
+.storyteller-heatmap-scroll { overflow-x: auto; }
+.storyteller-heatmap-table {
+    border-collapse: collapse;
+    font-size: 0.79em;
+    min-width: 360px;
+}
+.storyteller-heatmap-char-header,
+.storyteller-heatmap-char-label {
+    text-align: left;
+    padding: 4px 10px;
+    white-space: nowrap;
+    min-width: 120px;
+    color: var(--text-normal);
+    border-right: 1px solid var(--background-modifier-border);
+}
+.storyteller-heatmap-chapter-header {
+    text-align: center;
+    padding: 4px 6px;
+    color: var(--text-muted);
+    white-space: nowrap;
+    font-weight: 500;
+    min-width: 38px;
+}
+.storyteller-heatmap-cell {
+    text-align: center;
+    padding: 4px 2px;
+    font-size: 0.78em;
+    color: white;
+    border: 1px solid var(--background-primary);
+    min-width: 34px;
+    font-weight: 600;
+}
+.storyteller-heatmap-table tbody tr:hover td { filter: brightness(1.12); }
+
+/* ─── Plot hole detector ─────────────────────────────────────────────────────── */
+.storyteller-holes-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.3rem 0.4rem 0.5rem;
+}
+.storyteller-holes-title { margin: 0; font-size: 0.93em; color: var(--text-normal); }
+.storyteller-holes-count {
+    font-size: 0.77em;
+    color: var(--color-orange);
+    background: rgba(255,152,0,0.12);
+    padding: 2px 8px;
+    border-radius: 10px;
+}
+.storyteller-holes-clear {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 1.5rem;
+    color: var(--color-green);
+    font-size: 0.9em;
+}
+.storyteller-holes-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 0.2rem 0.4rem 0.5rem;
+}
+.storyteller-holes-card {
+    border-radius: 6px;
+    padding: 0.45rem 0.65rem;
+    border-left: 3px solid;
+}
+.storyteller-holes-warning {
+    background: rgba(255,152,0,0.08);
+    border-color: var(--color-orange);
+}
+.storyteller-holes-info {
+    background: rgba(33,150,243,0.07);
+    border-color: var(--color-blue);
+}
+.storyteller-holes-card-title {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-weight: 600;
+    font-size: 0.86em;
+    margin-bottom: 0.2rem;
+}
+.storyteller-holes-detail {
+    font-size: 0.77em;
+    color: var(--text-muted);
+    margin: 0.15rem 0 0;
+    word-break: break-word;
+}
+.storyteller-holes-icon { display: inline-flex; align-items: center; flex-shrink: 0; }
+
+/* Kanban column edit button (chapter grouping) */
+.storyteller-kanban-col-edit-btn {
+    padding: 1px 4px;
+    border-radius: 3px;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    opacity: 0;
+    transition: opacity 0.12s;
+    margin-left: auto;
+}
+.storyteller-kanban-col-header:hover .storyteller-kanban-col-edit-btn {
+    opacity: 1;
+}
+.storyteller-kanban-col-edit-btn:hover {
+    background: var(--background-modifier-hover);
+    color: var(--text-normal);
+}
+
+/* Pop-out switcher button — sits at the right end, shows current mode + panel icon */
+.storyteller-switcher-popout {
+    margin-left: auto;
+    border-left: 1px solid var(--background-modifier-border);
+    padding-left: 0.6rem;
+    gap: 0.25rem;
+    color: var(--text-muted);
+}
+.storyteller-switcher-popout:hover {
+    background: var(--interactive-accent);
+    color: var(--text-on-accent);
+    border-left-color: transparent;
+}
+.storyteller-popout-label {
+    font-size: 0.8em;
+}
+
+/* Inline chapter edit button — always visible in the title row */
+.storyteller-chapter-inline-edit {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2px 5px;
+    border-radius: 4px;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    opacity: 0.55;
+    transition: opacity 0.12s, background 0.12s;
+    flex-shrink: 0;
+}
+.storyteller-chapter-inline-edit:hover {
+    opacity: 1;
+    background: var(--background-modifier-hover);
+    color: var(--interactive-accent);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   ENTITY CARD LEFT-BORDER ACCENTS (inset shadow = no layout shift)
+   ═══════════════════════════════════════════════════════════════════════════ */
+.storyteller-dashboard-content[data-tab="characters"]  .storyteller-list-item { box-shadow: inset 3px 0 0 var(--sts-character); }
+.storyteller-dashboard-content[data-tab="locations"]   .storyteller-list-item { box-shadow: inset 3px 0 0 var(--sts-location); }
+.storyteller-dashboard-content[data-tab="events"]      .storyteller-list-item { box-shadow: inset 3px 0 0 var(--sts-event); }
+.storyteller-dashboard-content[data-tab="items"]       .storyteller-list-item { box-shadow: inset 3px 0 0 var(--sts-item); }
+.storyteller-dashboard-content[data-tab="cultures"]    .storyteller-list-item { box-shadow: inset 3px 0 0 var(--sts-culture); }
+.storyteller-dashboard-content[data-tab="economies"]   .storyteller-list-item { box-shadow: inset 3px 0 0 var(--sts-economy); }
+.storyteller-dashboard-content[data-tab="magicsystems"].storyteller-list-item { box-shadow: inset 3px 0 0 var(--sts-magicsystem); }
+.storyteller-dashboard-content[data-tab="compendium"]  .storyteller-list-item { box-shadow: inset 3px 0 0 var(--sts-compendium); }
+.storyteller-dashboard-content[data-tab="books"]       .storyteller-list-item { box-shadow: inset 3px 0 0 var(--sts-book); }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   ENTITY CARD META BADGES — unified colored chip system (compendium style)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Base badge — same form factor as compendium type badges */
+.storyteller-meta-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 10.5px;
+    font-weight: 600;
+    line-height: 1;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    background: var(--background-modifier-border);
+    color: var(--text-muted);
+    white-space: nowrap;
+    border: 1px solid var(--background-modifier-border);
+    height: fit-content;
+}
+
+/* ── Character badges ── */
+.storyteller-char-race-badge      { background: rgba(100,181,246,0.15); color: #64b5f6; }
+.storyteller-char-age-badge       { background: var(--background-secondary); color: var(--text-faint); }
+.storyteller-affiliation-badge    { background: rgba(255,152,0,0.15); color: #ff9800; }
+
+/* Character status */
+.storyteller-char-status-alive                           { background: rgba(76,175,80,0.18);   color: #4caf50; }
+.storyteller-char-status-deceased,
+.storyteller-char-status-dead                            { background: rgba(120,120,120,0.18); color: #9e9e9e; }
+.storyteller-char-status-missing                         { background: rgba(255,152,0,0.18);   color: #ff9800; }
+.storyteller-char-status-unknown                         { background: var(--background-secondary); color: var(--text-muted); }
+.storyteller-char-status-imprisoned                      { background: rgba(171,71,188,0.18);  color: #ab47bc; }
+.storyteller-char-status-exiled                          { background: rgba(255,87,34,0.15);   color: #ff7043; }
+
+/* ── Location type badges ── */
+.storyteller-loctype-city,
+.storyteller-loctype-town,
+.storyteller-loctype-village,
+.storyteller-loctype-settlement  { background: rgba(100,181,246,0.18); color: #64b5f6; }
+
+.storyteller-loctype-forest,
+.storyteller-loctype-jungle,
+.storyteller-loctype-plains,
+.storyteller-loctype-swamp,
+.storyteller-loctype-wilderness  { background: rgba(102,187,106,0.18); color: #66bb6a; }
+
+.storyteller-loctype-dungeon,
+.storyteller-loctype-cave,
+.storyteller-loctype-ruin,
+.storyteller-loctype-catacomb    { background: rgba(239,83,80,0.18);   color: #ef9a9a; }
+
+.storyteller-loctype-temple,
+.storyteller-loctype-shrine,
+.storyteller-loctype-church,
+.storyteller-loctype-sanctuary   { background: rgba(171,71,188,0.18);  color: #ce93d8; }
+
+.storyteller-loctype-tavern,
+.storyteller-loctype-inn,
+.storyteller-loctype-market,
+.storyteller-loctype-shop        { background: rgba(255,152,0,0.18);   color: #ff9800; }
+
+.storyteller-loctype-castle,
+.storyteller-loctype-fortress,
+.storyteller-loctype-keep,
+.storyteller-loctype-stronghold  { background: rgba(120,144,156,0.25); color: #90a4ae; }
+
+.storyteller-loc-region-badge    { background: rgba(102,187,106,0.10); color: var(--text-muted); font-style: italic; }
+.storyteller-loc-parent-badge    { background: var(--background-secondary); color: var(--text-faint); }
+
+/* Location status */
+.storyteller-loc-status-populated,
+.storyteller-loc-status-thriving   { background: rgba(76,175,80,0.18);   color: #4caf50; }
+.storyteller-loc-status-abandoned,
+.storyteller-loc-status-ruined     { background: rgba(120,120,120,0.18); color: #9e9e9e; }
+.storyteller-loc-status-under-siege,
+.storyteller-loc-status-besieged   { background: rgba(239,83,80,0.18);   color: #ef5350; }
+.storyteller-loc-status-rebuilding,
+.storyteller-loc-status-recovering { background: rgba(255,152,0,0.18);   color: #ff9800; }
+
+/* ── Event badges ── */
+.storyteller-event-milestone-badge { background: rgba(212,160,23,0.2);   color: #ffd700; }
+.storyteller-event-location-badge  { background: rgba(102,187,106,0.12); color: var(--text-muted); }
+
+/* Event status */
+.storyteller-event-status-upcoming                      { background: rgba(66,165,245,0.18);  color: #42a5f5; }
+.storyteller-event-status-ongoing,
+.storyteller-event-status-active,
+.storyteller-event-status-in-progress                   { background: rgba(255,167,38,0.18);  color: #ffa726; }
+.storyteller-event-status-completed,
+.storyteller-event-status-resolved,
+.storyteller-event-status-done                          { background: rgba(76,175,80,0.18);   color: #4caf50; }
+.storyteller-event-status-failed,
+.storyteller-event-status-cancelled                     { background: rgba(239,83,80,0.18);   color: #ef5350; }
+
+/* ── Culture badges ── */
+.storyteller-gov-badge   { background: rgba(255,152,0,0.18);  color: #ff9800; }
+.storyteller-tech-badge  { background: rgba(100,181,246,0.15); color: #64b5f6; }
+
+/* ── Magic system badges ── */
+.storyteller-magic-type-badge { background: rgba(236,64,122,0.15); color: #ec407a; }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   BOOKS
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Book badge (on chapter cards + book title row) */
+.storyteller-book-badge {
+    background: rgba(121,134,203,0.18);
+    color: var(--sts-book);
+}
+
+/* Book status badges */
+.storyteller-book-status-planning  { background: rgba(120,144,156,0.18); color: #78909c; }
+.storyteller-book-status-writing   { background: rgba(66,165,245,0.18);  color: #42a5f5; }
+.storyteller-book-status-revising  { background: rgba(255,167,38,0.18);  color: #ffa726; }
+.storyteller-book-status-complete  { background: rgba(102,187,106,0.18); color: #66bb6a; }
+
+/* Nested chapter list inside a book card */
+.storyteller-book-chapters-list {
+    margin: 0.5rem 0 0 0;
+    padding: 0.4rem 0.6rem;
+    border-left: 2px solid var(--sts-book);
+    border-radius: 0 0 4px 4px;
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+}
+.storyteller-book-chapter-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.82em;
+    color: var(--text-muted);
+}
+.storyteller-book-chapter-num {
+    font-weight: 600;
+    color: var(--sts-book);
+    min-width: 2.5em;
+}
+.storyteller-book-chapter-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* ═══════════════════════════════════════════════════════
+   Campaign Mode
+   ═══════════════════════════════════════════════════════ */
+
+.storyteller-campaign-status-active  { color: var(--color-green); }
+.storyteller-campaign-status-paused  { color: var(--color-orange); }
+.storyteller-campaign-status-completed { color: var(--text-muted); }
+.storyteller-campaign-status-badge { font-size: 0.75rem; padding: 2px 6px; border-radius: 10px; background: rgba(239,83,80,0.12); color: #ef5350; }
+.storyteller-campaign-view { display: flex; flex-direction: column; height: 100%; min-height: 0; background: radial-gradient(1200px 620px at 22% -8%, color-mix(in srgb, var(--interactive-accent) 8%, transparent), transparent 58%); }
+.storyteller-campaign-toolbar { display: flex; align-items: center; gap: 0.5rem; padding: 0.6rem 1rem; border-bottom: 1px solid var(--background-modifier-border); flex-shrink: 0; position: sticky; top: 0; z-index: 5; background: color-mix(in srgb, var(--background-primary) 90%, transparent); backdrop-filter: blur(4px); }
+.storyteller-campaign-toolbar-btn { background: color-mix(in srgb, var(--background-secondary) 78%, transparent); border: 1px solid var(--background-modifier-border); border-radius: 6px; padding: 5px 9px; cursor: pointer; color: var(--text-normal); }
+.storyteller-campaign-toolbar-btn:hover { background: var(--background-modifier-hover); }
+.storyteller-campaign-toolbar-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.storyteller-campaign-actor-control { display: inline-flex; align-items: center; gap: 0.4rem; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--background-modifier-border); background: color-mix(in srgb, var(--background-secondary) 74%, transparent); }
+.storyteller-campaign-actor-label { font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.storyteller-campaign-actor-select {
+    min-width: 180px;
+    width: auto;
+    max-width: 260px;
+    border: none;
+    background: transparent;
+    color: var(--text-normal);
+    padding: 2px 6px 2px 2px;
+    font-size: 0.85rem;
+    line-height: 1.2;
+}
+.storyteller-campaign-actor-select:focus {
+    outline: none;
+    box-shadow: none;
+}
+.storyteller-campaign-toolbar-spacer { flex: 1; }
+.storyteller-campaign-scene-name { font-weight: 700; font-size: 0.95rem; letter-spacing: 0.01em; }
+.storyteller-campaign-main { display: flex; flex: 1; min-height: 0; overflow: hidden; }
+.storyteller-campaign-scene-panel { flex: 1; min-height: 0; overflow-y: auto; padding: 1.25rem 1.35rem 2.4rem; position: relative; display: flex; flex-direction: column; align-items: center; }
+.storyteller-campaign-scene-panel > :not(.storyteller-dice-overlay) { width: min(100%, 960px); }
+.storyteller-campaign-sidebar { width: clamp(280px, 24vw, 340px); min-height: 0; border-left: 1px solid var(--background-modifier-border); overflow-y: auto; display: flex; flex-direction: column; flex-shrink: 0; background: color-mix(in srgb, var(--background-secondary) 58%, transparent); }
+.storyteller-campaign-sidebar-section { padding: 0.9rem; border-bottom: 1px solid var(--background-modifier-border); background: color-mix(in srgb, var(--background-primary) 82%, transparent); }
+.storyteller-campaign-sidebar-section h4 { margin: 0 0 0.5rem; font-size: 0.8rem; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.05em; }
+.storyteller-campaign-empty { color: var(--text-muted); font-style: italic; font-size: 0.875rem; }
+.storyteller-campaign-note-link { cursor: pointer; color: var(--link-color); font-size: 0.875rem; }
+.storyteller-campaign-cta { margin-bottom: 1rem; }
+.storyteller-branch-card { cursor: pointer; border: 1px solid var(--background-modifier-border); border-radius: 6px; padding: 0.75rem 1rem; margin: 0.4rem 0; display: flex; flex-direction: column; gap: 0.25rem; transition: background 0.15s; }
+.storyteller-branch-card:hover { background: var(--background-modifier-hover); }
+.storyteller-branch-card.requires-roll { border-color: var(--color-orange); }
+.storyteller-branch-card.requires-item { border-color: var(--color-purple); }
+.storyteller-branch-card-label { font-weight: 500; }
+.storyteller-branch-card-tags { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+.storyteller-branch-dice-tag { font-size: 0.75rem; color: var(--color-orange); }
+.storyteller-branch-item-tag { font-size: 0.75rem; color: var(--color-purple); }
+.storyteller-dice-overlay { position: absolute; inset: 0; background: rgba(0,0,0,0.7); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1rem; border-radius: 8px; z-index: 100; }
+.storyteller-dice-face { font-size: 4rem; display: inline-block; }
+.storyteller-dice-face.rolling { animation: diceRoll 0.6s ease-out; }
+@keyframes diceRoll {
+    0%   { transform: rotate(0deg) scale(1.5); opacity: 0; }
+    50%  { transform: rotate(180deg) scale(1.2); opacity: 1; }
+    100% { transform: rotate(360deg) scale(1); opacity: 1; }
+}
+.storyteller-dice-info { color: var(--text-muted); font-size: 0.875rem; }
+.storyteller-dice-result { font-weight: 700; font-size: 1.25rem; }
+.storyteller-dice-override { display: flex; gap: 0.5rem; align-items: center; }
+.storyteller-dice-override input { width: 80px; }
+.storyteller-dice-btn-row { display: flex; gap: 0.5rem; }
+.storyteller-dice-face.outcome-success { color: var(--color-green); }
+.storyteller-dice-face.outcome-fail { color: var(--color-red); }
+.storyteller-campaign-party-row { display: flex; flex-direction: column; gap: 0.25rem; margin-bottom: 0.75rem; }
+.storyteller-campaign-party-name { font-size: 0.875rem; font-weight: 500; }
+.storyteller-hp-bar-wrap { display: flex; align-items: center; gap: 0.5rem; }
+.storyteller-hp-bar { flex: 1; height: 6px; background: var(--background-modifier-border); border-radius: 3px; overflow: hidden; }
+.storyteller-hp-bar-fill { height: 100%; border-radius: 3px; background: var(--color-green); transition: width 0.3s; }
+.storyteller-hp-bar-fill.wounded { background: var(--color-orange); }
+.storyteller-hp-bar-fill.critical { background: var(--color-red); }
+.storyteller-campaign-hp-label { font-size: 0.75rem; color: var(--text-muted); white-space: nowrap; }
+.storyteller-campaign-hp-btns { display: flex; gap: 0.25rem; }
+.storyteller-campaign-hp-btns button { padding: 2px 8px; font-size: 1rem; border: 1px solid var(--background-modifier-border); border-radius: 4px; cursor: pointer; background: none; color: var(--text-normal); }
+.storyteller-campaign-log { max-height: 200px; overflow-y: auto; display: flex; flex-direction: column; gap: 0.25rem; }
+.storyteller-campaign-log-entry { font-size: 0.75rem; color: var(--text-muted); margin: 0; padding: 2px 0; border-bottom: 1px solid var(--background-modifier-border); }
+/* ── Campaign session select ─────────────────────────────────────────────── */
+.storyteller-campaign-select { padding: 1.5rem; max-width: 640px; }
+.storyteller-campaign-select-header { display: flex; align-items: center; gap: 0.5rem; font-size: 1.25rem; font-weight: 700; margin-bottom: 1.25rem; }
+.storyteller-campaign-section-label { font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); margin: 1rem 0 0.4rem; }
+.storyteller-campaign-session-list { display: flex; flex-direction: column; gap: 0.5rem; }
+.storyteller-campaign-session-card { display: flex; align-items: center; justify-content: space-between; padding: 0.75rem 1rem; border: 1px solid var(--background-modifier-border); border-radius: 8px; gap: 0.75rem; }
+.storyteller-campaign-session-info { display: flex; flex-direction: column; gap: 0.2rem; flex: 1; }
+.storyteller-campaign-session-name { font-weight: 600; }
+.storyteller-campaign-session-meta { font-size: 0.8rem; color: var(--text-muted); display: flex; flex-wrap: wrap; gap: 0.25rem; }
+.storyteller-campaign-session-detail { font-size: 0.8rem; color: var(--text-muted); margin: 0; }
+.storyteller-campaign-session-actions { display: flex; gap: 0.4rem; flex-shrink: 0; }
+
+/* ── Campaign form ───────────────────────────────────────────────────────── */
+.storyteller-campaign-form { display: flex; flex-direction: column; gap: 0.75rem; padding: 1rem; border: 1px solid var(--background-modifier-border); border-radius: 8px; margin-top: 0.25rem; }
+.storyteller-campaign-field { display: flex; flex-direction: column; gap: 0.3rem; }
+.storyteller-campaign-field label { font-size: 0.8rem; color: var(--text-muted); }
+.storyteller-campaign-input { background: var(--background-modifier-form-field); border: 1px solid var(--background-modifier-border); border-radius: 4px; padding: 5px 8px; color: var(--text-normal); font-size: 0.875rem; width: 100%; }
+.storyteller-campaign-input.is-small { width: 60px; padding: 3px 6px; }
+.storyteller-campaign-party-picker { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+.storyteller-campaign-char-chip { padding: 3px 10px; border-radius: 10px; border: 1px solid var(--background-modifier-border); font-size: 0.8rem; cursor: pointer; transition: background 0.12s; }
+.storyteller-campaign-char-chip:hover { background: var(--background-modifier-hover); }
+.storyteller-campaign-char-chip.is-selected { background: rgba(239,83,80,0.18); border-color: #ef5350; color: #ef5350; }
+
+/* ── Campaign buttons ────────────────────────────────────────────────────── */
+.storyteller-campaign-btn { background: none; border: 1px solid var(--background-modifier-border); border-radius: 5px; padding: 5px 10px; cursor: pointer; color: var(--text-normal); font-size: 0.85rem; display: inline-flex; align-items: center; gap: 0.3rem; }
+.storyteller-campaign-btn:hover { background: var(--background-modifier-hover); }
+.storyteller-campaign-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.storyteller-campaign-btn.is-primary { background: #ef5350; border-color: #ef5350; color: #fff; }
+.storyteller-campaign-btn.is-primary:hover { background: #e53935; }
+.storyteller-campaign-btn.is-danger { border-color: var(--color-red); color: var(--color-red); }
+.storyteller-campaign-btn.is-danger:hover { background: rgba(243,139,168,0.12); }
+.storyteller-campaign-btn.is-confirm { border-color: var(--color-green); color: var(--color-green); }
+.storyteller-campaign-btn.is-confirm:hover { background: rgba(166,227,161,0.12); }
+
+/* ── Campaign play — scene panel ─────────────────────────────────────────── */
+.storyteller-campaign-scene-header { margin-bottom: 0.75rem; }
+.storyteller-campaign-scene-header h2 { margin: 0 0 0.25rem; }
+.storyteller-campaign-synopsis { color: var(--text-muted); font-style: italic; margin: 0 0 0.5rem; }
+.storyteller-campaign-open-note-btn { background: none; border: none; cursor: pointer; color: var(--link-color); font-size: 0.8rem; line-height: 1; padding: 0 0 0.75rem; display: inline-flex; align-items: center; justify-content: center; gap: 0.35rem; }
+.storyteller-campaign-open-note-btn .svg-icon,
+.storyteller-campaign-open-note-btn svg {
+    display: inline-flex;
+    vertical-align: middle;
+    transform: translateY(-0.5px);
+}
+.storyteller-campaign-scene-body { margin-bottom: 1rem; }
+.storyteller-campaign-scene-body p:last-child { margin-bottom: 0; }
+.storyteller-campaign-encounter-wrap { margin-bottom: 1rem; }
+
+/* ── Scene entity context panel ─────────────────────────────────────────── */
+.storyteller-campaign-scene-context { display: flex; flex-direction: column; gap: 0.4rem; padding: 0.6rem 0.75rem; background: var(--background-secondary); border: 1px solid var(--background-modifier-border); border-radius: 6px; margin-bottom: 1rem; }
+.storyteller-campaign-location-badge { display: inline-flex; align-items: center; gap: 0.3rem; font-size: 0.78rem; color: var(--text-muted); font-weight: 600; }
+.storyteller-campaign-loc-bonus { font-size: 0.75rem; font-weight: 700; }
+.storyteller-campaign-loc-bonus.is-positive { color: var(--color-green); }
+.storyteller-campaign-loc-bonus.is-negative { color: var(--color-red); }
+.storyteller-campaign-context-label { font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); }
+.storyteller-campaign-context-chips { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+.storyteller-campaign-context-chip { display: inline-flex; align-items: center; gap: 0.25rem; font-size: 0.78rem; padding: 2px 8px; border-radius: 10px; background: var(--background-modifier-hover); color: var(--text-normal); border: 1px solid var(--background-modifier-border); }
+.storyteller-campaign-context-chip.is-item { gap: 0.4rem; background: rgba(137,180,250,0.12); border-color: rgba(137,180,250,0.4); }
+.storyteller-campaign-take-btn { font-size: 0.7rem; padding: 1px 6px; border-radius: 8px; border: 1px solid var(--color-accent); background: none; color: var(--color-accent); cursor: pointer; }
+.storyteller-campaign-take-btn:hover { background: var(--color-accent); color: #fff; }
+.storyteller-campaign-take-btn:disabled { opacity: 0.5; cursor: default; }
+
+.storyteller-campaign-branch-header { display: flex; align-items: center; gap: 0.5rem; font-size: 0.8rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 0.5rem; }
+.storyteller-campaign-branch-list { display: flex; flex-direction: column; gap: 0.4rem; }
+.storyteller-campaign-play-branch { border: 1px solid var(--background-modifier-border); border-radius: 6px; padding: 0.65rem 0.85rem; cursor: pointer; display: flex; flex-direction: column; gap: 0.3rem; transition: background 0.12s; }
+.storyteller-campaign-play-branch:hover { background: var(--background-modifier-hover); }
+.storyteller-campaign-play-branch.is-blocked { opacity: 0.55; border-style: dashed; cursor: not-allowed; }
+.storyteller-campaign-play-branch-label { display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem; font-weight: 500; }
+.storyteller-campaign-play-branch-target { font-size: 0.8rem; color: var(--text-muted); white-space: nowrap; }
+.storyteller-campaign-play-branch-tags { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+.storyteller-campaign-play-branch-blocked { font-size: 0.75rem; color: var(--color-red); }
+.storyteller-campaign-dead-end { display: flex; align-items: center; gap: 0.5rem; color: var(--text-muted); font-style: italic; font-size: 0.875rem; margin-top: 1rem; }
+.storyteller-campaign-scene-picker { display: flex; align-items: center; gap: 0.5rem; margin-top: 1rem; flex-wrap: wrap; }
+.storyteller-campaign-scene-picker label { font-size: 0.85rem; color: var(--text-muted); }
+
+/* ── Campaign play — dice overlay ────────────────────────────────────────── */
+.storyteller-dice-box { background: var(--background-primary); border: 1px solid var(--background-modifier-border); border-radius: 12px; padding: 1.5rem; min-width: 280px; display: flex; flex-direction: column; gap: 0.75rem; align-items: center; }
+.storyteller-dice-box h3 { margin: 0; text-align: center; }
+.storyteller-dice-threshold { color: var(--color-orange); }
+.storyteller-dice-result.is-success { color: var(--color-green); }
+.storyteller-dice-result.is-fail { color: var(--color-red); }
+.storyteller-dice-override-wrap { display: flex; align-items: center; gap: 0.5rem; font-size: 0.8rem; color: var(--text-muted); }
+.storyteller-dice-override-label { white-space: nowrap; }
+.storyteller-dice-btn-row { display: flex; gap: 0.5rem; }
+
+/* ── Campaign play — sidebar ─────────────────────────────────────────────── */
+.storyteller-campaign-sidebar-hdr { display: flex; align-items: center; gap: 0.4rem; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); margin-bottom: 0.55rem; }
+.storyteller-campaign-sidebar-body { display: flex; flex-direction: column; gap: 0.4rem; }
+.storyteller-campaign-sidebar-sub-hdr { font-size: 0.7rem; text-transform: uppercase; color: var(--text-faint); margin-top: 0.5rem; margin-bottom: 0.25rem; }
+.storyteller-campaign-empty-text { color: var(--text-faint); font-style: italic; font-size: 0.8rem; }
+.storyteller-campaign-party-member { display: flex; flex-direction: column; gap: 0.25rem; padding: 0.55rem 0.6rem; border: 1px solid var(--background-modifier-border); border-radius: 8px; background: color-mix(in srgb, var(--background-secondary) 60%, transparent); margin-bottom: 0.2rem; }
+.storyteller-campaign-party-member:last-child { border-bottom: none; margin-bottom: 0; }
+.storyteller-campaign-party-name { font-size: 0.84rem; font-weight: 700; line-height: 1.2; word-break: break-word; }
+.storyteller-campaign-hp-row { display: flex; align-items: center; gap: 0.5rem; }
+.storyteller-campaign-hp-text { font-size: 0.74rem; color: var(--text-muted); white-space: nowrap; min-width: 40px; font-variant-numeric: tabular-nums; }
+.storyteller-campaign-hp-controls { display: flex; align-items: center; gap: 0.3rem; }
+.storyteller-campaign-hp-btn { background: none; border: 1px solid var(--background-modifier-border); border-radius: 3px; padding: 1px 6px; cursor: pointer; color: var(--text-normal); font-size: 1rem; line-height: 1.2; }
+.storyteller-campaign-hp-btn:hover { background: var(--background-modifier-hover); }
+.storyteller-campaign-conditions { display: flex; flex-wrap: wrap; gap: 0.25rem; }
+.storyteller-campaign-item-list { display: flex; flex-direction: column; gap: 0.25rem; margin-bottom: 0.5rem; }
+.storyteller-campaign-item-row { display: flex; align-items: center; gap: 0.35rem; font-size: 0.8rem; padding: 0.38rem 0.42rem; border-radius: 7px; border: 1px solid transparent; background: color-mix(in srgb, var(--background-secondary) 48%, transparent); }
+.storyteller-campaign-item-row:hover { border-color: var(--background-modifier-border); background: color-mix(in srgb, var(--background-modifier-hover) 72%, transparent); }
+.storyteller-campaign-item-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.storyteller-campaign-item-owner { width: 88px; min-width: 88px; font-size: 0.72rem; padding: 1px 3px; }
+.storyteller-campaign-item-add-row { display: flex; gap: 0.4rem; }
+.storyteller-campaign-item-add-select { flex: 1; min-width: 0; }
+.storyteller-campaign-flag-list { display: flex; flex-wrap: wrap; gap: 0.25rem; }
+
+/* ── Lore sidebar ────────────────────────────────────────────────────────── */
+.storyteller-campaign-lore-entry { padding: 0.4rem 0; border-bottom: 1px solid var(--background-modifier-border); }
+.storyteller-campaign-lore-entry:last-child { border-bottom: none; }
+.storyteller-campaign-lore-name-row { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; margin-bottom: 0.2rem; }
+.storyteller-campaign-lore-name { font-weight: 600; font-size: 0.82rem; }
+.storyteller-campaign-lore-type { font-size: 0.68rem; padding: 1px 6px; border-radius: 8px; background: var(--background-modifier-hover); color: var(--text-muted); text-transform: capitalize; }
+.storyteller-campaign-lore-rarity { font-size: 0.68rem; padding: 1px 6px; border-radius: 8px; text-transform: capitalize; }
+.storyteller-campaign-lore-rarity.is-common { background: rgba(180,180,180,0.15); color: var(--text-muted); }
+.storyteller-campaign-lore-rarity.is-uncommon { background: rgba(166,227,161,0.15); color: var(--color-green); }
+.storyteller-campaign-lore-rarity.is-rare { background: rgba(137,180,250,0.15); color: var(--color-blue); }
+.storyteller-campaign-lore-rarity.is-very-rare { background: rgba(203,166,247,0.15); color: var(--color-purple); }
+.storyteller-campaign-lore-rarity.is-legendary { background: rgba(250,179,135,0.15); color: var(--color-orange); }
+.storyteller-campaign-lore-rarity.is-mythical,
+.storyteller-campaign-lore-rarity.is-artifact { background: rgba(243,188,168,0.2); color: #ef5350; }
+.storyteller-campaign-lore-desc { font-size: 0.75rem; color: var(--text-muted); line-height: 1.4; }
+.storyteller-campaign-lore-danger { font-size: 0.7rem; margin-top: 0.2rem; }
+.storyteller-campaign-lore-danger.is-low { color: var(--color-yellow); }
+.storyteller-campaign-lore-danger.is-medium { color: var(--color-orange); }
+.storyteller-campaign-lore-danger.is-high { color: var(--color-red); }
+.storyteller-campaign-lore-danger.is-deadly { color: #ef5350; font-weight: 700; }
+
+/* ── Dice overlay loc bonus ──────────────────────────────────────────────── */
+.storyteller-dice-loc-bonus { font-size: 0.8rem; font-weight: 600; }
+.storyteller-dice-loc-bonus.is-positive { color: var(--color-green); }
+.storyteller-dice-loc-bonus.is-negative { color: var(--color-red); }
+
+/* ── PlotItem Campaign Use section ──────────────────────────────────────── */
+.storyteller-campaign-use-header { display: flex; align-items: center; gap: 0.75rem; margin: 1rem 0 0.25rem; }
+.storyteller-campaign-use-header h3 { margin: 0; }
+.storyteller-campaign-use-toggle { background: none; border: 1px solid var(--background-modifier-border); border-radius: 4px; padding: 2px 10px; cursor: pointer; font-size: 0.78rem; color: var(--text-muted); }
+.storyteller-campaign-use-toggle:hover { background: var(--background-modifier-hover); }
+.storyteller-campaign-use-body { padding: 0.5rem 0; }
+.storyteller-campaign-log-list { max-height: 180px; overflow-y: auto; display: flex; flex-direction: column; gap: 0.2rem; }
+.storyteller-campaign-log-entry { font-size: 0.75rem; color: var(--text-muted); padding: 2px 0; border-bottom: 1px solid var(--background-modifier-border); line-height: 1.4; }
+.storyteller-campaign-party-chip { background: rgba(239,83,80,0.12); color: #ef5350; padding: 2px 8px; border-radius: 10px; font-size: 0.8rem; margin-right: 4px; }
+.storyteller-campaign-party-add { margin-left: 4px; }
+.storyteller-branch-block { border: 1px solid var(--background-modifier-border); border-radius: 8px; padding: 1rem; margin: 0.5rem 0; }
+.storyteller-branch-block-header { display: flex; align-items: center; gap: 0.5rem; font-weight: 600; margin-bottom: 0.75rem; color: var(--text-muted); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; }
+.storyteller-branch-choice { display: flex; flex-direction: column; gap: 0.3rem; padding: 0.5rem 0.75rem; border-radius: 4px; border: 1px solid var(--background-modifier-border); margin-bottom: 0.35rem; }
+.storyteller-branch-choice.is-hidden { opacity: 0.45; border-style: dashed; }
+.storyteller-branch-choice-label-row { display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem; }
+.storyteller-branch-choice-label { flex: 1; font-weight: 500; }
+
+@media (max-width: 1060px) {
+    .storyteller-campaign-main {
+        flex-direction: column;
+    }
+    .storyteller-campaign-sidebar {
+        width: 100%;
+        border-left: none;
+        border-top: 1px solid var(--background-modifier-border);
+        max-height: none;
+        flex: 0 0 auto;
+    }
+    .storyteller-campaign-scene-panel {
+        min-height: 0;
+        flex: 1 1 auto;
+    }
+}
+.storyteller-branch-choice-target { font-size: 0.8rem; color: var(--text-muted); white-space: nowrap; }
+.storyteller-branch-choice-fail { font-size: 0.8rem; color: var(--color-red); white-space: nowrap; }
+.storyteller-branch-hidden-tag { font-size: 0.65rem; padding: 1px 5px; border-radius: 8px; background: var(--background-modifier-border); color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.storyteller-branch-conditions { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+.storyteller-branch-tag { font-size: 0.72rem; padding: 2px 7px; border-radius: 10px; white-space: nowrap; }
+.storyteller-branch-tag.is-dice { background: rgba(250,179,135,0.15); color: var(--color-orange); }
+.storyteller-branch-tag.is-stat { background: rgba(137,180,250,0.15); color: var(--color-blue); }
+.storyteller-branch-tag.is-item { background: rgba(203,166,247,0.15); color: var(--color-purple); }
+.storyteller-branch-tag.is-character { background: rgba(166,227,161,0.15); color: var(--color-green); }
+.storyteller-branch-tag.is-flag { background: rgba(148,226,213,0.12); color: var(--color-cyan); }
+.storyteller-branch-outcomes { display: flex; flex-wrap: wrap; gap: 0.35rem; padding-top: 0.1rem; border-top: 1px dashed var(--background-modifier-border); margin-top: 0.1rem; }
+.storyteller-branch-outcome { font-size: 0.7rem; color: var(--text-muted); white-space: nowrap; }
+.storyteller-branch-outcome.is-grant { color: var(--color-green); }
+.storyteller-branch-outcome.is-remove { color: var(--color-red); }
+.storyteller-branch-outcome.is-flag { color: var(--color-cyan); }
+.storyteller-branch-outcome.is-event { color: var(--color-yellow); }
+.storyteller-branch-empty { color: var(--text-muted); font-style: italic; font-size: 0.875rem; }
+.storyteller-encounter-block { border: 1px solid var(--background-modifier-border); border-radius: 8px; padding: 1rem; margin: 0.5rem 0; }
+.storyteller-encounter-header { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem; }
+.storyteller-encounter-title { font-weight: 600; }
+.storyteller-encounter-trigger { font-size: 0.7rem; padding: 2px 6px; border-radius: 10px; background: rgba(250,179,135,0.15); color: var(--color-orange); margin-left: auto; }
+.storyteller-encounter-table { width: 100%; border-collapse: collapse; font-size: 0.875rem; margin-bottom: 0.75rem; }
+.storyteller-encounter-table th { text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--background-modifier-border); color: var(--text-muted); font-size: 0.75rem; text-transform: uppercase; }
+.storyteller-encounter-table td { padding: 4px 8px; border-bottom: 1px solid var(--background-modifier-border); }
+.storyteller-encounter-row.is-active { background: rgba(250,179,135,0.15); }
+.storyteller-encounter-range { font-weight: 600; color: var(--color-orange); white-space: nowrap; }
+.storyteller-encounter-roll-btn { display: flex; align-items: center; gap: 0.5rem; padding: 6px 12px; border: 1px solid var(--background-modifier-border); border-radius: 4px; cursor: pointer; background: none; color: var(--text-normal); }
+.storyteller-encounter-roll-btn:hover { background: var(--background-modifier-hover); }
+.storyteller-encounter-result { margin-top: 0.5rem; font-weight: 600; min-height: 1.2em; }
+.storyteller-encounter-error { color: var(--color-red); }
+.storyteller-scene-graph-view {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    background: var(--background-primary);
+    overflow: hidden;
+}
+.storyteller-scene-graph-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.4rem 0.6rem;
+    border-bottom: 1px solid var(--background-modifier-border);
+    background: var(--background-secondary);
+    flex-shrink: 0;
+}
+.storyteller-scene-graph-toolbar button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: 32px;
+    padding: 5px 10px;
+    background: var(--background-primary);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 6px;
+    cursor: pointer;
+    color: var(--text-normal);
+    transition: background-color 120ms ease, border-color 120ms ease;
+    font-weight: 500;
+}
+.storyteller-scene-graph-toolbar button:hover {
+    background: var(--background-modifier-hover);
+    border-color: var(--background-modifier-border-focus);
+}
+.storyteller-scene-graph-toolbar button:disabled { opacity: 0.42; cursor: not-allowed; }
+.storyteller-scene-graph-toolbar .clickable-icon.storyteller-toolbar-btn {
+    width: 32px;
+    height: 32px;
+    padding: 0;
+}
+.storyteller-scene-graph-toolbar-spacer { flex: 1; }
+.storyteller-scene-graph-layout-btn { min-width: 132px; justify-content: flex-start; }
+.storyteller-scene-graph-run-btn { display: inline-flex; align-items: center; gap: 0.38rem; }
+.storyteller-scene-graph-container {
+    flex: 1;
+    min-height: 320px;
+    position: relative;
+    overflow: hidden;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: var(--sts-item-radius);
+    background-color: var(--background-primary);
+    background-image:
+        repeating-linear-gradient(
+            to bottom,
+            transparent 0,
+            transparent 41px,
+            rgba(127, 135, 145, 0.08) 41px,
+            rgba(127, 135, 145, 0.08) 42px
+        ),
+        repeating-linear-gradient(
+            to right,
+            rgba(127, 135, 145, 0.11) 0,
+            rgba(127, 135, 145, 0.11) 1px,
+            transparent 1px,
+            transparent 96px
+        );
+}
+.storyteller-branch-editor-modal { width: min(700px, 90vw) !important; }
+.storyteller-tab-bar { display: flex; gap: 0; border-bottom: 1px solid var(--background-modifier-border); margin-bottom: 1rem; }
+.storyteller-tab-btn { background: none; border: none; border-bottom: 2px solid transparent; padding: 0.5rem 1rem; cursor: pointer; color: var(--text-muted); }
+.storyteller-tab-btn.is-active { color: var(--text-normal); border-bottom-color: var(--interactive-accent); }
+.storyteller-tab-body { min-height: 200px; }
+.storyteller-modal-footer { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--background-modifier-border); }
+.storyteller-modal-btn { padding: 6px 14px; border-radius: 4px; border: 1px solid var(--background-modifier-border); cursor: pointer; background: none; color: var(--text-normal); }
+.storyteller-modal-btn.mod-cta { background: var(--interactive-accent); color: var(--text-on-accent); border-color: transparent; }
+.storyteller-modal-btn.mod-warning { color: var(--color-red); border-color: var(--color-red); }
+.storyteller-branch-editor-list { display: flex; flex-direction: column; gap: 0.75rem; margin-bottom: 1rem; }
+.storyteller-branch-editor-card { border: 1px solid var(--background-modifier-border); border-radius: 6px; padding: 0.75rem; position: relative; }
+.storyteller-branch-reorder { display: flex; flex-direction: column; gap: 2px; position: absolute; top: 0.5rem; right: 0.5rem; }
+.storyteller-branch-editor-fields { display: flex; flex-direction: column; }
+.storyteller-branch-dice-details { margin: 0.25rem 0; }
+.storyteller-branch-dice-details summary { cursor: pointer; color: var(--text-muted); font-size: 0.875rem; }
+.storyteller-branch-dice-row { padding: 0.5rem 0; }
+.storyteller-branch-editor-delete { position: absolute; bottom: 0.5rem; right: 0.5rem; background: none; border: none; cursor: pointer; color: var(--color-red); }
+.storyteller-encounter-row-editor { border-bottom: 1px solid var(--background-modifier-border); padding-bottom: 0.5rem; margin-bottom: 0.5rem; }
+.storyteller-dnd-section-header { cursor: pointer; display: flex; align-items: center; gap: 0.4rem; margin: 1rem 0 0; }
+.storyteller-dnd-section-body { padding: 0.75rem 0; }
+.storyteller-dnd-label { font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; display: block; margin-bottom: 0.25rem; margin-top: 0.75rem; }
+.storyteller-dnd-row { display: flex; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 0.5rem; }
+.storyteller-dnd-field { display: flex; flex-direction: column; flex: 1; min-width: 80px; }
+.storyteller-dnd-field input { width: 100%; padding: 4px 6px; border: 1px solid var(--background-modifier-border); border-radius: 4px; background: var(--background-primary); color: var(--text-normal); }
+.storyteller-dnd-stat-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 0.5rem; margin: 0.5rem 0; }
+.storyteller-dnd-stat-cell { display: flex; flex-direction: column; align-items: center; text-align: center; }
+.storyteller-dnd-stat-name { font-size: 0.7rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; }
+.storyteller-dnd-stat-cell input { width: 100%; text-align: center; padding: 4px 2px; border: 1px solid var(--background-modifier-border); border-radius: 4px; background: var(--background-primary); color: var(--text-normal); }
+.storyteller-dnd-stat-modifier { font-size: 0.75rem; color: var(--text-muted); height: 1.2em; }
+.storyteller-dnd-chips { display: flex; flex-wrap: wrap; gap: 0.25rem; align-items: center; margin-bottom: 0.5rem; }
+.storyteller-dnd-condition { font-size: 0.7rem; padding: 2px 6px; border-radius: 10px; background: rgba(239,83,80,0.12); color: #ef5350; cursor: pointer; }
+.storyteller-dnd-chip-add { font-size: 0.8rem; padding: 2px 4px; }
+.storyteller-branches-section { margin: 1rem 0; padding: 0.75rem 1rem; border: 1px solid var(--background-modifier-border); border-radius: 8px; }
+.storyteller-branches-section-header { display: flex; align-items: center; gap: 0.4rem; font-weight: 600; margin-bottom: 0.5rem; }
+.storyteller-branches-summary { margin-bottom: 0.5rem; }
+.storyteller-branch-summary-row { display: flex; align-items: center; gap: 0.5rem; padding: 0.2rem 0; font-size: 0.875rem; border-bottom: 1px solid var(--background-modifier-border); }
+.storyteller-branch-summary-target { color: var(--text-muted); }
+
+/* Timeline + Gantt Unified Visual Layer */
+.storyteller-timeline-view,
+.storyteller-timeline-modal {
+    --sts-tl-surface: var(--background-primary);
+    --sts-tl-panel: var(--background-secondary);
+    --sts-tl-border: var(--background-modifier-border);
+    --sts-tl-item-bg: var(--background-secondary);
+    --sts-tl-item-shadow: 0 1px 5px rgba(0, 0, 0, 0.18);
+    --sts-tl-item-shadow-focus: 0 0 0 2px rgba(var(--interactive-accent-rgb, 124, 77, 255), 0.35), 0 2px 8px rgba(0, 0, 0, 0.24);
+}
+
+.storyteller-timeline-view .storyteller-timeline-container,
+.storyteller-timeline-modal .storyteller-timeline-container {
+    border: 1px solid var(--sts-tl-border);
+    border-radius: 12px;
+    background: var(--sts-tl-surface);
+    overflow: hidden;
+}
+
+.storyteller-timeline-view .storyteller-timeline-container {
+    min-height: 260px !important;
+}
+
+.storyteller-timeline-view .vis-timeline,
+.storyteller-timeline-modal .vis-timeline {
+    background: transparent !important;
+    border: none !important;
+    border-radius: 0 !important;
+}
+
+.storyteller-timeline-view .vis-panel.vis-left,
+.storyteller-timeline-modal .vis-panel.vis-left,
+.storyteller-timeline-view .vis-panel.vis-top,
+.storyteller-timeline-modal .vis-panel.vis-top,
+.storyteller-timeline-view .vis-time-axis,
+.storyteller-timeline-modal .vis-time-axis {
+    background: var(--sts-tl-panel) !important;
+}
+
+.storyteller-timeline-view .vis-labelset .vis-label,
+.storyteller-timeline-modal .vis-labelset .vis-label {
+    justify-content: flex-start !important;
+    padding-left: 8px !important;
+    padding-right: 8px !important;
+}
+
+.storyteller-timeline-view .vis-label .vis-inner,
+.storyteller-timeline-modal .vis-label .vis-inner {
+    width: 100%;
+}
+
+.storyteller-timeline-view .sts-group-chip,
+.storyteller-timeline-modal .sts-group-chip {
+    width: 100%;
+    max-width: none;
+    justify-content: flex-start;
+}
+
+.storyteller-timeline-view .vis-foreground .vis-group,
+.storyteller-timeline-modal .vis-foreground .vis-group {
+    min-height: 38px !important;
+    border-bottom: 1px solid var(--sts-tl-border) !important;
+}
+
+.storyteller-timeline-view .vis-item:not(.vis-line):not(.vis-dot),
+.storyteller-timeline-modal .vis-item:not(.vis-line):not(.vis-dot) {
+    border-radius: 8px !important;
+    border: 1px solid var(--sts-tl-border) !important;
+    box-shadow: var(--sts-tl-item-shadow);
+    z-index: 3 !important;
+    transition: none !important;
+    animation: none !important;
+}
+
+/* No vertical "bobbing" on scroll/hover */
+.storyteller-timeline-view .vis-item:hover,
+.storyteller-timeline-modal .vis-item:hover,
+.storyteller-timeline-view .vis-item.vis-selected,
+.storyteller-timeline-modal .vis-item.vis-selected,
+.storyteller-timeline-view .vis-item.vis-box:hover .vis-item-content,
+.storyteller-timeline-modal .vis-item.vis-box:hover .vis-item-content,
+.storyteller-timeline-view .vis-item.vis-point:hover .vis-item-content,
+.storyteller-timeline-modal .vis-item.vis-point:hover .vis-item-content {
+    transition: none !important;
+    animation: none !important;
+}
+
+.storyteller-timeline-view .vis-item:hover,
+.storyteller-timeline-modal .vis-item:hover,
+.storyteller-timeline-view .vis-item:hover .vis-item-content,
+.storyteller-timeline-modal .vis-item:hover .vis-item-content {
+    box-shadow: var(--sts-tl-item-shadow) !important;
+    border-color: var(--sts-tl-border) !important;
+}
+
+.storyteller-timeline-view .vis-item.vis-selected,
+.storyteller-timeline-modal .vis-item.vis-selected {
+    box-shadow: var(--sts-tl-item-shadow-focus) !important;
+}
+
+/* Keep stems independent from card styling so long stems do not get clipped/fade out. */
+.storyteller-timeline-view .vis-item.vis-line,
+.storyteller-timeline-modal .vis-item.vis-line {
+    background: transparent !important;
+    border: none !important;
+    border-left: 1px solid color-mix(in srgb, var(--text-muted) 65%, transparent) !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    z-index: 1 !important;
+    pointer-events: none;
+}
+
+.storyteller-timeline-view .vis-item.vis-dot,
+.storyteller-timeline-modal .vis-item.vis-dot {
+    background: var(--background-primary) !important;
+    border-radius: 50% !important;
+    border: 3px solid var(--interactive-accent) !important;
+    box-shadow: none !important;
+    z-index: 4 !important;
+    pointer-events: none;
+}
+
+.storyteller-timeline-view .vis-item.vis-selected,
+.storyteller-timeline-modal .vis-item.vis-selected {
+    z-index: 6 !important;
+}
+
+.storyteller-timeline-view .vis-item[style*="--sts-group-color"].vis-line,
+.storyteller-timeline-modal .vis-item[style*="--sts-group-color"].vis-line {
+    border-left-color: var(--sts-group-color) !important;
+}
+
+.storyteller-timeline-view .vis-item[style*="--sts-group-color"].vis-dot,
+.storyteller-timeline-modal .vis-item[style*="--sts-group-color"].vis-dot {
+    border-color: var(--sts-group-color) !important;
+}
+
+.storyteller-timeline-view .vis-item.vis-box,
+.storyteller-timeline-modal .vis-item.vis-box,
+.storyteller-timeline-view .vis-item.vis-point,
+.storyteller-timeline-modal .vis-item.vis-point {
+    background: var(--sts-tl-item-bg) !important;
+    border-color: var(--sts-tl-border) !important;
+    box-shadow: var(--sts-tl-item-shadow) !important;
+    overflow: hidden !important;
+}
+
+.storyteller-timeline-view .vis-item.vis-box .vis-item-content,
+.storyteller-timeline-modal .vis-item.vis-box .vis-item-content,
+.storyteller-timeline-view .vis-item.vis-point .vis-item-content,
+.storyteller-timeline-modal .vis-item.vis-point .vis-item-content {
+    background: transparent !important;
+    border: none !important;
+    border-radius: inherit !important;
+    box-shadow: none !important;
+}
+
+.storyteller-timeline-view .vis-item.vis-range,
+.storyteller-timeline-modal .vis-item.vis-range,
+.storyteller-timeline-view .vis-item.gantt-bar,
+.storyteller-timeline-modal .vis-item.gantt-bar {
+    min-height: 30px;
+    min-width: 88px;
+    border-width: 1px !important;
+    background-image: none !important;
+}
+
+.storyteller-timeline-view .vis-item .vis-item-content,
+.storyteller-timeline-modal .vis-item .vis-item-content {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.storyteller-timeline-view .vis-item.timeline-milestone,
+.storyteller-timeline-modal .vis-item.timeline-milestone,
+.storyteller-timeline-view .vis-item.gantt-milestone,
+.storyteller-timeline-modal .vis-item.gantt-milestone {
+    background: rgba(234, 179, 8, 0.2) !important;
+    border-color: rgba(234, 179, 8, 0.55) !important;
+    color: var(--text-normal) !important;
+}
+
+.storyteller-timeline-view .vis-item.timeline-milestone .vis-item-content,
+.storyteller-timeline-modal .vis-item.timeline-milestone .vis-item-content,
+.storyteller-timeline-view .vis-item.gantt-milestone .vis-item-content,
+.storyteller-timeline-modal .vis-item.gantt-milestone .vis-item-content {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    color: var(--text-normal) !important;
+    font-weight: 700 !important;
+    text-shadow: none !important;
+}
+
+/* Stronger status color language shared by timeline and gantt */
+.storyteller-timeline-view .vis-item.sts-status-upcoming,
+.storyteller-timeline-modal .vis-item.sts-status-upcoming {
+    background: linear-gradient(90deg, rgba(59, 130, 246, 0.16), rgba(59, 130, 246, 0.08)) !important;
+    border-left: 3px solid #3b82f6 !important;
+}
+.storyteller-timeline-view .vis-item.sts-status-ongoing,
+.storyteller-timeline-modal .vis-item.sts-status-ongoing,
+.storyteller-timeline-view .vis-item.sts-status-in-progress,
+.storyteller-timeline-modal .vis-item.sts-status-in-progress,
+.storyteller-timeline-view .vis-item.sts-status-active,
+.storyteller-timeline-modal .vis-item.sts-status-active {
+    background: linear-gradient(90deg, rgba(245, 158, 11, 0.2), rgba(245, 158, 11, 0.1)) !important;
+    border-left: 3px solid #f59e0b !important;
+}
+.storyteller-timeline-view .vis-item.sts-status-completed,
+.storyteller-timeline-modal .vis-item.sts-status-completed,
+.storyteller-timeline-view .vis-item.sts-status-resolved,
+.storyteller-timeline-modal .vis-item.sts-status-resolved,
+.storyteller-timeline-view .vis-item.sts-status-done,
+.storyteller-timeline-modal .vis-item.sts-status-done {
+    background: linear-gradient(90deg, rgba(16, 185, 129, 0.18), rgba(16, 185, 129, 0.08)) !important;
+    border-left: 3px solid #10b981 !important;
+}
+.storyteller-timeline-view .vis-item.sts-status-failed,
+.storyteller-timeline-modal .vis-item.sts-status-failed,
+.storyteller-timeline-view .vis-item.sts-status-cancelled,
+.storyteller-timeline-modal .vis-item.sts-status-cancelled {
+    background: linear-gradient(90deg, rgba(239, 68, 68, 0.18), rgba(239, 68, 68, 0.08)) !important;
+    border-left: 3px solid #ef4444 !important;
+}
+
+.storyteller-timeline-view .storyteller-timeline-toolbar,
+.storyteller-timeline-modal .storyteller-timeline-toolbar {
+    background: var(--sts-tl-panel) !important;
+    border: 1px solid var(--sts-tl-border);
+    border-radius: 10px;
+    padding: 0.45rem 0.6rem;
+    margin-bottom: 0.4rem;
+    display: flex !important;
+    flex-wrap: wrap !important;
+    align-items: center !important;
+    align-content: flex-start !important;
+    justify-content: flex-start !important;
+    gap: 0.45rem;
+}
+
+.storyteller-timeline-view .storyteller-timeline-toolbar > *,
+.storyteller-timeline-modal .storyteller-timeline-toolbar > * {
+    flex: 0 0 auto;
+    max-width: 100%;
+}
+
+.storyteller-timeline-view .storyteller-timeline-toolbar .storyteller-grouping-container,
+.storyteller-timeline-modal .storyteller-timeline-toolbar .storyteller-grouping-container,
+.storyteller-timeline-view .storyteller-timeline-toolbar .storyteller-fork-container,
+.storyteller-timeline-modal .storyteller-timeline-toolbar .storyteller-fork-container,
+.storyteller-timeline-view .storyteller-timeline-toolbar .storyteller-track-selector,
+.storyteller-timeline-modal .storyteller-timeline-toolbar .storyteller-track-selector {
+    display: inline-flex !important;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.storyteller-timeline-view .storyteller-timeline-filter-toggle,
+.storyteller-timeline-modal .storyteller-timeline-filter-toggle,
+.storyteller-timeline-view .storyteller-timeline-advanced-filters,
+.storyteller-timeline-modal .storyteller-timeline-advanced-filters {
+    background: var(--sts-tl-panel);
+    border: 1px solid var(--sts-tl-border);
+    border-radius: 10px;
+}
+
+.storyteller-timeline-view .storyteller-timeline-toolbar button,
+.storyteller-timeline-modal .storyteller-timeline-toolbar button,
+.storyteller-timeline-view .storyteller-timeline-toolbar select,
+.storyteller-timeline-modal .storyteller-timeline-toolbar select {
+    min-height: 30px;
+    border-radius: 8px;
+}
+
+.storyteller-timeline-search-wrap {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: auto;
+    position: relative;
+}
+.storyteller-timeline-search-input {
+    min-width: 170px;
+    height: 30px;
+    border: 1px solid var(--sts-tl-border);
+    border-radius: 8px;
+    background: var(--background-primary);
+    color: var(--text-normal);
+    padding: 0 10px;
+}
+
+.storyteller-timeline-search-dropdown {
+    display: none;
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    min-width: 280px;
+    max-width: min(420px, 70vw);
+    max-height: 260px;
+    overflow-y: auto;
+    z-index: 1000;
+    border: 1px solid var(--sts-tl-border);
+    border-radius: 10px;
+    background: var(--background-primary);
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.26);
+}
+.storyteller-timeline-search-dropdown.is-open {
+    display: block;
+}
+.storyteller-timeline-search-row {
+    width: 100%;
+    border: 0;
+    background: transparent;
+    color: var(--text-normal);
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 10px;
+    align-items: center;
+    text-align: left;
+    padding: 8px 10px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    cursor: pointer;
+}
+.storyteller-timeline-search-row:hover {
+    background: var(--background-modifier-hover);
+}
+.storyteller-timeline-search-row-name {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.storyteller-timeline-search-row-date {
+    color: var(--text-muted);
+    font-family: var(--font-interface-monospace);
+    font-size: 0.82em;
+}
+.storyteller-timeline-search-empty {
+    color: var(--text-muted);
+    padding: 8px 10px;
+}
+
+.storyteller-timeline-event-list {
+    display: none !important;
+}
+
+/* Stem + card lock: preserve stems, prevent hover/scroll desync and flicker. */
+.storyteller-timeline-view .vis-item .vis-item-content,
+.storyteller-timeline-modal .vis-item .vis-item-content,
+.storyteller-timeline-view .vis-item.vis-line,
+.storyteller-timeline-modal .vis-item.vis-line,
+.storyteller-timeline-view .vis-item.vis-dot,
+.storyteller-timeline-modal .vis-item.vis-dot {
+    transition: none !important;
+    animation: none !important;
+}
+
+.storyteller-timeline-view .vis-item .vis-item-content,
+.storyteller-timeline-modal .vis-item .vis-item-content {
+    position: relative;
+    z-index: 3;
+}
+
+.storyteller-timeline-view .vis-item.timeline-milestone:hover,
+.storyteller-timeline-modal .vis-item.timeline-milestone:hover {
+    transition: none !important;
+}
+
+/* Group color fidelity: items should match the color of the group they are rendered under. */
+.storyteller-timeline-view .vis-item[style*="--sts-group-color"].vis-box,
+.storyteller-timeline-modal .vis-item[style*="--sts-group-color"].vis-box,
+.storyteller-timeline-view .vis-item[style*="--sts-group-color"].vis-point,
+.storyteller-timeline-modal .vis-item[style*="--sts-group-color"].vis-point {
+    background: var(--sts-group-bg, var(--sts-tl-item-bg)) !important;
+    border-color: var(--sts-group-color, var(--sts-tl-border)) !important;
+}
+
+.storyteller-timeline-view .vis-item[style*="--sts-group-color"].vis-range,
+.storyteller-timeline-modal .vis-item[style*="--sts-group-color"].vis-range,
+.storyteller-timeline-view .vis-item[style*="--sts-group-color"].gantt-bar,
+.storyteller-timeline-modal .vis-item[style*="--sts-group-color"].gantt-bar,
+.storyteller-timeline-view .vis-item[style*="--sts-group-color"].timeline-milestone,
+.storyteller-timeline-modal .vis-item[style*="--sts-group-color"].timeline-milestone {
+    background: var(--sts-group-bg, var(--sts-tl-item-bg)) !important;
+    border-color: var(--sts-group-color, var(--sts-tl-border)) !important;
+}
+
+.storyteller-timeline-view .vis-item[class*="sts-status-"][style*="--sts-group-color"],
+.storyteller-timeline-modal .vis-item[class*="sts-status-"][style*="--sts-group-color"] {
+    background: var(--sts-group-bg, var(--sts-tl-item-bg)) !important;
+    border-left: 3px solid var(--sts-group-color, var(--sts-tl-border)) !important;
+}
+
+/* Milestone + narrative marker combos: keep both signals visible and stable. */
+.storyteller-timeline-view .vis-item.timeline-has-narrative-flag,
+.storyteller-timeline-modal .vis-item.timeline-has-narrative-flag {
+    outline: 1px dashed rgba(148, 163, 184, 0.45);
+    outline-offset: -1px;
+}
+
+.storyteller-timeline-view .vis-item.timeline-milestone-flashback,
+.storyteller-timeline-modal .vis-item.timeline-milestone-flashback {
+    box-shadow: inset 0 2px 0 0 rgba(96, 165, 250, 0.85), var(--sts-tl-item-shadow) !important;
+}
+
+.storyteller-timeline-view .vis-item.timeline-milestone-flashforward,
+.storyteller-timeline-modal .vis-item.timeline-milestone-flashforward {
+    box-shadow: inset 0 2px 0 0 rgba(245, 158, 11, 0.85), var(--sts-tl-item-shadow) !important;
+}
+
+/* Timeline hover normalization: one consistent interaction model across all item types. */
+.storyteller-timeline-view .vis-item,
+.storyteller-timeline-modal .vis-item {
+    cursor: pointer;
+    transition: border-color 120ms ease, box-shadow 120ms ease, background-color 120ms ease !important;
+}
+
+.storyteller-timeline-view .vis-item .vis-item-content,
+.storyteller-timeline-modal .vis-item .vis-item-content {
+    transition: border-color 120ms ease, box-shadow 120ms ease, background-color 120ms ease !important;
+}
+
+.storyteller-timeline-view .vis-item:hover:not(.vis-selected),
+.storyteller-timeline-modal .vis-item:hover:not(.vis-selected) {
+    border-color: color-mix(in srgb, var(--interactive-accent) 58%, var(--sts-tl-border) 42%) !important;
+    box-shadow: 0 0 0 1px rgba(var(--interactive-accent-rgb, 124, 77, 255), 0.28), var(--sts-tl-item-shadow) !important;
+}
+
+.storyteller-timeline-view .vis-item.vis-range:hover:not(.vis-selected),
+.storyteller-timeline-modal .vis-item.vis-range:hover:not(.vis-selected),
+.storyteller-timeline-view .vis-item.gantt-bar:hover:not(.vis-selected),
+.storyteller-timeline-modal .vis-item.gantt-bar:hover:not(.vis-selected) {
+    box-shadow: 0 0 0 1px rgba(var(--interactive-accent-rgb, 124, 77, 255), 0.28), var(--sts-tl-item-shadow) !important;
+}
+
+.storyteller-timeline-view .vis-item.timeline-milestone:hover:not(.vis-selected),
+.storyteller-timeline-modal .vis-item.timeline-milestone:hover:not(.vis-selected),
+.storyteller-timeline-view .vis-item.gantt-milestone:hover:not(.vis-selected),
+.storyteller-timeline-modal .vis-item.gantt-milestone:hover:not(.vis-selected) {
+    border-color: color-mix(in srgb, #f59e0b 70%, var(--interactive-accent) 30%) !important;
+    box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.34), var(--sts-tl-item-shadow) !important;
+}
+

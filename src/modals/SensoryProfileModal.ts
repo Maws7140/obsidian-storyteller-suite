@@ -121,7 +121,7 @@ export class SensoryProfileModal extends ResponsiveModal {
 
         // Sight
         new Setting(container)
-            .setName('Sight 👁️')
+            .setName('Sight')
             .setDesc('Visual details, colors, lighting, what can be seen')
             .addTextArea(text => {
                 text.setValue(this.profile.sensoryDetails?.sight || '')
@@ -134,7 +134,7 @@ export class SensoryProfileModal extends ResponsiveModal {
 
         // Sound
         new Setting(container)
-            .setName('Sound 🔊')
+            .setName('Sound')
             .setDesc('What can be heard - ambient noise, echoes, silence')
             .addTextArea(text => {
                 text.setValue(this.profile.sensoryDetails?.sound || '')
@@ -147,7 +147,7 @@ export class SensoryProfileModal extends ResponsiveModal {
 
         // Smell
         new Setting(container)
-            .setName('Smell 👃')
+            .setName('Smell')
             .setDesc('Scents, odors, fragrances in the air')
             .addTextArea(text => {
                 text.setValue(this.profile.sensoryDetails?.smell || '')
@@ -160,7 +160,7 @@ export class SensoryProfileModal extends ResponsiveModal {
 
         // Touch
         new Setting(container)
-            .setName('Touch ✋')
+            .setName('Touch')
             .setDesc('Textures, temperature, physical sensations')
             .addTextArea(text => {
                 text.setValue(this.profile.sensoryDetails?.touch || '')
@@ -173,7 +173,7 @@ export class SensoryProfileModal extends ResponsiveModal {
 
         // Taste
         new Setting(container)
-            .setName('Taste 👅')
+            .setName('Taste')
             .setDesc('Flavors in the air, tastes (if applicable)')
             .addTextArea(text => {
                 text.setValue(this.profile.sensoryDetails?.taste || '')

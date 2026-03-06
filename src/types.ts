@@ -121,8 +121,53 @@ export interface PlotItem {
     /** Links to Magic Systems associated with this item */
     magicSystems?: string[];
 
+    /** Characters jointly associated with this item (co-owners, guardians, wielders) */
+    linkedCharacters?: string[];
+
+    /** Names of economies where this item is traded or significant */
+    linkedEconomies?: string[];
+
+    /** Names of cultures for whom this item holds special significance */
+    linkedCultures?: string[];
+
+    /** Monetary or trade value (e.g. "500gp", "priceless") */
+    economicValue?: string;
+
+    /** Cultural significance and meaning (stored in markdown body) */
+    culturalSignificance?: string;
+
+    /** Magical properties and effects (stored in markdown body) */
+    magicProperties?: string;
+
+    /** Chapter names this item appears in (reverse link from Chapter.linkedItems) */
+    linkedChapters?: string[];
+
+    /** Scene names this item appears in (reverse link from Scene.linkedItems) */
+    linkedScenes?: string[];
+
+    /** Compendium entries that are materials/sources for this item (reverse link from CompendiumEntry.linkedItems) */
+    compendiumSources?: string[];
+
     /** Typed connections to other entities for network graph */
     connections?: TypedRelationship[];
+
+    // ── Campaign use ───────────────────────────────────────────────────────────
+    /** D&D item category used during campaign play */
+    itemType?: 'weapon' | 'armor' | 'consumable' | 'tool' | 'key' | 'treasure' | 'other';
+    /** D&D rarity tier */
+    itemRarity?: 'common' | 'uncommon' | 'rare' | 'very rare' | 'legendary' | 'artifact';
+    /** If true, the item is removed from party inventory when used */
+    consumedOnUse?: boolean;
+    /** DM description of what happens when this item is used during a session */
+    campaignEffect?: string;
+    /** Session flag set when this item is used */
+    grantsFlag?: string;
+    /** Scene name to navigate to when this item is used (e.g. a key that opens a door) */
+    navigatesToScene?: string;
+    /** Location name where this item can be used; empty = usable anywhere */
+    useRequiresLocation?: string;
+    /** Session flag that must be active for this item to be usable */
+    useRequiresFlag?: string;
 }
 
 /**
@@ -186,6 +231,38 @@ export interface Chapter {
     linkedItems?: string[];
     /** Groups are internal to settings, we link by id for stability */
     linkedGroups?: string[];
+    /** Scene names contained in this chapter — auto-maintained by saveScene/deleteScene */
+    linkedScenes?: string[];
+    /** Parent book ID (undefined when not assigned to a book) */
+    bookId?: string;
+    /** Display mirror of parent book name */
+    bookName?: string;
+}
+
+/**
+ * Book entity representing a full novel/volume in a series.
+ * Acts as a container for chapters, which in turn contain scenes.
+ */
+export interface Book {
+    id?: string;
+    filePath?: string;
+    name: string;
+    /** Series this book belongs to */
+    series?: string;
+    /** Position in the series */
+    bookNumber?: number;
+    genre?: string;
+    status?: 'Planning' | 'Writing' | 'Revising' | 'Complete';
+    coverImagePath?: string;
+    /** Overview (stored under ## Description) */
+    description?: string;
+    /** Short synopsis (stored under ## Synopsis) */
+    synopsis?: string;
+    /** Chapter names — auto-maintained by saveChapter/deleteChapter */
+    linkedChapters?: string[];
+    groups?: string[];
+    customFields?: Record<string, string>;
+    connections?: TypedRelationship[];
 }
 
 /**
@@ -217,6 +294,9 @@ export interface Scene {
     linkedItems?: string[];
     linkedGroups?: string[];
     
+    /** Optional date to show this scene on the timeline (same format as events) */
+    date?: string;
+
     // Manuscript/Compile fields (Longform-inspired)
     /** Cached word count of scene content */
     wordCount?: number;
@@ -228,6 +308,14 @@ export interface Scene {
     synopsis?: string;
     /** Point of view character for this scene */
     povCharacter?: string;
+    /** Emotional tone of the scene */
+    emotion?: 'tense' | 'joyful' | 'sorrowful' | 'mysterious' | 'hopeful' | 'fearful' | 'angry' | 'romantic' | 'melancholic' | 'neutral';
+    /** Narrative intensity from -10 (calm) to +10 (climactic) */
+    intensity?: number;
+    /** Scene names this scene sets up (foreshadowing) */
+    setupScenes?: string[];
+    /** Scene names that pay off this scene */
+    payoffScenes?: string[];
 }
 
 
@@ -291,7 +379,7 @@ export interface Character {
     /** Array of group ids this character belongs to */
     groups?: string[];
 
-    /** IDs of items currently owned by this character */
+    /** Names of items currently owned by this character */
     ownedItems?: string[];
 
     /** IDs of cultures this character belongs to */
@@ -299,9 +387,146 @@ export interface Character {
 
     /** IDs of magic systems this character uses or is associated with */
     magicSystems?: string[];
-    
+
+    /** Names of economies this character participates in */
+    linkedEconomies?: string[];
+
+    /** Chapter names this character appears in (reverse link from Chapter.linkedCharacters) */
+    linkedChapters?: string[];
+
+    /** Scene names this character appears in (reverse link from Scene.linkedCharacters) */
+    linkedScenes?: string[];
+
+    /** Items linked to this character beyond primary ownership (co-owned, guarded, sought) */
+    linkedItems?: string[];
+
+    /** Compendium entries this character knows, studies, hunts, or uses */
+    compendiumEntries?: string[];
+
+    /** Character's gender identity */
+    gender?: string;
+
+    /** Character's species, race, or ancestry */
+    race?: string;
+
+    /** Character's age (string to support values like "ancient" or "unknown") */
+    age?: string;
+
+    /** Character's height or build */
+    height?: string;
+
+    /** Character's notable quirks, habits, or mannerisms */
+    quirks?: string;
+
+    /** Current wealth/balance as a formatted string (e.g. "50gp 25sp") */
+    balance?: string;
+
+    /** Ledger entries parsed from ```ledger fenced blocks in the markdown body (not stored in frontmatter) */
+    ledger?: import('./utils/LedgerParser').LedgerEntry[];
+
     /** Typed connections to other entities for network graph */
     connections?: TypedRelationship[];
+
+    // ── D&D / RPG stats ────────────────────────────────────────────────
+    dndClass?: string;
+    dndSubclass?: string;
+    dndRace?: string;
+    dndLevel?: number;
+    dndStr?: number; dndDex?: number; dndCon?: number;
+    dndInt?: number; dndWis?: number; dndCha?: number;
+    dndMaxHp?: number; dndCurrentHp?: number; dndTempHp?: number;
+    dndAc?: number; dndSpeed?: number; dndProficiencyBonus?: number;
+    dndHitDice?: string;
+    dndConditions?: string[];
+    dndSkillProficiencies?: string[];
+    dndSavingThrowProficiencies?: string[];
+}
+
+/**
+ * A single branch/choice in a scene's interactive flowchart.
+ * Stored in the ## Choices section as a ```branch code block — NOT in frontmatter.
+ */
+export interface SceneBranch {
+    id: string;
+    label: string;
+    target?: string;               // target scene name
+    targetSceneId?: string;        // stable scene id (preferred over target when available)
+    fail?: string;                 // fail-target scene name (when dice check fails)
+    failSceneId?: string;          // stable fail scene id
+    failMode?: 'loop' | 'scene' | 'continue';
+
+    // ── Dice check ────────────────────────────────────────────────────────────
+    dice?: 'd4' | 'd6' | 'd8' | 'd10' | 'd12' | 'd20' | 'd100';
+    stat?: 'str' | 'dex' | 'con' | 'int' | 'wis' | 'cha';
+    threshold?: number;
+
+    // ── Conditions (gates) ────────────────────────────────────────────────────
+    requiresItem?: string;         // party must carry this item name
+    requiresCharacter?: string;    // named character must be in the party
+    requiresCharacterId?: string;  // stable character id
+    requiresFlag?: string;         // session flag must be set
+    requiresStatMin?: number;      // passive stat threshold (no dice roll) — use with stat
+
+    // ── Outcomes (applied when branch is taken) ───────────────────────────────
+    grantsItem?: string;           // item name added to party inventory
+    removesItem?: string;          // item name removed from party inventory (consumed)
+    grantsCharacter?: string;      // character name added to party
+    removesCharacter?: string;     // character name removed from party
+    setsFlag?: string;             // session flag to set
+    triggersEvent?: string;        // story Event entity name to link in the session log
+    triggersEventId?: string;      // stable Event id
+    hidden?: boolean;              // DM-hidden branch; not shown to players until revealed
+}
+
+/** A single row in an encounter table. */
+export interface EncounterTableRow {
+    min: number;
+    max: number;
+    label: string;
+    target: string;            // target scene name or 'continue'
+}
+
+/**
+ * Random encounter table stored in a scene's ## Encounter Table section
+ * as an ```encounter code block — NOT in frontmatter.
+ */
+export interface EncounterTable {
+    dice: 'd4' | 'd6' | 'd8' | 'd10' | 'd12' | 'd20' | 'd100';
+    trigger: 'on-enter' | 'manual';
+    rows: EncounterTableRow[];
+}
+
+/** HP/condition state for one party member, stored in session frontmatter. */
+export interface PartyMemberState {
+    characterId: string;
+    characterName: string;
+    currentHp: number;
+    maxHp: number;
+    tempHp?: number;
+    conditions?: string[];
+}
+
+/**
+ * A campaign session — stored as a markdown file in the Sessions/ folder.
+ * Frontmatter holds all structured data; ## Session Log section holds the narrative log.
+ */
+export interface CampaignSession {
+    id?: string;
+    filePath?: string;
+    name: string;
+    storyId: string;
+    currentSceneId?: string;
+    currentSceneName?: string;
+    partyCharacterIds?: string[];
+    partyCharacterNames?: string[];
+    partyState?: PartyMemberState[];
+    /** Named items currently in the party's shared inventory. */
+    partyItems?: string[];
+    /** Boolean flags set during play (e.g. "bribed-barkeep", "found-the-sword"). */
+    flags?: string[];
+    status?: 'active' | 'paused' | 'completed';
+    created?: string;
+    modified?: string;
 }
 
 /**
@@ -414,9 +639,24 @@ export interface Location {
     /** Array of group ids this location belongs to */
     groups?: string[];
     
+    /** Cultures present or predominant in this location */
+    cultures?: string[];
+
+    /** Names of economies active in this location */
+    linkedEconomies?: string[];
+
+    /** Chapter names this location appears in (reverse link from Chapter.linkedLocations) */
+    linkedChapters?: string[];
+
+    /** Economic wealth/treasury of this location (e.g. "5000gp") */
+    balance?: string;
+
+    /** Ledger entries parsed from ```ledger fenced blocks in the markdown body (not stored in frontmatter) */
+    ledger?: import('./utils/LedgerParser').LedgerEntry[];
+
     /** Typed connections to other entities for network graph */
     connections?: TypedRelationship[];
-    
+
     /** Primary map ID where this location is featured
      * @deprecated Map functionality has been deprecated - use mapBindings instead */
     mapId?: string;
@@ -428,6 +668,12 @@ export interface Location {
     /** Marker IDs representing this location on various maps
      * @deprecated Map functionality has been deprecated */
     markerIds?: string[];
+
+    // ── Campaign fields ────────────────────────────────────────────────────────
+    /** Bonus or penalty added to d20 rolls while in a scene at this location (e.g. +2, -3) */
+    dndEncounterBonus?: number;
+    /** Session flags automatically set when the party enters a scene linked to this location */
+    ambientFlags?: string[];
 }
 
 /**
@@ -482,10 +728,19 @@ export interface Event {
 
     /** IDs of magic systems involved in this event */
     magicSystems?: string[];
-    
+
+    /** Chapter names this event appears in (reverse link from Chapter.linkedEvents) */
+    linkedChapters?: string[];
+
+    /** Scene names this event appears in (reverse link from Scene.linkedEvents) */
+    linkedScenes?: string[];
+
+    /** Compendium entries involved in this event */
+    compendiumEntries?: string[];
+
     /** Typed connections to other entities for network graph */
     connections?: TypedRelationship[];
-    
+
     /** Flag to mark this event as a milestone (key story moment) */
     isMilestone?: boolean;
     
@@ -533,7 +788,7 @@ export interface Event {
  */
 export interface GroupMemberDetails {
     /** Entity type and ID */
-    type: 'character' | 'event' | 'location' | 'item';
+    type: 'character' | 'event' | 'location' | 'item' | 'compendiumEntry';
     id: string;
 
     /** Character name (for display) */
@@ -1090,11 +1345,29 @@ export interface Culture {
     /** Parent culture (if derived from another) */
     parentCulture?: string;
 
+    /** Names of economies this culture participates in */
+    linkedEconomies?: string[];
+
+    /** Names of magic systems practiced by this culture (reverse link from MagicSystem.linkedCultures) */
+    linkedMagicSystems?: string[];
+
+    /** Names of items that hold special cultural significance (reverse link from PlotItem.linkedCultures) */
+    linkedItems?: string[];
+
     /** User-defined custom fields */
     customFields?: Record<string, string>;
 
     /** Array of group ids this culture belongs to */
     groups?: string[];
+
+    /** Collective economic wealth/treasury (e.g. "2000gp") */
+    balance?: string;
+
+    /** Ledger entries parsed from ```ledger fenced blocks in the markdown body (not stored in frontmatter) */
+    ledger?: import('./utils/LedgerParser').LedgerEntry[];
+
+    /** Compendium entries this culture hunts, reveres, harvests, or uses */
+    compendiumEntries?: string[];
 
     /** Typed connections to other entities */
     connections?: TypedRelationship[];
@@ -1192,6 +1465,9 @@ export interface Economy {
     /** Active trade routes */
     tradeRoutes?: TradeRoute[];
 
+    /** Links to characters participating in this economy */
+    linkedCharacters?: string[];
+
     /** Links to locations using this economy */
     linkedLocations?: string[];
 
@@ -1203,6 +1479,9 @@ export interface Economy {
 
     /** Links to economic events */
     linkedEvents?: string[];
+
+    /** Names of items traded or significant within this economy */
+    linkedItems?: string[];
 
     /** User-defined custom fields */
     customFields?: Record<string, string>;
@@ -1350,6 +1629,9 @@ export interface MagicSystem {
 
     /** Array of group ids this magic system belongs to */
     groups?: string[];
+
+    /** Compendium entries (creatures/materials/plants) related to this magic system */
+    compendiumEntries?: string[];
 
     /** Typed connections to other entities */
     connections?: TypedRelationship[];
@@ -2082,7 +2364,7 @@ export interface CompileStepConfig {
     id: string;
     
     /** Type of compile step */
-    stepType: CompileStepType;
+    stepType: CompileStepId;
     
     /** Whether this step is enabled */
     enabled: boolean;
@@ -2119,9 +2401,38 @@ export type CompileStepType =
     | 'user-script';
 
 /**
+ * Runtime step ID used in workflow configs.
+ * Supports built-ins plus persisted custom step IDs like `custom:step-123`.
+ */
+export type CompileStepId = CompileStepType | `custom:${string}`;
+
+/**
  * Step kind determines when in the pipeline a step runs
  */
 export type CompileStepKind = 'scene' | 'join' | 'manuscript';
+
+/**
+ * A user-defined JavaScript compile step stored in plugin settings
+ */
+export interface CustomCompileStepDef {
+    /** Stable unique ID (uuid-like string) */
+    id: string;
+    /** Display name shown in the compile workflow builder */
+    name: string;
+    /** Short description shown in step picker */
+    description: string;
+    /** Which pipeline stage this step runs in */
+    context: CompileStepKind;
+    /**
+     * JavaScript function body. Receives `input` and `context` as arguments.
+     * For scene steps: input is SceneCompileInput[], must return SceneCompileInput[].
+     * For manuscript steps: input is ManuscriptCompileInput, must return ManuscriptCompileInput.
+     * May be async. Example:
+     *   for (const scene of input) { scene.contents = scene.contents.toUpperCase(); }
+     *   return input;
+     */
+    code: string;
+}
 
 /**
  * Input for scene-level compile steps
@@ -2210,7 +2521,7 @@ export interface CompileResult {
  */
 export interface CompileStepDefinition {
     /** Unique step type identifier */
-    id: CompileStepType | string;
+    id: CompileStepId | string;
     
     /** Display name */
     name: string;
@@ -2295,4 +2606,52 @@ export interface DailyWritingStats {
     
     /** Whether daily goal was met */
     goalMet: boolean;
+}
+
+/** A world-knowledge entry for creatures, plants, materials, potions, phenomena, etc.
+ * Use this for generic world-knowledge (Catoblepas, Star Silver, Weeping Trees)
+ * rather than specific unique items or characters. */
+export interface CompendiumEntry {
+    id?: string;
+    filePath?: string;
+    name: string;
+    entryType?: 'creature' | 'plant' | 'material' | 'potion' | 'phenomenon' | 'other';
+    rarity?: 'common' | 'uncommon' | 'rare' | 'legendary' | 'mythical';
+    dangerRating?: 'none' | 'low' | 'medium' | 'high' | 'deadly';
+    profileImagePath?: string;
+    /** Physical appearance and overview (stored in markdown body) */
+    description?: string;
+    /** Habitat, behavior, growth conditions, hunting patterns (stored in markdown body) */
+    behavior?: string;
+    /** Physical, magical, and alchemical properties (stored in markdown body) */
+    properties?: string;
+    /** World history, mythology, and lore (stored in markdown body) */
+    history?: string;
+    /** Male/female or other morphological differences (stored in markdown body) */
+    dimorphism?: string;
+    /** Tactics, vulnerabilities, and harvest method (stored in markdown body) */
+    huntingNotes?: string;
+    /** Locations where this can be found (one-way → Location.entityRefs) */
+    linkedLocations?: string[];
+    /** Characters who study, hunt, or use this (circular ↔ Character.compendiumEntries) */
+    linkedCharacters?: string[];
+    /** Items crafted from or related to this entry (circular ↔ PlotItem.compendiumSources) */
+    linkedItems?: string[];
+    /** Magic systems involving this entry (circular ↔ MagicSystem.compendiumEntries) */
+    linkedMagicSystems?: string[];
+    /** Cultures that hunt, revere, or use this entry (circular ↔ Culture.compendiumEntries) */
+    linkedCultures?: string[];
+    /** Events involving this entry (circular ↔ Event.compendiumEntries) */
+    linkedEvents?: string[];
+    groups?: string[];
+    customFields?: Record<string, string>;
+    connections?: TypedRelationship[];
+
+    // ── Campaign triggers ──────────────────────────────────────────────────────
+    /** Location names where this entry surfaces in the CampaignView lore panel */
+    triggeredAtLocations?: string[];
+    /** This entry appears in the lore panel when this session flag is active */
+    triggeredByFlag?: string;
+    /** This entry appears in the lore panel when this item is in the party's inventory */
+    triggeredByItem?: string;
 }

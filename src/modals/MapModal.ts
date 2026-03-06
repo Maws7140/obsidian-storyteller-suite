@@ -688,6 +688,7 @@ export class MapModal extends ResponsiveModal {
         const { templateId, yamlContent, markdownContent, sectionContent, customYamlFields, id, filePath, ...rest } = templateMap as any;
 
         let fields: any = { ...rest };
+        let allTemplateSections: Record<string, string> = {};
 
         // Handle new format: yamlContent (parse YAML string)
         if (yamlContent && typeof yamlContent === 'string') {
@@ -709,6 +710,7 @@ export class MapModal extends ResponsiveModal {
         if (markdownContent && typeof markdownContent === 'string') {
             try {
                 const parsedSections = parseSectionsFromMarkdown(`---\n---\n\n${markdownContent}`);
+                allTemplateSections = parsedSections;
 
                 // Map well-known sections to entity properties
                 if ('Description' in parsedSections) {
@@ -721,6 +723,7 @@ export class MapModal extends ResponsiveModal {
             }
         } else if (sectionContent) {
             // Old format: apply section content
+            for (const [k, v] of Object.entries(sectionContent)) { allTemplateSections[k as string] = v as string; }
             for (const [sectionName, content] of Object.entries(sectionContent)) {
                 const propName = sectionName.toLowerCase().replace(/\s+/g, '');
                 (fields as any)[propName] = content;
@@ -729,6 +732,14 @@ export class MapModal extends ResponsiveModal {
 
         // Apply all fields to the map
         Object.assign(this.map, fields);
+        if (Object.keys(allTemplateSections).length > 0) {
+            Object.defineProperty(this.map, '_templateSections', {
+                value: allTemplateSections,
+                enumerable: false,
+                writable: true,
+                configurable: true
+            });
+        }
         console.log('[MapModal] Final map after template:', this.map);
 
         // Clear entity links as they reference template entities
