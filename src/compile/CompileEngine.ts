@@ -65,9 +65,43 @@ export class CompileEngine {
     }
 
     /**
+     * Load user-defined JavaScript compile steps from plugin settings.
+     * Called at the start of every compile so changes take effect without reload.
+     */
+    public loadCustomSteps(): void {
+        for (const key of Array.from(this.stepRegistry.keys())) {
+            if (key.startsWith('custom:')) {
+                this.stepRegistry.delete(key);
+            }
+        }
+
+        const defs = this.plugin.settings.customCompileSteps ?? [];
+        for (const def of defs) {
+            const id = `custom:${def.id}`;
+            try {
+                // Build the function once and cache it in the registry
+                // eslint-disable-next-line no-new-func
+                const fn = new Function('input', 'context', `"use strict"; return (async (input, context) => { ${def.code} })(input, context);`);
+                const stepDef: CompileStepDefinition = {
+                    id,
+                    name: def.name,
+                    description: def.description,
+                    availableKinds: [def.context],
+                    options: [],
+                    compile: async (input, context) => fn(input, context)
+                };
+                this.stepRegistry.set(id, stepDef);
+            } catch (err) {
+                console.error(`[StorytellerSuite] Failed to register custom step "${def.name}":`, err);
+            }
+        }
+    }
+
+    /**
      * Get all registered step definitions
      */
     public getAvailableSteps(): CompileStepDefinition[] {
+        this.loadCustomSteps();
         return Array.from(this.stepRegistry.values());
     }
 
@@ -88,6 +122,9 @@ export class CompileEngine {
     ): Promise<CompileResult> {
         const startTime = Date.now();
         
+        // Reload custom steps each compile so edits take effect immediately
+        this.loadCustomSteps();
+
         try {
             statusCallback?.({ kind: 'started', message: 'Starting compilation...' });
 
@@ -135,7 +172,7 @@ export class CompileEngine {
                 const context: CompileContext = {
                     kind,
                     optionValues: stepConfig.options,
-                    projectPath: this.plugin.getEntityFolder('scene'),
+                    projectPath: this.plugin.getStoryRootFolder(),
                     draft,
                     story,
                     app: this.app
@@ -947,8 +984,34 @@ export class CompileEngine {
             this.createBeatOutlineWorkflow(),
             this.createSynopsisWorkflow(),
             this.createPrinterFriendlyWorkflow(),
-            this.createFullExportWorkflow()
+            this.createFullExportWorkflow(),
+            this.createChapterOnlyWorkflow(),
+            this.createNovelSubmissionWorkflow(),
+            this.createBeatSheetWorkflow(),
+            this.createCleanProseWorkflow(),
+            this.createPlainTextWorkflow(),
+            this.createHtmlExportWorkflow()
         ];
+    }
+
+    /**
+     * Get all user-defined workflows stored in plugin settings.
+     */
+    public getUserWorkflows(): CompileWorkflow[] {
+        return this.plugin.settings.compileWorkflows ?? [];
+    }
+
+    /**
+     * Get every workflow available to the user: presets first, then saved custom workflows.
+     */
+    public getAllWorkflows(): CompileWorkflow[] {
+        const workflows = [...this.getPresetWorkflows(), ...this.getUserWorkflows()];
+        const seen = new Set<string>();
+        return workflows.filter(workflow => {
+            if (!workflow?.id || seen.has(workflow.id)) return false;
+            seen.add(workflow.id);
+            return true;
+        });
     }
 
     /**
@@ -1383,7 +1446,25 @@ export class CompileEngine {
      * Get workflow by ID
      */
     public getWorkflowById(workflowId: string): CompileWorkflow | undefined {
-        const presets = this.getPresetWorkflows();
-        return presets.find(w => w.id === workflowId);
+        const workflows = this.getAllWorkflows();
+        return workflows.find(w => w.id === workflowId || w.name === workflowId);
+    }
+
+    /**
+     * Resolve the workflow a draft should use, honoring draft-level and plugin-level defaults.
+     */
+    public resolveWorkflowForDraft(draft?: StoryDraft, preferredWorkflowId?: string): CompileWorkflow {
+        const preferredIds = [
+            preferredWorkflowId,
+            draft?.workflow,
+            this.plugin.settings.defaultCompileWorkflow
+        ].filter((value): value is string => typeof value === 'string' && value.trim().length > 0);
+
+        for (const workflowId of preferredIds) {
+            const workflow = this.getWorkflowById(workflowId);
+            if (workflow) return workflow;
+        }
+
+        return this.createDefaultWorkflow();
     }
 }

@@ -572,15 +572,8 @@ export class GroupModal extends ResponsiveModal {
                 if (this.isNew) {
                     const newGroup = await this.plugin.createGroup(this.group.name, this.group.description, this.group.color);
                     this.group.id = newGroup.id;
-                    // Immediately persist all fields for the new group
-                    await this.plugin.updateGroup(this.group.id, { description: this.group.description, color: this.group.color, name: this.group.name } as any);
-                    // Manually merge all fields including faction-enhanced ones
-                    const found = this.plugin.getGroups().find(g => g.id === this.group.id);
-                    if (found) {
-                        Object.assign(found, this.group);
-                        await this.plugin.saveSettings();
-                        this.plugin.emitGroupsChanged?.();
-                    }
+                    // Persist all fields (including faction-enhanced ones) to settings + vault file
+                    await this.plugin.saveGroupFull(this.group);
                     // Add all members to the new group
                     for (const member of this.group.members) {
                         await this.plugin.addMemberToGroup(newGroup.id, member.type, member.id);
@@ -590,18 +583,8 @@ export class GroupModal extends ResponsiveModal {
                         await this.plugin.addGroupIdToEntity?.(member.type as any, member.id, this.group.id);
                     }
                 } else {
-                    await this.plugin.updateGroup(this.group.id, {
-                        name: this.group.name,
-                        description: this.group.description,
-                        color: this.group.color
-                    });
-                    // Persist all fields including faction-enhanced ones on edit
-                    const found = this.plugin.getGroups().find(g => g.id === this.group.id);
-                    if (found) {
-                        Object.assign(found, this.group);
-                        await this.plugin.saveSettings();
-                        this.plugin.emitGroupsChanged?.();
-                    }
+                    // Persist all fields (including faction-enhanced ones) to settings + vault file
+                    await this.plugin.saveGroupFull(this.group);
                     // Update members
                     await this.syncMembers();
                     // Idempotent repair: re-assert group id on all current members in case YAML was missing
@@ -794,7 +777,7 @@ export class GroupModal extends ResponsiveModal {
                 .onClick(() => {
                     new CharacterSuggestModal(this.app, this.plugin, async (selectedChar) => {
                         if (selectedChar && !isMember('character', selectedChar.id || selectedChar.name)) {
-                            this.group.members.push({ type: 'character', id: selectedChar.id || selectedChar.name });
+                            this.group.members.push({ type: 'character', id: selectedChar.id || selectedChar.name, name: selectedChar.name });
                             // Only update in settings if group already exists (not new)
                             if (!this.isNew && this.group.id) {
                                 await this.plugin.addMemberToGroup(this.group.id, 'character', selectedChar.id || selectedChar.name);
@@ -833,7 +816,7 @@ export class GroupModal extends ResponsiveModal {
                 .onClick(() => {
                     new LocationSuggestModal(this.app, this.plugin, async (selectedLoc) => {
                         if (selectedLoc && !isMember('location', selectedLoc.id || selectedLoc.name)) {
-                            this.group.members.push({ type: 'location', id: selectedLoc.id || selectedLoc.name });
+                            this.group.members.push({ type: 'location', id: selectedLoc.id || selectedLoc.name, name: selectedLoc.name });
                             // Only update in settings if group already exists (not new)
                             if (!this.isNew && this.group.id) {
                                 await this.plugin.addMemberToGroup(this.group.id, 'location', selectedLoc.id || selectedLoc.name);
@@ -872,7 +855,7 @@ export class GroupModal extends ResponsiveModal {
                 .onClick(() => {
                     new EventSuggestModal(this.app, this.plugin, async (selectedEvt) => {
                         if (selectedEvt && !isMember('event', selectedEvt.id || selectedEvt.name)) {
-                            this.group.members.push({ type: 'event', id: selectedEvt.id || selectedEvt.name });
+                            this.group.members.push({ type: 'event', id: selectedEvt.id || selectedEvt.name, name: selectedEvt.name });
                             // Only update in settings if group already exists (not new)
                             if (!this.isNew && this.group.id) {
                                 await this.plugin.addMemberToGroup(this.group.id, 'event', selectedEvt.id || selectedEvt.name);
@@ -909,7 +892,7 @@ export class GroupModal extends ResponsiveModal {
                 new PlotItemSuggestModal(this.app, this.plugin, async (selectedItem) => {
                     const itemId = selectedItem.id || selectedItem.name;
                     if (selectedItem && !this.group.members.some(m => m.type === 'item' && m.id === itemId)) {
-                        this.group.members.push({ type: 'item', id: itemId });
+                        this.group.members.push({ type: 'item', id: itemId, name: selectedItem.name });
                         // Only update in settings if group already exists (not new)
                         if (!this.isNew && this.group.id) {
                             await this.plugin.addMemberToGroup(this.group.id, 'item', itemId);
@@ -991,6 +974,7 @@ export class GroupModal extends ResponsiveModal {
         const { templateId, yamlContent, markdownContent, sectionContent, customYamlFields, id, filePath, storyId, ...rest } = templateGroup as any;
 
         let fields: any = { ...rest };
+        let allTemplateSections: Record<string, string> = {};
 
         // Handle new format: yamlContent (parse YAML string)
         if (yamlContent && typeof yamlContent === 'string') {
@@ -1012,6 +996,7 @@ export class GroupModal extends ResponsiveModal {
         if (markdownContent && typeof markdownContent === 'string') {
             try {
                 const parsedSections = parseSectionsFromMarkdown(`---\n---\n\n${markdownContent}`);
+                allTemplateSections = parsedSections;
 
                 // Map well-known sections to entity properties
                 if ('Description' in parsedSections) {
@@ -1036,6 +1021,7 @@ export class GroupModal extends ResponsiveModal {
             }
         } else if (sectionContent) {
             // Old format: apply section content
+            for (const [k, v] of Object.entries(sectionContent)) { allTemplateSections[k as string] = v as string; }
             for (const [sectionName, content] of Object.entries(sectionContent)) {
                 const propName = sectionName.toLowerCase().replace(/\s+/g, '');
                 (fields as any)[propName] = content;
@@ -1044,6 +1030,14 @@ export class GroupModal extends ResponsiveModal {
 
         // Apply all fields to the group
         Object.assign(this.group, fields);
+        if (Object.keys(allTemplateSections).length > 0) {
+            Object.defineProperty(this.group, '_templateSections', {
+                value: allTemplateSections,
+                enumerable: false,
+                writable: true,
+                configurable: true
+            });
+        }
         console.log('[GroupModal] Final group after template:', this.group);
 
         // Clear relationships as they reference template entities

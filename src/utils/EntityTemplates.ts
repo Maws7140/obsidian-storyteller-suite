@@ -68,6 +68,21 @@ export const ENTITY_TEMPLATES: Record<EntityType, Record<string, string>> = {
     Limitations: '',
     Training: '',
     History: '',
+  },
+  compendiumEntry: {
+    Description: '',
+    'Behavior & Ecology': '',
+    Properties: '',
+    'History & Lore': '',
+    Dimorphism: '',
+    'Hunting Notes': '',
+  },
+  book: {
+    Description: '',
+    Synopsis: '',
+  },
+  campaignSession: {
+    'Session Log': '',
   }
 };
 

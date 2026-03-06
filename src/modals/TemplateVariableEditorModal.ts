@@ -4,7 +4,7 @@
  * Allows editing name, label, type, default value, options, and description
  */
 
-import { App, Notice, Setting } from 'obsidian';
+import { App, Notice, Setting, setIcon } from 'obsidian';
 import { ResponsiveModal } from './ResponsiveModal';
 import type StorytellerSuitePlugin from '../main';
 import { TemplateVariable } from '../templates/TemplateTypes';
@@ -262,10 +262,10 @@ export class TemplateVariableEditorModal extends ResponsiveModal {
 
         this.variable.usedIn!.forEach(usage => {
             const usageItem = usageList.createDiv('variable-usage-item');
-            usageItem.createEl('span', {
-                text: `📍 ${this.getEntityTypeLabel(usage.entityType)} → ${usage.field}`,
-                cls: 'variable-usage-location'
-            });
+            const usageSpan = usageItem.createEl('span', { cls: 'variable-usage-location' });
+            const usageIcon = usageSpan.createSpan();
+            setIcon(usageIcon, 'map-pin');
+            usageSpan.appendText(` ${this.getEntityTypeLabel(usage.entityType)} → ${usage.field}`);
         });
     }
 

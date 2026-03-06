@@ -145,6 +145,22 @@ export class TimelineControlsBuilder {
     }
 
     /**
+     * Create fit visible groups button (same core action as fit, labeled for grouped workflows)
+     */
+    createFitGroupsButton(container: HTMLElement): HTMLButtonElement {
+        const btn = container.createEl('button', {
+            cls: 'clickable-icon storyteller-toolbar-btn',
+            attr: {
+                'aria-label': 'Fit visible groups',
+                'title': 'Fit visible groups'
+            }
+        });
+        setIcon(btn, 'rows-3');
+        btn.addEventListener('click', () => this.callbacks.getRenderer()?.fitToView());
+        return btn;
+    }
+
+    /**
      * Create decade zoom button
      */
     createDecadeButton(container: HTMLElement): HTMLButtonElement {
@@ -282,6 +298,40 @@ export class TimelineControlsBuilder {
             await this.callbacks.getRenderer()?.refresh();
             this.callbacks.onStateChange();
         });
+        return btn;
+    }
+
+    /**
+     * Create density preset cycle button (Compact -> Balanced -> Spacious)
+     */
+    createDensityPresetButton(container: HTMLElement): HTMLButtonElement {
+        const presets = [
+            { key: 'compact', value: 30, label: 'Compact density' },
+            { key: 'balanced', value: 50, label: 'Balanced density' },
+            { key: 'spacious', value: 70, label: 'Spacious density' }
+        ];
+        const nearest = presets.reduce((best, p) => Math.abs(p.value - this.state.density) < Math.abs(best.value - this.state.density) ? p : best, presets[1]);
+        let idx = presets.findIndex(p => p.key === nearest.key);
+
+        const btn = container.createEl('button', {
+            cls: 'clickable-icon storyteller-toolbar-btn',
+            attr: {
+                'aria-label': presets[idx].label,
+                'title': presets[idx].label
+            }
+        });
+        setIcon(btn, 'panel-top');
+
+        btn.addEventListener('click', () => {
+            idx = (idx + 1) % presets.length;
+            const next = presets[idx];
+            this.state.density = next.value;
+            btn.setAttribute('aria-label', next.label);
+            btn.setAttribute('title', next.label);
+            this.callbacks.getRenderer()?.setDensity(next.value);
+            this.callbacks.onStateChange();
+        });
+
         return btn;
     }
 

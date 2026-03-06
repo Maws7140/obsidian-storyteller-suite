@@ -4,7 +4,7 @@
  * Allows defining YAML fields, section content, custom fields, and variables
  */
 
-import { App, Notice, Setting } from 'obsidian';
+import { App, Notice, Setting, setIcon } from 'obsidian';
 import { ResponsiveModal } from './ResponsiveModal';
 import type StorytellerSuitePlugin from '../main';
 import {
@@ -108,18 +108,20 @@ export class TemplateEditorModal extends ResponsiveModal {
     private renderTabs(container: HTMLElement): void {
         const tabContainer = container.createDiv('template-editor-tabs');
 
-        const tabs = [
-            { id: 'metadata' as const, label: '📋 Metadata' },
-            { id: 'entities' as const, label: '👥 Entities' },
-            { id: 'variables' as const, label: '🔧 Variables' },
-            { id: 'preview' as const, label: '👁️ Preview' }
+        const tabs: Array<{ id: 'metadata' | 'entities' | 'variables' | 'preview', label: string, icon: string }> = [
+            { id: 'metadata', label: 'Metadata', icon: 'clipboard-list' },
+            { id: 'entities', label: 'Entities', icon: 'users' },
+            { id: 'variables', label: 'Variables', icon: 'settings-2' },
+            { id: 'preview', label: 'Preview', icon: 'eye' }
         ];
 
         tabs.forEach(tab => {
             const tabBtn = tabContainer.createEl('button', {
-                cls: 'template-editor-tab',
-                text: tab.label
+                cls: 'template-editor-tab'
             });
+            const tabIcon = tabBtn.createSpan('template-editor-tab-icon');
+            setIcon(tabIcon, tab.icon);
+            tabBtn.createSpan().setText(tab.label);
 
             if (this.currentTab === tab.id) {
                 tabBtn.addClass('active');
@@ -362,12 +364,16 @@ export class TemplateEditorModal extends ResponsiveModal {
 
         const actions = header.createDiv('template-entity-actions');
 
-        const editBtn = actions.createEl('button', { text: '✏️ Edit', cls: 'template-entity-btn' });
+        const editBtn = actions.createEl('button', { cls: 'template-entity-btn' });
+        setIcon(editBtn, 'pencil');
+        editBtn.createSpan().setText('Edit');
         editBtn.addEventListener('click', () => {
             this.editEntity(entityType, index);
         });
 
-        const deleteBtn = actions.createEl('button', { text: '🗑️ Delete', cls: 'template-entity-btn-danger' });
+        const deleteBtn = actions.createEl('button', { cls: 'template-entity-btn-danger' });
+        setIcon(deleteBtn, 'trash');
+        deleteBtn.createSpan().setText('Delete');
         deleteBtn.addEventListener('click', () => {
             this.deleteEntity(entityType, index);
         });
@@ -410,6 +416,79 @@ export class TemplateEditorModal extends ResponsiveModal {
             this.onOpen(); // Re-render
         });
 
+        // Bulk add section
+        const bulkToggle = section.createEl('button', {
+            text: 'Bulk Add Variables',
+            cls: 'template-bulk-toggle'
+        });
+        const bulkPanel = section.createDiv('template-bulk-panel');
+        bulkPanel.style.display = 'none';
+
+        bulkToggle.addEventListener('click', () => {
+            const hidden = bulkPanel.style.display === 'none';
+            bulkPanel.style.display = hidden ? 'block' : 'none';
+            bulkToggle.setText('Bulk Add Variables');
+        });
+
+        bulkPanel.createEl('p', {
+            text: 'One variable per line. Format: name  or  name:type  or  name:type:default  or  name:type:default:Label',
+            cls: 'setting-item-description'
+        });
+        bulkPanel.createEl('p', {
+            text: 'Valid types: text, number, boolean, select, date  (default: text)',
+            cls: 'setting-item-description'
+        });
+
+        const bulkTextarea = bulkPanel.createEl('textarea', { cls: 'template-bulk-textarea' });
+        bulkTextarea.placeholder = 'characterName\ncharacterAge:number:25\nalignment:select::Lawful Good\nbirthDate:date::Date of Birth';
+        bulkTextarea.rows = 6;
+        bulkTextarea.style.width = '100%';
+        bulkTextarea.style.fontFamily = 'monospace';
+
+        const bulkAddBtn = bulkPanel.createEl('button', { text: 'Add Variables', cls: 'mod-cta' });
+        const bulkFeedback = bulkPanel.createDiv('template-bulk-feedback');
+
+        bulkAddBtn.addEventListener('click', () => {
+            const lines = bulkTextarea.value.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+            const validTypes = new Set(['text', 'number', 'boolean', 'select', 'date']);
+            let added = 0;
+            const skipped: string[] = [];
+
+            if (!this.template.variables) this.template.variables = [];
+
+            for (const line of lines) {
+                const parts = line.split(':');
+                const name = parts[0].trim();
+                if (!name || !/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name)) {
+                    skipped.push(`"${name}" (invalid name)`);
+                    continue;
+                }
+                if (this.template.variables.some(v => v.name === name)) {
+                    skipped.push(`"${name}" (already exists)`);
+                    continue;
+                }
+                const rawType = (parts[1] || 'text').trim().toLowerCase();
+                const type = validTypes.has(rawType) ? rawType as TemplateVariable['type'] : 'text';
+                const defaultValue = parts[2]?.trim() || undefined;
+                const label = parts[3]?.trim() || name;
+
+                this.template.variables.push({ name, label, type, defaultValue });
+                added++;
+            }
+
+            bulkFeedback.empty();
+            if (added > 0) {
+                bulkFeedback.createEl('p', { text: `✓ Added ${added} variable${added !== 1 ? 's' : ''}.`, cls: 'template-bulk-success' });
+            }
+            if (skipped.length > 0) {
+                bulkFeedback.createEl('p', { text: `Skipped: ${skipped.join(', ')}`, cls: 'template-bulk-warning' });
+            }
+            if (added > 0) {
+                bulkTextarea.value = '';
+                this.onOpen();
+            }
+        });
+
         // List existing variables
         const variablesList = section.createDiv('template-variables-list');
 
@@ -433,12 +512,14 @@ export class TemplateEditorModal extends ResponsiveModal {
 
         const actions = header.createDiv('template-variable-actions');
 
-        const editBtn = actions.createEl('button', { text: '✏️ Edit', cls: 'template-variable-btn' });
+        const editBtn = actions.createEl('button', { cls: 'template-variable-btn' });
+        setIcon(editBtn, 'pencil');
         editBtn.addEventListener('click', () => {
             this.editVariable(index);
         });
 
-        const deleteBtn = actions.createEl('button', { text: '🗑️', cls: 'template-variable-btn-danger' });
+        const deleteBtn = actions.createEl('button', { cls: 'template-variable-btn-danger' });
+        setIcon(deleteBtn, 'trash');
         deleteBtn.addEventListener('click', () => {
             this.deleteVariable(index);
         });
@@ -483,9 +564,9 @@ export class TemplateEditorModal extends ResponsiveModal {
         const entityCount = this.template.entityTypes?.length || 0;
         const variableCount = this.template.variables?.length || 0;
 
-        stats.createEl('p', { text: `📦 ${entityCount} entity types` });
-        stats.createEl('p', { text: `🔧 ${variableCount} variables` });
-        stats.createEl('p', { text: `🏷️ ${this.template.tags.length} tags` });
+        stats.createEl('p', { text: `${entityCount} entity types` });
+        stats.createEl('p', { text: `${variableCount} variables` });
+        stats.createEl('p', { text: `${this.template.tags.length} tags` });
 
         // Entity preview
         const preview = section.createDiv('template-preview-entities');

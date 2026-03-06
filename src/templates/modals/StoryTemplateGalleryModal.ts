@@ -43,7 +43,7 @@ export class StoryTemplateGalleryModal extends Modal {
 
     private renderHeader(container: HTMLElement): void {
         const header = container.createDiv('storyteller-template-header');
-        header.createEl('h2', { text: '📚 Story Template Gallery' });
+        header.createEl('h2', { text: 'Story Template Gallery' });
         header.createEl('p', {
             text: 'Choose a pre-built template to jumpstart your story with characters, locations, and relationships',
             cls: 'storyteller-template-subtitle'
@@ -154,7 +154,8 @@ export class StoryTemplateGalleryModal extends Modal {
 
         if (templates.length === 0) {
             const emptyState = gridContainer.createDiv('storyteller-empty-state');
-            emptyState.createEl('div', { text: '📭', cls: 'storyteller-empty-icon' });
+            const emptyIcon = emptyState.createEl('div', { cls: 'storyteller-empty-icon' });
+            setIcon(emptyIcon, 'inbox');
             emptyState.createEl('p', { text: 'No templates match your filters' });
             return;
         }
@@ -170,7 +171,7 @@ export class StoryTemplateGalleryModal extends Modal {
         // Thumbnail/Preview
         const preview = card.createDiv('storyteller-template-preview');
         const iconEl = preview.createDiv('storyteller-template-icon-large');
-        iconEl.setText(this.getGenreIcon(template.genre));
+        setIcon(iconEl, this.getGenreIconName(template.genre));
 
         // Badges
         const badges = preview.createDiv('storyteller-template-badges');
@@ -184,8 +185,8 @@ export class StoryTemplateGalleryModal extends Modal {
 
         // Built-in badge
         if (template.isBuiltIn) {
-            const builtInBadge = badges.createEl('span', {
-                text: '⭐ Built-in',
+            badges.createEl('span', {
+                text: 'Built-in',
                 cls: 'storyteller-template-badge storyteller-badge-builtin'
             });
         }
@@ -295,19 +296,19 @@ export class StoryTemplateGalleryModal extends Modal {
             });
     }
 
-    private getGenreIcon(genre: TemplateGenre): string {
+    private getGenreIconName(genre: TemplateGenre): string {
         const icons: Record<TemplateGenre, string> = {
-            fantasy: '🏰',
-            scifi: '🚀',
-            mystery: '🔍',
-            horror: '👻',
-            romance: '💕',
-            historical: '🏛️',
-            western: '🤠',
-            thriller: '🔪',
-            custom: '✨'
+            fantasy: 'wand',
+            scifi: 'rocket',
+            mystery: 'search',
+            horror: 'skull',
+            romance: 'heart',
+            historical: 'scroll',
+            western: 'sun',
+            thriller: 'zap',
+            custom: 'sparkles',
         };
-        return icons[genre] || '📚';
+        return icons[genre] || 'book-open';
     }
 
     private pluralizeEntityType(type: string): string {

@@ -1,4 +1,4 @@
-import { App, Setting, Notice, parseYaml } from 'obsidian';
+import { App, Setting, Notice, parseYaml, setIcon } from 'obsidian';
 import type { Economy } from '../types';
 import type StorytellerSuitePlugin from '../main';
 import { ResponsiveModal } from './ResponsiveModal';
@@ -49,15 +49,16 @@ export class EconomyModal extends ResponsiveModal {
         };
 
         if (!this.economy.customFields) this.economy.customFields = {};
-        if (!this.economy.currencies) this.economy.currencies = [];
-        if (!this.economy.resources) this.economy.resources = [];
-        if (!this.economy.tradeRoutes) this.economy.tradeRoutes = [];
-        if (!this.economy.linkedLocations) this.economy.linkedLocations = [];
-        if (!this.economy.linkedFactions) this.economy.linkedFactions = [];
-        if (!this.economy.linkedCultures) this.economy.linkedCultures = [];
-        if (!this.economy.linkedEvents) this.economy.linkedEvents = [];
-        if (!this.economy.groups) this.economy.groups = [];
-        if (!this.economy.connections) this.economy.connections = [];
+        if (!Array.isArray(this.economy.currencies)) this.economy.currencies = [];
+        if (!Array.isArray(this.economy.resources)) this.economy.resources = [];
+        if (!Array.isArray(this.economy.tradeRoutes)) this.economy.tradeRoutes = [];
+        if (!Array.isArray(this.economy.linkedCharacters)) this.economy.linkedCharacters = [];
+        if (!Array.isArray(this.economy.linkedLocations)) this.economy.linkedLocations = [];
+        if (!Array.isArray(this.economy.linkedFactions)) this.economy.linkedFactions = [];
+        if (!Array.isArray(this.economy.linkedCultures)) this.economy.linkedCultures = [];
+        if (!Array.isArray(this.economy.linkedEvents)) this.economy.linkedEvents = [];
+        if (!Array.isArray(this.economy.groups)) this.economy.groups = [];
+        if (!Array.isArray(this.economy.connections)) this.economy.connections = [];
 
         this.onSubmit = onSubmit;
         this.onDelete = onDelete;
@@ -270,6 +271,108 @@ export class EconomyModal extends ResponsiveModal {
                 text.inputEl.style.width = '100%';
             });
 
+        // --- Linked Characters ---
+        contentEl.createEl('h3', { text: 'Characters' });
+        if (!Array.isArray(this.economy.linkedCharacters)) this.economy.linkedCharacters = [];
+        const econCharChips = contentEl.createDiv('storyteller-linked-chips');
+        const renderEconCharChips = () => {
+            econCharChips.empty();
+            for (const name of (this.economy.linkedCharacters ?? [])) {
+                const chip = econCharChips.createSpan({ cls: 'storyteller-linked-chip' });
+                chip.createSpan({ text: name });
+                const rm = chip.createEl('button', { cls: 'storyteller-chip-remove', attr: { 'aria-label': 'Remove' } });
+                setIcon(rm, 'x');
+                rm.addEventListener('click', () => {
+                    this.economy.linkedCharacters = this.economy.linkedCharacters!.filter(n => n !== name);
+                    renderEconCharChips();
+                });
+            }
+        };
+        renderEconCharChips();
+        const allCharacters = await this.plugin.listCharacters();
+        new Setting(contentEl)
+            .setName('Add character')
+            .addDropdown(dd => {
+                dd.addOption('', '— select character —');
+                allCharacters.forEach(c => dd.addOption(c.name, c.name));
+                dd.onChange(val => {
+                    if (val && !(this.economy.linkedCharacters ?? []).includes(val)) {
+                        if (!Array.isArray(this.economy.linkedCharacters)) this.economy.linkedCharacters = [];
+                        this.economy.linkedCharacters.push(val);
+                        renderEconCharChips();
+                    }
+                    dd.setValue('');
+                });
+            });
+
+        // --- Linked Locations ---
+        contentEl.createEl('h3', { text: 'Locations' });
+        if (!Array.isArray(this.economy.linkedLocations)) this.economy.linkedLocations = [];
+        const econLocChips = contentEl.createDiv('storyteller-linked-chips');
+        const renderEconLocChips = () => {
+            econLocChips.empty();
+            for (const name of (this.economy.linkedLocations ?? [])) {
+                const chip = econLocChips.createSpan({ cls: 'storyteller-linked-chip' });
+                chip.createSpan({ text: name });
+                const rm = chip.createEl('button', { cls: 'storyteller-chip-remove', attr: { 'aria-label': 'Remove' } });
+                setIcon(rm, 'x');
+                rm.addEventListener('click', () => {
+                    this.economy.linkedLocations = this.economy.linkedLocations!.filter(n => n !== name);
+                    renderEconLocChips();
+                });
+            }
+        };
+        renderEconLocChips();
+        const allLocations = await this.plugin.listLocations();
+        new Setting(contentEl)
+            .setName('Add location')
+            .addDropdown(dd => {
+                dd.addOption('', '— select location —');
+                allLocations.forEach(l => dd.addOption(l.name, l.name));
+                dd.onChange(val => {
+                    if (val && !(this.economy.linkedLocations ?? []).includes(val)) {
+                        if (!Array.isArray(this.economy.linkedLocations)) this.economy.linkedLocations = [];
+                        this.economy.linkedLocations.push(val);
+                        renderEconLocChips();
+                    }
+                    dd.setValue('');
+                });
+            });
+
+        // --- Linked Cultures ---
+        contentEl.createEl('h3', { text: 'Cultures' });
+        if (!Array.isArray(this.economy.linkedCultures)) this.economy.linkedCultures = [];
+        const econCultChips = contentEl.createDiv('storyteller-linked-chips');
+        const renderEconCultChips = () => {
+            econCultChips.empty();
+            for (const name of (this.economy.linkedCultures ?? [])) {
+                const chip = econCultChips.createSpan({ cls: 'storyteller-linked-chip' });
+                chip.createSpan({ text: name });
+                const rm = chip.createEl('button', { cls: 'storyteller-chip-remove', attr: { 'aria-label': 'Remove' } });
+                setIcon(rm, 'x');
+                rm.addEventListener('click', () => {
+                    this.economy.linkedCultures = this.economy.linkedCultures!.filter(n => n !== name);
+                    renderEconCultChips();
+                });
+            }
+        };
+        renderEconCultChips();
+        const allCultures = await this.plugin.listCultures();
+        new Setting(contentEl)
+            .setName('Add culture')
+            .addDropdown(dd => {
+                dd.addOption('', '— select culture —');
+                allCultures.forEach(c => dd.addOption(c.name, c.name));
+                dd.onChange(val => {
+                    if (val && !(this.economy.linkedCultures ?? []).includes(val)) {
+                        if (!Array.isArray(this.economy.linkedCultures)) this.economy.linkedCultures = [];
+                        this.economy.linkedCultures.push(val);
+                        renderEconCultChips();
+                    }
+                    dd.setValue('');
+                });
+            });
+
         // Buttons
         const buttonsSetting = new Setting(contentEl);
 
@@ -356,6 +459,7 @@ export class EconomyModal extends ResponsiveModal {
         const { templateId, yamlContent, markdownContent, sectionContent, customYamlFields, id, filePath, ...rest } = templateEconomy as any;
 
         let fields: any = { ...rest };
+        let allTemplateSections: Record<string, string> = {};
 
         // Handle new format: yamlContent (parse YAML string)
         if (yamlContent && typeof yamlContent === 'string') {
@@ -377,6 +481,7 @@ export class EconomyModal extends ResponsiveModal {
         if (markdownContent && typeof markdownContent === 'string') {
             try {
                 const parsedSections = parseSectionsFromMarkdown(`---\n---\n\n${markdownContent}`);
+                allTemplateSections = parsedSections;
 
                 // Map well-known sections to entity properties
                 if ('Description' in parsedSections) {
@@ -395,6 +500,7 @@ export class EconomyModal extends ResponsiveModal {
             }
         } else if (sectionContent) {
             // Old format: apply section content
+            for (const [k, v] of Object.entries(sectionContent)) { allTemplateSections[k as string] = v as string; }
             for (const [sectionName, content] of Object.entries(sectionContent)) {
                 const propName = sectionName.toLowerCase().replace(/\s+/g, '');
                 (fields as any)[propName] = content;
@@ -403,9 +509,18 @@ export class EconomyModal extends ResponsiveModal {
 
         // Apply all fields to the economy
         Object.assign(this.economy, fields);
+        if (Object.keys(allTemplateSections).length > 0) {
+            Object.defineProperty(this.economy, '_templateSections', {
+                value: allTemplateSections,
+                enumerable: false,
+                writable: true,
+                configurable: true
+            });
+        }
         console.log('[EconomyModal] Final economy after template:', this.economy);
 
         // Clear relationships as they reference template entities
+        this.economy.linkedCharacters = [];
         this.economy.linkedLocations = [];
         this.economy.linkedFactions = [];
         this.economy.linkedCultures = [];

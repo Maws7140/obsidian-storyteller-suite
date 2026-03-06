@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { App, Setting, Notice, TextAreaComponent, TextComponent, ButtonComponent, parseYaml, TFile, setIcon } from 'obsidian';
-import { Character, Group } from '../types'; // Assumes Character type has relationships?: string[], associatedLocations?: string[], associatedEvents?: string[]
+import { Character, Group, PlotItem } from '../types'; // Assumes Character type has relationships?: string[], associatedLocations?: string[], associatedEvents?: string[]
 import { LocationPicker } from '../components/LocationPicker';
 import { LocationService } from '../services/LocationService';
 import { getWhitelistKeys, parseSectionsFromMarkdown } from '../yaml/EntitySections';
@@ -13,6 +13,7 @@ import { PlatformUtils } from '../utils/PlatformUtils';
 import { TemplatePickerModal } from './TemplatePickerModal';
 import { Template } from '../templates/TemplateTypes';
 import { CharacterSheetPreviewModal } from './CharacterSheetPreviewModal';
+import { getTrackedItemOwner, isSameName } from '../utils/ItemOwnership';
 // Placeholder imports for suggesters - these would need to be created
 // import { CharacterSuggestModal } from './CharacterSuggestModal';
 // import { LocationSuggestModal } from './LocationSuggestModal';
@@ -39,11 +40,13 @@ export class CharacterModal extends ResponsiveModal {
         const initialCharacter = character ? { ...character } : {
             name: '', description: '', backstory: '', profileImagePath: undefined,
             relationships: [], associatedLocations: [], associatedEvents: [], // Initialize link arrays
+            ownedItems: [],
             customFields: {},
             filePath: undefined
         };
         if (!initialCharacter.customFields) initialCharacter.customFields = {};
         if (!initialCharacter.relationships) initialCharacter.relationships = [];
+        if (!Array.isArray(initialCharacter.ownedItems)) initialCharacter.ownedItems = [];
         // Preserve filePath if editing
         if (character && character.filePath) initialCharacter.filePath = character.filePath;
         // Preserve _templateSections if set on the source character (non-enumerable, not copied by spread)
@@ -414,6 +417,68 @@ export class CharacterModal extends ResponsiveModal {
             ledgerEl.createEl('p', { cls: 'storyteller-ledger-note', text: `${this.character.ledger.length} transaction(s) in note` });
         }
 
+        // --- Inventory ---
+        contentEl.createEl('h3', { text: 'Inventory' });
+        if (!Array.isArray(this.character.ownedItems)) this.character.ownedItems = [];
+        const normalizeInventoryName = (value: string): string => value.trim().toLowerCase();
+
+        const allCharactersForInventory = await this.plugin.listCharacters().catch(() => [] as Character[]);
+        const allPlotItems = await this.plugin.listPlotItems().catch(() => [] as PlotItem[]);
+        const sortedPlotItems = [...allPlotItems].sort((a, b) => a.name.localeCompare(b.name));
+        const itemByName = new Map(sortedPlotItems.map(item => [normalizeInventoryName(item.name), item] as const));
+
+        const inventoryChips = contentEl.createDiv('storyteller-linked-chips');
+        const renderInventoryChips = () => {
+            inventoryChips.empty();
+            for (const ownedName of (this.character.ownedItems ?? [])) {
+                const chip = inventoryChips.createSpan({ cls: 'storyteller-linked-chip' });
+                chip.createSpan({ text: ownedName });
+                const rm = chip.createEl('button', { cls: 'storyteller-chip-remove', attr: { 'aria-label': 'Remove' } });
+                setIcon(rm, 'x');
+                rm.addEventListener('click', () => {
+                    this.character.ownedItems = (this.character.ownedItems ?? []).filter(n => !isSameName(n, ownedName));
+                    renderInventoryChips();
+                });
+            }
+        };
+        renderInventoryChips();
+
+        new Setting(contentEl)
+            .setName('Add item to inventory')
+            .addDropdown(dd => {
+                dd.addOption('', '-- select item --');
+                for (const item of sortedPlotItems) {
+                    const alreadyOwned = (this.character.ownedItems ?? []).some(owned => isSameName(owned, item.name));
+                    if (!alreadyOwned) dd.addOption(item.name, item.name);
+                }
+                dd.onChange(itemName => {
+                    if (!itemName) return;
+                    const alreadyOwned = (this.character.ownedItems ?? []).some(owned => isSameName(owned, itemName));
+                    if (alreadyOwned) {
+                        dd.setValue('');
+                        return;
+                    }
+
+                    this.character.ownedItems = [...(this.character.ownedItems ?? []), itemName];
+                    const selectedItem = itemByName.get(normalizeInventoryName(itemName));
+                    const trackedOwner = selectedItem ? getTrackedItemOwner(selectedItem, allCharactersForInventory) : undefined;
+                    if (trackedOwner && !isSameName(trackedOwner, this.character.name)) {
+                        new Notice(
+                            `${itemName} is currently in ${trackedOwner}'s inventory. ` +
+                            `Saving will reassign ownership to ${this.character.name || 'this character'}.`,
+                            7000
+                        );
+                    }
+
+                    renderInventoryChips();
+                    dd.setValue('');
+                });
+            });
+        contentEl.createEl('p', {
+            cls: 'storyteller-modal-hint',
+            text: 'Inventory is stored as character owned items and syncs with item ownership on save.'
+        });
+
         // --- Linked Economies ---
         contentEl.createEl('h3', { text: 'Economies' });
         if (!Array.isArray(this.character.linkedEconomies)) this.character.linkedEconomies = [];
@@ -536,6 +601,9 @@ export class CharacterModal extends ResponsiveModal {
                         onSubmit: (name: string) => askValue(name.trim())
                     }).open();
                 }));
+
+        // --- D&D Stats (collapsible) ---
+        this.renderDndStatsSection(contentEl);
 
         // --- Action Buttons ---
         const buttonsSetting = new Setting(contentEl).setClass('storyteller-modal-buttons');
@@ -874,6 +942,133 @@ export class CharacterModal extends ResponsiveModal {
         this.character.relationships = [];
         this.character.connections = [];
         this.character.groups = [];
+    }
+
+    private renderDndStatsSection(contentEl: HTMLElement): void {
+        const ch = this.character;
+
+        // Collapsible header
+        const header = contentEl.createEl('h3', { cls: 'storyteller-dnd-section-header' });
+        const toggleIcon = header.createSpan({ cls: 'storyteller-dnd-toggle-icon' });
+        header.createSpan({ text: ' D&D Stats' });
+
+        const body = contentEl.createDiv({ cls: 'storyteller-dnd-section-body' });
+        let expanded = !!(ch.dndClass || ch.dndStr || ch.dndMaxHp);
+
+        const applyExpanded = () => {
+            body.style.display = expanded ? '' : 'none';
+            setIcon(toggleIcon, expanded ? 'chevron-down' : 'chevron-right');
+        };
+        applyExpanded();
+
+        header.style.cursor = 'pointer';
+        header.addEventListener('click', () => { expanded = !expanded; applyExpanded(); });
+
+        // Class / Subclass / Race / Level / Hit Dice row
+        const row1 = body.createDiv('storyteller-dnd-row');
+        const mkText = (parent: HTMLElement, label: string, get: () => string | undefined, set: (v: string) => void) => {
+            const wrap = parent.createDiv('storyteller-dnd-field');
+            wrap.createEl('label', { text: label, cls: 'storyteller-dnd-label' });
+            const inp = wrap.createEl('input', { attr: { type: 'text', placeholder: label } }) as HTMLInputElement;
+            inp.value = get() ?? '';
+            inp.addEventListener('input', () => set(inp.value));
+        };
+        const mkNum = (parent: HTMLElement, label: string, get: () => number | undefined, set: (v: number | undefined) => void, placeholder?: string) => {
+            const wrap = parent.createDiv('storyteller-dnd-field');
+            wrap.createEl('label', { text: label, cls: 'storyteller-dnd-label' });
+            const inp = wrap.createEl('input', { attr: { type: 'number', placeholder: placeholder ?? label } }) as HTMLInputElement;
+            const v = get();
+            inp.value = v != null ? String(v) : '';
+            inp.addEventListener('input', () => {
+                const n = parseFloat(inp.value);
+                set(isNaN(n) ? undefined : n);
+            });
+            return inp;
+        };
+
+        mkText(row1, 'Class', () => ch.dndClass, v => { ch.dndClass = v || undefined; });
+        mkText(row1, 'Subclass', () => ch.dndSubclass, v => { ch.dndSubclass = v || undefined; });
+        mkText(row1, 'Race', () => ch.dndRace, v => { ch.dndRace = v || undefined; });
+        mkNum(row1, 'Level', () => ch.dndLevel, v => { ch.dndLevel = v; });
+        mkText(row1, 'Hit Dice', () => ch.dndHitDice, v => { ch.dndHitDice = v || undefined; });
+
+        // Ability score grid (STR DEX CON INT WIS CHA)
+        body.createEl('label', { text: 'Ability Scores', cls: 'storyteller-dnd-label' });
+        const statGrid = body.createDiv('storyteller-dnd-stat-grid');
+
+        const STATS: Array<[string, keyof typeof ch & `dnd${'Str'|'Dex'|'Con'|'Int'|'Wis'|'Cha'}`]> = [
+            ['STR', 'dndStr'], ['DEX', 'dndDex'], ['CON', 'dndCon'],
+            ['INT', 'dndInt'], ['WIS', 'dndWis'], ['CHA', 'dndCha']
+        ];
+
+        for (const [label, field] of STATS) {
+            const cell = statGrid.createDiv('storyteller-dnd-stat-cell');
+            cell.createEl('div', { cls: 'storyteller-dnd-stat-name', text: label });
+            const inp = cell.createEl('input', { attr: { type: 'number', min: '1', max: '30', placeholder: '10' } }) as HTMLInputElement;
+            const score = ch[field] as number | undefined;
+            inp.value = score != null ? String(score) : '';
+
+            const modEl = cell.createEl('div', { cls: 'storyteller-dnd-stat-modifier' });
+            const updateMod = (val: number | undefined) => {
+                if (val != null) {
+                    const mod = Math.floor((val - 10) / 2);
+                    modEl.textContent = mod >= 0 ? `+${mod}` : String(mod);
+                } else {
+                    modEl.textContent = '';
+                }
+            };
+            updateMod(score);
+
+            inp.addEventListener('input', () => {
+                const n = parseFloat(inp.value);
+                const v = isNaN(n) ? undefined : n;
+                (ch as any)[field] = v;
+                updateMod(v);
+            });
+        }
+
+        // HP / AC / Speed / Prof Bonus row
+        const row2 = body.createDiv('storyteller-dnd-row');
+        mkNum(row2, 'Max HP', () => ch.dndMaxHp, v => { ch.dndMaxHp = v; });
+        mkNum(row2, 'Current HP', () => ch.dndCurrentHp, v => { ch.dndCurrentHp = v; });
+        mkNum(row2, 'Temp HP', () => ch.dndTempHp, v => { ch.dndTempHp = v; });
+        mkNum(row2, 'AC', () => ch.dndAc, v => { ch.dndAc = v; });
+        mkNum(row2, 'Speed', () => ch.dndSpeed, v => { ch.dndSpeed = v; });
+        mkNum(row2, 'Prof. Bonus', () => ch.dndProficiencyBonus, v => { ch.dndProficiencyBonus = v; });
+
+        // Conditions chip input
+        const mkChips = (parent: HTMLElement, label: string, get: () => string[] | undefined, set: (v: string[]) => void, suggestions: string[]) => {
+            parent.createEl('label', { text: label, cls: 'storyteller-dnd-label' });
+            const chipWrap = parent.createDiv('storyteller-dnd-chips');
+            let current = [...(get() ?? [])];
+            const render = () => {
+                chipWrap.empty();
+                for (const val of current) {
+                    const chip = chipWrap.createSpan({ cls: 'storyteller-dnd-condition', text: val });
+                    chip.style.cursor = 'pointer';
+                    chip.setAttribute('title', 'Click to remove');
+                    chip.addEventListener('click', () => { current = current.filter(v => v !== val); set(current); render(); });
+                }
+                // Quick-add select
+                const sel = chipWrap.createEl('select', { cls: 'storyteller-dnd-chip-add' }) as HTMLSelectElement;
+                sel.createEl('option', { value: '', text: '+ Add…' });
+                for (const s of suggestions) if (!current.includes(s)) sel.createEl('option', { value: s, text: s });
+                sel.addEventListener('change', () => { if (sel.value) { current = [...current, sel.value]; set(current); render(); } });
+            };
+            render();
+        };
+
+        const CONDITIONS = ['Blinded', 'Charmed', 'Deafened', 'Exhaustion', 'Frightened', 'Grappled',
+            'Incapacitated', 'Invisible', 'Paralyzed', 'Petrified', 'Poisoned', 'Prone',
+            'Restrained', 'Stunned', 'Unconscious'];
+        const SKILLS = ['Acrobatics', 'Animal Handling', 'Arcana', 'Athletics', 'Deception', 'History',
+            'Insight', 'Intimidation', 'Investigation', 'Medicine', 'Nature', 'Perception',
+            'Performance', 'Persuasion', 'Religion', 'Sleight of Hand', 'Stealth', 'Survival'];
+        const SAVES = ['STR', 'DEX', 'CON', 'INT', 'WIS', 'CHA'];
+
+        mkChips(body, 'Conditions', () => ch.dndConditions, v => { ch.dndConditions = v.length ? v : undefined; }, CONDITIONS);
+        mkChips(body, 'Skill Proficiencies', () => ch.dndSkillProficiencies, v => { ch.dndSkillProficiencies = v.length ? v : undefined; }, SKILLS);
+        mkChips(body, 'Saving Throw Proficiencies', () => ch.dndSavingThrowProficiencies, v => { ch.dndSavingThrowProficiencies = v.length ? v : undefined; }, SAVES);
     }
 
     private refresh(): void {

@@ -52,16 +52,16 @@ export class MagicSystemModal extends ResponsiveModal {
         };
 
         if (!this.magicSystem.customFields) this.magicSystem.customFields = {};
-        if (!this.magicSystem.categories) this.magicSystem.categories = [];
-        if (!this.magicSystem.abilities) this.magicSystem.abilities = [];
-        if (!this.magicSystem.consistencyRules) this.magicSystem.consistencyRules = [];
-        if (!this.magicSystem.linkedCharacters) this.magicSystem.linkedCharacters = [];
-        if (!this.magicSystem.linkedLocations) this.magicSystem.linkedLocations = [];
-        if (!this.magicSystem.linkedCultures) this.magicSystem.linkedCultures = [];
-        if (!this.magicSystem.linkedEvents) this.magicSystem.linkedEvents = [];
-        if (!this.magicSystem.linkedItems) this.magicSystem.linkedItems = [];
-        if (!this.magicSystem.groups) this.magicSystem.groups = [];
-        if (!this.magicSystem.connections) this.magicSystem.connections = [];
+        if (!Array.isArray(this.magicSystem.categories)) this.magicSystem.categories = [];
+        if (!Array.isArray(this.magicSystem.abilities)) this.magicSystem.abilities = [];
+        if (!Array.isArray(this.magicSystem.consistencyRules)) this.magicSystem.consistencyRules = [];
+        if (!Array.isArray(this.magicSystem.linkedCharacters)) this.magicSystem.linkedCharacters = [];
+        if (!Array.isArray(this.magicSystem.linkedLocations)) this.magicSystem.linkedLocations = [];
+        if (!Array.isArray(this.magicSystem.linkedCultures)) this.magicSystem.linkedCultures = [];
+        if (!Array.isArray(this.magicSystem.linkedEvents)) this.magicSystem.linkedEvents = [];
+        if (!Array.isArray(this.magicSystem.linkedItems)) this.magicSystem.linkedItems = [];
+        if (!Array.isArray(this.magicSystem.groups)) this.magicSystem.groups = [];
+        if (!Array.isArray(this.magicSystem.connections)) this.magicSystem.connections = [];
 
         this.onSubmit = onSubmit;
         this.onDelete = onDelete;
@@ -443,6 +443,7 @@ export class MagicSystemModal extends ResponsiveModal {
         const { templateId, yamlContent, markdownContent, sectionContent, customYamlFields, id, filePath, ...rest } = templateMagic as any;
 
         let fields: any = { ...rest };
+        let allTemplateSections: Record<string, string> = {};
 
         // Handle new format: yamlContent (parse YAML string)
         if (yamlContent && typeof yamlContent === 'string') {
@@ -464,6 +465,7 @@ export class MagicSystemModal extends ResponsiveModal {
         if (markdownContent && typeof markdownContent === 'string') {
             try {
                 const parsedSections = parseSectionsFromMarkdown(`---\n---\n\n${markdownContent}`);
+                allTemplateSections = parsedSections;
 
                 // Map well-known sections to entity properties
                 if ('Description' in parsedSections) {
@@ -494,6 +496,7 @@ export class MagicSystemModal extends ResponsiveModal {
             }
         } else if (sectionContent) {
             // Old format: apply section content
+            for (const [k, v] of Object.entries(sectionContent)) { allTemplateSections[k as string] = v as string; }
             for (const [sectionName, content] of Object.entries(sectionContent)) {
                 const propName = sectionName.toLowerCase().replace(/\s+/g, '');
                 (fields as any)[propName] = content;
@@ -502,6 +505,14 @@ export class MagicSystemModal extends ResponsiveModal {
 
         // Apply all fields to the magic system
         Object.assign(this.magicSystem, fields);
+        if (Object.keys(allTemplateSections).length > 0) {
+            Object.defineProperty(this.magicSystem, '_templateSections', {
+                value: allTemplateSections,
+                enumerable: false,
+                writable: true,
+                configurable: true
+            });
+        }
         console.log('[MagicSystemModal] Final magic system after template:', this.magicSystem);
 
         // Clear relationships as they reference template entities

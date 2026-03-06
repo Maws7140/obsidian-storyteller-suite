@@ -99,7 +99,7 @@ export class GalleryModal extends Modal {
     onOpen() {
         const { contentEl } = this;
         contentEl.empty();
-        contentEl.createEl('h2', { text: t('imageGallery') });
+        this.titleEl.setText(t('imageGallery'));
 
         // Store the container element
         this.gridContainer = contentEl.createDiv('storyteller-gallery-grid');

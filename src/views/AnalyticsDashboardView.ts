@@ -2,7 +2,7 @@
 // Provides comprehensive story analytics including character screen time,
 // writing velocity, dialogue analysis, pacing, and more
 
-import { ItemView, WorkspaceLeaf, Notice, Setting, App, Modal } from 'obsidian';
+import { ItemView, WorkspaceLeaf, Notice, Setting, App, Modal, setIcon, TFile } from 'obsidian';
 import StorytellerSuitePlugin from '../main';
 import { t } from '../i18n/strings';
 import {
@@ -157,7 +157,7 @@ export class AnalyticsDashboardView extends ItemView {
 
         return {
             lastUpdated: new Date().toISOString(),
-            totalWords: this.calculateTotalWords(scenes, chapters),
+            totalWords: await this.calculateTotalWords(scenes),
             characterScreenTime,
             eventDistribution,
             povStats,
@@ -193,9 +193,8 @@ export class AnalyticsDashboardView extends ItemView {
         const total = scenes.length;
 
         scenes.forEach(scene => {
-            if (scene.linkedCharacters && scene.linkedCharacters.length > 0) {
-                const pov = scene.linkedCharacters[0]; // First character as POV
-                povCounts[pov] = (povCounts[pov] || 0) + 1;
+            if (scene.povCharacter) {
+                povCounts[scene.povCharacter] = (povCounts[scene.povCharacter] || 0) + 1;
             }
         });
 
@@ -224,13 +223,21 @@ export class AnalyticsDashboardView extends ItemView {
             .sort((a, b) => a.date.localeCompare(b.date));
     }
 
-    calculateTotalWords(scenes: any[], chapters: any[]): number {
+    async calculateTotalWords(scenes: any[]): Promise<number> {
         let total = 0;
-        scenes.forEach(scene => {
-            if (scene.content) {
-                total += scene.content.split(/\s+/).length;
+        for (const scene of scenes) {
+            if (scene.filePath) {
+                const file = this.app.vault.getAbstractFileByPath(scene.filePath);
+                if (file instanceof TFile) {
+                    try {
+                        const content = await this.app.vault.cachedRead(file);
+                        total += content.split(/\s+/).filter(Boolean).length;
+                    } catch {
+                        // skip unreadable files
+                    }
+                }
             }
-        });
+        }
         return total;
     }
 
@@ -271,15 +278,16 @@ export class AnalyticsDashboardView extends ItemView {
 
         const grid = section.createDiv('storyteller-analytics-grid');
 
-        this.createStatCard(grid, 'Total Words', this.analytics?.totalWords?.toLocaleString() || '0', '📝');
-        this.createStatCard(grid, 'Characters', this.analytics?.characterScreenTime?.length.toString() || '0', '👥');
-        this.createStatCard(grid, 'Events', this.analytics?.eventDistribution?.reduce((sum, e) => sum + e.count, 0).toString() || '0', '📅');
-        this.createStatCard(grid, 'POVs', this.analytics?.povStats?.length.toString() || '0', '👁️');
+        this.createStatCard(grid, 'Total Words', this.analytics?.totalWords?.toLocaleString() || '0', 'file-text');
+        this.createStatCard(grid, 'Characters', this.analytics?.characterScreenTime?.length.toString() || '0', 'users');
+        this.createStatCard(grid, 'Events', this.analytics?.eventDistribution?.reduce((sum, e) => sum + e.count, 0).toString() || '0', 'calendar');
+        this.createStatCard(grid, 'POVs', this.analytics?.povStats?.length.toString() || '0', 'eye');
     }
 
     createStatCard(container: HTMLElement, label: string, value: string, icon: string): void {
         const card = container.createDiv('storyteller-stat-card');
-        card.createDiv('storyteller-stat-icon').setText(icon);
+        const iconEl = card.createDiv('storyteller-stat-icon');
+        setIcon(iconEl, icon);
         card.createDiv('storyteller-stat-value').setText(value);
         card.createDiv('storyteller-stat-label').setText(label);
     }
@@ -342,15 +350,19 @@ export class AnalyticsDashboardView extends ItemView {
         section.createEl('h3', { text: 'Point of View Distribution' });
 
         if (!this.analytics?.povStats || this.analytics.povStats.length === 0) {
-            section.createEl('p', { text: 'No POV data available' });
+            section.createEl('p', { text: 'No POV data available', cls: 'storyteller-analytics-empty' });
             return;
         }
 
-        const list = section.createEl('ul', { cls: 'storyteller-pov-list' });
+        const list = section.createDiv('storyteller-pov-list');
         this.analytics.povStats.forEach(pov => {
-            const item = list.createEl('li');
-            item.createSpan({ text: pov.character, cls: 'storyteller-pov-name' });
-            item.createSpan({ text: ` - ${pov.sceneCount} scenes (${pov.percentage?.toFixed(1)}%)` });
+            const row = list.createDiv('storyteller-pov-row');
+            row.createSpan({ text: pov.character, cls: 'storyteller-pov-name' });
+            const barWrap = row.createDiv('storyteller-pov-bar-wrap');
+            const fill = barWrap.createDiv('storyteller-pov-bar-fill');
+            fill.style.width = `${pov.percentage}%`;
+            row.createSpan({ text: `${pov.sceneCount}`, cls: 'storyteller-pov-count' });
+            row.createSpan({ text: `${pov.percentage?.toFixed(1)}%`, cls: 'storyteller-pov-pct' });
         });
     }
 
@@ -381,7 +393,10 @@ export class AnalyticsDashboardView extends ItemView {
         section.createEl('h3', { text: 'Foreshadowing Tracker' });
 
         const toolbar = section.createDiv('storyteller-section-toolbar');
-        const addBtn = toolbar.createEl('button', { text: '+ Add Foreshadowing', cls: 'mod-cta' });
+        const addBtn = toolbar.createEl('button', { cls: 'mod-cta storyteller-analytics-add-btn' });
+        const addIcon = addBtn.createSpan();
+        setIcon(addIcon, 'plus');
+        addBtn.createSpan({ text: 'Add Foreshadowing' });
         addBtn.addEventListener('click', () => {
             this.addForeshadowing();
         });
@@ -391,14 +406,30 @@ export class AnalyticsDashboardView extends ItemView {
             return;
         }
 
-        const list = section.createEl('ul', { cls: 'storyteller-foreshadowing-list' });
-        this.analytics.foreshadowing.forEach((pair, index) => {
-            const item = list.createEl('li');
-            const status = pair.status === 'resolved' ? '✓' : pair.status === 'planted' ? '🌱' : '❌';
-            item.createSpan({ text: `${status} `, cls: 'storyteller-foreshadow-status' });
-            item.createSpan({ text: pair.setup, cls: 'storyteller-foreshadow-setup' });
+        const list = section.createDiv('storyteller-foreshadowing-list');
+        this.analytics.foreshadowing.forEach((pair) => {
+            const item = list.createDiv('storyteller-foreshadow-item');
+            const badge = item.createSpan({
+                cls: `storyteller-foreshadow-badge storyteller-foreshadow-badge--${pair.status}`
+            });
+            const badgeIcon = badge.createSpan();
+            if (pair.status === 'resolved') {
+                setIcon(badgeIcon, 'check');
+                badge.createSpan({ text: 'Resolved' });
+            } else if (pair.status === 'planted') {
+                setIcon(badgeIcon, 'sprout');
+                badge.createSpan({ text: 'Planted' });
+            } else {
+                setIcon(badgeIcon, 'x');
+                badge.createSpan({ text: 'Abandoned' });
+            }
+            const body = item.createDiv('storyteller-foreshadow-body');
+            body.createSpan({ text: pair.setup, cls: 'storyteller-foreshadow-setup' });
             if (pair.payoff) {
-                item.createSpan({ text: ` → ${pair.payoff}` });
+                const payoff = body.createDiv('storyteller-foreshadow-payoff');
+                const arrow = payoff.createSpan();
+                setIcon(arrow, 'arrow-right');
+                payoff.createSpan({ text: pair.payoff });
             }
         });
     }
@@ -413,12 +444,17 @@ export class AnalyticsDashboardView extends ItemView {
             return;
         }
 
-        const list = section.createEl('ul', { cls: 'storyteller-sessions-list' });
+        const list = section.createDiv('storyteller-sessions-list');
         sessions.slice(-10).reverse().forEach(session => {
-            const item = list.createEl('li');
-            const date = new Date(session.startTime).toLocaleDateString();
-            const words = session.wordsWritten;
-            item.setText(`${date} - ${words} words`);
+            const item = list.createDiv('storyteller-session-row');
+            const dateEl = item.createSpan({ cls: 'storyteller-session-date' });
+            const dateIcon = dateEl.createSpan();
+            setIcon(dateIcon, 'calendar');
+            dateEl.createSpan({ text: new Date(session.startTime).toLocaleDateString() });
+            const wordsEl = item.createSpan({ cls: 'storyteller-session-words' });
+            const wordIcon = wordsEl.createSpan();
+            setIcon(wordIcon, 'pencil');
+            wordsEl.createSpan({ text: `${session.wordsWritten.toLocaleString()} words` });
         });
     }
 
