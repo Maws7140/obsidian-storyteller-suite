@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 
-import { App, Modal, Setting, Notice, ButtonComponent, TFile } from 'obsidian';
+import { App, Modal, Setting, Notice, ButtonComponent, TFile, setIcon } from 'obsidian';
 import { t } from '../i18n/strings';
 import { PlotItem } from '../types';
 import StorytellerSuitePlugin from '../main';
@@ -77,7 +77,10 @@ export class PlotItemListModal extends Modal {
 
             const titleEl = infoEl.createEl('strong', { text: item.name });
             if (item.isPlotCritical) {
-                titleEl.setText(`★ ${item.name}`);
+                titleEl.empty();
+                const starIcon = titleEl.createSpan();
+                setIcon(starIcon, 'star');
+                titleEl.appendText(` ${item.name}`);
                 titleEl.style.color = 'var(--text-accent)';
             }
 

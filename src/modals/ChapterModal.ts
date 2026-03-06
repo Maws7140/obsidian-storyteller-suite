@@ -1,8 +1,8 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
-import { App, Modal, Notice, Setting, TextAreaComponent, ButtonComponent, parseYaml } from 'obsidian';
+import { App, Modal, Notice, Setting, TextAreaComponent, ButtonComponent, parseYaml, DropdownComponent } from 'obsidian';
 import { t } from '../i18n/strings';
 import StorytellerSuitePlugin from '../main';
-import { Chapter, Character, Location, Event, PlotItem, Group } from '../types';
+import { Chapter, Character, Location, Event, PlotItem, Group, Book } from '../types';
 import { CharacterSuggestModal } from './CharacterSuggestModal';
 import { LocationSuggestModal } from './LocationSuggestModal';
 import { EventSuggestModal } from './EventSuggestModal';
@@ -236,6 +236,30 @@ export class ChapterModal extends Modal {
                     }).open();
                 }));
 
+        // Book assignment
+        contentEl.createEl('h3', { text: 'Book' });
+        const books = await this.plugin.listBooks();
+        new Setting(contentEl)
+            .setName('Assign to Book')
+            .setDesc('Which book this chapter belongs to')
+            .addDropdown((dd: DropdownComponent) => {
+                dd.addOption('', '— None —');
+                for (const b of books) {
+                    dd.addOption(b.id ?? b.name, b.name);
+                }
+                dd.setValue(this.chapter.bookId ?? '');
+                dd.onChange(val => {
+                    if (!val) {
+                        this.chapter.bookId = undefined;
+                        this.chapter.bookName = undefined;
+                    } else {
+                        const picked = books.find(b => (b.id ?? b.name) === val);
+                        this.chapter.bookId = picked?.id ?? val;
+                        this.chapter.bookName = picked?.name ?? val;
+                    }
+                });
+            });
+
         // Linked entities
         contentEl.createEl('h3', { text: t('links') });
 
@@ -245,7 +269,7 @@ export class ChapterModal extends Modal {
         this.renderLinkedEntities(charactersListEl, this.chapter.linkedCharacters, 'characters');
         charactersSetting.addButton(btn => btn.setButtonText(t('add')).onClick(() => {
             new CharacterSuggestModal(this.app, this.plugin, (ch) => {
-                if (!this.chapter.linkedCharacters) this.chapter.linkedCharacters = [];
+                if (!Array.isArray(this.chapter.linkedCharacters)) this.chapter.linkedCharacters = [];
                 if (!this.chapter.linkedCharacters.includes(ch.name)) this.chapter.linkedCharacters.push(ch.name);
                 this.renderLinkedEntities(charactersListEl, this.chapter.linkedCharacters, 'characters');
             }).open();
@@ -258,7 +282,7 @@ export class ChapterModal extends Modal {
         locationsSetting.addButton(btn => btn.setButtonText(t('add')).onClick(() => {
             new LocationSuggestModal(this.app, this.plugin, (loc) => {
                 if (!loc) return;
-                if (!this.chapter.linkedLocations) this.chapter.linkedLocations = [];
+                if (!Array.isArray(this.chapter.linkedLocations)) this.chapter.linkedLocations = [];
                 if (!this.chapter.linkedLocations.includes(loc.name)) this.chapter.linkedLocations.push(loc.name);
                 this.renderLinkedEntities(locationsListEl, this.chapter.linkedLocations, 'locations');
             }).open();
@@ -270,7 +294,7 @@ export class ChapterModal extends Modal {
         this.renderLinkedEntities(eventsListEl, this.chapter.linkedEvents, 'events');
         eventsSetting.addButton(btn => btn.setButtonText(t('add')).onClick(() => {
             new EventSuggestModal(this.app, this.plugin, (evt) => {
-                if (!this.chapter.linkedEvents) this.chapter.linkedEvents = [];
+                if (!Array.isArray(this.chapter.linkedEvents)) this.chapter.linkedEvents = [];
                 if (!this.chapter.linkedEvents.includes(evt.name)) this.chapter.linkedEvents.push(evt.name);
                 this.renderLinkedEntities(eventsListEl, this.chapter.linkedEvents, 'events');
             }).open();
@@ -283,7 +307,7 @@ export class ChapterModal extends Modal {
         itemsSetting.addButton(btn => btn.setButtonText(t('add')).onClick(async () => {
             const { PlotItemSuggestModal } = await import('./PlotItemSuggestModal');
             new PlotItemSuggestModal(this.app, this.plugin, (item) => {
-                if (!this.chapter.linkedItems) this.chapter.linkedItems = [];
+                if (!Array.isArray(this.chapter.linkedItems)) this.chapter.linkedItems = [];
                 if (!this.chapter.linkedItems.includes(item.name)) this.chapter.linkedItems.push(item.name);
                 this.renderLinkedEntities(itemsListEl, this.chapter.linkedItems, 'items');
             }).open();
@@ -295,7 +319,7 @@ export class ChapterModal extends Modal {
         this.renderLinkedEntities(groupsListEl, this.chapter.linkedGroups, 'groups');
         groupsSetting.addButton(btn => btn.setButtonText(t('add')).onClick(() => {
             new GroupSuggestModal(this.app, this.plugin, (g) => {
-                if (!this.chapter.linkedGroups) this.chapter.linkedGroups = [];
+                if (!Array.isArray(this.chapter.linkedGroups)) this.chapter.linkedGroups = [];
                 if (!this.chapter.linkedGroups.includes(g.id)) this.chapter.linkedGroups.push(g.id);
                 this.renderLinkedEntities(groupsListEl, this.chapter.linkedGroups, 'groups');
             }).open();
@@ -436,6 +460,7 @@ export class ChapterModal extends Modal {
         const { templateId, yamlContent, markdownContent, sectionContent, customYamlFields, id, filePath, ...rest } = templateChapter as any;
 
         let fields: any = { ...rest };
+        let allTemplateSections: Record<string, string> = {};
 
         // Handle new format: yamlContent (parse YAML string)
         if (yamlContent && typeof yamlContent === 'string') {
@@ -457,6 +482,7 @@ export class ChapterModal extends Modal {
         if (markdownContent && typeof markdownContent === 'string') {
             try {
                 const parsedSections = parseSectionsFromMarkdown(markdownContent);
+                allTemplateSections = parsedSections;
 
                 // Map well-known sections to entity properties
                 if ('Summary' in parsedSections) {
@@ -468,6 +494,7 @@ export class ChapterModal extends Modal {
             }
         } else if (sectionContent) {
             // Old format: apply section content
+            for (const [k, v] of Object.entries(sectionContent)) { allTemplateSections[k as string] = v as string; }
             for (const [sectionName, content] of Object.entries(sectionContent)) {
                 const propName = sectionName.toLowerCase().replace(/\s+/g, '');
                 (fields as any)[propName] = content;
@@ -476,6 +503,14 @@ export class ChapterModal extends Modal {
 
         // Apply all fields to the chapter
         Object.assign(this.chapter, fields);
+        if (Object.keys(allTemplateSections).length > 0) {
+            Object.defineProperty(this.chapter, '_templateSections', {
+                value: allTemplateSections,
+                enumerable: false,
+                writable: true,
+                configurable: true
+            });
+        }
         console.log('[ChapterModal] Final chapter after template:', this.chapter);
 
         // Clear relationships as they reference template entities

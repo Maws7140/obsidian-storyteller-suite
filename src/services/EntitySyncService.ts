@@ -23,11 +23,11 @@ import type { Character, Location, Event, PlotItem, Scene, EntityRef, Culture, E
  */
 interface RelationshipMapping {
     /** Source entity type */
-    sourceType: 'character' | 'location' | 'event' | 'item' | 'scene' | 'culture' | 'economy' | 'magicsystem';
+    sourceType: 'character' | 'location' | 'event' | 'item' | 'scene' | 'culture' | 'economy' | 'magicsystem' | 'chapter' | 'compendiumentry';
     /** Field name on source entity */
     sourceField: string;
     /** Target entity type */
-    targetType: 'character' | 'location' | 'event' | 'item' | 'scene' | 'culture' | 'economy' | 'magicsystem';
+    targetType: 'character' | 'location' | 'event' | 'item' | 'scene' | 'culture' | 'economy' | 'magicsystem' | 'chapter' | 'compendiumentry';
     /** Field name on target entity */
     targetField: string;
     /** Whether this relationship is bidirectional */
@@ -131,8 +131,8 @@ export class EntitySyncService {
             targetField: 'ownedItems',
             bidirectional: true,
             isArray: true,
-            transform: (ownerName: string, item: PlotItem) => item.id || item.name,
-            reverseTransform: (itemId: string, character: Character) => character.name || character.id
+            transform: (ownerName: string, item: PlotItem) => item.name,
+            reverseTransform: (itemId: string, character: Character) => character.name
         },
         // Event ↔ Item (items[] ↔ associatedEvents[])
         {
@@ -142,23 +142,23 @@ export class EntitySyncService {
             targetField: 'associatedEvents',
             bidirectional: true,
             isArray: true,
-            transform: (itemId: string, event: Event) => event.id || event.name,
-            reverseTransform: (eventId: string, item: PlotItem) => item.id || item.name
+            transform: (itemId: string, event: Event) => event.name,
+            reverseTransform: (eventId: string, item: PlotItem) => item.name
         },
-        // Culture ↔ Location (linkedLocations[] ↔ entityRefs)
+        // Culture → Location (linkedLocations[] → location.entityRefs) — one-way only
+        // Reverse direction (location.cultures ↔ culture.linkedLocations) is handled by the mapping below
         {
             sourceType: 'culture',
             sourceField: 'linkedLocations',
             targetType: 'location',
             targetField: 'entityRefs',
-            bidirectional: true,
+            bidirectional: false,
             transform: (locationId: string, culture: Culture) => ({
                 entityId: culture.id || culture.name,
                 entityType: 'culture' as const,
                 entityName: culture.name,
                 relationship: 'present'
             }),
-            reverseTransform: (entityRef: EntityRef, location: Location) => location.id || location.name
         },
         // Culture ↔ Character (linkedCharacters[] ↔ cultures[])
         {
@@ -168,8 +168,40 @@ export class EntitySyncService {
             targetField: 'cultures',
             bidirectional: true,
             isArray: true,
-            transform: (characterId: string, culture: Culture) => culture.id || culture.name,
-            reverseTransform: (cultureId: string, character: Character) => character.id || character.name
+            transform: (characterId: string, culture: Culture) => culture.name,
+            reverseTransform: (cultureId: string, character: Character) => character.name
+        },
+        // Character ↔ Culture (cultures[] ↔ linkedCharacters[])
+        {
+            sourceType: 'character',
+            sourceField: 'cultures',
+            targetType: 'culture',
+            targetField: 'linkedCharacters',
+            bidirectional: true,
+            isArray: true,
+            transform: (cultureId: string, character: Character) => character.name,
+            reverseTransform: (charId: string, culture: Culture) => culture.name
+        },
+        // Culture → Location (linkedLocations[] → location.cultures) for picker display
+        {
+            sourceType: 'culture',
+            sourceField: 'linkedLocations',
+            targetType: 'location',
+            targetField: 'cultures',
+            bidirectional: false,
+            isArray: true,
+            transform: (locationId: string, culture: Culture) => culture.name
+        },
+        // Location ↔ Culture (cultures[] ↔ linkedLocations[])
+        {
+            sourceType: 'location',
+            sourceField: 'cultures',
+            targetType: 'culture',
+            targetField: 'linkedLocations',
+            bidirectional: true,
+            isArray: true,
+            transform: (cultureId: string, location: Location) => location.name,
+            reverseTransform: (locationId: string, culture: Culture) => culture.name
         },
         // Culture ↔ Event (linkedEvents[] ↔ cultures[])
         {
@@ -179,38 +211,55 @@ export class EntitySyncService {
             targetField: 'cultures',
             bidirectional: true,
             isArray: true,
-            transform: (eventId: string, culture: Culture) => culture.id || culture.name,
-            reverseTransform: (cultureId: string, event: Event) => event.id || event.name
+            transform: (eventId: string, culture: Culture) => culture.name,
+            reverseTransform: (cultureId: string, event: Event) => event.name
         },
-        // Economy ↔ Location (linkedLocations[] ↔ entityRefs)
+        // Economy ↔ Character (linkedCharacters[] ↔ linkedEconomies[])
+        {
+            sourceType: 'economy',
+            sourceField: 'linkedCharacters',
+            targetType: 'character',
+            targetField: 'linkedEconomies',
+            bidirectional: true,
+            isArray: true,
+            transform: (characterId: string, economy: Economy) => economy.name,
+            reverseTransform: (economyId: string, character: Character) => character.name
+        },
+        // Economy ↔ Location (linkedLocations[] ↔ linkedEconomies[])
         {
             sourceType: 'economy',
             sourceField: 'linkedLocations',
             targetType: 'location',
-            targetField: 'entityRefs',
+            targetField: 'linkedEconomies',
             bidirectional: true,
-            transform: (locationId: string, economy: Economy) => ({
-                entityId: economy.id || economy.name,
-                entityType: 'economy' as const,
-                entityName: economy.name,
-                relationship: 'active'
-            }),
-            reverseTransform: (entityRef: EntityRef, location: Location) => location.id || location.name
+            isArray: true,
+            transform: (locationId: string, economy: Economy) => economy.name,
+            reverseTransform: (economyId: string, location: Location) => location.name
         },
-        // MagicSystem ↔ Location (linkedLocations[] ↔ entityRefs)
+        // Economy ↔ Culture (linkedCultures[] ↔ linkedEconomies[])
+        {
+            sourceType: 'economy',
+            sourceField: 'linkedCultures',
+            targetType: 'culture',
+            targetField: 'linkedEconomies',
+            bidirectional: true,
+            isArray: true,
+            transform: (cultureId: string, economy: Economy) => economy.name,
+            reverseTransform: (economyId: string, culture: Culture) => culture.name
+        },
+        // MagicSystem → Location (linkedLocations[] → location.entityRefs) — one-way only
         {
             sourceType: 'magicsystem',
             sourceField: 'linkedLocations',
             targetType: 'location',
             targetField: 'entityRefs',
-            bidirectional: true,
+            bidirectional: false,
             transform: (locationId: string, magic: MagicSystem) => ({
                 entityId: magic.id || magic.name,
                 entityType: 'magicsystem' as const,
                 entityName: magic.name,
                 relationship: 'practiced'
             }),
-            reverseTransform: (entityRef: EntityRef, location: Location) => location.id || location.name
         },
         // MagicSystem ↔ Character (linkedCharacters[] ↔ magicSystems[])
         {
@@ -220,8 +269,8 @@ export class EntitySyncService {
             targetField: 'magicSystems',
             bidirectional: true,
             isArray: true,
-            transform: (characterId: string, magic: MagicSystem) => magic.id || magic.name,
-            reverseTransform: (magicId: string, character: Character) => character.id || character.name
+            transform: (characterId: string, magic: MagicSystem) => magic.name,
+            reverseTransform: (magicId: string, character: Character) => character.name
         },
         // MagicSystem ↔ Event (linkedEvents[] ↔ magicSystems[])
         {
@@ -231,8 +280,8 @@ export class EntitySyncService {
             targetField: 'magicSystems',
             bidirectional: true,
             isArray: true,
-            transform: (eventId: string, magic: MagicSystem) => magic.id || magic.name,
-            reverseTransform: (magicId: string, event: Event) => event.id || event.name
+            transform: (eventId: string, magic: MagicSystem) => magic.name,
+            reverseTransform: (magicId: string, event: Event) => event.name
         },
         // MagicSystem ↔ Item (linkedItems[] ↔ magicSystems[])
         {
@@ -242,8 +291,8 @@ export class EntitySyncService {
             targetField: 'magicSystems',
             bidirectional: true,
             isArray: true,
-            transform: (itemId: string, magic: MagicSystem) => magic.id || magic.name,
-            reverseTransform: (magicId: string, item: PlotItem) => item.id || item.name
+            transform: (itemId: string, magic: MagicSystem) => magic.name,
+            reverseTransform: (magicId: string, item: PlotItem) => item.name
         },
         // Location ↔ Location (parentLocationId ↔ childLocationIds)
         {
@@ -324,15 +373,207 @@ export class EntitySyncService {
                 return location.name;
             }
         },
-        // Scene ↔ Character (linkedCharacters[] ↔ need to add scenes field to Character)
-        // Since Character doesn't have a scenes field, we'll create a virtual relationship
-        // by storing scene references in a way that can be queried
-        // For now, we'll make it so when Scene.linkedCharacters changes, we update Character
-        // We'll need to add a scenes field to Character type or use a different approach
-        // Scene ↔ Event (linkedEvents[] ↔ need to add scenes field to Event)
-        // Scene ↔ Item (linkedItems[] ↔ need to add scenes field to Item)
-        // Note: These require adding new fields to target entities, which is a larger change
-        // For now, we'll focus on relationships that can work with existing fields
+        // Item ↔ Character (linkedCharacters[] ↔ linkedItems[]) — multiple owners/associations
+        {
+            sourceType: 'item',
+            sourceField: 'linkedCharacters',
+            targetType: 'character',
+            targetField: 'linkedItems',
+            bidirectional: true,
+            isArray: true,
+            transform: (charId: string, item: PlotItem) => item.name,
+            reverseTransform: (itemId: string, character: Character) => character.name
+        },
+        // Item ↔ Economy (linkedEconomies[] ↔ linkedItems[])
+        {
+            sourceType: 'item',
+            sourceField: 'linkedEconomies',
+            targetType: 'economy',
+            targetField: 'linkedItems',
+            bidirectional: true,
+            isArray: true,
+            transform: (econId: string, item: PlotItem) => item.name,
+            reverseTransform: (itemId: string, economy: Economy) => economy.name
+        },
+        // Item ↔ Culture (linkedCultures[] ↔ linkedItems[])
+        {
+            sourceType: 'item',
+            sourceField: 'linkedCultures',
+            targetType: 'culture',
+            targetField: 'linkedItems',
+            bidirectional: true,
+            isArray: true,
+            transform: (cultId: string, item: PlotItem) => item.name,
+            reverseTransform: (itemId: string, culture: Culture) => culture.name
+        },
+        // MagicSystem ↔ Culture (linkedCultures[] ↔ linkedMagicSystems[])
+        {
+            sourceType: 'magicsystem',
+            sourceField: 'linkedCultures',
+            targetType: 'culture',
+            targetField: 'linkedMagicSystems',
+            bidirectional: true,
+            isArray: true,
+            transform: (cultureId: string, magic: MagicSystem) => magic.name,
+            reverseTransform: (magicId: string, culture: any) => culture.name
+        },
+        // Chapter ↔ Character (linkedCharacters[] ↔ linkedChapters[])
+        {
+            sourceType: 'chapter',
+            sourceField: 'linkedCharacters',
+            targetType: 'character',
+            targetField: 'linkedChapters',
+            bidirectional: true,
+            isArray: true,
+            transform: (charId: string, chapter: any) => chapter.name,
+            reverseTransform: (chapId: string, character: any) => character.name
+        },
+        // Chapter ↔ Location (linkedLocations[] ↔ linkedChapters[])
+        {
+            sourceType: 'chapter',
+            sourceField: 'linkedLocations',
+            targetType: 'location',
+            targetField: 'linkedChapters',
+            bidirectional: true,
+            isArray: true,
+            transform: (locId: string, chapter: any) => chapter.name,
+            reverseTransform: (chapId: string, location: any) => location.name
+        },
+        // Chapter ↔ Event (linkedEvents[] ↔ linkedChapters[])
+        {
+            sourceType: 'chapter',
+            sourceField: 'linkedEvents',
+            targetType: 'event',
+            targetField: 'linkedChapters',
+            bidirectional: true,
+            isArray: true,
+            transform: (evId: string, chapter: any) => chapter.name,
+            reverseTransform: (chapId: string, event: any) => event.name
+        },
+        // Chapter ↔ Item (linkedItems[] ↔ linkedChapters[])
+        {
+            sourceType: 'chapter',
+            sourceField: 'linkedItems',
+            targetType: 'item',
+            targetField: 'linkedChapters',
+            bidirectional: true,
+            isArray: true,
+            transform: (itemId: string, chapter: any) => chapter.name,
+            reverseTransform: (chapId: string, item: any) => item.name
+        },
+        // Scene ↔ Character (linkedCharacters[] ↔ linkedScenes[])
+        {
+            sourceType: 'scene',
+            sourceField: 'linkedCharacters',
+            targetType: 'character',
+            targetField: 'linkedScenes',
+            bidirectional: true,
+            isArray: true,
+            transform: (charId: string, scene: Scene) => scene.name,
+            reverseTransform: (sceneId: string, character: any) => character.name
+        },
+        // Scene ↔ Event (linkedEvents[] ↔ linkedScenes[])
+        {
+            sourceType: 'scene',
+            sourceField: 'linkedEvents',
+            targetType: 'event',
+            targetField: 'linkedScenes',
+            bidirectional: true,
+            isArray: true,
+            transform: (evId: string, scene: Scene) => scene.name,
+            reverseTransform: (sceneId: string, event: any) => event.name
+        },
+        // Scene ↔ Item (linkedItems[] ↔ linkedScenes[])
+        {
+            sourceType: 'scene',
+            sourceField: 'linkedItems',
+            targetType: 'item',
+            targetField: 'linkedScenes',
+            bidirectional: true,
+            isArray: true,
+            transform: (itemId: string, scene: Scene) => scene.name,
+            reverseTransform: (sceneId: string, item: any) => item.name
+        },
+        // CompendiumEntry → Location (linkedLocations → entityRefs) — one-way only
+        {
+            sourceType: 'compendiumentry',
+            sourceField: 'linkedLocations',
+            targetType: 'location',
+            targetField: 'entityRefs',
+            bidirectional: false,
+            transform: (locId: string, entry: any) => ({
+                entityId: entry.id || entry.name,
+                entityType: 'compendiumentry' as any,
+                entityName: entry.name,
+                relationship: 'native habitat'
+            }),
+        },
+        // CompendiumEntry ↔ Character
+        {
+            sourceType: 'compendiumentry',
+            sourceField: 'linkedCharacters',
+            targetType: 'character',
+            targetField: 'compendiumEntries',
+            bidirectional: true,
+            isArray: true,
+            transform: (charId: string, entry: any) => entry.name,
+            reverseTransform: (entryId: string, char: any) => char.name,
+        },
+        // CompendiumEntry ↔ PlotItem (compendiumSources)
+        {
+            sourceType: 'compendiumentry',
+            sourceField: 'linkedItems',
+            targetType: 'item',
+            targetField: 'compendiumSources',
+            bidirectional: true,
+            isArray: true,
+            transform: (itemId: string, entry: any) => entry.name,
+            reverseTransform: (entryId: string, item: any) => item.name,
+        },
+        // CompendiumEntry ↔ MagicSystem
+        {
+            sourceType: 'compendiumentry',
+            sourceField: 'linkedMagicSystems',
+            targetType: 'magicsystem',
+            targetField: 'compendiumEntries',
+            bidirectional: true,
+            isArray: true,
+            transform: (magicId: string, entry: any) => entry.name,
+            reverseTransform: (entryId: string, magic: any) => magic.name,
+        },
+        // CompendiumEntry ↔ Culture
+        {
+            sourceType: 'compendiumentry',
+            sourceField: 'linkedCultures',
+            targetType: 'culture',
+            targetField: 'compendiumEntries',
+            bidirectional: true,
+            isArray: true,
+            transform: (cultId: string, entry: any) => entry.name,
+            reverseTransform: (entryId: string, culture: any) => culture.name,
+        },
+        // CompendiumEntry ↔ Event
+        {
+            sourceType: 'compendiumentry',
+            sourceField: 'linkedEvents',
+            targetType: 'event',
+            targetField: 'compendiumEntries',
+            bidirectional: true,
+            isArray: true,
+            transform: (eventId: string, entry: any) => entry.name,
+            reverseTransform: (entryId: string, event: any) => event.name,
+        },
+        // Scene.setupScenes ↔ Scene.payoffScenes (bidirectional foreshadowing links)
+        {
+            sourceType: 'scene',
+            sourceField: 'setupScenes',
+            targetType: 'scene',
+            targetField: 'payoffScenes',
+            bidirectional: true,
+            isArray: true,
+            transform: (sceneName: string, sourceScene: any) => sourceScene.name,
+            reverseTransform: (sceneName: string, targetScene: any) => targetScene.name,
+        },
     ];
 
     /**
@@ -342,7 +583,7 @@ export class EntitySyncService {
      * @param oldEntity The previous version of the entity (if available)
      */
     async syncEntity(
-        entityType: 'character' | 'location' | 'event' | 'item' | 'scene' | 'culture' | 'economy' | 'magicsystem',
+        entityType: 'character' | 'location' | 'event' | 'item' | 'scene' | 'culture' | 'economy' | 'magicsystem' | 'chapter' | 'compendiumentry',
         newEntity: any,
         oldEntity?: any
     ): Promise<void> {
@@ -618,23 +859,27 @@ export class EntitySyncService {
                 if (sourceEntity && mapping.reverseTransform) {
                     const valueToSet = mapping.reverseTransform(itemId, newTarget);
                     
-                    if (Array.isArray((sourceEntity as any)[mapping.sourceField])) {
-                        // Add to array
-                        const arr = (sourceEntity as any)[mapping.sourceField] as any[];
-                        const exists = typeof valueToSet === 'string'
-                            ? arr.some(x => typeof x === 'string' && x.toLowerCase() === valueToSet.toLowerCase())
-                            : arr.includes(valueToSet);
-                            
-                        if (!exists) {
-                            arr.push(valueToSet);
-                            await this.saveEntity(mapping.sourceType, sourceEntity);
+                    if (!Array.isArray((sourceEntity as any)[mapping.sourceField])) {
+                        if (mapping.isArray) {
+                            // Field should be an array but is undefined/null — initialize it
+                            (sourceEntity as any)[mapping.sourceField] = [];
+                        } else {
+                            // Scalar field — set directly
+                            if ((sourceEntity as any)[mapping.sourceField] !== valueToSet) {
+                                (sourceEntity as any)[mapping.sourceField] = valueToSet;
+                                await this.saveEntity(mapping.sourceType, sourceEntity);
+                            }
+                            continue;
                         }
-                    } else {
-                        // Set scalar
-                        if ((sourceEntity as any)[mapping.sourceField] !== valueToSet) {
-                            (sourceEntity as any)[mapping.sourceField] = valueToSet;
-                            await this.saveEntity(mapping.sourceType, sourceEntity);
-                        }
+                    }
+                    // Add to array
+                    const arr = (sourceEntity as any)[mapping.sourceField] as any[];
+                    const exists = typeof valueToSet === 'string'
+                        ? arr.some(x => typeof x === 'string' && x.toLowerCase() === valueToSet.toLowerCase())
+                        : arr.includes(valueToSet);
+                    if (!exists) {
+                        arr.push(valueToSet);
+                        await this.saveEntity(mapping.sourceType, sourceEntity);
                     }
                 }
             } catch (error) {
@@ -1110,7 +1355,7 @@ export class EntitySyncService {
      * Handles case-insensitive matching and resolves by both ID and name
      */
     private async getEntity(
-        entityType: 'character' | 'location' | 'event' | 'item' | 'scene' | 'culture' | 'economy' | 'magicsystem',
+        entityType: 'character' | 'location' | 'event' | 'item' | 'scene' | 'culture' | 'economy' | 'magicsystem' | 'chapter' | 'compendiumentry',
         idOrName: string
     ): Promise<any> {
         if (!idOrName) return null;
@@ -1142,6 +1387,12 @@ export class EntitySyncService {
                     break;
                 case 'magicsystem':
                     entities = await this.plugin.listMagicSystems();
+                    break;
+                case 'chapter':
+                    entities = await this.plugin.listChapters();
+                    break;
+                case 'compendiumentry':
+                    entities = await this.plugin.listCompendiumEntries();
                     break;
                 default:
                     return null;
@@ -1183,7 +1434,7 @@ export class EntitySyncService {
      * Save an entity (delegates to plugin save methods)
      */
     private async saveEntity(
-        entityType: 'character' | 'location' | 'event' | 'item' | 'scene' | 'culture' | 'economy' | 'magicsystem',
+        entityType: 'character' | 'location' | 'event' | 'item' | 'scene' | 'culture' | 'economy' | 'magicsystem' | 'chapter' | 'compendiumentry',
         entity: any
     ): Promise<void> {
         try {
@@ -1214,6 +1465,12 @@ export class EntitySyncService {
                     break;
                 case 'magicsystem':
                     await this.plugin.saveMagicSystem(entity);
+                    break;
+                case 'chapter':
+                    await this.plugin.saveChapter(entity);
+                    break;
+                case 'compendiumentry':
+                    await this.plugin.saveCompendiumEntry(entity);
                     break;
             }
         } catch (error) {
@@ -1253,7 +1510,7 @@ export class EntitySyncService {
      * Handle entity deletion - remove all references
      */
     async handleEntityDeletion(
-        entityType: 'character' | 'location' | 'event' | 'item' | 'culture' | 'economy' | 'magicsystem',
+        entityType: 'character' | 'location' | 'event' | 'item' | 'culture' | 'economy' | 'magicsystem' | 'compendiumentry',
         entityId: string
     ): Promise<void> {
         if (!entityId) return;
@@ -1330,7 +1587,7 @@ export class EntitySyncService {
      */
     private async removeEntityReferences(
         mapping: RelationshipMapping,
-        deletedType: 'character' | 'location' | 'event' | 'item' | 'culture' | 'economy' | 'magicsystem',
+        deletedType: 'character' | 'location' | 'event' | 'item' | 'culture' | 'economy' | 'magicsystem' | 'compendiumentry',
         deletedId: string
     ): Promise<void> {
         try {

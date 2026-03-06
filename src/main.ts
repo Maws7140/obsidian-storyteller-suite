@@ -17,7 +17,14 @@ import * as L from 'leaflet';
 
 import { App, Notice, Plugin, TFile, TFolder, normalizePath, stringifyYaml, WorkspaceLeaf, debounce } from 'obsidian';
 import { parseEventDate, toMillis } from './utils/DateParsing';
-import { buildFrontmatter, getWhitelistKeys, parseSectionsFromMarkdown } from './yaml/EntitySections';
+import {
+    buildFrontmatter,
+    getWhitelistKeys,
+    parseSectionsFromMarkdown,
+    parseFrontmatterFromContent,
+    WIKI_LINK_ARRAY_FIELDS,
+    WIKI_LINK_SCALAR_FIELDS,
+} from './yaml/EntitySections';
 import { stringifyYamlWithLogging, validateFrontmatterPreservation } from './utils/YamlSerializer';
 import { setLocale, t } from './i18n/strings';
 import { FolderResolver, FolderResolverOptions, EntityFolderType } from './folders/FolderResolver';
@@ -26,7 +33,7 @@ import { ConfirmModal } from './modals/ui/ConfirmModal';
 import { CharacterModal } from './modals/CharacterModal';
 import {
     Character, Location, Event, GalleryImage, GalleryData, Story, Group, PlotItem, Reference, Chapter, Scene,
-    Culture, Economy, MagicSystem, CompendiumEntry,
+    Culture, Economy, MagicSystem, CompendiumEntry, Book,
     TimelineFork, CausalityLink, TimelineConflict, TimelineEra, TimelineTrack,
     PacingAnalysis, WritingSession, StoryAnalytics, LocationSensoryProfile,
     StoryMap
@@ -43,6 +50,9 @@ import { NetworkGraphView, VIEW_TYPE_NETWORK_GRAPH } from './views/NetworkGraphV
 import { TimelineView, VIEW_TYPE_TIMELINE } from './views/TimelineView';
 import { AnalyticsDashboardView, VIEW_TYPE_ANALYTICS } from './views/AnalyticsDashboardView';
 import { MapView, VIEW_TYPE_MAP } from './views/MapView';
+import { WritingPanelView, VIEW_TYPE_WRITING_PANEL } from './views/WritingPanelView';
+import { CampaignView, VIEW_TYPE_CAMPAIGN } from './views/CampaignView';
+import { SceneGraphView, VIEW_TYPE_SCENE_GRAPH } from './views/SceneGraphView';
 // DEPRECATED: Map functionality has been deprecated
 // import { MapEditorView, VIEW_TYPE_MAP_EDITOR } from './views/MapEditorView';
 import { GalleryImageSuggestModal } from './modals/GalleryImageSuggestModal';
@@ -77,6 +87,89 @@ import { EraManager } from './utils/EraManager';
 import { LocationMigration } from './utils/LocationMigration';
 import { WordCountTracker } from './compile';
 import { createLedgerViewExtension, registerLedgerBlockProcessor } from './extensions/LedgerEditorExtension';
+import { createBranchViewExtension, registerBranchBlockProcessors } from './extensions/BranchBlockExtension';
+import { CampaignSession, PartyMemberState } from './types';
+
+type FrontmatterReferenceFieldConfig = {
+    field: string;
+    kind: 'scalar' | 'array';
+    entityType: EntityFolderType;
+    mirrorField?: string;
+};
+
+type FrontmatterObjectReferenceFieldConfig = {
+    field: string;
+    idKey: string;
+    entityType: EntityFolderType | ((entry: Record<string, any>) => EntityFolderType | null);
+    nameKey?: string;
+};
+
+type FrontmatterReferenceIndex = {
+    idToName: Map<string, string>;
+    nameToId: Map<string, string>;
+    lowerNameToId: Map<string, string>;
+};
+
+const FRONTMATTER_REFERENCE_FIELDS: FrontmatterReferenceFieldConfig[] = [
+    { field: 'groups', kind: 'array', entityType: 'group' },
+    { field: 'linkedGroups', kind: 'array', entityType: 'group' },
+    { field: 'currentLocationId', kind: 'scalar', entityType: 'location' },
+    { field: 'parentLocationId', kind: 'scalar', entityType: 'location' },
+    { field: 'childLocationIds', kind: 'array', entityType: 'location' },
+    { field: 'bookId', kind: 'scalar', entityType: 'book', mirrorField: 'bookName' },
+    { field: 'chapterId', kind: 'scalar', entityType: 'chapter', mirrorField: 'chapterName' },
+    { field: 'currentSceneId', kind: 'scalar', entityType: 'scene', mirrorField: 'currentSceneName' },
+    { field: 'partyCharacterIds', kind: 'array', entityType: 'character', mirrorField: 'partyCharacterNames' },
+    { field: 'inventoryItemIds', kind: 'array', entityType: 'item' },
+    { field: 'chapterIds', kind: 'array', entityType: 'chapter' },
+    { field: 'activeSessionId', kind: 'scalar', entityType: 'campaignSession' },
+    { field: 'primaryMapId', kind: 'scalar', entityType: 'map' },
+    { field: 'mapId', kind: 'scalar', entityType: 'map' },
+    { field: 'parentMapId', kind: 'scalar', entityType: 'map' },
+    { field: 'childMapIds', kind: 'array', entityType: 'map' },
+    { field: 'correspondingLocationId', kind: 'scalar', entityType: 'location' },
+    { field: 'relatedMapIds', kind: 'array', entityType: 'map' },
+];
+
+const FRONTMATTER_OBJECT_REFERENCE_FIELDS: FrontmatterObjectReferenceFieldConfig[] = [
+    { field: 'locationHistory', idKey: 'locationId', entityType: 'location' },
+    { field: 'partyState', idKey: 'characterId', entityType: 'character', nameKey: 'characterName' },
+    {
+        field: 'entityRefs',
+        idKey: 'entityId',
+        nameKey: 'entityName',
+        entityType: (entry) => {
+            const rawType = String(entry?.entityType ?? '').trim().toLowerCase();
+            if (rawType === 'character') return 'character';
+            if (rawType === 'location') return 'location';
+            if (rawType === 'event') return 'event';
+            if (rawType === 'item') return 'item';
+            if (rawType === 'scene') return 'scene';
+            if (rawType === 'culture') return 'culture';
+            if (rawType === 'economy') return 'economy';
+            if (rawType === 'group') return 'group';
+            if (rawType === 'reference') return 'reference';
+            if (rawType === 'magicsystem') return 'magicSystem';
+            if (rawType === 'compendiumentry') return 'compendiumEntry';
+            return null;
+        }
+    },
+    { field: 'mapBindings', idKey: 'mapId', entityType: 'map', nameKey: 'mapName' },
+];
+
+const FRONTMATTER_LINK_ONLY_SCALAR_FIELDS = new Set([
+    'location',
+    'currentOwner',
+    'currentLocation',
+    'povCharacter',
+    'navigatesToScene',
+    'useRequiresLocation',
+    'linkedCulture',
+    'parentGroup',
+    'parentCulture',
+    'triggeredByItem',
+    'parentLocation',
+]);
 
 /**
  * Plugin settings interface defining all configurable options
@@ -182,6 +275,8 @@ import { createLedgerViewExtension, registerLedgerBlockProcessor } from './exten
     factionFolderPath?: string;
     magicSystemFolderPath?: string;
     groupFolderPath?: string;
+    bookFolderPath?: string;
+    sessionsFolderPath?: string;
 
     /** Sensory Profiles */
     enableSensoryProfiles?: boolean;
@@ -283,6 +378,8 @@ import { createLedgerViewExtension, registerLedgerBlockProcessor } from './exten
     sceneFolderPath: '',
     mapFolderPath: '',
     groupFolderPath: '',
+    bookFolderPath: '',
+    sessionsFolderPath: '',
     enableOneStoryMode: false,
     oneStoryBaseFolder: 'StorytellerSuite',
     customTodayISO: undefined,
@@ -335,7 +432,7 @@ import { createLedgerViewExtension, registerLedgerBlockProcessor } from './exten
     storyDrafts: [],
     activeDraftId: undefined,
     compileWorkflows: [],
-    defaultCompileWorkflow: 'Default Workflow',
+    defaultCompileWorkflow: 'reader-draft-workflow',
     dailyWordCountGoal: 1000,
     showWordCountInStatusBar: true,
     notifyOnGoalReached: true,
@@ -382,6 +479,8 @@ export default class StorytellerSuitePlugin extends Plugin {
             factionFolderPath: this.settings.factionFolderPath,
             magicSystemFolderPath: this.settings.magicSystemFolderPath,
             groupFolderPath: this.settings.groupFolderPath,
+            bookFolderPath: this.settings.bookFolderPath,
+            sessionsFolderPath: this.settings.sessionsFolderPath,
             enableOneStoryMode: this.settings.enableOneStoryMode,
             oneStoryBaseFolder: this.settings.oneStoryBaseFolder,
         };
@@ -486,6 +585,8 @@ export default class StorytellerSuitePlugin extends Plugin {
     trackManager: TimelineTrackManager;
     eraManager: EraManager;
     private warnedMissingNameFiles: Set<string> = new Set();
+    private groupVaultSyncTimer: number | null = null;
+    private frontmatterReferenceIndexCache: Map<string, Promise<FrontmatterReferenceIndex>> = new Map();
 
     /** Word count tracker — Longform-compatible goal tracking */
     wordTracker: WordCountTracker;
@@ -496,6 +597,43 @@ export default class StorytellerSuitePlugin extends Plugin {
     // Mobile/tablet orientation and resize handlers
     private orientationChangeHandler: (() => void) | null = null;
     private resizeHandler: (() => void) | null = null;
+
+    private isLikelyGroupMarkdownPath(path?: string): boolean {
+        if (!path || !path.toLowerCase().endsWith('.md')) return false;
+        try {
+            const groupFolder = normalizePath(this.getEntityFolder('group'));
+            const normalizedPath = normalizePath(path);
+            return normalizedPath.startsWith(`${groupFolder}/`);
+        } catch {
+            return false;
+        }
+    }
+
+    private scheduleGroupVaultSync(delayMs = 450): void {
+        if (this.groupVaultSyncTimer !== null) {
+            window.clearTimeout(this.groupVaultSyncTimer);
+        }
+        this.groupVaultSyncTimer = window.setTimeout(() => {
+            this.groupVaultSyncTimer = null;
+            void this.syncGroupsFromVault();
+        }, delayMs);
+    }
+
+    private inferStoryIdFromPath(path: string): string | null {
+        try {
+            const normalizedPath = normalizePath(path);
+            const marker = '/Stories/';
+            const markerIdx = normalizedPath.indexOf(marker);
+            if (markerIdx === -1) return null;
+            const afterStories = normalizedPath.slice(markerIdx + marker.length);
+            const storyFolderName = afterStories.split('/')[0];
+            if (!storyFolderName) return null;
+            const story = this.settings.stories.find(s => s.name === storyFolderName);
+            return story?.id ?? null;
+        } catch {
+            return null;
+        }
+    }
 
     /** Sanitize the one-story base folder so it is vault-relative and never a leading slash. */
     private sanitizeBaseFolderPath(input?: string): string {
@@ -536,9 +674,371 @@ export default class StorytellerSuitePlugin extends Plugin {
 	/**
 	 * Helper: Get the folder path for a given entity type in the active story
 	 */
-    getEntityFolder(type: 'character' | 'location' | 'event' | 'item' | 'reference' | 'chapter' | 'scene' | 'map' | 'culture' | 'faction' | 'economy' | 'magicSystem' | 'group' | 'compendiumEntry'): string {
+    getEntityFolder(type: EntityFolderType, context?: { bookName?: string }): string {
         const resolver = this.getFolderResolver();
-        return resolver.getEntityFolder(type);
+        return resolver.getEntityFolder(type, context);
+    }
+
+    /**
+     * Helper: Get the active story's root folder for story-relative exports and compile steps.
+     */
+    getStoryRootFolder(): string {
+        const resolver = this.getFolderResolver();
+        return resolver.getStoryRootFolder();
+    }
+
+    private invalidateFrontmatterReferenceIndexes(): void {
+        this.frontmatterReferenceIndexCache.clear();
+    }
+
+    private stripWikiLinkValue(value: unknown): string | undefined {
+        if (typeof value !== 'string') return undefined;
+        const trimmed = value.trim();
+        if (!trimmed) return undefined;
+        const match = trimmed.match(/^\[\[(.*)\]\]$/);
+        return (match ? match[1] : trimmed).trim() || undefined;
+    }
+
+    private async getRawFrontmatterForFile(file: TFile): Promise<Record<string, unknown> | undefined> {
+        const cache = this.app.metadataCache.getFileCache(file);
+        const cachedFrontmatter = cache?.frontmatter as Record<string, unknown> | undefined;
+        if (cachedFrontmatter && Object.keys(cachedFrontmatter).length > 0) {
+            return cachedFrontmatter;
+        }
+        try {
+            const content = await this.app.vault.cachedRead(file);
+            return parseFrontmatterFromContent(content);
+        } catch {
+            return cachedFrontmatter;
+        }
+    }
+
+    private async getReferenceScanPaths(entityType: EntityFolderType): Promise<string[]> {
+        const resolver = this.getFolderResolver();
+        const paths = new Set<string>();
+        const addPath = (path?: string) => {
+            if (!path) return;
+            paths.add(normalizePath(path).replace(/\/+$/, ''));
+        };
+
+        if (entityType === 'chapter' && resolver.usesBookName('chapter')) {
+            addPath(resolver.getEntityFolder('chapter', { bookName: '' }));
+            const books = await this.listBooks().catch(() => [] as Book[]);
+            books.forEach(book => addPath(resolver.getEntityFolder('chapter', { bookName: book.name })));
+            return Array.from(paths);
+        }
+
+        if (entityType === 'scene' && resolver.usesBookName('scene')) {
+            addPath(resolver.getEntityFolder('scene', { bookName: '' }));
+            const books = await this.listBooks().catch(() => [] as Book[]);
+            books.forEach(book => addPath(resolver.getEntityFolder('scene', { bookName: book.name })));
+            return Array.from(paths);
+        }
+
+        addPath(this.getEntityFolder(entityType));
+        return Array.from(paths);
+    }
+
+    private async getFrontmatterReferenceIndex(entityType: EntityFolderType): Promise<FrontmatterReferenceIndex> {
+        const cacheKey = `${this.getActiveStory()?.id ?? 'no-story'}:${entityType}`;
+        const cached = this.frontmatterReferenceIndexCache.get(cacheKey);
+        if (cached) return cached;
+
+        const promise = (async (): Promise<FrontmatterReferenceIndex> => {
+            const idToName = new Map<string, string>();
+            const nameToId = new Map<string, string>();
+            const lowerNameToId = new Map<string, string>();
+
+            const addEntry = (nameValue: unknown, idValue?: unknown) => {
+                const name = this.stripWikiLinkValue(nameValue);
+                if (!name) return;
+                const id = this.stripWikiLinkValue(idValue) ?? name;
+                if (!idToName.has(id)) idToName.set(id, name);
+                if (!nameToId.has(name)) nameToId.set(name, id);
+                const lower = name.toLowerCase();
+                if (!lowerNameToId.has(lower)) lowerNameToId.set(lower, id);
+            };
+
+            if (entityType === 'group') {
+                this.getGroups().forEach(group => addEntry(group.name, group.id));
+                return { idToName, nameToId, lowerNameToId };
+            }
+
+            const scanPaths = await this.getReferenceScanPaths(entityType);
+            if (scanPaths.length === 0) return { idToName, nameToId, lowerNameToId };
+
+            const files = this.app.vault.getMarkdownFiles().filter(file => {
+                const path = normalizePath(file.path);
+                return scanPaths.some(folder => path.startsWith(`${folder}/`));
+            });
+
+            for (const file of files) {
+                const frontmatter = await this.getRawFrontmatterForFile(file);
+                const name = frontmatter?.['name'] ?? file.basename;
+                const id = frontmatter?.['id'];
+                addEntry(name, id);
+            }
+
+            return { idToName, nameToId, lowerNameToId };
+        })();
+
+        this.frontmatterReferenceIndexCache.set(cacheKey, promise);
+        return promise;
+    }
+
+    private async resolveFrontmatterReferenceName(
+        entityType: EntityFolderType,
+        rawValue: unknown,
+        fallbackName?: unknown
+    ): Promise<string | undefined> {
+        const value = this.stripWikiLinkValue(rawValue);
+        const fallback = this.stripWikiLinkValue(fallbackName);
+        const index = await this.getFrontmatterReferenceIndex(entityType);
+
+        const fromName = (candidate: string): string | undefined => {
+            const resolvedId =
+                index.nameToId.get(candidate) ??
+                index.lowerNameToId.get(candidate.toLowerCase());
+            if (!resolvedId) return undefined;
+            return index.idToName.get(resolvedId) ?? candidate;
+        };
+
+        if (value) {
+            if (index.idToName.has(value)) return index.idToName.get(value);
+            const named = fromName(value);
+            if (named) return named;
+        }
+        if (fallback) {
+            if (index.idToName.has(fallback)) return index.idToName.get(fallback);
+            const named = fromName(fallback);
+            if (named) return named;
+        }
+        return value ?? fallback ?? undefined;
+    }
+
+    private async resolveFrontmatterReferenceId(
+        entityType: EntityFolderType,
+        rawValue: unknown,
+        fallbackName?: unknown
+    ): Promise<string | undefined> {
+        const value = this.stripWikiLinkValue(rawValue);
+        const fallback = this.stripWikiLinkValue(fallbackName);
+        const index = await this.getFrontmatterReferenceIndex(entityType);
+
+        const fromName = (candidate: string): string | undefined =>
+            index.nameToId.get(candidate) ??
+            index.lowerNameToId.get(candidate.toLowerCase());
+
+        if (value) {
+            if (index.idToName.has(value)) return value;
+            const resolved = fromName(value);
+            if (resolved) return resolved;
+        }
+        if (fallback) {
+            if (index.idToName.has(fallback)) return fallback;
+            const resolved = fromName(fallback);
+            if (resolved) return resolved;
+        }
+        return value ?? fallback ?? undefined;
+    }
+
+    private async serializeFrontmatterEntityReferences(
+        source: Record<string, unknown>
+    ): Promise<{ source: Record<string, unknown>; omitOriginalKeys: Set<string> }> {
+        this.invalidateFrontmatterReferenceIndexes();
+        const serialized: Record<string, unknown> = { ...source };
+        const omitOriginalKeys = new Set<string>();
+
+        for (const config of FRONTMATTER_REFERENCE_FIELDS) {
+            if (config.kind === 'scalar') {
+                const currentValue = serialized[config.field];
+                const mirrorValue = config.mirrorField ? serialized[config.mirrorField] : undefined;
+                if (currentValue === undefined && mirrorValue === undefined) continue;
+                const resolvedName = await this.resolveFrontmatterReferenceName(
+                    config.entityType,
+                    currentValue,
+                    mirrorValue
+                );
+                if (resolvedName) {
+                    serialized[config.field] = resolvedName;
+                    if (config.mirrorField) {
+                        delete serialized[config.mirrorField];
+                        omitOriginalKeys.add(config.mirrorField);
+                    }
+                }
+                continue;
+            }
+
+            const rawArray = Array.isArray(serialized[config.field]) ? serialized[config.field] as unknown[] : [];
+            const mirrorArray = config.mirrorField && Array.isArray(serialized[config.mirrorField])
+                ? serialized[config.mirrorField] as unknown[]
+                : [];
+            if (rawArray.length === 0 && mirrorArray.length === 0) continue;
+
+            const resolvedValues: string[] = [];
+            const maxLength = Math.max(rawArray.length, mirrorArray.length);
+            for (let index = 0; index < maxLength; index++) {
+                const resolvedName = await this.resolveFrontmatterReferenceName(
+                    config.entityType,
+                    rawArray[index],
+                    mirrorArray[index]
+                );
+                if (resolvedName) {
+                    resolvedValues.push(resolvedName);
+                }
+            }
+
+            serialized[config.field] = resolvedValues;
+            if (config.mirrorField) {
+                delete serialized[config.mirrorField];
+                omitOriginalKeys.add(config.mirrorField);
+            }
+        }
+
+        for (const field of FRONTMATTER_LINK_ONLY_SCALAR_FIELDS) {
+            const stripped = this.stripWikiLinkValue(serialized[field]);
+            if (stripped) serialized[field] = stripped;
+        }
+
+        for (const config of FRONTMATTER_OBJECT_REFERENCE_FIELDS) {
+            if (!Array.isArray(serialized[config.field])) continue;
+            const entries = serialized[config.field] as unknown[];
+            serialized[config.field] = await Promise.all(entries.map(async (entry) => {
+                if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return entry;
+                const clone = { ...(entry as Record<string, unknown>) };
+                const lookupType =
+                    typeof config.entityType === 'function'
+                        ? config.entityType(clone as Record<string, any>)
+                        : config.entityType;
+                const currentValue = clone[config.idKey];
+                const mirrorValue = config.nameKey ? clone[config.nameKey] : undefined;
+                if (!lookupType) {
+                    const stripped = this.stripWikiLinkValue(currentValue);
+                    if (stripped) clone[config.idKey] = stripped;
+                    return clone;
+                }
+
+                const resolvedName = await this.resolveFrontmatterReferenceName(
+                    lookupType,
+                    currentValue,
+                    mirrorValue
+                );
+                if (resolvedName) {
+                    clone[config.idKey] = `[[${resolvedName}]]`;
+                    if (config.nameKey) delete clone[config.nameKey];
+                } else {
+                    const stripped = this.stripWikiLinkValue(currentValue);
+                    if (stripped) clone[config.idKey] = stripped;
+                }
+                return clone;
+            }));
+        }
+
+        return { source: serialized, omitOriginalKeys };
+    }
+
+    private async normalizeFrontmatterEntityReferences(data: Record<string, unknown>): Promise<void> {
+        for (const field of WIKI_LINK_ARRAY_FIELDS) {
+            if (Array.isArray(data[field])) {
+                data[field] = (data[field] as unknown[])
+                    .map(value => this.stripWikiLinkValue(value))
+                    .filter((value): value is string => Boolean(value));
+            }
+        }
+
+        for (const field of WIKI_LINK_SCALAR_FIELDS) {
+            const stripped = this.stripWikiLinkValue(data[field]);
+            if (stripped) data[field] = stripped;
+        }
+
+        for (const field of FRONTMATTER_LINK_ONLY_SCALAR_FIELDS) {
+            const stripped = this.stripWikiLinkValue(data[field]);
+            if (stripped) data[field] = stripped;
+        }
+
+        for (const config of FRONTMATTER_REFERENCE_FIELDS) {
+            if (config.kind === 'scalar') {
+                const currentValue = data[config.field];
+                const mirrorValue = config.mirrorField ? data[config.mirrorField] : undefined;
+                if (currentValue === undefined && mirrorValue === undefined) continue;
+                const resolvedId = await this.resolveFrontmatterReferenceId(
+                    config.entityType,
+                    currentValue,
+                    mirrorValue
+                );
+                const resolvedName = await this.resolveFrontmatterReferenceName(
+                    config.entityType,
+                    currentValue,
+                    mirrorValue
+                );
+                if (resolvedId) data[config.field] = resolvedId;
+                if (config.mirrorField && resolvedName) data[config.mirrorField] = resolvedName;
+                continue;
+            }
+
+            const rawArray = Array.isArray(data[config.field]) ? data[config.field] as unknown[] : [];
+            const mirrorArray = config.mirrorField && Array.isArray(data[config.mirrorField])
+                ? data[config.mirrorField] as unknown[]
+                : [];
+            if (rawArray.length === 0 && mirrorArray.length === 0) continue;
+
+            const resolvedIds: string[] = [];
+            const resolvedNames: string[] = [];
+            const maxLength = Math.max(rawArray.length, mirrorArray.length);
+            for (let index = 0; index < maxLength; index++) {
+                const resolvedId = await this.resolveFrontmatterReferenceId(
+                    config.entityType,
+                    rawArray[index],
+                    mirrorArray[index]
+                );
+                const resolvedName = await this.resolveFrontmatterReferenceName(
+                    config.entityType,
+                    rawArray[index],
+                    mirrorArray[index]
+                );
+                if (resolvedId) resolvedIds.push(resolvedId);
+                if (resolvedName) resolvedNames.push(resolvedName);
+            }
+
+            data[config.field] = resolvedIds;
+            if (config.mirrorField) data[config.mirrorField] = resolvedNames;
+        }
+
+        for (const config of FRONTMATTER_OBJECT_REFERENCE_FIELDS) {
+            if (!Array.isArray(data[config.field])) continue;
+            const entries = data[config.field] as unknown[];
+            data[config.field] = await Promise.all(entries.map(async (entry) => {
+                if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return entry;
+                const clone = { ...(entry as Record<string, unknown>) };
+                const lookupType =
+                    typeof config.entityType === 'function'
+                        ? config.entityType(clone as Record<string, any>)
+                        : config.entityType;
+                const currentValue = clone[config.idKey];
+                const mirrorValue = config.nameKey ? clone[config.nameKey] : undefined;
+                const strippedValue = this.stripWikiLinkValue(currentValue);
+                if (strippedValue) clone[config.idKey] = strippedValue;
+                if (config.nameKey) {
+                    const strippedMirror = this.stripWikiLinkValue(mirrorValue);
+                    if (strippedMirror) clone[config.nameKey] = strippedMirror;
+                }
+                if (!lookupType) return clone;
+
+                const resolvedId = await this.resolveFrontmatterReferenceId(
+                    lookupType,
+                    clone[config.idKey],
+                    config.nameKey ? clone[config.nameKey] : undefined
+                );
+                const resolvedName = await this.resolveFrontmatterReferenceName(
+                    lookupType,
+                    clone[config.idKey],
+                    config.nameKey ? clone[config.nameKey] : undefined
+                );
+                if (resolvedId) clone[config.idKey] = resolvedId;
+                if (config.nameKey && resolvedName) clone[config.nameKey] = resolvedName;
+                return clone;
+            }));
+        }
     }
 
     /**
@@ -928,6 +1428,16 @@ export default class StorytellerSuitePlugin extends Plugin {
 			(leaf) => new MapView(leaf, this)
 		);
 
+		// Register the writing panel view (Board / Arc / Heatmap / Holes)
+		this.registerView(
+			VIEW_TYPE_WRITING_PANEL,
+			(leaf) => new WritingPanelView(leaf, this)
+		);
+
+		// Register campaign play view and scene graph view
+		this.registerView(VIEW_TYPE_CAMPAIGN, (leaf) => new CampaignView(leaf, this));
+		this.registerView(VIEW_TYPE_SCENE_GRAPH, (leaf) => new SceneGraphView(leaf, this));
+
 		// DEPRECATED: Map functionality has been deprecated
 		// Register the map editor view for full-screen map editing
 		// this.registerView(
@@ -939,6 +1449,11 @@ export default class StorytellerSuitePlugin extends Plugin {
 		this.addRibbonIcon('book-open', 'Open storyteller dashboard', () => {
 			this.activateView();
 		}).addClass('storyteller-suite-ribbon-class');
+
+		// Add ribbon icon for campaign view
+		this.addRibbonIcon('swords', 'Open campaign view', () => {
+			this.activateCampaignView();
+		});
 
 		// Add ribbon icon for template library
 		this.addRibbonIcon('layers', 'Apply template to story', async () => {
@@ -953,8 +1468,12 @@ export default class StorytellerSuitePlugin extends Plugin {
 		this.addSettingTab(new StorytellerSuiteSettingTab(this.app, this));
 
 		// Register interactive widget for ```ledger fenced blocks
-		this.registerEditorExtension(createLedgerViewExtension());
+		this.registerEditorExtension(createLedgerViewExtension(this.app));
 		registerLedgerBlockProcessor(this.app, this);
+
+		// Register display widgets for ```branch and ```encounter fenced blocks
+		this.registerEditorExtension(createBranchViewExtension());
+		registerBranchBlockProcessors(this.app, this);
 
 		// Track vault renames to keep gallery filePath references up to date
 		this.registerEvent(
@@ -1022,6 +1541,34 @@ export default class StorytellerSuitePlugin extends Plugin {
 			})
 		);
 
+		// Keep settings.groups in sync when group markdown notes are created/edited outside the plugin UI.
+		this.registerEvent(
+			this.app.vault.on('create', (file) => {
+				if (!(file instanceof TFile) || file.extension !== 'md') return;
+				if (this.isLikelyGroupMarkdownPath(file.path)) this.scheduleGroupVaultSync();
+			})
+		);
+		this.registerEvent(
+			this.app.vault.on('modify', (file) => {
+				if (!(file instanceof TFile) || file.extension !== 'md') return;
+				if (this.isLikelyGroupMarkdownPath(file.path)) this.scheduleGroupVaultSync();
+			})
+		);
+		this.registerEvent(
+			this.app.vault.on('delete', (file) => {
+				if (!(file instanceof TFile) || file.extension !== 'md') return;
+				if (this.isLikelyGroupMarkdownPath(file.path)) this.scheduleGroupVaultSync();
+			})
+		);
+		this.registerEvent(
+			this.app.vault.on('rename', (file, oldPath) => {
+				const newPath = file instanceof TFile ? file.path : '';
+				if (this.isLikelyGroupMarkdownPath(oldPath) || this.isLikelyGroupMarkdownPath(newPath)) {
+					this.scheduleGroupVaultSync();
+				}
+			})
+		);
+
 		// Perform story discovery and ensure one-story seeding after workspace is ready
 		this.app.workspace.onLayoutReady(async () => {
 			await this.discoverExistingStories();
@@ -1032,6 +1579,8 @@ export default class StorytellerSuitePlugin extends Plugin {
 
 			// Migrate existing settings.groups to vault files (idempotent)
 			await this.migrateGroupsToVault();
+			// Import/refresh groups from vault notes so manually-created group files appear immediately.
+			await this.syncGroupsFromVault();
 
 			// Run migration for typed relationships (only runs once)
 			if (!this.settings.relationshipsMigrated) {
@@ -1729,6 +2278,27 @@ export default class StorytellerSuitePlugin extends Plugin {
 			}
 		});
 
+		this.addCommand({
+			id: 'open-writing-board',
+			name: 'Open Writing Board panel',
+			callback: async () => { await this.activateWritingPanelView('board'); }
+		});
+		this.addCommand({
+			id: 'open-writing-arc',
+			name: 'Open Writing Arc chart panel',
+			callback: async () => { await this.activateWritingPanelView('arc'); }
+		});
+		this.addCommand({
+			id: 'open-writing-heatmap',
+			name: 'Open Character Heatmap panel',
+			callback: async () => { await this.activateWritingPanelView('heatmap'); }
+		});
+		this.addCommand({
+			id: 'open-writing-holes',
+			name: 'Open Plot Hole Detector panel',
+			callback: async () => { await this.activateWritingPanelView('holes'); }
+		});
+
 		// Plot Item management commands
 		this.addCommand({
 			id: 'create-new-plot-item',
@@ -2335,8 +2905,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 				const engine = new CompileEngine(this.app, this);
 				new Notice('Compiling manuscript...');
 				
-				// Get or create default workflow
-				const workflow = engine.createDefaultWorkflow();
+				const workflow = engine.resolveWorkflowForDraft(draft);
 				
 				try {
 					const result = await engine.compile(draft, workflow);
@@ -2563,6 +3132,41 @@ export default class StorytellerSuitePlugin extends Plugin {
 		workspace.revealLeaf(leaf);
 	}
 
+    /** Activate or focus the Campaign view, optionally pre-loading a session. */
+    async activateCampaignView(session?: CampaignSession, startingScene?: import('./types').Scene): Promise<void> {
+        const { workspace } = this.app;
+        let leaf: WorkspaceLeaf | null = null;
+        const leaves = workspace.getLeavesOfType(VIEW_TYPE_CAMPAIGN);
+        if (leaves.length > 0) {
+            leaf = leaves[0];
+        } else {
+            leaf = workspace.getLeaf('tab');
+            if (leaf) await leaf.setViewState({ type: VIEW_TYPE_CAMPAIGN, active: true });
+        }
+        if (!leaf) return;
+        workspace.revealLeaf(leaf);
+        if (session) {
+            const view = leaf.view as CampaignView;
+            await view.loadSession(session, startingScene);
+            await view.render();
+        }
+    }
+
+    /** Activate or focus the Scene Graph view. */
+    async activateSceneGraphView(): Promise<void> {
+        const { workspace } = this.app;
+        let leaf: WorkspaceLeaf | null = null;
+        const leaves = workspace.getLeavesOfType(VIEW_TYPE_SCENE_GRAPH);
+        if (leaves.length > 0) {
+            leaf = leaves[0];
+        } else {
+            leaf = workspace.getLeaf('tab');
+            if (leaf) await leaf.setViewState({ type: VIEW_TYPE_SCENE_GRAPH, active: true });
+        }
+        if (!leaf) return;
+        workspace.revealLeaf(leaf);
+    }
+
 	/**
 	 * Activate or focus the timeline panel view in the main editor area
 	 * Creates a new view as a tab if none exists, otherwise focuses existing view
@@ -2616,6 +3220,26 @@ export default class StorytellerSuitePlugin extends Plugin {
 		} else {
 			console.error("Storyteller Suite: Could not create workspace leaf for analytics.");
 			new Notice("Error opening analytics dashboard: Could not create workspace leaf.");
+		}
+	}
+
+	/**
+	 * Open (or focus) the writing panel view at a specific mode.
+	 * If a panel already exists it is focused and its mode is updated.
+	 */
+	async activateWritingPanelView(mode: import('./views/WritingViewRenderers').WritingPanelMode = 'board'): Promise<void> {
+		const { workspace } = this.app;
+		const existing = workspace.getLeavesOfType(VIEW_TYPE_WRITING_PANEL);
+		if (existing.length > 0) {
+			workspace.revealLeaf(existing[0]);
+			const view = existing[0].view as unknown as WritingPanelView;
+			if (typeof view.setMode === 'function') await view.setMode(mode);
+			return;
+		}
+		const leaf = workspace.getLeaf('tab');
+		if (leaf) {
+			await leaf.setViewState({ type: VIEW_TYPE_WRITING_PANEL, active: true, state: { mode } });
+			workspace.revealLeaf(leaf);
 		}
 	}
 
@@ -2888,12 +3512,17 @@ export default class StorytellerSuitePlugin extends Plugin {
     async parseFile<T>(
         file: TFile,
         typeDefaults: Partial<T>,
-        entityType: 'character' | 'location' | 'event' | 'item' | 'reference' | 'chapter' | 'scene' | 'culture' | 'faction' | 'economy' | 'magicSystem' | 'map' | 'compendiumEntry'
-    ): Promise<T | null> {
+        entityType: 'character' | 'location' | 'event' | 'item' | 'reference' | 'chapter' | 'scene' | 'culture' | 'faction' | 'economy' | 'magicSystem' | 'map' | 'compendiumEntry' | 'book' | 'campaignSession'
+	): Promise<T | null> {
 		try {
+			// External file moves/deletes can leave stale TFile handles briefly; skip safely.
+			const fileStillExists = await this.app.vault.adapter.exists(normalizePath(file.path));
+			if (!fileStillExists) {
+				return null;
+			}
+
 			// Read file content for markdown sections
 			const content = await this.app.vault.cachedRead(file);
-            const { parseSectionsFromMarkdown, WIKI_LINK_ARRAY_FIELDS } = await import('./yaml/EntitySections');
             const allSections = parseSectionsFromMarkdown(content);
 
 			// Get cached frontmatter from Obsidian's metadata cache
@@ -2902,7 +3531,6 @@ export default class StorytellerSuitePlugin extends Plugin {
 
 			// Also parse frontmatter directly from file content to capture empty values
 			// This ensures manually-added empty fields are not lost
-			const { parseFrontmatterFromContent } = await import('./yaml/EntitySections');
 			const directFrontmatter = parseFrontmatterFromContent(content);
 
 			// Merge both sources, preferring direct parsing for better empty value handling
@@ -3004,13 +3632,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 
             // Strip [[...]] wikilink brackets from linked entity arrays — stored with brackets
             // in YAML for Obsidian Graph/Properties support, but used internally as plain names
-            for (const field of WIKI_LINK_ARRAY_FIELDS) {
-                if (Array.isArray(data[field])) {
-                    data[field] = (data[field] as unknown[]).map((v: unknown) =>
-                        typeof v === 'string' ? v.replace(/^\[\[(.*)\]\]$/, '$1') : v
-                    );
-                }
-            }
+            await this.normalizeFrontmatterEntityReferences(data);
 
 			// Validate required name field
 			if (!data['name']) {
@@ -3029,6 +3651,10 @@ export default class StorytellerSuitePlugin extends Plugin {
 
 			return data as T;
 		} catch (e) {
+			const maybeError = e as { code?: string; message?: string };
+			if (maybeError?.code === 'ENOENT' || String(maybeError?.message ?? '').includes('ENOENT')) {
+				return null;
+			}
 			console.error(`Error parsing file ${file.path}:`, e);
 			new Notice(`Error parsing file: ${file.name}`);
 			return null;
@@ -3051,53 +3677,52 @@ export default class StorytellerSuitePlugin extends Plugin {
 	 * Build sanitized YAML frontmatter for each entity type.
 	 * Only whitelisted keys are allowed and multi-line strings are excluded.
 	 */
-    private buildFrontmatterForCharacter(src: any, originalFrontmatter?: Record<string, unknown>): Record<string, any> {
+    private async buildLinkedFrontmatter(
+        entityType: 'character' | 'location' | 'event' | 'item' | 'culture' | 'economy' | 'magicSystem' | 'compendiumEntry' | 'book' | 'map',
+        src: Record<string, unknown>,
+        originalFrontmatter?: Record<string, unknown>
+    ): Promise<Record<string, any>> {
         const preserve = new Set<string>(Object.keys(src || {}));
         const mode = this.settings.customFieldsMode ?? 'flatten';
-        return buildFrontmatter('character', src, preserve, { customFieldsMode: mode, originalFrontmatter }) as Record<string, any>;
+        const prepared = await this.serializeFrontmatterEntityReferences(src);
+        return buildFrontmatter(entityType, prepared.source, preserve, {
+            customFieldsMode: mode,
+            originalFrontmatter,
+            omitOriginalKeys: prepared.omitOriginalKeys,
+        }) as Record<string, any>;
     }
 
-    private buildFrontmatterForLocation(src: any, originalFrontmatter?: Record<string, unknown>): Record<string, any> {
-        const preserve = new Set<string>(Object.keys(src || {}));
-        const mode = this.settings.customFieldsMode ?? 'flatten';
-        return buildFrontmatter('location', src, preserve, { customFieldsMode: mode, originalFrontmatter }) as Record<string, any>;
+    private buildFrontmatterForCharacter(src: any, originalFrontmatter?: Record<string, unknown>): Promise<Record<string, any>> {
+        return this.buildLinkedFrontmatter('character', src, originalFrontmatter);
     }
 
-    private buildFrontmatterForEvent(src: any, originalFrontmatter?: Record<string, unknown>): Record<string, any> {
-        const preserve = new Set<string>(Object.keys(src || {}));
-        const mode = this.settings.customFieldsMode ?? 'flatten';
-        return buildFrontmatter('event', src, preserve, { customFieldsMode: mode, originalFrontmatter }) as Record<string, any>;
+    private buildFrontmatterForLocation(src: any, originalFrontmatter?: Record<string, unknown>): Promise<Record<string, any>> {
+        return this.buildLinkedFrontmatter('location', src, originalFrontmatter);
     }
 
-    private buildFrontmatterForItem(src: any, originalFrontmatter?: Record<string, unknown>): Record<string, any> {
-        const preserve = new Set<string>(Object.keys(src || {}));
-        const mode = this.settings.customFieldsMode ?? 'flatten';
-        return buildFrontmatter('item', src, preserve, { customFieldsMode: mode, originalFrontmatter }) as Record<string, any>;
+    private buildFrontmatterForEvent(src: any, originalFrontmatter?: Record<string, unknown>): Promise<Record<string, any>> {
+        return this.buildLinkedFrontmatter('event', src, originalFrontmatter);
     }
 
-    private buildFrontmatterForCulture(src: any, originalFrontmatter?: Record<string, unknown>): Record<string, any> {
-        const preserve = new Set<string>(Object.keys(src || {}));
-        const mode = this.settings.customFieldsMode ?? 'flatten';
-        return buildFrontmatter('culture', src, preserve, { customFieldsMode: mode, originalFrontmatter }) as Record<string, any>;
+    private buildFrontmatterForItem(src: any, originalFrontmatter?: Record<string, unknown>): Promise<Record<string, any>> {
+        return this.buildLinkedFrontmatter('item', src, originalFrontmatter);
+    }
+
+    private buildFrontmatterForCulture(src: any, originalFrontmatter?: Record<string, unknown>): Promise<Record<string, any>> {
+        return this.buildLinkedFrontmatter('culture', src, originalFrontmatter);
     }
 
 
-    private buildFrontmatterForEconomy(src: any, originalFrontmatter?: Record<string, unknown>): Record<string, any> {
-        const preserve = new Set<string>(Object.keys(src || {}));
-        const mode = this.settings.customFieldsMode ?? 'flatten';
-        return buildFrontmatter('economy', src, preserve, { customFieldsMode: mode, originalFrontmatter }) as Record<string, any>;
+    private buildFrontmatterForEconomy(src: any, originalFrontmatter?: Record<string, unknown>): Promise<Record<string, any>> {
+        return this.buildLinkedFrontmatter('economy', src, originalFrontmatter);
     }
 
-    private buildFrontmatterForMagicSystem(src: any, originalFrontmatter?: Record<string, unknown>): Record<string, any> {
-        const preserve = new Set<string>(Object.keys(src || {}));
-        const mode = this.settings.customFieldsMode ?? 'flatten';
-        return buildFrontmatter('magicSystem', src, preserve, { customFieldsMode: mode, originalFrontmatter }) as Record<string, any>;
+    private buildFrontmatterForMagicSystem(src: any, originalFrontmatter?: Record<string, unknown>): Promise<Record<string, any>> {
+        return this.buildLinkedFrontmatter('magicSystem', src, originalFrontmatter);
     }
 
-    private buildFrontmatterForCompendiumEntry(src: any, originalFrontmatter?: Record<string, unknown>): Record<string, any> {
-        const preserve = new Set<string>(Object.keys(src || {}));
-        const mode = this.settings.customFieldsMode ?? 'flatten';
-        return buildFrontmatter('compendiumEntry', src, preserve, { customFieldsMode: mode, originalFrontmatter }) as Record<string, any>;
+    private buildFrontmatterForCompendiumEntry(src: any, originalFrontmatter?: Record<string, unknown>): Promise<Record<string, any>> {
+        return this.buildLinkedFrontmatter('compendiumEntry', src, originalFrontmatter);
     }
 
 
@@ -3166,7 +3791,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		}
 
 		// Build frontmatter strictly from whitelist, preserving original frontmatter
-		const finalFrontmatter = this.buildFrontmatterForCharacter(rest, originalFrontmatter);
+		const finalFrontmatter = await this.buildFrontmatterForCharacter(rest, originalFrontmatter);
 
 		// Validate that we're not losing any fields before serialization
 		if (originalFrontmatter) {
@@ -3394,7 +4019,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		}
 
 		// Build frontmatter strictly from whitelist, preserving original frontmatter
-		const finalFrontmatter = this.buildFrontmatterForLocation(rest, originalFrontmatter);
+		const finalFrontmatter = await this.buildFrontmatterForLocation(rest, originalFrontmatter);
 
 		// Validate that we're not losing any fields before serialization
 		if (originalFrontmatter) {
@@ -3590,10 +4215,8 @@ export default class StorytellerSuitePlugin extends Plugin {
 	/**
 	 * Build frontmatter for map entity
 	 */
-	private buildFrontmatterForMap(map: Partial<StoryMap>, originalFrontmatter?: Record<string, unknown>): Record<string, unknown> {
-		const preserve = new Set<string>(Object.keys(map || {}));
-		const mode = this.settings.customFieldsMode ?? 'flatten';
-		return buildFrontmatter('map', map, preserve, { customFieldsMode: mode, originalFrontmatter }) as Record<string, any>;
+	private buildFrontmatterForMap(map: Partial<StoryMap>, originalFrontmatter?: Record<string, unknown>): Promise<Record<string, unknown>> {
+		return this.buildLinkedFrontmatter('map', map as Record<string, unknown>, originalFrontmatter);
 	}
 	/**
 	 * Safely rename a file, deleting the destination if it already exists
@@ -3672,7 +4295,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		}
 
 		// Build frontmatter
-		const finalFrontmatter = this.buildFrontmatterForMap(rest, originalFrontmatter);
+		const finalFrontmatter = await this.buildFrontmatterForMap(rest, originalFrontmatter);
 
 		// Use custom serializer
 		const frontmatterString = Object.keys(finalFrontmatter).length > 0
@@ -3723,13 +4346,12 @@ export default class StorytellerSuitePlugin extends Plugin {
 		await this.ensureMapFolder();
 		const folderPath = this.getEntityFolder('map');
 		
-		// Use vault.getMarkdownFiles() instead of folder.children for immediate file detection
+		// Scan recursively so maps stored in live subfolders are discoverable everywhere.
 		const allFiles = this.app.vault.getMarkdownFiles();
 		const prefix = normalizePath(folderPath) + '/';
 		const files = allFiles.filter(file =>
 			file.path.startsWith(prefix) &&
-			file.extension === 'md' &&
-			!file.path.slice(prefix.length).includes('/')
+			file.extension === 'md'
 		);
 
 		// Parse each map file
@@ -4235,7 +4857,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		}
 
 		// Build frontmatter strictly from whitelist, preserving original frontmatter
-		const finalFrontmatter = this.buildFrontmatterForEvent(rest, originalFrontmatter);
+		const finalFrontmatter = await this.buildFrontmatterForEvent(rest, originalFrontmatter);
 
 		// Validate that we're not losing any fields before serialization
 		if (originalFrontmatter) {
@@ -4373,7 +4995,9 @@ export default class StorytellerSuitePlugin extends Plugin {
             if (ma != null && mb != null) return ma - mb;
             if (ma != null) return -1;
             if (mb != null) return 1;
-            return a.name.localeCompare(b.name);
+            const nameA = typeof a.name === 'string' ? a.name : String(a.name ?? '');
+            const nameB = typeof b.name === 'string' ? b.name : String(b.name ?? '');
+            return nameA.localeCompare(nameB);
         });
 	}
 
@@ -4487,7 +5111,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		}
 
 		// Build frontmatter strictly from whitelist, preserving original frontmatter
-		const finalFrontmatter = this.buildFrontmatterForItem(rest, originalFrontmatter);
+		const finalFrontmatter = await this.buildFrontmatterForItem(rest, originalFrontmatter);
 
 		// Validate that we're not losing any fields before serialization
 		if (originalFrontmatter) {
@@ -4649,7 +5273,12 @@ export default class StorytellerSuitePlugin extends Plugin {
         // Build frontmatter (preserve any custom fields and original frontmatter)
         const preserveRef = new Set<string>(Object.keys(rest || {}));
         const mode = this.settings.customFieldsMode ?? 'flatten';
-        const fm: Record<string, any> = buildFrontmatter('reference', rest as any, preserveRef, { customFieldsMode: mode, originalFrontmatter }) as Record<string, any>;
+        const preparedRef = await this.serializeFrontmatterEntityReferences(rest as Record<string, unknown>);
+        const fm: Record<string, any> = buildFrontmatter('reference', preparedRef.source, preserveRef, {
+            customFieldsMode: mode,
+            originalFrontmatter,
+            omitOriginalKeys: preparedRef.omitOriginalKeys,
+        }) as Record<string, any>;
 
 		// Validate that we're not losing any fields before serialization
 		if (originalFrontmatter) {
@@ -4718,14 +5347,14 @@ export default class StorytellerSuitePlugin extends Plugin {
      * Chapter Data Management
      */
 
-    async ensureChapterFolder(): Promise<void> {
-        await this.ensureFolder(this.getEntityFolder('chapter'));
+    async ensureChapterFolder(bookName?: string): Promise<void> {
+        await this.ensureFolder(this.getEntityFolder('chapter', { bookName }));
     }
 
     /** Save a chapter to the vault as a markdown file */
     async saveChapter(chapter: Chapter): Promise<void> {
-        await this.ensureChapterFolder();
-        const folderPath = this.getEntityFolder('chapter');
+        await this.ensureChapterFolder(chapter.bookName);
+        const folderPath = this.getEntityFolder('chapter', { bookName: chapter.bookName });
         const safeName = (chapter.name || 'Untitled').replace(/[\\/:"*?<>|]+/g, '');
         const fileName = `${safeName}.md`;
         const filePath = normalizePath(`${folderPath}/${fileName}`);
@@ -4773,7 +5402,12 @@ export default class StorytellerSuitePlugin extends Plugin {
         const chapterSrc = { ...rest, linkedCharacters, linkedLocations, linkedEvents, linkedItems, linkedGroups } as Record<string, unknown>;
         const preserveChap = new Set<string>(Object.keys(chapterSrc));
         const mode = this.settings.customFieldsMode ?? 'flatten';
-        const fm: Record<string, any> = buildFrontmatter('chapter', chapterSrc, preserveChap, { customFieldsMode: mode, originalFrontmatter }) as Record<string, any>;
+        const preparedChapter = await this.serializeFrontmatterEntityReferences(chapterSrc);
+        const fm: Record<string, any> = buildFrontmatter('chapter', preparedChapter.source, preserveChap, {
+            customFieldsMode: mode,
+            originalFrontmatter,
+            omitOriginalKeys: preparedChapter.omitOriginalKeys,
+        }) as Record<string, any>;
 
 		// Validate that we're not losing any fields before serialization
 		if (originalFrontmatter) {
@@ -4810,6 +5444,20 @@ export default class StorytellerSuitePlugin extends Plugin {
         this.app.metadataCache.trigger('dataview:refresh-views');
 
         if (!(chapter as any)._skipSync) {
+            // Sync chapter into parent book's linkedChapters
+            try {
+                const newBid = chapter.bookId;
+                const oldBid = oldChapter?.bookId;
+                if (oldBid && oldBid !== newBid) {
+                    await this._removeChapterFromBook(chapter.name, oldBid);
+                }
+                if (newBid) {
+                    await this._addChapterToBook(chapter.name, newBid);
+                }
+            } catch (e) {
+                console.error('[saveChapter] Error syncing book linkedChapters:', e);
+            }
+
             try {
                 const { EntitySyncService } = await import('./services/EntitySyncService');
                 const syncService = new EntitySyncService(this);
@@ -4822,15 +5470,40 @@ export default class StorytellerSuitePlugin extends Plugin {
 
     /** List all chapters (sorted by number then name) */
     async listChapters(): Promise<Chapter[]> {
-        await this.ensureChapterFolder();
-        const folderPath = this.getEntityFolder('chapter');
+        const resolver = this.getFolderResolver();
+        let scanPaths: string[];
+
+        if (resolver.usesBookName('chapter')) {
+            // Scan one folder per book + the unassigned folder (empty bookName → normalizePath collapses double-slash)
+            const books = await this.listBooks();
+            const seenFolders = new Set<string>();
+            scanPaths = [];
+            for (const bookName of [...books.map(b => b.name), '']) {
+                try {
+                    const p = normalizePath(resolver.getEntityFolder('chapter', { bookName }));
+                    if (!seenFolders.has(p)) {
+                        seenFolders.add(p);
+                        scanPaths.push(p);
+                        await this.ensureFolder(p);
+                    }
+                } catch { /* skip if resolution fails (e.g. no active story) */ }
+            }
+        } else {
+            await this.ensureChapterFolder();
+            scanPaths = [normalizePath(this.getEntityFolder('chapter'))];
+        }
+
         const allFiles = this.app.vault.getMarkdownFiles();
-        const prefix = normalizePath(folderPath) + '/';
-        const files = allFiles.filter(f => f.path.startsWith(prefix) && f.extension === 'md');
         const chapters: Chapter[] = [];
-        for (const file of files) {
-            const data = await this.parseFile<Chapter>(file, { name: '' }, 'chapter');
-            if (data) chapters.push(data);
+        const seenPaths = new Set<string>();
+        for (const folderPath of scanPaths) {
+            const prefix = folderPath + '/';
+            const files = allFiles.filter(f => f.path.startsWith(prefix) && f.extension === 'md' && !seenPaths.has(f.path));
+            for (const file of files) {
+                seenPaths.add(file.path);
+                const data = await this.parseFile<Chapter>(file, { name: '' }, 'chapter');
+                if (data) chapters.push(data);
+            }
         }
         return chapters.sort((a, b) => {
             const na = a.number ?? Number.MAX_SAFE_INTEGER;
@@ -4844,6 +5517,15 @@ export default class StorytellerSuitePlugin extends Plugin {
     async deleteChapter(filePath: string): Promise<void> {
         const file = this.app.vault.getAbstractFileByPath(normalizePath(filePath));
         if (file instanceof TFile) {
+            // Remove from parent book's linkedChapters before trashing
+            try {
+                const chapter = await this.parseFile<Chapter>(file, { name: '' }, 'chapter');
+                if (chapter?.bookId) {
+                    await this._removeChapterFromBook(chapter.name, chapter.bookId);
+                }
+            } catch (e) {
+                console.warn('[deleteChapter] Could not sync linkedChapters before delete:', e);
+            }
             await this.app.vault.trash(file, true);
             new Notice(`Chapter file "${file.basename}" moved to trash.`);
             this.app.metadataCache.trigger('dataview:refresh-views');
@@ -4856,8 +5538,8 @@ export default class StorytellerSuitePlugin extends Plugin {
      * Scene Data Management
      */
 
-    async ensureSceneFolder(): Promise<void> {
-        await this.ensureFolder(this.getEntityFolder('scene'));
+    async ensureSceneFolder(bookName?: string): Promise<void> {
+        await this.ensureFolder(this.getEntityFolder('scene', { bookName }));
     }
 
     async ensureCultureFolder(): Promise<void> {
@@ -4876,16 +5558,314 @@ export default class StorytellerSuitePlugin extends Plugin {
         await this.ensureFolder(this.getEntityFolder('compendiumEntry'));
     }
 
+    async ensureBookFolder(): Promise<void> {
+        await this.ensureFolder(this.getEntityFolder('book'));
+    }
+
+    // ─── Scalar parent-ID sync helpers ───────────────────────────────────────
+
+    /** Add sceneName to the linkedScenes array of the chapter with the given id. */
+    private async _addSceneToChapter(sceneName: string, chapterId: string): Promise<void> {
+        const chapters = await this.listChapters();
+        const chapter = chapters.find(c => c.id === chapterId);
+        if (!chapter || !chapter.filePath) return;
+        if (!Array.isArray(chapter.linkedScenes)) chapter.linkedScenes = [];
+        if (!chapter.linkedScenes.includes(sceneName)) {
+            chapter.linkedScenes = [...chapter.linkedScenes, sceneName];
+            (chapter as any)._skipSync = true;
+            await this.saveChapter(chapter);
+        }
+    }
+
+    /** Remove sceneName from the linkedScenes array of the chapter with the given id. */
+    private async _removeSceneFromChapter(sceneName: string, chapterId: string): Promise<void> {
+        const chapters = await this.listChapters();
+        const chapter = chapters.find(c => c.id === chapterId);
+        if (!chapter || !chapter.filePath) return;
+        if (!Array.isArray(chapter.linkedScenes)) return;
+        const filtered = chapter.linkedScenes.filter(n => n !== sceneName);
+        if (filtered.length !== chapter.linkedScenes.length) {
+            chapter.linkedScenes = filtered;
+            (chapter as any)._skipSync = true;
+            await this.saveChapter(chapter);
+        }
+    }
+
+    /** Add chapterName to the linkedChapters array of the book with the given id. */
+    private async _addChapterToBook(chapterName: string, bookId: string): Promise<void> {
+        const books = await this.listBooks();
+        const book = books.find(b => b.id === bookId);
+        if (!book || !book.filePath) return;
+        if (!Array.isArray(book.linkedChapters)) book.linkedChapters = [];
+        if (!book.linkedChapters.includes(chapterName)) {
+            book.linkedChapters = [...book.linkedChapters, chapterName];
+            (book as any)._skipSync = true;
+            await this.saveBook(book);
+        }
+    }
+
+    /** Remove chapterName from the linkedChapters array of the book with the given id. */
+    private async _removeChapterFromBook(chapterName: string, bookId: string): Promise<void> {
+        const books = await this.listBooks();
+        const book = books.find(b => b.id === bookId);
+        if (!book || !book.filePath) return;
+        if (!Array.isArray(book.linkedChapters)) return;
+        const filtered = book.linkedChapters.filter(n => n !== chapterName);
+        if (filtered.length !== book.linkedChapters.length) {
+            book.linkedChapters = filtered;
+            (book as any)._skipSync = true;
+            await this.saveBook(book);
+        }
+    }
+
+    // ─── Book CRUD ────────────────────────────────────────────────────────────
+
+    private buildFrontmatterForBook(src: any, originalFrontmatter?: Record<string, unknown>): Promise<Record<string, any>> {
+        return this.buildLinkedFrontmatter('book', src, originalFrontmatter);
+    }
+
+    async saveBook(book: Book): Promise<void> {
+        await this.ensureBookFolder();
+        const folderPath = this.getEntityFolder('book');
+        const safeName = (book.name || 'Untitled').replace(/[\\/:"*?<>|]+/g, '');
+        const fileName = `${safeName}.md`;
+        const filePath = normalizePath(`${folderPath}/${fileName}`);
+
+        if (!book.id) {
+            book.id = Date.now().toString(36) + Math.random().toString(36).substr(2, 6);
+        }
+
+        const { filePath: currentFilePath, description, synopsis, linkedChapters, ...rest } = book as any;
+        if ((rest as any).sections) delete (rest as any).sections;
+
+        let finalFilePath = filePath;
+        if (currentFilePath && currentFilePath !== filePath) {
+            finalFilePath = await this.safeRenameFile(currentFilePath, filePath, 'File');
+        }
+
+        const existingFile = this.app.vault.getAbstractFileByPath(finalFilePath);
+        let existingSections: Record<string, string> = {};
+        let originalFrontmatter: Record<string, unknown> | undefined;
+        if (existingFile && existingFile instanceof TFile) {
+            const fileCache = this.app.metadataCache.getFileCache(existingFile);
+            originalFrontmatter = fileCache?.frontmatter as Record<string, unknown> | undefined;
+            try {
+                const existingContent = await this.app.vault.cachedRead(existingFile);
+                existingSections = parseSectionsFromMarkdown(existingContent);
+            } catch (e) {
+                console.warn('[saveBook] Error reading existing book file', e);
+            }
+        }
+
+        const bookSrc = { ...rest, linkedChapters } as Record<string, unknown>;
+        const fm = await this.buildFrontmatterForBook(bookSrc, originalFrontmatter);
+
+        const frontmatterString = Object.keys(fm).length > 0
+            ? stringifyYamlWithLogging(fm, originalFrontmatter, `Book: ${book.name}`)
+            : '';
+
+        const providedSections = { Description: description || '', Synopsis: synopsis || '' };
+        const templateSections = getTemplateSections('book', providedSections);
+        const allSections: Record<string, string> = (existingFile && existingFile instanceof TFile)
+            ? { ...templateSections, ...existingSections }
+            : templateSections;
+
+        let mdContent = `---\n${frontmatterString}---\n\n`;
+        mdContent += Object.entries(allSections)
+            .map(([key, val]) => `## ${key}\n${val || ''}`)
+            .join('\n\n');
+        if (!mdContent.endsWith('\n')) mdContent += '\n';
+
+        if (existingFile && existingFile instanceof TFile) {
+            await this.app.vault.modify(existingFile, mdContent);
+        } else {
+            await this.app.vault.create(finalFilePath, mdContent);
+            new Notice('Note created for book.');
+        }
+        book.filePath = finalFilePath;
+        this.app.metadataCache.trigger('dataview:refresh-views');
+    }
+
+    async listBooks(): Promise<Book[]> {
+        await this.ensureBookFolder();
+        const folderPath = this.getEntityFolder('book');
+        const allFiles = this.app.vault.getMarkdownFiles();
+        const prefix = normalizePath(folderPath) + '/';
+        const files = allFiles.filter(f => f.path.startsWith(prefix) && f.extension === 'md');
+        const books: Book[] = [];
+        for (const file of files) {
+            const data = await this.parseFile<Book>(file, { name: '' }, 'book');
+            if (data) books.push(data);
+        }
+        return books.sort((a, b) => {
+            const na = a.bookNumber ?? Number.MAX_SAFE_INTEGER;
+            const nb = b.bookNumber ?? Number.MAX_SAFE_INTEGER;
+            if (na !== nb) return na - nb;
+            return a.name.localeCompare(b.name);
+        });
+    }
+
+    async deleteBook(filePath: string): Promise<void> {
+        // Clear bookId/bookName from all chapters that belong to this book before trashing
+        const file = this.app.vault.getAbstractFileByPath(normalizePath(filePath));
+        if (file instanceof TFile) {
+            const book = await this.parseFile<Book>(file, { name: '' }, 'book');
+            if (book) {
+                const chapters = await this.listChapters();
+                for (const ch of chapters) {
+                    if (ch.bookId === book.id && ch.filePath) {
+                        ch.bookId = undefined;
+                        ch.bookName = undefined;
+                        (ch as any)._skipSync = true;
+                        await this.saveChapter(ch);
+                    }
+                }
+            }
+            await this.app.vault.trash(file, true);
+            new Notice(`Book "${file.basename}" moved to trash.`);
+            this.app.metadataCache.trigger('dataview:refresh-views');
+        } else {
+            new Notice(`Error: Could not find book file at ${filePath}`);
+        }
+    }
+
+    // ─── Campaign Session CRUD ───────────────────────────────────────────────
+
+    async ensureSessionsFolder(): Promise<void> {
+        await this.ensureFolder(this.getEntityFolder('campaignSession'));
+    }
+
+    /**
+     * Save a CampaignSession as a markdown file (frontmatter + ## Session Log body).
+     * Preserves any existing ## Session Log content — only updates frontmatter.
+     */
+    async saveSession(session: CampaignSession): Promise<void> {
+        await this.ensureSessionsFolder();
+        const folderPath = this.getEntityFolder('campaignSession');
+        const safeName = (session.name || 'Untitled Session').replace(/[\\/:"*?<>|]+/g, '');
+        const fileName = `${safeName}.md`;
+        const filePath = normalizePath(`${folderPath}/${fileName}`);
+
+        const now = new Date().toISOString();
+        session.modified = now;
+        if (!session.created) session.created = now;
+        if (!session.id) session.id = `sess-${Date.now()}`;
+
+        const preparedSession = await this.serializeFrontmatterEntityReferences(session as any);
+        const frontmatter = buildFrontmatter('campaignSession', preparedSession.source, undefined, {
+            omitOriginalKeys: preparedSession.omitOriginalKeys,
+        });
+        const fm = stringifyYaml(frontmatter);
+
+        const existingFile = this.app.vault.getAbstractFileByPath(filePath);
+        if (existingFile instanceof TFile) {
+            // Preserve existing log body
+            await (this.app.vault as any).process(existingFile, (content: string) => {
+                const bodyStart = content.indexOf('\n---', 3);
+                const existingBody = bodyStart !== -1 ? content.slice(bodyStart + 4).trim() : '';
+                const logSection = existingBody || '## Session Log\n';
+                return `---\n${fm}---\n\n${logSection}`;
+            });
+        } else {
+            const content = `---\n${fm}---\n\n## Session Log\n`;
+            await this.app.vault.create(filePath, content);
+        }
+        session.filePath = filePath;
+    }
+
+    /** List all campaign sessions for the active story. */
+    async listSessions(): Promise<CampaignSession[]> {
+        await this.ensureSessionsFolder();
+        const folderPath = this.getEntityFolder('campaignSession');
+        const prefix = normalizePath(folderPath) + '/';
+        const allFiles = this.app.vault.getMarkdownFiles();
+        const files = allFiles.filter(f => f.path.startsWith(prefix));
+        const sessions: CampaignSession[] = [];
+        for (const file of files) {
+            const data = await this.parseFile<CampaignSession>(file, { name: '', storyId: '' }, 'campaignSession');
+            if (data) sessions.push(data);
+        }
+        return sessions.sort((a, b) => (b.modified ?? '').localeCompare(a.modified ?? ''));
+    }
+
+    async deleteSession(filePath: string): Promise<void> {
+        const file = this.app.vault.getAbstractFileByPath(normalizePath(filePath));
+        if (file instanceof TFile) {
+            await this.app.vault.trash(file, true);
+            new Notice(`Session "${file.basename}" moved to trash.`);
+        } else {
+            new Notice(`Error: Could not find session file at ${filePath}`);
+        }
+    }
+
+    /** Returns the raw content of the ## Session Log section of a session file. */
+    async loadSessionLog(filePath: string): Promise<string> {
+        const file = this.app.vault.getAbstractFileByPath(normalizePath(filePath));
+        if (!(file instanceof TFile)) return '';
+        const content = await this.app.vault.cachedRead(file);
+        const { parseSectionsFromMarkdown } = await import('./yaml/EntitySections');
+        const bodyStart = content.indexOf('\n---', 3);
+        const body = bodyStart !== -1 ? content.slice(bodyStart + 4) : content;
+        const sections = parseSectionsFromMarkdown(body);
+        return sections['Session Log'] ?? '';
+    }
+
+    /** Atomically appends log entries to the ## Session Log section of a session file. */
+    async appendToSessionLogEntries(filePath: string, entries: string[]): Promise<void> {
+        const file = this.app.vault.getAbstractFileByPath(normalizePath(filePath));
+        if (!(file instanceof TFile)) return;
+        const cleaned = entries
+            .map(entry => String(entry ?? '').trim())
+            .filter(Boolean);
+        if (!cleaned.length) return;
+
+        await (this.app.vault as any).process(file, (content: string) => {
+            const logHeader = '## Session Log';
+            const idx = content.indexOf(logHeader);
+            const rendered = cleaned.map(entry => `- ${entry}`).join('\n');
+            if (idx === -1) {
+                return `${content.trimEnd()}\n\n${logHeader}\n${rendered}\n`;
+            }
+
+            const afterHeader = content.indexOf('\n', idx);
+            const sectionStart = afterHeader !== -1 ? afterHeader + 1 : content.length;
+            let nextSection = content.length;
+            const sectionRegex = /^##\s+/gm;
+            sectionRegex.lastIndex = sectionStart;
+            let match: RegExpExecArray | null;
+            while ((match = sectionRegex.exec(content)) !== null) {
+                if (match.index > idx) {
+                    nextSection = match.index;
+                    break;
+                }
+            }
+
+            const existingBody = content.slice(sectionStart, nextSection).replace(/\s+$/, '');
+            const mergedBody = existingBody ? `${existingBody}\n${rendered}\n` : `${rendered}\n`;
+            return content.slice(0, sectionStart) + mergedBody + content.slice(nextSection);
+        });
+    }
+
+    /** Atomically appends a single log entry to the ## Session Log section of a session file. */
+    async appendToSessionLog(filePath: string, entry: string): Promise<void> {
+        await this.appendToSessionLogEntries(filePath, [entry]);
+    }
+
+    // ─── End Campaign Session CRUD ───────────────────────────────────────────
 
     async saveScene(scene: Scene): Promise<void> {
-        // Normalize chapterName for display if id is present
-        if (scene.chapterId && !scene.chapterName) {
+        // Resolve chapter info (name + bookName) for folder placement and display
+        let sceneBookName: string | undefined;
+        if (scene.chapterId) {
             const chapters = await this.listChapters();
             const picked = chapters.find(c => c.id === scene.chapterId);
-            if (picked) scene.chapterName = picked.name;
+            if (picked) {
+                if (!scene.chapterName) scene.chapterName = picked.name;
+                sceneBookName = picked.bookName;
+            }
         }
-        await this.ensureSceneFolder();
-        const folderPath = this.getEntityFolder('scene');
+        await this.ensureSceneFolder(sceneBookName);
+        const folderPath = this.getEntityFolder('scene', { bookName: sceneBookName });
         const fileName = `${(scene.name || 'Untitled').replace(/[\\/:"*?<>|]+/g, '')}.md`;
         const filePath = normalizePath(`${folderPath}/${fileName}`);
 
@@ -4902,9 +5882,12 @@ export default class StorytellerSuitePlugin extends Plugin {
         const existingFile = this.app.vault.getAbstractFileByPath(finalFilePath);
         let existingSections: Record<string, string> = {};
         let originalFrontmatter: Record<string, unknown> | undefined;
+        let oldSceneChapterId: string | undefined;
         if (existingFile && existingFile instanceof TFile) {
             const fileCache = this.app.metadataCache.getFileCache(existingFile);
             originalFrontmatter = fileCache?.frontmatter as Record<string, unknown> | undefined;
+            // Capture old chapterId before overwriting for linkedScenes sync
+            oldSceneChapterId = (originalFrontmatter?.chapterId as string | undefined) ?? undefined;
             try {
                 const existingContent = await this.app.vault.cachedRead(existingFile);
                 existingSections = parseSectionsFromMarkdown(existingContent);
@@ -4917,7 +5900,12 @@ export default class StorytellerSuitePlugin extends Plugin {
         const sceneSrc = { ...rest, linkedCharacters, linkedLocations, linkedEvents, linkedItems, linkedGroups } as Record<string, unknown>;
         const preserveScene = new Set<string>(Object.keys(sceneSrc));
         const mode = this.settings.customFieldsMode ?? 'flatten';
-        const fm: Record<string, any> = buildFrontmatter('scene', sceneSrc, preserveScene, { customFieldsMode: mode, originalFrontmatter }) as Record<string, any>;
+        const preparedScene = await this.serializeFrontmatterEntityReferences(sceneSrc);
+        const fm: Record<string, any> = buildFrontmatter('scene', preparedScene.source, preserveScene, {
+            customFieldsMode: mode,
+            originalFrontmatter,
+            omitOriginalKeys: preparedScene.omitOriginalKeys,
+        }) as Record<string, any>;
 
 		// Validate that we're not losing any fields before serialization
 		if (originalFrontmatter) {
@@ -4962,6 +5950,21 @@ export default class StorytellerSuitePlugin extends Plugin {
             if (picked) scene.chapterName = picked.name;
         }
         
+        // Sync scene into parent chapter's linkedScenes
+        if (!(scene as any)._skipSync) {
+            try {
+                const newCid = scene.chapterId;
+                if (oldSceneChapterId && oldSceneChapterId !== newCid) {
+                    await this._removeSceneFromChapter(scene.name, oldSceneChapterId);
+                }
+                if (newCid) {
+                    await this._addSceneToChapter(scene.name, newCid);
+                }
+            } catch (e) {
+                console.error('[saveScene] Error syncing chapter linkedScenes:', e);
+            }
+        }
+
         // Sync bidirectional relationships (skip if _skipSync flag is set to prevent recursion)
         if (!(scene as any)._skipSync) {
             try {
@@ -4987,14 +5990,39 @@ export default class StorytellerSuitePlugin extends Plugin {
     }
 
     async listScenes(): Promise<Scene[]> {
-        await this.ensureSceneFolder();
-        const folderPath = this.getEntityFolder('scene');
+        const resolver = this.getFolderResolver();
+        let scanPaths: string[];
+
+        if (resolver.usesBookName('scene')) {
+            const books = await this.listBooks();
+            const seenFolders = new Set<string>();
+            scanPaths = [];
+            for (const bookName of [...books.map(b => b.name), '']) {
+                try {
+                    const p = normalizePath(resolver.getEntityFolder('scene', { bookName }));
+                    if (!seenFolders.has(p)) {
+                        seenFolders.add(p);
+                        scanPaths.push(p);
+                        await this.ensureFolder(p);
+                    }
+                } catch { /* skip */ }
+            }
+        } else {
+            await this.ensureSceneFolder();
+            scanPaths = [normalizePath(this.getEntityFolder('scene'))];
+        }
+
         const allFiles = this.app.vault.getMarkdownFiles();
-        const files = allFiles.filter(f => f.path.startsWith(folderPath + '/') && f.extension === 'md');
         const scenes: Scene[] = [];
-        for (const file of files) {
-            const data = await this.parseFile<Scene>(file, { name: '' }, 'scene');
-            if (data) scenes.push(data);
+        const seenPaths = new Set<string>();
+        for (const folderPath of scanPaths) {
+            const prefix = folderPath + '/';
+            const files = allFiles.filter(f => f.path.startsWith(prefix) && f.extension === 'md' && !seenPaths.has(f.path));
+            for (const file of files) {
+                seenPaths.add(file.path);
+                const data = await this.parseFile<Scene>(file, { name: '' }, 'scene');
+                if (data) scenes.push(data);
+            }
         }
         // Sort: chapter -> priority -> name
         return scenes.sort((a, b) => {
@@ -5011,6 +6039,15 @@ export default class StorytellerSuitePlugin extends Plugin {
     async deleteScene(filePath: string): Promise<void> {
         const file = this.app.vault.getAbstractFileByPath(normalizePath(filePath));
         if (file instanceof TFile) {
+            // Remove from parent chapter's linkedScenes before trashing
+            try {
+                const scene = await this.parseFile<Scene>(file, { name: '' }, 'scene');
+                if (scene?.chapterId) {
+                    await this._removeSceneFromChapter(scene.name, scene.chapterId);
+                }
+            } catch (e) {
+                console.warn('[deleteScene] Could not sync linkedScenes before delete:', e);
+            }
             await this.app.vault.trash(file, true);
             new Notice(`Scene file "${file.basename}" moved to trash.`);
             this.app.metadataCache.trigger('dataview:refresh-views');
@@ -5069,7 +6106,7 @@ export default class StorytellerSuitePlugin extends Plugin {
             }
         }
 
-        const finalFrontmatter = this.buildFrontmatterForCulture(rest, originalFrontmatter);
+        const finalFrontmatter = await this.buildFrontmatterForCulture(rest, originalFrontmatter);
 
         if (originalFrontmatter) {
             const validation = validateFrontmatterPreservation(finalFrontmatter, originalFrontmatter);
@@ -5205,7 +6242,7 @@ export default class StorytellerSuitePlugin extends Plugin {
             }
         }
 
-        const finalFrontmatter = this.buildFrontmatterForEconomy(rest, originalFrontmatter);
+        const finalFrontmatter = await this.buildFrontmatterForEconomy(rest, originalFrontmatter);
 
         if (originalFrontmatter) {
             const validation = validateFrontmatterPreservation(finalFrontmatter, originalFrontmatter);
@@ -5330,7 +6367,7 @@ export default class StorytellerSuitePlugin extends Plugin {
             }
         }
 
-        const finalFrontmatter = this.buildFrontmatterForCompendiumEntry(rest, originalFrontmatter);
+        const finalFrontmatter = await this.buildFrontmatterForCompendiumEntry(rest, originalFrontmatter);
 
         const frontmatterString = Object.keys(finalFrontmatter).length > 0
             ? stringifyYamlWithLogging(finalFrontmatter, originalFrontmatter, `CompendiumEntry: ${entry.name}`)
@@ -5453,7 +6490,7 @@ export default class StorytellerSuitePlugin extends Plugin {
             }
         }
 
-        const finalFrontmatter = this.buildFrontmatterForMagicSystem(rest, originalFrontmatter);
+        const finalFrontmatter = await this.buildFrontmatterForMagicSystem(rest, originalFrontmatter);
 
         if (originalFrontmatter) {
             const validation = validateFrontmatterPreservation(finalFrontmatter, originalFrontmatter);
@@ -6311,6 +7348,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		await this.removeGroupIdFromAllEntities(id);
 		await this.saveSettings();
 		await this.deleteGroupFile(groupName);
+		this.invalidateFrontmatterReferenceIndexes();
 		this.emitGroupsChanged();
 	}
 
@@ -6385,10 +7423,15 @@ export default class StorytellerSuitePlugin extends Plugin {
 	 */
 	async saveGroupToFile(group: Group): Promise<void> {
 		try {
+			this.invalidateFrontmatterReferenceIndexes();
 			const folderPath = this.getEntityFolder('group');
 			await this.ensureFolder(folderPath);
 			const fileName = this.groupFileName(group.name);
 			const filePath = normalizePath(`${folderPath}/${fileName}`);
+			const toWikiLink = (value: unknown): string | undefined => {
+				const stripped = this.stripWikiLinkValue(value);
+				return stripped ? `[[${stripped}]]` : undefined;
+			};
 
 			// Build frontmatter object (scalar / array fields only)
 			const fm: Record<string, unknown> = {
@@ -6409,19 +7452,42 @@ export default class StorytellerSuitePlugin extends Plugin {
 			if (group.economicPower !== undefined) fm['economic-power']   = group.economicPower;
 			if (group.politicalInfluence !== undefined) fm['political-influence'] = group.politicalInfluence;
 			if (group.colors?.length)    fm['colors']             = group.colors;
-			if (group.territories?.length) fm['territories']      = group.territories;
-			if (group.linkedEvents?.length) fm['linked-events']   = group.linkedEvents;
-			if (group.linkedCulture)     fm['linked-culture']     = group.linkedCulture;
-			if (group.parentGroup)       fm['parent-group']       = group.parentGroup;
-			if (group.subgroups?.length) fm['subgroups']          = group.subgroups;
-			if (group.members?.length)   fm['members']            = group.members.map(m => {
-				const obj: Record<string, unknown> = { type: m.type };
-				if (m.name) obj['name'] = m.name;
-				obj['id'] = m.id;
-				if ((m as any).role) obj['role'] = (m as any).role;
+			if (group.territories?.length) fm['territories']      = await Promise.all(group.territories.map(async territory => {
+				const name = await this.resolveFrontmatterReferenceName('location', territory);
+				return toWikiLink(name ?? territory) ?? territory;
+			}));
+			if (group.linkedEvents?.length) fm['linked-events']   = await Promise.all(group.linkedEvents.map(async eventRef => {
+				const name = await this.resolveFrontmatterReferenceName('event', eventRef);
+				return toWikiLink(name ?? eventRef) ?? eventRef;
+			}));
+			if (group.linkedCulture) {
+				const linkedCultureName = await this.resolveFrontmatterReferenceName('culture', group.linkedCulture);
+				fm['linked-culture'] = toWikiLink(linkedCultureName ?? group.linkedCulture) ?? group.linkedCulture;
+			}
+			if (group.parentGroup) {
+				const parentGroupName = await this.resolveFrontmatterReferenceName('group', group.parentGroup);
+				fm['parent-group'] = toWikiLink(parentGroupName ?? group.parentGroup) ?? group.parentGroup;
+			}
+			if (group.subgroups?.length) fm['subgroups']          = await Promise.all(group.subgroups.map(async subgroup => {
+				const name = await this.resolveFrontmatterReferenceName('group', subgroup);
+				return toWikiLink(name ?? subgroup) ?? subgroup;
+			}));
+			if (group.members?.length)   fm['members']            = await Promise.all(group.members.map(async m => {
+				const obj: Record<string, unknown> = { ...m, type: m.type };
+				const memberType: EntityFolderType =
+					m.type === 'compendiumEntry' ? 'compendiumEntry' : m.type;
+				const memberName = await this.resolveFrontmatterReferenceName(memberType, m.id, m.name);
+				obj['id'] = memberName ? `[[${memberName}]]` : (this.stripWikiLinkValue(m.id) ?? m.id);
+				delete obj['name'];
 				return obj;
-			});
-			if (group.groupRelationships?.length) fm['group-relationships'] = group.groupRelationships;
+			}));
+			if (group.groupRelationships?.length) fm['group-relationships'] = await Promise.all(group.groupRelationships.map(async rel => {
+				const groupName = await this.resolveFrontmatterReferenceName('group', rel.groupName);
+				return {
+					...rel,
+					groupName: toWikiLink(groupName ?? rel.groupName) ?? rel.groupName,
+				};
+			}));
 			if (group.connections?.length) fm['connections']      = group.connections;
 			if (group.customFields && Object.keys(group.customFields).length) {
 				fm['custom-fields'] = group.customFields;
@@ -6491,22 +7557,61 @@ export default class StorytellerSuitePlugin extends Plugin {
 	 */
 	async syncGroupsFromVault(): Promise<void> {
 		try {
-
-			const allFiles = this.app.vault.getMarkdownFiles();
-			const groupFiles = allFiles.filter(f => {
-				const cache = this.app.metadataCache.getFileCache(f);
-				return cache?.frontmatter?.['storyteller-type'] === 'group';
-			});
-
+			const groupFolder = normalizePath(this.getEntityFolder('group'));
+			const groupFiles = this.app.vault
+				.getMarkdownFiles()
+				.filter(f => normalizePath(f.path).startsWith(`${groupFolder}/`));
 			if (groupFiles.length === 0) return;
 
 			let changed = false;
+			const seenIds = new Set<string>();
 			for (const file of groupFiles) {
 				const cache = this.app.metadataCache.getFileCache(file);
-				const fm = cache?.frontmatter;
+				let fm = cache?.frontmatter as Record<string, any> | undefined;
+				if (!fm) {
+					try {
+						const content = await this.app.vault.cachedRead(file);
+						const parsed = parseFrontmatterFromContent(content) as Record<string, any> | undefined;
+						if (parsed) {
+							fm = parsed;
+						}
+					} catch (_) {
+						// Ignore parse/read errors and continue scanning.
+					}
+				}
 				if (!fm) continue;
-				const id: string = fm['storyteller-id'];
-				const storyId: string = fm['storyteller-story-id'];
+
+				// Legacy compatibility:
+				// - storyteller-type may be missing in older notes
+				// - id/story-id may be stored under older keys
+				const typeValue = String(fm['storyteller-type'] ?? fm['type'] ?? '').toLowerCase().trim();
+				const looksLikeGroup =
+					typeValue === 'group' ||
+					fm['group-type'] !== undefined ||
+					Array.isArray(fm['members']) ||
+					fm['storyteller-id'] !== undefined ||
+					fm['storyteller-story-id'] !== undefined;
+				if (!looksLikeGroup) continue;
+
+				let id: string = String(fm['storyteller-id'] ?? fm['id'] ?? '').trim();
+				const storyId: string = String(
+					fm['storyteller-story-id'] ??
+					fm['storyId'] ??
+					fm['story-id'] ??
+					this.inferStoryIdFromPath(file.path) ??
+					this.getActiveStory()?.id ??
+					''
+				).trim();
+
+				if (!id) {
+					id = `group-${file.basename.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+				}
+				if (seenIds.has(id)) {
+					const suffix = file.basename.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+					id = `${id}__${suffix || Date.now().toString(36)}`;
+				}
+				seenIds.add(id);
+
 				if (!id || !storyId) continue;
 
 				// Parse description/history/etc from markdown sections
@@ -6522,10 +7627,45 @@ export default class StorytellerSuitePlugin extends Plugin {
 					resources   = sections['Resources']   ?? '';
 				} catch (_) {}
 
+				const stripScalar = (value: unknown): string | undefined => this.stripWikiLinkValue(value);
+				const stripArray = (value: unknown): string[] | undefined => {
+					if (!Array.isArray(value)) return undefined;
+					return value
+						.map(item => this.stripWikiLinkValue(item))
+						.filter((item): item is string => Boolean(item));
+				};
+				const rawMembers = Array.isArray(fm['members']) ? fm['members'] as Record<string, unknown>[] : [];
+				const members = await Promise.all(rawMembers.map(async member => {
+					const typeValue = String(member?.['type'] ?? '').trim();
+					const memberType: EntityFolderType | null =
+						typeValue === 'compendiumEntry'
+							? 'compendiumEntry'
+							: ['character', 'event', 'location', 'item'].includes(typeValue)
+								? typeValue as EntityFolderType
+								: null;
+					const memberName = stripScalar(member?.['name']);
+					const memberId = memberType
+						? await this.resolveFrontmatterReferenceId(memberType, member?.['id'], memberName)
+						: stripScalar(member?.['id']);
+					const resolvedName = memberType
+						? await this.resolveFrontmatterReferenceName(memberType, member?.['id'], memberName)
+						: memberName;
+					const cleanedMember: Record<string, unknown> = { ...member };
+					if (memberId) cleanedMember['id'] = memberId;
+					if (resolvedName) cleanedMember['name'] = resolvedName;
+					return cleanedMember;
+				}));
+				const groupRelationships = Array.isArray(fm['group-relationships'])
+					? (fm['group-relationships'] as Record<string, unknown>[]).map(rel => ({
+						...rel,
+						groupName: stripScalar(rel?.['groupName']) ?? rel?.['groupName'],
+					}))
+					: undefined;
+
 				const fromFile: Group = {
 					id,
 					storyId,
-					name:               fm['name']                ?? file.basename,
+					name:               stripScalar(fm['name']) ?? file.basename,
 					color:              fm['color'],
 					groupType:          fm['group-type'],
 					tags:               fm['tags']               ?? [],
@@ -6538,13 +7678,13 @@ export default class StorytellerSuitePlugin extends Plugin {
 					economicPower:      fm['economic-power'],
 					politicalInfluence: fm['political-influence'],
 					colors:             fm['colors'],
-					territories:        fm['territories'],
-					linkedEvents:       fm['linked-events'],
-					linkedCulture:      fm['linked-culture'],
-					parentGroup:        fm['parent-group'],
-					subgroups:          fm['subgroups'],
-					members:            fm['members']             ?? [],
-					groupRelationships: fm['group-relationships'],
+					territories:        stripArray(fm['territories']),
+					linkedEvents:       stripArray(fm['linked-events']),
+					linkedCulture:      stripScalar(fm['linked-culture']),
+					parentGroup:        stripScalar(fm['parent-group']),
+					subgroups:          stripArray(fm['subgroups']),
+					members:            members as any,
+					groupRelationships: groupRelationships as any,
 					connections:        fm['connections'],
 					customFields:       fm['custom-fields'],
 					description,
@@ -6565,6 +7705,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 			}
 
 			if (changed) {
+				this.invalidateFrontmatterReferenceIndexes();
 				await this.saveSettings();
 				this.emitGroupsChanged?.();
 			}
@@ -6881,6 +8022,28 @@ export default class StorytellerSuitePlugin extends Plugin {
         if (!('chapterFolderPath' in this.settings)) { (this.settings as any).chapterFolderPath = DEFAULT_SETTINGS.chapterFolderPath as any; settingsUpdated = true; }
         if (!('sceneFolderPath' in this.settings)) { (this.settings as any).sceneFolderPath = DEFAULT_SETTINGS.sceneFolderPath as any; settingsUpdated = true; }
         if (!('groupFolderPath' in this.settings)) { this.settings.groupFolderPath = DEFAULT_SETTINGS.groupFolderPath; settingsUpdated = true; }
+        if (!('bookFolderPath' in this.settings)) { this.settings.bookFolderPath = DEFAULT_SETTINGS.bookFolderPath; settingsUpdated = true; }
+        if (!('sessionsFolderPath' in this.settings)) { this.settings.sessionsFolderPath = DEFAULT_SETTINGS.sessionsFolderPath; settingsUpdated = true; }
+        if (!('compileWorkflows' in this.settings) || !Array.isArray(this.settings.compileWorkflows)) {
+            this.settings.compileWorkflows = [];
+            settingsUpdated = true;
+        }
+        if (!('customCompileSteps' in this.settings) || !Array.isArray(this.settings.customCompileSteps)) {
+            this.settings.customCompileSteps = [];
+            settingsUpdated = true;
+        }
+        if (!this.settings.defaultCompileWorkflow || this.settings.defaultCompileWorkflow === 'Default Workflow') {
+            this.settings.defaultCompileWorkflow = DEFAULT_SETTINGS.defaultCompileWorkflow;
+            settingsUpdated = true;
+        }
+        if (Array.isArray(this.settings.storyDrafts)) {
+            for (const draft of this.settings.storyDrafts) {
+                if (draft.workflow === 'Default Workflow') {
+                    draft.workflow = DEFAULT_SETTINGS.defaultCompileWorkflow;
+                    settingsUpdated = true;
+                }
+            }
+        }
         if (!this.settings.groups) {
             this.settings.groups = [];
             settingsUpdated = true;

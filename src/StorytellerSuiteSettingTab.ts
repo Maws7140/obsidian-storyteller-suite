@@ -272,6 +272,9 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
             { id: 'cultures',     name: t('cultures') },
             { id: 'economies',    name: t('economies') },
             { id: 'magicsystems', name: t('magicSystems') },
+            { id: 'compendium',   name: 'Compendium' },
+            { id: 'books',        name: 'Books' },
+            { id: 'campaign',     name: 'Campaign' },
             { id: 'templates',    name: t('templates') }
         ];
 
@@ -329,6 +332,8 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                             this.plugin.settings.factionFolderPath,
                             this.plugin.settings.magicSystemFolderPath,
                             this.plugin.settings.groupFolderPath,
+                            this.plugin.settings.bookFolderPath,
+                            this.plugin.settings.sessionsFolderPath,
                         ];
                         const hasStoryPlaceholder = paths.some(p => (p || '').match(/\{story(Name|Slug|Id)\}/i));
                         if (hasStoryPlaceholder && !this.plugin.settings.activeStoryId) {
@@ -415,6 +420,13 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                 t('chaptersFolderPh')
             );
             this.addFolderPathSetting(container,
+                'Books folder',
+                'Custom folder path for book vault files. Supports {storyName}, {storySlug}, {storyId}. Tip: set Chapters to MyWorld/{storyName}/{bookName}/Chapters and Scenes to MyWorld/{storyName}/{bookName}/Scenes to automatically organise story assets per book.',
+                () => this.plugin.settings.bookFolderPath || '',
+                v => { this.plugin.settings.bookFolderPath = v; },
+                'e.g. MyWorld/Stories/{storyName}/Books'
+            );
+            this.addFolderPathSetting(container,
                 t('culturesFolder'), t('culturesFolderDesc'),
                 () => this.plugin.settings.cultureFolderPath || '',
                 v => { this.plugin.settings.cultureFolderPath = v; },
@@ -444,6 +456,13 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                 () => this.plugin.settings.groupFolderPath || '',
                 v => { this.plugin.settings.groupFolderPath = v; },
                 'e.g. MyWorld/Groups'
+            );
+            this.addFolderPathSetting(container,
+                'Sessions folder',
+                'Custom folder path for campaign session files. Supports {storyName}, {storySlug}, {storyId}.',
+                () => this.plugin.settings.sessionsFolderPath || '',
+                v => { this.plugin.settings.sessionsFolderPath = v; },
+                'e.g. MyWorld/Stories/{storyName}/Sessions'
             );
         }
 

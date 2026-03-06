@@ -305,6 +305,7 @@ export class ReferenceModal extends Modal {
         const { templateId, yamlContent, markdownContent, sectionContent, customYamlFields, id, filePath, ...rest } = templateRef as any;
 
         let fields: any = { ...rest };
+        let allTemplateSections: Record<string, string> = {};
 
         // Handle new format: yamlContent (parse YAML string)
         if (yamlContent && typeof yamlContent === 'string') {
@@ -326,6 +327,7 @@ export class ReferenceModal extends Modal {
         if (markdownContent && typeof markdownContent === 'string') {
             try {
                 const parsedSections = parseSectionsFromMarkdown(markdownContent);
+                allTemplateSections = parsedSections;
 
                 // Map well-known section names to entity property names
                 const sectionToFieldMap: Record<string, string> = {
@@ -385,6 +387,7 @@ export class ReferenceModal extends Modal {
             }
         } else if (sectionContent) {
             // Old format: apply section content
+            for (const [k, v] of Object.entries(sectionContent)) { allTemplateSections[k as string] = v as string; }
             for (const [sectionName, content] of Object.entries(sectionContent)) {
                 const propName = sectionName.toLowerCase().replace(/\s+/g, '');
                 (fields as any)[propName] = content;
@@ -393,6 +396,14 @@ export class ReferenceModal extends Modal {
 
         // Apply all fields to the reference
         Object.assign(this.refData, fields);
+        if (Object.keys(allTemplateSections).length > 0) {
+            Object.defineProperty(this.refData, '_templateSections', {
+                value: allTemplateSections,
+                enumerable: false,
+                writable: true,
+                configurable: true
+            });
+        }
         console.log('[ReferenceModal] Final reference after template:', this.refData);
     }
 

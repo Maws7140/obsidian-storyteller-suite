@@ -8,6 +8,68 @@
 
 import { parseYaml } from 'obsidian';
 
+/**
+ * Frontmatter array fields that should be stored as Obsidian wiki links ([[Name]])
+ * so that saved entities appear in Graph view and the Properties panel as real links.
+ * Internally the plugin always uses plain names — brackets are added on write and
+ * stripped on read.
+ */
+export const WIKI_LINK_ARRAY_FIELDS = new Set([
+    'linkedCharacters',
+    'linkedLocations',
+    'linkedCultures',
+    'linkedEconomies',
+    'linkedFactions',
+    'linkedEvents',
+    'linkedItems',
+    'linkedGroups',
+    'linkedMagicSystems',
+    'linkedChapters',
+    'linkedScenes',
+    'characters',
+    'compendiumEntries',
+    'compendiumSources',
+    'setupScenes',
+    'payoffScenes',
+    'groups',
+    'pastOwners',
+    'dependencies',
+    'territories',
+    'relatedCultures',
+    'triggeredAtLocations',
+    'partyCharacterIds',
+    'childLocationIds',
+    'chapterIds',
+    'inventoryItemIds',
+    'relatedMapIds',
+    'childMapIds',
+]);
+
+/** Frontmatter scalar fields that should be stored as Obsidian wiki links ([[Name]]). */
+export const WIKI_LINK_SCALAR_FIELDS = new Set([
+    'currentLocationId',
+    'parentLocationId',
+    'bookId',
+    'chapterId',
+    'currentSceneId',
+    'location',
+    'currentOwner',
+    'currentLocation',
+    'povCharacter',
+    'navigatesToScene',
+    'useRequiresLocation',
+    'linkedCulture',
+    'parentGroup',
+    'parentCulture',
+    'activeSessionId',
+    'primaryMapId',
+    'parentMapId',
+    'correspondingLocationId',
+    'triggeredByItem',
+    'mapId',
+    'parentLocation',
+]);
+
 export type EntityType =
   | 'character'
   | 'location'
@@ -20,32 +82,48 @@ export type EntityType =
   | 'culture'
   | 'faction'
   | 'economy'
-  | 'magicSystem';
+  | 'magicSystem'
+  | 'compendiumEntry'
+  | 'book'
+  | 'campaignSession';
 
 /** Whitelisted frontmatter keys per entity type. */
 const FRONTMATTER_WHITELISTS: Record<EntityType, Set<string>> = {
   character: new Set([
     'id', 'name', 'traits', 'relationships', 'locations', 'events',
     'currentLocationId', 'locationHistory', 'ownedItems', 'cultures', 'magicSystems',
-    'status', 'affiliation', 'groups', 'profileImagePath', 'customFields', 'connections',
-    'mapCoordinates', 'mapId', 'markerId', 'relatedMapIds', 'mapIcon', 'mapColor'
+    'status', 'affiliation', 'gender', 'race', 'age', 'height', 'quirks',
+    'groups', 'profileImagePath', 'customFields', 'connections',
+    'balance', 'linkedEconomies', 'linkedChapters', 'linkedScenes', 'linkedItems', 'compendiumEntries',
+    'mapCoordinates', 'mapId', 'markerId', 'relatedMapIds', 'mapIcon', 'mapColor',
+    'dndClass', 'dndSubclass', 'dndRace', 'dndLevel',
+    'dndStr', 'dndDex', 'dndCon', 'dndInt', 'dndWis', 'dndCha',
+    'dndMaxHp', 'dndCurrentHp', 'dndTempHp', 'dndAc', 'dndSpeed', 'dndProficiencyBonus',
+    'dndHitDice', 'dndConditions', 'dndSkillProficiencies', 'dndSavingThrowProficiencies'
   ]),
   location: new Set([
     'id', 'name', 'locationType', 'type', 'region', 'status', 'parentLocation', 'parentLocationId',
-    'childLocationIds', 'mapBindings', 'entityRefs',
+    'childLocationIds', 'mapBindings', 'entityRefs', 'cultures',
     'groups', 'profileImagePath', 'images', 'customFields', 'connections',
-    'mapCoordinates', 'mapId', 'markerId', 'relatedMapIds', 'mapIcon', 'mapColor'
+    'balance', 'linkedEconomies', 'linkedChapters',
+    'mapCoordinates', 'mapId', 'markerId', 'relatedMapIds', 'mapIcon', 'mapColor',
+    'dndEncounterBonus', 'ambientFlags'
   ]),
   event: new Set([
     'id', 'name', 'dateTime', 'characters', 'location', 'items', 'cultures', 'magicSystems', 'status',
     'groups', 'profileImagePath', 'images', 'customFields', 'connections',
     'isMilestone', 'dependencies', 'progress', 'tags', 'narrativeMarkers', 'narrativeSequence',
+    'linkedChapters', 'linkedScenes', 'compendiumEntries',
     'mapCoordinates', 'mapId', 'markerId', 'relatedMapIds', 'mapIcon', 'mapColor'
   ]),
   item: new Set([
     'id', 'name', 'isPlotCritical', 'currentOwner', 'pastOwners',
     'currentLocation', 'associatedEvents', 'magicSystems', 'groups', 'profileImagePath', 'customFields', 'connections',
-    'mapCoordinates', 'mapId', 'markerId', 'relatedMapIds', 'mapIcon', 'mapColor'
+    'linkedCharacters', 'linkedEconomies', 'linkedCultures', 'economicValue',
+    'linkedChapters', 'linkedScenes', 'compendiumSources',
+    'mapCoordinates', 'mapId', 'markerId', 'relatedMapIds', 'mapIcon', 'mapColor',
+    'itemType', 'itemRarity', 'consumedOnUse', 'campaignEffect',
+    'grantsFlag', 'navigatesToScene', 'useRequiresLocation', 'useRequiresFlag'
   ]),
   reference: new Set([
     'id', 'name', 'category', 'tags', 'profileImagePath',
@@ -53,12 +131,16 @@ const FRONTMATTER_WHITELISTS: Record<EntityType, Set<string>> = {
   ]),
   chapter: new Set([
     'id', 'name', 'number', 'tags', 'profileImagePath',
-    'linkedCharacters', 'linkedLocations', 'linkedEvents', 'linkedItems', 'linkedGroups'
+    'linkedCharacters', 'linkedLocations', 'linkedEvents', 'linkedItems', 'linkedGroups',
+    'linkedScenes', 'bookId', 'bookName'
   ]),
   scene: new Set([
     'id', 'name', 'chapterId', 'chapterName', 'status', 'priority', 'tags', 'profileImagePath',
     'linkedCharacters', 'linkedLocations', 'linkedEvents', 'linkedItems', 'linkedGroups',
-    'mapCoordinates', 'mapId', 'markerId', 'relatedMapIds', 'mapIcon', 'mapColor'
+    'mapCoordinates', 'mapId', 'markerId', 'relatedMapIds', 'mapIcon', 'mapColor',
+    'povCharacter', 'emotion', 'intensity', 'setupScenes', 'payoffScenes',
+    'synopsis', 'wordCount', 'targetWordCount', 'includeInCompile', 'date',
+    'beats', 'content'
   ]),
   map: new Set([
     'id', 'name', 'description', 'scale', 'parentMapId', 'childMapIds', 'correspondingLocationId', 'backgroundImagePath', 'mapData',
@@ -73,6 +155,7 @@ const FRONTMATTER_WHITELISTS: Record<EntityType, Set<string>> = {
     'id', 'name', 'profileImagePath', 'languages', 'techLevel', 'governmentType', 'status',
     'population', 'linkedLocations', 'linkedCharacters', 'linkedEvents', 'relatedCultures',
     'parentCulture', 'groups', 'customFields', 'connections',
+    'balance', 'linkedEconomies', 'linkedMagicSystems', 'linkedItems', 'compendiumEntries',
     'mapCoordinates', 'mapId', 'markerId', 'relatedMapIds', 'mapIcon', 'mapColor'
   ]),
   faction: new Set([
@@ -84,7 +167,7 @@ const FRONTMATTER_WHITELISTS: Record<EntityType, Set<string>> = {
   ]),
   economy: new Set([
     'id', 'name', 'profileImagePath', 'economicSystem', 'status', 'currencies', 'resources',
-    'tradeRoutes', 'linkedLocations', 'linkedFactions', 'linkedCultures', 'linkedEvents',
+    'tradeRoutes', 'linkedCharacters', 'linkedLocations', 'linkedFactions', 'linkedCultures', 'linkedEvents', 'linkedItems',
     'groups', 'customFields', 'connections',
     'mapCoordinates', 'mapId', 'markerId', 'relatedMapIds', 'mapIcon', 'mapColor'
   ]),
@@ -92,9 +175,28 @@ const FRONTMATTER_WHITELISTS: Record<EntityType, Set<string>> = {
     'id', 'name', 'profileImagePath', 'systemType', 'rarity', 'powerLevel', 'status',
     'materials', 'categories', 'abilities', 'consistencyRules', 'linkedCharacters',
     'linkedLocations', 'linkedCultures', 'linkedEvents', 'linkedItems', 'groups',
-    'customFields', 'connections',
+    'customFields', 'connections', 'compendiumEntries',
     'mapCoordinates', 'mapId', 'markerId', 'relatedMapIds', 'mapIcon', 'mapColor'
-  ])
+  ]),
+  compendiumEntry: new Set([
+    'id', 'name', 'entryType', 'rarity', 'dangerRating', 'profileImagePath',
+    'linkedLocations', 'linkedCharacters', 'linkedItems', 'linkedMagicSystems',
+    'linkedCultures', 'linkedEvents',
+    'groups', 'customFields', 'connections',
+    'mapCoordinates', 'mapId', 'markerId', 'relatedMapIds', 'mapIcon', 'mapColor',
+    'triggeredAtLocations', 'triggeredByFlag', 'triggeredByItem'
+  ]),
+  book: new Set([
+    'id', 'name', 'series', 'bookNumber', 'genre', 'status', 'coverImagePath',
+    'linkedChapters', 'groups', 'customFields', 'connections',
+    'mapCoordinates', 'mapId', 'markerId', 'relatedMapIds', 'mapIcon', 'mapColor'
+  ]),
+  campaignSession: new Set([
+    'id', 'name', 'storyId', 'currentSceneId', 'currentSceneName',
+    'partyCharacterIds', 'partyCharacterNames', 'partyState',
+    'partyItems', 'flags',
+    'status', 'created', 'modified'
+  ]),
 };
 
 export function getWhitelistKeys(entityType: EntityType): Set<string> {
@@ -116,13 +218,18 @@ export function buildFrontmatter(
   entityType: EntityType,
   source: Record<string, unknown>,
   preserveKeys?: Set<string>,
-  options?: { customFieldsMode?: 'flatten' | 'nested'; originalFrontmatter?: Record<string, unknown> }
+  options?: {
+    customFieldsMode?: 'flatten' | 'nested';
+    originalFrontmatter?: Record<string, unknown>;
+    omitOriginalKeys?: Iterable<string>;
+  }
 ): Record<string, unknown> {
   const whitelist = FRONTMATTER_WHITELISTS[entityType];
   const output: Record<string, unknown> = {};
   const mode = options?.customFieldsMode ?? 'flatten';
   const srcKeys = new Set(Object.keys(source || {}));
   const originalFrontmatter = options?.originalFrontmatter;
+  const omitOriginalKeys = new Set(options?.omitOriginalKeys ?? []);
   
   // Track all keys that existed in original frontmatter - these must NEVER be deleted
   const originalKeys = originalFrontmatter ? new Set(Object.keys(originalFrontmatter)) : new Set<string>();
@@ -213,8 +320,10 @@ export function buildFrontmatter(
   // This ensures user-added fields are NEVER deleted, even if empty
   if (originalFrontmatter) {
     for (const [key, value] of Object.entries(originalFrontmatter)) {
-      // Skip Obsidian internal fields
+      // Skip Obsidian internal fields and runtime-only flags
       if (key === 'position') continue;
+      if (key.startsWith('_')) continue; // e.g. _skipSync - never persist runtime flags
+      if (omitOriginalKeys.has(key)) continue;
       // If already in output, skip (new value takes precedence)
       if (key in output) continue;
       // CRITICAL: Preserve the original value, even if null/undefined/empty
@@ -223,11 +332,32 @@ export function buildFrontmatter(
   }
 
   // Preserve field order: rebuild with original keys first, then new keys
+  // Wrap linked entity arrays in [[...]] so Obsidian recognises them as wiki links
+  // (graph view, Properties panel). Plain names are restored when reading back.
+  for (const field of WIKI_LINK_ARRAY_FIELDS) {
+    if (Array.isArray(output[field])) {
+      output[field] = (output[field] as unknown[]).map(v =>
+        typeof v === 'string' && v.trim() !== '' && !v.startsWith('[[')
+          ? `[[${v}]]`
+          : v
+      );
+    }
+  }
+  for (const field of WIKI_LINK_SCALAR_FIELDS) {
+    if (typeof output[field] === 'string') {
+      const value = String(output[field] ?? '').trim();
+      if (value !== '' && !value.startsWith('[[')) {
+        output[field] = `[[${value}]]`;
+      }
+    }
+  }
+
   if (originalFrontmatter) {
     const orderedOutput: Record<string, unknown> = {};
     // First, add all original keys in their original order
     for (const key of Object.keys(originalFrontmatter)) {
       if (key === 'position') continue; // Skip Obsidian internal field
+      if (omitOriginalKeys.has(key)) continue;
       if (key in output) {
         orderedOutput[key] = output[key];
       }

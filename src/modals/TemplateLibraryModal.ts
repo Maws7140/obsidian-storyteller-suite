@@ -3,7 +3,7 @@
  * Browse, filter, and manage templates
  */
 
-import { App, Notice, Setting } from 'obsidian';
+import { App, Notice, Setting, setIcon } from 'obsidian';
 import { ResponsiveModal } from './ResponsiveModal';
 import type StorytellerSuitePlugin from '../main';
 import {
@@ -183,9 +183,36 @@ export class TemplateLibraryModal extends ResponsiveModal {
         });
     }
 
+    private getGenreIconName(genre?: string): string {
+        const icons: Record<string, string> = {
+            fantasy: 'wand',
+            scifi: 'rocket',
+            mystery: 'search',
+            horror: 'skull',
+            romance: 'heart',
+            historical: 'scroll',
+            western: 'sun',
+            thriller: 'zap',
+            adventure: 'sword',
+            drama: 'theater',
+        };
+        return (genre && icons[genre]) || 'book-open';
+    }
+
     private createTemplateCard(container: HTMLElement, template: Template): void {
         const card = container.createDiv({ cls: 'template-card' });
         const isNoteBased = (template as any).isNoteBased === true;
+
+        // Thumbnail / icon
+        const thumbEl = card.createDiv({ cls: 'template-card-thumbnail' });
+        if (template.thumbnail) {
+            const img = thumbEl.createEl('img', { cls: 'template-card-thumbnail-img' });
+            img.src = template.thumbnail;
+            img.alt = template.name;
+        } else {
+            const iconEl = thumbEl.createEl('span', { cls: 'template-card-thumbnail-icon' });
+            setIcon(iconEl, this.getGenreIconName(template.genre));
+        }
 
         // Header
         const header = card.createDiv({ cls: 'template-card-header' });

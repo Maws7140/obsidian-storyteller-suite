@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
-import { App, Setting, Notice, TextAreaComponent, TextComponent, ButtonComponent, parseYaml } from 'obsidian';
+import { App, Setting, Notice, TextAreaComponent, TextComponent, ButtonComponent, parseYaml, setIcon } from 'obsidian';
 import { Location } from '../types'; // Assumes Location type no longer has charactersPresent, eventsHere, subLocations
 import { getWhitelistKeys, parseSectionsFromMarkdown } from '../yaml/EntitySections';
 import { Group } from '../types';
@@ -94,7 +94,8 @@ export class LocationModal extends ResponsiveModal {
                                             new Notice('Error applying default template');
                                         }
                                         resolve();
-                                    }
+                                    },
+                                    resolve
                                 ).open();
                             });
                         });
@@ -179,7 +180,8 @@ export class LocationModal extends ResponsiveModal {
                                                         new Notice('Error applying template');
                                                     }
                                                     resolve();
-                                                }
+                                                },
+                                                resolve
                                             ).open();
                                         });
                                     });
@@ -578,6 +580,89 @@ export class LocationModal extends ResponsiveModal {
             childLocationsContainer.createDiv({ text: 'No child locations', cls: 'no-children' });
         }
 
+        // --- Cultures ---
+        contentEl.createEl('h3', { text: 'Cultures' });
+        if (!Array.isArray(this.location.cultures)) this.location.cultures = [];
+        const locCultureChips = contentEl.createDiv('storyteller-linked-chips');
+        const renderLocCultureChips = () => {
+            locCultureChips.empty();
+            for (const name of this.location.cultures!) {
+                const chip = locCultureChips.createSpan({ cls: 'storyteller-linked-chip' });
+                chip.createSpan({ text: name });
+                const rm = chip.createEl('button', { cls: 'storyteller-chip-remove', attr: { 'aria-label': 'Remove' } });
+                setIcon(rm, 'x');
+                rm.addEventListener('click', () => {
+                    this.location.cultures = this.location.cultures!.filter(n => n !== name);
+                    renderLocCultureChips();
+                });
+            }
+        };
+        renderLocCultureChips();
+        const allCulturesForLoc = await this.plugin.listCultures();
+        new Setting(contentEl)
+            .setName('Add culture')
+            .addDropdown(dd => {
+                dd.addOption('', '— select culture —');
+                allCulturesForLoc.forEach(c => dd.addOption(c.name, c.name));
+                dd.onChange(val => {
+                    if (val && !this.location.cultures!.includes(val)) {
+                        this.location.cultures!.push(val);
+                        renderLocCultureChips();
+                    }
+                    dd.setValue('');
+                });
+            });
+
+        // --- Finances ---
+        contentEl.createEl('h3', { text: 'Finances' });
+        new Setting(contentEl)
+            .setName('Treasury / Balance')
+            .setDesc('Economic wealth of this location (e.g. "5000gp 200sp"). Auto-computed from ledger blocks if present.')
+            .addText(text => text
+                .setValue(this.location.balance || '')
+                .onChange(val => { this.location.balance = val.trim() || undefined; })
+            );
+        if (this.location.ledger && this.location.ledger.length > 0) {
+            contentEl.createDiv('storyteller-ledger-preview').createEl('p', {
+                cls: 'storyteller-ledger-note',
+                text: `${this.location.ledger.length} transaction(s) in note`
+            });
+        }
+
+        // --- Linked Economies ---
+        contentEl.createEl('h3', { text: 'Economies' });
+        if (!Array.isArray(this.location.linkedEconomies)) this.location.linkedEconomies = [];
+        const locEconChips = contentEl.createDiv('storyteller-linked-chips');
+        const renderLocEconChips = () => {
+            locEconChips.empty();
+            for (const name of (this.location.linkedEconomies ?? [])) {
+                const chip = locEconChips.createSpan({ cls: 'storyteller-linked-chip' });
+                chip.createSpan({ text: name });
+                const rm = chip.createEl('button', { cls: 'storyteller-chip-remove', attr: { 'aria-label': 'Remove' } });
+                setIcon(rm, 'x');
+                rm.addEventListener('click', () => {
+                    this.location.linkedEconomies = this.location.linkedEconomies!.filter(n => n !== name);
+                    renderLocEconChips();
+                });
+            }
+        };
+        renderLocEconChips();
+        const allEconomiesForLoc = await this.plugin.listEconomies();
+        new Setting(contentEl)
+            .setName('Add economy')
+            .addDropdown(dd => {
+                dd.addOption('', '— select economy —');
+                allEconomiesForLoc.forEach(e => dd.addOption(e.name, e.name));
+                dd.onChange(val => {
+                    if (val && !(this.location.linkedEconomies ?? []).includes(val)) {
+                        if (!Array.isArray(this.location.linkedEconomies)) this.location.linkedEconomies = [];
+                        this.location.linkedEconomies.push(val);
+                        renderLocEconChips();
+                    }
+                    dd.setValue('');
+                });
+            });
+
         // --- Maps Section (Legacy) ---
         // TODO: Maps feature - to be reimplemented
         // contentEl.createEl('h3', { text: 'Maps' });
@@ -953,6 +1038,7 @@ export class LocationModal extends ResponsiveModal {
         const { templateId, yamlContent, markdownContent, sectionContent, customYamlFields, id, filePath, ...rest } = templateLoc as any;
 
         let fields: any = { ...rest };
+        let allTemplateSections: Record<string, string> = {};
 
         // Handle new format: yamlContent (parse YAML string)
         if (yamlContent && typeof yamlContent === 'string') {
@@ -974,6 +1060,7 @@ export class LocationModal extends ResponsiveModal {
         if (markdownContent && typeof markdownContent === 'string') {
             try {
                 const parsedSections = parseSectionsFromMarkdown(markdownContent);
+                allTemplateSections = parsedSections;
 
                 // Map well-known sections to entity properties
                 if ('Description' in parsedSections) {
@@ -989,6 +1076,7 @@ export class LocationModal extends ResponsiveModal {
             }
         } else if (sectionContent) {
             // Old format: apply section content
+            for (const [k, v] of Object.entries(sectionContent)) { allTemplateSections[k as string] = v as string; }
             for (const [sectionName, content] of Object.entries(sectionContent)) {
                 const propName = sectionName.toLowerCase().replace(/\s+/g, '');
                 (fields as any)[propName] = content;
@@ -997,6 +1085,14 @@ export class LocationModal extends ResponsiveModal {
 
         // Apply all fields to the location
         Object.assign(this.location, fields);
+        if (Object.keys(allTemplateSections).length > 0) {
+            Object.defineProperty(this.location, '_templateSections', {
+                value: allTemplateSections,
+                enumerable: false,
+                writable: true,
+                configurable: true
+            });
+        }
         console.log('[LocationModal] Final location after template:', this.location);
 
         // Clear relationships as they reference template entities

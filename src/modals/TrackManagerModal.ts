@@ -1,4 +1,4 @@
-import { App, Modal, Setting, TextComponent, DropdownComponent, Notice } from 'obsidian';
+import { App, Modal, Setting, TextComponent, DropdownComponent, Notice, setIcon } from 'obsidian';
 import { TimelineTrack, Character, Location, Group } from '../types';
 import { t } from '../i18n/strings';
 import StorytellerSuitePlugin from '../main';
@@ -72,9 +72,6 @@ export class TrackManagerModal extends Modal {
             .setButtonText(t('cancel') || 'Cancel')
             .onClick(() => this.close())
         );
-
-        // Add CSS
-        this.addStyles();
     }
 
     private addNewTrack(): void {
@@ -121,7 +118,8 @@ export class TrackManagerModal extends Modal {
         const headerEl = trackEl.createDiv({ cls: 'storyteller-track-header' });
 
         // Drag handle
-        const dragHandle = headerEl.createSpan({ cls: 'storyteller-track-drag-handle', text: '☰' });
+        const dragHandle = headerEl.createSpan({ cls: 'storyteller-track-drag-handle' });
+        setIcon(dragHandle, 'grip-vertical');
         dragHandle.setAttribute('draggable', 'true');
         this.setupDragAndDrop(trackEl, track, index);
 
@@ -141,19 +139,19 @@ export class TrackManagerModal extends Modal {
 
         // Visibility toggle
         const visibilityBtn = headerEl.createEl('button', {
-            text: track.visible ? '👁' : '👁‍🗨',
             cls: 'storyteller-track-visibility-btn'
         });
+        setIcon(visibilityBtn, track.visible ? 'eye' : 'eye-off');
         visibilityBtn.addEventListener('click', () => {
             track.visible = !track.visible;
-            visibilityBtn.setText(track.visible ? '👁' : '👁‍🗨');
+            setIcon(visibilityBtn, track.visible ? 'eye' : 'eye-off');
         });
 
         // Delete button
         const deleteBtn = headerEl.createEl('button', {
-            text: '🗑',
             cls: 'storyteller-track-delete-btn'
         });
+        setIcon(deleteBtn, 'trash');
         deleteBtn.addEventListener('click', () => {
             this.deleteTrack(index);
         });
@@ -372,120 +370,6 @@ export class TrackManagerModal extends Modal {
             '#48DBFB', '#1DD1A1', '#10AC84', '#EE5A6F', '#C44569'
         ];
         return colors[Math.floor(Math.random() * colors.length)];
-    }
-
-    private addStyles(): void {
-        const styleEl = document.createElement('style');
-        styleEl.textContent = `
-            .storyteller-track-manager {
-                padding: 1em;
-            }
-
-            .storyteller-track-manager-desc {
-                margin-bottom: 1.5em;
-                color: var(--text-muted);
-                font-size: 0.9em;
-            }
-
-            .storyteller-track-list {
-                max-height: 60vh;
-                overflow-y: auto;
-                margin: 1em 0;
-            }
-
-            .storyteller-track-item {
-                border: 1px solid var(--background-modifier-border);
-                border-radius: 6px;
-                margin-bottom: 1em;
-                background: var(--background-secondary);
-            }
-
-            .storyteller-track-item.dragging {
-                opacity: 0.5;
-            }
-
-            .storyteller-track-item.drag-over {
-                border-color: var(--interactive-accent);
-                border-width: 2px;
-            }
-
-            .storyteller-track-header {
-                display: flex;
-                align-items: center;
-                padding: 0.75em;
-                gap: 0.5em;
-                background: var(--background-primary);
-                border-bottom: 1px solid var(--background-modifier-border);
-                border-radius: 6px 6px 0 0;
-            }
-
-            .storyteller-track-drag-handle {
-                cursor: grab;
-                user-select: none;
-                color: var(--text-muted);
-                font-size: 1.2em;
-            }
-
-            .storyteller-track-drag-handle:active {
-                cursor: grabbing;
-            }
-
-            .storyteller-track-color {
-                width: 16px;
-                height: 16px;
-                border-radius: 50%;
-                border: 2px solid var(--background-modifier-border);
-            }
-
-            .storyteller-track-name-input {
-                flex: 1;
-                border: none;
-                background: transparent;
-                font-weight: 600;
-                font-size: 1em;
-                color: var(--text-normal);
-            }
-
-            .storyteller-track-name-input:focus {
-                outline: none;
-                background: var(--background-secondary);
-                padding: 0.25em 0.5em;
-                border-radius: 3px;
-            }
-
-            .storyteller-track-visibility-btn,
-            .storyteller-track-delete-btn {
-                background: transparent;
-                border: none;
-                cursor: pointer;
-                font-size: 1.1em;
-                padding: 0.25em 0.5em;
-                border-radius: 3px;
-            }
-
-            .storyteller-track-visibility-btn:hover,
-            .storyteller-track-delete-btn:hover {
-                background: var(--background-modifier-hover);
-            }
-
-            .storyteller-track-details {
-                padding: 1em;
-            }
-
-            .storyteller-track-details h4 {
-                margin-top: 1em;
-                margin-bottom: 0.5em;
-                color: var(--text-accent);
-            }
-
-            .storyteller-empty-state {
-                text-align: center;
-                padding: 3em;
-                color: var(--text-muted);
-                font-style: italic;
-            }
-        `;
-        this.contentEl.appendChild(styleEl);
     }
 
     onClose(): void {

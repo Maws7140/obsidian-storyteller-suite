@@ -1,4 +1,4 @@
-import { App, SuggestModal } from 'obsidian';
+import { App, SuggestModal, setIcon } from 'obsidian';
 import { Location } from '../types';
 
 export class LocationSelectionModal extends SuggestModal<Location | 'create-new'> {
@@ -25,9 +25,15 @@ export class LocationSelectionModal extends SuggestModal<Location | 'create-new'
 
     renderSuggestion(value: Location | 'create-new', el: HTMLElement) {
         if (value === 'create-new') {
-            el.createDiv({ text: '➕ Create New Location', cls: 'suggestion-content' });
+            const div = el.createDiv({ cls: 'suggestion-content' });
+            const plusIcon = div.createSpan();
+            setIcon(plusIcon, 'plus');
+            div.appendText(' Create New Location');
         } else {
-            el.createDiv({ text: `📍 ${value.name}`, cls: 'suggestion-content' });
+            const div = el.createDiv({ cls: 'suggestion-content' });
+            const pinIcon = div.createSpan();
+            setIcon(pinIcon, 'map-pin');
+            div.appendText(` ${value.name}`);
             if (value.description) {
                 el.createDiv({ text: value.description, cls: 'suggestion-note' });
             }

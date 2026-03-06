@@ -1,4 +1,4 @@
-import { App, Setting, Notice } from 'obsidian'; // Import Notice
+import { App, Setting, Notice, setIcon } from 'obsidian';
 import StorytellerSuitePlugin from '../main'; // Import the plugin class
 import { Character, Location, Event, StoryMap } from '../types'; // Import types
 import { ResponsiveModal } from './ResponsiveModal';
@@ -38,19 +38,21 @@ export class DashboardModal extends ResponsiveModal {
 
         // Define tabs with icons
         const tabs = [
-            { id: 'characters', label: t('characters'), icon: '👤' },
-            { id: 'locations', label: t('locations'), icon: '📍' },
-            { id: 'events', label: t('events'), icon: '📅' },
-            { id: 'maps', label: 'Maps', icon: '🗺️' },
-            { id: 'gallery', label: t('gallery'), icon: '🖼️' }
+            { id: 'characters', label: t('characters'), icon: 'user' },
+            { id: 'locations', label: t('locations'), icon: 'map-pin' },
+            { id: 'events', label: t('events'), icon: 'calendar' },
+            { id: 'maps', label: 'Maps', icon: 'map' },
+            { id: 'gallery', label: t('gallery'), icon: 'image' }
         ];
 
         // Create tab buttons
         tabs.forEach(tab => {
             const tabBtn = this.tabContainer.createEl('button', {
-                cls: 'storyteller-tab-button',
-                text: `${tab.icon} ${tab.label}`
+                cls: 'storyteller-tab-button'
             });
+            const tabIcon = tabBtn.createSpan();
+            setIcon(tabIcon, tab.icon);
+            tabBtn.createSpan().setText(tab.label);
 
             // Mark first tab as active
             if (tab.id === this.currentTab) {

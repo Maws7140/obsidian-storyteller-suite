@@ -37,7 +37,7 @@ export class TemplateGalleryModal extends Modal {
 
         // Header
         const headerEl = contentEl.createDiv('storyteller-template-header');
-        headerEl.createEl('h2', { text: '🗺️ Choose a Map Template' });
+        headerEl.createEl('h2', { text: 'Choose a Map Template' });
         headerEl.createEl('p', {
             text: 'Select a template to start with, or create a blank map',
             cls: 'storyteller-template-subtitle'
@@ -92,7 +92,8 @@ export class TemplateGalleryModal extends Modal {
 
         if (filteredTemplates.length === 0) {
             const emptyState = gridContainer.createDiv('storyteller-empty-state');
-            emptyState.createEl('div', { text: '📭', cls: 'storyteller-empty-icon' });
+            const emptyIcon = emptyState.createEl('div', { cls: 'storyteller-empty-icon' });
+            setIcon(emptyIcon, 'inbox');
             emptyState.createEl('p', { text: 'No templates in this category' });
             return;
         }
@@ -109,18 +110,8 @@ export class TemplateGalleryModal extends Modal {
         const preview = card.createDiv('storyteller-template-preview');
 
         // If template has thumbnail, use it; otherwise show icon
-        if (template.thumbnailPath || template.thumbnailData) {
-            // TODO: Display actual thumbnail when available
-            preview.createEl('div', {
-                text: this.getCategoryIcon(template.category),
-                cls: 'storyteller-template-icon-large'
-            });
-        } else {
-            preview.createEl('div', {
-                text: this.getCategoryIcon(template.category),
-                cls: 'storyteller-template-icon-large'
-            });
-        }
+        const iconEl = preview.createEl('div', { cls: 'storyteller-template-icon-large' });
+        setIcon(iconEl, this.getCategoryIconName(template.category));
 
         // Category badge
         const badge = preview.createEl('span', {
@@ -142,18 +133,21 @@ export class TemplateGalleryModal extends Modal {
 
         if (template.markers && template.markers.length > 0) {
             const markerInfo = details.createEl('span', { cls: 'storyteller-template-detail' });
-            markerInfo.createEl('span', { text: '📍' });
+            const markerIcon = markerInfo.createSpan();
+            setIcon(markerIcon, 'map-pin');
             markerInfo.createEl('span', { text: ` ${template.markers.length} markers` });
         }
 
         if (template.gridEnabled) {
             const gridInfo = details.createEl('span', { cls: 'storyteller-template-detail' });
-            gridInfo.createEl('span', { text: '⊞' });
+            const gridIcon = gridInfo.createSpan();
+            setIcon(gridIcon, 'grid');
             gridInfo.createEl('span', { text: ' Grid enabled' });
         }
 
         const sizeInfo = details.createEl('span', { cls: 'storyteller-template-detail' });
-        sizeInfo.createEl('span', { text: '📐' });
+        const sizeIcon = sizeInfo.createSpan();
+        setIcon(sizeIcon, 'ruler');
         sizeInfo.createEl('span', { text: ` ${template.width}×${template.height}` });
 
         // Actions
@@ -211,17 +205,17 @@ export class TemplateGalleryModal extends Modal {
             });
     }
 
-    private getCategoryIcon(category: MapTemplate['category']): string {
+    private getCategoryIconName(category: MapTemplate['category']): string {
         const icons: Record<MapTemplate['category'], string> = {
-            'world': '🌍',
-            'region': '🗺️',
-            'city': '🏛️',
-            'building': '🏠',
-            'dungeon': '⚔️',
-            'battle': '⚡',
-            'custom': '✨'
+            'world': 'globe',
+            'region': 'map',
+            'city': 'building',
+            'building': 'home',
+            'dungeon': 'sword',
+            'battle': 'zap',
+            'custom': 'sparkles'
         };
-        return icons[category] || '📍';
+        return icons[category] || 'map-pin';
     }
 
     onClose(): void {
