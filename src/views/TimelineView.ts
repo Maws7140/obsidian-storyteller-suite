@@ -433,6 +433,8 @@ export class TimelineView extends ItemView {
             showEras: this.currentState.showEras,
             narrativeOrder: this.currentState.narrativeOrder,
             defaultGanttDuration: this.plugin.settings.ganttDefaultDuration ?? 1,
+            showProgressBars: this.plugin.settings.ganttShowProgressBars ?? true,
+            dependencyArrowStyle: this.plugin.settings.ganttArrowStyle ?? 'solid',
             onConflictsDetected: (conflicts) => this.handleConflicts(conflicts)
         });
 

@@ -10,6 +10,7 @@ import StorytellerSuitePlugin from '../main';
 export class CampaignSessionModal extends Modal {
     private plugin: StorytellerSuitePlugin;
     private onSessionSelected: (session: CampaignSession) => void;
+    private preferredStartingScene?: import('../types').Scene;
 
     private sessions: CampaignSession[] = [];
     private scenes: import('../types').Scene[] = [];
@@ -18,11 +19,13 @@ export class CampaignSessionModal extends Modal {
     constructor(
         app: App,
         plugin: StorytellerSuitePlugin,
-        onSessionSelected: (session: CampaignSession) => void
+        onSessionSelected: (session: CampaignSession) => void,
+        preferredStartingScene?: import('../types').Scene
     ) {
         super(app);
         this.plugin = plugin;
         this.onSessionSelected = onSessionSelected;
+        this.preferredStartingScene = preferredStartingScene;
     }
 
     async onOpen(): Promise<void> {
@@ -76,8 +79,8 @@ export class CampaignSessionModal extends Modal {
         const form = contentEl.createDiv('storyteller-campaign-new-session-form');
 
         let sessionName = '';
-        let startingSceneId: string | undefined;
-        let startingSceneName: string | undefined;
+        let startingSceneId: string | undefined = this.preferredStartingScene?.id;
+        let startingSceneName: string | undefined = this.preferredStartingScene?.name;
         const partyCharacterIds: string[] = [];
         const partyCharacterNames: string[] = [];
 
@@ -90,6 +93,9 @@ export class CampaignSessionModal extends Modal {
             .addDropdown(dd => {
                 dd.addOption('', '— Select scene —');
                 for (const sc of this.scenes) dd.addOption(sc.id ?? sc.name, sc.name);
+                if (this.preferredStartingScene) {
+                    dd.setValue(this.preferredStartingScene.id ?? this.preferredStartingScene.name);
+                }
                 dd.onChange(v => {
                     const sc = this.scenes.find(s => (s.id ?? s.name) === v);
                     startingSceneId = sc?.id;

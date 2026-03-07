@@ -22,6 +22,8 @@ export interface TimelineRendererOptions {
     ganttMode?: boolean;
     groupMode?: 'none' | 'location' | 'group' | 'character' | 'track';
     showDependencies?: boolean;
+    showProgressBars?: boolean;
+    dependencyArrowStyle?: 'solid' | 'dashed' | 'dotted';
     stackEnabled?: boolean;
     density?: number;
     defaultGanttDuration?: number; // days
@@ -66,6 +68,7 @@ export class TimelineRenderer {
     private showWatchedNotes = false;
     private itemIdToEventIndex = new Map<string | number, number>();
     private eventIndexToItemIds = new Map<number, Array<string | number>>();
+    private eventIndexToGroupItemIds = new Map<number, Map<string, string | number>>();
 
     // Era and narrative order configuration
     private showEras: boolean = false;
@@ -89,6 +92,8 @@ export class TimelineRenderer {
             ganttMode: false,
             groupMode: 'none',
             showDependencies: true,
+            showProgressBars: true,
+            dependencyArrowStyle: 'solid',
             stackEnabled: true,
             density: 50,
             defaultGanttDuration: 1,
@@ -266,11 +271,16 @@ export class TimelineRenderer {
         this.render();
     }
 
-    private registerEventItem(itemId: string | number, eventIndex: number): void {
+    private registerEventItem(itemId: string | number, eventIndex: number, groupId?: string): void {
         this.itemIdToEventIndex.set(itemId, eventIndex);
         const ids = this.eventIndexToItemIds.get(eventIndex) || [];
         ids.push(itemId);
         this.eventIndexToItemIds.set(eventIndex, ids);
+        if (groupId) {
+            const grouped = this.eventIndexToGroupItemIds.get(eventIndex) || new Map<string, string | number>();
+            grouped.set(groupId, itemId);
+            this.eventIndexToGroupItemIds.set(eventIndex, grouped);
+        }
     }
 
     private resolveEventIndexFromItemId(itemId: unknown): number | null {
@@ -734,6 +744,7 @@ export class TimelineRenderer {
                 calculatedZoomMax = Math.min(calculatedZoomMax, maxZoomMax);
             }
 
+            const showProgressBars = this.options.ganttMode && this.options.showProgressBars !== false;
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const timelineOptions: any = {
                 stack: grouped ? true : this.options.stackEnabled,
@@ -762,6 +773,7 @@ export class TimelineRenderer {
                 },
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 visibleFrameTemplate: function(item: any) {
+                    if (!showProgressBars) return '';
                     if (!item.progress || item.progress === 0) return '';
                     return `<div class="timeline-progress" style="width:${item.progress}%"></div>`;
                 }
@@ -784,9 +796,14 @@ export class TimelineRenderer {
                 // Add proper onMove callback for drag-and-drop
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 timelineOptions.onMove = async (item: any, callback: (item: any) => void) => {
-                    const event = this.events[item.id];
-                    if (!event) {
+                    const eventIndex = this.resolveEventIndexFromItemId(item.id);
+                    if (eventIndex == null) {
                         callback(null); // Cancel move if event not found
+                        return;
+                    }
+                    const event = this.events[eventIndex];
+                    if (!event) {
+                        callback(null);
                         return;
                     }
                     
@@ -908,8 +925,8 @@ export class TimelineRenderer {
                     if (arrowSpecs.length > 0) {
                         const arrowOptions = {
                             followRelationships: true,
-                            color: '#666',
-                            strokeWidth: 2,
+                            color: this.getDependencyArrowColor(),
+                            strokeWidth: 2.75,
                             hideWhenItemsNotVisible: true
                         };
                         this.dependencyArrows = new Arrow(this.timeline, arrowSpecs, arrowOptions);
@@ -971,6 +988,7 @@ export class TimelineRenderer {
         let groupsDS: any | undefined;
         this.itemIdToEventIndex.clear();
         this.eventIndexToItemIds.clear();
+        this.eventIndexToGroupItemIds.clear();
 
         // Detect conflicts for all events
         const allConflicts = ConflictDetector.detectAllConflicts(this.events);
@@ -1224,7 +1242,6 @@ export class TimelineRenderer {
             if (isMilestone) markerParts.push('\u2605');
             if (isFlashback) markerParts.push('\u21b6');
             if (isFlashforward) markerParts.push('\u21b7');
-            if (this.options.ganttMode && markerParts.length === 0) markerParts.push('\u25ae');
             const marker = markerParts.length > 0 ? `${markerParts.join(' ')} ` : '';
             const itemContent = `${marker}${contentText}`.trim();
 
@@ -1292,7 +1309,7 @@ export class TimelineRenderer {
                     style,
                     progress: evt.progress
                 });
-                this.registerEventItem(itemId, originalIdx);
+                this.registerEventItem(itemId, originalIdx, target.id);
             });
         });
 
@@ -1391,53 +1408,151 @@ export class TimelineRenderer {
      */
     private buildDependencyArrows(): Array<{
         id: string;
-        id_item_1: number;
-        id_item_2: number;
+        id_item_1: string | number;
+        id_item_2: string | number;
         title?: string;
+        color?: string;
+        line?: number;
+        type?: number;
+        track?: number;
     }> {
         const arrows: Array<{
             id: string;
-            id_item_1: number;
-            id_item_2: number;
+            id_item_1: string | number;
+            id_item_2: string | number;
             title?: string;
+            color?: string;
+            line?: number;
+            type?: number;
+            track?: number;
         }> = [];
         let arrowId = 0;
-        
-        // Build a set of valid event names for O(1) lookup
-        const validEventNames = new Set(this.events.map(e => this.sanitizeEventId(e.name)));
-        
+
+        const arrowLineType = this.getDependencyArrowLineType();
+        const arrowColor = this.getDependencyArrowColor();
+        const eventIdToIndex = new Map<string, number>();
+        const eventNameToIndex = new Map<string, number>();
+        const eventLowerNameToIndex = new Map<string, number>();
+
+        this.events.forEach((event, index) => {
+            const eventId = typeof event.id === 'string' ? event.id.trim() : '';
+            const eventName = typeof event.name === 'string' ? event.name.trim() : '';
+            if (eventId) eventIdToIndex.set(eventId, index);
+            if (eventName && !eventNameToIndex.has(eventName)) eventNameToIndex.set(eventName, index);
+            if (eventName) {
+                const lowerName = eventName.toLowerCase();
+                if (!eventLowerNameToIndex.has(lowerName)) eventLowerNameToIndex.set(lowerName, index);
+            }
+        });
+
+        const resolveDependencyIndex = (dependencyRef: string): number | null => {
+            const trimmed = String(dependencyRef ?? '').trim();
+            if (!trimmed) return null;
+            if (eventIdToIndex.has(trimmed)) return eventIdToIndex.get(trimmed) ?? null;
+            if (eventNameToIndex.has(trimmed)) return eventNameToIndex.get(trimmed) ?? null;
+            return eventLowerNameToIndex.get(trimmed.toLowerCase()) ?? null;
+        };
+
         this.events.forEach((evt, targetIdx) => {
             if (!evt.dependencies || evt.dependencies.length === 0) return;
             if (!this.shouldIncludeEvent(evt)) return;
-            
-            evt.dependencies.forEach(depName => {
-                // Sanitize dependency name for comparison
-                const sanitizedDepName = this.sanitizeEventId(depName);
-                
-                // Validate dependency exists
-                if (!validEventNames.has(sanitizedDepName)) {
-                    console.warn(`Storyteller Suite: Dependency "${depName}" not found for event "${evt.name}". Arrow will not be rendered.`);
+
+            evt.dependencies.forEach((dependencyRef, dependencyIndex) => {
+                const sourceIdx = resolveDependencyIndex(dependencyRef);
+                const dependencyLabel = evt.dependencyNames?.[dependencyIndex]
+                    || this.events[sourceIdx ?? -1]?.name
+                    || dependencyRef;
+
+                if (sourceIdx == null || sourceIdx < 0) {
+                    console.warn(`Storyteller Suite: Dependency "${dependencyLabel}" not found for event "${evt.name}". Arrow will not be rendered.`);
                     return;
                 }
-                
-                const sourceIdx = this.events.findIndex(e => this.sanitizeEventId(e.name) === sanitizedDepName);
-                if (sourceIdx === -1) {
-                    console.warn(`Storyteller Suite: Could not find index for dependency "${depName}" for event "${evt.name}".`);
-                    return;
-                }
-                
+
                 if (!this.shouldIncludeEvent(this.events[sourceIdx])) return;
-                
-                arrows.push({
-                    id: `arrow_${arrowId++}`,
-                    id_item_1: sourceIdx,
-                    id_item_2: targetIdx,
-                    title: `${depName} → ${evt.name}`
-                });
+
+                const sourceItemIds = this.resolveDependencyItemIds(sourceIdx, targetIdx);
+                const targetItemIds = this.resolveDependencyItemIds(targetIdx, sourceIdx);
+                const pairCount = Math.min(sourceItemIds.length, targetItemIds.length);
+                if (pairCount === 0) return;
+
+                for (let pairIndex = 0; pairIndex < pairCount; pairIndex++) {
+                    arrows.push({
+                        id: `arrow_${arrowId++}`,
+                        id_item_1: sourceItemIds[pairIndex],
+                        id_item_2: targetItemIds[pairIndex],
+                        title: `${dependencyLabel} -> ${evt.name}`,
+                        color: arrowColor,
+                        line: arrowLineType,
+                        type: 3,
+                        track: dependencyIndex + pairIndex
+                    });
+                }
             });
         });
-        
+
         return arrows;
+    }
+
+    private getDependencyArrowLineType(): number {
+        const style = this.options.dependencyArrowStyle ?? 'solid';
+        if (style === 'dashed') return 1;
+        if (style === 'dotted') return 2;
+        return 0;
+    }
+
+    private getDependencyArrowColor(): string {
+        const computed = window.getComputedStyle(this.container);
+        const colorCandidates = [
+            computed.getPropertyValue('--interactive-accent').trim(),
+            computed.getPropertyValue('--color-accent').trim(),
+            computed.getPropertyValue('--text-accent').trim(),
+            typeof computed.color === 'string' ? computed.color.trim() : ''
+        ];
+
+        return colorCandidates.find(color => color.length > 0) || '#7cb3ff';
+    }
+
+    private resolveDependencyItemIds(eventIndex: number, otherEventIndex: number): Array<string | number> {
+        const itemIds = this.eventIndexToItemIds.get(eventIndex) || [];
+        if (itemIds.length <= 1 || this.options.groupMode !== 'character') {
+            return itemIds.slice(0, 1);
+        }
+
+        const event = this.events[eventIndex];
+        const otherEvent = this.events[otherEventIndex];
+        const eventGroups = this.eventIndexToGroupItemIds.get(eventIndex) || new Map<string, string | number>();
+        const otherGroups = this.eventIndexToGroupItemIds.get(otherEventIndex) || new Map<string, string | number>();
+        const otherCharacters = new Set(this.getCharacterLaneKeys(otherEvent));
+        const sharedLanes = this.getCharacterLaneKeys(event)
+            .filter(characterId => otherCharacters.has(characterId))
+            .sort((a, b) => a.localeCompare(b));
+
+        if (sharedLanes.length > 0) {
+            return sharedLanes
+                .map(characterId => eventGroups.get(characterId))
+                .filter((itemId): itemId is string | number => itemId !== undefined);
+        }
+
+        const fallbackLaneOrder = Array.from(eventGroups.keys());
+        if (fallbackLaneOrder.length > 0) {
+            const preferredLane = fallbackLaneOrder.find(characterId => !otherGroups.has(characterId)) ?? fallbackLaneOrder[0];
+            const itemId = eventGroups.get(preferredLane);
+            return itemId === undefined ? [] : [itemId];
+        }
+
+        return itemIds.slice(0, 1);
+    }
+
+    private getCharacterLaneKeys(event?: Event): string[] {
+        if (!event || !Array.isArray(event.characters) || event.characters.length === 0) {
+            return ['__unassigned__'];
+        }
+
+        return Array.from(new Set(
+            event.characters
+                .map(character => String(character ?? '').trim())
+                .filter(character => character.length > 0)
+        ));
     }
 
     /**
@@ -1670,5 +1785,6 @@ export class TimelineRenderer {
         });
     }
 }
+
 
 

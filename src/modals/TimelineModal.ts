@@ -209,6 +209,8 @@ export class TimelineModal extends Modal {
             density: this.currentState.density,
             editMode: this.currentState.editMode,
             defaultGanttDuration: this.defaultGanttDuration,
+            showProgressBars: this.plugin.settings.ganttShowProgressBars ?? true,
+            dependencyArrowStyle: this.plugin.settings.ganttArrowStyle ?? 'solid',
             showDependencies: true,
             showEras: this.currentState.showEras,
             narrativeOrder: this.currentState.narrativeOrder

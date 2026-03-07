@@ -14,6 +14,8 @@ export class TemplateVariableEditorModal extends ResponsiveModal {
     private variable: TemplateVariable;
     private onSave: (variable: TemplateVariable) => void;
     private isNewVariable: boolean;
+    private typeSpecificContainer: HTMLElement | null = null;
+    private previewContainer: HTMLElement | null = null;
 
     constructor(
         app: App,
@@ -93,6 +95,7 @@ export class TemplateVariableEditorModal extends ResponsiveModal {
                     if (formatted !== currentValue) {
                         this.variable.name = formatted;
                         text.setValue(formatted);
+                        this.renderPreviewSection();
                     }
                 });
                 
@@ -105,6 +108,7 @@ export class TemplateVariableEditorModal extends ResponsiveModal {
                         .replace(/[^a-zA-Z0-9]/g, '')
                         .replace(/^[0-9]/, '');
                     this.variable.name = tempFormatted;
+                    this.renderPreviewSection();
                 });
             });
 
@@ -121,7 +125,7 @@ export class TemplateVariableEditorModal extends ResponsiveModal {
             );
 
         // Variable Type
-        const typeSetting = new Setting(container)
+        new Setting(container)
             .setName('Variable Type')
             .setDesc('Data type for this variable')
             .addDropdown(dropdown => dropdown
@@ -133,17 +137,13 @@ export class TemplateVariableEditorModal extends ResponsiveModal {
                 .setValue(this.variable.type)
                 .onChange(value => {
                     this.variable.type = value as TemplateVariable['type'];
-                    this.onOpen(); // Re-render to show/hide options field
+                    this.renderTypeSpecificFields();
+                    this.renderPreviewSection();
                 })
             );
 
-        // Default Value
-        this.renderDefaultValueField(container);
-
-        // Options (only for select type)
-        if (this.variable.type === 'select') {
-            this.renderOptionsField(container);
-        }
+        this.typeSpecificContainer = container.createDiv('variable-type-specific-fields');
+        this.renderTypeSpecificFields();
 
         // Description
         new Setting(container)
@@ -171,7 +171,30 @@ export class TemplateVariableEditorModal extends ResponsiveModal {
         }
 
         // Example Preview
-        this.renderExamplePreview(container);
+        this.previewContainer = container.createDiv('variable-example-preview-host');
+        this.renderPreviewSection();
+    }
+
+    private renderTypeSpecificFields(): void {
+        if (!this.typeSpecificContainer) {
+            return;
+        }
+
+        this.typeSpecificContainer.empty();
+        this.renderDefaultValueField(this.typeSpecificContainer);
+
+        if (this.variable.type === 'select') {
+            this.renderOptionsField(this.typeSpecificContainer);
+        }
+    }
+
+    private renderPreviewSection(): void {
+        if (!this.previewContainer) {
+            return;
+        }
+
+        this.previewContainer.empty();
+        this.renderExamplePreview(this.previewContainer);
     }
 
     private renderDefaultValueField(container: HTMLElement): void {
@@ -246,6 +269,7 @@ export class TemplateVariableEditorModal extends ResponsiveModal {
                 .map(opt => opt.trim())
                 .filter(opt => opt.length > 0);
             this.variable.options = options.length > 0 ? options : undefined;
+            this.renderPreviewSection();
         });
     }
 

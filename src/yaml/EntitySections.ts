@@ -49,9 +49,11 @@ export const WIKI_LINK_ARRAY_FIELDS = new Set([
 export const WIKI_LINK_SCALAR_FIELDS = new Set([
     'currentLocationId',
     'parentLocationId',
+    'correspondingMapId',
     'bookId',
     'chapterId',
     'currentSceneId',
+    'campaignBoardMapId',
     'location',
     'currentOwner',
     'currentLocation',
@@ -62,6 +64,7 @@ export const WIKI_LINK_SCALAR_FIELDS = new Set([
     'parentGroup',
     'parentCulture',
     'activeSessionId',
+    'activeMapId',
     'primaryMapId',
     'parentMapId',
     'correspondingLocationId',
@@ -103,7 +106,7 @@ const FRONTMATTER_WHITELISTS: Record<EntityType, Set<string>> = {
   ]),
   location: new Set([
     'id', 'name', 'locationType', 'type', 'region', 'status', 'parentLocation', 'parentLocationId',
-    'childLocationIds', 'mapBindings', 'entityRefs', 'cultures',
+    'childLocationIds', 'mapBindings', 'correspondingMapId', 'entityRefs', 'cultures',
     'groups', 'profileImagePath', 'images', 'customFields', 'connections',
     'balance', 'linkedEconomies', 'linkedChapters',
     'mapCoordinates', 'mapId', 'markerId', 'relatedMapIds', 'mapIcon', 'mapColor',
@@ -138,7 +141,7 @@ const FRONTMATTER_WHITELISTS: Record<EntityType, Set<string>> = {
     'id', 'name', 'chapterId', 'chapterName', 'status', 'priority', 'tags', 'profileImagePath',
     'linkedCharacters', 'linkedLocations', 'linkedEvents', 'linkedItems', 'linkedGroups',
     'mapCoordinates', 'mapId', 'markerId', 'relatedMapIds', 'mapIcon', 'mapColor',
-    'povCharacter', 'emotion', 'intensity', 'setupScenes', 'payoffScenes',
+    'campaignBoardMapId', 'povCharacter', 'emotion', 'intensity', 'setupScenes', 'payoffScenes',
     'synopsis', 'wordCount', 'targetWordCount', 'includeInCompile', 'date',
     'beats', 'content'
   ]),
@@ -192,7 +195,7 @@ const FRONTMATTER_WHITELISTS: Record<EntityType, Set<string>> = {
     'mapCoordinates', 'mapId', 'markerId', 'relatedMapIds', 'mapIcon', 'mapColor'
   ]),
   campaignSession: new Set([
-    'id', 'name', 'storyId', 'currentSceneId', 'currentSceneName',
+    'id', 'name', 'storyId', 'currentSceneId', 'currentSceneName', 'activeMapId',
     'partyCharacterIds', 'partyCharacterNames', 'partyState',
     'partyItems', 'flags',
     'status', 'created', 'modified'
