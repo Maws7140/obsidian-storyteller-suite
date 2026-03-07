@@ -1,8 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { App, Setting, Notice, TextAreaComponent, TextComponent, ButtonComponent, parseYaml, setIcon } from 'obsidian';
 import { Location } from '../types'; // Assumes Location type no longer has charactersPresent, eventsHere, subLocations
-import { getWhitelistKeys, parseSectionsFromMarkdown } from '../yaml/EntitySections';
-import { Group } from '../types';
+import { parseSectionsFromMarkdown } from '../yaml/EntitySections';
 import StorytellerSuitePlugin from '../main';
 import { t } from '../i18n/strings';
 import { addImageSelectionButtons } from '../utils/ImageSelectionHelper';
@@ -14,9 +13,10 @@ import { GalleryImageSuggestModal } from './GalleryImageSuggestModal';
 // TODO: Maps feature - MapSuggestModal to be reimplemented
 // import { MapSuggestModal } from './MapSuggestModal';
 import { ResponsiveModal } from './ResponsiveModal';
-import { PromptModal } from './ui/PromptModal';
 import { TemplatePickerModal } from './TemplatePickerModal';
 import { Template } from '../templates/TemplateTypes';
+import { EntityCustomFieldsEditor } from './entity/EntityCustomFieldsEditor';
+import { EntityGroupSelector } from './entity/EntityGroupSelector';
 // Placeholder imports for suggesters -
 // import { CharacterSuggestModal } from './CharacterSuggestModal';
 // import { EventSuggestModal } from './EventSuggestModal';
@@ -30,9 +30,9 @@ export class LocationModal extends ResponsiveModal {
     onSubmit: LocationModalSubmitCallback;
     onDelete?: LocationModalDeleteCallback;
     isNew: boolean;
-    private _groupRefreshInterval: number | null = null;
-    private groupSelectorContainer: HTMLElement | null = null;
     private imagesListEl!: HTMLElement;
+    private readonly customFieldsEditor: EntityCustomFieldsEditor;
+    private readonly groupSelector: EntityGroupSelector;
 
     constructor(app: App, plugin: StorytellerSuitePlugin, location: Location | null, onSubmit: LocationModalSubmitCallback, onDelete?: LocationModalDeleteCallback) {
         super(app);
@@ -57,6 +57,26 @@ export class LocationModal extends ResponsiveModal {
         // if (!initialLocation.subLocations) initialLocation.subLocations = [];
 
         this.location = initialLocation;
+        this.customFieldsEditor = new EntityCustomFieldsEditor(this.app, 'location', this.location.customFields);
+        this.groupSelector = new EntityGroupSelector({
+            plugin: this.plugin,
+            description: t('assignToGroupsDesc'),
+            getSelectedGroupIds: () => this.location.groups,
+            setSelectedGroupIds: groupIds => {
+                this.location.groups = groupIds;
+            },
+            loadSelectedGroupIds: async () => {
+                const identifier = this.location.id || this.location.name;
+                const locations = await this.plugin.listLocations();
+                return (locations.find(current => (current.id || current.name) === identifier)?.groups || this.location.groups || []) as string[];
+            },
+            persistAdd: async groupId => {
+                await this.plugin.addMemberToGroup(groupId, 'location', this.location.id || this.location.name);
+            },
+            persistRemove: async groupId => {
+                await this.plugin.removeMemberFromGroup(groupId, 'location', this.location.id || this.location.name);
+            }
+        });
         this.onSubmit = onSubmit;
         this.onDelete = onDelete;
         this.modalEl.addClass('storyteller-location-modal');
@@ -706,53 +726,12 @@ export class LocationModal extends ResponsiveModal {
         //         }));
 
         // --- Custom Fields ---
-        contentEl.createEl('h3', { text: t('customFields') });
-        const customFieldsContainer = contentEl.createDiv('storyteller-custom-fields-container');
-        // Render existing custom fields so users can see and edit them
-        if (!this.location.customFields) this.location.customFields = {};
-        this.renderCustomFields(customFieldsContainer, this.location.customFields);
-
-        new Setting(contentEl)
-            .addButton(button => button
-                .setButtonText(t('addCustomField'))
-                .setIcon('plus')
-                .onClick(() => {
-                    if (!this.location.customFields) this.location.customFields = {};
-                    const fields = this.location.customFields;
-                    const reserved = new Set<string>([...getWhitelistKeys('location'), 'customFields', 'filePath', 'id', 'sections']);
-                    const askValue = (key: string) => {
-                        new PromptModal(this.app, {
-                            title: 'Custom field value',
-                            label: `Value for "${key}"`,
-                            defaultValue: '',
-                            onSubmit: (val: string) => { fields[key] = val; }
-                        }).open();
-                    };
-                    new PromptModal(this.app, {
-                        title: 'New custom field',
-                        label: 'Field name',
-                        defaultValue: '',
-                        validator: (value: string) => {
-                            const trimmed = value.trim();
-                            if (!trimmed) return 'Field name cannot be empty';
-                            if (reserved.has(trimmed)) return 'That name is reserved';
-                            const exists = Object.keys(fields).some(k => k.toLowerCase() === trimmed.toLowerCase());
-                            if (exists) return 'A field with that name already exists';
-                            return null;
-                        },
-                        onSubmit: (name: string) => askValue(name.trim())
-                    }).open();
-                }));
+        this.customFieldsEditor.setFields(this.location.customFields);
+        this.customFieldsEditor.renderSection(contentEl);
 
         // --- Groups ---
-        this.groupSelectorContainer = contentEl.createDiv('storyteller-group-selector-container');
-        this.renderGroupSelector(this.groupSelectorContainer);
-        // --- Real-time group refresh ---
-        this._groupRefreshInterval = window.setInterval(() => {
-            if (this.modalEl.isShown() && this.groupSelectorContainer) {
-                this.renderGroupSelector(this.groupSelectorContainer);
-            }
-        }, 2000);
+        const groupSelectorContainer = contentEl.createDiv('storyteller-group-selector-container');
+        this.groupSelector.attach(groupSelectorContainer);
 
         // --- Action Buttons ---
         const buttonsSetting = new Setting(contentEl).setClass('storyteller-modal-buttons');
@@ -797,6 +776,11 @@ export class LocationModal extends ResponsiveModal {
                 this.location.description = this.location.description || '';
                 this.location.history = this.location.history || '';
                 try {
+                    const customFields = this.customFieldsEditor.getFields();
+                    if (!customFields) {
+                        return;
+                    }
+                    this.location.customFields = customFields;
                     await this.onSubmit(this.location);
                     this.close();
                 } catch (error) {
@@ -809,130 +793,8 @@ export class LocationModal extends ResponsiveModal {
     
 
 
-    renderCustomFields(container: HTMLElement, fields: Record<string, string>) {
-        container.empty();
-        fields = fields || {};
-        const keys = Object.keys(fields);
 
-        if (keys.length === 0) {
-            container.createEl('p', { text: t('noCustomFields'), cls: 'storyteller-modal-list-empty' });
-            return;
-        }
-
-        const reserved = new Set<string>([...getWhitelistKeys('location'), 'customFields', 'filePath', 'id', 'sections']);
-        keys.forEach(key => {
-            let currentKey = key;
-            const fieldSetting = new Setting(container)
-                .addText(text => text
-                    .setValue(currentKey)
-                    .setPlaceholder(t('fieldNamePh'))
-                    .onChange(newKey => {
-                        const trimmed = newKey.trim();
-                        const isUniqueCaseInsensitive = !Object.keys(fields).some(k => k.toLowerCase() === trimmed.toLowerCase());
-                        const isReserved = reserved.has(trimmed);
-                        if (trimmed && trimmed !== currentKey && isUniqueCaseInsensitive && !isReserved) {
-                            fields[trimmed] = fields[currentKey];
-                            delete fields[currentKey];
-                            currentKey = trimmed;
-                        } else if (trimmed !== currentKey) {
-                            text.setValue(currentKey);
-                            new Notice(t('customFieldError'));
-                        }
-                    }))
-                .addText(text => text
-                    .setValue(fields[currentKey]?.toString() || '')
-                    .setPlaceholder(t('fieldValuePh'))
-                    .onChange(value => {
-                        fields[currentKey] = value;
-                    }))
-                .addButton(button => button
-                    .setIcon('trash')
-                    .setTooltip(`Remove field "${currentKey}"`)
-                    .setClass('mod-warning')
-                    .onClick(() => {
-                        delete fields[currentKey];
-                        this.renderCustomFields(container, fields); // Re-render after deletion
-                    }));
-            fieldSetting.controlEl.addClass('storyteller-custom-field-row');
-        });
-    }
-
-    renderRelatedMapsList(container: HTMLElement) {
-        container.empty();
-        const relatedMapIds = this.location.relatedMapIds || [];
-
-        if (relatedMapIds.length === 0) {
-            container.createEl('p', { 
-                text: 'No related maps', 
-                cls: 'storyteller-modal-list-empty' 
-            });
-            return;
-        }
-
-        relatedMapIds.forEach((mapId, index) => {
-            const item = container.createDiv('storyteller-modal-list-item');
-            const infoSpan = item.createSpan();
-            infoSpan.setText(mapId);
-
-            new ButtonComponent(item)
-                .setClass('storyteller-modal-list-remove')
-                .setTooltip(`Remove ${mapId}`)
-                .setIcon('cross')
-                .onClick(() => {
-                    this.location.relatedMapIds?.splice(index, 1);
-                    this.renderRelatedMapsList(container);
-                });
-        });
-    }
-
-    renderGroupSelector(container: HTMLElement) {
-        container.empty();
-        const allGroups = this.plugin.getGroups();
-        const syncSelection = async (): Promise<Set<string>> => {
-            const identifier = this.location.id || this.location.name;
-            const freshList = await this.plugin.listLocations();
-            const fresh = freshList.find(l => (l.id || l.name) === identifier);
-            const current = new Set((fresh?.groups || this.location.groups || []) as string[]);
-            this.location.groups = Array.from(current);
-            return current;
-        };
-        (async () => {
-            const selectedGroupIds = await syncSelection();
-            new Setting(container)
-                .setName(t('groups'))
-                .setDesc(t('assignToGroupsDesc'))
-                .addDropdown(dropdown => {
-                    dropdown.addOption('', t('selectGroupPlaceholder'));
-                    allGroups.forEach(group => {
-                        dropdown.addOption(group.id, group.name);
-                    });
-                    dropdown.setValue('');
-                    dropdown.onChange(async (value) => {
-                        if (value && !selectedGroupIds.has(value)) {
-                            selectedGroupIds.add(value);
-                            this.location.groups = Array.from(selectedGroupIds);
-                            await this.plugin.addMemberToGroup(value, 'location', this.location.id || this.location.name);
-                            this.renderGroupSelector(container);
-                        }
-                    });
-                });
-            if (selectedGroupIds.size > 0) {
-                const selectedDiv = container.createDiv('selected-groups');
-                allGroups.filter(g => selectedGroupIds.has(g.id)).forEach(group => {
-                    const tag = selectedDiv.createSpan({ text: group.name, cls: 'group-tag' });
-                    const removeBtn = tag.createSpan({ text: ' ×', cls: 'remove-group-btn' });
-                    removeBtn.onclick = async () => {
-                        selectedGroupIds.delete(group.id);
-                        this.location.groups = Array.from(selectedGroupIds);
-                        await this.plugin.removeMemberFromGroup(group.id, 'location', this.location.id || this.location.name);
-                        this.renderGroupSelector(container);
-                    };
-                });
-            }
-        })();
-    }
-
-    /**
+  /**
      * Check if setting a parent location by ID would create a circular reference
      */
     private async wouldCreateCircularReferenceById(locationId: string): Promise<boolean> {
@@ -1131,9 +993,8 @@ export class LocationModal extends ResponsiveModal {
     }
 
     onClose() {
+        this.groupSelector.dispose();
         this.contentEl.empty();
-        if (this._groupRefreshInterval) {
-            clearInterval(this._groupRefreshInterval);
-        }
     }
 }
+

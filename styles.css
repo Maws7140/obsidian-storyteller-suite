@@ -9042,6 +9042,209 @@ body.mod-rtl .storyteller-group-members {
 .storyteller-campaign-encounter-wrap { margin-bottom: 1rem; }
 
 /* ── Scene entity context panel ─────────────────────────────────────────── */
+.storyteller-campaign-board {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    margin: 0 0 1rem;
+    padding: 1rem;
+    border: 1px solid color-mix(in srgb, var(--interactive-accent) 18%, var(--background-modifier-border));
+    border-radius: 16px;
+    background:
+        linear-gradient(180deg, color-mix(in srgb, var(--background-primary) 88%, transparent), color-mix(in srgb, var(--background-secondary) 82%, transparent)),
+        radial-gradient(900px 320px at 0% 0%, color-mix(in srgb, var(--interactive-accent) 9%, transparent), transparent 60%);
+    box-shadow: 0 18px 42px rgba(0, 0, 0, 0.18);
+}
+.storyteller-campaign-board-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+.storyteller-campaign-board-title-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    min-width: 0;
+}
+.storyteller-campaign-board-kicker,
+.storyteller-campaign-board-inspector-kicker {
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-muted);
+}
+.storyteller-campaign-board-title {
+    margin: 0;
+    font-size: 1.05rem;
+    line-height: 1.15;
+}
+.storyteller-campaign-board-meta {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+.storyteller-campaign-board-actions {
+    display: flex;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+}
+.storyteller-campaign-board-nav {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    flex-wrap: wrap;
+}
+.storyteller-campaign-board-nav-label {
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+    margin-right: 0.1rem;
+}
+.storyteller-campaign-board-nav-btn,
+.storyteller-campaign-board-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.35rem 0.65rem;
+    border-radius: 999px;
+    border: 1px solid var(--background-modifier-border);
+    background: color-mix(in srgb, var(--background-primary) 84%, transparent);
+    color: var(--text-normal);
+    font-size: 0.78rem;
+    line-height: 1.15;
+}
+.storyteller-campaign-board-nav-btn {
+    cursor: pointer;
+}
+.storyteller-campaign-board-nav-btn:hover,
+.storyteller-campaign-board-pill:hover {
+    background: color-mix(in srgb, var(--background-modifier-hover) 72%, transparent);
+}
+.storyteller-campaign-board-nav-btn.is-active,
+.storyteller-campaign-board-pill.is-active {
+    border-color: color-mix(in srgb, var(--interactive-accent) 55%, var(--background-modifier-border));
+    background: color-mix(in srgb, var(--interactive-accent) 16%, transparent);
+    color: var(--interactive-accent);
+}
+.storyteller-campaign-board-frame {
+    position: relative;
+    overflow: hidden;
+    border-radius: 14px;
+    border: 1px solid color-mix(in srgb, var(--background-modifier-border) 82%, transparent);
+    background: rgba(8, 10, 13, 0.82);
+}
+.storyteller-campaign-board-stage {
+    position: relative;
+    width: 100%;
+    min-height: 280px;
+}
+.storyteller-campaign-board-image {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    user-select: none;
+    pointer-events: none;
+}
+.storyteller-campaign-board-pin {
+    position: absolute;
+    transform: translate(-50%, -50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.24rem;
+    padding: 0;
+    border: none;
+    background: none;
+    cursor: pointer;
+    z-index: 1;
+}
+.storyteller-campaign-board-pin-dot {
+    width: 14px;
+    height: 14px;
+    border-radius: 999px;
+    border: 2px solid rgba(255, 255, 255, 0.92);
+    background: var(--interactive-accent);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.34);
+}
+.storyteller-campaign-board-pin.is-current .storyteller-campaign-board-pin-dot {
+    background: var(--color-green);
+}
+.storyteller-campaign-board-pin.is-selected .storyteller-campaign-board-pin-dot {
+    width: 18px;
+    height: 18px;
+    box-shadow: 0 0 0 6px color-mix(in srgb, var(--interactive-accent) 16%, transparent), 0 10px 24px rgba(0, 0, 0, 0.38);
+}
+.storyteller-campaign-board-pin-label {
+    max-width: 180px;
+    padding: 0.15rem 0.45rem;
+    border-radius: 999px;
+    background: rgba(12, 14, 18, 0.78);
+    color: #fff;
+    font-size: 0.72rem;
+    font-weight: 600;
+    line-height: 1.2;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.storyteller-campaign-board-caption {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    line-height: 1.45;
+}
+.storyteller-campaign-board-empty {
+    padding: 0.9rem 1rem;
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--background-secondary) 72%, transparent);
+    color: var(--text-muted);
+    font-size: 0.82rem;
+    border: 1px dashed var(--background-modifier-border);
+}
+.storyteller-campaign-board-inspector {
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+    padding: 0.95rem 1rem;
+    border-radius: 14px;
+    border: 1px solid var(--background-modifier-border);
+    background: color-mix(in srgb, var(--background-primary) 90%, transparent);
+}
+.storyteller-campaign-board-inspector-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+.storyteller-campaign-board-inspector-header h4 {
+    margin: 0.1rem 0 0;
+    font-size: 0.95rem;
+}
+.storyteller-campaign-board-inspector-actions {
+    display: flex;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+}
+.storyteller-campaign-board-inspector-copy {
+    font-size: 0.84rem;
+    line-height: 1.5;
+    color: var(--text-muted);
+}
+.storyteller-campaign-board-pill-row {
+    display: flex;
+    gap: 0.35rem;
+    flex-wrap: wrap;
+}
+.storyteller-campaign-board-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+}
 .storyteller-campaign-scene-context { display: flex; flex-direction: column; gap: 0.4rem; padding: 0.6rem 0.75rem; background: var(--background-secondary); border: 1px solid var(--background-modifier-border); border-radius: 6px; margin-bottom: 1rem; }
 .storyteller-campaign-location-badge { display: inline-flex; align-items: center; gap: 0.3rem; font-size: 0.78rem; color: var(--text-muted); font-weight: 600; }
 .storyteller-campaign-loc-bonus { font-size: 0.75rem; font-weight: 700; }
@@ -9158,6 +9361,9 @@ body.mod-rtl .storyteller-group-members {
     .storyteller-campaign-scene-panel {
         min-height: 0;
         flex: 1 1 auto;
+    }
+    .storyteller-campaign-board-pin-label {
+        max-width: 120px;
     }
 }
 .storyteller-branch-choice-target { font-size: 0.8rem; color: var(--text-muted); white-space: nowrap; }
@@ -9473,6 +9679,28 @@ body.mod-rtl .storyteller-group-members {
     white-space: nowrap;
 }
 
+.storyteller-timeline-view .vis-item.gantt-bar[style*="--sts-group-color"] .vis-item-content::before,
+.storyteller-timeline-modal .vis-item.gantt-bar[style*="--sts-group-color"] .vis-item-content::before {
+    content: "";
+    display: inline-block;
+    width: 0.42rem;
+    height: 0.9rem;
+    border-radius: 2px;
+    background: var(--sts-group-color);
+    opacity: 0.58;
+    flex: 0 0 auto;
+}
+
+.storyteller-timeline-view .sts-timeline-dependency-layer,
+.storyteller-timeline-modal .sts-timeline-dependency-layer {
+    overflow: visible;
+}
+
+.storyteller-timeline-view .sts-timeline-dependency-arrow,
+.storyteller-timeline-modal .sts-timeline-dependency-arrow {
+    transition: opacity 120ms ease;
+}
+
 .storyteller-timeline-view .vis-item.timeline-milestone,
 .storyteller-timeline-modal .vis-item.timeline-milestone,
 .storyteller-timeline-view .vis-item.gantt-milestone,
@@ -9742,4 +9970,6 @@ body.mod-rtl .storyteller-group-members {
     border-color: color-mix(in srgb, #f59e0b 70%, var(--interactive-accent) 30%) !important;
     box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.34), var(--sts-tl-item-shadow) !important;
 }
+
+
 

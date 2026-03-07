@@ -6,7 +6,8 @@ import { addImageSelectionButtons } from '../utils/ImageSelectionHelper';
 import { TemplatePickerModal } from './TemplatePickerModal';
 import { Template } from '../templates/TemplateTypes';
 import { t } from '../i18n/strings';
-import { getWhitelistKeys, parseSectionsFromMarkdown } from '../yaml/EntitySections';
+import { parseSectionsFromMarkdown } from '../yaml/EntitySections';
+import { EntityCustomFieldsEditor } from './entity/EntityCustomFieldsEditor';
 
 export type MagicSystemModalSubmitCallback = (magicSystem: MagicSystem) => Promise<void>;
 export type MagicSystemModalDeleteCallback = (magicSystem: MagicSystem) => Promise<void>;
@@ -20,6 +21,7 @@ export class MagicSystemModal extends ResponsiveModal {
     onSubmit: MagicSystemModalSubmitCallback;
     onDelete?: MagicSystemModalDeleteCallback;
     isNew: boolean;
+    private readonly customFieldsEditor: EntityCustomFieldsEditor;
 
     constructor(
         app: App,
@@ -62,6 +64,7 @@ export class MagicSystemModal extends ResponsiveModal {
         if (!Array.isArray(this.magicSystem.linkedItems)) this.magicSystem.linkedItems = [];
         if (!Array.isArray(this.magicSystem.groups)) this.magicSystem.groups = [];
         if (!Array.isArray(this.magicSystem.connections)) this.magicSystem.connections = [];
+        this.customFieldsEditor = new EntityCustomFieldsEditor(this.app, 'magicSystem', this.magicSystem.customFields);
 
         this.onSubmit = onSubmit;
         this.onDelete = onDelete;
@@ -357,6 +360,9 @@ export class MagicSystemModal extends ResponsiveModal {
                 text.inputEl.style.width = '100%';
             });
 
+        this.customFieldsEditor.setFields(this.magicSystem.customFields);
+        this.customFieldsEditor.renderSection(contentEl);
+
         // Buttons
         const buttonsSetting = new Setting(contentEl);
 
@@ -368,6 +374,11 @@ export class MagicSystemModal extends ResponsiveModal {
                     new Notice(t('magicSystemNameRequired'));
                     return;
                 }
+                const customFields = this.customFieldsEditor.getFields();
+                if (!customFields) {
+                    return;
+                }
+                this.magicSystem.customFields = customFields;
                 await this.onSubmit(this.magicSystem);
                 this.close();
             })

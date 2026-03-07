@@ -11,6 +11,7 @@ import { EventSuggestModal } from './EventSuggestModal';
 import { PlotItemSuggestModal } from './PlotItemSuggestModal';
 import { TemplatePickerModal } from './TemplatePickerModal';
 import { Template } from '../templates/TemplateTypes';
+import { EntityCustomFieldsEditor } from './entity/EntityCustomFieldsEditor';
 
 export type GroupModalSubmitCallback = (group: Group) => Promise<void>;
 export type GroupModalDeleteCallback = (groupId: string) => Promise<void>;
@@ -29,6 +30,7 @@ export class GroupModal extends ResponsiveModal {
     allPlotItems: PlotItem[] = [];
     allGroups: Group[] = [];
     allCultures: Culture[] = [];
+    private readonly customFieldsEditor: EntityCustomFieldsEditor;
 
     constructor(app: App, plugin: StorytellerSuitePlugin, group: Group | null, onSubmit: GroupModalSubmitCallback, onDelete?: GroupModalDeleteCallback) {
         super(app);
@@ -66,6 +68,7 @@ export class GroupModal extends ResponsiveModal {
         }
         this.onSubmit = onSubmit;
         this.onDelete = onDelete;
+        this.customFieldsEditor = new EntityCustomFieldsEditor(this.app, 'faction', this.group.customFields);
         this.modalEl.addClass('storyteller-group-modal');
     }
 
@@ -266,8 +269,8 @@ export class GroupModal extends ResponsiveModal {
         );
 
         // === MEMBERS ===
-        contentEl.createEl('h3', { text: t('members') });
-        this.renderMemberSelectors(contentEl);
+        const membersSectionEl = contentEl.createDiv('storyteller-group-members-section');
+        this.renderMemberSelectors(membersSectionEl);
 
         // === FACTION DETAILS === (only show if not collection type)
         if (this.group.groupType && this.group.groupType !== 'collection') {
@@ -418,53 +421,8 @@ export class GroupModal extends ResponsiveModal {
             if (!this.group.groupRelationships) {
                 this.group.groupRelationships = [];
             }
-
-            contentEl.createEl('h4', { text: 'Inter-Group Relationships', cls: 'storyteller-subsection-header' });
-
-            this.group.groupRelationships.forEach((rel, index) => {
-                const relSetting = new Setting(contentEl)
-                    .setName(`Relationship ${index + 1}`)
-                    .addDropdown(dropdown => {
-                        dropdown.addOption('', 'Select group...');
-                        this.allGroups
-                            .filter(g => g.id !== this.group.id)
-                            .forEach(g => dropdown.addOption(g.name, g.name));
-                        dropdown.setValue(rel.groupName || '')
-                            .onChange(value => { rel.groupName = value; });
-                    })
-                    .addDropdown(dropdown => {
-                        dropdown
-                            .addOption('allied', 'Allied')
-                            .addOption('friendly', 'Friendly')
-                            .addOption('neutral', 'Neutral')
-                            .addOption('rival', 'Rival')
-                            .addOption('hostile', 'Hostile')
-                            .addOption('at-war', 'At War')
-                            .setValue(rel.relationshipType || 'neutral')
-                            .onChange(value => { rel.relationshipType = value as any; });
-                    })
-                    .addButton(btn => btn
-                        .setIcon('trash')
-                        .setTooltip('Remove')
-                        .onClick(() => {
-                            this.group.groupRelationships = this.group.groupRelationships!.filter((_, i) => i !== index);
-                            void this.onOpen();
-                        })
-                    );
-            });
-
-            new Setting(contentEl)
-                .addButton(btn => btn
-                    .setButtonText('Add Group Relationship')
-                    .onClick(() => {
-                        if (!this.group.groupRelationships) this.group.groupRelationships = [];
-                        this.group.groupRelationships.push({
-                            groupName: '',
-                            relationshipType: 'neutral'
-                        });
-                        void this.onOpen();
-                    })
-                );
+            const relationshipEditorEl = contentEl.createDiv('storyteller-group-relationship-editor');
+            this.renderGroupRelationshipEditor(relationshipEditorEl);
 
             // Linked Culture
             new Setting(contentEl)
@@ -502,53 +460,7 @@ export class GroupModal extends ResponsiveModal {
                     text.inputEl.rows = 2;
                 });
 
-            // === CUSTOM FIELDS ===
-            contentEl.createEl('h3', { text: 'Custom Fields' });
-
-            if (!this.group.customFields) {
-                this.group.customFields = {};
-            }
-
-            Object.entries(this.group.customFields).forEach(([key, value]) => {
-                new Setting(contentEl)
-                    .setName('Field')
-                    .addText(text => {
-                        const oldKey = key;
-                        text.setValue(key)
-                            .setPlaceholder('Field name')
-                            .onChange(newKey => {
-                                if (newKey && newKey !== oldKey) {
-                                    const val = this.group.customFields![oldKey];
-                                    delete this.group.customFields![oldKey];
-                                    this.group.customFields![newKey] = val;
-                                }
-                            });
-                    })
-                    .addText(text => text
-                        .setValue(value)
-                        .setPlaceholder('Field value')
-                        .onChange(newValue => { this.group.customFields![key] = newValue; })
-                    )
-                    .addButton(btn => btn
-                        .setIcon('trash')
-                        .setTooltip('Remove field')
-                        .onClick(() => {
-                            delete this.group.customFields![key];
-                            void this.onOpen();
-                        })
-                    );
-            });
-
-            new Setting(contentEl)
-                .addButton(btn => btn
-                    .setButtonText('Add Custom Field')
-                    .onClick(() => {
-                        if (!this.group.customFields) this.group.customFields = {};
-                        const fieldNum = Object.keys(this.group.customFields).length + 1;
-                        this.group.customFields[`field${fieldNum}`] = '';
-                        void this.onOpen();
-                    })
-                );
+            this.customFieldsEditor.renderSection(contentEl);
         }
 
         // --- Action Buttons ---
@@ -557,6 +469,11 @@ export class GroupModal extends ResponsiveModal {
             .setButtonText(this.isNew ? t('createGroupBtn') : t('saveChanges'))
             .setCta()
             .onClick(async () => {
+                const customFields = this.customFieldsEditor.getFields();
+                if (customFields === null) {
+                    return;
+                }
+                this.group.customFields = customFields;
                 if (!this.group.name.trim()) {
                     new Notice(t('groupNameRequired'));
                     return;
@@ -745,7 +662,65 @@ export class GroupModal extends ResponsiveModal {
         }
     }
 
+    private renderGroupRelationshipEditor(container: HTMLElement): void {
+        container.empty();
+        container.createEl('h4', { text: 'Inter-Group Relationships', cls: 'storyteller-subsection-header' });
+
+        if (!this.group.groupRelationships || this.group.groupRelationships.length === 0) {
+            container.createEl('p', {
+                text: 'No inter-group relationships yet.',
+                cls: 'storyteller-modal-list-empty'
+            });
+        } else {
+            this.group.groupRelationships.forEach((rel, index) => {
+                new Setting(container)
+                    .setName(`Relationship ${index + 1}`)
+                    .addDropdown(dropdown => {
+                        dropdown.addOption('', 'Select group...');
+                        this.allGroups
+                            .filter(g => g.id !== this.group.id)
+                            .forEach(g => dropdown.addOption(g.name, g.name));
+                        dropdown.setValue(rel.groupName || '')
+                            .onChange(value => { rel.groupName = value; });
+                    })
+                    .addDropdown(dropdown => {
+                        dropdown
+                            .addOption('allied', 'Allied')
+                            .addOption('friendly', 'Friendly')
+                            .addOption('neutral', 'Neutral')
+                            .addOption('rival', 'Rival')
+                            .addOption('hostile', 'Hostile')
+                            .addOption('at-war', 'At War')
+                            .setValue(rel.relationshipType || 'neutral')
+                            .onChange(value => { rel.relationshipType = value as any; });
+                    })
+                    .addButton(btn => btn
+                        .setIcon('trash')
+                        .setTooltip('Remove')
+                        .onClick(() => {
+                            this.group.groupRelationships = this.group.groupRelationships!.filter((_, i) => i !== index);
+                            this.renderGroupRelationshipEditor(container);
+                        }));
+            });
+        }
+
+        new Setting(container)
+            .addButton(btn => btn
+                .setButtonText('Add Group Relationship')
+                .onClick(() => {
+                    if (!this.group.groupRelationships) this.group.groupRelationships = [];
+                    this.group.groupRelationships.push({
+                        groupName: '',
+                        relationshipType: 'neutral'
+                    });
+                    this.renderGroupRelationshipEditor(container);
+                }));
+    }
+
     renderMemberSelectors(container: HTMLElement) {
+        container.empty();
+        container.createEl('h3', { text: t('members') });
+
         const isMember = (type: 'character' | 'location' | 'event' | 'item', id: string) =>
             this.group.members.some(m => m.type === type && m.id === id);
 
@@ -766,8 +741,10 @@ export class GroupModal extends ResponsiveModal {
                 const removeBtn = tag.createSpan({ text: ' ×', cls: 'remove-group-btn' });
                 removeBtn.onclick = async () => {
                     this.group.members = this.group.members.filter(m => !(m.type === 'character' && m.id === member.id));
-                    await this.plugin.removeMemberFromGroup(this.group.id, 'character', member.id);
-                    void this.onOpen();
+                    if (!this.isNew && this.group.id) {
+                        await this.plugin.removeMemberFromGroup(this.group.id, 'character', member.id);
+                    }
+                    this.renderMemberSelectors(container);
                 };
             }
         });
@@ -782,7 +759,7 @@ export class GroupModal extends ResponsiveModal {
                             if (!this.isNew && this.group.id) {
                                 await this.plugin.addMemberToGroup(this.group.id, 'character', selectedChar.id || selectedChar.name);
                             }
-                            void this.onOpen();
+                            this.renderMemberSelectors(container);
                         }
                     }).open();
                 });
@@ -805,8 +782,10 @@ export class GroupModal extends ResponsiveModal {
                 const removeBtn = tag.createSpan({ text: ' ×', cls: 'remove-group-btn' });
                 removeBtn.onclick = async () => {
                     this.group.members = this.group.members.filter(m => !(m.type === 'location' && m.id === member.id));
-                    await this.plugin.removeMemberFromGroup(this.group.id, 'location', member.id);
-                    void this.onOpen();
+                    if (!this.isNew && this.group.id) {
+                        await this.plugin.removeMemberFromGroup(this.group.id, 'location', member.id);
+                    }
+                    this.renderMemberSelectors(container);
                 };
             }
         });
@@ -821,7 +800,7 @@ export class GroupModal extends ResponsiveModal {
                             if (!this.isNew && this.group.id) {
                                 await this.plugin.addMemberToGroup(this.group.id, 'location', selectedLoc.id || selectedLoc.name);
                             }
-                            void this.onOpen();
+                            this.renderMemberSelectors(container);
                         }
                     }).open();
                 });
@@ -844,8 +823,10 @@ export class GroupModal extends ResponsiveModal {
                 const removeBtn = tag.createSpan({ text: ' ×', cls: 'remove-group-btn' });
                 removeBtn.onclick = async () => {
                     this.group.members = this.group.members.filter(m => !(m.type === 'event' && m.id === member.id));
-                    await this.plugin.removeMemberFromGroup(this.group.id, 'event', member.id);
-                    void this.onOpen();
+                    if (!this.isNew && this.group.id) {
+                        await this.plugin.removeMemberFromGroup(this.group.id, 'event', member.id);
+                    }
+                    this.renderMemberSelectors(container);
                 };
             }
         });
@@ -860,7 +841,7 @@ export class GroupModal extends ResponsiveModal {
                             if (!this.isNew && this.group.id) {
                                 await this.plugin.addMemberToGroup(this.group.id, 'event', selectedEvt.id || selectedEvt.name);
                             }
-                            void this.onOpen();
+                            this.renderMemberSelectors(container);
                         }
                     }).open();
                 });
@@ -882,8 +863,10 @@ export class GroupModal extends ResponsiveModal {
                 const removeBtn = tag.createSpan({ text: ' ×', cls: 'remove-group-btn' });
                 removeBtn.onclick = async () => {
                     this.group.members = this.group.members.filter(m => !(m.type === 'item' && m.id === member.id));
-                    await this.plugin.removeMemberFromGroup(this.group.id, 'item', member.id);
-                    void this.onOpen();
+                    if (!this.isNew && this.group.id) {
+                        await this.plugin.removeMemberFromGroup(this.group.id, 'item', member.id);
+                    }
+                    this.renderMemberSelectors(container);
                 };
             }
         });
@@ -897,7 +880,7 @@ export class GroupModal extends ResponsiveModal {
                         if (!this.isNew && this.group.id) {
                             await this.plugin.addMemberToGroup(this.group.id, 'item', itemId);
                         }
-                        void this.onOpen();
+                        this.renderMemberSelectors(container);
                     }
                 }).open();
             });
@@ -1030,6 +1013,7 @@ export class GroupModal extends ResponsiveModal {
 
         // Apply all fields to the group
         Object.assign(this.group, fields);
+        this.customFieldsEditor.setFields(this.group.customFields);
         if (Object.keys(allTemplateSections).length > 0) {
             Object.defineProperty(this.group, '_templateSections', {
                 value: allTemplateSections,

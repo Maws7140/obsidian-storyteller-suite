@@ -6,7 +6,8 @@ import { addImageSelectionButtons } from '../utils/ImageSelectionHelper';
 import { TemplatePickerModal } from './TemplatePickerModal';
 import { Template } from '../templates/TemplateTypes';
 import { t } from '../i18n/strings';
-import { getWhitelistKeys, parseSectionsFromMarkdown } from '../yaml/EntitySections';
+import { parseSectionsFromMarkdown } from '../yaml/EntitySections';
+import { EntityCustomFieldsEditor } from './entity/EntityCustomFieldsEditor';
 
 export type CultureModalSubmitCallback = (culture: Culture) => Promise<void>;
 export type CultureModalDeleteCallback = (culture: Culture) => Promise<void>;
@@ -20,6 +21,7 @@ export class CultureModal extends ResponsiveModal {
     onSubmit: CultureModalSubmitCallback;
     onDelete?: CultureModalDeleteCallback;
     isNew: boolean;
+    private readonly customFieldsEditor: EntityCustomFieldsEditor;
 
     constructor(
         app: App,
@@ -60,6 +62,7 @@ export class CultureModal extends ResponsiveModal {
         if (!Array.isArray(this.culture.linkedItems)) this.culture.linkedItems = [];
         if (!this.culture.groups) this.culture.groups = [];
         if (!this.culture.connections) this.culture.connections = [];
+        this.customFieldsEditor = new EntityCustomFieldsEditor(this.app, 'culture', this.culture.customFields);
 
         this.onSubmit = onSubmit;
         this.onDelete = onDelete;
@@ -486,6 +489,9 @@ export class CultureModal extends ResponsiveModal {
                 });
             });
 
+        this.customFieldsEditor.setFields(this.culture.customFields);
+        this.customFieldsEditor.renderSection(contentEl);
+
         // Buttons
         const buttonsSetting = new Setting(contentEl);
 
@@ -497,6 +503,11 @@ export class CultureModal extends ResponsiveModal {
                     new Notice(t('cultureNameRequired'));
                     return;
                 }
+                const customFields = this.customFieldsEditor.getFields();
+                if (!customFields) {
+                    return;
+                }
+                this.culture.customFields = customFields;
                 await this.onSubmit(this.culture);
                 this.close();
             })

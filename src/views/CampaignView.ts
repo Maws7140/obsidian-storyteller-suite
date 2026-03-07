@@ -30,8 +30,11 @@ import {
     Character,
     Event,
     Location,
+    MapBinding,
+    EntityRef,
     PlotItem,
     CompendiumEntry,
+    StoryMap,
 } from '../types';
 import {
     extractBranchesFromMarkdown,
@@ -49,6 +52,12 @@ import { renderEncounterWidget } from '../extensions/BranchBlockExtension';
 
 export const VIEW_TYPE_CAMPAIGN = 'storyteller-campaign-view';
 
+type CampaignBoardLocation = {
+    location: Location;
+    binding: MapBinding;
+    scenes: Scene[];
+};
+
 export class CampaignView extends ItemView {
     private plugin: StorytellerSuitePlugin;
 
@@ -61,6 +70,7 @@ export class CampaignView extends ItemView {
     private allScenes: Scene[] = [];
     private sceneBody = '';
     private locationData: Location | null = null;
+    private selectedBoardLocationId: string | null = null;
     private activeActorName: string | null = null;
     private partyCharacterStats = new Map<string, Character>();
     private allCharactersById = new Map<string, Character>();
@@ -97,6 +107,7 @@ export class CampaignView extends ItemView {
     async loadSession(session: CampaignSession, startingScene?: Scene): Promise<void> {
         this.session = { ...session };
         this.sceneHistory = [];
+        this.selectedBoardLocationId = null;
         this.ensureActiveActor(this.session);
         this.partyCharacterStats.clear();
         this.allCharactersById.clear();
@@ -350,6 +361,8 @@ export class CampaignView extends ItemView {
             }
         });
 
+        await this.renderCampaignBoard(panel);
+
         // Markdown scene body (branch/encounter blocks stripped)
         if (this.sceneBody.trim()) {
             const bodyEl = panel.createDiv('storyteller-campaign-scene-body');
@@ -433,22 +446,450 @@ export class CampaignView extends ItemView {
                 chip.createSpan({ text: name });
                 const takeBtn = chip.createEl('button', { cls: 'storyteller-campaign-take-btn', text: 'Take' });
                 takeBtn.addEventListener('click', async () => {
-                    if (!this.session) return;
-                    const inv = this.session.partyItems ?? [];
-                    const hasItem = inv.some(item => this.normalizeName(item) === this.normalizeName(name));
-                    if (!hasItem) {
-                        const previousItems = [...inv];
-                        this.session.partyItems = [...inv, name];
-                        await this.syncPartyInventoryOwnership(this.session, previousItems);
-                        await this.autosave(`Took *${name}*`);
-                        new Notice(`${name} added to inventory.`);
-                        await this.render();
-                    } else {
-                        new Notice(`${name} is already in your inventory.`);
-                    }
+                    await this.takePartyItem(name, `Took *${name}*`);
                 });
             }
         }
+    }
+
+    private async renderCampaignBoard(panel: HTMLElement): Promise<void> {
+        if (!this.session || !this.currentScene) return;
+
+        const maps = await this.plugin.listMaps().catch(() => [] as StoryMap[]);
+        const boardMap = await this.resolveCampaignBoardMap(maps);
+        if (!boardMap) return;
+
+        const mapId = boardMap.id || boardMap.name;
+        const boardEl = panel.createDiv('storyteller-campaign-board');
+
+        const header = boardEl.createDiv('storyteller-campaign-board-header');
+        const titleWrap = header.createDiv('storyteller-campaign-board-title-wrap');
+        titleWrap.createDiv({ cls: 'storyteller-campaign-board-kicker', text: 'Campaign board' });
+        titleWrap.createEl('h3', { cls: 'storyteller-campaign-board-title', text: boardMap.name });
+        const sceneOverride = this.mapReferenceMatches(this.currentScene.campaignBoardMapId, boardMap);
+        const autoSource = sceneOverride
+            ? 'Scene override'
+            : this.locationData
+                ? `From ${this.locationData.name}`
+                : 'Session board';
+        titleWrap.createDiv({ cls: 'storyteller-campaign-board-meta', text: autoSource });
+
+        const actions = header.createDiv('storyteller-campaign-board-actions');
+        if (boardMap.filePath) {
+            const noteBtn = actions.createEl('button', { cls: 'storyteller-campaign-btn', text: 'Open map' });
+            setIcon(noteBtn.createSpan(), 'map');
+            noteBtn.addEventListener('click', () => {
+                if (boardMap.filePath) {
+                    this.plugin.app.workspace.openLinkText(boardMap.filePath, '', 'tab');
+                }
+            });
+        }
+
+        const relatedMaps = [
+            boardMap.parentMapId,
+            ...(boardMap.childMapIds ?? []),
+        ]
+            .map(id => this.findMapByRef(id, maps))
+            .filter((candidate): candidate is StoryMap => Boolean(candidate));
+        if (relatedMaps.length > 0) {
+            const nav = boardEl.createDiv('storyteller-campaign-board-nav');
+            nav.createSpan({ cls: 'storyteller-campaign-board-nav-label', text: 'Boards' });
+            for (const relatedMap of relatedMaps) {
+                const targetId = relatedMap.id || relatedMap.name;
+                const button = nav.createEl('button', {
+                    cls: 'storyteller-campaign-board-nav-btn' + (targetId === mapId ? ' is-active' : ''),
+                    text: relatedMap.name,
+                    attr: { type: 'button' },
+                });
+                if (relatedMap.parentMapId === boardMap.id || relatedMap.parentMapId === boardMap.name) {
+                    button.title = 'Child board';
+                } else if (boardMap.parentMapId === targetId) {
+                    button.title = 'Parent board';
+                }
+                button.addEventListener('click', async () => {
+                    await this.switchCampaignBoardMap(targetId);
+                });
+            }
+        }
+
+        const imageUrl = this.getMapImageUrl(boardMap);
+        if (!imageUrl) {
+            boardEl.createDiv({
+                cls: 'storyteller-campaign-board-empty',
+                text: 'This board has no image yet. Add a background image to the map note to use it in Campaign mode.',
+            });
+            return;
+        }
+
+        const dimensions = await this.getCampaignBoardDimensions(boardMap, imageUrl);
+        if (!dimensions) {
+            boardEl.createDiv({
+                cls: 'storyteller-campaign-board-empty',
+                text: 'The board image could not be sized, so markers cannot be rendered yet.',
+            });
+            return;
+        }
+
+        const locations = await this.collectBoardLocations(boardMap);
+        const selectedLocationKey = this.ensureBoardLocationSelection(locations);
+
+        const frame = boardEl.createDiv('storyteller-campaign-board-frame');
+        const stage = frame.createDiv('storyteller-campaign-board-stage');
+        stage.style.aspectRatio = `${dimensions.width} / ${dimensions.height}`;
+        const imageEl = stage.createEl('img', {
+            cls: 'storyteller-campaign-board-image',
+            attr: { src: imageUrl, alt: boardMap.name },
+        });
+        imageEl.draggable = false;
+
+        for (const entry of locations) {
+            const [top, left] = entry.binding.coordinates;
+            const topPercent = this.clampBoardPercent((top / Math.max(dimensions.height, 1)) * 100);
+            const leftPercent = this.clampBoardPercent((left / Math.max(dimensions.width, 1)) * 100);
+            const locationKey = this.getLocationKey(entry.location);
+            const button = stage.createEl('button', {
+                cls:
+                    'storyteller-campaign-board-pin' +
+                    (this.isCurrentSceneLocation(entry.location) ? ' is-current' : '') +
+                    (selectedLocationKey === locationKey ? ' is-selected' : ''),
+                attr: { type: 'button' },
+            });
+            button.style.top = `${topPercent}%`;
+            button.style.left = `${leftPercent}%`;
+            button.title = entry.location.name;
+            button.createSpan({ cls: 'storyteller-campaign-board-pin-dot' });
+            button.createSpan({ cls: 'storyteller-campaign-board-pin-label', text: entry.location.name });
+            button.addEventListener('click', async () => {
+                this.selectedBoardLocationId = locationKey;
+                await this.render();
+            });
+        }
+
+        const caption = boardEl.createDiv('storyteller-campaign-board-caption');
+        caption.setText(
+            locations.length > 0
+                ? 'Click a mapped location to inspect it, jump scenes, or pull items straight into the party inventory.'
+                : 'No locations are bound to this board yet.'
+        );
+
+        const selectedLocation = locations.find(entry => this.getLocationKey(entry.location) === selectedLocationKey);
+        if (selectedLocation) {
+            await this.renderBoardLocationInspector(boardEl, selectedLocation);
+        }
+    }
+
+    private async renderBoardLocationInspector(container: HTMLElement, entry: CampaignBoardLocation): Promise<void> {
+        const inspector = container.createDiv('storyteller-campaign-board-inspector');
+        const header = inspector.createDiv('storyteller-campaign-board-inspector-header');
+        header.createDiv({ cls: 'storyteller-campaign-board-inspector-kicker', text: 'Selected location' });
+        header.createEl('h4', { text: entry.location.name });
+
+        const actions = header.createDiv('storyteller-campaign-board-inspector-actions');
+        if (entry.location.filePath) {
+            const noteBtn = actions.createEl('button', { cls: 'storyteller-campaign-btn', text: 'Open note' });
+            noteBtn.addEventListener('click', () => {
+                if (entry.location.filePath) {
+                    this.plugin.app.workspace.openLinkText(entry.location.filePath, '', 'tab');
+                }
+            });
+        }
+
+        if (entry.location.description) {
+            inspector.createDiv({
+                cls: 'storyteller-campaign-board-inspector-copy',
+                text: entry.location.description,
+            });
+        }
+
+        const scenes = entry.scenes;
+        if (scenes.length > 0) {
+            inspector.createDiv({ cls: 'storyteller-campaign-context-label', text: 'Scenes here' });
+            const sceneRow = inspector.createDiv('storyteller-campaign-board-pill-row');
+            for (const scene of scenes) {
+                const isCurrent = this.currentScene?.name === scene.name;
+                const button = sceneRow.createEl('button', {
+                    cls: 'storyteller-campaign-board-pill' + (isCurrent ? ' is-active' : ''),
+                    text: isCurrent ? `${scene.name} (current)` : scene.name,
+                    attr: { type: 'button' },
+                });
+                button.disabled = isCurrent;
+                button.addEventListener('click', async () => {
+                    await this.doNavigate(scene.name, true);
+                });
+            }
+        }
+
+        const [characters, items] = await Promise.all([
+            this.resolveLocationCharacterNames(entry.location),
+            this.resolveLocationItemNames(entry.location),
+        ]);
+
+        if (characters.length > 0) {
+            inspector.createDiv({ cls: 'storyteller-campaign-context-label', text: 'Characters here' });
+            const row = inspector.createDiv('storyteller-campaign-board-pill-row');
+            for (const name of characters) {
+                row.createSpan({ cls: 'storyteller-campaign-board-pill', text: name });
+            }
+        }
+
+        if (items.length > 0) {
+            inspector.createDiv({ cls: 'storyteller-campaign-context-label', text: 'Items here' });
+            const row = inspector.createDiv('storyteller-campaign-board-pill-row');
+            const inventory = this.session?.partyItems ?? [];
+            for (const name of items) {
+                const hasItem = inventory.some(item => this.normalizeName(item) === this.normalizeName(name));
+                const itemWrap = row.createDiv('storyteller-campaign-board-item');
+                itemWrap.createSpan({ cls: 'storyteller-campaign-board-pill', text: name });
+                const takeBtn = itemWrap.createEl('button', {
+                    cls: 'storyteller-campaign-take-btn',
+                    text: hasItem ? 'Owned' : 'Take',
+                    attr: { type: 'button' },
+                });
+                takeBtn.disabled = hasItem;
+                takeBtn.addEventListener('click', async () => {
+                    await this.takePartyItem(name, `Took *${name}* from *${entry.location.name}*`);
+                });
+            }
+        }
+    }
+
+    private getLocationKey(location: Pick<Location, 'id' | 'name'>): string {
+        return location.id || this.normalizeName(location.name);
+    }
+
+    private clampBoardPercent(value: number): number {
+        return Math.max(2, Math.min(98, value));
+    }
+
+    private ensureBoardLocationSelection(locations: CampaignBoardLocation[]): string | null {
+        if (locations.length === 0) {
+            this.selectedBoardLocationId = null;
+            return null;
+        }
+
+        if (this.selectedBoardLocationId) {
+            const existing = locations.find(entry => this.getLocationKey(entry.location) === this.selectedBoardLocationId);
+            if (existing) return this.selectedBoardLocationId;
+        }
+
+        const currentLocation = this.locationData
+            ? locations.find(entry => this.getLocationKey(entry.location) === this.getLocationKey(this.locationData!))
+            : null;
+        if (currentLocation) {
+            this.selectedBoardLocationId = this.getLocationKey(currentLocation.location);
+            return this.selectedBoardLocationId;
+        }
+
+        this.selectedBoardLocationId = this.getLocationKey(locations[0].location);
+        return this.selectedBoardLocationId;
+    }
+
+    private isCurrentSceneLocation(location: Location): boolean {
+        if (!this.locationData) return false;
+        return this.getLocationKey(location) === this.getLocationKey(this.locationData);
+    }
+
+    private async collectBoardLocations(map: StoryMap): Promise<CampaignBoardLocation[]> {
+        const [locations, scenes] = await Promise.all([
+            this.plugin.listLocations().catch(() => [] as Location[]),
+            this.allScenes.length
+                ? Promise.resolve(this.allScenes)
+                : this.plugin.listScenes().catch(() => [] as Scene[]),
+        ]);
+
+        return locations
+            .map(location => {
+                const binding = location.mapBindings?.find(candidate => this.mapReferenceMatches(candidate.mapId, map));
+                if (!binding) return null;
+                const matchingScenes = scenes.filter(scene =>
+                    (scene.linkedLocations ?? []).some(name => this.normalizeName(name) === this.normalizeName(location.name))
+                );
+                return { location, binding, scenes: matchingScenes };
+            })
+            .filter((entry): entry is CampaignBoardLocation => Boolean(entry))
+            .sort((a, b) => a.location.name.localeCompare(b.location.name));
+    }
+
+    private async resolveCampaignBoardMap(maps?: StoryMap[]): Promise<StoryMap | null> {
+        const availableMaps = maps ?? await this.plugin.listMaps().catch(() => [] as StoryMap[]);
+        if (!availableMaps.length) return null;
+
+        const activeMapId = this.session?.activeMapId;
+        if (activeMapId) {
+            const active = this.findMapByRef(activeMapId, availableMaps);
+            if (active) return active;
+        }
+
+        const defaultMapId = await this.resolveDefaultCampaignBoardMapId(availableMaps);
+        if (!defaultMapId) return null;
+        return this.findMapByRef(defaultMapId, availableMaps);
+    }
+
+    private async resolveDefaultCampaignBoardMapId(maps?: StoryMap[]): Promise<string | null> {
+        const scene = this.currentScene;
+        if (!scene) return null;
+
+        const availableMaps = maps ?? await this.plugin.listMaps().catch(() => [] as StoryMap[]);
+        const sceneOverride = this.findMapByRef(scene.campaignBoardMapId, availableMaps);
+        if (sceneOverride) {
+            return sceneOverride.id || sceneOverride.name;
+        }
+
+        let location = this.locationData;
+        if (!location) {
+            const locationName = scene.linkedLocations?.[0];
+            if (locationName) {
+                const locations = await this.plugin.listLocations().catch(() => [] as Location[]);
+                location = locations.find(candidate => this.normalizeName(candidate.name) === this.normalizeName(locationName)) ?? null;
+            }
+        }
+        if (!location) return null;
+
+        const correspondingLocationMap = this.findMapByRef(location.correspondingMapId, availableMaps);
+        if (correspondingLocationMap) {
+            return correspondingLocationMap.id || correspondingLocationMap.name;
+        }
+
+        const locationKeys = new Set(
+            [location.id, location.name]
+                .filter((value): value is string => Boolean(value))
+                .map(value => this.normalizeName(value))
+        );
+        const correspondingMap = availableMaps.find(map =>
+            Boolean(map.correspondingLocationId) &&
+            locationKeys.has(this.normalizeName(String(map.correspondingLocationId)))
+        );
+        if (correspondingMap) {
+            return correspondingMap.id || correspondingMap.name;
+        }
+
+        const boundMap = (location.mapBindings ?? [])
+            .map(binding => this.findMapByRef(binding.mapId, availableMaps))
+            .find((candidate): candidate is StoryMap => Boolean(candidate));
+        return boundMap ? (boundMap.id || boundMap.name) : null;
+    }
+
+    private async syncActiveCampaignBoardForScene(): Promise<void> {
+        if (!this.session) return;
+        const defaultMapId = await this.resolveDefaultCampaignBoardMapId();
+        this.session.activeMapId = defaultMapId ?? undefined;
+        this.selectedBoardLocationId = this.locationData ? this.getLocationKey(this.locationData) : null;
+    }
+
+    private async switchCampaignBoardMap(mapId: string): Promise<void> {
+        if (!this.session) return;
+        if (this.session.activeMapId === mapId) return;
+        this.session.activeMapId = mapId;
+        this.selectedBoardLocationId = this.locationData ? this.getLocationKey(this.locationData) : null;
+        await this.autosave();
+        await this.render();
+    }
+
+    private findMapByRef(mapRef: string | null | undefined, maps: StoryMap[]): StoryMap | null {
+        const normalizedRef = String(mapRef ?? '').trim();
+        if (!normalizedRef) return null;
+        const lowerRef = this.normalizeName(normalizedRef);
+        return maps.find(map =>
+            (map.id && map.id === normalizedRef) ||
+            this.normalizeName(map.name) === lowerRef
+        ) ?? null;
+    }
+
+    private mapReferenceMatches(mapRef: string | null | undefined, map: StoryMap): boolean {
+        const normalizedRef = String(mapRef ?? '').trim();
+        if (!normalizedRef) return false;
+        return (map.id && map.id === normalizedRef) || this.normalizeName(map.name) === this.normalizeName(normalizedRef);
+    }
+
+    private getMapImageUrl(map: StoryMap): string | null {
+        const imagePath = map.backgroundImagePath || map.image;
+        if (!imagePath) return null;
+        if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) return imagePath;
+
+        const file = this.plugin.app.vault.getAbstractFileByPath(normalizePath(imagePath));
+        if (file instanceof TFile) {
+            return this.plugin.app.vault.getResourcePath(file);
+        }
+
+        const fallback = this.plugin.app.vault.getFiles().find(candidate =>
+            candidate.path === imagePath ||
+            candidate.path.endsWith(`/${imagePath}`) ||
+            candidate.name === imagePath
+        );
+        return fallback ? this.plugin.app.vault.getResourcePath(fallback) : null;
+    }
+
+    private async getCampaignBoardDimensions(map: StoryMap, imageUrl: string): Promise<{ width: number; height: number } | null> {
+        if (map.width && map.height) {
+            return { width: map.width, height: map.height };
+        }
+
+        return await new Promise(resolve => {
+            const img = new Image();
+            img.onload = () => resolve(
+                img.naturalWidth > 0 && img.naturalHeight > 0
+                    ? { width: img.naturalWidth, height: img.naturalHeight }
+                    : null
+            );
+            img.onerror = () => resolve(null);
+            img.src = imageUrl;
+        });
+    }
+
+    private async resolveLocationCharacterNames(location: Location): Promise<string[]> {
+        const refs = location.entityRefs ?? [];
+        const characters = await this.plugin.listCharacters().catch(() => [] as Character[]);
+        const resolved = refs
+            .filter(ref => this.normalizeName(ref.entityType || '') === 'character')
+            .map(ref => this.resolveEntityRefName(ref, characters));
+
+        if (this.isCurrentSceneLocation(location)) {
+            resolved.push(...(this.currentScene?.linkedCharacters ?? []));
+        }
+
+        return Array.from(new Set(resolved.filter(Boolean) as string[])).sort((a, b) => a.localeCompare(b));
+    }
+
+    private async resolveLocationItemNames(location: Location): Promise<string[]> {
+        const refs = location.entityRefs ?? [];
+        const items = await this.plugin.listPlotItems().catch(() => [] as PlotItem[]);
+        const resolved = refs
+            .filter(ref => this.normalizeName(ref.entityType || '') === 'item')
+            .map(ref => this.resolveEntityRefName(ref, items));
+
+        if (this.isCurrentSceneLocation(location)) {
+            resolved.push(...(this.currentScene?.linkedItems ?? []));
+        }
+
+        return Array.from(new Set(resolved.filter(Boolean) as string[])).sort((a, b) => a.localeCompare(b));
+    }
+
+    private resolveEntityRefName<T extends { id?: string; name: string }>(ref: EntityRef, entities: T[]): string | null {
+        if (ref.entityName?.trim()) return ref.entityName.trim();
+        const entityId = ref.entityId?.trim();
+        if (!entityId) return null;
+        const match = entities.find(entity =>
+            (entity.id && entity.id === entityId) ||
+            this.normalizeName(entity.name) === this.normalizeName(entityId)
+        );
+        return match?.name ?? entityId;
+    }
+
+    private async takePartyItem(name: string, logEntry: string): Promise<void> {
+        if (!this.session) return;
+        const inventory = this.session.partyItems ?? [];
+        const hasItem = inventory.some(item => this.normalizeName(item) === this.normalizeName(name));
+        if (hasItem) {
+            new Notice(`${name} is already in your inventory.`);
+            return;
+        }
+
+        const previousItems = [...inventory];
+        this.session.partyItems = [...inventory, name];
+        await this.syncPartyInventoryOwnership(this.session, previousItems);
+        await this.autosave(logEntry);
+        new Notice(`${name} added to inventory.`);
+        await this.render();
     }
 
     private renderPlayBranchCard(container: HTMLElement, branch: SceneBranch, panelEl: HTMLElement): void {
@@ -672,6 +1113,7 @@ export class CampaignView extends ItemView {
         this.currentScene = scene;
         await this.loadCurrentScene();
         await this.loadSceneLocation();
+        await this.syncActiveCampaignBoardForScene();
 
         this.session.currentSceneName = scene.name;
         this.session.currentSceneId   = scene.id;
@@ -699,7 +1141,9 @@ export class CampaignView extends ItemView {
         this.currentScene = scene;
         await this.loadCurrentScene();
         await this.loadSceneLocation();
+        await this.syncActiveCampaignBoardForScene();
         this.session.currentSceneName = scene.name;
+        this.session.currentSceneId = scene.id;
         await this.autosave(`Back to *${scene.name}*`);
         await this.render();
     }

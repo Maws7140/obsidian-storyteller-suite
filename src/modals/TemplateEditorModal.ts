@@ -29,6 +29,8 @@ export class TemplateEditorModal extends ResponsiveModal {
     private currentTab: 'metadata' | 'entities' | 'variables' | 'preview' = 'metadata';
     private selectedEntityType: TemplateEntityType | null = null;
     private selectedEntityIndex: number = -1;
+    private tabsHostEl: HTMLElement | null = null;
+    private contentAreaEl: HTMLElement | null = null;
 
     constructor(
         app: App,
@@ -83,11 +85,12 @@ export class TemplateEditorModal extends ResponsiveModal {
         this.renderHeader(contentEl);
 
         // Tab navigation
-        this.renderTabs(contentEl);
+        this.tabsHostEl = contentEl.createDiv('template-editor-tabs-host');
+        this.renderTabs(this.tabsHostEl);
 
         // Content area
-        const contentArea = contentEl.createDiv('template-editor-content');
-        this.renderCurrentTab(contentArea);
+        this.contentAreaEl = contentEl.createDiv('template-editor-content');
+        this.renderCurrentTab(this.contentAreaEl);
 
         // Footer with actions
         this.renderFooter(contentEl);
@@ -129,9 +132,27 @@ export class TemplateEditorModal extends ResponsiveModal {
 
             tabBtn.onclick = () => {
                 this.currentTab = tab.id;
-                this.onOpen(); // Re-render
+                this.refreshTabs();
+                this.refreshCurrentTab();
             };
         });
+    }
+
+    private refreshTabs(): void {
+        if (!this.tabsHostEl) {
+            return;
+        }
+
+        this.tabsHostEl.empty();
+        this.renderTabs(this.tabsHostEl);
+    }
+
+    private refreshCurrentTab(): void {
+        if (!this.contentAreaEl) {
+            return;
+        }
+
+        this.renderCurrentTab(this.contentAreaEl);
     }
 
     private renderCurrentTab(container: HTMLElement): void {
@@ -305,7 +326,7 @@ export class TemplateEditorModal extends ResponsiveModal {
                 .setCta()
                 .onClick(() => {
                     this.addEntity(selectedType);
-                    this.onOpen(); // Re-render
+                    this.refreshCurrentTab();
                 });
         });
 
@@ -413,7 +434,6 @@ export class TemplateEditorModal extends ResponsiveModal {
         });
         addButton.addEventListener('click', () => {
             this.addVariable();
-            this.onOpen(); // Re-render
         });
 
         // Bulk add section
@@ -485,7 +505,7 @@ export class TemplateEditorModal extends ResponsiveModal {
             }
             if (added > 0) {
                 bulkTextarea.value = '';
-                this.onOpen();
+                this.refreshCurrentTab();
             }
         });
 
@@ -697,8 +717,7 @@ export class TemplateEditorModal extends ResponsiveModal {
                 entities[index] = updatedEntity;
                 this.template.modified = new Date().toISOString();
 
-                // Re-render to show changes
-                this.onOpen();
+                this.refreshCurrentTab();
             }
         ).open();
     }
@@ -717,7 +736,7 @@ export class TemplateEditorModal extends ResponsiveModal {
             }
 
             this.template.modified = new Date().toISOString();
-            this.onOpen(); // Re-render
+            this.refreshCurrentTab();
         }
     }
 
@@ -742,8 +761,7 @@ export class TemplateEditorModal extends ResponsiveModal {
                 this.template.variables!.push(newVariable);
                 this.template.modified = new Date().toISOString();
 
-                // Re-render to show the new variable
-                this.onOpen();
+                this.refreshCurrentTab();
             }
         ).open();
     }
@@ -774,8 +792,7 @@ export class TemplateEditorModal extends ResponsiveModal {
                 this.template.variables![index] = updatedVariable;
                 this.template.modified = new Date().toISOString();
 
-                // Re-render to show changes
-                this.onOpen();
+                this.refreshCurrentTab();
             }
         ).open();
     }
@@ -784,7 +801,7 @@ export class TemplateEditorModal extends ResponsiveModal {
         if (this.template.variables && this.template.variables.length > index) {
             this.template.variables.splice(index, 1);
             this.template.modified = new Date().toISOString();
-            this.onOpen(); // Re-render
+            this.refreshCurrentTab();
         }
     }
 

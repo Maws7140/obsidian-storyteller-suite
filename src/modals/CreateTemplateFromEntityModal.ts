@@ -30,6 +30,7 @@ export class CreateTemplateFromEntityModal extends ResponsiveModal {
     private genericizeRelationships: boolean = false;
     private includeCustomFields: boolean = true;
     private includeProfileImages: boolean = false;
+    private relationshipOptionsContainer: HTMLElement | null = null;
 
     constructor(
         app: App,
@@ -129,20 +130,12 @@ export class CreateTemplateFromEntityModal extends ResponsiveModal {
                 .setValue(this.includeRelationships)
                 .onChange(value => {
                     this.includeRelationships = value;
-                    this.displayContent();
+                    this.renderRelationshipOptions();
                 })
             );
 
-        // Genericize relationships (only show if including relationships)
-        if (this.includeRelationships) {
-            new Setting(contentEl)
-                .setName('Make Relationships Generic')
-                .setDesc('Make relationships optional/generic (recommended for reusable templates)')
-                .addToggle(toggle => toggle
-                    .setValue(this.genericizeRelationships)
-                    .onChange(value => this.genericizeRelationships = value)
-                );
-        }
+        this.relationshipOptionsContainer = contentEl.createDiv('storyteller-template-relationship-options');
+        this.renderRelationshipOptions();
 
         // Include custom fields
         new Setting(contentEl)
@@ -178,8 +171,23 @@ export class CreateTemplateFromEntityModal extends ResponsiveModal {
     /**
      * Refresh the content display
      */
-    private displayContent(): void {
-        this.onOpen();
+    private renderRelationshipOptions(): void {
+        if (!this.relationshipOptionsContainer) {
+            return;
+        }
+
+        this.relationshipOptionsContainer.empty();
+        if (!this.includeRelationships) {
+            return;
+        }
+
+        new Setting(this.relationshipOptionsContainer)
+            .setName('Make Relationships Generic')
+            .setDesc('Make relationships optional/generic (recommended for reusable templates)')
+            .addToggle(toggle => toggle
+                .setValue(this.genericizeRelationships)
+                .onChange(value => this.genericizeRelationships = value)
+            );
     }
 
     /**
