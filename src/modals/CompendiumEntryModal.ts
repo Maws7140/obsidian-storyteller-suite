@@ -4,8 +4,8 @@ import type StorytellerSuitePlugin from '../main';
 import { ResponsiveModal } from './ResponsiveModal';
 import { addImageSelectionButtons } from '../utils/ImageSelectionHelper';
 import { t } from '../i18n/strings';
-import { getWhitelistKeys } from '../yaml/EntitySections';
-import { PromptModal } from './ui/PromptModal';
+import { EntityCustomFieldsEditor } from './entity/EntityCustomFieldsEditor';
+import { EntityGroupSelector } from './entity/EntityGroupSelector';
 
 export type CompendiumEntryModalSubmitCallback = (entry: CompendiumEntry) => Promise<void>;
 export type CompendiumEntryModalDeleteCallback = (entry: CompendiumEntry) => Promise<void>;
@@ -17,8 +17,8 @@ export class CompendiumEntryModal extends ResponsiveModal {
     onDelete?: CompendiumEntryModalDeleteCallback;
     isNew: boolean;
 
-    private groupSelectorContainer: HTMLElement | null = null;
-    private _groupRefreshInterval: number | null = null;
+    private readonly customFieldsEditor: EntityCustomFieldsEditor;
+    private readonly groupSelector: EntityGroupSelector;
 
     constructor(
         app: App,
@@ -54,6 +54,28 @@ export class CompendiumEntryModal extends ResponsiveModal {
         if (!Array.isArray(this.entry.groups)) this.entry.groups = [];
         if (!Array.isArray(this.entry.connections)) this.entry.connections = [];
         if (!this.entry.customFields) this.entry.customFields = {};
+        this.customFieldsEditor = new EntityCustomFieldsEditor(this.app, 'compendiumEntry', this.entry.customFields);
+        this.groupSelector = new EntityGroupSelector({
+            plugin: this.plugin,
+            description: t('assignItemToGroupsDesc'),
+            getSelectedGroupIds: () => this.entry.groups,
+            setSelectedGroupIds: groupIds => {
+                this.entry.groups = groupIds;
+            },
+            loadSelectedGroupIds: async () => {
+                const identifier = this.entry.id || this.entry.name;
+                const entries = await this.plugin.listCompendiumEntries();
+                return (entries.find(current => (current.id || current.name) === identifier)?.groups || this.entry.groups || []) as string[];
+            },
+            persistAdd: async groupId => {
+                const entryId = this.entry.id || this.entry.name;
+                await this.plugin.addMemberToGroup(groupId, 'compendiumEntry', entryId);
+            },
+            persistRemove: async groupId => {
+                const entryId = this.entry.id || this.entry.name;
+                await this.plugin.removeMemberFromGroup(groupId, 'compendiumEntry', entryId);
+            }
+        });
 
         this.onSubmit = onSubmit;
         this.onDelete = onDelete;
@@ -401,48 +423,12 @@ export class CompendiumEntryModal extends ResponsiveModal {
 
         // --- Groups ---
         contentEl.createEl('h3', { text: t('groups') });
-        this.groupSelectorContainer = contentEl.createDiv('storyteller-group-selector-container');
-        this.renderGroupSelector(this.groupSelectorContainer);
-        this._groupRefreshInterval = window.setInterval(() => {
-            if (this.modalEl.isShown() && this.groupSelectorContainer) {
-                this.renderGroupSelector(this.groupSelectorContainer);
-            }
-        }, 2000);
+        const groupSelectorContainer = contentEl.createDiv('storyteller-group-selector-container');
+        this.groupSelector.attach(groupSelectorContainer);
 
         // --- Custom Fields ---
-        contentEl.createEl('h3', { text: t('customFields') });
-        if (!this.entry.customFields) this.entry.customFields = {};
-        new Setting(contentEl)
-            .addButton(b => b
-                .setButtonText(t('addCustomField'))
-                .setIcon('plus')
-                .onClick(() => {
-                    const fields = this.entry.customFields!;
-                    const reserved = new Set<string>([...getWhitelistKeys('compendiumEntry'), 'customFields', 'filePath', 'id', 'sections']);
-                    const askValue = (key: string) => {
-                        new PromptModal(this.app, {
-                            title: t('customFieldValueTitle'),
-                            label: t('valueForX', key),
-                            defaultValue: '',
-                            onSubmit: (val: string) => { fields[key] = val; }
-                        }).open();
-                    };
-                    new PromptModal(this.app, {
-                        title: t('newCustomFieldTitle'),
-                        label: t('fieldName'),
-                        defaultValue: '',
-                        validator: (value: string) => {
-                            const trimmed = value.trim();
-                            if (!trimmed) return t('fieldNameCannotBeEmpty');
-                            if (reserved.has(trimmed)) return t('thatNameIsReserved');
-                            const exists = Object.keys(fields).some(k => k.toLowerCase() === trimmed.toLowerCase());
-                            if (exists) return t('fieldAlreadyExists');
-                            return null;
-                        },
-                        onSubmit: (name: string) => askValue(name.trim())
-                    }).open();
-                })
-            );
+        this.customFieldsEditor.setFields(this.entry.customFields);
+        this.customFieldsEditor.renderSection(contentEl);
 
         // Buttons
         const buttonsSetting = new Setting(contentEl);
@@ -454,6 +440,11 @@ export class CompendiumEntryModal extends ResponsiveModal {
                     new Notice('Entry name is required.');
                     return;
                 }
+                const customFields = this.customFieldsEditor.getFields();
+                if (!customFields) {
+                    return;
+                }
+                this.entry.customFields = customFields;
                 await this.onSubmit(this.entry);
                 this.close();
             })
@@ -475,60 +466,11 @@ export class CompendiumEntryModal extends ResponsiveModal {
             );
         }
     }
-
-    renderGroupSelector(container: HTMLElement): void {
-        container.empty();
-        const allGroups = this.plugin.getGroups();
-        const syncSelection = async (): Promise<Set<string>> => {
-            const identifier = this.entry.id || this.entry.name;
-            const freshList = await this.plugin.listCompendiumEntries();
-            const fresh = freshList.find(e => (e.id || e.name) === identifier);
-            const current = new Set((fresh?.groups || this.entry.groups || []) as string[]);
-            this.entry.groups = Array.from(current);
-            return current;
-        };
-        (async () => {
-            const selectedGroupIds = await syncSelection();
-            new Setting(container)
-                .setName(t('groups'))
-                .setDesc(t('assignItemToGroupsDesc'))
-                .addDropdown(dropdown => {
-                    dropdown.addOption('', t('selectGroupPlaceholder'));
-                    allGroups.forEach(group => dropdown.addOption(group.id, group.name));
-                    dropdown.setValue('');
-                    dropdown.onChange(async (value) => {
-                        if (value && !selectedGroupIds.has(value)) {
-                            selectedGroupIds.add(value);
-                            this.entry.groups = Array.from(selectedGroupIds);
-                            const entryId = this.entry.id || this.entry.name;
-                            await this.plugin.addMemberToGroup(value, 'compendiumEntry', entryId);
-                            this.renderGroupSelector(container);
-                        }
-                    });
-                });
-            if (selectedGroupIds.size > 0) {
-                const selectedDiv = container.createDiv('selected-groups');
-                allGroups.filter(g => selectedGroupIds.has(g.id)).forEach(group => {
-                    const tag = selectedDiv.createSpan({ text: group.name, cls: 'group-tag' });
-                    const removeBtn = tag.createSpan({ text: ' ×', cls: 'remove-group-btn' });
-                    removeBtn.onclick = async () => {
-                        selectedGroupIds.delete(group.id);
-                        this.entry.groups = Array.from(selectedGroupIds);
-                        const entryId = this.entry.id || this.entry.name;
-                        await this.plugin.removeMemberFromGroup(group.id, 'compendiumEntry', entryId);
-                        this.renderGroupSelector(container);
-                    };
-                });
-            }
-        })();
-    }
-
+
     onClose(): void {
-        if (this._groupRefreshInterval !== null) {
-            window.clearInterval(this._groupRefreshInterval);
-            this._groupRefreshInterval = null;
-        }
+        this.groupSelector.dispose();
         const { contentEl } = this;
         contentEl.empty();
     }
 }
+

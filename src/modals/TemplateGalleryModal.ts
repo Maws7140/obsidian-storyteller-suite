@@ -22,6 +22,8 @@ export class TemplateGalleryModal extends Modal {
     onSelect: TemplateSelectCallback;
     selectedCategory: MapTemplate['category'] | 'all' = 'all';
     templates: MapTemplate[];
+    private filterContainerEl: HTMLElement | null = null;
+    private gridContainerEl: HTMLElement | null = null;
 
     constructor(app: App, plugin: StorytellerSuitePlugin, onSelect: TemplateSelectCallback) {
         super(app);
@@ -44,16 +46,19 @@ export class TemplateGalleryModal extends Modal {
         });
 
         // Category filter
-        this.renderCategoryFilter(contentEl);
+        this.filterContainerEl = contentEl.createDiv('storyteller-template-filter-host');
+        this.renderCategoryFilter(this.filterContainerEl);
 
         // Template grid
-        this.renderTemplateGrid(contentEl);
+        this.gridContainerEl = contentEl.createDiv('storyteller-template-grid-host');
+        this.renderTemplateGrid(this.gridContainerEl);
 
         // Footer actions
         this.renderFooter(contentEl);
     }
 
     private renderCategoryFilter(container: HTMLElement): void {
+        container.empty();
         const filterContainer = container.createDiv('storyteller-template-filter');
 
         const categories = [
@@ -77,12 +82,14 @@ export class TemplateGalleryModal extends Modal {
 
             filterBtn.onclick = () => {
                 this.selectedCategory = category.id;
-                this.onOpen(); // Re-render
+                this.renderCategoryFilter(this.filterContainerEl!);
+                this.renderTemplateGrid(this.gridContainerEl!);
             };
         });
     }
 
     private renderTemplateGrid(container: HTMLElement): void {
+        container.empty();
         const gridContainer = container.createDiv('storyteller-template-grid');
 
         // Filter templates by category

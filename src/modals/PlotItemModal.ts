@@ -1,16 +1,17 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { App, Modal, Setting, Notice, TextAreaComponent, parseYaml, setIcon } from 'obsidian';
-import { PlotItem, Group } from '../types';
+import { PlotItem } from '../types';
 import StorytellerSuitePlugin from '../main';
 import { addImageSelectionButtons } from '../utils/ImageSelectionHelper';
-import { getWhitelistKeys, parseSectionsFromMarkdown } from '../yaml/EntitySections';
+import { parseSectionsFromMarkdown } from '../yaml/EntitySections';
 import { t } from '../i18n/strings';
 import { CharacterSuggestModal } from './CharacterSuggestModal';
 import { LocationSuggestModal } from './LocationSuggestModal';
 import { EventSuggestModal } from './EventSuggestModal';
-import { PromptModal } from './ui/PromptModal';
 import { TemplatePickerModal } from './TemplatePickerModal';
 import { Template } from '../templates/TemplateTypes';
+import { EntityCustomFieldsEditor } from './entity/EntityCustomFieldsEditor';
+import { EntityGroupSelector } from './entity/EntityGroupSelector';
 
 export type PlotItemModalSubmitCallback = (item: PlotItem) => Promise<void>;
 export type PlotItemModalDeleteCallback = (item: PlotItem) => Promise<void>;
@@ -21,8 +22,8 @@ export class PlotItemModal extends Modal {
     onSubmit: PlotItemModalSubmitCallback;
     onDelete?: PlotItemModalDeleteCallback;
     isNew: boolean;
-    private _groupRefreshInterval: number | null = null;
-    private groupSelectorContainer: HTMLElement | null = null;
+    private readonly customFieldsEditor: EntityCustomFieldsEditor;
+    private readonly groupSelector: EntityGroupSelector;
 
     constructor(app: App, plugin: StorytellerSuitePlugin, item: PlotItem | null, onSubmit: PlotItemModalSubmitCallback, onDelete?: PlotItemModalDeleteCallback) {
         super(app);
@@ -49,6 +50,28 @@ export class PlotItemModal extends Modal {
         if (!Array.isArray(initialItem.linkedCultures)) initialItem.linkedCultures = [];
 
         this.item = initialItem;
+        this.customFieldsEditor = new EntityCustomFieldsEditor(this.app, 'item', this.item.customFields);
+        this.groupSelector = new EntityGroupSelector({
+            plugin: this.plugin,
+            description: t('assignItemToGroupsDesc'),
+            getSelectedGroupIds: () => this.item.groups,
+            setSelectedGroupIds: groupIds => {
+                this.item.groups = groupIds;
+            },
+            loadSelectedGroupIds: async () => {
+                const identifier = this.item.id || this.item.name;
+                const items = await this.plugin.listPlotItems();
+                return (items.find(item => (item.id || item.name) === identifier)?.groups || this.item.groups || []) as string[];
+            },
+            persistAdd: async groupId => {
+                const itemId = this.item.id || this.item.name;
+                await this.plugin.addMemberToGroup(groupId, 'item', itemId);
+            },
+            persistRemove: async groupId => {
+                const itemId = this.item.id || this.item.name;
+                await this.plugin.removeMemberFromGroup(groupId, 'item', itemId);
+            }
+        });
         this.onSubmit = onSubmit;
         this.onDelete = onDelete;
         this.modalEl.addClass('storyteller-item-modal');
@@ -246,51 +269,13 @@ export class PlotItemModal extends Modal {
             );
         // --- Groups ---
         contentEl.createEl('h3', { text: t('groups') });
-        this.groupSelectorContainer = contentEl.createDiv('storyteller-group-selector-container');
-        this.renderGroupSelector(this.groupSelectorContainer);
-        // --- Real-time group refresh ---
-        this._groupRefreshInterval = window.setInterval(() => {
-            if (this.modalEl.isShown() && this.groupSelectorContainer) {
-                this.renderGroupSelector(this.groupSelectorContainer);
-            }
-        }, 2000);
+        const groupSelectorContainer = contentEl.createDiv('storyteller-group-selector-container');
+        this.groupSelector.attach(groupSelectorContainer);
 
 
         // --- Custom Fields ---
-        contentEl.createEl('h3', { text: t('customFields') });
-        const customFieldsContainer = contentEl.createDiv('storyteller-custom-fields-container');
-        // Do not render existing custom fields in the modal to avoid duplication with note page
-        if (!this.item.customFields) this.item.customFields = {};
-        new Setting(contentEl)
-            .addButton(b => b
-                .setButtonText(t('addCustomField'))
-                .setIcon('plus')
-                .onClick(() => {
-                    const fields = this.item.customFields!;
-                    const reserved = new Set<string>([...getWhitelistKeys('item'), 'customFields', 'filePath', 'id', 'sections']);
-                    const askValue = (key: string) => {
-                        new PromptModal(this.app, {
-                            title: t('customFieldValueTitle'),
-                            label: t('valueForX', key),
-                            defaultValue: '',
-                            onSubmit: (val: string) => { fields[key] = val; }
-                        }).open();
-                    };
-                    new PromptModal(this.app, {
-                        title: t('newCustomFieldTitle'),
-                        label: t('fieldName'),
-                        defaultValue: '',
-                        validator: (value: string) => {
-                            const trimmed = value.trim();
-                            if (!trimmed) return t('fieldNameCannotBeEmpty');
-                            if (reserved.has(trimmed)) return t('thatNameIsReserved');
-                            const exists = Object.keys(fields).some(k => k.toLowerCase() === trimmed.toLowerCase());
-                            if (exists) return t('fieldAlreadyExists');
-                            return null;
-                        },
-                        onSubmit: (name: string) => askValue(name.trim())
-                    }).open();
-                }));
+        this.customFieldsEditor.setFields(this.item.customFields);
+        this.customFieldsEditor.renderSection(contentEl);
         new Setting(contentEl)
             .setName(t('currentLocation'))
             .setDesc(`${t('currentLocation')}: ${this.item.currentLocation || t('none')}`)
@@ -688,58 +673,16 @@ export class PlotItemModal extends Modal {
                 // Ensure empty section fields are set so templates can render headings
                 this.item.description = this.item.description || '';
                 this.item.history = this.item.history || '';
+                const customFields = this.customFieldsEditor.getFields();
+                if (!customFields) {
+                    return;
+                }
+                this.item.customFields = customFields;
                 await this.onSubmit(this.item);
                 this.close();
             }));
-    }
-    renderGroupSelector(container: HTMLElement) {
-        container.empty();
-        const allGroups = this.plugin.getGroups();
-        const syncSelection = async (): Promise<Set<string>> => {
-            const identifier = this.item.id || this.item.name;
-            const freshList = await this.plugin.listPlotItems();
-            const fresh = freshList.find(i => (i.id || i.name) === identifier);
-            const current = new Set((fresh?.groups || this.item.groups || []) as string[]);
-            this.item.groups = Array.from(current);
-            return current;
-        };
-        (async () => {
-            const selectedGroupIds = await syncSelection();
-            new Setting(container)
-                .setName(t('groups'))
-                .setDesc(t('assignItemToGroupsDesc'))
-                .addDropdown(dropdown => {
-                    dropdown.addOption('', t('selectGroupPlaceholder'));
-                    allGroups.forEach(group => dropdown.addOption(group.id, group.name));
-                    dropdown.setValue('');
-                    dropdown.onChange(async (value) => {
-                        if (value && !selectedGroupIds.has(value)) {
-                            selectedGroupIds.add(value);
-                            this.item.groups = Array.from(selectedGroupIds);
-                            const itemId = this.item.id || this.item.name;
-                            await this.plugin.addMemberToGroup(value, 'item', itemId);
-                            this.renderGroupSelector(container);
-                        }
-                    });
-                });
-            if (selectedGroupIds.size > 0) {
-                const selectedDiv = container.createDiv('selected-groups');
-                allGroups.filter(g => selectedGroupIds.has(g.id)).forEach(group => {
-                    const tag = selectedDiv.createSpan({ text: group.name, cls: 'group-tag' });
-                    const removeBtn = tag.createSpan({ text: ' ×', cls: 'remove-group-btn' });
-                    removeBtn.onclick = async () => {
-                        selectedGroupIds.delete(group.id);
-                        this.item.groups = Array.from(selectedGroupIds);
-                        const itemId = this.item.id || this.item.name;
-                        await this.plugin.removeMemberFromGroup(group.id, 'item', itemId);
-                        this.renderGroupSelector(container);
-                    };
-                });
-            }
-        })();
-    }
-
-    private hasMultipleEntities(template: Template): boolean {
+    }
+   private hasMultipleEntities(template: Template): boolean {
         let entityCount = 0;
         if (template.entities.items?.length) entityCount += template.entities.items.length;
         if (template.entities.characters?.length) entityCount += template.entities.characters.length;
@@ -870,9 +813,8 @@ export class PlotItemModal extends Modal {
     }
 
     onClose() {
+        this.groupSelector.dispose();
         this.contentEl.empty();
-        if (this._groupRefreshInterval) {
-            clearInterval(this._groupRefreshInterval);
-        }
     }
 }
+

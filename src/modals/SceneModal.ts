@@ -13,6 +13,7 @@ import { GroupSuggestModal } from './GroupSuggestModal';
 import { TemplatePickerModal } from './TemplatePickerModal';
 import { Template } from '../templates/TemplateTypes';
 import { getTrackedItemOwner } from '../utils/ItemOwnership';
+import type { StoryMap } from '../types';
 
 export type SceneModalSubmitCallback = (sc: Scene) => Promise<void>;
 export type SceneModalDeleteCallback = (sc: Scene) => Promise<void>;
@@ -143,10 +144,10 @@ export class SceneModal extends Modal {
             );
 
         // Chapter selector
-        new Setting(contentEl)
+        const chapterSetting = new Setting(contentEl)
             .setName(t('chapter'))
-            .setDesc(this.scene.chapterName || t('none'))
-            .addDropdown(async dd => {
+            .setDesc(this.scene.chapterName || t('none'));
+        chapterSetting.addDropdown(async dd => {
                 dd.addOption('', 'Unassigned');
                 const chapters = await this.plugin.listChapters();
                 chapters.forEach(ch => dd.addOption(ch.id || ch.name, ch.number != null ? `${ch.number}. ${ch.name}` : ch.name));
@@ -158,7 +159,7 @@ export class SceneModal extends Modal {
                         this.scene.chapterId = picked?.id;
                         this.scene.chapterName = picked?.name;
                     }
-                    void this.onOpen();
+                    chapterSetting.descEl.setText(this.scene.chapterName || t('none'));
                 });
             });
 
@@ -170,6 +171,35 @@ export class SceneModal extends Modal {
                 .setValue(this.scene.date || '')
                 .onChange(v => { this.scene.date = v.trim() || undefined; })
             );
+
+        const campaignBoardSetting = new Setting(contentEl)
+            .setName('Campaign board map')
+            .setDesc('Optional image map override for Campaign mode. Leave empty to use the scene location map.');
+        campaignBoardSetting.addDropdown(async dd => {
+            dd.addOption('', 'Auto-detect from scene location');
+            const maps = await this.plugin.listMaps().catch(() => [] as StoryMap[]);
+            const imageMaps = maps
+                .filter(map => (map.type ?? 'image') === 'image')
+                .sort((a, b) => a.name.localeCompare(b.name));
+            const updateCampaignBoardDesc = (value: string) => {
+                const selected = imageMaps.find(map => (map.id || map.name) === value);
+                campaignBoardSetting.descEl.setText(
+                    selected
+                        ? `Campaign mode will open "${selected.name}" for this scene.`
+                        : 'Optional image map override for Campaign mode. Leave empty to use the scene location map.'
+                );
+            };
+            for (const map of imageMaps) {
+                const mapId = map.id || map.name;
+                dd.addOption(mapId, map.name);
+            }
+            dd.setValue(this.scene.campaignBoardMapId || '');
+            updateCampaignBoardDesc(this.scene.campaignBoardMapId || '');
+            dd.onChange(value => {
+                this.scene.campaignBoardMapId = value || undefined;
+                updateCampaignBoardDesc(value);
+            });
+        });
 
         new Setting(contentEl)
             .setName(t('status'))
@@ -191,23 +221,37 @@ export class SceneModal extends Modal {
             );
 
         // POV character
-        new Setting(contentEl)
+        const povSetting = new Setting(contentEl)
             .setName('POV Character')
-            .setDesc(this.scene.povCharacter || 'None')
-            .addButton(btn => btn
-                .setButtonText(this.scene.povCharacter ? 'Change' : 'Set POV')
-                .onClick(() => {
+            .setDesc(this.scene.povCharacter || 'None');
+        let setPovButton: ButtonComponent | null = null;
+        let clearPovButton: ButtonComponent | null = null;
+        const updatePovSetting = () => {
+            povSetting.descEl.setText(this.scene.povCharacter || 'None');
+            setPovButton?.setButtonText(this.scene.povCharacter ? 'Change' : 'Set POV');
+            clearPovButton?.setDisabled(!this.scene.povCharacter);
+        };
+        povSetting
+            .addButton(btn => {
+                setPovButton = btn;
+                btn.onClick(() => {
                     new CharacterSuggestModal(this.app, this.plugin, (ch) => {
                         this.scene.povCharacter = ch.name;
-                        void this.onOpen();
+                        updatePovSetting();
                     }).open();
-                })
-            )
-            .addButton(btn => btn
-                .setIcon('cross')
-                .setTooltip('Clear POV')
-                .onClick(() => { this.scene.povCharacter = undefined; void this.onOpen(); })
-            );
+                });
+            })
+            .addButton(btn => {
+                clearPovButton = btn;
+                btn
+                    .setIcon('cross')
+                    .setTooltip('Clear POV')
+                    .onClick(() => {
+                        this.scene.povCharacter = undefined;
+                        updatePovSetting();
+                    });
+            });
+        updatePovSetting();
 
         // Emotion
         new Setting(contentEl)
@@ -421,7 +465,8 @@ export class SceneModal extends Modal {
 
         // --- Branches section (only shown for existing scenes that have a file) ---
         if (!this.isNew && this.scene.filePath) {
-            this.renderBranchesSection(contentEl);
+            const branchesContainer = contentEl.createDiv('storyteller-branches-section-host');
+            this.renderBranchesSection(branchesContainer);
         }
 
         const buttons = new Setting(contentEl).setClass('storyteller-modal-buttons');
@@ -639,8 +684,9 @@ export class SceneModal extends Modal {
         this.scene.linkedGroups = [];
     }
 
-    private renderBranchesSection(contentEl: HTMLElement): void {
-        const section = contentEl.createDiv('storyteller-branches-section');
+    private renderBranchesSection(container: HTMLElement): void {
+        container.empty();
+        const section = container.createDiv('storyteller-branches-section');
         const hdr = section.createDiv('storyteller-branches-section-header');
         const iconSpan = hdr.createSpan();
         import('obsidian').then(({ setIcon }) => setIcon(iconSpan, 'git-branch'));
@@ -680,8 +726,7 @@ export class SceneModal extends Modal {
                 .onClick(() => {
                     import('./BranchEditorModal').then(({ BranchEditorModal }) => {
                         new BranchEditorModal(this.app, this.plugin, this.scene.filePath!, () => {
-                            // Re-render the branches summary after the editor closes
-                            this.renderBranchesSection(contentEl);
+                            this.renderBranchesSection(container);
                         }).open();
                     });
                 })

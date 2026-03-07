@@ -1,12 +1,14 @@
-﻿/* eslint-disable @typescript-eslint/no-unused-vars */
+/* eslint-disable @typescript-eslint/no-unused-vars */
 import { App, Modal, Setting, Notice, TextAreaComponent, TextComponent, ButtonComponent, parseYaml } from 'obsidian';
-import { Event, GalleryImage, Character, Location, Group } from '../types'; // Added Character, Location, Group
+import { Event, GalleryImage, Character, Location } from '../types'; // Added Character, Location
 import StorytellerSuitePlugin from '../main';
-import { getWhitelistKeys, parseSectionsFromMarkdown } from '../yaml/EntitySections';
+import { parseSectionsFromMarkdown } from '../yaml/EntitySections';
 import { t } from '../i18n/strings';
 import { GalleryImageSuggestModal } from './GalleryImageSuggestModal';
 import { addImageSelectionButtons } from '../utils/ImageSelectionHelper';
 import { PromptModal } from './ui/PromptModal';
+import { EntityCustomFieldsEditor } from './entity/EntityCustomFieldsEditor';
+import { EntityGroupSelector } from './entity/EntityGroupSelector';
 // Import the new suggesters
 import { CharacterSuggestModal } from './CharacterSuggestModal';
 import { LocationSuggestModal } from './LocationSuggestModal';
@@ -25,9 +27,9 @@ export class EventModal extends Modal {
     onSubmit: EventModalSubmitCallback;
     onDelete?: EventModalDeleteCallback;
     isNew: boolean;
-    private _groupRefreshInterval: number | null = null;
-    private groupSelectorContainer: HTMLElement | null = null;
     private forkSelectorContainer: HTMLElement | null = null;
+    private readonly customFieldsEditor: EntityCustomFieldsEditor;
+    private readonly groupSelector: EntityGroupSelector;
 
     // Elements to update dynamically
     charactersListEl: HTMLElement;
@@ -39,20 +41,51 @@ export class EventModal extends Modal {
         super(app);
         this.plugin = plugin;
         this.isNew = event === null;
-        const initialEvent = event ? { ...event } : { name: '', dateTime: '', description: '', outcome: '', status: undefined, profileImagePath: undefined, characters: [], location: undefined, images: [], customFields: {}, groups: [], isMilestone: false, dependencies: [], progress: 0 };
+        const initialEvent = event ? { ...event } : { name: '', dateTime: '', description: '', outcome: '', status: undefined, profileImagePath: undefined, characters: [], location: undefined, images: [], customFields: {}, groups: [], isMilestone: false, dependencies: [], dependencyNames: [], progress: 0 };
         if (!initialEvent.customFields) initialEvent.customFields = {};
         // Ensure link arrays are initialized
         if (!initialEvent.characters) initialEvent.characters = [];
         if (!initialEvent.images) initialEvent.images = [];
         if (!initialEvent.groups) initialEvent.groups = [];
         if (!initialEvent.dependencies) initialEvent.dependencies = [];
+        if (!initialEvent.dependencyNames) initialEvent.dependencyNames = [...initialEvent.dependencies];
         if (initialEvent.isMilestone === undefined) initialEvent.isMilestone = false;
         if (initialEvent.progress === undefined) initialEvent.progress = 0;
 
         this.event = initialEvent;
+        this.customFieldsEditor = new EntityCustomFieldsEditor(this.app, 'event', this.event.customFields);
+        this.groupSelector = new EntityGroupSelector({
+            plugin: this.plugin,
+            description: t('assignEventToGroupsDesc'),
+            getSelectedGroupIds: () => this.event.groups,
+            setSelectedGroupIds: groupIds => {
+                this.event.groups = groupIds;
+            },
+            loadSelectedGroupIds: async () => {
+                const identifier = this.event.id || this.event.name;
+                const events = await this.plugin.listEvents();
+                return (events.find(evt => (evt.id || evt.name) === identifier)?.groups || this.event.groups || []) as string[];
+            },
+            persistAdd: async groupId => {
+                await this.plugin.addMemberToGroup(groupId, 'event', this.event.id || this.event.name);
+            },
+            persistRemove: async groupId => {
+                await this.plugin.removeMemberFromGroup(groupId, 'event', this.event.id || this.event.name);
+            }
+        });
         this.onSubmit = onSubmit;
         this.onDelete = onDelete;
         this.modalEl.addClass('storyteller-event-modal');
+    }
+
+    private getDependencyLabel(depRef: string, index: number): string {
+        const display = this.event.dependencyNames?.[index];
+        return typeof display === 'string' && display.trim() ? display.trim() : depRef;
+    }
+
+    private removeDependency(index: number): void {
+        this.event.dependencies?.splice(index, 1);
+        this.event.dependencyNames?.splice(index, 1);
     }
 
     async onOpen() {
@@ -223,7 +256,7 @@ export class EventModal extends Modal {
                 .setDynamicTooltip()
                 .onChange(value => { this.event.progress = value; }));
 
-        // Dependencies (event names this event depends on)
+        // Dependencies (stored as stable event IDs with resolved display names)
         const dependenciesSetting = new Setting(contentEl)
             .setName('Dependencies')
             .setDesc('Events that must occur before this one');
@@ -234,14 +267,15 @@ export class EventModal extends Modal {
                 dependenciesListEl.createEl('span', { text: t('none'), cls: 'storyteller-modal-list-empty' });
             } else {
                 this.event.dependencies.forEach((dep, index) => {
+                    const depLabel = this.getDependencyLabel(dep, index);
                     const itemEl = dependenciesListEl.createDiv('storyteller-modal-list-item');
-                    itemEl.createSpan({ text: dep });
+                    itemEl.createSpan({ text: depLabel });
                     new ButtonComponent(itemEl)
                         .setClass('storyteller-modal-list-remove')
-                        .setTooltip(`Remove ${dep}`)
+                        .setTooltip(`Remove ${depLabel}`)
                         .setIcon('cross')
                         .onClick(() => {
-                            this.event.dependencies?.splice(index, 1);
+                            this.removeDependency(index);
                             renderDependenciesList();
                         });
                 });
@@ -256,11 +290,21 @@ export class EventModal extends Modal {
                 // Use EventSuggestModal (we'll need to create this or reuse existing suggest pattern)
                 new EventSuggestModal(this.app, this.plugin, (selectedEvent) => {
                     if (selectedEvent && selectedEvent.name) {
+                        const selectedId = selectedEvent.id || selectedEvent.name;
+                        const currentId = this.event.id || this.event.name;
+                        if (selectedId === currentId) {
+                            new Notice('An event cannot depend on itself.');
+                            return;
+                        }
                         if (!this.event.dependencies) {
                             this.event.dependencies = [];
                         }
-                        if (!this.event.dependencies.includes(selectedEvent.name)) {
-                            this.event.dependencies.push(selectedEvent.name);
+                        if (!this.event.dependencyNames) {
+                            this.event.dependencyNames = [];
+                        }
+                        if (!this.event.dependencies.includes(selectedId)) {
+                            this.event.dependencies.push(selectedId);
+                            this.event.dependencyNames.push(selectedEvent.name);
                             renderDependenciesList();
                         } else {
                             new Notice(`Dependency "${selectedEvent.name}" already added.`);
@@ -581,7 +625,7 @@ export class EventModal extends Modal {
                         }
                         badge.createEl('strong', { text: era.name });
                         badge.createEl('span', {
-                            text: ` (${era.startDate} → ${era.endDate})`,
+                            text: ` (${era.startDate} ? ${era.endDate})`,
                             cls: 'storyteller-era-badge-dates'
                         });
                     }
@@ -595,54 +639,13 @@ export class EventModal extends Modal {
         }
 
         // --- Custom Fields ---
-        contentEl.createEl('h3', { text: t('customFields') });
-        const customFieldsContainer = contentEl.createDiv('storyteller-custom-fields-container');
-        // Render existing custom fields so users can see and edit them
-        if (!this.event.customFields) this.event.customFields = {};
-        this.renderCustomFields(customFieldsContainer, this.event.customFields);
-
-        new Setting(contentEl)
-            .addButton(button => button
-                .setButtonText(t('addCustomField'))
-                .setIcon('plus')
-                .onClick(() => {
-                    if (!this.event.customFields) this.event.customFields = {};
-                    const fields = this.event.customFields;
-                    const reserved = new Set<string>([...getWhitelistKeys('event'), 'customFields', 'filePath', 'id', 'sections']);
-                    const askValue = (key: string) => {
-                        new PromptModal(this.app, {
-                            title: 'Custom field value',
-                            label: `Value for "${key}"`,
-                            defaultValue: '',
-                            onSubmit: (val: string) => { fields[key] = val; }
-                        }).open();
-                    };
-                    new PromptModal(this.app, {
-                        title: 'New custom field',
-                        label: 'Field name',
-                        defaultValue: '',
-                        validator: (value: string) => {
-                            const trimmed = value.trim();
-                            if (!trimmed) return 'Field name cannot be empty';
-                            if (reserved.has(trimmed)) return 'That name is reserved';
-                            const exists = Object.keys(fields).some(k => k.toLowerCase() === trimmed.toLowerCase());
-                            if (exists) return 'A field with that name already exists';
-                            return null;
-                        },
-                        onSubmit: (name: string) => askValue(name.trim())
-                    }).open();
-                }));
+        this.customFieldsEditor.setFields(this.event.customFields);
+        this.customFieldsEditor.renderSection(contentEl);
 
         // --- Groups ---
         contentEl.createEl('h3', { text: t('groups') });
-        this.groupSelectorContainer = contentEl.createDiv('storyteller-group-selector-container');
-        this.renderGroupSelector(this.groupSelectorContainer);
-        // --- Real-time group refresh ---
-        this._groupRefreshInterval = window.setInterval(() => {
-            if (this.modalEl.isShown() && this.groupSelectorContainer) {
-                this.renderGroupSelector(this.groupSelectorContainer);
-            }
-        }, 2000);
+        const groupSelectorContainer = contentEl.createDiv('storyteller-group-selector-container');
+        this.groupSelector.attach(groupSelectorContainer);
 
         // --- Timeline Forks ---
         const forks = this.plugin.getTimelineForks();
@@ -701,6 +704,11 @@ export class EventModal extends Modal {
                 this.event.description = this.event.description || '';
                 this.event.outcome = this.event.outcome || '';
                 try {
+                    const customFields = this.customFieldsEditor.getFields();
+                    if (!customFields) {
+                        return;
+                    }
+                    this.event.customFields = customFields;
                     await this.onSubmit(this.event);
                     // Notice is handled by the onSubmit callback provided by the caller
                     this.close();
@@ -770,105 +778,8 @@ export class EventModal extends Modal {
                 });
         });
     }
-
-    // Helper to render custom fields with safe renaming
-    renderCustomFields(container: HTMLElement, fields: { [key: string]: any }) {
-        container.empty();
-        fields = fields || {};
-        const keys = Object.keys(fields);
-
-        if (keys.length === 0) {
-            container.createEl('p', { text: t('noCustomFields'), cls: 'storyteller-modal-list-empty' });
-            return;
-        }
-
-        const reserved = new Set<string>([...getWhitelistKeys('event'), 'customFields', 'filePath', 'id', 'sections']);
-        keys.forEach(key => {
-            let currentKey = key;
-            const fieldSetting = new Setting(container)
-                .addText(text => text
-                    .setValue(currentKey)
-                    .setPlaceholder(t('fieldNamePh'))
-                    .onChange(newKey => {
-                        const trimmed = newKey.trim();
-                        const isUniqueCaseInsensitive = !Object.keys(fields).some(k => k.toLowerCase() === trimmed.toLowerCase());
-                        const isReserved = reserved.has(trimmed);
-                        if (trimmed && trimmed !== currentKey && isUniqueCaseInsensitive && !isReserved) {
-                            fields[trimmed] = fields[currentKey];
-                            delete fields[currentKey];
-                            currentKey = trimmed;
-                        } else if (trimmed !== currentKey) {
-                            text.setValue(currentKey); // Revert change
-                            new Notice(t('customFieldError'));
-                        }
-                    }))
-                .addText(text => text
-                    .setValue(fields[currentKey]?.toString() || '')
-                    .setPlaceholder(t('fieldValuePh'))
-                    .onChange(value => {
-                        fields[currentKey] = value;
-                    }))
-                .addButton(button => button
-                    .setIcon('trash')
-                    .setTooltip(`Remove field "${currentKey}"`)
-                    .setClass('mod-warning')
-                    .onClick(() => {
-                        delete fields[currentKey];
-                        this.renderCustomFields(container, fields); // Re-render after deletion
-                    }));
-            fieldSetting.controlEl.addClass('storyteller-custom-field-row');
-            fieldSetting.infoEl.addClass('storyteller-custom-field-key'); // Should maybe target nameEl instead
-        });
-    }
-
-    renderGroupSelector(container: HTMLElement) {
-        container.empty();
-        const allGroups = this.plugin.getGroups();
-        const syncSelection = async (): Promise<Set<string>> => {
-            const identifier = this.event.id || this.event.name;
-            const freshList = await this.plugin.listEvents();
-            const fresh = freshList.find(e => (e.id || e.name) === identifier);
-            const current = new Set((fresh?.groups || this.event.groups || []) as string[]);
-            this.event.groups = Array.from(current);
-            return current;
-        };
-        (async () => {
-            const selectedGroupIds = await syncSelection();
-            new Setting(container)
-                .setName(t('groups'))
-                .setDesc(t('assignEventToGroupsDesc'))
-                .addDropdown(dropdown => {
-                    dropdown.addOption('', t('selectGroupPlaceholder'));
-                    allGroups.forEach(group => {
-                        dropdown.addOption(group.id, group.name);
-                    });
-                    dropdown.setValue('');
-                    dropdown.onChange(async (value) => {
-                        if (value && !selectedGroupIds.has(value)) {
-                            selectedGroupIds.add(value);
-                            this.event.groups = Array.from(selectedGroupIds);
-                            await this.plugin.addMemberToGroup(value, 'event', this.event.id || this.event.name);
-                            this.renderGroupSelector(container);
-                        }
-                    });
-                });
-            if (selectedGroupIds.size > 0) {
-                const selectedDiv = container.createDiv('selected-groups');
-                allGroups.filter(g => selectedGroupIds.has(g.id)).forEach(group => {
-                    const tag = selectedDiv.createSpan({ text: group.name, cls: 'group-tag' });
-                    const removeBtn = tag.createSpan({ text: ' ├ù', cls: 'remove-group-btn' });
-                    removeBtn.onclick = async () => {
-                        selectedGroupIds.delete(group.id);
-                        this.event.groups = Array.from(selectedGroupIds);
-                        await this.plugin.removeMemberFromGroup(group.id, 'event', this.event.id || this.event.name);
-                        this.renderGroupSelector(container);
-                    };
-                });
-            }
-        })();
-    }
-
-    renderForkSelector(container: HTMLElement) {
+
+   renderForkSelector(container: HTMLElement) {
         container.empty();
         const allForks = this.plugin.getTimelineForks();
         const eventIdentifier = this.event.id || this.event.name;
@@ -1043,6 +954,7 @@ export class EventModal extends Modal {
         this.event.connections = [];
         this.event.groups = [];
         this.event.dependencies = [];
+        this.event.dependencyNames = [];
     }
 
     private refresh(): void {
@@ -1051,9 +963,8 @@ export class EventModal extends Modal {
     }
 
     onClose() {
+        this.groupSelector.dispose();
         this.contentEl.empty();
-        if (this._groupRefreshInterval) {
-            clearInterval(this._groupRefreshInterval);
-        }
     }
 }
+

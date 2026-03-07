@@ -24,6 +24,7 @@ export class PromptModal extends Modal {
 
     let input: TextComponent | null = null;
     let errorEl: HTMLElement | null = null;
+    let isSubmitting = false;
 
     new Setting(contentEl)
       .setName(this.labelText)
@@ -35,15 +36,18 @@ export class PromptModal extends Modal {
     errorEl.style.display = 'none';
 
     const submit = () => {
+      if (isSubmitting) return;
       const value = (input?.getValue() ?? '').trim();
       if (this.validator) {
         const err = this.validator(value);
         if (err) {
           errorEl!.style.display = '';
           errorEl!.setText(err);
+          isSubmitting = false;
           return;
         }
       }
+      isSubmitting = true;
       this.onSubmit(value);
       this.close();
     };
@@ -54,7 +58,10 @@ export class PromptModal extends Modal {
 
     // Keyboard enter to submit
     this.contentEl.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') submit();
+      if (e.key !== 'Enter') return;
+      e.preventDefault();
+      e.stopPropagation();
+      submit();
     });
   }
 }
