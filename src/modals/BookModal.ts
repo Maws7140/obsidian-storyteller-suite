@@ -3,6 +3,7 @@ import type { Book, Chapter } from '../types';
 import type StorytellerSuitePlugin from '../main';
 import { ResponsiveModal } from './ResponsiveModal';
 import { addImageSelectionButtons } from '../utils/ImageSelectionHelper';
+import { EntityCustomFieldsEditor } from './entity/EntityCustomFieldsEditor';
 
 export type BookModalSubmitCallback = (book: Book) => Promise<void>;
 export type BookModalDeleteCallback = (book: Book) => Promise<void>;
@@ -13,6 +14,7 @@ export class BookModal extends ResponsiveModal {
     onSubmit: BookModalSubmitCallback;
     onDelete?: BookModalDeleteCallback;
     isNew: boolean;
+    private readonly customFieldsEditor: EntityCustomFieldsEditor;
 
     constructor(
         app: App,
@@ -30,6 +32,8 @@ export class BookModal extends ResponsiveModal {
             groups: [],
             customFields: {},
         };
+        if (!this.book.customFields) this.book.customFields = {};
+        this.customFieldsEditor = new EntityCustomFieldsEditor(this.app, 'book', this.book.customFields);
         this.onSubmit = onSubmit;
         this.onDelete = onDelete;
         this.modalEl.addClass('storyteller-book-modal');
@@ -188,6 +192,9 @@ export class BookModal extends ResponsiveModal {
                 });
             });
 
+        this.customFieldsEditor.setFields(this.book.customFields);
+        this.customFieldsEditor.renderSection(contentEl);
+
         // Buttons
         const buttons = new Setting(contentEl).setClass('storyteller-modal-buttons');
         if (!this.isNew && this.onDelete) {
@@ -214,6 +221,11 @@ export class BookModal extends ResponsiveModal {
                 }
                 this.book.description = this.book.description || '';
                 this.book.synopsis = this.book.synopsis || '';
+                const customFields = this.customFieldsEditor.getFields();
+                if (!customFields) {
+                    return;
+                }
+                this.book.customFields = customFields;
                 await this.onSubmit(this.book);
                 this.close();
             })

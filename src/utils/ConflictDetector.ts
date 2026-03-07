@@ -182,13 +182,46 @@ export class ConflictDetector {
      */
     static detectDependencyConflicts(events: Event[]): DetectedConflict[] {
         const conflicts: DetectedConflict[] = [];
-        const eventMap = new Map(events.map(e => [e.name, e]));
+        const eventMap = new Map<string, Event>();
+        const eventNameMap = new Map<string, Event>();
+        const eventLowerNameMap = new Map<string, Event>();
+        const getEventKey = (event: Event): string => event.id || event.name;
+        const getDependencyLabel = (event: Event, dependencyRef: string): string => {
+            const dependencyIndex = Array.isArray(event.dependencies)
+                ? event.dependencies.indexOf(dependencyRef)
+                : -1;
+            if (dependencyIndex >= 0 && Array.isArray(event.dependencyNames)) {
+                const dependencyName = event.dependencyNames[dependencyIndex];
+                if (typeof dependencyName === 'string' && dependencyName.trim()) {
+                    return dependencyName.trim();
+                }
+            }
+            return dependencyRef;
+        };
+        const resolveDependency = (dependencyRef: string): Event | undefined => {
+            const ref = String(dependencyRef ?? '').trim();
+            if (!ref) return undefined;
+            return eventMap.get(ref)
+                || eventNameMap.get(ref)
+                || eventLowerNameMap.get(ref.toLowerCase());
+        };
+
+        for (const event of events) {
+            const key = getEventKey(event);
+            if (key) eventMap.set(key, event);
+            if (event.name) {
+                eventNameMap.set(event.name, event);
+                eventLowerNameMap.set(event.name.toLowerCase(), event);
+            }
+        }
 
         for (const event of events) {
             if (!event.dependencies || event.dependencies.length === 0) continue;
 
             // Check for missing dependencies
-            const missingDeps = event.dependencies.filter(dep => !eventMap.has(dep));
+            const missingDeps = event.dependencies
+                .filter(dep => !resolveDependency(dep))
+                .map(dep => getDependencyLabel(event, dep));
             if (missingDeps.length > 0) {
                 conflicts.push({
                     id: `conflict-dep-missing-${event.name}`,
@@ -203,8 +236,9 @@ export class ConflictDetector {
             }
 
             // Check for temporal dependency conflicts (dependent event happens before dependency)
-            for (const depName of event.dependencies) {
-                const depEvent = eventMap.get(depName);
+            for (const depRef of event.dependencies) {
+                const depEvent = resolveDependency(depRef);
+                const depLabel = depEvent?.name || getDependencyLabel(event, depRef);
                 if (!depEvent || !depEvent.dateTime || !event.dateTime) continue;
 
                 const eventDate = parseEventDate(event.dateTime);
@@ -214,22 +248,24 @@ export class ConflictDetector {
 
                 if (eventDate.start < depDate.start) {
                     conflicts.push({
-                        id: `conflict-dep-temporal-${event.name}-${depName}`,
+                        id: `conflict-dep-temporal-${event.name}-${depEvent.id || depLabel}`,
                         type: 'dependency',
                         severity: 'error',
-                        message: `Event "${event.name}" occurs before its dependency "${depName}"`,
+                        message: `Event "${event.name}" occurs before its dependency "${depLabel}"`,
                         events: [event, depEvent],
                         details: {
-                            description: `"${event.name}" (${event.dateTime}) depends on "${depName}" (${depEvent.dateTime}), but occurs earlier`
+                            description: `"${event.name}" (${event.dateTime}) depends on "${depLabel}" (${depEvent.dateTime}), but occurs earlier`
                         }
                     });
                 }
             }
 
             // Check for circular dependencies
-            const circularPath = this.detectCircularDependencies(event, eventMap, new Set());
+            const circularPath = this.detectCircularDependencies(event, resolveDependency, new Set());
             if (circularPath.length > 0) {
-                const involvedEvents = circularPath.map(name => eventMap.get(name)!).filter(e => e);
+                const involvedEvents = circularPath
+                    .map(label => eventNameMap.get(label) || eventLowerNameMap.get(label.toLowerCase()))
+                    .filter((candidate): candidate is Event => Boolean(candidate));
                 conflicts.push({
                     id: `conflict-dep-circular-${event.name}`,
                     type: 'dependency',
@@ -360,11 +396,12 @@ export class ConflictDetector {
      */
     private static detectCircularDependencies(
         event: Event,
-        eventMap: Map<string, Event>,
+        resolveDependency: (dependencyRef: string) => Event | undefined,
         visited: Set<string>,
         path: string[] = []
     ): string[] {
-        if (!event.name) return [];
+        const eventKey = event.id || event.name;
+        if (!eventKey || !event.name) return [];
 
         // If we've seen this event in the current path, we have a cycle
         if (path.includes(event.name)) {
@@ -372,19 +409,19 @@ export class ConflictDetector {
         }
 
         // If we've already fully explored this node, skip
-        if (visited.has(event.name)) {
+        if (visited.has(eventKey)) {
             return [];
         }
 
-        visited.add(event.name);
+        visited.add(eventKey);
         const newPath = [...path, event.name];
 
         // Check all dependencies
-        for (const depName of event.dependencies || []) {
-            const depEvent = eventMap.get(depName);
+        for (const depRef of event.dependencies || []) {
+            const depEvent = resolveDependency(depRef);
             if (!depEvent) continue;
 
-            const cycle = this.detectCircularDependencies(depEvent, eventMap, visited, newPath);
+            const cycle = this.detectCircularDependencies(depEvent, resolveDependency, visited, newPath);
             if (cycle.length > 0) {
                 return cycle;
             }

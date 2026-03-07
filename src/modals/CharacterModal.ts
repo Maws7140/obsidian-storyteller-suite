@@ -1,19 +1,20 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { App, Setting, Notice, TextAreaComponent, TextComponent, ButtonComponent, parseYaml, TFile, setIcon } from 'obsidian';
-import { Character, Group, PlotItem } from '../types'; // Assumes Character type has relationships?: string[], associatedLocations?: string[], associatedEvents?: string[]
+import { Character, PlotItem } from '../types'; // Assumes Character type has relationships?: string[], associatedLocations?: string[], associatedEvents?: string[]
 import { LocationPicker } from '../components/LocationPicker';
 import { LocationService } from '../services/LocationService';
-import { getWhitelistKeys, parseSectionsFromMarkdown } from '../yaml/EntitySections';
+import { parseSectionsFromMarkdown } from '../yaml/EntitySections';
 import StorytellerSuitePlugin from '../main';
 import { t } from '../i18n/strings';
 import { addImageSelectionButtons } from '../utils/ImageSelectionHelper';
 import { ResponsiveModal } from './ResponsiveModal';
-import { PromptModal } from './ui/PromptModal';
 import { PlatformUtils } from '../utils/PlatformUtils';
 import { TemplatePickerModal } from './TemplatePickerModal';
 import { Template } from '../templates/TemplateTypes';
 import { CharacterSheetPreviewModal } from './CharacterSheetPreviewModal';
 import { getTrackedItemOwner, isSameName } from '../utils/ItemOwnership';
+import { EntityCustomFieldsEditor } from './entity/EntityCustomFieldsEditor';
+import { EntityGroupSelector } from './entity/EntityGroupSelector';
 // Placeholder imports for suggesters - these would need to be created
 // import { CharacterSuggestModal } from './CharacterSuggestModal';
 // import { LocationSuggestModal } from './LocationSuggestModal';
@@ -28,9 +29,8 @@ export class CharacterModal extends ResponsiveModal {
     onSubmit: CharacterModalSubmitCallback;
     onDelete?: CharacterModalDeleteCallback;
     isNew: boolean;
-    private _groupRefreshInterval: number | null = null;
-    private groupSelectorContainer: HTMLElement | null = null;
-    private workingCustomFields: Record<string, string> = {};
+    private readonly customFieldsEditor: EntityCustomFieldsEditor;
+    private readonly groupSelector: EntityGroupSelector;
 
     constructor(app: App, plugin: StorytellerSuitePlugin, character: Character | null, onSubmit: CharacterModalSubmitCallback, onDelete?: CharacterModalDeleteCallback) {
         super(app);
@@ -59,6 +59,26 @@ export class CharacterModal extends ResponsiveModal {
             });
         }
         this.character = initialCharacter;
+        this.customFieldsEditor = new EntityCustomFieldsEditor(this.app, 'character', this.character.customFields);
+        this.groupSelector = new EntityGroupSelector({
+            plugin: this.plugin,
+            description: t('groupsHelpCharacter'),
+            getSelectedGroupIds: () => this.character.groups,
+            setSelectedGroupIds: groupIds => {
+                this.character.groups = groupIds;
+            },
+            loadSelectedGroupIds: async () => {
+                const identifier = this.character.id || this.character.name;
+                const characters = await this.plugin.listCharacters();
+                return (characters.find(character => (character.id || character.name) === identifier)?.groups || this.character.groups || []) as string[];
+            },
+            persistAdd: async groupId => {
+                await this.plugin.addMemberToGroup(groupId, 'character', this.character.id || this.character.name);
+            },
+            persistRemove: async groupId => {
+                await this.plugin.removeMemberFromGroup(groupId, 'character', this.character.id || this.character.name);
+            }
+        });
         this.onSubmit = onSubmit;
         this.onDelete = onDelete;
         this.modalEl.addClass('storyteller-character-modal');
@@ -514,8 +534,8 @@ export class CharacterModal extends ResponsiveModal {
             });
 
         // --- Groups ---
-        this.groupSelectorContainer = contentEl.createDiv('storyteller-group-selector-container');
-        this.renderGroupSelector(this.groupSelectorContainer);
+        const groupSelectorContainer = contentEl.createDiv('storyteller-group-selector-container');
+        this.groupSelector.attach(groupSelectorContainer);
 
         // --- Connections (Typed Relationships) ---
         contentEl.createEl('h3', { text: t('connections') });
@@ -550,57 +570,8 @@ export class CharacterModal extends ResponsiveModal {
                 }));
 
         // --- Custom Fields ---
-        this.workingCustomFields = { ...(this.character.customFields || {}) };
-        contentEl.createEl('h3', { text: t('customFields') });
-        const customFieldsContainer = contentEl.createDiv('storyteller-custom-fields-container');
-        // Render existing custom fields so users can see and edit them
-        this.renderCustomFields(customFieldsContainer, this.workingCustomFields);
-
-        // --- Real-time group refresh ---
-        // Clear any existing interval to prevent leaks when refresh() calls onOpen()
-        if (this._groupRefreshInterval) {
-            clearInterval(this._groupRefreshInterval);
-            this._groupRefreshInterval = null;
-        }
-        this._groupRefreshInterval = window.setInterval(() => {
-            if (this.modalEl.isShown() && this.groupSelectorContainer) {
-                this.renderGroupSelector(this.groupSelectorContainer);
-            }
-        }, 2000);
-
-        new Setting(contentEl)
-            .addButton(button => button
-                .setButtonText(t('addCustomField'))
-                .setIcon('plus')
-                .onClick(() => {
-                    if (!this.workingCustomFields) this.workingCustomFields = {};
-                    const fields = this.workingCustomFields;
-                    const reserved = new Set<string>([...getWhitelistKeys('character'), 'customFields', 'filePath', 'id', 'sections']);
-                    const askValue = (key: string) => {
-                        new PromptModal(this.app, {
-                            title: t('customFieldValueTitle'),
-                            label: t('valueForX', key),
-                            defaultValue: '',
-                            onSubmit: (val: string) => {
-                                fields[key] = val;
-                            }
-                        }).open();
-                    };
-                    new PromptModal(this.app, {
-                        title: t('newCustomFieldTitle'),
-                        label: t('fieldName'),
-                        defaultValue: '',
-                        validator: (value: string) => {
-                            const trimmed = value.trim();
-                            if (!trimmed) return t('fieldNameCannotBeEmpty');
-                            if (reserved.has(trimmed)) return t('thatNameIsReserved');
-                            const exists = Object.keys(fields).some(k => k.toLowerCase() === trimmed.toLowerCase());
-                            if (exists) return t('fieldAlreadyExists');
-                            return null;
-                        },
-                        onSubmit: (name: string) => askValue(name.trim())
-                    }).open();
-                }));
+        this.customFieldsEditor.setFields(this.character.customFields);
+        this.customFieldsEditor.renderSection(contentEl);
 
         // --- D&D Stats (collapsible) ---
         this.renderDndStatsSection(contentEl);
@@ -659,7 +630,11 @@ export class CharacterModal extends ResponsiveModal {
                 // Note: Allow empty strings to be saved - don't force to empty string if undefined
                 // The save logic will handle proper template rendering
                 try {
-                    this.character.customFields = this.workingCustomFields;
+                    const customFields = this.customFieldsEditor.getFields();
+                    if (!customFields) {
+                        return;
+                    }
+                    this.character.customFields = customFields;
                     await this.onSubmit(this.character);
                     this.close();
                 } catch (error) {
@@ -721,106 +696,7 @@ export class CharacterModal extends ResponsiveModal {
                     this.renderList(container, items, type);
                 });
         });
-    }
-
-    renderCustomFields(container: HTMLElement, fields: Record<string, string>) {
-        container.empty();
-        fields = fields || {};
-        const keys = Object.keys(fields);
-
-        if (keys.length === 0) {
-            container.createEl('p', { text: t('noCustomFields'), cls: 'storyteller-modal-list-empty' });
-            return;
-        }
-
-        const reserved = new Set<string>([...getWhitelistKeys('character'), 'customFields', 'filePath', 'id', 'sections']);
-        keys.forEach(key => {
-            let currentKey = key;
-            const fieldSetting = new Setting(container)
-                .addText(text => text
-                    .setValue(currentKey)
-                    .setPlaceholder(t('fieldName'))
-                    .onChange(newKey => {
-                        const trimmed = newKey.trim();
-                        const isUniqueCaseInsensitive = !Object.keys(fields).some(k => k.toLowerCase() === trimmed.toLowerCase());
-                        const isReserved = reserved.has(trimmed);
-                        if (trimmed && trimmed !== currentKey && isUniqueCaseInsensitive && !isReserved) {
-                            fields[trimmed] = fields[currentKey];
-                            delete fields[currentKey];
-                            currentKey = trimmed;
-                        } else if (trimmed !== currentKey) {
-                            text.setValue(currentKey);
-                            new Notice(t('fieldNameCannotBeEmpty'));
-                        }
-                    }))
-                .addText(text => text
-                    .setValue(fields[currentKey]?.toString() || '')
-                    .setPlaceholder(t('fieldValue'))
-                    .onChange(value => {
-                        fields[currentKey] = value;
-                    }))
-                .addButton(button => button
-                    .setIcon('trash')
-                    .setTooltip(t('removeFieldX', currentKey))
-                    .setClass('mod-warning')
-                    .onClick(() => {
-                        delete fields[currentKey];
-                        this.renderCustomFields(container, fields);
-                    }));
-            fieldSetting.controlEl.addClass('storyteller-custom-field-row');
-        });
-    }
-
-    renderGroupSelector(container: HTMLElement) {
-        container.empty();
-        // Derive current selection by reading the entity's saved groups from disk for truth
-        // so that updates made from the Groups tab reflect immediately here.
-        const allGroups = this.plugin.getGroups();
-        const syncSelection = async (): Promise<Set<string>> => {
-            const identifier = this.character.id || this.character.name;
-            const freshList = await this.plugin.listCharacters();
-            const fresh = freshList.find(c => (c.id || c.name) === identifier);
-            const current = new Set((fresh?.groups || this.character.groups || []) as string[]);
-            // keep in-memory model in sync so saving the modal preserves selection
-            this.character.groups = Array.from(current);
-            return current;
-        };
-        (async () => {
-            const selectedGroupIds = await syncSelection();
-            new Setting(container)
-                .setName(t('groups'))
-                .setDesc(t('groupsHelpCharacter'))
-                .addDropdown(dropdown => {
-                    dropdown.addOption('', t('selectGroupPlaceholder'));
-                    allGroups.forEach(group => {
-                        dropdown.addOption(group.id, group.name);
-                    });
-                    dropdown.setValue('');
-                    dropdown.onChange(async (value) => {
-                        if (value && !selectedGroupIds.has(value)) {
-                            selectedGroupIds.add(value);
-                            this.character.groups = Array.from(selectedGroupIds);
-                            await this.plugin.addMemberToGroup(value, 'character', this.character.id || this.character.name);
-                            this.renderGroupSelector(container);
-                        }
-                    });
-                });
-            if (selectedGroupIds.size > 0) {
-                const selectedDiv = container.createDiv('selected-groups');
-                allGroups.filter(g => selectedGroupIds.has(g.id)).forEach(group => {
-                    const tag = selectedDiv.createSpan({ text: group.name, cls: 'group-tag' });
-                    const removeBtn = tag.createSpan({ text: ' ×', cls: 'remove-group-btn' });
-                    removeBtn.onclick = async () => {
-                        selectedGroupIds.delete(group.id);
-                        this.character.groups = Array.from(selectedGroupIds);
-                        await this.plugin.removeMemberFromGroup(group.id, 'character', this.character.id || this.character.name);
-                        this.renderGroupSelector(container);
-                    };
-                });
-            }
-        })();
-    }
-
+    }
     private hasMultipleEntities(template: Template): boolean {
         let entityCount = 0;
         if (template.entities.characters?.length) entityCount += template.entities.characters.length;
@@ -1077,9 +953,8 @@ export class CharacterModal extends ResponsiveModal {
     }
 
     onClose() {
+        this.groupSelector.dispose();
         this.contentEl.empty();
-        if (this._groupRefreshInterval) {
-            clearInterval(this._groupRefreshInterval);
-        }
     }
 }
+

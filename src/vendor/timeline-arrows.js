@@ -41,9 +41,10 @@
  * @property {string} [title] optional arrow title
  * @property {string} [color] optional arrow color
  * @property {number} [direction] arrow direction: 0=no arrows, 1=forward only, 2=backward only, 3=both directions
- * @property {number} [line] line type: 0=solid (default), 1=dashed
+ * @property {number} [line] line type: 0=solid (default), 1=dashed, 2=dotted
  * @property {string} [align] if 'center', line is straight
  * @property {number} [type] line shape: 0=bezier(default), 1=straight, 2=cornered
+ * @property {number} [track] optional stack index for routed arrows
  */
 
 /**
@@ -105,6 +106,8 @@ export default class Arrow {
         this._svg.style.display = "block";
         this._svg.style.zIndex = "1"; // Should it be above or below? (1 for above, -1 for below)
         this._svg.style.pointerEvents = "none"; // To click through, if we decide to put it above other elements.
+        this._svg.style.overflow = "visible";
+        this._svg.classList.add("sts-timeline-dependency-layer");
         this._timeline.dom.center.appendChild(this._svg);
 
         //Create paths for the started dependency array
@@ -122,18 +125,19 @@ export default class Arrow {
     /** @private */
     _getOrCreateMarker(color) {
         const arrowColor = color || this._arrowsColor;
+        const safeColorId = String(arrowColor).replace(/[^a-zA-Z0-9_-]+/g, "-");
 
         if (!this._colorMarkers.has(arrowColor)) {
-            const markerId = `arrowhead-${arrowColor.replace('#', '')}-${Math.random().toString(36).substring(2)}`;
+            const markerId = `arrowhead-${safeColorId}-${Math.random().toString(36).substring(2)}`;
 
             const arrowHead = document.createElementNS("http://www.w3.org/2000/svg", "marker");
             arrowHead.setAttribute("id", markerId);
             arrowHead.setAttribute("viewBox", "-10 -5 10 10");
-            arrowHead.setAttribute("refX", "-7");
+            arrowHead.setAttribute("refX", "-6.5");
             arrowHead.setAttribute("refY", "0");
             arrowHead.setAttribute("markerUnits", "strokeWidth");
-            arrowHead.setAttribute("markerWidth", "3");
-            arrowHead.setAttribute("markerHeight", "3");
+            arrowHead.setAttribute("markerWidth", "4");
+            arrowHead.setAttribute("markerHeight", "4");
             arrowHead.setAttribute("orient", "auto-start-reverse");
 
             const arrowHeadPath = document.createElementNS("http://www.w3.org/2000/svg", "path");
@@ -161,6 +165,12 @@ export default class Arrow {
         somePath.style.strokeWidth = this._arrowsStrokeWidth + "px";
         somePath.style.fill = "none";
         somePath.style.pointerEvents = "auto";
+        somePath.style.strokeLinecap = "round";
+        somePath.style.strokeLinejoin = "round";
+        somePath.style.vectorEffect = "non-scaling-stroke";
+        somePath.style.filter = "drop-shadow(0 1px 2px rgba(0, 0, 0, 0.35))";
+        somePath.style.opacity = "0.96";
+        somePath.classList.add("sts-timeline-dependency-arrow");
 
         // Set the line type
         const line = lineType !== undefined ? lineType : 0; // Default to solid line
@@ -170,15 +180,10 @@ export default class Arrow {
         } else if (line === 1) {
             // Type 1: Dashed line
             somePath.style.strokeDasharray = "7,5";
+        } else if (line === 2) {
+            // Type 2: Dotted line
+            somePath.style.strokeDasharray = "2,4";
         }
-        // You can add more line types here:
-        // } else if (line === 2) {
-        //     // Type 2: Dotted line
-        //     somePath.style.strokeDasharray = "2,3";
-        // } else if (line === 3) {
-        //     // Type 3: Dash-dot line
-        //     somePath.style.strokeDasharray = "10,5,2,5";
-        // }
 
         this._dependencyPath.push(somePath);
         this._svg.appendChild(somePath);
@@ -387,6 +392,38 @@ export default class Arrow {
                     // 2 bends
                     const xA = start.x + offset * sign;
                     pathStr = `M ${start.x} ${start.y} L ${xA} ${start.y} L ${xA} ${end.y} L ${end.x} ${end.y}`;
+                }
+            } else if (arrowType === 3) {
+                const sign = item_1.mid_x <= item_2.mid_x ? 1 : -1;
+                const leadGap = 12;
+                const markerGap = 10;
+                const lift = 18 + ((dep.track ?? 0) % 4) * 8;
+                const start = sign > 0
+                    ? { x: item_1.right, y: item_1.mid_y }
+                    : { x: item_1.left, y: item_1.mid_y };
+                const end = sign > 0
+                    ? { x: item_2.left, y: item_2.mid_y }
+                    : { x: item_2.right, y: item_2.mid_y };
+
+                if (direction === 1 || direction === 3) {
+                    end.x -= sign * markerGap;
+                }
+                if (direction === 2 || direction === 3) {
+                    start.x += sign * markerGap;
+                }
+
+                const routeY = Math.max(8, Math.min(item_1.top, item_2.top) - lift);
+                const elbowStartX = start.x + sign * leadGap;
+                const elbowEndX = end.x - sign * leadGap;
+                const horizontalRoom = sign > 0
+                    ? elbowEndX - elbowStartX
+                    : elbowStartX - elbowEndX;
+
+                if (horizontalRoom < leadGap * 2) {
+                    const midX = (start.x + end.x) / 2;
+                    pathStr = `M ${start.x} ${start.y} L ${elbowStartX} ${start.y} L ${elbowStartX} ${routeY} L ${midX} ${routeY} L ${midX} ${end.y} L ${end.x} ${end.y}`;
+                } else {
+                    pathStr = `M ${start.x} ${start.y} L ${elbowStartX} ${start.y} L ${elbowStartX} ${routeY} L ${elbowEndX} ${routeY} L ${elbowEndX} ${end.y} L ${end.x} ${end.y}`;
                 }
             } else if (dep.align === 'center') {
                 // --- Corrected algorithm: line between nearest-to-center intersection points ---

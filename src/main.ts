@@ -113,16 +113,20 @@ type FrontmatterReferenceIndex = {
 const FRONTMATTER_REFERENCE_FIELDS: FrontmatterReferenceFieldConfig[] = [
     { field: 'groups', kind: 'array', entityType: 'group' },
     { field: 'linkedGroups', kind: 'array', entityType: 'group' },
+    { field: 'dependencies', kind: 'array', entityType: 'event', mirrorField: 'dependencyNames' },
     { field: 'currentLocationId', kind: 'scalar', entityType: 'location' },
     { field: 'parentLocationId', kind: 'scalar', entityType: 'location' },
+    { field: 'correspondingMapId', kind: 'scalar', entityType: 'map' },
     { field: 'childLocationIds', kind: 'array', entityType: 'location' },
     { field: 'bookId', kind: 'scalar', entityType: 'book', mirrorField: 'bookName' },
     { field: 'chapterId', kind: 'scalar', entityType: 'chapter', mirrorField: 'chapterName' },
     { field: 'currentSceneId', kind: 'scalar', entityType: 'scene', mirrorField: 'currentSceneName' },
+    { field: 'campaignBoardMapId', kind: 'scalar', entityType: 'map' },
     { field: 'partyCharacterIds', kind: 'array', entityType: 'character', mirrorField: 'partyCharacterNames' },
     { field: 'inventoryItemIds', kind: 'array', entityType: 'item' },
     { field: 'chapterIds', kind: 'array', entityType: 'chapter' },
     { field: 'activeSessionId', kind: 'scalar', entityType: 'campaignSession' },
+    { field: 'activeMapId', kind: 'scalar', entityType: 'map' },
     { field: 'primaryMapId', kind: 'scalar', entityType: 'map' },
     { field: 'mapId', kind: 'scalar', entityType: 'map' },
     { field: 'parentMapId', kind: 'scalar', entityType: 'map' },
@@ -2030,6 +2034,100 @@ export default class StorytellerSuitePlugin extends Plugin {
 			}
 		});
 
+		// Campaign commands
+		this.addCommand({
+			id: 'open-campaign-view',
+			name: 'Open campaign view',
+			callback: async () => {
+				await this.activateCampaignView();
+			}
+		});
+
+		this.addCommand({
+			id: 'open-campaign-session-manager',
+			name: 'Open campaign session manager',
+			callback: async () => {
+				await this.openCampaignSessionManager();
+			}
+		});
+
+		this.addCommand({
+			id: 'resume-latest-campaign-session',
+			name: 'Resume latest campaign session',
+			callback: async () => {
+				if (!this.ensureActiveStoryOrGuide()) return;
+				const latestSession = await this.getLatestCampaignSession();
+				if (!latestSession) {
+					new Notice('No campaign sessions found in the active story.');
+					return;
+				}
+				await this.activateCampaignView(latestSession);
+			}
+		});
+
+		this.addCommand({
+			id: 'open-active-campaign-session-note',
+			name: 'Open active campaign session note',
+			callback: async () => {
+				if (!this.ensureActiveStoryOrGuide()) return;
+				await this.openCampaignSessionNote();
+			}
+		});
+
+		this.addCommand({
+			id: 'run-campaign-from-current-scene',
+			name: 'Run campaign from current scene',
+			callback: async () => {
+				if (!this.ensureActiveStoryOrGuide()) return;
+				const scene = await this.getActiveSceneForCampaignCommand();
+				if (!scene) {
+					new Notice('The active note is not a scene.');
+					return;
+				}
+
+				const loadedSession = this.getLoadedCampaignSession();
+				if (loadedSession) {
+					await this.activateCampaignView(loadedSession, scene);
+					return;
+				}
+
+				await this.openCampaignSessionManager(scene);
+			}
+		});
+
+		this.addCommand({
+			id: 'add-campaign-log-entry',
+			name: 'Add campaign log entry',
+			callback: async () => {
+				if (!this.ensureActiveStoryOrGuide()) return;
+				const targetSession = this.getLoadedCampaignSession() ?? await this.getLatestCampaignSession();
+				if (!targetSession?.filePath) {
+					new Notice('No campaign session available for logging.');
+					return;
+				}
+
+				new PromptModal(this.app, {
+					title: 'Campaign Log Entry',
+					label: 'Log entry',
+					defaultValue: '',
+					validator: (value: string) => value.trim() ? null : 'Enter a log entry.',
+					onSubmit: (value: string) => {
+						void (async () => {
+							try {
+								targetSession.modified = new Date().toISOString();
+								await this.saveSession(targetSession);
+								await this.appendToSessionLog(targetSession.filePath!, `- ${value.trim()}`);
+								new Notice(`Added log entry to "${targetSession.name}".`);
+							} catch (error) {
+								console.error('[campaign-log-entry] Error appending log entry:', error);
+								new Notice('Failed to add campaign log entry.');
+							}
+						})();
+					}
+				}).open();
+			}
+		});
+
 		// --- Create New Story Command ---
 		this.addCommand({
 			id: 'create-new-story',
@@ -3150,6 +3248,53 @@ export default class StorytellerSuitePlugin extends Plugin {
             await view.loadSession(session, startingScene);
             await view.render();
         }
+    }
+
+    private getCampaignViewInstance(): CampaignView | null {
+        const leaf = this.app.workspace.getLeavesOfType(VIEW_TYPE_CAMPAIGN)[0];
+        if (!leaf) return null;
+        return leaf.view as CampaignView;
+    }
+
+    private getLoadedCampaignSession(): CampaignSession | null {
+        const view = this.getCampaignViewInstance() as any;
+        const session = view?.session as CampaignSession | null | undefined;
+        return session ? { ...session } : null;
+    }
+
+    private async getLatestCampaignSession(): Promise<CampaignSession | null> {
+        const sessions = await this.listSessions().catch(() => [] as CampaignSession[]);
+        return sessions[0] ?? null;
+    }
+
+    private async getActiveSceneForCampaignCommand(): Promise<Scene | null> {
+        const activeFile = this.app.workspace.getActiveFile();
+        if (!activeFile) return null;
+        const activePath = normalizePath(activeFile.path);
+        const scenes = await this.listScenes().catch(() => [] as Scene[]);
+        return scenes.find(scene => normalizePath(scene.filePath || '') === activePath) ?? null;
+    }
+
+    private async openCampaignSessionManager(preferredStartingScene?: Scene): Promise<void> {
+        if (!this.ensureActiveStoryOrGuide()) return;
+        const { CampaignSessionModal } = await import('./modals/CampaignSessionModal');
+        new CampaignSessionModal(
+            this.app,
+            this,
+            async (session) => {
+                await this.activateCampaignView(session, preferredStartingScene);
+            },
+            preferredStartingScene
+        ).open();
+    }
+
+    private async openCampaignSessionNote(session?: CampaignSession | null): Promise<void> {
+        const targetSession = session ?? this.getLoadedCampaignSession() ?? await this.getLatestCampaignSession();
+        if (!targetSession?.filePath) {
+            new Notice('No campaign session note available.');
+            return;
+        }
+        await this.app.workspace.openLinkText(targetSession.filePath, '', 'tab');
     }
 
     /** Activate or focus the Scene Graph view. */
@@ -4806,6 +4951,11 @@ export default class StorytellerSuitePlugin extends Plugin {
 	async saveEvent(event: Event): Promise<void> {
 		await this.ensureEventFolder();
 		const folderPath = this.getEntityFolder('event');
+
+		// Ensure events have stable IDs so dependency tracking can survive sorting and grouping changes
+		if (!event.id) {
+			event.id = Date.now().toString(36) + Math.random().toString(36).substr(2, 6);
+		}
 		
 		// Create safe filename from event name
 		const safeName = event.name?.replace(/[\\/:"*?<>|#^[\]]+/g, '') || 'Unnamed Event';
@@ -4910,8 +5060,19 @@ export default class StorytellerSuitePlugin extends Plugin {
 			new Notice('Note created with standard sections for easy editing.');
 		}
 
+		// Set filePath for reference before any follow-up sync work.
+		event.filePath = finalFilePath;
+
+		if (!(event as any)._skipDependencySync) {
+			try {
+				await this.syncEventDependencyReferences(event, oldEvent);
+			} catch (error) {
+				console.error('[saveEvent] Error syncing event dependency references:', error);
+			}
+		}
+
 		// Auto-detect conflicts if enabled
-		if (this.settings.autoDetectConflicts !== false) {  // Default to true
+		if (!(event as any)._skipConflictDetection && this.settings.autoDetectConflicts !== false) {  // Default to true
 			try {
 				const allEvents = await this.listEvents();
 				const conflicts = ConflictDetector.detectAllConflicts(allEvents);
@@ -4942,9 +5103,6 @@ export default class StorytellerSuitePlugin extends Plugin {
 			}
 		}
 
-		// Set filePath for reference
-		event.filePath = finalFilePath;
-
 		// Sync bidirectional relationships (skip if _skipSync flag is set to prevent recursion)
 		if (!(event as any)._skipSync) {
 			try {
@@ -4958,6 +5116,56 @@ export default class StorytellerSuitePlugin extends Plugin {
 		}
 
 		this.app.metadataCache.trigger("dataview:refresh-views");
+	}
+
+	private async syncEventDependencyReferences(event: Event, oldEvent?: Event): Promise<void> {
+		const previousId = typeof oldEvent?.id === 'string' ? oldEvent.id.trim() : '';
+		const previousName = typeof oldEvent?.name === 'string' ? oldEvent.name.trim() : '';
+		const nextId = typeof event.id === 'string' ? event.id.trim() : '';
+		const nextName = typeof event.name === 'string' ? event.name.trim() : '';
+
+		if (!nextName) return;
+		if (previousId === nextId && previousName === nextName) return;
+
+		const matchers = new Set(
+			[previousId, previousName]
+				.map(value => value.trim())
+				.filter(value => value.length > 0)
+		);
+		if (matchers.size === 0) return;
+
+		const events = await this.listEvents();
+		const updates = events
+			.filter(candidate => candidate.filePath && candidate.filePath !== event.filePath)
+			.filter(candidate => Array.isArray(candidate.dependencies) && candidate.dependencies.length > 0);
+
+		for (const candidate of updates) {
+			const dependencyIds = Array.isArray(candidate.dependencies) ? [...candidate.dependencies] : [];
+			const dependencyNames = Array.isArray(candidate.dependencyNames)
+				? [...candidate.dependencyNames]
+				: [...dependencyIds];
+			let changed = false;
+
+			for (let index = 0; index < dependencyIds.length; index++) {
+				const depId = String(dependencyIds[index] ?? '').trim();
+				const depName = String(dependencyNames[index] ?? depId).trim();
+				if (!matchers.has(depId) && !matchers.has(depName)) continue;
+				dependencyIds[index] = nextId || nextName;
+				dependencyNames[index] = nextName;
+				changed = true;
+			}
+
+			if (!changed) continue;
+
+			candidate.dependencies = dependencyIds;
+			candidate.dependencyNames = dependencyNames;
+			await this.saveEvent({
+				...candidate,
+				_skipSync: true,
+				_skipDependencySync: true,
+				_skipConflictDetection: true
+			} as Event);
+		}
 	}
 
 	/**
@@ -8072,6 +8280,7 @@ export default class StorytellerSuitePlugin extends Plugin {
    */
   emitGroupsChanged(): void {
     try {
+      this.app.workspace.trigger('storyteller:groups-changed');
       // Ping the dashboard view to refresh if the groups tab is active
       const leaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_DASHBOARD);
       const view: any = leaves[0]?.view;

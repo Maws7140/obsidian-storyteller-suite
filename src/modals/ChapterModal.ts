@@ -8,10 +8,10 @@ import { LocationSuggestModal } from './LocationSuggestModal';
 import { EventSuggestModal } from './EventSuggestModal';
 import { addImageSelectionButtons } from '../utils/ImageSelectionHelper';
 import { GroupSuggestModal } from './GroupSuggestModal';
-import { PromptModal } from './ui/PromptModal';
-import { getWhitelistKeys, parseSectionsFromMarkdown } from '../yaml/EntitySections';
+import { parseSectionsFromMarkdown } from '../yaml/EntitySections';
 import { TemplatePickerModal } from './TemplatePickerModal';
 import { Template } from '../templates/TemplateTypes';
+import { EntityCustomFieldsEditor } from './entity/EntityCustomFieldsEditor';
 
 export type ChapterModalSubmitCallback = (ch: Chapter) => Promise<void>;
 export type ChapterModalDeleteCallback = (ch: Chapter) => Promise<void>;
@@ -22,12 +22,14 @@ export class ChapterModal extends Modal {
     onSubmit: ChapterModalSubmitCallback;
     onDelete?: ChapterModalDeleteCallback;
     isNew: boolean;
+    private readonly customFieldsEditor: EntityCustomFieldsEditor;
 
     constructor(app: App, plugin: StorytellerSuitePlugin, ch: Chapter | null, onSubmit: ChapterModalSubmitCallback, onDelete?: ChapterModalDeleteCallback) {
         super(app);
         this.plugin = plugin;
         this.isNew = ch == null;
         this.chapter = ch ? { ...ch } : { name: '', tags: [], linkedCharacters: [], linkedLocations: [], linkedEvents: [], linkedItems: [], linkedGroups: [] } as Chapter;
+        this.customFieldsEditor = new EntityCustomFieldsEditor(this.app, 'chapter', ((this.chapter as any).customFields || {}) as Record<string, string>);
         this.onSubmit = onSubmit;
         this.onDelete = onDelete;
         this.modalEl.addClass('storyteller-chapter-modal');
@@ -203,38 +205,8 @@ export class ChapterModal extends Modal {
             });
 
         // Custom fields (add only)
-        contentEl.createEl('h3', { text: t('customFields') });
-        new Setting(contentEl)
-            .addButton(btn => btn
-                .setButtonText(t('addCustomField'))
-                .setIcon('plus')
-                .onClick(() => {
-                    const reserved = new Set<string>([...getWhitelistKeys('chapter'), 'customFields', 'filePath', 'id', 'sections']);
-                    // Chapter type currently has no customFields in interface, but we preserve any extras
-                    const fields = (this.chapter as any).customFields || ((this.chapter as any).customFields = {});
-                    const askValue = (key: string) => {
-                        new PromptModal(this.app, {
-                            title: t('customFieldValueTitle'),
-                            label: t('valueForX', key),
-                            defaultValue: '',
-                            onSubmit: (val: string) => { fields[key] = val; }
-                        }).open();
-                    };
-                    new PromptModal(this.app, {
-                        title: t('newCustomFieldTitle'),
-                        label: t('fieldName'),
-                        defaultValue: '',
-                        validator: (value: string) => {
-                            const trimmed = value.trim();
-                            if (!trimmed) return t('fieldNameCannotBeEmpty');
-                            if (reserved.has(trimmed)) return t('thatNameIsReserved');
-                            const exists = Object.keys(fields).some((k: string) => k.toLowerCase() === trimmed.toLowerCase());
-                            if (exists) return t('fieldAlreadyExists');
-                            return null;
-                        },
-                        onSubmit: (name: string) => askValue(name.trim())
-                    }).open();
-                }));
+        this.customFieldsEditor.setFields(((this.chapter as any).customFields || {}) as Record<string, string>);
+        this.customFieldsEditor.renderSection(contentEl);
 
         // Book assignment
         contentEl.createEl('h3', { text: 'Book' });
@@ -351,6 +323,11 @@ export class ChapterModal extends Modal {
                 }
                 // Ensure empty section fields are set so templates can render headings
                 this.chapter.summary = this.chapter.summary || '';
+                const customFields = this.customFieldsEditor.getFields();
+                if (!customFields) {
+                    return;
+                }
+                (this.chapter as any).customFields = customFields;
                 await this.onSubmit(this.chapter);
                 this.close();
             }));

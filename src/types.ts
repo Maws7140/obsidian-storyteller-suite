@@ -297,6 +297,9 @@ export interface Scene {
     /** Optional date to show this scene on the timeline (same format as events) */
     date?: string;
 
+    /** Optional campaign board map override for this scene. */
+    campaignBoardMapId?: string;
+
     // Manuscript/Compile fields (Longform-inspired)
     /** Cached word count of scene content */
     wordCount?: number;
@@ -517,6 +520,7 @@ export interface CampaignSession {
     storyId: string;
     currentSceneId?: string;
     currentSceneName?: string;
+    activeMapId?: string;
     partyCharacterIds?: string[];
     partyCharacterNames?: string[];
     partyState?: PartyMemberState[];
@@ -744,8 +748,11 @@ export interface Event {
     /** Flag to mark this event as a milestone (key story moment) */
     isMilestone?: boolean;
     
-    /** Array of event names/ids that this event depends on (for Gantt-style dependencies) */
+    /** Stable event IDs this event depends on; legacy name-based values are migrated on load when possible */
     dependencies?: string[];
+
+    /** Resolved dependency display names for UI/runtime use; not persisted as a canonical field */
+    dependencyNames?: string[];
 
     /** Completion progress (0-100) for tracking event status */
     progress?: number;

@@ -6,7 +6,8 @@ import { addImageSelectionButtons } from '../utils/ImageSelectionHelper';
 import { TemplatePickerModal } from './TemplatePickerModal';
 import { Template } from '../templates/TemplateTypes';
 import { t } from '../i18n/strings';
-import { getWhitelistKeys, parseSectionsFromMarkdown } from '../yaml/EntitySections';
+import { parseSectionsFromMarkdown } from '../yaml/EntitySections';
+import { EntityCustomFieldsEditor } from './entity/EntityCustomFieldsEditor';
 
 export type EconomyModalSubmitCallback = (economy: Economy) => Promise<void>;
 export type EconomyModalDeleteCallback = (economy: Economy) => Promise<void>;
@@ -20,6 +21,7 @@ export class EconomyModal extends ResponsiveModal {
     onSubmit: EconomyModalSubmitCallback;
     onDelete?: EconomyModalDeleteCallback;
     isNew: boolean;
+    private readonly customFieldsEditor: EntityCustomFieldsEditor;
 
     constructor(
         app: App,
@@ -59,6 +61,7 @@ export class EconomyModal extends ResponsiveModal {
         if (!Array.isArray(this.economy.linkedEvents)) this.economy.linkedEvents = [];
         if (!Array.isArray(this.economy.groups)) this.economy.groups = [];
         if (!Array.isArray(this.economy.connections)) this.economy.connections = [];
+        this.customFieldsEditor = new EntityCustomFieldsEditor(this.app, 'economy', this.economy.customFields);
 
         this.onSubmit = onSubmit;
         this.onDelete = onDelete;
@@ -373,6 +376,9 @@ export class EconomyModal extends ResponsiveModal {
                 });
             });
 
+        this.customFieldsEditor.setFields(this.economy.customFields);
+        this.customFieldsEditor.renderSection(contentEl);
+
         // Buttons
         const buttonsSetting = new Setting(contentEl);
 
@@ -384,6 +390,11 @@ export class EconomyModal extends ResponsiveModal {
                     new Notice(t('economyNameRequired'));
                     return;
                 }
+                const customFields = this.customFieldsEditor.getFields();
+                if (!customFields) {
+                    return;
+                }
+                this.economy.customFields = customFields;
                 await this.onSubmit(this.economy);
                 this.close();
             })

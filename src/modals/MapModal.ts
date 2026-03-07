@@ -1,17 +1,17 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { App, Setting, Notice, TextAreaComponent, TextComponent, ButtonComponent, DropdownComponent, Modal, parseYaml } from 'obsidian';
 import { StoryMap as Map } from '../types';
-import { getWhitelistKeys, parseSectionsFromMarkdown } from '../yaml/EntitySections';
-import { Group } from '../types';
+import { parseSectionsFromMarkdown } from '../yaml/EntitySections';
 import StorytellerSuitePlugin from '../main';
 import { t } from '../i18n/strings';
 import { ResponsiveModal } from './ResponsiveModal';
-import { PromptModal } from './ui/PromptModal';
 import { TemplatePickerModal } from './TemplatePickerModal';
 import { Template } from '../templates/TemplateTypes';
 import { LocationSuggestModal } from './LocationSuggestModal';
 import { MapHierarchyManager } from '../utils/MapHierarchyManager';
 import { addImageSelectionButtons } from '../utils/ImageSelectionHelper';
+import { EntityCustomFieldsEditor } from './entity/EntityCustomFieldsEditor';
+import { EntityGroupSelector } from './entity/EntityGroupSelector';
 
 export type MapModalSubmitCallback = (map: Map) => Promise<void>;
 export type MapModalDeleteCallback = (map: Map) => Promise<void>;
@@ -22,10 +22,10 @@ export class MapModal extends ResponsiveModal {
     onSubmit: MapModalSubmitCallback;
     onDelete?: MapModalDeleteCallback;
     isNew: boolean;
-    private _groupRefreshInterval: number | null = null;
-    private groupSelectorContainer: HTMLElement | null = null;
     private hierarchyManager: MapHierarchyManager;
     private hasAutoAppliedTemplate = false;
+    private readonly customFieldsEditor: EntityCustomFieldsEditor;
+    private readonly groupSelector: EntityGroupSelector;
 
     constructor(app: App, plugin: StorytellerSuitePlugin, map: Map | null, onSubmit: MapModalSubmitCallback, onDelete?: MapModalDeleteCallback) {
         super(app);
@@ -56,6 +56,15 @@ export class MapModal extends ResponsiveModal {
         if (map && map.filePath) initialMap.filePath = map.filePath;
 
         this.map = initialMap;
+        this.customFieldsEditor = new EntityCustomFieldsEditor(this.app, 'map', this.map.customFields);
+        this.groupSelector = new EntityGroupSelector({
+            plugin: this.plugin,
+            description: 'Organize this map with groups.',
+            getSelectedGroupIds: () => this.map.groups,
+            setSelectedGroupIds: groupIds => {
+                this.map.groups = groupIds;
+            }
+        });
         this.onSubmit = onSubmit;
         this.onDelete = onDelete;
         this.modalEl.addClass('storyteller-map-modal');
@@ -436,51 +445,12 @@ export class MapModal extends ResponsiveModal {
         );
 
         // Custom Fields
-        contentEl.createEl('h3', { text: t('customFields') });
-        const customFieldsContainer = contentEl.createDiv('storyteller-custom-fields-container');
-        if (!this.map.customFields) this.map.customFields = {};
-        this.renderCustomFields(customFieldsContainer, this.map.customFields);
-
-        new Setting(contentEl)
-            .addButton(button => button
-                .setButtonText(t('addCustomField'))
-                .setIcon('plus')
-                .onClick(() => {
-                    if (!this.map.customFields) this.map.customFields = {};
-                    const fields = this.map.customFields;
-                    const reserved = new Set<string>([...getWhitelistKeys('map'), 'customFields', 'filePath', 'id', 'sections']);
-                    const askValue = (key: string) => {
-                        new PromptModal(this.app, {
-                            title: 'Custom field value',
-                            label: `Value for "${key}"`,
-                            defaultValue: '',
-                            onSubmit: (val: string) => { fields[key] = val; }
-                        }).open();
-                    };
-                    new PromptModal(this.app, {
-                        title: 'New custom field',
-                        label: 'Field name',
-                        defaultValue: '',
-                        validator: (value: string) => {
-                            const trimmed = value.trim();
-                            if (!trimmed) return 'Field name cannot be empty';
-                            if (reserved.has(trimmed)) return 'That name is reserved';
-                            const exists = Object.keys(fields).some(k => k.toLowerCase() === trimmed.toLowerCase());
-                            if (exists) return 'A field with that name already exists';
-                            return null;
-                        },
-                        onSubmit: (name: string) => askValue(name.trim())
-                    }).open();
-                }));
+        this.customFieldsEditor.setFields(this.map.customFields);
+        this.customFieldsEditor.renderSection(contentEl);
 
         // Groups
-        this.groupSelectorContainer = contentEl.createDiv('storyteller-group-selector-container');
-        this.renderGroupSelector(this.groupSelectorContainer);
-        this._groupRefreshInterval = window.setInterval(() => {
-            if (this.modalEl.isShown() && this.groupSelectorContainer) {
-                this.renderGroupSelector(this.groupSelectorContainer);
-            }
-        }, 2000);
+        const groupSelectorContainer = contentEl.createDiv('storyteller-group-selector-container');
+        this.groupSelector.attach(groupSelectorContainer);
 
         // Action Buttons
         const buttonsSetting = new Setting(contentEl).setClass('storyteller-modal-buttons');
@@ -524,6 +494,11 @@ export class MapModal extends ResponsiveModal {
                     }
 
                     console.log('MapModal: Calling onSubmit');
+                    const customFields = this.customFieldsEditor.getFields();
+                    if (!customFields) {
+                        return;
+                    }
+                    this.map.customFields = customFields;
                     await this.onSubmit(this.map);
                     console.log('MapModal: Save completed, closing modal');
                     this.close();
@@ -535,10 +510,7 @@ export class MapModal extends ResponsiveModal {
     }
 
     onClose() {
-        if (this._groupRefreshInterval) {
-            window.clearInterval(this._groupRefreshInterval);
-            this._groupRefreshInterval = null;
-        }
+        this.groupSelector.dispose();
         super.onClose();
     }
 
@@ -754,59 +726,8 @@ export class MapModal extends ResponsiveModal {
             this.map.markers = [];
         }
     }
-
-    private renderCustomFields(container: HTMLElement, fields: Record<string, string>): void {
-        container.empty();
-        const entries = Object.entries(fields);
-        if (entries.length === 0) {
-            container.createEl('p', { text: 'No custom fields' });
-            return;
-        }
-
-        entries.forEach(([key, value]) => {
-            const fieldEl = container.createDiv('storyteller-custom-field');
-            fieldEl.createEl('strong', { text: `${key}: ` });
-            fieldEl.createSpan({ text: value });
-            const deleteBtn = fieldEl.createEl('button', { text: '×', cls: 'storyteller-custom-field-delete' });
-            deleteBtn.onclick = () => {
-                delete fields[key];
-                this.renderCustomFields(container, fields);
-            };
-        });
-    }
-
-    private renderGroupSelector(container: HTMLElement): void {
-        container.empty();
-        const groups = this.plugin.settings.groups || [];
-        if (!this.map.groups) this.map.groups = [];
-
-        if (groups.length === 0) {
-            container.createEl('p', { text: 'No groups available. Create groups in the Groups section.' });
-            return;
-        }
-
-        groups.forEach(group => {
-            const isSelected = this.map.groups?.includes(group.id || '');
-            const groupEl = container.createDiv('storyteller-group-item');
-            const checkbox = groupEl.createEl('input', { type: 'checkbox' });
-            checkbox.checked = !!isSelected;
-            checkbox.onchange = () => {
-                if (!this.map.groups) this.map.groups = [];
-                if (checkbox.checked) {
-                    if (group.id && !this.map.groups.includes(group.id)) {
-                        this.map.groups.push(group.id);
-                    }
-                } else {
-                    if (group.id) {
-                        this.map.groups = this.map.groups.filter(g => g !== group.id);
-                    }
-                }
-            };
-            groupEl.createSpan({ text: group.name });
-        });
-    }
-
-    private async confirmDelete(): Promise<boolean> {
+
+   private async confirmDelete(): Promise<boolean> {
         return new Promise((resolve) => {
             const modal = new Modal(this.app);
             modal.setTitle('Confirm Delete');
@@ -838,4 +759,5 @@ export class MapModal extends ResponsiveModal {
         this.onOpen();
     }
 }
+
 
