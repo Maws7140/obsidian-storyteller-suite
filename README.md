@@ -2,7 +2,7 @@
 
 Storyteller Suite is an Obsidian plugin for planning stories, worldbuilding, running campaign sessions, managing timelines, and compiling manuscripts without leaving your vault.
 
-## Current Update Highlights
+## Highlights
 
 ### Timeline redesign
 
