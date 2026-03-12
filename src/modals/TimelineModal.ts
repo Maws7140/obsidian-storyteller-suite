@@ -6,6 +6,7 @@ import { EventModal } from './EventModal';
 import { TimelineRenderer } from '../utils/TimelineRenderer';
 import { TimelineControlsBuilder, TimelineControlCallbacks } from '../utils/TimelineControlsBuilder';
 import { TimelineFilterBuilder, TimelineFilterCallbacks } from '../utils/TimelineFilterBuilder';
+import { PlatformUtils } from '../utils/PlatformUtils';
 
 export class TimelineModal extends Modal {
     plugin: StorytellerSuitePlugin;
@@ -33,6 +34,9 @@ export class TimelineModal extends Modal {
         this.events = events;
         this.modalEl.addClass('storyteller-list-modal');
         this.modalEl.addClass('storyteller-timeline-modal');
+        if (PlatformUtils.shouldUseSimplifiedUI()) {
+            this.modalEl.addClass('storyteller-timeline-modal--mobile');
+        }
 
         // Initialize state using shared utility
         this.currentState = TimelineControlsBuilder.createDefaultState(plugin);

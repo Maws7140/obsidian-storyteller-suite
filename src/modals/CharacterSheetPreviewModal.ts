@@ -86,7 +86,9 @@ export class CharacterSheetPreviewModal extends Modal {
 
     private renderPreview() {
         if (!this.previewEl || !this.sheetData) return;
-        this.previewEl.innerHTML = this.generator.buildInnerHTML(this.sheetData, this.selectedTemplateId);
+        const scopedCss = this.generator.getTemplateScopedCSS(this.selectedTemplateId);
+        const inner = this.generator.buildInnerHTML(this.sheetData, this.selectedTemplateId);
+        this.previewEl.innerHTML = scopedCss ? `<style>${scopedCss}</style>${inner}` : inner;
     }
 
     private async exportHTML() {

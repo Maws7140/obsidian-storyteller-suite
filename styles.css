@@ -745,6 +745,12 @@
     flex: 1;
 }
 
+.storyteller-map-svg-overlay-layer,
+.storyteller-map-svg-overlay-layer svg,
+.storyteller-map-svg-overlay {
+    pointer-events: none !important;
+}
+
 .entity-result-text {
     display: flex;
     flex: 1;
@@ -3009,26 +3015,27 @@ If your plugin does not need CSS, delete this file.
 }
 .storyteller-gallery-grid {
     display: grid;
-    /* Adjust minmax values for desired item size */
-    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-    row-gap: 5px;    /* Set vertical gap between rows */
-    column-gap: 15px;
-    padding: 10px 0; /* Padding above/below grid */
+    grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)) !important;
+    grid-auto-flow: row !important;
+    grid-auto-rows: minmax(210px, auto) !important;
+    gap: 14px !important;
+    align-items: start !important;
+    align-content: start;
+    padding: 10px 0;
   }
   
   .storyteller-gallery-item {
-    /* Keep existing properties: */
     border: 1px solid var(--background-modifier-border);
     border-radius: var(--radius-m);
     overflow: hidden;
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    grid-template-rows: minmax(0, 1fr) auto;
     cursor: pointer;
     background-color: var(--background-secondary);
     transition: transform 0.1s ease-in-out, box-shadow 0.1s ease-in-out;
-  
-    /* --- ADD THIS LINE --- */
-    align-self: start; /* Prevent item stretching vertically in the grid row */
+    min-height: 210px;
+    height: 100%;
+    align-self: stretch;
   }
   
   .storyteller-gallery-item:hover,
@@ -3041,22 +3048,27 @@ If your plugin does not need CSS, delete this file.
   
   .storyteller-gallery-item-image {
     width: 100%;
-    height: 120px; /* Give images a fixed height */
-    object-fit: cover; /* Cover the area, cropping if necessary */
-    display: block; /* Removes potential extra space below */
-    background-color: var(--background-secondary-alt); /* Placeholder bg */
+    height: 100%;
+    min-height: 156px;
+    aspect-ratio: 4 / 3;
+    object-fit: cover;
+    display: block;
+    background-color: var(--background-secondary-alt);
   }
   
   .storyteller-gallery-item-title {
-    padding: var(--size-4-1) var(--size-4-2); /* Small padding */
+    padding: var(--size-4-2) var(--size-4-2);
     font-size: var(--font-ui-small);
     text-align: center;
-    white-space: nowrap; /* Prevent title wrapping */
-    overflow: hidden; /* Hide overflow */
-    text-overflow: ellipsis; /* Show ... for overflow */
-    flex-shrink: 0; /* Prevent title from shrinking */
-    /* Optional: Set min-height to prevent layout shift if title is empty */
-    min-height: calc(var(--font-ui-small) + 2 * var(--size-4-1) + 2px);
+    white-space: normal;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.35;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    min-height: 3.2em;
+    border-top: 1px solid var(--background-modifier-border-hover);
   }
 
 /* --- Image Detail Modal --- */
@@ -3231,11 +3243,46 @@ If your plugin does not need CSS, delete this file.
   min-height: 0;
   overflow-y: auto; /* content area is the scroller */
   overflow-x: hidden;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
   display: flex;
   flex-direction: column;
   position: relative; /* Establish stacking context below header/tabs */
   /* Ensure content stays below sticky elements */
   z-index: 1;
+}
+
+.storyteller-dashboard-content:hover,
+.storyteller-dashboard-content:focus-within {
+  scrollbar-color: color-mix(in srgb, var(--text-muted) 45%, transparent) transparent;
+}
+
+.storyteller-dashboard-content::-webkit-scrollbar {
+  width: 12px;
+}
+
+.storyteller-dashboard-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.storyteller-dashboard-content::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--text-muted) 0%, transparent);
+  border-radius: 999px;
+  border: 3px solid transparent;
+  background-clip: padding-box;
+  transition: background-color 140ms ease;
+}
+
+.storyteller-dashboard-content:hover::-webkit-scrollbar-thumb,
+.storyteller-dashboard-content:focus-within::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--text-normal) 52%, transparent);
+  background-clip: padding-box;
+}
+
+.storyteller-dashboard-content::-webkit-scrollbar-thumb:active {
+  background: color-mix(in srgb, var(--text-normal) 68%, transparent);
+  background-clip: padding-box;
 }
 
 .storyteller-dashboard-content .storyteller-list-container,
@@ -3638,6 +3685,303 @@ body.mod-rtl .storyteller-group-members {
     width: auto;
     flex: 1 1 auto;
     min-width: 0;
+  }
+}
+
+/* Simplified mobile dashboard shell */
+.mobile-dashboard.storyteller-dashboard-simplified .storyteller-dashboard-header {
+  padding: 0.45rem 0.75rem 0.35rem;
+  gap: 0.3rem;
+  box-shadow: none;
+  border-top-width: 2px;
+}
+
+.mobile-dashboard.storyteller-dashboard-simplified .storyteller-dashboard-header-top {
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.mobile-dashboard.storyteller-dashboard-simplified .storyteller-dashboard-title {
+  flex: 0 1 auto;
+  max-width: 42%;
+  font-size: 0.95rem;
+}
+
+.mobile-dashboard.storyteller-dashboard-simplified .storyteller-selector-button-group {
+  flex: 1 1 auto;
+  gap: 0.35rem;
+}
+
+.mobile-dashboard.storyteller-dashboard-simplified .storyteller-selector-button-group .storyteller-story-selector {
+  min-width: 0;
+  font-size: 0.85rem;
+  padding: 0.45rem 2rem 0.45rem 0.7rem;
+}
+
+.mobile-dashboard.storyteller-dashboard-simplified .storyteller-selector-button-group .storyteller-new-story-btn {
+  margin-left: 0;
+  padding: 0.45rem 0.75rem;
+  font-size: 0.82rem;
+}
+
+.mobile-dashboard.storyteller-dashboard-simplified .storyteller-dashboard-tabs {
+  min-height: 0;
+  gap: 0.35rem;
+  padding: 0.35rem 0.75rem 0.45rem;
+  align-items: center;
+}
+
+.mobile-dashboard.storyteller-dashboard-simplified .storyteller-tab-ribbon {
+  flex-wrap: nowrap !important;
+  justify-content: flex-start !important;
+  align-items: center !important;
+  align-content: center !important;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  white-space: nowrap;
+  gap: 0.35rem !important;
+  row-gap: 0 !important;
+}
+
+.mobile-dashboard.storyteller-dashboard-simplified .storyteller-tab-header {
+  min-width: max-content !important;
+  max-width: none !important;
+  padding: 0.45rem 0.8rem !important;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  white-space: nowrap;
+}
+
+.mobile-dashboard.storyteller-dashboard-simplified .storyteller-tab-overflow-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex: 0 0 auto;
+  padding: 0.45rem 0.75rem;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 999px;
+  background: var(--background-primary);
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+.mobile-dashboard.storyteller-dashboard-simplified .storyteller-tab-overflow-btn.is-active {
+  color: var(--text-accent);
+  border-color: color-mix(in srgb, var(--interactive-accent) 40%, var(--background-modifier-border));
+  background: color-mix(in srgb, var(--interactive-accent) 10%, var(--background-primary));
+}
+
+.mobile-dashboard.storyteller-dashboard-simplified .storyteller-controls-group {
+  display: grid !important;
+  grid-template-columns: 1fr;
+  gap: 0.45rem;
+  margin-bottom: 0.75rem;
+}
+
+.mobile-dashboard.storyteller-dashboard-simplified .storyteller-controls-search-row {
+  display: flex;
+}
+
+.mobile-dashboard.storyteller-dashboard-simplified .storyteller-search-input-wrap {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 0 0.75rem;
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 12px;
+}
+
+.mobile-dashboard.storyteller-dashboard-simplified .storyteller-search-input-icon {
+  display: inline-flex;
+  color: var(--text-muted);
+  margin-right: 0.5rem;
+}
+
+.mobile-dashboard.storyteller-dashboard-simplified .storyteller-dashboard-search-input {
+  width: 100%;
+  min-height: 40px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+}
+
+.mobile-dashboard.storyteller-dashboard-simplified .storyteller-dashboard-search-input:focus {
+  box-shadow: none;
+}
+
+.mobile-dashboard.storyteller-dashboard-simplified .storyteller-controls-action-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.mobile-dashboard.storyteller-dashboard-simplified .storyteller-controls-section-label {
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.mobile-dashboard.storyteller-dashboard-simplified .storyteller-controls-action-buttons {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-left: auto;
+}
+
+.mobile-dashboard.storyteller-dashboard-simplified .storyteller-controls-primary-btn,
+.mobile-dashboard.storyteller-dashboard-simplified .storyteller-controls-more-btn {
+  min-height: 36px;
+  padding: 0.45rem 0.8rem;
+  border-radius: 10px;
+}
+
+.mobile-dashboard.storyteller-dashboard-simplified .storyteller-controls-more-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  padding: 0.45rem;
+}
+
+.mobile-dashboard.storyteller-dashboard-simplified .storyteller-list-item {
+  align-items: flex-start;
+  gap: 10px !important;
+  padding: 10px 12px !important;
+  margin-bottom: 8px;
+  border-radius: 10px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
+.mobile-dashboard.storyteller-dashboard-simplified .storyteller-list-item:hover {
+  transform: none;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+}
+
+.mobile-dashboard.storyteller-dashboard-simplified .storyteller-list-item-pfp {
+  width: 42px;
+  height: 42px;
+}
+
+.mobile-dashboard.storyteller-dashboard-simplified .storyteller-list-item-info strong {
+  margin-bottom: 0.2rem;
+}
+
+.mobile-dashboard.storyteller-dashboard-simplified .storyteller-list-item-info p {
+  margin-bottom: 0.35rem;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.mobile-dashboard.storyteller-dashboard-simplified .storyteller-list-item-actions {
+  position: static;
+  opacity: 1;
+  margin-left: auto;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.mobile-dashboard.storyteller-dashboard-simplified .storyteller-list-item-actions .button {
+  min-height: 28px;
+  min-width: 28px;
+  padding: 4px;
+}
+
+.mobile-dashboard.storyteller-dashboard-simplified .storyteller-group-card {
+  padding: 0.75rem 0.85rem;
+  margin-block-end: 0.85rem;
+}
+
+.mobile-dashboard.storyteller-dashboard-simplified .storyteller-group-header {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.mobile-dashboard.storyteller-dashboard-simplified .storyteller-group-info {
+  width: 100%;
+  flex-wrap: wrap;
+}
+
+.mobile-dashboard.storyteller-dashboard-simplified .storyteller-group-actions {
+  width: 100%;
+  justify-content: flex-end;
+}
+
+.mobile-dashboard.storyteller-dashboard-simplified .storyteller-group-section {
+  grid-template-columns: 1fr;
+  column-gap: 0.75rem;
+}
+
+.mobile-dashboard.storyteller-dashboard-simplified .storyteller-chapter-header {
+  align-items: flex-start;
+  padding: 10px 12px;
+}
+
+.mobile-dashboard.storyteller-dashboard-simplified .storyteller-chapter-title-row {
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.mobile-dashboard.storyteller-dashboard-simplified .storyteller-chapter-scenes {
+  padding: 6px 8px 8px 14px;
+}
+
+.mobile-dashboard.storyteller-dashboard-simplified .storyteller-chapter-scenes .storyteller-list-item,
+.mobile-dashboard.storyteller-dashboard-simplified .storyteller-chapter-scenes .storyteller-scene-item {
+  padding: 8px 10px;
+  margin: 4px 0;
+}
+
+.mobile-dashboard.storyteller-dashboard-simplified .storyteller-scene-preview {
+  max-width: none;
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.mobile-dashboard.storyteller-dashboard-simplified .storyteller-gallery-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  grid-auto-rows: minmax(156px, auto) !important;
+  row-gap: 8px;
+  column-gap: 8px;
+  padding: 6px 0 12px;
+}
+
+.mobile-dashboard.storyteller-dashboard-simplified .storyteller-gallery-item {
+  min-height: 156px;
+}
+
+.mobile-dashboard.storyteller-dashboard-simplified .storyteller-gallery-item-image {
+  min-height: 96px;
+}
+
+.mobile-dashboard.storyteller-dashboard-simplified .storyteller-workflow-selector,
+.mobile-dashboard.storyteller-dashboard-simplified .storyteller-scene-order-header {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.5rem;
+}
+
+.mobile-dashboard.storyteller-dashboard-simplified .storyteller-scene-order-actions {
+  flex-wrap: wrap;
+}
+
+@media (max-width: 420px) {
+  .mobile-dashboard.storyteller-dashboard-simplified .storyteller-dashboard-title {
+    display: none;
+  }
+
+  .mobile-dashboard.storyteller-dashboard-simplified .storyteller-tab-overflow-label {
+    display: none;
   }
 }
 
@@ -7365,6 +7709,30 @@ body.mod-rtl .storyteller-group-members {
     color: var(--color-orange, #f97316);
 }
 
+.mobile-dashboard.storyteller-dashboard-simplified .storyteller-goal-banner--compact {
+    padding: 0.55rem 0.75rem;
+    gap: 0.35rem;
+}
+
+.mobile-dashboard.storyteller-dashboard-simplified .storyteller-goal-banner--compact .storyteller-goal-banner-top {
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.mobile-dashboard.storyteller-dashboard-simplified .storyteller-goal-banner--compact .storyteller-goal-banner-label,
+.mobile-dashboard.storyteller-dashboard-simplified .storyteller-goal-banner--compact .storyteller-goal-banner-count,
+.mobile-dashboard.storyteller-dashboard-simplified .storyteller-goal-banner--compact .storyteller-goal-streak {
+    font-size: 0.74rem;
+}
+
+.mobile-dashboard.storyteller-dashboard-simplified .storyteller-goal-banner--compact .storyteller-goal-streak--inline {
+    margin-left: auto;
+}
+
+.mobile-dashboard.storyteller-dashboard-simplified .storyteller-goal-banner--compact .storyteller-goal-bar {
+    height: 4px;
+}
+
 /* ════════════════════════════════════════════════════════════
    CUSTOM COMPILE STEPS — compile tab section
    ════════════════════════════════════════════════════════════ */
@@ -8335,6 +8703,34 @@ body.mod-rtl .storyteller-group-members {
     color: var(--text-on-accent);
 }
 
+.mobile-dashboard.storyteller-dashboard-simplified .storyteller-writing-switcher--mobile {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.5rem;
+    padding: 0.25rem 0;
+    background: transparent;
+    border-radius: 0;
+}
+
+.mobile-dashboard.storyteller-dashboard-simplified .storyteller-writing-mode-select {
+    width: 100%;
+    min-height: 40px;
+    padding: 0.45rem 0.75rem;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 12px;
+    background: var(--background-secondary);
+    color: var(--text-normal);
+}
+
+.mobile-dashboard.storyteller-dashboard-simplified .storyteller-writing-switcher--mobile .storyteller-switcher-popout {
+    min-width: 40px;
+    justify-content: center;
+}
+
+.mobile-dashboard.storyteller-dashboard-simplified .storyteller-writing-switcher--mobile .storyteller-popout-label {
+    display: none;
+}
+
 /* ─── Scene POV / emotion / intensity ───────────────────────────────────────── */
 .storyteller-scene-pov-badge {
     display: inline-flex;
@@ -9150,6 +9546,16 @@ body.mod-rtl .storyteller-group-members {
     user-select: none;
     pointer-events: none;
 }
+.storyteller-campaign-board-grid {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background-image:
+        linear-gradient(to right, rgba(255, 255, 255, 0.22) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(255, 255, 255, 0.18) 1px, transparent 1px);
+    background-size: var(--storyteller-board-grid-x, 10%) var(--storyteller-board-grid-y, 10%);
+    opacity: 0.9;
+}
 .storyteller-campaign-board-pin {
     position: absolute;
     transform: translate(-50%, -50%);
@@ -9213,6 +9619,12 @@ body.mod-rtl .storyteller-group-members {
     border-radius: 14px;
     border: 1px solid var(--background-modifier-border);
     background: color-mix(in srgb, var(--background-primary) 90%, transparent);
+    transition: border-color 160ms ease, box-shadow 160ms ease, background-color 160ms ease;
+}
+.storyteller-campaign-board-inspector.is-highlighted {
+    border-color: color-mix(in srgb, var(--interactive-accent) 70%, var(--background-modifier-border));
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--interactive-accent) 20%, transparent);
+    background: color-mix(in srgb, var(--background-primary) 82%, var(--interactive-accent) 8%);
 }
 .storyteller-campaign-board-inspector-header {
     display: flex;
@@ -9254,6 +9666,11 @@ body.mod-rtl .storyteller-group-members {
 .storyteller-campaign-context-chips { display: flex; flex-wrap: wrap; gap: 0.3rem; }
 .storyteller-campaign-context-chip { display: inline-flex; align-items: center; gap: 0.25rem; font-size: 0.78rem; padding: 2px 8px; border-radius: 10px; background: var(--background-modifier-hover); color: var(--text-normal); border: 1px solid var(--background-modifier-border); }
 .storyteller-campaign-context-chip.is-item { gap: 0.4rem; background: rgba(137,180,250,0.12); border-color: rgba(137,180,250,0.4); }
+.storyteller-campaign-context-chip.is-group { background: color-mix(in srgb, var(--storyteller-group-color, var(--background-modifier-hover)) 14%, var(--background-modifier-hover)); border-color: color-mix(in srgb, var(--storyteller-group-color, var(--background-modifier-border)) 38%, var(--background-modifier-border)); }
+.storyteller-campaign-context-chip-meta { font-size: 0.7rem; font-weight: 700; padding-left: 0.2rem; }
+.storyteller-campaign-context-chip-meta.is-positive { color: var(--color-green); }
+.storyteller-campaign-context-chip-meta.is-negative { color: var(--color-red); }
+.storyteller-campaign-context-chip-meta.is-neutral { color: var(--text-muted); }
 .storyteller-campaign-take-btn { font-size: 0.7rem; padding: 1px 6px; border-radius: 8px; border: 1px solid var(--color-accent); background: none; color: var(--color-accent); cursor: pointer; }
 .storyteller-campaign-take-btn:hover { background: var(--color-accent); color: #fff; }
 .storyteller-campaign-take-btn:disabled { opacity: 0.5; cursor: default; }
@@ -9309,6 +9726,7 @@ body.mod-rtl .storyteller-group-members {
 .storyteller-campaign-lore-entry:last-child { border-bottom: none; }
 .storyteller-campaign-lore-name-row { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; margin-bottom: 0.2rem; }
 .storyteller-campaign-lore-name { font-weight: 600; font-size: 0.82rem; }
+.storyteller-campaign-lore-state { font-size: 0.68rem; padding: 1px 6px; border-radius: 999px; background: rgba(66, 165, 245, 0.14); color: var(--color-blue); }
 .storyteller-campaign-lore-type { font-size: 0.68rem; padding: 1px 6px; border-radius: 8px; background: var(--background-modifier-hover); color: var(--text-muted); text-transform: capitalize; }
 .storyteller-campaign-lore-rarity { font-size: 0.68rem; padding: 1px 6px; border-radius: 8px; text-transform: capitalize; }
 .storyteller-campaign-lore-rarity.is-common { background: rgba(180,180,180,0.15); color: var(--text-muted); }
@@ -9336,6 +9754,21 @@ body.mod-rtl .storyteller-group-members {
 .storyteller-campaign-use-toggle { background: none; border: 1px solid var(--background-modifier-border); border-radius: 4px; padding: 2px 10px; cursor: pointer; font-size: 0.78rem; color: var(--text-muted); }
 .storyteller-campaign-use-toggle:hover { background: var(--background-modifier-hover); }
 .storyteller-campaign-use-body { padding: 0.5rem 0; }
+.storyteller-campaign-effect-list { display: flex; flex-direction: column; gap: 0.75rem; margin-top: 0.35rem; }
+.storyteller-campaign-effect-row { border: 1px solid var(--background-modifier-border); border-radius: 10px; padding: 0.4rem 0.65rem 0.15rem; background: color-mix(in srgb, var(--background-secondary) 68%, transparent); }
+.storyteller-campaign-effect-header { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin-bottom: 0.2rem; }
+.storyteller-campaign-effect-title { font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); }
+.storyteller-campaign-effect-header-actions { display: flex; align-items: center; gap: 0.2rem; }
+.storyteller-campaign-effect-header-actions .clickable-icon { border-radius: 6px; }
+.storyteller-campaign-effect-footer { display: flex; justify-content: flex-end; margin-top: 0.4rem; }
+.storyteller-campaign-effect-empty { margin: 0; }
+.storyteller-campaign-standing-row { display: flex; align-items: center; gap: 0.45rem; padding: 0.42rem 0.5rem; border-radius: 8px; border: 1px solid color-mix(in srgb, var(--storyteller-group-color, var(--background-modifier-border)) 40%, var(--background-modifier-border)); background: color-mix(in srgb, var(--background-secondary) 58%, transparent); }
+.storyteller-campaign-standing-name { flex: 1; min-width: 0; font-size: 0.8rem; font-weight: 600; }
+.storyteller-campaign-standing-value { font-size: 0.72rem; font-weight: 700; padding: 2px 8px; border-radius: 999px; font-variant-numeric: tabular-nums; }
+.storyteller-campaign-standing-value.is-positive { background: rgba(102, 187, 106, 0.16); color: var(--color-green); }
+.storyteller-campaign-standing-value.is-negative { background: rgba(239, 83, 80, 0.16); color: var(--color-red); }
+.storyteller-campaign-standing-value.is-neutral { background: rgba(158, 158, 158, 0.14); color: var(--text-muted); }
+.storyteller-campaign-standing-label { font-size: 0.72rem; color: var(--text-muted); }
 .storyteller-campaign-log-list { max-height: 180px; overflow-y: auto; display: flex; flex-direction: column; gap: 0.2rem; }
 .storyteller-campaign-log-entry { font-size: 0.75rem; color: var(--text-muted); padding: 2px 0; border-bottom: 1px solid var(--background-modifier-border); line-height: 1.4; }
 .storyteller-campaign-party-chip { background: rgba(239,83,80,0.12); color: #ef5350; padding: 2px 8px; border-radius: 10px; font-size: 0.8rem; margin-right: 4px; }
@@ -9376,6 +9809,8 @@ body.mod-rtl .storyteller-group-members {
 .storyteller-branch-tag.is-item { background: rgba(203,166,247,0.15); color: var(--color-purple); }
 .storyteller-branch-tag.is-character { background: rgba(166,227,161,0.15); color: var(--color-green); }
 .storyteller-branch-tag.is-flag { background: rgba(148,226,213,0.12); color: var(--color-cyan); }
+.storyteller-branch-tag.is-group { background: rgba(255, 214, 102, 0.16); color: #b7791f; }
+.storyteller-branch-tag.is-note { background: rgba(102, 178, 255, 0.14); color: var(--color-blue); }
 .storyteller-branch-outcomes { display: flex; flex-wrap: wrap; gap: 0.35rem; padding-top: 0.1rem; border-top: 1px dashed var(--background-modifier-border); margin-top: 0.1rem; }
 .storyteller-branch-outcome { font-size: 0.7rem; color: var(--text-muted); white-space: nowrap; }
 .storyteller-branch-outcome.is-grant { color: var(--color-green); }
@@ -9679,6 +10114,54 @@ body.mod-rtl .storyteller-group-members {
     white-space: nowrap;
 }
 
+.storyteller-timeline-view .vis-item.gantt-bar .vis-item-content,
+.storyteller-timeline-modal .vis-item.gantt-bar .vis-item-content {
+    position: relative;
+    width: 100%;
+    min-height: 100%;
+    padding-bottom: 6px;
+}
+
+.storyteller-timeline-view .vis-item.gantt-bar .timeline-item-label,
+.storyteller-timeline-modal .vis-item.gantt-bar .timeline-item-label {
+    display: inline-block;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.storyteller-timeline-view .vis-item.gantt-bar.has-progress .timeline-progress,
+.storyteller-timeline-modal .vis-item.gantt-bar.has-progress .timeline-progress {
+    position: absolute;
+    left: 0;
+    bottom: 1px;
+    height: 4px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--interactive-accent) 78%, white 12%);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--interactive-accent) 28%, transparent);
+    pointer-events: none;
+}
+
+.storyteller-timeline-view .vis-item.gantt-bar.has-progress,
+.storyteller-timeline-modal .vis-item.gantt-bar.has-progress {
+    position: relative;
+}
+
+.storyteller-timeline-view .vis-item.gantt-bar.has-progress::after,
+.storyteller-timeline-modal .vis-item.gantt-bar.has-progress::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    bottom: 1px;
+    height: 4px;
+    width: var(--sts-progress, 0%);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--interactive-accent) 78%, white 12%);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--interactive-accent) 28%, transparent);
+    pointer-events: none;
+}
+
 .storyteller-timeline-view .vis-item.gantt-bar[style*="--sts-group-color"] .vis-item-content::before,
 .storyteller-timeline-modal .vis-item.gantt-bar[style*="--sts-group-color"] .vis-item-content::before {
     content: "";
@@ -9969,6 +10452,49 @@ body.mod-rtl .storyteller-group-members {
 .storyteller-timeline-modal .vis-item.gantt-milestone:hover:not(.vis-selected) {
     border-color: color-mix(in srgb, #f59e0b 70%, var(--interactive-accent) 30%) !important;
     box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.34), var(--sts-tl-item-shadow) !important;
+}
+
+/* Mobile timeline view: stop clipping the desktop-height frame so the leaf can scroll naturally. */
+.storyteller-timeline-view--mobile {
+    height: auto;
+    min-height: 100%;
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px));
+}
+
+.storyteller-timeline-view--mobile .storyteller-timeline-container {
+    flex: 0 0 auto;
+    min-height: 360px;
+}
+
+.storyteller-timeline-view--mobile .vis-timeline,
+.storyteller-timeline-view--mobile .storyteller-timeline-container .vis-timeline {
+    height: auto !important;
+    min-height: 360px;
+}
+
+.storyteller-timeline-view--mobile .storyteller-timeline-search-wrap,
+.storyteller-timeline-modal--mobile .storyteller-timeline-search-wrap {
+    width: 100%;
+    margin-left: 0;
+    flex-wrap: wrap;
+}
+
+.storyteller-timeline-view--mobile .storyteller-timeline-search-input,
+.storyteller-timeline-modal--mobile .storyteller-timeline-search-input {
+    flex: 1 1 12rem;
+    width: 100%;
+    min-width: 0;
+}
+
+.storyteller-timeline-view--mobile .storyteller-timeline-search-dropdown,
+.storyteller-timeline-modal--mobile .storyteller-timeline-search-dropdown {
+    left: 0;
+    right: 0;
+    min-width: 0;
+    max-width: 100%;
 }
 
 

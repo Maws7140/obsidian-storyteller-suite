@@ -1,6 +1,16 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
+﻿/* eslint-disable @typescript-eslint/no-unused-vars */
 import { App, Modal, Setting, Notice, TextAreaComponent, parseYaml, setIcon } from 'obsidian';
-import { PlotItem } from '../types';
+import {
+    CampaignEffectTarget,
+    CampaignItemEffect,
+    CampaignItemEffectType,
+    Character,
+    CompendiumEntry,
+    Group,
+    Location,
+    PlotItem,
+    Scene,
+} from '../types';
 import StorytellerSuitePlugin from '../main';
 import { addImageSelectionButtons } from '../utils/ImageSelectionHelper';
 import { parseSectionsFromMarkdown } from '../yaml/EntitySections';
@@ -48,6 +58,11 @@ export class PlotItemModal extends Modal {
         if (!Array.isArray(initialItem.linkedCharacters)) initialItem.linkedCharacters = [];
         if (!Array.isArray(initialItem.linkedEconomies)) initialItem.linkedEconomies = [];
         if (!Array.isArray(initialItem.linkedCultures)) initialItem.linkedCultures = [];
+        if (!Array.isArray(initialItem.campaignItemEffects)) initialItem.campaignItemEffects = [];
+        initialItem.campaignItemEffects = initialItem.campaignItemEffects.map(effect => ({
+            ...effect,
+            id: effect.id || this.createCampaignEffectId(),
+        }));
 
         this.item = initialItem;
         this.customFieldsEditor = new EntityCustomFieldsEditor(this.app, 'item', this.item.customFields);
@@ -306,7 +321,7 @@ export class PlotItemModal extends Modal {
                 const listDiv = pastOwnersContainer.createDiv('storyteller-tags-list');
                 this.item.pastOwners.forEach((owner, idx) => {
                     const tag = listDiv.createSpan({ text: owner, cls: 'storyteller-tag' });
-                    const removeBtn = tag.createSpan({ text: ' ×', cls: 'remove-tag-btn' });
+                    const removeBtn = tag.createSpan({ text: ' Ã—', cls: 'remove-tag-btn' });
                     removeBtn.onclick = () => {
                         this.item.pastOwners!.splice(idx, 1);
                         renderPastOwners();
@@ -339,7 +354,7 @@ export class PlotItemModal extends Modal {
                 const listDiv = assocEventsContainer.createDiv('storyteller-tags-list');
                 this.item.associatedEvents.forEach((eventName, idx) => {
                     const tag = listDiv.createSpan({ text: eventName, cls: 'storyteller-tag' });
-                    const removeBtn = tag.createSpan({ text: ' ×', cls: 'remove-tag-btn' });
+                    const removeBtn = tag.createSpan({ text: ' Ã—', cls: 'remove-tag-btn' });
                     removeBtn.onclick = () => {
                         this.item.associatedEvents!.splice(idx, 1);
                         renderAssocEvents();
@@ -389,7 +404,7 @@ export class PlotItemModal extends Modal {
         new Setting(contentEl)
             .setName('Add associated character')
             .addDropdown(dd => {
-                dd.addOption('', '— select character —');
+                dd.addOption('', 'â€” select character â€”');
                 allCharsForItem.forEach(c => dd.addOption(c.name, c.name));
                 dd.onChange(val => {
                     if (val && !(this.item.linkedCharacters ?? []).includes(val)) {
@@ -423,7 +438,7 @@ export class PlotItemModal extends Modal {
         new Setting(contentEl)
             .setName('Add magic system')
             .addDropdown(dd => {
-                dd.addOption('', '— select magic system —');
+                dd.addOption('', 'â€” select magic system â€”');
                 allMagicSystems.forEach(m => dd.addOption(m.name, m.name));
                 dd.onChange(val => {
                     if (val && !(this.item.magicSystems ?? []).includes(val)) {
@@ -477,7 +492,7 @@ export class PlotItemModal extends Modal {
         new Setting(contentEl)
             .setName('Traded in economy')
             .addDropdown(dd => {
-                dd.addOption('', '— select economy —');
+                dd.addOption('', 'â€” select economy â€”');
                 allEconomies.forEach(e => dd.addOption(e.name, e.name));
                 dd.onChange(val => {
                     if (val && !(this.item.linkedEconomies ?? []).includes(val)) {
@@ -521,7 +536,7 @@ export class PlotItemModal extends Modal {
         new Setting(contentEl)
             .setName('Significant to culture')
             .addDropdown(dd => {
-                dd.addOption('', '— select culture —');
+                dd.addOption('', 'â€” select culture â€”');
                 allCultures.forEach(c => dd.addOption(c.name, c.name));
                 dd.onChange(val => {
                     if (val && !(this.item.linkedCultures ?? []).includes(val)) {
@@ -541,7 +556,8 @@ export class PlotItemModal extends Modal {
         const isCampaignExpanded = !!(
             this.item.itemType || this.item.itemRarity || this.item.consumedOnUse ||
             this.item.campaignEffect || this.item.grantsFlag ||
-            this.item.navigatesToScene || this.item.useRequiresLocation || this.item.useRequiresFlag
+            this.item.navigatesToScene || this.item.useRequiresLocation || this.item.useRequiresFlag ||
+            (this.item.campaignItemEffects?.length ?? 0) > 0
         );
         if (!isCampaignExpanded) campaignBody.hide();
         campaignToggle.textContent = isCampaignExpanded ? 'Hide' : 'Show';
@@ -559,7 +575,7 @@ export class PlotItemModal extends Modal {
             .setName('Item type')
             .setDesc('D&D item category')
             .addDropdown(dd => {
-                dd.addOption('', '— none —');
+                dd.addOption('', '- none -');
                 for (const t of ['weapon', 'armor', 'consumable', 'tool', 'key', 'treasure', 'other']) {
                     dd.addOption(t, t.charAt(0).toUpperCase() + t.slice(1));
                 }
@@ -571,7 +587,7 @@ export class PlotItemModal extends Modal {
             .setName('Rarity')
             .setDesc('D&D rarity tier')
             .addDropdown(dd => {
-                dd.addOption('', '— none —');
+                dd.addOption('', '- none -');
                 for (const r of ['common', 'uncommon', 'rare', 'very rare', 'legendary', 'artifact']) {
                     dd.addOption(r, r.charAt(0).toUpperCase() + r.slice(1));
                 }
@@ -603,30 +619,41 @@ export class PlotItemModal extends Modal {
                     .onChange(v => { this.item.grantsFlag = v.trim() || undefined; });
             });
 
-        // Navigates-to-scene dropdown
+        const [allScenesForItem, allLocsForItem, allCampaignChars, allItemsForEffects, allCompendiumEntries] = await Promise.all([
+            this.plugin.listScenes().catch(() => [] as Scene[]),
+            this.plugin.listLocations().catch(() => [] as Location[]),
+            this.plugin.listCharacters().catch(() => [] as Character[]),
+            this.plugin.listPlotItems().catch(() => [] as PlotItem[]),
+            this.plugin.listCompendiumEntries().catch(() => [] as CompendiumEntry[]),
+        ]);
+        const allGroupsForEffects = this.plugin.getGroups().slice();
+        allScenesForItem.sort((a, b) => a.name.localeCompare(b.name));
+        allLocsForItem.sort((a, b) => a.name.localeCompare(b.name));
+        allCampaignChars.sort((a, b) => a.name.localeCompare(b.name));
+        allItemsForEffects.sort((a, b) => a.name.localeCompare(b.name));
+        allCompendiumEntries.sort((a, b) => a.name.localeCompare(b.name));
+        allGroupsForEffects.sort((a, b) => a.name.localeCompare(b.name));
+
         const sceneWrap = campaignBody.createDiv();
-        const allScenesForItem = await this.plugin.listScenes().catch(() => [] as import('../types').Scene[]);
         new Setting(sceneWrap)
             .setName('Navigates to scene')
             .setDesc('Open this scene when item is used (e.g. a key that unlocks a room)')
             .addDropdown(dd => {
-                dd.addOption('', '— none —');
-                for (const s of allScenesForItem.sort((a, b) => a.name.localeCompare(b.name))) {
+                dd.addOption('', '- none -');
+                for (const s of allScenesForItem) {
                     dd.addOption(s.name, s.name);
                 }
                 dd.setValue(this.item.navigatesToScene ?? '');
                 dd.onChange(v => { this.item.navigatesToScene = v || undefined; });
             });
 
-        // Requires-location dropdown
         const locWrap = campaignBody.createDiv();
-        const allLocsForItem = await this.plugin.listLocations().catch(() => [] as import('../types').Location[]);
         new Setting(locWrap)
             .setName('Can only be used at')
             .setDesc('Location name where this item can be used (empty = usable anywhere)')
             .addDropdown(dd => {
-                dd.addOption('', '— anywhere —');
-                for (const l of allLocsForItem.sort((a, b) => a.name.localeCompare(b.name))) {
+                dd.addOption('', '- anywhere -');
+                for (const l of allLocsForItem) {
                     dd.addOption(l.name, l.name);
                 }
                 dd.setValue(this.item.useRequiresLocation ?? '');
@@ -641,6 +668,19 @@ export class PlotItemModal extends Modal {
                     .setValue(this.item.useRequiresFlag ?? '')
                     .onChange(v => { this.item.useRequiresFlag = v.trim() || undefined; });
             });
+
+        campaignBody.createEl('h4', { text: 'Advanced effects' });
+        campaignBody.createEl('p', {
+            cls: 'storyteller-modal-hint',
+            text: 'Chain item effects into party state, faction standing, compendium reveals, scene jumps, and inventory changes.',
+        });
+        this.renderCampaignItemEffectsEditor(campaignBody, {
+            scenes: allScenesForItem,
+            characters: allCampaignChars,
+            items: allItemsForEffects,
+            groups: allGroupsForEffects,
+            compendiumEntries: allCompendiumEntries,
+        });
 
         // --- Action Buttons at bottom ---
         const buttonsSetting = new Setting(contentEl).setClass('storyteller-modal-buttons');
@@ -681,8 +721,339 @@ export class PlotItemModal extends Modal {
                 await this.onSubmit(this.item);
                 this.close();
             }));
-    }
-   private hasMultipleEntities(template: Template): boolean {
+    }
+    private createCampaignEffectId(): string {
+        return `itemfx-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    }
+
+    private ensureCampaignItemEffects(): CampaignItemEffect[] {
+        if (!Array.isArray(this.item.campaignItemEffects)) {
+            this.item.campaignItemEffects = [];
+        }
+        return this.item.campaignItemEffects;
+    }
+
+    private applyCampaignEffectDefaults(effect: CampaignItemEffect): void {
+        if (!effect.id) effect.id = this.createCampaignEffectId();
+        switch (effect.type) {
+            case 'changeHp':
+                effect.target ??= 'activeActor';
+                effect.hpMode ??= 'heal';
+                effect.amount ??= 1;
+                break;
+            case 'applyCondition':
+                effect.target ??= 'activeActor';
+                effect.conditionMode ??= 'add';
+                break;
+            case 'changeGroupStanding':
+                effect.standingMode ??= 'adjust';
+                effect.standingAmount ??= 1;
+                break;
+        }
+    }
+
+    private renderCampaignItemEffectsEditor(
+        container: HTMLElement,
+        options: {
+            scenes: Scene[];
+            characters: Character[];
+            items: PlotItem[];
+            groups: Group[];
+            compendiumEntries: CompendiumEntry[];
+        }
+    ): void {
+        const effects = this.ensureCampaignItemEffects();
+        const list = container.createDiv('storyteller-campaign-effect-list');
+        const footer = container.createDiv('storyteller-campaign-effect-footer');
+        const addBtn = footer.createEl('button', { cls: 'mod-cta', text: 'Add effect' });
+        addBtn.addEventListener('click', () => {
+            effects.push({ id: this.createCampaignEffectId(), type: 'setFlag', flag: '' });
+            render();
+        });
+
+        const render = () => {
+            list.empty();
+            if (effects.length === 0) {
+                list.createDiv({
+                    cls: 'storyteller-modal-hint storyteller-campaign-effect-empty',
+                    text: 'No advanced effects yet. These stack with the simple campaign fields above.',
+                });
+                return;
+            }
+
+            effects.forEach((effect, index) => {
+                this.applyCampaignEffectDefaults(effect);
+                this.renderCampaignItemEffectRow(list, effect, index, effects, options, render);
+            });
+        };
+
+        render();
+    }
+
+    private renderCampaignItemEffectRow(
+        container: HTMLElement,
+        effect: CampaignItemEffect,
+        index: number,
+        effects: CampaignItemEffect[],
+        options: {
+            scenes: Scene[];
+            characters: Character[];
+            items: PlotItem[];
+            groups: Group[];
+            compendiumEntries: CompendiumEntry[];
+        },
+        rerender: () => void
+    ): void {
+        const row = container.createDiv('storyteller-campaign-effect-row');
+        const header = row.createDiv('storyteller-campaign-effect-header');
+        header.createSpan({ cls: 'storyteller-campaign-effect-title', text: `Effect ${index + 1}` });
+
+        const headerActions = header.createDiv('storyteller-campaign-effect-header-actions');
+        const upBtn = headerActions.createEl('button', { cls: 'clickable-icon', attr: { 'aria-label': 'Move effect up' } });
+        setIcon(upBtn, 'arrow-up');
+        upBtn.disabled = index === 0;
+        upBtn.addEventListener('click', () => {
+            if (index === 0) return;
+            [effects[index - 1], effects[index]] = [effects[index], effects[index - 1]];
+            rerender();
+        });
+
+        const downBtn = headerActions.createEl('button', { cls: 'clickable-icon', attr: { 'aria-label': 'Move effect down' } });
+        setIcon(downBtn, 'arrow-down');
+        downBtn.disabled = index >= (effects.length - 1);
+        downBtn.addEventListener('click', () => {
+            if (index >= (effects.length - 1)) return;
+            [effects[index], effects[index + 1]] = [effects[index + 1], effects[index]];
+            rerender();
+        });
+
+        const deleteBtn = headerActions.createEl('button', { cls: 'clickable-icon mod-warning', attr: { 'aria-label': 'Delete effect' } });
+        setIcon(deleteBtn, 'trash');
+        deleteBtn.addEventListener('click', () => {
+            effects.splice(index, 1);
+            rerender();
+        });
+
+        new Setting(row)
+            .setName('Effect type')
+            .addDropdown(dd => {
+                const effectTypes: Array<{ value: CampaignItemEffectType; label: string }> = [
+                    { value: 'setFlag', label: 'Set flag' },
+                    { value: 'clearFlag', label: 'Clear flag' },
+                    { value: 'addItem', label: 'Add item' },
+                    { value: 'removeItem', label: 'Remove item' },
+                    { value: 'navigateScene', label: 'Navigate to scene' },
+                    { value: 'changeHp', label: 'Change HP' },
+                    { value: 'applyCondition', label: 'Apply condition' },
+                    { value: 'revealCompendium', label: 'Reveal compendium' },
+                    { value: 'changeGroupStanding', label: 'Change group standing' }
+                ];
+                effectTypes.forEach(item => dd.addOption(item.value, item.label));
+                dd.setValue(effect.type);
+                dd.onChange(value => {
+                    effect.type = value as CampaignItemEffectType;
+                    this.applyCampaignEffectDefaults(effect);
+                    rerender();
+                });
+            });
+
+        switch (effect.type) {
+            case 'setFlag':
+            case 'clearFlag':
+                new Setting(row)
+                    .setName('Flag')
+                    .setDesc('Session flag name')
+                    .addText(text => {
+                        text.setPlaceholder('flag-name')
+                            .setValue(effect.flag ?? '')
+                            .onChange(value => {
+                                effect.flag = value.trim() || undefined;
+                            });
+                    });
+                break;
+            case 'addItem':
+            case 'removeItem':
+                new Setting(row)
+                    .setName('Item')
+                    .setDesc('Inventory item to add or remove')
+                    .addDropdown(dd => {
+                        dd.addOption('', '— select item —');
+                        options.items.forEach(item => dd.addOption(item.id || item.name, item.name));
+                        dd.setValue(effect.itemId ?? effect.itemName ?? '');
+                        dd.onChange(value => {
+                            const selected = options.items.find(item => (item.id || item.name) === value);
+                            effect.itemId = selected?.id || undefined;
+                            effect.itemName = selected?.name || undefined;
+                        });
+                    });
+                break;
+            case 'navigateScene':
+                new Setting(row)
+                    .setName('Scene')
+                    .setDesc('Scene to open when this effect runs')
+                    .addDropdown(dd => {
+                        dd.addOption('', '— select scene —');
+                        options.scenes.forEach(scene => dd.addOption(scene.id || scene.name, scene.name));
+                        dd.setValue(effect.sceneId ?? effect.sceneName ?? '');
+                        dd.onChange(value => {
+                            const selected = options.scenes.find(scene => (scene.id || scene.name) === value);
+                            effect.sceneId = selected?.id || undefined;
+                            effect.sceneName = selected?.name || undefined;
+                        });
+                    });
+                break;
+            case 'changeHp':
+                new Setting(row)
+                    .setName('Target')
+                    .setDesc('Who this HP change applies to')
+                    .addDropdown(dd => {
+                        const targets: Array<{ value: CampaignEffectTarget; label: string }> = [
+                            { value: 'activeActor', label: 'Active actor' },
+                            { value: 'itemOwner', label: 'Item owner' },
+                            { value: 'allParty', label: 'All party members' },
+                            { value: 'specificCharacter', label: 'Specific character' }
+                        ];
+                        targets.forEach(target => dd.addOption(target.value, target.label));
+                        dd.setValue(effect.target ?? 'activeActor');
+                        dd.onChange(value => {
+                            effect.target = value as CampaignEffectTarget;
+                            rerender();
+                        });
+                    })
+                    .addDropdown(dd => {
+                        dd.addOption('heal', 'Heal');
+                        dd.addOption('damage', 'Damage');
+                        dd.addOption('set', 'Set HP');
+                        dd.setValue(effect.hpMode ?? 'heal');
+                        dd.onChange(value => {
+                            effect.hpMode = value as CampaignItemEffect['hpMode'];
+                        });
+                    })
+                    .addText(text => {
+                        text.inputEl.type = 'number';
+                        text.setPlaceholder('1')
+                            .setValue(String(effect.amount ?? 1))
+                            .onChange(value => {
+                                const parsed = Number(value);
+                                effect.amount = Number.isFinite(parsed) ? parsed : undefined;
+                            });
+                    });
+                if (effect.target === 'specificCharacter') {
+                    new Setting(row)
+                        .setName('Character')
+                        .addDropdown(dd => {
+                            dd.addOption('', '— select character —');
+                            options.characters.forEach(character => dd.addOption(character.id || character.name, character.name));
+                            dd.setValue(effect.characterId ?? effect.characterName ?? '');
+                            dd.onChange(value => {
+                                const selected = options.characters.find(character => (character.id || character.name) === value);
+                                effect.characterId = selected?.id || undefined;
+                                effect.characterName = selected?.name || undefined;
+                            });
+                        });
+                }
+                break;
+            case 'applyCondition':
+                new Setting(row)
+                    .setName('Target')
+                    .setDesc('Who this condition change applies to')
+                    .addDropdown(dd => {
+                        const targets: Array<{ value: CampaignEffectTarget; label: string }> = [
+                            { value: 'activeActor', label: 'Active actor' },
+                            { value: 'itemOwner', label: 'Item owner' },
+                            { value: 'allParty', label: 'All party members' },
+                            { value: 'specificCharacter', label: 'Specific character' }
+                        ];
+                        targets.forEach(target => dd.addOption(target.value, target.label));
+                        dd.setValue(effect.target ?? 'activeActor');
+                        dd.onChange(value => {
+                            effect.target = value as CampaignEffectTarget;
+                            rerender();
+                        });
+                    })
+                    .addDropdown(dd => {
+                        dd.addOption('add', 'Add');
+                        dd.addOption('remove', 'Remove');
+                        dd.setValue(effect.conditionMode ?? 'add');
+                        dd.onChange(value => {
+                            effect.conditionMode = value as CampaignItemEffect['conditionMode'];
+                        });
+                    })
+                    .addText(text => {
+                        text.setPlaceholder('Condition')
+                            .setValue(effect.condition ?? '')
+                            .onChange(value => {
+                                effect.condition = value.trim() || undefined;
+                            });
+                    });
+                if (effect.target === 'specificCharacter') {
+                    new Setting(row)
+                        .setName('Character')
+                        .addDropdown(dd => {
+                            dd.addOption('', '— select character —');
+                            options.characters.forEach(character => dd.addOption(character.id || character.name, character.name));
+                            dd.setValue(effect.characterId ?? effect.characterName ?? '');
+                            dd.onChange(value => {
+                                const selected = options.characters.find(character => (character.id || character.name) === value);
+                                effect.characterId = selected?.id || undefined;
+                                effect.characterName = selected?.name || undefined;
+                            });
+                        });
+                }
+                break;
+            case 'revealCompendium':
+                new Setting(row)
+                    .setName('Entry')
+                    .setDesc('Compendium entry to reveal in Campaign lore')
+                    .addDropdown(dd => {
+                        dd.addOption('', '— select entry —');
+                        options.compendiumEntries.forEach(entry => dd.addOption(entry.id || entry.name, entry.name));
+                        dd.setValue(effect.compendiumEntryId ?? effect.compendiumEntryName ?? '');
+                        dd.onChange(value => {
+                            const selected = options.compendiumEntries.find(entry => (entry.id || entry.name) === value);
+                            effect.compendiumEntryId = selected?.id || undefined;
+                            effect.compendiumEntryName = selected?.name || undefined;
+                        });
+                    });
+                break;
+            case 'changeGroupStanding':
+                new Setting(row)
+                    .setName('Group')
+                    .setDesc('Faction or group affected by this item')
+                    .addDropdown(dd => {
+                        dd.addOption('', '— select group —');
+                        options.groups.forEach(group => dd.addOption(group.id || group.name, group.name));
+                        dd.setValue(effect.groupId ?? effect.groupName ?? '');
+                        dd.onChange(value => {
+                            const selected = options.groups.find(group => (group.id || group.name) === value);
+                            effect.groupId = selected?.id || undefined;
+                            effect.groupName = selected?.name || undefined;
+                        });
+                    });
+                new Setting(row)
+                    .setName('Standing change')
+                    .setDesc('Adjust relative to the current value or set an exact value')
+                    .addDropdown(dd => {
+                        dd.addOption('adjust', 'Adjust');
+                        dd.addOption('set', 'Set exact value');
+                        dd.setValue(effect.standingMode ?? 'adjust');
+                        dd.onChange(value => {
+                            effect.standingMode = value as CampaignItemEffect['standingMode'];
+                        });
+                    })
+                    .addText(text => {
+                        text.inputEl.type = 'number';
+                        text.setPlaceholder('1')
+                            .setValue(String(effect.standingAmount ?? 1))
+                            .onChange(value => {
+                                const parsed = Number(value);
+                                effect.standingAmount = Number.isFinite(parsed) ? parsed : undefined;
+                            });
+                    });
+                break;
+        }
+    }
+    private hasMultipleEntities(template: Template): boolean {
         let entityCount = 0;
         if (template.entities.items?.length) entityCount += template.entities.items.length;
         if (template.entities.characters?.length) entityCount += template.entities.characters.length;
@@ -817,4 +1188,8 @@ export class PlotItemModal extends Modal {
         this.contentEl.empty();
     }
 }
+
+
+
+
 

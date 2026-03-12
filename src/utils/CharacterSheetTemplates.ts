@@ -15,6 +15,8 @@ export interface BuiltInSheetTemplate {
     getScopedCSS(): string;
     /** Inner HTML <div> only, no <style> tag. */
     buildInnerHTML(data: SheetData, esc: (s: string) => string, nl: (s: string) => string): string;
+    /** Optional note-native content for markdown/callout presets. */
+    buildNoteContent?(data: SheetData, portraitPath?: string): string;
 }
 
 export interface CustomSheetTemplate {
@@ -35,6 +37,289 @@ export const CUSTOM_TEMPLATE_TOKENS: readonly string[] = [
     '{{items_html}}', '{{events_html}}', '{{custom_fields_html}}',
     '{{date_generated}}',
 ];
+
+const ABILITY_SCORE_LABELS: Array<[string, keyof SheetData['character']]> = [
+    ['STR', 'dndStr'],
+    ['DEX', 'dndDex'],
+    ['CON', 'dndCon'],
+    ['INT', 'dndInt'],
+    ['WIS', 'dndWis'],
+    ['CHA', 'dndCha'],
+];
+
+function mdEscape(value: string): string {
+    return value
+        .replace(/\|/g, '\\|')
+        .replace(/\n/g, '<br>');
+}
+
+function noteLink(name: string): string {
+    return `[[${name}]]`;
+}
+
+function buildMarkdownTable(rows: Array<[string, string]>, headers: [string, string] = ['Field', 'Value']): string[] {
+    if (rows.length === 0) return [];
+    return [
+        `| ${headers[0]} | ${headers[1]} |`,
+        `| ${'-'.repeat(headers[0].length)} | ${'-'.repeat(headers[1].length)} |`,
+        ...rows.map(([label, value]) => `| ${mdEscape(label)} | ${mdEscape(value)} |`),
+    ];
+}
+
+function buildCalloutMarkdown(type: string, title: string, lines: string[]): string {
+    if (lines.length === 0) return '';
+    return [`> [!${type}] ${title}`, ...lines.map(line => line ? `> ${line}` : '>')].join('\n');
+}
+
+function getIdentityRows(data: SheetData): Array<[string, string]> {
+    const { character } = data;
+    const c = character as any;
+    const rows: Array<[string, string]> = [];
+    if (character.status) rows.push(['Status', character.status]);
+    if (character.affiliation) rows.push(['Affiliation', character.affiliation]);
+    if (c.age) rows.push(['Age', String(c.age)]);
+    if (c.occupation) rows.push(['Occupation', String(c.occupation)]);
+    const born = c.birthDate || c.birthday;
+    if (born) rows.push(['Born', String(born)]);
+    if (c.race || c.dndRace) rows.push(['Race', String(c.dndRace || c.race)]);
+    return rows;
+}
+
+function getDndDetailRows(data: SheetData): Array<[string, string]> {
+    const c = data.character as any;
+    const rows: Array<[string, string]> = [];
+    if (c.dndLevel != null) rows.push(['Level', String(c.dndLevel)]);
+    if (c.dndClass) rows.push(['Class', String(c.dndClass)]);
+    if (c.dndSubclass) rows.push(['Subclass', String(c.dndSubclass)]);
+    if (c.dndRace) rows.push(['Ancestry', String(c.dndRace)]);
+    if (c.dndCurrentHp != null || c.dndMaxHp != null) {
+        const hp = `${c.dndCurrentHp ?? c.dndMaxHp ?? 0}/${c.dndMaxHp ?? c.dndCurrentHp ?? 0}`;
+        rows.push(['HP', hp]);
+    }
+    if (c.dndTempHp != null) rows.push(['Temp HP', String(c.dndTempHp)]);
+    if (c.dndAc != null) rows.push(['Armor Class', String(c.dndAc)]);
+    if (c.dndSpeed != null) rows.push(['Speed', `${c.dndSpeed} ft`]);
+    if (c.dndProficiencyBonus != null) rows.push(['Proficiency', `${c.dndProficiencyBonus >= 0 ? '+' : ''}${c.dndProficiencyBonus}`]);
+    if (c.dndHitDice) rows.push(['Hit Dice', String(c.dndHitDice)]);
+    if (Array.isArray(c.dndConditions) && c.dndConditions.length > 0) rows.push(['Conditions', c.dndConditions.join(', ')]);
+    return rows;
+}
+
+function getAbilityRows(data: SheetData): Array<[string, string]> {
+    const c = data.character as any;
+    return ABILITY_SCORE_LABELS
+        .map(([label, key]) => [label, c[key] != null ? String(c[key]) : '—'] as [string, string]);
+}
+
+function buildBulletLines(items: string[]): string[] {
+    return items.length > 0 ? items.map(item => `- ${item}`) : ['- None'];
+}
+
+function buildRelationshipLines(data: SheetData): string[] {
+    const { character } = data;
+    const relationships = character.relationships || [];
+    const connections = character.connections || [];
+    const lines: string[] = [];
+    relationships.forEach(rel => {
+        if (typeof rel === 'string') {
+            lines.push(noteLink(rel));
+            return;
+        }
+        const entry = rel as any;
+        const target = entry.target || entry.name || String(rel);
+        lines.push(`**${entry.type || 'Related'}**: ${noteLink(target)}${entry.label ? ` — ${entry.label}` : ''}`);
+    });
+    connections.forEach(conn => {
+        lines.push(`**${conn.type}**: ${noteLink(conn.target)}${conn.label ? ` — ${conn.label}` : ''}`);
+    });
+    return lines.length > 0 ? lines.map(line => `- ${line}`) : ['- None recorded'];
+}
+
+function buildItemLines(data: SheetData): string[] {
+    const { character, items } = data;
+    const lines = items.map(item => {
+        const ownership = item.currentOwner?.toLowerCase() === character.name.toLowerCase() ? 'current' : 'former';
+        return `${noteLink(item.name)} (${ownership})${item.isPlotCritical ? ' — Plot Critical' : ''}`;
+    });
+    return buildBulletLines(lines);
+}
+
+function buildEventLines(data: SheetData): string[] {
+    const dated = data.events.filter(ev => ev.dateTime).sort((a, b) => (a.dateTime || '').localeCompare(b.dateTime || ''));
+    const undated = data.events.filter(ev => !ev.dateTime);
+    const lines = [...dated, ...undated].map(ev => {
+        const prefix = ev.dateTime ? `**${ev.dateTime}** — ` : '';
+        const suffix = ev.status ? ` (${ev.status})` : '';
+        return `${prefix}${noteLink(ev.name)}${suffix}`;
+    });
+    return buildBulletLines(lines);
+}
+
+function buildLocationLines(data: SheetData): string[] {
+    const lines = data.locations.map(location => {
+        const snippet = location.description ? ` — ${location.description.slice(0, 80)}${location.description.length > 80 ? '…' : ''}` : '';
+        return `${noteLink(location.name)}${snippet}`;
+    });
+    return buildBulletLines(lines);
+}
+
+function buildGroupLines(data: SheetData): string[] {
+    const lines = data.groups.map(group => `${noteLink(group.name)}${group.description ? ` — ${group.description}` : ''}`);
+    return buildBulletLines(lines);
+}
+
+function buildTraitLines(data: SheetData): string[] {
+    return buildBulletLines((data.character.traits || []).slice());
+}
+
+function buildCustomFieldLines(data: SheetData): string[] {
+    const fields = data.character.customFields || {};
+    const rows = Object.entries(fields).map(([key, value]) => `- **${key}**: ${value}`);
+    return rows.length > 0 ? rows : ['- None'];
+}
+
+function buildObsidianCalloutPreview(title: string, type: string, bodyHtml: string): string {
+    return `<div class="callout" data-callout="${type}"><div class="callout-title"><div class="callout-title-inner">${title}</div></div><div class="callout-content">${bodyHtml}</div></div>`;
+}
+
+function buildCalloutSheetMarkdown(data: SheetData, portraitPath?: string): string {
+    const { character } = data;
+    const lines: string[] = [];
+    lines.push(`# ${character.name}`);
+    if (portraitPath) lines.push(`![[${portraitPath}|260]]`);
+    lines.push('');
+
+    const identity = buildMarkdownTable([
+        ...getIdentityRows(data),
+        ...getDndDetailRows(data),
+    ]);
+    if (identity.length > 0) {
+        lines.push(buildCalloutMarkdown('summary', 'Snapshot', identity));
+        lines.push('');
+    }
+
+    const abilities = buildMarkdownTable(getAbilityRows(data), ['Ability', 'Score']);
+    if (abilities.length > 0) {
+        lines.push(buildCalloutMarkdown('tip', 'Ability Scores', abilities));
+        lines.push('');
+    }
+
+    if (character.description || character.backstory) {
+        const backgroundLines: string[] = [];
+        if (character.description) {
+            backgroundLines.push('**Description**');
+            backgroundLines.push(...character.description.split('\n'));
+        }
+        if (character.backstory) {
+            if (backgroundLines.length > 0) backgroundLines.push('');
+            backgroundLines.push('**Backstory**');
+            backgroundLines.push(...character.backstory.split('\n'));
+        }
+        lines.push(buildCalloutMarkdown('abstract', 'Background', backgroundLines));
+        lines.push('');
+    }
+
+    lines.push(buildCalloutMarkdown('info', 'Traits & Factions', [
+        '**Traits**',
+        ...buildTraitLines(data),
+        '',
+        '**Groups**',
+        ...buildGroupLines(data),
+    ]));
+    lines.push('');
+
+    lines.push(buildCalloutMarkdown('example', 'Relations & Places', [
+        '**Relationships**',
+        ...buildRelationshipLines(data),
+        '',
+        '**Locations**',
+        ...buildLocationLines(data),
+    ]));
+    lines.push('');
+
+    lines.push(buildCalloutMarkdown('note', 'Inventory & Timeline', [
+        '**Items**',
+        ...buildItemLines(data),
+        '',
+        '**Timeline**',
+        ...buildEventLines(data),
+    ]));
+    lines.push('');
+
+    if (data.character.customFields && Object.keys(data.character.customFields).length > 0) {
+        lines.push(buildCalloutMarkdown('quote', 'Additional Details', buildCustomFieldLines(data)));
+        lines.push('');
+    }
+
+    lines.push(`*Generated by Storyteller Suite - ${new Date().toLocaleDateString()}*`);
+    return lines.join('\n');
+}
+
+function buildFieldJournalMarkdown(data: SheetData, portraitPath?: string): string {
+    const { character } = data;
+    const lines: string[] = [];
+    lines.push(`# ${character.name}`);
+    if (portraitPath) lines.push(`![[${portraitPath}|220]]`);
+    lines.push('');
+
+    const atAGlance = buildMarkdownTable([
+        ...getIdentityRows(data),
+        ...getDndDetailRows(data),
+    ]);
+    if (atAGlance.length > 0) {
+        lines.push('## At a Glance');
+        lines.push('');
+        lines.push(...atAGlance);
+        lines.push('');
+    }
+
+    const abilities = buildMarkdownTable(getAbilityRows(data), ['Ability', 'Score']);
+    if (abilities.length > 0) {
+        lines.push('## Ability Scores');
+        lines.push('');
+        lines.push(...abilities);
+        lines.push('');
+    }
+
+    if (character.description) {
+        lines.push('## Description');
+        lines.push('');
+        lines.push(character.description);
+        lines.push('');
+    }
+    if (character.backstory) {
+        lines.push('## Backstory');
+        lines.push('');
+        lines.push(character.backstory);
+        lines.push('');
+    }
+
+    const sections: Array<[string, string[]]> = [
+        ['Traits', buildTraitLines(data)],
+        ['Relationships', buildRelationshipLines(data)],
+        ['Groups & Factions', buildGroupLines(data)],
+        ['Known Locations', buildLocationLines(data)],
+        ['Items', buildItemLines(data)],
+        ['Timeline', buildEventLines(data)],
+    ];
+    sections.forEach(([title, entries]) => {
+        lines.push(`## ${title}`);
+        lines.push('');
+        lines.push(...entries);
+        lines.push('');
+    });
+
+    if (data.character.customFields && Object.keys(data.character.customFields).length > 0) {
+        lines.push('## Additional Details');
+        lines.push('');
+        lines.push(...buildCustomFieldLines(data));
+        lines.push('');
+    }
+
+    lines.push('---');
+    lines.push(`*Generated by Storyteller Suite - ${new Date().toLocaleDateString()}*`);
+    return lines.join('\n');
+}
 
 // ─── Shared inner HTML builder ────────────────────────────────────────────────
 
@@ -140,7 +425,7 @@ function sharedBuildHTML(
   <div class="cs-grid">
     ${descHTML}${backstoryHTML}${relHTML}${groupsHTML}${locsHTML}${itemsHTML}${timelineHTML}${customHTML}
   </div>
-  <div class="cs-footer">Generated by Storyteller Suite — ${new Date().toLocaleDateString()}</div>
+  <div class="cs-footer">Generated by Storyteller Suite - ${new Date().toLocaleDateString()}</div>
 </div>`;
 }
 
@@ -467,6 +752,99 @@ const dndTemplate: BuiltInSheetTemplate = {
 
 // ─── Exports ──────────────────────────────────────────────────────────────────
 
+
+const adventurerPanelTemplate: BuiltInSheetTemplate = {
+    id: 'adventurer-panel',
+    name: 'Adventurer Panel',
+    description: 'Dark campaign dossier with portrait rail, metadata strip, and D&D stat ledger.',
+
+    getExportCSS() {
+        return `*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}body{background:#070d1d;font-family:'Segoe UI',system-ui,sans-serif;color:#e7ebff;padding:32px 16px}.sts-cs-adv{max-width:1040px;margin:0 auto;background:linear-gradient(180deg,#0a1130 0%,#060c22 100%);border:1px solid rgba(95,126,255,.28);border-radius:18px;padding:28px;box-shadow:0 24px 70px rgba(0,0,0,.45)}.sts-cs-adv .cs-panel-layout{display:grid;grid-template-columns:minmax(0,1.65fr) 280px;gap:20px;align-items:start}.sts-cs-adv .cs-panel-overline{display:flex;flex-wrap:wrap;gap:10px;font-size:12px;color:#c28ae8;text-transform:uppercase;letter-spacing:.12em;margin-bottom:10px}.sts-cs-adv .cs-panel-overline span{padding:4px 10px;border-radius:999px;border:1px solid rgba(194,138,232,.35);background:rgba(194,138,232,.08)}.sts-cs-adv .cs-name{font-size:3rem;line-height:1;font-weight:800;letter-spacing:-.04em;color:#f7f8ff;margin-bottom:14px}.sts-cs-adv .cs-panel-tagline{font-size:1rem;line-height:1.7;color:#d2d9ff;background:rgba(255,255,255,.03);border:1px solid rgba(95,126,255,.15);border-radius:14px;padding:16px 18px;margin-bottom:16px}.sts-cs-adv .cs-panel-badges{display:flex;flex-wrap:wrap;gap:8px}.sts-cs-adv .cs-trait{padding:5px 10px;border-radius:999px;background:rgba(95,126,255,.12);border:1px solid rgba(95,126,255,.28);font-size:12px;color:#b7c6ff}.sts-cs-adv .cs-panel-sections{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:18px}.sts-cs-adv .cs-panel-section,.sts-cs-adv .cs-panel-section-full{background:rgba(9,18,49,.9);border:1px solid rgba(95,126,255,.18);border-radius:14px;padding:16px}.sts-cs-adv .cs-panel-section-full{grid-column:1/-1}.sts-cs-adv .cs-panel-section h2,.sts-cs-adv .cs-panel-side-card h2{font-size:13px;font-weight:800;color:#b9c6ff;letter-spacing:.14em;text-transform:uppercase;margin-bottom:12px}.sts-cs-adv .cs-panel-copy{font-size:14px;line-height:1.8;color:#d7ddff}.sts-cs-adv .cs-panel-list{display:flex;flex-direction:column;gap:8px}.sts-cs-adv .cs-panel-list-item{padding:10px 12px;border-radius:12px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.04);font-size:14px;color:#e7ebff}.sts-cs-adv .cs-panel-list-item span{display:block;color:#9faedc;font-size:12px;margin-top:4px}.sts-cs-adv .cs-panel-side{display:flex;flex-direction:column;gap:14px}.sts-cs-adv .cs-panel-portrait{border-radius:14px;overflow:hidden;border:1px solid rgba(95,126,255,.22);background:#0d1434}.sts-cs-adv .cs-panel-portrait img{display:block;width:100%;height:420px;object-fit:cover}.sts-cs-adv .cs-panel-side-card{background:rgba(9,18,49,.96);border:1px solid rgba(95,126,255,.18);border-radius:14px;padding:14px}.sts-cs-adv .cs-table{width:100%;border-collapse:collapse}.sts-cs-adv .cs-table td{padding:10px 8px;border-top:1px solid rgba(95,126,255,.16);font-size:14px}.sts-cs-adv .cs-table tr:first-child td{border-top:none}.sts-cs-adv .cs-td-key{color:#b07ac6;font-weight:700;width:44%}.sts-cs-adv .cs-td-val{color:#eff2ff}.sts-cs-adv .cs-ability-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.sts-cs-adv .cs-ability{padding:12px 10px;border-radius:12px;background:linear-gradient(180deg,rgba(91,120,255,.12),rgba(91,120,255,.03));border:1px solid rgba(91,120,255,.2);text-align:center}.sts-cs-adv .cs-ability-label{display:block;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:#9fb0f3;margin-bottom:6px}.sts-cs-adv .cs-ability-score{display:block;font-size:1.35rem;font-weight:800;color:#fff}.sts-cs-adv .cs-footer{margin-top:18px;padding-top:14px;border-top:1px solid rgba(95,126,255,.16);font-size:12px;color:#7f8ebf;text-align:right}@media(max-width:860px){.sts-cs-adv .cs-panel-layout{grid-template-columns:1fr}.sts-cs-adv .cs-panel-sections{grid-template-columns:1fr}.sts-cs-adv .cs-panel-portrait img{height:320px}}`;
+    },
+
+    getScopedCSS() {
+        return `.sts-cs-adv{max-width:1040px;margin:0 auto;background:linear-gradient(180deg,#0a1130 0%,#060c22 100%);border:1px solid rgba(95,126,255,.28);border-radius:18px;padding:28px;color:#e7ebff}.sts-cs-adv .cs-panel-layout{display:grid;grid-template-columns:minmax(0,1.65fr) 280px;gap:20px;align-items:start}.sts-cs-adv .cs-panel-overline{display:flex;flex-wrap:wrap;gap:10px;font-size:12px;color:#c28ae8;text-transform:uppercase;letter-spacing:.12em;margin-bottom:10px}.sts-cs-adv .cs-panel-overline span{padding:4px 10px;border-radius:999px;border:1px solid rgba(194,138,232,.35);background:rgba(194,138,232,.08)}.sts-cs-adv .cs-name{font-size:3rem;line-height:1;font-weight:800;letter-spacing:-.04em;color:#f7f8ff;margin-bottom:14px}.sts-cs-adv .cs-panel-tagline{font-size:1rem;line-height:1.7;color:#d2d9ff;background:rgba(255,255,255,.03);border:1px solid rgba(95,126,255,.15);border-radius:14px;padding:16px 18px;margin-bottom:16px}.sts-cs-adv .cs-panel-badges{display:flex;flex-wrap:wrap;gap:8px}.sts-cs-adv .cs-trait{padding:5px 10px;border-radius:999px;background:rgba(95,126,255,.12);border:1px solid rgba(95,126,255,.28);font-size:12px;color:#b7c6ff}.sts-cs-adv .cs-panel-sections{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:18px}.sts-cs-adv .cs-panel-section,.sts-cs-adv .cs-panel-section-full{background:rgba(9,18,49,.9);border:1px solid rgba(95,126,255,.18);border-radius:14px;padding:16px}.sts-cs-adv .cs-panel-section-full{grid-column:1/-1}.sts-cs-adv .cs-panel-section h2,.sts-cs-adv .cs-panel-side-card h2{font-size:13px;font-weight:800;color:#b9c6ff;letter-spacing:.14em;text-transform:uppercase;margin-bottom:12px}.sts-cs-adv .cs-panel-copy{font-size:14px;line-height:1.8;color:#d7ddff}.sts-cs-adv .cs-panel-list{display:flex;flex-direction:column;gap:8px}.sts-cs-adv .cs-panel-list-item{padding:10px 12px;border-radius:12px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.04);font-size:14px;color:#e7ebff}.sts-cs-adv .cs-panel-list-item span{display:block;color:#9faedc;font-size:12px;margin-top:4px}.sts-cs-adv .cs-panel-side{display:flex;flex-direction:column;gap:14px}.sts-cs-adv .cs-panel-portrait{border-radius:14px;overflow:hidden;border:1px solid rgba(95,126,255,.22);background:#0d1434}.sts-cs-adv .cs-panel-portrait img{display:block;width:100%;height:420px;object-fit:cover}.sts-cs-adv .cs-panel-side-card{background:rgba(9,18,49,.96);border:1px solid rgba(95,126,255,.18);border-radius:14px;padding:14px}.sts-cs-adv .cs-table{width:100%;border-collapse:collapse}.sts-cs-adv .cs-table td{padding:10px 8px;border-top:1px solid rgba(95,126,255,.16);font-size:14px}.sts-cs-adv .cs-table tr:first-child td{border-top:none}.sts-cs-adv .cs-td-key{color:#b07ac6;font-weight:700;width:44%}.sts-cs-adv .cs-td-val{color:#eff2ff}.sts-cs-adv .cs-ability-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.sts-cs-adv .cs-ability{padding:12px 10px;border-radius:12px;background:linear-gradient(180deg,rgba(91,120,255,.12),rgba(91,120,255,.03));border:1px solid rgba(91,120,255,.2);text-align:center}.sts-cs-adv .cs-ability-label{display:block;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:#9fb0f3;margin-bottom:6px}.sts-cs-adv .cs-ability-score{display:block;font-size:1.35rem;font-weight:800;color:#fff}.sts-cs-adv .cs-footer{margin-top:18px;padding-top:14px;border-top:1px solid rgba(95,126,255,.16);font-size:12px;color:#7f8ebf;text-align:right}@media(max-width:860px){.sts-cs-adv .cs-panel-layout{grid-template-columns:1fr}.sts-cs-adv .cs-panel-sections{grid-template-columns:1fr}.sts-cs-adv .cs-panel-portrait img{height:320px}}`;
+    },
+
+    buildInnerHTML(data, esc, nl) {
+        const { character, portraitDataUrl } = data;
+        const c = character as any;
+        const metaBits = [
+            c.dndLevel != null ? `Level ${esc(String(c.dndLevel))}` : 'Player Character',
+            c.dndClass ? esc(String(c.dndClass)) : null,
+            c.dndSubclass ? esc(String(c.dndSubclass)) : null,
+            character.affiliation ? esc(character.affiliation) : null,
+            character.status ? esc(character.status) : null,
+        ].filter(Boolean) as string[];
+        const traitBadges = (character.traits || []).slice(0, 6).map(trait => `<span class="cs-trait">${esc(trait)}</span>`).join('');
+        const overviewRows = [...getDndDetailRows(data), ...getIdentityRows(data).filter(([label]) => label !== 'Race')].map(([label, value]) => `<tr><td class="cs-td-key">${esc(label)}</td><td class="cs-td-val">${esc(value)}</td></tr>`).join('');
+        const abilityCards = getAbilityRows(data).map(([label, value]) => `<div class="cs-ability"><span class="cs-ability-label">${label}</span><span class="cs-ability-score">${esc(value)}</span></div>`).join('');
+        const relationshipCards = buildRelationshipLines(data).slice(0, 6).map(line => `<div class="cs-panel-list-item">${esc(line.replace(/^- /, ''))}</div>`).join('');
+        const groupCards = buildGroupLines(data).slice(0, 5).map(line => `<div class="cs-panel-list-item">${esc(line.replace(/^- /, ''))}</div>`).join('');
+        const locationCards = buildLocationLines(data).slice(0, 4).map(line => `<div class="cs-panel-list-item">${esc(line.replace(/^- /, ''))}</div>`).join('');
+        const itemCards = buildItemLines(data).slice(0, 5).map(line => `<div class="cs-panel-list-item">${esc(line.replace(/^- /, ''))}</div>`).join('');
+        const eventCards = data.events.slice(0, 6).map(event => `<div class="cs-panel-list-item"><strong>${esc(event.name)}</strong>${event.dateTime ? `<span>${esc(event.dateTime)}</span>` : ''}</div>`).join('');
+        const detailCards = Object.entries(character.customFields || {}).map(([key, value]) => `<div class="cs-panel-list-item"><strong>${esc(key)}</strong><span>${esc(value)}</span></div>`).join('');
+        const portraitHTML = portraitDataUrl ? `<div class="cs-panel-portrait"><img src="${portraitDataUrl}" alt="${esc(character.name)}"></div>` : '';
+        return `<div class="sts-cs-adv"><div class="cs-panel-layout"><div class="cs-panel-main"><div class="cs-panel-overline">${metaBits.map(bit => `<span>${bit}</span>`).join('')}</div><h1 class="cs-name">${esc(character.name)}</h1><div class="cs-panel-tagline">${character.description ? nl(character.description) : 'A campaign-facing sheet designed for quick reading, scene hooks, and tabletop context.'}</div>${traitBadges ? `<div class="cs-panel-badges">${traitBadges}</div>` : ''}<div class="cs-panel-sections">${character.backstory ? `<section class="cs-panel-section"><h2>History</h2><div class="cs-panel-copy">${nl(character.backstory)}</div></section>` : ''}<section class="cs-panel-section"><h2>Factions & Places</h2><div class="cs-panel-list">${groupCards || '<div class="cs-panel-list-item">No factions linked yet.</div>'}${locationCards || ''}</div></section><section class="cs-panel-section"><h2>Relations</h2><div class="cs-panel-list">${relationshipCards || '<div class="cs-panel-list-item">No relationships linked yet.</div>'}</div></section><section class="cs-panel-section"><h2>Inventory</h2><div class="cs-panel-list">${itemCards || '<div class="cs-panel-list-item">No items linked yet.</div>'}</div></section><section class="cs-panel-section-full"><h2>Campaign Timeline</h2><div class="cs-panel-list">${eventCards || '<div class="cs-panel-list-item">No events linked yet.</div>'}</div></section>${detailCards ? `<section class="cs-panel-section-full"><h2>Notes & Hooks</h2><div class="cs-panel-list">${detailCards}</div></section>` : ''}</div></div><aside class="cs-panel-side">${portraitHTML}<section class="cs-panel-side-card"><h2>Adventure Details</h2><table class="cs-table"><tbody>${overviewRows}</tbody></table></section><section class="cs-panel-side-card"><h2>Ability Scores</h2><div class="cs-ability-grid">${abilityCards}</div></section></aside></div><div class="cs-footer">Generated by Storyteller Suite - ${new Date().toLocaleDateString()}</div></div>`;
+    },
+};
+
+const calloutSheetTemplate: BuiltInSheetTemplate = {
+    id: 'callout-sheet',
+    name: 'Callout Sheet',
+    description: 'Obsidian-native callouts and tables with minimal custom styling.',
+
+    getExportCSS() {
+        return `*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}body{background:#111827;font-family:'Segoe UI',system-ui,sans-serif;color:#e5e7eb;padding:32px 16px}.sts-cs-callout{max-width:860px;margin:0 auto;display:flex;flex-direction:column;gap:16px}.sts-cs-callout h1{font-size:2.3rem;line-height:1.05;color:#f9fafb}.sts-cs-callout .cs-note-top{display:flex;gap:18px;align-items:flex-start}.sts-cs-callout .cs-note-main{flex:1}.sts-cs-callout .cs-note-portrait{width:220px;flex-shrink:0;border-radius:14px;overflow:hidden;border:1px solid rgba(255,255,255,.12)}.sts-cs-callout .cs-note-portrait img{display:block;width:100%;height:280px;object-fit:cover}.sts-cs-callout .callout{border-radius:14px;border:1px solid rgba(255,255,255,.1);overflow:hidden;background:rgba(255,255,255,.03)}.sts-cs-callout .callout-title{padding:12px 16px;font-weight:700;letter-spacing:.04em;background:rgba(255,255,255,.04)}.sts-cs-callout .callout-content{padding:16px}.sts-cs-callout .callout[data-callout='summary']{border-left:4px solid #8b5cf6}.sts-cs-callout .callout[data-callout='tip']{border-left:4px solid #22c55e}.sts-cs-callout .callout[data-callout='abstract']{border-left:4px solid #f59e0b}.sts-cs-callout .callout[data-callout='info']{border-left:4px solid #3b82f6}.sts-cs-callout .callout[data-callout='example']{border-left:4px solid #ec4899}.sts-cs-callout .callout[data-callout='note']{border-left:4px solid #94a3b8}.sts-cs-callout .callout[data-callout='quote']{border-left:4px solid #f97316}.sts-cs-callout table{width:100%;border-collapse:collapse}.sts-cs-callout td,.sts-cs-callout th{padding:8px 10px;border-top:1px solid rgba(255,255,255,.08);text-align:left}.sts-cs-callout tr:first-child td,.sts-cs-callout tr:first-child th{border-top:none}.sts-cs-callout ul{padding-left:1.2rem;display:grid;gap:6px}.sts-cs-callout .cs-footer{font-size:12px;color:#9ca3af;text-align:right;padding-top:8px}@media(max-width:700px){.sts-cs-callout .cs-note-top{flex-direction:column}.sts-cs-callout .cs-note-portrait{width:100%}.sts-cs-callout .cs-note-portrait img{height:260px}}`;
+    },
+
+    getScopedCSS() {
+        return `.sts-cs-callout{max-width:860px;margin:0 auto;display:flex;flex-direction:column;gap:16px}.sts-cs-callout h1{font-size:2.3rem;line-height:1.05}.sts-cs-callout .cs-note-top{display:flex;gap:18px;align-items:flex-start}.sts-cs-callout .cs-note-main{flex:1}.sts-cs-callout .cs-note-portrait{width:220px;flex-shrink:0;border-radius:14px;overflow:hidden;border:1px solid var(--background-modifier-border)}.sts-cs-callout .cs-note-portrait img{display:block;width:100%;height:280px;object-fit:cover}.sts-cs-callout .callout{margin:0}.sts-cs-callout table{width:100%;border-collapse:collapse}.sts-cs-callout td,.sts-cs-callout th{padding:8px 10px;border-top:1px solid var(--background-modifier-border);text-align:left}.sts-cs-callout tr:first-child td,.sts-cs-callout tr:first-child th{border-top:none}.sts-cs-callout ul{padding-left:1.2rem;display:grid;gap:6px}.sts-cs-callout .cs-footer{font-size:12px;color:var(--text-muted);text-align:right;padding-top:8px}@media(max-width:700px){.sts-cs-callout .cs-note-top{flex-direction:column}.sts-cs-callout .cs-note-portrait{width:100%}.sts-cs-callout .cs-note-portrait img{height:260px}}`;
+    },
+
+    buildInnerHTML(data, esc, nl) {
+        const { character, portraitDataUrl } = data;
+        const portraitHTML = portraitDataUrl ? `<div class="cs-note-portrait"><img src="${portraitDataUrl}" alt="${esc(character.name)}"></div>` : '';
+        const snapshotRows = [...getIdentityRows(data), ...getDndDetailRows(data)].map(([label, value]) => `<tr><th>${esc(label)}</th><td>${esc(value)}</td></tr>`).join('');
+        const abilityRows = getAbilityRows(data).map(([label, value]) => `<tr><th>${label}</th><td>${esc(value)}</td></tr>`).join('');
+        const listToHtml = (items: string[]) => `<ul>${items.map(item => `<li>${esc(item.replace(/^- /, ''))}</li>`).join('')}</ul>`;
+        return `<div class="sts-cs-callout"><div class="cs-note-top"><div class="cs-note-main"><h1>${esc(character.name)}</h1>${buildObsidianCalloutPreview('Snapshot', 'summary', `<table><tbody>${snapshotRows}</tbody></table>`)}</div>${portraitHTML}</div>${buildObsidianCalloutPreview('Ability Scores', 'tip', `<table><tbody>${abilityRows}</tbody></table>`)}${character.description || character.backstory ? buildObsidianCalloutPreview('Background', 'abstract', `${character.description ? `<p>${nl(character.description)}</p>` : ''}${character.backstory ? `<p>${nl(character.backstory)}</p>` : ''}`) : ''}${buildObsidianCalloutPreview('Traits & Factions', 'info', `${listToHtml(buildTraitLines(data))}${listToHtml(buildGroupLines(data))}`)}${buildObsidianCalloutPreview('Relations & Places', 'example', `${listToHtml(buildRelationshipLines(data))}${listToHtml(buildLocationLines(data))}`)}${buildObsidianCalloutPreview('Inventory & Timeline', 'note', `${listToHtml(buildItemLines(data))}${listToHtml(buildEventLines(data))}`)}${data.character.customFields && Object.keys(data.character.customFields).length > 0 ? buildObsidianCalloutPreview('Additional Details', 'quote', listToHtml(buildCustomFieldLines(data))) : ''}<div class="cs-footer">Generated by Storyteller Suite - ${new Date().toLocaleDateString()}</div></div>`;
+    },
+
+    buildNoteContent(data, portraitPath) {
+        return buildCalloutSheetMarkdown(data, portraitPath);
+    },
+};
+
+const fieldJournalTemplate: BuiltInSheetTemplate = {
+    id: 'field-journal',
+    name: 'Field Journal',
+    description: 'Plain markdown headings, tables, and lists for maximum theme compatibility.',
+
+    getExportCSS() {
+        return `*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}body{background:#f4f1ea;font-family:Georgia,'Times New Roman',serif;color:#22170f;padding:32px 16px}.sts-cs-journal{max-width:820px;margin:0 auto;background:#fffdf7;border:1px solid #d9d1c4;border-radius:10px;padding:36px}.sts-cs-journal h1{font-size:2.4rem;line-height:1.05;margin-bottom:18px}.sts-cs-journal h2{font-size:1.15rem;margin:24px 0 12px;padding-bottom:6px;border-bottom:1px solid #ddd2c0}.sts-cs-journal p,.sts-cs-journal li,.sts-cs-journal td,.sts-cs-journal th{font-size:15px;line-height:1.75}.sts-cs-journal .cs-journal-portrait{margin-bottom:18px}.sts-cs-journal .cs-journal-portrait img{display:block;width:220px;max-width:100%;border-radius:8px;border:1px solid #d9d1c4}.sts-cs-journal table{width:100%;border-collapse:collapse;margin-bottom:8px}.sts-cs-journal td,.sts-cs-journal th{padding:8px 10px;border-top:1px solid #e7dfd3;text-align:left}.sts-cs-journal tr:first-child td,.sts-cs-journal tr:first-child th{border-top:none}.sts-cs-journal ul{padding-left:1.25rem;display:grid;gap:6px}.sts-cs-journal .cs-footer{margin-top:24px;padding-top:12px;border-top:1px solid #d9d1c4;color:#7c6d59;font-size:12px;text-align:right}`;
+    },
+
+    getScopedCSS() {
+        return `.sts-cs-journal{max-width:820px;margin:0 auto}.sts-cs-journal h1{font-size:2.4rem;line-height:1.05;margin-bottom:18px}.sts-cs-journal h2{font-size:1.15rem;margin:24px 0 12px;padding-bottom:6px;border-bottom:1px solid var(--background-modifier-border)}.sts-cs-journal p,.sts-cs-journal li,.sts-cs-journal td,.sts-cs-journal th{line-height:1.75}.sts-cs-journal .cs-journal-portrait{margin-bottom:18px}.sts-cs-journal .cs-journal-portrait img{display:block;width:220px;max-width:100%;border-radius:8px;border:1px solid var(--background-modifier-border)}.sts-cs-journal table{width:100%;border-collapse:collapse;margin-bottom:8px}.sts-cs-journal td,.sts-cs-journal th{padding:8px 10px;border-top:1px solid var(--background-modifier-border);text-align:left}.sts-cs-journal tr:first-child td,.sts-cs-journal tr:first-child th{border-top:none}.sts-cs-journal ul{padding-left:1.25rem;display:grid;gap:6px}.sts-cs-journal .cs-footer{margin-top:24px;padding-top:12px;border-top:1px solid var(--background-modifier-border);color:var(--text-muted);font-size:12px;text-align:right}`;
+    },
+
+    buildInnerHTML(data, esc, nl) {
+        const { character, portraitDataUrl } = data;
+        const portraitHTML = portraitDataUrl ? `<div class="cs-journal-portrait"><img src="${portraitDataUrl}" alt="${esc(character.name)}"></div>` : '';
+        const snapshotRows = [...getIdentityRows(data), ...getDndDetailRows(data)].map(([label, value]) => `<tr><th>${esc(label)}</th><td>${esc(value)}</td></tr>`).join('');
+        const abilities = getAbilityRows(data).map(([label, value]) => `<tr><th>${label}</th><td>${esc(value)}</td></tr>`).join('');
+        const listToHtml = (items: string[]) => `<ul>${items.map(item => `<li>${esc(item.replace(/^- /, ''))}</li>`).join('')}</ul>`;
+        return `<div class="sts-cs-journal"><h1>${esc(character.name)}</h1>${portraitHTML}${snapshotRows ? `<h2>At a Glance</h2><table><tbody>${snapshotRows}</tbody></table>` : ''}<h2>Ability Scores</h2><table><tbody>${abilities}</tbody></table>${character.description ? `<h2>Description</h2><p>${nl(character.description)}</p>` : ''}${character.backstory ? `<h2>Backstory</h2><p>${nl(character.backstory)}</p>` : ''}<h2>Traits</h2>${listToHtml(buildTraitLines(data))}<h2>Relationships</h2>${listToHtml(buildRelationshipLines(data))}<h2>Groups &amp; Factions</h2>${listToHtml(buildGroupLines(data))}<h2>Known Locations</h2>${listToHtml(buildLocationLines(data))}<h2>Items</h2>${listToHtml(buildItemLines(data))}<h2>Timeline</h2>${listToHtml(buildEventLines(data))}${data.character.customFields && Object.keys(data.character.customFields).length > 0 ? `<h2>Additional Details</h2>${listToHtml(buildCustomFieldLines(data))}` : ''}<div class="cs-footer">Generated by Storyteller Suite - ${new Date().toLocaleDateString()}</div></div>`;
+    },
+
+    buildNoteContent(data, portraitPath) {
+        return buildFieldJournalMarkdown(data, portraitPath);
+    },
+};
+
+
 export const BUILT_IN_SHEET_TEMPLATES: BuiltInSheetTemplate[] = [
     classicTemplate,
     manuscriptTemplate,
@@ -474,4 +852,7 @@ export const BUILT_IN_SHEET_TEMPLATES: BuiltInSheetTemplate[] = [
     dossierTemplate,
     neonTemplate,
     dndTemplate,
+    adventurerPanelTemplate,
+    calloutSheetTemplate,
+    fieldJournalTemplate,
 ];

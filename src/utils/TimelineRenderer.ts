@@ -7,6 +7,7 @@ import { Event, Location, Scene } from '../types';
 import { parseEventDate, toMillis, toDisplay } from './DateParsing';
 import { EventModal } from '../modals/EventModal';
 import { ConflictDetector, DetectedConflict } from './ConflictDetector';
+import { PlatformUtils } from './PlatformUtils';
 
 // @ts-ignore: vis-timeline is bundled dependency
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -69,6 +70,7 @@ export class TimelineRenderer {
     private itemIdToEventIndex = new Map<string | number, number>();
     private eventIndexToItemIds = new Map<number, Array<string | number>>();
     private eventIndexToGroupItemIds = new Map<number, Map<string, string | number>>();
+    private wheelFallbackHandler: ((event: WheelEvent) => void) | null = null;
 
     // Era and narrative order configuration
     private showEras: boolean = false;
@@ -682,6 +684,10 @@ export class TimelineRenderer {
      * Destroy timeline and clean up
      */
     destroy(): void {
+        if (this.wheelFallbackHandler) {
+            this.container.removeEventListener('wheel', this.wheelFallbackHandler);
+            this.wheelFallbackHandler = null;
+        }
         if (this.dependencyArrows) {
             try {
                 this.dependencyArrows.removeArrows();
@@ -745,6 +751,7 @@ export class TimelineRenderer {
             }
 
             const showProgressBars = this.options.ganttMode && this.options.showProgressBars !== false;
+            const useNativeMobileScroll = PlatformUtils.shouldUseSimplifiedUI();
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const timelineOptions: any = {
                 stack: grouped ? true : this.options.stackEnabled,
@@ -756,8 +763,8 @@ export class TimelineRenderer {
                 horizontalScroll: true,
                 // In grouped mode, require Shift for horizontal wheel panning so
                 // vertical lane scrolling does not intermittently win wheel events.
-                horizontalScrollKey: grouped ? 'shiftKey' : undefined,
-                verticalScroll: grouped,
+                horizontalScrollKey: grouped && !useNativeMobileScroll ? 'shiftKey' : undefined,
+                verticalScroll: grouped && !useNativeMobileScroll,
                 verticalScrollSticky: false,
                 // Keep rows in vis-timeline's native auto mode to avoid
                 // horizontal-scroll desync where box/point stems can mis-anchor.
@@ -772,10 +779,8 @@ export class TimelineRenderer {
                     delay: 300
                 },
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                visibleFrameTemplate: function(item: any) {
-                    if (!showProgressBars) return '';
-                    if (!item.progress || item.progress === 0) return '';
-                    return `<div class="timeline-progress" style="width:${item.progress}%"></div>`;
+                visibleFrameTemplate: function() {
+                    return '';
                 }
             };
 
@@ -860,6 +865,8 @@ export class TimelineRenderer {
                     return;
                 }
             }
+
+            this.installWheelFallback(grouped);
 
             // Set custom current time bar
             if (this.timeline && referenceDate) {
@@ -956,6 +963,96 @@ export class TimelineRenderer {
                 div.createEl('p', { text: 'An unexpected error occurred while rendering the timeline.' });
                 div.createEl('p', { text: 'Check the developer console (Ctrl+Shift+I) for more details.' });
             });
+        }
+    }
+
+    private installWheelFallback(grouped: boolean): void {
+        if (PlatformUtils.isMobile() || !this.timeline) return;
+
+        this.wheelFallbackHandler = (event: WheelEvent) => {
+            if (!this.timeline || event.defaultPrevented || event.ctrlKey || event.metaKey) return;
+            const target = event.target as HTMLElement | null;
+            if (target?.closest('input, textarea, select, button, a[href]')) return;
+
+            const delta = this.normalizeWheelDelta(event);
+            const horizontalIntent = Math.abs(delta.x) > Math.abs(delta.y) || event.shiftKey;
+
+            if (grouped && !horizontalIntent && this.applyVerticalWheelFallback(delta.y, event)) {
+                return;
+            }
+
+            this.applyHorizontalWheelFallback(horizontalIntent ? (Math.abs(delta.x) > Math.abs(delta.y) ? delta.x : delta.y) : delta.y, event);
+        };
+
+        this.container.addEventListener('wheel', this.wheelFallbackHandler, { passive: false });
+    }
+
+    private normalizeWheelDelta(event: WheelEvent): { x: number; y: number } {
+        const LINE_HEIGHT = 40;
+        const PAGE_HEIGHT = 800;
+        let scale = 1;
+        if (event.deltaMode === WheelEvent.DOM_DELTA_LINE) {
+            scale = LINE_HEIGHT;
+        } else if (event.deltaMode === WheelEvent.DOM_DELTA_PAGE) {
+            scale = PAGE_HEIGHT;
+        }
+        return {
+            x: event.deltaX * scale,
+            y: event.deltaY * scale
+        };
+    }
+
+    private applyVerticalWheelFallback(deltaY: number, event: WheelEvent): boolean {
+        if (!deltaY || !this.timeline) return false;
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const timelineAny = this.timeline as any;
+        if (typeof timelineAny._getScrollTop === 'function' && typeof timelineAny._setScrollTop === 'function') {
+            const current = timelineAny._getScrollTop();
+            const next = timelineAny._setScrollTop(current + deltaY);
+            if (next !== current) {
+                timelineAny._redraw?.();
+                event.preventDefault();
+                return true;
+            }
+        }
+
+        const leftPanel = this.container.querySelector('.vis-panel.vis-left') as HTMLElement | null;
+        const scrollHost = leftPanel?.parentElement as HTMLElement | null;
+        if (!scrollHost) return false;
+
+        const before = scrollHost.scrollTop;
+        scrollHost.scrollTop += deltaY;
+        if (scrollHost.scrollTop !== before) {
+            event.preventDefault();
+            return true;
+        }
+
+        return false;
+    }
+
+    private applyHorizontalWheelFallback(delta: number, event: WheelEvent): boolean {
+        if (!delta || !this.timeline) return false;
+
+        const range = this.getVisibleRange();
+        if (!range) return false;
+
+        const span = range.end.getTime() - range.start.getTime();
+        if (!Number.isFinite(span) || span <= 0) return false;
+
+        const diff = (delta * span) / 2400;
+        if (!Number.isFinite(diff) || diff === 0) return false;
+
+        try {
+            this.timeline.setWindow(
+                new Date(range.start.getTime() + diff),
+                new Date(range.end.getTime() + diff),
+                { animation: false }
+            );
+            event.preventDefault();
+            return true;
+        } catch {
+            return false;
         }
     }
 
@@ -1289,17 +1386,29 @@ export class TimelineRenderer {
                 // Use a more opaque group background so stem lines behind cards
                 // do not bleed through and look visually detached in grouped mode.
                 const groupBgAlpha = isMilestone ? 0.82 : 0.9;
-                const style = target.color
+                let style = target.color
                     ? `--sts-group-color:${target.color};--sts-group-bg:${this.hexWithAlpha(target.color, groupBgAlpha)};background-color:${this.hexWithAlpha(target.color, groupBgAlpha)};border-color:${target.color};`
                     : '';
 
                 const laneContent = (
                     this.options.groupMode === 'character' && groupTargets.length > 1 && target.label
                 ) ? `${itemContent} [${target.label}]` : itemContent;
+                const shouldRenderProgress = this.options.ganttMode && this.options.showProgressBars !== false;
+                const progressValue = Number(evt.progress ?? 0);
+                const clampedProgress = Number.isFinite(progressValue)
+                    ? Math.max(0, Math.min(100, progressValue))
+                    : 0;
+                const laneContentHtml = this.options.ganttMode
+                    ? `<span class="timeline-item-label">${this.escapeHtml(laneContent)}</span>`
+                    : this.escapeHtml(laneContent);
+                if (this.options.ganttMode && shouldRenderProgress && clampedProgress > 0) {
+                    classes.push('has-progress');
+                    style += `--sts-progress:${clampedProgress}%;`;
+                }
 
                 items.add({
                     id: itemId,
-                    content: laneContent,
+                    content: laneContentHtml,
                     start: new Date(startMs),
                     end: displayEndMs != null ? new Date(displayEndMs) : undefined,
                     title: this.makeTooltip(evt, parsed, eventConflicts),
@@ -1307,7 +1416,7 @@ export class TimelineRenderer {
                     className: classes.length > 0 ? classes.join(' ') : undefined,
                     group: target.id,
                     style,
-                    progress: evt.progress
+                    progress: clampedProgress
                 });
                 this.registerEventItem(itemId, originalIdx, target.id);
             });
@@ -1553,6 +1662,15 @@ export class TimelineRenderer {
                 .map(character => String(character ?? '').trim())
                 .filter(character => character.length > 0)
         ));
+    }
+
+    private escapeHtml(value: string): string {
+        return String(value ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
     }
 
     /**
