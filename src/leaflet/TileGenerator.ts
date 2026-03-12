@@ -1,6 +1,12 @@
 import { App, Notice, TFile } from 'obsidian';
 import type StorytellerSuitePlugin from '../main';
 import type { TileMetadata, TileGenerationProgress, ProgressCallback } from './types';
+import {
+    getSvgSourceInfoFromText,
+    isSvgPath,
+    loadImageFromBlob,
+    rasterizeSvgToBlob,
+} from '../utils/SvgImageUtils';
 
 /**
  * TileGenerator - Generates image tiles for large maps
@@ -325,6 +331,10 @@ export class TileGenerator {
      * Returns HTMLImageElement with dimensions
      */
     private loadImage(imagePath: string): Promise<HTMLImageElement> {
+        if (isSvgPath(imagePath)) {
+            return this.loadSvgAsRasterImage(imagePath);
+        }
+
         return new Promise((resolve, reject) => {
             const imageFile = this.app.vault.getAbstractFileByPath(imagePath);
 
@@ -367,6 +377,13 @@ export class TileGenerator {
 
             img.src = imageUrl;
         });
+    }
+
+    private async loadSvgAsRasterImage(imagePath: string): Promise<HTMLImageElement> {
+        const svgText = await this.app.vault.adapter.read(imagePath);
+        const info = getSvgSourceInfoFromText(svgText);
+        const { blob } = await rasterizeSvgToBlob(svgText, info);
+        return await loadImageFromBlob(blob);
     }
 
     /**

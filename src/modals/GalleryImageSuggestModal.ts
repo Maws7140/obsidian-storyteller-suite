@@ -21,6 +21,7 @@ export class GalleryImageSuggestModal extends FuzzySuggestModal<GalleryImage> {
 
     async onOpen() {
         super.onOpen();
+        await this.plugin.syncGalleryWatchFolder();
 
         // Registered gallery images (have titles, tags, etc.)
         const registered = this.plugin.getGalleryImages();

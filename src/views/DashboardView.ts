@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-inferrable-types */
 /* eslint-disable @typescript-eslint/no-unused-vars */
-import { ItemView, WorkspaceLeaf, Setting, Notice, App, ButtonComponent, TFile, normalizePath, debounce, Modal, setIcon } from 'obsidian'; // Added normalizePath, debounce
+import { ItemView, WorkspaceLeaf, Setting, Notice, App, ButtonComponent, TFile, normalizePath, debounce, Modal, Menu, setIcon } from 'obsidian'; // Added normalizePath, debounce
 import StorytellerSuitePlugin from '../main';
 import { t } from '../i18n/strings';
 // Import necessary modals for button actions (Edit/Create/Detail)
@@ -61,6 +61,7 @@ export class DashboardView extends ItemView {
     private debouncedRefreshActiveTab: () => void; // Declare property for debounce
     // Responsive tabs UI state
     private tabHeaderRibbonEl: HTMLElement | null = null;
+    private mobileTabOverflowButton: HTMLButtonElement | null = null;
     // Measurement/More elements removed
     private tabsResizeObserver: ResizeObserver | null = null;
     // Icons removed per UX request; text-only tabs
@@ -108,6 +109,9 @@ export class DashboardView extends ItemView {
         showCustom: true
     };
 
+    /** High-frequency tabs kept in the primary mobile rail */
+    private readonly simplifiedMobilePrimaryTabIds = ['writing', 'characters', 'locations', 'events', 'campaign', 'maps'];
+
     /** Cached templates for the template library tab */
     private templatesCache: Template[] = [];
 
@@ -133,6 +137,10 @@ export class DashboardView extends ItemView {
                 this.dismissalTimer = null;
             }, 500);
         }
+    }
+
+    private isSimplifiedMobileDashboard(): boolean {
+        return PlatformUtils.shouldUseSimplifiedUI();
     }
 
     /**
@@ -225,7 +233,10 @@ export class DashboardView extends ItemView {
             try {
                 await filterFn(this.currentFilter);
                 // Restore focus to search input on mobile after re-render
-                if (PlatformUtils.isMobile() && this.currentSearchInput && document.activeElement !== this.currentSearchInput) {
+                if (PlatformUtils.isMobile() &&
+                    !this.isSimplifiedMobileDashboard() &&
+                    this.currentSearchInput &&
+                    document.activeElement !== this.currentSearchInput) {
                     // Small delay to ensure DOM is ready
                     setTimeout(() => {
                         if (this.currentSearchInput) {
@@ -372,7 +383,7 @@ export class DashboardView extends ItemView {
                                 this.currentSearchInput.value = searchInputValue;
                                 this.currentFilter = searchInputValue.toLowerCase();
                             }
-                            if (searchInputWasFocused) {
+                            if (searchInputWasFocused && !this.isSimplifiedMobileDashboard()) {
                                 this.currentSearchInput.focus();
                             }
                         }
@@ -422,6 +433,9 @@ export class DashboardView extends ItemView {
         if (PlatformUtils.isMobile()) {
             container.addClass('mobile-dashboard');
         }
+        if (this.isSimplifiedMobileDashboard()) {
+            container.addClass('storyteller-dashboard-simplified');
+        }
 
         // --- Create a Header Container ---
         const headerContainer = container.createDiv('storyteller-dashboard-header');
@@ -438,7 +452,7 @@ export class DashboardView extends ItemView {
             cls: 'storyteller-dashboard-title'
         });
 
-        titleEl.append(t('dashboardTitle'));
+        titleEl.append(this.isSimplifiedMobileDashboard() ? 'Storyteller' : t('dashboardTitle'));
 
         // --- Group for selector and button (mobile-optimized layout) ---
         const selectorButtonGroup = headerTopRow.createDiv('storyteller-selector-button-group');
@@ -516,6 +530,19 @@ export class DashboardView extends ItemView {
         (this.tabHeaderRibbonEl.style as any).flex = '1 1 auto';
         this.tabHeaderRibbonEl.style.width = '100%';
 
+        if (this.isSimplifiedMobileDashboard()) {
+            this.mobileTabOverflowButton = this.tabHeaderContainer.createEl('button', {
+                cls: 'storyteller-tab-overflow-btn'
+            });
+            this.mobileTabOverflowButton.type = 'button';
+            const overflowIcon = this.mobileTabOverflowButton.createSpan({ cls: 'storyteller-tab-overflow-icon' });
+            setIcon(overflowIcon, 'more-horizontal');
+            this.mobileTabOverflowButton.createSpan({ cls: 'storyteller-tab-overflow-label', text: 'More' });
+            this.mobileTabOverflowButton.addEventListener('click', (event: MouseEvent) => {
+                this.showMobileTabMenu(event);
+            });
+        }
+
         // Measurement/More removed; tabs will wrap freely
 
         // Responsive layout via ResizeObserver
@@ -552,7 +579,7 @@ export class DashboardView extends ItemView {
         // Initial active state - use first visible tab if current tab is hidden
         const visibleTabs = this.getVisibleTabs();
         const initialTabId = visibleTabs.find(t => t.id === this.activeTabId)?.id || visibleTabs[0]?.id || this.tabs[0].id;
-        this.setActiveTab(initialTabId);
+        await this.setActiveTab(initialTabId);
 
         // --- Register Vault Event Listeners for Auto-refresh ---
         this.registerVaultEventListeners();
@@ -590,8 +617,6 @@ export class DashboardView extends ItemView {
             });
         }
 
-        // --- Initial Content Render ---
-        await this.renderCharactersContent(this.tabContentContainer); // Render the first tab initially
     }
 
     /** Update layout to ensure proper spacing (no longer needed for sticky positioning) */
@@ -624,6 +649,25 @@ export class DashboardView extends ItemView {
         return this.tabs.filter(tab => !hiddenTabs.includes(tab.id));
     }
 
+    private getSimplifiedMobilePrimaryTabs() {
+        const visibleTabs = this.getVisibleTabs();
+        const primaryTabs = visibleTabs.filter(tab => this.simplifiedMobilePrimaryTabIds.includes(tab.id));
+        const activeOverflowTab = visibleTabs.find(tab =>
+            tab.id === this.activeTabId && !this.simplifiedMobilePrimaryTabIds.includes(tab.id)
+        );
+
+        if (activeOverflowTab && !primaryTabs.some(tab => tab.id === activeOverflowTab.id)) {
+            primaryTabs.push(activeOverflowTab);
+        }
+
+        return primaryTabs;
+    }
+
+    private getSimplifiedMobileOverflowTabs() {
+        const primaryIds = new Set(this.getSimplifiedMobilePrimaryTabs().map(tab => tab.id));
+        return this.getVisibleTabs().filter(tab => !primaryIds.has(tab.id));
+    }
+
     /** Apply saved tab order from settings, appending any new tabs at the end. */
     private applyTabOrder(): void {
         const savedOrder = this.plugin.settings.dashboardTabOrder;
@@ -651,6 +695,7 @@ export class DashboardView extends ItemView {
         if (!this.tabHeaderContainer || !this.tabHeaderRibbonEl) return;
 
         const isMobile = PlatformUtils.isMobile();
+        const isSimplifiedMobile = this.isSimplifiedMobileDashboard();
 
         // Prepare container layout:
         // - Desktop: tabs can wrap to multiple rows.
@@ -684,8 +729,8 @@ export class DashboardView extends ItemView {
         // Compact mode reduces padding via mode pass-through
 
         // Render visible tabs only and allow natural wrapping to any number of rows
-        const visibleTabs = this.getVisibleTabs();
-        for (const tab of visibleTabs) {
+        const tabsToRender = isSimplifiedMobile ? this.getSimplifiedMobilePrimaryTabs() : this.getVisibleTabs();
+        for (const tab of tabsToRender) {
             const btn = this.createTabButtonEl(tab, btnMode, false);
             this.tabHeaderRibbonEl.appendChild(btn);
         }
@@ -718,53 +763,55 @@ export class DashboardView extends ItemView {
         btn.appendChild(labelSpan);
 
         if (!forMeasure) {
-            btn.setAttribute('draggable', 'true');
-            btn.style.cursor = 'grab';
+            if (!this.isSimplifiedMobileDashboard()) {
+                btn.setAttribute('draggable', 'true');
+                btn.style.cursor = 'grab';
 
-            btn.addEventListener('dragstart', (e: DragEvent) => {
-                this._draggedTabId = tab.id;
-                if (e.dataTransfer) {
-                    e.dataTransfer.effectAllowed = 'move';
-                    e.dataTransfer.setData('text/plain', tab.id);
-                }
-                btn.style.opacity = '0.45';
-            });
-
-            btn.addEventListener('dragend', () => {
-                this._draggedTabId = null;
-                btn.style.opacity = '';
-                this.tabHeaderRibbonEl?.querySelectorAll('.storyteller-tab-drag-over').forEach(el => {
-                    el.classList.remove('storyteller-tab-drag-over');
+                btn.addEventListener('dragstart', (e: DragEvent) => {
+                    this._draggedTabId = tab.id;
+                    if (e.dataTransfer) {
+                        e.dataTransfer.effectAllowed = 'move';
+                        e.dataTransfer.setData('text/plain', tab.id);
+                    }
+                    btn.style.opacity = '0.45';
                 });
-            });
 
-            btn.addEventListener('dragover', (e: DragEvent) => {
-                if (!this._draggedTabId || this._draggedTabId === tab.id) return;
-                e.preventDefault();
-                if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
-                btn.classList.add('storyteller-tab-drag-over');
-            });
+                btn.addEventListener('dragend', () => {
+                    this._draggedTabId = null;
+                    btn.style.opacity = '';
+                    this.tabHeaderRibbonEl?.querySelectorAll('.storyteller-tab-drag-over').forEach(el => {
+                        el.classList.remove('storyteller-tab-drag-over');
+                    });
+                });
 
-            btn.addEventListener('dragleave', () => {
-                btn.classList.remove('storyteller-tab-drag-over');
-            });
+                btn.addEventListener('dragover', (e: DragEvent) => {
+                    if (!this._draggedTabId || this._draggedTabId === tab.id) return;
+                    e.preventDefault();
+                    if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+                    btn.classList.add('storyteller-tab-drag-over');
+                });
 
-            btn.addEventListener('drop', (e: DragEvent) => {
-                e.preventDefault();
-                btn.classList.remove('storyteller-tab-drag-over');
-                const fromId = this._draggedTabId;
-                if (!fromId || fromId === tab.id) return;
+                btn.addEventListener('dragleave', () => {
+                    btn.classList.remove('storyteller-tab-drag-over');
+                });
 
-                const fromIdx = this.tabs.findIndex(t => t.id === fromId);
-                const toIdx = this.tabs.findIndex(t => t.id === tab.id);
-                if (fromIdx === -1 || toIdx === -1) return;
+                btn.addEventListener('drop', (e: DragEvent) => {
+                    e.preventDefault();
+                    btn.classList.remove('storyteller-tab-drag-over');
+                    const fromId = this._draggedTabId;
+                    if (!fromId || fromId === tab.id) return;
 
-                const [moved] = this.tabs.splice(fromIdx, 1);
-                this.tabs.splice(toIdx, 0, moved);
+                    const fromIdx = this.tabs.findIndex(t => t.id === fromId);
+                    const toIdx = this.tabs.findIndex(t => t.id === tab.id);
+                    if (fromIdx === -1 || toIdx === -1) return;
 
-                this.layoutTabs();
-                void this.saveTabOrder();
-            });
+                    const [moved] = this.tabs.splice(fromIdx, 1);
+                    this.tabs.splice(toIdx, 0, moved);
+
+                    this.layoutTabs();
+                    void this.saveTabOrder();
+                });
+            }
 
             btn.addEventListener('click', async () => {
                 await this.setActiveTab(tab.id);
@@ -773,7 +820,33 @@ export class DashboardView extends ItemView {
         return btn;
     }
 
-    // More dropdown removed
+    private updateMobileTabOverflowButton(): void {
+        if (!this.mobileTabOverflowButton) return;
+        const overflowTabs = this.getSimplifiedMobileOverflowTabs();
+        this.mobileTabOverflowButton.classList.toggle('storyteller-hidden', overflowTabs.length === 0);
+        const activeOverflow = overflowTabs.find(tab => tab.id === this.activeTabId);
+        this.mobileTabOverflowButton.classList.toggle('is-active', !!activeOverflow);
+        this.mobileTabOverflowButton.title = activeOverflow ? `More tabs (${activeOverflow.label} active)` : 'More tabs';
+        this.mobileTabOverflowButton.setAttribute('aria-label', activeOverflow ? `More tabs. ${activeOverflow.label} is active.` : 'More tabs');
+    }
+
+    private showMobileTabMenu(event: MouseEvent): void {
+        const overflowTabs = this.getSimplifiedMobileOverflowTabs();
+        if (overflowTabs.length === 0) return;
+
+        const menu = new Menu();
+        overflowTabs.forEach(tab => {
+            menu.addItem(item => {
+                item.setTitle(tab.label);
+                item.setIcon(tab.id === this.activeTabId ? 'check' : 'chevron-right');
+                item.onClick(() => {
+                    void this.setActiveTab(tab.id);
+                });
+            });
+        });
+
+        menu.showAtMouseEvent(event);
+    }
 
     private captureTabScrollState(tabId: string, sourceEl?: HTMLElement): void {
         if (!this.tabContentContainer) return;
@@ -861,7 +934,11 @@ export class DashboardView extends ItemView {
             this._suppressScrollCapture = false;
         }
         // Update styles
-        this.syncActiveTabStyles();
+        if (this.isSimplifiedMobileDashboard()) {
+            this.layoutTabs();
+        } else {
+            this.syncActiveTabStyles();
+        }
     }
 
     private syncActiveTabStyles() {
@@ -875,6 +952,103 @@ export class DashboardView extends ItemView {
             h.setAttribute('tabindex', isActive ? '0' : '-1');
             h.style.background = isActive ? 'var(--background-modifier-hover)' : 'transparent';
             h.style.outline = 'none';
+        });
+        this.updateMobileTabOverflowButton();
+    }
+
+    private queueSearchFilter(filterFn: (filter: string) => Promise<void>, value: string): void {
+        this.currentFilter = value.toLowerCase();
+
+        if (this.debouncedSearch) {
+            this.debouncedSearch(filterFn);
+            return;
+        }
+
+        void filterFn(this.currentFilter);
+    }
+
+    private decorateSearchInput(inputEl: HTMLInputElement): void {
+        this.currentSearchInput = inputEl;
+
+        if (!PlatformUtils.isMobile()) return;
+
+        inputEl.autocomplete = 'off';
+        inputEl.setAttribute('autocorrect', 'off');
+        inputEl.setAttribute('autocapitalize', 'none');
+        inputEl.spellcheck = false;
+
+        inputEl.addClass('mobile-input');
+        inputEl.addClass('search-input');
+
+        if (PlatformUtils.isIOS()) {
+            inputEl.style.fontSize = '1.1rem';
+        }
+
+        const startTyping = () => {
+            this.isUserTyping = true;
+            inputEl.removeAttribute('data-user-dismissed');
+            if (this.typingTimer) {
+                clearTimeout(this.typingTimer);
+            }
+            this.typingTimer = window.setTimeout(() => {
+                this.isUserTyping = false;
+            }, 2000);
+        };
+
+        inputEl.addEventListener('input', startTyping);
+        inputEl.addEventListener('focus', startTyping);
+
+        inputEl.addEventListener('keydown', (e: KeyboardEvent) => {
+            startTyping();
+            if (e.key === 'Enter' && PlatformUtils.isMobile()) {
+                this.markSearchInputDismissal();
+                inputEl.blur();
+                e.preventDefault();
+            }
+        });
+
+        inputEl.addEventListener('blur', () => {
+            this.isUserTyping = false;
+            if (this.typingTimer) {
+                clearTimeout(this.typingTimer);
+                this.typingTimer = null;
+            }
+        });
+
+        inputEl.addEventListener('focus', () => {
+            inputEl.removeAttribute('data-user-dismissed');
+
+            if (PlatformUtils.isMobile()) {
+                inputEl.scrollIntoView({
+                    behavior: 'smooth',
+                    block: 'center',
+                    inline: 'nearest'
+                });
+            }
+        });
+
+        inputEl.addEventListener('blur', () => {
+            const userDismissed = inputEl.hasAttribute('data-user-dismissed');
+            const shouldRestoreFocus = PlatformUtils.isMobile() && !this.isSimplifiedMobileDashboard();
+
+            if (shouldRestoreFocus &&
+                !userDismissed &&
+                document.activeElement !== inputEl) {
+
+                setTimeout(() => {
+                    const stillUserDismissed = inputEl.hasAttribute('data-user-dismissed');
+                    if (this.currentSearchInput === inputEl &&
+                        !stillUserDismissed &&
+                        document.activeElement !== inputEl &&
+                        inputEl.isConnected) {
+                        try {
+                            inputEl.focus();
+                        } catch (error) {
+                            // Ignore focus errors
+                        }
+                    }
+                }, 10);
+            }
         });
     }
 
@@ -1021,7 +1195,7 @@ export class DashboardView extends ItemView {
         // Fetch locations to resolve location IDs to names
         const locations = await this.plugin.listLocations();
 
-        const listContainer = container.createDiv('storyteller-list-container storyteller-timeline-container'); // Add timeline class if needed
+        const listContainer = container.createDiv('storyteller-list-container storyteller-events-list-container');
         if (events.length === 0) {
             listContainer.createEl('p', { text: t('noEventsFound') + (this.currentFilter ? t('matchingFilter') : '') });
             return;
@@ -1599,44 +1773,28 @@ export class DashboardView extends ItemView {
                 // Create file input element if it doesn't exist
                 this.fileInput = container.createEl('input', { type: 'file', cls: 'storyteller-hidden' });
                 this.fileInput.accept = 'image/*'; // Accept only image files
+                this.fileInput.multiple = true;
 
                 this.fileInput.onchange = async (e) => {
                     const files = (e.target as HTMLInputElement).files;
                     if (!files || files.length === 0) {
                         return; // No file selected
                     }
-                    const file = files[0];
-                    const uploadFolderPath = this.plugin.settings.galleryUploadFolder;
 
                     try {
-                        // 1. Ensure upload folder exists
-                        await this.plugin.ensureFolder(uploadFolderPath);
-
-                        // 2. Determine unique file path
-                        let fileName = file.name;
-                        let filePath = normalizePath(`${uploadFolderPath}/${fileName}`);
-                        let counter = 0;
-                        // Check for existing file and add counter if needed
-                        while (this.app.vault.getAbstractFileByPath(filePath)) {
-                            counter++;
-                            const nameParts = file.name.split('.');
-                            const extension = nameParts.pop();
-                            fileName = `${nameParts.join('.')}_${counter}.${extension}`;
-                            filePath = normalizePath(`${uploadFolderPath}/${fileName}`);
+                        const { imported, failed } = await this.plugin.importGalleryUploads(Array.from(files));
+                        if (imported.length === 1 && failed.length === 0) {
+                            await refreshCallback();
+                            new ImageDetailModal(this.app, this.plugin, imported[0], true, refreshCallback).open();
+                        } else {
+                            await refreshCallback();
+                            if (imported.length > 0) {
+                                new Notice(`Added ${imported.length} image${imported.length === 1 ? '' : 's'} to the gallery.`);
+                            }
+                            if (failed.length > 0) {
+                                new Notice(`Failed to import ${failed.length} image${failed.length === 1 ? '' : 's'}. Check console for details.`);
+                            }
                         }
-
-                        // 3. Read file content
-                        const arrayBuffer = await file.arrayBuffer();
-
-                        // 4. Create file in vault
-                        const createdFile = await this.app.vault.createBinary(filePath, arrayBuffer);
-                        new Notice(`Uploaded "${fileName}" to vault.`);
-
-                        // 5. Add to gallery data and open detail modal
-                        // Use the relative filePath, not createdFile.path which may be absolute on Windows
-                        const newImageData = await this.plugin.addGalleryImage({ filePath: filePath, title: createdFile.basename });
-                        new ImageDetailModal(this.app, this.plugin, newImageData, true, refreshCallback).open();
-
                     } catch (error) {
                         console.error("Error uploading file:", error);
                         new Notice("Error uploading file. Check console for details.");
@@ -1666,6 +1824,7 @@ export class DashboardView extends ItemView {
             existingGridContainer.remove();
         }
 
+        await this.plugin.syncGalleryWatchFolder();
         const images = this.plugin.getGalleryImages().filter(img =>
             img.filePath.toLowerCase().includes(this.currentFilter) ||
             (img.title || '').toLowerCase().includes(this.currentFilter) ||
@@ -1899,7 +2058,7 @@ export class DashboardView extends ItemView {
     }
 
     // --- Header Controls (Filter + Add Button) ---
-    private renderHeaderControls(container: HTMLElement, title: string, filterFn: (filter: string) => Promise<void>, addFn: () => void, addButtonText: string = t('createNew'), extendButtons?: (s: Setting) => void) {
+    private renderHeaderControls(container: HTMLElement, title: string, filterFn: (filter: string) => Promise<void>, addFn: () => void, addButtonText: string = t('createNew'), extendButtons?: (s: Setting) => void, extendMobileActions?: (menu: Menu) => void) {
         const controlsGroup = container.createDiv('storyteller-controls-group');
         controlsGroup.style.display = 'flex';
         controlsGroup.style.alignItems = 'center';
@@ -1927,6 +2086,67 @@ export class DashboardView extends ItemView {
             }
         })();
 
+        if (this.isSimplifiedMobileDashboard()) {
+            controlsGroup.addClass('storyteller-controls-group--mobile');
+
+            const searchRow = controlsGroup.createDiv('storyteller-controls-search-row');
+            const searchWrap = searchRow.createDiv('storyteller-search-input-wrap');
+            const searchIconEl = searchWrap.createSpan({ cls: 'storyteller-search-input-icon' });
+            setIcon(searchIconEl, 'search');
+
+            const searchInput = searchWrap.createEl('input', {
+                type: 'text',
+                cls: 'storyteller-dashboard-search-input',
+                attr: {
+                    placeholder: t('searchX', title.toLowerCase()),
+                    'aria-label': `Search ${title.toLowerCase()}`
+                }
+            });
+            searchInput.value = this.currentFilter;
+            searchInput.addEventListener('input', () => {
+                this.queueSearchFilter(filterFn, searchInput.value);
+            });
+            this.decorateSearchInput(searchInput);
+
+            const actionRow = controlsGroup.createDiv('storyteller-controls-action-row');
+            actionRow.createSpan({ cls: 'storyteller-controls-section-label', text: title });
+
+            const actionButtons = actionRow.createDiv('storyteller-controls-action-buttons');
+
+            const primaryButton = actionButtons.createEl('button', {
+                cls: 'mod-cta storyteller-controls-primary-btn',
+                text: addButtonText
+            });
+            primaryButton.type = 'button';
+            primaryButton.addEventListener('click', () => {
+                if (entityType) {
+                    try { this.plugin.getEntityFolder(entityType); }
+                    catch { new Notice('Select or create a story first.'); return; }
+                }
+                addFn();
+            });
+            if (!canCreate) {
+                primaryButton.disabled = true;
+                primaryButton.title = 'Select or create a story first.';
+            }
+
+            if (extendMobileActions) {
+                const moreButton = actionButtons.createEl('button', {
+                    cls: 'storyteller-controls-more-btn'
+                });
+                moreButton.type = 'button';
+                moreButton.setAttribute('aria-label', `${title} actions`);
+                setIcon(moreButton.createSpan(), 'more-horizontal');
+                moreButton.addEventListener('click', (event: MouseEvent) => {
+                    const menu = new Menu();
+                    extendMobileActions(menu);
+                    menu.showAtMouseEvent(event);
+                });
+            }
+
+            return;
+        }
+
         const headerSetting = new Setting(controlsGroup)
             .setName(t('filterX', title.toLowerCase()))
             .setDesc('')
@@ -1934,115 +2154,9 @@ export class DashboardView extends ItemView {
                 const component = text
                     .setPlaceholder(t('searchX', title.toLowerCase()))
                     .onChange(async (value) => {
-                        this.currentFilter = value.toLowerCase();
-                        
-                        // Use debounced search to prevent keyboard hiding on mobile
-                        if (this.debouncedSearch) {
-                            this.debouncedSearch(filterFn);
-                        } else {
-                            // Fallback for immediate execution if debounce not available
-                            await filterFn(this.currentFilter);
-                        }
+                        this.queueSearchFilter(filterFn, value);
                     });
-                
-                // Store reference to the input element for focus preservation
-                this.currentSearchInput = component.inputEl;
-                
-                // Add mobile-specific attributes to prevent keyboard issues
-                if (PlatformUtils.isMobile()) {
-                    component.inputEl.autocomplete = 'off';
-                    component.inputEl.setAttribute('autocorrect', 'off');
-                    component.inputEl.setAttribute('autocapitalize', 'none');
-                    component.inputEl.spellcheck = false;
-                    
-                    // Add mobile-friendly CSS classes
-                    component.inputEl.addClass('mobile-input');
-                    component.inputEl.addClass('search-input');
-                    
-                    // Prevent zoom on iOS
-                    if (PlatformUtils.isIOS()) {
-                        component.inputEl.style.fontSize = '1.1rem';
-                    }
-                    
-                    // Add typing detection to prevent auto-refresh while typing
-                    const startTyping = () => {
-                        this.isUserTyping = true;
-                        // Reset dismissal flag when user types
-                        component.inputEl.removeAttribute('data-user-dismissed');
-                        if (this.typingTimer) {
-                            clearTimeout(this.typingTimer);
-                        }
-                        // User stops typing after 2 seconds of inactivity
-                        this.typingTimer = window.setTimeout(() => {
-                            this.isUserTyping = false;
-                        }, 2000);
-                    };
-                    
-                    component.inputEl.addEventListener('input', startTyping);
-                    component.inputEl.addEventListener('focus', startTyping);
-                    
-                    // Handle keyboard events including Enter key for dismissal
-                    component.inputEl.addEventListener('keydown', (e: KeyboardEvent) => {
-                        startTyping(); // Still track typing for auto-refresh prevention
-                        
-                        // Allow Enter key to dismiss keyboard on mobile
-                        if (e.key === 'Enter' && PlatformUtils.isMobile()) {
-                            this.markSearchInputDismissal();
-                            component.inputEl.blur(); // Dismiss keyboard
-                            e.preventDefault(); // Prevent any default form submission
-                        }
-                    });
-                    
-                    component.inputEl.addEventListener('blur', () => {
-                        // User stopped typing when they leave the input
-                        this.isUserTyping = false;
-                        if (this.typingTimer) {
-                            clearTimeout(this.typingTimer);
-                            this.typingTimer = null;
-                        }
-                    });
-                    
-                    // Additional mobile-specific event handling
-                    component.inputEl.addEventListener('focus', () => {
-                        // Reset dismissal flag when user focuses again
-                        component.inputEl.removeAttribute('data-user-dismissed');
-                        
-                        // Ensure the input stays focused on mobile
-                        if (PlatformUtils.isMobile()) {
-                            // Prevent the input from losing focus due to layout changes
-                            component.inputEl.scrollIntoView({ 
-                                behavior: 'smooth', 
-                                block: 'center',
-                                inline: 'nearest'
-                            });
-                        }
-                    });
-                    
-                    // Improved blur handling - only restore focus if NOT user-initiated
-                    component.inputEl.addEventListener('blur', (e) => {
-                        const userDismissed = component.inputEl.hasAttribute('data-user-dismissed');
-                        
-                        if (PlatformUtils.isMobile() && 
-                            !userDismissed && // Respect user's dismissal intent
-                            document.activeElement !== component.inputEl) {
-                            
-                            // Small delay before attempting to restore focus
-                            setTimeout(() => {
-                                const stillUserDismissed = component.inputEl.hasAttribute('data-user-dismissed');
-                                if (this.currentSearchInput === component.inputEl && 
-                                    !stillUserDismissed && // Double-check dismissal flag
-                                    document.activeElement !== component.inputEl &&
-                                    component.inputEl.isConnected) {
-                                    try {
-                                        component.inputEl.focus();
-                                    } catch (error) {
-                                        // Ignore focus errors
-                                    }
-                                }
-                            }, 10);
-                        }
-                    });
-                }
+                this.decorateSearchInput(component.inputEl);
                 
                 return component;
             });
@@ -2164,7 +2278,7 @@ export class DashboardView extends ItemView {
         this.renderWritingGoalBanner(container);
 
         // ── View mode switcher ─────────────────────────────────────────────
-        const switcher = container.createDiv('storyteller-writing-switcher');
+        const switcher = container.createDiv(`storyteller-writing-switcher${this.isSimplifiedMobileDashboard() ? ' storyteller-writing-switcher--mobile' : ''}`);
         const modes: Array<{ id: typeof this._writingViewMode; icon: string; label: string }> = [
             { id: 'list',    icon: 'list',           label: 'List'     },
             { id: 'board',   icon: 'columns-3',      label: 'Board'    },
@@ -2201,21 +2315,41 @@ export class DashboardView extends ItemView {
             popOutBtn.title = `Open ${modeInfo.label} in panel`;
         };
 
-        modes.forEach(m => {
-            const btn = switcher.createEl('button', {
-                cls: `storyteller-switcher-btn${this._writingViewMode === m.id ? ' is-active' : ''}`
+        if (this.isSimplifiedMobileDashboard()) {
+            const modeSelect = switcher.createEl('select', {
+                cls: 'storyteller-writing-mode-select',
+                attr: {
+                    'aria-label': 'Writing view mode'
+                }
             });
-            setIcon(btn.createSpan(), m.icon);
-            btn.createSpan({ text: m.label });
-            btn.onclick = async () => {
-                this._writingViewMode = m.id;
-                switcher.querySelectorAll('.storyteller-switcher-btn:not(.storyteller-switcher-popout)')
-                    .forEach(b => b.removeClass('is-active'));
-                btn.addClass('is-active');
+            modes.forEach(mode => {
+                const option = modeSelect.createEl('option', { text: mode.label });
+                option.value = mode.id;
+            });
+            modeSelect.value = this._writingViewMode;
+            modeSelect.addEventListener('change', async () => {
+                this._writingViewMode = modeSelect.value as typeof this._writingViewMode;
                 updatePopOut();
                 await renderActive();
-            };
-        });
+            });
+            switcher.prepend(modeSelect);
+        } else {
+            modes.forEach(m => {
+                const btn = switcher.createEl('button', {
+                    cls: `storyteller-switcher-btn${this._writingViewMode === m.id ? ' is-active' : ''}`
+                });
+                setIcon(btn.createSpan(), m.icon);
+                btn.createSpan({ text: m.label });
+                btn.onclick = async () => {
+                    this._writingViewMode = m.id;
+                    switcher.querySelectorAll('.storyteller-switcher-btn:not(.storyteller-switcher-popout)')
+                        .forEach(b => b.removeClass('is-active'));
+                    btn.addClass('is-active');
+                    updatePopOut();
+                    await renderActive();
+                };
+            });
+        }
 
         updatePopOut(); // set initial state
 
@@ -2257,6 +2391,28 @@ export class DashboardView extends ItemView {
                 s.addButton(btn => {
                     btn.setIcon('layout-dashboard').setTooltip('Open Story Board canvas').onClick(async () => {
                         await this.plugin.openStoryBoard();
+                    });
+                });
+            },
+            (menu) => {
+                menu.addItem(item => {
+                    item.setTitle('Add Scene');
+                    item.setIcon('plus-circle');
+                    item.onClick(() => {
+                        import('../modals/SceneModal').then(({ SceneModal }) => {
+                            new SceneModal(this.app, this.plugin, null, async (sc) => {
+                                await this.plugin.saveScene(sc);
+                                new Notice(`Scene "${sc.name}" created.`);
+                                await renderActive();
+                            }).open();
+                        });
+                    });
+                });
+                menu.addItem(item => {
+                    item.setTitle('Open Story Board');
+                    item.setIcon('layout-dashboard');
+                    item.onClick(() => {
+                        void this.plugin.openStoryBoard();
                     });
                 });
             }
@@ -4755,6 +4911,7 @@ export class DashboardView extends ItemView {
     private renderWritingGoalBanner(container: HTMLElement): void {
         const goal = this.plugin.settings.dailyWordCountGoal ?? 0;
         if (!goal || !this.plugin.wordTracker) return;
+        const isCompactMobile = this.isSimplifiedMobileDashboard();
 
         const tracker = this.plugin.wordTracker;
         const todayStats = tracker.getTodayStats();
@@ -4766,16 +4923,19 @@ export class DashboardView extends ItemView {
         const banner = container.createDiv({
             cls: `storyteller-goal-banner${met ? ' storyteller-goal-banner--met' : ''}`
         });
+        if (isCompactMobile) {
+            banner.addClass('storyteller-goal-banner--compact');
+        }
 
         const top = banner.createDiv('storyteller-goal-banner-top');
 
         const labelEl = top.createDiv('storyteller-goal-banner-label');
         const labelIcon = labelEl.createSpan();
         setIcon(labelIcon, met ? 'check-circle' : 'target');
-        labelEl.createSpan({ text: met ? ' Daily goal met!' : ' Daily writing goal' });
+        labelEl.createSpan({ text: met ? (isCompactMobile ? ' Goal met' : ' Daily goal met!') : (isCompactMobile ? ' Goal' : ' Daily writing goal') });
 
         top.createSpan({
-            text: `${wordsToday.toLocaleString()} / ${goal.toLocaleString()} words`,
+            text: isCompactMobile ? `${wordsToday.toLocaleString()} / ${goal.toLocaleString()}` : `${wordsToday.toLocaleString()} / ${goal.toLocaleString()} words`,
             cls: 'storyteller-goal-banner-count'
         });
 
@@ -4784,6 +4944,13 @@ export class DashboardView extends ItemView {
         fillEl.style.width = `${pct}%`;
 
         if (streak > 1) {
+            if (isCompactMobile) {
+                const streakEl = top.createDiv('storyteller-goal-streak storyteller-goal-streak--inline');
+                const streakIcon = streakEl.createSpan();
+                setIcon(streakIcon, 'flame');
+                streakEl.createSpan({ text: ` ${streak}d streak` });
+                return;
+            }
             const streakEl = banner.createDiv('storyteller-goal-streak');
             const streakIcon = streakEl.createSpan();
             setIcon(streakIcon, 'flame');

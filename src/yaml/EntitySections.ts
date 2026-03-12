@@ -41,6 +41,7 @@ export const WIKI_LINK_ARRAY_FIELDS = new Set([
     'childLocationIds',
     'chapterIds',
     'inventoryItemIds',
+    'revealedCompendiumEntryIds',
     'relatedMapIds',
     'childMapIds',
 ]);
@@ -126,7 +127,8 @@ const FRONTMATTER_WHITELISTS: Record<EntityType, Set<string>> = {
     'linkedChapters', 'linkedScenes', 'compendiumSources',
     'mapCoordinates', 'mapId', 'markerId', 'relatedMapIds', 'mapIcon', 'mapColor',
     'itemType', 'itemRarity', 'consumedOnUse', 'campaignEffect',
-    'grantsFlag', 'navigatesToScene', 'useRequiresLocation', 'useRequiresFlag'
+    'grantsFlag', 'navigatesToScene', 'useRequiresLocation', 'useRequiresFlag',
+    'campaignItemEffects'
   ]),
   reference: new Set([
     'id', 'name', 'category', 'tags', 'profileImagePath',
@@ -197,7 +199,8 @@ const FRONTMATTER_WHITELISTS: Record<EntityType, Set<string>> = {
   campaignSession: new Set([
     'id', 'name', 'storyId', 'currentSceneId', 'currentSceneName', 'activeMapId',
     'partyCharacterIds', 'partyCharacterNames', 'partyState',
-    'partyItems', 'flags',
+    'partyItems', 'flags', 'revealedCompendiumEntryIds', 'groupStandings',
+    'collectedBoardItemKeys',
     'status', 'created', 'modified'
   ]),
 };

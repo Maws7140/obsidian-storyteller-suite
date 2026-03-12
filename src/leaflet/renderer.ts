@@ -10,6 +10,13 @@ import { RasterCoords } from './utils/RasterCoords';
 import { EntityMarkerDiscovery } from './EntityMarkerDiscovery';
 import { MapEntityRenderer } from './MapEntityRenderer';
 import { ObsidianTileLayer } from './ObsidianTileLayer';
+import {
+    chooseSvgRenderMode,
+    createNormalizedSvgElement,
+    getSvgSourceInfoFromText,
+    isSvgPath,
+    type SvgSourceInfo,
+} from '../utils/SvgImageUtils';
 
 /**
  * Core Leaflet Map Renderer
@@ -593,6 +600,25 @@ export class LeafletRenderer extends Component {
      */
     private async initializeImageMapWithPath(imagePath: string): Promise<void> {
         try {
+            if (isSvgPath(imagePath)) {
+                const svgText = await this.plugin.app.vault.adapter.read(imagePath);
+                const svgInfo = getSvgSourceInfoFromText(svgText);
+                const svgMode = chooseSvgRenderMode(svgInfo);
+
+                console.log('[LeafletRenderer] SVG image map detected:', {
+                    imagePath,
+                    width: svgInfo.width,
+                    height: svgInfo.height,
+                    byteLength: svgInfo.byteLength,
+                    mode: svgMode,
+                });
+
+                if (svgMode === 'overlay') {
+                    await this.initializeSvgOverlayMap(svgText, svgInfo);
+                    return;
+                }
+            }
+
             // Check if tiles exist for this image
             let tileInfo = await this.checkForTiles(imagePath);
 
@@ -628,6 +654,77 @@ export class LeafletRenderer extends Component {
             // Don't fallback to standard image overlay - map images must use tiles
             throw new Error(`Failed to initialize map: ${error.message}`);
         }
+    }
+
+    private async initializeSvgOverlayMap(
+        svgText: string,
+        svgInfo: SvgSourceInfo
+    ): Promise<void> {
+        this.imageWidth = svgInfo.width;
+        this.imageHeight = svgInfo.height;
+
+        const containerRect = this.containerEl.getBoundingClientRect();
+        const containerWidth = containerRect.width || 800;
+        const containerHeight = containerRect.height || 600;
+        console.log('[LeafletRenderer] Initializing direct SVG overlay map:', {
+            width: svgInfo.width,
+            height: svgInfo.height,
+            containerWidth,
+            containerHeight,
+        });
+
+        this.map = L.map(this.containerEl, {
+            zoomSnap: 0,
+            zoomDelta: 0.25,
+            scrollWheelZoom: true,
+            zoomAnimation: true,
+            attributionControl: false,
+            zoomControl: true,
+            crs: L.CRS.Simple
+        });
+
+        const rc = new RasterCoords(this.map, svgInfo.width, svgInfo.height);
+        rc.setup();
+
+        const minZoom = -10;
+        const maxZoom = rc.getMaxZoom() + 3;
+        this.map.setMinZoom(minZoom);
+        this.map.setMaxZoom(maxZoom);
+
+        const bounds: L.LatLngBoundsExpression = [[0, 0], [svgInfo.height, svgInfo.width]];
+        this.imageBounds = L.latLngBounds(bounds);
+
+        const overlayFactory = (L as any).svgOverlay;
+        if (typeof overlayFactory !== 'function') {
+            throw new Error('Leaflet SVG overlay support is unavailable.');
+        }
+
+        const svgElement = createNormalizedSvgElement(svgText, svgInfo);
+        svgElement.classList.add('storyteller-map-svg-overlay');
+        this.imageOverlay = overlayFactory(svgElement, bounds, {
+            interactive: false,
+            className: 'storyteller-map-svg-overlay-layer'
+        }).addTo(this.map) as L.ImageOverlay;
+
+        await new Promise(resolve => requestAnimationFrame(resolve));
+        this.map.invalidateSize({ animate: false });
+
+        const restoredSavedState = this.restoreSavedViewState();
+        if (!restoredSavedState) {
+            this.map.fitBounds(bounds, {
+                padding: [20, 20],
+                animate: false
+            });
+        }
+
+        const overlayPane = this.map.getPane('overlayPane');
+        if (overlayPane) {
+            overlayPane.style.opacity = '1';
+            overlayPane.style.visibility = 'visible';
+        }
+
+        this.hasRenderedTiles = true;
+        console.log('[LeafletRenderer] === SVG OVERLAY MAP READY ===');
     }
 
     /**
