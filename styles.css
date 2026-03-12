@@ -10499,3 +10499,83 @@ body.mod-rtl .storyteller-group-members {
 
 
 
+.storyteller-guide-modal .modal-content {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.storyteller-guide-title {
+  margin: 0 0 0.5rem;
+}
+
+.storyteller-guide-intro {
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 12px;
+  background: var(--background-secondary);
+}
+
+.storyteller-guide-intro p {
+  margin: 0;
+}
+
+.storyteller-guide-intro p + p {
+  margin-top: 0.65rem;
+}
+
+.storyteller-guide-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.storyteller-guide-section {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 12px;
+  background: var(--background-primary-alt, var(--background-primary));
+  overflow: hidden;
+}
+
+.storyteller-guide-section-summary {
+  cursor: pointer;
+  padding: 0.85rem 1rem;
+  font-weight: 600;
+  list-style: none;
+}
+
+.storyteller-guide-section-summary::-webkit-details-marker {
+  display: none;
+}
+
+.storyteller-guide-section[open] .storyteller-guide-section-summary {
+  border-bottom: 1px solid var(--background-modifier-border);
+  background: var(--background-secondary);
+}
+
+.storyteller-guide-section-body {
+  padding: 0.9rem 1rem 1rem;
+  line-height: 1.55;
+}
+
+.storyteller-guide-section-body > :first-child {
+  margin-top: 0;
+}
+
+.storyteller-guide-section-body > :last-child {
+  margin-bottom: 0;
+}
+
+.storyteller-guide-section-body ul,
+.storyteller-guide-section-body ol {
+  margin: 0.5rem 0 0;
+  padding-left: 1.15rem;
+}
+
+.storyteller-guide-footer {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  padding-top: 0.5rem;
+}

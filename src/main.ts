@@ -53,6 +53,7 @@ import { MapView, VIEW_TYPE_MAP } from './views/MapView';
 import { WritingPanelView, VIEW_TYPE_WRITING_PANEL } from './views/WritingPanelView';
 import { CampaignView, VIEW_TYPE_CAMPAIGN } from './views/CampaignView';
 import { SceneGraphView, VIEW_TYPE_SCENE_GRAPH } from './views/SceneGraphView';
+import { StorytellerGuideModal } from './modals/StorytellerGuideModal';
 // DEPRECATED: Map functionality has been deprecated
 // import { MapEditorView, VIEW_TYPE_MAP_EDITOR } from './views/MapEditorView';
 import { GalleryImageSuggestModal } from './modals/GalleryImageSuggestModal';
@@ -197,6 +198,10 @@ const FRONTMATTER_LINK_ONLY_SCALAR_FIELDS = new Set([
     groups: Group[];
     /** Whether to show the tutorial section in settings */
     showTutorial: boolean;
+    /** Whether the first-run onboarding guide has already been shown */
+    hasCompletedOnboarding?: boolean;
+    /** Last plugin version whose update notes were shown to the user */
+    lastSeenReleaseNotesVersion?: string;
     /** UI language setting */
     language: string;
     /** When true, use user-provided folders instead of generated story folders */
@@ -378,6 +383,8 @@ const FRONTMATTER_LINK_ONLY_SCALAR_FIELDS = new Set([
     galleryWatchFolder: '',
     groups: [],
     showTutorial: true,
+    hasCompletedOnboarding: false,
+    lastSeenReleaseNotesVersion: '',
     language: 'en',
     enableCustomEntityFolders: false,
     storyRootFolderTemplate: '',
@@ -1626,6 +1633,8 @@ export default class StorytellerSuitePlugin extends Plugin {
 
 			// Set up mobile/tablet orientation and resize handlers
 			this.setupMobileOrientationHandlers();
+
+            await this.maybeShowStartupGuides();
 		});
 	}
 
@@ -2057,6 +2066,22 @@ export default class StorytellerSuitePlugin extends Plugin {
 				this.activateView();
 			}
 		});
+
+        this.addCommand({
+            id: 'open-getting-started-guide',
+            name: 'Open getting started guide',
+            callback: () => {
+                this.openGettingStartedGuide();
+            }
+        });
+
+        this.addCommand({
+            id: 'show-update-highlights',
+            name: 'Show update highlights',
+            callback: () => {
+                this.openWhatsNewGuide();
+            }
+        });
 
 		// Campaign commands
 		this.addCommand({
@@ -8260,6 +8285,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 	async loadSettings() {
 		// Load old settings if present
 		const loaded = await this.loadData();
+        const isFreshInstall = !loaded || Object.keys(loaded).length === 0;
 		this.settings = Object.assign({}, DEFAULT_SETTINGS, loaded);
 
 		let settingsUpdated = false;
@@ -8416,6 +8442,14 @@ export default class StorytellerSuitePlugin extends Plugin {
             this.settings.language = DEFAULT_SETTINGS.language;
             settingsUpdated = true;
         }
+        if (!('hasCompletedOnboarding' in this.settings)) {
+            this.settings.hasCompletedOnboarding = !isFreshInstall;
+            settingsUpdated = true;
+        }
+        if (!('lastSeenReleaseNotesVersion' in this.settings) || typeof this.settings.lastSeenReleaseNotesVersion !== 'string') {
+            this.settings.lastSeenReleaseNotesVersion = isFreshInstall ? this.manifest.version : '';
+            settingsUpdated = true;
+        }
         // Ensure new optional fields exist on groups for backward compatibility
         if (this.settings.groups.length > 0) {
             for (const g of this.settings.groups) {
@@ -8429,6 +8463,38 @@ export default class StorytellerSuitePlugin extends Plugin {
 		}
 
 	}
+
+    openGettingStartedGuide(): void {
+        new StorytellerGuideModal(this.app, this, 'getting-started').open();
+    }
+
+    openWhatsNewGuide(): void {
+        new StorytellerGuideModal(this.app, this, 'whats-new').open();
+    }
+
+    private async maybeShowStartupGuides(): Promise<void> {
+        if (!this.settings.hasCompletedOnboarding) {
+            this.settings.hasCompletedOnboarding = true;
+            this.settings.lastSeenReleaseNotesVersion = this.manifest.version;
+            await this.saveSettings();
+
+            window.setTimeout(() => {
+                this.openGettingStartedGuide();
+            }, 350);
+            return;
+        }
+
+        if (this.settings.lastSeenReleaseNotesVersion === this.manifest.version) {
+            return;
+        }
+
+        this.settings.lastSeenReleaseNotesVersion = this.manifest.version;
+        await this.saveSettings();
+
+        window.setTimeout(() => {
+            this.openWhatsNewGuide();
+        }, 450);
+    }
 
   /**
    * Lightweight event to notify views when groups have changed without relying on vault events

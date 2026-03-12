@@ -4,6 +4,7 @@ import { NewStoryModal } from './modals/NewStoryModal';
 import { EditStoryModal } from './modals/EditStoryModal';
 import { FolderSuggestModal } from './modals/FolderSuggestModal';
 import { CustomSheetTemplateModal } from './modals/CustomSheetTemplateModal';
+import { getGettingStartedGuide, renderGuideDocument } from './tutorial/StorytellerGuideContent';
 import { BUILT_IN_SHEET_TEMPLATES } from './utils/CharacterSheetTemplates';
 import { setLocale, t, getAvailableLanguages, getLanguageName, isLanguageAvailable } from './i18n/strings';
 
@@ -995,7 +996,27 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
     }
 
     // ─── Tab: Help ────────────────────────────────────────────────────────────
+    // Help tab
     private renderHelpTab(container: HTMLElement): void {
+        new Setting(container)
+            .setName('Guides')
+            .setHeading();
+
+        new Setting(container)
+            .setName('Open getting started guide')
+            .setDesc('Open the first-run guide that explains setup, stories, books, timeline, maps, campaign play, and compile.')
+            .addButton(button => button
+                .setButtonText('Open guide')
+                .setCta()
+                .onClick(() => this.plugin.openGettingStartedGuide()));
+
+        new Setting(container)
+            .setName('Open update highlights')
+            .setDesc(`Open the latest feature summary for v${this.plugin.manifest.version}.`)
+            .addButton(button => button
+                .setButtonText('Open highlights')
+                .onClick(() => this.plugin.openWhatsNewGuide()));
+
         new Setting(container)
             .setName(t('showTutorialSection'))
             .setDesc(t('showTutorialDesc'))
@@ -1034,380 +1055,12 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
             );
     }
 
-    // ─── Tutorial ─────────────────────────────────────────────────────────────
     private addTutorialSection(containerEl: HTMLElement): void {
-        new Setting(containerEl).setName(t('tutorialGettingStarted')).setHeading();
-
-        const tutorialDesc = createDiv();
-        tutorialDesc.innerHTML = `
-            <p><strong>${t('tutorialWelcome')}</strong> ${t('tutorialWelcomeDesc')}</p>
-            <p><em>${t('tutorialTip')}</em></p>
-        `;
-        tutorialDesc.style.marginBottom = '1em';
-        tutorialDesc.style.padding = '0.75em';
-        tutorialDesc.style.backgroundColor = 'var(--background-modifier-form-field)';
-        tutorialDesc.style.borderRadius = '5px';
-        tutorialDesc.style.borderLeft = '3px solid var(--interactive-accent)';
-        containerEl.appendChild(tutorialDesc);
-
-        this.addTutorialCollapsible(containerEl, t('tutorialDashboardTitle'),
-            `<p><strong>${t('tutorialDashboardAccess')}</strong></p>
-            <ul>
-                <li>${t('tutorialDashboardRibbon')}</li>
-                <li>${t('tutorialDashboardCommand')}</li>
-                <li>${t('tutorialDashboardHub')}</li>
-            </ul>`);
-
-        this.addTutorialCollapsible(containerEl, t('tutorialStoryTitle'),
-            `<p><strong>${t('tutorialStoryCreating')}</strong></p>
-            <ul>
-                <li>${t('tutorialStoryButton')}</li>
-                <li>${t('tutorialStoryCommand')}</li>
-                <li>${t('tutorialStoryName')}</li>
-                <li>${t('tutorialStoryDefault')}</li>
-            </ul>
-            <p><strong>${t('tutorialStoryManaging')}</strong></p>
-            <ul>
-                <li>${t('tutorialStorySwitch')}</li>
-                <li>${t('tutorialStoryEdit')}</li>
-                <li>${t('tutorialStoryDelete')}</li>
-            </ul>
-            <p><strong>${t('tutorialStoryActivation')}</strong></p>
-            <p><strong>${t('tutorialStoryOneMode')}</strong></p>`);
-
-        this.addTutorialCollapsible(containerEl, t('tutorialCharacterTitle'),
-            `<p><strong>${t('tutorialCharacterCreating')}</strong></p>
-            <ul>
-                <li>${t('tutorialCharacterDashboard')}</li>
-                <li>${t('tutorialCharacterCommand')}</li>
-                <li>${t('tutorialCharacterDetails')}</li>
-                <li>${t('tutorialCharacterImages')}</li>
-            </ul>
-            <p><strong>${t('tutorialCharacterManaging')}</strong></p>
-            <ul>
-                <li>${t('tutorialCharacterView')}</li>
-                <li>${t('tutorialCharacterEdit')}</li>
-                <li>${t('tutorialCharacterDelete')}</li>
-                <li>${t('tutorialCharacterStorage')}</li>
-            </ul>`);
-
-        this.addTutorialCollapsible(containerEl, t('tutorialLocationTitle'),
-            `<p><strong>${t('tutorialLocationCreating')}</strong></p>
-            <ul>
-                <li>${t('tutorialLocationDashboard')}</li>
-                <li>${t('tutorialLocationCommand')}</li>
-                <li>${t('tutorialLocationDetails')}</li>
-                <li>${t('tutorialLocationLink')}</li>
-            </ul>
-            <p><strong>${t('tutorialLocationManaging')}</strong></p>
-            <ul>
-                <li>${t('tutorialLocationView')}</li>
-                <li>${t('tutorialLocationStorage')}</li>
-                <li>${t('tutorialLocationEdit')}</li>
-            </ul>`);
-
-        this.addTutorialCollapsible(containerEl, t('tutorialEventTitle'),
-            `<p><strong>${t('tutorialEventCreating')}</strong></p>
-            <ul>
-                <li>${t('tutorialEventDashboard')}</li>
-                <li>${t('tutorialEventCommand')}</li>
-                <li>${t('tutorialEventDetails')}</li>
-                <li>${t('tutorialEventLink')}</li>
-                <li>${t('tutorialEventNew')}</li>
-            </ul>
-            <p><strong>${t('tutorialEventTimeline')}</strong></p>
-            <ul>
-                <li>${t('tutorialEventTimelineDashboard')}</li>
-                <li>${t('tutorialEventTimelineCommand')}</li>
-                <li>${t('tutorialEventTimelineSee')}</li>
-                <li>${t('tutorialEventStorage')}</li>
-            </ul>`);
-
-        this.addTutorialCollapsible(containerEl, t('tutorialGanttTitle'),
-            `<p><strong>${t('tutorialGanttEnhanced')}</strong></p>
-            <ul>
-                <li>${t('tutorialGanttToggle')}</li>
-                <li>${t('tutorialGanttMilestones')}</li>
-                <li>${t('tutorialGanttProgress')}</li>
-                <li>${t('tutorialGanttDependencies')}</li>
-            </ul>
-            <p><strong>${t('tutorialGanttDrag')}</strong></p>
-            <ul>
-                <li>${t('tutorialGanttLock')}</li>
-                <li>${t('tutorialGanttDragEvents')}</li>
-                <li>${t('tutorialGanttDisable')}</li>
-            </ul>
-            <p><strong>${t('tutorialGanttFiltering')}</strong></p>
-            <ul>
-                <li>${t('tutorialGanttFilterPanel')}</li>
-                <li>${t('tutorialGanttFilterBy')}</li>
-                <li>${t('tutorialGanttFilterChips')}</li>
-                <li>${t('tutorialGanttSwimlanes')}</li>
-            </ul>`);
-
-        this.addTutorialCollapsible(containerEl, t('tutorialPlotTitle'),
-            `<p><strong>${t('tutorialPlotManaging')}</strong></p>
-            <ul>
-                <li>${t('tutorialPlotCreate')}</li>
-                <li>${t('tutorialPlotCritical')}</li>
-                <li>${t('tutorialPlotOwnership')}</li>
-                <li>${t('tutorialPlotView')}</li>
-                <li>${t('tutorialPlotStorage')}</li>
-            </ul>`);
-
-        this.addTutorialCollapsible(containerEl, t('tutorialReferencesTitle'),
-            `<p><strong>${t('tutorialReferencesCreating')}</strong></p>
-            <ul>
-                <li>${t('tutorialReferencesDashboard')}</li>
-                <li>${t('tutorialReferencesCommand')}</li>
-                <li>${t('tutorialReferencesDetails')}</li>
-            </ul>
-            <p><strong>${t('tutorialReferencesManaging')}</strong></p>
-            <ul>
-                <li>${t('tutorialReferencesView')}</li>
-                <li>${t('tutorialReferencesStorage')}</li>
-                <li>${t('tutorialReferencesUse')}</li>
-            </ul>`);
-
-        this.addTutorialCollapsible(containerEl, t('tutorialChaptersScenesTitle'),
-            `<p><strong>${t('tutorialChaptersCreating')}</strong></p>
-            <ul>
-                <li>${t('tutorialChaptersDashboard')}</li>
-                <li>${t('tutorialChaptersCommand')}</li>
-                <li>${t('tutorialChaptersDetails')}</li>
-                <li>${t('tutorialChaptersLink')}</li>
-            </ul>
-            <p><strong>${t('tutorialScenesCreating')}</strong></p>
-            <ul>
-                <li>${t('tutorialScenesDashboard')}</li>
-                <li>${t('tutorialScenesCommand')}</li>
-                <li>${t('tutorialScenesDetails')}</li>
-                <li>${t('tutorialScenesLink')}</li>
-            </ul>
-            <p><strong>${t('tutorialScenesManaging')}</strong></p>
-            <ul>
-                <li>${t('tutorialChaptersView')}</li>
-                <li>${t('tutorialScenesView')}</li>
-                <li>${t('tutorialChaptersStorage')}</li>
-                <li>${t('tutorialScenesStorage')}</li>
-            </ul>`);
-
-        this.addTutorialCollapsible(containerEl, t('tutorialMapsTitle'),
-            `<p><strong>${t('tutorialMapsCreating')}</strong></p>
-            <ul>
-                <li>${t('tutorialMapsDashboard')}</li>
-                <li>${t('tutorialMapsTypes')}</li>
-                <li>${t('tutorialMapsFeatures')}</li>
-            </ul>
-            <p><strong>${t('tutorialMapsManaging')}</strong></p>
-            <ul>
-                <li>${t('tutorialMapsView')}</li>
-                <li>${t('tutorialMapsStorage')}</li>
-                <li>${t('tutorialMapsFrontmatter')}</li>
-            </ul>`);
-
-        this.addTutorialCollapsible(containerEl, t('tutorialGalleryTitle'),
-            `<p><strong>${t('tutorialGalleryOrganization')}</strong></p>
-            <ul>
-                <li>${t('tutorialGalleryAccess')}</li>
-                <li>${t('tutorialGalleryUpload')}</li>
-                <li>${t('tutorialGalleryOrganize')}</li>
-                <li>${t('tutorialGalleryLink')}</li>
-                <li>${t('tutorialGalleryConfig')}</li>
-            </ul>`);
-
-        this.addTutorialCollapsible(containerEl, t('tutorialGroupsTitle'),
-            `<p><strong>${t('tutorialGroupsOrganizing')}</strong></p>
-            <ul>
-                <li>${t('tutorialGroupsCreate')}</li>
-                <li>${t('tutorialGroupsAdd')}</li>
-                <li>${t('tutorialGroupsManage')}</li>
-                <li>${t('tutorialGroupsUseCases')}</li>
-            </ul>`);
-
-        this.addTutorialCollapsible(containerEl, t('tutorialWorldTitle'),
-            `<p><strong>${t('tutorialWorldFive')}</strong></p>
-            <ul>
-                <li>${t('tutorialWorldCultures')}</li>
-                <li>${t('tutorialWorldFactions')}</li>
-                <li>${t('tutorialWorldEconomies')}</li>
-                <li>${t('tutorialWorldMagic')}</li>
-            </ul>
-            <p><strong>${t('tutorialWorldCreating')}</strong></p>
-            <ul>
-                <li>${t('tutorialWorldCommand')}</li>
-                <li>${t('tutorialWorldView')}</li>
-                <li>${t('tutorialWorldModals')}</li>
-                <li>${t('tutorialWorldStorage')}</li>
-            </ul>`);
-
-        this.addTutorialCollapsible(containerEl, t('tutorialTimelineTitle'),
-            `<p><strong>${t('tutorialTimelineAlternate')}</strong></p>
-            <ul>
-                <li>${t('tutorialTimelineCreateFork')}</li>
-                <li>${t('tutorialTimelineDivergence')}</li>
-                <li>${t('tutorialTimelineForkStatus')}</li>
-                <li>${t('tutorialTimelineViewForks')}</li>
-            </ul>
-            <p><strong>${t('tutorialTimelineCausality')}</strong></p>
-            <ul>
-                <li>${t('tutorialTimelineAddLink')}</li>
-                <li>${t('tutorialTimelineLinkTypes')}</li>
-                <li>${t('tutorialTimelineStrength')}</li>
-                <li>${t('tutorialTimelineLinksHelp')}</li>
-            </ul>
-            <p><strong>${t('tutorialTimelineConflict')}</strong></p>
-            <ul>
-                <li>${t('tutorialTimelineRunDetection')}</li>
-                <li>${t('tutorialTimelineDetects')}</li>
-                <li>${t('tutorialTimelineBadge')}</li>
-                <li>${t('tutorialTimelineActionable')}</li>
-            </ul>`);
-
-        this.addTutorialCollapsible(containerEl, t('tutorialTemplatesTitle'),
-            `<p><strong>${t('tutorialTemplatesCreate')}</strong></p>
-            <ul>
-                <li>${t('tutorialTemplatesSave')}</li>
-                <li>${t('tutorialTemplatesLibrary')}</li>
-                <li>${t('tutorialTemplatesDashboard')}</li>
-            </ul>
-            <p><strong>${t('tutorialTemplatesBuiltIn')}</strong></p>
-            <ul>
-                <li>${t('tutorialTemplatesArchetypes')}</li>
-                <li>${t('tutorialTemplatesMore')}</li>
-            </ul>
-            <p><strong>${t('tutorialTemplatesFeatures')}</strong></p>
-            <ul>
-                <li>${t('tutorialTemplatesBrowse')}</li>
-                <li>${t('tutorialTemplatesSort')}</li>
-                <li>${t('tutorialTemplatesUsage')}</li>
-                <li>${t('tutorialTemplatesCustomize')}</li>
-            </ul>`);
-
-        this.addTutorialCollapsible(containerEl, t('tutorialDiscoveryTitle'),
-            `<p><strong>${t('tutorialDiscoveryAutomatic')}</strong></p>
-            <ul>
-                <li>${t('tutorialDiscoveryDetects')}</li>
-                <li>${t('tutorialDiscoveryManual')}</li>
-                <li>${t('tutorialDiscoveryImport')}</li>
-                <li>${t('tutorialDiscoveryUseful')}</li>
-            </ul>`);
-
-        this.addTutorialCollapsible(containerEl, t('tutorialCustomTitle'),
-            `<p><strong>${t('tutorialCustomSimple')}</strong></p>
-            <ol>
-                <li>${t('tutorialCustomStep1')}</li>
-                <li>${t('tutorialCustomStep2')}</li>
-                <li>${t('tutorialCustomStep3')}</li>
-                <li>${t('tutorialCustomStep4')}</li>
-            </ol>
-            <p><strong>${t('tutorialCustomSwitching')}</strong></p>`);
-
-        this.addTutorialCollapsible(containerEl, t('tutorialShortcutsTitle'),
-            `<p><strong>${t('tutorialShortcutsCore')}</strong></p>
-            <ul>
-                <li>${t('tutorialShortcutsOpen')}</li>
-                <li>${t('tutorialShortcutsNewStory')}</li>
-                <li>${t('tutorialShortcutsCreate')}</li>
-                <li>${t('tutorialShortcutsView')}</li>
-                <li>${t('tutorialShortcutsGallery')}</li>
-                <li>${t('tutorialShortcutsGroup')}</li>
-                <li>${t('tutorialShortcutsRefresh')}</li>
-            </ul>
-            <p><strong>${t('tutorialShortcutsWorld')}</strong></p>
-            <ul>
-                <li>${t('tutorialShortcutsWorldCreate')}</li>
-                <li>${t('tutorialShortcutsWorldView')}</li>
-            </ul>
-            <p><strong>${t('tutorialShortcutsTimeline')}</strong></p>
-            <ul>
-                <li>${t('tutorialShortcutsTimelineFork')}</li>
-                <li>${t('tutorialShortcutsTimelineViewForks')}</li>
-                <li>${t('tutorialShortcutsTimelineLink')}</li>
-                <li>${t('tutorialShortcutsTimelineViewLinks')}</li>
-                <li>${t('tutorialShortcutsTimelineDetect')}</li>
-                <li>${t('tutorialShortcutsTimelineViewConflicts')}</li>
-            </ul>
-            <p><strong>${t('tutorialShortcutsTemplate')}</strong></p>
-            <ul>
-                <li>${t('tutorialShortcutsTemplateLibrary')}</li>
-            </ul>
-            <p><strong>${t('tutorialShortcutsTip')}</strong></p>`);
-
-        this.addTutorialCollapsible(containerEl, t('tutorialFileTitle'),
-            `<p><strong>${t('tutorialFileOrganized')}</strong></p>
-            <pre><code>${t('tutorialFileDefault')}
-StorytellerSuite/
-├── Stories/
-│   └── YourStoryName/
-│       ├── Characters/     (character .md files)
-│       ├── Locations/      (location .md files)
-│       ├── Events/         (event .md files)
-│       ├── Items/          (plot item .md files)
-│       ├── Chapters/       (chapter .md files)
-│       ├── Scenes/         (scene .md files)
-│       ├── References/     (reference .md files)
-│       ├── Cultures/       (culture .md files)
-│       ├── Factions/       (faction .md files)
-│       ├── Economies/      (economy .md files)
-│       └── MagicSystems/   (magic system .md files)
-├── GalleryUploads/         (uploaded images)
-└── Templates/              (saved entity templates)
-
-${t('tutorialFileOneMode')}
-[Base]/
-├── Characters/
-├── Locations/
-├── Events/
-├── Items/
-├── References/
-├── Chapters/
-├── Scenes/
-├── Cultures/
-├── Factions/
-├── Economies/
-└── MagicSystems/
-</code></pre>
-            <p><strong>${t('tutorialFileIntegration')}</strong></p>
-            <ul>
-                <li>${t('tutorialFileMarkdown')}</li>
-                <li>${t('tutorialFileDataview')}</li>
-                <li>${t('tutorialFileWikiLinks')}</li>
-                <li>${t('tutorialFileReadable')}</li>
-                <li>${t('tutorialFileBackup')}</li>
-            </ul>
-            <p><strong>${t('tutorialFileTip')}</strong></p>`);
-    }
-
-    private addTutorialCollapsible(containerEl: HTMLElement, title: string, content: string): void {
-        const setting = new Setting(containerEl)
-            .setName(title)
-            .setClass('storyteller-tutorial-section');
-
-        const contentEl = createDiv();
-        contentEl.innerHTML = content;
-        contentEl.style.display = 'none';
-        contentEl.style.marginTop = '10px';
-        contentEl.style.padding = '15px';
-        contentEl.style.backgroundColor = 'var(--background-secondary)';
-        contentEl.style.borderRadius = '5px';
-        contentEl.style.fontSize = '0.9em';
-        contentEl.style.lineHeight = '1.5';
-
-        setting.settingEl.style.cursor = 'pointer';
-        setting.settingEl.addEventListener('click', () => {
-            const isHidden = contentEl.style.display === 'none';
-            contentEl.style.display = isHidden ? 'block' : 'none';
-            const nameEl = setting.nameEl;
-            const currentText = nameEl.textContent || '';
-            if (isHidden) {
-                nameEl.textContent = '▼ ' + currentText.replace('▶ ', '').replace('▼ ', '');
-            } else {
-                nameEl.textContent = '▶ ' + currentText.replace('▶ ', '').replace('▼ ', '');
-            }
+        new Setting(containerEl).setName('Getting started').setHeading();
+        renderGuideDocument(containerEl, getGettingStartedGuide(this.plugin.manifest.version), {
+            collapsible: true,
+            openFirstCount: 1,
+            hideTitle: true,
         });
-
-        setting.nameEl.textContent = '▶ ' + (setting.nameEl.textContent || '');
-        setting.settingEl.appendChild(contentEl);
     }
 }
