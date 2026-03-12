@@ -10,6 +10,7 @@ import { TimelineTrackManager } from '../utils/TimelineTrackManager';
 import { TimelineControlsBuilder, TimelineControlCallbacks } from '../utils/TimelineControlsBuilder';
 import { TimelineFilterBuilder, TimelineFilterCallbacks } from '../utils/TimelineFilterBuilder';
 import { ConflictDetector, DetectedConflict } from '../utils/ConflictDetector';
+import { PlatformUtils } from '../utils/PlatformUtils';
 
 export const VIEW_TYPE_TIMELINE = 'storyteller-timeline-view';
 
@@ -105,6 +106,9 @@ export class TimelineView extends ItemView {
         const container = this.containerEl.children[1] as HTMLElement;
         container.empty();
         container.addClass('storyteller-timeline-view');
+        if (PlatformUtils.shouldUseSimplifiedUI()) {
+            container.addClass('storyteller-timeline-view--mobile');
+        }
         
         // Add gantt-mode class if enabled
         if (this.currentState.ganttMode) {

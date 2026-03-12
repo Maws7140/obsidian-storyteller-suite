@@ -6,7 +6,7 @@
  */
 
 import { App, Modal, Notice, Setting, TFile, normalizePath, setIcon } from 'obsidian';
-import { SceneBranch, EncounterTable, EncounterTableRow, Scene, Character, Event } from '../types';
+import { SceneBranch, EncounterTable, EncounterTableRow, Scene, Character, Event, Group, CompendiumEntry } from '../types';
 import {
     serializeBranches, serializeEncounterTable,
     extractBranchesFromMarkdown, extractEncounterTableFromMarkdown
@@ -28,6 +28,8 @@ export class BranchEditorModal extends Modal {
     private sceneOptions: Scene[] = [];
     private characterOptions: Character[] = [];
     private eventOptions: Event[] = [];
+    private groupOptions: Group[] = [];
+    private compendiumOptions: CompendiumEntry[] = [];
     private readonly normalizeName = (value: string): string => value.trim().toLowerCase();
 
     constructor(app: App, plugin: StorytellerSuitePlugin, filePath: string, onSaved: () => void) {
@@ -50,14 +52,17 @@ export class BranchEditorModal extends Modal {
             this.encounterTable = extractEncounterTableFromMarkdown(content);
         }
 
-        const [scenes, characters, events] = await Promise.allSettled([
+        const [scenes, characters, events, compendiumEntries] = await Promise.allSettled([
             this.plugin.listScenes(),
             this.plugin.listCharacters(),
             this.plugin.listEvents(),
+            this.plugin.listCompendiumEntries(),
         ]);
         this.sceneOptions = scenes.status === 'fulfilled' ? scenes.value : [];
         this.characterOptions = characters.status === 'fulfilled' ? characters.value : [];
         this.eventOptions = events.status === 'fulfilled' ? events.value : [];
+        this.groupOptions = this.plugin.getGroups();
+        this.compendiumOptions = compendiumEntries.status === 'fulfilled' ? compendiumEntries.value : [];
 
         // Title
         contentEl.createEl('h2', { text: 'Branch & Encounter Editor' });
@@ -285,10 +290,61 @@ export class BranchEditorModal extends Modal {
                     })
                 );
 
+            new Setting(fields)
+                .setName('Requires group standing')
+                .setDesc('Minimum faction/group standing needed to show or take this choice.')
+                .addDropdown(dd => {
+                    dd.addOption('', 'None');
+                    for (const group of this.groupOptions) {
+                        dd.addOption(group.id, group.name);
+                    }
+                    const selectedByName = branch.requiresGroupStanding
+                        ? this.groupOptions.find(group => this.normalizeName(group.name) === this.normalizeName(branch.requiresGroupStanding!))?.id
+                        : '';
+                    dd.setValue(branch.requiresGroupStandingId ?? selectedByName ?? '');
+                    dd.onChange(value => {
+                        branch.requiresGroupStandingId = value || undefined;
+                        const group = this.groupOptions.find(item => item.id === value);
+                        if (group) branch.requiresGroupStanding = group.name;
+                    });
+                })
+                .addText(t => t
+                    .setValue(branch.requiresGroupStandingMin != null ? String(branch.requiresGroupStandingMin) : '')
+                    .setPlaceholder('Min standing')
+                    .onChange(v => {
+                        const n = parseInt(v);
+                        branch.requiresGroupStandingMin = isNaN(n) ? undefined : n;
+                    })
+                );
+
+            new Setting(fields)
+                .setName('Requires discovered lore')
+                .setDesc('Compendium entry that must already be revealed.')
+                .addDropdown(dd => {
+                    dd.addOption('', 'None');
+                    for (const entry of this.compendiumOptions) {
+                        if (!entry.id) continue;
+                        dd.addOption(entry.id, entry.name);
+                    }
+                    const selectedByName = branch.requiresCompendiumEntry
+                        ? this.compendiumOptions.find(entry => this.normalizeName(entry.name) === this.normalizeName(branch.requiresCompendiumEntry!))?.id
+                        : '';
+                    dd.setValue(branch.requiresCompendiumEntryId ?? selectedByName ?? '');
+                    dd.onChange(value => {
+                        branch.requiresCompendiumEntryId = value || undefined;
+                        const entry = this.compendiumOptions.find(item => item.id === value);
+                        if (entry) branch.requiresCompendiumEntry = entry.name;
+                    });
+                });
+
             // Outcomes
             const outcomeToggle = fields.createEl('details', { cls: 'storyteller-branch-dice-details' });
             outcomeToggle.createEl('summary', { text: 'Outcomes' });
-            if (branch.grantsItem || branch.removesItem || branch.grantsCharacter || branch.removesCharacter || branch.setsFlag || branch.triggersEvent) {
+            if (
+                branch.grantsItem || branch.removesItem || branch.grantsCharacter || branch.removesCharacter ||
+                branch.setsFlag || branch.triggersEvent || branch.changesGroupStanding ||
+                branch.revealsCompendiumEntry || branch.groupStandingDelta != null
+            ) {
                 outcomeToggle.setAttribute('open', '');
             }
 
@@ -308,6 +364,51 @@ export class BranchEditorModal extends Modal {
             new Setting(outcomeFields)
                 .setName('Sets flag')
                 .addText(t => t.setValue(branch.setsFlag ?? '').setPlaceholder('Flag').onChange(v => { branch.setsFlag = v || undefined; }));
+            new Setting(outcomeFields)
+                .setName('Change group standing')
+                .setDesc('Adjust a faction/group standing when this choice is taken.')
+                .addDropdown(dd => {
+                    dd.addOption('', 'None');
+                    for (const group of this.groupOptions) {
+                        dd.addOption(group.id, group.name);
+                    }
+                    const selectedByName = branch.changesGroupStanding
+                        ? this.groupOptions.find(group => this.normalizeName(group.name) === this.normalizeName(branch.changesGroupStanding!))?.id
+                        : '';
+                    dd.setValue(branch.changesGroupStandingId ?? selectedByName ?? '');
+                    dd.onChange(value => {
+                        branch.changesGroupStandingId = value || undefined;
+                        const group = this.groupOptions.find(item => item.id === value);
+                        if (group) branch.changesGroupStanding = group.name;
+                    });
+                })
+                .addText(t => t
+                    .setValue(branch.groupStandingDelta != null ? String(branch.groupStandingDelta) : '')
+                    .setPlaceholder('Delta')
+                    .onChange(v => {
+                        const n = parseInt(v);
+                        branch.groupStandingDelta = isNaN(n) ? undefined : n;
+                    })
+                );
+            new Setting(outcomeFields)
+                .setName('Reveal lore entry')
+                .setDesc('Compendium entry revealed after this choice.')
+                .addDropdown(dd => {
+                    dd.addOption('', 'None');
+                    for (const entry of this.compendiumOptions) {
+                        if (!entry.id) continue;
+                        dd.addOption(entry.id, entry.name);
+                    }
+                    const selectedByName = branch.revealsCompendiumEntry
+                        ? this.compendiumOptions.find(entry => this.normalizeName(entry.name) === this.normalizeName(branch.revealsCompendiumEntry!))?.id
+                        : '';
+                    dd.setValue(branch.revealsCompendiumEntryId ?? selectedByName ?? '');
+                    dd.onChange(value => {
+                        branch.revealsCompendiumEntryId = value || undefined;
+                        const entry = this.compendiumOptions.find(item => item.id === value);
+                        if (entry) branch.revealsCompendiumEntry = entry.name;
+                    });
+                });
             new Setting(outcomeFields)
                 .setName('Triggers event')
                 .addText(t => t.setValue(branch.triggersEvent ?? '').setPlaceholder('Event name').onChange(v => { branch.triggersEvent = v || undefined; }));
@@ -468,9 +569,15 @@ export class BranchEditorModal extends Modal {
         const characterNames = new Set(this.characterOptions.map(character => this.normalizeName(character.name)));
         const eventIds = new Set(this.eventOptions.map(event => event.id).filter(Boolean));
         const eventNames = new Set(this.eventOptions.map(event => this.normalizeName(event.name)));
+        const groupIds = new Set(this.groupOptions.map(group => group.id).filter(Boolean));
+        const groupNames = new Set(this.groupOptions.map(group => this.normalizeName(group.name)));
+        const compendiumIds = new Set(this.compendiumOptions.map(entry => entry.id).filter(Boolean));
+        const compendiumNames = new Set(this.compendiumOptions.map(entry => this.normalizeName(entry.name)));
         const hasSceneCatalog = this.sceneOptions.length > 0;
         const hasCharacterCatalog = this.characterOptions.length > 0;
         const hasEventCatalog = this.eventOptions.length > 0;
+        const hasGroupCatalog = this.groupOptions.length > 0;
+        const hasCompendiumCatalog = this.compendiumOptions.length > 0;
 
         this.branches.forEach((branch, index) => {
             const row = `Choice ${index + 1}`;
@@ -497,10 +604,34 @@ export class BranchEditorModal extends Modal {
                 issues.push(`${row}: required character name not found (${branch.requiresCharacter}).`);
             }
 
+            if (hasGroupCatalog && branch.requiresGroupStandingId && !groupIds.has(branch.requiresGroupStandingId)) {
+                issues.push(`${row}: required group ID not found (${branch.requiresGroupStandingId}).`);
+            } else if (hasGroupCatalog && branch.requiresGroupStanding && !groupNames.has(this.normalizeName(branch.requiresGroupStanding))) {
+                issues.push(`${row}: required group name not found (${branch.requiresGroupStanding}).`);
+            }
+
+            if (hasCompendiumCatalog && branch.requiresCompendiumEntryId && !compendiumIds.has(branch.requiresCompendiumEntryId)) {
+                issues.push(`${row}: required compendium entry ID not found (${branch.requiresCompendiumEntryId}).`);
+            } else if (hasCompendiumCatalog && branch.requiresCompendiumEntry && !compendiumNames.has(this.normalizeName(branch.requiresCompendiumEntry))) {
+                issues.push(`${row}: required compendium entry name not found (${branch.requiresCompendiumEntry}).`);
+            }
+
             if (hasEventCatalog && branch.triggersEventId && !eventIds.has(branch.triggersEventId)) {
                 issues.push(`${row}: triggered event ID not found (${branch.triggersEventId}).`);
             } else if (hasEventCatalog && branch.triggersEvent && !eventNames.has(this.normalizeName(branch.triggersEvent))) {
                 issues.push(`${row}: triggered event name not found (${branch.triggersEvent}).`);
+            }
+
+            if (hasGroupCatalog && branch.changesGroupStandingId && !groupIds.has(branch.changesGroupStandingId)) {
+                issues.push(`${row}: outcome group ID not found (${branch.changesGroupStandingId}).`);
+            } else if (hasGroupCatalog && branch.changesGroupStanding && !groupNames.has(this.normalizeName(branch.changesGroupStanding))) {
+                issues.push(`${row}: outcome group name not found (${branch.changesGroupStanding}).`);
+            }
+
+            if (hasCompendiumCatalog && branch.revealsCompendiumEntryId && !compendiumIds.has(branch.revealsCompendiumEntryId)) {
+                issues.push(`${row}: revealed compendium entry ID not found (${branch.revealsCompendiumEntryId}).`);
+            } else if (hasCompendiumCatalog && branch.revealsCompendiumEntry && !compendiumNames.has(this.normalizeName(branch.revealsCompendiumEntry))) {
+                issues.push(`${row}: revealed compendium entry name not found (${branch.revealsCompendiumEntry}).`);
             }
         });
 

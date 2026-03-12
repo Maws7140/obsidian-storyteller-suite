@@ -1,4 +1,4 @@
-import { App, Modal, Setting, TFile, FuzzySuggestModal, prepareFuzzySearch, FuzzyMatch } from 'obsidian';
+import { App, Modal, Setting, TFile, FuzzySuggestModal, prepareFuzzySearch, FuzzyMatch, Notice } from 'obsidian';
 import { t } from '../i18n/strings';
 import { GalleryImage } from '../types';
 import StorytellerSuitePlugin from '../main';
@@ -71,6 +71,7 @@ export class GalleryModal extends Modal {
     plugin: StorytellerSuitePlugin;
     images: GalleryImage[];
     gridContainer: HTMLElement; // Store container reference
+    private currentFilter: string = '';
 
     constructor(app: App, plugin: StorytellerSuitePlugin) {
         super(app);
@@ -96,8 +97,10 @@ export class GalleryModal extends Modal {
         return this.app.vault.adapter.getResourcePath(imagePath);
     }
 
-    onOpen() {
+    async onOpen() {
         const { contentEl } = this;
+        await this.plugin.syncGalleryWatchFolder();
+        this.images = this.plugin.getGalleryImages();
         contentEl.empty();
         this.titleEl.setText(t('imageGallery'));
 
@@ -115,7 +118,6 @@ export class GalleryModal extends Modal {
             })
             .addButton(button => button
                 .setButtonText(t('addImage'))
-                .setCta()
                 .onClick(() => {
                     new ImageSuggestModal(this.app, this.plugin, async (selectedFile: TFile) => {
                         // Add basic image data with required ID
@@ -127,6 +129,12 @@ export class GalleryModal extends Modal {
                             await this.refreshGallery();
                         }).open();
                     }).open();
+                }))
+            .addButton(button => button
+                .setButtonText(t('upload'))
+                .setCta()
+                .onClick(() => {
+                    void this.handleUploadClick();
                 }));
 
 
@@ -137,11 +145,48 @@ export class GalleryModal extends Modal {
 
     async refreshGallery() {
         // Reload images from plugin and re-render
+        await this.plugin.syncGalleryWatchFolder();
         this.images = this.plugin.getGalleryImages();
-        this.renderGrid('', this.gridContainer);
+        this.renderGrid(this.currentFilter, this.gridContainer);
+    }
+
+    private async handleUploadClick(): Promise<void> {
+        const fileInput = document.createElement('input');
+        fileInput.type = 'file';
+        fileInput.accept = 'image/*';
+        fileInput.multiple = true;
+        fileInput.onchange = async () => {
+            const files = fileInput.files;
+            if (!files || files.length === 0) return;
+
+            try {
+                const { imported, failed } = await this.plugin.importGalleryUploads(Array.from(files));
+                if (imported.length === 1 && failed.length === 0) {
+                    await this.refreshGallery();
+                    new ImageDetailModal(this.app, this.plugin, imported[0], true, async () => {
+                        await this.refreshGallery();
+                    }).open();
+                } else {
+                    await this.refreshGallery();
+                    if (imported.length > 0) {
+                        new Notice(`Added ${imported.length} image${imported.length === 1 ? '' : 's'} to the gallery.`);
+                    }
+                    if (failed.length > 0) {
+                        new Notice(`Failed to import ${failed.length} image${failed.length === 1 ? '' : 's'}. Check console for details.`);
+                    }
+                }
+            } catch (error) {
+                console.error('Error uploading gallery images:', error);
+                new Notice('Error uploading gallery images. Check console for details.');
+            } finally {
+                fileInput.value = '';
+            }
+        };
+        fileInput.click();
     }
 
     renderGrid(filter: string, container: HTMLElement) {
+        this.currentFilter = filter;
         container.empty(); // Clear previous grid
 
         const filteredImages = this.images.filter(img =>
@@ -162,12 +207,18 @@ export class GalleryModal extends Modal {
 
         filteredImages.forEach(image => {
             const imgWrapper = container.createDiv('storyteller-gallery-item');
-            const imgEl = imgWrapper.createEl('img');
+            const imgEl = imgWrapper.createEl('img', { cls: 'storyteller-gallery-item-image' });
 
             // Use helper method for proper path handling
             imgEl.src = this.getImageSrc(image.filePath);
             imgEl.alt = image.title || image.filePath;
             imgEl.title = image.title || image.filePath; // Tooltip
+            imgEl.loading = 'lazy';
+
+            const titleEl = imgWrapper.createDiv('storyteller-gallery-item-title');
+            const titleText = image.title || image.filePath.split('/').pop() || '';
+            titleEl.setText(titleText);
+            titleEl.setAttribute('title', titleText);
 
             // Add click handler to open detail modal
             imgWrapper.addEventListener('click', () => {

@@ -10,6 +10,7 @@ export default defineConfig({
       '**/dist/**',
       '**/.{idea,git,cache,output,temp}/**',
       '**/test/e2e/**', // Exclude E2E tests (they use WebdriverIO/Mocha)
+      '**/test/playwright-ai/**', // Exclude Playwright AI specs (they use Playwright's own runner)
     ],
   },
   resolve: {

@@ -78,6 +78,46 @@ export interface GraphEdge {
  * PlotItem entity representing an important object or artifact in the story.
  * These are stored as markdown files with frontmatter in the item folder.
  */
+export type CampaignItemEffectType =
+    | 'setFlag'
+    | 'clearFlag'
+    | 'addItem'
+    | 'removeItem'
+    | 'navigateScene'
+    | 'changeHp'
+    | 'applyCondition'
+    | 'revealCompendium'
+    | 'changeGroupStanding';
+
+export type CampaignEffectTarget =
+    | 'activeActor'
+    | 'itemOwner'
+    | 'allParty'
+    | 'specificCharacter';
+
+export interface CampaignItemEffect {
+    id?: string;
+    type: CampaignItemEffectType;
+    flag?: string;
+    itemId?: string;
+    itemName?: string;
+    sceneId?: string;
+    sceneName?: string;
+    target?: CampaignEffectTarget;
+    characterId?: string;
+    characterName?: string;
+    amount?: number;
+    hpMode?: 'heal' | 'damage' | 'set';
+    condition?: string;
+    conditionMode?: 'add' | 'remove';
+    compendiumEntryId?: string;
+    compendiumEntryName?: string;
+    groupId?: string;
+    groupName?: string;
+    standingMode?: 'adjust' | 'set';
+    standingAmount?: number;
+}
+
 export interface PlotItem {
     /** Optional unique identifier for the item */
     id?: string;
@@ -168,6 +208,8 @@ export interface PlotItem {
     useRequiresLocation?: string;
     /** Session flag that must be active for this item to be usable */
     useRequiresFlag?: string;
+    /** Advanced campaign effects applied after the legacy one-shot fields above */
+    campaignItemEffects?: CampaignItemEffect[];
 }
 
 /**
@@ -469,6 +511,11 @@ export interface SceneBranch {
     requiresCharacterId?: string;  // stable character id
     requiresFlag?: string;         // session flag must be set
     requiresStatMin?: number;      // passive stat threshold (no dice roll) — use with stat
+    requiresGroupStanding?: string;    // named group/faction whose standing is checked
+    requiresGroupStandingId?: string;  // stable group id
+    requiresGroupStandingMin?: number; // minimum standing required
+    requiresCompendiumEntry?: string;  // revealed compendium entry name required
+    requiresCompendiumEntryId?: string;// stable compendium entry id
 
     // ── Outcomes (applied when branch is taken) ───────────────────────────────
     grantsItem?: string;           // item name added to party inventory
@@ -476,6 +523,11 @@ export interface SceneBranch {
     grantsCharacter?: string;      // character name added to party
     removesCharacter?: string;     // character name removed from party
     setsFlag?: string;             // session flag to set
+    changesGroupStanding?: string;     // group/faction name to modify
+    changesGroupStandingId?: string;   // stable group id
+    groupStandingDelta?: number;       // amount to add/subtract from standing
+    revealsCompendiumEntry?: string;   // compendium entry to reveal
+    revealsCompendiumEntryId?: string; // stable compendium id
     triggersEvent?: string;        // story Event entity name to link in the session log
     triggersEventId?: string;      // stable Event id
     hidden?: boolean;              // DM-hidden branch; not shown to players until revealed
@@ -509,6 +561,12 @@ export interface PartyMemberState {
     conditions?: string[];
 }
 
+export interface CampaignGroupStanding {
+    groupId?: string;
+    groupName?: string;
+    value: number;
+}
+
 /**
  * A campaign session — stored as a markdown file in the Sessions/ folder.
  * Frontmatter holds all structured data; ## Session Log section holds the narrative log.
@@ -528,6 +586,13 @@ export interface CampaignSession {
     partyItems?: string[];
     /** Boolean flags set during play (e.g. "bribed-barkeep", "found-the-sword"). */
     flags?: string[];
+    /** Compendium entries explicitly revealed during play, even if their passive triggers are inactive. */
+    revealedCompendiumEntryIds?: string[];
+    revealedCompendiumEntryNames?: string[];
+    /** Session-local record of board pickups so map items do not respawn after being taken. */
+    collectedBoardItemKeys?: string[];
+    /** Session-local faction standing changes. */
+    groupStandings?: CampaignGroupStanding[];
     status?: 'active' | 'paused' | 'completed';
     created?: string;
     modified?: string;
@@ -544,7 +609,7 @@ export interface MapBinding {
     /** Human-readable name of the map (for display in Properties) */
     mapName?: string;
     
-    /** Coordinates [lat, lng] for real-world maps or [x, y] for image-based maps */
+    /** Coordinates stored in Leaflet order: [lat, lng] for real maps and effectively [y, x] for image maps. */
     coordinates: [number, number];
     
     /** Optional marker type identifier */
