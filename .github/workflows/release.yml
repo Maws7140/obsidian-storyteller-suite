@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to release (e.g., 1.5.2)'
+        description: 'Version to release (e.g., 1.7.0)'
         required: true
         type: string
       release_notes:
@@ -43,13 +43,8 @@ jobs:
           # Read current minAppVersion from manifest.json
           CURRENT_MIN_APP=$(node -e "const m=require('./manifest.json'); console.log(m.minAppVersion)")
           
-          # Calculate new minAppVersion based on pattern (increment patch version)
-          NEW_MIN_APP=$(node -e "
-            const current = '$CURRENT_MIN_APP';
-            const parts = current.split('.');
-            parts[2] = String(parseInt(parts[2]) + 1);
-            console.log(parts.join('.'));
-          ")
+          # Keep the current minAppVersion unless it is changed intentionally in manifest.json
+          NEW_MIN_APP="$CURRENT_MIN_APP"
           
           # Update package.json version
           npm version $VERSION --no-git-tag-version
@@ -135,14 +130,14 @@ jobs:
           git commit -m "chore: bump version to ${{ inputs.version }}" || exit 0
           
           # Create and push tag
-          git tag -a "v${{ inputs.version }}" -m "Release ${{ inputs.version }}"
+          git tag -a "${{ inputs.version }}" -m "Release ${{ inputs.version }}"
           git push origin HEAD || true
-          git push origin "v${{ inputs.version }}"
+          git push origin "${{ inputs.version }}"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: v${{ inputs.version }}
+          tag_name: ${{ inputs.version }}
           name: Release ${{ inputs.version }}
           body: |
             ## Changes in ${{ inputs.version }}
@@ -164,6 +159,7 @@ jobs:
             ${{ env.PLUGIN_NAME }}-${{ inputs.version }}.zip
             main.js
             manifest.json
+            styles.css
           draft: false
           prerelease: false
 

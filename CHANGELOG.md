@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.7.0
+
+### Major updates
+- New campaign and DnD mode with sessions, party state, item effects, faction standing, lore reveals, and branch-driven play
+- Timeline and Gantt redesign with grouped lanes, dependency arrows, progress rendering, and broader stability fixes
+- Campaign boards and map improvements including denser marker handling and SVG support through overlay or tiled raster modes
+- Character sheets expanded with new DnD-themed and note-native presets
+
+### Workflow and data improvements
+- Compile workflows and custom compile steps expanded for draft-based manuscript output
+- Group notes, entity syncing, gallery syncing, and wiki-link friendly properties improved across the plugin
+- Onboarding and update guides added so new installs and upgrades surface the current feature set in-app
+
 ## 1.6.0
 
 ### Bug Fixes
