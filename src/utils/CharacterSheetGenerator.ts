@@ -91,6 +91,22 @@ export class CharacterSheetGenerator {
         return '';
     }
 
+
+    buildNoteContent(data: SheetData, templateId = 'classic', portraitPath?: string): string {
+        const builtIn = BUILT_IN_SHEET_TEMPLATES.find(t => t.id === templateId);
+        if (builtIn?.buildNoteContent) {
+            return builtIn.buildNoteContent(data, portraitPath);
+        }
+
+        const inner = this.buildInnerHTML(data, templateId);
+        const scopedCss = this.getTemplateScopedCSS(templateId);
+        const styledInner = scopedCss ? `<style>${scopedCss}</style>
+${inner}` : inner;
+        return portraitPath ? `![[${portraitPath}|200]]
+
+${styledInner}` : styledInner;
+    }
+
     generateExportHTML(data: SheetData, templateId = 'classic'): string {
         const builtIn = BUILT_IN_SHEET_TEMPLATES.find(t => t.id === templateId);
 
@@ -230,8 +246,6 @@ ${inner}
         const portraitPath = character.profileImagePath;
         data.portraitDataUrl = undefined;
 
-        const inner = this.buildInnerHTML(data, templateId);
-
         const story      = this.plugin.getActiveStory();
         const baseFolder = story ? this.plugin.getEntityFolder('character') : 'StorytellerSuite/Characters';
         const folderPath = `${baseFolder}/Sheets`;
@@ -241,7 +255,7 @@ ${inner}
         const safeName = character.name.replace(/[:"*?<>|/\\]+/g, '');
         const filePath = normalizePath(`${folderPath}/${safeName} — Character Sheet.md`);
 
-        const content = portraitPath ? `![[${portraitPath}|200]]\n\n${inner}` : inner;
+        const content = this.buildNoteContent(data, templateId, portraitPath);
 
         const existing = this.app.vault.getAbstractFileByPath(filePath);
         if (existing instanceof TFile) {

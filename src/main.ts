@@ -71,6 +71,7 @@ import { CompendiumEntryModal } from './modals/CompendiumEntryModal';
 import { CompendiumListModal } from './modals/CompendiumListModal';
 import { PlatformUtils } from './utils/PlatformUtils';
 import { getTemplateSections } from './utils/EntityTemplates';
+import { getSvgSourceInfoFromArrayBuffer, isSvgArrayBuffer } from './utils/SvgImageUtils';
 // Removed: Codeblock maps no longer supported - use MapView instead
 // import { LeafletCodeBlockProcessor } from './leaflet/processor';
 import { TemplateStorageManager } from './templates/TemplateStorageManager';
@@ -124,6 +125,7 @@ const FRONTMATTER_REFERENCE_FIELDS: FrontmatterReferenceFieldConfig[] = [
     { field: 'campaignBoardMapId', kind: 'scalar', entityType: 'map' },
     { field: 'partyCharacterIds', kind: 'array', entityType: 'character', mirrorField: 'partyCharacterNames' },
     { field: 'inventoryItemIds', kind: 'array', entityType: 'item' },
+    { field: 'revealedCompendiumEntryIds', kind: 'array', entityType: 'compendiumEntry', mirrorField: 'revealedCompendiumEntryNames' },
     { field: 'chapterIds', kind: 'array', entityType: 'chapter' },
     { field: 'activeSessionId', kind: 'scalar', entityType: 'campaignSession' },
     { field: 'activeMapId', kind: 'scalar', entityType: 'map' },
@@ -138,6 +140,12 @@ const FRONTMATTER_REFERENCE_FIELDS: FrontmatterReferenceFieldConfig[] = [
 const FRONTMATTER_OBJECT_REFERENCE_FIELDS: FrontmatterObjectReferenceFieldConfig[] = [
     { field: 'locationHistory', idKey: 'locationId', entityType: 'location' },
     { field: 'partyState', idKey: 'characterId', entityType: 'character', nameKey: 'characterName' },
+    { field: 'groupStandings', idKey: 'groupId', entityType: 'group', nameKey: 'groupName' },
+    { field: 'campaignItemEffects', idKey: 'itemId', entityType: 'item', nameKey: 'itemName' },
+    { field: 'campaignItemEffects', idKey: 'sceneId', entityType: 'scene', nameKey: 'sceneName' },
+    { field: 'campaignItemEffects', idKey: 'characterId', entityType: 'character', nameKey: 'characterName' },
+    { field: 'campaignItemEffects', idKey: 'compendiumEntryId', entityType: 'compendiumEntry', nameKey: 'compendiumEntryName' },
+    { field: 'campaignItemEffects', idKey: 'groupId', entityType: 'group', nameKey: 'groupName' },
     {
         field: 'entityRefs',
         idKey: 'entityId',
@@ -1498,26 +1506,28 @@ export default class StorytellerSuitePlugin extends Plugin {
 		this.registerEvent(
 			this.app.vault.on('create', async (file) => {
 				if (!(file instanceof TFile)) return;
-				const watchFolder = this.settings.galleryWatchFolder?.trim();
-				if (!watchFolder || !file.path.startsWith(watchFolder)) return;
-				const IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'avif']);
-				if (!IMAGE_EXTS.has(file.extension?.toLowerCase())) return;
-
-				if (!this.settings.galleryData) this.settings.galleryData = { images: [] };
-				if (!this.settings.galleryData.images) this.settings.galleryData.images = [];
-
-				const exists = this.settings.galleryData.images.some(img => img.filePath === file.path);
-				if (!exists) {
-					const id = `gallery-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-					this.settings.galleryData.images.push({
-						id,
-						filePath: file.path,
-						title: file.basename,
-						caption: '',
-						description: '',
-						tags: []
-					});
+				if (!this.isGalleryManagedImageFile(file)) return;
+				await this.syncGalleryImageRecord(file);
+			})
+		);
+		this.registerEvent(
+			this.app.vault.on('delete', async (file) => {
+				if (!(file instanceof TFile)) return;
+				if (!this.isGalleryManagedPath(file.path)) return;
+				const before = this.settings.galleryData?.images?.length ?? 0;
+				if (!this.settings.galleryData?.images?.length) return;
+				this.settings.galleryData.images = this.settings.galleryData.images.filter(img => img.filePath !== file.path);
+				if ((this.settings.galleryData.images.length ?? 0) !== before) {
 					await this.saveSettings();
+				}
+			})
+		);
+		this.registerEvent(
+			this.app.vault.on('rename', async (file, oldPath) => {
+				if (!(file instanceof TFile)) return;
+				if (!this.isGalleryImageExtension(file.extension)) return;
+				if (this.isGalleryManagedPath(oldPath) || this.isGalleryManagedPath(file.path)) {
+					await this.syncGalleryImageRecord(file);
 				}
 			})
 		);
@@ -1535,10 +1545,24 @@ export default class StorytellerSuitePlugin extends Plugin {
 				// Small delay for metadata cache to settle
 				await new Promise<void>(resolve => setTimeout(resolve, 600));
 
-				// Skip if already tracked in any draft
-				const tracked = (this.settings.storyDrafts ?? [])
-					.flatMap(d => d.sceneOrder ?? [])
-					.some(s => s.sceneId === file.basename || s.sceneId === file.path);
+				const sceneRefs = (this.settings.storyDrafts ?? []).flatMap(d => d.sceneOrder ?? []);
+				const trackedIds = new Set(
+					sceneRefs
+						.map(ref => String(ref.sceneId ?? '').trim())
+						.filter(Boolean)
+				);
+
+				const cache = this.app.metadataCache.getFileCache(file);
+				const frontmatter = cache?.frontmatter ?? {};
+				const sceneId = typeof frontmatter.id === 'string' ? frontmatter.id.trim() : '';
+				const sceneName = typeof frontmatter.name === 'string' ? frontmatter.name.trim() : file.basename;
+				const normalizedPath = normalizePath(file.path);
+
+				// Skip if already tracked in any draft by id, name, or exact file path.
+				const tracked = trackedIds.has(sceneId)
+					|| trackedIds.has(sceneName)
+					|| trackedIds.has(file.basename)
+					|| trackedIds.has(normalizedPath);
 				if (tracked) return;
 
 				await this.promptAddAsScene(file);
@@ -1578,7 +1602,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 			await this.discoverExistingStories();
 			await this.initializeOneStoryModeIfNeeded();
 
-			// Sync any images already present in the watch folder
+			// Sync any images already present in the gallery-managed folders
 			await this.syncGalleryWatchFolder();
 
 			// Migrate existing settings.groups to vault files (idempotent)
@@ -3598,6 +3622,14 @@ export default class StorytellerSuitePlugin extends Plugin {
     private async getImageDimensions(
         imageData: ArrayBuffer
     ): Promise<{ width: number; height: number }> {
+        if (isSvgArrayBuffer(imageData)) {
+            const info = getSvgSourceInfoFromArrayBuffer(imageData);
+            return {
+                width: info.width,
+                height: info.height
+            };
+        }
+
         return new Promise((resolve, reject) => {
             const blob = new Blob([imageData]);
             const url = URL.createObjectURL(blob);
@@ -7392,6 +7424,55 @@ export default class StorytellerSuitePlugin extends Plugin {
 	 * Gallery images are metadata-only - actual image files are stored in vault
 	 */
 
+	private isGalleryImageExtension(ext?: string): boolean {
+		const IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'avif']);
+		return IMAGE_EXTS.has((ext || '').toLowerCase());
+	}
+
+	private normalizeGalleryFolderPath(path: string | undefined | null): string {
+		return normalizePath((path || '').trim()).replace(/\/+$/, '');
+	}
+
+	private isGalleryManagedPath(filePath: string): boolean {
+		const normalizedPath = normalizePath(filePath);
+		return this.getGalleryManagedFolders().some(folder =>
+			normalizedPath === folder || normalizedPath.startsWith(`${folder}/`)
+		);
+	}
+
+	private isGalleryManagedImageFile(file: TFile): boolean {
+		return this.isGalleryImageExtension(file.extension) && this.isGalleryManagedPath(file.path);
+	}
+
+	private getGalleryManagedFolders(): string[] {
+		const folders = new Set<string>();
+		const uploadFolder = this.normalizeGalleryFolderPath(this.settings.galleryUploadFolder || DEFAULT_SETTINGS.galleryUploadFolder);
+		if (uploadFolder) folders.add(uploadFolder);
+		const watchFolder = this.normalizeGalleryFolderPath(this.settings.galleryWatchFolder);
+		if (watchFolder) folders.add(watchFolder);
+		return Array.from(folders);
+	}
+
+	private async syncGalleryImageRecord(file: TFile): Promise<boolean> {
+		if (!this.isGalleryManagedImageFile(file)) return false;
+		if (!this.settings.galleryData) this.settings.galleryData = { images: [] };
+		if (!this.settings.galleryData.images) this.settings.galleryData.images = [];
+
+		const exists = this.settings.galleryData.images.some(img => img.filePath === file.path);
+		if (exists) return false;
+
+		this.settings.galleryData.images.unshift({
+			id: `gallery-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+			filePath: file.path,
+			title: file.basename,
+			caption: '',
+			description: '',
+			tags: []
+		});
+		await this.saveSettings();
+		return true;
+	}
+
 	/**
 	 * Get all gallery images from plugin settings
 	 * @returns Array of gallery image metadata
@@ -7401,25 +7482,19 @@ export default class StorytellerSuitePlugin extends Plugin {
 	}
 
 	/**
-	 * Scan the configured watch folder and add any images not yet in the gallery.
+	 * Scan the gallery-managed folders and add any images not yet in the gallery.
 	 * Uses the filename (without extension) as the default title.
 	 */
 	async syncGalleryWatchFolder(): Promise<void> {
-		const watchFolder = this.settings.galleryWatchFolder?.trim();
-		if (!watchFolder) return;
+		const folders = this.getGalleryManagedFolders();
+		if (folders.length === 0) return;
 
-		const folder = this.app.vault.getAbstractFileByPath(watchFolder);
-		if (!folder) return;
-
-		const IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'avif']);
-		const files = this.app.vault.getFiles().filter(f => {
-			const ext = f.extension?.toLowerCase();
-			return IMAGE_EXTS.has(ext) && f.path.startsWith(watchFolder);
-		});
+		const files = this.app.vault.getFiles().filter(f => this.isGalleryManagedImageFile(f));
 
 		if (!this.settings.galleryData) this.settings.galleryData = { images: [] };
 		if (!this.settings.galleryData.images) this.settings.galleryData.images = [];
 
+		const validPaths = new Set(files.map(file => file.path));
 		let added = 0;
 		for (const file of files) {
 			const alreadyExists = this.settings.galleryData.images.some(
@@ -7439,7 +7514,14 @@ export default class StorytellerSuitePlugin extends Plugin {
 			}
 		}
 
-		if (added > 0) await this.saveSettings();
+		const beforeLength = this.settings.galleryData.images.length;
+		this.settings.galleryData.images = this.settings.galleryData.images.filter(img => {
+			if (!this.isGalleryManagedPath(img.filePath)) return true;
+			return validPaths.has(img.filePath);
+		});
+		const removed = beforeLength - this.settings.galleryData.images.length;
+
+		if (added > 0 || removed > 0) await this.saveSettings();
 	}
 
 	/**
@@ -7449,15 +7531,88 @@ export default class StorytellerSuitePlugin extends Plugin {
 	 * @returns Complete gallery image object with generated ID
 	 */
 	async addGalleryImage(imageData: Omit<GalleryImage, 'id'>): Promise<GalleryImage> {
-		// Generate unique ID for the image
-		const id = Date.now().toString() + Math.random().toString(36).substr(2, 9);
-		const newImage: GalleryImage = { ...imageData, id };
+		const newImage = this.createGalleryImageRecord(imageData);
 		
 		// Add to gallery and save settings
+		if (!this.settings.galleryData) this.settings.galleryData = { images: [] };
+		if (!this.settings.galleryData.images) this.settings.galleryData.images = [];
 		this.settings.galleryData.images.push(newImage);
 		await this.saveSettings();
 		
 		return newImage;
+	}
+
+	private createGalleryImageRecord(imageData: Omit<GalleryImage, 'id'>): GalleryImage {
+		const id = Date.now().toString() + Math.random().toString(36).substr(2, 9);
+		return { ...imageData, id };
+	}
+
+	private sanitizeGalleryUploadName(fileName: string): string {
+		const lastDot = fileName.lastIndexOf('.');
+		const rawBase = lastDot > 0 ? fileName.slice(0, lastDot) : fileName;
+		const rawExt = lastDot > 0 ? fileName.slice(lastDot + 1) : '';
+		const safeBase = rawBase.replace(/[^\w\s.-]/g, '').replace(/\s+/g, '_').replace(/_+/g, '_').trim() || 'image';
+		const safeExt = rawExt.replace(/[^\w]/g, '').toLowerCase();
+		return safeExt ? `${safeBase}.${safeExt}` : safeBase;
+	}
+
+	private async getUniqueGalleryUploadPath(fileName: string): Promise<string> {
+		const uploadFolderPath = normalizePath(this.settings.galleryUploadFolder || DEFAULT_SETTINGS.galleryUploadFolder);
+		const sanitizedName = this.sanitizeGalleryUploadName(fileName);
+		const lastDot = sanitizedName.lastIndexOf('.');
+		const baseName = lastDot > 0 ? sanitizedName.slice(0, lastDot) : sanitizedName;
+		const extension = lastDot > 0 ? sanitizedName.slice(lastDot) : '';
+
+		let counter = 0;
+		let candidateName = sanitizedName;
+		let candidatePath = normalizePath(`${uploadFolderPath}/${candidateName}`);
+		while (this.app.vault.getAbstractFileByPath(candidatePath)) {
+			counter++;
+			candidateName = `${baseName}_${counter}${extension}`;
+			candidatePath = normalizePath(`${uploadFolderPath}/${candidateName}`);
+		}
+
+		return candidatePath;
+	}
+
+	async importGalleryUploads(files: Iterable<File>): Promise<{ imported: GalleryImage[]; failed: Array<{ name: string; error: unknown }> }> {
+		const imported: GalleryImage[] = [];
+		const failed: Array<{ name: string; error: unknown }> = [];
+		const pendingRecords: GalleryImage[] = [];
+		const fileList = Array.from(files || []);
+		if (fileList.length === 0) {
+			return { imported, failed };
+		}
+
+		const uploadFolderPath = normalizePath(this.settings.galleryUploadFolder || DEFAULT_SETTINGS.galleryUploadFolder);
+		await this.ensureFolder(uploadFolderPath);
+
+		for (const file of fileList) {
+			if (!file) continue;
+			try {
+				const filePath = await this.getUniqueGalleryUploadPath(file.name);
+				const arrayBuffer = await file.arrayBuffer();
+				const createdFile = await this.app.vault.createBinary(filePath, arrayBuffer);
+				const newImage = this.createGalleryImageRecord({
+					filePath,
+					title: createdFile.basename
+				});
+				pendingRecords.push(newImage);
+				imported.push(newImage);
+			} catch (error) {
+				console.error(`Error importing gallery upload "${file?.name ?? 'unknown'}":`, error);
+				failed.push({ name: file?.name ?? 'unknown', error });
+			}
+		}
+
+		if (pendingRecords.length > 0) {
+			if (!this.settings.galleryData) this.settings.galleryData = { images: [] };
+			if (!this.settings.galleryData.images) this.settings.galleryData.images = [];
+			this.settings.galleryData.images.push(...pendingRecords);
+			await this.saveSettings();
+		}
+
+		return { imported, failed };
 	}
 
 	/**

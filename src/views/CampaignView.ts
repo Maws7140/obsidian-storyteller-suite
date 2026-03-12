@@ -1,9 +1,9 @@
-/**
- * CampaignView — DM-facing play mode for running scenes interactively.
+﻿/**
+ * CampaignView â€” DM-facing play mode for running scenes interactively.
  *
  * Two states:
  *   - session-select: session cards + inline "New Session" form
- *   - play: toolbar | scene panel | sidebar (party HP · inventory · session log)
+ *   - play: toolbar | scene panel | sidebar (party HP Â· inventory Â· session log)
  *
  * Navigation uses plugin.saveSession / appendToSessionLog after every move.
  * Dice rolls animate in an overlay; DM override field lets you skip the RNG.
@@ -23,12 +23,15 @@ import {
 import StorytellerSuitePlugin from '../main';
 import {
     CampaignSession,
+    CampaignGroupStanding,
+    CampaignItemEffect,
     Scene,
     SceneBranch,
     EncounterTable,
     PartyMemberState,
     Character,
     Event,
+    Group,
     Location,
     MapBinding,
     EntityRef,
@@ -61,7 +64,7 @@ type CampaignBoardLocation = {
 export class CampaignView extends ItemView {
     private plugin: StorytellerSuitePlugin;
 
-    // ── State ────────────────────────────────────────────────────────────────
+    // â”€â”€ State â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     private session: CampaignSession | null = null;
     private currentScene: Scene | null = null;
     private branches: SceneBranch[] = [];
@@ -71,6 +74,7 @@ export class CampaignView extends ItemView {
     private sceneBody = '';
     private locationData: Location | null = null;
     private selectedBoardLocationId: string | null = null;
+    private pendingBoardFocusLocationId: string | null = null;
     private activeActorName: string | null = null;
     private partyCharacterStats = new Map<string, Character>();
     private allCharactersById = new Map<string, Character>();
@@ -83,7 +87,14 @@ export class CampaignView extends ItemView {
     private pendingSessionSave = false;
     private pendingLogEntries: string[] = [];
     private readonly autosaveDebounceMs = 450;
-    private readonly normalizeName = (value: string): string => value.trim().toLowerCase();
+    private stripWikiLinkValue(value: string | null | undefined): string {
+        const trimmed = String(value ?? '').trim();
+        if (!trimmed) return '';
+        const wikiMatch = trimmed.match(/^\[\[([^\]|]+)(?:\|[^\]]+)?\]\]$/);
+        return wikiMatch ? wikiMatch[1].trim() : trimmed;
+    }
+
+    private readonly normalizeName = (value: string): string => this.stripWikiLinkValue(value).trim().toLowerCase();
 
     constructor(leaf: WorkspaceLeaf, plugin: StorytellerSuitePlugin) {
         super(leaf);
@@ -91,7 +102,7 @@ export class CampaignView extends ItemView {
     }
 
     getViewType():    string { return VIEW_TYPE_CAMPAIGN; }
-    getDisplayText(): string { return this.session ? `Campaign — ${this.session.name}` : 'Campaign'; }
+    getDisplayText(): string { return this.session ? `Campaign - ${this.session.name}` : 'Campaign'; }
     getIcon():        string { return 'swords'; }
 
     async onOpen():  Promise<void> { await this.render(); }
@@ -102,7 +113,7 @@ export class CampaignView extends ItemView {
         }
     }
 
-    // ── External API (called by main.ts) ─────────────────────────────────────
+    // â”€â”€ External API (called by main.ts) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     async loadSession(session: CampaignSession, startingScene?: Scene): Promise<void> {
         this.session = { ...session };
@@ -114,12 +125,10 @@ export class CampaignView extends ItemView {
         this.partyStatsCacheKey = '';
         try { this.allScenes = await this.plugin.listScenes(); } catch { this.allScenes = []; }
 
-        const sceneName = startingScene?.name ?? session.currentSceneName;
-        if (sceneName) {
-            await this.doNavigate(sceneName, false);
-        } else if (session.currentSceneId) {
-            const sc = this.allScenes.find(s => s.id === session.currentSceneId);
-            if (sc) await this.doNavigate(sc.name, false);
+        const startingRef = startingScene?.id ?? startingScene?.name ?? session.currentSceneId ?? session.currentSceneName;
+        const resolvedScene = startingRef ? this.resolveSceneReference(startingRef) : null;
+        if (resolvedScene) {
+            await this.doNavigate(resolvedScene.name, false);
         }
     }
 
@@ -134,9 +143,9 @@ export class CampaignView extends ItemView {
         }
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // SESSION SELECT
-    // ─────────────────────────────────────────────────────────────────────────
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     private async renderSessionSelect(root: HTMLElement): Promise<void> {
         const wrap = root.createDiv('storyteller-campaign-select');
@@ -168,9 +177,9 @@ export class CampaignView extends ItemView {
         const info = card.createDiv('storyteller-campaign-session-info');
         info.createDiv({ cls: 'storyteller-campaign-session-name', text: session.name });
         const meta = info.createDiv('storyteller-campaign-session-meta');
-        if (session.currentSceneName) meta.createSpan({ text: `📍 ${session.currentSceneName}` });
+        if (session.currentSceneName) meta.createSpan({ text: `Scene: ${session.currentSceneName}` });
         if (session.partyCharacterNames?.length) {
-            meta.createSpan({ text: ` · ${session.partyCharacterNames.join(', ')}` });
+            meta.createSpan({ text: ` | ${session.partyCharacterNames.join(', ')}` });
         }
 
         card.createSpan({
@@ -207,14 +216,14 @@ export class CampaignView extends ItemView {
         nameWrap.createEl('label', { text: 'Session name' });
         const nameInput = nameWrap.createEl('input', {
             cls: 'storyteller-campaign-input',
-            attr: { type: 'text', placeholder: 'The Silver Crown — Session 1' },
+            attr: { type: 'text', placeholder: 'The Silver Crown - Session 1' },
         });
 
         // Starting scene
         const sceneWrap = form.createDiv('storyteller-campaign-field');
         sceneWrap.createEl('label', { text: 'Starting scene' });
         const sceneSelect = sceneWrap.createEl('select', { cls: 'storyteller-campaign-input' });
-        sceneSelect.createEl('option', { value: '', text: '— none —' });
+        sceneSelect.createEl('option', { value: '', text: '- none -' });
 
         // Party
         const partyWrap = form.createDiv('storyteller-campaign-field');
@@ -260,7 +269,7 @@ export class CampaignView extends ItemView {
                         }
                     }
                 }
-            } catch { /* ignore — no characters loaded */ }
+            } catch { /* ignore â€” no characters loaded */ }
 
             const newSession: CampaignSession = {
                 name,
@@ -269,6 +278,8 @@ export class CampaignView extends ItemView {
                 currentSceneName: sceneSelect.value || undefined,
                 partyItems: seedItems,
                 flags: [],
+                revealedCompendiumEntryIds: [],
+                groupStandings: [],
                 status: 'active',
             };
             await this.plugin.saveSession(newSession);
@@ -277,16 +288,16 @@ export class CampaignView extends ItemView {
         });
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // PLAY MODE
-    // ─────────────────────────────────────────────────────────────────────────
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     private async renderPlay(root: HTMLElement): Promise<void> {
         const session = this.session!;
         this.ensureActiveActor(session);
         await this.ensurePartyCharacterStats(session);
 
-        // ── Toolbar ──────────────────────────────────────────────────────────
+        // â”€â”€ Toolbar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         const toolbar = root.createDiv('storyteller-campaign-toolbar');
 
         const backBtn = toolbar.createEl('button', { cls: 'storyteller-campaign-toolbar-btn', attr: { 'aria-label': 'Go back' } });
@@ -321,7 +332,7 @@ export class CampaignView extends ItemView {
             await this.render();
         });
 
-        // ── Layout ───────────────────────────────────────────────────────────
+        // â”€â”€ Layout â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         const main = root.createDiv('storyteller-campaign-main');
 
         const scenePanel = main.createDiv('storyteller-campaign-scene-panel');
@@ -331,10 +342,11 @@ export class CampaignView extends ItemView {
         this.renderPartySidebar(sidebar, session);
         await this.renderInventorySidebar(sidebar, session);
         await this.renderLoreSidebar(sidebar, session);
+        this.renderGroupStandingsSidebar(sidebar, session);
         await this.renderLogSidebar(sidebar, session);
     }
 
-    // ── Scene panel ───────────────────────────────────────────────────────────
+    // â”€â”€ Scene panel â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     private async renderScenePanel(panel: HTMLElement): Promise<void> {
         panel.empty();
@@ -410,8 +422,10 @@ export class CampaignView extends ItemView {
         const locName = scene.linkedLocations?.[0];
         const npcs    = scene.linkedCharacters ?? [];
         const items   = scene.linkedItems ?? [];
+        const sceneGroups = this.resolveGroupRefs(scene.linkedGroups ?? []);
+        const locationGroups = this.resolveGroupRefs(this.locationData?.groups ?? []);
 
-        if (!locName && !npcs.length && !items.length) return;
+        if (!locName && !npcs.length && !items.length && !sceneGroups.length && !locationGroups.length) return;
 
         const ctx = panel.createDiv('storyteller-campaign-scene-context');
 
@@ -449,6 +463,16 @@ export class CampaignView extends ItemView {
                     await this.takePartyItem(name, `Took *${name}*`);
                 });
             }
+        }
+
+        if (sceneGroups.length) {
+            ctx.createDiv({ cls: 'storyteller-campaign-context-label', text: 'Factions in scene' });
+            this.renderCampaignGroupChips(ctx, sceneGroups);
+        }
+
+        if (locationGroups.length) {
+            ctx.createDiv({ cls: 'storyteller-campaign-context-label', text: 'Local powers' });
+            this.renderCampaignGroupChips(ctx, locationGroups);
         }
     }
 
@@ -542,6 +566,12 @@ export class CampaignView extends ItemView {
         });
         imageEl.draggable = false;
 
+        if (boardMap.gridEnabled && (boardMap.gridSize ?? 0) > 0) {
+            const gridEl = stage.createDiv('storyteller-campaign-board-grid');
+            gridEl.style.setProperty('--storyteller-board-grid-x', `${(boardMap.gridSize! / Math.max(dimensions.width, 1)) * 100}%`);
+            gridEl.style.setProperty('--storyteller-board-grid-y', `${(boardMap.gridSize! / Math.max(dimensions.height, 1)) * 100}%`);
+        }
+
         for (const entry of locations) {
             const [top, left] = entry.binding.coordinates;
             const topPercent = this.clampBoardPercent((top / Math.max(dimensions.height, 1)) * 100);
@@ -560,7 +590,13 @@ export class CampaignView extends ItemView {
             button.createSpan({ cls: 'storyteller-campaign-board-pin-dot' });
             button.createSpan({ cls: 'storyteller-campaign-board-pin-label', text: entry.location.name });
             button.addEventListener('click', async () => {
+                const isSameLocation = this.selectedBoardLocationId === locationKey;
                 this.selectedBoardLocationId = locationKey;
+                if (isSameLocation) {
+                    this.focusBoardLocationInspector(locationKey);
+                    return;
+                }
+                this.pendingBoardFocusLocationId = locationKey;
                 await this.render();
             });
         }
@@ -574,12 +610,17 @@ export class CampaignView extends ItemView {
 
         const selectedLocation = locations.find(entry => this.getLocationKey(entry.location) === selectedLocationKey);
         if (selectedLocation) {
-            await this.renderBoardLocationInspector(boardEl, selectedLocation);
+            const inspector = await this.renderBoardLocationInspector(boardEl, selectedLocation);
+            if (this.pendingBoardFocusLocationId && this.pendingBoardFocusLocationId === selectedLocationKey) {
+                this.pendingBoardFocusLocationId = null;
+                this.focusBoardLocationInspector(selectedLocationKey, inspector);
+            }
         }
     }
 
-    private async renderBoardLocationInspector(container: HTMLElement, entry: CampaignBoardLocation): Promise<void> {
+    private async renderBoardLocationInspector(container: HTMLElement, entry: CampaignBoardLocation): Promise<HTMLElement> {
         const inspector = container.createDiv('storyteller-campaign-board-inspector');
+        inspector.dataset.locationKey = this.getLocationKey(entry.location);
         const header = inspector.createDiv('storyteller-campaign-board-inspector-header');
         header.createDiv({ cls: 'storyteller-campaign-board-inspector-kicker', text: 'Selected location' });
         header.createEl('h4', { text: entry.location.name });
@@ -638,23 +679,56 @@ export class CampaignView extends ItemView {
             const inventory = this.session?.partyItems ?? [];
             for (const name of items) {
                 const hasItem = inventory.some(item => this.normalizeName(item) === this.normalizeName(name));
+                const wasTakenFromBoard = this.wasBoardItemCollected(entry.location, name);
                 const itemWrap = row.createDiv('storyteller-campaign-board-item');
                 itemWrap.createSpan({ cls: 'storyteller-campaign-board-pill', text: name });
                 const takeBtn = itemWrap.createEl('button', {
                     cls: 'storyteller-campaign-take-btn',
-                    text: hasItem ? 'Owned' : 'Take',
+                    text: hasItem ? 'Owned' : wasTakenFromBoard ? 'Taken' : 'Take',
                     attr: { type: 'button' },
                 });
-                takeBtn.disabled = hasItem;
+                takeBtn.disabled = hasItem || wasTakenFromBoard;
                 takeBtn.addEventListener('click', async () => {
-                    await this.takePartyItem(name, `Took *${name}* from *${entry.location.name}*`);
+                    await this.takePartyItem(name, `Took *${name}* from *${entry.location.name}*`, entry.location);
                 });
             }
         }
+
+        return inspector;
     }
 
     private getLocationKey(location: Pick<Location, 'id' | 'name'>): string {
         return location.id || this.normalizeName(location.name);
+    }
+
+    private getBoardItemCollectionKey(location: Pick<Location, 'id' | 'name'>, itemName: string): string {
+        return `${this.getLocationKey(location)}::${this.normalizeName(itemName)}`;
+    }
+
+    private wasBoardItemCollected(location: Pick<Location, 'id' | 'name'>, itemName: string): boolean {
+        const collected = this.session?.collectedBoardItemKeys ?? [];
+        return collected.includes(this.getBoardItemCollectionKey(location, itemName));
+    }
+
+    private markBoardItemCollected(location: Pick<Location, 'id' | 'name'>, itemName: string): void {
+        if (!this.session) return;
+        const collectionKey = this.getBoardItemCollectionKey(location, itemName);
+        const existing = this.session.collectedBoardItemKeys ?? [];
+        if (existing.includes(collectionKey)) return;
+        this.session.collectedBoardItemKeys = [...existing, collectionKey];
+    }
+
+    private focusBoardLocationInspector(locationKey: string, inspector?: HTMLElement | null): void {
+        const target = inspector ?? this.containerEl.querySelector<HTMLElement>(
+            `.storyteller-campaign-board-inspector[data-location-key="${CSS.escape(locationKey)}"]`
+        );
+        if (!target) return;
+
+        window.requestAnimationFrame(() => {
+            target.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            target.addClass('is-highlighted');
+            window.setTimeout(() => target.removeClass('is-highlighted'), 900);
+        });
     }
 
     private clampBoardPercent(value: number): number {
@@ -687,6 +761,12 @@ export class CampaignView extends ItemView {
     private isCurrentSceneLocation(location: Location): boolean {
         if (!this.locationData) return false;
         return this.getLocationKey(location) === this.getLocationKey(this.locationData);
+    }
+
+    private locationMatchesReference(location: Location, locationRef: string | null | undefined): boolean {
+        const normalizedRef = this.normalizeName(String(locationRef ?? ''));
+        if (!normalizedRef) return false;
+        return normalizedRef === this.normalizeName(location.id || '') || normalizedRef === this.normalizeName(location.name);
     }
 
     private async collectBoardLocations(map: StoryMap): Promise<CampaignBoardLocation[]> {
@@ -843,6 +923,11 @@ export class CampaignView extends ItemView {
             .filter(ref => this.normalizeName(ref.entityType || '') === 'character')
             .map(ref => this.resolveEntityRefName(ref, characters));
 
+        for (const character of characters) {
+            if (!this.locationMatchesReference(location, character.currentLocationId)) continue;
+            resolved.push(character.name);
+        }
+
         if (this.isCurrentSceneLocation(location)) {
             resolved.push(...(this.currentScene?.linkedCharacters ?? []));
         }
@@ -875,7 +960,7 @@ export class CampaignView extends ItemView {
         return match?.name ?? entityId;
     }
 
-    private async takePartyItem(name: string, logEntry: string): Promise<void> {
+    private async takePartyItem(name: string, logEntry: string, sourceLocation?: Pick<Location, 'id' | 'name'>): Promise<void> {
         if (!this.session) return;
         const inventory = this.session.partyItems ?? [];
         const hasItem = inventory.some(item => this.normalizeName(item) === this.normalizeName(name));
@@ -886,6 +971,9 @@ export class CampaignView extends ItemView {
 
         const previousItems = [...inventory];
         this.session.partyItems = [...inventory, name];
+        if (sourceLocation) {
+            this.markBoardItemCollected(sourceLocation, name);
+        }
         await this.syncPartyInventoryOwnership(this.session, previousItems);
         await this.autosave(logEntry);
         new Notice(`${name} added to inventory.`);
@@ -905,33 +993,51 @@ export class CampaignView extends ItemView {
         const labelRow = card.createDiv('storyteller-campaign-play-branch-label');
         labelRow.createSpan({ text: resolvedBranch.label });
         if (resolvedBranch.target) {
-            labelRow.createSpan({ cls: 'storyteller-campaign-play-branch-target', text: `→ ${resolvedBranch.target}` });
+            labelRow.createSpan({ cls: 'storyteller-campaign-play-branch-target', text: `-> ${resolvedBranch.target}` });
         }
 
         // Condition tags
         const tags = card.createDiv('storyteller-campaign-play-branch-tags');
         if (resolvedBranch.dice) {
             const stat = resolvedBranch.stat ? ` ${resolvedBranch.stat.toUpperCase()}` : '';
-            const thr  = resolvedBranch.threshold != null ? ` ≥${resolvedBranch.threshold}` : '';
-            tags.createSpan({ cls: 'storyteller-branch-tag is-dice', text: `🎲 ${resolvedBranch.dice}${stat}${thr}` });
+            const thr  = resolvedBranch.threshold != null ? ` >=${resolvedBranch.threshold}` : '';
+            tags.createSpan({ cls: 'storyteller-branch-tag is-dice', text: `Dice ${resolvedBranch.dice}${stat}${thr}` });
         }
         if (resolvedBranch.stat && this.activeActorName) {
             tags.createSpan({ cls: 'storyteller-branch-tag is-character', text: `Actor: ${this.activeActorName}` });
         }
         if (resolvedBranch.requiresStatMin != null && resolvedBranch.stat && !resolvedBranch.dice) {
-            tags.createSpan({ cls: 'storyteller-branch-tag is-stat', text: `${resolvedBranch.stat.toUpperCase()} ≥ ${resolvedBranch.requiresStatMin}` });
+            tags.createSpan({ cls: 'storyteller-branch-tag is-stat', text: `${resolvedBranch.stat.toUpperCase()} >= ${resolvedBranch.requiresStatMin}` });
         }
         if (resolvedBranch.requiresItem) {
             const has = this.session?.partyItems?.some(i => i.toLowerCase() === resolvedBranch.requiresItem!.toLowerCase());
-            tags.createSpan({ cls: `storyteller-branch-tag is-item${has ? '' : ' is-unmet'}`, text: `🔑 ${resolvedBranch.requiresItem}` });
+            tags.createSpan({ cls: `storyteller-branch-tag is-item${has ? '' : ' is-unmet'}`, text: `Item: ${resolvedBranch.requiresItem}` });
         }
         if (resolvedBranch.requiresCharacter) {
             const has = this.session?.partyCharacterNames?.some(n => n.toLowerCase() === resolvedBranch.requiresCharacter!.toLowerCase());
-            tags.createSpan({ cls: `storyteller-branch-tag is-character${has ? '' : ' is-unmet'}`, text: `👤 ${resolvedBranch.requiresCharacter}` });
+            tags.createSpan({ cls: `storyteller-branch-tag is-character${has ? '' : ' is-unmet'}`, text: `Character: ${resolvedBranch.requiresCharacter}` });
         }
         if (resolvedBranch.requiresFlag) {
             const has = this.session?.flags?.includes(resolvedBranch.requiresFlag);
-            tags.createSpan({ cls: `storyteller-branch-tag is-flag${has ? '' : ' is-unmet'}`, text: `🏳 ${resolvedBranch.requiresFlag}` });
+            tags.createSpan({ cls: `storyteller-branch-tag is-flag${has ? '' : ' is-unmet'}`, text: `Flag: ${resolvedBranch.requiresFlag}` });
+        }
+        if (resolvedBranch.requiresGroupStanding || resolvedBranch.requiresGroupStandingId) {
+            const groupName = this.resolveGroupName(resolvedBranch.requiresGroupStandingId, resolvedBranch.requiresGroupStanding) ?? 'Faction';
+            const minStanding = resolvedBranch.requiresGroupStandingMin ?? 1;
+            const currentStanding = this.getSessionGroupStandingValue(this.session, resolvedBranch.requiresGroupStandingId, resolvedBranch.requiresGroupStanding);
+            const has = currentStanding >= minStanding;
+            tags.createSpan({
+                cls: `storyteller-branch-tag is-group${has ? '' : ' is-unmet'}`,
+                text: `Faction ${groupName} ${currentStanding}/${minStanding}`,
+            });
+        }
+        if (resolvedBranch.requiresCompendiumEntry || resolvedBranch.requiresCompendiumEntryId) {
+            const loreName = resolvedBranch.requiresCompendiumEntry ?? resolvedBranch.requiresCompendiumEntryId ?? 'Lore';
+            const has = this.isCompendiumEntryRevealed(this.session, resolvedBranch.requiresCompendiumEntryId, resolvedBranch.requiresCompendiumEntry);
+            tags.createSpan({
+                cls: `storyteller-branch-tag is-note${has ? '' : ' is-unmet'}`,
+                text: `Lore ${loreName}`,
+            });
         }
 
         if (!check.met) {
@@ -941,13 +1047,13 @@ export class CampaignView extends ItemView {
         }
 
         card.addEventListener('click', () => {
-            if (!check.met) { new Notice(check.unmet.join(' · ')); return; }
+            if (!check.met) { new Notice(check.unmet.join(' | ')); return; }
             if (resolvedBranch.dice) { this.showDiceOverlay(resolvedBranch, panelEl); }
             else { this.executeChoice(resolvedBranch, 'success'); }
         });
     }
 
-    // ── Dice overlay ──────────────────────────────────────────────────────────
+    // â”€â”€ Dice overlay â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     private showDiceOverlay(branch: SceneBranch, panelEl: HTMLElement): void {
         const overlay = panelEl.createDiv('storyteller-dice-overlay');
@@ -979,7 +1085,7 @@ export class CampaignView extends ItemView {
             });
         }
         if (branch.threshold != null) {
-            infoEl.createSpan({ cls: 'storyteller-dice-threshold', text: ` — need ≥ ${branch.threshold}` });
+            infoEl.createSpan({ cls: 'storyteller-dice-threshold', text: ` - need >= ${branch.threshold}` });
         }
 
         const face   = box.createDiv({ cls: 'storyteller-dice-face', text: '?' });
@@ -1007,29 +1113,29 @@ export class CampaignView extends ItemView {
             lastTotal = total;
 
             face.addClass('rolling');
-            face.textContent = '🎲';
+            face.textContent = '...';
             setTimeout(() => {
                 face.removeClass('rolling');
                 face.textContent = String(total);
 
                 const outcome = resolveBranch(branch, total);
                 if (outcome === 'success') {
-                    result.textContent = `✓ Success!`;
+                    result.textContent = 'Success!';
                     result.className = 'storyteller-dice-result is-success';
-                    confirmBtn.textContent = `Go → ${branch.target ?? 'next'}`;
+                    confirmBtn.textContent = `Go -> ${branch.target ?? 'next'}`;
                 } else {
                     const dest = branch.failMode === 'loop' ? 'retry' : (branch.fail ?? 'fail');
-                    result.textContent = `✗ Fail → ${dest}`;
+                    result.textContent = `Fail -> ${dest}`;
                     result.className = 'storyteller-dice-result is-fail';
-                    confirmBtn.textContent = branch.failMode === 'loop' ? 'Retry' : `Go → ${dest}`;
+                    confirmBtn.textContent = branch.failMode === 'loop' ? 'Retry' : `Go -> ${dest}`;
                 }
                 confirmBtn.disabled = false;
 
                 const stat = branch.stat ? ` ${branch.stat.toUpperCase()}(${actorName})` : '';
-                const thr  = branch.threshold != null ? ` ≥${branch.threshold}` : '';
+                const thr  = branch.threshold != null ? ` >=${branch.threshold}` : '';
                 const statStr = branch.stat ? ` ${statBonus > 0 ? '+' : ''}${statBonus} stat` : '';
                 const locStr = locBonus !== 0 ? ` ${locBonus > 0 ? '+' : ''}${locBonus} loc` : '';
-                const logLine = `Rolled ${branch.dice}${stat}${statStr}${locStr} = **${total}**${thr} → ${outcome === 'success' ? '✓' : '✗'} *${branch.label}*`;
+                const logLine = `Rolled ${branch.dice}${stat}${statStr}${locStr} = **${total}**${thr} -> ${outcome === 'success' ? '[success]' : '[fail]'} *${branch.label}*`;
                 void this.autosave(logLine);
             }, 600);
         });
@@ -1055,7 +1161,7 @@ export class CampaignView extends ItemView {
         overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
     }
 
-    // ── Branch execution ──────────────────────────────────────────────────────
+    // â”€â”€ Branch execution â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     private async executeChoice(branch: SceneBranch, outcome: 'success' | 'fail', rollTotal?: number): Promise<void> {
         if (!this.session) return;
@@ -1073,20 +1179,25 @@ export class CampaignView extends ItemView {
         if (outcome === 'success') {
             target = this.resolveSceneName(branch.targetSceneId, branch.target);
         } else if (branch.failMode === 'loop') {
-            new Notice('Failed — try again!');
-            await this.autosave(`*${branch.label}* — failed (loop retry)`);
+            new Notice('Failed - try again!');
+            await this.autosave(`*${branch.label}* - failed (loop retry)`);
             await this.render();
             return;
         } else if (branch.failMode === 'scene') {
             target = this.resolveSceneName(branch.failSceneId, branch.fail);
         }
-        // 'continue' — no navigation
+        // 'continue' â€” no navigation
 
         const logEntries = [
             rollTotal != null
-            ? `*${branch.label}* — rolled ${rollTotal} → ${outcome}${target ? ` → *${target}*` : ''}`
-            : `Chose *${branch.label}*${target ? ` → *${target}*` : ''}`,
+            ? `*${branch.label}* - rolled ${rollTotal} -> ${outcome}${target ? ` -> *${target}*` : ''}`
+            : `Chose *${branch.label}*${target ? ` -> *${target}*` : ''}`,
         ];
+        if (branch.revealsCompendiumEntry) logEntries.push(`Revealed lore: *${branch.revealsCompendiumEntry}*`);
+        if (branch.changesGroupStanding) {
+            const delta = branch.groupStandingDelta ?? 1;
+            logEntries.push(`Changed *${branch.changesGroupStanding}* standing by ${delta > 0 ? '+' : ''}${delta}`);
+        }
         if (eventLogLine) logEntries.push(eventLogLine);
 
         if (target && target !== 'continue') {
@@ -1098,14 +1209,25 @@ export class CampaignView extends ItemView {
         }
     }
 
-    // ── Navigation ────────────────────────────────────────────────────────────
+    // â”€â”€ Navigation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+    private resolveSceneReference(value: string): Scene | null {
+        const rawValue = value.trim();
+        if (!rawValue) return null;
+        const unwrappedValue = rawValue.replace(/^\[\[(.*?)\]\]$/, '$1').trim();
+        return this.allScenes.find(scene =>
+            scene.id === rawValue ||
+            scene.id === unwrappedValue ||
+            this.normalizeName(scene.name) === this.normalizeName(unwrappedValue)
+        ) ?? null;
+    }
 
     private async doNavigate(sceneName: string, pushHistory: boolean): Promise<void> {
         if (!this.session) return;
         if (!this.allScenes.length) {
             try { this.allScenes = await this.plugin.listScenes(); } catch { return; }
         }
-        const scene = this.allScenes.find(s => s.name.toLowerCase() === sceneName.toLowerCase());
+        const scene = this.resolveSceneReference(sceneName);
         if (!scene) { new Notice(`Scene "${sceneName}" not found.`); return; }
 
         if (pushHistory && this.currentScene) this.sceneHistory.push(this.currentScene.name);
@@ -1122,7 +1244,7 @@ export class CampaignView extends ItemView {
         // On-enter encounter auto-roll
         if (this.encounterTable?.trigger === 'on-enter') {
             const hit = rollEncounterTable(this.encounterTable);
-            const logLine = `*On-enter encounter*: **${hit.label}**${hit.target !== 'continue' ? ` → *${hit.target}*` : ''}`;
+            const logLine = `*On-enter encounter*: **${hit.label}**${hit.target !== 'continue' ? ` -> *${hit.target}*` : ''}`;
             await this.autosave(logLine);
             if (hit.target && hit.target !== 'continue') {
                 await this.doNavigate(hit.target, true);
@@ -1193,18 +1315,22 @@ export class CampaignView extends ItemView {
         const wrap = panel.createDiv('storyteller-campaign-scene-picker');
         wrap.createEl('label', { text: 'Jump to scene:' });
         const sel = wrap.createEl('select', { cls: 'storyteller-campaign-input' });
-        sel.createEl('option', { value: '', text: '— select scene —' });
+        sel.createEl('option', { value: '', text: 'Select a scene' });
         if (!this.allScenes.length) {
             try { this.allScenes = await this.plugin.listScenes(); } catch { /* no story */ }
         }
         for (const s of this.allScenes.sort((a, b) => a.name.localeCompare(b.name))) {
             sel.createEl('option', { value: s.name, text: s.name });
         }
+        if (this.currentScene) {
+            sel.value = this.currentScene.name;
+        }
         const goBtn = wrap.createEl('button', { cls: 'storyteller-campaign-btn is-primary', text: 'Go' });
+        goBtn.disabled = !this.allScenes.length;
         goBtn.addEventListener('click', () => { if (sel.value) this.doNavigate(sel.value, false); });
     }
 
-    // ── Sidebar ───────────────────────────────────────────────────────────────
+    // â”€â”€ Sidebar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     private renderPartySidebar(sidebar: HTMLElement, session: CampaignSession): void {
         const sec = sidebar.createDiv('storyteller-campaign-sidebar-section');
@@ -1252,7 +1378,7 @@ export class CampaignView extends ItemView {
         setPct();
 
         const ctrl = row.createDiv('storyteller-campaign-hp-controls');
-        const minusBtn = ctrl.createEl('button', { cls: 'storyteller-campaign-hp-btn', text: '−' });
+        const minusBtn = ctrl.createEl('button', { cls: 'storyteller-campaign-hp-btn', text: '-' });
         const hpInput  = ctrl.createEl('input', {
             cls: 'storyteller-campaign-input is-small',
             attr: { type: 'number', placeholder: '1', min: '1', value: '1' },
@@ -1390,7 +1516,7 @@ export class CampaignView extends ItemView {
                 return;
             }
 
-            addSelect.createEl('option', { value: '', text: 'Select item…' });
+            addSelect.createEl('option', { value: '', text: 'Select item...' });
             for (const name of available.sort((a, b) => a.localeCompare(b))) {
                 addSelect.createEl('option', { value: name, text: name });
             }
@@ -1422,7 +1548,7 @@ export class CampaignView extends ItemView {
             const flagsHdr = body.createDiv({ cls: 'storyteller-campaign-sidebar-sub-hdr', text: 'Flags' });
             const flagList = body.createDiv('storyteller-campaign-flag-list');
             for (const flag of session.flags) {
-                flagList.createSpan({ cls: 'storyteller-branch-tag is-flag', text: `🏳 ${flag}` });
+                flagList.createSpan({ cls: 'storyteller-branch-tag is-flag', text: `Flag: ${flag}` });
             }
         }
     }
@@ -1454,30 +1580,30 @@ export class CampaignView extends ItemView {
         }
     }
 
-    // ── Item use ──────────────────────────────────────────────────────────────
+    // â”€â”€ Item use â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-    private async useItem(itemName: string, session: CampaignSession, onRebuild: () => void): Promise<void> {
-        let plotItem: PlotItem | undefined;
+    private async useItem(itemName: string, session: CampaignSession, _onRebuild: () => void): Promise<void> {
+        let allItems: PlotItem[] = [];
         try {
-            const all = await this.plugin.listPlotItems();
-            plotItem = all.find(i => i.name.toLowerCase() === itemName.toLowerCase());
-        } catch { /* ignore */ }
+            allItems = await this.plugin.listPlotItems();
+        } catch {
+            allItems = [];
+        }
 
+        const plotItem = allItems.find(i => this.normalizeName(i.name) === this.normalizeName(itemName));
         if (!plotItem) {
             new Notice(`${itemName}: No campaign use effect defined.`);
             return;
         }
 
-        // Check location gate
         if (plotItem.useRequiresLocation) {
             const locName = this.currentScene?.linkedLocations?.[0] ?? '';
-            if (locName.toLowerCase() !== plotItem.useRequiresLocation.toLowerCase()) {
+            if (this.normalizeName(locName) !== this.normalizeName(plotItem.useRequiresLocation)) {
                 new Notice(`${itemName} can only be used at: ${plotItem.useRequiresLocation}`);
                 return;
             }
         }
 
-        // Check flag gate
         if (plotItem.useRequiresFlag) {
             if (!(session.flags ?? []).includes(plotItem.useRequiresFlag)) {
                 new Notice(`${itemName} requires flag: ${plotItem.useRequiresFlag}`);
@@ -1485,55 +1611,407 @@ export class CampaignView extends ItemView {
             }
         }
 
-        // No effect defined
-        if (!plotItem.campaignEffect && !plotItem.grantsFlag && !plotItem.navigatesToScene && !plotItem.consumedOnUse) {
+        const advancedEffects = plotItem.campaignItemEffects ?? [];
+        const hasLegacyEffect = Boolean(
+            plotItem.campaignEffect ||
+            plotItem.grantsFlag ||
+            plotItem.navigatesToScene ||
+            plotItem.consumedOnUse
+        );
+        if (!hasLegacyEffect && advancedEffects.length === 0) {
             new Notice(`${itemName}: No campaign use effect defined.`);
             return;
         }
 
-        // Show effect notice
-        if (plotItem.campaignEffect) new Notice(`${itemName}: ${plotItem.campaignEffect}`);
+        const previousItems = [...(session.partyItems ?? [])];
+        let inventoryChanged = false;
+        let navigateTarget = plotItem.navigatesToScene?.trim() || undefined;
 
-        // Set granted flag
+        if (plotItem.campaignEffect) {
+            new Notice(`${itemName}: ${plotItem.campaignEffect}`);
+        }
+
         if (plotItem.grantsFlag) {
             const flags = session.flags ?? [];
-            if (!flags.includes(plotItem.grantsFlag)) session.flags = [...flags, plotItem.grantsFlag];
+            if (!flags.includes(plotItem.grantsFlag)) {
+                session.flags = [...flags, plotItem.grantsFlag];
+            }
         }
 
-        // Consume
         if (plotItem.consumedOnUse) {
-            const previousItems = [...(session.partyItems ?? [])];
-            session.partyItems = (session.partyItems ?? []).filter(i => i !== itemName);
-            await this.syncPartyInventoryOwnership(session, previousItems);
-            onRebuild();
+            const nextItems = (session.partyItems ?? []).filter(i => this.normalizeName(i) !== this.normalizeName(itemName));
+            inventoryChanged = nextItems.length !== (session.partyItems ?? []).length;
+            session.partyItems = nextItems;
         }
 
-        const logLine = `Used *${itemName}*${plotItem.campaignEffect ? `: ${plotItem.campaignEffect}` : ''}`;
+        const advancedResult = await this.applyCampaignItemEffects(advancedEffects, plotItem, session, allItems);
+        inventoryChanged = inventoryChanged || advancedResult.inventoryChanged;
+        if (advancedResult.navigateToScene) {
+            navigateTarget = advancedResult.navigateToScene;
+        }
+
+        if (inventoryChanged) {
+            await this.syncPartyInventoryOwnership(session, previousItems);
+        }
+
+        const noticeSummary = advancedResult.summaries.join('; ');
+        if (!plotItem.campaignEffect && noticeSummary) {
+            new Notice(`${itemName}: ${noticeSummary}`);
+        }
+
+        const logLine = advancedResult.summaries.length > 0
+            ? `Used *${itemName}*${plotItem.campaignEffect ? `: ${plotItem.campaignEffect}` : ''}; ${advancedResult.summaries.join('; ')}`
+            : `Used *${itemName}*${plotItem.campaignEffect ? `: ${plotItem.campaignEffect}` : ''}`;
         await this.autosave(logLine);
 
-        // Navigate
-        if (plotItem.navigatesToScene) {
-            await this.doNavigate(plotItem.navigatesToScene, true);
+        if (navigateTarget) {
+            await this.doNavigate(navigateTarget, true);
+            return;
+        }
+
+        await this.render();
+    }
+
+    private async applyCampaignItemEffects(
+        effects: CampaignItemEffect[],
+        plotItem: PlotItem,
+        session: CampaignSession,
+        allItems: PlotItem[],
+    ): Promise<{ summaries: string[]; navigateToScene?: string; inventoryChanged: boolean }> {
+        const summaries: string[] = [];
+        let navigateToScene: string | undefined;
+        let inventoryChanged = false;
+        let compendiumEntries: CompendiumEntry[] | null = null;
+        const groups = this.plugin.getGroups();
+
+        for (const effect of effects) {
+            switch (effect.type) {
+                case 'setFlag': {
+                    const flag = effect.flag?.trim();
+                    if (!flag) break;
+                    const flags = session.flags ?? [];
+                    if (!flags.includes(flag)) {
+                        session.flags = [...flags, flag];
+                        summaries.push(`set flag ${flag}`);
+                    }
+                    break;
+                }
+                case 'clearFlag': {
+                    const flag = effect.flag?.trim();
+                    if (!flag) break;
+                    const nextFlags = (session.flags ?? []).filter(candidate => candidate !== flag);
+                    if (nextFlags.length !== (session.flags ?? []).length) {
+                        session.flags = nextFlags;
+                        summaries.push(`cleared flag ${flag}`);
+                    }
+                    break;
+                }
+                case 'addItem': {
+                    const effectItemName = this.resolveEffectItemName(effect, allItems);
+                    if (!effectItemName) break;
+                    const alreadyHas = (session.partyItems ?? []).some(candidate => this.normalizeName(candidate) === this.normalizeName(effectItemName));
+                    if (!alreadyHas) {
+                        session.partyItems = [...(session.partyItems ?? []), effectItemName];
+                        inventoryChanged = true;
+                        summaries.push(`added ${effectItemName} to the inventory`);
+                    }
+                    break;
+                }
+                case 'removeItem': {
+                    const effectItemName = this.resolveEffectItemName(effect, allItems);
+                    if (!effectItemName) break;
+                    const nextItems = (session.partyItems ?? []).filter(candidate => this.normalizeName(candidate) !== this.normalizeName(effectItemName));
+                    if (nextItems.length !== (session.partyItems ?? []).length) {
+                        session.partyItems = nextItems;
+                        inventoryChanged = true;
+                        summaries.push(`removed ${effectItemName} from the inventory`);
+                    }
+                    break;
+                }
+                case 'navigateScene': {
+                    const sceneName = this.resolveSceneName(effect.sceneId, effect.sceneName);
+                    if (sceneName) {
+                        navigateToScene = sceneName;
+                        summaries.push(`opened ${sceneName}`);
+                    }
+                    break;
+                }
+                case 'changeHp': {
+                    const targetNames = this.resolveCampaignEffectTargets(effect, session, plotItem);
+                    const amount = Number(effect.amount ?? 0);
+                    if (!targetNames.length || !Number.isFinite(amount) || amount === 0) break;
+                    const verb = effect.hpMode === 'damage'
+                        ? 'damaged'
+                        : effect.hpMode === 'set'
+                            ? 'set HP for'
+                            : 'healed';
+                    const affected: string[] = [];
+                    for (const targetName of targetNames) {
+                        const state = this.ensureSessionPartyState(session, targetName);
+                        if (!state) continue;
+                        if (effect.hpMode === 'damage') {
+                            state.currentHp = Math.max(0, state.currentHp - Math.abs(amount));
+                        } else if (effect.hpMode === 'set') {
+                            state.currentHp = Math.max(0, Math.min(state.maxHp, Math.round(amount)));
+                        } else {
+                            state.currentHp = Math.max(0, Math.min(state.maxHp, state.currentHp + Math.abs(amount)));
+                        }
+                        affected.push(state.characterName);
+                    }
+                    if (affected.length) {
+                        if (affected.length === 1) {
+                            const suffix = effect.hpMode === 'set' ? `${Math.round(amount)}` : `${Math.abs(Math.round(amount))}`;
+                            summaries.push(`${verb} ${affected[0]} (${suffix} HP)`);
+                        } else {
+                            summaries.push(`${verb} ${affected.length} party members`);
+                        }
+                    }
+                    break;
+                }
+                case 'applyCondition': {
+                    const condition = effect.condition?.trim();
+                    const targetNames = this.resolveCampaignEffectTargets(effect, session, plotItem);
+                    if (!condition || !targetNames.length) break;
+                    const affected: string[] = [];
+                    for (const targetName of targetNames) {
+                        const state = this.ensureSessionPartyState(session, targetName);
+                        if (!state) continue;
+                        const conditions = Array.isArray(state.conditions) ? [...state.conditions] : [];
+                        const normalizedCondition = this.normalizeName(condition);
+                        if (effect.conditionMode === 'remove') {
+                            const nextConditions = conditions.filter(entry => this.normalizeName(entry) !== normalizedCondition);
+                            if (nextConditions.length !== conditions.length) {
+                                state.conditions = nextConditions;
+                                affected.push(state.characterName);
+                            }
+                        } else if (!conditions.some(entry => this.normalizeName(entry) === normalizedCondition)) {
+                            conditions.push(condition);
+                            state.conditions = conditions;
+                            affected.push(state.characterName);
+                        }
+                    }
+                    if (affected.length) {
+                        summaries.push(
+                            `${effect.conditionMode === 'remove' ? 'removed' : 'applied'} ${condition} ${affected.length === 1 ? `to ${affected[0]}` : `to ${affected.length} party members`}`
+                        );
+                    }
+                    break;
+                }
+                case 'revealCompendium': {
+                    if (!compendiumEntries) {
+                        try {
+                            compendiumEntries = await this.plugin.listCompendiumEntries();
+                        } catch {
+                            compendiumEntries = [];
+                        }
+                    }
+                    const entry = this.resolveCompendiumEntryFromEffect(effect, compendiumEntries);
+                    if (!entry?.name) break;
+                    const nextRevealed = [...(session.revealedCompendiumEntryIds ?? [])];
+                    const refKey = entry.id ?? entry.name;
+                    const alreadyRevealed = nextRevealed.some(candidate => this.normalizeName(candidate) === this.normalizeName(refKey));
+                    if (!alreadyRevealed) {
+                        nextRevealed.push(refKey);
+                        session.revealedCompendiumEntryIds = nextRevealed;
+                        summaries.push(`revealed ${entry.name}`);
+                    }
+                    break;
+                }
+                case 'changeGroupStanding': {
+                    const group = this.resolveGroupFromEffect(effect, groups);
+                    const groupName = group?.name ?? effect.groupName?.trim();
+                    if (!groupName) break;
+                    const standing = this.upsertGroupStanding(session, group?.id ?? effect.groupId, groupName);
+                    const nextValue = Number(effect.standingAmount ?? 0);
+                    if (!Number.isFinite(nextValue)) break;
+                    if (effect.standingMode === 'set') {
+                        standing.value = Math.round(nextValue);
+                        summaries.push(`set ${groupName} standing to ${standing.value > 0 ? '+' : ''}${standing.value}`);
+                    } else {
+                        standing.value += Math.round(nextValue);
+                        summaries.push(`changed ${groupName} standing by ${Math.round(nextValue) > 0 ? '+' : ''}${Math.round(nextValue)}`);
+                    }
+                    break;
+                }
+            }
+        }
+
+        return { summaries, navigateToScene, inventoryChanged };
+    }
+
+    private resolveEffectItemName(effect: CampaignItemEffect, allItems: PlotItem[]): string | undefined {
+        if (effect.itemId) {
+            const byId = allItems.find(item => item.id === effect.itemId);
+            if (byId?.name) return byId.name;
+        }
+        if (effect.itemName) {
+            const byName = allItems.find(item => this.normalizeName(item.name) === this.normalizeName(effect.itemName!));
+            return byName?.name ?? effect.itemName;
+        }
+        return undefined;
+    }
+
+    private resolveCompendiumEntryFromEffect(effect: CampaignItemEffect, entries: CompendiumEntry[]): CompendiumEntry | undefined {
+        if (effect.compendiumEntryId) {
+            const byId = entries.find(entry => (entry.id ?? entry.name) === effect.compendiumEntryId);
+            if (byId) return byId;
+        }
+        if (effect.compendiumEntryName) {
+            return entries.find(entry => this.normalizeName(entry.name) === this.normalizeName(effect.compendiumEntryName!));
+        }
+        return undefined;
+    }
+
+    private resolveGroupFromEffect(effect: CampaignItemEffect, groups: Group[]): Group | undefined {
+        if (effect.groupId) {
+            const byId = groups.find(group => group.id === effect.groupId);
+            if (byId) return byId;
+        }
+        if (effect.groupName) {
+            return groups.find(group => this.normalizeName(group.name) === this.normalizeName(effect.groupName!));
+        }
+        return undefined;
+    }
+
+    private resolveCampaignEffectTargets(effect: CampaignItemEffect, session: CampaignSession, plotItem: PlotItem): string[] {
+        const partyNames = session.partyCharacterNames ?? [];
+        const inParty = (name?: string | null): string | undefined => {
+            if (!name) return undefined;
+            const normalized = this.normalizeName(name);
+            return partyNames.find(candidate => this.normalizeName(candidate) === normalized);
+        };
+
+        switch (effect.target ?? 'activeActor') {
+            case 'allParty':
+                return partyNames;
+            case 'specificCharacter': {
+                const resolved = inParty(this.resolveCharacterName(effect.characterId, effect.characterName));
+                return resolved ? [resolved] : [];
+            }
+            case 'itemOwner': {
+                const owner = inParty(plotItem.currentOwner) ?? inParty(this.activeActorName) ?? partyNames[0];
+                return owner ? [owner] : [];
+            }
+            case 'activeActor':
+            default: {
+                const active = inParty(this.activeActorName) ?? partyNames[0];
+                return active ? [active] : [];
+            }
         }
     }
 
-    // ── Lore sidebar ─────────────────────────────────────────────────────────
+    private ensureSessionPartyState(session: CampaignSession, name: string): PartyMemberState | null {
+        const normalized = this.normalizeName(name);
+        session.partyState ??= [];
+        const existing = session.partyState.find(state => this.normalizeName(state.characterName) === normalized);
+        if (existing) return existing;
+
+        const character = this.partyCharacterStats.get(normalized);
+        if (!character) return null;
+
+        const maxHp = Math.max(1, Number(character.dndMaxHp ?? character.dndCurrentHp ?? 1));
+        const currentHp = Math.max(0, Math.min(maxHp, Number(character.dndCurrentHp ?? character.dndMaxHp ?? maxHp)));
+        const state: PartyMemberState = {
+            characterId: character.id ?? '',
+            characterName: character.name,
+            currentHp,
+            maxHp,
+            tempHp: Number(character.dndTempHp ?? 0) || undefined,
+            conditions: Array.isArray(character.dndConditions) ? [...character.dndConditions] : [],
+        };
+        session.partyState.push(state);
+        return state;
+    }
+
+    private upsertGroupStanding(session: CampaignSession, groupId: string | undefined, groupName: string): CampaignGroupStanding {
+        session.groupStandings ??= [];
+        const normalized = this.normalizeName(groupName);
+        const existing = session.groupStandings.find(entry =>
+            (groupId && entry.groupId && entry.groupId === groupId) ||
+            (entry.groupName && this.normalizeName(entry.groupName) === normalized)
+        );
+        if (existing) {
+            if (groupId && !existing.groupId) existing.groupId = groupId;
+            if (!existing.groupName) existing.groupName = groupName;
+            return existing;
+        }
+
+        const created: CampaignGroupStanding = { groupId, groupName, value: 0 };
+        session.groupStandings.push(created);
+        return created;
+    }
+
+    private resolveGroupRefs(groupRefs: string[]): Group[] {
+        if (!groupRefs.length) return [];
+        const groups = this.plugin.getGroups();
+        return groupRefs
+            .map(ref => groups.find(group => group.id === ref || this.normalizeName(group.name) === this.normalizeName(ref)))
+            .filter((group): group is Group => Boolean(group));
+    }
+
+    private resolveGroupName(groupId?: string, fallbackName?: string): string | undefined {
+        if (groupId) {
+            const group = this.plugin.getGroups().find(candidate => candidate.id === groupId);
+            if (group?.name) return group.name;
+        }
+        return fallbackName;
+    }
+
+    private getSessionGroupStandingValue(session: CampaignSession | null, groupId?: string, groupName?: string): number {
+        if (!session) return 0;
+        const standing = (session.groupStandings ?? []).find(entry =>
+            (groupId && entry.groupId === groupId) ||
+            (groupName && entry.groupName && this.normalizeName(entry.groupName) === this.normalizeName(groupName))
+        );
+        return standing?.value ?? 0;
+    }
+
+    private isCompendiumEntryRevealed(session: CampaignSession | null, entryId?: string, entryName?: string): boolean {
+        if (!session) return false;
+        const revealed = new Set((session.revealedCompendiumEntryIds ?? []).map(entry => this.normalizeName(entry)));
+        return Boolean(
+            (entryId && revealed.has(this.normalizeName(entryId))) ||
+            (entryName && revealed.has(this.normalizeName(entryName)))
+        );
+    }
+
+    private renderCampaignGroupChips(container: HTMLElement, groups: Group[]): void {
+        const row = container.createDiv('storyteller-campaign-context-chips');
+        for (const group of groups) {
+            const standing = this.getSessionGroupStandingValue(this.session, group.id, group.name);
+            const chip = row.createSpan({ cls: 'storyteller-campaign-context-chip is-group' });
+            if (group.color) {
+                chip.style.setProperty('--storyteller-group-color', group.color);
+            }
+            chip.createSpan({ text: group.name });
+            chip.createSpan({
+                cls: `storyteller-campaign-context-chip-meta is-${standing > 0 ? 'positive' : standing < 0 ? 'negative' : 'neutral'}`,
+                text: `${standing > 0 ? '+' : ''}${standing}`,
+            });
+        }
+    }
 
     private async renderLoreSidebar(sidebar: HTMLElement, session: CampaignSession): Promise<void> {
         const locName = this.currentScene?.linkedLocations?.[0];
         const activeFlags = session.flags ?? [];
-        const activeItems = (session.partyItems ?? []).map(i => i.toLowerCase());
+        const activeItems = (session.partyItems ?? []).map(i => this.normalizeName(i));
+        const revealed = new Set((session.revealedCompendiumEntryIds ?? []).map(entry => this.normalizeName(entry)));
 
         let entries: CompendiumEntry[] = [];
         try {
             const all = await this.plugin.listCompendiumEntries();
-            entries = all.filter(e => {
-                if (locName && e.triggeredAtLocations?.some(l => l.toLowerCase() === locName.toLowerCase())) return true;
-                if (e.triggeredByFlag && activeFlags.includes(e.triggeredByFlag)) return true;
-                if (e.triggeredByItem && activeItems.includes(e.triggeredByItem.toLowerCase())) return true;
-                return false;
+            entries = all.filter(entry => {
+                const triggeredByLocation = Boolean(
+                    locName && entry.triggeredAtLocations?.some(location => this.normalizeName(location) === this.normalizeName(locName))
+                );
+                const triggeredByFlag = Boolean(entry.triggeredByFlag && activeFlags.includes(entry.triggeredByFlag));
+                const triggeredByItem = Boolean(entry.triggeredByItem && activeItems.includes(this.normalizeName(entry.triggeredByItem)));
+                const explicitlyRevealed = revealed.has(this.normalizeName(entry.id ?? entry.name));
+                return triggeredByLocation || triggeredByFlag || triggeredByItem || explicitlyRevealed;
             });
-        } catch { return; }
+        } catch {
+            return;
+        }
 
         if (!entries.length) return;
 
@@ -1547,6 +2025,9 @@ export class CampaignView extends ItemView {
             const entryDiv = body.createDiv('storyteller-campaign-lore-entry');
             const nameRow = entryDiv.createDiv('storyteller-campaign-lore-name-row');
             nameRow.createSpan({ cls: 'storyteller-campaign-lore-name', text: entry.name });
+            if (revealed.has(this.normalizeName(entry.id ?? entry.name))) {
+                nameRow.createSpan({ cls: 'storyteller-campaign-lore-state', text: 'Revealed' });
+            }
             if (entry.entryType) {
                 nameRow.createSpan({ cls: 'storyteller-campaign-lore-type', text: entry.entryType });
             }
@@ -1555,7 +2036,7 @@ export class CampaignView extends ItemView {
             }
             if (entry.description) {
                 const preview = entry.description.length > 120
-                    ? entry.description.slice(0, 120) + '…'
+                    ? entry.description.slice(0, 120) + '...'
                     : entry.description;
                 entryDiv.createDiv({ cls: 'storyteller-campaign-lore-desc', text: preview });
             }
@@ -1565,8 +2046,51 @@ export class CampaignView extends ItemView {
         }
     }
 
-    // ── Helpers ───────────────────────────────────────────────────────────────
+    private renderGroupStandingsSidebar(sidebar: HTMLElement, session: CampaignSession): void {
+        const standings = (session.groupStandings ?? []).slice();
+        if (!standings.length) return;
 
+        const groupIndex = new Map(this.plugin.getGroups().map(group => [group.id, group] as const));
+        standings.sort((left, right) => {
+            const leftName = groupIndex.get(left.groupId ?? '')?.name ?? left.groupName ?? '';
+            const rightName = groupIndex.get(right.groupId ?? '')?.name ?? right.groupName ?? '';
+            return leftName.localeCompare(rightName);
+        });
+
+        const sec = sidebar.createDiv('storyteller-campaign-sidebar-section');
+        const hdr = sec.createDiv('storyteller-campaign-sidebar-hdr');
+        setIcon(hdr.createSpan(), 'shield');
+        hdr.createSpan({ text: ' Factions' });
+        const body = sec.createDiv('storyteller-campaign-sidebar-body');
+
+        for (const standing of standings) {
+            const group = standing.groupId ? groupIndex.get(standing.groupId) : undefined;
+            const name = group?.name ?? standing.groupName;
+            if (!name) continue;
+
+            const row = body.createDiv('storyteller-campaign-standing-row');
+            if (group?.color) {
+                row.style.setProperty('--storyteller-group-color', group.color);
+            }
+            row.createSpan({ cls: 'storyteller-campaign-standing-name', text: name });
+            row.createSpan({
+                cls: `storyteller-campaign-standing-value is-${standing.value > 0 ? 'positive' : standing.value < 0 ? 'negative' : 'neutral'}`,
+                text: `${standing.value > 0 ? '+' : ''}${standing.value}`,
+            });
+            row.createSpan({
+                cls: 'storyteller-campaign-standing-label',
+                text: this.describeGroupStanding(standing.value),
+            });
+        }
+    }
+
+    private describeGroupStanding(value: number): string {
+        if (value >= 4) return 'Allied';
+        if (value >= 2) return 'Friendly';
+        if (value <= -4) return 'Hostile';
+        if (value <= -2) return 'Wary';
+        return 'Neutral';
+    }
     private renderActorSelector(toolbar: HTMLElement, session: CampaignSession): void {
         const names = session.partyCharacterNames ?? [];
         if (!names.length) return;
@@ -1893,3 +2417,4 @@ export class CampaignView extends ItemView {
         await pending;
     }
 }
+

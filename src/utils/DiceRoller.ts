@@ -56,11 +56,12 @@ export function rollEncounterTable(table: EncounterTable): EncounterTableRow {
  */
 export function checkBranchConditions(
     branch: SceneBranch,
-    session: Pick<CampaignSession, 'partyCharacterNames' | 'partyItems' | 'flags' | 'partyState'>,
+    session: Pick<CampaignSession, 'partyCharacterNames' | 'partyItems' | 'flags' | 'partyState' | 'groupStandings' | 'revealedCompendiumEntryIds'>,
     /** Optional: the character whose stat to use for requires-stat-min (defaults to best in party). */
     characterState?: ({ characterName?: string } & Record<string, unknown>)
 ): { met: boolean; unmet: string[] } {
     const unmet: string[] = [];
+    const normalize = (value: string): string => value.trim().toLowerCase();
 
     if (branch.requiresItem) {
         const items = session.partyItems ?? [];
@@ -80,6 +81,33 @@ export function checkBranchConditions(
         const flags = session.flags ?? [];
         if (!flags.includes(branch.requiresFlag)) {
             unmet.push(`Flag not set: ${branch.requiresFlag}`);
+        }
+    }
+
+    if (branch.requiresCompendiumEntry || branch.requiresCompendiumEntryId) {
+        const revealed = (session.revealedCompendiumEntryIds ?? []).map(entry => normalize(entry));
+        const targetId = branch.requiresCompendiumEntryId ? normalize(branch.requiresCompendiumEntryId) : '';
+        const targetName = branch.requiresCompendiumEntry ? normalize(branch.requiresCompendiumEntry) : '';
+        const hasEntry = Boolean(
+            (targetId && revealed.includes(targetId)) ||
+            (targetName && revealed.includes(targetName))
+        );
+        if (!hasEntry) {
+            unmet.push(`Lore not discovered: ${branch.requiresCompendiumEntry ?? branch.requiresCompendiumEntryId}`);
+        }
+    }
+
+    if (branch.requiresGroupStanding || branch.requiresGroupStandingId) {
+        const standings = session.groupStandings ?? [];
+        const targetStanding = standings.find(entry =>
+            (branch.requiresGroupStandingId && entry.groupId === branch.requiresGroupStandingId) ||
+            (branch.requiresGroupStanding && entry.groupName && normalize(entry.groupName) === normalize(branch.requiresGroupStanding))
+        );
+        const currentValue = targetStanding?.value ?? 0;
+        const minStanding = branch.requiresGroupStandingMin ?? 1;
+        if (currentValue < minStanding) {
+            const groupLabel = branch.requiresGroupStanding ?? branch.requiresGroupStandingId ?? 'group';
+            unmet.push(`${groupLabel} standing ${currentValue} < ${minStanding}`);
         }
     }
 
@@ -111,6 +139,7 @@ export function applyBranchOutcomes(
     session: CampaignSession
 ): CampaignSession {
     const next = { ...session };
+    const normalize = (value: string): string => value.trim().toLowerCase();
 
     if (branch.grantsItem) {
         next.partyItems = [...(next.partyItems ?? []), branch.grantsItem];
@@ -136,6 +165,43 @@ export function applyBranchOutcomes(
         if (!flags.includes(branch.setsFlag)) {
             next.flags = [...flags, branch.setsFlag];
         }
+    }
+
+    if (branch.revealsCompendiumEntry || branch.revealsCompendiumEntryId) {
+        const ref = branch.revealsCompendiumEntryId ?? branch.revealsCompendiumEntry;
+        if (ref) {
+            const current = next.revealedCompendiumEntryIds ?? [];
+            if (!current.some(entry => normalize(entry) === normalize(ref))) {
+                next.revealedCompendiumEntryIds = [...current, ref];
+            }
+        }
+    }
+
+    if (branch.changesGroupStanding || branch.changesGroupStandingId) {
+        const groupRefId = branch.changesGroupStandingId;
+        const groupRefName = branch.changesGroupStanding;
+        const delta = branch.groupStandingDelta ?? 1;
+        const standings = [...(next.groupStandings ?? [])];
+        const existingIndex = standings.findIndex(entry =>
+            (groupRefId && entry.groupId === groupRefId) ||
+            (groupRefName && entry.groupName && normalize(entry.groupName) === normalize(groupRefName))
+        );
+        if (existingIndex >= 0) {
+            const existing = standings[existingIndex];
+            standings[existingIndex] = {
+                ...existing,
+                groupId: existing.groupId ?? groupRefId,
+                groupName: existing.groupName ?? groupRefName,
+                value: (existing.value ?? 0) + delta,
+            };
+        } else {
+            standings.push({
+                groupId: groupRefId,
+                groupName: groupRefName,
+                value: delta,
+            });
+        }
+        next.groupStandings = standings;
     }
 
     return next;

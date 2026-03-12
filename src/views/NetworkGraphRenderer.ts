@@ -32,11 +32,13 @@ export class NetworkGraphRenderer {
     private legendToggleButtonEl: HTMLElement | null = null; // Floating button to show legend
     private infoPanelExpanded = false; // Toggle for expanded/collapsed info panel
     private isModal: boolean; // Whether this renderer is in a modal context
+    private allowWheelZoom: boolean;
 
-    constructor(containerEl: HTMLElement, plugin: StorytellerSuitePlugin, isModal = false) {
+    constructor(containerEl: HTMLElement, plugin: StorytellerSuitePlugin, isModal = false, allowWheelZoom = true) {
         this.containerEl = containerEl;
         this.plugin = plugin;
         this.isModal = isModal;
+        this.allowWheelZoom = allowWheelZoom;
     }
 
     // Resolve CSS custom property to actual color value
@@ -350,8 +352,13 @@ export class NetworkGraphRenderer {
             style: this.getCytoscapeStyle(),
             layout: this.getLayoutOptions('cose'),
             minZoom: 0.2,
-            maxZoom: 4
+            maxZoom: 4,
+            userZoomingEnabled: this.allowWheelZoom
         });
+
+        if (!this.allowWheelZoom) {
+            this.cy.userZoomingEnabled(false);
+        }
 
         // Apply initial zoom adjustment after layout completes
         this.cy.one('layoutstop', () => {
@@ -1768,4 +1775,3 @@ export class NetworkGraphRenderer {
         this.pinnedNodes.clear();
     }
 }
-
