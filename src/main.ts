@@ -244,6 +244,8 @@ const FRONTMATTER_LINK_ONLY_SCALAR_FIELDS = new Set([
     relationshipsMigrated?: boolean;
     /** Internal: set after backfilling bidirectional links (v2.0) */
     bidirectionalLinksBackfilled?: boolean;
+    /** Internal: last plugin version that repaired stale location entityRefs */
+    staleEntityRefsPrunedVersion?: string;
     /** Network graph view zoom level (saved per session) */
     networkGraphZoom?: number;
     /** Network graph view pan position (saved per session) */
@@ -418,6 +420,7 @@ const FRONTMATTER_LINK_ONLY_SCALAR_FIELDS = new Set([
     customFieldsMode: 'flatten',
     relationshipsMigrated: false,
     bidirectionalLinksBackfilled: false,
+    staleEntityRefsPrunedVersion: '',
     timelineWatchProperty: 'timeline-date',
     timelineWatchTag: 'timeline',
     timelineForks: [],
@@ -1628,6 +1631,12 @@ export default class StorytellerSuitePlugin extends Plugin {
             if (!this.settings.bidirectionalLinksBackfilled) {
                 await this.backfillBidirectionalRelationships();
                 this.settings.bidirectionalLinksBackfilled = true;
+                await this.saveSettings();
+            }
+
+            if (this.settings.staleEntityRefsPrunedVersion !== this.manifest.version) {
+                await this.repairLocationEntityRefs();
+                this.settings.staleEntityRefsPrunedVersion = this.manifest.version;
                 await this.saveSettings();
             }
 
@@ -3465,13 +3474,25 @@ export default class StorytellerSuitePlugin extends Plugin {
             current = current ? `${current}/${seg}` : seg;
             const af = this.app.vault.getAbstractFileByPath(current);
             if (!af) {
+                // Older Obsidian builds can lag updating the metadata tree even when the folder
+                // already exists on disk. Check the adapter before attempting to create again.
+                if (await this.app.vault.adapter.exists(current)) {
+                    continue;
+                }
                 try {
                     await this.app.vault.createFolder(current);
                 } catch (error) {
-                    // Handle race condition: folder may have been created by another call
-                    // Check if folder now exists (created by concurrent call)
+                    const message = error instanceof Error ? error.message : String(error ?? '');
+
+                    // Handle race condition / stale folder index on older Obsidian versions:
+                    // the folder may already exist on disk even if getAbstractFileByPath has not
+                    // caught up yet.
                     const existingFolder = this.app.vault.getAbstractFileByPath(current);
-                    if (existingFolder instanceof TFolder) {
+                    if (
+                        existingFolder instanceof TFolder ||
+                        message.toLowerCase().includes('folder already exists') ||
+                        await this.app.vault.adapter.exists(current)
+                    ) {
                         // Folder was created by another call, continue
                         continue;
                     }
@@ -4117,27 +4138,29 @@ export default class StorytellerSuitePlugin extends Plugin {
 		if (file instanceof TFile) {
 			// Get entity ID before deletion for cleanup
 			let characterId: string | undefined;
+			let characterName: string | undefined;
 			try {
 				const character = await this.parseFile<Character>(file, { name: '' }, 'character');
 				if (character) {
 					characterId = character.id || character.name;
+					characterName = character.name;
 				}
 			} catch (e) {
 				console.warn('Could not parse character before deletion:', e);
 			}
-
-			await this.app.vault.trash(file, true);
 			
 			// Clean up references via EntitySyncService
 			if (characterId) {
 				try {
 					const { EntitySyncService } = await import('./services/EntitySyncService');
 					const syncService = new EntitySyncService(this);
-					await syncService.handleEntityDeletion('character', characterId);
+					await syncService.handleEntityDeletion('character', characterId, characterName);
 				} catch (error) {
 					console.error('[deleteCharacter] Error cleaning up references:', error);
 				}
 			}
+
+			await this.app.vault.trash(file, true);
 			
 			new Notice(`Character file "${file.basename}" moved to trash.`);
 			this.app.metadataCache.trigger("dataview:refresh-views");
@@ -4333,27 +4356,29 @@ export default class StorytellerSuitePlugin extends Plugin {
 		if (file instanceof TFile) {
 			// Get entity ID before deletion for cleanup
 			let locationId: string | undefined;
+			let locationName: string | undefined;
 			try {
 				const location = await this.parseFile<Location>(file, { name: '' }, 'location');
 				if (location) {
 					locationId = location.id || location.name;
+					locationName = location.name;
 				}
 			} catch (e) {
 				console.warn('Could not parse location before deletion:', e);
 			}
-
-			await this.app.vault.trash(file, true);
 			
 			// Clean up references via EntitySyncService
 			if (locationId) {
 				try {
 					const { EntitySyncService } = await import('./services/EntitySyncService');
 					const syncService = new EntitySyncService(this);
-					await syncService.handleEntityDeletion('location', locationId);
+					await syncService.handleEntityDeletion('location', locationId, locationName);
 				} catch (error) {
 					console.error('[deleteLocation] Error cleaning up references:', error);
 				}
 			}
+
+			await this.app.vault.trash(file, true);
 			
 			new Notice(`Location file "${file.basename}" moved to trash.`);
 			this.app.metadataCache.trigger("dataview:refresh-views");
@@ -5275,27 +5300,29 @@ export default class StorytellerSuitePlugin extends Plugin {
 		if (file instanceof TFile) {
 			// Get entity ID before deletion for cleanup
 			let eventId: string | undefined;
+			let eventName: string | undefined;
 			try {
 				const event = await this.parseFile<Event>(file, { name: '' }, 'event');
 				if (event) {
 					eventId = event.id || event.name;
+					eventName = event.name;
 				}
 			} catch (e) {
 				console.warn('Could not parse event before deletion:', e);
 			}
-
-			await this.app.vault.trash(file, true);
 			
 			// Clean up references via EntitySyncService
 			if (eventId) {
 				try {
 					const { EntitySyncService } = await import('./services/EntitySyncService');
 					const syncService = new EntitySyncService(this);
-					await syncService.handleEntityDeletion('event', eventId);
+					await syncService.handleEntityDeletion('event', eventId, eventName);
 				} catch (error) {
 					console.error('[deleteEvent] Error cleaning up references:', error);
 				}
 			}
+
+			await this.app.vault.trash(file, true);
 			
 			new Notice(`Event file "${file.basename}" moved to trash.`);
 			this.app.metadataCache.trigger("dataview:refresh-views");
@@ -5470,27 +5497,29 @@ export default class StorytellerSuitePlugin extends Plugin {
 		if (file instanceof TFile) {
 			// Get entity ID before deletion for cleanup
 			let itemId: string | undefined;
+			let itemName: string | undefined;
 			try {
 				const item = await this.parseFile<PlotItem>(file, { name: '' }, 'item');
 				if (item) {
 					itemId = item.id || item.name;
+					itemName = item.name;
 				}
 			} catch (e) {
 				console.warn('Could not parse item before deletion:', e);
 			}
-
-			await this.app.vault.trash(file, true);
 			
 			// Clean up references via EntitySyncService
 			if (itemId) {
 				try {
 					const { EntitySyncService } = await import('./services/EntitySyncService');
 					const syncService = new EntitySyncService(this);
-					await syncService.handleEntityDeletion('item', itemId);
+					await syncService.handleEntityDeletion('item', itemId, itemName);
 				} catch (error) {
 					console.error('[deletePlotItem] Error cleaning up references:', error);
 				}
 			}
+
+			await this.app.vault.trash(file, true);
 			
 			new Notice(`Item file "${file.basename}" moved to trash.`);
 			this.app.metadataCache.trigger("dataview:refresh-views");
@@ -6148,6 +6177,7 @@ export default class StorytellerSuitePlugin extends Plugin {
         let existingSections: Record<string, string> = {};
         let originalFrontmatter: Record<string, unknown> | undefined;
         let oldSceneChapterId: string | undefined;
+        let oldScene: Scene | undefined;
         if (existingFile && existingFile instanceof TFile) {
             const fileCache = this.app.metadataCache.getFileCache(existingFile);
             originalFrontmatter = fileCache?.frontmatter as Record<string, unknown> | undefined;
@@ -6156,6 +6186,9 @@ export default class StorytellerSuitePlugin extends Plugin {
             try {
                 const existingContent = await this.app.vault.cachedRead(existingFile);
                 existingSections = parseSectionsFromMarkdown(existingContent);
+                if (!(scene as any)._skipSync) {
+                    oldScene = (await this.parseFile<Scene>(existingFile, { name: '' }, 'scene')) || undefined;
+                }
             } catch (e) {
                 console.warn('Error reading existing scene file', e);
             }
@@ -6219,8 +6252,9 @@ export default class StorytellerSuitePlugin extends Plugin {
         if (!(scene as any)._skipSync) {
             try {
                 const newCid = scene.chapterId;
-                if (oldSceneChapterId && oldSceneChapterId !== newCid) {
-                    await this._removeSceneFromChapter(scene.name, oldSceneChapterId);
+                const oldSceneName = oldScene?.name;
+                if (oldSceneChapterId && (oldSceneChapterId !== newCid || (oldSceneName && oldSceneName !== scene.name))) {
+                    await this._removeSceneFromChapter(oldSceneName || scene.name, oldSceneChapterId);
                 }
                 if (newCid) {
                     await this._addSceneToChapter(scene.name, newCid);
@@ -6235,15 +6269,6 @@ export default class StorytellerSuitePlugin extends Plugin {
             try {
                 const { EntitySyncService } = await import('./services/EntitySyncService');
                 const syncService = new EntitySyncService(this);
-                // Get old scene for comparison if file exists
-                let oldScene: Scene | undefined;
-                if (existingFile && existingFile instanceof TFile) {
-                    try {
-                        oldScene = (await this.parseFile<Scene>(existingFile, { name: '' }, 'scene')) || undefined;
-                    } catch (e) {
-                        // Ignore parse errors for old scene
-                    }
-                }
                 await syncService.syncEntity('scene', scene, oldScene);
             } catch (error) {
                 console.error('[saveScene] Error syncing relationships:', error);
@@ -6304,15 +6329,27 @@ export default class StorytellerSuitePlugin extends Plugin {
     async deleteScene(filePath: string): Promise<void> {
         const file = this.app.vault.getAbstractFileByPath(normalizePath(filePath));
         if (file instanceof TFile) {
+            let sceneToDelete: Scene | null = null;
             // Remove from parent chapter's linkedScenes before trashing
             try {
-                const scene = await this.parseFile<Scene>(file, { name: '' }, 'scene');
-                if (scene?.chapterId) {
-                    await this._removeSceneFromChapter(scene.name, scene.chapterId);
+                sceneToDelete = await this.parseFile<Scene>(file, { name: '' }, 'scene');
+                if (sceneToDelete?.chapterId) {
+                    await this._removeSceneFromChapter(sceneToDelete.name, sceneToDelete.chapterId);
                 }
             } catch (e) {
                 console.warn('[deleteScene] Could not sync linkedScenes before delete:', e);
             }
+
+            if (sceneToDelete?.id || sceneToDelete?.name) {
+                try {
+                    const { EntitySyncService } = await import('./services/EntitySyncService');
+                    const syncService = new EntitySyncService(this);
+                    await syncService.handleEntityDeletion('scene', sceneToDelete.id || sceneToDelete.name);
+                } catch (e) {
+                    console.warn('[deleteScene] Could not remove scene relationship references before delete:', e);
+                }
+            }
+
             await this.app.vault.trash(file, true);
             new Notice(`Scene file "${file.basename}" moved to trash.`);
             this.app.metadataCache.trigger('dataview:refresh-views');
@@ -8261,7 +8298,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 	 * Merges with defaults for missing settings (backward compatibility)
 	 * Adds migration logic for multi-story support
 	 */
-	private isRelevantFile(filePath: string): boolean {
+    private isRelevantFile(filePath: string): boolean {
         try {
             const charFolder = this.getEntityFolder('character');
             const locFolder = this.getEntityFolder('location');
@@ -8280,6 +8317,104 @@ export default class StorytellerSuitePlugin extends Plugin {
                 filePath.startsWith(this.settings.galleryUploadFolder + '/');
         } catch {
             return false;
+        }
+    }
+    private normalizeEntityRefLookupValue(value: unknown): string {
+        if (typeof value !== 'string') return '';
+        return value.replace(/^\[\[|\]\]$/g, '').trim().toLowerCase();
+    }
+
+    private normalizeEntityRefType(value: unknown): string {
+        const raw = this.normalizeEntityRefLookupValue(value);
+        if (raw === 'magicsystem') return 'magicsystem';
+        if (raw === 'compendiumentry') return 'compendiumentry';
+        return raw;
+    }
+
+    private async buildEntityRefLookup(): Promise<Map<string, Map<string, { id?: string; name?: string }>>> {
+        const lookup = new Map<string, Map<string, { id?: string; name?: string }>>();
+        const register = (type: string, entities: Array<{ id?: string; name?: string }>) => {
+            const bucket = new Map<string, { id?: string; name?: string }>();
+            for (const entity of entities) {
+                const idKey = this.normalizeEntityRefLookupValue(entity.id);
+                const nameKey = this.normalizeEntityRefLookupValue(entity.name);
+                if (idKey) bucket.set(idKey, entity);
+                if (nameKey) bucket.set(nameKey, entity);
+            }
+            lookup.set(type, bucket);
+        };
+
+        register('character', await this.listCharacters());
+        register('location', await this.listLocations());
+        register('event', await this.listEvents());
+        register('item', await this.listPlotItems());
+        register('scene', await this.listScenes());
+        register('culture', await this.listCultures());
+        register('economy', await this.listEconomies());
+        register('group', this.getGroups());
+        register('reference', await this.listReferences());
+        register('magicsystem', await this.listMagicSystems());
+        register('compendiumentry', await this.listCompendiumEntries());
+
+        return lookup;
+    }
+
+    async repairLocationEntityRefs(): Promise<number> {
+        try {
+            const locations = await this.listLocations();
+            if (locations.length === 0) return 0;
+
+            const lookup = await this.buildEntityRefLookup();
+            let updatedCount = 0;
+
+            for (const location of locations) {
+                const refs = Array.isArray(location.entityRefs) ? location.entityRefs : [];
+                if (refs.length === 0) continue;
+
+                let changed = false;
+                const seenRefs = new Set<string>();
+                const repairedRefs = refs.flatMap((ref: any) => {
+                    const typeKey = this.normalizeEntityRefType(ref?.entityType);
+                    const bucket = lookup.get(typeKey);
+                    if (!bucket) return [ref];
+
+                    const resolved = bucket.get(this.normalizeEntityRefLookupValue(ref?.entityId))
+                        || bucket.get(this.normalizeEntityRefLookupValue(ref?.entityName));
+
+                    if (!resolved) {
+                        changed = true;
+                        return [];
+                    }
+
+                    const nextId = resolved.id || ref.entityId || resolved.name;
+                    const nextName = resolved.name || ref.entityName || ref.entityId;
+                    const dedupeKey = `${typeKey}:${this.normalizeEntityRefLookupValue(nextId || nextName)}`;
+
+                    if (seenRefs.has(dedupeKey)) {
+                        changed = true;
+                        return [];
+                    }
+                    seenRefs.add(dedupeKey);
+
+                    if (ref.entityId !== nextId || ref.entityName !== nextName) {
+                        changed = true;
+                        return [{ ...ref, entityId: nextId, entityName: nextName }];
+                    }
+
+                    return [ref];
+                });
+
+                if (changed) {
+                    location.entityRefs = repairedRefs as any;
+                    await this.saveLocation(location);
+                    updatedCount += 1;
+                }
+            }
+
+            return updatedCount;
+        } catch (error) {
+            console.error('[repairLocationEntityRefs] Error repairing location entityRefs:', error);
+            return 0;
         }
     }
 	async loadSettings() {
@@ -8448,6 +8583,10 @@ export default class StorytellerSuitePlugin extends Plugin {
         }
         if (!('lastSeenReleaseNotesVersion' in this.settings) || typeof this.settings.lastSeenReleaseNotesVersion !== 'string') {
             this.settings.lastSeenReleaseNotesVersion = isFreshInstall ? this.manifest.version : '';
+            settingsUpdated = true;
+        }
+        if (!('staleEntityRefsPrunedVersion' in this.settings) || typeof this.settings.staleEntityRefsPrunedVersion !== 'string') {
+            this.settings.staleEntityRefsPrunedVersion = '';
             settingsUpdated = true;
         }
         // Ensure new optional fields exist on groups for backward compatibility
