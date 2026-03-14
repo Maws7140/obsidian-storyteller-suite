@@ -6,7 +6,7 @@
 	"scripts": {
 		"dev": "node esbuild.config.mjs",
 		"build": "tsc -p tsconfig.json --noEmit && node esbuild.config.mjs production",
-		"postinstall": "node fix-expect-webdriverio.js 2>/dev/null || true",
+		"postinstall": "node fix-expect-webdriverio.js",
 		"test": "vitest run --reporter=default",
 		"test:watch": "vitest",
 		"test:e2e": "cross-env PATH=\"%PATH%;C:\\Program Files\\7-Zip\" wdio run wdio.conf.mjs",
