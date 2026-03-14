@@ -625,6 +625,11 @@ export class EntitySyncService {
                     // Continue with other relationships even if one fails
                 }
             }
+            const oldName = this.normalizeCompareValue(oldEntity?.name);
+            const newName = this.normalizeCompareValue(newEntity?.name);
+            if (oldName && newName && oldName !== newName) {
+                await this.propagateSourceRename(entityType, newEntity, oldEntity);
+            }
         } catch (error) {
             console.error(`[EntitySyncService] Error syncing ${entityType} "${entityId}":`, error);
             // Don't throw - sync failures shouldn't prevent saves
@@ -1289,16 +1294,27 @@ export class EntitySyncService {
                 const entityId = (sourceEntity as any).id || (sourceEntity as any).name;
                 
                 // Check if already exists
-                const exists = entityRefs.some((ref: EntityRef) => ref.entityId === entityId);
-                if (!exists && mapping.transform) {
-                    const newRef = mapping.transform(newValue, sourceEntity);
-                    entityRefs.push(newRef);
-                    targetEntity.entityRefs = entityRefs;
-                    await this.saveEntity(mapping.targetType, targetEntity);
-                    
-                    // Propagate entityRefs up the location hierarchy
-                    if (mapping.targetType === 'location') {
-                        await this.propagateEntityRefToParents(targetEntity, newRef);
+                const existingRef = entityRefs.find((ref: EntityRef) => ref.entityId === entityId);
+                if (mapping.transform) {
+                    const nextRef = mapping.transform(newValue, sourceEntity);
+                    if (!existingRef) {
+                        entityRefs.push(nextRef);
+                        targetEntity.entityRefs = entityRefs;
+                        await this.saveEntity(mapping.targetType, targetEntity);
+                        
+                        // Propagate entityRefs up the location hierarchy
+                        if (mapping.targetType === 'location') {
+                            await this.propagateEntityRefToParents(targetEntity, nextRef);
+                        }
+                    } else {
+                        const nameChanged = existingRef.entityName !== nextRef.entityName;
+                        const relChanged = existingRef.relationship !== nextRef.relationship;
+                        if (nameChanged || relChanged) {
+                            existingRef.entityName = nextRef.entityName;
+                            existingRef.relationship = nextRef.relationship;
+                            targetEntity.entityRefs = entityRefs;
+                            await this.saveEntity(mapping.targetType, targetEntity);
+                        }
                     }
                 }
             } else if (Array.isArray((targetEntity as any)[mapping.targetField])) {
@@ -1510,20 +1526,28 @@ export class EntitySyncService {
      * Handle entity deletion - remove all references
      */
     async handleEntityDeletion(
-        entityType: 'character' | 'location' | 'event' | 'item' | 'culture' | 'economy' | 'magicsystem' | 'compendiumentry',
-        entityId: string
+        entityType: 'character' | 'location' | 'event' | 'item' | 'scene' | 'culture' | 'economy' | 'magicsystem' | 'compendiumentry',
+        entityId: string,
+        knownDeletedName?: string
     ): Promise<void> {
         if (!entityId) return;
         
         try {
+            const deletedEntity = await this.getEntity(entityType, entityId);
+            const deletedName = ((deletedEntity as any)?.name as string | undefined) ?? knownDeletedName;
+
             // Find all mappings where this entity type is a target or source
-            const relevantMappings = this.relationshipMappings.filter(
-                m => m.targetType === entityType || 
-                     (m.sourceType === entityType && m.bidirectional)
+            const inboundMappings = this.relationshipMappings.filter(m => m.targetType === entityType);
+            const outboundMappings = this.relationshipMappings.filter(
+                m => m.sourceType === entityType && m.bidirectional
             );
 
-            for (const mapping of relevantMappings) {
+            for (const mapping of inboundMappings) {
                 await this.removeEntityReferences(mapping, entityType, entityId);
+            }
+
+            for (const mapping of outboundMappings) {
+                await this.removeTargetReferences(mapping, entityId, deletedName);
             }
             
             // Also handle character-to-character relationships (self-referential)
@@ -1587,7 +1611,7 @@ export class EntitySyncService {
      */
     private async removeEntityReferences(
         mapping: RelationshipMapping,
-        deletedType: 'character' | 'location' | 'event' | 'item' | 'culture' | 'economy' | 'magicsystem' | 'compendiumentry',
+        deletedType: 'character' | 'location' | 'event' | 'item' | 'scene' | 'culture' | 'economy' | 'magicsystem' | 'compendiumentry',
         deletedId: string
     ): Promise<void> {
         try {
@@ -1607,6 +1631,9 @@ export class EntitySyncService {
                 case 'item':
                     entities = await this.plugin.listPlotItems();
                     break;
+                case 'scene':
+                    entities = await this.plugin.listScenes();
+                    break;
                 case 'culture':
                     entities = await this.plugin.listCultures();
                     break;
@@ -1615,6 +1642,12 @@ export class EntitySyncService {
                     break;
                 case 'magicsystem':
                     entities = await this.plugin.listMagicSystems();
+                    break;
+                case 'chapter':
+                    entities = await this.plugin.listChapters();
+                    break;
+                case 'compendiumentry':
+                    entities = await this.plugin.listCompendiumEntries();
                     break;
             }
 
@@ -1677,6 +1710,223 @@ export class EntitySyncService {
             }
         } catch (error) {
             console.error(`[EntitySyncService] Error removing entity references:`, error);
+        }
+    }
+
+    private normalizeCompareValue(value: unknown): string {
+        if (typeof value !== 'string') return '';
+        return value.replace(/^\[\[|\]\]$/g, '').trim().toLowerCase();
+    }
+
+    private async listEntitiesByType(
+        entityType: 'character' | 'location' | 'event' | 'item' | 'scene' | 'culture' | 'economy' | 'magicsystem' | 'chapter' | 'compendiumentry'
+    ): Promise<any[]> {
+        switch (entityType) {
+            case 'character':
+                return await this.plugin.listCharacters();
+            case 'location':
+                return await this.plugin.listLocations();
+            case 'event':
+                return await this.plugin.listEvents();
+            case 'item':
+                return await this.plugin.listPlotItems();
+            case 'scene':
+                return await this.plugin.listScenes();
+            case 'culture':
+                return await this.plugin.listCultures();
+            case 'economy':
+                return await this.plugin.listEconomies();
+            case 'magicsystem':
+                return await this.plugin.listMagicSystems();
+            case 'chapter':
+                return await this.plugin.listChapters();
+            case 'compendiumentry':
+                return await this.plugin.listCompendiumEntries();
+            default:
+                return [];
+        }
+    }
+
+    private async propagateSourceRename(
+        entityType: 'character' | 'location' | 'event' | 'item' | 'scene' | 'culture' | 'economy' | 'magicsystem' | 'chapter' | 'compendiumentry',
+        newEntity: any,
+        oldEntity: any
+    ): Promise<void> {
+        const mappings = this.relationshipMappings.filter(
+            (mapping) => mapping.sourceType === entityType && mapping.bidirectional
+        );
+        if (mappings.length === 0) return;
+
+        const currentId = this.normalizeCompareValue(newEntity?.id || newEntity?.name);
+        const previousId = this.normalizeCompareValue(oldEntity?.id || oldEntity?.name);
+        const previousName = this.normalizeCompareValue(oldEntity?.name);
+
+        for (const mapping of mappings) {
+            const targets = await this.listEntitiesByType(mapping.targetType);
+            const replacement = mapping.transform
+                ? mapping.transform(undefined, newEntity)
+                : (newEntity?.name || newEntity?.id);
+
+            for (const targetEntity of targets) {
+                let needsUpdate = false;
+
+                if (mapping.targetField === 'entityRefs') {
+                    const refs = (targetEntity.entityRefs || []) as EntityRef[];
+                    for (const ref of refs) {
+                        const refId = this.normalizeCompareValue(ref.entityId);
+                        const refName = this.normalizeCompareValue(ref.entityName);
+                        if (
+                            refId === currentId ||
+                            (previousId && refId === previousId) ||
+                            (previousName && refName === previousName)
+                        ) {
+                            if (replacement && typeof replacement === 'object') {
+                                const nextId = (replacement as any).entityId ?? ref.entityId;
+                                const nextName = (replacement as any).entityName ?? ref.entityName;
+                                const nextRelationship = (replacement as any).relationship ?? ref.relationship;
+                                if (ref.entityId !== nextId || ref.entityName !== nextName || ref.relationship !== nextRelationship) {
+                                    ref.entityId = nextId;
+                                    ref.entityName = nextName;
+                                    ref.relationship = nextRelationship;
+                                    needsUpdate = true;
+                                }
+                            } else if (typeof replacement === 'string' && ref.entityName !== replacement) {
+                                ref.entityName = replacement;
+                                needsUpdate = true;
+                            }
+                        }
+                    }
+                } else if (Array.isArray((targetEntity as any)[mapping.targetField]) && typeof replacement === 'string' && replacement) {
+                    const original = (targetEntity as any)[mapping.targetField] as any[];
+                    let changed = false;
+                    const updated = original.map((value: any) => {
+                        if (typeof value !== 'string') return value;
+                        const normalized = this.normalizeCompareValue(value);
+                        if (
+                            normalized === currentId ||
+                            (previousId && normalized === previousId) ||
+                            (previousName && normalized === previousName)
+                        ) {
+                            if (value !== replacement) {
+                                changed = true;
+                                return replacement;
+                            }
+                        }
+                        return value;
+                    });
+                    if (changed) {
+                        (targetEntity as any)[mapping.targetField] = updated;
+                        needsUpdate = true;
+                    }
+                } else if (typeof (targetEntity as any)[mapping.targetField] === 'string' && typeof replacement === 'string' && replacement) {
+                    const currentValue = (targetEntity as any)[mapping.targetField] as string;
+                    const normalized = this.normalizeCompareValue(currentValue);
+                    if (
+                        normalized === currentId ||
+                        (previousId && normalized === previousId) ||
+                        (previousName && normalized === previousName)
+                    ) {
+                        if (currentValue !== replacement) {
+                            (targetEntity as any)[mapping.targetField] = replacement;
+                            needsUpdate = true;
+                        }
+                    }
+                }
+
+                if (needsUpdate) {
+                    await this.saveEntity(mapping.targetType, targetEntity);
+                }
+            }
+        }
+    }
+
+    private async removeTargetReferences(
+        mapping: RelationshipMapping,
+        deletedId: string,
+        deletedName?: string
+    ): Promise<void> {
+        try {
+            let targets: any[] = [];
+
+            switch (mapping.targetType) {
+                case 'character':
+                    targets = await this.plugin.listCharacters();
+                    break;
+                case 'location':
+                    targets = await this.plugin.listLocations();
+                    break;
+                case 'event':
+                    targets = await this.plugin.listEvents();
+                    break;
+                case 'item':
+                    targets = await this.plugin.listPlotItems();
+                    break;
+                case 'scene':
+                    targets = await this.plugin.listScenes();
+                    break;
+                case 'culture':
+                    targets = await this.plugin.listCultures();
+                    break;
+                case 'economy':
+                    targets = await this.plugin.listEconomies();
+                    break;
+                case 'magicsystem':
+                    targets = await this.plugin.listMagicSystems();
+                    break;
+                case 'chapter':
+                    targets = await this.plugin.listChapters();
+                    break;
+                case 'compendiumentry':
+                    targets = await this.plugin.listCompendiumEntries();
+                    break;
+            }
+
+            const deletedIdKey = this.normalizeCompareValue(deletedId);
+            const deletedNameKey = this.normalizeCompareValue(deletedName);
+
+            for (const targetEntity of targets) {
+                let needsUpdate = false;
+
+                if (mapping.targetField === 'entityRefs') {
+                    const entityRefs = (targetEntity.entityRefs || []) as EntityRef[];
+                    const updatedRefs = entityRefs.filter((ref: EntityRef) => {
+                        const refId = this.normalizeCompareValue(ref.entityId);
+                        const refName = this.normalizeCompareValue(ref.entityName);
+                        return refId !== deletedIdKey && (!deletedNameKey || refName !== deletedNameKey);
+                    });
+                    if (updatedRefs.length !== entityRefs.length) {
+                        targetEntity.entityRefs = updatedRefs;
+                        needsUpdate = true;
+                    }
+                } else if (Array.isArray((targetEntity as any)[mapping.targetField])) {
+                    const original = (targetEntity as any)[mapping.targetField] as any[];
+                    const updated = original.filter((value: any) => {
+                        if (typeof value === 'string') {
+                            const normalized = this.normalizeCompareValue(value);
+                            return normalized !== deletedIdKey && (!deletedNameKey || normalized !== deletedNameKey);
+                        }
+                        return true;
+                    });
+                    if (updated.length !== original.length) {
+                        (targetEntity as any)[mapping.targetField] = updated;
+                        needsUpdate = true;
+                    }
+                } else {
+                    const value = (targetEntity as any)[mapping.targetField];
+                    const normalized = this.normalizeCompareValue(value);
+                    if (normalized === deletedIdKey || (deletedNameKey && normalized === deletedNameKey)) {
+                        (targetEntity as any)[mapping.targetField] = undefined;
+                        needsUpdate = true;
+                    }
+                }
+
+                if (needsUpdate) {
+                    await this.saveEntity(mapping.targetType, targetEntity);
+                }
+            }
+
+        } catch (error) {
+            console.error(`[EntitySyncService] Error removing target references:`, error);
         }
     }
 }
