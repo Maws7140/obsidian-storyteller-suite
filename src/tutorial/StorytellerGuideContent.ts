@@ -134,16 +134,16 @@ export function getWhatsNewGuide(version: string): StorytellerGuideDocument {
     return {
         title: `What is new in ${version}`,
         introHtml: `
-            <p>This update adds major new feature areas alongside a broad quality pass across timeline, maps, entity syncing, and writing workflows.</p>
+            <p>This release is a real feature update, not just a cleanup pass. The biggest changes are the new campaign and DnD workflow, new character sheet presets, the rebuilt timeline and Gantt experience, and a stronger map-board flow.</p>
         `,
         sections: [
             {
                 title: 'Timeline and Gantt redesign',
                 bodyHtml: `
                     <ul>
-                        <li>Cleaner Timeline and Gantt presentation with better scroll behavior and unified styling.</li>
-                        <li>Dependency arrows, grouped lanes, progress bars, milestone filtering, and rename-safe dependency tracking.</li>
-                        <li>Improved grouped rendering and better behavior for larger timelines.</li>
+                        <li>Timeline and Gantt got a broad visual and interaction pass so they read better and behave better under heavier planning setups.</li>
+                        <li>Dependency arrows, grouped lanes, progress bars, milestone filtering, and safer dependency tracking all landed in the redesign.</li>
+                        <li>Scroll behavior, grouped rendering, and larger-event handling are much cleaner than before.</li>
                     </ul>
                 `
             },
@@ -152,8 +152,9 @@ export function getWhatsNewGuide(version: string): StorytellerGuideDocument {
                 bodyHtml: `
                     <ul>
                         <li>Campaign play is now a first-class feature area with sessions, party state, inventory, conditions, HP tracking, flags, revealed lore, and faction standing.</li>
-                        <li>Scenes can drive tabletop-style play through branches, encounter blocks, item requirements, lore gates, and faction gates.</li>
-                        <li>Campaign commands now cover opening sessions, resuming sessions, logging play, and starting directly from the current scene.</li>
+                        <li>Scenes can drive tabletop-style play through branches, encounter blocks, item requirements, compendium reveals, and faction gates.</li>
+                        <li>Items now support richer campaign effects like HP changes, conditions, lore reveals, scene travel, and faction-standing changes.</li>
+                        <li>Campaign commands now cover opening sessions, resuming sessions, logging play, opening the active session note, and starting directly from the current scene.</li>
                     </ul>
                 `
             },
@@ -161,19 +162,19 @@ export function getWhatsNewGuide(version: string): StorytellerGuideDocument {
                 title: 'Map boards and SVG support',
                 bodyHtml: `
                     <ul>
-                        <li>Campaign boards now tie image maps into live play.</li>
-                        <li>Board pickups persist correctly across sessions.</li>
-                        <li>Map marker interaction is more reliable on dense boards.</li>
-                        <li>SVG maps now support direct overlay mode and rasterized tiled mode.</li>
+                        <li>Image maps now pull more weight in live play through campaign boards, location inspection, item pickup, and scene travel.</li>
+                        <li>Board pickups persist correctly across sessions, and dense marker interaction is more reliable than before.</li>
+                        <li>SVG maps now support direct overlay mode for lighter files and rasterized tiled mode for larger boards.</li>
                     </ul>
                 `
             },
             {
-                title: 'Compile workflows and writing tools',
+                title: 'Writing workflows',
                 bodyHtml: `
                     <ul>
                         <li>Saved workflows, custom compile steps, and better draft workflow selection.</li>
                         <li>Writing and compile flows are more flexible for draft-based output and custom manuscript pipelines.</li>
+                        <li>Books, chapters, scenes, and draft order all fit together more cleanly in the current writing flow.</li>
                     </ul>
                 `
             },
@@ -183,7 +184,7 @@ export function getWhatsNewGuide(version: string): StorytellerGuideDocument {
                     <ul>
                         <li>Group notes, wiki-link friendly properties, and better sync between notes and plugin state.</li>
                         <li>Shared custom-field handling across entity modals.</li>
-                        <li>Legacy and newer note patterns are handled more cleanly.</li>
+                        <li>Entity rename and cleanup behavior is more reliable across linked notes, maps, and reverse refs.</li>
                     </ul>
                 `
             },
@@ -193,15 +194,17 @@ export function getWhatsNewGuide(version: string): StorytellerGuideDocument {
                     <ul>
                         <li>Character sheets now have a stronger feature set with new DnD-themed presets and note-native markdown or callout layouts.</li>
                         <li>You can choose between styled showcase sheets and lighter presets that fit normal Obsidian notes better.</li>
+                        <li>This includes a more tabletop-facing preset direction instead of only generic sheet output.</li>
                     </ul>
                 `
             },
             {
-                title: 'Gallery improvements',
+                title: 'Gallery and onboarding',
                 bodyHtml: `
                     <ul>
                         <li>Multi-image upload support in gallery flows.</li>
-                        <li>Gallery folder sync is stricter about discovering managed images.</li>
+                        <li>Gallery folder sync is stricter about discovering managed images and nested managed folders.</li>
+                        <li>The plugin now includes a proper first-run guide and an in-app update-highlights popup.</li>
                     </ul>
                 `
             }
