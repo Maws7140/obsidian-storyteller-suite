@@ -1,6 +1,9 @@
 name: Release
 
 on:
+  push:
+    tags:
+      - '*.*.*'
   workflow_dispatch:
     inputs:
       version:
@@ -33,12 +36,25 @@ jobs:
           node-version: '18.x'
           cache: 'npm'
 
+      - name: Resolve release metadata
+        id: release_meta
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ inputs.version }}"
+          else
+            VERSION="${GITHUB_REF_NAME}"
+          fi
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
       - name: Install dependencies
         run: npm ci
 
       - name: Update version files
+        if: github.event_name == 'workflow_dispatch'
         run: |
-          VERSION="${{ inputs.version }}"
+          VERSION="${{ steps.release_meta.outputs.version }}"
           
           # Read current minAppVersion from manifest.json
           CURRENT_MIN_APP=$(node -e "const m=require('./manifest.json'); console.log(m.minAppVersion)")
@@ -119,34 +135,35 @@ jobs:
           if [ -f "styles.css" ]; then
             cp styles.css ${{ env.PLUGIN_NAME }}/
           fi
-          zip -r ${{ env.PLUGIN_NAME }}-${{ inputs.version }}.zip ${{ env.PLUGIN_NAME }}/
-          ls -lh ${{ env.PLUGIN_NAME }}-${{ inputs.version }}.zip
+          zip -r ${{ env.PLUGIN_NAME }}-${{ steps.release_meta.outputs.version }}.zip ${{ env.PLUGIN_NAME }}/
+          ls -lh ${{ env.PLUGIN_NAME }}-${{ steps.release_meta.outputs.version }}.zip
 
       - name: Commit and tag version changes
+        if: github.event_name == 'workflow_dispatch'
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
           git add package.json manifest.json versions.json CHANGELOG.md
-          git commit -m "chore: bump version to ${{ inputs.version }}" || exit 0
+          git commit -m "chore: bump version to ${{ steps.release_meta.outputs.version }}" || exit 0
           
           # Create and push tag
-          git tag -a "${{ inputs.version }}" -m "Release ${{ inputs.version }}"
+          git tag -a "${{ steps.release_meta.outputs.version }}" -m "Release ${{ steps.release_meta.outputs.version }}"
           git push origin HEAD || true
-          git push origin "${{ inputs.version }}"
+          git push origin "${{ steps.release_meta.outputs.version }}"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: ${{ inputs.version }}
-          name: Release ${{ inputs.version }}
+          tag_name: ${{ steps.release_meta.outputs.version }}
+          name: Release ${{ steps.release_meta.outputs.version }}
           body: |
-            ## Changes in ${{ inputs.version }}
+            ## Changes in ${{ steps.release_meta.outputs.version }}
             
             ${{ inputs.release_notes || 'See CHANGELOG.md for details.' }}
             
             ## Installation
             
-            1. Download the `${{ env.PLUGIN_NAME }}-${{ inputs.version }}.zip` file
+            1. Download the `${{ env.PLUGIN_NAME }}-${{ steps.release_meta.outputs.version }}.zip` file
             2. Extract it to your Obsidian vault's `.obsidian/plugins/${{ env.PLUGIN_NAME }}/` folder
             3. Restart Obsidian or reload the plugin
             
@@ -156,7 +173,7 @@ jobs:
             - `manifest.json` - Plugin manifest
             - `styles.css` - Plugin styles (if present)
           files: |
-            ${{ env.PLUGIN_NAME }}-${{ inputs.version }}.zip
+            ${{ env.PLUGIN_NAME }}-${{ steps.release_meta.outputs.version }}.zip
             main.js
             manifest.json
             styles.css
