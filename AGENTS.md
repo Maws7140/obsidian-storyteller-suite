@@ -5,3 +5,4 @@
 - Use sentence case for user-facing labels, headings, and helper text.
 - Do not remove existing user-facing features as a workaround for bugs without explicit user approval.
 - When a release changes the feature surface, update all three in the same pass: the first-run onboarding guide, the update-highlights popup, and the user-facing docs/tutorial content. Do not ship new features with stale onboarding or stale release notes.
+- For browser-driven GitHub or release tasks, prefer Microsoft Edge with a persistent/default profile first. Do not default to a fresh Chrome session when the user’s logged-in state is likely needed.
