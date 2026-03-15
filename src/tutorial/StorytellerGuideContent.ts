@@ -134,36 +134,36 @@ export function getWhatsNewGuide(version: string): StorytellerGuideDocument {
     return {
         title: `What is new in ${version}`,
         introHtml: `
-            <p>This is a follow-up patch after the 1.7.0 feature release. It is focused on cleanup and reliability, not another big feature drop.</p>
+            <p>This one is mostly a cleanup patch. No big new feature wave here, just tightening up some annoying stuff and making the plugin feel better to use.</p>
         `,
         sections: [
             {
-                title: 'Entity cleanup and ghost-node fixes',
+                title: 'Less ghost note nonsense',
                 bodyHtml: `
                     <ul>
-                        <li>Fixed stale or deleted entity references sticking around after edits and deletes.</li>
-                        <li>Fixed ghost scene and entity links showing up in graph or node-style views after the source note was renamed or removed.</li>
-                        <li>Location entity references are now repaired more cleanly when older stale data is found.</li>
+                        <li>Cleaned up stale entity refs that were hanging around after notes got renamed or deleted.</li>
+                        <li>Fixed ghost scene and entity links showing up in graph or node-style views when the real note was already gone.</li>
+                        <li>Older messy location refs should repair themselves more cleanly now too.</li>
                     </ul>
                 `
             },
             {
-                title: 'Safer reverse-link cleanup',
+                title: 'Cleaner link cleanup',
                 bodyHtml: `
                     <ul>
-                        <li>Deleting linked scenes and other entities now cleans up reverse references more reliably.</li>
-                        <li>Renaming linked entities now propagates the new name into stored relationship references instead of leaving old labels behind.</li>
-                        <li>This reduces cases where the vault still looked like deleted content existed when it actually did not.</li>
+                        <li>Deleting linked scenes and other entities now cleans up reverse refs more reliably.</li>
+                        <li>Renaming linked entities updates the stored relationship labels better instead of leaving old names behind.</li>
+                        <li>That means less weirdness where the vault looked like deleted content still existed when it really did not.</li>
                     </ul>
                 `
             },
             {
-                title: 'Install and release reliability',
+                title: 'Less startup drag',
                 bodyHtml: `
                     <ul>
-                        <li>Fixed the release workflow so semver tags publish cleanly.</li>
-                        <li>Aligned the release install path with the passing CI install path.</li>
-                        <li>Fixed the Windows install path so local installs do not break on the postinstall step.</li>
+                        <li>Pushed more of the heavy maintenance work out of the hot startup path so Obsidian can finish opening faster.</li>
+                        <li>Template note loading, gallery syncing, and some cleanup work now happen after startup instead of front-loading all of it.</li>
+                        <li>Short version: the plugin should feel less heavy when Obsidian first opens.</li>
                     </ul>
                 `
             }
