@@ -608,6 +608,7 @@ export default class StorytellerSuitePlugin extends Plugin {
     eraManager: EraManager;
     private warnedMissingNameFiles: Set<string> = new Set();
     private groupVaultSyncTimer: number | null = null;
+    private deferredStartupMaintenanceTimer: number | null = null;
     private frontmatterReferenceIndexCache: Map<string, Promise<FrontmatterReferenceIndex>> = new Map();
 
     /** Word count tracker — Longform-compatible goal tracking */
@@ -1366,26 +1367,9 @@ export default class StorytellerSuitePlugin extends Plugin {
 			`${this.settings.templateStorageFolder || 'StorytellerSuite/Templates'}/Notes`,
 			this.settings.disableAutoFolderCreation || false
 		);
-		await this.templateNoteManager.initialize();
 
 		// Connect note manager to storage manager
 		this.templateManager.setTemplateNoteManager(this.templateNoteManager);
-
-		// Reload note-based templates once the workspace is fully ready and vault is indexed.
-		// onLayoutReady fires after all files are indexed, unlike a fixed setTimeout which can
-		// still fire before the vault is ready on large vaults or slow devices.
-		this.app.workspace.onLayoutReady(async () => {
-			try {
-				const beforeCount = this.templateManager.getAllTemplates().filter(t => (t as any).isNoteBased).length;
-				await this.templateNoteManager.loadNoteTemplates();
-				const afterCount = this.templateManager.getAllTemplates().filter(t => (t as any).isNoteBased).length;
-				if (afterCount > beforeCount) {
-					console.log(`[StorytellerSuite] Loaded ${afterCount - beforeCount} custom templates after layout ready`);
-				}
-			} catch (error) {
-				console.error('[StorytellerSuite] Error loading custom templates:', error);
-			}
-		});
 
 		// Register file watcher to sync note changes to JSON
 		this.registerEvent(
@@ -1612,38 +1596,11 @@ export default class StorytellerSuitePlugin extends Plugin {
 			await this.discoverExistingStories();
 			await this.initializeOneStoryModeIfNeeded();
 
-			// Sync any images already present in the gallery-managed folders
-			await this.syncGalleryWatchFolder();
-
-			// Migrate existing settings.groups to vault files (idempotent)
-			await this.migrateGroupsToVault();
-			// Import/refresh groups from vault notes so manually-created group files appear immediately.
-			await this.syncGroupsFromVault();
-
-			// Run migration for typed relationships (only runs once)
-			if (!this.settings.relationshipsMigrated) {
-				await this.migrateRelationshipsToTyped();
-				this.settings.relationshipsMigrated = true;
-				await this.saveSettings();
-			}
-
-            // Run backfill for bidirectional links (only runs once)
-            if (!this.settings.bidirectionalLinksBackfilled) {
-                await this.backfillBidirectionalRelationships();
-                this.settings.bidirectionalLinksBackfilled = true;
-                await this.saveSettings();
-            }
-
-            if (this.settings.staleEntityRefsPrunedVersion !== this.manifest.version) {
-                await this.repairLocationEntityRefs();
-                this.settings.staleEntityRefsPrunedVersion = this.manifest.version;
-                await this.saveSettings();
-            }
-
 			// Set up mobile/tablet orientation and resize handlers
 			this.setupMobileOrientationHandlers();
 
             await this.maybeShowStartupGuides();
+            this.scheduleDeferredStartupMaintenance();
 		});
 	}
 
@@ -8609,6 +8566,73 @@ export default class StorytellerSuitePlugin extends Plugin {
 
     openWhatsNewGuide(): void {
         new StorytellerGuideModal(this.app, this, 'whats-new').open();
+    }
+
+    private scheduleDeferredStartupMaintenance(delayMs = 1200): void {
+        if (this.deferredStartupMaintenanceTimer !== null) {
+            window.clearTimeout(this.deferredStartupMaintenanceTimer);
+        }
+
+        this.deferredStartupMaintenanceTimer = window.setTimeout(() => {
+            this.deferredStartupMaintenanceTimer = null;
+            void this.runDeferredStartupMaintenance();
+        }, delayMs);
+    }
+
+    private async runDeferredStartupMaintenance(): Promise<void> {
+        try {
+            const beforeCount = this.templateManager.getAllTemplates().filter(t => (t as any).isNoteBased).length;
+            await this.templateNoteManager.initialize();
+            const afterCount = this.templateManager.getAllTemplates().filter(t => (t as any).isNoteBased).length;
+            if (afterCount > beforeCount) {
+                console.log(`[StorytellerSuite] Loaded ${afterCount - beforeCount} custom templates after startup`);
+            }
+        } catch (error) {
+            console.error('[StorytellerSuite] Error loading custom templates:', error);
+        }
+
+        try {
+            await this.syncGalleryWatchFolder();
+        } catch (error) {
+            console.error('[StorytellerSuite] Error syncing gallery folder during deferred startup:', error);
+        }
+
+        try {
+            await this.migrateGroupsToVault();
+            await this.syncGroupsFromVault();
+        } catch (error) {
+            console.error('[StorytellerSuite] Error syncing groups during deferred startup:', error);
+        }
+
+        try {
+            if (!this.settings.relationshipsMigrated) {
+                await this.migrateRelationshipsToTyped();
+                this.settings.relationshipsMigrated = true;
+                await this.saveSettings();
+            }
+        } catch (error) {
+            console.error('[StorytellerSuite] Error migrating relationships during deferred startup:', error);
+        }
+
+        try {
+            if (!this.settings.bidirectionalLinksBackfilled) {
+                await this.backfillBidirectionalRelationships();
+                this.settings.bidirectionalLinksBackfilled = true;
+                await this.saveSettings();
+            }
+        } catch (error) {
+            console.error('[StorytellerSuite] Error backfilling bidirectional links during deferred startup:', error);
+        }
+
+        try {
+            if (this.settings.staleEntityRefsPrunedVersion !== this.manifest.version) {
+                await this.repairLocationEntityRefs();
+                this.settings.staleEntityRefsPrunedVersion = this.manifest.version;
+                await this.saveSettings();
+            }
+        } catch (error) {
+            console.error('[StorytellerSuite] Error repairing stale entity refs during deferred startup:', error);
+        }
     }
 
     private async maybeShowStartupGuides(): Promise<void> {
