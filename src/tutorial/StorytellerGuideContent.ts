@@ -134,36 +134,25 @@ export function getWhatsNewGuide(version: string): StorytellerGuideDocument {
     return {
         title: `What is new in ${version}`,
         introHtml: `
-            <p>This one is mostly a cleanup patch. No big new feature wave here, just tightening up some annoying stuff and making the plugin feel better to use.</p>
+            <p>This patch is mostly about making startup feel lighter. No big new feature wave here, just smoothing out one of the more annoying parts of using the plugin.</p>
         `,
         sections: [
             {
-                title: 'Less ghost note nonsense',
-                bodyHtml: `
-                    <ul>
-                        <li>Cleaned up stale entity refs that were hanging around after notes got renamed or deleted.</li>
-                        <li>Fixed ghost scene and entity links showing up in graph or node-style views when the real note was already gone.</li>
-                        <li>Older messy location refs should repair themselves more cleanly now too.</li>
-                    </ul>
-                `
-            },
-            {
-                title: 'Cleaner link cleanup',
-                bodyHtml: `
-                    <ul>
-                        <li>Deleting linked scenes and other entities now cleans up reverse refs more reliably.</li>
-                        <li>Renaming linked entities updates the stored relationship labels better instead of leaving old names behind.</li>
-                        <li>That means less weirdness where the vault looked like deleted content still existed when it really did not.</li>
-                    </ul>
-                `
-            },
-            {
-                title: 'Less startup drag',
+                title: 'Faster startup',
                 bodyHtml: `
                     <ul>
                         <li>Pushed more of the heavy maintenance work out of the hot startup path so Obsidian can finish opening faster.</li>
-                        <li>Template note loading, gallery syncing, and some cleanup work now happen after startup instead of front-loading all of it.</li>
-                        <li>Short version: the plugin should feel less heavy when Obsidian first opens.</li>
+                        <li>Stuff like template note loading, gallery syncing, and cleanup work now waits until after startup instead of all trying to happen at once.</li>
+                        <li>Short version: Storyteller Suite should feel less heavy when Obsidian first opens.</li>
+                    </ul>
+                `
+            },
+            {
+                title: 'Same feature set, less drag',
+                bodyHtml: `
+                    <ul>
+                        <li>This is not a feature update so much as a quality pass on how the plugin comes online.</li>
+                        <li>The goal here was simple: keep everything working, but stop front-loading so much work into initial load.</li>
                     </ul>
                 `
             }
