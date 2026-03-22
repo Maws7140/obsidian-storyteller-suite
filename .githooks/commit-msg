@@ -1,0 +1,12 @@
+#!/bin/sh
+
+message_file="$1"
+tmp_file="${message_file}.storyteller-suite.tmp"
+
+grep -Eiv '^Co-authored-by: .*?(claude(\[bot\])?|anthropic\.com|copilot(\[bot\]|-swe-agent\[bot\])|198982749\+Copilot@users\.noreply\.github\.com)' "$message_file" > "$tmp_file" || true
+mv "$tmp_file" "$message_file"
+
+if grep -Eiq '^Co-authored-by: .*?(claude(\[bot\])?|anthropic\.com|copilot(\[bot\]|-swe-agent\[bot\])|198982749\+Copilot@users\.noreply\.github\.com)' "$message_file"; then
+  echo "Blocked commit: Claude or Copilot co-author trailers are not allowed in this repo."
+  exit 1
+fi

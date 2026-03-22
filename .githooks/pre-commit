@@ -1,0 +1,22 @@
+#!/bin/sh
+
+is_forbidden_identity() {
+  printf '%s\n' "$1" | grep -Eiq 'claude(\[bot\])?|anthropic\.com|copilot(\[bot\]|-swe-agent\[bot\])|198982749\+Copilot@users\.noreply\.github\.com'
+}
+
+author_ident="$(git var GIT_AUTHOR_IDENT 2>/dev/null || true)"
+committer_ident="$(git var GIT_COMMITTER_IDENT 2>/dev/null || true)"
+
+if is_forbidden_identity "$author_ident"; then
+  echo "Blocked commit: author identity resolves to Claude or Copilot."
+  echo "Author: $author_ident"
+  echo "Set git user.name/user.email back to your identity or clear any GIT_AUTHOR_* overrides."
+  exit 1
+fi
+
+if is_forbidden_identity "$committer_ident"; then
+  echo "Blocked commit: committer identity resolves to Claude or Copilot."
+  echo "Committer: $committer_ident"
+  echo "Set git user.name/user.email back to your identity or clear any GIT_COMMITTER_* overrides."
+  exit 1
+fi
