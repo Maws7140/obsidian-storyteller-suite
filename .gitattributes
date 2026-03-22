@@ -4,4 +4,8 @@ package-lock.json merge=ours
 # Local configuration files - keep local version
 .claude/settings.local.json merge=ours
 
+# Git hook scripts must stay LF so Git's shell can execute them on Windows and Unix.
+.githooks/* text eol=lf
+.mailmap text eol=lf
+
 
