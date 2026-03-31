@@ -100,6 +100,8 @@ export class AnalyticsDashboardView extends ItemView {
         this.refreshing = true;
 
         try {
+            await this.plugin.captureCurrentWritingProgress();
+
             // Calculate analytics
             this.analytics = await this.calculateAnalytics();
 
@@ -155,9 +157,11 @@ export class AnalyticsDashboardView extends ItemView {
             density: 0
         };
 
+        const totalWords = await this.calculateTotalWords(scenes);
+
         return {
             lastUpdated: new Date().toISOString(),
-            totalWords: await this.calculateTotalWords(scenes),
+            totalWords,
             characterScreenTime,
             eventDistribution,
             povStats,
@@ -211,7 +215,7 @@ export class AnalyticsDashboardView extends ItemView {
         const velocityMap: Record<string, number> = {};
 
         sessions.forEach(session => {
-            const date = session.startTime.split('T')[0];
+            const date = this.getLocalDateKey(session.startTime);
             velocityMap[date] = (velocityMap[date] || 0) + session.wordsWritten;
         });
 
@@ -224,6 +228,19 @@ export class AnalyticsDashboardView extends ItemView {
     }
 
     async calculateTotalWords(scenes: any[]): Promise<number> {
+        const activeStory = this.plugin.settings.stories.find(
+            story => story.id === this.plugin.settings.activeStoryId
+        );
+
+        if (activeStory) {
+            const { SceneOrderManager } = await import('../compile');
+            const sceneManager = new SceneOrderManager(this.plugin);
+            const activeDraft = sceneManager.getActiveDraft(activeStory);
+            if (activeDraft) {
+                return sceneManager.calculateDraftWordCount(activeDraft);
+            }
+        }
+
         let total = 0;
         for (const scene of scenes) {
             if (scene.filePath) {
@@ -231,7 +248,7 @@ export class AnalyticsDashboardView extends ItemView {
                 if (file instanceof TFile) {
                     try {
                         const content = await this.app.vault.cachedRead(file);
-                        total += content.split(/\s+/).filter(Boolean).length;
+                        total += this.plugin.wordTracker.countWords(content);
                     } catch {
                         // skip unreadable files
                     }
@@ -239,6 +256,18 @@ export class AnalyticsDashboardView extends ItemView {
             }
         }
         return total;
+    }
+
+    private getLocalDateKey(timestamp: string): string {
+        const parsed = new Date(timestamp);
+        if (Number.isNaN(parsed.getTime())) {
+            return timestamp.split('T')[0] || timestamp;
+        }
+
+        const year = parsed.getFullYear();
+        const month = String(parsed.getMonth() + 1).padStart(2, '0');
+        const day = String(parsed.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
     }
 
     renderAnalytics(): void {

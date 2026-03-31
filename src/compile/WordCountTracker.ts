@@ -74,8 +74,8 @@ export class WordCountTracker {
     /**
      * Start a writing session
      */
-    startSession(): void {
-        const activeFile = this.plugin.app.workspace.getActiveFile();
+    startSession(file?: TFile | null): void {
+        const activeFile = file ?? this.plugin.app.workspace.getActiveFile();
         if (activeFile) {
             this.sessionStartTime = Date.now();
             this.getFileWordCount(activeFile).then(count => {
@@ -90,8 +90,8 @@ export class WordCountTracker {
     /**
      * End the writing session and record stats
      */
-    async endSession(): Promise<SessionStats> {
-        const activeFile = this.plugin.app.workspace.getActiveFile();
+    async endSession(file?: TFile | null): Promise<SessionStats> {
+        const activeFile = file ?? this.plugin.app.workspace.getActiveFile();
         const currentCount = activeFile ? await this.getFileWordCount(activeFile) : this.lastKnownWordCount;
         
         const netWords = currentCount - this.sessionStartWordCount;
@@ -196,7 +196,39 @@ export class WordCountTracker {
      * Get today's stats
      */
     getTodayStats(): DailyWritingStats | undefined {
-        return this.getDailyStats()[this.getTodayKey()];
+        const todayKey = this.getTodayKey();
+        const persisted = this.getDailyStats()[todayKey];
+        const live = this.getLiveSessionStatsForDate(todayKey);
+
+        if (!live) {
+            return persisted;
+        }
+
+        if (!persisted) {
+            return {
+                date: todayKey,
+                wordsWritten: live.wordsWritten,
+                wordsDeleted: live.wordsDeleted,
+                netWords: live.netWords,
+                timeSpent: 0,
+                scenesEdited: [],
+                goalMet: (this.plugin.settings.dailyWordCountGoal || 0) > 0
+                    ? live.wordsWritten >= (this.plugin.settings.dailyWordCountGoal || 0)
+                    : false
+            };
+        }
+
+        const combinedWordsWritten = persisted.wordsWritten + live.wordsWritten;
+        return {
+            ...persisted,
+            wordsWritten: combinedWordsWritten,
+            wordsDeleted: persisted.wordsDeleted + live.wordsDeleted,
+            netWords: persisted.netWords + live.netWords,
+            goalMet: persisted.goalMet || (
+                (this.plugin.settings.dailyWordCountGoal || 0) > 0 &&
+                combinedWordsWritten >= (this.plugin.settings.dailyWordCountGoal || 0)
+            )
+        };
     }
 
     /**
@@ -319,7 +351,28 @@ export class WordCountTracker {
      * Get date key for a date
      */
     private getDateKey(date: Date): string {
-        return date.toISOString().split('T')[0];
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    }
+
+    private getLiveSessionStatsForDate(dateKey: string): Pick<DailyWritingStats, 'wordsWritten' | 'wordsDeleted' | 'netWords'> | null {
+        if (!this.isTracking || this.sessionStartTime <= 0) {
+            return null;
+        }
+
+        const sessionDateKey = this.getDateKey(new Date(this.sessionStartTime));
+        if (sessionDateKey !== dateKey) {
+            return null;
+        }
+
+        const netWords = this.lastKnownWordCount - this.sessionStartWordCount;
+        return {
+            wordsWritten: Math.max(0, netWords + this.wordsDeleted),
+            wordsDeleted: this.wordsDeleted,
+            netWords
+        };
     }
 
     /**

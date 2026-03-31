@@ -263,14 +263,17 @@ export class TemplateVariableEditorModal extends ResponsiveModal {
         textarea.rows = 6;
         textarea.addClass('variable-options-textarea');
 
-        textarea.addEventListener('change', () => {
+        const syncOptions = () => {
             const options = textarea.value
                 .split('\n')
                 .map(opt => opt.trim())
                 .filter(opt => opt.length > 0);
             this.variable.options = options.length > 0 ? options : undefined;
             this.renderPreviewSection();
-        });
+        };
+
+        textarea.addEventListener('input', syncOptions);
+        textarea.addEventListener('change', syncOptions);
     }
 
     private renderUsageInfo(container: HTMLElement): void {

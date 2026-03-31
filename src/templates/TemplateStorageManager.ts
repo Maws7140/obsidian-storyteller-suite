@@ -174,7 +174,7 @@ export class TemplateStorageManager {
 
         // Load templates from entity-type subfolders
         const entityTypes: TemplateEntityType[] = [
-            'character', 'location', 'event', 'item', 'group',
+            'character', 'location', 'event', 'item', 'group', 'map',
             'culture', 'economy', 'magicSystem', 'chapter', 'scene', 'reference'
         ];
 
@@ -271,7 +271,7 @@ export class TemplateStorageManager {
      */
     private async ensureEntityTypeFoldersExist(): Promise<void> {
         const entityTypes: TemplateEntityType[] = [
-            'character', 'location', 'event', 'item', 'group',
+            'character', 'location', 'event', 'item', 'group', 'map',
             'culture', 'economy', 'magicSystem', 'chapter', 'scene', 'reference'
         ];
 
@@ -410,6 +410,8 @@ export class TemplateStorageManager {
             throw new Error('Cannot save built-in templates. Create a copy first.');
         }
 
+        this.autoPopulateEntityTypes(template);
+
         // Validate template
         const validation = this.validateTemplate(template);
         if (!validation.isValid) {
@@ -440,6 +442,9 @@ export class TemplateStorageManager {
             await this.app.vault.delete(oldFile);
         }
 
+        // Remove stale copies in legacy/root or previous entity-type folders before writing.
+        await this.removeStaleTemplateCopies(template.id, filePath);
+
         // Save to new location
         const existingFile = this.app.vault.getAbstractFileByPath(filePath);
         if (existingFile instanceof TFile) {
@@ -448,8 +453,12 @@ export class TemplateStorageManager {
             await this.app.vault.create(filePath, content);
         }
 
-        // Update cache
-        this.userTemplates.set(template.id, template);
+        // Read back from disk so the cache reflects the actual persisted file.
+        await this.loadUserTemplates();
+        const reloadedTemplate = this.userTemplates.get(template.id);
+        if (!reloadedTemplate) {
+            throw new Error(`Template "${template.name}" was written but could not be reloaded from ${filePath}`);
+        }
 
         new Notice(`Template "${template.name}" saved successfully`);
     }
@@ -463,22 +472,11 @@ export class TemplateStorageManager {
             throw new Error('Template not found or is built-in');
         }
 
-        // Try to find and delete the template file
-        // Check in entity-type folder first
-        const entityType = this.determineTemplateEntityType(template);
-        const entityTypeFolder = this.getEntityTypeFolder(entityType);
-        const entityTypeFolderPath = `${this.templateFolder}/${entityTypeFolder}`;
-        let filePath = `${entityTypeFolderPath}/${id}.json`;
-        let file = this.app.vault.getAbstractFileByPath(filePath);
-
-        // If not found in entity-type folder, check root template folder (backward compatibility)
-        if (!file) {
-            filePath = `${this.templateFolder}/${id}.json`;
-            file = this.app.vault.getAbstractFileByPath(filePath);
-        }
-
-        if (file instanceof TFile) {
-            await this.app.vault.delete(file);
+        for (const filePath of this.getTemplateCandidatePaths(id)) {
+            const file = this.app.vault.getAbstractFileByPath(filePath);
+            if (file instanceof TFile) {
+                await this.app.vault.delete(file);
+            }
         }
 
         this.userTemplates.delete(id);
@@ -718,5 +716,37 @@ export class TemplateStorageManager {
         if (entities.references && entities.references.length > 0) entityTypes.push('reference');
 
         template.entityTypes = entityTypes;
+    }
+
+    private getTemplateCandidatePaths(templateId: string): string[] {
+        const candidatePaths = new Set<string>();
+        candidatePaths.add(`${this.templateFolder}/${templateId}.json`);
+
+        const entityTypes: TemplateEntityType[] = [
+            'character', 'location', 'event', 'item', 'group', 'map',
+            'culture', 'economy', 'magicSystem', 'chapter', 'scene', 'reference'
+        ];
+
+        entityTypes.forEach(entityType => {
+            candidatePaths.add(
+                `${this.templateFolder}/${this.getEntityTypeFolder(entityType)}/${templateId}.json`
+            );
+        });
+
+        return Array.from(candidatePaths);
+    }
+
+    private async removeStaleTemplateCopies(templateId: string, keepFilePath: string): Promise<void> {
+        const normalizedKeepPath = keepFilePath.toLowerCase();
+        for (const candidatePath of this.getTemplateCandidatePaths(templateId)) {
+            if (candidatePath.toLowerCase() === normalizedKeepPath) {
+                continue;
+            }
+
+            const file = this.app.vault.getAbstractFileByPath(candidatePath);
+            if (file instanceof TFile) {
+                await this.app.vault.delete(file);
+            }
+        }
     }
 }

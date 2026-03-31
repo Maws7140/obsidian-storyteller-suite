@@ -88,6 +88,7 @@ import { TimelineTrackManager } from './utils/TimelineTrackManager';
 import { EraManager } from './utils/EraManager';
 import { LocationMigration } from './utils/LocationMigration';
 import { WordCountTracker } from './compile';
+import type { SessionStats } from './compile';
 import { createLedgerViewExtension, registerLedgerBlockProcessor } from './extensions/LedgerEditorExtension';
 import { createBranchViewExtension, registerBranchBlockProcessors } from './extensions/BranchBlockExtension';
 import { CampaignSession, PartyMemberState } from './types';
@@ -616,6 +617,8 @@ export default class StorytellerSuitePlugin extends Plugin {
 
     /** Status bar element showing live word count + daily goal */
     private statusBarWordCountEl: HTMLElement | null = null;
+    private activeWritingSessionFilePath: string | null = null;
+    private writingSessionTransition: Promise<void> = Promise.resolve();
 
     // Mobile/tablet orientation and resize handlers
     private orientationChangeHandler: (() => void) | null = null;
@@ -1337,6 +1340,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 
 		// Initialize word count tracker
 		this.wordTracker = new WordCountTracker(this);
+        this.initWritingTracking();
 
 		// Status bar word count (Longform-compatible)
 		if (this.settings.showWordCountInStatusBar !== false) {
@@ -1938,6 +1942,97 @@ export default class StorytellerSuitePlugin extends Plugin {
 		this.app.workspace.onLayoutReady(() => this.updateStatusBar());
 	}
 
+    private initWritingTracking(): void {
+        const syncActiveFile = (file: TFile | null): void => {
+            this.writingSessionTransition = this.writingSessionTransition
+                .then(() => this.syncWritingSessionForFile(file))
+                .catch(error => console.error('Storyteller Suite: Error syncing writing session:', error));
+        };
+
+        this.registerEvent(
+            this.app.workspace.on('file-open', (file) => {
+                syncActiveFile(file instanceof TFile ? file : null);
+            })
+        );
+
+        this.registerEvent(
+            this.app.workspace.on('active-leaf-change', () => {
+                const activeFile = this.app.workspace.getActiveFile();
+                syncActiveFile(activeFile instanceof TFile ? activeFile : null);
+            })
+        );
+
+        this.registerEvent(
+            this.app.vault.on('modify', (file) => {
+                if (!(file instanceof TFile) || this.activeWritingSessionFilePath !== file.path) {
+                    return;
+                }
+
+                void this.wordTracker.onDocumentChange(file);
+                void this.updateStatusBar();
+            })
+        );
+
+        this.app.workspace.onLayoutReady(() => {
+            const activeFile = this.app.workspace.getActiveFile();
+            syncActiveFile(activeFile instanceof TFile ? activeFile : null);
+        });
+    }
+
+    private async syncWritingSessionForFile(file: TFile | null): Promise<void> {
+        const nextPath = file && file.extension === 'md' ? file.path : null;
+        if (this.activeWritingSessionFilePath === nextPath) {
+            return;
+        }
+
+        await this.finishActiveWritingSession();
+
+        if (file && file.extension === 'md') {
+            this.wordTracker.startSession(file);
+            this.activeWritingSessionFilePath = file.path;
+        }
+
+        await this.updateStatusBar();
+    }
+
+    private async finishActiveWritingSession(): Promise<void> {
+        if (!this.activeWritingSessionFilePath) {
+            return;
+        }
+
+        const file = this.app.vault.getAbstractFileByPath(this.activeWritingSessionFilePath);
+        const sessionFile = file instanceof TFile ? file : null;
+        const completedSession = await this.wordTracker.endSession(sessionFile);
+
+        this.activeWritingSessionFilePath = null;
+        await this.persistWritingSession(completedSession, sessionFile);
+        this.refreshDashboardActiveTab();
+        await this.updateStatusBar();
+    }
+
+    private async persistWritingSession(stats: SessionStats, file: TFile | null): Promise<void> {
+        const hasMeaningfulChange = stats.wordsWritten > 0 || stats.netWords !== 0 || stats.wordsDeleted > 0;
+        if (!hasMeaningfulChange || stats.startTime <= 0) {
+            return;
+        }
+
+        const session: WritingSession = {
+            id: `writing-${stats.startTime}-${Math.random().toString(36).slice(2, 8)}`,
+            startTime: new Date(stats.startTime).toISOString(),
+            endTime: new Date(stats.startTime + stats.duration).toISOString(),
+            wordsWritten: stats.wordsWritten,
+            filesEdited: file ? [file.path] : undefined
+        };
+
+        this.settings.writingSessions = this.settings.writingSessions || [];
+        this.settings.writingSessions.push(session);
+        if (this.settings.writingSessions.length > 500) {
+            this.settings.writingSessions = this.settings.writingSessions.slice(-500);
+        }
+
+        await this.saveSettings();
+    }
+
 	private async updateStatusBar(): Promise<void> {
 		if (!this.statusBarWordCountEl) return;
 
@@ -1993,6 +2088,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 	}
 
 	onunload() {
+		void this.finishActiveWritingSession();
 		// Manual cleanup not needed - Obsidian handles view management
 		// Clean up mobile platform classes to prevent class leakage
 		try {
@@ -2197,23 +2293,24 @@ export default class StorytellerSuitePlugin extends Plugin {
 			name: 'Reload custom templates',
 			callback: async () => {
 				try {
-					if (!this.templateNoteManager) {
+					if (!this.templateManager || !this.templateNoteManager) {
 						new Notice('Template system not initialized');
 						return;
 					}
 
-					const beforeCount = this.templateManager.getAllTemplates().filter(t => (t as any).isNoteBased).length;
+					const beforeCount = this.templateManager.getAllTemplates().filter(t => !(t as any).builtIn).length;
+					await this.templateManager.loadUserTemplates();
 					await this.templateNoteManager.loadNoteTemplates();
-					const afterCount = this.templateManager.getAllTemplates().filter(t => (t as any).isNoteBased).length;
-
-					new Notice(`✓ Loaded ${afterCount} custom template${afterCount !== 1 ? 's' : ''}`);
+					const afterCount = this.templateManager.getAllTemplates().filter(t => !(t as any).builtIn).length;
+					this.refreshDashboardActiveTab();
+					new Notice('Loaded ' + afterCount + ' custom template' + (afterCount !== 1 ? 's' : ''));
 
 					if (afterCount > beforeCount) {
 						console.log(`[StorytellerSuite] Loaded ${afterCount - beforeCount} new templates`);
 					}
 				} catch (error) {
-					console.error('[StorytellerSuite] Error reloading templates:', error);
-					new Notice(`✗ Failed to reload templates: ${error.message}`);
+					const message = error instanceof Error ? error.message : String(error);
+					new Notice('Failed to reload templates: ' + message);
 				}
 			}
 		});
@@ -3840,6 +3937,24 @@ export default class StorytellerSuitePlugin extends Plugin {
 			return null;
 		}
 	}
+
+    async captureCurrentWritingProgress(): Promise<void> {
+        if (!this.activeWritingSessionFilePath) {
+            return;
+        }
+
+        const currentFile = this.app.vault.getAbstractFileByPath(this.activeWritingSessionFilePath);
+        const trackableFile = currentFile instanceof TFile && currentFile.extension === 'md'
+            ? currentFile
+            : null;
+
+        await this.finishActiveWritingSession();
+
+        if (trackableFile && this.app.workspace.getActiveFile()?.path === trackableFile.path) {
+            this.wordTracker.startSession(trackableFile);
+            this.activeWritingSessionFilePath = trackableFile.path;
+        }
+    }
 
 	/**
 	 * Character Data Management
@@ -8921,3 +9036,4 @@ export default class StorytellerSuitePlugin extends Plugin {
 
 // Ensure this is the very last line of the file
 export {};
+

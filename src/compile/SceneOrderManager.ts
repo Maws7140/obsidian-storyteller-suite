@@ -718,7 +718,7 @@ export class SceneOrderManager {
             const file = this.plugin.app.vault.getAbstractFileByPath(scene.filePath);
             if (file instanceof TFile) {
                 const content = await this.plugin.app.vault.cachedRead(file);
-                const words = content.split(/\s+/).filter(w => w.length > 0).length;
+                const words = this.plugin.wordTracker.countWords(content);
                 totalWords += words;
             }
         }

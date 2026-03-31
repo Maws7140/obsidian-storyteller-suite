@@ -53,7 +53,7 @@ export class TemplateNoteManager {
 
         // Ensure entity type subfolders exist
         const entityTypes: TemplateEntityType[] = [
-            'character', 'location', 'event', 'item', 'group',
+            'character', 'location', 'event', 'item', 'group', 'map',
             'culture', 'economy', 'magicSystem', 'chapter', 'scene', 'reference'
         ];
 
@@ -108,7 +108,7 @@ export class TemplateNoteManager {
 
         // Load from entity type subfolders
         const entityTypes: TemplateEntityType[] = [
-            'character', 'location', 'event', 'item', 'group',
+            'character', 'location', 'event', 'item', 'group', 'map',
             'culture', 'economy', 'magicSystem', 'chapter', 'scene', 'reference'
         ];
 
