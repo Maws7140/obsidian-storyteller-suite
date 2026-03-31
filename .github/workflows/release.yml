@@ -48,6 +48,36 @@ jobs:
 
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
+      - name: Resolve release notes
+        id: release_notes
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ inputs.release_notes }}" ]; then
+            {
+              echo "body<<EOF"
+              echo "${{ inputs.release_notes }}"
+              echo "EOF"
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          VERSION="${{ steps.release_meta.outputs.version }}"
+          NOTES="$(awk -v version="$VERSION" '
+            $0 ~ "^## " version "$" { capture=1; next }
+            capture && $0 ~ "^## " { exit }
+            capture { print }
+          ' CHANGELOG.md)"
+
+          if [ -z "$NOTES" ]; then
+            NOTES="See CHANGELOG.md for details."
+          fi
+
+          {
+            echo "body<<EOF"
+            echo "$NOTES"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Install dependencies
         run: npm ci --ignore-scripts
 
@@ -159,7 +189,7 @@ jobs:
           body: |
             ## Changes in ${{ steps.release_meta.outputs.version }}
             
-            ${{ inputs.release_notes || 'See CHANGELOG.md for details.' }}
+            ${{ steps.release_notes.outputs.body }}
             
             ## Installation
             
