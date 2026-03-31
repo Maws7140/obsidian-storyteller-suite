@@ -134,25 +134,26 @@ export function getWhatsNewGuide(version: string): StorytellerGuideDocument {
     return {
         title: `What is new in ${version}`,
         introHtml: `
-            <p>This patch is mostly about making startup feel lighter. No big new feature wave here, just smoothing out one of the more annoying parts of using the plugin.</p>
+            <p>This update is a bug-fix pass on writing analytics and custom templates. The goal was to make the newer workflow pieces actually track and save reliably instead of showing stale state.</p>
         `,
         sections: [
             {
-                title: 'Faster startup',
+                title: 'Writing analytics fixes',
                 bodyHtml: `
                     <ul>
-                        <li>Pushed more of the heavy maintenance work out of the hot startup path so Obsidian can finish opening faster.</li>
-                        <li>Stuff like template note loading, gallery syncing, and cleanup work now waits until after startup instead of all trying to happen at once.</li>
-                        <li>Short version: Storyteller Suite should feel less heavy when Obsidian first opens.</li>
+                        <li>Fixed writing analytics getting stuck on old numbers instead of reflecting current progress.</li>
+                        <li>Fixed the sidebar word goal display so it updates properly while you are writing.</li>
+                        <li>Finished writing sessions now get recorded more reliably when switching files or refreshing analytics.</li>
                     </ul>
                 `
             },
             {
-                title: 'Same feature set, less drag',
+                title: 'Template save fixes',
                 bodyHtml: `
                     <ul>
-                        <li>This is not a feature update so much as a quality pass on how the plugin comes online.</li>
-                        <li>The goal here was simple: keep everything working, but stop front-loading so much work into initial load.</li>
+                        <li>Fixed dashboard-created custom templates not saving consistently.</li>
+                        <li>Fixed stale duplicate template files being left behind in older folders.</li>
+                        <li>Fixed map templates losing their entity type on save.</li>
                     </ul>
                 `
             }

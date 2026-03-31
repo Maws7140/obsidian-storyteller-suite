@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.7.6
+
+### Fixed
+- Fixed the in-app update highlights so they describe the actual analytics and template fixes instead of stale startup notes
+
 ## 1.7.5
 
 ### Fixed
