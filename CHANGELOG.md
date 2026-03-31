@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.7.5
+
+### Fixed
+- Fixed writing analytics getting stuck on old numbers
+- Fixed the sidebar word goal not updating properly while writing
+- Fixed writing sessions not being recorded reliably when switching files or refreshing analytics
+- Fixed custom templates made from the dashboard saving inconsistently
+- Fixed stale template copies being left behind in old template folders
+- Fixed map templates losing their entity type on save
+
+### Internal
+- Added regression tests for writing tracker session handling
+- Added regression tests for template save/load cleanup
+
 ## 1.7.0
 
 ### Major updates
