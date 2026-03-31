@@ -708,6 +708,7 @@ export class TemplateStorageManager {
         if (entities.events && entities.events.length > 0) entityTypes.push('event');
         if (entities.items && entities.items.length > 0) entityTypes.push('item');
         if (entities.groups && entities.groups.length > 0) entityTypes.push('group');
+        if ((entities as any).maps && (entities as any).maps.length > 0) entityTypes.push('map');
         if (entities.cultures && entities.cultures.length > 0) entityTypes.push('culture');
         if (entities.economies && entities.economies.length > 0) entityTypes.push('economy');
         if (entities.magicSystems && entities.magicSystems.length > 0) entityTypes.push('magicSystem');
