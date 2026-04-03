@@ -20,6 +20,7 @@ import { parseEventDate, toMillis } from './utils/DateParsing';
 import {
     buildFrontmatter,
     getWhitelistKeys,
+    isStampedEntityTypeCompatible,
     normalizeEntityType,
     parseSectionsFromMarkdown,
     parseFrontmatterFromContent,
@@ -3818,8 +3819,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 			// Direct parsing captures empty values that the cache might miss
 			const frontmatter = { ...(cachedFrontmatter || {}), ...(directFrontmatter || {}) };
 
-            const stampedEntityType = normalizeEntityType(frontmatter['entityType']);
-            if (stampedEntityType && stampedEntityType !== entityType) {
+            if (!isStampedEntityTypeCompatible(frontmatter['entityType'], entityType)) {
                 return null;
             }
 

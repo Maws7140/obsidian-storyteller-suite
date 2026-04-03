@@ -112,6 +112,14 @@ export function normalizeEntityType(value: unknown): EntityType | null {
   return null;
 }
 
+export function isStampedEntityTypeCompatible(
+  stampedValue: unknown,
+  expectedType: EntityType
+): boolean {
+  const stampedType = normalizeEntityType(stampedValue);
+  return !stampedType || stampedType === expectedType;
+}
+
 /** Whitelisted frontmatter keys per entity type. */
 const FRONTMATTER_WHITELISTS: Record<EntityType, Set<string>> = {
   character: new Set([

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildFrontmatter, normalizeEntityType, parseSectionsFromMarkdown, toSafeFileName, parseFrontmatterFromContent } from '../../src/yaml/EntitySections';
+import { buildFrontmatter, isStampedEntityTypeCompatible, normalizeEntityType, parseSectionsFromMarkdown, toSafeFileName, parseFrontmatterFromContent } from '../../src/yaml/EntitySections';
 
 describe('EntitySections', () => {
   it('buildFrontmatter filters disallowed keys and multiline strings', () => {
@@ -55,6 +55,12 @@ describe('EntitySections', () => {
     expect(normalizeEntityType('compendium_entry')).toBe('compendiumEntry');
     expect(normalizeEntityType('campaignSession')).toBe('campaignSession');
     expect(normalizeEntityType('unknown')).toBeNull();
+  });
+
+  it('treats missing stamps as compatible and mismatched stamps as incompatible', () => {
+    expect(isStampedEntityTypeCompatible(undefined, 'book')).toBe(true);
+    expect(isStampedEntityTypeCompatible('book', 'book')).toBe(true);
+    expect(isStampedEntityTypeCompatible('character', 'book')).toBe(false);
   });
 
   describe('Empty Field Preservation', () => {
