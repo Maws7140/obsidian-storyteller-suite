@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildFrontmatter, parseSectionsFromMarkdown, toSafeFileName, parseFrontmatterFromContent } from '../../src/yaml/EntitySections';
+import { buildFrontmatter, normalizeEntityType, parseSectionsFromMarkdown, toSafeFileName, parseFrontmatterFromContent } from '../../src/yaml/EntitySections';
 
 describe('EntitySections', () => {
   it('buildFrontmatter filters disallowed keys and multiline strings', () => {
@@ -13,6 +13,7 @@ describe('EntitySections', () => {
     } as any;
     const fm = buildFrontmatter('character', src);
     expect(fm).toHaveProperty('id', '1');
+    expect(fm).toHaveProperty('entityType', 'character');
     expect(fm).toHaveProperty('name', 'Name');
     expect(fm).toHaveProperty('traits');
     expect(fm).not.toHaveProperty('description');
@@ -46,6 +47,14 @@ describe('EntitySections', () => {
 
   it('toSafeFileName removes illegal characters', () => {
     expect(toSafeFileName('A:/B*C?')).toBe('ABC');
+  });
+
+  it('normalizes supported entity type aliases', () => {
+    expect(normalizeEntityType('character')).toBe('character');
+    expect(normalizeEntityType('magic-system')).toBe('magicSystem');
+    expect(normalizeEntityType('compendium_entry')).toBe('compendiumEntry');
+    expect(normalizeEntityType('campaignSession')).toBe('campaignSession');
+    expect(normalizeEntityType('unknown')).toBeNull();
   });
 
   describe('Empty Field Preservation', () => {

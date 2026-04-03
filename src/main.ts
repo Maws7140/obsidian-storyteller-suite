@@ -20,6 +20,7 @@ import { parseEventDate, toMillis } from './utils/DateParsing';
 import {
     buildFrontmatter,
     getWhitelistKeys,
+    normalizeEntityType,
     parseSectionsFromMarkdown,
     parseFrontmatterFromContent,
     WIKI_LINK_ARRAY_FIELDS,
@@ -247,6 +248,8 @@ const FRONTMATTER_LINK_ONLY_SCALAR_FIELDS = new Set([
     bidirectionalLinksBackfilled?: boolean;
     /** Internal: last plugin version that repaired stale location entityRefs */
     staleEntityRefsPrunedVersion?: string;
+    /** Internal: last plugin version that backfilled top-level entityType frontmatter */
+    entityTypeBackfilledVersion?: string;
     /** Network graph view zoom level (saved per session) */
     networkGraphZoom?: number;
     /** Network graph view pan position (saved per session) */
@@ -422,6 +425,7 @@ const FRONTMATTER_LINK_ONLY_SCALAR_FIELDS = new Set([
     relationshipsMigrated: false,
     bidirectionalLinksBackfilled: false,
     staleEntityRefsPrunedVersion: '',
+    entityTypeBackfilledVersion: '',
     timelineWatchProperty: 'timeline-date',
     timelineWatchTag: 'timeline',
     timelineForks: [],
@@ -3813,6 +3817,11 @@ export default class StorytellerSuitePlugin extends Plugin {
 			// Merge both sources, preferring direct parsing for better empty value handling
 			// Direct parsing captures empty values that the cache might miss
 			const frontmatter = { ...(cachedFrontmatter || {}), ...(directFrontmatter || {}) };
+
+            const stampedEntityType = normalizeEntityType(frontmatter['entityType']);
+            if (stampedEntityType && stampedEntityType !== entityType) {
+                return null;
+            }
 
 			// Combine frontmatter and defaults with file path
 			// IMPORTANT: Do NOT spread allSections into top-level props to avoid leaking into YAML later.
@@ -8489,6 +8498,77 @@ export default class StorytellerSuitePlugin extends Plugin {
             return 0;
         }
     }
+
+    async backfillEntityTypeFrontmatter(): Promise<number> {
+        const entityTypes: EntityFolderType[] = [
+            'character',
+            'location',
+            'event',
+            'item',
+            'reference',
+            'chapter',
+            'scene',
+            'map',
+            'culture',
+            'faction',
+            'economy',
+            'magicSystem',
+            'compendiumEntry',
+            'book',
+            'campaignSession',
+        ];
+
+        const updatedPaths = new Set<string>();
+        let updatedCount = 0;
+
+        for (const entityType of entityTypes) {
+            let scanPaths: string[] = [];
+            try {
+                scanPaths = await this.getReferenceScanPaths(entityType);
+            } catch {
+                continue;
+            }
+
+            const normalizedPrefixes = scanPaths
+                .map(path => normalizePath(path))
+                .filter(Boolean)
+                .map(path => `${path}/`);
+
+            const files = this.app.vault.getMarkdownFiles().filter(file =>
+                normalizedPrefixes.some(prefix => file.path.startsWith(prefix))
+            );
+
+            for (const file of files) {
+                if (updatedPaths.has(file.path)) continue;
+
+                let content: string;
+                try {
+                    content = await this.app.vault.cachedRead(file);
+                } catch {
+                    continue;
+                }
+
+                const existingFrontmatter = parseFrontmatterFromContent(content) || {};
+                if (normalizeEntityType(existingFrontmatter['entityType'])) continue;
+
+                const stampedFrontmatter = { ...existingFrontmatter, entityType };
+                const frontmatterString = stringifyYamlWithLogging(
+                    stampedFrontmatter,
+                    existingFrontmatter,
+                    `Entity type backfill: ${file.path}`
+                );
+
+                const body = content.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, '');
+                const nextContent = `---\n${frontmatterString}---\n\n${body.replace(/^\r?\n+/, '')}`;
+
+                await this.app.vault.modify(file, nextContent);
+                updatedPaths.add(file.path);
+                updatedCount += 1;
+            }
+        }
+
+        return updatedCount;
+    }
 	async loadSettings() {
 		// Load old settings if present
 		const loaded = await this.loadData();
@@ -8661,6 +8741,10 @@ export default class StorytellerSuitePlugin extends Plugin {
             this.settings.staleEntityRefsPrunedVersion = '';
             settingsUpdated = true;
         }
+        if (!('entityTypeBackfilledVersion' in this.settings) || typeof this.settings.entityTypeBackfilledVersion !== 'string') {
+            this.settings.entityTypeBackfilledVersion = '';
+            settingsUpdated = true;
+        }
         // Ensure new optional fields exist on groups for backward compatibility
         if (this.settings.groups.length > 0) {
             for (const g of this.settings.groups) {
@@ -8747,6 +8831,16 @@ export default class StorytellerSuitePlugin extends Plugin {
             }
         } catch (error) {
             console.error('[StorytellerSuite] Error repairing stale entity refs during deferred startup:', error);
+        }
+
+        try {
+            if (this.settings.entityTypeBackfilledVersion !== this.manifest.version) {
+                await this.backfillEntityTypeFrontmatter();
+                this.settings.entityTypeBackfilledVersion = this.manifest.version;
+                await this.saveSettings();
+            }
+        } catch (error) {
+            console.error('[StorytellerSuite] Error backfilling entity type frontmatter during deferred startup:', error);
         }
     }
 

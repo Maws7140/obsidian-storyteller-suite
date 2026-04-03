@@ -91,10 +91,31 @@ export type EntityType =
   | 'book'
   | 'campaignSession';
 
+export function normalizeEntityType(value: unknown): EntityType | null {
+  const raw = String(value ?? '').trim().toLowerCase();
+  if (!raw) return null;
+  if (raw === 'character') return 'character';
+  if (raw === 'location') return 'location';
+  if (raw === 'event') return 'event';
+  if (raw === 'item') return 'item';
+  if (raw === 'reference') return 'reference';
+  if (raw === 'chapter') return 'chapter';
+  if (raw === 'scene') return 'scene';
+  if (raw === 'map') return 'map';
+  if (raw === 'culture') return 'culture';
+  if (raw === 'faction') return 'faction';
+  if (raw === 'economy') return 'economy';
+  if (raw === 'magicsystem' || raw === 'magic-system' || raw === 'magic_system') return 'magicSystem';
+  if (raw === 'compendiumentry' || raw === 'compendium-entry' || raw === 'compendium_entry') return 'compendiumEntry';
+  if (raw === 'book') return 'book';
+  if (raw === 'campaignsession' || raw === 'campaign-session' || raw === 'campaign_session') return 'campaignSession';
+  return null;
+}
+
 /** Whitelisted frontmatter keys per entity type. */
 const FRONTMATTER_WHITELISTS: Record<EntityType, Set<string>> = {
   character: new Set([
-    'id', 'name', 'traits', 'relationships', 'locations', 'events',
+    'id', 'entityType', 'name', 'traits', 'relationships', 'locations', 'events',
     'currentLocationId', 'locationHistory', 'ownedItems', 'cultures', 'magicSystems',
     'status', 'affiliation', 'gender', 'race', 'age', 'height', 'quirks',
     'groups', 'profileImagePath', 'customFields', 'connections',
@@ -106,7 +127,7 @@ const FRONTMATTER_WHITELISTS: Record<EntityType, Set<string>> = {
     'dndHitDice', 'dndConditions', 'dndSkillProficiencies', 'dndSavingThrowProficiencies'
   ]),
   location: new Set([
-    'id', 'name', 'locationType', 'type', 'region', 'status', 'parentLocation', 'parentLocationId',
+    'id', 'entityType', 'name', 'locationType', 'type', 'region', 'status', 'parentLocation', 'parentLocationId',
     'childLocationIds', 'mapBindings', 'correspondingMapId', 'entityRefs', 'cultures',
     'groups', 'profileImagePath', 'images', 'customFields', 'connections',
     'balance', 'linkedEconomies', 'linkedChapters',
@@ -114,14 +135,14 @@ const FRONTMATTER_WHITELISTS: Record<EntityType, Set<string>> = {
     'dndEncounterBonus', 'ambientFlags'
   ]),
   event: new Set([
-    'id', 'name', 'dateTime', 'characters', 'location', 'items', 'cultures', 'magicSystems', 'status',
+    'id', 'entityType', 'name', 'dateTime', 'characters', 'location', 'items', 'cultures', 'magicSystems', 'status',
     'groups', 'profileImagePath', 'images', 'customFields', 'connections',
     'isMilestone', 'dependencies', 'progress', 'tags', 'narrativeMarkers', 'narrativeSequence',
     'linkedChapters', 'linkedScenes', 'compendiumEntries',
     'mapCoordinates', 'mapId', 'markerId', 'relatedMapIds', 'mapIcon', 'mapColor'
   ]),
   item: new Set([
-    'id', 'name', 'isPlotCritical', 'currentOwner', 'pastOwners',
+    'id', 'entityType', 'name', 'isPlotCritical', 'currentOwner', 'pastOwners',
     'currentLocation', 'associatedEvents', 'magicSystems', 'groups', 'profileImagePath', 'customFields', 'connections',
     'linkedCharacters', 'linkedEconomies', 'linkedCultures', 'economicValue',
     'linkedChapters', 'linkedScenes', 'compendiumSources',
@@ -131,16 +152,16 @@ const FRONTMATTER_WHITELISTS: Record<EntityType, Set<string>> = {
     'campaignItemEffects'
   ]),
   reference: new Set([
-    'id', 'name', 'category', 'tags', 'profileImagePath',
+    'id', 'entityType', 'name', 'category', 'tags', 'profileImagePath',
     'mapCoordinates', 'mapId', 'markerId', 'relatedMapIds', 'mapIcon', 'mapColor'
   ]),
   chapter: new Set([
-    'id', 'name', 'number', 'tags', 'profileImagePath',
+    'id', 'entityType', 'name', 'number', 'tags', 'profileImagePath',
     'linkedCharacters', 'linkedLocations', 'linkedEvents', 'linkedItems', 'linkedGroups',
     'linkedScenes', 'bookId', 'bookName'
   ]),
   scene: new Set([
-    'id', 'name', 'chapterId', 'chapterName', 'status', 'priority', 'tags', 'profileImagePath',
+    'id', 'entityType', 'name', 'chapterId', 'chapterName', 'status', 'priority', 'tags', 'profileImagePath',
     'linkedCharacters', 'linkedLocations', 'linkedEvents', 'linkedItems', 'linkedGroups',
     'mapCoordinates', 'mapId', 'markerId', 'relatedMapIds', 'mapIcon', 'mapColor',
     'campaignBoardMapId', 'povCharacter', 'emotion', 'intensity', 'setupScenes', 'payoffScenes',
@@ -148,7 +169,7 @@ const FRONTMATTER_WHITELISTS: Record<EntityType, Set<string>> = {
     'beats', 'content'
   ]),
   map: new Set([
-    'id', 'name', 'description', 'scale', 'parentMapId', 'childMapIds', 'correspondingLocationId', 'backgroundImagePath', 'mapData',
+    'id', 'entityType', 'name', 'description', 'scale', 'parentMapId', 'childMapIds', 'correspondingLocationId', 'backgroundImagePath', 'mapData',
     'width', 'height', 'defaultZoom', 'center', 'bounds', 'markers', 'layers',
     'gridEnabled', 'gridSize', 'profileImagePath', 'linkedLocations', 'linkedCharacters', 'linkedEvents',
     'linkedItems', 'linkedGroups', 'linkedCultures', 'linkedEconomies', 'linkedMagicSystems', 'linkedScenes', 'linkedReferences',
@@ -157,34 +178,34 @@ const FRONTMATTER_WHITELISTS: Record<EntityType, Set<string>> = {
     'geojsonFiles', 'gpxFiles', 'tileSubdomains', 'tileAttribution', 'markerFiles', 'markerFolders', 'markerTags'
   ]),
   culture: new Set([
-    'id', 'name', 'profileImagePath', 'languages', 'techLevel', 'governmentType', 'status',
+    'id', 'entityType', 'name', 'profileImagePath', 'languages', 'techLevel', 'governmentType', 'status',
     'population', 'linkedLocations', 'linkedCharacters', 'linkedEvents', 'relatedCultures',
     'parentCulture', 'groups', 'customFields', 'connections',
     'balance', 'linkedEconomies', 'linkedMagicSystems', 'linkedItems', 'compendiumEntries',
     'mapCoordinates', 'mapId', 'markerId', 'relatedMapIds', 'mapIcon', 'mapColor'
   ]),
   faction: new Set([
-    'id', 'name', 'profileImagePath', 'factionType', 'strength', 'status', 'militaryPower',
+    'id', 'entityType', 'name', 'profileImagePath', 'factionType', 'strength', 'status', 'militaryPower',
     'economicPower', 'politicalInfluence', 'colors', 'emblem', 'motto', 'members',
     'territories', 'factionRelationships', 'linkedEvents', 'linkedCulture', 'parentFaction',
     'subfactions', 'groups', 'customFields', 'connections',
     'mapCoordinates', 'mapId', 'markerId', 'relatedMapIds', 'mapIcon', 'mapColor'
   ]),
   economy: new Set([
-    'id', 'name', 'profileImagePath', 'economicSystem', 'status', 'currencies', 'resources',
+    'id', 'entityType', 'name', 'profileImagePath', 'economicSystem', 'status', 'currencies', 'resources',
     'tradeRoutes', 'linkedCharacters', 'linkedLocations', 'linkedFactions', 'linkedCultures', 'linkedEvents', 'linkedItems',
     'groups', 'customFields', 'connections',
     'mapCoordinates', 'mapId', 'markerId', 'relatedMapIds', 'mapIcon', 'mapColor'
   ]),
   magicSystem: new Set([
-    'id', 'name', 'profileImagePath', 'systemType', 'rarity', 'powerLevel', 'status',
+    'id', 'entityType', 'name', 'profileImagePath', 'systemType', 'rarity', 'powerLevel', 'status',
     'materials', 'categories', 'abilities', 'consistencyRules', 'linkedCharacters',
     'linkedLocations', 'linkedCultures', 'linkedEvents', 'linkedItems', 'groups',
     'customFields', 'connections', 'compendiumEntries',
     'mapCoordinates', 'mapId', 'markerId', 'relatedMapIds', 'mapIcon', 'mapColor'
   ]),
   compendiumEntry: new Set([
-    'id', 'name', 'entryType', 'rarity', 'dangerRating', 'profileImagePath',
+    'id', 'entityType', 'name', 'entryType', 'rarity', 'dangerRating', 'profileImagePath',
     'linkedLocations', 'linkedCharacters', 'linkedItems', 'linkedMagicSystems',
     'linkedCultures', 'linkedEvents',
     'groups', 'customFields', 'connections',
@@ -192,12 +213,12 @@ const FRONTMATTER_WHITELISTS: Record<EntityType, Set<string>> = {
     'triggeredAtLocations', 'triggeredByFlag', 'triggeredByItem'
   ]),
   book: new Set([
-    'id', 'name', 'series', 'bookNumber', 'genre', 'status', 'coverImagePath',
+    'id', 'entityType', 'name', 'series', 'bookNumber', 'genre', 'status', 'coverImagePath',
     'linkedChapters', 'groups', 'customFields', 'connections',
     'mapCoordinates', 'mapId', 'markerId', 'relatedMapIds', 'mapIcon', 'mapColor'
   ]),
   campaignSession: new Set([
-    'id', 'name', 'storyId', 'currentSceneId', 'currentSceneName', 'activeMapId',
+    'id', 'entityType', 'name', 'storyId', 'currentSceneId', 'currentSceneName', 'activeMapId',
     'partyCharacterIds', 'partyCharacterNames', 'partyState',
     'partyItems', 'flags', 'revealedCompendiumEntryIds', 'groupStandings',
     'collectedBoardItemKeys',
@@ -231,7 +252,7 @@ export function buildFrontmatter(
   }
 ): Record<string, unknown> {
   const whitelist = FRONTMATTER_WHITELISTS[entityType];
-  const output: Record<string, unknown> = {};
+  const output: Record<string, unknown> = { entityType };
   const mode = options?.customFieldsMode ?? 'flatten';
   const srcKeys = new Set(Object.keys(source || {}));
   const originalFrontmatter = options?.originalFrontmatter;
