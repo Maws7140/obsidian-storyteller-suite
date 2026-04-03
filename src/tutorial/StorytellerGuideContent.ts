@@ -134,26 +134,25 @@ export function getWhatsNewGuide(version: string): StorytellerGuideDocument {
     return {
         title: `What is new in ${version}`,
         introHtml: `
-            <p>This update is a bug-fix pass on writing analytics and custom templates. The goal was to make the newer workflow pieces actually track and save reliably instead of showing stale state.</p>
+            <p>This update fixes a note classification bug that could make the plugin pick up the wrong files in some folder setups.</p>
         `,
         sections: [
             {
-                title: 'Writing analytics fixes',
+                title: 'Entity type fix',
                 bodyHtml: `
                     <ul>
-                        <li>Fixed writing analytics getting stuck on old numbers instead of reflecting current progress.</li>
-                        <li>Fixed the sidebar word goal display so it updates properly while you are writing.</li>
-                        <li>Finished writing sessions now get recorded more reliably when switching files or refreshing analytics.</li>
+                        <li>Fixed notes being picked up as the wrong entity type in some folder setups.</li>
+                        <li>Added a guard so characters, books, and other entity notes do not get cross-listed incorrectly.</li>
+                        <li>Added a startup repair pass so older notes get stamped with their entity type after reload.</li>
                     </ul>
                 `
             },
             {
-                title: 'Template save fixes',
+                title: 'Cleanup',
                 bodyHtml: `
                     <ul>
-                        <li>Fixed dashboard-created custom templates not saving consistently.</li>
-                        <li>Fixed stale duplicate template files being left behind in older folders.</li>
-                        <li>Fixed map templates losing their entity type on save.</li>
+                        <li>Cleaned up assistant-specific repo files that should not have been public.</li>
+                        <li>Added ignore rules for local debug logs and scratch files.</li>
                     </ul>
                 `
             }

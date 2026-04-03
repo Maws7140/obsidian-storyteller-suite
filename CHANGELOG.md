@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.7.7
+
+### Fixed
+- Fixed notes being picked up as the wrong entity type in some folder setups
+- Added an entity type guard so characters, books, and other notes do not get cross-listed incorrectly
+- Added a startup backfill so older notes get stamped with their entity type after reload
+
+### Internal
+- Removed assistant-specific repo files that should not have been public
+- Added ignore rules for local debug logs and scratch files
+
 ## 1.7.6
 
 ### Fixed

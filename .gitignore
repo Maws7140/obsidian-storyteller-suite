@@ -122,3 +122,12 @@ GEMINI_SETUP.md
 # Test artifacts and debug files
 obsidian-startup-debug.png
 nul
+/.claude/
+/AGENTS.md
+/GEMINI.md
+/.github/chatmodes/
+/data.json.showcase-prep-*.bak
+/diff_styles.txt
+/diff_timeline.txt
+/gcm-diagnose.log
+/gcm-login-output.txt
