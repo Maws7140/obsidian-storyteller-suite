@@ -1637,12 +1637,19 @@ If your plugin does not need CSS, delete this file.
     backdrop-filter: blur(10px);
 }
 
+.storyteller-responsive-modal.mobile-fullscreen .setting-item.storyteller-modal-buttons .setting-item-info {
+    display: none;
+}
+
 .storyteller-responsive-modal.mobile-fullscreen .setting-item.storyteller-modal-buttons .setting-item-control {
     display: flex;
     flex-wrap: wrap;
     gap: 0.65rem;
     width: 100%;
     justify-content: stretch;
+    overflow: visible;
+    max-width: none;
+    margin-left: 0;
 }
 
 .storyteller-responsive-modal.mobile-fullscreen .setting-item.storyteller-modal-buttons .button {
@@ -1650,8 +1657,15 @@ If your plugin does not need CSS, delete this file.
     min-height: 44px;
 }
 
+.storyteller-responsive-modal.mobile-fullscreen .setting-item.storyteller-modal-buttons .button-container,
+.storyteller-responsive-modal.mobile-fullscreen .setting-item.storyteller-modal-buttons .clickable-icon {
+    flex: 1 1 calc(50% - 0.65rem);
+}
+
 .storyteller-responsive-modal.mobile-fullscreen .setting-item.storyteller-modal-buttons .button.mod-cta,
-.storyteller-responsive-modal.mobile-fullscreen .setting-item.storyteller-modal-buttons .button.mod-warning {
+.storyteller-responsive-modal.mobile-fullscreen .setting-item.storyteller-modal-buttons .button.mod-warning,
+.storyteller-responsive-modal.mobile-fullscreen .setting-item.storyteller-modal-buttons .button-container:has(.mod-cta),
+.storyteller-responsive-modal.mobile-fullscreen .setting-item.storyteller-modal-buttons .button-container:has(.mod-warning) {
     flex-basis: 100%;
 }
 

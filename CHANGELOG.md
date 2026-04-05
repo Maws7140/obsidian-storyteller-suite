@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.7.8-beta.3
+
+### Fixed
+- Adjusted the mobile modal action row again so the save button is not clipped by the settings layout container
+
 ## 1.7.8-beta.2
 
 ### Fixed
