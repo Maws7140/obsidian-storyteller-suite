@@ -208,5 +208,5 @@ jobs:
             manifest.json
             styles.css
           draft: false
-          prerelease: false
+          prerelease: ${{ contains(steps.release_meta.outputs.version, '-') }}
 
