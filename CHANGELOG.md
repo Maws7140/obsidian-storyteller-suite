@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.7.8
+
+### Fixed
+- Fixed dashboard sidebar duplication caused by stacked refresh and listener behavior when the dashboard view was reopened or refreshed
+
 ## 1.7.7
 
 ### Fixed
