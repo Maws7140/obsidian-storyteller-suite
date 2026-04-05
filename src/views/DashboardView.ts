@@ -102,6 +102,11 @@ export class DashboardView extends ItemView {
     private _tabScrollPositions = new Map<string, { top: number; targetSelector?: string }>();
     /** Guard to avoid clobbering saved scroll positions during tab re-render */
     private _suppressScrollCapture = false;
+    /** Prevent duplicate subscriptions when the sidebar view is reopened */
+    private hasRegisteredViewListeners = false;
+    /** Serialize active-tab refreshes so repeated events cannot append duplicate content */
+    private isRefreshingActiveTab = false;
+    private pendingActiveTabRefresh = false;
 
     /** Template library filter state */
     private templateFilter: TemplateFilter = {
@@ -354,6 +359,11 @@ export class DashboardView extends ItemView {
         if (!this.tabContentContainer) {
             return;
         }
+
+        if (this.isRefreshingActiveTab) {
+            this.pendingActiveTabRefresh = true;
+            return;
+        }
         
         // On mobile, don't refresh while user is actively typing to prevent keyboard dismissal
         if (PlatformUtils.isMobile() && this.isUserTyping) {
@@ -371,6 +381,7 @@ export class DashboardView extends ItemView {
         const activeTab = this.tabs.find(tab => tab.id === currentTabId);
         if (activeTab) {
             try {
+                this.isRefreshingActiveTab = true;
                 this._suppressScrollCapture = true;
                 await activeTab.renderFn(this.tabContentContainer);
                 await this.restoreTabScroll(currentTabId);
@@ -393,6 +404,11 @@ export class DashboardView extends ItemView {
                 console.error(`Storyteller Suite: Error refreshing active tab ${this.activeTabId}:`, error);
             } finally {
                 this._suppressScrollCapture = false;
+                this.isRefreshingActiveTab = false;
+                if (this.pendingActiveTabRefresh) {
+                    this.pendingActiveTabRefresh = false;
+                    queueMicrotask(() => this.refreshActiveTab());
+                }
             }
         }
     }
@@ -546,6 +562,7 @@ export class DashboardView extends ItemView {
         // Measurement/More removed; tabs will wrap freely
 
         // Responsive layout via ResizeObserver
+        this.tabsResizeObserver?.disconnect();
         this.tabsResizeObserver = new ResizeObserver(() => {
             this.layoutTabs();
             // Use requestAnimationFrame to ensure layout is complete before measuring
@@ -581,40 +598,44 @@ export class DashboardView extends ItemView {
         const initialTabId = visibleTabs.find(t => t.id === this.activeTabId)?.id || visibleTabs[0]?.id || this.tabs[0].id;
         await this.setActiveTab(initialTabId);
 
-        // --- Register Vault Event Listeners for Auto-refresh ---
-        this.registerVaultEventListeners();
+        if (!this.hasRegisteredViewListeners) {
+            // --- Register Vault Event Listeners for Auto-refresh ---
+            this.registerVaultEventListeners();
 
-        // --- Register Workspace Resize Event Listener ---
-        this.registerEvent(this.app.workspace.on('resize', () => {
-            this.debouncedRefreshActiveTab();
-            // Relayout tabs and update offsets on window resize
-            this.layoutTabs();
-            requestAnimationFrame(() => {
-                this.updateStickyOffsets(headerContainer);
-            });
-        }));
+            // --- Register Workspace Resize Event Listener ---
+            this.registerEvent(this.app.workspace.on('resize', () => {
+                this.debouncedRefreshActiveTab();
+                // Relayout tabs and update offsets on window resize
+                this.layoutTabs();
+                requestAnimationFrame(() => {
+                    this.updateStickyOffsets(headerContainer);
+                });
+            }));
 
-        // --- Register Global Click Handler for Mobile Keyboard Dismissal ---
-        if (PlatformUtils.isMobile()) {
-            this.registerDomEvent(document, 'click', (e: MouseEvent) => {
-                try {
-                    // Type guard: ensure e.target is a Node before proceeding
-                    if (!e.target || !(e.target instanceof Node)) {
-                        return;
+            // --- Register Global Click Handler for Mobile Keyboard Dismissal ---
+            if (PlatformUtils.isMobile()) {
+                this.registerDomEvent(document, 'click', (e: MouseEvent) => {
+                    try {
+                        // Type guard: ensure e.target is a Node before proceeding
+                        if (!e.target || !(e.target instanceof Node)) {
+                            return;
+                        }
+
+                        // If user taps outside any search input, allow keyboard dismissal
+                        if (this.currentSearchInput &&
+                            e.target !== this.currentSearchInput &&
+                            !this.currentSearchInput.contains(e.target)) {
+                            // Mark as user-requested dismissal and remove focus
+                            this.markSearchInputDismissal();
+                            this.currentSearchInput.blur();
+                        }
+                    } catch (error) {
+                        console.error('Storyteller Suite: Error in mobile keyboard dismissal handler:', error);
                     }
+                });
+            }
 
-                    // If user taps outside any search input, allow keyboard dismissal
-                    if (this.currentSearchInput && 
-                        e.target !== this.currentSearchInput && 
-                        !this.currentSearchInput.contains(e.target)) {
-                        // Mark as user-requested dismissal and remove focus
-                        this.markSearchInputDismissal();
-                        this.currentSearchInput.blur();
-                    }
-                } catch (error) {
-                    console.error('Storyteller Suite: Error in mobile keyboard dismissal handler:', error);
-                }
-            });
+            this.hasRegisteredViewListeners = true;
         }
 
     }
@@ -5046,6 +5067,9 @@ export class DashboardView extends ItemView {
         // Clean up file input if it exists
         this.fileInput?.remove();
         this.fileInput = null;
+
+        this.tabsResizeObserver?.disconnect();
+        this.tabsResizeObserver = null;
 
         // Clean up typing timer
         if (this.typingTimer) {
