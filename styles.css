@@ -1673,6 +1673,30 @@ If your plugin does not need CSS, delete this file.
     display: none;
 }
 
+.storyteller-responsive-modal.mobile-fullscreen .storyteller-modal-footer {
+    position: sticky;
+    bottom: calc(env(safe-area-inset-bottom, 0) * -1);
+    z-index: calc(var(--layer-modal, 1000) + 1);
+    margin: 1rem -1rem calc(env(safe-area-inset-bottom, 0) * -1) -1rem;
+    padding: 0.85rem 1rem calc(env(safe-area-inset-bottom, 0) + 0.85rem) 1rem;
+    background: color-mix(in srgb, var(--background-primary) 94%, transparent);
+    border-top: 1px solid var(--background-modifier-border);
+    backdrop-filter: blur(10px);
+    flex-wrap: wrap;
+}
+
+.storyteller-responsive-modal.mobile-fullscreen .storyteller-modal-footer .storyteller-modal-btn,
+.storyteller-responsive-modal.mobile-fullscreen .storyteller-modal-footer .mod-warning,
+.storyteller-responsive-modal.mobile-fullscreen .storyteller-modal-footer .mod-cta {
+    flex: 1 1 calc(50% - 0.5rem);
+    min-height: 44px;
+}
+
+.storyteller-responsive-modal.mobile-fullscreen .storyteller-modal-footer .mod-cta,
+.storyteller-responsive-modal.mobile-fullscreen .storyteller-modal-footer .mod-warning {
+    flex-basis: 100%;
+}
+
 /* Mobile-optimized settings */
 .mobile-setting {
     min-height: var(--touch-target-size);

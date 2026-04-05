@@ -577,52 +577,54 @@ export class CharacterModal extends ResponsiveModal {
         this.renderDndStatsSection(contentEl);
 
         // --- Action Buttons ---
-        const buttonsSetting = new Setting(contentEl).setClass('storyteller-modal-buttons');
+        const footer = contentEl.createDiv('storyteller-modal-footer');
 
         if (!this.isNew && this.onDelete) {
-            buttonsSetting.addButton(button => button
+            const deleteBtn = new ButtonComponent(footer)
                 .setButtonText(t('deleteCharacter'))
-                .setClass('mod-warning')
-                .onClick(async () => {
-                    if (confirm(t('confirmDeleteCharacter', this.character.name))) {
-                        if (this.onDelete) {
-                            try {
-                                await this.onDelete(this.character);
-                                new Notice(t('characterDeleted', this.character.name));
-                                this.close();
-                            } catch (error) {
-                                console.error("Error deleting character:", error);
-                                new Notice(t('failedToDelete', t('character')));
-                            }
+                .setClass('storyteller-modal-btn mod-warning');
+            deleteBtn.onClick(async () => {
+                if (confirm(t('confirmDeleteCharacter', this.character.name))) {
+                    if (this.onDelete) {
+                        try {
+                            await this.onDelete(this.character);
+                            new Notice(t('characterDeleted', this.character.name));
+                            this.close();
+                        } catch (error) {
+                            console.error("Error deleting character:", error);
+                            new Notice(t('failedToDelete', t('character')));
                         }
                     }
-                }));
+                }
+            });
         }
 
-        buttonsSetting.controlEl.createDiv({ cls: 'storyteller-modal-button-spacer' });
+        const spacer = footer.createDiv('storyteller-modal-button-spacer');
+        spacer.setAttr('aria-hidden', 'true');
 
-        buttonsSetting.addButton(btn => btn
+        const sheetBtn = new ButtonComponent(footer)
             .setButtonText('Character Sheet')
-            .setTooltip('Preview and export a styled character sheet')
-            .onClick(() => {
-                if (!this.character.name?.trim()) {
-                    new Notice('Please enter a character name before generating a sheet.');
-                    return;
-                }
-                new CharacterSheetPreviewModal(this.app, this.plugin, this.character).open();
-            })
-        );
+            .setClass('storyteller-modal-btn');
+        sheetBtn.setTooltip('Preview and export a styled character sheet');
+        sheetBtn.onClick(() => {
+            if (!this.character.name?.trim()) {
+                new Notice('Please enter a character name before generating a sheet.');
+                return;
+            }
+            new CharacterSheetPreviewModal(this.app, this.plugin, this.character).open();
+        });
 
-        buttonsSetting.addButton(button => button
+        const cancelBtn = new ButtonComponent(footer)
             .setButtonText(t('cancel'))
-            .onClick(() => {
-                this.close();
-            }));
+            .setClass('storyteller-modal-btn');
+        cancelBtn.onClick(() => {
+            this.close();
+        });
 
-        buttonsSetting.addButton(button => button
+        const saveBtn = new ButtonComponent(footer)
             .setButtonText(this.isNew ? t('createCharacter') : t('saveChanges'))
-            .setCta()
-            .onClick(async () => {
+            .setClass('storyteller-modal-btn mod-cta');
+        saveBtn.onClick(async () => {
                 if (!this.character.name?.trim()) {
                     new Notice(t('characterNameRequired'));
                     return;
@@ -641,7 +643,7 @@ export class CharacterModal extends ResponsiveModal {
                     console.error("Error saving character:", error);
                     new Notice(t('failedToSave', t('character')));
                 }
-            }));
+            });
     }
 
     // Helper to render connections list

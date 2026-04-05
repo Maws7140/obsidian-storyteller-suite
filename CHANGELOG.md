@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.7.8-beta.4
+
+### Fixed
+- Replaced the character modal's action row with a dedicated footer so create and save controls stay visible on mobile
+
 ## 1.7.8-beta.3
 
 ### Fixed
