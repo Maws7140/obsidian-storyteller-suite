@@ -1579,7 +1579,7 @@ If your plugin does not need CSS, delete this file.
 }
 
 /* Mobile fullscreen modals */
-.storyteller-modal.mobile-fullscreen {
+.storyteller-responsive-modal.mobile-fullscreen {
     position: fixed;
     top: 0;
     left: 0;
@@ -1603,7 +1603,7 @@ If your plugin does not need CSS, delete this file.
     flex-direction: column;
 }
 
-.storyteller-modal.mobile-fullscreen .modal-content {
+.storyteller-responsive-modal.mobile-fullscreen .modal-content {
     flex: 1 1 auto;
     overflow-y: auto;
     overflow-x: hidden;
@@ -2073,7 +2073,7 @@ If your plugin does not need CSS, delete this file.
 /* Portrait orientation optimizations for tablets */
 @media (max-width: 768px) and (orientation: portrait) {
     /* In portrait, prioritize vertical scrolling */
-    .storyteller-modal.mobile-fullscreen .modal-content {
+    .storyteller-responsive-modal.mobile-fullscreen .modal-content {
         padding-left: 0.75rem;
         padding-right: 0.75rem;
     }
@@ -3157,8 +3157,7 @@ If your plugin does not need CSS, delete this file.
   position: relative;
   z-index: var(--layer-status-bar, 15);
   flex-shrink: 0;
-  /* Accent bar at the top using theme accent */
-  border-top: 3px solid var(--interactive-accent);
+  border-top: 1px solid var(--background-modifier-border);
 }
 
 /* Header Top Row */
@@ -9153,15 +9152,19 @@ body.mod-rtl .storyteller-group-members {
 /* ═══════════════════════════════════════════════════════════════════════════
    ENTITY CARD LEFT-BORDER ACCENTS (inset shadow = no layout shift)
    ═══════════════════════════════════════════════════════════════════════════ */
-.storyteller-dashboard-content[data-tab="characters"]  .storyteller-list-item { box-shadow: inset 3px 0 0 var(--sts-character); }
-.storyteller-dashboard-content[data-tab="locations"]   .storyteller-list-item { box-shadow: inset 3px 0 0 var(--sts-location); }
-.storyteller-dashboard-content[data-tab="events"]      .storyteller-list-item { box-shadow: inset 3px 0 0 var(--sts-event); }
-.storyteller-dashboard-content[data-tab="items"]       .storyteller-list-item { box-shadow: inset 3px 0 0 var(--sts-item); }
-.storyteller-dashboard-content[data-tab="cultures"]    .storyteller-list-item { box-shadow: inset 3px 0 0 var(--sts-culture); }
-.storyteller-dashboard-content[data-tab="economies"]   .storyteller-list-item { box-shadow: inset 3px 0 0 var(--sts-economy); }
-.storyteller-dashboard-content[data-tab="magicsystems"].storyteller-list-item { box-shadow: inset 3px 0 0 var(--sts-magicsystem); }
-.storyteller-dashboard-content[data-tab="compendium"]  .storyteller-list-item { box-shadow: inset 3px 0 0 var(--sts-compendium); }
-.storyteller-dashboard-content[data-tab="books"]       .storyteller-list-item { box-shadow: inset 3px 0 0 var(--sts-book); }
+.storyteller-dashboard-accent-borders .storyteller-dashboard-header {
+  border-top: 3px solid var(--interactive-accent);
+}
+
+.storyteller-dashboard-accent-borders .storyteller-dashboard-content[data-tab="characters"]  .storyteller-list-item { box-shadow: inset 3px 0 0 var(--sts-character); }
+.storyteller-dashboard-accent-borders .storyteller-dashboard-content[data-tab="locations"]   .storyteller-list-item { box-shadow: inset 3px 0 0 var(--sts-location); }
+.storyteller-dashboard-accent-borders .storyteller-dashboard-content[data-tab="events"]      .storyteller-list-item { box-shadow: inset 3px 0 0 var(--sts-event); }
+.storyteller-dashboard-accent-borders .storyteller-dashboard-content[data-tab="items"]       .storyteller-list-item { box-shadow: inset 3px 0 0 var(--sts-item); }
+.storyteller-dashboard-accent-borders .storyteller-dashboard-content[data-tab="cultures"]    .storyteller-list-item { box-shadow: inset 3px 0 0 var(--sts-culture); }
+.storyteller-dashboard-accent-borders .storyteller-dashboard-content[data-tab="economies"]   .storyteller-list-item { box-shadow: inset 3px 0 0 var(--sts-economy); }
+.storyteller-dashboard-accent-borders .storyteller-dashboard-content[data-tab="magicsystems"] .storyteller-list-item { box-shadow: inset 3px 0 0 var(--sts-magicsystem); }
+.storyteller-dashboard-accent-borders .storyteller-dashboard-content[data-tab="compendium"]  .storyteller-list-item { box-shadow: inset 3px 0 0 var(--sts-compendium); }
+.storyteller-dashboard-accent-borders .storyteller-dashboard-content[data-tab="books"]       .storyteller-list-item { box-shadow: inset 3px 0 0 var(--sts-book); }
 
 /* ═══════════════════════════════════════════════════════════════════════════
    ENTITY CARD META BADGES — unified colored chip system (compendium style)

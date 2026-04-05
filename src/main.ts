@@ -312,6 +312,9 @@ const FRONTMATTER_LINK_ONLY_SCALAR_FIELDS = new Set([
     /** Dashboard tab order - persisted array of tab IDs in user-defined order */
     dashboardTabOrder?: string[];
 
+    /** Show accent borders and color strips in the dashboard UI */
+    dashboardAccentBorders?: boolean;
+
     /** Template system settings */
     templateStorageFolder?: string;
     showBuiltInTemplates?: boolean;
@@ -466,6 +469,7 @@ const FRONTMATTER_LINK_ONLY_SCALAR_FIELDS = new Set([
     notifyOnGoalReached: true,
     countDeletionsForGoal: false,
     dailyWritingStats: [],
+    dashboardAccentBorders: false,
     compileScriptsFolder: 'StorytellerSuite/CompileScripts',
     manuscriptOutputFolder: 'StorytellerSuite/Manuscripts',
     disableLeafletGlobalExposure: false,

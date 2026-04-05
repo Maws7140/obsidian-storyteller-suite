@@ -366,6 +366,7 @@ export class NetworkGraphView extends ItemView {
      * Setup resize observer for responsive layout
      */
     private setupResizeObserver(): void {
+        this.resizeObserver?.disconnect();
         this.resizeObserver = new ResizeObserver(() => {
             this.onResize();
         });

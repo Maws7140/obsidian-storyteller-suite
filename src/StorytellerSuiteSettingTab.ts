@@ -7,6 +7,7 @@ import { CustomSheetTemplateModal } from './modals/CustomSheetTemplateModal';
 import { getGettingStartedGuide, renderGuideDocument } from './tutorial/StorytellerGuideContent';
 import { BUILT_IN_SHEET_TEMPLATES } from './utils/CharacterSheetTemplates';
 import { setLocale, t, getAvailableLanguages, getLanguageName, isLanguageAvailable } from './i18n/strings';
+import { VIEW_TYPE_DASHBOARD } from './views/DashboardView';
 
 type TabId = 'stories' | 'dashboard' | 'folders' | 'timeline' | 'maps' | 'templates' | 'gallery' | 'help';
 
@@ -253,6 +254,24 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                         this.plugin.settings.dailyWordCountGoal = goal;
                         await this.plugin.saveSettings();
                     }
+                })
+            );
+
+        new Setting(container)
+            .setName('Show dashboard accent borders')
+            .setDesc('Enable the colored top border and entity card accent strips in the dashboard.')
+            .addToggle(toggle => toggle
+                .setValue(!!this.plugin.settings.dashboardAccentBorders)
+                .onChange(async (value) => {
+                    this.plugin.settings.dashboardAccentBorders = value;
+                    await this.plugin.saveSettings();
+                    const leaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_DASHBOARD);
+                    await Promise.all(leaves.map(async (leaf) => {
+                        const view = leaf.view as any;
+                        if (view && typeof view.onOpen === 'function') {
+                            await view.onOpen();
+                        }
+                    }));
                 })
             );
 

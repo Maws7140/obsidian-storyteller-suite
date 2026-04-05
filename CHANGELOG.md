@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.7.8-beta.1
+
+### Fixed
+- Fixed mobile fullscreen entity modals not picking up the correct responsive layout class
+- Fixed dashboard sidebar refresh/listener stacking that could cause duplicated entity views
+
+### Changed
+- Added a dashboard setting to disable accent borders and made the cleaner non-accented look the default
+
+### Internal
+- Hardened map, timeline, and network views against repeated resize observer registration
+
 ## 1.7.7
 
 ### Fixed

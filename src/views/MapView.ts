@@ -50,6 +50,7 @@ export class MapView extends ItemView {
 
     // State
     private resizeObserver: ResizeObserver | null = null;
+    private hasRegisteredWorkspaceResizeListener = false;
     private currentZoom = 2;
     private locationLevelMode: LocationLevel = 'auto';
     private placementMode: { type: 'location' | 'character' | 'event' | 'item' | 'culture' | 'economy' | 'magicsystem' | 'group' | 'scene' | 'reference' | null } = { type: null };
@@ -2309,6 +2310,7 @@ export class MapView extends ItemView {
      */
     private setupResizeObserver(): void {
         if (!this.mapContainer) return;
+        this.resizeObserver?.disconnect();
 
         let resizeTimeout: NodeJS.Timeout | null = null;
 
@@ -2393,17 +2395,20 @@ export class MapView extends ItemView {
 
         // CRITICAL FIX: Also listen to Obsidian workspace resize events
         // This catches sidebar open/close events that ResizeObserver might miss
-        this.registerEvent(this.app.workspace.on('resize', () => {
-            // Delay slightly to let Obsidian finish its layout update
-            setTimeout(() => {
-                if (resizeTimeout) {
-                    clearTimeout(resizeTimeout);
-                }
-                resizeTimeout = setTimeout(() => {
-                    handleResize();
-                }, 150);
-            }, 100);
-        }));
+        if (!this.hasRegisteredWorkspaceResizeListener) {
+            this.registerEvent(this.app.workspace.on('resize', () => {
+                // Delay slightly to let Obsidian finish its layout update
+                setTimeout(() => {
+                    if (resizeTimeout) {
+                        clearTimeout(resizeTimeout);
+                    }
+                    resizeTimeout = setTimeout(() => {
+                        handleResize();
+                    }, 150);
+                }, 100);
+            }));
+            this.hasRegisteredWorkspaceResizeListener = true;
+        }
     }
 
     async onClose(): Promise<void> {
