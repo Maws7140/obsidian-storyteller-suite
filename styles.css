@@ -1609,9 +1609,54 @@ If your plugin does not need CSS, delete this file.
     overflow-x: hidden;
     -webkit-overflow-scrolling: touch;
     /* Account for device safe areas (notches, rounded corners) */
-    padding: env(safe-area-inset-top, 0) 1rem env(safe-area-inset-bottom, 0) 1rem;
+    padding: calc(env(safe-area-inset-top, 0) + 3.25rem) 1rem calc(env(safe-area-inset-bottom, 0) + 1rem) 1rem;
     /* Ensure minimum height for content visibility */
     min-height: 0;
+}
+
+.storyteller-responsive-modal.mobile-fullscreen .modal-close-button {
+    top: calc(env(safe-area-inset-top, 0) + 0.75rem);
+    right: calc(env(safe-area-inset-right, 0) + 0.75rem);
+    z-index: calc(var(--layer-modal, 1000) + 2);
+    background: color-mix(in srgb, var(--background-primary) 92%, transparent);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 999px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
+    backdrop-filter: blur(8px);
+}
+
+.storyteller-responsive-modal.mobile-fullscreen .setting-item.storyteller-modal-buttons {
+    position: sticky;
+    bottom: calc(env(safe-area-inset-bottom, 0) * -1);
+    z-index: calc(var(--layer-modal, 1000) + 1);
+    margin: 1rem -1rem calc(env(safe-area-inset-bottom, 0) * -1) -1rem;
+    padding: 0.85rem 1rem calc(env(safe-area-inset-bottom, 0) + 0.85rem) 1rem;
+    border-top: 1px solid var(--background-modifier-border);
+    border-bottom: none;
+    background: color-mix(in srgb, var(--background-primary) 94%, transparent);
+    backdrop-filter: blur(10px);
+}
+
+.storyteller-responsive-modal.mobile-fullscreen .setting-item.storyteller-modal-buttons .setting-item-control {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.65rem;
+    width: 100%;
+    justify-content: stretch;
+}
+
+.storyteller-responsive-modal.mobile-fullscreen .setting-item.storyteller-modal-buttons .button {
+    flex: 1 1 calc(50% - 0.65rem);
+    min-height: 44px;
+}
+
+.storyteller-responsive-modal.mobile-fullscreen .setting-item.storyteller-modal-buttons .button.mod-cta,
+.storyteller-responsive-modal.mobile-fullscreen .setting-item.storyteller-modal-buttons .button.mod-warning {
+    flex-basis: 100%;
+}
+
+.storyteller-responsive-modal.mobile-fullscreen .storyteller-modal-button-spacer {
+    display: none;
 }
 
 /* Mobile-optimized settings */

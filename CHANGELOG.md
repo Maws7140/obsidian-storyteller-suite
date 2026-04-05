@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.7.8-beta.2
+
+### Fixed
+- Adjusted mobile fullscreen modals so the close button stays reachable and the action row remains visible at the bottom while scrolling
+
 ## 1.7.8-beta.1
 
 ### Fixed
