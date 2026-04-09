@@ -3,8 +3,9 @@ import { TimelineTrack } from '../types';
 import StorytellerSuitePlugin from '../main';
 import { TimelineTrackModal } from './TimelineTrackModal';
 import { TimelineTrackManager } from '../utils/TimelineTrackManager';
+import { ResponsiveModal } from './ResponsiveModal';
 
-export class TrackListModal extends Modal {
+export class TrackListModal extends ResponsiveModal {
     plugin: StorytellerSuitePlugin;
     private tracks: TimelineTrack[];
     private listContainer: HTMLElement;
@@ -17,6 +18,7 @@ export class TrackListModal extends Modal {
     }
 
     onOpen() {
+        super.onOpen();
         const { contentEl } = this;
         contentEl.empty();
 

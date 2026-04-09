@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
-import { App, Modal, Setting, Notice, TextAreaComponent, TextComponent, ButtonComponent, parseYaml } from 'obsidian';
+import { App, Setting, Notice, TextAreaComponent, TextComponent, ButtonComponent, parseYaml } from 'obsidian';
 import { Event, GalleryImage, Character, Location } from '../types'; // Added Character, Location
 import StorytellerSuitePlugin from '../main';
 import { parseSectionsFromMarkdown } from '../yaml/EntitySections';
@@ -9,6 +9,7 @@ import { addImageSelectionButtons } from '../utils/ImageSelectionHelper';
 import { PromptModal } from './ui/PromptModal';
 import { EntityCustomFieldsEditor } from './entity/EntityCustomFieldsEditor';
 import { EntityGroupSelector } from './entity/EntityGroupSelector';
+import { ResponsiveModal } from './ResponsiveModal';
 // Import the new suggesters
 import { CharacterSuggestModal } from './CharacterSuggestModal';
 import { LocationSuggestModal } from './LocationSuggestModal';
@@ -21,7 +22,7 @@ import { Template } from '../templates/TemplateTypes';
 export type EventModalSubmitCallback = (event: Event) => Promise<void>;
 export type EventModalDeleteCallback = (event: Event) => Promise<void>;
 
-export class EventModal extends Modal {
+export class EventModal extends ResponsiveModal {
     event: Event;
     plugin: StorytellerSuitePlugin;
     onSubmit: EventModalSubmitCallback;
@@ -89,6 +90,7 @@ export class EventModal extends Modal {
     }
 
     async onOpen() {
+        super.onOpen();
         const { contentEl } = this;
         contentEl.empty();
         contentEl.createEl('h2', { text: this.isNew ? t('createNewEvent') : `${t('edit')} ${this.event.name}` });

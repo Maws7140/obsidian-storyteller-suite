@@ -3,11 +3,12 @@
  * Shows existing sessions as "Resume" cards and provides a form to start a new one.
  */
 
-import { App, Modal, Notice, Setting } from 'obsidian';
+import { App, Notice, Setting } from 'obsidian';
 import { CampaignSession } from '../types';
 import StorytellerSuitePlugin from '../main';
+import { ResponsiveModal } from './ResponsiveModal';
 
-export class CampaignSessionModal extends Modal {
+export class CampaignSessionModal extends ResponsiveModal {
     private plugin: StorytellerSuitePlugin;
     private onSessionSelected: (session: CampaignSession) => void;
     private preferredStartingScene?: import('../types').Scene;
@@ -29,6 +30,7 @@ export class CampaignSessionModal extends Modal {
     }
 
     async onOpen(): Promise<void> {
+        super.onOpen();
         const { contentEl } = this;
         this.modalEl.addClass('storyteller-campaign-session-modal');
         contentEl.empty();

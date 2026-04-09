@@ -3,11 +3,12 @@ import { TimelineEra } from '../types';
 import StorytellerSuitePlugin from '../main';
 import { EraManager } from '../utils/EraManager';
 import { t } from '../i18n/strings';
+import { ResponsiveModal } from './ResponsiveModal';
 
 export type EraModalSubmitCallback = (era: TimelineEra) => Promise<void>;
 export type EraModalDeleteCallback = (era: TimelineEra) => Promise<void>;
 
-export class EraModal extends Modal {
+export class EraModal extends ResponsiveModal {
     era: TimelineEra;
     plugin: StorytellerSuitePlugin;
     onSubmit: EraModalSubmitCallback;
@@ -47,6 +48,7 @@ export class EraModal extends Modal {
     }
 
     onOpen() {
+        super.onOpen();
         const { contentEl } = this;
         contentEl.empty();
 

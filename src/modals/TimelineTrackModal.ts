@@ -2,11 +2,12 @@ import { App, Modal, Setting, Notice, DropdownComponent } from 'obsidian';
 import { TimelineTrack } from '../types';
 import StorytellerSuitePlugin from '../main';
 import { TimelineTrackManager } from '../utils/TimelineTrackManager';
+import { ResponsiveModal } from './ResponsiveModal';
 
 export type TrackModalSubmitCallback = (track: TimelineTrack) => Promise<void>;
 export type TrackModalDeleteCallback = (track: TimelineTrack) => Promise<void>;
 
-export class TimelineTrackModal extends Modal {
+export class TimelineTrackModal extends ResponsiveModal {
     track: TimelineTrack;
     plugin: StorytellerSuitePlugin;
     onSubmit: TrackModalSubmitCallback;
@@ -43,6 +44,7 @@ export class TimelineTrackModal extends Modal {
     }
 
     onOpen() {
+        super.onOpen();
         const { contentEl } = this;
         contentEl.empty();
 

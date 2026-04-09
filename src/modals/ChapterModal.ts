@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
-import { App, Modal, Notice, Setting, TextAreaComponent, ButtonComponent, parseYaml, DropdownComponent } from 'obsidian';
+import { App, Notice, Setting, TextAreaComponent, ButtonComponent, parseYaml, DropdownComponent } from 'obsidian';
 import { t } from '../i18n/strings';
 import StorytellerSuitePlugin from '../main';
 import { Chapter, Character, Location, Event, PlotItem, Group, Book } from '../types';
@@ -12,11 +12,12 @@ import { parseSectionsFromMarkdown } from '../yaml/EntitySections';
 import { TemplatePickerModal } from './TemplatePickerModal';
 import { Template } from '../templates/TemplateTypes';
 import { EntityCustomFieldsEditor } from './entity/EntityCustomFieldsEditor';
+import { ResponsiveModal } from './ResponsiveModal';
 
 export type ChapterModalSubmitCallback = (ch: Chapter) => Promise<void>;
 export type ChapterModalDeleteCallback = (ch: Chapter) => Promise<void>;
 
-export class ChapterModal extends Modal {
+export class ChapterModal extends ResponsiveModal {
     plugin: StorytellerSuitePlugin;
     chapter: Chapter;
     onSubmit: ChapterModalSubmitCallback;
@@ -36,6 +37,7 @@ export class ChapterModal extends Modal {
     }
 
     async onOpen(): Promise<void> {
+        super.onOpen();
         const { contentEl } = this;
         contentEl.empty();
         contentEl.createEl('h2', { text: this.isNew ? t('createNewChapter') : `${t('editChapter')} ${this.chapter.name}` });

@@ -1,9 +1,10 @@
-import { App, Modal, Setting, Notice } from 'obsidian';
+import { App, Setting, Notice } from 'obsidian';
 import { Event } from '../types';
 import StorytellerSuitePlugin from '../main';
 import { TagEventGenerator, TagGenerationOptions } from '../utils/TagEventGenerator';
+import { ResponsiveModal } from './ResponsiveModal';
 
-export class TagBasedEventModal extends Modal {
+export class TagBasedEventModal extends ResponsiveModal {
     plugin: StorytellerSuitePlugin;
     private selectedTags: Set<string> = new Set();
     private selectedEntityTypes: Set<'scene' | 'chapter' | 'reference'> = new Set(['scene', 'chapter', 'reference']);
@@ -18,6 +19,7 @@ export class TagBasedEventModal extends Modal {
     }
 
     async onOpen() {
+        super.onOpen();
         const { contentEl } = this;
         contentEl.empty();
 

@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
-import { App, Modal, Notice, Setting, TextAreaComponent, parseYaml } from 'obsidian';
+import { App, Notice, Setting, TextAreaComponent, parseYaml } from 'obsidian';
 import { t } from '../i18n/strings';
 import StorytellerSuitePlugin from '../main';
 import { Reference } from '../types';
@@ -8,11 +8,12 @@ import { parseSectionsFromMarkdown } from '../yaml/EntitySections';
 import { TemplatePickerModal } from './TemplatePickerModal';
 import { Template } from '../templates/TemplateTypes';
 import { EntityCustomFieldsEditor } from './entity/EntityCustomFieldsEditor';
+import { ResponsiveModal } from './ResponsiveModal';
 
 export type ReferenceModalSubmitCallback = (ref: Reference) => Promise<void>;
 export type ReferenceModalDeleteCallback = (ref: Reference) => Promise<void>;
 
-export class ReferenceModal extends Modal {
+export class ReferenceModal extends ResponsiveModal {
     plugin: StorytellerSuitePlugin;
     refData: Reference;
     onSubmit: ReferenceModalSubmitCallback;
@@ -33,6 +34,7 @@ export class ReferenceModal extends Modal {
     }
 
     async onOpen(): Promise<void> {
+        super.onOpen();
         const { contentEl } = this;
         contentEl.empty();
         contentEl.createEl('h2', { text: this.isNew ? t('createReference') : `${t('editReference')} ${this.refData.name}` });

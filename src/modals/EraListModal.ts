@@ -3,8 +3,9 @@ import { TimelineEra } from '../types';
 import StorytellerSuitePlugin from '../main';
 import { EraModal } from './EraModal';
 import { EraManager } from '../utils/EraManager';
+import { ResponsiveModal } from './ResponsiveModal';
 
-export class EraListModal extends Modal {
+export class EraListModal extends ResponsiveModal {
     plugin: StorytellerSuitePlugin;
     private eras: TimelineEra[];
     private listContainer: HTMLElement;
@@ -17,6 +18,7 @@ export class EraListModal extends Modal {
     }
 
     onOpen() {
+        super.onOpen();
         const { contentEl } = this;
         contentEl.empty();
 

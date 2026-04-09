@@ -1,5 +1,5 @@
 ﻿/* eslint-disable @typescript-eslint/no-unused-vars */
-import { App, Modal, Setting, Notice, TextAreaComponent, parseYaml, setIcon } from 'obsidian';
+import { App, Setting, Notice, TextAreaComponent, parseYaml, setIcon } from 'obsidian';
 import {
     CampaignEffectTarget,
     CampaignItemEffect,
@@ -22,11 +22,12 @@ import { TemplatePickerModal } from './TemplatePickerModal';
 import { Template } from '../templates/TemplateTypes';
 import { EntityCustomFieldsEditor } from './entity/EntityCustomFieldsEditor';
 import { EntityGroupSelector } from './entity/EntityGroupSelector';
+import { ResponsiveModal } from './ResponsiveModal';
 
 export type PlotItemModalSubmitCallback = (item: PlotItem) => Promise<void>;
 export type PlotItemModalDeleteCallback = (item: PlotItem) => Promise<void>;
 
-export class PlotItemModal extends Modal {
+export class PlotItemModal extends ResponsiveModal {
     item: PlotItem;
     plugin: StorytellerSuitePlugin;
     onSubmit: PlotItemModalSubmitCallback;
@@ -93,6 +94,7 @@ export class PlotItemModal extends Modal {
     }
 
     async onOpen() {
+        super.onOpen();
         const { contentEl } = this;
         contentEl.empty();
         contentEl.createEl('h2', { text: this.isNew ? t('createItem') : `${t('edit')} ${this.item.name}` });

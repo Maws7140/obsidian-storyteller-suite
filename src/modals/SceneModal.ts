@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
-import { App, Modal, Notice, Setting, TextAreaComponent, ButtonComponent, parseYaml } from 'obsidian';
+import { App, Notice, Setting, TextAreaComponent, ButtonComponent, parseYaml } from 'obsidian';
 import { t } from '../i18n/strings';
 import StorytellerSuitePlugin from '../main';
 import { Scene } from '../types';
@@ -14,11 +14,12 @@ import { TemplatePickerModal } from './TemplatePickerModal';
 import { Template } from '../templates/TemplateTypes';
 import { getTrackedItemOwner } from '../utils/ItemOwnership';
 import type { StoryMap } from '../types';
+import { ResponsiveModal } from './ResponsiveModal';
 
 export type SceneModalSubmitCallback = (sc: Scene) => Promise<void>;
 export type SceneModalDeleteCallback = (sc: Scene) => Promise<void>;
 
-export class SceneModal extends Modal {
+export class SceneModal extends ResponsiveModal {
     plugin: StorytellerSuitePlugin;
     scene: Scene;
     onSubmit: SceneModalSubmitCallback;
@@ -36,6 +37,7 @@ export class SceneModal extends Modal {
     }
 
     async onOpen(): Promise<void> {
+        super.onOpen();
         const { contentEl } = this;
         contentEl.empty();
         contentEl.createEl('h2', { text: this.isNew ? t('createNewScene') : `${t('editScene')} ${this.scene.name}` });

@@ -1,3 +1,7 @@
+## 1.7.8-beta.11
+
+- Move the main remaining legacy create/edit modals onto ResponsiveModal so they use the same mobile modal flow as the fixed character modal instead of plain Obsidian modal behavior.
+
 ## 1.7.8-beta.10
 
 - Upgrade legacy Storyteller modal action rows at runtime so older create/edit modals get split scroll + footer layout on mobile instead of staying inside the scroller.
@@ -267,6 +271,7 @@ _Release notes to be added_
 - Add Dependabot/Renovate configs for dependency management
 - Add internationalization support (27+ translation keys for new features)
 - Update tutorial section with documentation for all new features
+
 
 
 
