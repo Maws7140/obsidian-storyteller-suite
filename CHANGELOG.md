@@ -1,3 +1,7 @@
+## 1.7.8-beta.10
+
+- Upgrade legacy Storyteller modal action rows at runtime so older create/edit modals get split scroll + footer layout on mobile instead of staying inside the scroller.
+
 ## 1.7.8-beta.9
 
 - Normalize the old modal action-row pattern so other create/edit modals inherit the same footer button styling and mobile behavior as the character modal fixes.
@@ -263,6 +267,7 @@ _Release notes to be added_
 - Add Dependabot/Renovate configs for dependency management
 - Add internationalization support (27+ translation keys for new features)
 - Update tutorial section with documentation for all new features
+
 
 
 

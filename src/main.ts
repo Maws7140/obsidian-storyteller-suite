@@ -82,6 +82,7 @@ import { TemplateNoteManager } from './templates/TemplateNoteManager';
 import { SaveNoteAsTemplateCommand } from './commands/SaveNoteAsTemplateCommand';
 import { Template, TemplateApplicationOptions, TemplateApplicationResult } from './templates/TemplateTypes';
 import { StoryTemplateGalleryModal } from './templates/modals/StoryTemplateGalleryModal';
+import { upgradeLegacyModalLayout } from './modals/utils/LegacyModalLayout';
 import { TrackManagerModal } from './modals/TrackManagerModal';
 import { ConflictViewModal } from './modals/ConflictViewModal';
 import { TagTimelineModal } from './modals/TagTimelineModal';
@@ -620,6 +621,7 @@ export default class StorytellerSuitePlugin extends Plugin {
     private groupVaultSyncTimer: number | null = null;
     private deferredStartupMaintenanceTimer: number | null = null;
     private frontmatterReferenceIndexCache: Map<string, Promise<FrontmatterReferenceIndex>> = new Map();
+    private legacyModalLayoutObserver: MutationObserver | null = null;
 
     /** Word count tracker — Longform-compatible goal tracking */
     wordTracker: WordCountTracker;
@@ -772,6 +774,37 @@ export default class StorytellerSuitePlugin extends Plugin {
 
         addPath(this.getEntityFolder(entityType));
         return Array.from(paths);
+    }
+
+    private upgradeLegacyModalLayouts(root: ParentNode = document.body): void {
+        const containers = root instanceof HTMLElement && root.matches('.modal-content')
+            ? [root]
+            : Array.from(root.querySelectorAll?.('.modal-content') ?? []) as HTMLElement[];
+
+        for (const contentEl of containers) {
+            if (!(contentEl instanceof HTMLElement)) continue;
+            const modalEl = contentEl.closest('.modal') as HTMLElement | null;
+            if (!modalEl) continue;
+            upgradeLegacyModalLayout(contentEl, modalEl);
+        }
+    }
+
+    private startLegacyModalLayoutObserver(): void {
+        this.legacyModalLayoutObserver?.disconnect();
+        this.legacyModalLayoutObserver = new MutationObserver((mutations) => {
+            for (const mutation of mutations) {
+                for (const node of Array.from(mutation.addedNodes)) {
+                    if (!(node instanceof HTMLElement)) continue;
+                    if (node.matches('.modal-content')) {
+                        this.upgradeLegacyModalLayouts(node);
+                        continue;
+                    }
+                    this.upgradeLegacyModalLayouts(node);
+                }
+            }
+        });
+        this.legacyModalLayoutObserver.observe(document.body, { childList: true, subtree: true });
+        this.upgradeLegacyModalLayouts(document.body);
     }
 
     private async getFrontmatterReferenceIndex(entityType: EntityFolderType): Promise<FrontmatterReferenceIndex> {
@@ -1348,7 +1381,8 @@ export default class StorytellerSuitePlugin extends Plugin {
 		await this.loadSettings();
 
 		// Initialize word count tracker
-		this.wordTracker = new WordCountTracker(this);
+        this.wordTracker = new WordCountTracker(this);
+        this.startLegacyModalLayoutObserver();
         this.initWritingTracking();
 
 		// Status bar word count (Longform-compatible)
@@ -2097,6 +2131,8 @@ export default class StorytellerSuitePlugin extends Plugin {
 	}
 
 	onunload() {
+        this.legacyModalLayoutObserver?.disconnect();
+        this.legacyModalLayoutObserver = null;
 		void this.finishActiveWritingSession();
 		// Manual cleanup not needed - Obsidian handles view management
 		// Clean up mobile platform classes to prevent class leakage
