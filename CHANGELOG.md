@@ -1,3 +1,8 @@
+## 1.7.8-beta.6
+
+- Remove the character sheet action from the create character flow so the footer stays focused on the current product state.
+- Make character modal footer buttons follow the active accent styling on beta builds.
+
 ## 1.7.8-beta.5
 
 - Fix character create modal on mobile so the form body scrolls separately and the footer actions stay visible, including the save button.
@@ -246,4 +251,5 @@ _Release notes to be added_
 - Add Dependabot/Renovate configs for dependency management
 - Add internationalization support (27+ translation keys for new features)
 - Update tutorial section with documentation for all new features
+
 

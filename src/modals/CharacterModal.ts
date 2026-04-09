@@ -609,17 +609,19 @@ export class CharacterModal extends ResponsiveModal {
         const spacer = footer.createDiv('storyteller-modal-button-spacer');
         spacer.setAttr('aria-hidden', 'true');
 
-        const sheetBtn = new ButtonComponent(footer)
-            .setButtonText('Character Sheet')
-            .setClass('storyteller-modal-btn');
-        sheetBtn.setTooltip('Preview and export a styled character sheet');
-        sheetBtn.onClick(() => {
-            if (!this.character.name?.trim()) {
-                new Notice('Please enter a character name before generating a sheet.');
-                return;
-            }
-            new CharacterSheetPreviewModal(this.app, this.plugin, this.character).open();
-        });
+        if (!this.isNew) {
+            const sheetBtn = new ButtonComponent(footer)
+                .setButtonText('Character Sheet')
+                .setClass('storyteller-modal-btn');
+            sheetBtn.setTooltip('Preview and export a styled character sheet');
+            sheetBtn.onClick(() => {
+                if (!this.character.name?.trim()) {
+                    new Notice('Please enter a character name before generating a sheet.');
+                    return;
+                }
+                new CharacterSheetPreviewModal(this.app, this.plugin, this.character).open();
+            });
+        }
 
         const cancelBtn = new ButtonComponent(footer)
             .setButtonText(t('cancel'))

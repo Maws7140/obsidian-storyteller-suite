@@ -10025,10 +10025,11 @@ body.mod-rtl .storyteller-group-members {
 .storyteller-tab-btn { background: none; border: none; border-bottom: 2px solid transparent; padding: 0.5rem 1rem; cursor: pointer; color: var(--text-muted); }
 .storyteller-tab-btn.is-active { color: var(--text-normal); border-bottom-color: var(--interactive-accent); }
 .storyteller-tab-body { min-height: 200px; }
-.storyteller-modal-footer { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--background-modifier-border); }
-.storyteller-modal-btn { padding: 6px 14px; border-radius: 4px; border: 1px solid var(--background-modifier-border); cursor: pointer; background: none; color: var(--text-normal); }
+.storyteller-modal-footer { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid color-mix(in srgb, var(--interactive-accent) 22%, var(--background-modifier-border)); }
+.storyteller-modal-btn { padding: 6px 14px; border-radius: 4px; border: 1px solid color-mix(in srgb, var(--interactive-accent) 38%, var(--background-modifier-border)); cursor: pointer; background: color-mix(in srgb, var(--interactive-accent) 8%, var(--background-primary)); color: var(--text-normal); }
 .storyteller-modal-btn.mod-cta { background: var(--interactive-accent); color: var(--text-on-accent); border-color: transparent; }
 .storyteller-modal-btn.mod-warning { color: var(--color-red); border-color: var(--color-red); }
+.storyteller-modal-btn:hover { border-color: color-mix(in srgb, var(--interactive-accent) 62%, var(--background-modifier-border)); background: color-mix(in srgb, var(--interactive-accent) 14%, var(--background-primary)); }
 .storyteller-branch-editor-list { display: flex; flex-direction: column; gap: 0.75rem; margin-bottom: 1rem; }
 .storyteller-branch-editor-card { border: 1px solid var(--background-modifier-border); border-radius: 6px; padding: 0.75rem; position: relative; }
 .storyteller-branch-reorder { display: flex; flex-direction: column; gap: 2px; position: absolute; top: 0.5rem; right: 0.5rem; }
