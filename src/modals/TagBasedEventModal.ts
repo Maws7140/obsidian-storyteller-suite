@@ -20,8 +20,7 @@ export class TagBasedEventModal extends ResponsiveModal {
 
     async onOpen() {
         super.onOpen();
-        const { contentEl } = this;
-        contentEl.empty();
+        const { contentEl, footerEl } = this.createStructuredModalLayout();
 
         contentEl.createEl('h2', { text: 'Generate Timeline Events from Tags' });
 
@@ -153,22 +152,13 @@ export class TagBasedEventModal extends ResponsiveModal {
         this.previewContainer = contentEl.createDiv('storyteller-event-preview-container');
 
         // Action Buttons
-        const buttonContainer = contentEl.createDiv('storyteller-modal-buttons');
-
-        buttonContainer.createEl('button', { text: 'Cancel' }, btn => {
-            btn.addEventListener('click', () => {
-                this.close();
-            });
+        footerEl.createDiv({ cls: 'storyteller-modal-button-spacer', attr: { 'aria-hidden': 'true' } });
+        this.createFooterButton(footerEl, 'Cancel', () => {
+            this.close();
         });
-
-        buttonContainer.createEl('button', {
-            text: 'Generate Events',
-            cls: 'mod-cta'
-        }, btn => {
-            btn.addEventListener('click', async () => {
-                await this.generateAndSaveEvents();
-            });
-        });
+        this.createFooterButton(footerEl, 'Generate Events', async () => {
+            await this.generateAndSaveEvents();
+        }, { cta: true });
     }
 
     private async generatePreview() {

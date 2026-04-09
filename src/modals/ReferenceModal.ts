@@ -35,8 +35,7 @@ export class ReferenceModal extends ResponsiveModal {
 
     async onOpen(): Promise<void> {
         super.onOpen();
-        const { contentEl } = this;
-        contentEl.empty();
+        const { contentEl, footerEl } = this.createStructuredModalLayout();
         contentEl.createEl('h2', { text: this.isNew ? t('createReference') : `${t('editReference')} ${this.refData.name}` });
 
         // Auto-apply default template for new references
@@ -196,40 +195,30 @@ export class ReferenceModal extends ResponsiveModal {
         this.customFieldsEditor.setFields(((this.refData as any).customFields || {}) as Record<string, string>);
         this.customFieldsEditor.renderSection(contentEl);
 
-        const buttons = new Setting(contentEl).setClass('storyteller-modal-buttons');
         if (!this.isNew && this.onDelete) {
-            buttons.addButton(btn => btn
-                .setButtonText(t('delete'))
-                .setClass('mod-warning')
-                .onClick(async () => {
-                    if (confirm(t('confirmDeleteReference', this.refData.name))) {
-                        await this.onDelete!(this.refData);
-                        this.close();
-                    }
-                })
-            );
+            this.createFooterButton(footerEl, t('delete'), async () => {
+                if (confirm(t('confirmDeleteReference', this.refData.name))) {
+                    await this.onDelete!(this.refData);
+                    this.close();
+                }
+            }, { warning: true });
         }
-        buttons.controlEl.createDiv({ cls: 'storyteller-modal-button-spacer' });
-        buttons.addButton(btn => btn.setButtonText(t('cancel')).onClick(() => this.close()));
-        buttons.addButton(btn => btn
-            .setButtonText(this.isNew ? t('createReferenceBtn') : t('saveChanges'))
-            .setCta()
-            .onClick(async () => {
-                if (!this.refData.name || !this.refData.name.trim()) {
-                    new Notice(t('title'));
-                    return;
-                }
-                // Ensure empty section fields are set so templates can render headings
-                this.refData.content = this.refData.content || '';
-                const customFields = this.customFieldsEditor.getFields();
-                if (!customFields) {
-                    return;
-                }
-                (this.refData as any).customFields = customFields;
-                await this.onSubmit(this.refData);
-                this.close();
-            })
-        );
+        footerEl.createDiv({ cls: 'storyteller-modal-button-spacer' });
+        this.createFooterButton(footerEl, t('cancel'), () => this.close());
+        this.createFooterButton(footerEl, this.isNew ? t('createReferenceBtn') : t('saveChanges'), async () => {
+            if (!this.refData.name || !this.refData.name.trim()) {
+                new Notice(t('title'));
+                return;
+            }
+            this.refData.content = this.refData.content || '';
+            const customFields = this.customFieldsEditor.getFields();
+            if (!customFields) {
+                return;
+            }
+            (this.refData as any).customFields = customFields;
+            await this.onSubmit(this.refData);
+            this.close();
+        }, { cta: true });
     }
 
     private hasMultipleEntities(template: Template): boolean {

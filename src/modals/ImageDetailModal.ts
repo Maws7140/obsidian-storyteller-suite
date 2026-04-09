@@ -1,9 +1,10 @@
-import { App, Modal, Setting, Notice, TFile } from 'obsidian';
+import { App, Setting, Notice, TFile } from 'obsidian';
 import { t } from '../i18n/strings';
 import { GalleryImage } from '../types';
 import StorytellerSuitePlugin from '../main';
+import { ResponsiveModal } from './ResponsiveModal';
 
-export class ImageDetailModal extends Modal {
+export class ImageDetailModal extends ResponsiveModal {
     plugin: StorytellerSuitePlugin;
     image: GalleryImage;
     isNew: boolean;
@@ -40,8 +41,8 @@ export class ImageDetailModal extends Modal {
         return imagePath;
     }
     onOpen() {
-        const { contentEl } = this;
-        contentEl.empty();
+        super.onOpen();
+        const { contentEl, footerEl } = this.createStructuredModalLayout();
         contentEl.createEl('h2', { text: this.isNew ? t('addImageDetails') : t('editImageDetails') });
 
         const mainContainer = contentEl.createDiv('storyteller-image-detail-container');
@@ -115,32 +116,30 @@ export class ImageDetailModal extends Modal {
                 }));
 
         // Action Buttons
-        new Setting(formEl)
-            .setClass('storyteller-modal-buttons')
-            .addButton(button => button
-                .setButtonText(t('saveDetails'))
-                .setCta()
-                .onClick(async () => {
-                    await this.plugin.updateGalleryImage(this.image);
-                    new Notice(t('imageDetailsSaved', this.image.filePath));
+        if (!this.isNew) {
+            this.createFooterButton(footerEl, t('removeFromGallery'), async () => {
+                if (confirm(t('confirmRemoveImageFromGallery', this.image.filePath))) {
+                    await this.plugin.deleteGalleryImage(this.image.id);
+                    new Notice(t('imageRemovedFromGallery', this.image.filePath));
                     if (this.onSaveCallback) {
                         await this.onSaveCallback();
                     }
                     this.close();
-                }))
-            .addButton(button => button
-                .setButtonText(t('removeFromGallery'))
-                .setClass('mod-warning')
-                .onClick(async () => {
-                    if (confirm(t('confirmRemoveImageFromGallery', this.image.filePath))) {
-                        await this.plugin.deleteGalleryImage(this.image.id);
-                        new Notice(t('imageRemovedFromGallery', this.image.filePath));
-                        if (this.onSaveCallback) {
-                            await this.onSaveCallback();
-                        }
-                        this.close();
-                    }
-                }));
+                }
+            }, { warning: true });
+        }
+        footerEl.createDiv({ cls: 'storyteller-modal-button-spacer', attr: { 'aria-hidden': 'true' } });
+        this.createFooterButton(footerEl, t('cancel'), () => {
+            this.close();
+        });
+        this.createFooterButton(footerEl, t('saveDetails'), async () => {
+            await this.plugin.updateGalleryImage(this.image);
+            new Notice(t('imageDetailsSaved', this.image.filePath));
+            if (this.onSaveCallback) {
+                await this.onSaveCallback();
+            }
+            this.close();
+        }, { cta: true });
     }
 
     onClose() {

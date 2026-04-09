@@ -95,8 +95,7 @@ export class PlotItemModal extends ResponsiveModal {
 
     async onOpen() {
         super.onOpen();
-        const { contentEl } = this;
-        contentEl.empty();
+        const { contentEl, footerEl } = this.createStructuredModalLayout();
         contentEl.createEl('h2', { text: this.isNew ? t('createItem') : `${t('edit')} ${this.item.name}` });
 
         // Auto-apply default template for new items
@@ -685,44 +684,31 @@ export class PlotItemModal extends ResponsiveModal {
         });
 
         // --- Action Buttons at bottom ---
-        const buttonsSetting = new Setting(contentEl).setClass('storyteller-modal-buttons');
         if (!this.isNew && this.onDelete) {
-            buttonsSetting.addButton(button => button
-                .setButtonText(t('deleteItem'))
-                .setClass('mod-warning')
-                .onClick(async () => {
-                    if (confirm(t('confirmDeleteItem', this.item.name))) {
-                        await this.onDelete!(this.item);
-                        this.close();
-                    }
-                }));
+            this.createFooterButton(footerEl, t('deleteItem'), async () => {
+                if (confirm(t('confirmDeleteItem', this.item.name))) {
+                    await this.onDelete!(this.item);
+                    this.close();
+                }
+            }, { warning: true });
         }
-
-        buttonsSetting.controlEl.createDiv({ cls: 'storyteller-modal-button-spacer' });
-        
-        buttonsSetting.addButton(btn => btn
-            .setButtonText(t('cancel'))
-            .onClick(() => this.close()));
-            
-        buttonsSetting.addButton(btn => btn
-            .setButtonText(this.isNew ? t('createItem') : t('saveChanges'))
-            .setCta()
-            .onClick(async () => {
-                if (!this.item.name.trim()) {
-                    new Notice(t('itemNameRequired'));
-                    return;
-                }
-                // Ensure empty section fields are set so templates can render headings
-                this.item.description = this.item.description || '';
-                this.item.history = this.item.history || '';
-                const customFields = this.customFieldsEditor.getFields();
-                if (!customFields) {
-                    return;
-                }
-                this.item.customFields = customFields;
-                await this.onSubmit(this.item);
-                this.close();
-            }));
+        footerEl.createDiv({ cls: 'storyteller-modal-button-spacer' });
+        this.createFooterButton(footerEl, t('cancel'), () => this.close());
+        this.createFooterButton(footerEl, this.isNew ? t('createItem') : t('saveChanges'), async () => {
+            if (!this.item.name.trim()) {
+                new Notice(t('itemNameRequired'));
+                return;
+            }
+            this.item.description = this.item.description || '';
+            this.item.history = this.item.history || '';
+            const customFields = this.customFieldsEditor.getFields();
+            if (!customFields) {
+                return;
+            }
+            this.item.customFields = customFields;
+            await this.onSubmit(this.item);
+            this.close();
+        }, { cta: true });
     }
     private createCampaignEffectId(): string {
         return `itemfx-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;

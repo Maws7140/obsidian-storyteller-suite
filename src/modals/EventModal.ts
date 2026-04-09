@@ -91,8 +91,7 @@ export class EventModal extends ResponsiveModal {
 
     async onOpen() {
         super.onOpen();
-        const { contentEl } = this;
-        contentEl.empty();
+        const { contentEl, footerEl } = this.createStructuredModalLayout();
         contentEl.createEl('h2', { text: this.isNew ? t('createNewEvent') : `${t('edit')} ${this.event.name}` });
 
         // Auto-apply default template for new events
@@ -662,63 +661,45 @@ export class EventModal extends ResponsiveModal {
         }
 
         // --- Action Buttons ---
-        const buttonsSetting = new Setting(contentEl).setClass('storyteller-modal-buttons');
-
         if (!this.isNew && this.onDelete) {
-            buttonsSetting.addButton(button => button
-                .setButtonText(t('deleteEvent'))
-                .setClass('mod-warning')
-                .onClick(async () => {
-                    // Added confirmation dialog
-                    if (confirm(t('confirmDeleteEvent', this.event.name))) {
-                        if (this.onDelete) {
-                            try {
-                                await this.onDelete(this.event);
-                                // Notice is now handled within the callback if provided, or here if not
-                                // new Notice(`Event "${this.event.name}" deleted.`);
-                                this.close();
-                            } catch (error) {
-                                console.error("Error deleting event:", error);
-                                new Notice(t('workspaceLeafCreateError'));
-                            }
+            this.createFooterButton(footerEl, t('deleteEvent'), async () => {
+                if (confirm(t('confirmDeleteEvent', this.event.name))) {
+                    if (this.onDelete) {
+                        try {
+                            await this.onDelete(this.event);
+                            this.close();
+                        } catch (error) {
+                            console.error("Error deleting event:", error);
+                            new Notice(t('workspaceLeafCreateError'));
                         }
                     }
-                }));
+                }
+            }, { warning: true });
         }
-
-        buttonsSetting.controlEl.createDiv({ cls: 'storyteller-modal-button-spacer' });
-
-        buttonsSetting.addButton(button => button
-            .setButtonText(t('cancel'))
-            .onClick(() => {
-                this.close();
-            }));
-
-        buttonsSetting.addButton(button => button
-            .setButtonText(this.isNew ? t('createNewEvent') : t('saveChanges'))
-            .setCta()
-            .onClick(async () => {
-                if (!this.event.name?.trim()) {
-                    new Notice(t('eventNameRequired'));
+        footerEl.createDiv({ cls: 'storyteller-modal-button-spacer' });
+        this.createFooterButton(footerEl, t('cancel'), () => {
+            this.close();
+        });
+        this.createFooterButton(footerEl, this.isNew ? t('createNewEvent') : t('saveChanges'), async () => {
+            if (!this.event.name?.trim()) {
+                new Notice(t('eventNameRequired'));
+                return;
+            }
+            this.event.description = this.event.description || '';
+            this.event.outcome = this.event.outcome || '';
+            try {
+                const customFields = this.customFieldsEditor.getFields();
+                if (!customFields) {
                     return;
                 }
-                // Ensure empty section fields are set so templates can render headings
-                this.event.description = this.event.description || '';
-                this.event.outcome = this.event.outcome || '';
-                try {
-                    const customFields = this.customFieldsEditor.getFields();
-                    if (!customFields) {
-                        return;
-                    }
-                    this.event.customFields = customFields;
-                    await this.onSubmit(this.event);
-                    // Notice is handled by the onSubmit callback provided by the caller
-                    this.close();
-                } catch (error) {
-                    console.error("Error saving event:", error);
-                    new Notice(t('workspaceLeafRevealError'));
-                }
-            }));
+                this.event.customFields = customFields;
+                await this.onSubmit(this.event);
+                this.close();
+            } catch (error) {
+                console.error("Error saving event:", error);
+                new Notice(t('workspaceLeafRevealError'));
+            }
+        }, { cta: true });
     }
 
     // Updated Helper to add/remove the location clear button dynamically

@@ -1,6 +1,6 @@
 {
 	"name": "storyteller-suite",
-	"version": "1.7.8-beta.11",
+	"version": "1.7.8-beta.12",
 	"description": "A comprehensive suite for managing characters, locations, events, and galleries for your novels.",
 	"main": "main.js",
 	"scripts": {
@@ -70,3 +70,4 @@
 		"@esbuild/linux-x64": "^0.27.2"
 	}
 }
+

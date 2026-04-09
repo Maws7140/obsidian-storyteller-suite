@@ -38,8 +38,7 @@ export class SceneModal extends ResponsiveModal {
 
     async onOpen(): Promise<void> {
         super.onOpen();
-        const { contentEl } = this;
-        contentEl.empty();
+        const { contentEl, footerEl } = this.createStructuredModalLayout();
         contentEl.createEl('h2', { text: this.isNew ? t('createNewScene') : `${t('editScene')} ${this.scene.name}` });
 
         // Auto-apply default template for new scenes
@@ -471,35 +470,26 @@ export class SceneModal extends ResponsiveModal {
             this.renderBranchesSection(branchesContainer);
         }
 
-        const buttons = new Setting(contentEl).setClass('storyteller-modal-buttons');
         if (!this.isNew && this.onDelete) {
-            buttons.addButton(btn => btn
-                .setButtonText(t('delete'))
-                .setClass('mod-warning')
-                .onClick(async () => {
-                    if (this.scene.filePath && confirm(t('confirmDeleteScene', this.scene.name))) {
-                        await this.onDelete!(this.scene);
-                        this.close();
-                    }
-                })
-            );
-        }
-        buttons.controlEl.createDiv({ cls: 'storyteller-modal-button-spacer' });
-        buttons.addButton(btn => btn.setButtonText(t('cancel')).onClick(() => this.close()));
-        buttons.addButton(btn => btn
-            .setButtonText(this.isNew ? t('createSceneBtn') : t('saveChanges'))
-            .setCta()
-            .onClick(async () => {
-                if (!this.scene.name || !this.scene.name.trim()) {
-                    new Notice(t('sceneNameRequired'));
-                    return;
+            this.createFooterButton(footerEl, t('delete'), async () => {
+                if (this.scene.filePath && confirm(t('confirmDeleteScene', this.scene.name))) {
+                    await this.onDelete!(this.scene);
+                    this.close();
                 }
-                // Ensure empty section fields are set so templates can render headings
-                this.scene.content = this.scene.content || '';
-                this.scene.beats = this.scene.beats || [];
-                await this.onSubmit(this.scene);
-                this.close();
-            }));
+            }, { warning: true });
+        }
+        footerEl.createDiv({ cls: 'storyteller-modal-button-spacer' });
+        this.createFooterButton(footerEl, t('cancel'), () => this.close());
+        this.createFooterButton(footerEl, this.isNew ? t('createSceneBtn') : t('saveChanges'), async () => {
+            if (!this.scene.name || !this.scene.name.trim()) {
+                new Notice(t('sceneNameRequired'));
+                return;
+            }
+            this.scene.content = this.scene.content || '';
+            this.scene.beats = this.scene.beats || [];
+            await this.onSubmit(this.scene);
+            this.close();
+        }, { cta: true });
     }
 
     // Helper method to render linked entities with individual delete buttons

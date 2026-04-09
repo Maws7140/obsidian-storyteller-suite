@@ -73,8 +73,7 @@ export class MapModal extends ResponsiveModal {
     async onOpen() {
         super.onOpen();
 
-        const { contentEl } = this;
-        contentEl.empty();
+        const { contentEl, footerEl } = this.createStructuredModalLayout();
         contentEl.createEl('h2', { text: this.isNew ? 'Create New Map' : `Edit ${this.map.name}` });
 
         // Auto-apply default template for new maps (guarded to prevent infinite loops)
@@ -452,61 +451,48 @@ export class MapModal extends ResponsiveModal {
         const groupSelectorContainer = contentEl.createDiv('storyteller-group-selector-container');
         this.groupSelector.attach(groupSelectorContainer);
 
-        // Action Buttons
-        const buttonsSetting = new Setting(contentEl).setClass('storyteller-modal-buttons');
-
         if (!this.isNew && this.onDelete) {
-            buttonsSetting.addButton(button => button
-                .setButtonText(t('delete'))
-                .setCta()
-                .setClass('mod-warning')
-                .onClick(async () => {
-                    if (await this.confirmDelete()) {
-                        await this.onDelete!(this.map);
-                        this.close();
-                    }
-                }));
+            this.createFooterButton(footerEl, t('delete'), async () => {
+                if (await this.confirmDelete()) {
+                    await this.onDelete!(this.map);
+                    this.close();
+                }
+            }, { warning: true });
         }
 
-        buttonsSetting.addButton(button => button
-            .setButtonText(t('cancel'))
-            .onClick(() => this.close()));
+        footerEl.createDiv({ cls: 'storyteller-modal-button-spacer', attr: { 'aria-hidden': 'true' } });
 
-        buttonsSetting.addButton(button => button
-            .setButtonText(this.isNew ? t('create') : t('save'))
-            .setCta()
-            .onClick(async () => {
-                try {
-                    if (!this.map.name.trim()) {
-                        new Notice('Map name is required');
-                        return;
-                    }
+        this.createFooterButton(footerEl, t('cancel'), () => this.close());
 
-                    console.log('MapModal: Starting save process for map:', this.map.name);
-
-                    // Auto-link map and location before saving (non-blocking)
-                    try {
-                        await this.autoLinkMapAndLocation();
-                        console.log('MapModal: Auto-linking completed');
-                    } catch (linkError) {
-                        console.error('MapModal: Auto-linking error (non-blocking):', linkError);
-                        // Continue with save even if auto-linking fails
-                    }
-
-                    console.log('MapModal: Calling onSubmit');
-                    const customFields = this.customFieldsEditor.getFields();
-                    if (!customFields) {
-                        return;
-                    }
-                    this.map.customFields = customFields;
-                    await this.onSubmit(this.map);
-                    console.log('MapModal: Save completed, closing modal');
-                    this.close();
-                } catch (error) {
-                    console.error('MapModal: Error during save:', error);
-                    new Notice(`Error saving map: ${error.message || 'Unknown error'}`);
+        this.createFooterButton(footerEl, this.isNew ? t('create') : t('save'), async () => {
+            try {
+                if (!this.map.name.trim()) {
+                    new Notice('Map name is required');
+                    return;
                 }
-            }));
+
+                console.log('MapModal: Starting save process for map:', this.map.name);
+                try {
+                    await this.autoLinkMapAndLocation();
+                    console.log('MapModal: Auto-linking completed');
+                } catch (linkError) {
+                    console.error('MapModal: Auto-linking error (non-blocking):', linkError);
+                }
+
+                console.log('MapModal: Calling onSubmit');
+                const customFields = this.customFieldsEditor.getFields();
+                if (!customFields) {
+                    return;
+                }
+                this.map.customFields = customFields;
+                await this.onSubmit(this.map);
+                console.log('MapModal: Save completed, closing modal');
+                this.close();
+            } catch (error) {
+                console.error('MapModal: Error during save:', error);
+                new Notice(`Error saving map: ${error.message || 'Unknown error'}`);
+            }
+        }, { cta: true });
     }
 
     onClose() {

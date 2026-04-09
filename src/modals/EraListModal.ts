@@ -19,8 +19,7 @@ export class EraListModal extends ResponsiveModal {
 
     onOpen() {
         super.onOpen();
-        const { contentEl } = this;
-        contentEl.empty();
+        const { contentEl, footerEl } = this.createStructuredModalLayout();
 
         contentEl.createEl('h2', { text: 'Timeline Eras & Periods' });
 
@@ -51,11 +50,9 @@ export class EraListModal extends ResponsiveModal {
         this.renderEraList();
 
         // Close button
-        const buttonContainer = contentEl.createDiv('storyteller-modal-buttons');
-        buttonContainer.createEl('button', { text: 'Close' }, btn => {
-            btn.addEventListener('click', () => {
-                this.close();
-            });
+        footerEl.createDiv({ cls: 'storyteller-modal-button-spacer', attr: { 'aria-hidden': 'true' } });
+        this.createFooterButton(footerEl, 'Close', () => {
+            this.close();
         });
     }
 

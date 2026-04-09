@@ -40,8 +40,8 @@ export class BookModal extends ResponsiveModal {
     }
 
     async onOpen(): Promise<void> {
-        const { contentEl } = this;
-        contentEl.empty();
+        super.onOpen();
+        const { contentEl, footerEl } = this.createStructuredModalLayout();
         contentEl.createEl('h2', { text: this.isNew ? 'New Book' : `Edit: ${this.book.name}` });
 
         // Name
@@ -195,41 +195,31 @@ export class BookModal extends ResponsiveModal {
         this.customFieldsEditor.setFields(this.book.customFields);
         this.customFieldsEditor.renderSection(contentEl);
 
-        // Buttons
-        const buttons = new Setting(contentEl).setClass('storyteller-modal-buttons');
         if (!this.isNew && this.onDelete) {
-            buttons.addButton(btn => btn
-                .setButtonText('Delete')
-                .setClass('mod-warning')
-                .onClick(async () => {
-                    if (confirm(`Delete book "${this.book.name}"? This will unlink all its chapters.`)) {
-                        await this.onDelete!(this.book);
-                        this.close();
-                    }
-                })
-            );
+            this.createFooterButton(footerEl, 'Delete', async () => {
+                if (confirm(`Delete book "${this.book.name}"? This will unlink all its chapters.`)) {
+                    await this.onDelete!(this.book);
+                    this.close();
+                }
+            }, { warning: true });
         }
-        buttons.controlEl.createDiv({ cls: 'storyteller-modal-button-spacer' });
-        buttons.addButton(btn => btn.setButtonText('Cancel').onClick(() => this.close()));
-        buttons.addButton(btn => btn
-            .setButtonText(this.isNew ? 'Create Book' : 'Save Changes')
-            .setCta()
-            .onClick(async () => {
-                if (!this.book.name?.trim()) {
-                    new Notice('Book title is required.');
-                    return;
-                }
-                this.book.description = this.book.description || '';
-                this.book.synopsis = this.book.synopsis || '';
-                const customFields = this.customFieldsEditor.getFields();
-                if (!customFields) {
-                    return;
-                }
-                this.book.customFields = customFields;
-                await this.onSubmit(this.book);
-                this.close();
-            })
-        );
+        footerEl.createDiv({ cls: 'storyteller-modal-button-spacer', attr: { 'aria-hidden': 'true' } });
+        this.createFooterButton(footerEl, 'Cancel', () => this.close());
+        this.createFooterButton(footerEl, this.isNew ? 'Create Book' : 'Save Changes', async () => {
+            if (!this.book.name?.trim()) {
+                new Notice('Book title is required.');
+                return;
+            }
+            this.book.description = this.book.description || '';
+            this.book.synopsis = this.book.synopsis || '';
+            const customFields = this.customFieldsEditor.getFields();
+            if (!customFields) {
+                return;
+            }
+            this.book.customFields = customFields;
+            await this.onSubmit(this.book);
+            this.close();
+        }, { cta: true });
     }
 
     onClose(): void { this.contentEl.empty(); }

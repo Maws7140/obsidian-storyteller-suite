@@ -45,8 +45,7 @@ export class TimelineTrackModal extends ResponsiveModal {
 
     onOpen() {
         super.onOpen();
-        const { contentEl } = this;
-        contentEl.empty();
+        const { contentEl, footerEl } = this.createStructuredModalLayout();
 
         contentEl.createEl('h2', {
             text: this.isNew ? 'Create Timeline Track' : `Edit Track: ${this.track.name}`
@@ -238,80 +237,61 @@ export class TimelineTrackModal extends ResponsiveModal {
                 .inputEl.setAttribute('type', 'number'));
 
         // Action Buttons
-        const buttonContainer = contentEl.createDiv('storyteller-modal-buttons');
-
-        // Delete button (only for existing tracks)
         if (!this.isNew && this.onDelete) {
-            buttonContainer.createEl('button', {
-                text: 'Delete Track',
-                cls: 'mod-warning'
-            }, btn => {
-                btn.addEventListener('click', async () => {
-                    const confirm = await new Promise<boolean>(resolve => {
-                        const confirmModal = new Modal(this.app);
-                        confirmModal.contentEl.createEl('h3', { text: 'Delete Track?' });
-                        confirmModal.contentEl.createEl('p', {
-                            text: `Are you sure you want to delete "${this.track.name}"? This action cannot be undone.`
-                        });
-
-                        const btnContainer = confirmModal.contentEl.createDiv('modal-button-container');
-                        btnContainer.createEl('button', { text: 'Cancel' }, cancelBtn => {
-                            cancelBtn.addEventListener('click', () => {
-                                resolve(false);
-                                confirmModal.close();
-                            });
-                        });
-                        btnContainer.createEl('button', {
-                            text: 'Delete',
-                            cls: 'mod-warning'
-                        }, deleteBtn => {
-                            deleteBtn.addEventListener('click', () => {
-                                resolve(true);
-                                confirmModal.close();
-                            });
-                        });
-
-                        confirmModal.open();
+            this.createFooterButton(footerEl, 'Delete Track', async () => {
+                const confirm = await new Promise<boolean>(resolve => {
+                    const confirmModal = new Modal(this.app);
+                    confirmModal.contentEl.createEl('h3', { text: 'Delete Track?' });
+                    confirmModal.contentEl.createEl('p', {
+                        text: `Are you sure you want to delete "${this.track.name}"? This action cannot be undone.`
                     });
 
-                    if (confirm && this.onDelete) {
-                        await this.onDelete(this.track);
-                        this.close();
-                    }
+                    const btnContainer = confirmModal.contentEl.createDiv('modal-button-container');
+                    btnContainer.createEl('button', { text: 'Cancel' }, cancelBtn => {
+                        cancelBtn.addEventListener('click', () => {
+                            resolve(false);
+                            confirmModal.close();
+                        });
+                    });
+                    btnContainer.createEl('button', {
+                        text: 'Delete',
+                        cls: 'mod-warning'
+                    }, deleteBtn => {
+                        deleteBtn.addEventListener('click', () => {
+                            resolve(true);
+                            confirmModal.close();
+                        });
+                    });
+
+                    confirmModal.open();
                 });
-            });
-        }
 
-        // Cancel button
-        buttonContainer.createEl('button', { text: 'Cancel' }, btn => {
-            btn.addEventListener('click', () => {
-                this.close();
-            });
-        });
-
-        // Save button
-        buttonContainer.createEl('button', {
-            text: this.isNew ? 'Create Track' : 'Save Changes',
-            cls: 'mod-cta'
-        }, btn => {
-            btn.addEventListener('click', async () => {
-                // Validate track
-                const validation = TimelineTrackManager.validateTrack(this.track);
-                if (!validation.valid) {
-                    new Notice(`Validation failed:\n${validation.errors.join('\n')}`);
-                    return;
-                }
-
-                try {
-                    await this.onSubmit(this.track);
-                    new Notice(`Track "${this.track.name}" ${this.isNew ? 'created' : 'updated'} successfully`);
+                if (confirm && this.onDelete) {
+                    await this.onDelete(this.track);
                     this.close();
-                } catch (error) {
-                    console.error('Error saving track:', error);
-                    new Notice('Error saving track. Check console for details.');
                 }
-            });
+            }, { warning: true });
+        }
+        footerEl.createDiv({ cls: 'storyteller-modal-button-spacer', attr: { 'aria-hidden': 'true' } });
+        this.createFooterButton(footerEl, 'Cancel', () => {
+            this.close();
         });
+        this.createFooterButton(footerEl, this.isNew ? 'Create Track' : 'Save Changes', async () => {
+            const validation = TimelineTrackManager.validateTrack(this.track);
+            if (!validation.valid) {
+                new Notice(`Validation failed:\n${validation.errors.join('\n')}`);
+                return;
+            }
+
+            try {
+                await this.onSubmit(this.track);
+                new Notice(`Track "${this.track.name}" ${this.isNew ? 'created' : 'updated'} successfully`);
+                this.close();
+            } catch (error) {
+                console.error('Error saving track:', error);
+                new Notice('Error saving track. Check console for details.');
+            }
+        }, { cta: true });
     }
 
     onClose() {

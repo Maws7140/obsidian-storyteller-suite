@@ -1732,6 +1732,41 @@ If your plugin does not need CSS, delete this file.
     padding: 0.85rem 1rem calc(env(safe-area-inset-bottom, 0) + 0.85rem) 1rem;
 }
 
+.storyteller-structured-modal-content {
+    min-height: 0;
+}
+
+.storyteller-structured-modal-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+}
+
+.storyteller-responsive-modal.mobile-fullscreen .storyteller-structured-modal-content {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.storyteller-responsive-modal.mobile-fullscreen .storyteller-structured-modal-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding-bottom: 1rem;
+}
+
+.storyteller-responsive-modal.mobile-fullscreen .storyteller-structured-modal-content > .storyteller-modal-footer {
+    position: relative;
+    bottom: auto;
+    z-index: auto;
+    flex: 0 0 auto;
+    margin: 0;
+    padding: 0.85rem 1rem calc(env(safe-area-inset-bottom, 0) + 0.85rem) 1rem;
+}
+
 .storyteller-mobile-modal-layout {
     display: flex;
     flex-direction: column;

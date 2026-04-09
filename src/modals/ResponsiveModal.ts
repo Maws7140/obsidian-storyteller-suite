@@ -8,6 +8,47 @@ import { PlatformUtils } from '../utils/PlatformUtils';
 export abstract class ResponsiveModal extends Modal {
     protected isFullScreen = false;
 
+    protected createStructuredModalLayout(): {
+        rootEl: HTMLElement;
+        contentEl: HTMLElement;
+        footerEl: HTMLElement;
+    } {
+        const rootEl = this.contentEl;
+        rootEl.empty();
+        rootEl.addClass('storyteller-structured-modal-content');
+        rootEl.style.display = 'flex';
+        rootEl.style.flexDirection = 'column';
+        rootEl.style.overflow = 'hidden';
+        rootEl.style.paddingBottom = '0';
+
+        const contentEl = rootEl.createDiv('storyteller-structured-modal-scroll');
+        const footerEl = rootEl.createDiv('storyteller-modal-footer');
+        return { rootEl, contentEl, footerEl };
+    }
+
+    protected createFooterButton(
+        footerEl: HTMLElement,
+        text: string,
+        onClick: () => void | Promise<void>,
+        options?: { cta?: boolean; warning?: boolean; title?: string }
+    ): HTMLButtonElement {
+        const classes = ['storyteller-modal-btn'];
+        if (options?.cta) classes.push('mod-cta');
+        if (options?.warning) classes.push('mod-warning');
+        const button = footerEl.createEl('button', {
+            text,
+            cls: classes.join(' '),
+            attr: {
+                type: 'button',
+                ...(options?.title ? { title: options.title } : {}),
+            },
+        });
+        button.addEventListener('click', () => {
+            void onClick();
+        });
+        return button;
+    }
+
     constructor(app: App) {
         super(app);
         this.setupMobileAdaptations();

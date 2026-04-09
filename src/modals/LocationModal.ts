@@ -85,8 +85,7 @@ export class LocationModal extends ResponsiveModal {
     async onOpen() {
         super.onOpen(); // Call ResponsiveModal's mobile optimizations
 
-        const { contentEl } = this;
-        contentEl.empty();
+        const { contentEl, footerEl } = this.createStructuredModalLayout();
         contentEl.createEl('h2', { text: this.isNew ? t('createNewLocation') : `${t('edit')} ${this.location.name}` });
 
         // Auto-apply default template for new locations
@@ -733,61 +732,49 @@ export class LocationModal extends ResponsiveModal {
         const groupSelectorContainer = contentEl.createDiv('storyteller-group-selector-container');
         this.groupSelector.attach(groupSelectorContainer);
 
-        // --- Action Buttons ---
-        const buttonsSetting = new Setting(contentEl).setClass('storyteller-modal-buttons');
-
         if (!this.isNew && this.onDelete) {
-            buttonsSetting.addButton(button => button
-                .setButtonText(t('deleteLocation'))
-                .setClass('mod-warning')
-                .onClick(async () => {
-                    if (confirm(t('confirmDeleteLocation', this.location.name))) {
-                        if (this.onDelete) {
-                            try {
-                                await this.onDelete(this.location);
-                                new Notice(t('locationDeleted', this.location.name));
-                                this.close();
-                            } catch (error) {
-                                console.error("Error deleting location:", error);
-                                new Notice(t('failedToDelete', t('location')));
-                            }
+            this.createFooterButton(footerEl, t('deleteLocation'), async () => {
+                if (confirm(t('confirmDeleteLocation', this.location.name))) {
+                    if (this.onDelete) {
+                        try {
+                            await this.onDelete(this.location);
+                            new Notice(t('locationDeleted', this.location.name));
+                            this.close();
+                        } catch (error) {
+                            console.error("Error deleting location:", error);
+                            new Notice(t('failedToDelete', t('location')));
                         }
                     }
-                }));
+                }
+            }, { warning: true });
         }
 
-        buttonsSetting.controlEl.createDiv({ cls: 'storyteller-modal-button-spacer' });
+        footerEl.createDiv({ cls: 'storyteller-modal-button-spacer', attr: { 'aria-hidden': 'true' } });
 
-        buttonsSetting.addButton(button => button
-            .setButtonText(t('cancel'))
-            .onClick(() => {
-                this.close();
-            }));
+        this.createFooterButton(footerEl, t('cancel'), () => {
+            this.close();
+        });
 
-        buttonsSetting.addButton(button => button
-            .setButtonText(this.isNew ? 'Create location' : 'Save changes')
-            .setCta()
-            .onClick(async () => {
-                if (!this.location.name?.trim()) {
-                    new Notice(t('locationNameRequired'));
+        this.createFooterButton(footerEl, this.isNew ? 'Create location' : 'Save changes', async () => {
+            if (!this.location.name?.trim()) {
+                new Notice(t('locationNameRequired'));
+                return;
+            }
+            this.location.description = this.location.description || '';
+            this.location.history = this.location.history || '';
+            try {
+                const customFields = this.customFieldsEditor.getFields();
+                if (!customFields) {
                     return;
                 }
-                // Ensure empty section fields are set so templates can render headings
-                this.location.description = this.location.description || '';
-                this.location.history = this.location.history || '';
-                try {
-                    const customFields = this.customFieldsEditor.getFields();
-                    if (!customFields) {
-                        return;
-                    }
-                    this.location.customFields = customFields;
-                    await this.onSubmit(this.location);
-                    this.close();
-                } catch (error) {
-                    console.error("Error saving location:", error);
-                    new Notice(t('failedToSave', t('location')));
-                }
-            }));
+                this.location.customFields = customFields;
+                await this.onSubmit(this.location);
+                this.close();
+            } catch (error) {
+                console.error("Error saving location:", error);
+                new Notice(t('failedToSave', t('location')));
+            }
+        }, { cta: true });
     }
 
     

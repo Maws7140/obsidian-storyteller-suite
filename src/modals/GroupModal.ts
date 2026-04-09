@@ -126,8 +126,7 @@ export class GroupModal extends ResponsiveModal {
             await this.repairEntityLinks();
         }
 
-        const { contentEl } = this;
-        contentEl.empty();
+        const { contentEl, footerEl } = this.createStructuredModalLayout();
         contentEl.createEl('h2', { text: this.isNew ? t('createNewGroup') : `${t('editGroup')}: ${this.group.name}` });
 
         // --- Template Selector (for new groups) ---
@@ -463,68 +462,53 @@ export class GroupModal extends ResponsiveModal {
             this.customFieldsEditor.renderSection(contentEl);
         }
 
-        // --- Action Buttons ---
-        const buttonsSetting = new Setting(contentEl).setClass('storyteller-modal-buttons');
-        buttonsSetting.addButton(button => button
-            .setButtonText(this.isNew ? t('createGroupBtn') : t('saveChanges'))
-            .setCta()
-            .onClick(async () => {
-                const customFields = this.customFieldsEditor.getFields();
-                if (customFields === null) {
-                    return;
-                }
-                this.group.customFields = customFields;
-                if (!this.group.name.trim()) {
-                    new Notice(t('groupNameRequired'));
-                    return;
-                }
-                // Prevent duplicate group names (case-insensitive)
-                const allGroups = this.plugin.getGroups();
-                const nameLower = this.group.name.trim().toLowerCase();
-                const duplicate = allGroups.some(g => g.name.trim().toLowerCase() === nameLower && (!this.group.id || g.id !== this.group.id));
-                if (duplicate) {
-                    new Notice(t('groupNameExists'));
-                    return;
-                }
-                if (this.isNew) {
-                    const newGroup = await this.plugin.createGroup(this.group.name, this.group.description, this.group.color);
-                    this.group.id = newGroup.id;
-                    // Persist all fields (including faction-enhanced ones) to settings + vault file
-                    await this.plugin.saveGroupFull(this.group);
-                    // Add all members to the new group
-                    for (const member of this.group.members) {
-                        await this.plugin.addMemberToGroup(newGroup.id, member.type, member.id);
-                    }
-                    // Idempotent repair: ensure entity YAML contains the new group id
-                    for (const member of this.group.members) {
-                        await this.plugin.addGroupIdToEntity?.(member.type as any, member.id, this.group.id);
-                    }
-                } else {
-                    // Persist all fields (including faction-enhanced ones) to settings + vault file
-                    await this.plugin.saveGroupFull(this.group);
-                    // Update members
-                    await this.syncMembers();
-                    // Idempotent repair: re-assert group id on all current members in case YAML was missing
-                    for (const member of this.group.members) {
-                        await this.plugin.addGroupIdToEntity?.(member.type as any, member.id, this.group.id);
-                    }
-                }
-                if (this.onSubmit) await this.onSubmit(this.group);
-                this.close();
-            })
-        );
         if (!this.isNew && this.onDelete) {
-            buttonsSetting.addButton(button => button
-                .setButtonText(t('deleteGroup'))
-                .setClass('mod-warning')
-                .onClick(async () => {
-                    if (confirm(t('confirmDeleteGroup', this.group.name))) {
-                        await this.onDelete!(this.group.id);
-                        this.close();
-                    }
-                })
-            );
+            this.createFooterButton(footerEl, t('deleteGroup'), async () => {
+                if (confirm(t('confirmDeleteGroup', this.group.name))) {
+                    await this.onDelete!(this.group.id);
+                    this.close();
+                }
+            }, { warning: true });
         }
+        footerEl.createDiv({ cls: 'storyteller-modal-button-spacer', attr: { 'aria-hidden': 'true' } });
+        this.createFooterButton(footerEl, t('cancel'), () => this.close());
+        this.createFooterButton(footerEl, this.isNew ? t('createGroupBtn') : t('saveChanges'), async () => {
+            const customFields = this.customFieldsEditor.getFields();
+            if (customFields === null) {
+                return;
+            }
+            this.group.customFields = customFields;
+            if (!this.group.name.trim()) {
+                new Notice(t('groupNameRequired'));
+                return;
+            }
+            const allGroups = this.plugin.getGroups();
+            const nameLower = this.group.name.trim().toLowerCase();
+            const duplicate = allGroups.some(g => g.name.trim().toLowerCase() === nameLower && (!this.group.id || g.id !== this.group.id));
+            if (duplicate) {
+                new Notice(t('groupNameExists'));
+                return;
+            }
+            if (this.isNew) {
+                const newGroup = await this.plugin.createGroup(this.group.name, this.group.description, this.group.color);
+                this.group.id = newGroup.id;
+                await this.plugin.saveGroupFull(this.group);
+                for (const member of this.group.members) {
+                    await this.plugin.addMemberToGroup(newGroup.id, member.type, member.id);
+                }
+                for (const member of this.group.members) {
+                    await this.plugin.addGroupIdToEntity?.(member.type as any, member.id, this.group.id);
+                }
+            } else {
+                await this.plugin.saveGroupFull(this.group);
+                await this.syncMembers();
+                for (const member of this.group.members) {
+                    await this.plugin.addGroupIdToEntity?.(member.type as any, member.id, this.group.id);
+                }
+            }
+            if (this.onSubmit) await this.onSubmit(this.group);
+            this.close();
+        }, { cta: true });
     }
 
     async loadAllEntities() {

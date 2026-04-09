@@ -38,8 +38,7 @@ export class ChapterModal extends ResponsiveModal {
 
     async onOpen(): Promise<void> {
         super.onOpen();
-        const { contentEl } = this;
-        contentEl.empty();
+        const { contentEl, footerEl } = this.createStructuredModalLayout();
         contentEl.createEl('h2', { text: this.isNew ? t('createNewChapter') : `${t('editChapter')} ${this.chapter.name}` });
 
         // Auto-apply default template for new chapters
@@ -300,39 +299,30 @@ export class ChapterModal extends ResponsiveModal {
         }));
 
         // Buttons
-        const buttons = new Setting(contentEl).setClass('storyteller-modal-buttons');
         if (!this.isNew && this.onDelete) {
-            buttons.addButton(btn => btn
-                .setButtonText(t('delete'))
-                .setClass('mod-warning')
-                .onClick(async () => {
-                    if (this.chapter.filePath && confirm(t('confirmDeleteChapter', this.chapter.name))) {
-                        await this.onDelete!(this.chapter);
-                        this.close();
-                    }
-                })
-            );
+            this.createFooterButton(footerEl, t('delete'), async () => {
+                if (this.chapter.filePath && confirm(t('confirmDeleteChapter', this.chapter.name))) {
+                    await this.onDelete!(this.chapter);
+                    this.close();
+                }
+            }, { warning: true });
         }
-        buttons.controlEl.createDiv({ cls: 'storyteller-modal-button-spacer' });
-        buttons.addButton(btn => btn.setButtonText(t('cancel')).onClick(() => this.close()));
-        buttons.addButton(btn => btn
-            .setButtonText(this.isNew ? t('createChapterBtn') : t('saveChanges'))
-            .setCta()
-            .onClick(async () => {
-                if (!this.chapter.name || !this.chapter.name.trim()) {
-                    new Notice(t('chapterNameRequired'));
-                    return;
-                }
-                // Ensure empty section fields are set so templates can render headings
-                this.chapter.summary = this.chapter.summary || '';
-                const customFields = this.customFieldsEditor.getFields();
-                if (!customFields) {
-                    return;
-                }
-                (this.chapter as any).customFields = customFields;
-                await this.onSubmit(this.chapter);
-                this.close();
-            }));
+        footerEl.createDiv({ cls: 'storyteller-modal-button-spacer' });
+        this.createFooterButton(footerEl, t('cancel'), () => this.close());
+        this.createFooterButton(footerEl, this.isNew ? t('createChapterBtn') : t('saveChanges'), async () => {
+            if (!this.chapter.name || !this.chapter.name.trim()) {
+                new Notice(t('chapterNameRequired'));
+                return;
+            }
+            this.chapter.summary = this.chapter.summary || '';
+            const customFields = this.customFieldsEditor.getFields();
+            if (!customFields) {
+                return;
+            }
+            (this.chapter as any).customFields = customFields;
+            await this.onSubmit(this.chapter);
+            this.close();
+        }, { cta: true });
     }
 
     // Helper method to render linked entities with individual delete buttons
