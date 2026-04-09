@@ -1,3 +1,7 @@
+## 1.7.8-beta.8
+
+- Replace character modal footer actions with explicit buttons so create/save uses one consistent style and click path on mobile.
+
 ## 1.7.8-beta.7
 
 - Publish the rebuilt beta artifact so BRAT and branch installs get the actual latest character modal fixes instead of stale code.
@@ -255,6 +259,7 @@ _Release notes to be added_
 - Add Dependabot/Renovate configs for dependency management
 - Add internationalization support (27+ translation keys for new features)
 - Update tutorial section with documentation for all new features
+
 
 
 

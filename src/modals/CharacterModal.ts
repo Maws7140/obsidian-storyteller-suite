@@ -587,10 +587,12 @@ export class CharacterModal extends ResponsiveModal {
         const footer = rootEl.createDiv('storyteller-modal-footer');
 
         if (!this.isNew && this.onDelete) {
-            const deleteBtn = new ButtonComponent(footer)
-                .setButtonText(t('deleteCharacter'))
-                .setClass('storyteller-modal-btn mod-warning');
-            deleteBtn.onClick(async () => {
+            const deleteBtn = footer.createEl('button', {
+                text: t('deleteCharacter'),
+                cls: 'storyteller-modal-btn mod-warning',
+                attr: { type: 'button' }
+            });
+            deleteBtn.addEventListener('click', async () => {
                 if (confirm(t('confirmDeleteCharacter', this.character.name))) {
                     if (this.onDelete) {
                         try {
@@ -610,11 +612,12 @@ export class CharacterModal extends ResponsiveModal {
         spacer.setAttr('aria-hidden', 'true');
 
         if (!this.isNew) {
-            const sheetBtn = new ButtonComponent(footer)
-                .setButtonText('Character Sheet')
-                .setClass('storyteller-modal-btn');
-            sheetBtn.setTooltip('Preview and export a styled character sheet');
-            sheetBtn.onClick(() => {
+            const sheetBtn = footer.createEl('button', {
+                text: 'Character Sheet',
+                cls: 'storyteller-modal-btn',
+                attr: { type: 'button', title: 'Preview and export a styled character sheet' }
+            });
+            sheetBtn.addEventListener('click', () => {
                 if (!this.character.name?.trim()) {
                     new Notice('Please enter a character name before generating a sheet.');
                     return;
@@ -623,17 +626,21 @@ export class CharacterModal extends ResponsiveModal {
             });
         }
 
-        const cancelBtn = new ButtonComponent(footer)
-            .setButtonText(t('cancel'))
-            .setClass('storyteller-modal-btn');
-        cancelBtn.onClick(() => {
+        const cancelBtn = footer.createEl('button', {
+            text: t('cancel'),
+            cls: 'storyteller-modal-btn',
+            attr: { type: 'button' }
+        });
+        cancelBtn.addEventListener('click', () => {
             this.close();
         });
 
-        const saveBtn = new ButtonComponent(footer)
-            .setButtonText(this.isNew ? t('createCharacter') : t('saveChanges'))
-            .setClass('storyteller-modal-btn mod-cta');
-        saveBtn.onClick(async () => {
+        const saveBtn = footer.createEl('button', {
+            text: this.isNew ? t('createCharacter') : t('saveChanges'),
+            cls: 'storyteller-modal-btn mod-cta',
+            attr: { type: 'button' }
+        });
+        saveBtn.addEventListener('click', async () => {
                 if (!this.character.name?.trim()) {
                     new Notice(t('characterNameRequired'));
                     return;

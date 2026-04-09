@@ -10027,6 +10027,7 @@ body.mod-rtl .storyteller-group-members {
 .storyteller-tab-body { min-height: 200px; }
 .storyteller-modal-footer { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid color-mix(in srgb, var(--interactive-accent) 22%, var(--background-modifier-border)); }
 .storyteller-modal-btn { padding: 6px 14px; border-radius: 4px; border: 1px solid color-mix(in srgb, var(--interactive-accent) 38%, var(--background-modifier-border)); cursor: pointer; background: color-mix(in srgb, var(--interactive-accent) 8%, var(--background-primary)); color: var(--text-normal); }
+.storyteller-modal-footer .storyteller-modal-btn { appearance: none; -webkit-appearance: none; font: inherit; line-height: 1.2; box-shadow: none; text-decoration: none; }
 .storyteller-modal-btn.mod-cta { background: var(--interactive-accent); color: var(--text-on-accent); border-color: transparent; }
 .storyteller-modal-btn.mod-warning { color: var(--color-red); border-color: var(--color-red); }
 .storyteller-modal-btn:hover { border-color: color-mix(in srgb, var(--interactive-accent) 62%, var(--background-modifier-border)); background: color-mix(in srgb, var(--interactive-accent) 14%, var(--background-primary)); }
