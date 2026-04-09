@@ -1,3 +1,7 @@
+## 1.7.8-beta.7
+
+- Publish the rebuilt beta artifact so BRAT and branch installs get the actual latest character modal fixes instead of stale code.
+
 ## 1.7.8-beta.6
 
 - Remove the character sheet action from the create character flow so the footer stays focused on the current product state.
@@ -251,5 +255,6 @@ _Release notes to be added_
 - Add Dependabot/Renovate configs for dependency management
 - Add internationalization support (27+ translation keys for new features)
 - Update tutorial section with documentation for all new features
+
 
 
