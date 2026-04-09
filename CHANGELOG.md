@@ -1,3 +1,7 @@
+## 1.7.8-beta.5
+
+- Fix character create modal on mobile so the form body scrolls separately and the footer actions stay visible, including the save button.
+
 # Changelog
 
 ## 1.7.8-beta.4
@@ -242,3 +246,4 @@ _Release notes to be added_
 - Add Dependabot/Renovate configs for dependency management
 - Add internationalization support (27+ translation keys for new features)
 - Update tutorial section with documentation for all new features
+

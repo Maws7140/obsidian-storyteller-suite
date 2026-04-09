@@ -87,8 +87,15 @@ export class CharacterModal extends ResponsiveModal {
     async onOpen() {
         super.onOpen(); // Call the parent's mobile optimizations
 
-        const { contentEl } = this;
-        contentEl.empty();
+        const rootEl = this.contentEl;
+        rootEl.empty();
+        rootEl.addClass('storyteller-character-modal-content');
+        rootEl.style.display = 'flex';
+        rootEl.style.flexDirection = 'column';
+        rootEl.style.overflow = 'hidden';
+        rootEl.style.paddingBottom = '0';
+
+        const contentEl = rootEl.createDiv('storyteller-character-modal-scroll');
         contentEl.createEl('h2', { text: this.isNew ? t('createNewCharacter') : `${t('edit')} ${this.character.name}` });
 
         // Auto-apply default template for new characters
@@ -577,7 +584,7 @@ export class CharacterModal extends ResponsiveModal {
         this.renderDndStatsSection(contentEl);
 
         // --- Action Buttons ---
-        const footer = contentEl.createDiv('storyteller-modal-footer');
+        const footer = rootEl.createDiv('storyteller-modal-footer');
 
         if (!this.isNew && this.onDelete) {
             const deleteBtn = new ButtonComponent(footer)
