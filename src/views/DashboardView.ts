@@ -2558,14 +2558,17 @@ export class DashboardView extends ItemView {
                     new ChapterModal(this.app, this.plugin, ch, async (updated) => {
                         await this.plugin.saveChapter(updated);
                         new Notice(`Chapter "${updated.name}" updated.`);
+                        await this.refreshActiveTab();
                     }, async (toDelete) => {
                         if (toDelete.filePath) await this.plugin.deleteChapter(toDelete.filePath);
+                        await this.refreshActiveTab();
                     }).open();
                 });
             });
             this.addDeleteButton(actionsEl, async () => {
                 if (ch.filePath && confirm(`Delete chapter "${ch.name}"?`)) {
                     await this.plugin.deleteChapter(ch.filePath);
+                    await this.refreshActiveTab();
                 }
             });
             this.addOpenFileButton(actionsEl, ch.filePath);
@@ -2712,14 +2715,17 @@ export class DashboardView extends ItemView {
                     new ChapterModal(this.app, this.plugin, ch, async (updated) => {
                         await this.plugin.saveChapter(updated);
                         new Notice(`Chapter "${updated.name}" updated.`);
+                        await this.refreshActiveTab();
                     }, async (toDelete) => {
                         if (toDelete.filePath) await this.plugin.deleteChapter(toDelete.filePath);
+                        await this.refreshActiveTab();
                     }).open();
                 });
             });
             this.addDeleteButton(actionsEl, async () => {
                 if (ch.filePath && confirm(`Delete chapter "${ch.name}"?`)) {
                     await this.plugin.deleteChapter(ch.filePath);
+                    await this.refreshActiveTab();
                 }
             });
             this.addOpenFileButton(actionsEl, ch.filePath);
@@ -3003,14 +3009,17 @@ export class DashboardView extends ItemView {
                 new SceneModal(this.app, this.plugin, sc, async (updated) => {
                     await this.plugin.saveScene(updated);
                     new Notice(`Scene "${updated.name}" updated.`);
+                    await this.refreshActiveTab();
                 }, async (toDelete) => {
                     if (toDelete.filePath) await this.plugin.deleteScene(toDelete.filePath);
+                    await this.refreshActiveTab();
                 }).open();
             });
         });
         this.addDeleteButton(actionsEl, async () => {
             if (sc.filePath && confirm(`Delete scene "${sc.name}"?`)) {
                 await this.plugin.deleteScene(sc.filePath);
+                await this.refreshActiveTab();
             }
         });
         this.addOpenFileButton(actionsEl, sc.filePath);
@@ -3097,14 +3106,17 @@ export class DashboardView extends ItemView {
                     new SceneModal(this.app, this.plugin, sc, async (updated) => {
                         await this.plugin.saveScene(updated);
                         new Notice(`Scene "${updated.name}" updated.`);
+                        await this.refreshActiveTab();
                     }, async (toDelete) => {
                         if (toDelete.filePath) await this.plugin.deleteScene(toDelete.filePath);
+                        await this.refreshActiveTab();
                     }).open();
                 });
             });
             this.addDeleteButton(actionsEl, async () => {
                 if (sc.filePath && confirm(`Delete scene "${sc.name}"?`)) {
                     await this.plugin.deleteScene(sc.filePath);
+                    await this.refreshActiveTab();
                 }
             });
             this.addOpenFileButton(actionsEl, sc.filePath);
