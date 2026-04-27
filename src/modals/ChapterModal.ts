@@ -201,7 +201,7 @@ export class ChapterModal extends ResponsiveModal {
             .addTextArea((ta: TextAreaComponent) => {
                 ta.setPlaceholder(t('briefChapterSummaryPh'))
                   .setValue(this.chapter.summary || '')
-                  .onChange(v => this.chapter.summary = v || undefined);
+                  .onChange(v => this.chapter.summary = v);
                 ta.inputEl.rows = 10;
             });
 

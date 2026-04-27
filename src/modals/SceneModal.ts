@@ -29,8 +29,9 @@ export class SceneModal extends ResponsiveModal {
     constructor(app: App, plugin: StorytellerSuitePlugin, sc: Scene | null, onSubmit: SceneModalSubmitCallback, onDelete?: SceneModalDeleteCallback) {
         super(app);
         this.plugin = plugin;
-        this.isNew = sc == null;
-        this.scene = sc ? { ...sc } : { name: '', status: 'Draft', tags: [], linkedCharacters: [], linkedLocations: [], linkedEvents: [], linkedItems: [], linkedGroups: [] } as Scene;
+        this.isNew = sc == null || !sc.filePath;
+        const defaults: Partial<Scene> = { name: '', status: 'Draft', tags: [], linkedCharacters: [], linkedLocations: [], linkedEvents: [], linkedItems: [], linkedGroups: [] };
+        this.scene = { ...defaults, ...(sc ?? {}) } as Scene;
         this.onSubmit = onSubmit;
         this.onDelete = onDelete;
         this.modalEl.addClass('storyteller-scene-modal');
@@ -342,7 +343,7 @@ export class SceneModal extends ResponsiveModal {
             .addTextArea((ta: TextAreaComponent) => {
                 ta.setPlaceholder(t('writeScenePh'))
                   .setValue(this.scene.content || '')
-                  .onChange(v => this.scene.content = v || undefined);
+                  .onChange(v => this.scene.content = v);
                 ta.inputEl.rows = 10;
             });
 

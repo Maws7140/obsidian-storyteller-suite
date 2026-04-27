@@ -94,7 +94,7 @@ export const ENTITY_TEMPLATES: Record<EntityType, Record<string, string>> = {
  */
 export function getTemplateSections(
   type: EntityType,
-  providedSections: Record<string, string> = {}
+  providedSections: Record<string, string | undefined> = {}
 ): Record<string, string> {
   const template = { ...ENTITY_TEMPLATES[type] };
   // Override template with provided sections (including empty ones)

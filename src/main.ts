@@ -3896,6 +3896,12 @@ export default class StorytellerSuitePlugin extends Plugin {
             } else if (entityType === 'item') {
                 // Backward-compatibility: some older notes used "History / Lore" as heading
                 if (!data['history'] && allSections['History / Lore']) data['history'] = allSections['History / Lore'];
+            } else if (entityType === 'magicSystem') {
+                if ('Rules' in allSections) data['rules'] = allSections['Rules'];
+                if ('Source' in allSections) data['source'] = allSections['Source'];
+                if ('Costs' in allSections) data['costs'] = allSections['Costs'];
+                if ('Limitations' in allSections) data['limitations'] = allSections['Limitations'];
+                if ('Training' in allSections) data['training'] = allSections['Training'];
             } else if (entityType === 'event') {
                 // Support parsing Characters Involved from markdown section if present
                 if (allSections['Characters Involved']) {
@@ -5837,11 +5843,16 @@ export default class StorytellerSuitePlugin extends Plugin {
 			? stringifyYamlWithLogging(fm, originalFrontmatter, `Chapter: ${chapter.name}`)
 			: '';
 
-        const providedSections = { Summary: summary || '' };
+        const providedSections: Record<string, string | undefined> = {
+            Summary: summary !== undefined ? (summary || '') : undefined,
+        };
         const templateSections = getTemplateSections('chapter', providedSections);
         const allSections: Record<string, string> = (existingFile && existingFile instanceof TFile)
             ? { ...templateSections, ...existingSections }
-            : templateSections;
+            : { ...templateSections };
+        for (const [key, value] of Object.entries(providedSections)) {
+            if (value !== undefined) allSections[key] = value;
+        }
 
         let mdContent = `---\n${frontmatterString}---\n\n`;
         mdContent += Object.entries(allSections)
@@ -6340,14 +6351,17 @@ export default class StorytellerSuitePlugin extends Plugin {
 			: '';
 
         const beatsBlock = (beats && Array.isArray(beats) ? beats as string[] : undefined);
-        const providedSections = {
-            Content: (content as string) || '',
-            Beats: (beatsBlock && beatsBlock.length > 0) ? beatsBlock.join('\n') : ''
+        const providedSections: Record<string, string | undefined> = {
+            Content: content !== undefined ? ((content as string) || '') : undefined,
+            Beats: beatsBlock !== undefined ? (beatsBlock.length > 0 ? beatsBlock.join('\n') : '') : undefined,
         };
         const templateSections = getTemplateSections('scene', providedSections);
         const allSections: Record<string, string> = (existingFile && existingFile instanceof TFile)
             ? { ...templateSections, ...existingSections }
-            : templateSections;
+            : { ...templateSections };
+        for (const [key, value] of Object.entries(providedSections)) {
+            if (value !== undefined) allSections[key] = value;
+        }
 
         let mdContent = `---\n${frontmatterString}---\n\n`;
         mdContent += Object.entries(allSections)
@@ -6926,25 +6940,22 @@ export default class StorytellerSuitePlugin extends Plugin {
             ? stringifyYamlWithLogging(finalFrontmatter, originalFrontmatter, `MagicSystem: ${magicSystem.name}`)
             : '';
 
-        const providedSections = {
-            Description: description !== undefined ? description : '',
-            Rules: rules !== undefined ? rules : '',
-            Source: source !== undefined ? source : '',
-            Costs: costs !== undefined ? costs : '',
-            Limitations: limitations !== undefined ? limitations : '',
-            Training: training !== undefined ? training : '',
-            History: history !== undefined ? history : ''
+        const providedSections: Record<string, string | undefined> = {
+            Description: description !== undefined ? (description as string) : undefined,
+            Rules: rules !== undefined ? (rules as string) : undefined,
+            Source: source !== undefined ? (source as string) : undefined,
+            Costs: costs !== undefined ? (costs as string) : undefined,
+            Limitations: limitations !== undefined ? (limitations as string) : undefined,
+            Training: training !== undefined ? (training as string) : undefined,
+            History: history !== undefined ? (history as string) : undefined
         };
         const templateSections = getTemplateSections('magicSystem', providedSections);
 
-        let allSections: Record<string, string>;
-        if (existingFile && existingFile instanceof TFile) {
-            allSections = { ...existingSections, ...templateSections };
-            Object.entries(providedSections).forEach(([key, value]) => {
-                allSections[key] = value;
-            });
-        } else {
-            allSections = templateSections;
+        const allSections: Record<string, string> = (existingFile && existingFile instanceof TFile)
+            ? { ...templateSections, ...existingSections }
+            : { ...templateSections };
+        for (const [key, value] of Object.entries(providedSections)) {
+            if (value !== undefined) allSections[key] = value;
         }
 
         let mdContent = `---\n${frontmatterString}---\n\n`;
