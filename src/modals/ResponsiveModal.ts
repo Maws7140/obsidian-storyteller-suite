@@ -20,9 +20,17 @@ export abstract class ResponsiveModal extends Modal {
         rootEl.style.flexDirection = 'column';
         rootEl.style.overflow = 'hidden';
         rootEl.style.paddingBottom = '0';
+        rootEl.style.maxHeight = '80vh';
 
         const contentEl = rootEl.createDiv('storyteller-structured-modal-scroll');
+        contentEl.style.flex = '1 1 auto';
+        contentEl.style.minHeight = '0';
+        contentEl.style.maxHeight = '75vh';
+        contentEl.style.overflowY = 'auto';
+        contentEl.style.overflowX = 'hidden';
+
         const footerEl = rootEl.createDiv('storyteller-modal-footer');
+        footerEl.style.flex = '0 0 auto';
         return { rootEl, contentEl, footerEl };
     }
 

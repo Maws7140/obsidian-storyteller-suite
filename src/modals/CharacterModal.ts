@@ -94,8 +94,14 @@ export class CharacterModal extends ResponsiveModal {
         rootEl.style.flexDirection = 'column';
         rootEl.style.overflow = 'hidden';
         rootEl.style.paddingBottom = '0';
+        rootEl.style.maxHeight = '80vh';
 
         const contentEl = rootEl.createDiv('storyteller-character-modal-scroll');
+        contentEl.style.flex = '1 1 auto';
+        contentEl.style.minHeight = '0';
+        contentEl.style.maxHeight = '75vh';
+        contentEl.style.overflowY = 'auto';
+        contentEl.style.overflowX = 'hidden';
         contentEl.createEl('h2', { text: this.isNew ? t('createNewCharacter') : `${t('edit')} ${this.character.name}` });
 
         // Auto-apply default template for new characters
@@ -585,6 +591,7 @@ export class CharacterModal extends ResponsiveModal {
 
         // --- Action Buttons ---
         const footer = rootEl.createDiv('storyteller-modal-footer');
+        footer.style.flex = '0 0 auto';
 
         if (!this.isNew && this.onDelete) {
             const deleteBtn = footer.createEl('button', {
@@ -714,7 +721,7 @@ export class CharacterModal extends ResponsiveModal {
                     this.renderList(container, items, type);
                 });
         });
-    }
+    }
     private hasMultipleEntities(template: Template): boolean {
         let entityCount = 0;
         if (template.entities.characters?.length) entityCount += template.entities.characters.length;

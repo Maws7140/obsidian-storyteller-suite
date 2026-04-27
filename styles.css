@@ -1699,12 +1699,14 @@ If your plugin does not need CSS, delete this file.
 
 .storyteller-character-modal-content {
     min-height: 0;
+    max-height: 80vh;
 }
 
 .storyteller-character-modal-scroll {
     flex: 1 1 auto;
     min-height: 0;
-    overflow-y: auto;
+    max-height: 75vh;
+    overflow-y: auto !important;
     overflow-x: hidden;
     -webkit-overflow-scrolling: touch;
 }
@@ -1734,12 +1736,14 @@ If your plugin does not need CSS, delete this file.
 
 .storyteller-structured-modal-content {
     min-height: 0;
+    max-height: 80vh;
 }
 
 .storyteller-structured-modal-scroll {
     flex: 1 1 auto;
     min-height: 0;
-    overflow-y: auto;
+    max-height: 75vh;
+    overflow-y: auto !important;
     overflow-x: hidden;
     -webkit-overflow-scrolling: touch;
 }
