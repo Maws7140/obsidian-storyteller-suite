@@ -1,3 +1,11 @@
+## 1.7.8-beta.13
+
+- Fix character creation modal not scrolling on desktop so the Save and Cancel buttons no longer get cut off when the form is taller than the window.
+- Apply the same scroll fix to every modal that uses the structured layout helper.
+- Refresh the dashboard tabs automatically after chapter and scene edits or deletes so the list reflects changes without needing to switch tabs.
+- Preserve empty content and summary sections when saving chapters and scenes instead of falling back to the template default.
+- Parse magic system rule, source, cost, limitation, and training sections back into their fields when loading older notes.
+
 ## 1.7.8-beta.11
 
 - Move the main remaining legacy create/edit modals onto ResponsiveModal so they use the same mobile modal flow as the fixed character modal instead of plain Obsidian modal behavior.
