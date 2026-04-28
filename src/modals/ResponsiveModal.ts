@@ -40,21 +40,15 @@ export abstract class ResponsiveModal extends Modal {
         onClick: () => void | Promise<void>,
         options?: { cta?: boolean; warning?: boolean; title?: string }
     ): HTMLButtonElement {
-        const classes = ['storyteller-modal-btn'];
-        if (options?.cta) classes.push('mod-cta');
-        if (options?.warning) classes.push('mod-warning');
-        const button = footerEl.createEl('button', {
-            text,
-            cls: classes.join(' '),
-            attr: {
-                type: 'button',
-                ...(options?.title ? { title: options.title } : {}),
-            },
-        });
-        button.addEventListener('click', () => {
-            void onClick();
-        });
-        return button;
+        const button = new ButtonComponent(footerEl);
+        button.setButtonText(text);
+        button.buttonEl.addClass('storyteller-modal-btn');
+        button.buttonEl.setAttr('type', 'button');
+        if (options?.cta) button.setCta();
+        if (options?.warning) button.setWarning();
+        if (options?.title) button.buttonEl.setAttr('title', options.title);
+        button.onClick(() => { void onClick(); });
+        return button.buttonEl;
     }
 
     constructor(app: App) {
