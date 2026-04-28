@@ -2494,6 +2494,13 @@ If your plugin does not need CSS, delete this file.
     min-width: 0;
 }
 
+/* Auto-grow textareas so they never show their own scrollbar inside a scrolling modal.
+   Without this, a textarea with rows=10 stacks its native scrollbar on top of the modal scroll. */
+[class*="storyteller-"][class*="-modal"] textarea {
+    field-sizing: content;
+    overflow: hidden;
+}
+
 /* Character Modal Styles */
 .mod.storyteller-character-modal {
   /* Make modal slightly wider */
