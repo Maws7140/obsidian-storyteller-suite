@@ -425,27 +425,13 @@ export function extractAllRelationships(
     return edges;
 }
 
-// Build bidirectional edges where appropriate
-// Some relationships should be shown in both directions
+// Build bidirectional edges where appropriate.
+// We intentionally do not auto-mirror typed relationships here. EntitySyncService already
+// mirrors the relationship onto the counterpart character, and the renderer collapses
+// matching pairs into a single bidirectional arrow. Auto-mirroring here produced a second
+// labeled arrow on top of the original, which was the "two arrows for family" bug.
 export function buildBidirectionalEdges(edges: GraphEdge[]): GraphEdge[] {
-    const bidirectionalTypes: RelationshipType[] = ['family', 'ally', 'rival', 'romantic'];
-    const newEdges: GraphEdge[] = [...edges];
-
-    edges.forEach(edge => {
-        if (bidirectionalTypes.includes(edge.relationshipType)) {
-            // Check if reverse edge already exists (with same type and label)
-            if (!edgeExists(newEdges, edge.target, edge.source, edge.relationshipType, edge.label)) {
-                newEdges.push({
-                    source: edge.target,
-                    target: edge.source,
-                    relationshipType: edge.relationshipType,
-                    label: edge.label
-                });
-            }
-        }
-    });
-
-    return newEdges;
+    return edges;
 }
 
 // Canonical rules for reciprocal neutral relationships
