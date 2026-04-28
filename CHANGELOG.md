@@ -1,3 +1,7 @@
+## 1.7.8-beta.14
+
+- Auto-grow textareas inside modals so the native textarea scrollbar no longer stacks alongside the modal scrollbar when the field has a lot of content.
+
 ## 1.7.8-beta.13
 
 - Fix character creation modal not scrolling on desktop so the Save and Cancel buttons no longer get cut off when the form is taller than the window.
