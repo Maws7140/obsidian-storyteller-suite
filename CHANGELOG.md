@@ -1,3 +1,8 @@
+## 1.7.8-beta.15
+
+- Lift the modal scroll height cap on mobile fullscreen so create and edit modals use the full viewport in landscape instead of squeezing the form into a sliver.
+- Stop auto-mirroring family, ally, rival, and romantic relationships in the network graph so picking "father" between two characters renders one labeled arrow instead of two stacked ones.
+
 ## 1.7.8-beta.14
 
 - Auto-grow textareas inside modals so the native textarea scrollbar no longer stacks alongside the modal scrollbar when the field has a lot of content.
