@@ -1,3 +1,8 @@
+## 1.7.8-beta.16
+
+- Replace native confirm dialogs on dashboard delete actions with an in-app confirmation modal so deleting an entry no longer leaves keyboard focus stuck and blocks typing in editors and inputs until the Obsidian window is reactivated.
+- Render footer buttons in modals through Obsidian's ButtonComponent so the "Delete" label shows on Maps, Gallery, Groups, References, Writing, and Books edit modals the same way it does on Cultures and Economies.
+
 ## 1.7.8-beta.15
 
 - Lift the modal scroll height cap on mobile fullscreen so create and edit modals use the full viewport in landscape instead of squeezing the form into a sliver.
