@@ -94,12 +94,12 @@ export class CharacterModal extends ResponsiveModal {
         rootEl.style.flexDirection = 'column';
         rootEl.style.overflow = 'hidden';
         rootEl.style.paddingBottom = '0';
-        rootEl.style.maxHeight = '80vh';
+        rootEl.style.maxHeight = this.isFullScreen ? '100%' : '80vh';
 
         const contentEl = rootEl.createDiv('storyteller-character-modal-scroll');
         contentEl.style.flex = '1 1 auto';
         contentEl.style.minHeight = '0';
-        contentEl.style.maxHeight = '75vh';
+        if (!this.isFullScreen) contentEl.style.maxHeight = '75vh';
         contentEl.style.overflowY = 'auto';
         contentEl.style.overflowX = 'hidden';
         contentEl.createEl('h2', { text: this.isNew ? t('createNewCharacter') : `${t('edit')} ${this.character.name}` });
