@@ -1360,7 +1360,7 @@ export class DashboardView extends ItemView {
                 }).open();
             });
             this.addDeleteButton(actionsEl, async () => {
-                if (confirm(`Are you sure you want to delete "${item.name}"?`)) {
+                if (await this.confirmAction(`Are you sure you want to delete "${item.name}"?`)) {
                     if (item.filePath) {
                         await this.plugin.deletePlotItem(item.filePath);
                     }
@@ -1451,7 +1451,7 @@ export class DashboardView extends ItemView {
                 });
             });
             this.addDeleteButton(actionsEl, async () => {
-                if (map.filePath && confirm(`Delete map "${map.name}"?`)) {
+                if (map.filePath && await this.confirmAction(`Delete map "${map.name}"?`)) {
                     await this.plugin.deleteMap(map.filePath);
                 }
             });
@@ -2286,7 +2286,7 @@ export class DashboardView extends ItemView {
                 });
             });
             this.addDeleteButton(actionsEl, async () => {
-                if (ref.filePath && confirm(`Delete reference "${ref.name}"?`)) {
+                if (ref.filePath && await this.confirmAction(`Delete reference "${ref.name}"?`)) {
                     await this.plugin.deleteReference(ref.filePath);
                 }
             });
@@ -2566,7 +2566,7 @@ export class DashboardView extends ItemView {
                 });
             });
             this.addDeleteButton(actionsEl, async () => {
-                if (ch.filePath && confirm(`Delete chapter "${ch.name}"?`)) {
+                if (ch.filePath && await this.confirmAction(`Delete chapter "${ch.name}"?`)) {
                     await this.plugin.deleteChapter(ch.filePath);
                     await this.refreshActiveTab();
                 }
@@ -2723,7 +2723,7 @@ export class DashboardView extends ItemView {
                 });
             });
             this.addDeleteButton(actionsEl, async () => {
-                if (ch.filePath && confirm(`Delete chapter "${ch.name}"?`)) {
+                if (ch.filePath && await this.confirmAction(`Delete chapter "${ch.name}"?`)) {
                     await this.plugin.deleteChapter(ch.filePath);
                     await this.refreshActiveTab();
                 }
@@ -3017,7 +3017,7 @@ export class DashboardView extends ItemView {
             });
         });
         this.addDeleteButton(actionsEl, async () => {
-            if (sc.filePath && confirm(`Delete scene "${sc.name}"?`)) {
+            if (sc.filePath && await this.confirmAction(`Delete scene "${sc.name}"?`)) {
                 await this.plugin.deleteScene(sc.filePath);
                 await this.refreshActiveTab();
             }
@@ -3114,7 +3114,7 @@ export class DashboardView extends ItemView {
                 });
             });
             this.addDeleteButton(actionsEl, async () => {
-                if (sc.filePath && confirm(`Delete scene "${sc.name}"?`)) {
+                if (sc.filePath && await this.confirmAction(`Delete scene "${sc.name}"?`)) {
                     await this.plugin.deleteScene(sc.filePath);
                     await this.refreshActiveTab();
                 }
@@ -3432,7 +3432,7 @@ export class DashboardView extends ItemView {
             const currentWorkflow = engine.getWorkflowById(workflowSelect.value);
             if (!currentWorkflow) return;
             if (!customWorkflows.some(saved => saved.id === currentWorkflow.id)) return;
-            if (!confirm(`Delete compile workflow "${currentWorkflow.name}"?`)) return;
+            if (!await this.confirmAction(`Delete compile workflow "${currentWorkflow.name}"?`)) return;
 
             this.plugin.settings.compileWorkflows = customWorkflows.filter(workflow => workflow.id !== currentWorkflow.id);
             if (this.plugin.settings.defaultCompileWorkflow === currentWorkflow.id) {
@@ -3544,7 +3544,7 @@ export class DashboardView extends ItemView {
                 }).open();
             });
             this.addDeleteButton(actionsEl, async () => {
-                if (confirm(`Are you sure you want to delete "${character.name}"? This will move the file to system trash.`)) {
+                if (await this.confirmAction(`Are you sure you want to delete "${character.name}"? This will move the file to system trash.`)) {
                     if (character.filePath) {
                         await this.plugin.deleteCharacter(character.filePath);
                         // Manual refresh removed - automatic vault event refresh will handle this
@@ -3613,7 +3613,7 @@ export class DashboardView extends ItemView {
                 }).open();
             });
             this.addDeleteButton(actionsEl, async () => {
-                if (confirm(`Are you sure you want to delete "${location.name}"?`)) {
+                if (await this.confirmAction(`Are you sure you want to delete "${location.name}"?`)) {
                     if (location.filePath) {
                         await this.plugin.deleteLocation(location.filePath);
                         // Manual refresh removed - automatic vault event refresh will handle this
@@ -3708,7 +3708,7 @@ export class DashboardView extends ItemView {
                 }).open();
             });
             this.addDeleteButton(actionsEl, async () => {
-                if (confirm(`Are you sure you want to delete "${event.name}"?`)) {
+                if (await this.confirmAction(`Are you sure you want to delete "${event.name}"?`)) {
                     if (event.filePath) {
                         await this.plugin.deleteEvent(event.filePath);
                         // Manual refresh removed - automatic vault event refresh will handle this
@@ -3756,6 +3756,28 @@ export class DashboardView extends ItemView {
                     openDetailModal();
                 }
             });
+        });
+    }
+
+    // Modal-based replacement for native confirm(). Native confirm() in Electron leaves
+    // focus on the now-removed DOM node after re-render, which prevents typing in any
+    // editor or input until the window is deactivated and reactivated.
+    private confirmAction(message: string, confirmText?: string): Promise<boolean> {
+        return new Promise(async (resolve) => {
+            const { ConfirmModal } = await import('../modals/ui/ConfirmModal');
+            let confirmed = false;
+            const modal = new ConfirmModal(this.app, {
+                title: t('confirm') || 'Confirm',
+                body: message,
+                confirmText: confirmText || t('delete') || 'Delete',
+                onConfirm: () => { confirmed = true; },
+            });
+            const originalOnClose = modal.onClose?.bind(modal);
+            modal.onClose = () => {
+                originalOnClose?.();
+                resolve(confirmed);
+            };
+            modal.open();
         });
     }
 
@@ -4039,7 +4061,7 @@ export class DashboardView extends ItemView {
                 });
             });
             this.addDeleteButton(actionsEl, async () => {
-                if (culture.filePath && confirm(t('confirmDeleteCulture', culture.name))) {
+                if (culture.filePath && await this.confirmAction(t('confirmDeleteCulture', culture.name))) {
                     await this.plugin.deleteCulture(culture.filePath);
                 }
             });
@@ -4157,7 +4179,7 @@ export class DashboardView extends ItemView {
                 });
             });
             this.addDeleteButton(actionsEl, async () => {
-                if (economy.filePath && confirm(t('confirmDeleteEconomy', economy.name))) {
+                if (economy.filePath && await this.confirmAction(t('confirmDeleteEconomy', economy.name))) {
                     await this.plugin.deleteEconomy(economy.filePath);
                 }
             });
@@ -4245,7 +4267,7 @@ export class DashboardView extends ItemView {
                 });
             });
             this.addDeleteButton(actionsEl, async () => {
-                if (magicSystem.filePath && confirm(t('confirmDeleteMagicSystem', magicSystem.name))) {
+                if (magicSystem.filePath && await this.confirmAction(t('confirmDeleteMagicSystem', magicSystem.name))) {
                     await this.plugin.deleteMagicSystem(magicSystem.filePath);
                 }
             });
@@ -4350,7 +4372,7 @@ export class DashboardView extends ItemView {
                 });
             });
             this.addDeleteButton(actionsEl, async () => {
-                if (entry.filePath && confirm(`Delete "${entry.name}"?`)) {
+                if (entry.filePath && await this.confirmAction(`Delete "${entry.name}"?`)) {
                     await this.plugin.deleteCompendiumEntry(entry.filePath);
                     await this.renderCompendiumList(container);
                 }
@@ -4499,7 +4521,7 @@ export class DashboardView extends ItemView {
                 });
             });
             this.addDeleteButton(actionsEl, async () => {
-                if (book.filePath && confirm(`Delete book "${book.name}"? Chapters will be unlinked.`)) {
+                if (book.filePath && await this.confirmAction(`Delete book "${book.name}"? Chapters will be unlinked.`)) {
                     await this.plugin.deleteBook(book.filePath);
                     await this.renderBooksList(container);
                 }
@@ -5198,7 +5220,7 @@ export class DashboardView extends ItemView {
                 setIcon(delBtn, 'trash');
                 delBtn.setAttribute('aria-label', 'Delete session');
                 delBtn.addEventListener('click', async () => {
-                    if (confirm(`Delete session "${sess.name}"?`)) {
+                    if (await this.confirmAction(`Delete session "${sess.name}"?`)) {
                         await this.plugin.deleteSession(sess.filePath!);
                         await this.renderCampaignList(container);
                     }
