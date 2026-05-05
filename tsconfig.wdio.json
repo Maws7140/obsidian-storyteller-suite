@@ -1,0 +1,16 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": [
+      "node",
+      "@wdio/globals/types"
+    ],
+    "module": "ESNext",
+    "target": "ES2020",
+    "noEmit": true
+  },
+  "include": [
+    "test/e2e/**/*.ts",
+    "wdio.conf.mjs"
+  ]
+}

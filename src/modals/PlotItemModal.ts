@@ -23,6 +23,7 @@ import { Template } from '../templates/TemplateTypes';
 import { EntityCustomFieldsEditor } from './entity/EntityCustomFieldsEditor';
 import { EntityGroupSelector } from './entity/EntityGroupSelector';
 import { ResponsiveModal } from './ResponsiveModal';
+import { confirmWithModal } from './ui/ConfirmModal';
 
 export type PlotItemModalSubmitCallback = (item: PlotItem) => Promise<void>;
 export type PlotItemModalDeleteCallback = (item: PlotItem) => Promise<void>;
@@ -686,7 +687,11 @@ export class PlotItemModal extends ResponsiveModal {
         // --- Action Buttons at bottom ---
         if (!this.isNew && this.onDelete) {
             this.createFooterButton(footerEl, t('deleteItem'), async () => {
-                if (confirm(t('confirmDeleteItem', this.item.name))) {
+                if (await confirmWithModal(this.app, {
+                    title: t('confirm') || 'Confirm',
+                    body: t('confirmDeleteItem', this.item.name),
+                    confirmText: t('delete') || 'Delete',
+                })) {
                     await this.onDelete!(this.item);
                     this.close();
                 }

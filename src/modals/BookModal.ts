@@ -4,6 +4,7 @@ import type StorytellerSuitePlugin from '../main';
 import { ResponsiveModal } from './ResponsiveModal';
 import { addImageSelectionButtons } from '../utils/ImageSelectionHelper';
 import { EntityCustomFieldsEditor } from './entity/EntityCustomFieldsEditor';
+import { confirmWithModal } from './ui/ConfirmModal';
 
 export type BookModalSubmitCallback = (book: Book) => Promise<void>;
 export type BookModalDeleteCallback = (book: Book) => Promise<void>;
@@ -197,7 +198,11 @@ export class BookModal extends ResponsiveModal {
 
         if (!this.isNew && this.onDelete) {
             this.createFooterButton(footerEl, 'Delete', async () => {
-                if (confirm(`Delete book "${this.book.name}"? This will unlink all its chapters.`)) {
+                if (await confirmWithModal(this.app, {
+                    title: 'Confirm',
+                    body: `Delete book "${this.book.name}"? This will unlink all its chapters.`,
+                    confirmText: 'Delete',
+                })) {
                     await this.onDelete!(this.book);
                     this.close();
                 }

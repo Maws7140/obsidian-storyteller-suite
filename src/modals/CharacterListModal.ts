@@ -8,6 +8,7 @@ import { t } from '../i18n/strings';
 import { Character } from '../types';
 import StorytellerSuitePlugin from '../main';
 import { CharacterModal } from './CharacterModal';
+import { confirmWithModal } from './ui/ConfirmModal';
 
 /**
  * Modal dialog for displaying and managing a list of characters
@@ -142,8 +143,11 @@ export class CharacterListModal extends Modal {
                 .setTooltip(t('delete'))
                 .setClass('mod-warning') // Visual warning styling
                 .onClick(async () => {
-                    // Simple confirmation dialog
-                    if (confirm(t('confirmDeleteCharacterTrash', character.name))) {
+                    if (await confirmWithModal(this.app, {
+                        title: t('confirm') || 'Confirm',
+                        body: t('confirmDeleteCharacterTrash', character.name),
+                        confirmText: t('delete') || 'Delete',
+                    })) {
                         if (character.filePath) {
                             await this.plugin.deleteCharacter(character.filePath);
                             // Update local character list and re-render

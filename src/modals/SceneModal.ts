@@ -15,6 +15,7 @@ import { Template } from '../templates/TemplateTypes';
 import { getTrackedItemOwner } from '../utils/ItemOwnership';
 import type { StoryMap } from '../types';
 import { ResponsiveModal } from './ResponsiveModal';
+import { confirmWithModal } from './ui/ConfirmModal';
 
 export type SceneModalSubmitCallback = (sc: Scene) => Promise<void>;
 export type SceneModalDeleteCallback = (sc: Scene) => Promise<void>;
@@ -473,7 +474,11 @@ export class SceneModal extends ResponsiveModal {
 
         if (!this.isNew && this.onDelete) {
             this.createFooterButton(footerEl, t('delete'), async () => {
-                if (this.scene.filePath && confirm(t('confirmDeleteScene', this.scene.name))) {
+                if (this.scene.filePath && await confirmWithModal(this.app, {
+                    title: t('confirm') || 'Confirm',
+                    body: t('confirmDeleteScene', this.scene.name),
+                    confirmText: t('delete') || 'Delete',
+                })) {
                     await this.onDelete!(this.scene);
                     this.close();
                 }

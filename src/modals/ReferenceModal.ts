@@ -9,6 +9,7 @@ import { TemplatePickerModal } from './TemplatePickerModal';
 import { Template } from '../templates/TemplateTypes';
 import { EntityCustomFieldsEditor } from './entity/EntityCustomFieldsEditor';
 import { ResponsiveModal } from './ResponsiveModal';
+import { confirmWithModal } from './ui/ConfirmModal';
 
 export type ReferenceModalSubmitCallback = (ref: Reference) => Promise<void>;
 export type ReferenceModalDeleteCallback = (ref: Reference) => Promise<void>;
@@ -197,7 +198,11 @@ export class ReferenceModal extends ResponsiveModal {
 
         if (!this.isNew && this.onDelete) {
             this.createFooterButton(footerEl, t('delete'), async () => {
-                if (confirm(t('confirmDeleteReference', this.refData.name))) {
+                if (await confirmWithModal(this.app, {
+                    title: t('confirm') || 'Confirm',
+                    body: t('confirmDeleteReference', this.refData.name),
+                    confirmText: t('delete') || 'Delete',
+                })) {
                     await this.onDelete!(this.refData);
                     this.close();
                 }

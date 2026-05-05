@@ -3,6 +3,7 @@ import { t } from '../i18n/strings';
 import { CompendiumEntry } from '../types';
 import StorytellerSuitePlugin from '../main';
 import { CompendiumEntryModal } from './CompendiumEntryModal';
+import { confirmWithModal } from './ui/ConfirmModal';
 
 export class CompendiumListModal extends Modal {
     plugin: StorytellerSuitePlugin;
@@ -105,7 +106,11 @@ export class CompendiumListModal extends Modal {
                 .setTooltip(t('delete'))
                 .setClass('mod-warning')
                 .onClick(async () => {
-                    if (confirm(t('confirmDeleteCompendiumEntry', entry.name))) {
+                    if (await confirmWithModal(this.app, {
+                        title: t('confirm') || 'Confirm',
+                        body: t('confirmDeleteCompendiumEntry', entry.name),
+                        confirmText: t('delete') || 'Delete',
+                    })) {
                         if (entry.filePath) {
                             await this.plugin.deleteCompendiumEntry(entry.filePath);
                             this.entries = this.entries.filter(e => e.filePath !== entry.filePath);

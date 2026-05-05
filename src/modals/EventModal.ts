@@ -18,6 +18,7 @@ import { TemplatePickerModal } from './TemplatePickerModal';
 import { Template } from '../templates/TemplateTypes';
 // Remove placeholder import for multi-image
 // import { MultiGalleryImageSuggestModal } from './MultiGalleryImageSuggestModal';
+import { confirmWithModal } from './ui/ConfirmModal';
 
 export type EventModalSubmitCallback = (event: Event) => Promise<void>;
 export type EventModalDeleteCallback = (event: Event) => Promise<void>;
@@ -663,7 +664,11 @@ export class EventModal extends ResponsiveModal {
         // --- Action Buttons ---
         if (!this.isNew && this.onDelete) {
             this.createFooterButton(footerEl, t('deleteEvent'), async () => {
-                if (confirm(t('confirmDeleteEvent', this.event.name))) {
+                if (await confirmWithModal(this.app, {
+                    title: t('confirm') || 'Confirm',
+                    body: t('confirmDeleteEvent', this.event.name),
+                    confirmText: t('delete') || 'Delete',
+                })) {
                     if (this.onDelete) {
                         try {
                             await this.onDelete(this.event);

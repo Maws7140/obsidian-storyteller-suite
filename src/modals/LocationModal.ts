@@ -17,6 +17,7 @@ import { TemplatePickerModal } from './TemplatePickerModal';
 import { Template } from '../templates/TemplateTypes';
 import { EntityCustomFieldsEditor } from './entity/EntityCustomFieldsEditor';
 import { EntityGroupSelector } from './entity/EntityGroupSelector';
+import { confirmWithModal } from './ui/ConfirmModal';
 // Placeholder imports for suggesters -
 // import { CharacterSuggestModal } from './CharacterSuggestModal';
 // import { EventSuggestModal } from './EventSuggestModal';
@@ -734,7 +735,11 @@ export class LocationModal extends ResponsiveModal {
 
         if (!this.isNew && this.onDelete) {
             this.createFooterButton(footerEl, t('deleteLocation'), async () => {
-                if (confirm(t('confirmDeleteLocation', this.location.name))) {
+                if (await confirmWithModal(this.app, {
+                    title: t('confirm') || 'Confirm',
+                    body: t('confirmDeleteLocation', this.location.name),
+                    confirmText: t('delete') || 'Delete',
+                })) {
                     if (this.onDelete) {
                         try {
                             await this.onDelete(this.location);

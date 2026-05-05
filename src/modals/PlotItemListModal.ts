@@ -5,6 +5,7 @@ import { t } from '../i18n/strings';
 import { PlotItem } from '../types';
 import StorytellerSuitePlugin from '../main';
 import { PlotItemModal } from './PlotItemModal';
+import { confirmWithModal } from './ui/ConfirmModal';
 
 export class PlotItemListModal extends Modal {
     plugin: StorytellerSuitePlugin;
@@ -112,7 +113,11 @@ export class PlotItemListModal extends Modal {
                 .setTooltip(t('delete'))
                 .setClass('mod-warning')
                 .onClick(async () => {
-                    if (confirm(t('confirmDeleteItemTrash', item.name))) {
+                    if (await confirmWithModal(this.app, {
+                        title: t('confirm') || 'Confirm',
+                        body: t('confirmDeleteItemTrash', item.name),
+                        confirmText: t('delete') || 'Delete',
+                    })) {
                         if (item.filePath) {
                             await this.plugin.deletePlotItem(item.filePath);
                             this.items = this.items.filter(i => i.filePath !== item.filePath);

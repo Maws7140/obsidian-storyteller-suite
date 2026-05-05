@@ -5,9 +5,13 @@ import { WordCountTracker } from '../../src/compile/WordCountTracker';
 describe('WordCountTracker', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    vi.useRealTimers();
   });
 
   it('includes live session progress in today stats before a session is persisted', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 2, 31, 12, 0, 0));
+
     const tracker = new WordCountTracker(createPluginStub()) as any;
 
     tracker.isTracking = true;

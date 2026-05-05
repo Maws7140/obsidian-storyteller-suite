@@ -8,6 +8,7 @@ import { t } from '../i18n/strings';
 import { MagicSystem } from '../types';
 import StorytellerSuitePlugin from '../main';
 import { MagicSystemModal } from './MagicSystemModal';
+import { confirmWithModal } from './ui/ConfirmModal';
 
 /**
  * Modal dialog for displaying and managing a list of magic systems
@@ -154,8 +155,11 @@ export class MagicSystemListModal extends Modal {
                 .setTooltip(t('delete'))
                 .setClass('mod-warning') // Visual warning styling
                 .onClick(async () => {
-                    // Simple confirmation dialog
-                    if (confirm(t('confirmDeleteMagicSystem', magicSystem.name))) {
+                    if (await confirmWithModal(this.app, {
+                        title: t('confirm') || 'Confirm',
+                        body: t('confirmDeleteMagicSystem', magicSystem.name),
+                        confirmText: t('delete') || 'Delete',
+                    })) {
                         if (magicSystem.filePath) {
                             await this.plugin.deleteMagicSystem(magicSystem.filePath);
                             // Update local magic system list and re-render

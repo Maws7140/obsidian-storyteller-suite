@@ -12,6 +12,7 @@ import { PlotItemSuggestModal } from './PlotItemSuggestModal';
 import { TemplatePickerModal } from './TemplatePickerModal';
 import { Template } from '../templates/TemplateTypes';
 import { EntityCustomFieldsEditor } from './entity/EntityCustomFieldsEditor';
+import { confirmWithModal } from './ui/ConfirmModal';
 
 export type GroupModalSubmitCallback = (group: Group) => Promise<void>;
 export type GroupModalDeleteCallback = (groupId: string) => Promise<void>;
@@ -464,7 +465,11 @@ export class GroupModal extends ResponsiveModal {
 
         if (!this.isNew && this.onDelete) {
             this.createFooterButton(footerEl, t('deleteGroup'), async () => {
-                if (confirm(t('confirmDeleteGroup', this.group.name))) {
+                if (await confirmWithModal(this.app, {
+                    title: t('confirm') || 'Confirm',
+                    body: t('confirmDeleteGroup', this.group.name),
+                    confirmText: t('delete') || 'Delete',
+                })) {
                     await this.onDelete!(this.group.id);
                     this.close();
                 }

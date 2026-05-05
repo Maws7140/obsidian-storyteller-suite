@@ -1,5 +1,7 @@
 import { Platform } from 'obsidian';
 
+export type DashboardLayoutMode = 'phone' | 'tablet-portrait' | 'tablet-landscape' | 'desktop';
+
 /**
  * Utility class for platform detection and mobile-specific adaptations
  * Provides consistent methods for detecting mobile devices and adapting UI accordingly
@@ -147,6 +149,20 @@ export class PlatformUtils {
         return isTabletSize && isTabletAspect;
     }
 
+    static getDashboardLayoutMode(): DashboardLayoutMode {
+        if (!this.isMobile()) {
+            return 'desktop';
+        }
+
+        if (!this.isTablet()) {
+            return 'phone';
+        }
+
+        // Tablets were falling through the desktop-ish layout path before.
+        // That was the bug, so we split portrait and landscape on purpose.
+        return window.innerHeight >= window.innerWidth ? 'tablet-portrait' : 'tablet-landscape';
+    }
+
     /**
      * Gets appropriate grid columns for current screen size
      * @returns number of columns for grid layouts
@@ -161,7 +177,7 @@ export class PlatformUtils {
      * @returns true if should use simplified UI
      */
     static shouldUseSimplifiedUI(): boolean {
-        return this.isMobile() && !this.isTablet();
+        return this.getDashboardLayoutMode() === 'phone';
     }
 
     /**

@@ -15,6 +15,7 @@ import { CharacterSheetPreviewModal } from './CharacterSheetPreviewModal';
 import { getTrackedItemOwner, isSameName } from '../utils/ItemOwnership';
 import { EntityCustomFieldsEditor } from './entity/EntityCustomFieldsEditor';
 import { EntityGroupSelector } from './entity/EntityGroupSelector';
+import { confirmWithModal } from './ui/ConfirmModal';
 // Placeholder imports for suggesters - these would need to be created
 // import { CharacterSuggestModal } from './CharacterSuggestModal';
 // import { LocationSuggestModal } from './LocationSuggestModal';
@@ -600,7 +601,11 @@ export class CharacterModal extends ResponsiveModal {
                 attr: { type: 'button' }
             });
             deleteBtn.addEventListener('click', async () => {
-                if (confirm(t('confirmDeleteCharacter', this.character.name))) {
+                if (await confirmWithModal(this.app, {
+                    title: t('confirm') || 'Confirm',
+                    body: t('confirmDeleteCharacter', this.character.name),
+                    confirmText: t('delete') || 'Delete',
+                })) {
                     if (this.onDelete) {
                         try {
                             await this.onDelete(this.character);

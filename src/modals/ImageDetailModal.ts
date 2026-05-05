@@ -3,6 +3,7 @@ import { t } from '../i18n/strings';
 import { GalleryImage } from '../types';
 import StorytellerSuitePlugin from '../main';
 import { ResponsiveModal } from './ResponsiveModal';
+import { confirmWithModal } from './ui/ConfirmModal';
 
 export class ImageDetailModal extends ResponsiveModal {
     plugin: StorytellerSuitePlugin;
@@ -118,7 +119,11 @@ export class ImageDetailModal extends ResponsiveModal {
         // Action Buttons
         if (!this.isNew) {
             this.createFooterButton(footerEl, t('removeFromGallery'), async () => {
-                if (confirm(t('confirmRemoveImageFromGallery', this.image.filePath))) {
+                if (await confirmWithModal(this.app, {
+                    title: t('confirm') || 'Confirm',
+                    body: t('confirmRemoveImageFromGallery', this.image.filePath),
+                    confirmText: t('delete') || 'Delete',
+                })) {
                     await this.plugin.deleteGalleryImage(this.image.id);
                     new Notice(t('imageRemovedFromGallery', this.image.filePath));
                     if (this.onSaveCallback) {

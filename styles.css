@@ -2832,6 +2832,11 @@ If your plugin does not need CSS, delete this file.
     font-size: 12px;
 }
 
+.storyteller-list-item-actions .storyteller-list-item-delete-btn.button {
+    min-width: auto;
+    padding: 6px 10px;
+}
+
 .storyteller-list-item-info {
     flex-grow: 1;
     min-width: 0;
@@ -3320,7 +3325,7 @@ If your plugin does not need CSS, delete this file.
   display: flex;
   flex-direction: column; /* header, tabs, content */
   height: 100%;
-  overflow: visible; /* Changed from hidden to visible */
+  overflow: hidden;
   box-sizing: border-box;
   max-width: 100%;
   width: 100%;
@@ -3407,10 +3412,10 @@ If your plugin does not need CSS, delete this file.
   background: var(--background-secondary);
   border-bottom: 2px solid var(--background-modifier-border);
   padding: 0.25em 1em;
-  overflow-x: auto;
-  overflow-y: visible; /* Changed from hidden to visible to accommodate wrapped tabs */
+  overflow-x: visible;
+  overflow-y: visible;
   -webkit-overflow-scrolling: touch;
-  white-space: nowrap;
+  white-space: normal;
   /* Ensure proper sizing for wrapped content */
   box-sizing: border-box;
   /* Ensure it doesn't get clipped */
@@ -3419,19 +3424,18 @@ If your plugin does not need CSS, delete this file.
 
 /* Tab ribbon specific styles for proper wrapping */
 .storyteller-tab-ribbon {
-  /* Allow tabs to wrap when needed while maintaining horizontal scroll on mobile */
-  flex-wrap: wrap !important;
-  justify-content: center !important;
-  align-items: center !important;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
   align-content: flex-start !important;
-  width: 100% !important;
-  gap: 0.5rem !important;
-  row-gap: 6px !important;
+  width: 100%;
+  gap: 0.5rem;
+  row-gap: 6px;
   /* Ensure proper sizing */
-  box-sizing: border-box !important;
-  min-height: 0 !important;
+  box-sizing: border-box;
+  min-height: 0;
   /* Reset any conflicting styles */
-  overflow: visible !important;
+  overflow: visible;
 }
 
 .storyteller-dashboard-content {
@@ -4087,6 +4091,11 @@ body.mod-rtl .storyteller-group-members {
   min-height: 28px;
   min-width: 28px;
   padding: 4px;
+}
+
+.mobile-dashboard.storyteller-dashboard-simplified .storyteller-list-item-actions .storyteller-list-item-delete-btn.button {
+  min-width: auto;
+  padding: 4px 8px;
 }
 
 .mobile-dashboard.storyteller-dashboard-simplified .storyteller-group-card {
@@ -10108,7 +10117,11 @@ body.mod-rtl .storyteller-group-members {
 .storyteller-modal-btn { padding: 6px 14px; border-radius: 4px; border: 1px solid color-mix(in srgb, var(--interactive-accent) 38%, var(--background-modifier-border)); cursor: pointer; background: color-mix(in srgb, var(--interactive-accent) 8%, var(--background-primary)); color: var(--text-normal); }
 .storyteller-modal-footer .storyteller-modal-btn { appearance: none; -webkit-appearance: none; font: inherit; line-height: 1.2; box-shadow: none; text-decoration: none; }
 .storyteller-modal-btn.mod-cta { background: var(--interactive-accent); color: var(--text-on-accent); border-color: transparent; }
-.storyteller-modal-btn.mod-warning { color: var(--color-red); border-color: var(--color-red); }
+.storyteller-modal-btn.mod-warning {
+  background: var(--interactive-warning);
+  color: var(--text-on-accent);
+  border-color: transparent;
+}
 .storyteller-modal-btn:hover { border-color: color-mix(in srgb, var(--interactive-accent) 62%, var(--background-modifier-border)); background: color-mix(in srgb, var(--interactive-accent) 14%, var(--background-primary)); }
 .storyteller-modal-buttons .setting-item-control { gap: 0.5rem; }
 .storyteller-modal-buttons .button,
@@ -10139,8 +10152,16 @@ body.mod-rtl .storyteller-group-members {
 }
 .storyteller-modal-buttons .button.mod-warning,
 .storyteller-modal-buttons button.mod-warning {
-  color: var(--color-red);
-  border-color: var(--color-red);
+  background: var(--interactive-warning);
+  color: var(--text-on-accent);
+  border-color: transparent;
+}
+.storyteller-modal-btn.mod-warning:hover,
+.storyteller-modal-buttons .button.mod-warning:hover,
+.storyteller-modal-buttons button.mod-warning:hover {
+  background: var(--interactive-warning-hover);
+  color: var(--text-on-accent);
+  border-color: transparent;
 }
 .storyteller-branch-editor-list { display: flex; flex-direction: column; gap: 0.75rem; margin-bottom: 1rem; }
 .storyteller-branch-editor-card { border: 1px solid var(--background-modifier-border); border-radius: 6px; padding: 0.75rem; position: relative; }
@@ -10812,4 +10833,351 @@ body.mod-rtl .storyteller-group-members {
   justify-content: flex-end;
   flex-wrap: wrap;
   padding-top: 0.5rem;
+}
+
+/* Dashboard shell rewrite
+   The old mobile rules were fighting each other. This is the new top-level contract. */
+
+.storyteller-dashboard-shell-host {
+  height: 100%;
+  overflow: visible;
+  display: flex;
+  flex-direction: column;
+}
+
+.storyteller-dashboard-view-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  isolation: isolate;
+  position: relative;
+  container-type: inline-size;
+  container-name: storyteller-dashboard;
+}
+
+.storyteller-dashboard-view-container[data-layout] .storyteller-dashboard-header {
+  z-index: var(--layer-status-bar, 15);
+  background: var(--background-primary);
+  flex-shrink: 0;
+}
+
+.storyteller-dashboard-view-container[data-layout] .storyteller-dashboard-tabs {
+  z-index: calc(var(--layer-status-bar, 15) - 1);
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  width: 100%;
+  flex-shrink: 0;
+}
+
+.storyteller-dashboard-view-container[data-layout] .storyteller-tab-ribbon {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  align-content: center;
+  flex: 1 1 auto;
+  width: 100%;
+}
+
+.storyteller-dashboard-view-container[data-layout] .storyteller-dashboard-content {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* One shell, four layouts. If something does not fit one of these, it probably should not exist. */
+.storyteller-dashboard-view-container[data-layout="phone"] .storyteller-dashboard-header-top,
+.storyteller-dashboard-view-container[data-layout="tablet-portrait"] .storyteller-dashboard-header-top {
+  align-items: stretch;
+}
+
+.storyteller-dashboard-view-container[data-layout="phone"] .storyteller-selector-button-group,
+.storyteller-dashboard-view-container[data-layout="tablet-portrait"] .storyteller-selector-button-group {
+  width: 100%;
+}
+
+.storyteller-dashboard-view-container[data-layout="phone"] .storyteller-selector-button-group {
+  flex-wrap: nowrap;
+}
+
+.storyteller-dashboard-view-container[data-layout="tablet-portrait"] .storyteller-selector-button-group {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.storyteller-dashboard-view-container[data-layout="phone"] .storyteller-dashboard-title {
+  max-width: 42%;
+}
+
+.storyteller-dashboard-view-container[data-layout="tablet-portrait"] .storyteller-dashboard-title {
+  max-width: 100%;
+}
+
+.storyteller-dashboard-view-container[data-layout="phone"] .storyteller-dashboard-tabs {
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.storyteller-dashboard-view-container[data-layout="phone"] .storyteller-tab-ribbon {
+  flex-wrap: nowrap !important;
+  justify-content: flex-start !important;
+  align-content: center !important;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  white-space: nowrap;
+}
+
+.storyteller-dashboard-view-container[data-layout="phone"] .storyteller-tab-header {
+  min-width: max-content !important;
+  white-space: nowrap;
+}
+
+.storyteller-dashboard-view-container[data-layout="tablet-portrait"] .storyteller-dashboard-tabs {
+  overflow: visible;
+  align-items: flex-start;
+}
+
+.storyteller-dashboard-view-container[data-layout="tablet-portrait"] .storyteller-tab-ribbon {
+  /* iPad portrait was eating the content lane. Tabs stack here on purpose. */
+  flex-wrap: wrap !important;
+  justify-content: flex-start !important;
+  align-items: stretch !important;
+  align-content: flex-start !important;
+  row-gap: 0.45rem !important;
+  column-gap: 0.45rem !important;
+  overflow: visible !important;
+}
+
+.storyteller-dashboard-view-container[data-layout="tablet-portrait"] .storyteller-tab-header {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.storyteller-dashboard-view-container[data-layout="tablet-portrait"] .storyteller-controls-group {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.6rem;
+}
+
+.storyteller-dashboard-view-container[data-layout="tablet-portrait"] .storyteller-controls-group .setting-item {
+  width: 100%;
+}
+
+.storyteller-dashboard-view-container[data-layout="tablet-portrait"] .storyteller-controls-group .setting-item-control {
+  width: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+
+.storyteller-dashboard-view-container[data-layout="tablet-portrait"] .storyteller-controls-group .setting-item-info {
+  width: 100%;
+  margin-bottom: 0.35rem;
+}
+
+.storyteller-dashboard-view-container[data-layout="tablet-portrait"] .storyteller-controls-group .search-input,
+.storyteller-dashboard-view-container[data-layout="tablet-portrait"] .storyteller-controls-group input[type="text"] {
+  width: 100%;
+}
+
+.storyteller-dashboard-view-container[data-layout="tablet-portrait"] .storyteller-list-item,
+.storyteller-dashboard-view-container[data-layout="tablet-landscape"] .storyteller-list-item {
+  min-width: 0;
+}
+
+.storyteller-dashboard-view-container[data-layout="tablet-portrait"] .storyteller-list-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+}
+
+.storyteller-dashboard-view-container[data-layout="tablet-landscape"] .storyteller-list-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.storyteller-dashboard-view-container[data-layout="tablet-portrait"] .storyteller-list-item-info,
+.storyteller-dashboard-view-container[data-layout="tablet-landscape"] .storyteller-list-item-info {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.storyteller-dashboard-view-container[data-layout="phone"] .storyteller-list-item-info strong,
+.storyteller-dashboard-view-container[data-layout="tablet-portrait"] .storyteller-list-item-info strong,
+.storyteller-dashboard-view-container[data-layout="tablet-landscape"] .storyteller-list-item-info strong {
+  overflow-wrap: anywhere;
+}
+
+.storyteller-dashboard-view-container[data-layout="phone"] .storyteller-list-item-info p,
+.storyteller-dashboard-view-container[data-layout="tablet-portrait"] .storyteller-list-item-info p,
+.storyteller-dashboard-view-container[data-layout="tablet-landscape"] .storyteller-list-item-info p {
+  overflow-wrap: anywhere;
+}
+
+.storyteller-dashboard-view-container[data-layout="tablet-portrait"] .storyteller-list-item-actions,
+.storyteller-dashboard-view-container[data-layout="tablet-landscape"] .storyteller-list-item-actions {
+  flex-shrink: 0;
+}
+
+.storyteller-dashboard-view-container[data-layout="tablet-portrait"] .storyteller-list-item-actions {
+  margin-left: 0;
+}
+
+.storyteller-dashboard-view-container[data-layout="phone"] .storyteller-list-item-actions,
+.storyteller-dashboard-view-container[data-layout="tablet-portrait"] .storyteller-list-item-actions,
+.storyteller-dashboard-view-container[data-layout="tablet-landscape"] .storyteller-list-item-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.35rem;
+}
+
+.storyteller-dashboard-view-container[data-layout="phone"] .storyteller-list-item-actions .button,
+.storyteller-dashboard-view-container[data-layout="tablet-portrait"] .storyteller-list-item-actions .button,
+.storyteller-dashboard-view-container[data-layout="tablet-landscape"] .storyteller-list-item-actions .button {
+  margin: 0;
+}
+
+/* Pane width matters too. The old code kept acting like desktop could never be narrow, which is how sidebars get cursed. */
+@container storyteller-dashboard (max-width: 560px) {
+  .storyteller-dashboard-header {
+    padding: 0.5rem 0.75rem 0.4rem;
+    gap: 0.35rem;
+  }
+
+  .storyteller-dashboard-header-top {
+    align-items: stretch;
+  }
+
+  .storyteller-dashboard-title {
+    font-size: 1rem;
+    max-width: 100%;
+  }
+
+  .storyteller-selector-button-group {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    width: 100%;
+    gap: 0.4rem;
+  }
+
+  .storyteller-selector-button-group .storyteller-story-selector {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .storyteller-selector-button-group .storyteller-new-story-btn {
+    margin-left: 0;
+  }
+
+  .storyteller-dashboard-tabs {
+    overflow-x: auto;
+    overflow-y: hidden;
+    align-items: center;
+    padding-inline: 0.75rem;
+  }
+
+  .storyteller-tab-ribbon {
+    flex-wrap: nowrap !important;
+    justify-content: flex-start !important;
+    align-content: center !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    white-space: nowrap;
+    row-gap: 0 !important;
+  }
+
+  .storyteller-tab-header {
+    min-width: max-content !important;
+    white-space: nowrap;
+  }
+
+  .storyteller-controls-group {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.55rem;
+  }
+
+  .storyteller-controls-group .setting-item {
+    width: 100%;
+  }
+
+  .storyteller-controls-group .setting-item-info {
+    width: 100%;
+    margin-bottom: 0.35rem;
+  }
+
+  .storyteller-controls-group .setting-item-control {
+    width: 100%;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+    justify-content: flex-end;
+  }
+
+  .storyteller-controls-group .search-input,
+  .storyteller-controls-group input[type="text"],
+  .storyteller-controls-group input[type="search"] {
+    width: 100%;
+  }
+
+  .storyteller-list-item {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .storyteller-list-item-info {
+    min-width: 0;
+  }
+
+  .storyteller-list-item-actions {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 0.35rem;
+    margin-left: 0;
+  }
+
+  .storyteller-list-item-actions .button {
+    margin: 0;
+  }
+}
+
+@container storyteller-dashboard (min-width: 561px) and (max-width: 900px) {
+  .storyteller-controls-group {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.65rem;
+  }
+
+  .storyteller-controls-group .setting-item {
+    width: 100%;
+  }
+
+  .storyteller-controls-group .setting-item-info {
+    width: 100%;
+    margin-bottom: 0.35rem;
+  }
+
+  .storyteller-controls-group .setting-item-control {
+    width: 100%;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    justify-content: flex-end;
+  }
+
+  .storyteller-list-item {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+  }
 }

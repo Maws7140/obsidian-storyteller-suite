@@ -13,6 +13,7 @@ import { TemplatePickerModal } from './TemplatePickerModal';
 import { Template } from '../templates/TemplateTypes';
 import { EntityCustomFieldsEditor } from './entity/EntityCustomFieldsEditor';
 import { ResponsiveModal } from './ResponsiveModal';
+import { confirmWithModal } from './ui/ConfirmModal';
 
 export type ChapterModalSubmitCallback = (ch: Chapter) => Promise<void>;
 export type ChapterModalDeleteCallback = (ch: Chapter) => Promise<void>;
@@ -301,7 +302,11 @@ export class ChapterModal extends ResponsiveModal {
         // Buttons
         if (!this.isNew && this.onDelete) {
             this.createFooterButton(footerEl, t('delete'), async () => {
-                if (this.chapter.filePath && confirm(t('confirmDeleteChapter', this.chapter.name))) {
+                if (this.chapter.filePath && await confirmWithModal(this.app, {
+                    title: t('confirm') || 'Confirm',
+                    body: t('confirmDeleteChapter', this.chapter.name),
+                    confirmText: t('delete') || 'Delete',
+                })) {
                     await this.onDelete!(this.chapter);
                     this.close();
                 }

@@ -8,6 +8,7 @@ import { t } from '../i18n/strings';
 import { Culture } from '../types';
 import StorytellerSuitePlugin from '../main';
 import { CultureModal } from './CultureModal';
+import { confirmWithModal } from './ui/ConfirmModal';
 
 /**
  * Modal dialog for displaying and managing a list of cultures
@@ -154,8 +155,11 @@ export class CultureListModal extends Modal {
                 .setTooltip(t('delete'))
                 .setClass('mod-warning') // Visual warning styling
                 .onClick(async () => {
-                    // Simple confirmation dialog
-                    if (confirm(t('confirmDeleteCulture', culture.name))) {
+                    if (await confirmWithModal(this.app, {
+                        title: t('confirm') || 'Confirm',
+                        body: t('confirmDeleteCulture', culture.name),
+                        confirmText: t('delete') || 'Delete',
+                    })) {
                         if (culture.filePath) {
                             await this.plugin.deleteCulture(culture.filePath);
                             // Update local culture list and re-render

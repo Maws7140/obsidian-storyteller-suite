@@ -3,6 +3,7 @@ import { t } from '../i18n/strings';
 import { Location } from '../types';
 import StorytellerSuitePlugin from '../main';
 import { LocationModal } from './LocationModal';
+import { confirmWithModal } from './ui/ConfirmModal';
 
 export class LocationListModal extends Modal {
     plugin: StorytellerSuitePlugin;
@@ -169,8 +170,11 @@ export class LocationListModal extends Modal {
             .setTooltip(t('delete'))
             .setClass('mod-warning') // Add warning class for visual cue
             .onClick(async () => {
-                // Simple confirmation for now
-                if (confirm(t('confirmDeleteLocation', location.name))) {
+                if (await confirmWithModal(this.app, {
+                    title: t('confirm') || 'Confirm',
+                    body: t('confirmDeleteLocation', location.name),
+                    confirmText: t('delete') || 'Delete',
+                })) {
                     if (location.filePath) {
                         await this.plugin.deleteLocation(location.filePath);
                         // Refresh the list in the modal

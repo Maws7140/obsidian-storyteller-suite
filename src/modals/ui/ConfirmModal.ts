@@ -26,3 +26,22 @@ export class ConfirmModal extends Modal {
     buttons.addButton(b => b.setButtonText(t('cancel')).onClick(() => this.close()));
   }
 }
+
+export function confirmWithModal(
+  app: App,
+  options: { title: string; body: string; confirmText?: string; }
+): Promise<boolean> {
+  return new Promise((resolve) => {
+    let confirmed = false;
+    const modal = new ConfirmModal(app, {
+      ...options,
+      onConfirm: () => { confirmed = true; },
+    });
+    const originalOnClose = modal.onClose?.bind(modal);
+    modal.onClose = () => {
+      originalOnClose?.();
+      resolve(confirmed);
+    };
+    modal.open();
+  });
+}

@@ -8,6 +8,7 @@ import { t } from '../i18n/strings';
 import { Economy } from '../types';
 import StorytellerSuitePlugin from '../main';
 import { EconomyModal } from './EconomyModal';
+import { confirmWithModal } from './ui/ConfirmModal';
 
 /**
  * Modal dialog for displaying and managing a list of economies
@@ -156,8 +157,11 @@ export class EconomyListModal extends Modal {
                 .setTooltip(t('delete'))
                 .setClass('mod-warning') // Visual warning styling
                 .onClick(async () => {
-                    // Simple confirmation dialog
-                    if (confirm(t('confirmDeleteEconomy', economy.name))) {
+                    if (await confirmWithModal(this.app, {
+                        title: t('confirm') || 'Confirm',
+                        body: t('confirmDeleteEconomy', economy.name),
+                        confirmText: t('delete') || 'Delete',
+                    })) {
                         if (economy.filePath) {
                             await this.plugin.deleteEconomy(economy.filePath);
                             // Update local economy list and re-render

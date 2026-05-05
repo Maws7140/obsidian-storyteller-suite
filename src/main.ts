@@ -1948,7 +1948,9 @@ export default class StorytellerSuitePlugin extends Plugin {
 		try {
 			const leaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_DASHBOARD);
 			const view: any = leaves[0]?.view;
-			if (view && typeof view.refreshActiveTab === 'function') {
+			if (view && typeof view.requestActiveTabRefresh === 'function') {
+				view.requestActiveTabRefresh('plugin-refresh');
+			} else if (view && typeof view.refreshActiveTab === 'function') {
 				view.refreshActiveTab();
 			}
 		} catch (_) {
@@ -8430,22 +8432,27 @@ export default class StorytellerSuitePlugin extends Plugin {
 	 * Merges with defaults for missing settings (backward compatibility)
 	 * Adds migration logic for multi-story support
 	 */
-    private isRelevantFile(filePath: string): boolean {
+    isRelevantDashboardFile(filePath: string): boolean {
         try {
-            const charFolder = this.getEntityFolder('character');
-            const locFolder = this.getEntityFolder('location');
-            const evtFolder = this.getEntityFolder('event');
-            const itemFolder = this.getEntityFolder('item'); // Add this
-            const refFolder = this.getEntityFolder('reference');
-            const chapterFolder = this.getEntityFolder('chapter');
-            const sceneFolder = this.getEntityFolder('scene');
-            return filePath.startsWith(charFolder + '/') ||
-                filePath.startsWith(locFolder + '/') ||
-                filePath.startsWith(evtFolder + '/') ||
-                filePath.startsWith(itemFolder + '/') || // Add this
-                filePath.startsWith(refFolder + '/') ||
-                filePath.startsWith(chapterFolder + '/') ||
-                filePath.startsWith(sceneFolder + '/') ||
+            const entityFolders = [
+                this.getEntityFolder('character'),
+                this.getEntityFolder('location'),
+                this.getEntityFolder('event'),
+                this.getEntityFolder('item'),
+                this.getEntityFolder('reference'),
+                this.getEntityFolder('chapter'),
+                this.getEntityFolder('scene'),
+                this.getEntityFolder('map'),
+                this.getEntityFolder('culture'),
+                this.getEntityFolder('economy'),
+                this.getEntityFolder('magicSystem'),
+                this.getEntityFolder('compendiumEntry'),
+                this.getEntityFolder('book'),
+                this.getEntityFolder('campaignSession'),
+                this.getEntityFolder('group'),
+            ];
+
+            return entityFolders.some(folder => filePath.startsWith(folder + '/')) ||
                 filePath.startsWith(this.settings.galleryUploadFolder + '/');
         } catch {
             return false;

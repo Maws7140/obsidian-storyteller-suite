@@ -17,6 +17,7 @@ import { Character, Location, Event, Group, PlotItem, GalleryImage, StoryMap, Bo
 import { NewStoryModal } from '../modals/NewStoryModal';
 import { GroupModal } from '../modals/GroupModal';
 import { PlatformUtils } from '../utils/PlatformUtils';
+import type { DashboardLayoutMode } from '../utils/PlatformUtils';
 import {
     Template,
     TemplateFilter,
@@ -27,6 +28,16 @@ import { TemplateEditorModal } from '../modals/TemplateEditorModal';
 import { EconomyDetailModal } from '../modals/EconomyDetailModal';
 import { WritingViewRenderers } from './WritingViewRenderers';
 import type { CompileEngine as CompileEngineType } from '../compile';
+import { confirmWithModal } from '../modals/ui/ConfirmModal';
+import { DashboardRefreshCoordinator } from './dashboard/DashboardRefreshCoordinator';
+import { DashboardMutationRunner } from './dashboard/DashboardMutationRunner';
+import { createDashboardControllerRegistry } from './dashboard/controllers/DashboardControllerRegistry';
+import type { DashboardControllerContext, DashboardTabController } from './dashboard/controllers/types';
+import {
+    captureDashboardStateSnapshot,
+    restoreDashboardStateSnapshot,
+} from './dashboard/DashboardStateSnapshot';
+import { renderWritingChapterSceneList } from './dashboard/rendering/WritingListRenderer';
 
 /** Unique identifier for the dashboard view type in Obsidian's workspace */
 export const VIEW_TYPE_DASHBOARD = "storyteller-dashboard-view";
@@ -45,6 +56,9 @@ export class DashboardView extends ItemView {
     
     /** Container element for tab headers */
     tabHeaderContainer: HTMLElement;
+
+    /** Dashboard shell root. Layout mode hangs off this instead of five random selectors. */
+    private dashboardRootEl: HTMLElement | null = null;
     
     /** Current filter text applied to entity lists */
     currentFilter: string = '';
@@ -58,7 +72,6 @@ export class DashboardView extends ItemView {
     /** Tab configuration mapping */
     tabs: Array<{ id: string; label: string; renderFn: (container: HTMLElement) => Promise<void> }>;
 
-    private debouncedRefreshActiveTab: () => void; // Declare property for debounce
     // Responsive tabs UI state
     private tabHeaderRibbonEl: HTMLElement | null = null;
     private mobileTabOverflowButton: HTMLButtonElement | null = null;
@@ -104,6 +117,12 @@ export class DashboardView extends ItemView {
     private _suppressScrollCapture = false;
     /** Prevent duplicate subscriptions when the sidebar view is reopened */
     private hasRegisteredViewListeners = false;
+    /** Shared dashboard refresh scheduler */
+    private refreshCoordinator: DashboardRefreshCoordinator;
+    /** Shared dashboard mutation helper */
+    private mutationRunner: DashboardMutationRunner;
+    /** Migrated dashboard tab controllers */
+    private controllerRegistry: Map<string, DashboardTabController>;
     /** Serialize active-tab refreshes so repeated events cannot append duplicate content */
     private isRefreshingActiveTab = false;
     private pendingActiveTabRefresh = false;
@@ -146,6 +165,22 @@ export class DashboardView extends ItemView {
 
     private isSimplifiedMobileDashboard(): boolean {
         return PlatformUtils.shouldUseSimplifiedUI();
+    }
+
+    private getDashboardLayoutMode(): DashboardLayoutMode {
+        return PlatformUtils.getDashboardLayoutMode();
+    }
+
+    private applyDashboardLayoutMode(): void {
+        if (!this.dashboardRootEl) return;
+
+        const layoutMode = this.getDashboardLayoutMode();
+        this.dashboardRootEl.dataset.layout = layoutMode;
+
+        // Keep the old classes around for compatibility, but this data attr is the real contract now.
+        this.dashboardRootEl.toggleClass('mobile-dashboard', layoutMode !== 'desktop');
+        this.dashboardRootEl.toggleClass('storyteller-dashboard-simplified', layoutMode === 'phone');
+        this.dashboardRootEl.toggleClass('storyteller-dashboard-tablet', layoutMode.startsWith('tablet'));
     }
 
     /**
@@ -230,8 +265,9 @@ export class DashboardView extends ItemView {
         ];
 
         this.applyTabOrder();
-
-        this.debouncedRefreshActiveTab = debounce(this.refreshActiveTab.bind(this), 200, true);
+        this.refreshCoordinator = new DashboardRefreshCoordinator(() => this.refreshActiveTab(), 200);
+        this.mutationRunner = new DashboardMutationRunner(this.app, this.refreshCoordinator);
+        this.controllerRegistry = createDashboardControllerRegistry();
         
         // Initialize debounced search for mobile optimization
         this.debouncedSearch = debounce(async (filterFn: (filter: string) => Promise<void>) => {
@@ -239,7 +275,7 @@ export class DashboardView extends ItemView {
                 await filterFn(this.currentFilter);
                 // Restore focus to search input on mobile after re-render
                 if (PlatformUtils.isMobile() &&
-                    !this.isSimplifiedMobileDashboard() &&
+                    this.getDashboardLayoutMode() !== 'phone' &&
                     this.currentSearchInput &&
                     document.activeElement !== this.currentSearchInput) {
                     // Small delay to ensure DOM is ready
@@ -287,68 +323,40 @@ export class DashboardView extends ItemView {
     private registerVaultEventListeners() {
         // Listen for file creation events
         this.registerEvent(this.app.vault.on('create', (file) => {
-            if (this.isRelevantFile(file.path)) {
-                this.debouncedRefreshActiveTab();
+            if (this.plugin.isRelevantDashboardFile(file.path)) {
+                this.refreshCoordinator.requestRefresh({ source: 'vault', eventType: 'create', path: file.path });
             }
         }));
 
         // Listen for file modification events  
         this.registerEvent(this.app.vault.on('modify', (file) => {
-            if (this.isRelevantFile(file.path)) {
-                this.debouncedRefreshActiveTab();
+            if (this.plugin.isRelevantDashboardFile(file.path)) {
+                this.refreshCoordinator.requestRefresh({ source: 'vault', eventType: 'modify', path: file.path });
             }
         }));
 
         // Listen for file deletion events
         this.registerEvent(this.app.vault.on('delete', (file) => {
-            if (this.isRelevantFile(file.path)) {
-                this.debouncedRefreshActiveTab();
+            if (this.plugin.isRelevantDashboardFile(file.path)) {
+                this.refreshCoordinator.requestRefresh({ source: 'vault', eventType: 'delete', path: file.path });
             }
         }));
 
         // Listen for file rename events
         this.registerEvent(this.app.vault.on('rename', (file, oldPath) => {
-            if (this.isRelevantFile(file.path) || this.isRelevantFile(oldPath)) {
-                this.debouncedRefreshActiveTab();
+            if (this.plugin.isRelevantDashboardFile(file.path) || this.plugin.isRelevantDashboardFile(oldPath)) {
+                this.refreshCoordinator.requestRefresh({ source: 'vault', eventType: 'rename', path: file.path, detail: oldPath });
             }
         }));
 
         // Listen for metadata changes (fires after Obsidian has processed the file)
         this.registerEvent(
             this.app.metadataCache.on('changed', (file) => {
-                if (this.isRelevantFile(file.path)) {
-                    this.debouncedRefreshActiveTab();
+                if (this.plugin.isRelevantDashboardFile(file.path)) {
+                    this.refreshCoordinator.requestRefresh({ source: 'vault', eventType: 'metadata-changed', path: file.path });
                 }
             })
         );
-    }
-
-    /**
-     * Check if a file path is relevant to the storyteller plugin (characters, locations, events)
-     * @param filePath The file path to check
-     */
-    private isRelevantFile(filePath: string): boolean {
-        try {
-            const charFolder = this.plugin.getEntityFolder('character');
-            const locFolder = this.plugin.getEntityFolder('location');
-            const evtFolder = this.plugin.getEntityFolder('event');
-            const itemFolder = this.plugin.getEntityFolder('item'); // ADDED THIS LINE
-            const refFolder = this.plugin.getEntityFolder('reference');
-            const chapterFolder = this.plugin.getEntityFolder('chapter');
-            const sceneFolder = this.plugin.getEntityFolder('scene');
-            
-            const isRelevant = filePath.startsWith(charFolder + '/') ||
-                filePath.startsWith(locFolder + '/') ||
-                filePath.startsWith(evtFolder + '/') ||
-                filePath.startsWith(itemFolder + '/') || // ADDED THIS LINE
-                filePath.startsWith(refFolder + '/') ||
-                filePath.startsWith(chapterFolder + '/') ||
-                filePath.startsWith(sceneFolder + '/') ||
-                filePath.startsWith(this.plugin.settings.galleryUploadFolder + '/');
-            return isRelevant;
-        } catch {
-            return false;
-        }
     }
 
     /**
@@ -371,9 +379,7 @@ export class DashboardView extends ItemView {
             return;
         }
         
-        // Preserve search input state before refresh
-        const searchInputValue = this.currentSearchInput?.value || '';
-        const searchInputWasFocused = document.activeElement === this.currentSearchInput;
+        const snapshot = captureDashboardStateSnapshot(this.currentSearchInput);
         
         const currentTabId = this.activeTabId;
         this.captureTabScrollState(currentTabId);
@@ -386,20 +392,14 @@ export class DashboardView extends ItemView {
                 await activeTab.renderFn(this.tabContentContainer);
                 await this.restoreTabScroll(currentTabId);
                 
-                // Restore search input state after refresh (mobile optimization)
-                if (PlatformUtils.isMobile() && (searchInputValue || searchInputWasFocused)) {
-                    setTimeout(() => {
-                        if (this.currentSearchInput) {
-                            if (searchInputValue) {
-                                this.currentSearchInput.value = searchInputValue;
-                                this.currentFilter = searchInputValue.toLowerCase();
-                            }
-                            if (searchInputWasFocused && !this.isSimplifiedMobileDashboard()) {
-                                this.currentSearchInput.focus();
-                            }
-                        }
-                    }, 100);
-                }
+                restoreDashboardStateSnapshot(
+                    snapshot,
+                    () => this.currentSearchInput,
+                    (value) => {
+                        this.currentFilter = value;
+                    },
+                    () => !this.isSimplifiedMobileDashboard()
+                );
             } catch (error) {
                 console.error(`Storyteller Suite: Error refreshing active tab ${this.activeTabId}:`, error);
             } finally {
@@ -413,31 +413,147 @@ export class DashboardView extends ItemView {
         }
     }
 
+    requestActiveTabRefresh(detail: string = 'manual-refresh'): void {
+        this.refreshCoordinator.requestImmediateRefresh({ source: 'plugin', detail });
+    }
+
+    queueDashboardRefresh(detail: string): void {
+        this.mutationRunner.requestRefresh('immediate', detail);
+    }
+
+    private getDashboardControllerContext(): DashboardControllerContext {
+        return {
+            app: this.app,
+            plugin: this.plugin,
+            getCurrentFilter: () => this.currentFilter,
+            setCurrentFilter: (filter: string) => {
+                this.currentFilter = filter.toLowerCase();
+            },
+            isSimplifiedMobileDashboard: () => this.isSimplifiedMobileDashboard(),
+            renderWritingGoalBanner: this.renderWritingGoalBanner.bind(this),
+            getWritingViewMode: () => this._writingViewMode,
+            setWritingViewMode: (mode) => {
+                this._writingViewMode = mode;
+            },
+            renderWritingMode: async (mode, container) => {
+                switch (mode) {
+                    case 'list':
+                        await renderWritingChapterSceneList(container, {
+                            app: this.app,
+                            plugin: this.plugin,
+                            currentFilter: this.currentFilter,
+                            chapterCollapseState: this._chapterCollapseState,
+                            getImageSrc: this.getImageSrc.bind(this),
+                            addEditButton: this.addEditButton.bind(this),
+                            addDeleteButton: this.addDeleteButton.bind(this),
+                            addOpenFileButton: this.addOpenFileButton.bind(this),
+                            persistChapter: this.persistChapterFromDashboard.bind(this),
+                            persistScene: this.persistSceneFromDashboard.bind(this),
+                            removeChapter: this.removeChapterFromDashboard.bind(this),
+                            removeScene: this.removeSceneFromDashboard.bind(this),
+                            confirmDeleteChapter: this.confirmDeleteChapterFromDashboard.bind(this),
+                            confirmDeleteScene: this.confirmDeleteSceneFromDashboard.bind(this),
+                        });
+                        break;
+                    case 'board':
+                        await this.renderKanbanBoard(container);
+                        break;
+                    case 'arc':
+                        await this.renderArcChart(container);
+                        break;
+                    case 'heatmap':
+                        await this.renderHeatmap(container);
+                        break;
+                    case 'holes':
+                        await this.renderPlotHoles(container);
+                        break;
+                }
+            },
+            renderHeaderControls: this.renderHeaderControls.bind(this),
+            getImageSrc: this.getImageSrc.bind(this),
+            resolveLocationName: this.resolveLocationName.bind(this),
+            addEditButton: this.addEditButton.bind(this),
+            addDeleteButton: this.addDeleteButton.bind(this),
+            addOpenFileButton: this.addOpenFileButton.bind(this),
+            mutationRunner: this.mutationRunner,
+            queueDashboardRefresh: this.queueDashboardRefresh.bind(this),
+        };
+    }
+
+    private async renderWithController(tabId: string, container: HTMLElement, fallback: () => Promise<void>): Promise<void> {
+        const controller = this.controllerRegistry.get(tabId);
+        if (!controller) {
+            await fallback();
+            return;
+        }
+        await controller.render(container, this.getDashboardControllerContext());
+    }
+
+    private async persistChapterFromDashboard(chapter: any, successNotice: string, detail: string): Promise<void> {
+        await this.mutationRunner.runUpdate({
+            action: async () => {
+                await this.plugin.saveChapter(chapter);
+            },
+            successNotice,
+            refreshMode: 'immediate',
+            refreshDetail: detail,
+        });
+    }
+
+    private async persistSceneFromDashboard(scene: any, successNotice: string, detail: string): Promise<void> {
+        await this.mutationRunner.runUpdate({
+            action: async () => {
+                await this.plugin.saveScene(scene);
+            },
+            successNotice,
+            refreshMode: 'immediate',
+            refreshDetail: detail,
+        });
+    }
+
+    private async removeChapterFromDashboard(filePath: string, detail: string): Promise<void> {
+        await this.plugin.deleteChapter(filePath);
+        this.queueDashboardRefresh(detail);
+    }
+
+    private async removeSceneFromDashboard(filePath: string, detail: string): Promise<void> {
+        await this.plugin.deleteScene(filePath);
+        this.queueDashboardRefresh(detail);
+    }
+
+    private async confirmDeleteChapterFromDashboard(filePath: string, chapterName: string, detail: string): Promise<void> {
+        await this.mutationRunner.runDelete({
+            confirmMessage: `Delete chapter "${chapterName}"?`,
+            action: async () => {
+                await this.plugin.deleteChapter(filePath);
+            },
+            refreshMode: 'immediate',
+            refreshDetail: detail,
+        });
+    }
+
+    private async confirmDeleteSceneFromDashboard(filePath: string, sceneName: string, detail: string): Promise<void> {
+        await this.mutationRunner.runDelete({
+            confirmMessage: `Delete scene "${sceneName}"?`,
+            action: async () => {
+                await this.plugin.deleteScene(filePath);
+            },
+            refreshMode: 'immediate',
+            refreshDetail: detail,
+        });
+    }
+
     /**
      * Initialize and render the dashboard view
      * Called when the view is first opened or needs to be rebuilt
      */
     async onOpen() {
-        // First, ensure the main containerEl can expand properly for our content
-        this.containerEl.style.height = '100%';
-        this.containerEl.style.overflow = 'visible';
-        this.containerEl.style.display = 'flex';
-        this.containerEl.style.flexDirection = 'column';
-        
+        this.containerEl.addClass('storyteller-dashboard-shell-host');
+
         const container = this.containerEl.children[1]; // View content container
         container.empty();
-        container.addClass('storyteller-dashboard-view-container'); // Add a class for styling
-        // Ensure container fills the pane and provides a fixed height for inner layout
-        (container as HTMLElement).style.display = 'flex';
-        (container as HTMLElement).style.flexDirection = 'column';
-        (container as HTMLElement).style.height = '100%';
-        // Let the dedicated content area handle vertical scrolling.
-        // On mobile this prevents the header+tabs from pushing content out of view.
-        (container as HTMLElement).style.overflow = 'hidden';
-        (container as HTMLElement).style.minHeight = '0';
-        // Create isolated stacking context for proper z-index layering
-        (container as HTMLElement).style.isolation = 'isolate';
-        (container as HTMLElement).style.position = 'relative';
+        container.addClass('storyteller-dashboard-view-container');
+        this.dashboardRootEl = container as HTMLElement;
 
         // Apply mobile-specific classes
         const mobileClasses = PlatformUtils.getMobileCssClasses();
@@ -445,21 +561,11 @@ export class DashboardView extends ItemView {
             container.addClass(className);
         });
 
-        // Add mobile-responsive class
-        if (PlatformUtils.isMobile()) {
-            container.addClass('mobile-dashboard');
-        }
-        if (this.isSimplifiedMobileDashboard()) {
-            container.addClass('storyteller-dashboard-simplified');
-        }
+        this.applyDashboardLayoutMode();
         container.toggleClass('storyteller-dashboard-accent-borders', !!this.plugin.settings.dashboardAccentBorders);
 
         // --- Create a Header Container ---
         const headerContainer = container.createDiv('storyteller-dashboard-header');
-        // Use Obsidian's official z-index layer system
-        headerContainer.style.zIndex = 'var(--layer-status-bar, 15)';
-        headerContainer.style.background = getComputedStyle(document.body).getPropertyValue('--background-primary') || 'var(--background-primary)';
-        headerContainer.style.flexShrink = '0'; // Prevent header from shrinking
 
         // --- Header Top Row (title + selector/button) ---
         const headerTopRow = headerContainer.createDiv('storyteller-dashboard-header-top');
@@ -469,7 +575,7 @@ export class DashboardView extends ItemView {
             cls: 'storyteller-dashboard-title'
         });
 
-        titleEl.append(this.isSimplifiedMobileDashboard() ? 'Storyteller' : t('dashboardTitle'));
+        titleEl.append(this.getDashboardLayoutMode() === 'phone' ? 'Storyteller' : t('dashboardTitle'));
 
         // --- Group for selector and button (mobile-optimized layout) ---
         const selectorButtonGroup = headerTopRow.createDiv('storyteller-selector-button-group');
@@ -528,26 +634,11 @@ export class DashboardView extends ItemView {
         // Place tabs as their own row below the header
         this.tabHeaderContainer = container.createDiv('storyteller-dashboard-tabs');
         this.tabHeaderContainer.setAttr('role', 'tablist');
-        // Use Obsidian's official z-index layer system - just below header
-        this.tabHeaderContainer.style.zIndex = 'calc(var(--layer-status-bar, 15) - 1)';
-        this.tabHeaderContainer.style.display = 'flex';
-        this.tabHeaderContainer.style.alignItems = 'center';
-        this.tabHeaderContainer.style.gap = '0.25rem';
-        this.tabHeaderContainer.style.width = '100%';
-        this.tabHeaderContainer.style.flexShrink = '0'; // Prevent tabs from shrinking
 
         // Ribbon row (visible tabs)
         this.tabHeaderRibbonEl = this.tabHeaderContainer.createDiv('storyteller-tab-ribbon');
-        this.tabHeaderRibbonEl.style.display = 'flex';
-        this.tabHeaderRibbonEl.style.gap = '0.5rem';
-        this.tabHeaderRibbonEl.style.alignItems = 'center';
-        this.tabHeaderRibbonEl.style.whiteSpace = 'normal';
-        this.tabHeaderRibbonEl.style.justifyContent = 'center';
-        (this.tabHeaderRibbonEl.style as any).alignContent = 'center';
-        (this.tabHeaderRibbonEl.style as any).flex = '1 1 auto';
-        this.tabHeaderRibbonEl.style.width = '100%';
 
-        if (this.isSimplifiedMobileDashboard()) {
+        if (this.getDashboardLayoutMode() === 'phone') {
             this.mobileTabOverflowButton = this.tabHeaderContainer.createEl('button', {
                 cls: 'storyteller-tab-overflow-btn'
             });
@@ -565,6 +656,7 @@ export class DashboardView extends ItemView {
         // Responsive layout via ResizeObserver
         this.tabsResizeObserver?.disconnect();
         this.tabsResizeObserver = new ResizeObserver(() => {
+            this.applyDashboardLayoutMode();
             this.layoutTabs();
             // Use requestAnimationFrame to ensure layout is complete before measuring
             requestAnimationFrame(() => {
@@ -582,12 +674,6 @@ export class DashboardView extends ItemView {
 
         // --- Tab Content ---
         this.tabContentContainer = container.createDiv('storyteller-dashboard-content');
-        // Content area is the sole vertical scroller under header+tabs
-        this.tabContentContainer.style.flex = '1 1 auto';
-        this.tabContentContainer.style.minHeight = '0';
-        this.tabContentContainer.style.overflowY = 'auto';
-        this.tabContentContainer.style.overflowX = 'hidden';
-        this.tabContentContainer.style.height = 'auto'; // Allow content to expand
         this.registerDomEvent(this.tabContentContainer, 'scroll', (evt: globalThis.Event) => {
             if (this._suppressScrollCapture) return;
             const target = evt.target instanceof HTMLElement ? evt.target : this.tabContentContainer;
@@ -605,7 +691,7 @@ export class DashboardView extends ItemView {
 
             // --- Register Workspace Resize Event Listener ---
             this.registerEvent(this.app.workspace.on('resize', () => {
-                this.debouncedRefreshActiveTab();
+                this.refreshCoordinator.requestRefresh({ source: 'manual', detail: 'workspace-resize' });
                 // Relayout tabs and update offsets on window resize
                 this.layoutTabs();
                 requestAnimationFrame(() => {
@@ -716,13 +802,13 @@ export class DashboardView extends ItemView {
     private layoutTabs(): void {
         if (!this.tabHeaderContainer || !this.tabHeaderRibbonEl) return;
 
-        const isMobile = PlatformUtils.isMobile();
-        const isSimplifiedMobile = this.isSimplifiedMobileDashboard();
+        const layoutMode = this.getDashboardLayoutMode();
+        const isPhoneLayout = layoutMode === 'phone';
+        const isSimplifiedMobile = isPhoneLayout;
 
         // Prepare container layout:
-        // - Desktop: tabs can wrap to multiple rows.
-        // - Mobile: force a single horizontal row that scrolls sideways so content stays reachable.
-        if (isMobile) {
+        // Phones get the tight horizontal rail. Tablets were getting shoved through this too, which is why portrait looked busted.
+        if (isPhoneLayout) {
             this.tabHeaderRibbonEl.style.flexWrap = 'nowrap';
             this.tabHeaderRibbonEl.style.overflowX = 'auto';
             this.tabHeaderRibbonEl.style.overflowY = 'hidden';
@@ -1082,19 +1168,26 @@ export class DashboardView extends ItemView {
      * @param container The container element to render content into
      */
     async renderCharactersContent(container: HTMLElement) {
+        await this.renderWithController('characters', container, async () => {
         container.empty();
         this.renderHeaderControls(container, t('characters'), async (filter: string) => {
             this.currentFilter = filter;
             await this.renderCharactersList(container);
         }, () => {
             new CharacterModal(this.app, this.plugin, null, async (char: Character) => {
-                await this.plugin.saveCharacter(char);
-                new Notice(`Character "${char.name}" created.`);
-                // Manual refresh removed - automatic vault event refresh will handle this
+                await this.mutationRunner.runCreate({
+                    action: async () => {
+                        await this.plugin.saveCharacter(char);
+                    },
+                    successNotice: `Character "${char.name}" created.`,
+                    refreshMode: 'immediate',
+                    refreshDetail: 'character-created',
+                });
             }).open();
         });
 
         await this.renderCharactersList(container);
+        });
     }
 
     /**
@@ -1130,19 +1223,26 @@ export class DashboardView extends ItemView {
      * @param container The container element to render content into
      */
     async renderLocationsContent(container: HTMLElement) {
+        await this.renderWithController('locations', container, async () => {
         container.empty();
         this.renderHeaderControls(container, t('locations'), async (filter: string) => {
             this.currentFilter = filter;
             await this.renderLocationsList(container);
         }, () => {
             new LocationModal(this.app, this.plugin, null, async (loc: Location) => {
-                await this.plugin.saveLocation(loc);
-                new Notice(`Location "${loc.name}" created.`);
-                // Manual refresh removed - automatic vault event refresh will handle this
+                await this.mutationRunner.runCreate({
+                    action: async () => {
+                        await this.plugin.saveLocation(loc);
+                    },
+                    successNotice: `Location "${loc.name}" created.`,
+                    refreshMode: 'immediate',
+                    refreshDetail: 'location-created',
+                });
             }).open();
         }, t('createLocation'));
 
         await this.renderLocationsList(container);
+        });
     }
 
     /**
@@ -1175,14 +1275,21 @@ export class DashboardView extends ItemView {
      * @param container The container element to render content into
      */
     async renderEventsContent(container: HTMLElement) {
+        await this.renderWithController('events', container, async () => {
         container.empty();
         this.renderHeaderControls(container, t('events'), async (filter: string) => {
             this.currentFilter = filter;
             await this.renderEventsList(container);
         }, () => {
             new EventModal(this.app, this.plugin, null, async (eventData: Event) => {
-                await this.plugin.saveEvent(eventData);
-                new Notice(`Event "${eventData.name}" created.`);
+                await this.mutationRunner.runCreate({
+                    action: async () => {
+                        await this.plugin.saveEvent(eventData);
+                    },
+                    successNotice: `Event "${eventData.name}" created.`,
+                    refreshMode: 'immediate',
+                    refreshDetail: 'event-created',
+                });
             }).open();
         }, t('createNew'), (setting: Setting) => {
             setting.addButton(button => button
@@ -1194,6 +1301,7 @@ export class DashboardView extends ItemView {
         });
 
         await this.renderEventsList(container);
+        });
     }
 
     /**
@@ -1230,6 +1338,7 @@ export class DashboardView extends ItemView {
      * @param container The container element to render content into
      */
     async renderItemsContent(container: HTMLElement) {
+        await this.renderWithController('items', container, async () => {
         container.empty();
         let showPlotCriticalOnly = false; // State for the filter toggle
 
@@ -1267,8 +1376,14 @@ export class DashboardView extends ItemView {
                             return;
                         }
                         new PlotItemModal(this.app, this.plugin, null, async (item: PlotItem) => {
-                            await this.plugin.savePlotItem(item);
-                            new Notice(`Item "${item.name}" created.`);
+                            await this.mutationRunner.runCreate({
+                                action: async () => {
+                                    await this.plugin.savePlotItem(item);
+                                },
+                                successNotice: `Item "${item.name}" created.`,
+                                refreshMode: 'immediate',
+                                refreshDetail: 'plot-item-created',
+                            });
                         }).open();
                     });
                 if (!hasActiveStory) {
@@ -1277,6 +1392,7 @@ export class DashboardView extends ItemView {
             });
 
         await this.renderItemsList(container, showPlotCriticalOnly);
+        });
     }
 
     /**
@@ -1355,15 +1471,26 @@ export class DashboardView extends ItemView {
             const actionsEl = itemEl.createDiv('storyteller-list-item-actions');
             this.addEditButton(actionsEl, () => {
                 new PlotItemModal(this.app, this.plugin, item, async (updatedData: PlotItem) => {
-                    await this.plugin.savePlotItem(updatedData);
-                    new Notice(`Item "${updatedData.name}" updated.`);
+                    await this.mutationRunner.runUpdate({
+                        action: async () => {
+                            await this.plugin.savePlotItem(updatedData);
+                        },
+                        successNotice: `Item "${updatedData.name}" updated.`,
+                        refreshMode: 'immediate',
+                        refreshDetail: 'plot-item-updated',
+                    });
                 }).open();
             });
             this.addDeleteButton(actionsEl, async () => {
-                if (await this.confirmAction(`Are you sure you want to delete "${item.name}"?`)) {
-                    if (item.filePath) {
-                        await this.plugin.deletePlotItem(item.filePath);
-                    }
+                if (item.filePath) {
+                    await this.mutationRunner.runDelete({
+                        confirmMessage: `Are you sure you want to delete "${item.name}"?`,
+                        action: async () => {
+                            await this.plugin.deletePlotItem(item.filePath!);
+                        },
+                        refreshMode: 'immediate',
+                        refreshDetail: 'plot-item-deleted',
+                    });
                 }
             });
             this.addOpenFileButton(actionsEl, item.filePath);
@@ -1376,6 +1503,7 @@ export class DashboardView extends ItemView {
      * @param container The container element to render content into
      */
     async renderMapsContent(container: HTMLElement) {
+        await this.renderWithController('maps', container, async () => {
         container.empty();
         this.renderHeaderControls(container, 'Maps', async (filter: string) => {
             this.currentFilter = filter;
@@ -1386,11 +1514,16 @@ export class DashboardView extends ItemView {
                 return;
             }
             import('../utils/MapModalHelper').then(({ openMapModal }) => {
-                openMapModal(this.app, this.plugin, null);
+                openMapModal(this.app, this.plugin, null, {
+                    onSave: async () => {
+                        this.mutationRunner.requestRefresh('immediate', 'map-created');
+                    }
+                });
             });
         }, t('createNew'));
 
         await this.renderMapsList(container);
+        });
     }
 
     /**
@@ -1443,16 +1576,25 @@ export class DashboardView extends ItemView {
             this.addEditButton(actionsEl, () => {
                 import('../utils/MapModalHelper').then(({ openMapModal }) => {
                     openMapModal(this.app, this.plugin, map, {
+                        onSave: async () => {
+                            this.mutationRunner.requestRefresh('immediate', 'map-updated');
+                        },
                         onDelete: async () => {
-                            // Refresh the list after deletion
-                            await this.renderMapsList(this.tabContentContainer);
+                            this.mutationRunner.requestRefresh('immediate', 'map-deleted-from-modal');
                         }
                     });
                 });
             });
             this.addDeleteButton(actionsEl, async () => {
-                if (map.filePath && await this.confirmAction(`Delete map "${map.name}"?`)) {
-                    await this.plugin.deleteMap(map.filePath);
+                if (map.filePath) {
+                    await this.mutationRunner.runDelete({
+                        confirmMessage: `Delete map "${map.name}"?`,
+                        action: async () => {
+                            await this.plugin.deleteMap(map.filePath!);
+                        },
+                        refreshMode: 'immediate',
+                        refreshDetail: 'map-deleted-from-dashboard',
+                    });
                 }
             });
             // Open in Map View button
@@ -1983,10 +2125,10 @@ export class DashboardView extends ItemView {
                     this.app,
                     this.plugin,
                     group,
-                    async () => { this.renderGroupsList(container); },
+                    async () => { this.queueDashboardRefresh('group-updated'); },
                     async (groupId) => {
                         await this.plugin.deleteGroup(groupId);
-                        this.renderGroupsList(container);
+                        this.queueDashboardRefresh('group-deleted');
                     }
                 ).open();
             };
@@ -2209,20 +2351,28 @@ export class DashboardView extends ItemView {
 
     /** Render the Reference tab content */
     async renderReferencesContent(container: HTMLElement) {
-        container.empty();
-        this.renderHeaderControls(container, 'References', async (filter: string) => {
-            this.currentFilter = filter;
-            await this.renderReferencesList(container);
-        }, () => {
-            import('../modals/ReferenceModal').then(({ ReferenceModal }) => {
-                new ReferenceModal(this.app, this.plugin, null, async (ref) => {
-                    await this.plugin.saveReference(ref);
-                    new Notice(`Reference "${ref.name}" created.`);
-                }).open();
-            });
-        }, t('createNew'));
+        await this.renderWithController('references', container, async () => {
+            container.empty();
+            this.renderHeaderControls(container, 'References', async (filter: string) => {
+                this.currentFilter = filter;
+                await this.renderReferencesList(container);
+            }, () => {
+                import('../modals/ReferenceModal').then(({ ReferenceModal }) => {
+                    new ReferenceModal(this.app, this.plugin, null, async (ref) => {
+                        await this.mutationRunner.runCreate({
+                            action: async () => {
+                                await this.plugin.saveReference(ref);
+                            },
+                            successNotice: `Reference "${ref.name}" created.`,
+                            refreshMode: 'immediate',
+                            refreshDetail: 'reference-created',
+                        });
+                    }).open();
+                });
+            }, t('createNew'));
 
-        await this.renderReferencesList(container);
+            await this.renderReferencesList(container);
+        });
     }
 
     /** Render just the references list (without header controls) */
@@ -2278,16 +2428,32 @@ export class DashboardView extends ItemView {
             this.addEditButton(actionsEl, () => {
                 import('../modals/ReferenceModal').then(({ ReferenceModal }) => {
                     new ReferenceModal(this.app, this.plugin, ref, async (updated) => {
-                        await this.plugin.saveReference(updated);
-                        new Notice(`Reference "${updated.name}" updated.`);
+                        await this.mutationRunner.runUpdate({
+                            action: async () => {
+                                await this.plugin.saveReference(updated);
+                            },
+                            successNotice: `Reference "${updated.name}" updated.`,
+                            refreshMode: 'immediate',
+                            refreshDetail: 'reference-updated',
+                        });
                     }, async (toDelete) => {
-                        if (toDelete.filePath) await this.plugin.deleteReference(toDelete.filePath);
+                        if (toDelete.filePath) {
+                            await this.plugin.deleteReference(toDelete.filePath);
+                            this.queueDashboardRefresh('reference-deleted-from-modal');
+                        }
                     }).open();
                 });
             });
             this.addDeleteButton(actionsEl, async () => {
-                if (ref.filePath && await this.confirmAction(`Delete reference "${ref.name}"?`)) {
-                    await this.plugin.deleteReference(ref.filePath);
+                if (ref.filePath) {
+                    await this.mutationRunner.runDelete({
+                        confirmMessage: `Delete reference "${ref.name}"?`,
+                        action: async () => {
+                            await this.plugin.deleteReference(ref.filePath!);
+                        },
+                        refreshMode: 'immediate',
+                        refreshDetail: 'reference-deleted',
+                    });
                 }
             });
             this.addOpenFileButton(actionsEl, ref.filePath);
@@ -2296,6 +2462,7 @@ export class DashboardView extends ItemView {
 
     /** Render the Writing tab — includes view mode switcher */
     async renderWritingContent(container: HTMLElement) {
+        await this.renderWithController('writing', container, async () => {
         container.empty();
         this.renderWritingGoalBanner(container);
 
@@ -2391,9 +2558,7 @@ export class DashboardView extends ItemView {
             () => {
                 import('../modals/ChapterModal').then(({ ChapterModal }) => {
                     new ChapterModal(this.app, this.plugin, null, async (ch) => {
-                        await this.plugin.saveChapter(ch);
-                        new Notice(`Chapter "${ch.name}" created.`);
-                        await renderActive();
+                        await this.persistChapterFromDashboard(ch, `Chapter "${ch.name}" created.`, 'writing-chapter-created');
                     }).open();
                 });
             },
@@ -2403,9 +2568,7 @@ export class DashboardView extends ItemView {
                     btn.setButtonText('Add Scene').onClick(() => {
                         import('../modals/SceneModal').then(({ SceneModal }) => {
                             new SceneModal(this.app, this.plugin, null, async (sc) => {
-                                await this.plugin.saveScene(sc);
-                                new Notice(`Scene "${sc.name}" created.`);
-                                await renderActive();
+                                await this.persistSceneFromDashboard(sc, `Scene "${sc.name}" created.`, 'writing-scene-created');
                             }).open();
                         });
                     });
@@ -2423,9 +2586,7 @@ export class DashboardView extends ItemView {
                     item.onClick(() => {
                         import('../modals/SceneModal').then(({ SceneModal }) => {
                             new SceneModal(this.app, this.plugin, null, async (sc) => {
-                                await this.plugin.saveScene(sc);
-                                new Notice(`Scene "${sc.name}" created.`);
-                                await renderActive();
+                                await this.persistSceneFromDashboard(sc, `Scene "${sc.name}" created.`, 'writing-scene-created-menu');
                             }).open();
                         });
                     });
@@ -2441,6 +2602,7 @@ export class DashboardView extends ItemView {
         );
 
         await renderActive();
+        });
     }
 
     async renderChaptersContent(container: HTMLElement) {
@@ -2451,8 +2613,7 @@ export class DashboardView extends ItemView {
         }, () => {
             import('../modals/ChapterModal').then(({ ChapterModal }) => {
                 new ChapterModal(this.app, this.plugin, null, async (ch) => {
-                    await this.plugin.saveChapter(ch);
-                    new Notice(`Chapter "${ch.name}" created.`);
+                    await this.persistChapterFromDashboard(ch, `Chapter "${ch.name}" created.`, 'chapters-tab-created');
                 }).open();
             });
         }, t('createNew'));
@@ -2462,8 +2623,27 @@ export class DashboardView extends ItemView {
 
     /** Render chapters with their scenes nested underneath */
     private async renderChaptersWithScenesList(container: HTMLElement) {
+        await renderWritingChapterSceneList(container, {
+            app: this.app,
+            plugin: this.plugin,
+            currentFilter: this.currentFilter,
+            chapterCollapseState: this._chapterCollapseState,
+            getImageSrc: this.getImageSrc.bind(this),
+            addEditButton: this.addEditButton.bind(this),
+            addDeleteButton: this.addDeleteButton.bind(this),
+            addOpenFileButton: this.addOpenFileButton.bind(this),
+            persistChapter: this.persistChapterFromDashboard.bind(this),
+            persistScene: this.persistSceneFromDashboard.bind(this),
+            removeChapter: this.removeChapterFromDashboard.bind(this),
+            removeScene: this.removeSceneFromDashboard.bind(this),
+            confirmDeleteChapter: this.confirmDeleteChapterFromDashboard.bind(this),
+            confirmDeleteScene: this.confirmDeleteSceneFromDashboard.bind(this),
+        });
+        // The old inline renderer under this was dead weight. Leaving it live is how this file gets gross again.
+        return;
+        /*
         const existingListContainer = container.querySelector('.storyteller-list-container');
-        if (existingListContainer) existingListContainer.remove();
+        existingListContainer?.remove();
 
         const chapters = (await this.plugin.listChapters()).filter(ch =>
             ch.name.toLowerCase().includes(this.currentFilter) ||
@@ -2533,12 +2713,11 @@ export class DashboardView extends ItemView {
                 e.stopPropagation();
                 import('../modals/ChapterModal').then(({ ChapterModal }) => {
                     new ChapterModal(this.app, this.plugin, ch, async (updated) => {
-                        await this.plugin.saveChapter(updated);
-                        new Notice(`Chapter "${updated.name}" updated.`);
-                        await this.renderChaptersWithScenesList(container);
+                        await this.persistChapterFromDashboard(updated, `Chapter "${updated.name}" updated.`, 'writing-inline-chapter-updated');
                     }, async (toDelete) => {
-                        if (toDelete.filePath) await this.plugin.deleteChapter(toDelete.filePath);
-                        await this.renderChaptersWithScenesList(container);
+                        if (toDelete.filePath) {
+                            await this.removeChapterFromDashboard(toDelete.filePath, 'writing-inline-chapter-deleted');
+                        }
                     }).open();
                 });
             });
@@ -2556,19 +2735,17 @@ export class DashboardView extends ItemView {
             this.addEditButton(actionsEl, () => {
                 import('../modals/ChapterModal').then(({ ChapterModal }) => {
                     new ChapterModal(this.app, this.plugin, ch, async (updated) => {
-                        await this.plugin.saveChapter(updated);
-                        new Notice(`Chapter "${updated.name}" updated.`);
-                        await this.refreshActiveTab();
+                        await this.persistChapterFromDashboard(updated, `Chapter "${updated.name}" updated.`, 'writing-chapter-updated');
                     }, async (toDelete) => {
-                        if (toDelete.filePath) await this.plugin.deleteChapter(toDelete.filePath);
-                        await this.refreshActiveTab();
+                        if (toDelete.filePath) {
+                            await this.removeChapterFromDashboard(toDelete.filePath, 'writing-chapter-deleted-from-modal');
+                        }
                     }).open();
                 });
             });
             this.addDeleteButton(actionsEl, async () => {
-                if (ch.filePath && await this.confirmAction(`Delete chapter "${ch.name}"?`)) {
-                    await this.plugin.deleteChapter(ch.filePath);
-                    await this.refreshActiveTab();
+                if (ch.filePath) {
+                    await this.confirmDeleteChapterFromDashboard(ch.filePath, ch.name, 'writing-chapter-deleted');
                 }
             });
             this.addOpenFileButton(actionsEl, ch.filePath);
@@ -2595,9 +2772,7 @@ export class DashboardView extends ItemView {
                     new SceneModal(this.app, this.plugin, newScene, async (sc) => {
                         sc.chapterId = ch.id;
                         sc.chapterName = ch.name;
-                        await this.plugin.saveScene(sc);
-                        new Notice(`Scene "${sc.name}" created in chapter "${ch.name}".`);
-                        await this.renderChaptersWithScenesList(container);
+                        await this.persistSceneFromDashboard(sc, `Scene "${sc.name}" created in chapter "${ch.name}".`, 'writing-scene-created-in-chapter');
                     }).open();
                 });
             };
@@ -2660,6 +2835,7 @@ export class DashboardView extends ItemView {
                 toggleBtn.classList.toggle('collapsed', !isExpanded);
             };
         }
+        */
     }
 
     /** Render just the chapters list (without header controls) - legacy flat view */
@@ -2713,19 +2889,17 @@ export class DashboardView extends ItemView {
             this.addEditButton(actionsEl, () => {
                 import('../modals/ChapterModal').then(({ ChapterModal }) => {
                     new ChapterModal(this.app, this.plugin, ch, async (updated) => {
-                        await this.plugin.saveChapter(updated);
-                        new Notice(`Chapter "${updated.name}" updated.`);
-                        await this.refreshActiveTab();
+                        await this.persistChapterFromDashboard(updated, `Chapter "${updated.name}" updated.`, 'chapters-tab-updated');
                     }, async (toDelete) => {
-                        if (toDelete.filePath) await this.plugin.deleteChapter(toDelete.filePath);
-                        await this.refreshActiveTab();
+                        if (toDelete.filePath) {
+                            await this.removeChapterFromDashboard(toDelete.filePath, 'chapters-tab-deleted-from-modal');
+                        }
                     }).open();
                 });
             });
             this.addDeleteButton(actionsEl, async () => {
-                if (ch.filePath && await this.confirmAction(`Delete chapter "${ch.name}"?`)) {
-                    await this.plugin.deleteChapter(ch.filePath);
-                    await this.refreshActiveTab();
+                if (ch.filePath) {
+                    await this.confirmDeleteChapterFromDashboard(ch.filePath, ch.name, 'chapters-tab-deleted');
                 }
             });
             this.addOpenFileButton(actionsEl, ch.filePath);
@@ -2745,8 +2919,7 @@ export class DashboardView extends ItemView {
         }, () => {
             import('../modals/SceneModal').then(({ SceneModal }) => {
                 new SceneModal(this.app, this.plugin, null, async (sc) => {
-                    await this.plugin.saveScene(sc);
-                    new Notice(`Scene "${sc.name}" created.`);
+                    await this.persistSceneFromDashboard(sc, `Scene "${sc.name}" created.`, 'scenes-tab-created');
                 }).open();
             });
         }, t('createNew'));
@@ -2836,12 +3009,11 @@ export class DashboardView extends ItemView {
                     e.stopPropagation();
                     import('../modals/ChapterModal').then(({ ChapterModal }) => {
                         new ChapterModal(this.app, this.plugin, chapter, async (updated) => {
-                            await this.plugin.saveChapter(updated);
-                            new Notice(`Chapter "${updated.name}" updated.`);
-                            await this.renderScenesGroupedByChapter(container);
+                            await this.persistChapterFromDashboard(updated, `Chapter "${updated.name}" updated.`, 'scenes-grouped-chapter-updated');
                         }, async (toDelete) => {
-                            if (toDelete.filePath) await this.plugin.deleteChapter(toDelete.filePath);
-                            await this.renderScenesGroupedByChapter(container);
+                            if (toDelete.filePath) {
+                                await this.removeChapterFromDashboard(toDelete.filePath, 'scenes-grouped-chapter-deleted');
+                            }
                         }).open();
                     });
                 });
@@ -2986,17 +3158,7 @@ export class DashboardView extends ItemView {
                     if (selectedChapter) {
                         sc.chapterId = selectedChapter.id;
                         sc.chapterName = selectedChapter.name;
-                        await this.plugin.saveScene(sc);
-                        new Notice(`Scene assigned to chapter "${selectedChapter.name}"`);
-                        // Refresh the view
-                        const tabContent = container.closest('.storyteller-tab-content');
-                        if (tabContent) {
-                            if (tabContent.classList.contains('chapters-content')) {
-                                await this.renderChaptersWithScenesList(tabContent as HTMLElement);
-                            } else {
-                                await this.renderScenesGroupedByChapter(tabContent as HTMLElement);
-                            }
-                        }
+                        await this.persistSceneFromDashboard(sc, `Scene assigned to chapter "${selectedChapter.name}"`, 'scene-assigned-to-chapter');
                     }
                 };
                 assignBtn.replaceWith(select);
@@ -3007,19 +3169,17 @@ export class DashboardView extends ItemView {
         this.addEditButton(actionsEl, () => {
             import('../modals/SceneModal').then(({ SceneModal }) => {
                 new SceneModal(this.app, this.plugin, sc, async (updated) => {
-                    await this.plugin.saveScene(updated);
-                    new Notice(`Scene "${updated.name}" updated.`);
-                    await this.refreshActiveTab();
+                    await this.persistSceneFromDashboard(updated, `Scene "${updated.name}" updated.`, 'scene-item-updated');
                 }, async (toDelete) => {
-                    if (toDelete.filePath) await this.plugin.deleteScene(toDelete.filePath);
-                    await this.refreshActiveTab();
+                    if (toDelete.filePath) {
+                        await this.removeSceneFromDashboard(toDelete.filePath, 'scene-item-deleted-from-modal');
+                    }
                 }).open();
             });
         });
         this.addDeleteButton(actionsEl, async () => {
-            if (sc.filePath && await this.confirmAction(`Delete scene "${sc.name}"?`)) {
-                await this.plugin.deleteScene(sc.filePath);
-                await this.refreshActiveTab();
+            if (sc.filePath) {
+                await this.confirmDeleteSceneFromDashboard(sc.filePath, sc.name, 'scene-item-deleted');
             }
         });
         this.addOpenFileButton(actionsEl, sc.filePath);
@@ -3104,19 +3264,17 @@ export class DashboardView extends ItemView {
             this.addEditButton(actionsEl, () => {
                 import('../modals/SceneModal').then(({ SceneModal }) => {
                     new SceneModal(this.app, this.plugin, sc, async (updated) => {
-                        await this.plugin.saveScene(updated);
-                        new Notice(`Scene "${updated.name}" updated.`);
-                        await this.refreshActiveTab();
+                        await this.persistSceneFromDashboard(updated, `Scene "${updated.name}" updated.`, 'scenes-tab-updated');
                     }, async (toDelete) => {
-                        if (toDelete.filePath) await this.plugin.deleteScene(toDelete.filePath);
-                        await this.refreshActiveTab();
+                        if (toDelete.filePath) {
+                            await this.removeSceneFromDashboard(toDelete.filePath, 'scenes-tab-deleted-from-modal');
+                        }
                     }).open();
                 });
             });
             this.addDeleteButton(actionsEl, async () => {
-                if (sc.filePath && await this.confirmAction(`Delete scene "${sc.name}"?`)) {
-                    await this.plugin.deleteScene(sc.filePath);
-                    await this.refreshActiveTab();
+                if (sc.filePath) {
+                    await this.confirmDeleteSceneFromDashboard(sc.filePath, sc.name, 'scenes-tab-deleted');
                 }
             });
             this.addOpenFileButton(actionsEl, sc.filePath);
@@ -3538,19 +3696,28 @@ export class DashboardView extends ItemView {
             const actionsEl = itemEl.createDiv('storyteller-list-item-actions');
             this.addEditButton(actionsEl, () => {
                 new CharacterModal(this.app, this.plugin, character, async (updatedData: Character) => {
-                    await this.plugin.saveCharacter(updatedData);
-                    new Notice(`Character "${updatedData.name}" updated.`);
-                    // Manual refresh removed - automatic vault event refresh will handle this
+                    await this.mutationRunner.runUpdate({
+                        action: async () => {
+                            await this.plugin.saveCharacter(updatedData);
+                        },
+                        successNotice: `Character "${updatedData.name}" updated.`,
+                        refreshMode: 'immediate',
+                        refreshDetail: 'character-updated',
+                    });
                 }).open();
             });
             this.addDeleteButton(actionsEl, async () => {
-                if (await this.confirmAction(`Are you sure you want to delete "${character.name}"? This will move the file to system trash.`)) {
-                    if (character.filePath) {
-                        await this.plugin.deleteCharacter(character.filePath);
-                        // Manual refresh removed - automatic vault event refresh will handle this
-                    } else {
-                        new Notice('Error: Cannot delete character without file path.');
-                    }
+                if (character.filePath) {
+                    await this.mutationRunner.runDelete({
+                        confirmMessage: `Are you sure you want to delete "${character.name}"? This will move the file to system trash.`,
+                        action: async () => {
+                            await this.plugin.deleteCharacter(character.filePath!);
+                        },
+                        refreshMode: 'immediate',
+                        refreshDetail: 'character-deleted',
+                    });
+                } else {
+                    new Notice('Error: Cannot delete character without file path.');
                 }
             });
             this.addOpenFileButton(actionsEl, character.filePath);
@@ -3607,19 +3774,28 @@ export class DashboardView extends ItemView {
             const actionsEl = itemEl.createDiv('storyteller-list-item-actions');
             this.addEditButton(actionsEl, () => {
                 new LocationModal(this.app, this.plugin, location, async (updatedData) => {
-                    await this.plugin.saveLocation(updatedData);
-                    new Notice(`Location "${updatedData.name}" updated.`);
-                    // Manual refresh removed - automatic vault event refresh will handle this
+                    await this.mutationRunner.runUpdate({
+                        action: async () => {
+                            await this.plugin.saveLocation(updatedData);
+                        },
+                        successNotice: `Location "${updatedData.name}" updated.`,
+                        refreshMode: 'immediate',
+                        refreshDetail: 'location-updated',
+                    });
                 }).open();
             });
             this.addDeleteButton(actionsEl, async () => {
-                if (await this.confirmAction(`Are you sure you want to delete "${location.name}"?`)) {
-                    if (location.filePath) {
-                        await this.plugin.deleteLocation(location.filePath);
-                        // Manual refresh removed - automatic vault event refresh will handle this
-                    } else {
-                        new Notice('Error: Cannot delete location without file path.');
-                    }
+                if (location.filePath) {
+                    await this.mutationRunner.runDelete({
+                        confirmMessage: `Are you sure you want to delete "${location.name}"?`,
+                        action: async () => {
+                            await this.plugin.deleteLocation(location.filePath!);
+                        },
+                        refreshMode: 'immediate',
+                        refreshDetail: 'location-deleted',
+                    });
+                } else {
+                    new Notice('Error: Cannot delete location without file path.');
                 }
             });
             this.addOpenFileButton(actionsEl, location.filePath);
@@ -3702,19 +3878,28 @@ export class DashboardView extends ItemView {
             const actionsEl = itemEl.createDiv('storyteller-list-item-actions');
             this.addEditButton(actionsEl, () => {
                 new EventModal(this.app, this.plugin, event, async (updatedData) => {
-                    await this.plugin.saveEvent(updatedData);
-                    new Notice(`Event "${updatedData.name}" updated.`);
-                    // Manual refresh removed - automatic vault event refresh will handle this
+                    await this.mutationRunner.runUpdate({
+                        action: async () => {
+                            await this.plugin.saveEvent(updatedData);
+                        },
+                        successNotice: `Event "${updatedData.name}" updated.`,
+                        refreshMode: 'immediate',
+                        refreshDetail: 'event-updated',
+                    });
                 }).open();
             });
             this.addDeleteButton(actionsEl, async () => {
-                if (await this.confirmAction(`Are you sure you want to delete "${event.name}"?`)) {
-                    if (event.filePath) {
-                        await this.plugin.deleteEvent(event.filePath);
-                        // Manual refresh removed - automatic vault event refresh will handle this
-                    } else {
-                        new Notice('Error: Cannot delete event without file path.');
-                    }
+                if (event.filePath) {
+                    await this.mutationRunner.runDelete({
+                        confirmMessage: `Are you sure you want to delete "${event.name}"?`,
+                        action: async () => {
+                            await this.plugin.deleteEvent(event.filePath!);
+                        },
+                        refreshMode: 'immediate',
+                        refreshDetail: 'event-deleted',
+                    });
+                } else {
+                    new Notice('Error: Cannot delete event without file path.');
                 }
             });
             this.addOpenFileButton(actionsEl, event.filePath);
@@ -3763,21 +3948,10 @@ export class DashboardView extends ItemView {
     // focus on the now-removed DOM node after re-render, which prevents typing in any
     // editor or input until the window is deactivated and reactivated.
     private confirmAction(message: string, confirmText?: string): Promise<boolean> {
-        return new Promise(async (resolve) => {
-            const { ConfirmModal } = await import('../modals/ui/ConfirmModal');
-            let confirmed = false;
-            const modal = new ConfirmModal(this.app, {
-                title: t('confirm') || 'Confirm',
-                body: message,
-                confirmText: confirmText || t('delete') || 'Delete',
-                onConfirm: () => { confirmed = true; },
-            });
-            const originalOnClose = modal.onClose?.bind(modal);
-            modal.onClose = () => {
-                originalOnClose?.();
-                resolve(confirmed);
-            };
-            modal.open();
+        return confirmWithModal(this.app, {
+            title: t('confirm') || 'Confirm',
+            body: message,
+            confirmText: confirmText || t('delete') || 'Delete',
         });
     }
 
@@ -3792,8 +3966,10 @@ export class DashboardView extends ItemView {
     addDeleteButton(container: HTMLElement, onClick: () => Promise<void>) {
         new ButtonComponent(container)
             .setIcon('trash')
+            .setButtonText(t('delete') || 'Delete')
             .setTooltip('Delete')
             .setClass('mod-warning')
+            .setClass('storyteller-list-item-delete-btn')
             .onClick(onClick);
     }
 
@@ -3991,20 +4167,28 @@ export class DashboardView extends ItemView {
     // ========== Phase 2A: World-Building Entity Render Methods ==========
 
     async renderCulturesContent(container: HTMLElement) {
-        container.empty();
-        this.renderHeaderControls(container, t('cultures'), async (filter: string) => {
-            this.currentFilter = filter;
-            await this.renderCulturesList(container);
-        }, () => {
-            import('../modals/CultureModal').then(({ CultureModal }) => {
-                new CultureModal(this.app, this.plugin, null, async (culture) => {
-                    await this.plugin.saveCulture(culture);
-                    new Notice(t('cultureCreated', culture.name));
-                }).open();
-            });
-        }, t('createNew'));
+        await this.renderWithController('cultures', container, async () => {
+            container.empty();
+            this.renderHeaderControls(container, t('cultures'), async (filter: string) => {
+                this.currentFilter = filter;
+                await this.renderCulturesList(container);
+            }, () => {
+                import('../modals/CultureModal').then(({ CultureModal }) => {
+                    new CultureModal(this.app, this.plugin, null, async (culture) => {
+                        await this.mutationRunner.runCreate({
+                            action: async () => {
+                                await this.plugin.saveCulture(culture);
+                            },
+                            successNotice: t('cultureCreated', culture.name),
+                            refreshMode: 'immediate',
+                            refreshDetail: 'culture-created',
+                        });
+                    }).open();
+                });
+            }, t('createNew'));
 
-        await this.renderCulturesList(container);
+            await this.renderCulturesList(container);
+        });
     }
 
     private async renderCulturesList(container: HTMLElement) {
@@ -4053,16 +4237,32 @@ export class DashboardView extends ItemView {
             this.addEditButton(actionsEl, () => {
                 import('../modals/CultureModal').then(({ CultureModal }) => {
                     new CultureModal(this.app, this.plugin, culture, async (updated) => {
-                        await this.plugin.saveCulture(updated);
-                        new Notice(t('cultureUpdated', updated.name));
+                        await this.mutationRunner.runUpdate({
+                            action: async () => {
+                                await this.plugin.saveCulture(updated);
+                            },
+                            successNotice: t('cultureUpdated', updated.name),
+                            refreshMode: 'immediate',
+                            refreshDetail: 'culture-updated',
+                        });
                     }, async (toDelete) => {
-                        if (toDelete.filePath) await this.plugin.deleteCulture(toDelete.filePath);
+                        if (toDelete.filePath) {
+                            await this.plugin.deleteCulture(toDelete.filePath);
+                            this.queueDashboardRefresh('culture-deleted-from-modal');
+                        }
                     }).open();
                 });
             });
             this.addDeleteButton(actionsEl, async () => {
-                if (culture.filePath && await this.confirmAction(t('confirmDeleteCulture', culture.name))) {
-                    await this.plugin.deleteCulture(culture.filePath);
+                if (culture.filePath) {
+                    await this.mutationRunner.runDelete({
+                        confirmMessage: t('confirmDeleteCulture', culture.name),
+                        action: async () => {
+                            await this.plugin.deleteCulture(culture.filePath!);
+                        },
+                        refreshMode: 'immediate',
+                        refreshDetail: 'culture-deleted',
+                    });
                 }
             });
             this.addOpenFileButton(actionsEl, culture.filePath);
@@ -4071,20 +4271,28 @@ export class DashboardView extends ItemView {
 
 
     async renderEconomiesContent(container: HTMLElement) {
-        container.empty();
-        this.renderHeaderControls(container, t('economies'), async (filter: string) => {
-            this.currentFilter = filter;
-            await this.renderEconomiesList(container);
-        }, () => {
-            import('../modals/EconomyModal').then(({ EconomyModal }) => {
-                new EconomyModal(this.app, this.plugin, null, async (economy) => {
-                    await this.plugin.saveEconomy(economy);
-                    new Notice(t('economyCreated', economy.name));
-                }).open();
-            });
-        }, t('createNew'));
+        await this.renderWithController('economies', container, async () => {
+            container.empty();
+            this.renderHeaderControls(container, t('economies'), async (filter: string) => {
+                this.currentFilter = filter;
+                await this.renderEconomiesList(container);
+            }, () => {
+                import('../modals/EconomyModal').then(({ EconomyModal }) => {
+                    new EconomyModal(this.app, this.plugin, null, async (economy) => {
+                        await this.mutationRunner.runCreate({
+                            action: async () => {
+                                await this.plugin.saveEconomy(economy);
+                            },
+                            successNotice: t('economyCreated', economy.name),
+                            refreshMode: 'immediate',
+                            refreshDetail: 'economy-created',
+                        });
+                    }).open();
+                });
+            }, t('createNew'));
 
-        await this.renderEconomiesList(container);
+            await this.renderEconomiesList(container);
+        });
     }
 
     private async renderEconomiesList(container: HTMLElement) {
@@ -4171,16 +4379,32 @@ export class DashboardView extends ItemView {
             this.addEditButton(actionsEl, () => {
                 import('../modals/EconomyModal').then(({ EconomyModal }) => {
                     new EconomyModal(this.app, this.plugin, economy, async (updated) => {
-                        await this.plugin.saveEconomy(updated);
-                        new Notice(t('economyUpdated', updated.name));
+                        await this.mutationRunner.runUpdate({
+                            action: async () => {
+                                await this.plugin.saveEconomy(updated);
+                            },
+                            successNotice: t('economyUpdated', updated.name),
+                            refreshMode: 'immediate',
+                            refreshDetail: 'economy-updated',
+                        });
                     }, async (toDelete) => {
-                        if (toDelete.filePath) await this.plugin.deleteEconomy(toDelete.filePath);
+                        if (toDelete.filePath) {
+                            await this.plugin.deleteEconomy(toDelete.filePath);
+                            this.queueDashboardRefresh('economy-deleted-from-modal');
+                        }
                     }).open();
                 });
             });
             this.addDeleteButton(actionsEl, async () => {
-                if (economy.filePath && await this.confirmAction(t('confirmDeleteEconomy', economy.name))) {
-                    await this.plugin.deleteEconomy(economy.filePath);
+                if (economy.filePath) {
+                    await this.mutationRunner.runDelete({
+                        confirmMessage: t('confirmDeleteEconomy', economy.name),
+                        action: async () => {
+                            await this.plugin.deleteEconomy(economy.filePath!);
+                        },
+                        refreshMode: 'immediate',
+                        refreshDetail: 'economy-deleted',
+                    });
                 }
             });
             this.addOpenFileButton(actionsEl, economy.filePath);
@@ -4195,20 +4419,28 @@ export class DashboardView extends ItemView {
     }
 
     async renderMagicSystemsContent(container: HTMLElement) {
-        container.empty();
-        this.renderHeaderControls(container, t('magicSystems'), async (filter: string) => {
-            this.currentFilter = filter;
-            await this.renderMagicSystemsList(container);
-        }, () => {
-            import('../modals/MagicSystemModal').then(({ MagicSystemModal }) => {
-                new MagicSystemModal(this.app, this.plugin, null, async (magicSystem) => {
-                    await this.plugin.saveMagicSystem(magicSystem);
-                    new Notice(t('magicSystemCreated', magicSystem.name));
-                }).open();
-            });
-        }, t('createNew'));
+        await this.renderWithController('magicsystems', container, async () => {
+            container.empty();
+            this.renderHeaderControls(container, t('magicSystems'), async (filter: string) => {
+                this.currentFilter = filter;
+                await this.renderMagicSystemsList(container);
+            }, () => {
+                import('../modals/MagicSystemModal').then(({ MagicSystemModal }) => {
+                    new MagicSystemModal(this.app, this.plugin, null, async (magicSystem) => {
+                        await this.mutationRunner.runCreate({
+                            action: async () => {
+                                await this.plugin.saveMagicSystem(magicSystem);
+                            },
+                            successNotice: t('magicSystemCreated', magicSystem.name),
+                            refreshMode: 'immediate',
+                            refreshDetail: 'magic-system-created',
+                        });
+                    }).open();
+                });
+            }, t('createNew'));
 
-        await this.renderMagicSystemsList(container);
+            await this.renderMagicSystemsList(container);
+        });
     }
 
     private async renderMagicSystemsList(container: HTMLElement) {
@@ -4259,16 +4491,32 @@ export class DashboardView extends ItemView {
             this.addEditButton(actionsEl, () => {
                 import('../modals/MagicSystemModal').then(({ MagicSystemModal }) => {
                     new MagicSystemModal(this.app, this.plugin, magicSystem, async (updated) => {
-                        await this.plugin.saveMagicSystem(updated);
-                        new Notice(t('magicSystemUpdated', updated.name));
+                        await this.mutationRunner.runUpdate({
+                            action: async () => {
+                                await this.plugin.saveMagicSystem(updated);
+                            },
+                            successNotice: t('magicSystemUpdated', updated.name),
+                            refreshMode: 'immediate',
+                            refreshDetail: 'magic-system-updated',
+                        });
                     }, async (toDelete) => {
-                        if (toDelete.filePath) await this.plugin.deleteMagicSystem(toDelete.filePath);
+                        if (toDelete.filePath) {
+                            await this.plugin.deleteMagicSystem(toDelete.filePath);
+                            this.queueDashboardRefresh('magic-system-deleted-from-modal');
+                        }
                     }).open();
                 });
             });
             this.addDeleteButton(actionsEl, async () => {
-                if (magicSystem.filePath && await this.confirmAction(t('confirmDeleteMagicSystem', magicSystem.name))) {
-                    await this.plugin.deleteMagicSystem(magicSystem.filePath);
+                if (magicSystem.filePath) {
+                    await this.mutationRunner.runDelete({
+                        confirmMessage: t('confirmDeleteMagicSystem', magicSystem.name),
+                        action: async () => {
+                            await this.plugin.deleteMagicSystem(magicSystem.filePath!);
+                        },
+                        refreshMode: 'immediate',
+                        refreshDetail: 'magic-system-deleted',
+                    });
                 }
             });
             this.addOpenFileButton(actionsEl, magicSystem.filePath);
@@ -4276,21 +4524,28 @@ export class DashboardView extends ItemView {
     }
 
     async renderCompendiumContent(container: HTMLElement) {
-        container.empty();
-        this.renderHeaderControls(container, 'Compendium', async (filter: string) => {
-            this.currentFilter = filter;
-            await this.renderCompendiumList(container);
-        }, () => {
-            import('../modals/CompendiumEntryModal').then(({ CompendiumEntryModal }) => {
-                new CompendiumEntryModal(this.app, this.plugin, null, async (entry) => {
-                    await this.plugin.saveCompendiumEntry(entry);
-                    new Notice(`Entry "${entry.name}" created.`);
-                    await this.renderCompendiumList(container);
-                }).open();
-            });
-        }, 'New Entry');
+        await this.renderWithController('compendium', container, async () => {
+            container.empty();
+            this.renderHeaderControls(container, 'Compendium', async (filter: string) => {
+                this.currentFilter = filter;
+                await this.renderCompendiumList(container);
+            }, () => {
+                import('../modals/CompendiumEntryModal').then(({ CompendiumEntryModal }) => {
+                    new CompendiumEntryModal(this.app, this.plugin, null, async (entry) => {
+                        await this.mutationRunner.runCreate({
+                            action: async () => {
+                                await this.plugin.saveCompendiumEntry(entry);
+                            },
+                            successNotice: `Entry "${entry.name}" created.`,
+                            refreshMode: 'immediate',
+                            refreshDetail: 'compendium-entry-created',
+                        });
+                    }).open();
+                });
+            }, 'New Entry');
 
-        await this.renderCompendiumList(container);
+            await this.renderCompendiumList(container);
+        });
     }
 
     private async renderCompendiumList(container: HTMLElement) {
@@ -4362,19 +4617,32 @@ export class DashboardView extends ItemView {
             this.addEditButton(actionsEl, () => {
                 import('../modals/CompendiumEntryModal').then(({ CompendiumEntryModal }) => {
                     new CompendiumEntryModal(this.app, this.plugin, entry, async (updated) => {
-                        await this.plugin.saveCompendiumEntry(updated);
-                        new Notice(`Entry "${updated.name}" updated.`);
-                        await this.renderCompendiumList(container);
+                        await this.mutationRunner.runUpdate({
+                            action: async () => {
+                                await this.plugin.saveCompendiumEntry(updated);
+                            },
+                            successNotice: `Entry "${updated.name}" updated.`,
+                            refreshMode: 'immediate',
+                            refreshDetail: 'compendium-entry-updated',
+                        });
                     }, async (toDelete) => {
-                        if (toDelete.filePath) await this.plugin.deleteCompendiumEntry(toDelete.filePath);
-                        await this.renderCompendiumList(container);
+                        if (toDelete.filePath) {
+                            await this.plugin.deleteCompendiumEntry(toDelete.filePath);
+                            this.queueDashboardRefresh('compendium-entry-deleted-from-modal');
+                        }
                     }).open();
                 });
             });
             this.addDeleteButton(actionsEl, async () => {
-                if (entry.filePath && await this.confirmAction(`Delete "${entry.name}"?`)) {
-                    await this.plugin.deleteCompendiumEntry(entry.filePath);
-                    await this.renderCompendiumList(container);
+                if (entry.filePath) {
+                    await this.mutationRunner.runDelete({
+                        confirmMessage: `Delete "${entry.name}"?`,
+                        action: async () => {
+                            await this.plugin.deleteCompendiumEntry(entry.filePath!);
+                        },
+                        refreshMode: 'immediate',
+                        refreshDetail: 'compendium-entry-deleted',
+                    });
                 }
             });
             this.addOpenFileButton(actionsEl, entry.filePath);
@@ -4384,21 +4652,28 @@ export class DashboardView extends ItemView {
     // ─── Books ─────────────────────────────────────────────────────────────────
 
     async renderBooksContent(container: HTMLElement) {
-        container.empty();
-        this.renderHeaderControls(container, 'Books', async (filter: string) => {
-            this.currentFilter = filter;
-            await this.renderBooksList(container);
-        }, () => {
-            import('../modals/BookModal').then(({ BookModal }) => {
-                new BookModal(this.app, this.plugin, null, async (book) => {
-                    await this.plugin.saveBook(book);
-                    new Notice(`Book "${book.name}" created.`);
-                    await this.renderBooksList(container);
-                }).open();
-            });
-        }, 'New Book');
+        await this.renderWithController('books', container, async () => {
+            container.empty();
+            this.renderHeaderControls(container, 'Books', async (filter: string) => {
+                this.currentFilter = filter;
+                await this.renderBooksList(container);
+            }, () => {
+                import('../modals/BookModal').then(({ BookModal }) => {
+                    new BookModal(this.app, this.plugin, null, async (book) => {
+                        await this.mutationRunner.runCreate({
+                            action: async () => {
+                                await this.plugin.saveBook(book);
+                            },
+                            successNotice: `Book "${book.name}" created.`,
+                            refreshMode: 'immediate',
+                            refreshDetail: 'book-created',
+                        });
+                    }).open();
+                });
+            }, 'New Book');
 
-        await this.renderBooksList(container);
+            await this.renderBooksList(container);
+        });
     }
 
     private async renderBooksList(container: HTMLElement) {
@@ -4511,19 +4786,32 @@ export class DashboardView extends ItemView {
             this.addEditButton(actionsEl, () => {
                 import('../modals/BookModal').then(({ BookModal }) => {
                     new BookModal(this.app, this.plugin, book, async (updated) => {
-                        await this.plugin.saveBook(updated);
-                        new Notice(`Book "${updated.name}" saved.`);
-                        await this.renderBooksList(container);
+                        await this.mutationRunner.runUpdate({
+                            action: async () => {
+                                await this.plugin.saveBook(updated);
+                            },
+                            successNotice: `Book "${updated.name}" saved.`,
+                            refreshMode: 'immediate',
+                            refreshDetail: 'book-updated',
+                        });
                     }, async (toDelete) => {
-                        if (toDelete.filePath) await this.plugin.deleteBook(toDelete.filePath);
-                        await this.renderBooksList(container);
+                        if (toDelete.filePath) {
+                            await this.plugin.deleteBook(toDelete.filePath);
+                            this.queueDashboardRefresh('book-deleted-from-modal');
+                        }
                     }).open();
                 });
             });
             this.addDeleteButton(actionsEl, async () => {
-                if (book.filePath && await this.confirmAction(`Delete book "${book.name}"? Chapters will be unlinked.`)) {
-                    await this.plugin.deleteBook(book.filePath);
-                    await this.renderBooksList(container);
+                if (book.filePath) {
+                    await this.mutationRunner.runDelete({
+                        confirmMessage: `Delete book "${book.name}"? Chapters will be unlinked.`,
+                        action: async () => {
+                            await this.plugin.deleteBook(book.filePath!);
+                        },
+                        refreshMode: 'immediate',
+                        refreshDetail: 'book-deleted',
+                    });
                 }
             });
             this.addOpenFileButton(actionsEl, book.filePath);
@@ -5102,6 +5390,7 @@ export class DashboardView extends ItemView {
         // Clean up file input if it exists
         this.fileInput?.remove();
         this.fileInput = null;
+        this.refreshCoordinator.dispose();
 
         this.tabsResizeObserver?.disconnect();
         this.tabsResizeObserver = null;
@@ -5134,6 +5423,34 @@ export class DashboardView extends ItemView {
     // ─── Campaign Tab ─────────────────────────────────────────────────────────
 
     async renderCampaignContent(container: HTMLElement): Promise<void> {
+        await this.renderWithController('campaign', container, async () => {
+            container.empty();
+
+            this.renderHeaderControls(container, 'Campaign', async (filter: string) => {
+                this.currentFilter = filter;
+                await this.renderCampaignList(container);
+            }, () => {
+                import('../modals/CampaignSessionModal').then(({ CampaignSessionModal }) => {
+                    new CampaignSessionModal(this.app, this.plugin, async () => {
+                        this.queueDashboardRefresh('campaign-session-created-or-updated');
+                    }).open();
+                });
+            }, 'New Session');
+
+            const headerRow = container.querySelector('.storyteller-header-controls') as HTMLElement | null;
+            if (headerRow) {
+                const graphBtn = headerRow.createEl('button', { cls: 'storyteller-header-secondary-btn', text: 'Scene Graph' });
+                setIcon(graphBtn.createSpan(), 'git-branch');
+                graphBtn.addEventListener('click', () => {
+                    this.plugin.activateSceneGraphView();
+                });
+            }
+
+            await this.renderCampaignList(container);
+        });
+        // Same deal here. Controller path is the real one now.
+        return;
+        /*
         container.empty();
 
         this.renderHeaderControls(container, 'Campaign', async (filter: string) => {
@@ -5142,7 +5459,7 @@ export class DashboardView extends ItemView {
         }, () => {
             import('../modals/CampaignSessionModal').then(({ CampaignSessionModal }) => {
                 new CampaignSessionModal(this.app, this.plugin, async (session) => {
-                    await this.renderCampaignList(container);
+                    this.queueDashboardRefresh('campaign-session-created-or-updated');
                 }).open();
             });
         }, 'New Session');
@@ -5150,7 +5467,7 @@ export class DashboardView extends ItemView {
         // Scene graph secondary button — inject into header after render
         const headerRow = container.querySelector('.storyteller-header-controls') as HTMLElement | null;
         if (headerRow) {
-            const graphBtn = headerRow.createEl('button', { cls: 'storyteller-header-secondary-btn', text: 'Scene Graph' });
+            const graphBtn = headerRow!.createEl('button', { cls: 'storyteller-header-secondary-btn', text: 'Scene Graph' });
             setIcon(graphBtn.createSpan(), 'git-branch');
             graphBtn.addEventListener('click', () => {
                 this.plugin.activateSceneGraphView();
@@ -5158,6 +5475,7 @@ export class DashboardView extends ItemView {
         }
 
         await this.renderCampaignList(container);
+        */
     }
 
     private async renderCampaignList(container: HTMLElement): Promise<void> {
@@ -5220,9 +5538,15 @@ export class DashboardView extends ItemView {
                 setIcon(delBtn, 'trash');
                 delBtn.setAttribute('aria-label', 'Delete session');
                 delBtn.addEventListener('click', async () => {
-                    if (await this.confirmAction(`Delete session "${sess.name}"?`)) {
-                        await this.plugin.deleteSession(sess.filePath!);
-                        await this.renderCampaignList(container);
+                    if (sess.filePath) {
+                        await this.mutationRunner.runDelete({
+                            confirmMessage: `Delete session "${sess.name}"?`,
+                            action: async () => {
+                                await this.plugin.deleteSession(sess.filePath!);
+                            },
+                            refreshMode: 'immediate',
+                            refreshDetail: 'campaign-session-deleted',
+                        });
                     }
                 });
             }

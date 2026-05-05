@@ -7,6 +7,7 @@ import { App, Notice, Setting } from 'obsidian';
 import { CampaignSession } from '../types';
 import StorytellerSuitePlugin from '../main';
 import { ResponsiveModal } from './ResponsiveModal';
+import { confirmWithModal } from './ui/ConfirmModal';
 
 export class CampaignSessionModal extends ResponsiveModal {
     private plugin: StorytellerSuitePlugin;
@@ -68,7 +69,11 @@ export class CampaignSessionModal extends ResponsiveModal {
 
                 const deleteBtn = actions.createEl('button', { cls: 'storyteller-modal-btn mod-warning', text: 'Delete' });
                 deleteBtn.addEventListener('click', async () => {
-                    if (sess.filePath && confirm(`Delete session "${sess.name}"?`)) {
+                    if (sess.filePath && await confirmWithModal(this.app, {
+                        title: 'Confirm',
+                        body: `Delete session "${sess.name}"?`,
+                        confirmText: 'Delete',
+                    })) {
                         await this.plugin.deleteSession(sess.filePath);
                         await this.onOpen();
                     }
