@@ -1,3 +1,8 @@
+## 1.7.8-beta.18
+
+- Remove the leftover dashboard tab CSS that was still arguing with the new layout shell, so tablets stop falling back to the old wrapped tab behavior.
+- Keep the dashboard tab rail horizontal across phone, tablet portrait, and tablet landscape, and add a runtime regression so that split mobile behavior does not sneak back in.
+
 ## 1.7.8-beta.17
 
 - Keep dashboard tabs on one horizontal scroll rail across all mobile layouts, including tablets, and remove the old phone-only overflow tab path that was still splitting mobile behavior.

@@ -1992,47 +1992,22 @@ If your plugin does not need CSS, delete this file.
         padding: 0.5rem 0;
     }
     
-    /* Mobile tab navigation improvements */
+    /* Old mobile tab rules were fighting the data-layout shell. Leave tabs to the new contract. */
     .storyteller-dashboard-tabs {
         min-height: 48px; /* Larger touch target for mobile */
         padding: 8px 12px;
-        /* Enhanced mobile touch scrolling */
         -webkit-overflow-scrolling: touch;
         overscroll-behavior-x: contain;
         overscroll-behavior-y: auto;
         scroll-behavior: smooth;
-        flex-wrap: nowrap !important;
-        overflow-x: auto !important;
-        overflow-y: hidden !important;
-        gap: 8px;
     }
     
     .storyteller-tab-header {
         min-height: var(--sts-touch-target, 44px) !important; /* Apple HIG standard touch target */
-        padding: 12px 20px !important; /* Larger padding for mobile */
+        padding: 12px 20px !important; /* Prevent tiny touch targets on mobile */
         font-size: var(--sts-text-base, 16px) !important; /* Prevent iOS zoom */
-        min-width: max-content !important;
-        flex: 0 0 auto;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        /* Ensure proper touch targets */
         touch-action: manipulation;
         border-radius: 8px;
-        white-space: nowrap;
-    }
-    
-    /* Mobile tab ribbon improvements */
-    .mobile-dashboard .storyteller-tab-ribbon {
-        flex-wrap: nowrap !important;
-        justify-content: flex-start !important;
-        align-content: center !important;
-        width: max-content !important;
-        overflow-x: auto !important;
-        overflow-y: hidden !important;
-        row-gap: 0 !important;
-        column-gap: 4px !important;
-        white-space: nowrap;
     }
     
     /* Card layouts become single column */
@@ -3921,34 +3896,6 @@ body.mod-rtl .storyteller-group-members {
   margin-left: 0;
   padding: 0.45rem 0.75rem;
   font-size: 0.82rem;
-}
-
-.mobile-dashboard.storyteller-dashboard-simplified .storyteller-dashboard-tabs {
-  min-height: 0;
-  gap: 0.35rem;
-  padding: 0.35rem 0.75rem 0.45rem;
-  align-items: center;
-}
-
-.mobile-dashboard.storyteller-dashboard-simplified .storyteller-tab-ribbon {
-  flex-wrap: nowrap !important;
-  justify-content: flex-start !important;
-  align-items: center !important;
-  align-content: center !important;
-  overflow-x: auto !important;
-  overflow-y: hidden !important;
-  white-space: nowrap;
-  gap: 0.35rem !important;
-  row-gap: 0 !important;
-}
-
-.mobile-dashboard.storyteller-dashboard-simplified .storyteller-tab-header {
-  min-width: max-content !important;
-  max-width: none !important;
-  padding: 0.45rem 0.8rem !important;
-  border-radius: 999px;
-  font-size: 0.82rem;
-  white-space: nowrap;
 }
 
 .mobile-dashboard.storyteller-dashboard-simplified .storyteller-controls-group {
@@ -10916,24 +10863,28 @@ body.mod-rtl .storyteller-group-members {
 }
 
 .storyteller-dashboard-view-container[data-layout="tablet-portrait"] .storyteller-dashboard-tabs {
-  overflow: visible;
-  align-items: flex-start;
+  overflow-x: auto;
+  overflow-y: hidden;
+  align-items: center;
 }
 
 .storyteller-dashboard-view-container[data-layout="tablet-portrait"] .storyteller-tab-ribbon {
-  /* iPad portrait was eating the content lane. Tabs stack here on purpose. */
-  flex-wrap: wrap !important;
+  /* Tablet portrait gets the same horizontal rail as every other mobile layout. */
+  flex-wrap: nowrap !important;
   justify-content: flex-start !important;
-  align-items: stretch !important;
-  align-content: flex-start !important;
-  row-gap: 0.45rem !important;
+  align-items: center !important;
+  align-content: center !important;
+  row-gap: 0 !important;
   column-gap: 0.45rem !important;
-  overflow: visible !important;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  white-space: nowrap;
 }
 
 .storyteller-dashboard-view-container[data-layout="tablet-portrait"] .storyteller-tab-header {
-  flex: 0 1 auto;
-  min-width: 0;
+  flex: 0 0 auto;
+  min-width: max-content !important;
+  white-space: nowrap;
 }
 
 .storyteller-dashboard-view-container[data-layout="tablet-portrait"] .storyteller-controls-group {
