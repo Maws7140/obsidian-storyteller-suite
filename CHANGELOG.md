@@ -1,3 +1,7 @@
+## 1.7.8-beta.17
+
+- Keep dashboard tabs on one horizontal scroll rail across all mobile layouts, including tablets, and remove the old phone-only overflow tab path that was still splitting mobile behavior.
+
 ## 1.7.8-beta.16
 
 - Replace native confirm dialogs on dashboard delete actions with an in-app confirmation modal so deleting an entry no longer leaves keyboard focus stuck and blocks typing in editors and inputs until the Obsidian window is reactivated.

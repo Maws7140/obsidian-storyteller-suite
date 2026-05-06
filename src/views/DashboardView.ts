@@ -74,8 +74,6 @@ export class DashboardView extends ItemView {
 
     // Responsive tabs UI state
     private tabHeaderRibbonEl: HTMLElement | null = null;
-    private mobileTabOverflowButton: HTMLButtonElement | null = null;
-    // Measurement/More elements removed
     private tabsResizeObserver: ResizeObserver | null = null;
     // Icons removed per UX request; text-only tabs
     
@@ -132,9 +130,6 @@ export class DashboardView extends ItemView {
         showBuiltIn: true,
         showCustom: true
     };
-
-    /** High-frequency tabs kept in the primary mobile rail */
-    private readonly simplifiedMobilePrimaryTabIds = ['writing', 'characters', 'locations', 'events', 'campaign', 'maps'];
 
     /** Cached templates for the template library tab */
     private templatesCache: Template[] = [];
@@ -638,21 +633,6 @@ export class DashboardView extends ItemView {
         // Ribbon row (visible tabs)
         this.tabHeaderRibbonEl = this.tabHeaderContainer.createDiv('storyteller-tab-ribbon');
 
-        if (this.getDashboardLayoutMode() === 'phone') {
-            this.mobileTabOverflowButton = this.tabHeaderContainer.createEl('button', {
-                cls: 'storyteller-tab-overflow-btn'
-            });
-            this.mobileTabOverflowButton.type = 'button';
-            const overflowIcon = this.mobileTabOverflowButton.createSpan({ cls: 'storyteller-tab-overflow-icon' });
-            setIcon(overflowIcon, 'more-horizontal');
-            this.mobileTabOverflowButton.createSpan({ cls: 'storyteller-tab-overflow-label', text: 'More' });
-            this.mobileTabOverflowButton.addEventListener('click', (event: MouseEvent) => {
-                this.showMobileTabMenu(event);
-            });
-        }
-
-        // Measurement/More removed; tabs will wrap freely
-
         // Responsive layout via ResizeObserver
         this.tabsResizeObserver?.disconnect();
         this.tabsResizeObserver = new ResizeObserver(() => {
@@ -757,25 +737,6 @@ export class DashboardView extends ItemView {
         return this.tabs.filter(tab => !hiddenTabs.includes(tab.id));
     }
 
-    private getSimplifiedMobilePrimaryTabs() {
-        const visibleTabs = this.getVisibleTabs();
-        const primaryTabs = visibleTabs.filter(tab => this.simplifiedMobilePrimaryTabIds.includes(tab.id));
-        const activeOverflowTab = visibleTabs.find(tab =>
-            tab.id === this.activeTabId && !this.simplifiedMobilePrimaryTabIds.includes(tab.id)
-        );
-
-        if (activeOverflowTab && !primaryTabs.some(tab => tab.id === activeOverflowTab.id)) {
-            primaryTabs.push(activeOverflowTab);
-        }
-
-        return primaryTabs;
-    }
-
-    private getSimplifiedMobileOverflowTabs() {
-        const primaryIds = new Set(this.getSimplifiedMobilePrimaryTabs().map(tab => tab.id));
-        return this.getVisibleTabs().filter(tab => !primaryIds.has(tab.id));
-    }
-
     /** Apply saved tab order from settings, appending any new tabs at the end. */
     private applyTabOrder(): void {
         const savedOrder = this.plugin.settings.dashboardTabOrder;
@@ -802,13 +763,10 @@ export class DashboardView extends ItemView {
     private layoutTabs(): void {
         if (!this.tabHeaderContainer || !this.tabHeaderRibbonEl) return;
 
-        const layoutMode = this.getDashboardLayoutMode();
-        const isPhoneLayout = layoutMode === 'phone';
-        const isSimplifiedMobile = isPhoneLayout;
+        const isMobileLayout = this.getDashboardLayoutMode() !== 'desktop';
 
-        // Prepare container layout:
-        // Phones get the tight horizontal rail. Tablets were getting shoved through this too, which is why portrait looked busted.
-        if (isPhoneLayout) {
+        // Mobile gets one horizontal tab rail everywhere so phones and tablets behave the same way.
+        if (isMobileLayout) {
             this.tabHeaderRibbonEl.style.flexWrap = 'nowrap';
             this.tabHeaderRibbonEl.style.overflowX = 'auto';
             this.tabHeaderRibbonEl.style.overflowY = 'hidden';
@@ -833,12 +791,7 @@ export class DashboardView extends ItemView {
         const mode = this.getTabDisplayMode();
         const btnMode: 'compact' | 'normal' = (mode === 'normal') ? 'normal' : 'compact';
 
-        // Tiny: still render tabs; they'll wrap to multiple lines
-        // Compact mode reduces padding via mode pass-through
-
-        // Render visible tabs only and allow natural wrapping to any number of rows
-        const tabsToRender = isSimplifiedMobile ? this.getSimplifiedMobilePrimaryTabs() : this.getVisibleTabs();
-        for (const tab of tabsToRender) {
+        for (const tab of this.getVisibleTabs()) {
             const btn = this.createTabButtonEl(tab, btnMode, false);
             this.tabHeaderRibbonEl.appendChild(btn);
         }
@@ -928,34 +881,6 @@ export class DashboardView extends ItemView {
         return btn;
     }
 
-    private updateMobileTabOverflowButton(): void {
-        if (!this.mobileTabOverflowButton) return;
-        const overflowTabs = this.getSimplifiedMobileOverflowTabs();
-        this.mobileTabOverflowButton.classList.toggle('storyteller-hidden', overflowTabs.length === 0);
-        const activeOverflow = overflowTabs.find(tab => tab.id === this.activeTabId);
-        this.mobileTabOverflowButton.classList.toggle('is-active', !!activeOverflow);
-        this.mobileTabOverflowButton.title = activeOverflow ? `More tabs (${activeOverflow.label} active)` : 'More tabs';
-        this.mobileTabOverflowButton.setAttribute('aria-label', activeOverflow ? `More tabs. ${activeOverflow.label} is active.` : 'More tabs');
-    }
-
-    private showMobileTabMenu(event: MouseEvent): void {
-        const overflowTabs = this.getSimplifiedMobileOverflowTabs();
-        if (overflowTabs.length === 0) return;
-
-        const menu = new Menu();
-        overflowTabs.forEach(tab => {
-            menu.addItem(item => {
-                item.setTitle(tab.label);
-                item.setIcon(tab.id === this.activeTabId ? 'check' : 'chevron-right');
-                item.onClick(() => {
-                    void this.setActiveTab(tab.id);
-                });
-            });
-        });
-
-        menu.showAtMouseEvent(event);
-    }
-
     private captureTabScrollState(tabId: string, sourceEl?: HTMLElement): void {
         if (!this.tabContentContainer) return;
         const candidate = sourceEl ?? this.tabContentContainer;
@@ -1042,11 +967,7 @@ export class DashboardView extends ItemView {
             this._suppressScrollCapture = false;
         }
         // Update styles
-        if (this.isSimplifiedMobileDashboard()) {
-            this.layoutTabs();
-        } else {
-            this.syncActiveTabStyles();
-        }
+        this.syncActiveTabStyles();
     }
 
     private syncActiveTabStyles() {
@@ -1061,7 +982,6 @@ export class DashboardView extends ItemView {
             h.style.background = isActive ? 'var(--background-modifier-hover)' : 'transparent';
             h.style.outline = 'none';
         });
-        this.updateMobileTabOverflowButton();
     }
 
     private queueSearchFilter(filterFn: (filter: string) => Promise<void>, value: string): void {

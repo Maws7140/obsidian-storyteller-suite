@@ -2001,12 +2001,9 @@ If your plugin does not need CSS, delete this file.
         overscroll-behavior-x: contain;
         overscroll-behavior-y: auto;
         scroll-behavior: smooth;
-        /* Allow tabs to wrap on mobile */
-        flex-wrap: wrap !important;
-        overflow-x: visible !important;
-        overflow-y: visible !important;
-        height: auto !important;
-        max-height: none !important;
+        flex-wrap: nowrap !important;
+        overflow-x: auto !important;
+        overflow-y: hidden !important;
         gap: 8px;
     }
     
@@ -2014,26 +2011,28 @@ If your plugin does not need CSS, delete this file.
         min-height: var(--sts-touch-target, 44px) !important; /* Apple HIG standard touch target */
         padding: 12px 20px !important; /* Larger padding for mobile */
         font-size: var(--sts-text-base, 16px) !important; /* Prevent iOS zoom */
-        min-width: auto !important; /* Allow flexible widths */
-        flex: 1 1 auto;
+        min-width: max-content !important;
+        flex: 0 0 auto;
         display: flex;
         align-items: center;
         justify-content: center;
         /* Ensure proper touch targets */
         touch-action: manipulation;
         border-radius: 8px;
+        white-space: nowrap;
     }
     
     /* Mobile tab ribbon improvements */
     .mobile-dashboard .storyteller-tab-ribbon {
-        /* Enhanced wrapping behavior on mobile */
-        flex-wrap: wrap !important;
+        flex-wrap: nowrap !important;
         justify-content: flex-start !important;
-        align-content: flex-start !important;
-        width: 100% !important;
-        /* Ensure adequate spacing between wrapped rows */
-        row-gap: 8px !important;
+        align-content: center !important;
+        width: max-content !important;
+        overflow-x: auto !important;
+        overflow-y: hidden !important;
+        row-gap: 0 !important;
         column-gap: 4px !important;
+        white-space: nowrap;
     }
     
     /* Card layouts become single column */
@@ -3405,37 +3404,36 @@ If your plugin does not need CSS, delete this file.
   z-index: calc(var(--layer-status-bar, 15) - 1);
   display: flex;
   flex-wrap: nowrap;
-  align-items: flex-start; /* Changed from center to flex-start to properly align wrapped rows */
+  align-items: center;
   gap: 0.5em;
   width: 100%;
   min-height: 3em;
   background: var(--background-secondary);
   border-bottom: 2px solid var(--background-modifier-border);
   padding: 0.25em 1em;
-  overflow-x: visible;
-  overflow-y: visible;
+  overflow-x: auto;
+  overflow-y: hidden;
   -webkit-overflow-scrolling: touch;
-  white-space: normal;
-  /* Ensure proper sizing for wrapped content */
+  white-space: nowrap;
   box-sizing: border-box;
-  /* Ensure it doesn't get clipped */
   flex-shrink: 0;
 }
 
-/* Tab ribbon specific styles for proper wrapping */
+/* Tab ribbon styles */
 .storyteller-tab-ribbon {
-  flex-wrap: wrap;
-  justify-content: center;
+  display: flex;
+  flex-wrap: nowrap;
+  justify-content: flex-start;
   align-items: center;
-  align-content: flex-start !important;
-  width: 100%;
+  align-content: center !important;
+  width: max-content;
   gap: 0.5rem;
-  row-gap: 6px;
-  /* Ensure proper sizing */
+  row-gap: 0;
   box-sizing: border-box;
   min-height: 0;
-  /* Reset any conflicting styles */
-  overflow: visible;
+  overflow-x: auto;
+  overflow-y: hidden;
+  white-space: nowrap;
 }
 
 .storyteller-dashboard-content {
@@ -3951,25 +3949,6 @@ body.mod-rtl .storyteller-group-members {
   border-radius: 999px;
   font-size: 0.82rem;
   white-space: nowrap;
-}
-
-.mobile-dashboard.storyteller-dashboard-simplified .storyteller-tab-overflow-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  flex: 0 0 auto;
-  padding: 0.45rem 0.75rem;
-  border: 1px solid var(--background-modifier-border);
-  border-radius: 999px;
-  background: var(--background-primary);
-  color: var(--text-muted);
-  font-size: 0.8rem;
-}
-
-.mobile-dashboard.storyteller-dashboard-simplified .storyteller-tab-overflow-btn.is-active {
-  color: var(--text-accent);
-  border-color: color-mix(in srgb, var(--interactive-accent) 40%, var(--background-modifier-border));
-  background: color-mix(in srgb, var(--interactive-accent) 10%, var(--background-primary));
 }
 
 .mobile-dashboard.storyteller-dashboard-simplified .storyteller-controls-group {
