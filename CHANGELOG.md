@@ -1,3 +1,7 @@
+## 1.7.8-beta.19
+
+- Fix iPad dashboard layout detection by falling back to real touch-device viewport signals when Obsidian's mobile app flags are missing, so tablets stop falling through the desktop tab layout path.
+
 ## 1.7.8-beta.18
 
 - Remove the leftover dashboard tab CSS that was still arguing with the new layout shell, so tablets stop falling back to the old wrapped tab behavior.

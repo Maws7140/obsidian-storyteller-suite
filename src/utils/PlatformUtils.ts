@@ -7,12 +7,27 @@ export type DashboardLayoutMode = 'phone' | 'tablet-portrait' | 'tablet-landscap
  * Provides consistent methods for detecting mobile devices and adapting UI accordingly
  */
 export class PlatformUtils {
+    private static hasTouchViewportFallback(): boolean {
+        if (typeof window === 'undefined' || typeof navigator === 'undefined') {
+            return false;
+        }
+
+        const touchPoints = navigator.maxTouchPoints || 0;
+        const coarsePointer = typeof window.matchMedia === 'function'
+            ? window.matchMedia('(pointer: coarse)').matches
+            : false;
+        const minScreenDimension = Math.min(window.innerWidth || 0, window.innerHeight || 0);
+
+        // iPad can miss the Obsidian mobile app flags, so fall back to real touch-device signals.
+        return touchPoints > 0 && coarsePointer && minScreenDimension <= 1400;
+    }
+
     /**
      * Checks if the current platform is a mobile device (iOS or Android)
      * @returns true if running on iOS or Android
      */
     static isMobile(): boolean {
-        return Platform.isAndroidApp || Platform.isIosApp;
+        return Platform.isAndroidApp || Platform.isIosApp || this.hasTouchViewportFallback();
     }
 
     /**
