@@ -71,8 +71,7 @@ export class EconomyModal extends ResponsiveModal {
     async onOpen(): Promise<void> {
         super.onOpen();
 
-        const { contentEl } = this;
-        contentEl.empty();
+        const { contentEl, footerEl } = this.createStructuredModalLayout();
 
         contentEl.createEl('h2', {
             text: this.isNew ? t('createNewEconomy') : `${t('editEconomy')}: ${this.economy.name}`
@@ -379,44 +378,29 @@ export class EconomyModal extends ResponsiveModal {
         this.customFieldsEditor.setFields(this.economy.customFields);
         this.customFieldsEditor.renderSection(contentEl);
 
-        // Buttons
-        const buttonsSetting = new Setting(contentEl);
-
-        buttonsSetting.addButton(button => button
-            .setButtonText(t('save'))
-            .setCta()
-            .onClick(async () => {
-                if (!this.economy.name) {
-                    new Notice(t('economyNameRequired'));
-                    return;
-                }
-                const customFields = this.customFieldsEditor.getFields();
-                if (!customFields) {
-                    return;
-                }
-                this.economy.customFields = customFields;
-                await this.onSubmit(this.economy);
-                this.close();
-            })
-        );
-
-        buttonsSetting.addButton(button => button
-            .setButtonText(t('cancel'))
-            .onClick(() => this.close())
-        );
-
         if (!this.isNew && this.onDelete) {
-            buttonsSetting.addButton(button => button
-                .setButtonText(t('delete'))
-                .setWarning()
-                .onClick(async () => {
-                    if (this.onDelete) {
-                        await this.onDelete(this.economy);
-                        this.close();
-                    }
-                })
-            );
+            this.createFooterButton(footerEl, t('delete'), async () => {
+                if (this.onDelete) {
+                    await this.onDelete(this.economy);
+                    this.close();
+                }
+            }, { warning: true });
         }
+        footerEl.createDiv({ cls: 'storyteller-modal-button-spacer' });
+        this.createFooterButton(footerEl, t('cancel'), () => this.close());
+        this.createFooterButton(footerEl, t('save'), async () => {
+            if (!this.economy.name) {
+                new Notice(t('economyNameRequired'));
+                return;
+            }
+            const customFields = this.customFieldsEditor.getFields();
+            if (!customFields) {
+                return;
+            }
+            this.economy.customFields = customFields;
+            await this.onSubmit(this.economy);
+            this.close();
+        }, { cta: true });
     }
 
     private hasMultipleEntities(template: Template): boolean {

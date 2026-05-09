@@ -1,3 +1,7 @@
+## 1.7.9-beta.1
+
+- Migrate Culture and Economy modals onto the shared `createStructuredModalLayout` + `createFooterButton` footer used by every other entity modal, so their Save / Cancel / Delete buttons match the rest of the suite on mobile (sticky footer, correct touch targets) instead of rendering as a stacked legacy `Setting` row.
+
 ## 1.7.9-beta.0
 
 - Auto-update gallery records and entity image references when an image file or its parent folder is renamed or moved, so `profileImagePath`, `coverImagePath`, `backgroundImagePath`, `image`, and `images[]` no longer go stale.
