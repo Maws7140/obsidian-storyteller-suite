@@ -506,8 +506,20 @@ export class WritingViewRenderers {
             return;
         }
 
+        const canonicalByLower = new Map<string, string>();
+        characters.forEach(c => {
+            if (c.name) canonicalByLower.set(c.name.trim().toLowerCase(), c.name);
+        });
+        const resolveCanonical = (raw: string): string | undefined => {
+            if (typeof raw !== 'string') return undefined;
+            return canonicalByLower.get(raw.trim().toLowerCase());
+        };
+
         const appearsInScenes = new Set<string>();
-        scenes.forEach(sc => (sc.linkedCharacters || []).forEach((n: string) => appearsInScenes.add(n)));
+        scenes.forEach(sc => (sc.linkedCharacters || []).forEach((n: string) => {
+            const canonical = resolveCanonical(n);
+            if (canonical) appearsInScenes.add(canonical);
+        }));
         const activeChars = characters.map(c => c.name).filter(n => n && appearsInScenes.has(n)).slice(0, 20);
 
         if (activeChars.length === 0) {
@@ -520,8 +532,9 @@ export class WritingViewRenderers {
         scenes.forEach(sc => {
             const chKey = sc.chapterName || sc.chapterId || '(unassigned)';
             (sc.linkedCharacters || []).forEach((n: string) => {
-                if (!heat.has(n)) return;
-                const row = heat.get(n)!;
+                const canonical = resolveCanonical(n);
+                if (!canonical || !heat.has(canonical)) return;
+                const row = heat.get(canonical)!;
                 row.set(chKey, (row.get(chKey) || 0) + 1);
             });
         });

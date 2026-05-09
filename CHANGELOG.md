@@ -1,3 +1,17 @@
+## 1.7.9-beta.0
+
+- Auto-update gallery records and entity image references when an image file or its parent folder is renamed or moved, so `profileImagePath`, `coverImagePath`, `backgroundImagePath`, `image`, and `images[]` no longer go stale.
+- Read scene Beats, culture/economy/compendium body sections, book Synopsis, and item Cultural Significance / Magic Properties back into their fields when loading notes, so data entered in the markdown body or saved through the modal is no longer dropped on reload.
+- Fix scene save/load mismatch where the modal wrote `## Beats` but the loader only read `## Beat Sheet`, then keep `## Beat Sheet` working as a legacy fallback.
+- Unify the Cancel / Save / Delete footer on MagicSystem, CompendiumEntry, and TemplateEditor modals so they match the structured-modal layout used across the rest of the suite.
+- Restore characters dropped from the writing heatmap when scene `linkedCharacters` capitalisation drifted from the canonical name.
+- Include undated events in the analytics events stat, and divide the event-distribution chart by the dated event count so the percentages add up correctly.
+- Stop matching unrelated entities by partial-substring during EntitySyncService lookups; fall back only to case-insensitive name matches.
+- Run wiki-link bracket canonicalisation through the bidirectional-link backfill so re-imports leave files in the same shape a normal save would.
+- Consolidate three duplicate `stripWikiLinkValue` implementations into a shared utility that handles aliases (`[[Real|Display]]`) and anchors (`[[Name#Section]]`).
+- Replace the silently lossy fallback frontmatter parser with a strict `parseYaml`-only reader that errors on malformed YAML instead of dropping nested fields.
+- Re-run the bidirectional-link backfill on every plugin upgrade instead of only on first install.
+
 ## 1.7.8-beta.19
 
 - Fix iPad dashboard layout detection by falling back to real touch-device viewport signals when Obsidian's mobile app flags are missing, so tablets stop falling through the desktop tab layout path.

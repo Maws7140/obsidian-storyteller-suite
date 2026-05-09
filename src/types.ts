@@ -2149,6 +2149,9 @@ export interface StoryAnalytics {
     /** Event distribution */
     eventDistribution?: EventDistribution[];
 
+    /** Total event count (independent of dateTime presence) */
+    totalEvents?: number;
+
     /** Dialogue analysis */
     dialogueAnalysis?: DialogueAnalysis;
 

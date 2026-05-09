@@ -74,8 +74,7 @@ export class MagicSystemModal extends ResponsiveModal {
     async onOpen(): Promise<void> {
         super.onOpen();
 
-        const { contentEl } = this;
-        contentEl.empty();
+        const { contentEl, footerEl } = this.createStructuredModalLayout();
 
         contentEl.createEl('h2', {
             text: this.isNew ? t('createNewMagicSystem') : `${t('editMagicSystem')}: ${this.magicSystem.name}`
@@ -363,44 +362,29 @@ export class MagicSystemModal extends ResponsiveModal {
         this.customFieldsEditor.setFields(this.magicSystem.customFields);
         this.customFieldsEditor.renderSection(contentEl);
 
-        // Buttons
-        const buttonsSetting = new Setting(contentEl);
-
-        buttonsSetting.addButton(button => button
-            .setButtonText(t('save'))
-            .setCta()
-            .onClick(async () => {
-                if (!this.magicSystem.name) {
-                    new Notice(t('magicSystemNameRequired'));
-                    return;
-                }
-                const customFields = this.customFieldsEditor.getFields();
-                if (!customFields) {
-                    return;
-                }
-                this.magicSystem.customFields = customFields;
-                await this.onSubmit(this.magicSystem);
-                this.close();
-            })
-        );
-
-        buttonsSetting.addButton(button => button
-            .setButtonText(t('cancel'))
-            .onClick(() => this.close())
-        );
-
         if (!this.isNew && this.onDelete) {
-            buttonsSetting.addButton(button => button
-                .setButtonText(t('delete'))
-                .setWarning()
-                .onClick(async () => {
-                    if (this.onDelete) {
-                        await this.onDelete(this.magicSystem);
-                        this.close();
-                    }
-                })
-            );
+            this.createFooterButton(footerEl, t('delete'), async () => {
+                if (this.onDelete) {
+                    await this.onDelete(this.magicSystem);
+                    this.close();
+                }
+            }, { warning: true });
         }
+        footerEl.createDiv({ cls: 'storyteller-modal-button-spacer' });
+        this.createFooterButton(footerEl, t('cancel'), () => this.close());
+        this.createFooterButton(footerEl, this.isNew ? t('createMagicSystem') : t('saveChanges'), async () => {
+            if (!this.magicSystem.name) {
+                new Notice(t('magicSystemNameRequired'));
+                return;
+            }
+            const customFields = this.customFieldsEditor.getFields();
+            if (!customFields) {
+                return;
+            }
+            this.magicSystem.customFields = customFields;
+            await this.onSubmit(this.magicSystem);
+            this.close();
+        }, { cta: true });
     }
 
     private hasMultipleEntities(template: Template): boolean {

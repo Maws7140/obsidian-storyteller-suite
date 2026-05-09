@@ -28,6 +28,7 @@ import {
     WIKI_LINK_SCALAR_FIELDS,
 } from './yaml/EntitySections';
 import { stringifyYamlWithLogging, validateFrontmatterPreservation } from './utils/YamlSerializer';
+import { stripWikiLink } from './utils/WikiLinks';
 import { setLocale, t } from './i18n/strings';
 import { FolderResolver, FolderResolverOptions, EntityFolderType } from './folders/FolderResolver';
 import { PromptModal } from './modals/ui/PromptModal';
@@ -73,7 +74,7 @@ import { MagicSystemListModal } from './modals/MagicSystemListModal';
 import { CompendiumEntryModal } from './modals/CompendiumEntryModal';
 import { CompendiumListModal } from './modals/CompendiumListModal';
 import { PlatformUtils } from './utils/PlatformUtils';
-import { getTemplateSections } from './utils/EntityTemplates';
+import { getTemplateSections, BODY_SECTION_FIELD_MAP } from './utils/EntityTemplates';
 import { getSvgSourceInfoFromArrayBuffer, isSvgArrayBuffer } from './utils/SvgImageUtils';
 // Removed: Codeblock maps no longer supported - use MapView instead
 // import { LeafletCodeBlockProcessor } from './leaflet/processor';
@@ -246,8 +247,10 @@ const FRONTMATTER_LINK_ONLY_SCALAR_FIELDS = new Set([
     customFieldsMode?: 'flatten' | 'nested';
     /** Internal: set after relationships migration to avoid repeating it */
     relationshipsMigrated?: boolean;
-    /** Internal: set after backfilling bidirectional links (v2.0) */
+    /** Internal: set after backfilling bidirectional links (v2.0). Legacy boolean — superseded by bidirectionalLinksBackfilledVersion */
     bidirectionalLinksBackfilled?: boolean;
+    /** Internal: last plugin version that ran the bidirectional link backfill */
+    bidirectionalLinksBackfilledVersion?: string;
     /** Internal: last plugin version that repaired stale location entityRefs */
     staleEntityRefsPrunedVersion?: string;
     /** Internal: last plugin version that backfilled top-level entityType frontmatter */
@@ -429,6 +432,7 @@ const FRONTMATTER_LINK_ONLY_SCALAR_FIELDS = new Set([
     customFieldsMode: 'flatten',
     relationshipsMigrated: false,
     bidirectionalLinksBackfilled: false,
+    bidirectionalLinksBackfilledVersion: '',
     staleEntityRefsPrunedVersion: '',
     entityTypeBackfilledVersion: '',
     timelineWatchProperty: 'timeline-date',
@@ -729,11 +733,29 @@ export default class StorytellerSuitePlugin extends Plugin {
     }
 
     private stripWikiLinkValue(value: unknown): string | undefined {
-        if (typeof value !== 'string') return undefined;
-        const trimmed = value.trim();
-        if (!trimmed) return undefined;
-        const match = trimmed.match(/^\[\[(.*)\]\]$/);
-        return (match ? match[1] : trimmed).trim() || undefined;
+        return stripWikiLink(value);
+    }
+
+    /**
+     * Canonicalize wiki-link fields in a frontmatter object: strip any
+     * existing brackets/aliases/anchors, then re-wrap in `[[Name]]` for
+     * WIKI_LINK_ARRAY_FIELDS / WIKI_LINK_SCALAR_FIELDS. Matches the shape
+     * `buildFrontmatter` produces during normal saves so backfill writes
+     * stay consistent with the rest of the plugin.
+     */
+    private canonicalizeWikiLinkFields(data: Record<string, unknown>): void {
+        for (const field of WIKI_LINK_ARRAY_FIELDS) {
+            const value = data[field];
+            if (!Array.isArray(value)) continue;
+            data[field] = (value as unknown[])
+                .map(v => stripWikiLink(v))
+                .filter((v): v is string => Boolean(v))
+                .map(v => `[[${v}]]`);
+        }
+        for (const field of WIKI_LINK_SCALAR_FIELDS) {
+            const stripped = stripWikiLink(data[field]);
+            if (stripped) data[field] = `[[${stripped}]]`;
+        }
     }
 
     private async getRawFrontmatterForFile(file: TFile): Promise<Record<string, unknown> | undefined> {
@@ -1528,18 +1550,16 @@ export default class StorytellerSuitePlugin extends Plugin {
 		this.registerEditorExtension(createBranchViewExtension());
 		registerBranchBlockProcessors(this.app, this);
 
-		// Track vault renames to keep gallery filePath references up to date
+		// Track vault renames to keep gallery filePath references and entity-file
+		// image references (profileImagePath, coverImagePath, backgroundImagePath,
+		// image, images[]) in sync. Handles both individual image renames and
+		// folder renames that move many images at once.
 		this.registerEvent(
 			this.app.vault.on('rename', async (file, oldPath) => {
-				if (!this.settings.galleryData?.images) return;
-				let changed = false;
-				for (const img of this.settings.galleryData.images) {
-					if (img.filePath === oldPath) {
-						img.filePath = file.path;
-						changed = true;
-					}
-				}
-				if (changed) await this.saveSettings();
+				const isFolder = file instanceof TFolder;
+				const isImage = file instanceof TFile && this.isGalleryImageExtension(file.extension);
+				if (!isFolder && !isImage) return;
+				await this.remapImagePathReferences(oldPath, file.path, isFolder);
 			})
 		);
 
@@ -3873,48 +3893,35 @@ export default class StorytellerSuitePlugin extends Plugin {
 				filePath: file.path
 			};
 
-            // Map well-known sections into lowercase fields used by UI
-            // Always map sections if they exist in the file, even if empty (to prevent field bleeding)
-            if ('Description' in allSections) data['description'] = allSections['Description'];
-            if ('Backstory' in allSections) data['backstory'] = allSections['Backstory'];
-            if ('History' in allSections) data['history'] = allSections['History'];
-            if ('Outcome' in allSections) data['outcome'] = allSections['Outcome'];
+            // Map well-known body sections to entity fields per type.
+            // Earlier entries in the map are canonical; later ones act as legacy fallbacks.
+            const sectionFieldMap = BODY_SECTION_FIELD_MAP[entityType] ?? {};
+            for (const [sectionName, fieldName] of Object.entries(sectionFieldMap)) {
+                if (!(sectionName in allSections)) continue;
+                const existing = data[fieldName];
+                if (existing !== undefined && existing !== null && existing !== '') continue;
+                data[fieldName] = allSections[sectionName];
+            }
 
-            // Entity-type specific mappings
-            if (entityType === 'reference') {
-                if ('Content' in allSections) data['content'] = allSections['Content'];
-            } else if (entityType === 'chapter') {
-                if ('Summary' in allSections) data['summary'] = allSections['Summary'];
-            } else if (entityType === 'scene') {
-                if ('Content' in allSections) data['content'] = allSections['Content'];
-                if (allSections['Beat Sheet']) {
-                    const raw = allSections['Beat Sheet'] as string;
-                    const beats = raw
-                        .split('\n')
-                        .map(line => line.replace(/^\-\s*/, '').trim())
-                        .filter(Boolean);
-                    if (beats.length > 0) data['beats'] = beats;
-                }
-            } else if (entityType === 'item') {
-                // Backward-compatibility: some older notes used "History / Lore" as heading
-                if (!data['history'] && allSections['History / Lore']) data['history'] = allSections['History / Lore'];
-            } else if (entityType === 'magicSystem') {
-                if ('Rules' in allSections) data['rules'] = allSections['Rules'];
-                if ('Source' in allSections) data['source'] = allSections['Source'];
-                if ('Costs' in allSections) data['costs'] = allSections['Costs'];
-                if ('Limitations' in allSections) data['limitations'] = allSections['Limitations'];
-                if ('Training' in allSections) data['training'] = allSections['Training'];
-            } else if (entityType === 'event') {
-                // Support parsing Characters Involved from markdown section if present
-                if (allSections['Characters Involved']) {
-                    const charactersText = allSections['Characters Involved'];
-                    const characters = charactersText
-                        .split('\n')
-                        .map(line => line.trim())
-                        .filter(line => line.startsWith('- [[') && line.endsWith(']]'))
-                        .map(line => line.replace(/^\- \[\[(.*?)\]\]$/, '$1'));
-                    if (characters.length > 0) data['characters'] = characters;
-                }
+            // Scene: beats is an array on the entity; convert the raw section text now.
+            if (entityType === 'scene' && typeof data['beats'] === 'string') {
+                const beats = (data['beats'] as string)
+                    .split('\n')
+                    .map(line => line.replace(/^\-\s*/, '').trim())
+                    .filter(Boolean);
+                if (beats.length > 0) data['beats'] = beats;
+                else delete data['beats'];
+            }
+
+            // Event: optional list-style "Characters Involved" section
+            if (entityType === 'event' && allSections['Characters Involved']) {
+                const charactersText = allSections['Characters Involved'];
+                const characters = charactersText
+                    .split('\n')
+                    .map(line => line.trim())
+                    .filter(line => line.startsWith('- [[') && line.endsWith(']]'))
+                    .map(line => line.replace(/^\- \[\[(.*?)\]\]$/, '$1'));
+                if (characters.length > 0) data['characters'] = characters;
             }
 
 			// Parse relationship-style lists from sections (kept as data fields, not YAML additions)
@@ -7721,6 +7728,93 @@ export default class StorytellerSuitePlugin extends Plugin {
 	}
 
 	/**
+	 * Rewrite gallery records and entity-file frontmatter image references
+	 * after an image file or a folder containing images has been renamed/moved.
+	 *
+	 * Touches: galleryData.images[].filePath, plus the persisted image-path fields
+	 * on every entity markdown file (profileImagePath, coverImagePath,
+	 * backgroundImagePath, image, images[]).
+	 */
+	private async remapImagePathReferences(oldPath: string, newPath: string, isFolder: boolean): Promise<void> {
+		if (!oldPath || !newPath || oldPath === newPath) return;
+
+		const oldPrefix = isFolder ? `${oldPath}/` : null;
+		const newPrefix = isFolder ? `${newPath}/` : null;
+
+		const matches = (value: unknown): value is string => {
+			if (typeof value !== 'string') return false;
+			if (value === oldPath) return true;
+			if (oldPrefix && value.startsWith(oldPrefix)) return true;
+			return false;
+		};
+		const remap = (value: string): string => {
+			if (value === oldPath) return newPath;
+			if (oldPrefix && newPrefix && value.startsWith(oldPrefix)) {
+				return newPrefix + value.substring(oldPrefix.length);
+			}
+			return value;
+		};
+
+		// Update gallery records
+		let galleryChanged = false;
+		const galleryImages = this.settings.galleryData?.images;
+		if (galleryImages) {
+			for (const img of galleryImages) {
+				if (matches(img.filePath)) {
+					img.filePath = remap(img.filePath);
+					galleryChanged = true;
+				}
+			}
+		}
+		if (galleryChanged) await this.saveSettings();
+
+		// Update entity file frontmatter
+		const SCALAR_FIELDS = ['profileImagePath', 'coverImagePath', 'backgroundImagePath', 'image'];
+		const ARRAY_FIELDS = ['images'];
+
+		const mdFiles = this.app.vault.getMarkdownFiles();
+		for (const mdFile of mdFiles) {
+			const cache = this.app.metadataCache.getFileCache(mdFile);
+			const fm = cache?.frontmatter;
+			if (!fm) continue;
+
+			let needsUpdate = false;
+			for (const field of SCALAR_FIELDS) {
+				if (matches(fm[field])) { needsUpdate = true; break; }
+			}
+			if (!needsUpdate) {
+				for (const field of ARRAY_FIELDS) {
+					const arr = fm[field];
+					if (Array.isArray(arr) && arr.some(x => matches(x))) {
+						needsUpdate = true;
+						break;
+					}
+				}
+			}
+			if (!needsUpdate) continue;
+
+			try {
+				await this.app.fileManager.processFrontMatter(mdFile, (frontmatter: Record<string, unknown>) => {
+					for (const field of SCALAR_FIELDS) {
+						const v = frontmatter[field];
+						if (matches(v)) frontmatter[field] = remap(v);
+					}
+					for (const field of ARRAY_FIELDS) {
+						const arr = frontmatter[field];
+						if (Array.isArray(arr)) {
+							frontmatter[field] = arr.map(x =>
+								matches(x) ? remap(x) : x
+							);
+						}
+					}
+				});
+			} catch (e) {
+				console.error(`[StorytellerSuite] Failed to update image refs in ${mdFile.path}:`, e);
+			}
+		}
+	}
+
+	/**
 	 * Add a new image to the gallery
 	 * Generates a unique ID and saves to plugin settings
 	 * @param imageData Image metadata without ID
@@ -8610,6 +8704,7 @@ export default class StorytellerSuitePlugin extends Plugin {
                 if (normalizeEntityType(existingFrontmatter['entityType'])) continue;
 
                 const stampedFrontmatter = { ...existingFrontmatter, entityType };
+                this.canonicalizeWikiLinkFields(stampedFrontmatter);
                 const frontmatterString = stringifyYamlWithLogging(
                     stampedFrontmatter,
                     existingFrontmatter,
@@ -8872,8 +8967,9 @@ export default class StorytellerSuitePlugin extends Plugin {
         }
 
         try {
-            if (!this.settings.bidirectionalLinksBackfilled) {
+            if (this.settings.bidirectionalLinksBackfilledVersion !== this.manifest.version) {
                 await this.backfillBidirectionalRelationships();
+                this.settings.bidirectionalLinksBackfilledVersion = this.manifest.version;
                 this.settings.bidirectionalLinksBackfilled = true;
                 await this.saveSettings();
             }

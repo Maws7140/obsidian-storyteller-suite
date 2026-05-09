@@ -21,6 +21,7 @@ import {
     normalizePath,
 } from 'obsidian';
 import StorytellerSuitePlugin from '../main';
+import { stripWikiLinkToString } from '../utils/WikiLinks';
 import {
     CampaignSession,
     CampaignGroupStanding,
@@ -88,10 +89,7 @@ export class CampaignView extends ItemView {
     private pendingLogEntries: string[] = [];
     private readonly autosaveDebounceMs = 450;
     private stripWikiLinkValue(value: string | null | undefined): string {
-        const trimmed = String(value ?? '').trim();
-        if (!trimmed) return '';
-        const wikiMatch = trimmed.match(/^\[\[([^\]|]+)(?:\|[^\]]+)?\]\]$/);
-        return wikiMatch ? wikiMatch[1].trim() : trimmed;
+        return stripWikiLinkToString(value);
     }
 
     private readonly normalizeName = (value: string): string => this.stripWikiLinkValue(value).trim().toLowerCase();

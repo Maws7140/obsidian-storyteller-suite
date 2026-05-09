@@ -9,6 +9,7 @@ import type StorytellerSuitePlugin from '../main';
 import type { Location, MapBinding, EntityRef, Character, Event, PlotItem, StoryMap, Scene, Culture, Economy, MagicSystem, Reference } from '../types';
 import { LocationService } from '../services/LocationService';
 import { MapHierarchyManager } from '../utils/MapHierarchyManager';
+import { stripWikiLinkToString } from '../utils/WikiLinks';
 
 export class MapEntityRenderer {
     private map: L.Map;
@@ -364,10 +365,7 @@ export class MapEntityRenderer {
     }
 
     private stripWikiLinkValue(value: string | null | undefined): string {
-        const trimmed = String(value ?? '').trim();
-        if (!trimmed) return '';
-        const wikiMatch = trimmed.match(/^\[\[([^\]|]+)(?:\|[^\]]+)?\]\]$/);
-        return wikiMatch ? wikiMatch[1].trim() : trimmed;
+        return stripWikiLinkToString(value);
     }
 
     private locationMatchesReference(location: Location, locationRef: string | null | undefined): boolean {

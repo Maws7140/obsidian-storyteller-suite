@@ -84,8 +84,7 @@ export class CompendiumEntryModal extends ResponsiveModal {
 
     async onOpen(): Promise<void> {
         super.onOpen();
-        const { contentEl } = this;
-        contentEl.empty();
+        const { contentEl, footerEl } = this.createStructuredModalLayout();
 
         contentEl.createEl('h2', {
             text: this.isNew ? 'New Compendium Entry' : `Edit: ${this.entry.name}`
@@ -430,43 +429,31 @@ export class CompendiumEntryModal extends ResponsiveModal {
         this.customFieldsEditor.setFields(this.entry.customFields);
         this.customFieldsEditor.renderSection(contentEl);
 
-        // Buttons
-        const buttonsSetting = new Setting(contentEl);
-        buttonsSetting.addButton(btn => btn
-            .setButtonText(t('save'))
-            .setCta()
-            .onClick(async () => {
-                if (!this.entry.name.trim()) {
-                    new Notice('Entry name is required.');
-                    return;
-                }
-                const customFields = this.customFieldsEditor.getFields();
-                if (!customFields) {
-                    return;
-                }
-                this.entry.customFields = customFields;
-                await this.onSubmit(this.entry);
-                this.close();
-            })
-        );
-        buttonsSetting.addButton(btn => btn
-            .setButtonText(t('cancel'))
-            .onClick(() => this.close())
-        );
         if (!this.isNew && this.onDelete) {
-            buttonsSetting.addButton(btn => btn
-                .setButtonText(t('delete'))
-                .setWarning()
-                .onClick(async () => {
-                    if (this.onDelete) {
-                        await this.onDelete(this.entry);
-                        this.close();
-                    }
-                })
-            );
+            this.createFooterButton(footerEl, t('delete'), async () => {
+                if (this.onDelete) {
+                    await this.onDelete(this.entry);
+                    this.close();
+                }
+            }, { warning: true });
         }
+        footerEl.createDiv({ cls: 'storyteller-modal-button-spacer' });
+        this.createFooterButton(footerEl, t('cancel'), () => this.close());
+        this.createFooterButton(footerEl, this.isNew ? t('createCompendiumEntry') : t('saveChanges'), async () => {
+            if (!this.entry.name.trim()) {
+                new Notice('Entry name is required.');
+                return;
+            }
+            const customFields = this.customFieldsEditor.getFields();
+            if (!customFields) {
+                return;
+            }
+            this.entry.customFields = customFields;
+            await this.onSubmit(this.entry);
+            this.close();
+        }, { cta: true });
     }
-
+
     onClose(): void {
         this.groupSelector.dispose();
         const { contentEl } = this;

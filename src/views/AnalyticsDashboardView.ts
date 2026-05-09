@@ -122,7 +122,6 @@ export class AnalyticsDashboardView extends ItemView {
         const scenes = await this.plugin.listScenes();
         const chapters = await this.plugin.listChapters();
 
-        // Calculate character screen time
         const characterScreenTime: CharacterScreenTime[] = characters.map(char => {
             const appearances = events.filter(e =>
                 e.characters?.includes(char.name)
@@ -137,20 +136,12 @@ export class AnalyticsDashboardView extends ItemView {
             };
         }).sort((a, b) => b.appearances - a.appearances);
 
-        // Calculate event distribution
         const eventDistribution: EventDistribution[] = this.calculateEventDistribution(events);
-
-        // Calculate POV stats
         const povStats: POVStats[] = this.calculatePOVStats(scenes, chapters);
-
-        // Get writing sessions
         const writingSessions = this.plugin.settings.writingSessions || [];
         const velocity = this.calculateVelocity(writingSessions);
-
-        // Get foreshadowing data
         const foreshadowing = this.plugin.settings.analyticsData?.foreshadowing || [];
 
-        // Calculate dialogue analysis
         const dialogueAnalysis: DialogueAnalysis = {
             totalLines: 0,
             byCharacter: {},
@@ -164,6 +155,7 @@ export class AnalyticsDashboardView extends ItemView {
             totalWords,
             characterScreenTime,
             eventDistribution,
+            totalEvents: events.length,
             povStats,
             velocity,
             foreshadowing,
@@ -172,22 +164,23 @@ export class AnalyticsDashboardView extends ItemView {
     }
 
     calculateEventDistribution(events: any[]): EventDistribution[] {
-        // Group events by year/period
         const distribution: Record<string, number> = {};
+        let datedTotal = 0;
 
         events.forEach(event => {
             if (event.dateTime) {
                 const year = event.dateTime.split('-')[0];
                 distribution[year] = (distribution[year] || 0) + 1;
+                datedTotal++;
             }
         });
 
-        const total = events.length;
+        if (datedTotal === 0) return [];
         return Object.entries(distribution)
             .map(([category, count]) => ({
                 category,
                 count,
-                percentage: (count / total) * 100
+                percentage: (count / datedTotal) * 100
             }))
             .sort((a, b) => a.category.localeCompare(b.category));
     }
@@ -309,7 +302,7 @@ export class AnalyticsDashboardView extends ItemView {
 
         this.createStatCard(grid, 'Total Words', this.analytics?.totalWords?.toLocaleString() || '0', 'file-text');
         this.createStatCard(grid, 'Characters', this.analytics?.characterScreenTime?.length.toString() || '0', 'users');
-        this.createStatCard(grid, 'Events', this.analytics?.eventDistribution?.reduce((sum, e) => sum + e.count, 0).toString() || '0', 'calendar');
+        this.createStatCard(grid, 'Events', this.analytics?.totalEvents?.toString() || '0', 'calendar');
         this.createStatCard(grid, 'POVs', this.analytics?.povStats?.length.toString() || '0', 'eye');
     }
 
@@ -531,7 +524,7 @@ export class AnalyticsDashboardView extends ItemView {
         report += `## Overview\n\n`;
         report += `- **Total Words**: ${this.analytics.totalWords?.toLocaleString() || 0}\n`;
         report += `- **Characters**: ${this.analytics.characterScreenTime?.length || 0}\n`;
-        report += `- **Events**: ${this.analytics.eventDistribution?.reduce((sum, e) => sum + e.count, 0) || 0}\n\n`;
+        report += `- **Events**: ${this.analytics.totalEvents ?? 0}\n\n`;
 
         if (this.analytics.characterScreenTime && this.analytics.characterScreenTime.length > 0) {
             report += `## Character Screen Time\n\n`;

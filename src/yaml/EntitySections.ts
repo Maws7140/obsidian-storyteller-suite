@@ -487,90 +487,13 @@ export function parseFrontmatterFromContent(content: string): Record<string, unk
   if (!frontmatterContent) return {};
 
   try {
-    // Try to use Obsidian's parseYaml if available for robust YAML parsing
-    // This properly handles nested objects, arrays, and complex YAML structures
-    try {
-      if (parseYaml && typeof parseYaml === 'function') {
-        const parsed = parseYaml(frontmatterContent);
-        // Ensure we return a plain object
-        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-          return parsed as Record<string, unknown>;
-        }
-      }
-    } catch (e) {
-      // parseYaml not available, fall back to simple parser
+    const parsed = parseYaml(frontmatterContent);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>;
     }
-
-    // Fallback: Use simple YAML parsing for basic cases
-    // This handles empty values explicitly but has limitations with nested objects
-    const lines = frontmatterContent.split('\n');
-    const result: Record<string, unknown> = {};
-
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
-
-      // Skip indented lines (nested objects/arrays) in simple parser
-      // These would need proper YAML parsing which we don't have in fallback
-      if (line.startsWith('  ') || line.startsWith('\t')) {
-        continue;
-      }
-
-      const colonIndex = line.indexOf(':');
-      if (colonIndex === -1) continue;
-
-      const key = line.substring(0, colonIndex).trim();
-      if (!key) continue;
-
-      let value = line.substring(colonIndex + 1).trim();
-
-      // Handle arrays (value is empty and next line starts with -)
-      if (value === '' && i + 1 < lines.length && lines[i + 1].trim().startsWith('-')) {
-        const arrayItems: string[] = [];
-        i++;
-        while (i < lines.length && lines[i].trim().startsWith('-')) {
-          const item = lines[i].trim().substring(1).trim();
-          arrayItems.push(item);
-          i++;
-        }
-        i--; // Adjust for loop increment
-        result[key] = arrayItems;
-        continue;
-      }
-
-      // Handle empty value - preserve as empty string
-      if (value === '') {
-        result[key] = '';
-        continue;
-      }
-
-      // Handle quoted strings
-      if ((value.startsWith('"') && value.endsWith('"')) ||
-          (value.startsWith("'") && value.endsWith("'"))) {
-        result[key] = value.slice(1, -1);
-        continue;
-      }
-
-      // Handle booleans
-      if (value === 'true') { result[key] = true; continue; }
-      if (value === 'false') { result[key] = false; continue; }
-
-      // Handle null
-      if (value === 'null' || value === '~') { result[key] = null; continue; }
-
-      // Handle numbers
-      const num = Number(value);
-      if (!isNaN(num) && value !== '') {
-        result[key] = num;
-        continue;
-      }
-
-      // Default to string
-      result[key] = value;
-    }
-
-    return result;
+    return {};
   } catch (e) {
-    console.error('[EntitySections] Failed to parse frontmatter:', e);
+    console.error('[EntitySections] Failed to parse frontmatter YAML:', e);
     return undefined;
   }
 }

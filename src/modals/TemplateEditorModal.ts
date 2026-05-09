@@ -654,17 +654,15 @@ export class TemplateEditorModal extends ResponsiveModal {
     // ==================== FOOTER ====================
 
     private renderFooter(container: HTMLElement): void {
-        const footer = container.createDiv('template-editor-footer');
+        const footer = container.createDiv('storyteller-modal-footer template-editor-footer');
 
-        const cancelBtn = footer.createEl('button', { text: 'Cancel' });
-        cancelBtn.addEventListener('click', () => this.close());
+        footer.createDiv({ cls: 'storyteller-modal-button-spacer' });
+        this.createFooterButton(footer, 'Cancel', () => this.close());
 
         if (!this.template.isEditable) {
-            const duplicateBtn = footer.createEl('button', { text: 'Duplicate', cls: 'mod-cta' });
-            duplicateBtn.addEventListener('click', () => this.handleDuplicate());
+            this.createFooterButton(footer, 'Duplicate', () => this.handleDuplicate(), { cta: true });
         } else {
-            const saveBtn = footer.createEl('button', { text: 'Save Template', cls: 'mod-cta' });
-            saveBtn.addEventListener('click', () => this.handleSave());
+            this.createFooterButton(footer, 'Save Template', () => this.handleSave(), { cta: true });
         }
     }
 

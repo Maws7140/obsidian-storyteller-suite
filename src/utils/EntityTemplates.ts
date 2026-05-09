@@ -87,6 +87,95 @@ export const ENTITY_TEMPLATES: Record<EntityType, Record<string, string>> = {
 };
 
 /**
+ * Map of body markdown section names to entity field names per type.
+ * Used by parseFile to read body sections back into entity properties.
+ *
+ * The first listed section name for a given field is the canonical one (matching the save side);
+ * subsequent entries that target the same field act as legacy fallbacks read only when the
+ * canonical section is missing or empty.
+ */
+export const BODY_SECTION_FIELD_MAP: Record<EntityType, Record<string, string>> = {
+  character: {
+    Description: 'description',
+    Backstory: 'backstory',
+  },
+  location: {
+    Description: 'description',
+    History: 'history',
+  },
+  event: {
+    Description: 'description',
+    Outcome: 'outcome',
+  },
+  item: {
+    Description: 'description',
+    History: 'history',
+    'History / Lore': 'history', // legacy fallback
+    'Cultural Significance': 'culturalSignificance',
+    'Magic Properties': 'magicProperties',
+  },
+  reference: {
+    Content: 'content',
+  },
+  chapter: {
+    Summary: 'summary',
+  },
+  scene: {
+    Content: 'content',
+    Beats: 'beats',
+    'Beat Sheet': 'beats', // legacy fallback for older notes
+  },
+  map: {
+    Description: 'description',
+  },
+  culture: {
+    Description: 'description',
+    Values: 'values',
+    Religion: 'religion',
+    'Social Structure': 'socialStructure',
+    History: 'history',
+    'Naming Conventions': 'namingConventions',
+    Customs: 'customs',
+  },
+  faction: {
+    Description: 'description',
+    History: 'history',
+    Structure: 'structure',
+    Goals: 'goals',
+    Resources: 'resources',
+  },
+  economy: {
+    Description: 'description',
+    Industries: 'industries',
+    Taxation: 'taxation',
+  },
+  magicSystem: {
+    Description: 'description',
+    Rules: 'rules',
+    Source: 'source',
+    Costs: 'costs',
+    Limitations: 'limitations',
+    Training: 'training',
+    History: 'history',
+  },
+  compendiumEntry: {
+    Description: 'description',
+    'Behavior & Ecology': 'behavior',
+    Properties: 'properties',
+    'History & Lore': 'history',
+    Dimorphism: 'dimorphism',
+    'Hunting Notes': 'huntingNotes',
+  },
+  book: {
+    Description: 'description',
+    Synopsis: 'synopsis',
+  },
+  campaignSession: {
+    // 'Session Log' is read by appendToSessionLog / loadSessionLog directly, not via parseFile
+  },
+};
+
+/**
  * Get template sections for an entity type, merging with provided data.
  * @param type Entity type
  * @param providedSections Optional sections from modal (overrides template)

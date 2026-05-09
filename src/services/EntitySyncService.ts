@@ -1414,7 +1414,6 @@ export class EntitySyncService {
                     return null;
             }
 
-            // Strategy 1: Exact match (ID or name, case-sensitive)
             let found = entities.find(e => {
                 const id = (e as any).id;
                 const name = (e as any).name;
@@ -1422,23 +1421,11 @@ export class EntitySyncService {
             });
             if (found) return found;
 
-            // Strategy 2: Case-insensitive name match
             const lowerSearch = idOrName.toLowerCase().trim();
             found = entities.find(e => {
                 const name = (e as any).name;
                 return name && name.toLowerCase().trim() === lowerSearch;
             });
-            if (found) return found;
-
-            // Strategy 3: Partial name match (if exact match fails)
-            // This handles cases where location name might have changed slightly
-            found = entities.find(e => {
-                const name = (e as any).name;
-                if (!name) return false;
-                const lowerName = name.toLowerCase().trim();
-                return lowerName.includes(lowerSearch) || lowerSearch.includes(lowerName);
-            });
-            
             return found || null;
         } catch (error) {
             console.error(`[EntitySyncService] Error getting entity ${entityType} with id/name "${idOrName}":`, error);
