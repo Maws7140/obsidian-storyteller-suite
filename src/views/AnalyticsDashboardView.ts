@@ -115,7 +115,7 @@ export class AnalyticsDashboardView extends ItemView {
             this.plugin.settings.analyticsData = this.analytics;
             await this.plugin.saveSettings();
         } catch (error) {
-            console.error('Error refreshing analytics:', error);
+            
             new Notice('Failed to refresh analytics');
         } finally {
             this.refreshing = false;
@@ -516,7 +516,7 @@ export class AnalyticsDashboardView extends ItemView {
         this.app.vault.create(filePath, report).then(() => {
             new Notice(`Analytics report exported to ${fileName}`);
         }).catch(err => {
-            console.error('Error exporting report:', err);
+            
             new Notice('Failed to export analytics report');
         });
     }

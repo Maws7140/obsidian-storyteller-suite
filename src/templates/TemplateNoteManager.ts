@@ -89,7 +89,7 @@ export class TemplateNoteManager {
             try {
                 await this.app.vault.createFolder(this.notesFolder);
             } catch (error) {
-                console.debug('Notes folder already exists or could not be created:', error);
+                
             }
         }
 
@@ -181,7 +181,7 @@ export class TemplateNoteManager {
                     this.noteTemplates.set(template.id, template);
                 }
             } catch (error) {
-                console.error(`Error loading template from note ${file.path}:`, error);
+                
             }
         }
     }
@@ -225,7 +225,7 @@ export class TemplateNoteManager {
             // Detect entity type
             const entityType = NoteToTemplateConverter.detectEntityType(file, frontmatter);
             if (!entityType) {
-                console.warn(`Could not detect entity type for ${file.path}`);
+                
                 return null;
             }
 
@@ -252,7 +252,7 @@ export class TemplateNoteManager {
 
             return template;
         } catch (error) {
-            console.error(`Error loading template from note ${file.path}:`, error);
+            
             return null;
         }
     }
@@ -394,7 +394,7 @@ export class TemplateNoteManager {
             // Save via template storage manager
             await this.templateStorageManager.saveTemplate(jsonTemplate);
         } catch (error) {
-            console.warn('Failed to sync note template to JSON:', error);
+            
             // Don't throw - note is the source of truth
         }
     }

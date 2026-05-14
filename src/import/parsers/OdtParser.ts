@@ -57,7 +57,7 @@ const SCENE_BREAK_PATTERNS = [
 ];
 
 /**
- * ODT document parser
+ * ODT activeDocument parser
  */
 export class OdtParser implements DocumentParser {
     name = 'ODT Parser';
@@ -129,7 +129,7 @@ export class OdtParser implements DocumentParser {
             return this.parseStructuredContent(textContent, title, author, fileName);
 
         } catch (error) {
-            console.error('Error parsing ODT:', error);
+            
             return {
                 metadata: {
                     title: fileName.replace(/\.odt$/i, ''),

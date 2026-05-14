@@ -2283,7 +2283,7 @@ export class CampaignView extends ItemView {
 
             return `Triggered event: *${event.name}*`;
         } catch (error) {
-            console.error('[CampaignView] Failed to apply branch triggered event', error);
+            
             const fallback = eventName || eventId;
             return `Triggered event: *${fallback}* (sync failed)`;
         }
@@ -2402,7 +2402,7 @@ export class CampaignView extends ItemView {
             await this.flushChain;
             resolve?.();
         } catch (error) {
-            console.error('[CampaignView] autosave error', error);
+            
             reject?.(error);
         }
     }

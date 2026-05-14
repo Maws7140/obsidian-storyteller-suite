@@ -2,7 +2,7 @@
  * RTF Parser
  * Parses Rich Text Format files
  * 
- * RTF is a proprietary document format from Microsoft.
+ * RTF is a proprietary activeDocument format from Microsoft.
  * This parser extracts plain text and detects chapters from formatting.
  */
 
@@ -68,7 +68,7 @@ const SCENE_BREAK_PATTERNS = [
 ];
 
 /**
- * RTF document parser
+ * RTF activeDocument parser
  */
 export class RtfParser implements DocumentParser {
     name = 'RTF Parser';
@@ -255,9 +255,9 @@ export class RtfParser implements DocumentParser {
             }
         }
 
-        // If no chapters found, treat entire document as one chapter
+        // If no chapters found, treat entire activeDocument as one chapter
         if (chapterMatches.length === 0) {
-            warnings.push('No chapter markers found. Treating entire document as one chapter.');
+            warnings.push('No chapter markers found. Treating entire activeDocument as one chapter.');
             const scenes = this.detectScenes(text);
             return {
                 metadata: {
@@ -325,7 +325,7 @@ export class RtfParser implements DocumentParser {
     }
 
     /**
-     * Extract document title from first lines
+     * Extract activeDocument title from first lines
      */
     private extractTitle(lines: string[]): string | undefined {
         const firstLines = lines.slice(0, 10).filter(l => l.trim().length > 0);

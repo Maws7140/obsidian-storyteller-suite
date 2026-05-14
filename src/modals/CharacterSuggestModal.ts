@@ -22,7 +22,7 @@ export class CharacterSuggestModal extends FuzzySuggestModal<Character> {
         try {
             this.characters = await this.plugin.listCharacters();
         } catch (error) {
-            console.error("Storyteller Suite: Error fetching characters for suggester:", error);
+            
             new Notice(t('errorLoadingCharacters'));
             this.characters = []; // Ensure it's an empty array on error
         }

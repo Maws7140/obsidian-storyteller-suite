@@ -115,7 +115,7 @@ function countWords(text: string): number {
 }
 
 /**
- * Plain text document parser
+ * Plain text activeDocument parser
  */
 export class PlainTextParser implements DocumentParser {
     name = 'Plain Text Parser';
@@ -151,9 +151,9 @@ export class PlainTextParser implements DocumentParser {
         const matches = bestPattern.matches;
         const warnings: string[] = [];
 
-        // If no chapters found, treat entire document as one chapter
+        // If no chapters found, treat entire activeDocument as one chapter
         if (matches.length === 0) {
-            warnings.push('No chapter markers found. Treating entire document as one chapter.');
+            warnings.push('No chapter markers found. Treating entire activeDocument as one chapter.');
             const chapter: ParsedChapter = {
                 title: fileName.replace(/\.(txt|md)$/i, ''),
                 number: 1,
@@ -262,7 +262,7 @@ export class PlainTextParser implements DocumentParser {
     }
 
     /**
-     * Try to extract document title from first few lines
+     * Try to extract activeDocument title from first few lines
      */
     private extractTitle(lines: string[]): string | undefined {
         // Look at first 10 non-empty lines

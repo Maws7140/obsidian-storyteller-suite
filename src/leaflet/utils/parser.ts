@@ -208,7 +208,7 @@ export function parseMarkerString(markerStr: string): Partial<import('../types')
         : cleaned.split(',').map(p => p.trim());
 
     if (parts.length < 2) {
-        console.warn('Invalid marker definition:', markerStr);
+        
         return {};
     }
 

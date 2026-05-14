@@ -49,21 +49,21 @@ export class TileGenerator {
         this.tilesGenerated = 0;
 
         try {
-            console.debug('[TileGenerator] Starting tile generation for:', imagePath);
+            
 
             // 1. Read image data
             const imageData = await this.app.vault.adapter.readBinary(imagePath);
 
             // 2. Calculate hash
             const hash = await this.calculateImageHash(imageData);
-            console.debug('[TileGenerator] Image hash:', hash);
+            
 
             // 3. Check if tiles already exist
             const metadataPath = `StorytellerSuite/MapTiles/${hash}/metadata.json`;
             const existingMetadata = this.app.vault.getAbstractFileByPath(metadataPath);
 
             if (existingMetadata instanceof TFile) {
-                console.debug('[TileGenerator] Tiles already exist, skipping generation');
+                
                 new Notice('Map tiles already exist for this image');
                 return hash;
             }
@@ -71,16 +71,16 @@ export class TileGenerator {
             // 4. Load image to get dimensions
             const img = await this.loadImage(imagePath);
             const { width, height } = img;
-            console.debug('[TileGenerator] Image dimensions:', width, 'x', height);
+            
 
             // 5. Calculate zoom levels
             const tileSize = this.plugin.settings.tiling?.tileSize || 256;
             const { minZoom, maxZoom } = this.calculateZoomLevels(width, height, tileSize);
-            console.debug('[TileGenerator] Zoom levels:', minZoom, 'to', maxZoom);
+            
 
             // 6. Calculate total tiles for progress tracking
             this.totalTilesToGenerate = this.calculateTotalTiles(width, height, minZoom, maxZoom, tileSize);
-            console.debug('[TileGenerator] Total tiles to generate:', this.totalTilesToGenerate);
+            
 
             // 7. Ensure output directory exists
             const outputPath = `StorytellerSuite/MapTiles/${hash}`;
@@ -104,11 +104,11 @@ export class TileGenerator {
             };
             await this.saveMetadata(hash, metadata);
 
-            console.debug('[TileGenerator] Tile generation complete');
+            
             return hash;
 
         } catch (error) {
-            console.error('[TileGenerator] Tile generation failed:', error);
+            
             const message = error instanceof Error ? error.message : String(error);
             new Notice('Failed to generate map tiles: ' + message);
             throw error;
@@ -198,7 +198,7 @@ export class TileGenerator {
 
         // Generate tiles for each zoom level (from max to min)
         for (let z = maxZoom; z >= minZoom; z--) {
-            console.debug(`[TileGenerator] Generating zoom level ${z}...`);
+            
 
             // Calculate scale for this zoom level
             // At maxZoom: scale = 1 (full resolution)
@@ -211,13 +211,13 @@ export class TileGenerator {
             const tilesX = Math.ceil(scaledWidth / tileSize);
             const tilesY = Math.ceil(scaledHeight / tileSize);
 
-            console.debug(`[TileGenerator] Zoom ${z}: ${tilesX}x${tilesY} tiles at scale ${scale.toFixed(3)}`);
+            
 
             // Generate each tile in the grid
             for (let x = 0; x < tilesX; x++) {
                 for (let y = 0; y < tilesY; y++) {
                     // Create canvas for this tile
-                    const canvas = activeDocument.createElement('canvas');
+                    const canvas = createEl('canvas');
                     canvas.width = tileSize;
                     canvas.height = tileSize;
                     const ctx = canvas.getContext('2d')!;
@@ -306,7 +306,7 @@ export class TileGenerator {
         try {
             await this.app.vault.createBinary(tilePath, arrayBuffer);
         } catch (error) {
-            console.error(`[TileGenerator] Failed to save tile: ${tilePath}`, error);
+            
             throw error;
         }
     }
@@ -320,9 +320,9 @@ export class TileGenerator {
 
         try {
             await this.app.vault.create(metadataPath, content);
-            console.debug('[TileGenerator] Metadata saved:', metadataPath);
+            
         } catch (error) {
-            console.error('[TileGenerator] Failed to save metadata:', error);
+            
             throw error;
         }
     }

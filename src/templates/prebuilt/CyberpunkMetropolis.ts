@@ -305,7 +305,7 @@ export const CYBERPUNK_METROPOLIS_TEMPLATE: Template = {
                 history: 'Built on artificial platforms 200 stories above street level. Literally above the law and the common people.',
                 locationType: 'District - Corporate',
                 region: 'Upper City',
-                parentLocation: 'LOC_001',
+                parentLocationId: 'LOC_001',
                 status: 'Restricted',
                 customFields: {
                     access: 'Biometric clearance required',
@@ -322,7 +322,7 @@ export const CYBERPUNK_METROPOLIS_TEMPLATE: Template = {
                 history: 'Emerged in abandoned subway tunnels and lower city sectors. Self-governing through gang truces and unwritten rules.',
                 locationType: 'District - Underground',
                 region: 'Lower City',
-                parentLocation: 'LOC_001',
+                parentLocationId: 'LOC_001',
                 status: 'Lawless',
                 customFields: {
                     primary_trade: 'Black market cybernetics, drugs, weapons, data',
@@ -341,7 +341,7 @@ export const CYBERPUNK_METROPOLIS_TEMPLATE: Template = {
                 history: 'Established 10 years ago by Dr. Chen after leaving corporate medicine. Has saved countless lives.',
                 locationType: 'Building - Medical Facility',
                 region: 'The Neon Underground',
-                parentLocation: 'LOC_003',
+                parentLocationId: 'LOC_003',
                 status: 'Operating',
                 customFields: {
                     services: 'Cybernetic installation, repair, emergency surgery',
@@ -376,7 +376,7 @@ export const CYBERPUNK_METROPOLIS_TEMPLATE: Template = {
                 history: 'Once the heart of manufacturing. Automated factories made it obsolete. Perfect for those wanting privacy.',
                 locationType: 'Industrial - Abandoned',
                 region: 'Lower City',
-                parentLocation: 'LOC_001',
+                parentLocationId: 'LOC_001',
                 status: 'Abandoned',
                 customFields: {
                     uses: 'Gang hideouts, secret meetings, illegal manufacturing',
@@ -393,7 +393,7 @@ export const CYBERPUNK_METROPOLIS_TEMPLATE: Template = {
                 history: 'Status symbols for ultra-wealthy. Each garden costs more than most people earn in a lifetime.',
                 locationType: 'Exterior - Garden',
                 region: 'Corporate Plaza',
-                parentLocation: 'LOC_002',
+                parentLocationId: 'LOC_002',
                 status: 'Restricted',
                 customFields: {
                     access: 'Ultra-elite only',

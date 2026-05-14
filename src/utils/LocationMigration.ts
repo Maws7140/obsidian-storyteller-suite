@@ -19,13 +19,13 @@ export class LocationMigration {
      * Finds location by name and sets parentLocationId to its ID
      */
     async migrateParentLocationToId(location: Location): Promise<Location> {
-        if (!location.parentLocation || location.parentLocationId) {
+        if (!location.parentLocationId || location.parentLocationId) {
             return location; // Already migrated or no parent
         }
 
         const allLocations = await this.plugin.listLocations();
         const parent = allLocations.find(
-            l => l.name === location.parentLocation || l.id === location.parentLocation
+            l => l.name === location.parentLocationId || l.id === location.parentLocationId
         );
 
         if (parent) {
@@ -33,7 +33,7 @@ export class LocationMigration {
             // Keep parentLocation for backward compatibility during transition
             // It will be removed in a future version
         } else {
-            console.warn(`Could not find parent location: ${location.parentLocation} for location: ${location.name}`);
+            
         }
 
         return location;
@@ -97,7 +97,7 @@ export class LocationMigration {
         
         // Find all locations that have this location as parent
         const children = allLocations.filter(
-            l => l.parentLocationId === locationId || l.parentLocation === location.name
+            l => l.parentLocationId === locationId || l.parentLocationId === location.name
         );
 
         if (children.length > 0) {
@@ -187,7 +187,7 @@ export class LocationMigration {
         for (const location of allLocations) {
             try {
                 const needsMigration = 
-                    (location.parentLocation && !location.parentLocationId) ||
+                    (location.parentLocationId && !location.parentLocationId) ||
                     (location.mapId && (!location.mapBindings || location.mapBindings.length === 0)) ||
                     (!location.childLocationIds) ||
                     (location.mapBindings?.some(b => !b.mapName)) ||
@@ -201,7 +201,7 @@ export class LocationMigration {
             } catch (error) {
                 const errorMsg = `Error migrating location "${location.name}": ${error instanceof Error ? error.message : String(error)}`;
                 errors.push(errorMsg);
-                console.error(errorMsg, error);
+                
             }
         }
 
@@ -215,7 +215,7 @@ export class LocationMigration {
                 if (!errors.includes(errorMsg)) {
                     errors.push(errorMsg);
                 }
-                console.error(errorMsg, error);
+                
             }
         }
 
@@ -229,7 +229,7 @@ export class LocationMigration {
         const allLocations = await this.plugin.listLocations();
         
         for (const location of allLocations) {
-            if (location.parentLocation && !location.parentLocationId) {
+            if (location.parentLocationId && !location.parentLocationId) {
                 return true;
             }
             if (location.mapId && (!location.mapBindings || location.mapBindings.length === 0)) {

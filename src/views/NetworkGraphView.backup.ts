@@ -190,7 +190,7 @@ export class NetworkGraphView extends ItemView {
             await graphRenderer.initializeCytoscape();
             this.graphRenderer = graphRenderer;
         } catch (error) {
-            console.error('Error initializing network graph:', error);
+            
             this.graphContainer.createEl('p', {
                 text: 'Error loading network graph. See console for details.',
                 cls: 'storyteller-empty-state'

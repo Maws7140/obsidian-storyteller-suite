@@ -341,7 +341,7 @@ export class MapEntityRenderer {
      * Build popup HTML for portal marker
      */
     private buildPortalPopup(childMap: StoryMap, location: Location): HTMLElement {
-        const container = activeDocument.createElement('div');
+        const container = createDiv();
         container.className = 'storyteller-portal-popup';
 
         const header = container.createDiv('popup-header portal-header');
@@ -748,7 +748,7 @@ export class MapEntityRenderer {
                     return null;
             }
         } catch (error) {
-            console.error(`Error loading entity ${entityRef.entityId}:`, error);
+            
             return null;
         }
 
@@ -1031,7 +1031,7 @@ export class MapEntityRenderer {
      * Build popup HTML showing location and its entities
      */
     private async buildLocationPopup(location: Location): Promise<HTMLElement> {
-        const container = activeDocument.createElement('div');
+        const container = createDiv();
         container.className = 'storyteller-location-popup';
         const effectiveRefs = await this.getEffectiveLocationEntityRefs(location);
 
@@ -1120,7 +1120,7 @@ export class MapEntityRenderer {
                             };
                         }
                     } catch (error) {
-                        console.error(`Error loading entity ${ref.entityId}:`, error);
+                        
                     }
                 }
             }
@@ -1158,7 +1158,7 @@ export class MapEntityRenderer {
         entityRef: EntityRef,
         location: Location | null
     ): HTMLElement {
-        const container = activeDocument.createElement('div');
+        const container = createDiv();
         container.className = 'storyteller-entity-popup';
 
         // Build enhanced popup based on entity type
@@ -1179,7 +1179,7 @@ export class MapEntityRenderer {
         location: Location | null,
         entityRef: EntityRef
     ): HTMLElement {
-        const container = activeDocument.createElement('div');
+        const container = createDiv();
         container.className = 'storyteller-entity-popup storyteller-character-popup';
 
         // Header with image and name
@@ -1257,7 +1257,7 @@ export class MapEntityRenderer {
         location: Location | null,
         entityRef: EntityRef
     ): HTMLElement {
-        const container = activeDocument.createElement('div');
+        const container = createDiv();
         container.className = 'storyteller-entity-popup storyteller-event-popup';
 
         const header = container.createDiv({ cls: 'popup-header' });
@@ -1299,7 +1299,7 @@ export class MapEntityRenderer {
         entityRef: EntityRef,
         location: Location | null
     ): HTMLElement {
-        const container = activeDocument.createElement('div');
+        const container = createDiv();
         container.className = 'storyteller-entity-popup';
 
         const header = container.createDiv({ cls: 'popup-header' });
@@ -1580,7 +1580,7 @@ export class MapEntityRenderer {
 
                 new Notice('Marker position updated.');
             } catch (error) {
-                console.error('Error moving marker:', error);
+                
                 new Notice('Error updating marker position. See console for details.');
 
                 // Best-effort revert marker position if we changed it
@@ -1745,7 +1745,7 @@ export class MapEntityRenderer {
                                     await mapView.view.refreshEntities();
                                 }
                             } catch (error) {
-                                console.error('Error removing entity from map:', error);
+                                
                                 new Notice(`Error: ${error}`);
                             }
                         }
@@ -1783,7 +1783,7 @@ export class MapEntityRenderer {
                     new Notice(`${entityType.charAt(0).toUpperCase() + entityType.slice(1)} added to ${location.name}`);
                     await this.refreshOpenMapView();
                 } catch (error) {
-                    console.error('Error adding entity to location:', error);
+                    
                     const message = error instanceof Error ? error.message : String(error);
                     new Notice(`Failed to add ${entityType}: ${message}`);
                 }

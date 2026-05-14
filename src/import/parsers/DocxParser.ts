@@ -54,7 +54,7 @@ function extractChapterNumber(text: string): number | undefined {
 }
 
 /**
- * DOCX document parser
+ * DOCX activeDocument parser
  * 
  * This parser converts DOCX to HTML using mammoth, then extracts chapters
  * based on heading structure (H1 tags typically become chapters).
@@ -69,7 +69,7 @@ export class DocxParser implements DocumentParser {
     }
 
     /**
-     * Parse a DOCX document
+     * Parse a DOCX activeDocument
      * 
      * Note: This method expects the content to be base64-encoded binary data
      * or a raw ArrayBuffer converted to string. In the browser context,
@@ -98,14 +98,14 @@ export class DocxParser implements DocumentParser {
 
             // Log any conversion warnings
             if (messages.length > 0) {
-                console.debug('DOCX conversion messages:', messages);
+                
             }
 
             return this.parseFromHtml(html, fileName);
         } catch (error) {
-            console.error('Error parsing DOCX:', error);
             
-            // Return a document with error warning
+            
+            // Return a activeDocument with error warning
             return {
                 metadata: {
                     title: fileName,
@@ -132,7 +132,7 @@ export class DocxParser implements DocumentParser {
                     totalWords: 0,
                     chapterCount: 1,
                     confidence: 50,
-                    detectionMethod: 'Empty document'
+                    detectionMethod: 'Empty activeDocument'
                 },
                 chapters: [{
                     title: fileName.replace(/\.docx$/i, ''),
@@ -153,7 +153,7 @@ export class DocxParser implements DocumentParser {
         const headings = doc.querySelectorAll('h1, h2, h3, h4, h5, h6');
         
         if (headings.length === 0) {
-            // No headings, treat entire document as one chapter
+            // No headings, treat entire activeDocument as one chapter
             const textContent = doc.body.textContent || '';
             return {
                 metadata: {
@@ -183,7 +183,7 @@ export class DocxParser implements DocumentParser {
         const warnings: string[] = [];
 
         if (chapters.length === 0) {
-            warnings.push('No chapters could be extracted from document structure.');
+            warnings.push('No chapters could be extracted from activeDocument structure.');
             const textContent = doc.body.textContent || '';
             return {
                 metadata: {
@@ -266,7 +266,7 @@ export class DocxParser implements DocumentParser {
     }
 
     /**
-     * Extract chapters from document
+     * Extract chapters from activeDocument
      */
     private extractChapters(
         doc: Document,
@@ -321,7 +321,7 @@ export class DocxParser implements DocumentParser {
     }
 
     /**
-     * Extract document title from first H1 if it's unique
+     * Extract activeDocument title from first H1 if it's unique
      */
     private extractDocumentTitle(doc: Document): string | undefined {
         const h1s = doc.querySelectorAll('h1');

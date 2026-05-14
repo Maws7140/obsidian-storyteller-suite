@@ -22,7 +22,7 @@ function countWords(text: string): number {
 }
 
 /**
- * Fountain document parser
+ * Fountain activeDocument parser
  */
 export class FountainParser implements DocumentParser {
     name = 'Fountain Parser';

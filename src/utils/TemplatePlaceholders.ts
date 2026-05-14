@@ -152,7 +152,7 @@ export class TemplatePlaceholderProcessor {
                     };
                 }
             } catch (e) {
-                console.error('Invalid validation rule:', e);
+                
             }
         }
 

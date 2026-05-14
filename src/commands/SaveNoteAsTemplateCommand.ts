@@ -38,7 +38,7 @@ export class SaveNoteAsTemplateCommand {
             const frontmatter = parseFrontmatterFromContent(content);
             detectedEntityType = NoteToTemplateConverter.detectEntityType(file, frontmatter);
         } catch (error) {
-            console.error('Error reading file:', error);
+            
         }
 
         // Get default name from file
@@ -73,7 +73,7 @@ export class SaveNoteAsTemplateCommand {
 
                     new Notice(`Template "${template.name}" saved successfully!`);
                 } catch (error) {
-                    console.error('Error saving template:', error);
+                    
                     const message = error instanceof Error ? error.message : String(error);
                     new Notice(`Failed to save template: ${message}`);
                 }

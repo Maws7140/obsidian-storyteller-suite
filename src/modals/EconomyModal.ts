@@ -102,7 +102,7 @@ export class EconomyModal extends ResponsiveModal {
                                             new Notice('Default template applied');
                                             this.refresh();
                                         } catch (error) {
-                                            console.error('[EconomyModal] Error applying template:', error);
+                                            
                                             new Notice('Error applying default template');
                                         }
                                         resolve();
@@ -116,7 +116,7 @@ export class EconomyModal extends ResponsiveModal {
                             await this.applyTemplateToEconomy(defaultTemplate);
                             new Notice('Default template applied');
                         } catch (error) {
-                            console.error('[EconomyModal] Error applying template:', error);
+                            
                             new Notice('Error applying default template');
                         }
                     }
@@ -153,7 +153,7 @@ export class EconomyModal extends ResponsiveModal {
                                                         new Notice(t('templateApplied', template.name));
                                                         this.refresh();
                                                     } catch (error) {
-                                                        console.error('[EconomyModal] Error applying template:', error);
+                                                        
                                                         new Notice('Error applying template');
                                                     }
                                                     resolve();
@@ -447,7 +447,7 @@ export class EconomyModal extends ResponsiveModal {
         templateEconomy = substitutionResult.value;
 
         if (substitutionResult.warnings.length > 0) {
-            console.warn('[EconomyModal] Variable substitution warnings:', substitutionResult.warnings);
+            
         }
 
         // Apply the substituted template
@@ -474,9 +474,9 @@ export class EconomyModal extends ResponsiveModal {
                 if (isRecord(parsed)) {
                     fields = { ...fields, ...parsed };
                 }
-                console.debug('[EconomyModal] Parsed YAML fields:', parsed);
+                
             } catch (error) {
-                console.warn('[EconomyModal] Failed to parse yamlContent:', error);
+                
             }
         } else if (customYamlFields) {
             // Old format: merge custom YAML fields
@@ -500,9 +500,9 @@ export class EconomyModal extends ResponsiveModal {
                     fields.taxation = parsedSections['Taxation'];
                 }
 
-                console.debug('[EconomyModal] Parsed markdown sections:', parsedSections);
+                
             } catch (error) {
-                console.warn('[EconomyModal] Failed to parse markdownContent:', error);
+                
             }
         } else if (sectionContent) {
             // Old format: apply section content
@@ -523,7 +523,7 @@ export class EconomyModal extends ResponsiveModal {
                 configurable: true
             });
         }
-        console.debug('[EconomyModal] Final economy after template:', this.economy);
+        
 
         // Clear relationships as they reference template entities
         this.economy.linkedCharacters = [];

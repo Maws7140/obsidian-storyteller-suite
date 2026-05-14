@@ -77,7 +77,7 @@ export class LocationListModal extends Modal {
         const hierarchyMap = this.buildLocationHierarchy(filtered);
         
         // Render root locations and their children
-        const rootLocations = filtered.filter(loc => !loc.parentLocation);
+        const rootLocations = filtered.filter(loc => !loc.parentLocationId);
         const renderedLocations = new Set<string>();
         
         rootLocations.forEach(location => {
@@ -99,11 +99,11 @@ export class LocationListModal extends Modal {
         const hierarchyMap = new Map<string, Location[]>();
         
         locations.forEach(location => {
-            if (location.parentLocation) {
-                if (!hierarchyMap.has(location.parentLocation)) {
-                    hierarchyMap.set(location.parentLocation, []);
+            if (location.parentLocationId) {
+                if (!hierarchyMap.has(location.parentLocationId)) {
+                    hierarchyMap.set(location.parentLocationId, []);
                 }
-                hierarchyMap.get(location.parentLocation)!.push(location);
+                hierarchyMap.get(location.parentLocationId)!.push(location);
             }
         });
         
@@ -140,9 +140,9 @@ export class LocationListModal extends Modal {
         const nameEl = infoEl.createEl('strong', { text: location.name });
         
         // Add parent indicator if applicable
-        if (location.parentLocation) {
+        if (location.parentLocationId) {
             nameEl.createSpan({ 
-                text: ` (within ${location.parentLocation})`, 
+                text: ` (within ${location.parentLocationId})`, 
                 cls: 'storyteller-parent-indicator' 
             });
         }

@@ -325,7 +325,7 @@ export class NetworkGraphView extends ItemView {
             // Add zoom indicator
             this.addZoomIndicator();
         } catch (error) {
-            console.error('Error initializing network graph:', error);
+            
             loader.remove();
             this.graphContainer.createEl('p', {
                 text: 'Error loading network graph. See console for details.',

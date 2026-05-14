@@ -85,11 +85,11 @@ export class LeafletCodeBlockProcessor {
         ctx: MarkdownPostProcessorContext
     ): Promise<void> {
         try {
-            console.debug('[LeafletProcessor] Processing code block, source:', source.substring(0, 100));
+            
             
             // Parse YAML parameters
             let params = parseBlockParameters(source);
-            console.debug('[LeafletProcessor] Parsed params:', JSON.stringify(params, null, 2));
+            
 
             // If mapId is provided, load config from Map entity
             if (params.mapId) {
@@ -97,7 +97,7 @@ export class LeafletCodeBlockProcessor {
                 if (mapEntity) {
                     // Merge: inline params override entity config
                     params = this.mergeMapConfig(mapEntity, params);
-                    console.debug('[LeafletProcessor] Merged with map entity config');
+                    
                 } else {
                     this.renderError(el, `Map entity not found: ${params.mapId}`);
                     return;
@@ -116,7 +116,7 @@ export class LeafletCodeBlockProcessor {
                 params.id = this.generateMapId(ctx, el, params);
             }
 
-            console.debug('[LeafletProcessor] Creating map container...');
+            
             
             // Create map container
             const container = this.createMapContainer(el, params);
@@ -139,7 +139,7 @@ export class LeafletCodeBlockProcessor {
             const existingMap = this.activeMaps.get(params.id);
             if (existingMap) {
                 // This shouldn't normally happen with stable IDs, but clean up just in case
-                console.debug('[LeafletProcessor] Replacing existing map with ID:', params.id);
+                
                 existingMap.destroy();
             }
             this.activeMaps.set(params.id, renderer);
@@ -149,13 +149,13 @@ export class LeafletCodeBlockProcessor {
                 this.activeMaps.delete(params.id!);
             });
 
-            console.debug('[LeafletProcessor] Map renderer created and registered');
+            
             // Note: No manual initialization needed here
             // The onload() lifecycle method will be called automatically by Obsidian
             // when the component is added to the DOM via ctx.addChild()
 
         } catch (error) {
-            console.error('[LeafletProcessor] Error rendering storyteller-map:', error);
+            
             const message = error instanceof Error ? error.message : String(error);
             this.renderError(
                 el,

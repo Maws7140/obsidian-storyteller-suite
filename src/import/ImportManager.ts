@@ -93,7 +93,7 @@ export class ImportManager {
     }
 
     /**
-     * Parse document using appropriate parser
+     * Parse activeDocument using appropriate parser
      */
     parseDocument(content: string, fileName: string): ParsedDocument | null {
         const format = this.detectFormat(content, fileName);
@@ -113,7 +113,7 @@ export class ImportManager {
             const parsed = parser.parse(content, fileName);
             return parsed;
         } catch (error) {
-            console.error('Error parsing document:', error);
+            
             new Notice(`Error parsing document: ${error}`);
             return null;
         }
@@ -253,7 +253,7 @@ export class ImportManager {
             return result;
 
         } catch (error) {
-            console.error('Import error:', error);
+            
             return {
                 success: false,
                 error: `Import failed: ${error}`,
@@ -323,7 +323,7 @@ export class ImportManager {
                     await this.plugin.saveCharacter(character);
                     createdCharacters.push(character);
                 } catch (error) {
-                    console.warn(`Failed to create character "${entityName}":`, error);
+                    
                 }
             } else if (mapping.type === 'location') {
                 const location: Location = {
@@ -335,7 +335,7 @@ export class ImportManager {
                     await this.plugin.saveLocation(location);
                     createdLocations.push(location);
                 } catch (error) {
-                    console.warn(`Failed to create location "${entityName}":`, error);
+                    
                 }
             }
         }
@@ -546,7 +546,7 @@ export class ImportManager {
 
                     // If using scene-files placement, create scene(s) for the chapter content
                     if (config.contentPlacement === 'scene-files') {
-                        // Check if we have parsed scenes from the document
+                        // Check if we have parsed scenes from the activeDocument
                         const parsedChapter = config.parsedDocument.chapters.find(
                             pc => pc.title === chapterConfig.sourceTitle
                         );
@@ -758,7 +758,7 @@ export class ImportManager {
     }
 
     /**
-     * Create default import configuration from parsed document
+     * Create default import configuration from parsed activeDocument
      */
     createDefaultConfiguration(
         parsed: ParsedDocument,

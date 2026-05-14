@@ -494,7 +494,7 @@ export function parseFrontmatterFromContent(content: string): Record<string, unk
     }
     return {};
   } catch (e) {
-    console.error('[EntitySections] Failed to parse frontmatter YAML:', e);
+    
     return undefined;
   }
 }

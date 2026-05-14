@@ -21,7 +21,7 @@ export class PlotItemSuggestModal extends FuzzySuggestModal<PlotItem> {
         try {
             this.items = await this.plugin.listPlotItems();
         } catch (error) {
-            console.error('Storyteller Suite: Error fetching items for suggester:', error);
+            
             new Notice(t('errorLoadingItems'));
             this.items = [];
         }

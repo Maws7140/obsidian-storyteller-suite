@@ -78,10 +78,10 @@ export interface EntityMappingConfig {
 }
 
 /**
- * Parsed chapter from document
+ * Parsed chapter from activeDocument
  */
 export interface ParsedChapter {
-    /** Original title from document */
+    /** Original title from activeDocument */
     title: string;
 
     /** Detected chapter number */
@@ -93,10 +93,10 @@ export interface ParsedChapter {
     /** Word count */
     wordCount: number;
 
-    /** Start line in source document */
+    /** Start line in source activeDocument */
     startLine?: number;
 
-    /** End line in source document */
+    /** End line in source activeDocument */
     endLine?: number;
 
     /** Detected scene breaks within chapter */
@@ -104,7 +104,7 @@ export interface ParsedChapter {
 }
 
 /**
- * Parsed scene from document
+ * Parsed scene from activeDocument
  */
 export interface ParsedScene {
     /** Scene title (may be auto-generated) */
@@ -118,7 +118,7 @@ export interface ParsedScene {
 }
 
 /**
- * Metadata extracted from document
+ * Metadata extracted from activeDocument
  */
 export interface DocumentMetadata {
     /** Document title (if detected) */
@@ -141,7 +141,7 @@ export interface DocumentMetadata {
 }
 
 /**
- * Complete parsed document structure
+ * Complete parsed activeDocument structure
  */
 export interface ParsedDocument {
     /** Document metadata */
@@ -161,7 +161,7 @@ export interface ParsedDocument {
  * Chapter import configuration
  */
 export interface ChapterImportConfig {
-    /** Source title from parsed document */
+    /** Source title from parsed activeDocument */
     sourceTitle: string;
 
     /** Target name for created chapter */
@@ -191,7 +191,7 @@ export interface ImportConfiguration {
     /** Detected format */
     format: ImportFormat;
 
-    /** Parsed document */
+    /** Parsed activeDocument */
     parsedDocument: ParsedDocument;
 
     // Target
@@ -329,7 +329,7 @@ export interface DocumentParser {
     /** Check if this parser can handle the file */
     canParse(content: string, fileName: string): boolean;
 
-    /** Parse the document */
+    /** Parse the activeDocument */
     parse(content: string, fileName: string): ParsedDocument;
 }
 

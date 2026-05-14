@@ -232,7 +232,7 @@ export class EraModal extends ResponsiveModal {
                 new Notice(`Era "${this.era.name}" ${this.isNew ? 'created' : 'updated'} successfully`);
                 this.close();
             } catch (error) {
-                console.error('Error saving era:', error);
+                
                 new Notice('Error saving era. Check console for details.');
             }
         }, { cta: true });

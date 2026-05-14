@@ -124,7 +124,7 @@ export class PlotItemModal extends ResponsiveModal {
                                             new Notice('Default template applied');
                                             this.refresh();
                                         } catch (error) {
-                                            console.error('[PlotItemModal] Error applying template:', error);
+                                            
                                             new Notice('Error applying default template');
                                         }
                                         resolve();
@@ -139,7 +139,7 @@ export class PlotItemModal extends ResponsiveModal {
                             await this.applyTemplateToItem(defaultTemplate);
                             new Notice('Default template applied');
                         } catch (error) {
-                            console.error('[PlotItemModal] Error applying template:', error);
+                            
                             new Notice('Error applying default template');
                         }
                     }
@@ -176,7 +176,7 @@ export class PlotItemModal extends ResponsiveModal {
                                                         new Notice(`Template "${template.name}" applied`);
                                                         this.refresh();
                                                     } catch (error) {
-                                                        console.error('[PlotItemModal] Error applying template:', error);
+                                                        
                                                         new Notice('Error applying template');
                                                     }
                                                     resolve();
@@ -1089,7 +1089,7 @@ export class PlotItemModal extends ResponsiveModal {
         templateItem = substitutionResult.value;
 
         if (substitutionResult.warnings.length > 0) {
-            console.warn('[PlotItemModal] Variable substitution warnings:', substitutionResult.warnings);
+            
         }
 
         // Apply the substituted template
@@ -1116,9 +1116,9 @@ export class PlotItemModal extends ResponsiveModal {
                 if (isRecord(parsed)) {
                     fields = { ...fields, ...parsed };
                 }
-                console.debug('[PlotItemModal] Parsed YAML fields:', parsed);
+                
             } catch (error) {
-                console.warn('[PlotItemModal] Failed to parse yamlContent:', error);
+                
             }
         } else if (customYamlFields) {
             // Old format: merge custom YAML fields
@@ -1145,9 +1145,9 @@ export class PlotItemModal extends ResponsiveModal {
                     fields.magicProperties = parsedSections['Magic Properties'];
                 }
 
-                console.debug('[PlotItemModal] Parsed markdown sections:', parsedSections);
+                
             } catch (error) {
-                console.warn('[PlotItemModal] Failed to parse markdownContent:', error);
+                
             }
         } else if (sectionContent) {
             // Old format: apply section content
@@ -1168,7 +1168,7 @@ export class PlotItemModal extends ResponsiveModal {
                 configurable: true
             });
         }
-        console.debug('[PlotItemModal] Final item after template:', this.item);
+        
 
         // Clear relationships as they reference template entities
         this.item.currentOwner = undefined;

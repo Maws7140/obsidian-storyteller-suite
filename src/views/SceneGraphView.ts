@@ -343,7 +343,7 @@ export class SceneGraphView extends ItemView {
 
         } catch (err) {
             new Notice('Failed to render scene graph. Check console for details.');
-            console.error('[SceneGraphView]', err);
+            
         }
     }
 

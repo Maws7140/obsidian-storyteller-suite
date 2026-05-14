@@ -68,7 +68,7 @@ export class ReferenceModal extends ResponsiveModal {
                                         await this.applyTemplateToReferenceWithVariables(defaultTemplate, variableValues);
                                         new Notice('Default template applied');
                                     } catch (error) {
-                                        console.error('[ReferenceModal] Error applying template:', error);
+                                        
                                         new Notice('Error applying default template');
                                     } finally {
                                         resolve();
@@ -83,7 +83,7 @@ export class ReferenceModal extends ResponsiveModal {
                             await this.applyTemplateToReference(defaultTemplate);
                             new Notice('Default template applied');
                         } catch (error) {
-                            console.error('[ReferenceModal] Error applying template:', error);
+                            
                             new Notice('Error applying default template');
                         }
                     }
@@ -120,7 +120,7 @@ export class ReferenceModal extends ResponsiveModal {
                                                         new Notice(`Template "${template.name}" applied`);
                                                         this.refresh();
                                                     } catch (error) {
-                                                        console.error('[ReferenceModal] Error applying template:', error);
+                                                        
                                                         new Notice('Error applying template');
                                                     }
                                                     resolve();
@@ -275,7 +275,7 @@ export class ReferenceModal extends ResponsiveModal {
         templateRef = substitutionResult.value;
 
         if (substitutionResult.warnings.length > 0) {
-            console.warn('[ReferenceModal] Variable substitution warnings:', substitutionResult.warnings);
+            
         }
 
         // Apply the substituted template
@@ -302,9 +302,9 @@ export class ReferenceModal extends ResponsiveModal {
                 if (isRecord(parsed)) {
                     fields = { ...fields, ...parsed };
                 }
-                console.debug('[ReferenceModal] Parsed YAML fields:', parsed);
+                
             } catch (error) {
-                console.warn('[ReferenceModal] Failed to parse yamlContent:', error);
+                
             }
         } else if (customYamlFields) {
             // Old format: merge custom YAML fields
@@ -373,9 +373,9 @@ export class ReferenceModal extends ResponsiveModal {
                     fields.customFields = { ...existingCustomFields, ...customFields };
                 }
 
-                console.debug('[ReferenceModal] Parsed markdown sections:', parsedSections);
+                
             } catch (error) {
-                console.warn('[ReferenceModal] Failed to parse markdownContent:', error);
+                
             }
         } else if (sectionContent) {
             // Old format: apply section content
@@ -396,7 +396,7 @@ export class ReferenceModal extends ResponsiveModal {
                 configurable: true
             });
         }
-        console.debug('[ReferenceModal] Final reference after template:', this.refData);
+        
     }
 
     private refresh(): void {

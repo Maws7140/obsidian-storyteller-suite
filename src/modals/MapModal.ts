@@ -112,7 +112,7 @@ export class MapModal extends ResponsiveModal {
                                             }
                                             this.refresh();
                                         } catch (error) {
-                                            console.error('[MapModal] Error applying template:', error);
+                                            
                                             new Notice('Error applying default template');
                                         }
                                         safeResolve();
@@ -126,7 +126,7 @@ export class MapModal extends ResponsiveModal {
                                 };
                                 modal.open();
                             }).catch((error) => {
-                                console.error('[MapModal] Error loading TemplateApplicationModal:', error);
+                                
                                 safeResolve();
                             });
                         });
@@ -140,7 +140,7 @@ export class MapModal extends ResponsiveModal {
                                 this.map.name = 'Untitled Map';
                             }
                         } catch (error) {
-                            console.error('[MapModal] Error applying template:', error);
+                            
                             new Notice('Error applying default template');
                         }
                     }
@@ -177,7 +177,7 @@ export class MapModal extends ResponsiveModal {
                                                         new Notice(`Template "${template.name}" applied`);
                                                         this.refresh();
                                                     } catch (error) {
-                                                        console.error('[MapModal] Error applying template:', error);
+                                                        
                                                         new Notice('Error applying template');
                                                     }
                                                     resolve();
@@ -475,25 +475,25 @@ export class MapModal extends ResponsiveModal {
                     return;
                 }
 
-                console.debug('MapModal: Starting save process for map:', this.map.name);
+                
                 try {
                     await this.autoLinkMapAndLocation();
-                    console.debug('MapModal: Auto-linking completed');
+                    
                 } catch (linkError) {
-                    console.error('MapModal: Auto-linking error (non-blocking):', linkError);
+                    
                 }
 
-                console.debug('MapModal: Calling onSubmit');
+                
                 const customFields = this.customFieldsEditor.getFields();
                 if (!customFields) {
                     return;
                 }
                 this.map.customFields = customFields;
                 await this.onSubmit(this.map);
-                console.debug('MapModal: Save completed, closing modal');
+                
                 this.close();
             } catch (error) {
-                console.error('MapModal: Error during save:', error);
+                
                 const message = error instanceof Error ? error.message : 'Unknown error';
                 new Notice(`Error saving map: ${message}`);
             }
@@ -521,7 +521,7 @@ export class MapModal extends ResponsiveModal {
             // Get the corresponding location
             const location = await locationService.getLocation(this.map.correspondingLocationId);
             if (!location) {
-                console.warn(`Corresponding location not found: ${this.map.correspondingLocationId}`);
+                
                 return;
             }
 
@@ -541,14 +541,14 @@ export class MapModal extends ResponsiveModal {
                     // Set this map's parent to the parent location's map
                     if (this.map.parentMapId !== parentLocation.correspondingMapId) {
                         this.map.parentMapId = parentLocation.correspondingMapId;
-                        console.debug(`Auto-linked parent map: ${parentLocation.correspondingMapId}`);
+                        
                     }
                 }
             } else {
                 // If location has no parent, this map should have no parent either
                 if (this.map.parentMapId) {
                     this.map.parentMapId = undefined;
-                    console.debug('Cleared parent map (location has no parent)');
+                    
                 }
             }
 
@@ -569,32 +569,32 @@ export class MapModal extends ResponsiveModal {
 
                 if (childIdsChanged) {
                     this.map.childMapIds = childMapIds;
-                    console.debug(`Auto-linked ${childMapIds.length} child map(s)`);
+                    
                 }
             } else {
                 // No child locations, so no child maps
                 if (this.map.childMapIds && this.map.childMapIds.length > 0) {
                     this.map.childMapIds = [];
-                    console.debug('Cleared child maps (location has no children)');
+                    
                 }
             }
 
             // Save the location if it was updated
             if (locationUpdated) {
                 await this.plugin.saveLocation(location);
-                console.debug(`Updated location ${location.name} with map reference`);
+                
             }
 
             // Validate the hierarchy
             const validation = await this.hierarchyManager.validateHierarchy(mapId);
             if (!validation.valid) {
-                console.warn('Map hierarchy validation warnings:', validation.errors);
+                
                 // Show warnings to user but don't block save
                 new Notice(`Warning: ${validation.errors[0]} (map will still be saved)`, 5000);
             }
 
         } catch (error) {
-            console.error('Error auto-linking map and location:', error);
+            
             // Don't block save on auto-link errors
             new Notice('Note: Could not auto-link all hierarchies. Map will still be saved.', 4000);
         }
@@ -640,7 +640,7 @@ export class MapModal extends ResponsiveModal {
         templateMap = substitutionResult.value;
 
         if (substitutionResult.warnings.length > 0) {
-            console.warn('[MapModal] Variable substitution warnings:', substitutionResult.warnings);
+            
         }
 
         // Apply the substituted template
@@ -667,9 +667,9 @@ export class MapModal extends ResponsiveModal {
                 if (isRecord(parsed)) {
                     fields = { ...fields, ...parsed };
                 }
-                console.debug('[MapModal] Parsed YAML fields:', parsed);
+                
             } catch (error) {
-                console.warn('[MapModal] Failed to parse yamlContent:', error);
+                
             }
         } else if (customYamlFields) {
             // Old format: merge custom YAML fields
@@ -687,9 +687,9 @@ export class MapModal extends ResponsiveModal {
                     fields.description = parsedSections['Description'];
                 }
 
-                console.debug('[MapModal] Parsed markdown sections:', parsedSections);
+                
             } catch (error) {
-                console.warn('[MapModal] Failed to parse markdownContent:', error);
+                
             }
         } else if (sectionContent) {
             // Old format: apply section content
@@ -710,7 +710,7 @@ export class MapModal extends ResponsiveModal {
                 configurable: true
             });
         }
-        console.debug('[MapModal] Final map after template:', this.map);
+        
 
         // Clear entity links as they reference template entities
         this.map.linkedLocations = [];

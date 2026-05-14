@@ -250,7 +250,7 @@ export const MURDER_MYSTERY_TEMPLATE: Template = {
                 history: 'Lord Ashford\'s inner sanctum. Few were permitted entry. Contains his business records, personal safe, and many secrets.',
                 locationType: 'Interior Room - Study',
                 region: 'Ground Floor, West Wing',
-                parentLocation: 'LOC_001',
+                parentLocationId: 'LOC_001',
                 status: 'Crime Scene',
                 customFields: {
                     evidence: 'Poisoned brandy, disturbed papers, broken clock stopped at 11:30',
@@ -268,7 +268,7 @@ export const MURDER_MYSTERY_TEMPLATE: Template = {
                 history: 'Collected over generations. Some rare first editions worth fortunes. Also contains family records and journals.',
                 locationType: 'Interior Room - Library',
                 region: 'Ground Floor, East Wing',
-                parentLocation: 'LOC_001',
+                parentLocationId: 'LOC_001',
                 status: 'Active',
                 customFields: {
                     features: 'Floor-to-ceiling bookshelves, reading alcoves, hidden doors',
@@ -286,7 +286,7 @@ export const MURDER_MYSTERY_TEMPLATE: Template = {
                 history: 'Host to countless dinners and celebrations. Tonight it hosted the victim\'s last meal.',
                 locationType: 'Interior Room - Dining',
                 region: 'Ground Floor, Central',
-                parentLocation: 'LOC_001',
+                parentLocationId: 'LOC_001',
                 status: 'Active',
                 customFields: {
                     last_dinner: 'Eight people present until 10:30 PM',
@@ -304,7 +304,7 @@ export const MURDER_MYSTERY_TEMPLATE: Template = {
                 history: 'Housed countless visitors over the years. Now serve as makeshift prison cells for suspects.',
                 locationType: 'Interior Rooms - Bedrooms',
                 region: 'Second Floor',
-                parentLocation: 'LOC_001',
+                parentLocationId: 'LOC_001',
                 status: 'Occupied',
                 customFields: {
                     occupants: 'All suspects except family',
@@ -322,7 +322,7 @@ export const MURDER_MYSTERY_TEMPLATE: Template = {
                 history: 'The working heart of the manor. Staff see and hear everything but rarely speak of it.',
                 locationType: 'Interior - Service Area',
                 region: 'Ground Floor and Basement',
-                parentLocation: 'LOC_001',
+                parentLocationId: 'LOC_001',
                 status: 'Active',
                 customFields: {
                     access: 'Connected to all parts of house via service passages',

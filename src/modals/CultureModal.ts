@@ -95,7 +95,7 @@ export class CultureModal extends ResponsiveModal {
                                             new Notice('Default template applied');
                                             this.refresh();
                                         } catch (error) {
-                                            console.error('[CultureModal] Error applying template:', error);
+                                            
                                             new Notice('Error applying default template');
                                         }
                                         resolve();
@@ -109,7 +109,7 @@ export class CultureModal extends ResponsiveModal {
                             await this.applyTemplateToCulture(defaultTemplate);
                             new Notice('Default template applied');
                         } catch (error) {
-                            console.error('[CultureModal] Error applying template:', error);
+                            
                             new Notice('Error applying default template');
                         }
                     }
@@ -154,7 +154,7 @@ export class CultureModal extends ResponsiveModal {
                                                         new Notice(t('templateApplied', template.name));
                                                         this.refresh();
                                                     } catch (error) {
-                                                        console.error('[CultureModal] Error applying template:', error);
+                                                        
                                                         new Notice('Error applying template');
                                                     }
                                                     resolve();
@@ -169,7 +169,7 @@ export class CultureModal extends ResponsiveModal {
                                         this.refresh();
                                         new Notice(t('templateApplied', template.name));
                                     } catch (error) {
-                                        console.error('Failed to apply template to culture:', error);
+                                        
                                         new Notice(t('templateApplyFailed', template.name));
                                     }
                                 }
@@ -560,7 +560,7 @@ export class CultureModal extends ResponsiveModal {
         templateCulture = substitutionResult.value;
 
         if (substitutionResult.warnings.length > 0) {
-            console.warn('[CultureModal] Variable substitution warnings:', substitutionResult.warnings);
+            
         }
 
         // Apply the substituted template
@@ -587,9 +587,9 @@ export class CultureModal extends ResponsiveModal {
                 if (isRecord(parsed)) {
                     fields = { ...fields, ...parsed };
                 }
-                console.debug('[CultureModal] Parsed YAML fields:', parsed);
+                
             } catch (error) {
-                console.warn('[CultureModal] Failed to parse yamlContent:', error);
+                
             }
         } else if (customYamlFields) {
             // Old format: merge custom YAML fields
@@ -622,9 +622,9 @@ export class CultureModal extends ResponsiveModal {
                     fields.customs = parsedSections['Customs'];
                 }
 
-                console.debug('[CultureModal] Parsed markdown sections:', parsedSections);
+                
             } catch (error) {
-                console.warn('[CultureModal] Failed to parse markdownContent:', error);
+                
             }
         } else if (sectionContent) {
             // Old format: apply section content
@@ -645,7 +645,7 @@ export class CultureModal extends ResponsiveModal {
                 configurable: true
             });
         }
-        console.debug('[CultureModal] Final culture after template:', this.culture);
+        
 
         // Clear relationships as they reference template entities
         this.culture.linkedLocations = [];

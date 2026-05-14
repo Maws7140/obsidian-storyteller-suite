@@ -243,7 +243,7 @@ export class LocationService {
             const map = maps.find(m => (m.id || m.name) === mapId);
             mapName = map?.name;
         } catch (e) {
-            console.warn('Could not resolve map name for binding:', e);
+            
         }
 
         // Check if binding already exists for this map
@@ -461,7 +461,7 @@ export class LocationService {
                 }
             }
         } catch (e) {
-            console.warn('Could not resolve entity name for ref:', e);
+            
         }
 
         // Fallback: manually add to location.entityRefs if entity update didn't trigger sync
@@ -549,7 +549,7 @@ export class LocationService {
                 }
             }
         } catch (e) {
-            console.warn('Could not update entity location field:', e);
+            
         }
 
         // Fallback: manually remove from location.entityRefs if entity update didn't trigger sync
@@ -780,7 +780,7 @@ export class LocationService {
             // requestUrl returns data directly in response.json
             const data = response.json as NominatimReverseResponse | undefined;
             if (!data || data.error) {
-                console.warn('Nominatim returned error:', data?.error);
+                
                 return null;
             }
 
@@ -820,7 +820,7 @@ export class LocationService {
                 country
             };
         } catch (error) {
-            console.error('Reverse geocoding error:', error);
+            
             return null;
         }
     }
@@ -855,7 +855,7 @@ export class LocationService {
             } else {
                 effectiveLevel = 'continent';
             }
-            console.debug(`[LocationService] Auto-detected level from zoom ${zoom}: ${effectiveLevel}`);
+            
         }
 
         // Select based on level, falling back to more general if specific not available
@@ -918,11 +918,11 @@ export class LocationService {
         const zoom = options?.zoom;
 
         // Step 1: Reverse geocode to get place information
-        console.debug('[LocationService] Reverse geocoding coordinates:', coordinates);
+        
         const geoResult = await this.reverseGeocodeDetailed(coordinates[0], coordinates[1]);
         
         if (!geoResult) {
-            console.warn('[LocationService] Reverse geocoding failed, creating location with coordinates');
+            
             // Fallback: create location with coordinate-based name
             const coordText = `${coordinates[0].toFixed(4)}, ${coordinates[1].toFixed(4)}`;
             const locationId = `loc-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
@@ -944,10 +944,10 @@ export class LocationService {
 
         // Step 2: Select appropriate name based on level/zoom
         const selected = this.selectLocationByLevel(geoResult, level, zoom);
-        console.debug('[LocationService] Selected location:', selected.name, 'at level:', level, 'zoom:', zoom);
+        
         
         // Log available hierarchy for debugging
-        console.debug('[LocationService] Available hierarchy:', geoResult.hierarchy);
+        
         
         // Step 3: Search for existing location by name
         let existingLocation = await this.findLocationByName(selected.name);
@@ -958,7 +958,7 @@ export class LocationService {
         }
         
         if (existingLocation) {
-            console.debug('[LocationService] Found existing location:', existingLocation.name);
+            
             
             // Check if this location already has a binding for this map
             const hasBinding = existingLocation.mapBindings?.some(b => b.mapId === mapId);
@@ -970,14 +970,14 @@ export class LocationService {
                     mapId,
                     coordinates
                 );
-                console.debug('[LocationService] Added map binding to existing location');
+                
             }
             
             return { location: existingLocation, isNew: false, selectedLevel: level };
         }
         
         // Step 4: Create new location with selected name
-        console.debug('[LocationService] No existing location found, creating new:', selected.name);
+        
         const locationId = `loc-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
         
         // Build a rich description with full hierarchy

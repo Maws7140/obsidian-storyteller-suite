@@ -69,7 +69,7 @@ async function renderLocationsList(container: HTMLElement, context: DashboardCon
             extraInfoEl.createSpan({ cls: `storyteller-meta-badge storyteller-loc-type-badge storyteller-loctype-${typeSlug}`, text: location.locationType });
         }
         if (location.region) extraInfoEl.createSpan({ cls: 'storyteller-meta-badge storyteller-loc-region-badge', text: location.region });
-        if (location.parentLocation) extraInfoEl.createSpan({ cls: 'storyteller-meta-badge storyteller-loc-parent-badge', text: `↑ ${location.parentLocation}` });
+        if (location.parentLocationId) extraInfoEl.createSpan({ cls: 'storyteller-meta-badge storyteller-loc-parent-badge', text: `↑ ${location.parentLocationId}` });
         if (location.status) {
             const statusSlug = location.status.toLowerCase().replace(/\s+/g, '-');
             extraInfoEl.createSpan({ cls: `storyteller-meta-badge storyteller-loc-status-badge storyteller-loc-status-${statusSlug}`, text: location.status });

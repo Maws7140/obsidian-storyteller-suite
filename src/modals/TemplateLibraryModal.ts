@@ -300,11 +300,11 @@ export class TemplateLibraryModal extends ResponsiveModal {
     }
 
     private async handleUseTemplate(template: Template): Promise<void> {
-        console.debug('TemplateLibraryModal: handleUseTemplate called with template:', template.name);
+        
 
         // Check if there's an active story
         const activeStory = this.plugin.getActiveStory();
-        console.debug('TemplateLibraryModal: Active story:', activeStory);
+        
 
         if (!activeStory) {
             new Notice('Please select or create a story first before applying a template.');
@@ -313,19 +313,19 @@ export class TemplateLibraryModal extends ResponsiveModal {
 
         // If onTemplateSelected callback is provided, use it (for entity creation modals)
         if (this.onTemplateSelected) {
-            console.debug('TemplateLibraryModal: Using onTemplateSelected callback');
+            
             this.onTemplateSelected(template);
             this.close();
             return;
         }
 
         // Otherwise, apply the template directly to the story
-        console.debug('TemplateLibraryModal: Closing modal and applying template');
+        
         this.close(); // Close the library modal first
 
         // Apply template with variable collection prompt
         await this.plugin.applyTemplateWithPrompt(template);
-        console.debug('TemplateLibraryModal: applyTemplateWithPrompt completed');
+        
     }
 
     private handleEditTemplate(template: Template): void {
@@ -346,7 +346,7 @@ export class TemplateLibraryModal extends ResponsiveModal {
                 await this.plugin.templateManager.deleteTemplate(template.id);
                 this.refreshAndDisplay();
             } catch (error) {
-                console.error('Error deleting template:', error);
+                
                 const message = error instanceof Error ? error.message : String(error);
                 new Notice(`Failed to delete template: ${message}`);
             }
@@ -363,7 +363,7 @@ export class TemplateLibraryModal extends ResponsiveModal {
             new Notice(`Template duplicated as "${newName}"`);
             this.refreshAndDisplay();
         } catch (error) {
-            console.error('Error duplicating template:', error);
+            
             const message = error instanceof Error ? error.message : String(error);
             new Notice(`Failed to duplicate template: ${message}`);
         }
@@ -422,7 +422,7 @@ export class TemplateLibraryModal extends ResponsiveModal {
                 }
                 this.refreshAndDisplay();
             } catch (error) {
-                console.error('Error deleting note template:', error);
+                
                 const message = error instanceof Error ? error.message : String(error);
                 new Notice(`Failed to delete template: ${message}`);
             }

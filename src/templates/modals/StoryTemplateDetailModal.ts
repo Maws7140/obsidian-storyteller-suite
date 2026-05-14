@@ -340,7 +340,7 @@ export class StoryTemplateDetailModal extends Modal {
             notice.hide();
             const message = error instanceof Error ? error.message : String(error);
             new Notice(`Error applying template: ${message}`, 8000);
-            console.error('Template application error:', error);
+            
         }
     }
 

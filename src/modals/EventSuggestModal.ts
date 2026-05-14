@@ -36,7 +36,7 @@ export class EventSuggestModal extends FuzzySuggestModal<Event> {
         try {
             this.events = await this.plugin.listEvents();
         } catch (error) {
-            console.error('Storyteller Suite: Error fetching events for suggester:', error);
+            
             new Notice(t('errorLoadingEvents'));
             this.events = [];
         }

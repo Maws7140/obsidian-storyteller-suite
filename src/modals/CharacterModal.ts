@@ -134,7 +134,7 @@ export class CharacterModal extends ResponsiveModal {
                                             new Notice('Default template applied');
                                             this.refresh();
                                         } catch (error) {
-                                            console.error('[CharacterModal] Error applying template:', error);
+                                            
                                             new Notice('Error applying default template');
                                         }
                                         resolve();
@@ -152,7 +152,7 @@ export class CharacterModal extends ResponsiveModal {
                             await this.applyTemplateToCharacter(defaultTemplate);
                             new Notice('Default template applied');
                         } catch (error) {
-                            console.error('[CharacterModal] Error applying template:', error);
+                            
                             new Notice('Error applying default template');
                         }
                     }
@@ -189,7 +189,7 @@ export class CharacterModal extends ResponsiveModal {
                                                         new Notice(`Template "${template.name}" applied`);
                                                         this.refresh();
                                                     } catch (error) {
-                                                        console.error('[CharacterModal] Error applying template:', error);
+                                                        
                                                         new Notice('Error applying template');
                                                     }
                                                     resolve();
@@ -618,7 +618,7 @@ export class CharacterModal extends ResponsiveModal {
                             new Notice(t('characterDeleted', this.character.name));
                             this.close();
                         } catch (error) {
-                            console.error("Error deleting character:", error);
+                            
                             new Notice(t('failedToDelete', t('character')));
                         }
                     }
@@ -674,7 +674,7 @@ export class CharacterModal extends ResponsiveModal {
                     await this.onSubmit(this.character);
                     this.close();
                 } catch (error) {
-                    console.error("Error saving character:", error);
+                    
                     new Notice(t('failedToSave', t('character')));
                 }
             })(); });
@@ -772,7 +772,7 @@ export class CharacterModal extends ResponsiveModal {
         templateChar = substitutionResult.value;
 
         if (substitutionResult.warnings.length > 0) {
-            console.warn('[CharacterModal] Variable substitution warnings:', substitutionResult.warnings);
+            
         }
 
         // Apply the substituted template
@@ -799,9 +799,9 @@ export class CharacterModal extends ResponsiveModal {
                 if (isRecord(parsed)) {
                     fields = { ...fields, ...parsed };
                 }
-                console.debug('[CharacterModal] Parsed YAML fields:', parsed);
+                
             } catch (error) {
-                console.warn('[CharacterModal] Failed to parse yamlContent:', error);
+                
             }
         } else if (customYamlFields) {
             // Old format: merge custom YAML fields
@@ -832,9 +832,9 @@ export class CharacterModal extends ResponsiveModal {
                     }
                 }
 
-                console.debug('[CharacterModal] Parsed markdown sections:', parsedSections);
+                
             } catch (error) {
-                console.warn('[CharacterModal] Failed to parse markdownContent:', error);
+                
             }
         } else if (sectionContent) {
             // Old format: apply section content
@@ -855,7 +855,7 @@ export class CharacterModal extends ResponsiveModal {
                 configurable: true
             });
         }
-        console.debug('[CharacterModal] Final character after template:', this.character);
+        
 
         // Clear relationships as they reference template entities
         this.character.relationships = [];

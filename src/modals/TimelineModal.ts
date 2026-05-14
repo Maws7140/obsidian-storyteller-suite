@@ -229,7 +229,7 @@ export class TimelineModal extends Modal {
             }
             this.updateSearchDropdown();
         } catch (error) {
-            console.error('Storyteller Suite: Timeline modal failed to initialize.', error);
+            
             this.timelineContainer.empty();
             const errorEl = this.timelineContainer.createDiv('storyteller-timeline-error');
             errorEl.createEl('h3', { text: 'Timeline error' });

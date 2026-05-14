@@ -500,7 +500,7 @@ export class MapView extends ItemView {
             this.locationLevelDropdown.setValue(this.locationLevelMode);
             this.locationLevelDropdown.onChange((value) => {
                 this.locationLevelMode = value as LocationLevel;
-                console.debug('[MapView] Location level mode changed to:', value);
+                
                 // Update footer and dropdown label to reflect new selection
                 this.updateFooterStatus();
                 this.updateLocationLevelDropdownLabel();
@@ -750,7 +750,7 @@ export class MapView extends ItemView {
                     new Notice(`Added ${selectedLocation.name} to map at [${coordinates[0].toFixed(2)}, ${coordinates[1].toFixed(2)}]`);
                     await this.refresh();
                 } catch (error) {
-                    console.error('Error adding location to map:', error);
+                    
                     new Notice('Error adding location to map');
                 }
             })(); });
@@ -824,8 +824,8 @@ export class MapView extends ItemView {
                             // For real-world maps: use geocoding to find/create location by place name
                             // Pass current zoom and level preference for granularity control
                             const currentZoom = this.leafletRenderer?.getMap()?.getZoom() || this.currentZoom;
-                            console.debug('Real-world map detected, using geocode-based location matching');
-                            console.debug('Level mode:', this.locationLevelMode, 'Zoom:', currentZoom);
+                            
+                            
                             
                             const result = await locationService.findOrCreateForRealWorldMap(
                                 mapId,
@@ -837,7 +837,7 @@ export class MapView extends ItemView {
                             isNewLocation = result.isNew;
                         } else {
                             // For image maps: use coordinate proximity matching
-                            console.debug('Image map detected, using coordinate-based matching');
+                            
                             const nearbyLocations = await locationService.findLocationsAtCoordinates(
                                 mapId,
                                 coordinates,
@@ -939,7 +939,7 @@ export class MapView extends ItemView {
                         await this.refresh();
                     }
                 } catch (error) {
-                    console.error('Error adding character to map:', error);
+                    
                     new Notice('Error adding character to map');
                 }
             })(); });
@@ -1013,8 +1013,8 @@ export class MapView extends ItemView {
                             // For real-world maps: use geocoding to find/create location by place name
                             // Pass current zoom and level preference for granularity control
                             const currentZoom = this.leafletRenderer?.getMap()?.getZoom() || this.currentZoom;
-                            console.debug('Real-world map detected, using geocode-based location matching');
-                            console.debug('Level mode:', this.locationLevelMode, 'Zoom:', currentZoom);
+                            
+                            
                             
                             const result = await locationService.findOrCreateForRealWorldMap(
                                 mapId,
@@ -1026,7 +1026,7 @@ export class MapView extends ItemView {
                             isNewLocation = result.isNew;
                         } else {
                             // For image maps: use coordinate proximity matching
-                            console.debug('Image map detected, using coordinate-based matching');
+                            
                             const nearbyLocations = await locationService.findLocationsAtCoordinates(
                                 mapId,
                                 coordinates,
@@ -1128,7 +1128,7 @@ export class MapView extends ItemView {
                         await this.refresh();
                     }
                 } catch (error) {
-                    console.error('Error adding event to map:', error);
+                    
                     new Notice('Error adding event to map');
                 }
             })(); });
@@ -1202,8 +1202,8 @@ export class MapView extends ItemView {
                             // For real-world maps: use geocoding to find/create location by place name
                             // Pass current zoom and level preference for granularity control
                             const currentZoom = this.leafletRenderer?.getMap()?.getZoom() || this.currentZoom;
-                            console.debug('Real-world map detected, using geocode-based location matching');
-                            console.debug('Level mode:', this.locationLevelMode, 'Zoom:', currentZoom);
+                            
+                            
                             
                             const result = await locationService.findOrCreateForRealWorldMap(
                                 mapId,
@@ -1215,7 +1215,7 @@ export class MapView extends ItemView {
                             isNewLocation = result.isNew;
                         } else {
                             // For image maps: use coordinate proximity matching
-                            console.debug('Image map detected, using coordinate-based matching');
+                            
                             const nearbyLocations = await locationService.findLocationsAtCoordinates(
                                 mapId,
                                 coordinates,
@@ -1317,7 +1317,7 @@ export class MapView extends ItemView {
                         await this.refresh();
                     }
                 } catch (error) {
-                    console.error('Error adding item to map:', error);
+                    
                     new Notice('Error adding item to map');
                 }
             })(); });
@@ -1501,7 +1501,7 @@ export class MapView extends ItemView {
                                     locationDescription = `${geoName} - Auto-created for ${entityTypeName.toLowerCase()} "${selectedEntity.name}"`;
                                 }
                             } catch (error) {
-                                console.warn('Reverse geocoding failed:', error);
+                                
                             }
                         }
 
@@ -1548,7 +1548,7 @@ export class MapView extends ItemView {
                         await this.refresh();
                     }
                 } catch (error) {
-                    console.error(`Error adding ${entityTypeName.toLowerCase()} to map:`, error);
+                    
                     new Notice(`Error adding ${entityTypeName.toLowerCase()} to map`);
                 }
             })(); });
@@ -1570,13 +1570,13 @@ export class MapView extends ItemView {
         // Get the entity's file path
         const filePath = entity.filePath;
         if (!filePath) {
-            console.warn(`[MapView] Entity ${entity.name} has no filePath, cannot update map binding`);
+            
             return;
         }
 
         const file = this.app.vault.getAbstractFileByPath(filePath);
         if (!(file instanceof TFile)) {
-            console.warn(`[MapView] Could not find file for entity ${entity.name} at ${filePath}`);
+            
             return;
         }
 
@@ -1605,9 +1605,9 @@ export class MapView extends ItemView {
                 }
             });
 
-            console.debug(`[MapView] Updated ${entityType} "${entity.name}" with mapId=${mapId}, coordinates=[${coordinates.join(',')}]`);
+            
         } catch (error) {
-            console.error(`[MapView] Error updating entity map binding:`, error);
+            
         }
     }
 
@@ -1712,7 +1712,7 @@ export class MapView extends ItemView {
                 return Math.sqrt(dx*dx + dy*dy);
             }
         } catch (e) {
-            console.warn('Error calculating dynamic tolerance:', e);
+            
             return this.currentMap.type === 'real' ? 0.001 : 400;
         }
     }
@@ -1738,7 +1738,7 @@ export class MapView extends ItemView {
             try {
                 await this.hierarchyManager.syncMapLocationHierarchy(resolvedMapId);
             } catch (syncError) {
-                console.warn('[MapView] Error syncing map/location hierarchy (non-blocking):', syncError);
+                
             }
 
             this.currentMap = map;
@@ -1759,7 +1759,7 @@ export class MapView extends ItemView {
             this.buildEntityBar();
 
         } catch (error) {
-            console.error('Error loading map:', error);
+            
             new Notice('Error loading map. See console for details.');
         }
     }
@@ -1775,7 +1775,7 @@ export class MapView extends ItemView {
             try {
                 this.leafletRenderer.onunload();
             } catch (e) {
-                console.warn('Error cleaning up old renderer:', e);
+                
             }
             this.leafletRenderer = null;
         }
@@ -1868,7 +1868,7 @@ export class MapView extends ItemView {
             // CRITICAL: Prevent Obsidian from intercepting events when using the map
             // 
             // Key insight from esm7 (Obsidian Map View author):
-            // Leaflet 1.8+ listens for events at a higher level (document), so calling
+            // Leaflet 1.8+ listens for events at a higher level (activeDocument), so calling
             // stopPropagation on the map element blocks Leaflet itself from receiving events.
             // 
             // Solution: Add event listener at DOCUMENT level, check if event is on map,
@@ -1879,7 +1879,7 @@ export class MapView extends ItemView {
 
             // Wheel events for scroll zoom
             // Custom zoom handler that zooms from center (not mouse position)
-            // Must be at document level to work with Leaflet 1.8+ event handling
+            // Must be at activeDocument level to work with Leaflet 1.8+ event handling
             let wheelTimeout: number | null = null;
             let wheelDelta = 0;
 
@@ -1990,7 +1990,7 @@ export class MapView extends ItemView {
             window.setTimeout(forceMapUpdate, 500);
 
         } catch (error) {
-            console.error('Error rendering map:', error);
+            
             leafletContainer.empty();
             leafletContainer.createEl('div', {
                 text: 'Error rendering map. Check console for details.',
@@ -2010,10 +2010,10 @@ export class MapView extends ItemView {
     private injectLeafletCSSOverrides(container: HTMLElement): void {
         const styleId = 'leaflet-obsidian-overrides';
         
-        // Only inject once per document
+        // Only inject once per activeDocument
         if (activeDocument.getElementById(styleId)) return;
         
-        const style = activeDocument.createElement('div');
+        const style = createDiv();
         style.id = styleId;
         style.textContent = `
             /* CRITICAL: Reset Obsidian's global img styles for Leaflet */
@@ -2288,7 +2288,7 @@ export class MapView extends ItemView {
             const rect = container.getBoundingClientRect();
 
             if (rect.width > 0 && rect.height > 0) {
-                console.debug(`[MapView] Container has dimensions: ${rect.width}x${rect.height}`);
+                
                 return;
             }
 
@@ -2297,7 +2297,7 @@ export class MapView extends ItemView {
             attempts++;
         }
 
-        console.warn('[MapView] Container still has no dimensions after waiting, proceeding anyway...');
+        
     }
 
     /**
@@ -2324,7 +2324,7 @@ export class MapView extends ItemView {
 
             const map = this.leafletRenderer?.getMap();
             if (map) {
-                console.debug('[MapView] Resize detected, updating map...');
+                
                 // Use requestAnimationFrame to ensure DOM has updated
                 window.requestAnimationFrame(() => {
                     if (map) {
@@ -2371,7 +2371,7 @@ export class MapView extends ItemView {
                         map.fire('moveend');
                         map.fire('zoomend');
 
-                        console.debug('[MapView] Forced tile layer update after resize');
+                        
                     }
                 });
             }
@@ -2423,7 +2423,7 @@ export class MapView extends ItemView {
             this._persistViewStateTimeout = null;
         }
 
-        // Clean up document-level event handlers
+        // Clean up activeDocument-level event handlers
         if ((this as any)._wheelHandler) {
             activeDocument.removeEventListener('wheel', (this as any)._wheelHandler);
             (this as any)._wheelHandler = null;

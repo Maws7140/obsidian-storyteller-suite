@@ -75,7 +75,7 @@ class LedgerWidget extends WidgetType {
     }
 
     toDOM(view: EditorView): HTMLElement {
-        const container = activeDocument.createElement('div');
+        const container = createDiv();
         container.className = 'storyteller-codeblock-widget storyteller-codeblock-widget-ledger';
 
         const entries = parseLedger(this.source);

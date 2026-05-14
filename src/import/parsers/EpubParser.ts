@@ -58,7 +58,7 @@ const SCENE_BREAK_PATTERNS = [
 ];
 
 /**
- * EPUB document parser
+ * EPUB activeDocument parser
  */
 export class EpubParser implements DocumentParser {
     name = 'EPUB Parser';
@@ -210,7 +210,7 @@ export class EpubParser implements DocumentParser {
             };
 
         } catch (error) {
-            console.error('Error parsing EPUB:', error);
+            
             return {
                 metadata: {
                     title: fileName.replace(/\.epub$/i, ''),

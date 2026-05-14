@@ -323,7 +323,7 @@ Born into House Stormhaven, Aldric ascended to the throne at age 30 after his fa
                 history: 'The throne itself is said to date back to the kingdom\'s founding. Every king has been crowned here.',
                 locationType: 'Interior - Great Hall',
                 region: 'Castle Stormhaven',
-                parentLocation: 'LOC_001',
+                parentLocationId: 'LOC_001',
                 status: 'Active',
                 groups: ['GROUP_001']
             },
@@ -334,7 +334,7 @@ Born into House Stormhaven, Aldric ascended to the throne at age 30 after his fa
                 history: 'Accumulated knowledge over three centuries. Contains some of the rarest magical texts in the realm.',
                 locationType: 'Interior - Library',
                 region: 'Castle Stormhaven',
-                parentLocation: 'LOC_001',
+                parentLocationId: 'LOC_001',
                 status: 'Restricted Access',
                 customFields: {
                     volumes: '10,000+',
@@ -367,7 +367,7 @@ Born into House Stormhaven, Aldric ascended to the throne at age 30 after his fa
                 history: 'Family-run establishment for four generations. Has been witness to countless deals and conspiracies.',
                 locationType: 'Building - Tavern',
                 region: 'Market District',
-                parentLocation: 'LOC_004',
+                parentLocationId: 'LOC_004',
                 status: 'Operating',
                 customFields: {
                     owner: 'Finn Oakbarrel',
@@ -398,7 +398,7 @@ Born into House Stormhaven, Aldric ascended to the throne at age 30 after his fa
                 history: 'Predates the kingdom. Historical records are scarce, but it was clearly once a place of great power.',
                 locationType: 'Ruins - Fortress',
                 region: 'Whispering Woods',
-                parentLocation: 'LOC_006',
+                parentLocationId: 'LOC_006',
                 status: 'Abandoned (Recently Active?)',
                 customFields: {
                     age: 'Unknown (Ancient)',

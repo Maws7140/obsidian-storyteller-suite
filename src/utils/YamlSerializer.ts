@@ -147,11 +147,11 @@ export function stringifyYamlWithLogging(
         const validation = validateFrontmatterPreservation(obj, originalFrontmatter);
 
         if (!validation.valid) {
-            console.warn(`${prefix} Field preservation issues detected:`, validation.warnings);
+            
         }
 
         if (validation.lostFields.length > 0) {
-            console.warn(`${prefix} These fields will be LOST:`, validation.lostFields);
+            
         }
     }
 
@@ -161,7 +161,7 @@ export function stringifyYamlWithLogging(
         .map(([key]) => key);
 
     if (emptyFields.length > 0) {
-        console.debug(`${prefix} Preserving empty fields:`, emptyFields);
+        
     }
 
     // Serialize
@@ -170,7 +170,7 @@ export function stringifyYamlWithLogging(
     // Verify empty fields made it through
     for (const field of emptyFields) {
         if (!yaml.includes(`${field}:`)) {
-            console.error(`${prefix} FAILED to preserve empty field: ${field}`);
+            
         }
     }
 

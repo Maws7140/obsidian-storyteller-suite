@@ -104,7 +104,7 @@ interface PdfJsLibrary {
 }
 
 /**
- * PDF document parser
+ * PDF activeDocument parser
  */
 export class PdfParser implements DocumentParser {
     name = 'PDF Parser';
@@ -141,7 +141,7 @@ export class PdfParser implements DocumentParser {
             // Load Obsidian's built-in PDF.js library
             const pdfjsLib = (await loadPdfJs()) as PdfJsLibrary;
 
-            // Load the PDF document
+            // Load the PDF activeDocument
             const loadingTask = pdfjsLib.getDocument({
                 data: new Uint8Array(arrayBuffer)
             });
@@ -159,7 +159,7 @@ export class PdfParser implements DocumentParser {
                 pdfTitle = metadata?.info?.Title || fileName.replace(/\.pdf$/i, '');
                 pdfAuthor = metadata?.info?.Author || undefined;
             } catch (metaError) {
-                console.warn('Could not extract PDF metadata:', metaError);
+                
                 pdfTitle = fileName.replace(/\.pdf$/i, '');
             }
 
@@ -198,7 +198,7 @@ export class PdfParser implements DocumentParser {
                         fullText.push(pageText);
                     }
                 } catch (pageError) {
-                    console.warn(`Error extracting text from page ${i}:`, pageError);
+                    
                 }
             }
 
@@ -207,7 +207,7 @@ export class PdfParser implements DocumentParser {
             // Detect chapters
             const chapters = this.detectChapters(combinedText, fileName);
 
-            // If no chapters detected, treat entire document as one chapter
+            // If no chapters detected, treat entire activeDocument as one chapter
             if (chapters.length === 0) {
                 const wordCount = countWords(combinedText);
                 return {
@@ -257,7 +257,7 @@ export class PdfParser implements DocumentParser {
             };
 
         } catch (error) {
-            console.error('Error parsing PDF:', error);
+            
             return {
                 metadata: {
                     title: fileName.replace(/\.pdf$/i, ''),

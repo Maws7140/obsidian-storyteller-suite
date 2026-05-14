@@ -241,7 +241,7 @@ beats:
 export const LANGUAGE_REFERENCE_TEMPLATE: Template = {
     id: 'builtin-language-reference',
     name: 'Language Reference',
-    description: 'A reference document for a fictional language or naming conventions',
+    description: 'A reference activeDocument for a fictional language or naming conventions',
     genre: 'custom',
     category: 'single-entity',
     version: '1.0.0',
@@ -291,7 +291,7 @@ Basic structure and rules for constructing phrases.`
 export const TIMELINE_REFERENCE_TEMPLATE: Template = {
     id: 'builtin-timeline-reference',
     name: 'Timeline Reference',
-    description: 'A chronological reference document for historical events',
+    description: 'A chronological reference activeDocument for historical events',
     genre: 'custom',
     category: 'single-entity',
     version: '1.0.0',

@@ -57,11 +57,11 @@ export class ObsidianTileLayer extends L.TileLayer {
      * @returns Browser-accessible URL for the tile
      */
     getTileUrl(coords: L.Coords): string {
-        console.debug(`[ObsidianTileLayer] getTileUrl called for z=${coords.z}, x=${coords.x}, y=${coords.y}`);
+        
         
         // Construct vault path: basePath/z/x/y.png
         const tilePath = `${this.basePath}/${coords.z}/${coords.x}/${coords.y}.png`;
-        console.debug(`[ObsidianTileLayer] Looking for tile at: ${tilePath}`);
+        
 
         // Check if tile exists in vault
         const file = this.plugin.app.vault.getAbstractFileByPath(tilePath);
@@ -70,12 +70,12 @@ export class ObsidianTileLayer extends L.TileLayer {
             // Convert vault path to browser-accessible URL
             // Returns something like: app://local/path/to/vault/StorytellerSuite/MapTiles/abc123/0/0/0.png
             const url = this.plugin.app.vault.adapter.getResourcePath(file.path);
-            console.debug(`[ObsidianTileLayer] Loading tile ${coords.z}/${coords.x}/${coords.y} -> ${url.substring(0, 50)}...`);
+            
             return url;
         }
 
         // Tile doesn't exist - log warning and return transparent PNG
-        console.warn(`[ObsidianTileLayer] Missing tile: ${tilePath}`);
+        
         return this._emptyTileUrl;
     }
 
@@ -96,7 +96,7 @@ export class ObsidianTileLayer extends L.TileLayer {
      * Creates the DOM element for a tile
      */
     createTile(coords: L.Coords, done: L.DoneCallback): HTMLElement {
-        const tile = activeDocument.createElement('img');
+        const tile = createEl('img');
 
         // CRITICAL: Set explicit styles to ensure tile is visible
         // Sometimes Leaflet's default styles don't get applied correctly
@@ -178,6 +178,6 @@ export class ObsidianTileLayer extends L.TileLayer {
             tile.setCssStyles({ visibility: 'visible' });
         });
 
-        console.debug(`[ObsidianTileLayer] Forced visibility on ${tiles.length} tiles`);
+        
     }
 }

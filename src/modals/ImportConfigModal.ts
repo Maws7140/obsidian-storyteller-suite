@@ -173,7 +173,7 @@ export class ImportConfigModal extends Modal {
                     this.renderStep();
                 }
             } catch (error) {
-                console.error('Error parsing file:', error);
+                
                 new Notice(`Error parsing file: ${error}`);
             }
         })(); });

@@ -382,7 +382,7 @@ export class EntityToTemplateConverter {
             converted['yamlContent'] = entityToYaml(converted);
             converted['markdownContent'] = entityToMarkdown(converted);
         } catch (error) {
-            console.warn('Failed to generate yamlContent/markdownContent:', error);
+            
             // Fallback: keep old format if conversion fails
         }
 

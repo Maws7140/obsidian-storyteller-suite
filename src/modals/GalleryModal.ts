@@ -139,7 +139,7 @@ export class GalleryModal extends Modal {
     }
 
     private async handleUploadClick(): Promise<void> {
-        const fileInput = activeDocument.createElement('input');
+        const fileInput = createEl('input');
         fileInput.type = 'file';
         fileInput.accept = 'image/*';
         fileInput.multiple = true;
@@ -164,7 +164,7 @@ export class GalleryModal extends Modal {
                     }
                 }
             } catch (error) {
-                console.error('Error uploading gallery images:', error);
+                
                 new Notice('Error uploading gallery images. Check console for details.');
             } finally {
                 fileInput.value = '';

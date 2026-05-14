@@ -72,7 +72,7 @@ class BranchEncounterWidget extends WidgetType {
     }
 
     toDOM(): HTMLElement {
-        const container = activeDocument.createElement('div');
+        const container = createDiv();
         container.className = `storyteller-codeblock-widget storyteller-codeblock-widget-${this.language}`;
         if (this.language === 'branch') {
             const branches = parseBranches(this.source);

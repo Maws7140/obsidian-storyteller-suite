@@ -39,13 +39,13 @@ export class MapHierarchyManager {
         const visited = new Set<string>([mapId]); // Prevent infinite loops
         while (currentMap.parentMapId) {
             if (visited.has(currentMap.parentMapId)) {
-                console.warn(`Circular reference detected in map hierarchy for map: ${mapId}`);
+                
                 break;
             }
 
             const parentMap = await this.mapManager.getMapById(currentMap.parentMapId);
             if (!parentMap) {
-                console.warn(`Parent map not found: ${currentMap.parentMapId}`);
+                
                 break;
             }
 
@@ -348,7 +348,7 @@ export class MapHierarchyManager {
             }
         }
 
-        console.debug(`Auto-linked maps to locations: ${linked} linked, ${created} created`);
+        
     }
 
     /**

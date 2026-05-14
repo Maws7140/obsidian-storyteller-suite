@@ -79,7 +79,7 @@ export class ChapterModal extends ResponsiveModal {
                                             new Notice('Default template applied');
                                             this.refresh();
                                         } catch (error) {
-                                            console.error('[ChapterModal] Error applying template:', error);
+                                            
                                             new Notice('Error applying default template');
                                         }
                                         safeResolve();
@@ -94,7 +94,7 @@ export class ChapterModal extends ResponsiveModal {
                             await this.applyTemplateToChapter(defaultTemplate);
                             new Notice('Default template applied');
                         } catch (error) {
-                            console.error('[ChapterModal] Error applying template:', error);
+                            
                             new Notice('Error applying default template');
                         }
                     }
@@ -131,7 +131,7 @@ export class ChapterModal extends ResponsiveModal {
                                                         new Notice(`Template "${template.name}" applied`);
                                                         this.refresh();
                                                     } catch (error) {
-                                                        console.error('[ChapterModal] Error applying template:', error);
+                                                        
                                                         new Notice('Error applying template');
                                                     }
                                                     resolve();
@@ -432,7 +432,7 @@ export class ChapterModal extends ResponsiveModal {
         templateChapter = substitutionResult.value;
 
         if (substitutionResult.warnings.length > 0) {
-            console.warn('[ChapterModal] Variable substitution warnings:', substitutionResult.warnings);
+            
         }
 
         // Apply the substituted template
@@ -459,9 +459,9 @@ export class ChapterModal extends ResponsiveModal {
                 if (isRecord(parsed)) {
                     fields = { ...fields, ...parsed };
                 }
-                console.debug('[ChapterModal] Parsed YAML fields:', parsed);
+                
             } catch (error) {
-                console.warn('[ChapterModal] Failed to parse yamlContent:', error);
+                
             }
         } else if (customYamlFields) {
             // Old format: merge custom YAML fields
@@ -478,9 +478,9 @@ export class ChapterModal extends ResponsiveModal {
                 if ('Summary' in parsedSections) {
                     fields.summary = parsedSections['Summary'];
                 }
-                console.debug('[ChapterModal] Parsed markdown sections:', parsedSections);
+                
             } catch (error) {
-                console.warn('[ChapterModal] Failed to parse markdownContent:', error);
+                
             }
         } else if (sectionContent) {
             // Old format: apply section content
@@ -501,7 +501,7 @@ export class ChapterModal extends ResponsiveModal {
                 configurable: true
             });
         }
-        console.debug('[ChapterModal] Final chapter after template:', this.chapter);
+        
 
         // Clear relationships as they reference template entities
         this.chapter.linkedCharacters = [];

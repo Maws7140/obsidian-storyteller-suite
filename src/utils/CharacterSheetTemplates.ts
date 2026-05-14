@@ -584,7 +584,7 @@ const minimalTemplate: BuiltInSheetTemplate = {
 const dossierTemplate: BuiltInSheetTemplate = {
     id: 'dossier',
     name: 'Dossier',
-    description: 'Classified-document aesthetic — manila paper, typewriter font, red stamp accents.',
+    description: 'Classified-activeDocument aesthetic — manila paper, typewriter font, red stamp accents.',
 
     getExportCSS() {
         return `*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}body{background:#3a2e1e;font-family:'Courier New',Courier,monospace;color:#2a1a08;padding:32px 16px}

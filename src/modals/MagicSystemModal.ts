@@ -105,7 +105,7 @@ export class MagicSystemModal extends ResponsiveModal {
                                             new Notice('Default template applied');
                                             this.refresh();
                                         } catch (error) {
-                                            console.error('[MagicSystemModal] Error applying template:', error);
+                                            
                                             new Notice('Error applying default template');
                                         }
                                         resolve();
@@ -119,7 +119,7 @@ export class MagicSystemModal extends ResponsiveModal {
                             await this.applyTemplateToMagicSystem(defaultTemplate);
                             new Notice('Default template applied');
                         } catch (error) {
-                            console.error('[MagicSystemModal] Error applying template:', error);
+                            
                             new Notice('Error applying default template');
                         }
                     }
@@ -156,7 +156,7 @@ export class MagicSystemModal extends ResponsiveModal {
                                                         new Notice(t('templateApplied', template.name));
                                                         this.refresh();
                                                     } catch (error) {
-                                                        console.error('[MagicSystemModal] Error applying template:', error);
+                                                        
                                                         new Notice('Error applying template');
                                                     }
                                                     resolve();
@@ -431,7 +431,7 @@ export class MagicSystemModal extends ResponsiveModal {
         templateMagic = substitutionResult.value;
 
         if (substitutionResult.warnings.length > 0) {
-            console.warn('[MagicSystemModal] Variable substitution warnings:', substitutionResult.warnings);
+            
         }
 
         // Apply the substituted template
@@ -458,9 +458,9 @@ export class MagicSystemModal extends ResponsiveModal {
                 if (isRecord(parsed)) {
                     fields = { ...fields, ...parsed };
                 }
-                console.debug('[MagicSystemModal] Parsed YAML fields:', parsed);
+                
             } catch (error) {
-                console.warn('[MagicSystemModal] Failed to parse yamlContent:', error);
+                
             }
         } else if (customYamlFields) {
             // Old format: merge custom YAML fields
@@ -496,9 +496,9 @@ export class MagicSystemModal extends ResponsiveModal {
                     fields.history = parsedSections['History'];
                 }
 
-                console.debug('[MagicSystemModal] Parsed markdown sections:', parsedSections);
+                
             } catch (error) {
-                console.warn('[MagicSystemModal] Failed to parse markdownContent:', error);
+                
             }
         } else if (sectionContent) {
             // Old format: apply section content
@@ -519,7 +519,7 @@ export class MagicSystemModal extends ResponsiveModal {
                 configurable: true
             });
         }
-        console.debug('[MagicSystemModal] Final magic system after template:', this.magicSystem);
+        
 
         // Clear relationships as they reference template entities
         this.magicSystem.linkedCharacters = [];

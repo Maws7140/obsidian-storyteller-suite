@@ -56,7 +56,7 @@ export function setLocale(lang: string) {
   if (lang in locales || lang === 'en') {
     current = lang as Lang;
   } else {
-    console.warn(`Language "${lang}" not found, falling back to English`);
+    
     current = 'en';
   }
 }
@@ -135,7 +135,7 @@ export function t<K extends TranslationKey>(key: K, ...args: (string | number)[]
     // Fallback to English if translation not found
     const fallback = locales.en?.[key as string];
     if (!fallback) {
-      console.warn(`Translation key "${String(key)}" not found in any locale`);
+      
       return String(key);
     }
     return handlePluralization(key, fallback, ...args);

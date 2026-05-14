@@ -536,7 +536,7 @@ export class BranchEditorModal extends Modal {
 
         const issues = this.validateBranches();
         if (issues.length) {
-            console.warn('[BranchEditorModal] Validation warnings', issues);
+            
             new Notice(`Branch validation: ${issues.length} warning(s). Check console for details.`);
         }
 

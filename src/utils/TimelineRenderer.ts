@@ -124,14 +124,14 @@ export class TimelineRenderer {
             this.scenes = await this.plugin.listScenes();
         } catch (error) {
             this.scenes = [];
-            console.warn('Storyteller Suite: Failed to load scenes for timeline. Continuing without scenes.', error);
+            
         }
 
         try {
             this.watchedNotes = this.scanWatchedNotes();
         } catch (error) {
             this.watchedNotes = [];
-            console.warn('Storyteller Suite: Failed to scan watched notes for timeline. Continuing without watched notes.', error);
+            
         }
     }
 
@@ -468,7 +468,7 @@ export class TimelineRenderer {
 
         const W = 1200, ROW = 28, PADDING = 48, LABEL_W = 220;
         const H = PADDING * 2 + events.length * ROW;
-        const canvas = activeDocument.createElement('canvas');
+        const canvas = createEl('canvas');
         canvas.width = W; canvas.height = H;
         const ctx = canvas.getContext('2d')!;
 
@@ -514,7 +514,7 @@ export class TimelineRenderer {
     }
 
     private downloadDataUrl(dataUrl: string, filename: string): void {
-        const a = activeDocument.createElement('a');
+        const a = createEl('a');
         a.href = dataUrl;
         a.download = filename;
         a.click();
@@ -559,7 +559,7 @@ export class TimelineRenderer {
             new Notice(`Timeline exported to ${filePath}`);
         } catch (e) {
             new Notice('Failed to write CSV export.');
-            console.error('[TimelineRenderer] CSV export error:', e);
+            
         }
     }
 
@@ -597,7 +597,7 @@ export class TimelineRenderer {
             new Notice(`Timeline exported to ${filePath}`);
         } catch (e) {
             new Notice('Failed to write JSON export.');
-            console.error('[TimelineRenderer] JSON export error:', e);
+            
         }
     }
 
@@ -638,7 +638,7 @@ export class TimelineRenderer {
             new Notice(`Timeline exported to ${filePath}`);
         } catch (e) {
             new Notice('Failed to write Markdown export.');
-            console.error('[TimelineRenderer] Markdown export error:', e);
+            
         }
     }
 
@@ -819,7 +819,7 @@ export class TimelineRenderer {
                         new Notice(`Event "${event.name}" rescheduled`);
                         callback(item); // Confirm the move
                     } catch (error) {
-                        console.error('Error saving event after drag:', error);
+                        
                         new Notice('Error saving event changes');
                         callback(null); // Cancel move on error
                     }
@@ -832,7 +832,7 @@ export class TimelineRenderer {
                     ? new Timeline(this.container, items, groups, timelineOptions)
                     : new Timeline(this.container, items, timelineOptions);
             } catch (timelineError) {
-                console.warn('Storyteller Suite: Primary vis-timeline options failed, retrying with safe options.', timelineError);
+                
                 try {
                     const safeOptions = {
                         ...timelineOptions,
@@ -845,7 +845,7 @@ export class TimelineRenderer {
                         ? new Timeline(this.container, items, groups, safeOptions)
                         : new Timeline(this.container, items, safeOptions);
                 } catch (safeError) {
-                    console.error('Storyteller Suite: Error creating vis-timeline (safe fallback failed):', safeError);
+                    
                     new Notice('Timeline rendering failed. Check console for details.');
                     // Create a fallback message in the container
                     this.container.empty();
@@ -867,7 +867,7 @@ export class TimelineRenderer {
                         this.timeline.setCurrentTime(referenceDate);
                     }
                 } catch (timeError) {
-                    console.warn('Storyteller Suite: Could not set current time marker:', timeError);
+                    
                 }
             }
 
@@ -931,7 +931,7 @@ export class TimelineRenderer {
                         this.dependencyArrows = new Arrow(this.timeline, arrowSpecs, arrowOptions);
                     }
                 } catch (arrowError) {
-                    console.warn('Storyteller Suite: Error rendering dependency arrows:', arrowError);
+                    
                     // Non-critical, continue without arrows
                 }
             }
@@ -941,12 +941,12 @@ export class TimelineRenderer {
                 try {
                     this.renderNarrativeConnectors();
                 } catch (connectorError) {
-                    console.warn('Storyteller Suite: Error rendering narrative connectors:', connectorError);
+                    
                     // Non-critical, continue without connectors
                 }
             }
         } catch (error) {
-            console.error('Storyteller Suite: Fatal error in timeline rendering:', error);
+            
             new Notice('Timeline could not be rendered. Check console for details.');
             // Show error state in container
             this.container.empty();
@@ -1052,7 +1052,7 @@ export class TimelineRenderer {
      * Create a styled DOM element for group labels (sidebar chips)
      */
     private createGroupLabel(text: string, color: string): HTMLElement {
-        const el = activeDocument.createElement('div');
+        const el = createDiv();
         el.className = 'sts-group-chip';
         el.innerText = text;
         el.setCssStyles({ backgroundColor: this.hexWithAlpha(color, 0.15) });
@@ -1311,7 +1311,7 @@ export class TimelineRenderer {
             let contentText = eventName;
             
             if (!evt.name?.trim()) {
-                console.warn(`Storyteller Suite: Event at index ${originalIdx} has no name. File: ${evt.filePath || 'unknown'}`);
+                
             }
             if (this.narrativeOrder && evt.narrativeSequence !== undefined) {
                 contentText = `[${evt.narrativeSequence}] ${contentText}`;
@@ -1564,7 +1564,7 @@ export class TimelineRenderer {
                     || dependencyRef;
 
                 if (sourceIdx == null || sourceIdx < 0) {
-                    console.warn(`Storyteller Suite: Dependency "${dependencyLabel}" not found for event "${evt.name}". Arrow will not be rendered.`);
+                    
                     return;
                 }
 

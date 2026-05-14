@@ -475,7 +475,7 @@ export class TimelineView extends ItemView {
             this.renderer.applyFilters(this.currentState.filters);
             this.updateSearchDropdown();
         } catch (error) {
-            console.error('Storyteller Suite: Timeline view failed to initialize.', error);
+            
             this.timelineContainer.empty();
             const errorEl = this.timelineContainer.createDiv('storyteller-timeline-error');
             errorEl.createEl('h3', { text: 'Timeline error' });
@@ -547,7 +547,7 @@ export class TimelineView extends ItemView {
         // Get the selected track
         const track = this.plugin.getTimelineTrack(trackId);
         if (!track) {
-            console.error(`Track not found: ${trackId}`);
+            
             // Still rebuild with cleared filters to show all events
             this.currentState.filters = newFilters;
             await this.buildTimeline();
@@ -693,7 +693,7 @@ export class TimelineView extends ItemView {
                 // No need to call fitToView() as that would change the user's zoom level
                 // vis-timeline has internal resize handling
             } catch (error) {
-                console.warn('Timeline: Resize handling error:', error);
+                
             }
         }
     }
@@ -806,7 +806,7 @@ export class TimelineView extends ItemView {
                         }, 100);
                     }
                 } catch (error) {
-                    console.warn('Timeline: Could not restore visible range from state:', error);
+                    
                 }
             }
         }

@@ -891,7 +891,7 @@ export class NetworkGraphRenderer {
     private createInfoPanel(): void {
         if (!this.canvasEl) return;
 
-        this.infoPanelEl = activeDocument.createElement('div');
+        this.infoPanelEl = createDiv();
         this.infoPanelEl.className = 'storyteller-network-info-panel';
         this.infoPanelEl.setCssStyles({ position: 'absolute' }); // Absolute to canvas container
 
@@ -1214,7 +1214,7 @@ export class NetworkGraphRenderer {
     private createLegendPanel(): void {
         if (!this.canvasEl) return;
         
-        const legendPanel = activeDocument.createElement('div');
+        const legendPanel = createDiv();
         legendPanel.className = 'storyteller-network-legend-panel';
         legendPanel.setCssStyles({ position: 'absolute' });
         legendPanel.setCssStyles({ top: '16px' });
@@ -1363,7 +1363,7 @@ export class NetworkGraphRenderer {
     private createLegendToggleButton(): void {
         if (!this.canvasEl) return;
         
-        const toggleButton = activeDocument.createElement('button');
+        const toggleButton = createEl('button');
         toggleButton.className = 'storyteller-legend-toggle-btn';
         toggleButton.title = 'Show legend';
         toggleButton.textContent = 'Map';
@@ -1719,7 +1719,7 @@ export class NetworkGraphRenderer {
         });
 
         // Create download link
-        const link = activeDocument.createElement('a');
+        const link = createEl('a');
         link.download = `network-graph-${Date.now()}.${format}`;
         link.href = URL.createObjectURL(dataUrl);
         link.click();

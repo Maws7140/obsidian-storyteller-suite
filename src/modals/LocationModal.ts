@@ -45,7 +45,7 @@ export class LocationModal extends ResponsiveModal {
         // Remove charactersPresent, eventsHere, subLocations from initialization
         const initialLocation = location ? { ...location } : {
             name: '', description: '', history: '', locationType: undefined, region: undefined, status: undefined, profileImagePath: undefined,
-            parentLocation: undefined,
+            parentLocationId: undefined,
             customFields: {},
             filePath: undefined,
             mapId: undefined,
@@ -113,7 +113,7 @@ export class LocationModal extends ResponsiveModal {
                                             new Notice('Default template applied');
                                             this.refresh();
                                         } catch (error) {
-                                            console.error('[LocationModal] Error applying template:', error);
+                                            
                                             new Notice('Error applying default template');
                                         }
                                         resolve();
@@ -128,7 +128,7 @@ export class LocationModal extends ResponsiveModal {
                             await this.applyTemplateToLocation(defaultTemplate);
                             new Notice('Default template applied');
                         } catch (error) {
-                            console.error('[LocationModal] Error applying template:', error);
+                            
                             new Notice('Error applying default template');
                         }
                     }
@@ -199,7 +199,7 @@ export class LocationModal extends ResponsiveModal {
                                                         new Notice(`Template "${template.name}" applied`);
                                                         this.refresh();
                                                     } catch (error) {
-                                                        console.error('[LocationModal] Error applying template:', error);
+                                                        
                                                         new Notice('Error applying template');
                                                     }
                                                     resolve();
@@ -324,9 +324,9 @@ export class LocationModal extends ResponsiveModal {
                 // Also update legacy parentLocation for backward compatibility
                 if (locationId) {
                     const parent = await locationService.getLocation(locationId);
-                    this.location.parentLocation = parent?.name;
+                    this.location.parentLocationId = parent?.name;
                 } else {
-                    this.location.parentLocation = undefined;
+                    this.location.parentLocationId = undefined;
                 }
             })(); }
         );
@@ -390,7 +390,7 @@ export class LocationModal extends ResponsiveModal {
             .setButtonText(t('upload'))
             .setTooltip(t('uploadImage'))
             .onClick(async () => {
-                const fileInput = activeDocument.createElement('input');
+                const fileInput = createEl('input');
                 fileInput.type = 'file';
                 fileInput.accept = 'image/*';
                 fileInput.onchange = async () => {
@@ -413,7 +413,7 @@ export class LocationModal extends ResponsiveModal {
                             }
                             new Notice(t('imageUploaded', fileName));
                         } catch (error) {
-                            console.error('Error uploading image:', error);
+                            
                             new Notice(t('errorUploadingImage'));
                         }
                     }
@@ -747,7 +747,7 @@ export class LocationModal extends ResponsiveModal {
                             new Notice(t('locationDeleted', this.location.name));
                             this.close();
                         } catch (error) {
-                            console.error("Error deleting location:", error);
+                            
                             new Notice(t('failedToDelete', t('location')));
                         }
                     }
@@ -777,7 +777,7 @@ export class LocationModal extends ResponsiveModal {
                 await this.onSubmit(this.location);
                 this.close();
             } catch (error) {
-                console.error("Error saving location:", error);
+                
                 new Notice(t('failedToSave', t('location')));
             }
         }, { cta: true });
@@ -822,7 +822,7 @@ export class LocationModal extends ResponsiveModal {
         let currentLocation = locationMap.get(parentLocationName);
         const visited = new Set<string>();
         
-        while (currentLocation && currentLocation.parentLocation) {
+        while (currentLocation && currentLocation.parentLocationId) {
             // If we've seen this location before, there's already a cycle
             if (visited.has(currentLocation.name)) {
                 return true;
@@ -830,12 +830,12 @@ export class LocationModal extends ResponsiveModal {
             visited.add(currentLocation.name);
             
             // If the parent's ancestor is this location, it would create a cycle
-            if (currentLocation.parentLocation === this.location.name) {
+            if (currentLocation.parentLocationId === this.location.name) {
                 return true;
             }
             
             // Move up the hierarchy
-            currentLocation = locationMap.get(currentLocation.parentLocation);
+            currentLocation = locationMap.get(currentLocation.parentLocationId);
         }
 
         return false;
@@ -882,7 +882,7 @@ export class LocationModal extends ResponsiveModal {
         templateLoc = substitutionResult.value;
 
         if (substitutionResult.warnings.length > 0) {
-            console.warn('[LocationModal] Variable substitution warnings:', substitutionResult.warnings);
+            
         }
 
         // Apply the substituted template
@@ -909,9 +909,9 @@ export class LocationModal extends ResponsiveModal {
                 if (isRecord(parsed)) {
                     fields = { ...fields, ...parsed };
                 }
-                console.debug('[LocationModal] Parsed YAML fields:', parsed);
+                
             } catch (error) {
-                console.warn('[LocationModal] Failed to parse yamlContent:', error);
+                
             }
         } else if (customYamlFields) {
             // Old format: merge custom YAML fields
@@ -932,9 +932,9 @@ export class LocationModal extends ResponsiveModal {
                     fields.history = parsedSections['History'];
                 }
 
-                console.debug('[LocationModal] Parsed markdown sections:', parsedSections);
+                
             } catch (error) {
-                console.warn('[LocationModal] Failed to parse markdownContent:', error);
+                
             }
         } else if (sectionContent) {
             // Old format: apply section content
@@ -955,7 +955,7 @@ export class LocationModal extends ResponsiveModal {
                 configurable: true
             });
         }
-        console.debug('[LocationModal] Final location after template:', this.location);
+        
 
         // Clear relationships as they reference template entities
         this.location.connections = [];

@@ -241,8 +241,8 @@ export function extractAllRelationships(
         }
 
         // Locations -> parent location
-        if (type === 'location' && (entity).parentLocation) {
-            const targetId = resolveEntityId((entity).parentLocation, entityMap);
+        if (type === 'location' && (entity).parentLocationId) {
+            const targetId = resolveEntityId((entity).parentLocationId, entityMap);
             if (targetId && !edgeExists(edges, sourceId, targetId, 'neutral', 'within')) {
                 edges.push({
                     source: sourceId,

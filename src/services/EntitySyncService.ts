@@ -22,7 +22,7 @@ type EntityType = 'character' | 'location' | 'event' | 'item' | 'scene' | 'cultu
 type SyncEntityBase = { id?: string; name: string };
 type SyncEntity = (Character | Location | Event | PlotItem | Scene | Culture | Economy | MagicSystem | Chapter | CompendiumEntry) & Record<string, unknown>;
 type SyncValue = string | number | boolean | null | undefined | EntityRef | TypedRelationship | Record<string, unknown>;
-type RelationshipTransform = (value: never, sourceEntity: never) => SyncValue;
+type RelationshipTransform = (value: any, sourceEntity: any) => SyncValue;
 
 /**
  * Relationship mapping configuration
@@ -609,7 +609,7 @@ export class EntitySyncService {
                 try {
                     await this.syncRelationship(mapping, newEntity, oldEntity);
                 } catch (error) {
-                    console.error(`[EntitySyncService] Error syncing relationship ${mapping.sourceField} → ${mapping.targetField}:`, error);
+                    
                     // Continue with other relationships even if one fails
                 }
             }
@@ -623,7 +623,7 @@ export class EntitySyncService {
                 try {
                     await this.syncReverseRelationship(mapping, newEntity, oldEntity);
                 } catch (error) {
-                    console.error(`[EntitySyncService] Error syncing reverse relationship ${mapping.targetField} → ${mapping.sourceField}:`, error);
+                    
                     // Continue with other relationships even if one fails
                 }
             }
@@ -633,7 +633,7 @@ export class EntitySyncService {
                 await this.propagateSourceRename(entityType, newEntity, oldEntity);
             }
         } catch (error) {
-            console.error(`[EntitySyncService] Error syncing ${entityType} "${entityId}":`, error);
+            
             // Don't throw - sync failures shouldn't prevent saves
         } finally {
             this.syncInProgress.delete(syncKey);
@@ -800,7 +800,7 @@ export class EntitySyncService {
                     }
                 }
             } catch (error) {
-                console.error(`[EntitySyncService] Error syncing child location ${childId}:`, error);
+                
             }
         }
 
@@ -813,7 +813,7 @@ export class EntitySyncService {
                     await this.saveEntity('location', childLocation);
                 }
             } catch (error) {
-                console.error(`[EntitySyncService] Error clearing parent for child location ${childId}:`, error);
+                
             }
         }
     }
@@ -890,7 +890,7 @@ export class EntitySyncService {
                     }
                 }
             } catch (error) {
-                console.error(`[EntitySyncService] Error adding reverse link for ${itemId}:`, error);
+                
             }
         }
 
@@ -929,7 +929,7 @@ export class EntitySyncService {
                     }
                 }
             } catch (error) {
-                console.error(`[EntitySyncService] Error removing reverse link for ${itemId}:`, error);
+                
             }
         }
     }
@@ -975,7 +975,7 @@ export class EntitySyncService {
         try {
             const sourceEntity = await this.getEntity(mapping.sourceType, entityRef.entityId);
             if (!sourceEntity) {
-                console.warn(`[EntitySyncService] Source entity not found: ${mapping.sourceType} with id "${entityRef.entityId}"`);
+                
                 return;
             }
 
@@ -996,7 +996,7 @@ export class EntitySyncService {
                 }
             }
         } catch (error) {
-            console.error(`[EntitySyncService] Error updating source entity:`, error);
+            
         }
     }
 
@@ -1011,7 +1011,7 @@ export class EntitySyncService {
         try {
             const sourceEntity = await this.getEntity(mapping.sourceType, entityRef.entityId);
             if (!sourceEntity) {
-                console.warn(`[EntitySyncService] Source entity not found for clearing: ${mapping.sourceType} with id "${entityRef.entityId}"`);
+                
                 return;
             }
 
@@ -1052,7 +1052,7 @@ export class EntitySyncService {
                 await this.saveEntity(mapping.sourceType, sourceEntity);
             }
         } catch (error) {
-            console.error(`[EntitySyncService] Error clearing source entity:`, error);
+            
         }
     }
 
@@ -1086,7 +1086,7 @@ export class EntitySyncService {
             if (!targetEntity) {
                 // Target entity might have been deleted - still try to clean up references
                 // This handles stale references gracefully
-                console.warn(`[EntitySyncService] Target entity not found for removal: ${mapping.targetType} with id/name "${oldValue}" - may have been deleted`);
+                
                 
                 // For entityRefs, we need to search all locations to remove stale references
                 if (mapping.targetField === 'entityRefs' && mapping.targetType === 'location') {
@@ -1143,7 +1143,7 @@ export class EntitySyncService {
                 }
             }
         } catch (error) {
-            console.error(`[EntitySyncService] Error removing from target:`, error);
+            
         }
     }
 
@@ -1202,7 +1202,7 @@ export class EntitySyncService {
                 await this.propagateEntityRefToParents(parentLocation, entityRef);
             }
         } catch (error) {
-            console.error(`[EntitySyncService] Error propagating entityRef to parent:`, error);
+            
         }
     }
 
@@ -1236,7 +1236,7 @@ export class EntitySyncService {
                     }
                 } catch (error) {
                     // Continue checking other children
-                    console.warn(`[EntitySyncService] Error checking child location ${childId}:`, error);
+                    
                 }
             }
 
@@ -1254,7 +1254,7 @@ export class EntitySyncService {
                 }
             }
         } catch (error) {
-            console.error(`[EntitySyncService] Error removing entityRef from parent:`, error);
+            
         }
     }
 
@@ -1286,7 +1286,7 @@ export class EntitySyncService {
             }
             
             if (!targetEntity) {
-                console.warn(`[EntitySyncService] Target entity not found: ${mapping.targetType} with id/name "${newValue}"`);
+                
                 return;
             }
 
@@ -1298,7 +1298,7 @@ export class EntitySyncService {
                 // Check if already exists
                 const existingRef = entityRefs.find((ref: EntityRef) => ref.entityId === entityId);
                 if (mapping.transform) {
-                    const nextRef = mapping.transform(newValue, sourceEntity);
+                    const nextRef = mapping.transform(newValue, sourceEntity) as EntityRef;
                     if (!existingRef) {
                         entityRefs.push(nextRef);
                         targetEntity.entityRefs = entityRefs;
@@ -1364,7 +1364,7 @@ export class EntitySyncService {
                 }
             }
         } catch (error) {
-            console.error(`[EntitySyncService] Error adding to target:`, error);
+            
         }
     }
 
@@ -1430,7 +1430,7 @@ export class EntitySyncService {
             });
             return found || null;
         } catch (error) {
-            console.error(`[EntitySyncService] Error getting entity ${entityType} with id/name "${idOrName}":`, error);
+            
             return null;
         }
     }
@@ -1479,7 +1479,7 @@ export class EntitySyncService {
                     break;
             }
         } catch (error) {
-            console.error(`[EntitySyncService] Error saving entity:`, error);
+            
         } finally {
             delete entity._skipSync;
         }
@@ -1507,7 +1507,7 @@ export class EntitySyncService {
                 }
             }
         } catch (error) {
-            console.error(`[EntitySyncService] Error removing stale entity ref:`, error);
+            
         }
     }
 
@@ -1544,7 +1544,7 @@ export class EntitySyncService {
                 await this.removeCharacterFromRelationships(entityId);
             }
         } catch (error) {
-            console.error(`[EntitySyncService] Error handling entity deletion:`, error);
+            
         }
     }
     
@@ -1591,7 +1591,7 @@ export class EntitySyncService {
                 }
             }
         } catch (error) {
-            console.error(`[EntitySyncService] Error removing character from relationships:`, error);
+            
         }
     }
 
@@ -1698,7 +1698,7 @@ export class EntitySyncService {
                 }
             }
         } catch (error) {
-            console.error(`[EntitySyncService] Error removing entity references:`, error);
+            
         }
     }
 
@@ -1915,7 +1915,7 @@ export class EntitySyncService {
             }
 
         } catch (error) {
-            console.error(`[EntitySyncService] Error removing target references:`, error);
+            
         }
     }
 }

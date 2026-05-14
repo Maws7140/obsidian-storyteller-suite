@@ -114,7 +114,7 @@ export class WordCountTracker {
     }
 
     /**
-     * Track word count changes (call on document change)
+     * Track word count changes (call on activeDocument change)
      */
     async onDocumentChange(file: TFile): Promise<void> {
         if (!this.isTracking) return;

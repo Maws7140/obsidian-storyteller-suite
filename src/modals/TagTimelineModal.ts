@@ -241,7 +241,7 @@ export class TagTimelineModal extends Modal {
             }
         } catch (error) {
             new Notice(`Error generating preview: ${error}`);
-            console.error('Tag timeline generation error:', error);
+            
         }
     }
 
@@ -418,7 +418,7 @@ export class TagTimelineModal extends Modal {
                 await this.plugin.saveEvent(event);
                 created++;
             } catch (error) {
-                console.error(`Failed to create event ${preview.event.name}:`, error);
+                
                 failed++;
             }
         }

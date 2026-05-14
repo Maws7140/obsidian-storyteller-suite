@@ -55,7 +55,7 @@ export class TemplateApplicator {
         template: Template,
         options: TemplateApplicationOptions
     ): Promise<TemplateApplicationResult> {
-        console.debug('TemplateApplicator: Starting applyTemplate with:', { templateName: template.name, options });
+        
 
         const result: TemplateApplicationResult = {
             success: false,
@@ -92,19 +92,19 @@ export class TemplateApplicator {
 
             // Apply variable values if provided
             const variableValues = options.variableValues || {};
-            console.debug('TemplateApplicator: Variable values:', variableValues);
+            
 
             // Substitute variables in template entities
             const substitutedTemplate = this.substituteTemplateVariables(template, variableValues);
-            console.debug('TemplateApplicator: Substituted template entities:', substitutedTemplate.entities);
+            
 
             // Filter entities based on selection
             const filteredEntities = this.filterEntities(substitutedTemplate.entities, options.includeEntities);
-            console.debug('TemplateApplicator: Filtered entities:', filteredEntities);
+            
 
             // Phase 1: Create all groups first (they need IDs for other entities)
             if (filteredEntities.groups && filteredEntities.groups.length > 0) {
-                console.debug(`TemplateApplicator: Creating ${filteredEntities.groups.length} groups`);
+                
                 result.created.groups = await this.createGroups(
                     filteredEntities.groups,
                     options.storyId,
@@ -116,11 +116,11 @@ export class TemplateApplicator {
             const creationPromises: Promise<unknown>[] = [];
 
             if (filteredEntities.characters && filteredEntities.characters.length > 0) {
-                console.debug(`TemplateApplicator: Creating ${filteredEntities.characters.length} characters`);
+                
                 creationPromises.push(
                     this.createCharacters(filteredEntities.characters, options.storyId, options.fieldOverrides)
                         .then(chars => {
-                            console.debug(`TemplateApplicator: Created ${chars.length} characters`);
+                            
                             result.created.characters = chars;
                         })
                 );
@@ -176,11 +176,11 @@ export class TemplateApplicator {
             }
 
             if (filteredEntities.scenes && filteredEntities.scenes.length > 0) {
-                console.debug(`TemplateApplicator: Creating ${filteredEntities.scenes.length} scenes`);
+                
                 creationPromises.push(
                     this.createScenes(filteredEntities.scenes, options.storyId, options.fieldOverrides)
                         .then(scenes => {
-                            console.debug(`TemplateApplicator: Created ${scenes.length} scenes`);
+                            
                             result.created.scenes = scenes;
                         })
                 );
@@ -194,18 +194,18 @@ export class TemplateApplicator {
             }
 
             // Wait for all entity creation
-            console.debug('TemplateApplicator: Waiting for all entity creation promises...');
+            
             await Promise.all(creationPromises);
-            console.debug('TemplateApplicator: All entities created:', result.created);
+            
 
             // Phase 3: Map all relationships now that all entities exist
-            console.debug('TemplateApplicator: Mapping relationships...');
+            
             await this.mapAllRelationships(result.created, options.mergeRelationships || false);
 
             // Phase 4: Save all entities with mapped relationships
-            console.debug('TemplateApplicator: Saving all entities...');
+            
             await this.saveAllEntities(result.created);
-            console.debug('TemplateApplicator: All entities saved');
+            
 
             // Success!
             result.success = true;
@@ -395,7 +395,7 @@ export class TemplateApplicator {
                     fields = { ...fields, ...parsed };
                 }
             } catch (error) {
-                console.warn('Failed to parse yamlContent:', error);
+                
             }
         } else if (isRecord(customYamlFields)) {
             // Old format: merge custom YAML fields
@@ -416,7 +416,7 @@ export class TemplateApplicator {
                     (fields).backstory = parsedSections['Backstory'];
                 }
             } catch (error) {
-                console.warn('Failed to parse markdownContent:', error);
+                
             }
         } else if (isRecord(sectionContent)) {
             // Old format: use sectionContent
@@ -856,8 +856,8 @@ export class TemplateApplicator {
 
         // Map location relationships
         for (const loc of created.locations) {
-            if (loc.parentLocation) {
-                loc.parentLocation = this.resolveToName(loc.parentLocation) || loc.parentLocation;
+            if (loc.parentLocationId) {
+                loc.parentLocationId = this.resolveToName(loc.parentLocationId) || loc.parentLocationId;
             }
             loc.groups = this.mapGroups(loc.groups);
             loc.connections = this.mapTypedRelationships(loc.connections);
@@ -1134,7 +1134,7 @@ export class TemplateApplicator {
 
         // Log warnings if any
         if (allWarnings.length > 0) {
-            console.warn('Template variable substitution warnings:', allWarnings);
+            
         }
 
         return clonedTemplate;

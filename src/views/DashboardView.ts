@@ -281,7 +281,7 @@ export class DashboardView extends ItemView {
                     }, 50);
                 }
             } catch (error) {
-                console.error('Storyteller Suite: Error in debounced search:', error);
+                
             }
         }, PlatformUtils.getSearchDebounceDelay());
     }
@@ -370,7 +370,7 @@ export class DashboardView extends ItemView {
         
         // On mobile, don't refresh while user is actively typing to prevent keyboard dismissal
         if (PlatformUtils.isMobile() && this.isUserTyping) {
-            console.debug('Storyteller Suite: Skipping refresh while user is typing on mobile');
+            
             return;
         }
         
@@ -396,7 +396,7 @@ export class DashboardView extends ItemView {
                     () => !this.isSimplifiedMobileDashboard()
                 );
             } catch (error) {
-                console.error(`Storyteller Suite: Error refreshing active tab ${this.activeTabId}:`, error);
+                
             } finally {
                 this._suppressScrollCapture = false;
                 this.isRefreshingActiveTab = false;
@@ -697,7 +697,7 @@ export class DashboardView extends ItemView {
                             this.currentSearchInput.blur();
                         }
                     } catch (error) {
-                        console.error('Storyteller Suite: Error in mobile keyboard dismissal handler:', error);
+                        
                     }
                 });
             }
@@ -716,7 +716,7 @@ export class DashboardView extends ItemView {
             // Force a layout recalculation to ensure proper rendering
             this.tabHeaderContainer.setCssStyles({ display: 'flex' });
         } catch (e) {
-            console.warn('Storyteller: failed to update layout', e);
+            
         }
     }
 
@@ -800,7 +800,7 @@ export class DashboardView extends ItemView {
     }
 
     private createTabButtonEl(tab: { id: string; label: string }, mode: 'normal' | 'compact', forMeasure = false): HTMLElement {
-        const btn = activeDocument.createElement('button');
+        const btn = createEl('button');
         btn.className = 'storyteller-tab-header';
         btn.setAttribute('role', 'tab');
         btn.dataset.tabId = tab.id;
@@ -817,7 +817,7 @@ export class DashboardView extends ItemView {
             btn.setCssStyles({ maxWidth: '220px' });
         }
 
-        const labelSpan = activeDocument.createElement('span');
+        const labelSpan = createSpan();
         labelSpan.textContent = tab.label;
         // Always render label (icons removed); keep visible in all modes
         labelSpan.setCssStyles({ display: 'inline' });
@@ -1828,7 +1828,7 @@ export class DashboardView extends ItemView {
             // Store renderer instance for future refreshes
             this.networkGraphRenderer = graphRenderer;
         } catch (error) {
-            console.error('Error initializing network graph:', error);
+            
             graphContainer.createEl('p', {
                 text: 'Error loading network graph. See console for details.',
                 cls: 'storyteller-empty-state'
@@ -1880,7 +1880,7 @@ export class DashboardView extends ItemView {
                             }
                         }
                     } catch (error) {
-                        console.error("Error uploading file:", error);
+                        
                         new Notice("Error uploading file. Check console for details.");
                     } finally {
                         // Reset file input value to allow uploading the same file again
@@ -3555,7 +3555,7 @@ export class DashboardView extends ItemView {
                     new Notice(`${t('compileFailed')}: ${result.error || 'Unknown error'}`);
                 }
             } catch (error) {
-                console.error('Compile error:', error);
+                
                 new Notice(`${t('compileFailed')}: ${error}`);
             }
         };
@@ -3578,7 +3578,7 @@ export class DashboardView extends ItemView {
                     imgEl.src = this.getImageSrc(character.profileImagePath);
                     imgEl.alt = character.name;
                 } catch (e) {
-                    console.error(`Error loading profile image for ${character.name}: ${character.profileImagePath}`, e);
+                    
                     imgContainer.createSpan({ text: '?', title: 'Error loading image' }); // Placeholder on error
                 }
             } else {
@@ -3654,7 +3654,7 @@ export class DashboardView extends ItemView {
                     imgEl.src = this.getImageSrc(location.profileImagePath);
                     imgEl.alt = location.name;
                 } catch (e) {
-                    console.error(`Error loading image for ${location.name}: ${location.profileImagePath}`, e);
+                    
                     pfpContainer.createSpan({ text: '?', title: 'Error loading image' });
                 }
             } else {
@@ -3678,8 +3678,8 @@ export class DashboardView extends ItemView {
             if (location.region) {
                 extraInfoEl.createSpan({ cls: 'storyteller-meta-badge storyteller-loc-region-badge', text: location.region });
             }
-            if (location.parentLocation) {
-                extraInfoEl.createSpan({ cls: 'storyteller-meta-badge storyteller-loc-parent-badge', text: `↑ ${location.parentLocation}` });
+            if (location.parentLocationId) {
+                extraInfoEl.createSpan({ cls: 'storyteller-meta-badge storyteller-loc-parent-badge', text: `↑ ${location.parentLocationId}` });
             }
             if (location.status) {
                 const statusSlug = location.status.toLowerCase().replace(/\s+/g, '-');
@@ -3732,7 +3732,7 @@ export class DashboardView extends ItemView {
                     imgEl.src = this.getImageSrc(event.profileImagePath);
                     imgEl.alt = event.name;
                 } catch (e) {
-                    console.error(`Error loading image for ${event.name}: ${event.profileImagePath}`, e);
+                    
                     pfpContainer.createSpan({ text: '?', title: 'Error loading image' });
                 }
             } else {
@@ -4951,7 +4951,7 @@ export class DashboardView extends ItemView {
      * Create the template list element
      */
     private createTemplateListElement(): HTMLElement {
-        const listContainer = activeDocument.createElement('div');
+        const listContainer = createDiv();
         listContainer.className = 'storyteller-template-library-list';
 
         if (this.templatesCache.length === 0) {
@@ -5106,10 +5106,10 @@ export class DashboardView extends ItemView {
      * Handle using a template
      */
     private async handleUseTemplate(template: Template): Promise<void> {
-        console.debug('DashboardView: handleUseTemplate called with template:', template.name);
+        
         // Apply the template with variable collection prompt
         await this.plugin.applyTemplateWithPrompt(template);
-        console.debug('DashboardView: applyTemplateWithPrompt completed');
+        
     }
 
     /**
@@ -5137,7 +5137,7 @@ export class DashboardView extends ItemView {
                 await this.renderTemplatesContent(container);
                 new Notice(t('templateDeleted', template.name));
             } catch (error) {
-                console.error('Error deleting template:', error);
+                
                 new Notice(t('failedToDeleteTemplate', (error as Error).message));
             }
         }
@@ -5153,7 +5153,7 @@ export class DashboardView extends ItemView {
             new Notice(t('templateDuplicated', newName));
             await this.renderTemplatesContent(container);
         } catch (error) {
-            console.error('Error duplicating template:', error);
+            
             new Notice(t('failedToDuplicateTemplate', (error as Error).message));
         }
     }

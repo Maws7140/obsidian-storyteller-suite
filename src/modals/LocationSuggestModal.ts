@@ -23,7 +23,7 @@ export class LocationSuggestModal extends FuzzySuggestModal<Location> {
         try {
             this.locations = await this.plugin.listLocations();
         } catch (error) {
-            console.error("Storyteller Suite: Error fetching locations for suggester:", error);
+            
             new Notice(t('errorLoadingLocations'));
             this.locations = []; // Ensure it's an empty array on error
         }

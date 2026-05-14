@@ -249,7 +249,7 @@ export class CreateTemplateFromEntityModal extends ResponsiveModal {
             new Notice(`Template "${template.name}" created successfully!`);
             this.close();
         } catch (error) {
-            console.error('Error creating template:', error);
+            
             const message = error instanceof Error ? error.message : String(error);
             new Notice(`Failed to create template: ${message}`);
         }

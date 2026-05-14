@@ -288,7 +288,7 @@ export class TimelineTrackModal extends ResponsiveModal {
                 new Notice(`Track "${this.track.name}" ${this.isNew ? 'created' : 'updated'} successfully`);
                 this.close();
             } catch (error) {
-                console.error('Error saving track:', error);
+                
                 new Notice('Error saving track. Check console for details.');
             }
         }, { cta: true });

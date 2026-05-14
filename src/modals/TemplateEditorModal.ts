@@ -826,7 +826,7 @@ export class TemplateEditorModal extends ResponsiveModal {
             new Notice(`Template "${this.template.name}" saved successfully!`);
             this.close();
         } catch (error) {
-            console.error('Error saving template:', error);
+            
             const message = error instanceof Error ? error.message : String(error);
             new Notice(`Failed to save template: ${message}`);
         }

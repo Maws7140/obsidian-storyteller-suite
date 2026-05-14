@@ -101,7 +101,7 @@ export class GroupModal extends ResponsiveModal {
                                             new Notice('Default template applied');
                                             this.refresh();
                                         } catch (error) {
-                                            console.error('[GroupModal] Error applying template:', error);
+                                            
                                             new Notice('Error applying default template');
                                         }
                                         resolve();
@@ -115,7 +115,7 @@ export class GroupModal extends ResponsiveModal {
                             await this.applyTemplateToGroup(defaultTemplate);
                             new Notice('Default template applied');
                         } catch (error) {
-                            console.error('[GroupModal] Error applying template:', error);
+                            
                             new Notice('Error applying default template');
                         }
                     }
@@ -163,7 +163,7 @@ export class GroupModal extends ResponsiveModal {
                                                         new Notice(`Template "${template.name}" applied`);
                                                         this.refresh();
                                                     } catch (error) {
-                                                        console.error('[GroupModal] Error applying template:', error);
+                                                        
                                                         new Notice('Error applying template');
                                                     }
                                                     resolve();
@@ -639,7 +639,7 @@ export class GroupModal extends ResponsiveModal {
         // Notify user of repairs and broken links
         if (repairedLinks.length > 0) {
             new Notice(`Repaired ${repairedLinks.length} entity link(s) in group "${this.group.name}"`);
-            console.debug('Repaired entity links:', repairedLinks);
+            
         }
 
         if (brokenLinks.length > 0) {
@@ -648,10 +648,7 @@ export class GroupModal extends ResponsiveModal {
                 `Check console for details.`,
                 5000
             );
-            console.warn(
-                `Broken entity links removed from group "${this.group.name}":`,
-                brokenLinks
-            );
+            
         }
     }
 
@@ -939,7 +936,7 @@ export class GroupModal extends ResponsiveModal {
         templateGroup = substitutionResult.value;
 
         if (substitutionResult.warnings.length > 0) {
-            console.warn('[GroupModal] Variable substitution warnings:', substitutionResult.warnings);
+            
         }
 
         // Apply the substituted template
@@ -967,9 +964,9 @@ export class GroupModal extends ResponsiveModal {
                 if (parsed && typeof parsed === 'object') {
                     fields = { ...fields, ...parsed };
                 }
-                console.debug('[GroupModal] Parsed YAML fields:', parsed);
+                
             } catch (error) {
-                console.warn('[GroupModal] Failed to parse yamlContent:', error);
+                
             }
         } else if (customYamlFields) {
             // Old format: merge custom YAML fields
@@ -999,9 +996,9 @@ export class GroupModal extends ResponsiveModal {
                     fields.goals = parsedSections['Goals'];
                 }
 
-                console.debug('[GroupModal] Parsed markdown sections:', parsedSections);
+                
             } catch (error) {
-                console.warn('[GroupModal] Failed to parse markdownContent:', error);
+                
             }
         } else if (sectionContent) {
             // Old format: apply section content
@@ -1023,7 +1020,7 @@ export class GroupModal extends ResponsiveModal {
                 configurable: true
             });
         }
-        console.debug('[GroupModal] Final group after template:', this.group);
+        
 
         // Clear relationships as they reference template entities
         this.group.members = [];

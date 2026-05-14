@@ -69,21 +69,21 @@ export class TemplateStorageManager {
             const { FANTASY_KINGDOM_TEMPLATE } = await import('./prebuilt/FantasyKingdom');
             this.builtInTemplates.set(FANTASY_KINGDOM_TEMPLATE.id, FANTASY_KINGDOM_TEMPLATE);
         } catch {
-            console.debug('Fantasy Kingdom template not yet available');
+            
         }
 
         try {
             const { CYBERPUNK_METROPOLIS_TEMPLATE } = await import('./prebuilt/CyberpunkMetropolis');
             this.builtInTemplates.set(CYBERPUNK_METROPOLIS_TEMPLATE.id, CYBERPUNK_METROPOLIS_TEMPLATE);
         } catch {
-            console.debug('Cyberpunk Metropolis template not yet available');
+            
         }
 
         try {
             const { MURDER_MYSTERY_TEMPLATE } = await import('./prebuilt/MurderMystery');
             this.builtInTemplates.set(MURDER_MYSTERY_TEMPLATE.id, MURDER_MYSTERY_TEMPLATE);
         } catch {
-            console.debug('Murder Mystery template not yet available');
+            
         }
 
         // Load built-in character templates
@@ -93,7 +93,7 @@ export class TemplateStorageManager {
                 this.builtInTemplates.set(template.id, template);
             });
         } catch (error) {
-            console.debug('Character templates not yet available:', error);
+            
         }
 
         // Load built-in location templates
@@ -103,7 +103,7 @@ export class TemplateStorageManager {
                 this.builtInTemplates.set(template.id, template);
             });
         } catch (error) {
-            console.debug('Location templates not yet available:', error);
+            
         }
 
         // Load built-in event templates
@@ -113,7 +113,7 @@ export class TemplateStorageManager {
                 this.builtInTemplates.set(template.id, template);
             });
         } catch (error) {
-            console.debug('Event templates not yet available:', error);
+            
         }
 
         // Load built-in item templates
@@ -123,7 +123,7 @@ export class TemplateStorageManager {
                 this.builtInTemplates.set(template.id, template);
             });
         } catch (error) {
-            console.debug('Item templates not yet available:', error);
+            
         }
 
         // Load built-in group templates
@@ -133,7 +133,7 @@ export class TemplateStorageManager {
                 this.builtInTemplates.set(template.id, template);
             });
         } catch (error) {
-            console.debug('Group templates not yet available:', error);
+            
         }
 
         // Load built-in worldbuilding templates (Culture, Economy, MagicSystem)
@@ -143,7 +143,7 @@ export class TemplateStorageManager {
                 this.builtInTemplates.set(template.id, template);
             });
         } catch (error) {
-            console.debug('Worldbuilding templates not yet available:', error);
+            
         }
 
         // Load built-in story structure templates (Chapter, Scene, Reference)
@@ -153,7 +153,7 @@ export class TemplateStorageManager {
                 this.builtInTemplates.set(template.id, template);
             });
         } catch (error) {
-            console.debug('Story structure templates not yet available:', error);
+            
         }
 
         // Load built-in map templates
@@ -163,7 +163,7 @@ export class TemplateStorageManager {
                 this.builtInTemplates.set(template.id, template);
             });
         } catch (error) {
-            console.debug('Map templates not yet available:', error);
+            
         }
     }
 
@@ -219,10 +219,10 @@ export class TemplateStorageManager {
                     if (validation.isValid) {
                         this.userTemplates.set(template.id, template);
                     } else {
-                        console.warn(`Invalid template ${file.path}:`, validation.errors);
+                        
                     }
                 } catch (error) {
-                    console.error(`Error loading template ${file.path}:`, error);
+                    
                 }
             }
         }
@@ -238,7 +238,7 @@ export class TemplateStorageManager {
                 await this.app.vault.createFolder(this.templateFolder);
             } catch (error) {
                 // Folder might have been created by another process
-                console.debug('Template folder already exists or could not be created:', error);
+                
             }
         }
     }

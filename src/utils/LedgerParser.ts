@@ -85,7 +85,7 @@ export function parseLedger(blockContent: string): LedgerEntry[] {
         .filter((e): e is LedgerEntry => e !== null);
 }
 
-/** Extract all ```ledger blocks from a full markdown document and return their entries. */
+/** Extract all ```ledger blocks from a full markdown activeDocument and return their entries. */
 export function extractLedgerEntries(markdown: string): LedgerEntry[] {
     const entries: LedgerEntry[] = [];
     const fenceRe = /```ledger\s*\n([\s\S]*?)```/gi;

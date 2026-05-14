@@ -68,7 +68,7 @@ export class SceneModal extends ResponsiveModal {
                                             new Notice('Default template applied');
                                             this.refresh();
                                         } catch (error) {
-                                            console.error('[SceneModal] Error applying template:', error);
+                                            
                                             new Notice('Error applying default template');
                                         }
                                         resolve();
@@ -83,7 +83,7 @@ export class SceneModal extends ResponsiveModal {
                             await this.applyTemplateToScene(defaultTemplate);
                             new Notice('Default template applied');
                         } catch (error) {
-                            console.error('[SceneModal] Error applying template:', error);
+                            
                             new Notice('Error applying default template');
                         }
                     }
@@ -120,7 +120,7 @@ export class SceneModal extends ResponsiveModal {
                                                         new Notice(`Template "${template.name}" applied`);
                                                         this.refresh();
                                                     } catch (error) {
-                                                        console.error('[SceneModal] Error applying template:', error);
+                                                        
                                                         new Notice('Error applying template');
                                                     }
                                                     resolve();
@@ -607,7 +607,7 @@ export class SceneModal extends ResponsiveModal {
         templateScene = substitutionResult.value;
 
         if (substitutionResult.warnings.length > 0) {
-            console.warn('[SceneModal] Variable substitution warnings:', substitutionResult.warnings);
+            
         }
 
         // Apply the substituted template
@@ -636,9 +636,9 @@ export class SceneModal extends ResponsiveModal {
                 if (isRecord(parsed)) {
                     fields = { ...fields, ...parsed };
                 }
-                console.debug('[SceneModal] Parsed YAML fields:', parsed);
+                
             } catch (error) {
-                console.warn('[SceneModal] Failed to parse yamlContent:', error);
+                
             }
         } else if (customYamlFields) {
             // Old format: merge custom YAML fields
@@ -662,9 +662,9 @@ export class SceneModal extends ResponsiveModal {
                         fields.beats = beatText.split('\n').map(s => s.trim()).filter(Boolean);
                     }
                 }
-                console.debug('[SceneModal] Parsed markdown sections:', parsedSections);
+                
             } catch (error) {
-                console.warn('[SceneModal] Failed to parse markdownContent:', error);
+                
             }
         } else if (sectionContent) {
             // Old format: apply section content
@@ -685,7 +685,7 @@ export class SceneModal extends ResponsiveModal {
                 configurable: true
             });
         }
-        console.debug('[SceneModal] Final scene after template:', this.scene);
+        
 
         // Clear relationships as they reference template entities
         this.scene.linkedCharacters = [];

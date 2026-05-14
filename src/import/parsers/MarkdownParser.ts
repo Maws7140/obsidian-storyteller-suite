@@ -69,7 +69,7 @@ interface Heading {
 }
 
 /**
- * Markdown document parser
+ * Markdown activeDocument parser
  */
 export class MarkdownParser implements DocumentParser {
     name = 'Markdown Parser';
@@ -130,7 +130,7 @@ export class MarkdownParser implements DocumentParser {
     }
 
     /**
-     * Extract all headings from document
+     * Extract all headings from activeDocument
      */
     private extractHeadings(lines: string[]): Heading[] {
         const headings: Heading[] = [];
@@ -290,7 +290,7 @@ export class MarkdownParser implements DocumentParser {
     }
 
     /**
-     * Extract document title (if H1 at top)
+     * Extract activeDocument title (if H1 at top)
      */
     private extractDocumentTitle(headings: Heading[]): string | undefined {
         if (headings.length > 0 && headings[0].level === 1) {
@@ -325,7 +325,7 @@ export class MarkdownParser implements DocumentParser {
                 detectionMethod: 'No structure detected'
             },
             chapters: [chapter],
-            warnings: ['No markdown headings found. Treating entire document as one chapter.'],
+            warnings: ['No markdown headings found. Treating entire activeDocument as one chapter.'],
             format: this.format
         };
     }

@@ -21,7 +21,7 @@ const stripFrontmatterStep: CompileStepDefinition = {
     options: [],
     compile: async (input, context) => {
         const stripFm = (text: string): string => {
-            // Match YAML frontmatter at the start of the document
+            // Match YAML frontmatter at the start of the activeDocument
             const fmRegex = /^---\r?\n[\s\S]*?\r?\n---\r?\n?/;
             return text.replace(fmRegex, '');
         };
@@ -336,7 +336,7 @@ const insertSeparatorStep: CompileStepDefinition = {
 const concatenateStep: CompileStepDefinition = {
     id: 'concatenate',
     name: 'Concatenate Scenes',
-    description: 'Joins all scenes into a single manuscript document',
+    description: 'Joins all scenes into a single manuscript activeDocument',
     availableKinds: ['join'],
     options: [
         {
@@ -1376,7 +1376,7 @@ const exportHtmlStep: CompileStepDefinition = {
         {
             id: 'wrapInDocument',
             name: 'Full HTML Document',
-            description: 'Wrap content in complete HTML document structure',
+            description: 'Wrap content in complete HTML activeDocument structure',
             type: 'boolean',
             default: true
         }

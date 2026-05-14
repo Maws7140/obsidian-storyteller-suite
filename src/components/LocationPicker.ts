@@ -49,7 +49,7 @@ export class LocationPicker {
                     void this.render();
                 });
             } catch (error) {
-                console.error('Error getting location path:', error);
+                
                 selectionDisplay.createSpan({ cls: 'selection-empty', text: 'Invalid location' });
             }
         } else {
@@ -124,7 +124,7 @@ export class LocationPicker {
             if (hasChildren) {
                 const childContainer = container.createDiv({ cls: 'tree-children hidden' });
                 const children = allLocations.filter(l => 
-                    (location.id || location.name) === (l.parentLocationId || l.parentLocation)
+                    (location.id || location.name) === (l.parentLocationId || l.parentLocationId)
                 );
                 await this.renderTree(childContainer, children, allLocations, depth + 1);
                 

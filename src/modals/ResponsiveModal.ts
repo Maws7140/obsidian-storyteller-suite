@@ -185,7 +185,7 @@ export abstract class ResponsiveModal extends Modal {
      * @returns ButtonComponent
      */
     protected createMobileButton(text: string, callback: () => void, isPrimary = false): ButtonComponent {
-        const button = new ButtonComponent(activeDocument.createElement('button'))
+        const button = new ButtonComponent(createEl('button'))
             .setButtonText(text)
             .onClick(callback);
 

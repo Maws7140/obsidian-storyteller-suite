@@ -149,7 +149,7 @@ export class CompileEngine {
                 const stepDef = this.stepRegistry.get(stepConfig.stepType);
                 
                 if (!stepDef) {
-                    console.warn(`[Compile] Unknown step type: ${stepConfig.stepType}`);
+                    
                     continue;
                 }
 
@@ -265,11 +265,11 @@ export class CompileEngine {
                     if (file instanceof TFile) {
                         contents = await this.app.vault.read(file);
                     } else {
-                        console.warn(`[Compile] Scene file not found: ${scene.filePath}`);
+                        
                         contents = ''; // Empty content if file missing
                     }
                 } catch (error) {
-                    console.error(`[Compile] Error reading scene file ${scene.filePath}:`, error);
+                    
                     contents = ''; // Empty content on read error
                 }
             } else if (scene.content) {
@@ -1373,7 +1373,7 @@ export class CompileEngine {
         return {
             id: 'html-export-workflow',
             name: 'HTML Export',
-            description: 'Exports as a styled HTML document for web viewing or conversion',
+            description: 'Exports as a styled HTML activeDocument for web viewing or conversion',
             steps: [
                 {
                     id: 'step-1',

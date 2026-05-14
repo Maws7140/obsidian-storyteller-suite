@@ -57,7 +57,7 @@ const SCENE_BREAK_PATTERNS = [
 ];
 
 /**
- * HTML document parser
+ * HTML activeDocument parser
  */
 export class HtmlParser implements DocumentParser {
     name = 'HTML Parser';
@@ -95,7 +95,7 @@ export class HtmlParser implements DocumentParser {
     }
 
     /**
-     * Parse HTML document
+     * Parse HTML activeDocument
      */
     private parseHtmlDocument(doc: Document, fileName: string): ParsedDocument {
         const warnings: string[] = [];
@@ -133,7 +133,7 @@ export class HtmlParser implements DocumentParser {
         const headings = body.querySelectorAll('h1, h2, h3, h4, h5, h6');
         
         if (headings.length === 0) {
-            // No headings, treat entire document as one chapter
+            // No headings, treat entire activeDocument as one chapter
             const textContent = this.extractTextContent(body);
             return {
                 metadata: {
@@ -246,7 +246,7 @@ export class HtmlParser implements DocumentParser {
     }
 
     /**
-     * Extract chapters from document
+     * Extract chapters from activeDocument
      */
     private extractChapters(
         body: HTMLElement,

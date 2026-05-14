@@ -120,7 +120,7 @@ export class EventModal extends ResponsiveModal {
                                             new Notice(t('defaultTemplateApplied'));
                                             this.refresh(); // Refresh to show applied values
                                         } catch (error) {
-                                            console.error('[EventModal] Error applying template:', error);
+                                            
                                             new Notice('Error applying default template');
                                         }
                                         resolve();
@@ -128,7 +128,7 @@ export class EventModal extends ResponsiveModal {
                                     resolve
                                 ).open();
                             }).catch((error) => {
-                                console.error('[EventModal] Failed to load TemplateApplicationModal:', error);
+                                
                                 new Notice('Failed to load template application dialog');
                                 resolve();
                             });
@@ -139,7 +139,7 @@ export class EventModal extends ResponsiveModal {
                             await this.applyTemplateToEvent(defaultTemplate);
                             new Notice(t('defaultTemplateApplied'));
                         } catch (error) {
-                            console.error('[EventModal] Error applying template:', error);
+                            
                             new Notice(t('errorApplyingDefaultTemplate'));
                         }
                     }
@@ -176,7 +176,7 @@ export class EventModal extends ResponsiveModal {
                                                         new Notice(`Template "${template.name}" applied`);
                                                         this.refresh();
                                                     } catch (error) {
-                                                        console.error('[EventModal] Error applying template:', error);
+                                                        
                                                         new Notice('Error applying template');
                                                     }
                                                     resolve();
@@ -520,7 +520,7 @@ export class EventModal extends ResponsiveModal {
             .setButtonText(t('upload'))
             .setTooltip(t('uploadImage'))
             .onClick(async () => {
-                const fileInput = activeDocument.createElement('input');
+                const fileInput = createEl('input');
                 fileInput.type = 'file';
                 fileInput.accept = 'image/*';
                 fileInput.onchange = async () => {
@@ -543,7 +543,7 @@ export class EventModal extends ResponsiveModal {
                             }
                             new Notice(t('imageUploaded', fileName));
                         } catch (error) {
-                            console.error('Error uploading image:', error);
+                            
                             new Notice(t('errorUploadingImage'));
                         }
                     }
@@ -678,7 +678,7 @@ export class EventModal extends ResponsiveModal {
                             await this.onDelete(this.event);
                             this.close();
                         } catch (error) {
-                            console.error("Error deleting event:", error);
+                            
                             new Notice(t('workspaceLeafCreateError'));
                         }
                     }
@@ -705,7 +705,7 @@ export class EventModal extends ResponsiveModal {
                 await this.onSubmit(this.event);
                 this.close();
             } catch (error) {
-                console.error("Error saving event:", error);
+                
                 new Notice(t('workspaceLeafRevealError'));
             }
         }, { cta: true });
@@ -867,7 +867,7 @@ export class EventModal extends ResponsiveModal {
         templateEvt = substitutionResult.value;
 
         if (substitutionResult.warnings.length > 0) {
-            console.warn('[EventModal] Variable substitution warnings:', substitutionResult.warnings);
+            
         }
 
         // Apply the substituted template
@@ -906,9 +906,9 @@ export class EventModal extends ResponsiveModal {
                 if (isRecord(parsed)) {
                     fields = { ...fields, ...parsed };
                 }
-                console.debug('[EventModal] Parsed YAML fields:', parsed);
+                
             } catch (error) {
-                console.warn('[EventModal] Failed to parse yamlContent:', error);
+                
             }
         } else if (customYamlFields) {
             // Old format: merge custom YAML fields
@@ -928,9 +928,9 @@ export class EventModal extends ResponsiveModal {
                 if ('Outcome' in parsedSections) {
                     fields.outcome = parsedSections['Outcome'];
                 }
-                console.debug('[EventModal] Parsed markdown sections:', parsedSections);
+                
             } catch (error) {
-                console.warn('[EventModal] Failed to parse markdownContent:', error);
+                
             }
         } else if (sectionContent) {
             // Old format: apply section content
@@ -951,7 +951,7 @@ export class EventModal extends ResponsiveModal {
                 configurable: true
             });
         }
-        console.debug('[EventModal] Final event after template:', this.event);
+        
 
         // Clear relationships as they reference template entities
         this.event.characters = [];

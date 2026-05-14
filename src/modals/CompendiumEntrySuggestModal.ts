@@ -34,7 +34,7 @@ export class CompendiumEntrySuggestModal extends FuzzySuggestModal<CompendiumEnt
         try {
             this.entries = await this.plugin.listCompendiumEntries();
         } catch (error) {
-            console.error('[CompendiumEntrySuggestModal] Error fetching entries:', error);
+            
             new Notice('Error loading compendium entries.');
             this.entries = [];
         }

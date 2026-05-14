@@ -691,11 +691,11 @@ export default class StorytellerSuitePlugin extends Plugin {
             if (!isNaN(parsed.getTime())) {
                 // Validate that the parsed date matches the input for BCE dates
                 if (iso.startsWith('-') && parsed.getFullYear() >= 0) {
-                    console.warn(`BCE date parsing issue: Input "${iso}" parsed as CE year ${parsed.getFullYear()}`);
+                    
                 }
                 return parsed;
             } else {
-                console.warn(`Invalid custom today date: "${iso}". Using system today.`);
+                
             }
         }
         return new Date();
@@ -1237,7 +1237,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 					// Rename the story folder
 					await this.app.fileManager.renameFile(oldFolder, newStoryPath);
 				} catch (error) {
-					console.error(`Error renaming story folder from ${oldStoryPath} to ${newStoryPath}:`, error);
+					
 					throw new Error(`Failed to rename story folder: ${error}`);
 				}
 			}
@@ -1254,7 +1254,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 	 * This runs once per vault on plugin upgrade
 	 */
 	async migrateRelationshipsToTyped(): Promise<void> {
-		console.debug('Storyteller suite: Starting relationships migration to typed format...');
+		
 		
 		try {
 			const characters = await this.listCharacters();
@@ -1306,12 +1306,12 @@ export default class StorytellerSuitePlugin extends Plugin {
 			}
 
 			if (migratedCount > 0) {
-				console.debug(`Storyteller suite: Migrated ${migratedCount} character(s) to typed relationships.`);
+				
 			} else {
-				console.debug('Storyteller suite: No migration needed for relationships.');
+				
 			}
 		} catch (error) {
-			console.error('Storyteller suite: Error during relationships migration:', error);
+			
 		}
 	}
 
@@ -1321,7 +1321,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 	 * Runs once on update to v2.0
 	 */
 	async backfillBidirectionalRelationships(): Promise<void> {
-		console.debug('Storyteller suite: Starting bidirectional link backfill...');
+		
 		
 		const { EntitySyncService } = await import('./services/EntitySyncService');
 		const syncService = new EntitySyncService(this);
@@ -1384,10 +1384,10 @@ export default class StorytellerSuitePlugin extends Plugin {
                 updatedCount++;
             }
 
-			console.debug(`Storyteller suite: Backfill complete. Processed ${updatedCount} entities.`);
+			
             new Notice(`Storyteller: Updated links for ${updatedCount} entities.`);
 		} catch (error) {
-			console.error('Storyteller suite: Error during bidirectional backfill:', error);
+			
 		}
 	}
 
@@ -1447,7 +1447,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 						try {
 							await this.templateNoteManager.handleNoteChange(file);
 						} catch (error) {
-							console.error('Error syncing template note:', error);
+							
 						}
 					}
 				}
@@ -1461,7 +1461,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		// Initialize default tracks if none exist
 		await this.trackManager.initializeDefaultTracks();
 
-		// Apply mobile CSS classes to the document body
+		// Apply mobile CSS classes to the activeDocument body
 		this.applyMobilePlatformClasses();
 
 		// Removed: Codeblock maps no longer supported - use MapView instead
@@ -1762,7 +1762,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 				}
 			}
 		} catch (e) {
-			console.warn('Storyteller suite: Custom-folder discovery failed', e);
+			
 		}
 
 		// --- Alternate discovery: One-story mode with existing content ---
@@ -1791,7 +1791,7 @@ export default class StorytellerSuitePlugin extends Plugin {
                 }
             }
         } catch (e) {
-			console.warn('Storyteller suite: One-story discovery failed', e);
+			
 		}
 
 		return { newStories: [], totalStories: this.settings.stories.length };
@@ -1812,7 +1812,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 				new Notice(`Storyteller: Auto-detected and imported ${result.newStories.length} new story folder(s).`);
 			}
 		} catch (error) {
-			console.error('Storyteller suite: Error during story discovery:', error);
+			
 			new Notice(`Storyteller suite: Error discovering stories: ${error.message}`);
 		}
 	}
@@ -1836,7 +1836,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 				new Notice('Storyteller: No new story folders found.');
 			}
 		} catch (error) {
-			console.error('Storyteller suite: Error during story refresh:', error);
+			
 			new Notice(`Storyteller suite: Error refreshing stories: ${error.message}`);
 		}
 	}
@@ -1889,7 +1889,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 				`Refs ${counts.references}, Chaps ${counts.chapters}, Scenes ${counts.scenes}.`
 			);
 		} catch (error) {
-			console.error('Storyteller suite: Error during custom folder refresh:', error);
+			
 			new Notice(`Storyteller suite: Error scanning custom folders: ${error.message}`);
 		}
 	}
@@ -2005,7 +2005,7 @@ export default class StorytellerSuitePlugin extends Plugin {
         const syncActiveFile = (file: TFile | null): void => {
             this.writingSessionTransition = this.writingSessionTransition
                 .then(() => this.syncWritingSessionForFile(file))
-                .catch(error => console.error('Storyteller suite: Error syncing writing session:', error));
+                .catch(error => { new Notice("Session sync failed: " + error?.message); });
         };
 
         this.registerEvent(
@@ -2155,14 +2155,14 @@ export default class StorytellerSuitePlugin extends Plugin {
 		try {
 			this.removeMobilePlatformClasses();
 		} catch (error) {
-			console.error('Storyteller suite: Error removing mobile classes during unload', error);
+			
 		}
 
 		// Cleanup orientation and resize handlers
 		try {
 			this.cleanupMobileOrientationHandlers();
 		} catch (error) {
-			console.error('Storyteller suite: Error cleaning up orientation handlers', error);
+			
 		}
 
 		// Removed: Codeblock maps no longer supported
@@ -2172,7 +2172,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		// 		this.leafletProcessor.cleanup();
 		// 	}
 		// } catch (error) {
-		// 	console.error('Storyteller suite: Error cleaning up Leaflet maps', error);
+		// 	
 		// }
 	}
 
@@ -2291,7 +2291,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 								await this.appendToSessionLog(targetSession.filePath!, `- ${value.trim()}`);
 								new Notice(`Added log entry to "${targetSession.name}".`);
 							} catch (error) {
-								console.error('[campaign-log-entry] Error appending log entry:', error);
+								
 								new Notice('Failed to add campaign log entry.');
 							}
 						})();
@@ -2367,7 +2367,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 					new Notice('Loaded ' + afterCount + ' custom template' + (afterCount !== 1 ? 's' : ''));
 
 					if (afterCount > beforeCount) {
-						console.debug(`[StorytellerSuite] Loaded ${afterCount - beforeCount} new templates`);
+						
 					}
 				} catch (error) {
 					const message = error instanceof Error ? error.message : String(error);
@@ -3191,7 +3191,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 						new Notice(`Compile failed: ${result.error || 'Unknown error'}`);
 					}
 				} catch (error) {
-					console.error('Compile error:', error);
+					
 					new Notice(`Compile failed: ${error}`);
 				}
 			}
@@ -3359,12 +3359,12 @@ export default class StorytellerSuitePlugin extends Plugin {
 					const result = await migration.migrateAllLocations();
 					if (result.errors.length > 0) {
 						new Notice(`Migration completed with ${result.errors.length} errors. Check console for details.`);
-						console.error('Migration errors:', result.errors);
+						
 					} else {
 						new Notice(`Migration complete! Updated ${result.migrated} location(s).`);
 					}
 				} catch (error) {
-					console.error('Migration failed:', error);
+					
 					new Notice(`Migration failed: ${error}`);
 				}
 			}
@@ -3390,7 +3390,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 			if (leaf) {
 				await leaf.setViewState({ type: VIEW_TYPE_DASHBOARD, active: true });
 			} else {
-				console.error("Storyteller suite: Could not create workspace leaf.");
+				
 				new Notice("Error opening dashboard: Could not create workspace leaf.");
 				return;
 			}
@@ -3398,7 +3398,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 
 		// Ensure leaf is valid before revealing
 		if (!leaf) {
-			console.error("Storyteller suite: Workspace leaf is null after attempting to find or create it.");
+			
 			new Notice("Error revealing dashboard: Workspace leaf not found.");
 			return;
 		}
@@ -3514,7 +3514,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 			});
 			void workspace.revealLeaf(leaf);
 		} else {
-			console.error("Storyteller suite: Could not create workspace leaf for timeline.");
+			
 			new Notice("Error opening timeline panel: Could not create workspace leaf.");
 		}
 	}
@@ -3540,7 +3540,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 			});
 			void workspace.revealLeaf(leaf);
 		} else {
-			console.error("Storyteller suite: Could not create workspace leaf for analytics.");
+			
 			new Notice("Error opening analytics dashboard: Could not create workspace leaf.");
 		}
 	}
@@ -3620,7 +3620,7 @@ export default class StorytellerSuitePlugin extends Plugin {
             } else if (!(af instanceof TFolder)) {
                 const errorMsg = `Error: Path ${current} exists but is not a folder. Check Storyteller suite settings.`;
                 new Notice(errorMsg);
-                console.error(errorMsg);
+                
                 throw new Error(errorMsg);
             }
         }
@@ -3642,24 +3642,24 @@ export default class StorytellerSuitePlugin extends Plugin {
         try {
             // Check if tiling is enabled (unless forcing)
             const threshold = this.settings.tiling?.autoGenerateThreshold || -1;
-            console.debug(`[TileGeneration] Checking tile generation for: ${imagePath}`);
-            console.debug(`[TileGeneration] Current threshold setting: ${threshold}, force: ${force}`);
+            
+            
             
             if (!force && threshold < 0) {
                 // Tiling disabled (unless forcing)
-                console.debug('[TileGeneration] Tiling is disabled (threshold < 0)');
+                
                 new Notice('Tile generation is disabled. Enable it in plugin settings to auto-generate tiles.');
                 return;
             }
 
             // Get image dimensions
-            console.debug('[TileGeneration] Getting image dimensions...');
+            
             const dimensions = await this.getImageDimensions(imageData);
-            console.debug(`[TileGeneration] Image dimensions: ${dimensions.width}x${dimensions.height}`);
+            
 
             // Check if image exceeds threshold (unless forcing)
             if (!force && dimensions.width < threshold && dimensions.height < threshold) {
-                console.debug(`[TileGeneration] Image below threshold (${threshold}px), skipping. Image is ${dimensions.width}x${dimensions.height}`);
+                
                 new Notice(`Image (${dimensions.width}x${dimensions.height}px) is below tiling threshold (${threshold}px). Tiles will not be generated.`);
                 return;
             }
@@ -3682,12 +3682,12 @@ export default class StorytellerSuitePlugin extends Plugin {
             }).then(() => {
                 new Notice('Map tiles generated successfully!');
             }).catch((error) => {
-                console.error('[TileGeneration] Failed:', error);
+                
                 new Notice('Failed to generate map tiles: ' + error.message);
             });
 
         } catch (error) {
-            console.error('[TileGeneration] Error:', error);
+            
             const errorMessage = error instanceof Error ? error.message : String(error);
             new Notice(`Tile generation error: ${errorMessage}. Check console for details.`);
             throw error; // Re-throw so caller can handle it
@@ -3703,7 +3703,7 @@ export default class StorytellerSuitePlugin extends Plugin {
      */
     async forceGenerateTilesForMap(imagePath: string): Promise<string> {
         try {
-            console.debug(`[TileGeneration] Force generating tiles for map image: ${imagePath}`);
+            
             
             // Read image data once
             const imageData = await this.app.vault.adapter.readBinary(imagePath);
@@ -3719,7 +3719,7 @@ export default class StorytellerSuitePlugin extends Plugin {
             const existingMetadata = this.app.vault.getAbstractFileByPath(metadataPath);
             
             if (existingMetadata instanceof TFile) {
-                console.debug('[TileGeneration] Tiles already exist, skipping generation');
+                
                 return hash;
             }
 
@@ -3744,7 +3744,7 @@ export default class StorytellerSuitePlugin extends Plugin {
             return tileHash;
 
         } catch (error) {
-            console.error('[TileGeneration] Failed to force generate tiles:', error);
+            
             const errorMessage = error instanceof Error ? error.message : String(error);
             new Notice(`Failed to generate map tiles: ${errorMessage}`);
             throw error;
@@ -3976,7 +3976,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 			if (!data['name']) {
 				// Only warn once per file to avoid console spam
 				if (!this.warnedMissingNameFiles.has(file.path)) {
-					console.warn(`File ${file.path} is missing a name in frontmatter.`);
+					
 					this.warnedMissingNameFiles.add(file.path);
 				}
 				return null;
@@ -3993,7 +3993,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 			if (maybeError?.code === 'ENOENT' || String(maybeError?.message ?? '').includes('ENOENT')) {
 				return null;
 			}
-			console.error(`Error parsing file ${file.path}:`, e);
+			
 			new Notice(`Error parsing file: ${file.name}`);
 			return null;
 		}
@@ -4147,7 +4147,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 					}
 				}
 			} catch (error) {
-				console.warn(`Error reading existing character file: ${error}`);
+				
 			}
 		}
 
@@ -4158,7 +4158,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		if (originalFrontmatter) {
 			const validation = validateFrontmatterPreservation(finalFrontmatter, originalFrontmatter);
 			if (validation.lostFields.length > 0) {
-				console.warn(`[saveCharacter] Warning: Fields will be lost on save:`, validation.lostFields);
+				
 			}
 		}
 
@@ -4227,7 +4227,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 				const syncService = new EntitySyncService(this);
 				await syncService.syncEntity('character', character, oldCharacter);
 			} catch (error) {
-				console.error('[saveCharacter] Error syncing relationships:', error);
+				
 				// Don't throw - sync failures shouldn't prevent saves
 			}
 		}
@@ -4284,7 +4284,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 					characterName = character.name;
 				}
 			} catch (e) {
-				console.warn('Could not parse character before deletion:', e);
+				
 			}
 			
 			// Clean up references via EntitySyncService
@@ -4294,7 +4294,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 					const syncService = new EntitySyncService(this);
 					await syncService.handleEntityDeletion('character', characterId, characterName);
 				} catch (error) {
-					console.error('[deleteCharacter] Error cleaning up references:', error);
+					
 				}
 			}
 
@@ -4382,7 +4382,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 					}
 				}
 			} catch (error) {
-				console.warn(`Error reading existing location file: ${error}`);
+				
 			}
 		}
 
@@ -4393,7 +4393,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		if (originalFrontmatter) {
 			const validation = validateFrontmatterPreservation(finalFrontmatter, originalFrontmatter);
 			if (validation.lostFields.length > 0) {
-				console.warn(`[saveLocation] Warning: Fields will be lost on save:`, validation.lostFields);
+				
 			}
 		}
 
@@ -4451,7 +4451,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 				const syncService = new EntitySyncService(this);
 				await syncService.syncEntity('location', location, oldLocation);
 			} catch (error) {
-				console.error('[saveLocation] Error syncing relationships:', error);
+				
 				// Don't throw - sync failures shouldn't prevent saves
 			}
 		}
@@ -4507,7 +4507,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 					locationName = location.name;
 				}
 			} catch (e) {
-				console.warn('Could not parse location before deletion:', e);
+				
 			}
 			
 			// Clean up references via EntitySyncService
@@ -4517,7 +4517,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 					const syncService = new EntitySyncService(this);
 					await syncService.handleEntityDeletion('location', locationId, locationName);
 				} catch (error) {
-					console.error('[deleteLocation] Error cleaning up references:', error);
+					
 				}
 			}
 
@@ -4604,7 +4604,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		const destinationFile = this.app.vault.getAbstractFileByPath(newFilePath);
 		if (destinationFile && destinationFile instanceof TFile) {
 			// Destination exists, delete it before renaming (name collision)
-			console.debug(`safe${entityType}Rename: Deleting existing file at destination: ${newFilePath}`);
+			
 			await this.app.fileManager.trashFile(destinationFile);
 		}
 
@@ -4658,7 +4658,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 					originalFrontmatter = { ...(cachedFrontmatter || {}), ...(directFrontmatter || {}) };
 				}
 			} catch (error) {
-				console.warn(`Error reading existing map file: ${error}`);
+				
 			}
 		}
 
@@ -4791,19 +4791,19 @@ export default class StorytellerSuitePlugin extends Plugin {
 		const MIN_ZOOM = -10;  // Allow negative zoom for custom CRS
 		const MAX_ZOOM = 30;
 		if (typeof zoom !== 'number' || !Number.isFinite(zoom)) {
-			console.error(`[StorytellerSuite] saveMapViewState: Invalid zoom value "${zoom}" - must be a finite number`);
+			
 			return;
 		}
 		if (zoom < MIN_ZOOM || zoom > MAX_ZOOM) {
 			// Clamp to valid range instead of rejecting
 			const clampedZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoom));
-			console.warn(`[StorytellerSuite] saveMapViewState: Zoom value ${zoom} out of range, clamping to ${clampedZoom}`);
+			
 			zoom = clampedZoom;
 		}
 
 		// Validate center coordinates
 		if (!center || typeof center !== 'object') {
-			console.error(`[StorytellerSuite] saveMapViewState: Invalid center - must be an object with lat and lng`);
+			
 			return;
 		}
 
@@ -4813,11 +4813,11 @@ export default class StorytellerSuitePlugin extends Plugin {
 		// Note: For image maps with custom CRS, coordinates can be in pixel space (thousands),
 		// not geographic lat/lng (-90 to 90). So we only check for finite numbers.
 		if (typeof lat !== 'number' || !Number.isFinite(lat)) {
-			console.error(`[StorytellerSuite] saveMapViewState: Invalid latitude "${lat}" - must be a finite number`);
+			
 			return;
 		}
 		if (typeof lng !== 'number' || !Number.isFinite(lng)) {
-			console.error(`[StorytellerSuite] saveMapViewState: Invalid longitude "${lng}" - must be a finite number`);
+			
 			return;
 		}
 
@@ -4870,7 +4870,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 			});
 			void workspace.revealLeaf(leaf);
 		} else {
-			console.error("Storyteller suite: Could not create workspace leaf for map view.");
+			
 			new Notice("Error opening map view: Could not create workspace leaf.");
 		}
 	}
@@ -4962,7 +4962,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 	 * @param mapId ID of the map to link to
 	 */
 	async linkLocationToMap(locationName: string, mapId: string): Promise<void> {
-		console.warn('DEPRECATED: Use LocationService.addMapBinding instead');
+		
 	}
 
 	/**
@@ -4971,7 +4971,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 	 * @param mapId ID of the map to unlink from
 	 */
 	async unlinkLocationFromMap(locationName: string, mapId: string): Promise<void> {
-		console.warn('DEPRECATED: Use LocationService.removeMapBinding instead');
+		
 	}
 
 	/**
@@ -5071,7 +5071,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 			this.app.metadataCache.trigger("dataview:refresh-views");
 			
 		} catch (error) {
-			console.error('Error removing entity from map:', error);
+			
 			new Notice(`Error removing entity: ${error}`);
 			throw error;
 		}
@@ -5097,7 +5097,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 				entityTypes.push({ type, folder });
 			} catch (error) {
 				// Skip entity types that can't resolve (e.g., no active story and no custom path)
-				console.debug(`[StorytellerSuite] Skipping ${type} folder in map cleanup: ${error.message}`);
+				
 			}
 		}
 
@@ -5143,12 +5143,12 @@ export default class StorytellerSuitePlugin extends Plugin {
 					}
 				}
 			} catch (error) {
-				console.error(`Error cleaning up map references from ${type} entities:`, error);
+				
 			}
 		}
 
 		if (cleanedCount > 0) {
-			console.debug(`Cleaned up map references from ${cleanedCount} entity file(s)`);
+			
 		}
 	}
 
@@ -5222,7 +5222,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 					}
 				}
 			} catch (error) {
-				console.warn(`Error reading existing event file: ${error}`);
+				
 			}
 		}
 
@@ -5233,7 +5233,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		if (originalFrontmatter) {
 			const validation = validateFrontmatterPreservation(finalFrontmatter, originalFrontmatter);
 			if (validation.lostFields.length > 0) {
-				console.warn(`[saveEvent] Warning: Fields will be lost on save:`, validation.lostFields);
+				
 			}
 		}
 
@@ -5287,7 +5287,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 			try {
 				await this.syncEventDependencyReferences(event, oldEvent);
 			} catch (error) {
-				console.error('[saveEvent] Error syncing event dependency references:', error);
+				
 			}
 		}
 
@@ -5319,7 +5319,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 				}
 			} catch (error) {
 				// Don't fail save if conflict detection fails
-				console.warn('Conflict detection failed:', error);
+				
 			}
 		}
 
@@ -5330,7 +5330,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 				const syncService = new EntitySyncService(this);
 				await syncService.syncEntity('event', event, oldEvent);
 			} catch (error) {
-				console.error('[saveEvent] Error syncing relationships:', error);
+				
 				// Don't throw - sync failures shouldn't prevent saves
 			}
 		}
@@ -5446,7 +5446,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 					eventName = event.name;
 				}
 			} catch (e) {
-				console.warn('Could not parse event before deletion:', e);
+				
 			}
 			
 			// Clean up references via EntitySyncService
@@ -5456,7 +5456,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 					const syncService = new EntitySyncService(this);
 					await syncService.handleEntityDeletion('event', eventId, eventName);
 				} catch (error) {
-					console.error('[deleteEvent] Error cleaning up references:', error);
+					
 				}
 			}
 
@@ -5536,7 +5536,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 					}
 				}
 			} catch (error) {
-				console.warn(`Error reading existing item file: ${error}`);
+				
 			}
 		}
 
@@ -5547,7 +5547,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		if (originalFrontmatter) {
 			const validation = validateFrontmatterPreservation(finalFrontmatter, originalFrontmatter);
 			if (validation.lostFields.length > 0) {
-				console.warn(`[savePlotItem] Warning: Fields will be lost on save:`, validation.lostFields);
+				
 			}
 		}
 
@@ -5592,7 +5592,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 				const syncService = new EntitySyncService(this);
 				await syncService.syncEntity('item', item, oldItem);
 			} catch (error) {
-				console.error('[savePlotItem] Error syncing relationships:', error);
+				
 				// Don't throw - sync failures shouldn't prevent saves
 			}
 		}
@@ -5643,7 +5643,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 					itemName = item.name;
 				}
 			} catch (e) {
-				console.warn('Could not parse item before deletion:', e);
+				
 			}
 			
 			// Clean up references via EntitySyncService
@@ -5653,7 +5653,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 					const syncService = new EntitySyncService(this);
 					await syncService.handleEntityDeletion('item', itemId, itemName);
 				} catch (error) {
-					console.error('[deletePlotItem] Error cleaning up references:', error);
+					
 				}
 			}
 
@@ -5698,7 +5698,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 				const existingContent = await this.app.vault.cachedRead(existingFile);
 				existingSections = parseSectionsFromMarkdown(existingContent);
 			} catch (e) {
-				console.warn('Error reading existing reference file', e);
+				
 			}
 		}
 
@@ -5716,7 +5716,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		if (originalFrontmatter) {
 			const validation = validateFrontmatterPreservation(fm, originalFrontmatter);
 			if (validation.lostFields.length > 0) {
-				console.warn(`[saveReference] Warning: Fields will be lost on save:`, validation.lostFields);
+				
 			}
 		}
 
@@ -5817,7 +5817,7 @@ export default class StorytellerSuitePlugin extends Plugin {
                 const existingContent = await this.app.vault.cachedRead(existingFile);
                 existingSections = parseSectionsFromMarkdown(existingContent);
             } catch (e) {
-                console.warn('Error reading existing chapter file', e);
+                
             }
             // Load old chapter for sync diff (only when not already inside a sync operation)
             if (!(chapter as any)._skipSync) {
@@ -5825,7 +5825,7 @@ export default class StorytellerSuitePlugin extends Plugin {
                     const parsed = await this.parseFile<Chapter>(existingFile, { name: '' }, 'chapter');
                     if (parsed) oldChapter = parsed;
                 } catch (e) {
-                    console.warn('[saveChapter] Could not load old chapter for sync', e);
+                    
                 }
             }
         }
@@ -5845,7 +5845,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		if (originalFrontmatter) {
 			const validation = validateFrontmatterPreservation(fm, originalFrontmatter);
 			if (validation.lostFields.length > 0) {
-				console.warn(`[saveChapter] Warning: Fields will be lost on save:`, validation.lostFields);
+				
 			}
 		}
 
@@ -5892,7 +5892,7 @@ export default class StorytellerSuitePlugin extends Plugin {
                     await this._addChapterToBook(chapter.name, newBid);
                 }
             } catch (e) {
-                console.error('[saveChapter] Error syncing book linkedChapters:', e);
+                
             }
 
             try {
@@ -5900,7 +5900,7 @@ export default class StorytellerSuitePlugin extends Plugin {
                 const syncService = new EntitySyncService(this);
                 await syncService.syncEntity('chapter', chapter, oldChapter);
             } catch (error) {
-                console.error('[saveChapter] Error syncing relationships:', error);
+                
             }
         }
     }
@@ -5961,7 +5961,7 @@ export default class StorytellerSuitePlugin extends Plugin {
                     await this._removeChapterFromBook(chapter.name, chapter.bookId);
                 }
             } catch (e) {
-                console.warn('[deleteChapter] Could not sync linkedChapters before delete:', e);
+                
             }
             await this.app.fileManager.trashFile(file);
             new Notice(`Chapter file "${file.basename}" moved to trash.`);
@@ -6090,7 +6090,7 @@ export default class StorytellerSuitePlugin extends Plugin {
                 const existingContent = await this.app.vault.cachedRead(existingFile);
                 existingSections = parseSectionsFromMarkdown(existingContent);
             } catch (e) {
-                console.warn('[saveBook] Error reading existing book file', e);
+                
             }
         }
 
@@ -6333,7 +6333,7 @@ export default class StorytellerSuitePlugin extends Plugin {
                     oldScene = (await this.parseFile<Scene>(existingFile, { name: '' }, 'scene')) || undefined;
                 }
             } catch (e) {
-                console.warn('Error reading existing scene file', e);
+                
             }
         }
 
@@ -6352,7 +6352,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		if (originalFrontmatter) {
 			const validation = validateFrontmatterPreservation(fm, originalFrontmatter);
 			if (validation.lostFields.length > 0) {
-				console.warn(`[saveScene] Warning: Fields will be lost on save:`, validation.lostFields);
+				
 			}
 		}
 
@@ -6406,7 +6406,7 @@ export default class StorytellerSuitePlugin extends Plugin {
                     await this._addSceneToChapter(scene.name, newCid);
                 }
             } catch (e) {
-                console.error('[saveScene] Error syncing chapter linkedScenes:', e);
+                
             }
         }
 
@@ -6417,7 +6417,7 @@ export default class StorytellerSuitePlugin extends Plugin {
                 const syncService = new EntitySyncService(this);
                 await syncService.syncEntity('scene', scene, oldScene);
             } catch (error) {
-                console.error('[saveScene] Error syncing relationships:', error);
+                
                 // Don't throw - sync failures shouldn't prevent saves
             }
         }
@@ -6483,7 +6483,7 @@ export default class StorytellerSuitePlugin extends Plugin {
                     await this._removeSceneFromChapter(sceneToDelete.name, sceneToDelete.chapterId);
                 }
             } catch (e) {
-                console.warn('[deleteScene] Could not sync linkedScenes before delete:', e);
+                
             }
 
             if (sceneToDelete?.id || sceneToDelete?.name) {
@@ -6492,7 +6492,7 @@ export default class StorytellerSuitePlugin extends Plugin {
                     const syncService = new EntitySyncService(this);
                     await syncService.handleEntityDeletion('scene', sceneToDelete.id || sceneToDelete.name);
                 } catch (e) {
-                    console.warn('[deleteScene] Could not remove scene relationship references before delete:', e);
+                    
                 }
             }
 
@@ -6560,7 +6560,7 @@ export default class StorytellerSuitePlugin extends Plugin {
                     }
                 }
             } catch (error) {
-                console.warn(`Error reading existing culture file: ${error}`);
+                
             }
         }
 
@@ -6569,7 +6569,7 @@ export default class StorytellerSuitePlugin extends Plugin {
         if (originalFrontmatter) {
             const validation = validateFrontmatterPreservation(finalFrontmatter, originalFrontmatter);
             if (validation.lostFields.length > 0) {
-                console.warn(`[saveCulture] Warning: Fields will be lost on save:`, validation.lostFields);
+                
             }
         }
 
@@ -6620,7 +6620,7 @@ export default class StorytellerSuitePlugin extends Plugin {
                 const syncService = new EntitySyncService(this);
                 await syncService.syncEntity('culture', culture, oldCulture);
             } catch (error) {
-                console.error('[saveCulture] Error syncing relationships:', error);
+                
             }
         }
 
@@ -6696,7 +6696,7 @@ export default class StorytellerSuitePlugin extends Plugin {
                     }
                 }
             } catch (error) {
-                console.warn(`Error reading existing economy file: ${error}`);
+                
             }
         }
 
@@ -6705,7 +6705,7 @@ export default class StorytellerSuitePlugin extends Plugin {
         if (originalFrontmatter) {
             const validation = validateFrontmatterPreservation(finalFrontmatter, originalFrontmatter);
             if (validation.lostFields.length > 0) {
-                console.warn(`[saveEconomy] Warning: Fields will be lost on save:`, validation.lostFields);
+                
             }
         }
 
@@ -6821,7 +6821,7 @@ export default class StorytellerSuitePlugin extends Plugin {
                     if (parsed) oldEntry = parsed;
                 }
             } catch (error) {
-                console.warn(`[saveCompendiumEntry] Error reading existing file: ${error}`);
+                
             }
         }
 
@@ -6944,7 +6944,7 @@ export default class StorytellerSuitePlugin extends Plugin {
                     }
                 }
             } catch (error) {
-                console.warn(`Error reading existing magic system file: ${error}`);
+                
             }
         }
 
@@ -6953,7 +6953,7 @@ export default class StorytellerSuitePlugin extends Plugin {
         if (originalFrontmatter) {
             const validation = validateFrontmatterPreservation(finalFrontmatter, originalFrontmatter);
             if (validation.lostFields.length > 0) {
-                console.warn(`[saveMagicSystem] Warning: Fields will be lost on save:`, validation.lostFields);
+                
             }
         }
 
@@ -7001,7 +7001,7 @@ export default class StorytellerSuitePlugin extends Plugin {
                 const syncService = new EntitySyncService(this);
                 await syncService.syncEntity('magicsystem', magicSystem, oldMagicSystem);
             } catch (error) {
-                console.error('[saveMagicSystem] Error syncing relationships:', error);
+                
             }
         }
     }
@@ -7496,7 +7496,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 				// User chose not to overwrite, silently return
 				return;
 			}
-			console.error('Error creating story board:', error);
+			
 			new Notice('Error creating story board. See console for details.');
 		}
 	}
@@ -7533,7 +7533,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 				existingCanvas = JSON.parse(existingContent);
 			} catch (error) {
 				new Notice('Error reading existing story board. It may be corrupted.');
-				console.error('Error parsing canvas:', error);
+				
 				return;
 			}
 
@@ -7566,7 +7566,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 			await leaf.openFile(existingFile);
 
 		} catch (error) {
-			console.error('Error updating story board:', error);
+			
 			new Notice('Error updating story board. See console for details.');
 		}
 	}
@@ -7607,7 +7607,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 			await leaf.openFile(existingFile);
 
 		} catch (error) {
-			console.error('Error opening story board:', error);
+			
 			new Notice('Error opening story board. See console for details.');
 		}
 	}
@@ -7821,7 +7821,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 					}
 				});
 			} catch (e) {
-				console.error(`[StorytellerSuite] Failed to update image refs in ${mdFile.path}:`, e);
+				
 			}
 		}
 	}
@@ -7902,7 +7902,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 				pendingRecords.push(newImage);
 				imported.push(newImage);
 			} catch (error) {
-				console.error(`Error importing gallery upload "${file?.name ?? 'unknown'}":`, error);
+				
 				failed.push({ name: file?.name ?? 'unknown', error });
 			}
 		}
@@ -7930,7 +7930,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 			images[index] = updatedImage;
 			await this.saveSettings();
 		} else {
-			console.error(`Gallery image with id ${updatedImage.id} not found for update`);
+			
 			new Notice(`Error: Gallery image not found for update`);
 		}
 	}
@@ -7952,7 +7952,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 			new Notice('Image removed from gallery');
 		} else {
 			// Image not found
-			console.error(`Gallery image with id ${imageId} not found for deletion`);
+			
 			new Notice(`Error: Gallery image not found`);
 		}
 	}
@@ -8179,7 +8179,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 				await this.app.vault.create(filePath, content);
 			}
 		} catch (err) {
-			console.error('[saveGroupToFile] Failed to write group file:', err);
+			
 		}
 	}
 
@@ -8195,7 +8195,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 				await this.app.fileManager.trashFile(file);
 			}
 		} catch (err) {
-			console.error('[deleteGroupFile] Failed to delete group file:', err);
+			
 		}
 	}
 
@@ -8375,7 +8375,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 				this.emitGroupsChanged?.();
 			}
 		} catch (err) {
-			console.error('[syncGroupsFromVault] Error syncing groups from vault:', err);
+			
 		}
 	}
 
@@ -8658,7 +8658,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 
             return updatedCount;
         } catch (error) {
-            console.error('[repairLocationEntityRefs] Error repairing location entityRefs:', error);
+            
             return 0;
         }
     }
@@ -8775,7 +8775,7 @@ export default class StorytellerSuitePlugin extends Plugin {
             }
         } catch (e) {
             // Best-effort sanitization; ignore errors
-            console.warn('Storyteller suite: Seed data sanitization skipped due to error', e);
+            
         }
 
 		// MIGRATION: If no stories exist but old folders/data exist, migrate
@@ -8949,23 +8949,23 @@ export default class StorytellerSuitePlugin extends Plugin {
             await this.templateNoteManager.initialize();
             const afterCount = this.templateManager.getAllTemplates().filter(t => (t as any).isNoteBased).length;
             if (afterCount > beforeCount) {
-                console.debug(`[StorytellerSuite] Loaded ${afterCount - beforeCount} custom templates after startup`);
+                
             }
         } catch (error) {
-            console.error('[StorytellerSuite] Error loading custom templates:', error);
+            
         }
 
         try {
             await this.syncGalleryWatchFolder();
         } catch (error) {
-            console.error('[StorytellerSuite] Error syncing gallery folder during deferred startup:', error);
+            
         }
 
         try {
             await this.migrateGroupsToVault();
             await this.syncGroupsFromVault();
         } catch (error) {
-            console.error('[StorytellerSuite] Error syncing groups during deferred startup:', error);
+            
         }
 
         try {
@@ -8975,7 +8975,7 @@ export default class StorytellerSuitePlugin extends Plugin {
                 await this.saveSettings();
             }
         } catch (error) {
-            console.error('[StorytellerSuite] Error migrating relationships during deferred startup:', error);
+            
         }
 
         try {
@@ -8986,7 +8986,7 @@ export default class StorytellerSuitePlugin extends Plugin {
                 await this.saveSettings();
             }
         } catch (error) {
-            console.error('[StorytellerSuite] Error backfilling bidirectional links during deferred startup:', error);
+            
         }
 
         try {
@@ -8996,7 +8996,7 @@ export default class StorytellerSuitePlugin extends Plugin {
                 await this.saveSettings();
             }
         } catch (error) {
-            console.error('[StorytellerSuite] Error repairing stale entity refs during deferred startup:', error);
+            
         }
 
         try {
@@ -9006,7 +9006,7 @@ export default class StorytellerSuitePlugin extends Plugin {
                 await this.saveSettings();
             }
         } catch (error) {
-            console.error('[StorytellerSuite] Error backfilling entity type frontmatter during deferred startup:', error);
+            
         }
     }
 
@@ -9060,11 +9060,11 @@ export default class StorytellerSuitePlugin extends Plugin {
 		template: Template,
 		options?: Partial<TemplateApplicationOptions>
 	): Promise<void> {
-		console.debug('applyTemplateWithPrompt called with template:', template.name);
+		
 
 		// Ensure we have an active story
 		const activeStory = this.getActiveStory();
-		console.debug('Active story:', activeStory);
+		
 
 		if (!activeStory) {
 			new Notice('Please select or create a story first');
@@ -9079,8 +9079,8 @@ export default class StorytellerSuitePlugin extends Plugin {
 				this,
 				template,
 				(variableValues: TemplateVariableValues, entityFileNames: EntityFileName[]) => { void (async () => {
-					console.debug('Variable values collected:', variableValues);
-					console.debug('Entity file names:', entityFileNames);
+					
+					
 					
 					// Build field overrides from entity file names (file name becomes entity name)
 					const fieldOverrides = new Map<string, { name?: string }>();
@@ -9114,7 +9114,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		variableValues: TemplateVariableValues,
 		additionalOptions?: Partial<TemplateApplicationOptions>
 	): Promise<void> {
-		console.debug('applyTemplateInternal called:', { templateName: template.name, storyId, variableValues });
+		
 
 		try {
 			const { TemplateApplicator } = await import('./templates/TemplateApplicator');
@@ -9128,23 +9128,23 @@ export default class StorytellerSuitePlugin extends Plugin {
 				...additionalOptions
 			};
 
-			console.debug('Applying template with options:', options);
+			
 			const result = await applicator.applyTemplate(template, options);
-			console.debug('Template application result:', result);
+			
 
 			if (result.success) {
 				const entityCount = this.countCreatedEntities(result.created);
-				console.debug('Template applied successfully, created entities:', entityCount);
+				
 				new Notice(`Template "${template.name}" applied successfully! Created ${entityCount} entities.`);
 
 				// Refresh views if needed
 				this.app.workspace.trigger('storyteller:entities-changed');
 			} else {
-				console.error('Template application failed:', result.error);
+				
 				new Notice(`Failed to apply template: ${result.error || 'Unknown error'}`);
 			}
 		} catch (error) {
-			console.error('Error applying template:', error);
+			
 			new Notice(`Error applying template: ${error.message}`);
 		}
 	}
@@ -9176,13 +9176,13 @@ export default class StorytellerSuitePlugin extends Plugin {
 	}
 
 	/**
-	 * Applies mobile-specific CSS classes to the document body
+	 * Applies mobile-specific CSS classes to the activeDocument body
 	 * This allows for platform-specific styling throughout the app
 	 */
 	private applyMobilePlatformClasses(): void {
 		const body = activeDocument.body;
 		if (!body) {
-			console.warn('Storyteller suite: activeDocument.body is null, cannot apply mobile platform classes');
+			
 			return;
 		}
 
@@ -9203,13 +9203,13 @@ export default class StorytellerSuitePlugin extends Plugin {
 	}
 
 	/**
-	 * Removes mobile-specific CSS classes from the document body
+	 * Removes mobile-specific CSS classes from the activeDocument body
 	 * Used during plugin cleanup to prevent class leakage
 	 */
 	private removeMobilePlatformClasses(): void {
 		const body = activeDocument.body;
 		if (!body) {
-			console.warn('Storyteller suite: activeDocument.body is null, cannot remove mobile platform classes');
+			
 			return;
 		}
 
@@ -9221,7 +9221,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 			}
 		} catch (error) {
 			// Silently fail to prevent plugin unload from being blocked
-			console.error('Storyteller suite: Error removing mobile classes', error);
+			
 		}
 	}
 

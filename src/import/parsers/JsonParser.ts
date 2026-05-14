@@ -79,7 +79,7 @@ function countWords(text: string): number {
 }
 
 /**
- * JSON document parser
+ * JSON activeDocument parser
  */
 export class JsonParser implements DocumentParser {
     name = 'JSON Parser';
