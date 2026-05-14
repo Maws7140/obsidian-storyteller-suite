@@ -1,10 +1,10 @@
 // Map View - Full workspace view for interactive map visualization
 // Provides a dedicated panel for viewing and interacting with story maps
 
-import { ItemView, WorkspaceLeaf, setIcon, Menu, DropdownComponent, Notice, TFile } from 'obsidian';
+import { ItemView, WorkspaceLeaf, setIcon, Menu, DropdownComponent, Notice, TFile, FuzzySuggestModal } from 'obsidian';
 import * as L from 'leaflet';
 import StorytellerSuitePlugin from '../main';
-import { StoryMap } from '../types';
+import { Location, StoryMap } from '../types';
 import { t } from '../i18n/strings';
 import { LeafletRenderer } from '../leaflet/renderer';
 import { BlockParameters } from '../leaflet/types';
@@ -83,10 +83,10 @@ export class MapView extends ItemView {
         container.addClass('storyteller-map-view');
         
         // Ensure container has proper base styles
-        container.style.display = 'flex';
-        container.style.flexDirection = 'column';
-        container.style.height = '100%';
-        container.style.overflow = 'hidden';
+        container.setCssStyles({ display: 'flex' });
+        container.setCssStyles({ flexDirection: 'column' });
+        container.setCssStyles({ height: '100%' });
+        container.setCssStyles({ overflow: 'hidden' });
 
         // Create main sections with flex layout
         this.toolbarEl = container.createDiv('storyteller-map-toolbar');
@@ -97,10 +97,10 @@ export class MapView extends ItemView {
         this.footerEl = container.createDiv('storyteller-map-footer');
         
         // CRITICAL: Set map container positioning for Leaflet
-        this.mapContainer.style.flex = '1';
-        this.mapContainer.style.position = 'relative';
-        this.mapContainer.style.overflow = 'hidden';
-        this.mapContainer.style.minHeight = '200px';
+        this.mapContainer.setCssStyles({ flex: '1' });
+        this.mapContainer.setCssStyles({ position: 'relative' });
+        this.mapContainer.setCssStyles({ overflow: 'hidden' });
+        this.mapContainer.setCssStyles({ minHeight: '200px' });
 
         // Build each section
         await this.buildToolbar();
@@ -216,7 +216,7 @@ export class MapView extends ItemView {
 
         // Create label
         this.mapSelectorEl.createEl('label', {
-            text: 'Select Map: ',
+            text: 'Select map: ',
             cls: 'storyteller-map-selector-label'
         });
 
@@ -258,12 +258,12 @@ export class MapView extends ItemView {
 
         // Only show if a map is loaded
         if (!this.currentMap || !this.currentMap.id) {
-            this.breadcrumbEl.style.display = 'none';
+            this.breadcrumbEl.setCssStyles({ display: 'none' });
             return;
         }
 
-        this.breadcrumbEl.style.display = 'flex';
-        this.breadcrumbEl.style.flexShrink = '0';
+        this.breadcrumbEl.setCssStyles({ display: 'flex' });
+        this.breadcrumbEl.setCssStyles({ flexShrink: '0' });
         this.breadcrumbEl.addClass('storyteller-map-breadcrumb');
 
         // Get breadcrumb path
@@ -273,7 +273,7 @@ export class MapView extends ItemView {
 
         // Only show if there's more than one map in the hierarchy (has parent)
         if (breadcrumbPath.length <= 1) {
-            this.breadcrumbEl.style.display = 'none';
+            this.breadcrumbEl.setCssStyles({ display: 'none' });
             return;
         }
 
@@ -332,22 +332,22 @@ export class MapView extends ItemView {
 
         // Only show if a map is loaded
         if (!this.currentMap) {
-            this.entityBarEl.style.display = 'none';
+            this.entityBarEl.setCssStyles({ display: 'none' });
             return;
         }
 
-        this.entityBarEl.style.display = 'flex';
-        this.entityBarEl.style.flexShrink = '0';
+        this.entityBarEl.setCssStyles({ display: 'flex' });
+        this.entityBarEl.setCssStyles({ flexShrink: '0' });
 
         // Label
         const label = this.entityBarEl.createDiv('entity-bar-label');
-        label.textContent = 'Add to Map:';
+        label.textContent = 'Add to map:';
 
         // Add Location button
         const addLocationBtn = this.entityBarEl.createEl('button', {
             cls: 'entity-bar-btn',
             attr: {
-                'aria-label': 'Add Location',
+                'aria-label': 'Add location',
                 'title': 'Add a location to this map'
             }
         });
@@ -359,7 +359,7 @@ export class MapView extends ItemView {
         const addCharacterBtn = this.entityBarEl.createEl('button', {
             cls: 'entity-bar-btn',
             attr: {
-                'aria-label': 'Add Character',
+                'aria-label': 'Add character',
                 'title': 'Add a character to this map'
             }
         });
@@ -371,7 +371,7 @@ export class MapView extends ItemView {
         const addEventBtn = this.entityBarEl.createEl('button', {
             cls: 'entity-bar-btn',
             attr: {
-                'aria-label': 'Add Event',
+                'aria-label': 'Add event',
                 'title': 'Add an event to this map'
             }
         });
@@ -383,7 +383,7 @@ export class MapView extends ItemView {
         const addItemBtn = this.entityBarEl.createEl('button', {
             cls: 'entity-bar-btn',
             attr: {
-                'aria-label': 'Add Item',
+                'aria-label': 'Add item',
                 'title': 'Add an item to this map'
             }
         });
@@ -395,7 +395,7 @@ export class MapView extends ItemView {
         const addCultureBtn = this.entityBarEl.createEl('button', {
             cls: 'entity-bar-btn',
             attr: {
-                'aria-label': 'Add Culture',
+                'aria-label': 'Add culture',
                 'title': 'Add a culture to this map'
             }
         });
@@ -407,7 +407,7 @@ export class MapView extends ItemView {
         const addEconomyBtn = this.entityBarEl.createEl('button', {
             cls: 'entity-bar-btn',
             attr: {
-                'aria-label': 'Add Economy',
+                'aria-label': 'Add economy',
                 'title': 'Add an economy to this map'
             }
         });
@@ -419,7 +419,7 @@ export class MapView extends ItemView {
         const addMagicSystemBtn = this.entityBarEl.createEl('button', {
             cls: 'entity-bar-btn',
             attr: {
-                'aria-label': 'Add Magic System',
+                'aria-label': 'Add magic system',
                 'title': 'Add a magic system to this map'
             }
         });
@@ -431,7 +431,7 @@ export class MapView extends ItemView {
         const addGroupBtn = this.entityBarEl.createEl('button', {
             cls: 'entity-bar-btn',
             attr: {
-                'aria-label': 'Add Group',
+                'aria-label': 'Add group',
                 'title': 'Add a group to this map'
             }
         });
@@ -443,7 +443,7 @@ export class MapView extends ItemView {
         const addSceneBtn = this.entityBarEl.createEl('button', {
             cls: 'entity-bar-btn',
             attr: {
-                'aria-label': 'Add Scene',
+                'aria-label': 'Add scene',
                 'title': 'Add a scene to this map'
             }
         });
@@ -455,7 +455,7 @@ export class MapView extends ItemView {
         const addReferenceBtn = this.entityBarEl.createEl('button', {
             cls: 'entity-bar-btn',
             attr: {
-                'aria-label': 'Add Reference',
+                'aria-label': 'Add reference',
                 'title': 'Add a reference to this map'
             }
         });
@@ -490,24 +490,24 @@ export class MapView extends ItemView {
             
             // Add options
             this.locationLevelDropdown.addOption('auto', '🔍 Auto (by zoom)');
-            this.locationLevelDropdown.addOption('building', '🏛️ Building');
-            this.locationLevelDropdown.addOption('neighborhood', '🏘️ Neighborhood');
-            this.locationLevelDropdown.addOption('city', '🏙️ City');
-            this.locationLevelDropdown.addOption('region', '🗺️ Region/State');
-            this.locationLevelDropdown.addOption('country', '🏳️ Country');
+            this.locationLevelDropdown.addOption('building', '🏛️ building');
+            this.locationLevelDropdown.addOption('neighborhood', '🏘️ neighborhood');
+            this.locationLevelDropdown.addOption('city', '🏙️ city');
+            this.locationLevelDropdown.addOption('region', '🗺️ region/state');
+            this.locationLevelDropdown.addOption('country', '🏳️ country');
             this.locationLevelDropdown.addOption('continent', '🌍 Continent');
 
             this.locationLevelDropdown.setValue(this.locationLevelMode);
             this.locationLevelDropdown.onChange((value) => {
                 this.locationLevelMode = value as LocationLevel;
-                console.log('[MapView] Location level mode changed to:', value);
+                console.debug('[MapView] Location level mode changed to:', value);
                 // Update footer and dropdown label to reflect new selection
                 this.updateFooterStatus();
                 this.updateLocationLevelDropdownLabel();
             });
 
             // Initial label update
-            setTimeout(() => this.updateLocationLevelDropdownLabel(), 100);
+            window.setTimeout(() => this.updateLocationLevelDropdownLabel(), 100);
         }
 
         // Spacer
@@ -623,7 +623,7 @@ export class MapView extends ItemView {
 
         // Change cursor to crosshair
         if (this.mapContainer) {
-            this.mapContainer.style.cursor = 'crosshair';
+            this.mapContainer.setCssStyles({ cursor: 'crosshair' });
         }
 
         // Get the Leaflet map instance
@@ -654,7 +654,7 @@ export class MapView extends ItemView {
                 new Notice('Placement cancelled');
             }
         };
-        document.addEventListener('keydown', this.escapeHandler);
+        activeDocument.addEventListener('keydown', this.escapeHandler);
     }
 
     /**
@@ -669,7 +669,7 @@ export class MapView extends ItemView {
 
         // Reset cursor
         if (this.mapContainer) {
-            this.mapContainer.style.cursor = '';
+            this.mapContainer.setCssStyles({ cursor: '' });
         }
 
         // Remove click handler
@@ -681,7 +681,7 @@ export class MapView extends ItemView {
 
         // Remove ESC handler
         if (this.escapeHandler) {
-            document.removeEventListener('keydown', this.escapeHandler);
+            activeDocument.removeEventListener('keydown', this.escapeHandler);
             this.escapeHandler = null;
         }
 
@@ -732,14 +732,14 @@ export class MapView extends ItemView {
         if (!this.currentMap) return;
 
         // First, select the location
-        new LocationSuggestModal(this.app, this.plugin, async (selectedLocation) => {
+        new LocationSuggestModal(this.app, this.plugin, (selectedLocation) => { void (async () => {
             if (!selectedLocation) return;
 
             const mapId = this.currentMap!.id || this.currentMap!.name;
             const locationService = new LocationService(this.plugin);
 
             // Enable placement mode - user clicks map to place
-            this.enablePlacementMode('location', async (coordinates) => {
+            this.enablePlacementMode('location', (coordinates) => { void (async () => {
                 try {
                     await locationService.addMapBinding(
                         selectedLocation.id || selectedLocation.name,
@@ -753,10 +753,10 @@ export class MapView extends ItemView {
                     console.error('Error adding location to map:', error);
                     new Notice('Error adding location to map');
                 }
-            });
+            })(); });
 
             new Notice(`Click map to place ${selectedLocation.name}`);
-        }).open();
+        })(); }).open();
     }
 
     /**
@@ -766,7 +766,7 @@ export class MapView extends ItemView {
         if (!this.currentMap) return;
 
         // First, select the character
-        new CharacterSuggestModal(this.app, this.plugin, async (selectedCharacter) => {
+        new CharacterSuggestModal(this.app, this.plugin, (selectedCharacter) => { void (async () => {
             if (!selectedCharacter) return;
 
             const mapId = this.currentMap!.id || this.currentMap!.name;
@@ -788,7 +788,7 @@ export class MapView extends ItemView {
             }
 
             // Enable placement mode - user clicks map to place
-            this.enablePlacementMode('character', async (coordinates) => {
+            this.enablePlacementMode('character', (coordinates) => { void (async () => {
                 try {
                     if (characterLocation) {
                         // Character has existing location - place it at coordinates
@@ -824,8 +824,8 @@ export class MapView extends ItemView {
                             // For real-world maps: use geocoding to find/create location by place name
                             // Pass current zoom and level preference for granularity control
                             const currentZoom = this.leafletRenderer?.getMap()?.getZoom() || this.currentZoom;
-                            console.log('Real-world map detected, using geocode-based location matching');
-                            console.log('Level mode:', this.locationLevelMode, 'Zoom:', currentZoom);
+                            console.debug('Real-world map detected, using geocode-based location matching');
+                            console.debug('Level mode:', this.locationLevelMode, 'Zoom:', currentZoom);
                             
                             const result = await locationService.findOrCreateForRealWorldMap(
                                 mapId,
@@ -837,7 +837,7 @@ export class MapView extends ItemView {
                             isNewLocation = result.isNew;
                         } else {
                             // For image maps: use coordinate proximity matching
-                            console.log('Image map detected, using coordinate-based matching');
+                            console.debug('Image map detected, using coordinate-based matching');
                             const nearbyLocations = await locationService.findLocationsAtCoordinates(
                                 mapId,
                                 coordinates,
@@ -845,15 +845,15 @@ export class MapView extends ItemView {
                             );
 
                             if (nearbyLocations.length > 0) {
-                                const result = await new Promise<any | 'create-new' | null>((resolve) => {
+                                const result = await new Promise<Location | 'create-new' | null>((resolve) => {
                                     let selected = false;
                                     const modal = new LocationSelectionModal(this.app, nearbyLocations, (res) => {
                                         selected = true;
                                         resolve(res);
                                     });
-                                    const originalOnClose = modal.onClose;
+                                    const originalOnClose = modal.onClose.bind(modal);
                                     modal.onClose = () => {
-                                        originalOnClose.call(modal);
+                                        originalOnClose();
                                         if (!selected) resolve(null);
                                     };
                                     modal.open();
@@ -864,7 +864,7 @@ export class MapView extends ItemView {
                                 if (result === 'create-new') {
                                     // Create new location for image map
                                     const coordText = `${coordinates[0].toFixed(2)}, ${coordinates[1].toFixed(2)}`;
-                                    const locationId = `loc-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+                                    const locationId = `loc-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
 
                                     targetLocation = {
                                         id: locationId,
@@ -877,7 +877,7 @@ export class MapView extends ItemView {
                                         }]
                                     };
 
-                                    await this.plugin.saveLocation(targetLocation as any);
+                                    await this.plugin.saveLocation(targetLocation);
                                     isNewLocation = true;
                                 } else {
                                     targetLocation = result;
@@ -892,7 +892,7 @@ export class MapView extends ItemView {
                             } else {
                                 // Create new location for image map
                                 const coordText = `${coordinates[0].toFixed(2)}, ${coordinates[1].toFixed(2)}`;
-                                const locationId = `loc-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+                                const locationId = `loc-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
 
                                 targetLocation = {
                                     id: locationId,
@@ -905,7 +905,7 @@ export class MapView extends ItemView {
                                     }]
                                 };
 
-                                await this.plugin.saveLocation(targetLocation as any);
+                                await this.plugin.saveLocation(targetLocation);
                                 isNewLocation = true;
                             }
                         }
@@ -942,10 +942,10 @@ export class MapView extends ItemView {
                     console.error('Error adding character to map:', error);
                     new Notice('Error adding character to map');
                 }
-            });
+            })(); });
 
             new Notice(`Click map to place ${selectedCharacter.name}`);
-        }).open();
+        })(); }).open();
     }
 
     /**
@@ -955,7 +955,7 @@ export class MapView extends ItemView {
         if (!this.currentMap) return;
 
         // First, select the event
-        new EventSuggestModal(this.app, this.plugin, async (selectedEvent) => {
+        new EventSuggestModal(this.app, this.plugin, (selectedEvent) => { void (async () => {
             if (!selectedEvent) return;
 
             const mapId = this.currentMap!.id || this.currentMap!.name;
@@ -977,7 +977,7 @@ export class MapView extends ItemView {
             }
 
             // Enable placement mode - user clicks map to place
-            this.enablePlacementMode('event', async (coordinates) => {
+            this.enablePlacementMode('event', (coordinates) => { void (async () => {
                 try {
                     // If event has a location, bind that location to the map at these coordinates
                     if (eventLocation) {
@@ -1013,8 +1013,8 @@ export class MapView extends ItemView {
                             // For real-world maps: use geocoding to find/create location by place name
                             // Pass current zoom and level preference for granularity control
                             const currentZoom = this.leafletRenderer?.getMap()?.getZoom() || this.currentZoom;
-                            console.log('Real-world map detected, using geocode-based location matching');
-                            console.log('Level mode:', this.locationLevelMode, 'Zoom:', currentZoom);
+                            console.debug('Real-world map detected, using geocode-based location matching');
+                            console.debug('Level mode:', this.locationLevelMode, 'Zoom:', currentZoom);
                             
                             const result = await locationService.findOrCreateForRealWorldMap(
                                 mapId,
@@ -1026,7 +1026,7 @@ export class MapView extends ItemView {
                             isNewLocation = result.isNew;
                         } else {
                             // For image maps: use coordinate proximity matching
-                            console.log('Image map detected, using coordinate-based matching');
+                            console.debug('Image map detected, using coordinate-based matching');
                             const nearbyLocations = await locationService.findLocationsAtCoordinates(
                                 mapId,
                                 coordinates,
@@ -1034,15 +1034,15 @@ export class MapView extends ItemView {
                             );
 
                             if (nearbyLocations.length > 0) {
-                                const result = await new Promise<any | 'create-new' | null>((resolve) => {
+                                const result = await new Promise<Location | 'create-new' | null>((resolve) => {
                                     let selected = false;
                                     const modal = new LocationSelectionModal(this.app, nearbyLocations, (res) => {
                                         selected = true;
                                         resolve(res);
                                     });
-                                    const originalOnClose = modal.onClose;
+                                    const originalOnClose = modal.onClose.bind(modal);
                                     modal.onClose = () => {
-                                        originalOnClose.call(modal);
+                                        originalOnClose();
                                         if (!selected) resolve(null);
                                     };
                                     modal.open();
@@ -1053,7 +1053,7 @@ export class MapView extends ItemView {
                                 if (result === 'create-new') {
                                     // Create new location for image map
                                     const coordText = `${coordinates[0].toFixed(2)}, ${coordinates[1].toFixed(2)}`;
-                                    const locationId = `loc-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+                                    const locationId = `loc-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
 
                                     targetLocation = {
                                         id: locationId,
@@ -1066,7 +1066,7 @@ export class MapView extends ItemView {
                                         }]
                                     };
 
-                                    await this.plugin.saveLocation(targetLocation as any);
+                                    await this.plugin.saveLocation(targetLocation);
                                     isNewLocation = true;
                                 } else {
                                     targetLocation = result;
@@ -1081,7 +1081,7 @@ export class MapView extends ItemView {
                             } else {
                                 // Create new location for image map
                                 const coordText = `${coordinates[0].toFixed(2)}, ${coordinates[1].toFixed(2)}`;
-                                const locationId = `loc-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+                                const locationId = `loc-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
 
                                 targetLocation = {
                                     id: locationId,
@@ -1094,7 +1094,7 @@ export class MapView extends ItemView {
                                     }]
                                 };
 
-                                await this.plugin.saveLocation(targetLocation as any);
+                                await this.plugin.saveLocation(targetLocation);
                                 isNewLocation = true;
                             }
                         }
@@ -1131,10 +1131,10 @@ export class MapView extends ItemView {
                     console.error('Error adding event to map:', error);
                     new Notice('Error adding event to map');
                 }
-            });
+            })(); });
 
             new Notice(`Click map to place ${selectedEvent.name}`);
-        }).open();
+        })(); }).open();
     }
 
     /**
@@ -1144,7 +1144,7 @@ export class MapView extends ItemView {
         if (!this.currentMap) return;
 
         // First, select the item
-        new PlotItemSuggestModal(this.app, this.plugin, async (selectedItem) => {
+        new PlotItemSuggestModal(this.app, this.plugin, (selectedItem) => { void (async () => {
             if (!selectedItem) return;
 
             const mapId = this.currentMap!.id || this.currentMap!.name;
@@ -1166,7 +1166,7 @@ export class MapView extends ItemView {
             }
 
             // Enable placement mode - user clicks map to place
-            this.enablePlacementMode('item', async (coordinates) => {
+            this.enablePlacementMode('item', (coordinates) => { void (async () => {
                 try {
                     // If item has a location, bind that location to the map at these coordinates
                     if (itemLocation) {
@@ -1202,8 +1202,8 @@ export class MapView extends ItemView {
                             // For real-world maps: use geocoding to find/create location by place name
                             // Pass current zoom and level preference for granularity control
                             const currentZoom = this.leafletRenderer?.getMap()?.getZoom() || this.currentZoom;
-                            console.log('Real-world map detected, using geocode-based location matching');
-                            console.log('Level mode:', this.locationLevelMode, 'Zoom:', currentZoom);
+                            console.debug('Real-world map detected, using geocode-based location matching');
+                            console.debug('Level mode:', this.locationLevelMode, 'Zoom:', currentZoom);
                             
                             const result = await locationService.findOrCreateForRealWorldMap(
                                 mapId,
@@ -1215,7 +1215,7 @@ export class MapView extends ItemView {
                             isNewLocation = result.isNew;
                         } else {
                             // For image maps: use coordinate proximity matching
-                            console.log('Image map detected, using coordinate-based matching');
+                            console.debug('Image map detected, using coordinate-based matching');
                             const nearbyLocations = await locationService.findLocationsAtCoordinates(
                                 mapId,
                                 coordinates,
@@ -1223,15 +1223,15 @@ export class MapView extends ItemView {
                             );
 
                             if (nearbyLocations.length > 0) {
-                                const result = await new Promise<any | 'create-new' | null>((resolve) => {
+                                const result = await new Promise<Location | 'create-new' | null>((resolve) => {
                                     let selected = false;
                                     const modal = new LocationSelectionModal(this.app, nearbyLocations, (res) => {
                                         selected = true;
                                         resolve(res);
                                     });
-                                    const originalOnClose = modal.onClose;
+                                    const originalOnClose = modal.onClose.bind(modal);
                                     modal.onClose = () => {
-                                        originalOnClose.call(modal);
+                                        originalOnClose();
                                         if (!selected) resolve(null);
                                     };
                                     modal.open();
@@ -1242,7 +1242,7 @@ export class MapView extends ItemView {
                                 if (result === 'create-new') {
                                     // Create new location for image map
                                     const coordText = `${coordinates[0].toFixed(2)}, ${coordinates[1].toFixed(2)}`;
-                                    const locationId = `loc-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+                                    const locationId = `loc-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
 
                                     targetLocation = {
                                         id: locationId,
@@ -1255,7 +1255,7 @@ export class MapView extends ItemView {
                                         }]
                                     };
 
-                                    await this.plugin.saveLocation(targetLocation as any);
+                                    await this.plugin.saveLocation(targetLocation);
                                     isNewLocation = true;
                                 } else {
                                     targetLocation = result;
@@ -1270,7 +1270,7 @@ export class MapView extends ItemView {
                             } else {
                                 // Create new location for image map
                                 const coordText = `${coordinates[0].toFixed(2)}, ${coordinates[1].toFixed(2)}`;
-                                const locationId = `loc-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+                                const locationId = `loc-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
 
                                 targetLocation = {
                                     id: locationId,
@@ -1283,7 +1283,7 @@ export class MapView extends ItemView {
                                     }]
                                 };
 
-                                await this.plugin.saveLocation(targetLocation as any);
+                                await this.plugin.saveLocation(targetLocation);
                                 isNewLocation = true;
                             }
                         }
@@ -1320,10 +1320,10 @@ export class MapView extends ItemView {
                     console.error('Error adding item to map:', error);
                     new Notice('Error adding item to map');
                 }
-            });
+            })(); });
 
             new Notice(`Click map to place ${selectedItem.name}`);
-        }).open();
+        })(); }).open();
     }
 
     /**
@@ -1373,8 +1373,6 @@ export class MapView extends ItemView {
         }
 
         // Create a simple selection modal
-        const { FuzzySuggestModal } = require('obsidian');
-
         class EntitySelectionModal extends FuzzySuggestModal<any> {
             constructor(
                 app: any,
@@ -1397,11 +1395,11 @@ export class MapView extends ItemView {
             }
         }
 
-        new EntitySelectionModal(this.app, entities, async (selectedEntity) => {
+        new EntitySelectionModal(this.app, entities, (selectedEntity) => { void (async () => {
             if (!selectedEntity) return;
 
             // Enable placement mode - user clicks map to place
-            this.enablePlacementMode(entityType, async (coordinates) => {
+            this.enablePlacementMode(entityType, (coordinates) => { void (async () => {
                 try {
                     // Find or create location at coordinates
                     let targetLocation: any = null;
@@ -1440,16 +1438,15 @@ export class MapView extends ItemView {
                             }
                         } else {
                             // Image maps: show selection modal to let user choose
-                            const result = await new Promise<any | 'create-new' | null>((resolve) => {
+                            const result = await new Promise<Location | 'create-new' | null>((resolve) => {
                                 let selected = false;
-                                const { LocationSelectionModal } = require('../modals/LocationSelectionModal');
-                                const modal = new LocationSelectionModal(this.app, nearbyLocations, (res: any) => {
+                                const modal = new LocationSelectionModal(this.app, nearbyLocations, (res) => {
                                     selected = true;
                                     resolve(res);
                                 });
-                                const originalOnClose = modal.onClose;
+                                const originalOnClose = modal.onClose.bind(modal);
                                 modal.onClose = () => {
-                                    originalOnClose.call(modal);
+                                    originalOnClose();
                                     if (!selected) resolve(null);
                                 };
                                 modal.open();
@@ -1460,7 +1457,7 @@ export class MapView extends ItemView {
                             if (result === 'create-new') {
                                 // User chose to create new location
                                 const coordText = `${coordinates[0].toFixed(2)}, ${coordinates[1].toFixed(2)}`;
-                                const locationId = `loc-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+                                const locationId = `loc-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
 
                                 targetLocation = {
                                     id: locationId,
@@ -1473,7 +1470,7 @@ export class MapView extends ItemView {
                                     }]
                                 };
 
-                                await this.plugin.saveLocation(targetLocation as any);
+                                await this.plugin.saveLocation(targetLocation);
                                 isNewLocation = true;
                             } else {
                                 // User selected existing location
@@ -1490,7 +1487,7 @@ export class MapView extends ItemView {
                     } else {
                         // No nearby location - create new one
                         const coordText = `${coordinates[0].toFixed(2)}, ${coordinates[1].toFixed(2)}`;
-                        const locationId = `loc-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+                        const locationId = `loc-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
 
                         // For real-world maps, try to get location name from reverse geocoding
                         let locationName = `${selectedEntity.name} Location`;
@@ -1519,7 +1516,7 @@ export class MapView extends ItemView {
                             }]
                         };
 
-                        await this.plugin.saveLocation(targetLocation as any);
+                        await this.plugin.saveLocation(targetLocation);
                         isNewLocation = true;
                     }
 
@@ -1554,10 +1551,10 @@ export class MapView extends ItemView {
                     console.error(`Error adding ${entityTypeName.toLowerCase()} to map:`, error);
                     new Notice(`Error adding ${entityTypeName.toLowerCase()} to map`);
                 }
-            });
+            })(); });
 
             new Notice(`Click map to place ${selectedEntity.name}`);
-        }).open();
+        })(); }).open();
     }
 
     /**
@@ -1608,7 +1605,7 @@ export class MapView extends ItemView {
                 }
             });
 
-            console.log(`[MapView] Updated ${entityType} "${entity.name}" with mapId=${mapId}, coordinates=[${coordinates}]`);
+            console.debug(`[MapView] Updated ${entityType} "${entity.name}" with mapId=${mapId}, coordinates=[${coordinates.join(',')}]`);
         } catch (error) {
             console.error(`[MapView] Error updating entity map binding:`, error);
         }
@@ -1776,7 +1773,7 @@ export class MapView extends ItemView {
         // Clean up existing renderer before creating new one
         if (this.leafletRenderer) {
             try {
-                await this.leafletRenderer.onunload();
+                this.leafletRenderer.onunload();
             } catch (e) {
                 console.warn('Error cleaning up old renderer:', e);
             }
@@ -1791,8 +1788,8 @@ export class MapView extends ItemView {
 
         // CRITICAL FIX: Parent container must have position:relative for absolute children
         // Without this, tiles will scatter across the viewport
-        this.mapContainer.style.position = 'relative';
-        this.mapContainer.style.overflow = 'hidden';
+        this.mapContainer.setCssStyles({ position: 'relative' });
+        this.mapContainer.setCssStyles({ overflow: 'hidden' });
 
         // Get actual dimensions from parent container
         const containerRect = this.mapContainer.getBoundingClientRect();
@@ -1805,24 +1802,24 @@ export class MapView extends ItemView {
         
         // CRITICAL: Set explicit PIXEL dimensions - not percentages!
         // Leaflet needs real pixel values to calculate which tiles to load
-        leafletContainer.style.position = 'absolute';
-        leafletContainer.style.top = '0';
-        leafletContainer.style.left = '0';
-        leafletContainer.style.width = `${containerWidth}px`;
-        leafletContainer.style.height = `${containerHeight}px`;
-        leafletContainer.style.minHeight = '400px';
-        leafletContainer.style.minWidth = '400px';
+        leafletContainer.setCssStyles({ position: 'absolute' });
+        leafletContainer.setCssStyles({ top: '0' });
+        leafletContainer.setCssStyles({ left: '0' });
+        leafletContainer.setCssStyles({ width: `${containerWidth}px` });
+        leafletContainer.setCssStyles({ height: `${containerHeight}px` });
+        leafletContainer.setCssStyles({ minHeight: '400px' });
+        leafletContainer.setCssStyles({ minWidth: '400px' });
 
         // Use transparent background for image maps, grey for real-world maps
         const isImageMap = this.currentMap.type === 'image' || this.currentMap.image;
-        leafletContainer.style.backgroundColor = isImageMap
-            ? 'transparent'
-            : 'var(--background-secondary)';
+        leafletContainer.setCssStyles({
+            backgroundColor: isImageMap ? 'transparent' : 'var(--background-secondary)'
+        });
 
         // CRITICAL: Add inline style tag to override Obsidian's global img styles
         // This is essential because Obsidian themes apply max-width, object-fit, etc.
         // to all img elements which breaks Leaflet tile positioning
-        this.injectLeafletCSSOverrides(leafletContainer);
+        // Leaflet override CSS is loaded from styles.css.
 
         // Use stable ID based on map ID only (no Date.now() - causes issues)
         const mapId = this.currentMap.id || this.currentMap.name;
@@ -1840,7 +1837,7 @@ export class MapView extends ItemView {
                 addChild: (component: any) => {
                     // Trigger onload() lifecycle method after container is in DOM
                     // This matches the code block processor pattern
-                    requestAnimationFrame(() => {
+                    window.requestAnimationFrame(() => {
                         if (component.onload) {
                             component.onload();
                         }
@@ -1853,8 +1850,8 @@ export class MapView extends ItemView {
             const containerRect = leafletContainer.getBoundingClientRect();
             if (containerRect.height === 0 || containerRect.width === 0) {
                 // Set explicit minimum dimensions if flex layout hasn't computed yet
-                leafletContainer.style.minHeight = '500px';
-                leafletContainer.style.minWidth = '100%';
+                leafletContainer.setCssStyles({ minHeight: '500px' });
+                leafletContainer.setCssStyles({ minWidth: '100%' });
             }
 
             // Create renderer
@@ -1883,7 +1880,7 @@ export class MapView extends ItemView {
             // Wheel events for scroll zoom
             // Custom zoom handler that zooms from center (not mouse position)
             // Must be at document level to work with Leaflet 1.8+ event handling
-            let wheelTimeout: NodeJS.Timeout | null = null;
+            let wheelTimeout: number | null = null;
             let wheelDelta = 0;
 
             const wheelHandler = (ev: WheelEvent) => {
@@ -1899,10 +1896,10 @@ export class MapView extends ItemView {
 
                     // Debounce wheel events
                     if (wheelTimeout) {
-                        clearTimeout(wheelTimeout);
+                        window.clearTimeout(wheelTimeout);
                     }
 
-                    wheelTimeout = setTimeout(() => {
+                    wheelTimeout = window.setTimeout(() => {
                         const map = this.leafletRenderer?.getMap();
                         if (!map) return;
 
@@ -1925,7 +1922,7 @@ export class MapView extends ItemView {
                     }, 40);  // 40ms debounce
                 }
             };
-            document.addEventListener('wheel', wheelHandler, { passive: false });
+            activeDocument.addEventListener('wheel', wheelHandler, { passive: false });
             
             // Touch events for mobile panning
             const touchMoveHandler = (ev: TouchEvent) => {
@@ -1935,7 +1932,7 @@ export class MapView extends ItemView {
                     ev.stopPropagation();
                 }
             };
-            document.addEventListener('touchmove', touchMoveHandler);
+            activeDocument.addEventListener('touchmove', touchMoveHandler);
 
             // Store handlers for cleanup
             (this as any)._wheelHandler = wheelHandler;
@@ -1945,7 +1942,7 @@ export class MapView extends ItemView {
             leafletContainer.tabIndex = 0;
 
             // Add zoom/pan event handlers after a short delay
-            setTimeout(() => {
+            window.setTimeout(() => {
                 const map = this.leafletRenderer?.getMap();
                 if (map) {
                     map.on('zoomend', () => {
@@ -1988,9 +1985,9 @@ export class MapView extends ItemView {
                 }
             };
 
-            setTimeout(forceMapUpdate, 150);
-            setTimeout(forceMapUpdate, 300);
-            setTimeout(forceMapUpdate, 500);
+            window.setTimeout(forceMapUpdate, 150);
+            window.setTimeout(forceMapUpdate, 300);
+            window.setTimeout(forceMapUpdate, 500);
 
         } catch (error) {
             console.error('Error rendering map:', error);
@@ -2014,9 +2011,9 @@ export class MapView extends ItemView {
         const styleId = 'leaflet-obsidian-overrides';
         
         // Only inject once per document
-        if (document.getElementById(styleId)) return;
+        if (activeDocument.getElementById(styleId)) return;
         
-        const style = document.createElement('style');
+        const style = activeDocument.createElement('div');
         style.id = styleId;
         style.textContent = `
             /* CRITICAL: Reset Obsidian's global img styles for Leaflet */
@@ -2177,7 +2174,7 @@ export class MapView extends ItemView {
             }
         `;
         
-        document.head.appendChild(style);
+        activeDocument.head.appendChild(style);
     }
 
     /**
@@ -2291,12 +2288,12 @@ export class MapView extends ItemView {
             const rect = container.getBoundingClientRect();
 
             if (rect.width > 0 && rect.height > 0) {
-                console.log(`[MapView] Container has dimensions: ${rect.width}x${rect.height}`);
+                console.debug(`[MapView] Container has dimensions: ${rect.width}x${rect.height}`);
                 return;
             }
 
             // Wait a bit and try again
-            await new Promise(resolve => setTimeout(resolve, 20));
+            await new Promise(resolve => window.setTimeout(resolve, 20));
             attempts++;
         }
 
@@ -2312,7 +2309,7 @@ export class MapView extends ItemView {
         if (!this.mapContainer) return;
         this.resizeObserver?.disconnect();
 
-        let resizeTimeout: NodeJS.Timeout | null = null;
+        let resizeTimeout: number | null = null;
 
         const handleResize = () => {
             // Update leaflet container dimensions to match parent
@@ -2320,16 +2317,16 @@ export class MapView extends ItemView {
             if (leafletContainer && this.mapContainer) {
                 const rect = this.mapContainer.getBoundingClientRect();
                 if (rect.width > 0 && rect.height > 0) {
-                    leafletContainer.style.width = `${rect.width}px`;
-                    leafletContainer.style.height = `${rect.height}px`;
+                    leafletContainer.setCssStyles({ width: `${rect.width}px` });
+                    leafletContainer.setCssStyles({ height: `${rect.height}px` });
                 }
             }
 
             const map = this.leafletRenderer?.getMap();
             if (map) {
-                console.log('[MapView] Resize detected, updating map...');
+                console.debug('[MapView] Resize detected, updating map...');
                 // Use requestAnimationFrame to ensure DOM has updated
-                requestAnimationFrame(() => {
+                window.requestAnimationFrame(() => {
                     if (map) {
                         map.invalidateSize({ animate: false });
 
@@ -2356,25 +2353,25 @@ export class MapView extends ItemView {
                             // Force visibility on tile container
                             const container = tileLayer.getContainer?.();
                             if (container) {
-                                container.style.opacity = '1';
-                                container.style.visibility = 'visible';
-                                container.style.display = 'block';
+                                container.setCssStyles({ opacity: '1' });
+                                container.setCssStyles({ visibility: 'visible' });
+                                container.setCssStyles({ display: 'block' });
                             }
                         });
 
                         // Force tile pane visibility
                         const tilePane = map.getPane('tilePane');
                         if (tilePane) {
-                            tilePane.style.opacity = '1';
-                            tilePane.style.visibility = 'visible';
-                            tilePane.style.display = 'block';
+                            tilePane.setCssStyles({ opacity: '1' });
+                            tilePane.setCssStyles({ visibility: 'visible' });
+                            tilePane.setCssStyles({ display: 'block' });
                         }
 
                         // Fire events to trigger Leaflet's internal tile loading
                         map.fire('moveend');
                         map.fire('zoomend');
 
-                        console.log('[MapView] Forced tile layer update after resize');
+                        console.debug('[MapView] Forced tile layer update after resize');
                     }
                 });
             }
@@ -2383,10 +2380,10 @@ export class MapView extends ItemView {
         this.resizeObserver = new ResizeObserver((entries) => {
             // Debounce resize events to prevent excessive invalidateSize calls
             if (resizeTimeout) {
-                clearTimeout(resizeTimeout);
+                window.clearTimeout(resizeTimeout);
             }
 
-            resizeTimeout = setTimeout(() => {
+            resizeTimeout = window.setTimeout(() => {
                 handleResize();
             }, 150); // 150ms debounce
         });
@@ -2398,11 +2395,11 @@ export class MapView extends ItemView {
         if (!this.hasRegisteredWorkspaceResizeListener) {
             this.registerEvent(this.app.workspace.on('resize', () => {
                 // Delay slightly to let Obsidian finish its layout update
-                setTimeout(() => {
+                window.setTimeout(() => {
                     if (resizeTimeout) {
-                        clearTimeout(resizeTimeout);
+                        window.clearTimeout(resizeTimeout);
                     }
-                    resizeTimeout = setTimeout(() => {
+                    resizeTimeout = window.setTimeout(() => {
                         handleResize();
                     }, 150);
                 }, 100);
@@ -2417,22 +2414,22 @@ export class MapView extends ItemView {
 
         // Clean up debounce timer for view state persistence
         if (this._persistViewStateTimeout) {
-            clearTimeout(this._persistViewStateTimeout);
+            window.clearTimeout(this._persistViewStateTimeout);
             // Save immediately if there's a pending save
             const mapId = this.currentMap?.id || this.currentMap?.name;
             if (mapId && this._savedCenter) {
-                this.plugin.saveMapViewState(mapId, this.currentZoom, this._savedCenter);
+                void this.plugin.saveMapViewState(mapId, this.currentZoom, this._savedCenter);
             }
             this._persistViewStateTimeout = null;
         }
 
         // Clean up document-level event handlers
         if ((this as any)._wheelHandler) {
-            document.removeEventListener('wheel', (this as any)._wheelHandler);
+            activeDocument.removeEventListener('wheel', (this as any)._wheelHandler);
             (this as any)._wheelHandler = null;
         }
         if ((this as any)._touchMoveHandler) {
-            document.removeEventListener('touchmove', (this as any)._touchMoveHandler);
+            activeDocument.removeEventListener('touchmove', (this as any)._touchMoveHandler);
             (this as any)._touchMoveHandler = null;
         }
 
@@ -2481,17 +2478,17 @@ export class MapView extends ItemView {
     }
 
     /** Debounce timer for persisting view state */
-    private _persistViewStateTimeout: ReturnType<typeof setTimeout> | null = null;
+    private _persistViewStateTimeout: number | null = null;
 
     /**
      * Debounced persistence of view state to avoid excessive writes
      */
     private debouncedPersistViewState(mapId: string, zoom: number, center: { lat: number; lng: number }): void {
         if (this._persistViewStateTimeout) {
-            clearTimeout(this._persistViewStateTimeout);
+            window.clearTimeout(this._persistViewStateTimeout);
         }
-        this._persistViewStateTimeout = setTimeout(() => {
-            this.plugin.saveMapViewState(mapId, zoom, center);
+        this._persistViewStateTimeout = window.setTimeout(() => {
+            void this.plugin.saveMapViewState(mapId, zoom, center);
             this._persistViewStateTimeout = null;
         }, 500); // 500ms debounce
     }
@@ -2519,7 +2516,7 @@ export class MapView extends ItemView {
 
         // Restore zoom and position after map loads (or if same map)
         if (state?.zoom !== undefined) {
-            setTimeout(() => {
+            window.setTimeout(() => {
                 const map = this.leafletRenderer?.getMap();
                 if (map) {
                     map.setView(

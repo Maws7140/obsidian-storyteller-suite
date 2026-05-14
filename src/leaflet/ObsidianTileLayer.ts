@@ -57,11 +57,11 @@ export class ObsidianTileLayer extends L.TileLayer {
      * @returns Browser-accessible URL for the tile
      */
     getTileUrl(coords: L.Coords): string {
-        console.log(`[ObsidianTileLayer] getTileUrl called for z=${coords.z}, x=${coords.x}, y=${coords.y}`);
+        console.debug(`[ObsidianTileLayer] getTileUrl called for z=${coords.z}, x=${coords.x}, y=${coords.y}`);
         
         // Construct vault path: basePath/z/x/y.png
         const tilePath = `${this.basePath}/${coords.z}/${coords.x}/${coords.y}.png`;
-        console.log(`[ObsidianTileLayer] Looking for tile at: ${tilePath}`);
+        console.debug(`[ObsidianTileLayer] Looking for tile at: ${tilePath}`);
 
         // Check if tile exists in vault
         const file = this.plugin.app.vault.getAbstractFileByPath(tilePath);
@@ -70,7 +70,7 @@ export class ObsidianTileLayer extends L.TileLayer {
             // Convert vault path to browser-accessible URL
             // Returns something like: app://local/path/to/vault/StorytellerSuite/MapTiles/abc123/0/0/0.png
             const url = this.plugin.app.vault.adapter.getResourcePath(file.path);
-            console.log(`[ObsidianTileLayer] Loading tile ${coords.z}/${coords.x}/${coords.y} -> ${url.substring(0, 50)}...`);
+            console.debug(`[ObsidianTileLayer] Loading tile ${coords.z}/${coords.x}/${coords.y} -> ${url.substring(0, 50)}...`);
             return url;
         }
 
@@ -96,20 +96,23 @@ export class ObsidianTileLayer extends L.TileLayer {
      * Creates the DOM element for a tile
      */
     createTile(coords: L.Coords, done: L.DoneCallback): HTMLElement {
-        const tile = document.createElement('img');
+        const tile = activeDocument.createElement('img');
 
         // CRITICAL: Set explicit styles to ensure tile is visible
         // Sometimes Leaflet's default styles don't get applied correctly
-        tile.style.width = `${this.options.tileSize || 256}px`;
-        tile.style.height = `${this.options.tileSize || 256}px`;
-        tile.style.display = 'block';
-        tile.style.opacity = '1';
-        tile.style.visibility = 'visible';
+        const tileSize = typeof this.options.tileSize === 'number'
+            ? this.options.tileSize
+            : this.options.tileSize?.x ?? 256;
+        tile.setCssStyles({ width: `${tileSize}px` });
+        tile.setCssStyles({ height: `${tileSize}px` });
+        tile.setCssStyles({ display: 'block' });
+        tile.setCssStyles({ opacity: '1' });
+        tile.setCssStyles({ visibility: 'visible' });
 
         L.DomEvent.on(tile, 'load', () => {
             // CRITICAL: Force tile to be visible after load
-            tile.style.opacity = '1';
-            tile.style.visibility = 'visible';
+            tile.setCssStyles({ opacity: '1' });
+            tile.setCssStyles({ visibility: 'visible' });
             done(undefined, tile);
         });
 
@@ -136,14 +139,14 @@ export class ObsidianTileLayer extends L.TileLayer {
         // This ensures the map is fully initialized and tile container exists
         map.whenReady(() => {
             // Use requestAnimationFrame to ensure DOM is updated
-            requestAnimationFrame(() => {
+            window.requestAnimationFrame(() => {
                 // Double-check that tile container exists before forcing visibility
                 const container = this.getContainer();
                 if (container) {
                     this._forceVisibility();
                 } else {
                     // Container not ready yet, retry after a short delay
-                    setTimeout(() => {
+                    window.setTimeout(() => {
                         const retryContainer = this.getContainer();
                         if (retryContainer) {
                             this._forceVisibility();
@@ -165,16 +168,16 @@ export class ObsidianTileLayer extends L.TileLayer {
         if (!container) return;
 
         // Force tile container to be visible
-        container.style.opacity = '1';
-        container.style.visibility = 'visible';
+        container.setCssStyles({ opacity: '1' });
+        container.setCssStyles({ visibility: 'visible' });
 
         // Force all tile images to be visible
         const tiles = container.querySelectorAll('img');
         tiles.forEach((tile) => {
-            tile.style.opacity = '1';
-            tile.style.visibility = 'visible';
+            tile.setCssStyles({ opacity: '1' });
+            tile.setCssStyles({ visibility: 'visible' });
         });
 
-        console.log(`[ObsidianTileLayer] Forced visibility on ${tiles.length} tiles`);
+        console.debug(`[ObsidianTileLayer] Forced visibility on ${tiles.length} tiles`);
     }
 }

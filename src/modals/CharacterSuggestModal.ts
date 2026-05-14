@@ -2,6 +2,7 @@ import { App, FuzzySuggestModal, Notice, prepareFuzzySearch, FuzzyMatch } from '
 import { Character } from '../types';
 import StorytellerSuitePlugin from '../main';
 import { t } from '../i18n/strings';
+import { scheduleSuggestRefresh } from './utils/SuggestModalRefresh';
 
 export class CharacterSuggestModal extends FuzzySuggestModal<Character> {
 	plugin: StorytellerSuitePlugin;
@@ -17,7 +18,7 @@ export class CharacterSuggestModal extends FuzzySuggestModal<Character> {
 
     // Override onOpen to fetch data asynchronously *before* getItems is needed
     async onOpen() {
-        super.onOpen(); // Important: Call parent onOpen
+        void super.onOpen(); // Important: Call parent onOpen
         try {
             this.characters = await this.plugin.listCharacters();
         } catch (error) {
@@ -25,22 +26,8 @@ export class CharacterSuggestModal extends FuzzySuggestModal<Character> {
             new Notice(t('errorLoadingCharacters'));
             this.characters = []; // Ensure it's an empty array on error
         }
-        // Force-refresh suggestions so initial list shows without typing
-        setTimeout(() => {
-            if (this.inputEl) {
-                try { (this as any).setQuery?.(''); } catch {}
-                try { this.inputEl.dispatchEvent(new window.Event('input')); } catch {}
-            }
-            try { (this as any).onInputChanged?.(); } catch {}
-        }, 0);
-        // Safety: run a second refresh shortly after in case layout wasn't ready
-        setTimeout(() => {
-            if (this.inputEl) {
-                try { (this as any).setQuery?.(''); } catch {}
-                try { this.inputEl.dispatchEvent(new window.Event('input')); } catch {}
-            }
-            try { (this as any).onInputChanged?.(); } catch {}
-        }, 50);
+        // Force-refresh suggestions so initial list shows without typing.
+        scheduleSuggestRefresh(this);
     }
 
 	// Override getSuggestions to show all items when query is empty
@@ -56,7 +43,7 @@ export class CharacterSuggestModal extends FuzzySuggestModal<Character> {
 		return this.characters
 			.map((c) => {
 				const match = fuzzy(this.getItemText(c));
-				if (match) return { item: c, match } as FuzzyMatch<Character>;
+				if (match) return { item: c, match };
 				return null;
 			})
 			.filter((fm): fm is FuzzyMatch<Character> => !!fm);

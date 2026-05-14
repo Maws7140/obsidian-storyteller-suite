@@ -61,7 +61,7 @@ const SCENE_BREAK_PATTERNS = [
  */
 export class HtmlParser implements DocumentParser {
     name = 'HTML Parser';
-    format: ImportFormat = 'html' as ImportFormat;
+    format: ImportFormat = 'html';
 
     canParse(content: string, fileName: string): boolean {
         const extension = fileName.toLowerCase().split('.').pop();
@@ -188,7 +188,7 @@ export class HtmlParser implements DocumentParser {
         // Validate chapter numbering
         const numbers = chapters.map(c => c.number).filter((n): n is number => n !== undefined);
         if (numbers.length > 1) {
-            const sequential = numbers.every((n, i) => i === 0 || n === numbers[i - 1]! + 1);
+            const sequential = numbers.every((n, i) => i === 0 || n === numbers[i - 1] + 1);
             if (!sequential) {
                 warnings.push('Chapter numbering is not sequential.');
             }

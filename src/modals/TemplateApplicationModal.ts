@@ -4,15 +4,23 @@
  * Provides type-appropriate inputs and validation
  */
 
-import { App, Notice, Setting } from 'obsidian';
+import { App, Notice, Setting, parseYaml } from 'obsidian';
 import { ResponsiveModal } from './ResponsiveModal';
 import type StorytellerSuitePlugin from '../main';
-import { Template, TemplateVariable, TemplateEntityType } from '../templates/TemplateTypes';
+import { Template, TemplateEntities, TemplateEntityType, TemplateVariable } from '../templates/TemplateTypes';
 import { VariableSubstitution } from '../templates/VariableSubstitution';
 
+export type TemplateVariableValue = string | number | boolean;
+
 export interface TemplateVariableValues {
-    [variableName: string]: any;
+    [variableName: string]: TemplateVariableValue;
 }
+
+type NameableTemplateEntity = {
+    templateId: string;
+    name?: string;
+    yamlContent?: string;
+};
 
 export interface EntityFileName {
     templateId: string;
@@ -202,7 +210,7 @@ export class TemplateApplicationModal extends ResponsiveModal {
                     setting.addDropdown(dropdown => {
                         // Add empty option if no default
                         if (!variable.defaultValue) {
-                            dropdown.addOption('', '-- Select --');
+                            dropdown.addOption('', '-- select --');
                         }
 
                         // Add all options
@@ -233,7 +241,7 @@ export class TemplateApplicationModal extends ResponsiveModal {
 
             case 'date':
                 setting.addText(text => text
-                    .setPlaceholder('YYYY-MM-DD')
+                    .setPlaceholder('Yyyy-mm-dd')
                     .setValue(this.variableValues[variable.name]?.toString() || '')
                     .onChange(value => {
                         this.variableValues[variable.name] = value;
@@ -277,10 +285,9 @@ export class TemplateApplicationModal extends ResponsiveModal {
         ];
 
         entityTypes.forEach(entityType => {
-            const pluralKey = this.getEntityTypePlural(entityType);
-            const entityArray = (entities as any)[pluralKey];
-            if (entityArray && Array.isArray(entityArray)) {
-                entityArray.forEach((entity: any) => {
+            const entityArray = this.getTemplateEntities(entities, entityType);
+            if (entityArray.length > 0) {
+                entityArray.forEach((entity) => {
                     if (entity.templateId) {
                         // Extract name from yamlContent or entity object
                         let previewName = 'Unnamed';
@@ -288,15 +295,7 @@ export class TemplateApplicationModal extends ResponsiveModal {
                             previewName = entity.name;
                         } else if (entity.yamlContent) {
                             // Try to extract name from YAML
-                            try {
-                                const { parseYaml } = require('obsidian');
-                                const parsed = parseYaml(entity.yamlContent);
-                                if (parsed && parsed.name) {
-                                    previewName = parsed.name;
-                                }
-                            } catch (e) {
-                                // Ignore parse errors
-                            }
+                            previewName = this.extractNameFromYaml(entity.yamlContent) ?? previewName;
                         }
                         this.previewNames.set(entity.templateId, previewName);
                         this.entityFileNames.push({
@@ -322,10 +321,9 @@ export class TemplateApplicationModal extends ResponsiveModal {
         ];
 
         entityTypes.forEach(entityType => {
-            const pluralKey = this.getEntityTypePlural(entityType);
-            const entityArray = (entities as any)[pluralKey];
-            if (entityArray && Array.isArray(entityArray)) {
-                entityArray.forEach((entity: any) => {
+            const entityArray = this.getTemplateEntities(entities, entityType);
+            if (entityArray.length > 0) {
+                entityArray.forEach((entity) => {
                     if (entity.templateId) {
                         let previewName = 'Unnamed';
                         
@@ -337,12 +335,8 @@ export class TemplateApplicationModal extends ResponsiveModal {
                                 false
                             );
                             try {
-                                const { parseYaml } = require('obsidian');
-                                const parsed = parseYaml(substituted.value);
-                                if (parsed && parsed.name) {
-                                    previewName = parsed.name;
-                                }
-                            } catch (e) {
+                                previewName = this.extractNameFromYaml(substituted.value) ?? previewName;
+                            } catch {
                                 // Ignore parse errors, try to find name: in string
                                 const nameMatch = substituted.value.match(/^name:\s*(.+)$/m);
                                 if (nameMatch) {
@@ -391,7 +385,7 @@ export class TemplateApplicationModal extends ResponsiveModal {
             return;
         }
 
-        this.entityNamingContainer.createEl('h3', { text: 'Choose File Names' });
+        this.entityNamingContainer.createEl('h3', { text: 'Choose file names' });
         this.entityNamingContainer.createEl('p', {
             text: 'Enter the file name for each entity note that will be created. This will be the name of the markdown file (without .md extension).',
             cls: 'template-application-instruction'
@@ -449,6 +443,21 @@ export class TemplateApplicationModal extends ResponsiveModal {
         return pluralMap[entityType] || entityType + 's';
     }
 
+    private getTemplateEntities(entities: TemplateEntities, entityType: TemplateEntityType): NameableTemplateEntity[] {
+        const pluralKey = this.getEntityTypePlural(entityType) as keyof TemplateEntities;
+        const entityArray = entities[pluralKey];
+        return Array.isArray(entityArray) ? entityArray as NameableTemplateEntity[] : [];
+    }
+
+    private extractNameFromYaml(yamlContent: string): string | undefined {
+        const parsed: unknown = parseYaml(yamlContent);
+        if (!parsed || typeof parsed !== 'object' || !('name' in parsed)) {
+            return undefined;
+        }
+        const name = (parsed as { name?: unknown }).name;
+        return typeof name === 'string' && name.trim() ? name : undefined;
+    }
+
     private renderFooter(container: HTMLElement): void {
         const footer = container.createDiv('template-application-footer');
 
@@ -456,7 +465,7 @@ export class TemplateApplicationModal extends ResponsiveModal {
         cancelBtn.addEventListener('click', () => this.close());
 
         const applyBtn = footer.createEl('button', {
-            text: 'Apply Template',
+            text: 'Apply template',
             cls: 'mod-cta'
         });
         applyBtn.addEventListener('click', () => this.handleApply());
@@ -482,21 +491,21 @@ export class TemplateApplicationModal extends ResponsiveModal {
                 // Validate date format
                 if (variable.type === 'date' && value && value !== '') {
                     const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-                    if (!dateRegex.test(value)) {
+                    if (!dateRegex.test(String(value))) {
                         validationErrors.push(`${variable.label || variable.name} must be in YYYY-MM-DD format`);
                     }
                 }
 
                 // Validate number type
                 if (variable.type === 'number' && value !== undefined && value !== '') {
-                    if (isNaN(parseFloat(value))) {
+                    if (isNaN(parseFloat(String(value)))) {
                         validationErrors.push(`${variable.label || variable.name} must be a valid number`);
                     }
                 }
 
                 // Validate select has valid option
                 if (variable.type === 'select' && variable.options && variable.options.length > 0) {
-                    if (value && !variable.options.includes(value)) {
+                    if (value && !variable.options.includes(String(value))) {
                         validationErrors.push(`${variable.label || variable.name} must be one of the available options`);
                     }
                 }

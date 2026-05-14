@@ -11,8 +11,7 @@ import {
     DocumentParser,
     ParsedDocument,
     ParsedChapter,
-    ParsedScene,
-    DocumentMetadata
+    ParsedScene
 } from '../ImportTypes';
 
 /**
@@ -27,7 +26,7 @@ function countWords(text: string): number {
  */
 export class FountainParser implements DocumentParser {
     name = 'Fountain Parser';
-    format: ImportFormat = 'fountain' as ImportFormat;
+    format: ImportFormat = 'fountain';
 
     canParse(content: string, fileName: string): boolean {
         const extension = fileName.toLowerCase().split('.').pop();
@@ -118,7 +117,6 @@ export class FountainParser implements DocumentParser {
         // Title page entries are in format "Key: Value"
         const lines = content.split('\n');
         let bodyStartIndex = 0;
-        let inTitlePage = true;
         let foundTitlePageEntry = false;
 
         for (let i = 0; i < lines.length; i++) {
@@ -165,10 +163,6 @@ export class FountainParser implements DocumentParser {
             content: string;
             wordCount: number;
         }> = [];
-
-        // Scene heading pattern
-        // Matches: INT. LOCATION - DAY, EXT. LOCATION - NIGHT, etc.
-        const sceneHeadingPattern = /^(INT\.|EXT\.|INT\/EXT\.|I\/E\.|\.)\s*(.+?)(?:\s*[-–—]\s*(.+))?$/gim;
 
         const lines = body.split('\n');
         let currentScene: { heading: string; location: string; timeOfDay?: string; lines: string[] } | null = null;

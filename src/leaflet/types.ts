@@ -48,6 +48,7 @@ export interface BlockParameters {
 
     // Map ID
     id?: string;             // Unique map identifier
+    mapId?: string;          // Story map entity ID/name to render
 
     // Coordinates from links
     coordinates?: Array<{ link: string; location: LatLngExpression }>;
@@ -56,7 +57,7 @@ export interface BlockParameters {
     bounds?: LatLngBoundsExpression;
 
     // Additional metadata
-    [key: string]: any;
+    [key: string]: unknown;
 }
 
 /**
@@ -266,7 +267,7 @@ export interface FileMarkerMetadata {
  */
 export interface DataViewQueryResult {
     file: TFile;
-    values: Record<string, any>;
+    values: Record<string, unknown>;
 }
 
 /**
@@ -286,7 +287,7 @@ export type MapEvent =
  */
 export interface MapEventHandler {
     event: MapEvent;
-    handler: (...args: any[]) => void;
+    handler: (...args: unknown[]) => void;
 }
 
 /**

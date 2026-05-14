@@ -1,5 +1,5 @@
 import { App, Notice, Setting, TextAreaComponent, ButtonComponent, DropdownComponent } from 'obsidian';
-import type { Book, Chapter } from '../types';
+import type { Book } from '../types';
 import type StorytellerSuitePlugin from '../main';
 import { ResponsiveModal } from './ResponsiveModal';
 import { addImageSelectionButtons } from '../utils/ImageSelectionHelper';
@@ -40,7 +40,7 @@ export class BookModal extends ResponsiveModal {
         this.modalEl.addClass('storyteller-book-modal');
     }
 
-    async onOpen(): Promise<void> {
+    onOpen(): void { void (async () => {
         super.onOpen();
         const { contentEl, footerEl } = this.createStructuredModalLayout();
         contentEl.createEl('h2', { text: this.isNew ? 'New Book' : `Edit: ${this.book.name}` });
@@ -59,14 +59,14 @@ export class BookModal extends ResponsiveModal {
             .setName('Series')
             .setDesc('Series or saga this book belongs to')
             .addText(t => t
-                .setPlaceholder('e.g. The Ironveil Chronicles')
+                .setPlaceholder('E.g. The ironveil chronicles')
                 .setValue(this.book.series || '')
                 .onChange(v => { this.book.series = v || undefined; })
             );
 
         // Book number
         new Setting(contentEl)
-            .setName('Book Number')
+            .setName('Book number')
             .setDesc('Position in the series (1, 2, 3…)')
             .addText(t => {
                 t.setPlaceholder('1')
@@ -82,7 +82,7 @@ export class BookModal extends ResponsiveModal {
         new Setting(contentEl)
             .setName('Genre')
             .addText(t => t
-                .setPlaceholder('e.g. Dark Fantasy')
+                .setPlaceholder('E.g. Dark fantasy')
                 .setValue(this.book.genre || '')
                 .onChange(v => { this.book.genre = v || undefined; })
             );
@@ -102,7 +102,7 @@ export class BookModal extends ResponsiveModal {
         // Cover image
         let imageDescEl: HTMLElement | null = null;
         const coverSetting = new Setting(contentEl)
-            .setName('Cover Image')
+            .setName('Cover image')
             .then(s => {
                 imageDescEl = s.descEl.createEl('small', {
                     text: this.book.coverImagePath ? `Current: ${this.book.coverImagePath}` : 'None set'
@@ -169,9 +169,9 @@ export class BookModal extends ResponsiveModal {
         renderChapterChips();
 
         new Setting(contentEl)
-            .setName('Add Chapter')
+            .setName('Add chapter')
             .addDropdown((dd: DropdownComponent) => {
-                dd.addOption('', '— Select chapter —');
+                dd.addOption('', '— select chapter —');
                 for (const ch of availableChapters) {
                     const alreadyLinked = (this.book.linkedChapters ?? []).includes(ch.name);
                     if (!alreadyLinked) dd.addOption(ch.name, ch.number ? `Ch.${ch.number} — ${ch.name}` : ch.name);
@@ -225,7 +225,7 @@ export class BookModal extends ResponsiveModal {
             await this.onSubmit(this.book);
             this.close();
         }, { cta: true });
-    }
+    })(); }
 
     onClose(): void { this.contentEl.empty(); }
 }

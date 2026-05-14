@@ -98,7 +98,7 @@ async function renderItemsList(container: HTMLElement, context: DashboardControl
         const titleEl = infoEl.createEl('strong', { text: item.name });
         if (item.isPlotCritical) {
             titleEl.setText(`★ ${item.name}`);
-            titleEl.style.color = 'var(--text-accent)';
+            titleEl.setCssStyles({ color: 'var(--text-accent)' });
         }
         if (item.description) infoEl.createEl('p', { text: item.description.substring(0, 80) + '...' });
 

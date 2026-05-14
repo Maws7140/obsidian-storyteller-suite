@@ -62,7 +62,7 @@ const SCENE_BREAK_PATTERNS = [
  */
 export class EpubParser implements DocumentParser {
     name = 'EPUB Parser';
-    format: ImportFormat = 'epub' as ImportFormat;
+    format: ImportFormat = 'epub';
 
     canParse(content: string, fileName: string): boolean {
         const extension = fileName.toLowerCase().split('.').pop();

@@ -1,5 +1,4 @@
-import { normalizePath, TFolder } from 'obsidian';
-import StorytellerSuitePlugin from '../main';
+import { normalizePath } from 'obsidian';
 
 export type EntityFolderType = 'character' | 'location' | 'event' | 'item' | 'reference' | 'chapter' | 'scene' | 'map' | 'culture' | 'faction' | 'economy' | 'magicSystem' | 'group' | 'compendiumEntry' | 'book' | 'campaignSession';
 
@@ -121,7 +120,7 @@ export class FolderResolver {
   private slugifyFolderName(name: string): string {
     if (!name) return '';
     return name
-      .replace(/[\\/:"*?<>|#^\[\]{}]+/g, '')
+      .replace(/[\\/:"*?<>|#^[]{}]+/g, '')
       .trim()
       .replace(/\s+/g, ' ')
       .replace(/\s/g, '_');
@@ -262,8 +261,8 @@ export class FolderResolver {
     try {
       const path = this.getEntityFolder(type, context);
       return { path };
-    } catch (e: any) {
-      const msg = e?.message ? String(e.message) : 'Unknown error resolving folder';
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Unknown error resolving folder';
       return { error: msg };
     }
   }

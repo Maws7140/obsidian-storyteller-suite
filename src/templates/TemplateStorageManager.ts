@@ -12,13 +12,23 @@ import {
     TemplateStats,
     TemplateEntityType
 } from './TemplateTypes';
+import { TemplateValidator } from './TemplateValidator';
+
+interface TemplateNoteManagerLike {
+    getAllNoteTemplates(): Template[];
+    getNoteTemplate(id: string): Template | undefined;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
 
 export class TemplateStorageManager {
     private app: App;
     private builtInTemplates: Map<string, Template> = new Map();
     private userTemplates: Map<string, Template> = new Map();
     private templateFolder: string;
-    private templateNoteManager: any; // TemplateNoteManager instance
+    private templateNoteManager?: TemplateNoteManagerLike;
     private disableFolderCreation: boolean;
 
     constructor(app: App, templateFolder: string = 'StorytellerSuite/Templates', disableFolderCreation: boolean = false) {
@@ -30,7 +40,7 @@ export class TemplateStorageManager {
     /**
      * Set the template note manager instance
      */
-    setTemplateNoteManager(noteManager: any): void {
+    setTemplateNoteManager(noteManager: TemplateNoteManagerLike): void {
         this.templateNoteManager = noteManager;
     }
 
@@ -58,22 +68,22 @@ export class TemplateStorageManager {
         try {
             const { FANTASY_KINGDOM_TEMPLATE } = await import('./prebuilt/FantasyKingdom');
             this.builtInTemplates.set(FANTASY_KINGDOM_TEMPLATE.id, FANTASY_KINGDOM_TEMPLATE);
-        } catch (error) {
-            console.log('Fantasy Kingdom template not yet available');
+        } catch {
+            console.debug('Fantasy Kingdom template not yet available');
         }
 
         try {
             const { CYBERPUNK_METROPOLIS_TEMPLATE } = await import('./prebuilt/CyberpunkMetropolis');
             this.builtInTemplates.set(CYBERPUNK_METROPOLIS_TEMPLATE.id, CYBERPUNK_METROPOLIS_TEMPLATE);
-        } catch (error) {
-            console.log('Cyberpunk Metropolis template not yet available');
+        } catch {
+            console.debug('Cyberpunk Metropolis template not yet available');
         }
 
         try {
             const { MURDER_MYSTERY_TEMPLATE } = await import('./prebuilt/MurderMystery');
             this.builtInTemplates.set(MURDER_MYSTERY_TEMPLATE.id, MURDER_MYSTERY_TEMPLATE);
-        } catch (error) {
-            console.log('Murder Mystery template not yet available');
+        } catch {
+            console.debug('Murder Mystery template not yet available');
         }
 
         // Load built-in character templates
@@ -83,7 +93,7 @@ export class TemplateStorageManager {
                 this.builtInTemplates.set(template.id, template);
             });
         } catch (error) {
-            console.log('Character templates not yet available:', error);
+            console.debug('Character templates not yet available:', error);
         }
 
         // Load built-in location templates
@@ -93,7 +103,7 @@ export class TemplateStorageManager {
                 this.builtInTemplates.set(template.id, template);
             });
         } catch (error) {
-            console.log('Location templates not yet available:', error);
+            console.debug('Location templates not yet available:', error);
         }
 
         // Load built-in event templates
@@ -103,7 +113,7 @@ export class TemplateStorageManager {
                 this.builtInTemplates.set(template.id, template);
             });
         } catch (error) {
-            console.log('Event templates not yet available:', error);
+            console.debug('Event templates not yet available:', error);
         }
 
         // Load built-in item templates
@@ -113,7 +123,7 @@ export class TemplateStorageManager {
                 this.builtInTemplates.set(template.id, template);
             });
         } catch (error) {
-            console.log('Item templates not yet available:', error);
+            console.debug('Item templates not yet available:', error);
         }
 
         // Load built-in group templates
@@ -123,7 +133,7 @@ export class TemplateStorageManager {
                 this.builtInTemplates.set(template.id, template);
             });
         } catch (error) {
-            console.log('Group templates not yet available:', error);
+            console.debug('Group templates not yet available:', error);
         }
 
         // Load built-in worldbuilding templates (Culture, Economy, MagicSystem)
@@ -133,7 +143,7 @@ export class TemplateStorageManager {
                 this.builtInTemplates.set(template.id, template);
             });
         } catch (error) {
-            console.log('Worldbuilding templates not yet available:', error);
+            console.debug('Worldbuilding templates not yet available:', error);
         }
 
         // Load built-in story structure templates (Chapter, Scene, Reference)
@@ -143,7 +153,7 @@ export class TemplateStorageManager {
                 this.builtInTemplates.set(template.id, template);
             });
         } catch (error) {
-            console.log('Story structure templates not yet available:', error);
+            console.debug('Story structure templates not yet available:', error);
         }
 
         // Load built-in map templates
@@ -153,7 +163,7 @@ export class TemplateStorageManager {
                 this.builtInTemplates.set(template.id, template);
             });
         } catch (error) {
-            console.log('Map templates not yet available:', error);
+            console.debug('Map templates not yet available:', error);
         }
     }
 
@@ -282,7 +292,7 @@ export class TemplateStorageManager {
             if (!folder) {
                 try {
                     await this.app.vault.createFolder(folderPath);
-                } catch (error) {
+                } catch {
                     // Folder might already exist, ignore error
                 }
             }
@@ -439,7 +449,7 @@ export class TemplateStorageManager {
         const oldFile = this.app.vault.getAbstractFileByPath(oldFilePath);
         if (oldFile instanceof TFile) {
             // Delete old file if it exists
-            await this.app.vault.delete(oldFile);
+            await this.app.fileManager.trashFile(oldFile);
         }
 
         // Remove stale copies in legacy/root or previous entity-type folders before writing.
@@ -475,7 +485,7 @@ export class TemplateStorageManager {
         for (const filePath of this.getTemplateCandidatePaths(id)) {
             const file = this.app.vault.getAbstractFileByPath(filePath);
             if (file instanceof TFile) {
-                await this.app.vault.delete(file);
+                await this.app.fileManager.trashFile(file);
             }
         }
 
@@ -494,7 +504,7 @@ export class TemplateStorageManager {
         }
 
         // Deep clone
-        let newTemplate: Template = JSON.parse(JSON.stringify(source));
+        let newTemplate = JSON.parse(JSON.stringify(source)) as Template;
         
         // Migrate to new format if needed
         const { TemplateMigrator } = await import('./TemplateMigrator');
@@ -503,7 +513,7 @@ export class TemplateStorageManager {
         // Update metadata
         newTemplate = {
             ...newTemplate,
-            id: `custom-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            id: `custom-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
             name: newName,
             author: 'User',
             isBuiltIn: false,
@@ -521,7 +531,6 @@ export class TemplateStorageManager {
      */
     validateTemplate(template: Template): TemplateValidationResult {
         // Use the enhanced TemplateValidator
-        const { TemplateValidator } = require('./TemplateValidator');
         return TemplateValidator.validate(template);
     }
 
@@ -536,7 +545,7 @@ export class TemplateStorageManager {
             event: entities.events?.length || 0,
             item: entities.items?.length || 0,
             group: entities.groups?.length || 0,
-            map: (entities as any).maps?.length || 0,
+            map: entities.maps?.length || 0,
             culture: entities.cultures?.length || 0,
             economy: entities.economies?.length || 0,
             magicSystem: entities.magicSystems?.length || 0,
@@ -550,9 +559,12 @@ export class TemplateStorageManager {
         // Count total relationships
         let totalRelationships = 0;
 
-        const countRelationships = (items: any[] | undefined, fields: string[]) => {
+        const countRelationships = (items: readonly unknown[] | undefined, fields: string[]) => {
             if (!items) return;
             items.forEach(item => {
+                if (!isRecord(item)) {
+                    return;
+                }
                 fields.forEach(field => {
                     const value = item[field];
                     if (Array.isArray(value)) {
@@ -612,7 +624,7 @@ export class TemplateStorageManager {
             // Generate new ID to avoid conflicts
             template = {
                 ...template,
-                id: `imported-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                id: `imported-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
                 isBuiltIn: false,
                 isEditable: true,
                 created: new Date().toISOString(),
@@ -708,7 +720,7 @@ export class TemplateStorageManager {
         if (entities.events && entities.events.length > 0) entityTypes.push('event');
         if (entities.items && entities.items.length > 0) entityTypes.push('item');
         if (entities.groups && entities.groups.length > 0) entityTypes.push('group');
-        if ((entities as any).maps && (entities as any).maps.length > 0) entityTypes.push('map');
+        if (entities.maps && entities.maps.length > 0) entityTypes.push('map');
         if (entities.cultures && entities.cultures.length > 0) entityTypes.push('culture');
         if (entities.economies && entities.economies.length > 0) entityTypes.push('economy');
         if (entities.magicSystems && entities.magicSystems.length > 0) entityTypes.push('magicSystem');
@@ -746,7 +758,7 @@ export class TemplateStorageManager {
 
             const file = this.app.vault.getAbstractFileByPath(candidatePath);
             if (file instanceof TFile) {
-                await this.app.vault.delete(file);
+                await this.app.fileManager.trashFile(file);
             }
         }
     }

@@ -11,19 +11,19 @@ export const campaignController: DashboardTabController = {
             context.setCurrentFilter(filter);
             await renderCampaignList(container, context);
         }, () => {
-            import('../../../modals/CampaignSessionModal').then(({ CampaignSessionModal }) => {
-                new CampaignSessionModal(context.app, context.plugin, async () => {
+            void import('../../../modals/CampaignSessionModal').then(({ CampaignSessionModal }) => {
+                new CampaignSessionModal(context.app, context.plugin, () => { void (async () => {
                     context.queueDashboardRefresh('campaign-session-created-or-updated');
-                }).open();
+                })(); }).open();
             });
         }, 'New Session');
 
-        const headerRow = container.querySelector('.storyteller-header-controls') as HTMLElement | null;
+        const headerRow = container.querySelector('.storyteller-header-controls');
         if (headerRow) {
-            const graphBtn = headerRow.createEl('button', { cls: 'storyteller-header-secondary-btn', text: 'Scene Graph' });
+            const graphBtn = headerRow.createEl('button', { cls: 'storyteller-header-secondary-btn', text: 'Scene graph' });
             setIcon(graphBtn.createSpan(), 'git-branch');
             graphBtn.addEventListener('click', () => {
-                context.plugin.activateSceneGraphView();
+                void context.plugin.activateSceneGraphView();
             });
         }
 
@@ -50,7 +50,7 @@ async function renderCampaignList(container: HTMLElement, context: DashboardCont
 
     const listContainer = container.createDiv('storyteller-list-container');
     if (filtered.length === 0) {
-        listContainer.createEl('p', { text: 'No sessions found. Click "New Session" to start a campaign.' });
+        listContainer.createEl('p', { text: 'No sessions found. Click "new session" to start a campaign.' });
         return;
     }
 
@@ -76,7 +76,7 @@ async function renderCampaignList(container: HTMLElement, context: DashboardCont
 
         const resumeBtn = actionsEl.createEl('button', { cls: 'storyteller-list-item-btn mod-cta', text: 'Resume' });
         resumeBtn.addEventListener('click', () => {
-            context.plugin.activateCampaignView(session);
+            void context.plugin.activateCampaignView(session);
         });
 
         if (session.filePath) {
@@ -85,13 +85,13 @@ async function renderCampaignList(container: HTMLElement, context: DashboardCont
             openBtn.setAttribute('aria-label', 'Open session note');
             openBtn.addEventListener('click', () => {
                 const file = context.app.vault.getAbstractFileByPath(session.filePath!);
-                if (file) context.app.workspace.openLinkText(file.name, '', true);
+                if (file) void context.app.workspace.openLinkText(file.name, '', true);
             });
 
             const delBtn = actionsEl.createEl('button', { cls: 'storyteller-list-item-btn mod-warning' });
             setIcon(delBtn, 'trash');
             delBtn.setAttribute('aria-label', 'Delete session');
-            delBtn.addEventListener('click', async () => {
+            delBtn.addEventListener('click', () => { void (async () => {
                 await context.mutationRunner.runDelete({
                     confirmMessage: `Delete session "${session.name}"?`,
                     action: async () => {
@@ -100,7 +100,7 @@ async function renderCampaignList(container: HTMLElement, context: DashboardCont
                     refreshMode: 'immediate',
                     refreshDetail: 'campaign-session-deleted',
                 });
-            });
+            })(); });
         }
     }
 }

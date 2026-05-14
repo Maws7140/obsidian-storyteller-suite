@@ -17,7 +17,7 @@ export function parseBlockParameters(source: string): BlockParameters {
 
     // Step 1: Extract and replace links
     // Match both [[wiki links]] and [markdown](links)
-    const linkPattern = /(?:\[.*?\]\(|\[\[)[^\[\]]*?(?:\)|\]\])/g;
+    const linkPattern = /(?:\[.*?\]\(|\[\[)[^[\]]*?(?:\)|\]\])/g;
     const links = source.match(linkPattern) ?? [];
 
     let processedSource = source;
@@ -32,8 +32,9 @@ export function parseBlockParameters(source: string): BlockParameters {
     let params: BlockParameters;
     try {
         // Try parsing as YAML
-        params = parseYaml(processedSource) as BlockParameters;
-    } catch (e) {
+        const parsed = parseYaml(processedSource) as unknown;
+        params = isRecord(parsed) ? parsed : {};
+    } catch {
         // Fallback to simple key:value parsing
         params = parseSimpleKeyValue(processedSource);
     }
@@ -80,13 +81,16 @@ function parseSimpleKeyValue(source: string): BlockParameters {
 /**
  * Recursively restore links in parameter object
  */
-function restoreLinks(obj: any, links: string[]): void {
-    if (!obj || typeof obj !== 'object') {
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function restoreLinks(obj: Record<string, unknown>, links: string[]): void {
+    if (!isRecord(obj)) {
         return;
     }
 
-    for (const key in obj) {
-        const value = obj[key];
+    for (const [key, value] of Object.entries(obj)) {
 
         if (typeof value === 'string') {
             // Check if this string contains a link placeholder
@@ -100,21 +104,23 @@ function restoreLinks(obj: any, links: string[]): void {
             obj[key] = restored;
         } else if (Array.isArray(value)) {
             // Process array elements
-            for (let i = 0; i < value.length; i++) {
-                if (typeof value[i] === 'string') {
-                    let restored = value[i];
+            const values = value as unknown[];
+            for (let i = 0; i < values.length; i++) {
+                const item = values[i];
+                if (typeof item === 'string') {
+                    let restored = item;
                     links.forEach((link, index) => {
                         restored = restored.replace(
                             `LEAFLET_INTERNAL_LINK_${index}`,
                             link
                         );
                     });
-                    value[i] = restored;
-                } else if (typeof value[i] === 'object') {
-                    restoreLinks(value[i], links);
+                    values[i] = restored;
+                } else if (isRecord(item)) {
+                    restoreLinks(item, links);
                 }
             }
-        } else if (typeof value === 'object') {
+        } else if (isRecord(value)) {
             // Recursively process nested objects
             restoreLinks(value, links);
         }
@@ -125,6 +131,8 @@ function restoreLinks(obj: any, links: string[]): void {
  * Normalize and validate parameters
  */
 function normalizeParameters(params: BlockParameters): BlockParameters {
+    const rawParams = params as Record<string, unknown>;
+
     // Normalize type
     if (params.type) {
         params.type = params.type.toLowerCase() as 'image' | 'real';
@@ -155,11 +163,11 @@ function normalizeParameters(params: BlockParameters): BlockParameters {
     }
 
     // Convert boolean strings
-    if (typeof (params as any).darkMode === 'string') {
-        params.darkMode = ((params as any).darkMode as string).toLowerCase() === 'true';
+    if (typeof rawParams.darkMode === 'string') {
+        params.darkMode = rawParams.darkMode.toLowerCase() === 'true';
     }
-    if (typeof (params as any).draw === 'string') {
-        params.draw = ((params as any).draw as string).toLowerCase() === 'true';
+    if (typeof rawParams.draw === 'string') {
+        params.draw = rawParams.draw.toLowerCase() === 'true';
     }
 
     // Normalize arrays

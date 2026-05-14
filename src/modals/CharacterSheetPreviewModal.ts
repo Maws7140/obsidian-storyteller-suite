@@ -56,7 +56,7 @@ export class CharacterSheetPreviewModal extends Modal {
 
         const noteBtn = new ButtonComponent(bar)
             .setIcon('file-text')
-            .setButtonText('Save to Note');
+            .setButtonText('Save to note');
         noteBtn.onClick(() => this.saveToNote());
 
         // ── Loading state ─────────────────────────────────────────────────────
@@ -88,7 +88,15 @@ export class CharacterSheetPreviewModal extends Modal {
         if (!this.previewEl || !this.sheetData) return;
         const scopedCss = this.generator.getTemplateScopedCSS(this.selectedTemplateId);
         const inner = this.generator.buildInnerHTML(this.sheetData, this.selectedTemplateId);
-        this.previewEl.innerHTML = scopedCss ? `<style>${scopedCss}</style>${inner}` : inner;
+        const previewDocument = new DOMParser().parseFromString(
+            scopedCss ? `<style>${scopedCss}</style>${inner}` : inner,
+            'text/html'
+        );
+        previewDocument.querySelectorAll('script').forEach(script => script.remove());
+        this.previewEl.empty();
+        for (const node of Array.from(previewDocument.body.childNodes)) {
+            this.previewEl.appendChild(activeDocument.importNode(node, true));
+        }
     }
 
     private async exportHTML() {

@@ -7,7 +7,8 @@ import {
     Template,
     TemplatePlaceholder,
     TemplateVariable,
-    TemplateEntityType
+    TemplateEntityType,
+    TemplateVariableValue
 } from '../templates/TemplateTypes';
 
 export class TemplatePlaceholderProcessor {
@@ -15,11 +16,11 @@ export class TemplatePlaceholderProcessor {
      * Apply placeholders to an entity
      */
     static applyPlaceholders(
-        entity: any,
+        entity: Record<string, unknown>,
         entityType: TemplateEntityType,
         templateId: string,
         template: Template
-    ): any {
+    ): Record<string, unknown> {
         if (!template.placeholders) {
             return entity;
         }
@@ -31,7 +32,7 @@ export class TemplatePlaceholderProcessor {
         const processedEntity = { ...entity };
 
         entityPlaceholders.forEach(placeholder => {
-            const { field, defaultValue, placeholderText } = placeholder;
+            const { field, defaultValue } = placeholder;
 
             // If field is empty or undefined, set default value
             if (processedEntity[field] === undefined || processedEntity[field] === '') {
@@ -48,12 +49,12 @@ export class TemplatePlaceholderProcessor {
      * Apply template variables to entity
      */
     static applyVariables(
-        entity: any,
+        entity: Record<string, unknown>,
         entityType: TemplateEntityType,
         templateId: string,
         template: Template,
-        variableValues: Record<string, any>
-    ): any {
+        variableValues: Record<string, TemplateVariableValue>
+    ): Record<string, unknown> {
         if (!template.variables || !variableValues) {
             return entity;
         }
@@ -79,9 +80,10 @@ export class TemplatePlaceholderProcessor {
 
             fieldsToUpdate.forEach(field => {
                 // Replace variable placeholders in the field value
-                if (typeof processedEntity[field] === 'string') {
+                const fieldValue = processedEntity[field];
+                if (typeof fieldValue === 'string') {
                     processedEntity[field] = this.replaceVariable(
-                        processedEntity[field],
+                        fieldValue,
                         variable.name,
                         value
                     );
@@ -98,7 +100,7 @@ export class TemplatePlaceholderProcessor {
     private static replaceVariable(
         text: string,
         variableName: string,
-        value: any
+        value: TemplateVariableValue
     ): string {
         const placeholder = `{{${variableName}}}`;
         const stringValue = String(value);
@@ -128,11 +130,11 @@ export class TemplatePlaceholderProcessor {
      * Validate field value against placeholder rules
      */
     static validateFieldValue(
-        value: any,
+        value: unknown,
         placeholder: TemplatePlaceholder
     ): { isValid: boolean; error?: string } {
         // Check if required
-        if (placeholder.isRequired && (!value || value.trim() === '')) {
+        if (placeholder.isRequired && (typeof value !== 'string' || value.trim() === '')) {
             return {
                 isValid: false,
                 error: `${placeholder.field} is required`

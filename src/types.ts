@@ -2,6 +2,7 @@
  * TypeScript type definitions for Storyteller Suite plugin
  * These interfaces define the data structures used throughout the plugin
  */
+import type { App } from 'obsidian';
 
 /**
  * Relationship types for network graph visualization
@@ -251,6 +252,9 @@ export interface Chapter {
     /** File system path to the chapter markdown file */
     filePath?: string;
 
+    /** Optional imported draft/version label for custom metadata strategies */
+    draftVersion?: string;
+
     /** Display title of the chapter (required) */
     name: string;
 
@@ -314,6 +318,8 @@ export interface Book {
 export interface Scene {
     id?: string;
     filePath?: string;
+    /** Optional imported draft/version label for custom metadata strategies */
+    draftVersion?: string;
     name: string;
     /** Optional link to a Chapter by id (undefined when unassigned) */
     chapterId?: string;
@@ -686,8 +692,7 @@ export interface Location {
     /** Paths/links to images associated with this location */
     images?: string[];
 
-    /** Name or identifier of the parent location that contains this location
-     * @deprecated Use parentLocationId instead. Kept for backward compatibility during migration. */
+    /** Name or identifier of the parent location that contains this location */
     parentLocation?: string;
     
     /** ID of the parent location in the hierarchy (ID-based reference) */
@@ -726,16 +731,13 @@ export interface Location {
     /** Typed connections to other entities for network graph */
     connections?: TypedRelationship[];
 
-    /** Primary map ID where this location is featured
-     * @deprecated Map functionality has been deprecated - use mapBindings instead */
+    /** Primary map ID where this location is featured */
     mapId?: string;
     
-    /** Additional maps where this location appears
-     * @deprecated Map functionality has been deprecated - use mapBindings instead */
+    /** Additional maps where this location appears */
     relatedMapIds?: string[];
     
-    /** Marker IDs representing this location on various maps
-     * @deprecated Map functionality has been deprecated */
+    /** Marker IDs representing this location on various maps */
     markerIds?: string[];
 
     // ── Campaign fields ────────────────────────────────────────────────────────
@@ -842,12 +844,10 @@ export interface Event {
     /** Narrative sequence number for non-chronological ordering (0-based index) */
     narrativeSequence?: number;
 
-    /** ID of the map where this event is primarily displayed
-     * @deprecated Map functionality has been deprecated */
+    /** ID of the map where this event is primarily displayed */
     mapId?: string;
 
-    /** IDs of markers representing this event on various maps
-     * @deprecated Map functionality has been deprecated */
+    /** IDs of markers representing this event on various maps */
     markerIds?: string[];
 }
 
@@ -1036,7 +1036,6 @@ export interface Story {
 /**
  * Map marker representing a location or point of interest on a map
  * Used for pinning locations, events, or custom points on interactive maps
- * @deprecated Map functionality has been deprecated and will be removed in a future version
  */
 export interface MapMarker {
     /** Unique identifier for this marker */
@@ -1094,7 +1093,6 @@ export interface MapMarker {
 /**
  * Map layer containing a collection of related map objects
  * Enables organization and selective visibility of map elements
- * @deprecated Map functionality has been deprecated and will be removed in a future version
  */
 export interface MapLayer {
     /** Unique identifier for this layer */
@@ -1113,7 +1111,7 @@ export interface MapLayer {
     opacity?: number;
     
     /** GeoJSON or Leaflet objects in this layer */
-    objects?: any[];
+    objects?: unknown[];
     
     /** Z-index for layer ordering */
     zIndex?: number;
@@ -1289,7 +1287,6 @@ export interface StoryMap {
 /**
  * Map Template - Pre-configured map layouts and styles
  * Templates provide starting points for creating new maps with common configurations
- * @deprecated Map functionality has been deprecated and will be removed in a future version
  */
 export interface MapTemplate {
     /** Unique identifier for the template */
@@ -2445,7 +2442,7 @@ export interface CompileStepConfig {
     enabled: boolean;
     
     /** Step-specific options */
-    options: Record<string, unknown>;
+    options: Record<string, string | boolean | number>;
 }
 
 /**
@@ -2551,7 +2548,7 @@ export interface CompileContext {
     kind: CompileStepKind;
     
     /** Step option values */
-    optionValues: Record<string, unknown>;
+    optionValues: Record<string, string | boolean | number>;
     
     /** Path to the project/story folder */
     projectPath: string;
@@ -2563,7 +2560,7 @@ export interface CompileContext {
     story: Story;
     
     /** Obsidian App instance */
-    app: any;
+    app: App;
 }
 
 /**
@@ -2596,7 +2593,7 @@ export interface CompileResult {
  */
 export interface CompileStepDefinition {
     /** Unique step type identifier */
-    id: CompileStepId | string;
+    id: string;
     
     /** Display name */
     name: string;

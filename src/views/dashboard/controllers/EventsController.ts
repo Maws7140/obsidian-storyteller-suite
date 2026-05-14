@@ -26,7 +26,7 @@ export const eventsController: DashboardTabController = {
                 .setButtonText(t('viewTimeline'))
                 .setCta()
                 .onClick(() => {
-                    context.plugin.activateTimelineView();
+                    void context.plugin.activateTimelineView();
                 }));
         });
 
@@ -81,10 +81,10 @@ async function renderEventsList(container: HTMLElement, context: DashboardContro
                     thumb.src = context.getImageSrc(imagePath);
                     thumb.alt = `${event.name} image`;
                     thumb.loading = 'lazy';
-                    thumb.style.maxWidth = '48px';
-                    thumb.style.maxHeight = '48px';
-                    thumb.style.marginRight = '4px';
-                    thumb.style.cursor = 'pointer';
+                    thumb.setCssStyles({ maxWidth: '48px' });
+                    thumb.setCssStyles({ maxHeight: '48px' });
+                    thumb.setCssStyles({ marginRight: '4px' });
+                    thumb.setCssStyles({ cursor: 'pointer' });
                     thumb.addEventListener('click', () => {
                         new ImageDetailModal(context.app, context.plugin, { id: imagePath, filePath: imagePath }, false, () => Promise.resolve()).open();
                     });
@@ -95,7 +95,7 @@ async function renderEventsList(container: HTMLElement, context: DashboardContro
         }
 
         const extraInfoEl = infoEl.createDiv('storyteller-list-item-extra');
-        if ((event as any).isMilestone) extraInfoEl.createSpan({ cls: 'storyteller-meta-badge storyteller-event-milestone-badge', text: 'Milestone' });
+        if (event.isMilestone) extraInfoEl.createSpan({ cls: 'storyteller-meta-badge storyteller-event-milestone-badge', text: 'Milestone' });
         if (event.status) {
             const statusSlug = event.status.toLowerCase().replace(/\s+/g, '-');
             extraInfoEl.createSpan({ cls: `storyteller-meta-badge storyteller-event-status-badge storyteller-event-status-${statusSlug}`, text: event.status });

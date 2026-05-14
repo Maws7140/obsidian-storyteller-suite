@@ -59,11 +59,11 @@ export class SaveNoteAsTemplateModal extends ResponsiveModal {
         const { contentEl } = this;
 
         contentEl.empty();
-        contentEl.createEl('h2', { text: 'Save Note as Template' });
+        contentEl.createEl('h2', { text: 'Save note as template' });
 
         // Template Name
         new Setting(contentEl)
-            .setName('Template Name')
+            .setName('Template name')
             .setDesc('A descriptive name for this template')
             .addText(text => text
                 .setPlaceholder('Enter template name')
@@ -85,7 +85,7 @@ export class SaveNoteAsTemplateModal extends ResponsiveModal {
 
         // Entity Type
         new Setting(contentEl)
-            .setName('Entity Type')
+            .setName('Entity type')
             .setDesc('What type of entity is this template for?')
             .addDropdown(dropdown => {
                 dropdown
@@ -96,7 +96,7 @@ export class SaveNoteAsTemplateModal extends ResponsiveModal {
                     .addOption('group', 'Group')
                     .addOption('culture', 'Culture')
                     .addOption('economy', 'Economy')
-                    .addOption('magicSystem', 'Magic System')
+                    .addOption('magicSystem', 'Magic system')
                     .addOption('chapter', 'Chapter')
                     .addOption('scene', 'Scene')
                     .addOption('reference', 'Reference')
@@ -110,7 +110,7 @@ export class SaveNoteAsTemplateModal extends ResponsiveModal {
             .setDesc('Genre classification for this template')
             .addDropdown(dropdown => dropdown
                 .addOption('fantasy', 'Fantasy')
-                .addOption('scifi', 'Sci-Fi')
+                .addOption('scifi', 'Sci-fi')
                 .addOption('mystery', 'Mystery')
                 .addOption('horror', 'Horror')
                 .addOption('romance', 'Romance')
@@ -127,9 +127,9 @@ export class SaveNoteAsTemplateModal extends ResponsiveModal {
             .setName('Category')
             .setDesc('Template scope')
             .addDropdown(dropdown => dropdown
-                .addOption('single-entity', 'Single Entity')
-                .addOption('entity-set', 'Entity Set')
-                .addOption('full-world', 'Full World')
+                .addOption('single-entity', 'Single entity')
+                .addOption('entity-set', 'Entity set')
+                .addOption('full-world', 'Full world')
                 .setValue(this.category)
                 .onChange(value => this.category = value as TemplateCategory)
             );
@@ -139,7 +139,7 @@ export class SaveNoteAsTemplateModal extends ResponsiveModal {
             .setName('Tags')
             .setDesc('Comma-separated tags for searching (e.g., hero, brave, protagonist)')
             .addText(text => text
-                .setPlaceholder('tag1, tag2, tag3')
+                .setPlaceholder('Tag1, tag2, tag3')
                 .setValue(this.tags)
                 .onChange(value => this.tags = value)
             );
@@ -153,10 +153,10 @@ export class SaveNoteAsTemplateModal extends ResponsiveModal {
 
         // Buttons
         const buttonContainer = contentEl.createDiv({ cls: 'modal-button-container' });
-        buttonContainer.style.marginTop = '1em';
-        buttonContainer.style.display = 'flex';
-        buttonContainer.style.gap = '0.5em';
-        buttonContainer.style.justifyContent = 'flex-end';
+        buttonContainer.setCssStyles({ marginTop: '1em' });
+        buttonContainer.setCssStyles({ display: 'flex' });
+        buttonContainer.setCssStyles({ gap: '0.5em' });
+        buttonContainer.setCssStyles({ justifyContent: 'flex-end' });
 
         const cancelButton = buttonContainer.createEl('button', { text: 'Cancel' });
         cancelButton.addEventListener('click', () => {
@@ -165,7 +165,7 @@ export class SaveNoteAsTemplateModal extends ResponsiveModal {
         });
 
         const saveButton = buttonContainer.createEl('button', {
-            text: 'Save Template',
+            text: 'Save template',
             cls: 'mod-cta'
         });
         saveButton.addEventListener('click', () => this.handleSave());

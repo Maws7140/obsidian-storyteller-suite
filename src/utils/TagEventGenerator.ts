@@ -116,15 +116,16 @@ export class TagEventGenerator {
         entity: Scene | Chapter | Reference,
         dateFields: string[] = ['date', 'dateTime', 'created', 'modified']
     ): string | undefined {
+        const metadata = entity as unknown as Record<string, unknown>;
         for (const field of dateFields) {
-            const value = (entity as any)[field];
+            const value = metadata[field];
             if (value && typeof value === 'string' && value.trim() !== '') {
                 return value.trim();
             }
         }
 
         // Try to extract from content (basic patterns)
-        const content = (entity as any).content || (entity as any).description || '';
+        const content = metadata.content || metadata.description || '';
         if (content && typeof content === 'string') {
             const dateMatch = this.extractDateFromContent(content);
             if (dateMatch) {
@@ -224,8 +225,8 @@ export class TagEventGenerator {
             return entity.content;
         }
 
-        if ('summary' in entity && (entity as any).summary) {
-            return (entity as any).summary;
+        if ('summary' in entity && typeof entity.summary === 'string') {
+            return entity.summary;
         }
 
         return `Generated from ${taggedEntity.type}: ${entity.name}`;

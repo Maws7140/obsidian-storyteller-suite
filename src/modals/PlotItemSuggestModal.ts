@@ -2,6 +2,7 @@ import { App, FuzzySuggestModal, Notice, prepareFuzzySearch, FuzzyMatch } from '
 import { PlotItem } from '../types';
 import StorytellerSuitePlugin from '../main';
 import { t } from '../i18n/strings';
+import { scheduleSuggestRefresh } from './utils/SuggestModalRefresh';
 
 export class PlotItemSuggestModal extends FuzzySuggestModal<PlotItem> {
 	plugin: StorytellerSuitePlugin;
@@ -16,7 +17,7 @@ export class PlotItemSuggestModal extends FuzzySuggestModal<PlotItem> {
 	}
 
     async onOpen() {
-        super.onOpen();
+        void super.onOpen();
         try {
             this.items = await this.plugin.listPlotItems();
         } catch (error) {
@@ -24,21 +25,8 @@ export class PlotItemSuggestModal extends FuzzySuggestModal<PlotItem> {
             new Notice(t('errorLoadingItems'));
             this.items = [];
         }
-        // Force-refresh suggestions so initial list shows without typing
-        setTimeout(() => {
-            if (this.inputEl) {
-                try { (this as any).setQuery?.(''); } catch {}
-                try { this.inputEl.dispatchEvent(new window.Event('input')); } catch {}
-            }
-            try { (this as any).onInputChanged?.(); } catch {}
-        }, 0);
-        setTimeout(() => {
-            if (this.inputEl) {
-                try { (this as any).setQuery?.(''); } catch {}
-                try { this.inputEl.dispatchEvent(new window.Event('input')); } catch {}
-            }
-            try { (this as any).onInputChanged?.(); } catch {}
-        }, 50);
+        // Force-refresh suggestions so initial list shows without typing.
+        scheduleSuggestRefresh(this);
     }
 
     // Show all items initially; fuzzy-match when there is a query
@@ -51,7 +39,7 @@ export class PlotItemSuggestModal extends FuzzySuggestModal<PlotItem> {
         return items
             .map((it) => {
                 const match = fuzzy(this.getItemText(it));
-                return match ? ({ item: it, match } as FuzzyMatch<PlotItem>) : null;
+                return match ? ({ item: it, match }) : null;
             })
             .filter((fm): fm is FuzzyMatch<PlotItem> => !!fm);
     }

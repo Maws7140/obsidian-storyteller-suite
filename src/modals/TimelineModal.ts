@@ -50,7 +50,7 @@ export class TimelineModal extends Modal {
                 }
                 this.updateSearchDropdown();
             },
-            onRendererUpdate: () => this.renderTimeline(),
+            onRendererUpdate: () => { void this.renderTimeline(); },
             getRenderer: () => this.renderer,
             getEvents: () => this.events
         };
@@ -135,11 +135,11 @@ export class TimelineModal extends Modal {
             .setIcon('filter')
             .onClick(() => {
                 this.filterPanelVisible = !this.filterPanelVisible;
-                filterPanel.style.display = this.filterPanelVisible ? 'block' : 'none';
+                filterPanel.setCssStyles({ display: this.filterPanelVisible ? 'block' : 'none' });
             });
 
         const filterPanel = filterPanelContainer.createDiv('storyteller-filter-panel');
-        filterPanel.style.display = this.filterPanelVisible ? 'block' : 'none';
+        filterPanel.setCssStyles({ display: this.filterPanelVisible ? 'block' : 'none' });
 
         // Use shared filter builder for all filter controls
         await this.filterBuilder.buildFilterPanel(filterPanel, this.events);
@@ -150,9 +150,9 @@ export class TimelineModal extends Modal {
 
         // Timeline container
         this.timelineContainer = contentEl.createDiv('storyteller-timeline-container');
-        this.timelineContainer.style.height = 'clamp(360px, 58vh, 680px)';
-        this.timelineContainer.style.minHeight = '360px';
-        this.timelineContainer.style.marginBottom = '0.75rem';
+        this.timelineContainer.setCssStyles({ height: 'clamp(360px, 58vh, 680px)' });
+        this.timelineContainer.setCssStyles({ minHeight: '360px' });
+        this.timelineContainer.setCssStyles({ marginBottom: '0.75rem' });
 
         // Legend container
         this.legendEl = contentEl.createDiv('storyteller-timeline-legend');
@@ -232,7 +232,7 @@ export class TimelineModal extends Modal {
             console.error('Storyteller Suite: Timeline modal failed to initialize.', error);
             this.timelineContainer.empty();
             const errorEl = this.timelineContainer.createDiv('storyteller-timeline-error');
-            errorEl.createEl('h3', { text: 'Timeline Error' });
+            errorEl.createEl('h3', { text: 'Timeline error' });
             errorEl.createEl('p', { text: 'Failed to initialize timeline data. Check developer console for details.' });
             new Notice('Timeline failed to load. Check console for details.');
         }

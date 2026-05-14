@@ -1,4 +1,4 @@
-import { App, Modal, Setting, Notice, ButtonComponent } from 'obsidian';
+import { App, Modal, Setting, Notice } from 'obsidian';
 import type StorytellerSuitePlugin from '../main';
 import type { TimelineConflict } from '../types';
 import { ConflictDetector } from '../utils/ConflictDetector';
@@ -30,7 +30,7 @@ export class ConflictListModal extends Modal {
 
         // Header
         const headerDiv = contentEl.createDiv('storyteller-conflict-header');
-        headerDiv.createEl('h2', { text: 'Timeline Conflicts' });
+        headerDiv.createEl('h2', { text: 'Timeline conflicts' });
 
         // Summary stats
         const statsDiv = headerDiv.createDiv('storyteller-conflict-stats');
@@ -38,29 +38,17 @@ export class ConflictListModal extends Modal {
         const moderateCount = this.conflicts.filter(c => c.severity === 'moderate').length;
         const minorCount = this.conflicts.filter(c => c.severity === 'minor').length;
 
-        statsDiv.innerHTML = `
-            <div style="display: flex; gap: 15px; margin: 10px 0; padding: 10px; background: var(--background-secondary); border-radius: 5px;">
-                <div style="flex: 1; text-align: center;">
-                    <div style="font-size: 24px; font-weight: bold; color: var(--text-error);">${criticalCount}</div>
-                    <div style="font-size: 12px; opacity: 0.7;">Critical</div>
-                </div>
-                <div style="flex: 1; text-align: center;">
-                    <div style="font-size: 24px; font-weight: bold; color: var(--text-warning);">${moderateCount}</div>
-                    <div style="font-size: 12px; opacity: 0.7;">Moderate</div>
-                </div>
-                <div style="flex: 1; text-align: center;">
-                    <div style="font-size: 24px; font-weight: bold; color: var(--text-muted);">${minorCount}</div>
-                    <div style="font-size: 12px; opacity: 0.7;">Minor</div>
-                </div>
-            </div>
-        `;
+        const statsGrid = statsDiv.createDiv({ cls: 'storyteller-conflict-stats-grid' });
+        this.renderStat(statsGrid, criticalCount, 'Critical', 'critical');
+        this.renderStat(statsGrid, moderateCount, 'Moderate', 'moderate');
+        this.renderStat(statsGrid, minorCount, 'Minor', 'minor');
 
         // Toolbar
         const toolbarDiv = contentEl.createDiv('storyteller-conflict-toolbar');
         const toolbarSetting = new Setting(toolbarDiv);
 
         toolbarSetting.addButton(button => button
-            .setButtonText('Re-scan for Conflicts')
+            .setButtonText('Re-scan for conflicts')
             .setIcon('refresh-cw')
             .onClick(async () => {
                 new Notice('Scanning for conflicts...');
@@ -72,7 +60,7 @@ export class ConflictListModal extends Modal {
         );
 
         toolbarSetting.addButton(button => button
-            .setButtonText('Dismiss All')
+            .setButtonText('Dismiss all')
             .setWarning()
             .onClick(async () => {
                 this.conflicts.forEach(c => c.dismissed = true);
@@ -86,9 +74,14 @@ export class ConflictListModal extends Modal {
         // If no conflicts
         if (this.conflicts.length === 0) {
             contentEl.createEl('div', {
-                text: '✅ No timeline conflicts detected! Your narrative is consistent.',
+                text: 'No timeline conflicts detected! Your narrative is consistent.',
                 cls: 'storyteller-no-conflicts'
-            }).style.cssText = 'text-align: center; padding: 40px; font-size: 16px; color: var(--text-success);';
+            }).setCssStyles({
+                textAlign: 'center',
+                padding: '40px',
+                fontSize: '16px',
+                color: 'var(--text-success)'
+            });
             return;
         }
 
@@ -127,7 +120,12 @@ export class ConflictListModal extends Modal {
             conflictsContainer.createEl('div', {
                 text: `${dismissedCount} conflict(s) dismissed`,
                 cls: 'storyteller-dismissed-count'
-            }).style.cssText = 'text-align: center; padding: 10px; opacity: 0.5; font-size: 12px;';
+            }).setCssStyles({
+                textAlign: 'center',
+                padding: '10px',
+                opacity: '0.5',
+                fontSize: '12px'
+            });
         }
     }
 
@@ -156,10 +154,8 @@ export class ConflictListModal extends Modal {
         // Header with icon and type
         const headerDiv = conflictDiv.createDiv('storyteller-conflict-card-header');
         const icon = ConflictDetector.getConflictIcon(conflict.type);
-        headerDiv.innerHTML = `
-            <span style="font-size: 20px; margin-right: 10px;">${icon}</span>
-            <strong>${conflict.type.charAt(0).toUpperCase() + conflict.type.slice(1)} Conflict</strong>
-        `;
+        headerDiv.createSpan({ cls: 'storyteller-conflict-icon', text: icon });
+        headerDiv.createEl('strong', { text: `${conflict.type.charAt(0).toUpperCase() + conflict.type.slice(1)} Conflict` });
 
         // Description
         conflictDiv.createEl('p', {
@@ -180,7 +176,7 @@ export class ConflictListModal extends Modal {
             const eventsDiv = conflictDiv.createDiv('storyteller-conflict-events');
             eventsDiv.createEl('strong', { text: 'Events: ' });
             const eventsList = eventsDiv.createEl('ul');
-            eventsList.style.marginLeft = '20px';
+            eventsList.setCssStyles({ marginLeft: '20px' });
             conflict.events.forEach(eventId => {
                 eventsList.createEl('li', { text: eventId });
             });
@@ -189,12 +185,10 @@ export class ConflictListModal extends Modal {
         // Suggestion
         if (conflict.suggestion) {
             const suggestionDiv = conflictDiv.createDiv('storyteller-conflict-suggestion');
-            suggestionDiv.innerHTML = `
-                <div style="background: var(--background-secondary); padding: 10px; border-radius: 5px; margin-top: 10px;">
-                    <strong>💡 Suggestion:</strong><br>
-                    ${conflict.suggestion}
-                </div>
-            `;
+            const suggestionCard = suggestionDiv.createDiv({ cls: 'storyteller-conflict-suggestion-card' });
+            suggestionCard.createEl('strong', { text: 'Suggestion:' });
+            suggestionCard.createEl('br');
+            suggestionCard.createSpan({ text: conflict.suggestion });
         }
 
         // Actions
@@ -214,7 +208,7 @@ export class ConflictListModal extends Modal {
         );
 
         actionsSetting.addButton(button => button
-            .setButtonText('View Events')
+            .setButtonText('View events')
             .onClick(async () => {
                 // Open timeline view filtered to these events
                 new Notice('Opening timeline view...');
@@ -227,13 +221,15 @@ export class ConflictListModal extends Modal {
         // Timestamp
         const timestamp = conflictDiv.createDiv('storyteller-conflict-timestamp');
         const detectedDate = new Date(conflict.detected);
-        timestamp.innerHTML = `
-            <div style="font-size: 11px; opacity: 0.5; margin-top: 5px;">
-                Detected: ${detectedDate.toLocaleString()}
-            </div>
-        `;
+        timestamp.createDiv({ cls: 'storyteller-conflict-detected-date', text: `Detected: ${detectedDate.toLocaleString()}` });
     }
 
+
+    private renderStat(container: HTMLElement, count: number, label: string, severity: 'critical' | 'moderate' | 'minor'): void {
+        const item = container.createDiv({ cls: 'storyteller-conflict-stat-item' });
+        item.createDiv({ cls: `storyteller-conflict-stat-count storyteller-conflict-stat-${severity}`, text: String(count) });
+        item.createDiv({ cls: 'storyteller-conflict-stat-label', text: label });
+    }
     onClose(): void {
         const { contentEl } = this;
         contentEl.empty();

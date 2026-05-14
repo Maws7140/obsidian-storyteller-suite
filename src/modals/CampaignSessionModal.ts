@@ -30,13 +30,13 @@ export class CampaignSessionModal extends ResponsiveModal {
         this.preferredStartingScene = preferredStartingScene;
     }
 
-    async onOpen(): Promise<void> {
+    onOpen(): void { void (async () => {
         super.onOpen();
         const { contentEl } = this;
         this.modalEl.addClass('storyteller-campaign-session-modal');
         contentEl.empty();
 
-        contentEl.createEl('h2', { text: 'Campaign Sessions' });
+        contentEl.createEl('h2', { text: 'Campaign sessions' });
 
         // Load data
         const [sessions, scenes, characters] = await Promise.all([
@@ -50,7 +50,7 @@ export class CampaignSessionModal extends ResponsiveModal {
 
         // Existing sessions
         if (sessions.length > 0) {
-            contentEl.createEl('h3', { text: 'Resume a Session' });
+            contentEl.createEl('h3', { text: 'Resume a session' });
             const sessionList = contentEl.createDiv('storyteller-campaign-session-list');
             for (const sess of sessions) {
                 const card = sessionList.createDiv('storyteller-campaign-session-card');
@@ -58,7 +58,7 @@ export class CampaignSessionModal extends ResponsiveModal {
                 info.createEl('strong', { text: sess.name });
                 if (sess.currentSceneName) info.createEl('p', { text: `Scene: ${sess.currentSceneName}`, cls: 'storyteller-campaign-session-detail' });
                 if (sess.partyCharacterNames?.length) info.createEl('p', { text: `Party: ${sess.partyCharacterNames.join(', ')}`, cls: 'storyteller-campaign-session-detail' });
-                const statusBadge = info.createSpan({ cls: `storyteller-campaign-status-badge is-${sess.status ?? 'active'}`, text: sess.status ?? 'active' });
+                info.createSpan({ cls: `storyteller-campaign-status-badge is-${sess.status ?? 'active'}`, text: sess.status ?? 'active' });
 
                 const actions = card.createDiv('storyteller-campaign-session-actions');
                 const resumeBtn = actions.createEl('button', { cls: 'storyteller-modal-btn mod-cta', text: 'Resume' });
@@ -68,21 +68,21 @@ export class CampaignSessionModal extends ResponsiveModal {
                 });
 
                 const deleteBtn = actions.createEl('button', { cls: 'storyteller-modal-btn mod-warning', text: 'Delete' });
-                deleteBtn.addEventListener('click', async () => {
+                deleteBtn.addEventListener('click', () => { void (async () => {
                     if (sess.filePath && await confirmWithModal(this.app, {
                         title: 'Confirm',
                         body: `Delete session "${sess.name}"?`,
                         confirmText: 'Delete',
                     })) {
                         await this.plugin.deleteSession(sess.filePath);
-                        await this.onOpen();
+                        this.onOpen();
                     }
-                });
+                })(); });
             }
         }
 
         // New session form
-        contentEl.createEl('h3', { text: 'Start a New Session' });
+        contentEl.createEl('h3', { text: 'Start a new session' });
         const form = contentEl.createDiv('storyteller-campaign-new-session-form');
 
         let sessionName = '';
@@ -93,12 +93,12 @@ export class CampaignSessionModal extends ResponsiveModal {
 
         new Setting(form)
             .setName('Session name')
-            .addText(t => t.setPlaceholder('e.g. Session 1 — The Dark Tavern').onChange(v => { sessionName = v; }));
+            .addText(t => t.setPlaceholder('E.g. Session 1 — the dark tavern').onChange(v => { sessionName = v; }));
 
         new Setting(form)
             .setName('Starting scene')
             .addDropdown(dd => {
-                dd.addOption('', '— Select scene —');
+                dd.addOption('', '— select scene —');
                 for (const sc of this.scenes) dd.addOption(sc.id ?? sc.name, sc.name);
                 if (this.preferredStartingScene) {
                     dd.setValue(this.preferredStartingScene.id ?? this.preferredStartingScene.name);
@@ -120,7 +120,7 @@ export class CampaignSessionModal extends ResponsiveModal {
             // Chip list of selected characters
             for (const name of partyCharacterNames) {
                 const chip = partyEl.createSpan({ cls: 'storyteller-campaign-party-chip', text: name });
-                chip.style.cursor = 'pointer';
+                chip.setCssStyles({ cursor: 'pointer' });
                 chip.title = 'Click to remove';
                 chip.addEventListener('click', () => {
                     const idx = partyCharacterNames.indexOf(name);
@@ -129,8 +129,8 @@ export class CampaignSessionModal extends ResponsiveModal {
                 });
             }
             // Add dropdown
-            const addSel = partyEl.createEl('select', { cls: 'storyteller-campaign-party-add' }) as HTMLSelectElement;
-            addSel.createEl('option', { value: '', text: '+ Add character…' });
+            const addSel = partyEl.createEl('select', { cls: 'storyteller-campaign-party-add' });
+            addSel.createEl('option', { value: '', text: '+ add character…' });
             for (const ch of this.characters) {
                 if (!partyCharacterIds.includes(ch.id ?? ch.name)) {
                     addSel.createEl('option', { value: ch.id ?? ch.name, text: ch.name });
@@ -152,8 +152,8 @@ export class CampaignSessionModal extends ResponsiveModal {
         const cancelBtn = footer.createEl('button', { cls: 'storyteller-modal-btn', text: 'Cancel' });
         cancelBtn.addEventListener('click', () => this.close());
 
-        const startBtn = footer.createEl('button', { cls: 'storyteller-modal-btn mod-cta', text: 'Start Session' });
-        startBtn.addEventListener('click', async () => {
+        const startBtn = footer.createEl('button', { cls: 'storyteller-modal-btn mod-cta', text: 'Start session' });
+        startBtn.addEventListener('click', () => { void (async () => {
             if (!sessionName.trim()) {
                 new Notice('Please enter a session name.');
                 return;
@@ -195,8 +195,8 @@ export class CampaignSessionModal extends ResponsiveModal {
             new Notice(`Session "${session.name}" created.`);
             this.close();
             this.onSessionSelected(session);
-        });
-    }
+        })(); });
+    })(); }
 
     onClose(): void {
         this.contentEl.empty();

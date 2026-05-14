@@ -25,7 +25,7 @@ export class CustomSheetTemplateModal extends Modal {
         const nameRow = form.createDiv('sts-cstpl-row');
         nameRow.createEl('label', { text: 'Name', cls: 'sts-cstpl-label' });
         this.nameInput = nameRow.createEl('input', { type: 'text', cls: 'sts-cstpl-input' });
-        this.nameInput.placeholder = 'e.g. My Dark Theme';
+        this.nameInput.placeholder = 'E.g. My dark theme';
         if (this.existing) this.nameInput.value = this.existing.name;
 
         // Description
@@ -37,7 +37,7 @@ export class CustomSheetTemplateModal extends Modal {
 
         // HTML textarea
         const htmlRow = form.createDiv('sts-cstpl-row sts-cstpl-row-tall');
-        htmlRow.createEl('label', { text: 'HTML Template', cls: 'sts-cstpl-label' });
+        htmlRow.createEl('label', { text: 'HTML template', cls: 'sts-cstpl-label' });
         this.htmlArea = htmlRow.createEl('textarea', { cls: 'sts-cstpl-textarea' });
         this.htmlArea.placeholder = '<h1>{{name}}</h1>\n<p>{{description}}</p>';
         if (this.existing) this.htmlArea.value = this.existing.html;
@@ -49,14 +49,14 @@ export class CustomSheetTemplateModal extends Modal {
         tokensToggle.appendText(' Available tokens');
 
         const tokensList = tokensWrap.createDiv('sts-cstpl-tokens-list');
-        tokensList.style.display = 'none';
+        tokensList.setCssStyles({ display: 'none' });
         for (const token of CUSTOM_TEMPLATE_TOKENS) {
             tokensList.createEl('code', { text: token, cls: 'sts-cstpl-token' });
         }
 
         tokensToggle.addEventListener('click', () => {
             const visible = tokensList.style.display !== 'none';
-            tokensList.style.display = visible ? 'none' : 'flex';
+            tokensList.setCssStyles({ display: visible ? 'none' : 'flex' });
             tokensToggle.empty();
             setIcon(tokensToggle, visible ? 'chevron-right' : 'chevron-down');
             tokensToggle.appendText(' Available tokens');

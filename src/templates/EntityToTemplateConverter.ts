@@ -24,6 +24,7 @@ import {
     Scene,
     Reference
 } from '../types';
+import { entityToYaml, entityToMarkdown } from '../utils/TemplatePreviewRenderer';
 
 export interface ConversionOptions {
     /** Template name */
@@ -66,7 +67,11 @@ export interface ConversionOptions {
     sectionContent?: Record<string, string>;
 
     /** Custom YAML fields to include (if provided externally) */
-    customYamlFields?: Record<string, any>;
+    customYamlFields?: Record<string, unknown>;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 export class EntityToTemplateConverter {
@@ -86,12 +91,10 @@ export class EntityToTemplateConverter {
             options
         );
 
-        const entities: TemplateEntities = {};
-        const entityTypePlural = this.getEntityTypePlural(entityType);
-        (entities as any)[entityTypePlural] = [templateEntity];
+        const entities = this.createEntitiesContainer(entityType, templateEntity);
 
         const template: Template = {
-            id: `template-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            id: `template-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
             name: options.name,
             description: options.description,
             genre: options.genre,
@@ -268,7 +271,7 @@ export class EntityToTemplateConverter {
         }
 
         const template: Template = {
-            id: `template-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            id: `template-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
             name: options.name,
             description: options.description,
             genre: options.genre,
@@ -298,46 +301,48 @@ export class EntityToTemplateConverter {
         templateId: string,
         options: ConversionOptions
     ): TemplateEntity<T> {
-        const converted: any = {
+        const converted: Record<string, unknown> = {
             templateId,
-            ...this.copyEntityFields(entity as any, options)
+            ...this.copyEntityFields(entity, options)
         };
 
         // Remove fields that shouldn't be in template
-        delete converted.id;
-        delete converted.filePath;
-        delete converted.storyId;
+        delete converted['id'];
+        delete converted['filePath'];
+        delete converted['storyId'];
 
         // Handle relationships based on options
         if (!options.includeRelationships) {
             // Remove all relationship fields
-            delete converted.relationships;
-            delete converted.connections;
-            delete converted.locations;
-            delete converted.events;
-            delete converted.characters;
-            delete converted.groups;
-            delete converted.linkedCharacters;
-            delete converted.linkedLocations;
-            delete converted.linkedEvents;
-            delete converted.linkedItems;
-            delete converted.linkedGroups;
-            delete converted.linkedCultures;
-            delete converted.linkedFactions;
-            delete converted.members;
-            delete converted.territories;
-            delete converted.parentLocation;
-            delete converted.parentGroup;
-            delete converted.parentCulture;
-            delete converted.currentOwner;
-            delete converted.pastOwners;
-            delete converted.currentLocation;
-            delete converted.associatedEvents;
-            delete converted.dependencies;
-            delete converted.groupRelationships;
-            delete converted.relatedCultures;
-            delete converted.subgroups;
-            delete converted.chapterId;
+            this.deleteFields(converted, [
+                'relationships',
+                'connections',
+                'locations',
+                'events',
+                'characters',
+                'groups',
+                'linkedCharacters',
+                'linkedLocations',
+                'linkedEvents',
+                'linkedItems',
+                'linkedGroups',
+                'linkedCultures',
+                'linkedFactions',
+                'members',
+                'territories',
+                'parentLocation',
+                'parentGroup',
+                'parentCulture',
+                'currentOwner',
+                'pastOwners',
+                'currentLocation',
+                'associatedEvents',
+                'dependencies',
+                'groupRelationships',
+                'relatedCultures',
+                'subgroups',
+                'chapterId'
+            ]);
         } else if (options.genericizeRelationships) {
             // Make relationships optional/generic
             // This would involve more complex logic to create placeholders
@@ -346,12 +351,12 @@ export class EntityToTemplateConverter {
 
         // Handle custom fields
         if (!options.includeCustomFields) {
-            delete converted.customFields;
+            delete converted['customFields'];
         }
 
         // Handle profile images
         if (!options.includeProfileImages) {
-            delete converted.profileImagePath;
+            delete converted['profileImagePath'];
         }
 
         // Exclude specific fields
@@ -363,21 +368,19 @@ export class EntityToTemplateConverter {
 
         // Add section content if provided (old format)
         if (options.includeSectionContent && options.sectionContent) {
-            converted.sectionContent = options.sectionContent;
+            converted['sectionContent'] = options.sectionContent;
         }
 
         // Add custom YAML fields if provided (old format)
         if (options.includeCustomYaml && options.customYamlFields) {
-            converted.customYamlFields = options.customYamlFields;
+            converted['customYamlFields'] = options.customYamlFields;
         }
 
         // Generate new format (yamlContent and markdownContent) from entity
         // This ensures new templates use the simplified format
         try {
-            // Dynamic import to avoid circular dependencies
-            const { entityToYaml, entityToMarkdown } = require('../utils/TemplatePreviewRenderer');
-            converted.yamlContent = entityToYaml(converted);
-            converted.markdownContent = entityToMarkdown(converted);
+            converted['yamlContent'] = entityToYaml(converted);
+            converted['markdownContent'] = entityToMarkdown(converted);
         } catch (error) {
             console.warn('Failed to generate yamlContent/markdownContent:', error);
             // Fallback: keep old format if conversion fails
@@ -389,8 +392,11 @@ export class EntityToTemplateConverter {
     /**
      * Copy entity fields (shallow copy with exclusions)
      */
-    private static copyEntityFields(entity: any, options: ConversionOptions): any {
-        const copy: any = {};
+    private static copyEntityFields(entity: unknown, options: ConversionOptions): Record<string, unknown> {
+        const copy: Record<string, unknown> = {};
+        if (!isRecord(entity)) {
+            return copy;
+        }
 
         Object.keys(entity).forEach(key => {
             // Skip undefined values
@@ -414,29 +420,52 @@ export class EntityToTemplateConverter {
     /**
      * Get the plural form of entity type for TemplateEntities
      */
-    private static getEntityTypePlural(entityType: TemplateEntityType): string {
-        const pluralMap: Record<TemplateEntityType, string> = {
-            character: 'characters',
-            location: 'locations',
-            event: 'events',
-            item: 'items',
-            group: 'groups',
-            map: 'maps',
-            culture: 'cultures',
-            economy: 'economies',
-            magicSystem: 'magicSystems',
-            chapter: 'chapters',
-            scene: 'scenes',
-            reference: 'references'
-        };
+    private static createEntitiesContainer<T>(
+        entityType: TemplateEntityType,
+        templateEntity: TemplateEntity<T>
+    ): TemplateEntities {
+        switch (entityType) {
+            case 'character':
+                return { characters: [templateEntity] };
+            case 'location':
+                return { locations: [templateEntity] };
+            case 'event':
+                return { events: [templateEntity] };
+            case 'item':
+                return { items: [templateEntity] };
+            case 'group':
+                return { groups: [templateEntity] };
+            case 'map':
+                return { maps: [templateEntity] };
+            case 'culture':
+                return { cultures: [templateEntity] };
+            case 'economy':
+                return { economies: [templateEntity] };
+            case 'magicSystem':
+                return { magicSystems: [templateEntity] };
+            case 'chapter':
+                return { chapters: [templateEntity] };
+            case 'scene':
+                return { scenes: [templateEntity] };
+            case 'reference':
+                return { references: [templateEntity] };
+        }
+    }
 
-        return pluralMap[entityType];
+    private static deleteFields(target: Record<string, unknown>, fields: string[]): void {
+        fields.forEach(field => {
+            delete target[field];
+        });
     }
 
     /**
      * Extract entity type from entity object
      */
-    static detectEntityType(entity: any): TemplateEntityType | null {
+    static detectEntityType(entity: unknown): TemplateEntityType | null {
+        if (!isRecord(entity)) {
+            return null;
+        }
+
         // This is a heuristic approach based on unique fields
         if ('traits' in entity || 'backstory' in entity) return 'character';
         if ('locationType' in entity || 'climate' in entity) return 'location';

@@ -131,7 +131,7 @@ export class CompendiumListModal extends Modal {
                     }
                     const file = this.app.vault.getAbstractFileByPath(entry.filePath);
                     if (file instanceof TFile) {
-                        this.app.workspace.getLeaf(false).openFile(file);
+                        void this.app.workspace.getLeaf(false).openFile(file);
                         this.close();
                     } else {
                         new Notice(t('workspaceLeafRevealError'));

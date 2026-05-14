@@ -1,5 +1,5 @@
-/* eslint-disable no-mixed-spaces-and-tabs */
-/* eslint-disable @typescript-eslint/no-unused-vars */
+ 
+ 
 
 // Import Leaflet CSS and JS so esbuild can bundle it properly
 import 'leaflet/dist/leaflet.css';
@@ -15,7 +15,7 @@ import * as L from 'leaflet';
 // import 'leaflet.markercluster/dist/MarkerCluster.Default.css';
 // import 'leaflet.markercluster/dist/leaflet.markercluster';
 
-import { App, Notice, Plugin, TFile, TFolder, normalizePath, stringifyYaml, WorkspaceLeaf, debounce } from 'obsidian';
+import { Notice, Plugin, TFile, TFolder, normalizePath, stringifyYaml, WorkspaceLeaf, debounce } from 'obsidian';
 import { parseEventDate, toMillis } from './utils/DateParsing';
 import {
     buildFrontmatter,
@@ -47,7 +47,6 @@ import { LocationListModal } from './modals/LocationListModal';
 import { EventModal } from './modals/EventModal';
 import { TimelineModal } from './modals/TimelineModal';
 import { GalleryModal } from './modals/GalleryModal';
-import { ImageDetailModal } from './modals/ImageDetailModal';
 import { DashboardView, VIEW_TYPE_DASHBOARD } from './views/DashboardView';
 import { NetworkGraphView, VIEW_TYPE_NETWORK_GRAPH } from './views/NetworkGraphView';
 import { TimelineView, VIEW_TYPE_TIMELINE } from './views/TimelineView';
@@ -59,7 +58,6 @@ import { SceneGraphView, VIEW_TYPE_SCENE_GRAPH } from './views/SceneGraphView';
 import { StorytellerGuideModal } from './modals/StorytellerGuideModal';
 // DEPRECATED: Map functionality has been deprecated
 // import { MapEditorView, VIEW_TYPE_MAP_EDITOR } from './views/MapEditorView';
-import { GalleryImageSuggestModal } from './modals/GalleryImageSuggestModal';
 import { GroupSuggestModal } from './modals/GroupSuggestModal';
 import { StorytellerSuiteSettingTab } from './StorytellerSuiteSettingTab';
 import { NewStoryModal } from './modals/NewStoryModal';
@@ -82,6 +80,7 @@ import { TemplateStorageManager } from './templates/TemplateStorageManager';
 import { TemplateNoteManager } from './templates/TemplateNoteManager';
 import { SaveNoteAsTemplateCommand } from './commands/SaveNoteAsTemplateCommand';
 import { Template, TemplateApplicationOptions, TemplateApplicationResult } from './templates/TemplateTypes';
+import type { EntityFileName, TemplateVariableValues } from './modals/TemplateApplicationModal';
 import { StoryTemplateGalleryModal } from './templates/modals/StoryTemplateGalleryModal';
 import { upgradeLegacyModalLayout } from './modals/utils/LegacyModalLayout';
 import { TrackManagerModal } from './modals/TrackManagerModal';
@@ -95,7 +94,7 @@ import { WordCountTracker } from './compile';
 import type { SessionStats } from './compile';
 import { createLedgerViewExtension, registerLedgerBlockProcessor } from './extensions/LedgerEditorExtension';
 import { createBranchViewExtension, registerBranchBlockProcessors } from './extensions/BranchBlockExtension';
-import { CampaignSession, PartyMemberState } from './types';
+import { CampaignSession } from './types';
 
 type FrontmatterReferenceFieldConfig = {
     field: string;
@@ -107,7 +106,7 @@ type FrontmatterReferenceFieldConfig = {
 type FrontmatterObjectReferenceFieldConfig = {
     field: string;
     idKey: string;
-    entityType: EntityFolderType | ((entry: Record<string, any>) => EntityFolderType | null);
+    entityType: EntityFolderType | ((entry: Record<string, unknown>) => EntityFolderType | null);
     nameKey?: string;
 };
 
@@ -221,7 +220,6 @@ const FRONTMATTER_LINK_ONLY_SCALAR_FIELDS = new Set([
     referenceFolderPath?: string;
     chapterFolderPath?: string;
     sceneFolderPath?: string;
-    /** @deprecated Map functionality has been deprecated */
     mapFolderPath?: string;
     /** When true, avoid nested Stories/StoryName structure and use a single base */
     enableOneStoryMode?: boolean;
@@ -485,7 +483,7 @@ const FRONTMATTER_LINK_ONLY_SCALAR_FIELDS = new Set([
 }
 
 /**
- * Main plugin class for Storyteller Suite
+ * Main plugin class for Storyteller suite
  * Manages storytelling entities (characters, locations, events) and provides
  * a unified dashboard interface for story management
  */
@@ -552,9 +550,7 @@ export default class StorytellerSuitePlugin extends Plugin {
             magicSystem: ['description', 'rules', 'source', 'costs', 'limitations', 'training', 'history']
         };
         for (const k of (derivedByType[entityType] || [])) reserved.add(k);
-        const mode = this.settings.customFieldsMode ?? 'flatten';
-
-        const src: Record<string, unknown> = entity as unknown as Record<string, unknown>;
+        const src: Record<string, unknown> = entity;
         const currentCustom: Record<string, string> = { ...(entity.customFields || {}) };
 
         // Sweep non-whitelisted scalar keys into customFields (including null/empty values)
@@ -577,7 +573,7 @@ export default class StorytellerSuitePlugin extends Plugin {
                 // Only move if not conflicting (case-insensitive) with existing customFields
                 const hasConflict = Object.keys(currentCustom).some(k => k.toLowerCase() === key.toLowerCase());
                 if (!hasConflict) {
-                    currentCustom[key] = value as string;
+                    currentCustom[key] = value;
                     delete (src as any)[key];
                 }
             }
@@ -747,7 +743,7 @@ export default class StorytellerSuitePlugin extends Plugin {
         for (const field of WIKI_LINK_ARRAY_FIELDS) {
             const value = data[field];
             if (!Array.isArray(value)) continue;
-            data[field] = (value as unknown[])
+            data[field] = value
                 .map(v => stripWikiLink(v))
                 .filter((v): v is string => Boolean(v))
                 .map(v => `[[${v}]]`);
@@ -760,7 +756,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 
     private async getRawFrontmatterForFile(file: TFile): Promise<Record<string, unknown> | undefined> {
         const cache = this.app.metadataCache.getFileCache(file);
-        const cachedFrontmatter = cache?.frontmatter as Record<string, unknown> | undefined;
+        const cachedFrontmatter = cache?.frontmatter;
         if (cachedFrontmatter && Object.keys(cachedFrontmatter).length > 0) {
             return cachedFrontmatter;
         }
@@ -798,15 +794,15 @@ export default class StorytellerSuitePlugin extends Plugin {
         return Array.from(paths);
     }
 
-    private upgradeLegacyModalLayouts(root: ParentNode = document.body): void {
-        const containers = root instanceof HTMLElement && root.matches('.modal-content')
+    private upgradeLegacyModalLayouts(root: ParentNode = activeDocument.body): void {
+        const containers = root.instanceOf(HTMLElement) && root.matches('.modal-content')
             ? [root]
-            : Array.from(root.querySelectorAll?.('.modal-content') ?? []) as HTMLElement[];
+            : Array.from(root.querySelectorAll?.('.modal-content') ?? []);
 
         for (const contentEl of containers) {
-            if (!(contentEl instanceof HTMLElement)) continue;
-            const modalEl = contentEl.closest('.modal') as HTMLElement | null;
-            if (!modalEl) continue;
+            if (!contentEl.instanceOf(HTMLElement)) continue;
+            const modalEl = contentEl.closest('.modal');
+            if (!modalEl?.instanceOf(HTMLElement)) continue;
             upgradeLegacyModalLayout(contentEl, modalEl);
         }
     }
@@ -816,7 +812,7 @@ export default class StorytellerSuitePlugin extends Plugin {
         this.legacyModalLayoutObserver = new MutationObserver((mutations) => {
             for (const mutation of mutations) {
                 for (const node of Array.from(mutation.addedNodes)) {
-                    if (!(node instanceof HTMLElement)) continue;
+                    if (!node.instanceOf(HTMLElement)) continue;
                     if (node.matches('.modal-content')) {
                         this.upgradeLegacyModalLayouts(node);
                         continue;
@@ -825,8 +821,8 @@ export default class StorytellerSuitePlugin extends Plugin {
                 }
             }
         });
-        this.legacyModalLayoutObserver.observe(document.body, { childList: true, subtree: true });
-        this.upgradeLegacyModalLayouts(document.body);
+        this.legacyModalLayoutObserver.observe(activeDocument.body, { childList: true, subtree: true });
+        this.upgradeLegacyModalLayouts(activeDocument.body);
     }
 
     private async getFrontmatterReferenceIndex(entityType: EntityFolderType): Promise<FrontmatterReferenceIndex> {
@@ -995,10 +991,10 @@ export default class StorytellerSuitePlugin extends Plugin {
             const entries = serialized[config.field] as unknown[];
             serialized[config.field] = await Promise.all(entries.map(async (entry) => {
                 if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return entry;
-                const clone = { ...(entry as Record<string, unknown>) };
+                const clone: Record<string, unknown> = { ...entry };
                 const lookupType =
                     typeof config.entityType === 'function'
-                        ? config.entityType(clone as Record<string, any>)
+                        ? config.entityType(clone)
                         : config.entityType;
                 const currentValue = clone[config.idKey];
                 const mirrorValue = config.nameKey ? clone[config.nameKey] : undefined;
@@ -1099,10 +1095,10 @@ export default class StorytellerSuitePlugin extends Plugin {
             const entries = data[config.field] as unknown[];
             data[config.field] = await Promise.all(entries.map(async (entry) => {
                 if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return entry;
-                const clone = { ...(entry as Record<string, unknown>) };
+                const clone: Record<string, unknown> = { ...entry };
                 const lookupType =
                     typeof config.entityType === 'function'
-                        ? config.entityType(clone as Record<string, any>)
+                        ? config.entityType(clone)
                         : config.entityType;
                 const currentValue = clone[config.idKey];
                 const mirrorValue = config.nameKey ? clone[config.nameKey] : undefined;
@@ -1160,7 +1156,7 @@ export default class StorytellerSuitePlugin extends Plugin {
                 await this.ensureFolder(this.getEntityFolder('chapter'));
                 await this.ensureFolder(this.getEntityFolder('scene'));
                 await this.ensureFolder(this.getEntityFolder('group'));
-            } catch (e) {
+            } catch {
                 // Best-effort; errors will surface via Notice in ensureFolder
             }
         }
@@ -1186,7 +1182,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 	 */
     async createStory(name: string, description?: string): Promise<Story> {
 		// Generate unique id
-		const id = Date.now().toString(36) + Math.random().toString(36).substr(2, 6);
+		const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 		const created = new Date().toISOString();
 		const story: Story = { id, name, created, description };
 		this.settings.stories.push(story);
@@ -1258,7 +1254,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 	 * This runs once per vault on plugin upgrade
 	 */
 	async migrateRelationshipsToTyped(): Promise<void> {
-		console.log('Storyteller Suite: Starting relationships migration to typed format...');
+		console.debug('Storyteller suite: Starting relationships migration to typed format...');
 		
 		try {
 			const characters = await this.listCharacters();
@@ -1310,12 +1306,12 @@ export default class StorytellerSuitePlugin extends Plugin {
 			}
 
 			if (migratedCount > 0) {
-				console.log(`Storyteller Suite: Migrated ${migratedCount} character(s) to typed relationships.`);
+				console.debug(`Storyteller suite: Migrated ${migratedCount} character(s) to typed relationships.`);
 			} else {
-				console.log('Storyteller Suite: No migration needed for relationships.');
+				console.debug('Storyteller suite: No migration needed for relationships.');
 			}
 		} catch (error) {
-			console.error('Storyteller Suite: Error during relationships migration:', error);
+			console.error('Storyteller suite: Error during relationships migration:', error);
 		}
 	}
 
@@ -1325,7 +1321,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 	 * Runs once on update to v2.0
 	 */
 	async backfillBidirectionalRelationships(): Promise<void> {
-		console.log('Storyteller Suite: Starting bidirectional link backfill...');
+		console.debug('Storyteller suite: Starting bidirectional link backfill...');
 		
 		const { EntitySyncService } = await import('./services/EntitySyncService');
 		const syncService = new EntitySyncService(this);
@@ -1388,10 +1384,10 @@ export default class StorytellerSuitePlugin extends Plugin {
                 updatedCount++;
             }
 
-			console.log(`Storyteller Suite: Backfill complete. Processed ${updatedCount} entities.`);
+			console.debug(`Storyteller suite: Backfill complete. Processed ${updatedCount} entities.`);
             new Notice(`Storyteller: Updated links for ${updatedCount} entities.`);
 		} catch (error) {
-			console.error('Storyteller Suite: Error during bidirectional backfill:', error);
+			console.error('Storyteller suite: Error during bidirectional backfill:', error);
 		}
 	}
 
@@ -1522,12 +1518,12 @@ export default class StorytellerSuitePlugin extends Plugin {
 
 		// Add ribbon icon for quick access to dashboard
 		this.addRibbonIcon('book-open', 'Open storyteller dashboard', () => {
-			this.activateView();
+			void this.activateView();
 		}).addClass('storyteller-suite-ribbon-class');
 
 		// Add ribbon icon for campaign view
 		this.addRibbonIcon('swords', 'Open campaign view', () => {
-			this.activateCampaignView();
+			void this.activateCampaignView();
 		});
 
 		// Add ribbon icon for template library
@@ -1604,7 +1600,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 				if (!file.path.startsWith(sceneFolder + '/')) return;
 
 				// Small delay for metadata cache to settle
-				await new Promise<void>(resolve => setTimeout(resolve, 600));
+				await new Promise<void>(resolve => window.setTimeout(resolve, 600));
 
 				const sceneRefs = (this.settings.storyDrafts ?? []).flatMap(d => d.sceneOrder ?? []);
 				const trackedIds = new Set(
@@ -1682,7 +1678,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		logPrefix?: string;
 		showDetailedLogs?: boolean;
 	} = {}): Promise<{ newStories: Story[]; totalStories: number; error?: string }> {
-        const { isInitialDiscovery = false, logPrefix = 'Storyteller Suite' } = options;
+        const { isInitialDiscovery = false } = options;
 		
 		// In one-story mode users may not have a Stories/ folder at all.
 		// Keep discovery logic as-is so it remains a no-op in that case.
@@ -1697,7 +1693,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 				const storyName = storyFolder.name;
 				// Only add stories that don't already exist
 				if (!this.settings.stories.some(s => s.name === storyName)) {
-					const id = Date.now().toString(36) + Math.random().toString(36).substr(2, 6);
+					const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 					const created = new Date().toISOString();
 					const story: Story = { id, name: storyName, created, description: 'Discovered from filesystem' };
 					newStories.push(story);
@@ -1717,7 +1713,6 @@ export default class StorytellerSuitePlugin extends Plugin {
 			
 			return { newStories, totalStories: this.settings.stories.length };
 		} else if (storiesFolder === null) {
-			const message = `Stories folder does not exist at ${baseStoriesPath}`;
 			// Continue to alternate discovery paths below instead of returning immediately
 			// return { newStories: [], totalStories: this.settings.stories.length, error: message };
 		} else {
@@ -1749,7 +1744,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 						for (const f of subFolders) {
 							// Use folder name as story name; ensure uniqueness by id
 							if (!this.settings.stories.some(s => s.name === f.name)) {
-								const id = Date.now().toString(36) + Math.random().toString(36).substr(2, 6);
+								const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 								const story: Story = { id, name: f.name, created: new Date().toISOString() };
 								this.settings.stories.push(story);
 								newlyAdded.push(story);
@@ -1767,16 +1762,15 @@ export default class StorytellerSuitePlugin extends Plugin {
 				}
 			}
 		} catch (e) {
-			console.warn('Storyteller Suite: Custom-folder discovery failed', e);
+			console.warn('Storyteller suite: Custom-folder discovery failed', e);
 		}
 
 		// --- Alternate discovery: One-story mode with existing content ---
         try {
             if (this.settings.enableOneStoryMode) {
-                const baseSanitized = this.sanitizeBaseFolderPath(this.settings.oneStoryBaseFolder || 'StorytellerSuite');
                 // If no stories exist, create the default one regardless of existing files
                 if ((this.settings.stories?.length ?? 0) === 0) {
-                    const id = Date.now().toString(36) + Math.random().toString(36).substr(2, 6);
+                    const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
                     const story: Story = { id, name: 'Single Story', created: new Date().toISOString() };
                     this.settings.stories.push(story);
                     this.settings.activeStoryId = id;
@@ -1791,13 +1785,13 @@ export default class StorytellerSuitePlugin extends Plugin {
                             await this.ensureFolder(this.getEntityFolder('reference'));
                             await this.ensureFolder(this.getEntityFolder('chapter'));
                             await this.ensureFolder(this.getEntityFolder('scene'));
-                        } catch {}
+                        } catch { /* Ignore best-effort refresh errors. */ }
                     }
                     return { newStories: [story], totalStories: this.settings.stories.length };
                 }
             }
         } catch (e) {
-			console.warn('Storyteller Suite: One-story discovery failed', e);
+			console.warn('Storyteller suite: One-story discovery failed', e);
 		}
 
 		return { newStories: [], totalStories: this.settings.stories.length };
@@ -1811,15 +1805,15 @@ export default class StorytellerSuitePlugin extends Plugin {
 		try {
 			const result = await this.performStoryDiscovery({
 				isInitialDiscovery: true,
-				logPrefix: 'Storyteller Suite'
+				logPrefix: 'Storyteller suite'
 			});
 			
 			if (result.newStories.length > 0) {
 				new Notice(`Storyteller: Auto-detected and imported ${result.newStories.length} new story folder(s).`);
 			}
 		} catch (error) {
-			console.error('Storyteller Suite: Error during story discovery:', error);
-			new Notice(`Storyteller Suite: Error discovering stories: ${error.message}`);
+			console.error('Storyteller suite: Error during story discovery:', error);
+			new Notice(`Storyteller suite: Error discovering stories: ${error.message}`);
 		}
 	}
 
@@ -1831,7 +1825,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		try {
 			const result = await this.performStoryDiscovery({
 				isInitialDiscovery: false,
-				logPrefix: 'Storyteller Suite'
+				logPrefix: 'Storyteller suite'
 			});
 			
 			if (result.error) {
@@ -1842,8 +1836,8 @@ export default class StorytellerSuitePlugin extends Plugin {
 				new Notice('Storyteller: No new story folders found.');
 			}
 		} catch (error) {
-			console.error('Storyteller Suite: Error during story refresh:', error);
-			new Notice(`Storyteller Suite: Error refreshing stories: ${error.message}`);
+			console.error('Storyteller suite: Error during story refresh:', error);
+			new Notice(`Storyteller suite: Error refreshing stories: ${error.message}`);
 		}
 	}
 
@@ -1895,8 +1889,8 @@ export default class StorytellerSuitePlugin extends Plugin {
 				`Refs ${counts.references}, Chaps ${counts.chapters}, Scenes ${counts.scenes}.`
 			);
 		} catch (error) {
-			console.error('Storyteller Suite: Error during custom folder refresh:', error);
-			new Notice(`Storyteller Suite: Error scanning custom folders: ${error.message}`);
+			console.error('Storyteller suite: Error during custom folder refresh:', error);
+			new Notice(`Storyteller suite: Error scanning custom folders: ${error.message}`);
 		}
 	}
 
@@ -1956,7 +1950,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		updates.chapterFolderPath = maybe('Chapters') ?? this.settings.chapterFolderPath;
 		updates.sceneFolderPath = maybe('Scenes') ?? this.settings.sceneFolderPath;
 
-		this.settings = { ...this.settings, ...updates } as StorytellerSuiteSettings;
+		this.settings = { ...this.settings, ...updates };
 		await this.saveSettings();
 
 		// Provide feedback
@@ -1973,7 +1967,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 			} else if (view && typeof view.refreshActiveTab === 'function') {
 				view.refreshActiveTab();
 			}
-		} catch (_) {
+		} catch {
 			// no-op
 		}
 	}
@@ -1988,9 +1982,9 @@ export default class StorytellerSuitePlugin extends Plugin {
 	private initStatusBar(): void {
 		this.statusBarWordCountEl = this.addStatusBarItem();
 		this.statusBarWordCountEl.addClass('storyteller-wordcount-bar');
-		this.statusBarWordCountEl.title = 'Storyteller Suite — click to open Writing Analytics';
-		this.statusBarWordCountEl.style.cursor = 'pointer';
-		this.statusBarWordCountEl.addEventListener('click', () => this.activateAnalyticsView());
+		this.statusBarWordCountEl.title = 'Storyteller suite — click to open writing analytics';
+		this.statusBarWordCountEl.setCssStyles({ cursor: 'pointer' });
+		this.statusBarWordCountEl.addEventListener('click', () => { void this.activateAnalyticsView(); });
 
 		const debouncedUpdate = debounce(() => this.updateStatusBar(), 800, false);
 
@@ -2011,7 +2005,7 @@ export default class StorytellerSuitePlugin extends Plugin {
         const syncActiveFile = (file: TFile | null): void => {
             this.writingSessionTransition = this.writingSessionTransition
                 .then(() => this.syncWritingSessionForFile(file))
-                .catch(error => console.error('Storyteller Suite: Error syncing writing session:', error));
+                .catch(error => console.error('Storyteller suite: Error syncing writing session:', error));
         };
 
         this.registerEvent(
@@ -2141,14 +2135,14 @@ export default class StorytellerSuitePlugin extends Plugin {
 			title: `Add "${file.basename}" to draft?`,
 			body: `"${file.basename}" was created in your scene folder. Add it to "${activeDraft.name}"?`,
 			confirmText: 'Add as scene',
-			onConfirm: async () => {
+			onConfirm: () => { void (async () => {
 				const { SceneOrderManager } = await import('./compile');
 				const manager = new SceneOrderManager(this);
 				await manager.addSceneToDraft(activeDraft, file.basename);
 				new Notice(`Added "${file.basename}" to ${activeDraft.name}`);
 				const leaves = this.app.workspace.getLeavesOfType('storyteller-dashboard-view');
 				if (leaves.length > 0) (leaves[0].view as any).refreshActiveTab?.();
-			}
+			})(); }
 		}).open();
 	}
 
@@ -2161,14 +2155,14 @@ export default class StorytellerSuitePlugin extends Plugin {
 		try {
 			this.removeMobilePlatformClasses();
 		} catch (error) {
-			console.error('Storyteller Suite: Error removing mobile classes during unload', error);
+			console.error('Storyteller suite: Error removing mobile classes during unload', error);
 		}
 
 		// Cleanup orientation and resize handlers
 		try {
 			this.cleanupMobileOrientationHandlers();
 		} catch (error) {
-			console.error('Storyteller Suite: Error cleaning up orientation handlers', error);
+			console.error('Storyteller suite: Error cleaning up orientation handlers', error);
 		}
 
 		// Removed: Codeblock maps no longer supported
@@ -2178,7 +2172,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		// 		this.leafletProcessor.cleanup();
 		// 	}
 		// } catch (error) {
-		// 	console.error('Storyteller Suite: Error cleaning up Leaflet maps', error);
+		// 	console.error('Storyteller suite: Error cleaning up Leaflet maps', error);
 		// }
 	}
 
@@ -2192,7 +2186,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 			id: 'open-dashboard-view',
 			name: 'Open dashboard',
 			callback: () => {
-				this.activateView();
+				void this.activateView();
 			}
 		});
 
@@ -2320,7 +2314,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 						await this.setActiveStory(story.id);
                         new Notice(`Story "${name}" created and activated.`);
 						// Optionally, open dashboard
-						this.activateView();
+						void this.activateView();
 					}
 				).open();
 			}
@@ -2373,7 +2367,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 					new Notice('Loaded ' + afterCount + ' custom template' + (afterCount !== 1 ? 's' : ''));
 
 					if (afterCount > beforeCount) {
-						console.log(`[StorytellerSuite] Loaded ${afterCount - beforeCount} new templates`);
+						console.debug(`[StorytellerSuite] Loaded ${afterCount - beforeCount} new templates`);
 					}
 				} catch (error) {
 					const message = error instanceof Error ? error.message : String(error);
@@ -2494,10 +2488,10 @@ export default class StorytellerSuitePlugin extends Plugin {
 					this.app,
 					this,
 					tracks,
-					async (updatedTracks) => {
+					(updatedTracks) => { void (async () => {
 						this.settings.timelineTracks = updatedTracks;
 						await this.saveSettings();
-					}
+					})(); }
 				).open();
 			}
 		});
@@ -2516,7 +2510,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 				const warningCount = conflicts.filter(c => c.severity === 'warning').length;
 
 				if (conflicts.length === 0) {
-					new Notice('✓ No timeline conflicts detected');
+					new Notice('✓ no timeline conflicts detected');
 				} else {
 					new Notice(`Found ${errorCount} error(s), ${warningCount} warning(s)`);
 				}
@@ -2557,22 +2551,22 @@ export default class StorytellerSuitePlugin extends Plugin {
 
 		this.addCommand({
 			id: 'open-writing-board',
-			name: 'Open Writing Board panel',
+			name: 'Open writing board panel',
 			callback: async () => { await this.activateWritingPanelView('board'); }
 		});
 		this.addCommand({
 			id: 'open-writing-arc',
-			name: 'Open Writing Arc chart panel',
+			name: 'Open writing arc chart panel',
 			callback: async () => { await this.activateWritingPanelView('arc'); }
 		});
 		this.addCommand({
 			id: 'open-writing-heatmap',
-			name: 'Open Character Heatmap panel',
+			name: 'Open character heatmap panel',
 			callback: async () => { await this.activateWritingPanelView('heatmap'); }
 		});
 		this.addCommand({
 			id: 'open-writing-holes',
-			name: 'Open Plot Hole Detector panel',
+			name: 'Open plot hole detector panel',
 			callback: async () => { await this.activateWritingPanelView('holes'); }
 		});
 
@@ -2743,7 +2737,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 			name: 'Create new reference',
 			callback: () => {
                 if (!this.ensureActiveStoryOrGuide()) return;
-                import('./modals/ReferenceModal').then(({ ReferenceModal }) => {
+                void import('./modals/ReferenceModal').then(({ ReferenceModal }) => {
 					new ReferenceModal(this.app, this, null, async (ref: Reference) => {
 						await this.saveReference(ref);
 						new Notice(`Reference "${ref.name}" created.`);
@@ -2756,7 +2750,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 			name: 'View references',
 			callback: async () => {
 				await this.activateView();
-				setTimeout(() => {
+				window.setTimeout(() => {
 					const leaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_DASHBOARD);
 					const view = (leaves[0]?.view as any);
 					if (view && typeof view === 'object' && 'tabHeaderContainer' in view) {
@@ -2773,7 +2767,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 			name: 'Create new chapter',
 			callback: () => {
                 if (!this.ensureActiveStoryOrGuide()) return;
-                import('./modals/ChapterModal').then(({ ChapterModal }) => {
+                void import('./modals/ChapterModal').then(({ ChapterModal }) => {
 					new ChapterModal(this.app, this, null, async (ch: Chapter) => {
 						await this.saveChapter(ch);
 						new Notice(`Chapter "${ch.name}" created.`);
@@ -2786,7 +2780,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 			name: 'View chapters',
 			callback: async () => {
 				await this.activateView();
-				setTimeout(() => {
+				window.setTimeout(() => {
 					const leaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_DASHBOARD);
 					const view = (leaves[0]?.view as any);
 					if (view && typeof view === 'object' && 'tabHeaderContainer' in view) {
@@ -2802,7 +2796,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 			id: 'import-story',
 			name: 'Import story/chapters',
 			callback: () => {
-				import('./modals/ImportConfigModal').then(({ ImportConfigModal }) => {
+				void import('./modals/ImportConfigModal').then(({ ImportConfigModal }) => {
 					new ImportConfigModal(this.app, this).open();
 				});
 			}
@@ -2814,7 +2808,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 			name: 'Create new scene',
 			callback: () => {
                 if (!this.ensureActiveStoryOrGuide()) return;
-                import('./modals/SceneModal').then(({ SceneModal }) => {
+                void import('./modals/SceneModal').then(({ SceneModal }) => {
 					new SceneModal(this.app, this, null, async (sc: Scene) => {
 						await this.saveScene(sc);
 						new Notice(`Scene "${sc.name}" created.`);
@@ -2827,7 +2821,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 			name: 'View scenes',
 			callback: async () => {
 				await this.activateView();
-				setTimeout(() => {
+				window.setTimeout(() => {
 					const leaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_DASHBOARD);
 					const view = (leaves[0]?.view as any);
 					if (view && typeof view === 'object' && 'tabHeaderContainer' in view) {
@@ -2844,12 +2838,16 @@ export default class StorytellerSuitePlugin extends Plugin {
 			name: 'Create group',
 			callback: async () => {
                 if (!this.ensureActiveStoryOrGuide()) return;
-				const name = prompt('Enter group name:');
-				if (name && name.trim()) {
-                    const trimmed = name.trim();
-                    await this.createGroup(trimmed);
-                    new Notice(`Group "${trimmed}" created.`);
-				}
+				new PromptModal(this.app, {
+                    title: 'Create group',
+                    label: 'Group name',
+                    validator: (value) => !value.trim() ? 'Required' : null,
+                    onSubmit: (name) => { void (async () => {
+                        const trimmed = name.trim();
+                        await this.createGroup(trimmed);
+                        new Notice(`Group "${trimmed}" created.`);
+                    })(); }
+                }).open();
 			}
 		});
     this.addCommand({
@@ -2857,7 +2855,7 @@ export default class StorytellerSuitePlugin extends Plugin {
       name: 'View groups',
       callback: async () => {
         await this.activateView();
-        setTimeout(() => {
+        window.setTimeout(() => {
           const leaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_DASHBOARD);
           const view = (leaves[0]?.view as any);
           if (view && typeof view === 'object' && 'tabHeaderContainer' in view) {
@@ -2884,10 +2882,10 @@ export default class StorytellerSuitePlugin extends Plugin {
                         label: 'Enter new group name',
                         defaultValue: group.name,
                         validator: (v) => !v.trim() ? 'Required' : null,
-                        onSubmit: async (newName) => {
+                        onSubmit: (newName) => { void (async () => {
                             await this.updateGroup(group.id, { name: newName.trim() });
                             new Notice(`Group renamed to "${newName.trim()}".`);
-                        }
+                        })(); }
                     }).open();
                 }).open();
             }
@@ -2907,10 +2905,10 @@ export default class StorytellerSuitePlugin extends Plugin {
                     new ConfirmModal(this.app, {
                         title: 'Confirm delete',
                         body: `Are you sure you want to delete group "${group.name}"?`,
-                        onConfirm: async () => {
+                        onConfirm: () => { void (async () => {
                             await this.deleteGroup(group.id);
                             new Notice(`Group "${group.name}" deleted.`);
-                        }
+                        })(); }
                     }).open();
                 }).open();
             }
@@ -2919,7 +2917,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		// Story Board command - Create visual canvas of scenes
 		this.addCommand({
 			id: 'create-story-board',
-			name: 'Create Story Board',
+			name: 'Create story board',
 			callback: async () => {
 				await this.createStoryBoard();
 			}
@@ -2928,7 +2926,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		// Update Story Board command - Update existing story board with changes
 		this.addCommand({
 			id: 'update-story-board',
-			name: 'Update Story Board',
+			name: 'Update story board',
 			callback: async () => {
 				await this.updateStoryBoard();
 			}
@@ -2937,7 +2935,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		// Open Story Board command - Open the existing story board canvas
 		this.addCommand({
 			id: 'open-story-board',
-			name: 'Open Story Board',
+			name: 'Open story board',
 			callback: async () => {
 				await this.openStoryBoard();
 			}
@@ -2953,7 +2951,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 			name: 'Create new culture',
 			callback: () => {
 				if (!this.ensureActiveStoryOrGuide()) return;
-				import('./modals/CultureModal').then(({ CultureModal }) => {
+				void import('./modals/CultureModal').then(({ CultureModal }) => {
 					new CultureModal(this.app, this, null, async (culture) => {
 						await this.saveCulture(culture);
 						new Notice(`Culture "${culture.name}" created.`);
@@ -2968,7 +2966,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 			name: 'Create new economy',
 			callback: () => {
 				if (!this.ensureActiveStoryOrGuide()) return;
-				import('./modals/EconomyModal').then(({ EconomyModal }) => {
+				void import('./modals/EconomyModal').then(({ EconomyModal }) => {
 					new EconomyModal(this.app, this, null, async (economy) => {
 						await this.saveEconomy(economy);
 						new Notice(`Economy "${economy.name}" created.`);
@@ -2983,7 +2981,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 			name: 'Create new magic system',
 			callback: () => {
 				if (!this.ensureActiveStoryOrGuide()) return;
-				import('./modals/MagicSystemModal').then(({ MagicSystemModal }) => {
+				void import('./modals/MagicSystemModal').then(({ MagicSystemModal }) => {
 					new MagicSystemModal(this.app, this, null, async (magicSystem) => {
 						await this.saveMagicSystem(magicSystem);
 						new Notice(`Magic System "${magicSystem.name}" created.`);
@@ -3002,7 +3000,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 			name: 'Create timeline fork',
 			callback: () => {
 				if (!this.ensureActiveStoryOrGuide()) return;
-				import('./modals/TimelineForkModal').then(({ TimelineForkModal }) => {
+				void import('./modals/TimelineForkModal').then(({ TimelineForkModal }) => {
 					new TimelineForkModal(
 						this.app,
 						this,
@@ -3084,7 +3082,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 				const conflicts = this.settings.timelineConflicts || [];
 
 				if (conflicts.length === 0) {
-					new Notice('No conflicts detected. Run "Detect timeline conflicts" to scan.');
+					new Notice('No conflicts detected. Run "detect timeline conflicts" to scan.');
 					return;
 				}
 
@@ -3112,8 +3110,8 @@ export default class StorytellerSuitePlugin extends Plugin {
 		this.addCommand({
 			id: 'open-entity-template-library',
 			name: 'Open entity template library',
-			callback: () => {
-				const { TemplateLibraryModal } = require('./modals/TemplateLibraryModal');
+			callback: async () => {
+				const { TemplateLibraryModal } = await import('./modals/TemplateLibraryModal');
 				new TemplateLibraryModal(this.app, this).open();
 			}
 		});
@@ -3123,7 +3121,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 			id: 'save-note-as-template',
 			name: 'Save current note as template',
 			callback: () => {
-				SaveNoteAsTemplateCommand.execute(this);
+				void SaveNoteAsTemplateCommand.execute(this);
 			}
 		});
 
@@ -3392,7 +3390,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 			if (leaf) {
 				await leaf.setViewState({ type: VIEW_TYPE_DASHBOARD, active: true });
 			} else {
-				console.error("Storyteller Suite: Could not create workspace leaf.");
+				console.error("Storyteller suite: Could not create workspace leaf.");
 				new Notice("Error opening dashboard: Could not create workspace leaf.");
 				return;
 			}
@@ -3400,13 +3398,13 @@ export default class StorytellerSuitePlugin extends Plugin {
 
 		// Ensure leaf is valid before revealing
 		if (!leaf) {
-			console.error("Storyteller Suite: Workspace leaf is null after attempting to find or create it.");
+			console.error("Storyteller suite: Workspace leaf is null after attempting to find or create it.");
 			new Notice("Error revealing dashboard: Workspace leaf not found.");
 			return;
 		}
 
 		// Show the view (expand sidebar if collapsed)
-		workspace.revealLeaf(leaf);
+		void workspace.revealLeaf(leaf);
 	}
 
     /** Activate or focus the Campaign view, optionally pre-loading a session. */
@@ -3421,7 +3419,7 @@ export default class StorytellerSuitePlugin extends Plugin {
             if (leaf) await leaf.setViewState({ type: VIEW_TYPE_CAMPAIGN, active: true });
         }
         if (!leaf) return;
-        workspace.revealLeaf(leaf);
+        void workspace.revealLeaf(leaf);
         if (session) {
             const view = leaf.view as CampaignView;
             await view.loadSession(session, startingScene);
@@ -3460,9 +3458,9 @@ export default class StorytellerSuitePlugin extends Plugin {
         new CampaignSessionModal(
             this.app,
             this,
-            async (session) => {
+            (session) => { void (async () => {
                 await this.activateCampaignView(session, preferredStartingScene);
-            },
+            })(); },
             preferredStartingScene
         ).open();
     }
@@ -3488,7 +3486,7 @@ export default class StorytellerSuitePlugin extends Plugin {
             if (leaf) await leaf.setViewState({ type: VIEW_TYPE_SCENE_GRAPH, active: true });
         }
         if (!leaf) return;
-        workspace.revealLeaf(leaf);
+        void workspace.revealLeaf(leaf);
     }
 
 	/**
@@ -3503,7 +3501,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 
 		if (existingLeaves.length > 0) {
 			// Reveal existing timeline view
-			workspace.revealLeaf(existingLeaves[0]);
+			void workspace.revealLeaf(existingLeaves[0]);
 			return;
 		}
 
@@ -3514,9 +3512,9 @@ export default class StorytellerSuitePlugin extends Plugin {
 				type: VIEW_TYPE_TIMELINE,
 				active: true
 			});
-			workspace.revealLeaf(leaf);
+			void workspace.revealLeaf(leaf);
 		} else {
-			console.error("Storyteller Suite: Could not create workspace leaf for timeline.");
+			console.error("Storyteller suite: Could not create workspace leaf for timeline.");
 			new Notice("Error opening timeline panel: Could not create workspace leaf.");
 		}
 	}
@@ -3529,7 +3527,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 
 		if (existingLeaves.length > 0) {
 			// Reveal existing analytics view
-			workspace.revealLeaf(existingLeaves[0]);
+			void workspace.revealLeaf(existingLeaves[0]);
 			return;
 		}
 
@@ -3540,9 +3538,9 @@ export default class StorytellerSuitePlugin extends Plugin {
 				type: VIEW_TYPE_ANALYTICS,
 				active: true
 			});
-			workspace.revealLeaf(leaf);
+			void workspace.revealLeaf(leaf);
 		} else {
-			console.error("Storyteller Suite: Could not create workspace leaf for analytics.");
+			console.error("Storyteller suite: Could not create workspace leaf for analytics.");
 			new Notice("Error opening analytics dashboard: Could not create workspace leaf.");
 		}
 	}
@@ -3555,7 +3553,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		const { workspace } = this.app;
 		const existing = workspace.getLeavesOfType(VIEW_TYPE_WRITING_PANEL);
 		if (existing.length > 0) {
-			workspace.revealLeaf(existing[0]);
+			void workspace.revealLeaf(existing[0]);
 			const view = existing[0].view as unknown as WritingPanelView;
 			if (typeof view.setMode === 'function') await view.setMode(mode);
 			return;
@@ -3563,13 +3561,12 @@ export default class StorytellerSuitePlugin extends Plugin {
 		const leaf = workspace.getLeaf('tab');
 		if (leaf) {
 			await leaf.setViewState({ type: VIEW_TYPE_WRITING_PANEL, active: true, state: { mode } });
-			workspace.revealLeaf(leaf);
+			void workspace.revealLeaf(leaf);
 		}
 	}
 
 	/**
 	 * Open the map editor view
-	 * @deprecated Use activateMapView() instead - MapEditorView has been replaced by MapView
 	 * @param mapId Optional map ID to load in the editor
 	 */
 	async openMapEditor(mapId?: string): Promise<void> {
@@ -3621,7 +3618,7 @@ export default class StorytellerSuitePlugin extends Plugin {
                     throw error;
                 }
             } else if (!(af instanceof TFolder)) {
-                const errorMsg = `Error: Path ${current} exists but is not a folder. Check Storyteller Suite settings.`;
+                const errorMsg = `Error: Path ${current} exists but is not a folder. Check Storyteller suite settings.`;
                 new Notice(errorMsg);
                 console.error(errorMsg);
                 throw new Error(errorMsg);
@@ -3645,24 +3642,24 @@ export default class StorytellerSuitePlugin extends Plugin {
         try {
             // Check if tiling is enabled (unless forcing)
             const threshold = this.settings.tiling?.autoGenerateThreshold || -1;
-            console.log(`[TileGeneration] Checking tile generation for: ${imagePath}`);
-            console.log(`[TileGeneration] Current threshold setting: ${threshold}, force: ${force}`);
+            console.debug(`[TileGeneration] Checking tile generation for: ${imagePath}`);
+            console.debug(`[TileGeneration] Current threshold setting: ${threshold}, force: ${force}`);
             
             if (!force && threshold < 0) {
                 // Tiling disabled (unless forcing)
-                console.log('[TileGeneration] Tiling is disabled (threshold < 0)');
+                console.debug('[TileGeneration] Tiling is disabled (threshold < 0)');
                 new Notice('Tile generation is disabled. Enable it in plugin settings to auto-generate tiles.');
                 return;
             }
 
             // Get image dimensions
-            console.log('[TileGeneration] Getting image dimensions...');
+            console.debug('[TileGeneration] Getting image dimensions...');
             const dimensions = await this.getImageDimensions(imageData);
-            console.log(`[TileGeneration] Image dimensions: ${dimensions.width}x${dimensions.height}`);
+            console.debug(`[TileGeneration] Image dimensions: ${dimensions.width}x${dimensions.height}`);
 
             // Check if image exceeds threshold (unless forcing)
             if (!force && dimensions.width < threshold && dimensions.height < threshold) {
-                console.log(`[TileGeneration] Image below threshold (${threshold}px), skipping. Image is ${dimensions.width}x${dimensions.height}`);
+                console.debug(`[TileGeneration] Image below threshold (${threshold}px), skipping. Image is ${dimensions.width}x${dimensions.height}`);
                 new Notice(`Image (${dimensions.width}x${dimensions.height}px) is below tiling threshold (${threshold}px). Tiles will not be generated.`);
                 return;
             }
@@ -3706,7 +3703,7 @@ export default class StorytellerSuitePlugin extends Plugin {
      */
     async forceGenerateTilesForMap(imagePath: string): Promise<string> {
         try {
-            console.log(`[TileGeneration] Force generating tiles for map image: ${imagePath}`);
+            console.debug(`[TileGeneration] Force generating tiles for map image: ${imagePath}`);
             
             // Read image data once
             const imageData = await this.app.vault.adapter.readBinary(imagePath);
@@ -3722,7 +3719,7 @@ export default class StorytellerSuitePlugin extends Plugin {
             const existingMetadata = this.app.vault.getAbstractFileByPath(metadataPath);
             
             if (existingMetadata instanceof TFile) {
-                console.log('[TileGeneration] Tiles already exist, skipping generation');
+                console.debug('[TileGeneration] Tiles already exist, skipping generation');
                 return hash;
             }
 
@@ -3839,7 +3836,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 
         // Hide notice when complete
         if (progress.percentComplete >= 100) {
-            setTimeout(() => {
+            window.setTimeout(() => {
                 this.tileProgressNotice?.hide();
                 this.tileProgressNotice = undefined;
             }, 2000);
@@ -3871,7 +3868,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 
 			// Get cached frontmatter from Obsidian's metadata cache
 			const fileCache = this.app.metadataCache.getFileCache(file);
-			const cachedFrontmatter = fileCache?.frontmatter as Record<string, unknown> | undefined;
+			const cachedFrontmatter = fileCache?.frontmatter;
 
 			// Also parse frontmatter directly from file content to capture empty values
 			// This ensures manually-added empty fields are not lost
@@ -3905,9 +3902,9 @@ export default class StorytellerSuitePlugin extends Plugin {
 
             // Scene: beats is an array on the entity; convert the raw section text now.
             if (entityType === 'scene' && typeof data['beats'] === 'string') {
-                const beats = (data['beats'] as string)
+                const beats = (data['beats'])
                     .split('\n')
-                    .map(line => line.replace(/^\-\s*/, '').trim())
+                    .map(line => line.replace(/^-\s*/, '').trim())
                     .filter(Boolean);
                 if (beats.length > 0) data['beats'] = beats;
                 else delete data['beats'];
@@ -3920,7 +3917,7 @@ export default class StorytellerSuitePlugin extends Plugin {
                     .split('\n')
                     .map(line => line.trim())
                     .filter(line => line.startsWith('- [[') && line.endsWith(']]'))
-                    .map(line => line.replace(/^\- \[\[(.*?)\]\]$/, '$1'));
+                    .map(line => line.replace(/^- \[\[(.*?)\]\]$/, '$1'));
                 if (characters.length > 0) data['characters'] = characters;
             }
 
@@ -4040,7 +4037,7 @@ export default class StorytellerSuitePlugin extends Plugin {
         entityType: 'character' | 'location' | 'event' | 'item' | 'culture' | 'economy' | 'magicSystem' | 'compendiumEntry' | 'book' | 'map',
         src: Record<string, unknown>,
         originalFrontmatter?: Record<string, unknown>
-    ): Promise<Record<string, any>> {
+    ): Promise<Record<string, unknown>> {
         const preserve = new Set<string>(Object.keys(src || {}));
         const mode = this.settings.customFieldsMode ?? 'flatten';
         const prepared = await this.serializeFrontmatterEntityReferences(src);
@@ -4048,39 +4045,39 @@ export default class StorytellerSuitePlugin extends Plugin {
             customFieldsMode: mode,
             originalFrontmatter,
             omitOriginalKeys: prepared.omitOriginalKeys,
-        }) as Record<string, any>;
+        });
     }
 
-    private buildFrontmatterForCharacter(src: any, originalFrontmatter?: Record<string, unknown>): Promise<Record<string, any>> {
+    private buildFrontmatterForCharacter(src: any, originalFrontmatter?: Record<string, unknown>): Promise<Record<string, unknown>> {
         return this.buildLinkedFrontmatter('character', src, originalFrontmatter);
     }
 
-    private buildFrontmatterForLocation(src: any, originalFrontmatter?: Record<string, unknown>): Promise<Record<string, any>> {
+    private buildFrontmatterForLocation(src: any, originalFrontmatter?: Record<string, unknown>): Promise<Record<string, unknown>> {
         return this.buildLinkedFrontmatter('location', src, originalFrontmatter);
     }
 
-    private buildFrontmatterForEvent(src: any, originalFrontmatter?: Record<string, unknown>): Promise<Record<string, any>> {
+    private buildFrontmatterForEvent(src: any, originalFrontmatter?: Record<string, unknown>): Promise<Record<string, unknown>> {
         return this.buildLinkedFrontmatter('event', src, originalFrontmatter);
     }
 
-    private buildFrontmatterForItem(src: any, originalFrontmatter?: Record<string, unknown>): Promise<Record<string, any>> {
+    private buildFrontmatterForItem(src: any, originalFrontmatter?: Record<string, unknown>): Promise<Record<string, unknown>> {
         return this.buildLinkedFrontmatter('item', src, originalFrontmatter);
     }
 
-    private buildFrontmatterForCulture(src: any, originalFrontmatter?: Record<string, unknown>): Promise<Record<string, any>> {
+    private buildFrontmatterForCulture(src: any, originalFrontmatter?: Record<string, unknown>): Promise<Record<string, unknown>> {
         return this.buildLinkedFrontmatter('culture', src, originalFrontmatter);
     }
 
 
-    private buildFrontmatterForEconomy(src: any, originalFrontmatter?: Record<string, unknown>): Promise<Record<string, any>> {
+    private buildFrontmatterForEconomy(src: any, originalFrontmatter?: Record<string, unknown>): Promise<Record<string, unknown>> {
         return this.buildLinkedFrontmatter('economy', src, originalFrontmatter);
     }
 
-    private buildFrontmatterForMagicSystem(src: any, originalFrontmatter?: Record<string, unknown>): Promise<Record<string, any>> {
+    private buildFrontmatterForMagicSystem(src: any, originalFrontmatter?: Record<string, unknown>): Promise<Record<string, unknown>> {
         return this.buildLinkedFrontmatter('magicSystem', src, originalFrontmatter);
     }
 
-    private buildFrontmatterForCompendiumEntry(src: any, originalFrontmatter?: Record<string, unknown>): Promise<Record<string, any>> {
+    private buildFrontmatterForCompendiumEntry(src: any, originalFrontmatter?: Record<string, unknown>): Promise<Record<string, unknown>> {
         return this.buildLinkedFrontmatter('compendiumEntry', src, originalFrontmatter);
     }
 
@@ -4096,7 +4093,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		
 		// Ensure character has a stable id for linking
 		if (!character.id) {
-			character.id = Date.now().toString(36) + Math.random().toString(36).substr(2, 6);
+			character.id = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 		}
 		
 		// Create safe filename from character name
@@ -4104,8 +4101,13 @@ export default class StorytellerSuitePlugin extends Plugin {
 		const filePath = normalizePath(`${folderPath}/${fileName}`);
 
 		// Separate content fields from frontmatter fields (do not let sections leak)
-        const { filePath: currentFilePath, backstory, description, ledger: _charLedger, ...rest } = character as any;
-        if ((rest as any).sections) delete (rest as any).sections;
+        const { filePath: currentFilePath, backstory, description } = character as any;
+        const rest: Record<string, unknown> = { ...(character as unknown as Record<string, unknown>) };
+        delete rest.filePath;
+        delete rest.backstory;
+        delete rest.description;
+        delete rest.ledger;
+        if (rest.sections) delete rest.sections;
 
 		// Handle renaming if filePath is present and name changed
 		let finalFilePath = filePath;
@@ -4129,7 +4131,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 				
 				// Also get frontmatter from metadata cache
 				const fileCache = this.app.metadataCache.getFileCache(existingFile);
-				const cachedFrontmatter = fileCache?.frontmatter as Record<string, unknown> | undefined;
+				const cachedFrontmatter = fileCache?.frontmatter;
 				
 				// Merge both sources, preferring direct parsing for better empty value handling
 				// Direct parsing captures empty values that the cache might miss
@@ -4296,7 +4298,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 				}
 			}
 
-			await this.app.vault.trash(file, true);
+			await this.app.fileManager.trashFile(file);
 			
 			new Notice(`Character file "${file.basename}" moved to trash.`);
 			this.app.metadataCache.trigger("dataview:refresh-views");
@@ -4327,7 +4329,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		
 		// Ensure location has a stable id for linking
 		if (!location.id) {
-			location.id = Date.now().toString(36) + Math.random().toString(36).substr(2, 6);
+			location.id = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 		}
 		
 		// Create safe filename from location name
@@ -4335,8 +4337,13 @@ export default class StorytellerSuitePlugin extends Plugin {
 		const filePath = normalizePath(`${folderPath}/${fileName}`);
 
 		// Separate content fields from frontmatter fields (do not let sections leak)
-        const { filePath: currentFilePath, history, description, ledger: _locLedger, ...rest } = location as any;
-        if ((rest as any).sections) delete (rest as any).sections;
+        const { filePath: currentFilePath, history, description } = location as any;
+        const rest: Record<string, unknown> = { ...(location as unknown as Record<string, unknown>) };
+        delete rest.filePath;
+        delete rest.history;
+        delete rest.description;
+        delete rest.ledger;
+        if (rest.sections) delete rest.sections;
 
 		// Handle renaming if filePath is present and name changed
 		let finalFilePath = filePath;
@@ -4360,7 +4367,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 				
 				// Also get frontmatter from metadata cache
 				const fileCache = this.app.metadataCache.getFileCache(existingFile);
-				const cachedFrontmatter = fileCache?.frontmatter as Record<string, unknown> | undefined;
+				const cachedFrontmatter = fileCache?.frontmatter;
 				
 				// Merge both sources, preferring direct parsing for better empty value handling
 				if (directFrontmatter || cachedFrontmatter) {
@@ -4514,7 +4521,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 				}
 			}
 
-			await this.app.vault.trash(file, true);
+			await this.app.fileManager.trashFile(file);
 			
 			new Notice(`Location file "${file.basename}" moved to trash.`);
 			this.app.metadataCache.trigger("dataview:refresh-views");
@@ -4564,12 +4571,10 @@ export default class StorytellerSuitePlugin extends Plugin {
 	/**
 	 * Map Data Management
 	 * Methods for creating, reading, updating, and deleting map entities
-	 * @deprecated Map functionality has been deprecated
 	 */
 
 	/**
 	 * Ensure the map folder exists for the active story
-	 * @deprecated Map functionality has been deprecated
 	 */
 	async ensureMapFolder(): Promise<void> {
 		await this.ensureFolder(this.getEntityFolder('map'));
@@ -4579,7 +4584,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 	 * Build frontmatter for map entity
 	 */
 	private buildFrontmatterForMap(map: Partial<StoryMap>, originalFrontmatter?: Record<string, unknown>): Promise<Record<string, unknown>> {
-		return this.buildLinkedFrontmatter('map', map as Record<string, unknown>, originalFrontmatter);
+		return this.buildLinkedFrontmatter('map', map, originalFrontmatter);
 	}
 	/**
 	 * Safely rename a file, deleting the destination if it already exists
@@ -4599,8 +4604,8 @@ export default class StorytellerSuitePlugin extends Plugin {
 		const destinationFile = this.app.vault.getAbstractFileByPath(newFilePath);
 		if (destinationFile && destinationFile instanceof TFile) {
 			// Destination exists, delete it before renaming (name collision)
-			console.log(`safe${entityType}Rename: Deleting existing file at destination: ${newFilePath}`);
-			await this.app.vault.delete(destinationFile);
+			console.debug(`safe${entityType}Rename: Deleting existing file at destination: ${newFilePath}`);
+			await this.app.fileManager.trashFile(destinationFile);
 		}
 
 		// Rename the file
@@ -4618,7 +4623,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 
 		// Ensure map has a stable id for linking
 		if (!map.id) {
-			map.id = Date.now().toString(36) + Math.random().toString(36).substr(2, 6);
+			map.id = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 		}
 
 		// Create safe filename from map name
@@ -4627,7 +4632,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 
 		// Separate content fields from frontmatter fields
 		const { filePath: currentFilePath, description, ...rest } = map as any;
-		if ((rest as any).sections) delete (rest as any).sections;
+		if ((rest).sections) delete (rest).sections;
 
 		// Handle renaming if filePath is present and name changed
 		let finalFilePath = filePath;
@@ -4647,7 +4652,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 				const { parseFrontmatterFromContent } = await import('./yaml/EntitySections');
 				const directFrontmatter = parseFrontmatterFromContent(existingContent);
 				const fileCache = this.app.metadataCache.getFileCache(existingFile);
-				const cachedFrontmatter = fileCache?.frontmatter as Record<string, unknown> | undefined;
+				const cachedFrontmatter = fileCache?.frontmatter;
 
 				if (directFrontmatter || cachedFrontmatter) {
 					originalFrontmatter = { ...(cachedFrontmatter || {}), ...(directFrontmatter || {}) };
@@ -4703,7 +4708,6 @@ export default class StorytellerSuitePlugin extends Plugin {
 	/**
 	 * Load all maps from the map folder
 	 * @returns Array of map objects sorted by name
-	 * @deprecated Map functionality has been deprecated
 	 */
 	async listMaps(): Promise<StoryMap[]> {
 		await this.ensureMapFolder();
@@ -4847,7 +4851,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		if (existingLeaves.length > 0) {
 			// Reveal existing map view
 			const leaf = existingLeaves[0];
-			workspace.revealLeaf(leaf);
+			void workspace.revealLeaf(leaf);
 			
 			// If a specific map ID is provided, load it
 			if (mapId && leaf.view instanceof MapView) {
@@ -4864,9 +4868,9 @@ export default class StorytellerSuitePlugin extends Plugin {
 				active: true,
 				state: mapId ? { mapId } : undefined
 			});
-			workspace.revealLeaf(leaf);
+			void workspace.revealLeaf(leaf);
 		} else {
-			console.error("Storyteller Suite: Could not create workspace leaf for map view.");
+			console.error("Storyteller suite: Could not create workspace leaf for map view.");
 			new Notice("Error opening map view: Could not create workspace leaf.");
 		}
 	}
@@ -4944,7 +4948,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 			}
 
 			// Now delete the file
-			await this.app.vault.trash(file, true);
+			await this.app.fileManager.trashFile(file);
 			new Notice(`Map "${file.basename}" deleted and references cleaned up.`);
 			this.app.metadataCache.trigger("dataview:refresh-views");
 		} else {
@@ -4956,7 +4960,6 @@ export default class StorytellerSuitePlugin extends Plugin {
 	 * Link a location to a map
 	 * @param locationName Name of the location to link
 	 * @param mapId ID of the map to link to
-	 * @deprecated Use LocationService.addMapBinding instead
 	 */
 	async linkLocationToMap(locationName: string, mapId: string): Promise<void> {
 		console.warn('DEPRECATED: Use LocationService.addMapBinding instead');
@@ -4966,7 +4969,6 @@ export default class StorytellerSuitePlugin extends Plugin {
 	 * Unlink a location from a map
 	 * @param locationName Name of the location to unlink
 	 * @param mapId ID of the map to unlink from
-	 * @deprecated Use LocationService.removeMapBinding instead
 	 */
 	async unlinkLocationFromMap(locationName: string, mapId: string): Promise<void> {
 		console.warn('DEPRECATED: Use LocationService.removeMapBinding instead');
@@ -5146,7 +5148,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		}
 
 		if (cleanedCount > 0) {
-			console.log(`Cleaned up map references from ${cleanedCount} entity file(s)`);
+			console.debug(`Cleaned up map references from ${cleanedCount} entity file(s)`);
 		}
 	}
 
@@ -5172,7 +5174,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 
 		// Ensure events have stable IDs so dependency tracking can survive sorting and grouping changes
 		if (!event.id) {
-			event.id = Date.now().toString(36) + Math.random().toString(36).substr(2, 6);
+			event.id = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 		}
 		
 		// Create safe filename from event name
@@ -5182,7 +5184,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 
 		// Separate content fields from frontmatter fields (do not let sections leak)
         const { filePath: currentFilePath, description, outcome, ...rest } = event as any;
-        if ((rest as any).sections) delete (rest as any).sections;
+        if ((rest).sections) delete (rest).sections;
 
 		let finalFilePath = filePath;
 		if (currentFilePath && currentFilePath !== filePath) {
@@ -5205,7 +5207,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 				
 				// Also get frontmatter from metadata cache
 				const fileCache = this.app.metadataCache.getFileCache(existingFile);
-				const cachedFrontmatter = fileCache?.frontmatter as Record<string, unknown> | undefined;
+				const cachedFrontmatter = fileCache?.frontmatter;
 				
 				// Merge both sources, preferring direct parsing for better empty value handling
 				if (directFrontmatter || cachedFrontmatter) {
@@ -5458,7 +5460,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 				}
 			}
 
-			await this.app.vault.trash(file, true);
+			await this.app.fileManager.trashFile(file);
 			
 			new Notice(`Event file "${file.basename}" moved to trash.`);
 			this.app.metadataCache.trigger("dataview:refresh-views");
@@ -5496,7 +5498,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		const filePath = normalizePath(`${folderPath}/${fileName}`);
 
         const { filePath: currentFilePath, description, history, culturalSignificance, magicProperties, ...rest } = item as any;
-        if ((rest as any).sections) delete (rest as any).sections;
+        if ((rest).sections) delete (rest).sections;
 
 		let finalFilePath = filePath;
 		if (currentFilePath && currentFilePath !== filePath) {
@@ -5519,7 +5521,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 				
 				// Also get frontmatter from metadata cache
 				const fileCache = this.app.metadataCache.getFileCache(existingFile);
-				const cachedFrontmatter = fileCache?.frontmatter as Record<string, unknown> | undefined;
+				const cachedFrontmatter = fileCache?.frontmatter;
 				
 				// Merge both sources, preferring direct parsing for better empty value handling
 				if (directFrontmatter || cachedFrontmatter) {
@@ -5655,7 +5657,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 				}
 			}
 
-			await this.app.vault.trash(file, true);
+			await this.app.fileManager.trashFile(file);
 			
 			new Notice(`Item file "${file.basename}" moved to trash.`);
 			this.app.metadataCache.trigger("dataview:refresh-views");
@@ -5677,7 +5679,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		const filePath = normalizePath(`${folderPath}/${fileName}`);
 
         const { filePath: currentFilePath, content, ...rest } = reference as any;
-        if ((rest as any).sections) delete (rest as any).sections;
+        if ((rest).sections) delete (rest).sections;
 
 		// Handle rename
 		let finalFilePath = filePath;
@@ -5691,7 +5693,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		let originalFrontmatter: Record<string, unknown> | undefined;
 		if (existingFile && existingFile instanceof TFile) {
 			const fileCache = this.app.metadataCache.getFileCache(existingFile);
-			originalFrontmatter = fileCache?.frontmatter as Record<string, unknown> | undefined;
+			originalFrontmatter = fileCache?.frontmatter;
 			try {
 				const existingContent = await this.app.vault.cachedRead(existingFile);
 				existingSections = parseSectionsFromMarkdown(existingContent);
@@ -5704,11 +5706,11 @@ export default class StorytellerSuitePlugin extends Plugin {
         const preserveRef = new Set<string>(Object.keys(rest || {}));
         const mode = this.settings.customFieldsMode ?? 'flatten';
         const preparedRef = await this.serializeFrontmatterEntityReferences(rest as Record<string, unknown>);
-        const fm: Record<string, any> = buildFrontmatter('reference', preparedRef.source, preserveRef, {
+        const fm: Record<string, unknown> = buildFrontmatter('reference', preparedRef.source, preserveRef, {
             customFieldsMode: mode,
             originalFrontmatter,
             omitOriginalKeys: preparedRef.omitOriginalKeys,
-        }) as Record<string, any>;
+        });
 
 		// Validate that we're not losing any fields before serialization
 		if (originalFrontmatter) {
@@ -5765,7 +5767,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 	async deleteReference(filePath: string): Promise<void> {
 		const file = this.app.vault.getAbstractFileByPath(normalizePath(filePath));
 		if (file instanceof TFile) {
-			await this.app.vault.trash(file, true);
+			await this.app.fileManager.trashFile(file);
 			new Notice(`Reference file "${file.basename}" moved to trash.`);
 			this.app.metadataCache.trigger('dataview:refresh-views');
 		} else {
@@ -5791,11 +5793,11 @@ export default class StorytellerSuitePlugin extends Plugin {
 
         // Ensure chapter has a stable id for linking
         if (!chapter.id) {
-            chapter.id = Date.now().toString(36) + Math.random().toString(36).substr(2, 6);
+            chapter.id = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
         }
 
         const { filePath: currentFilePath, summary, linkedCharacters, linkedLocations, linkedEvents, linkedItems, linkedGroups, ...rest } = chapter as any;
-        if ((rest as any).sections) delete (rest as any).sections;
+        if ((rest).sections) delete (rest).sections;
 
         // Rename if needed
         let finalFilePath = filePath;
@@ -5810,7 +5812,7 @@ export default class StorytellerSuitePlugin extends Plugin {
         let oldChapter: Chapter | undefined;
         if (existingFile && existingFile instanceof TFile) {
             const fileCache = this.app.metadataCache.getFileCache(existingFile);
-            originalFrontmatter = fileCache?.frontmatter as Record<string, unknown> | undefined;
+            originalFrontmatter = fileCache?.frontmatter;
             try {
                 const existingContent = await this.app.vault.cachedRead(existingFile);
                 existingSections = parseSectionsFromMarkdown(existingContent);
@@ -5833,11 +5835,11 @@ export default class StorytellerSuitePlugin extends Plugin {
         const preserveChap = new Set<string>(Object.keys(chapterSrc));
         const mode = this.settings.customFieldsMode ?? 'flatten';
         const preparedChapter = await this.serializeFrontmatterEntityReferences(chapterSrc);
-        const fm: Record<string, any> = buildFrontmatter('chapter', preparedChapter.source, preserveChap, {
+        const fm: Record<string, unknown> = buildFrontmatter('chapter', preparedChapter.source, preserveChap, {
             customFieldsMode: mode,
             originalFrontmatter,
             omitOriginalKeys: preparedChapter.omitOriginalKeys,
-        }) as Record<string, any>;
+        });
 
 		// Validate that we're not losing any fields before serialization
 		if (originalFrontmatter) {
@@ -5961,7 +5963,7 @@ export default class StorytellerSuitePlugin extends Plugin {
             } catch (e) {
                 console.warn('[deleteChapter] Could not sync linkedChapters before delete:', e);
             }
-            await this.app.vault.trash(file, true);
+            await this.app.fileManager.trashFile(file);
             new Notice(`Chapter file "${file.basename}" moved to trash.`);
             this.app.metadataCache.trigger('dataview:refresh-views');
         } else {
@@ -6055,7 +6057,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 
     // ─── Book CRUD ────────────────────────────────────────────────────────────
 
-    private buildFrontmatterForBook(src: any, originalFrontmatter?: Record<string, unknown>): Promise<Record<string, any>> {
+    private buildFrontmatterForBook(src: any, originalFrontmatter?: Record<string, unknown>): Promise<Record<string, unknown>> {
         return this.buildLinkedFrontmatter('book', src, originalFrontmatter);
     }
 
@@ -6067,11 +6069,11 @@ export default class StorytellerSuitePlugin extends Plugin {
         const filePath = normalizePath(`${folderPath}/${fileName}`);
 
         if (!book.id) {
-            book.id = Date.now().toString(36) + Math.random().toString(36).substr(2, 6);
+            book.id = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
         }
 
         const { filePath: currentFilePath, description, synopsis, linkedChapters, ...rest } = book as any;
-        if ((rest as any).sections) delete (rest as any).sections;
+        if ((rest).sections) delete (rest).sections;
 
         let finalFilePath = filePath;
         if (currentFilePath && currentFilePath !== filePath) {
@@ -6083,7 +6085,7 @@ export default class StorytellerSuitePlugin extends Plugin {
         let originalFrontmatter: Record<string, unknown> | undefined;
         if (existingFile && existingFile instanceof TFile) {
             const fileCache = this.app.metadataCache.getFileCache(existingFile);
-            originalFrontmatter = fileCache?.frontmatter as Record<string, unknown> | undefined;
+            originalFrontmatter = fileCache?.frontmatter;
             try {
                 const existingContent = await this.app.vault.cachedRead(existingFile);
                 existingSections = parseSectionsFromMarkdown(existingContent);
@@ -6156,7 +6158,7 @@ export default class StorytellerSuitePlugin extends Plugin {
                     }
                 }
             }
-            await this.app.vault.trash(file, true);
+            await this.app.fileManager.trashFile(file);
             new Notice(`Book "${file.basename}" moved to trash.`);
             this.app.metadataCache.trigger('dataview:refresh-views');
         } else {
@@ -6226,7 +6228,7 @@ export default class StorytellerSuitePlugin extends Plugin {
     async deleteSession(filePath: string): Promise<void> {
         const file = this.app.vault.getAbstractFileByPath(normalizePath(filePath));
         if (file instanceof TFile) {
-            await this.app.vault.trash(file, true);
+            await this.app.fileManager.trashFile(file);
             new Notice(`Session "${file.basename}" moved to trash.`);
         } else {
             new Notice(`Error: Could not find session file at ${filePath}`);
@@ -6305,7 +6307,7 @@ export default class StorytellerSuitePlugin extends Plugin {
         const filePath = normalizePath(`${folderPath}/${fileName}`);
 
         const { filePath: currentFilePath, content, beats, linkedCharacters, linkedLocations, linkedEvents, linkedItems, linkedGroups, ...rest } = scene as any;
-        if ((rest as any).sections) delete (rest as any).sections;
+        if ((rest).sections) delete (rest).sections;
 
         // Rename if needed
         let finalFilePath = filePath;
@@ -6321,7 +6323,7 @@ export default class StorytellerSuitePlugin extends Plugin {
         let oldScene: Scene | undefined;
         if (existingFile && existingFile instanceof TFile) {
             const fileCache = this.app.metadataCache.getFileCache(existingFile);
-            originalFrontmatter = fileCache?.frontmatter as Record<string, unknown> | undefined;
+            originalFrontmatter = fileCache?.frontmatter;
             // Capture old chapterId before overwriting for linkedScenes sync
             oldSceneChapterId = (originalFrontmatter?.chapterId as string | undefined) ?? undefined;
             try {
@@ -6340,11 +6342,11 @@ export default class StorytellerSuitePlugin extends Plugin {
         const preserveScene = new Set<string>(Object.keys(sceneSrc));
         const mode = this.settings.customFieldsMode ?? 'flatten';
         const preparedScene = await this.serializeFrontmatterEntityReferences(sceneSrc);
-        const fm: Record<string, any> = buildFrontmatter('scene', preparedScene.source, preserveScene, {
+        const fm: Record<string, unknown> = buildFrontmatter('scene', preparedScene.source, preserveScene, {
             customFieldsMode: mode,
             originalFrontmatter,
             omitOriginalKeys: preparedScene.omitOriginalKeys,
-        }) as Record<string, any>;
+        });
 
 		// Validate that we're not losing any fields before serialization
 		if (originalFrontmatter) {
@@ -6494,7 +6496,7 @@ export default class StorytellerSuitePlugin extends Plugin {
                 }
             }
 
-            await this.app.vault.trash(file, true);
+            await this.app.fileManager.trashFile(file);
             new Notice(`Scene file "${file.basename}" moved to trash.`);
             this.app.metadataCache.trigger('dataview:refresh-views');
         } else {
@@ -6514,8 +6516,18 @@ export default class StorytellerSuitePlugin extends Plugin {
         const fileName = `${culture.name.replace(/[\\/:"*?<>|]+/g, '')}.md`;
         const filePath = normalizePath(`${folderPath}/${fileName}`);
 
-        const { filePath: currentFilePath, description, values, religion, socialStructure, history, namingConventions, customs, ledger: _cultLedger, ...rest } = culture as any;
-        if ((rest as any).sections) delete (rest as any).sections;
+        const { filePath: currentFilePath, description, values, religion, socialStructure, history, namingConventions, customs } = culture as any;
+        const rest: Record<string, unknown> = { ...(culture as unknown as Record<string, unknown>) };
+        delete rest.filePath;
+        delete rest.description;
+        delete rest.values;
+        delete rest.religion;
+        delete rest.socialStructure;
+        delete rest.history;
+        delete rest.namingConventions;
+        delete rest.customs;
+        delete rest.ledger;
+        if (rest.sections) delete rest.sections;
 
         let finalFilePath = filePath;
         if (currentFilePath && currentFilePath !== filePath) {
@@ -6534,7 +6546,7 @@ export default class StorytellerSuitePlugin extends Plugin {
                 const { parseFrontmatterFromContent } = await import('./yaml/EntitySections');
                 const directFrontmatter = parseFrontmatterFromContent(existingContent);
                 const fileCache = this.app.metadataCache.getFileCache(existingFile);
-                const cachedFrontmatter = fileCache?.frontmatter as Record<string, unknown> | undefined;
+                const cachedFrontmatter = fileCache?.frontmatter;
 
                 if (directFrontmatter || cachedFrontmatter) {
                     originalFrontmatter = { ...(cachedFrontmatter || {}), ...(directFrontmatter || {}) };
@@ -6631,7 +6643,7 @@ export default class StorytellerSuitePlugin extends Plugin {
     async deleteCulture(filePath: string): Promise<void> {
         const file = this.app.vault.getAbstractFileByPath(normalizePath(filePath));
         if (file instanceof TFile) {
-            await this.app.vault.trash(file, true);
+            await this.app.fileManager.trashFile(file);
             new Notice(`Culture file "${file.basename}" moved to trash.`);
             this.app.metadataCache.trigger('dataview:refresh-views');
         } else {
@@ -6651,7 +6663,7 @@ export default class StorytellerSuitePlugin extends Plugin {
         const filePath = normalizePath(`${folderPath}/${fileName}`);
 
         const { filePath: currentFilePath, description, industries, taxation, ...rest } = economy as any;
-        if ((rest as any).sections) delete (rest as any).sections;
+        if ((rest).sections) delete (rest).sections;
 
         let finalFilePath = filePath;
         if (currentFilePath && currentFilePath !== filePath) {
@@ -6670,7 +6682,7 @@ export default class StorytellerSuitePlugin extends Plugin {
                 const { parseFrontmatterFromContent } = await import('./yaml/EntitySections');
                 const directFrontmatter = parseFrontmatterFromContent(existingContent);
                 const fileCache = this.app.metadataCache.getFileCache(existingFile);
-                const cachedFrontmatter = fileCache?.frontmatter as Record<string, unknown> | undefined;
+                const cachedFrontmatter = fileCache?.frontmatter;
 
                 if (directFrontmatter || cachedFrontmatter) {
                     originalFrontmatter = { ...(cachedFrontmatter || {}), ...(directFrontmatter || {}) };
@@ -6759,7 +6771,7 @@ export default class StorytellerSuitePlugin extends Plugin {
     async deleteEconomy(filePath: string): Promise<void> {
         const file = this.app.vault.getAbstractFileByPath(normalizePath(filePath));
         if (file instanceof TFile) {
-            await this.app.vault.trash(file, true);
+            await this.app.fileManager.trashFile(file);
             new Notice(`Economy file "${file.basename}" moved to trash.`);
             this.app.metadataCache.trigger('dataview:refresh-views');
         } else {
@@ -6779,7 +6791,7 @@ export default class StorytellerSuitePlugin extends Plugin {
         const filePath = normalizePath(`${folderPath}/${fileName}`);
 
         const { filePath: currentFilePath, description, behavior, properties, history, dimorphism, huntingNotes, ...rest } = entry as any;
-        if ((rest as any).sections) delete (rest as any).sections;
+        if ((rest).sections) delete (rest).sections;
 
         let finalFilePath = filePath;
         if (currentFilePath && currentFilePath !== filePath) {
@@ -6798,7 +6810,7 @@ export default class StorytellerSuitePlugin extends Plugin {
                 const { parseFrontmatterFromContent } = await import('./yaml/EntitySections');
                 const directFrontmatter = parseFrontmatterFromContent(existingContent);
                 const fileCache = this.app.metadataCache.getFileCache(existingFile);
-                const cachedFrontmatter = fileCache?.frontmatter as Record<string, unknown> | undefined;
+                const cachedFrontmatter = fileCache?.frontmatter;
 
                 if (directFrontmatter || cachedFrontmatter) {
                     originalFrontmatter = { ...(cachedFrontmatter || {}), ...(directFrontmatter || {}) };
@@ -6879,7 +6891,7 @@ export default class StorytellerSuitePlugin extends Plugin {
     async deleteCompendiumEntry(filePath: string): Promise<void> {
         const file = this.app.vault.getAbstractFileByPath(normalizePath(filePath));
         if (file instanceof TFile) {
-            await this.app.vault.trash(file, true);
+            await this.app.fileManager.trashFile(file);
             new Notice(`Compendium entry "${file.basename}" moved to trash.`);
             this.app.metadataCache.trigger('dataview:refresh-views');
         } else {
@@ -6899,7 +6911,7 @@ export default class StorytellerSuitePlugin extends Plugin {
         const filePath = normalizePath(`${folderPath}/${fileName}`);
 
         const { filePath: currentFilePath, description, rules, source, costs, limitations, training, history, ...rest } = magicSystem as any;
-        if ((rest as any).sections) delete (rest as any).sections;
+        if ((rest).sections) delete (rest).sections;
 
         let finalFilePath = filePath;
         if (currentFilePath && currentFilePath !== filePath) {
@@ -6918,7 +6930,7 @@ export default class StorytellerSuitePlugin extends Plugin {
                 const { parseFrontmatterFromContent } = await import('./yaml/EntitySections');
                 const directFrontmatter = parseFrontmatterFromContent(existingContent);
                 const fileCache = this.app.metadataCache.getFileCache(existingFile);
-                const cachedFrontmatter = fileCache?.frontmatter as Record<string, unknown> | undefined;
+                const cachedFrontmatter = fileCache?.frontmatter;
 
                 if (directFrontmatter || cachedFrontmatter) {
                     originalFrontmatter = { ...(cachedFrontmatter || {}), ...(directFrontmatter || {}) };
@@ -7010,7 +7022,7 @@ export default class StorytellerSuitePlugin extends Plugin {
     async deleteMagicSystem(filePath: string): Promise<void> {
         const file = this.app.vault.getAbstractFileByPath(normalizePath(filePath));
         if (file instanceof TFile) {
-            await this.app.vault.trash(file, true);
+            await this.app.fileManager.trashFile(file);
             new Notice(`Magic System file "${file.basename}" moved to trash.`);
             this.app.metadataCache.trigger('dataview:refresh-views');
         } else {
@@ -7054,7 +7066,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 
         this.settings.timelineForks = this.settings.timelineForks || [];
         this.settings.timelineForks.push(fork);
-        this.saveSettings();
+        void this.saveSettings();
 
         new Notice(`Timeline fork "${name}" created`);
         return fork;
@@ -7332,7 +7344,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 
         this.settings.causalityLinks = this.settings.causalityLinks || [];
         this.settings.causalityLinks.push(link);
-        this.saveSettings();
+        void this.saveSettings();
 
         new Notice(`Causality link created: ${causeEvent} → ${effectEvent}`);
         return link;
@@ -7453,7 +7465,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 						}
 					}).open();
 					// If modal is closed without confirming, resolve after a short delay
-					setTimeout(() => resolve(), 100);
+					window.setTimeout(() => resolve(), 100);
 				});
 
 				if (userConfirmed) {
@@ -7500,7 +7512,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 			const existingFile = this.app.vault.getAbstractFileByPath(canvasPath);
 
 			if (!(existingFile instanceof TFile)) {
-				new Notice('No story board found. Create one first using "Create Story Board".');
+				new Notice('No story board found. Create one first using "create story board".');
 				return;
 			}
 
@@ -7581,7 +7593,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 							resolve();
 						}
 					}).open();
-					setTimeout(() => resolve(), 100);
+					window.setTimeout(() => resolve(), 100);
 				});
 
 				if (userConfirmed) {
@@ -7833,7 +7845,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 	}
 
 	private createGalleryImageRecord(imageData: Omit<GalleryImage, 'id'>): GalleryImage {
-		const id = Date.now().toString() + Math.random().toString(36).substr(2, 9);
+		const id = Date.now().toString() + Math.random().toString(36).slice(2, 11);
 		return { ...imageData, id };
 	}
 
@@ -7957,7 +7969,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		const activeStory = this.getActiveStory();
 		if (!activeStory) throw new Error('No active story selected');
 		
-		const id = Date.now().toString(36) + Math.random().toString(36).substr(2, 6);
+		const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 		const group: Group = { id, storyId: activeStory.id, name, description, color, members: [] };
 		this.settings.groups.push(group);
 		await this.saveSettings();
@@ -8180,7 +8192,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 			const filePath = normalizePath(`${folderPath}/${this.groupFileName(groupName)}`);
 			const file = this.app.vault.getAbstractFileByPath(filePath);
 			if (file instanceof TFile) {
-				await this.app.vault.trash(file, true);
+				await this.app.fileManager.trashFile(file);
 			}
 		} catch (err) {
 			console.error('[deleteGroupFile] Failed to delete group file:', err);
@@ -8220,15 +8232,15 @@ export default class StorytellerSuitePlugin extends Plugin {
 			const seenIds = new Set<string>();
 			for (const file of groupFiles) {
 				const cache = this.app.metadataCache.getFileCache(file);
-				let fm = cache?.frontmatter as Record<string, any> | undefined;
+				let fm = cache?.frontmatter;
 				if (!fm) {
 					try {
 						const content = await this.app.vault.cachedRead(file);
-						const parsed = parseFrontmatterFromContent(content) as Record<string, any> | undefined;
+						const parsed = parseFrontmatterFromContent(content);
 						if (parsed) {
 							fm = parsed;
 						}
-					} catch (_) {
+					} catch {
 						// Ignore parse/read errors and continue scanning.
 					}
 				}
@@ -8278,7 +8290,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 					structure   = sections['Structure']   ?? '';
 					goals       = sections['Goals']       ?? '';
 					resources   = sections['Resources']   ?? '';
-				} catch (_) {}
+				} catch { /* Ignore best-effort refresh errors. */ }
 
 				const stripScalar = (value: unknown): string | undefined => this.stripWikiLinkValue(value);
 				const stripArray = (value: unknown): string[] | undefined => {
@@ -8763,7 +8775,7 @@ export default class StorytellerSuitePlugin extends Plugin {
             }
         } catch (e) {
             // Best-effort sanitization; ignore errors
-            console.warn('Storyteller Suite: Seed data sanitization skipped due to error', e);
+            console.warn('Storyteller suite: Seed data sanitization skipped due to error', e);
         }
 
 		// MIGRATION: If no stories exist but old folders/data exist, migrate
@@ -8937,7 +8949,7 @@ export default class StorytellerSuitePlugin extends Plugin {
             await this.templateNoteManager.initialize();
             const afterCount = this.templateManager.getAllTemplates().filter(t => (t as any).isNoteBased).length;
             if (afterCount > beforeCount) {
-                console.log(`[StorytellerSuite] Loaded ${afterCount - beforeCount} custom templates after startup`);
+                console.debug(`[StorytellerSuite] Loaded ${afterCount - beforeCount} custom templates after startup`);
             }
         } catch (error) {
             console.error('[StorytellerSuite] Error loading custom templates:', error);
@@ -9034,7 +9046,7 @@ export default class StorytellerSuitePlugin extends Plugin {
       if (view && view.activeTabId === 'groups' && typeof view.refreshActiveTab === 'function') {
         view.refreshActiveTab();
       }
-    } catch (e) {
+    } catch {
       // no-op
     }
   }
@@ -9048,11 +9060,11 @@ export default class StorytellerSuitePlugin extends Plugin {
 		template: Template,
 		options?: Partial<TemplateApplicationOptions>
 	): Promise<void> {
-		console.log('applyTemplateWithPrompt called with template:', template.name);
+		console.debug('applyTemplateWithPrompt called with template:', template.name);
 
 		// Ensure we have an active story
 		const activeStory = this.getActiveStory();
-		console.log('Active story:', activeStory);
+		console.debug('Active story:', activeStory);
 
 		if (!activeStory) {
 			new Notice('Please select or create a story first');
@@ -9066,14 +9078,14 @@ export default class StorytellerSuitePlugin extends Plugin {
 				this.app,
 				this,
 				template,
-				async (variableValues: any, entityFileNames: any[]) => {
-					console.log('Variable values collected:', variableValues);
-					console.log('Entity file names:', entityFileNames);
+				(variableValues: TemplateVariableValues, entityFileNames: EntityFileName[]) => { void (async () => {
+					console.debug('Variable values collected:', variableValues);
+					console.debug('Entity file names:', entityFileNames);
 					
 					// Build field overrides from entity file names (file name becomes entity name)
-					const fieldOverrides = new Map<string, Partial<any>>();
+					const fieldOverrides = new Map<string, { name?: string }>();
 					entityFileNames.forEach(entityInfo => {
-						const override: Partial<any> = {};
+						const override: { name?: string } = {};
 						if (entityInfo.fileName) {
 							override.name = entityInfo.fileName;
 						}
@@ -9089,7 +9101,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 					variableValues,
 					{ ...options, fieldOverrides }
 				);
-			}
+			})(); }
 		).open();
 	}
 
@@ -9099,10 +9111,10 @@ export default class StorytellerSuitePlugin extends Plugin {
 	private async applyTemplateInternal(
 		template: Template,
 		storyId: string,
-		variableValues: Record<string, any>,
+		variableValues: TemplateVariableValues,
 		additionalOptions?: Partial<TemplateApplicationOptions>
 	): Promise<void> {
-		console.log('applyTemplateInternal called:', { templateName: template.name, storyId, variableValues });
+		console.debug('applyTemplateInternal called:', { templateName: template.name, storyId, variableValues });
 
 		try {
 			const { TemplateApplicator } = await import('./templates/TemplateApplicator');
@@ -9116,13 +9128,13 @@ export default class StorytellerSuitePlugin extends Plugin {
 				...additionalOptions
 			};
 
-			console.log('Applying template with options:', options);
+			console.debug('Applying template with options:', options);
 			const result = await applicator.applyTemplate(template, options);
-			console.log('Template application result:', result);
+			console.debug('Template application result:', result);
 
 			if (result.success) {
 				const entityCount = this.countCreatedEntities(result.created);
-				console.log('Template applied successfully, created entities:', entityCount);
+				console.debug('Template applied successfully, created entities:', entityCount);
 				new Notice(`Template "${template.name}" applied successfully! Created ${entityCount} entities.`);
 
 				// Refresh views if needed
@@ -9168,9 +9180,9 @@ export default class StorytellerSuitePlugin extends Plugin {
 	 * This allows for platform-specific styling throughout the app
 	 */
 	private applyMobilePlatformClasses(): void {
-		const body = document.body;
+		const body = activeDocument.body;
 		if (!body) {
-			console.warn('Storyteller Suite: document.body is null, cannot apply mobile platform classes');
+			console.warn('Storyteller suite: activeDocument.body is null, cannot apply mobile platform classes');
 			return;
 		}
 
@@ -9184,7 +9196,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 			body.classList.add(className);
 		});
 
-		// Add Storyteller Suite specific mobile class
+		// Add Storyteller suite specific mobile class
 		if (PlatformUtils.isMobile()) {
 			body.classList.add('storyteller-mobile-enabled');
 		}
@@ -9195,21 +9207,21 @@ export default class StorytellerSuitePlugin extends Plugin {
 	 * Used during plugin cleanup to prevent class leakage
 	 */
 	private removeMobilePlatformClasses(): void {
-		const body = document.body;
+		const body = activeDocument.body;
 		if (!body) {
-			console.warn('Storyteller Suite: document.body is null, cannot remove mobile platform classes');
+			console.warn('Storyteller suite: activeDocument.body is null, cannot remove mobile platform classes');
 			return;
 		}
 
 		try {
-			// Only remove Storyteller Suite specific class
+			// Only remove Storyteller suite specific class
 			// Leave platform classes (is-mobile, is-ios, etc.) as they may be used by Obsidian core or other plugins
 			if (body.classList.contains('storyteller-mobile-enabled')) {
 				body.classList.remove('storyteller-mobile-enabled');
 			}
 		} catch (error) {
 			// Silently fail to prevent plugin unload from being blocked
-			console.error('Storyteller Suite: Error removing mobile classes', error);
+			console.error('Storyteller suite: Error removing mobile classes', error);
 		}
 	}
 
@@ -9235,21 +9247,21 @@ export default class StorytellerSuitePlugin extends Plugin {
 			this.app.workspace.getLeavesOfType(VIEW_TYPE_TIMELINE).forEach(leaf => {
 				if (leaf.view instanceof TimelineView) {
 					// Timeline view may need to redraw after orientation change
-					leaf.view.refresh();
+					void leaf.view.refresh();
 				}
 			});
 
 			// Force reflow to apply new CSS media query styles
-			document.body.offsetHeight; // eslint-disable-line @typescript-eslint/no-unused-expressions
+			void activeDocument.body.offsetHeight;  
 		};
 
 		// Debounced resize handler to avoid excessive recalculations
-		let resizeTimeout: NodeJS.Timeout | null = null;
+		let resizeTimeout: number | null = null;
 		const handleResize = () => {
 			if (resizeTimeout) {
-				clearTimeout(resizeTimeout);
+				window.clearTimeout(resizeTimeout);
 			}
-			resizeTimeout = setTimeout(() => {
+			resizeTimeout = window.setTimeout(() => {
 				handleOrientationChange();
 			}, 150); // 150ms debounce
 		};

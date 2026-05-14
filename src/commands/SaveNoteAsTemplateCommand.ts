@@ -26,7 +26,7 @@ export class SaveNoteAsTemplateCommand {
 
         // Check if file is a markdown file
         if (file.extension !== 'md') {
-            new Notice('Only markdown files can be saved as templates');
+            new Notice('Only Markdown files can be saved as templates');
             return;
         }
 
@@ -50,7 +50,7 @@ export class SaveNoteAsTemplateCommand {
             plugin,
             detectedEntityType,
             defaultName,
-            async (result: SaveNoteAsTemplateResult) => {
+            (result: SaveNoteAsTemplateResult) => { void (async () => {
                 try {
                     // Check if template note manager exists
                     if (!plugin.templateNoteManager) {
@@ -74,9 +74,10 @@ export class SaveNoteAsTemplateCommand {
                     new Notice(`Template "${template.name}" saved successfully!`);
                 } catch (error) {
                     console.error('Error saving template:', error);
-                    new Notice(`Failed to save template: ${error.message}`);
+                    const message = error instanceof Error ? error.message : String(error);
+                    new Notice(`Failed to save template: ${message}`);
                 }
-            }
+            })(); }
         ).open();
     }
 }

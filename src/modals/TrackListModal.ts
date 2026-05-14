@@ -1,4 +1,4 @@
-import { App, Modal, Setting, Notice } from 'obsidian';
+import { App, Modal } from 'obsidian';
 import { TimelineTrack } from '../types';
 import StorytellerSuitePlugin from '../main';
 import { TimelineTrackModal } from './TimelineTrackModal';
@@ -21,7 +21,7 @@ export class TrackListModal extends ResponsiveModal {
         super.onOpen();
         const { contentEl, footerEl } = this.createStructuredModalLayout();
 
-        contentEl.createEl('h2', { text: 'Timeline Tracks' });
+        contentEl.createEl('h2', { text: 'Timeline tracks' });
 
         contentEl.createEl('p', {
             text: 'Create custom timeline views filtered to specific characters, locations, or criteria. Switch between tracks using the track selector in the timeline toolbar.',
@@ -31,7 +31,7 @@ export class TrackListModal extends ResponsiveModal {
         // Create New Track Button
         const headerContainer = contentEl.createDiv('storyteller-list-header');
         headerContainer.createEl('button', {
-            text: '+ Create New Track',
+            text: '+ create new track',
             cls: 'mod-cta'
         }, btn => {
             btn.addEventListener('click', () => {
@@ -61,7 +61,7 @@ export class TrackListModal extends ResponsiveModal {
 
         if (this.tracks.length === 0) {
             this.listContainer.createEl('p', {
-                text: 'No tracks created yet. Click "Create New Track" to get started.',
+                text: 'No tracks created yet. Click "create new track" to get started.',
                 cls: 'storyteller-empty-state'
             });
             return;
@@ -81,7 +81,7 @@ export class TrackListModal extends ResponsiveModal {
             // Color indicator
             const colorBar = trackCard.createDiv('storyteller-track-color-bar');
             if (track.color) {
-                colorBar.style.backgroundColor = track.color;
+                colorBar.setCssStyles({ backgroundColor: track.color });
             }
 
             // Track content
@@ -152,7 +152,7 @@ export class TrackListModal extends ResponsiveModal {
                     return TimelineTrackManager.getEventsForTrack(track, allEvents);
                 })() : Promise.resolve([]);
 
-                events.then(eventsInTrack => {
+                void events.then(eventsInTrack => {
                     trackContent.createDiv('storyteller-track-events', div => {
                         div.createEl('strong', { text: 'Events: ' });
                         div.createSpan({ text: eventsInTrack.length.toString() });
@@ -160,7 +160,7 @@ export class TrackListModal extends ResponsiveModal {
                 });
             } else {
                 trackContent.createDiv('storyteller-track-error', div => {
-                    div.createEl('strong', { text: '⚠️ Invalid: ' });
+                    div.createEl('strong', { text: '⚠️ invalid: ' });
                     div.createSpan({ text: validation.errors.join(', ') });
                 });
             }
@@ -181,25 +181,25 @@ export class TrackListModal extends ResponsiveModal {
                 text: track.visible === false ? 'Show' : 'Hide',
                 cls: 'storyteller-track-action-btn'
             }, btn => {
-                btn.addEventListener('click', async () => {
+                btn.addEventListener('click', () => { void (async () => {
                     track.visible = track.visible === false ? true : false;
                     await this.plugin.updateTimelineTrack(track);
                     this.renderTrackList();
-                });
+                })(); });
             });
 
             actionRow.createEl('button', {
                 text: 'Delete',
                 cls: 'storyteller-track-action-btn mod-warning'
             }, btn => {
-                btn.addEventListener('click', async () => {
+                btn.addEventListener('click', () => { void (async () => {
                     const confirm = await this.confirmDelete(track.name);
                     if (confirm) {
                         await this.plugin.deleteTimelineTrack(track.id);
                         this.tracks = this.plugin.settings.timelineTracks || [];
                         this.renderTrackList();
                     }
-                });
+                })(); });
             });
         }
     }
@@ -233,7 +233,7 @@ export class TrackListModal extends ResponsiveModal {
     private async confirmDelete(trackName: string): Promise<boolean> {
         return new Promise<boolean>(resolve => {
             const confirmModal = new Modal(this.app);
-            confirmModal.contentEl.createEl('h3', { text: 'Delete Track?' });
+            confirmModal.contentEl.createEl('h3', { text: 'Delete track?' });
             confirmModal.contentEl.createEl('p', {
                 text: `Are you sure you want to delete "${trackName}"? This action cannot be undone.`
             });

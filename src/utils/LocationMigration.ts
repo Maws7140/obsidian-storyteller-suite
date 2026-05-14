@@ -5,7 +5,7 @@
  */
 
 import type StorytellerSuitePlugin from '../main';
-import type { Location, MapBinding } from '../types';
+import type { Location } from '../types';
 
 export class LocationMigration {
     private plugin: StorytellerSuitePlugin;

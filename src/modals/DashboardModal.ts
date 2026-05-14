@@ -1,9 +1,8 @@
 import { App, Setting, Notice, setIcon } from 'obsidian';
 import StorytellerSuitePlugin from '../main'; // Import the plugin class
-import { Character, Location, Event, StoryMap } from '../types'; // Import types
+import { Character, Location, Event } from '../types'; // Import types
 import { ResponsiveModal } from './ResponsiveModal';
 import { t } from '../i18n/strings';
-import { PlatformUtils } from '../utils/PlatformUtils';
 
 export class DashboardModal extends ResponsiveModal {
     plugin: StorytellerSuitePlugin;
@@ -177,7 +176,7 @@ export class DashboardModal extends ResponsiveModal {
             .setName('Maps')
             .setDesc('Manage and view your story maps')
             .addButton(button => button
-                .setButtonText('View Maps')
+                .setButtonText('View maps')
                 .setCta()
                 .onClick(async () => {
                     this.close();

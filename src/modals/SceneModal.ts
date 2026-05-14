@@ -1,5 +1,5 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
-import { App, Notice, Setting, TextAreaComponent, ButtonComponent, parseYaml } from 'obsidian';
+ 
+import { App, Notice, Setting, TextAreaComponent, ButtonComponent, TFile, parseYaml } from 'obsidian';
 import { t } from '../i18n/strings';
 import StorytellerSuitePlugin from '../main';
 import { Scene } from '../types';
@@ -11,7 +11,7 @@ import { EventSuggestModal } from './EventSuggestModal';
 import { addImageSelectionButtons } from '../utils/ImageSelectionHelper';
 import { GroupSuggestModal } from './GroupSuggestModal';
 import { TemplatePickerModal } from './TemplatePickerModal';
-import { Template } from '../templates/TemplateTypes';
+import type { Template, TemplateEntity, TemplateVariableValue } from '../templates/TemplateTypes';
 import { getTrackedItemOwner } from '../utils/ItemOwnership';
 import type { StoryMap } from '../types';
 import { ResponsiveModal } from './ResponsiveModal';
@@ -19,6 +19,10 @@ import { confirmWithModal } from './ui/ConfirmModal';
 
 export type SceneModalSubmitCallback = (sc: Scene) => Promise<void>;
 export type SceneModalDeleteCallback = (sc: Scene) => Promise<void>;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
 
 export class SceneModal extends ResponsiveModal {
     plugin: StorytellerSuitePlugin;
@@ -38,7 +42,7 @@ export class SceneModal extends ResponsiveModal {
         this.modalEl.addClass('storyteller-scene-modal');
     }
 
-    async onOpen(): Promise<void> {
+    onOpen(): void { void (async () => {
         super.onOpen();
         const { contentEl, footerEl } = this.createStructuredModalLayout();
         contentEl.createEl('h2', { text: this.isNew ? t('createNewScene') : `${t('editScene')} ${this.scene.name}` });
@@ -53,12 +57,12 @@ export class SceneModal extends ResponsiveModal {
                     if ((defaultTemplate.variables && defaultTemplate.variables.length > 0) ||
                         this.hasMultipleEntities(defaultTemplate)) {
                         await new Promise<void>((resolve) => {
-                            import('./TemplateApplicationModal').then(({ TemplateApplicationModal }) => {
+                            void import('./TemplateApplicationModal').then(({ TemplateApplicationModal }) => {
                                 new TemplateApplicationModal(
                                     this.app,
                                     this.plugin,
                                     defaultTemplate,
-                                    async (variableValues, entityFileNames) => {
+                                    (variableValues, entityFileNames) => { void (async () => {
                                         try {
                                             await this.applyTemplateToSceneWithVariables(defaultTemplate, variableValues);
                                             new Notice('Default template applied');
@@ -68,7 +72,7 @@ export class SceneModal extends ResponsiveModal {
                                             new Notice('Error applying default template');
                                         }
                                         resolve();
-                                    },
+                                    })(); },
                                     resolve
                                 ).open();
                             });
@@ -90,27 +94,27 @@ export class SceneModal extends ResponsiveModal {
         // --- Template Selector (for new scenes) ---
         if (this.isNew) {
             new Setting(contentEl)
-                .setName('Start from Template')
+                .setName('Start from template')
                 .setDesc('Optionally start with a pre-configured scene template')
                 .addButton(button => button
-                    .setButtonText('Choose Template')
+                    .setButtonText('Choose template')
                     .setTooltip('Select a scene template')
                     .onClick(() => {
                         new TemplatePickerModal(
                             this.app,
                             this.plugin,
-                            async (template: Template) => {
+                            (template: Template) => { void (async () => {
                                 // Check if template has variables or multiple entities
                                 if ((template.variables && template.variables.length > 0) ||
                                     this.hasMultipleEntities(template)) {
                                     // Use TemplateApplicationModal for variable collection
                                     await new Promise<void>((resolve) => {
-                                        import('./TemplateApplicationModal').then(({ TemplateApplicationModal }) => {
+                                        void import('./TemplateApplicationModal').then(({ TemplateApplicationModal }) => {
                                             new TemplateApplicationModal(
                                                 this.app,
                                                 this.plugin,
                                                 template,
-                                                async (variableValues, entityFileNames) => {
+                                                (variableValues, entityFileNames) => { void (async () => {
                                                     try {
                                                         await this.applyTemplateToSceneWithVariables(template, variableValues);
                                                         new Notice(`Template "${template.name}" applied`);
@@ -120,7 +124,7 @@ export class SceneModal extends ResponsiveModal {
                                                         new Notice('Error applying template');
                                                     }
                                                     resolve();
-                                                },
+                                                })(); },
                                                 resolve
                                             ).open();
                                         });
@@ -131,7 +135,7 @@ export class SceneModal extends ResponsiveModal {
                                     this.refresh();
                                     new Notice(`Template "${template.name}" applied`);
                                 }
-                            },
+                            })(); },
                             'scene'
                         ).open();
                     })
@@ -153,7 +157,7 @@ export class SceneModal extends ResponsiveModal {
         chapterSetting.addDropdown(async dd => {
                 dd.addOption('', 'Unassigned');
                 const chapters = await this.plugin.listChapters();
-                chapters.forEach(ch => dd.addOption(ch.id || ch.name, ch.number != null ? `${ch.number}. ${ch.name}` : ch.name));
+                chapters.forEach(ch => { dd.addOption(ch.id || ch.name, ch.number != null ? `${ch.number}. ${ch.name}` : ch.name); });
                 dd.setValue(this.scene.chapterId || '');
                 dd.onChange((val) => {
                     if (!val) { this.scene.chapterId = undefined; this.scene.chapterName = undefined; }
@@ -170,14 +174,14 @@ export class SceneModal extends ResponsiveModal {
             .setName('Date')
             .setDesc('Optional date to show this scene on the timeline (same format as events)')
             .addText(text => text
-                .setPlaceholder('e.g. 2024-01-15 or Year 3, Day 12')
+                .setPlaceholder('E.g. 2024-01-15 or year 3, day 12')
                 .setValue(this.scene.date || '')
                 .onChange(v => { this.scene.date = v.trim() || undefined; })
             );
 
         const campaignBoardSetting = new Setting(contentEl)
             .setName('Campaign board map')
-            .setDesc('Optional image map override for Campaign mode. Leave empty to use the scene location map.');
+            .setDesc('Optional image map override for campaign mode. Leave empty to use the scene location map.');
         campaignBoardSetting.addDropdown(async dd => {
             dd.addOption('', 'Auto-detect from scene location');
             const maps = await this.plugin.listMaps().catch(() => [] as StoryMap[]);
@@ -225,7 +229,7 @@ export class SceneModal extends ResponsiveModal {
 
         // POV character
         const povSetting = new Setting(contentEl)
-            .setName('POV Character')
+            .setName('Pov character')
             .setDesc(this.scene.povCharacter || 'None');
         let setPovButton: ButtonComponent | null = null;
         let clearPovButton: ButtonComponent | null = null;
@@ -248,7 +252,7 @@ export class SceneModal extends ResponsiveModal {
                 clearPovButton = btn;
                 btn
                     .setIcon('cross')
-                    .setTooltip('Clear POV')
+                    .setTooltip('Clear pov')
                     .onClick(() => {
                         this.scene.povCharacter = undefined;
                         updatePovSetting();
@@ -274,7 +278,7 @@ export class SceneModal extends ResponsiveModal {
                     neutral: 'Neutral',
                 })
                 .setValue(this.scene.emotion || '')
-                .onChange(v => { this.scene.emotion = (v as any) || undefined; })
+                .onChange(v => { this.scene.emotion = (v || undefined) as Scene['emotion']; })
             );
 
         // Intensity
@@ -409,7 +413,7 @@ export class SceneModal extends ResponsiveModal {
         this.renderLinkedEntities(itemsListEl, this.scene.linkedItems, 'items');
         itemsSetting.addButton(btn => btn.setButtonText(t('add')).onClick(async () => {
             const { PlotItemSuggestModal } = await import('./PlotItemSuggestModal');
-            new PlotItemSuggestModal(this.app, this.plugin, async (item) => {
+            new PlotItemSuggestModal(this.app, this.plugin, (item) => { void (async () => {
                 const characters = await this.plugin.listCharacters().catch(() => []);
                 const trackedOwner = getTrackedItemOwner(item, characters);
                 if (trackedOwner) {
@@ -422,7 +426,7 @@ export class SceneModal extends ResponsiveModal {
                 if (!Array.isArray(this.scene.linkedItems)) this.scene.linkedItems = [];
                 if (!this.scene.linkedItems.includes(item.name)) this.scene.linkedItems.push(item.name);
                 this.renderLinkedEntities(itemsListEl, this.scene.linkedItems, 'items');
-            }).open();
+            })(); }).open();
         }));
 
         const groupsSetting = new Setting(contentEl)
@@ -438,7 +442,7 @@ export class SceneModal extends ResponsiveModal {
         }));
 
         // Setup / Payoff scene links
-        contentEl.createEl('h3', { text: 'Setup & Payoff' });
+        contentEl.createEl('h3', { text: 'Setup & payoff' });
 
         const setupSetting = new Setting(contentEl)
             .setName('Sets up scenes')
@@ -496,7 +500,7 @@ export class SceneModal extends ResponsiveModal {
             await this.onSubmit(this.scene);
             this.close();
         }, { cta: true });
-    }
+    })(); }
 
     // Helper method to render linked entities with individual delete buttons
     renderLinkedEntities(container: HTMLElement, items: string[] | undefined, entityType: string): void {
@@ -584,7 +588,7 @@ export class SceneModal extends ResponsiveModal {
         await this.applyProcessedTemplateToScene(templateScene);
     }
 
-    private async applyTemplateToSceneWithVariables(template: Template, variableValues: Record<string, any>): Promise<void> {
+    private async applyTemplateToSceneWithVariables(template: Template, variableValues: Record<string, TemplateVariableValue>): Promise<void> {
         if (!template.entities.scenes || template.entities.scenes.length === 0) {
             new Notice('This template does not contain any scenes');
             return;
@@ -610,20 +614,29 @@ export class SceneModal extends ResponsiveModal {
         await this.applyProcessedTemplateToScene(templateScene);
     }
 
-    private async applyProcessedTemplateToScene(templateScene: any): Promise<void> {
-        const { templateId, yamlContent, markdownContent, sectionContent, customYamlFields, id, filePath, chapterId, chapterName, ...rest } = templateScene as any;
+    private async applyProcessedTemplateToScene(templateScene: TemplateEntity<Scene>): Promise<void> {
+        const { yamlContent, markdownContent, sectionContent, customYamlFields } = templateScene;
 
-        let fields: any = { ...rest };
+        let fields: Record<string, unknown> = { ...templateScene };
+        delete fields.templateId;
+        delete fields.yamlContent;
+        delete fields.markdownContent;
+        delete fields.sectionContent;
+        delete fields.customYamlFields;
+        delete fields.id;
+        delete fields.filePath;
+        delete fields.chapterId;
+        delete fields.chapterName;
         let allTemplateSections: Record<string, string> = {};
 
         // Handle new format: yamlContent (parse YAML string)
         if (yamlContent && typeof yamlContent === 'string') {
             try {
-                const parsed = parseYaml(yamlContent);
-                if (parsed && typeof parsed === 'object') {
+                const parsed = parseYaml(yamlContent) as unknown;
+                if (isRecord(parsed)) {
                     fields = { ...fields, ...parsed };
                 }
-                console.log('[SceneModal] Parsed YAML fields:', parsed);
+                console.debug('[SceneModal] Parsed YAML fields:', parsed);
             } catch (error) {
                 console.warn('[SceneModal] Failed to parse yamlContent:', error);
             }
@@ -649,16 +662,16 @@ export class SceneModal extends ResponsiveModal {
                         fields.beats = beatText.split('\n').map(s => s.trim()).filter(Boolean);
                     }
                 }
-                console.log('[SceneModal] Parsed markdown sections:', parsedSections);
+                console.debug('[SceneModal] Parsed markdown sections:', parsedSections);
             } catch (error) {
                 console.warn('[SceneModal] Failed to parse markdownContent:', error);
             }
         } else if (sectionContent) {
             // Old format: apply section content
-            for (const [k, v] of Object.entries(sectionContent)) { allTemplateSections[k as string] = v as string; }
+            for (const [k, v] of Object.entries(sectionContent)) { allTemplateSections[k] = v; }
             for (const [sectionName, content] of Object.entries(sectionContent)) {
                 const propName = sectionName.toLowerCase().replace(/\s+/g, '');
-                (fields as any)[propName] = content;
+                fields[propName] = content;
             }
         }
 
@@ -672,7 +685,7 @@ export class SceneModal extends ResponsiveModal {
                 configurable: true
             });
         }
-        console.log('[SceneModal] Final scene after template:', this.scene);
+        console.debug('[SceneModal] Final scene after template:', this.scene);
 
         // Clear relationships as they reference template entities
         this.scene.linkedCharacters = [];
@@ -687,18 +700,17 @@ export class SceneModal extends ResponsiveModal {
         const section = container.createDiv('storyteller-branches-section');
         const hdr = section.createDiv('storyteller-branches-section-header');
         const iconSpan = hdr.createSpan();
-        import('obsidian').then(({ setIcon }) => setIcon(iconSpan, 'git-branch'));
+        void import('obsidian').then(({ setIcon }) => setIcon(iconSpan, 'git-branch'));
         hdr.createSpan({ text: ' Branches' });
 
         const summaryEl = section.createDiv('storyteller-branches-summary');
 
         // Load branches from the scene file asynchronously
         if (this.scene.filePath) {
-            const { TFile } = require('obsidian') as typeof import('obsidian');
             const file = this.app.vault.getAbstractFileByPath(this.scene.filePath);
             if (file instanceof TFile) {
-                this.app.vault.cachedRead(file).then(content => {
-                    import('../utils/BranchParser').then(({ extractBranchesFromMarkdown }) => {
+                void this.app.vault.cachedRead(file).then(content => {
+                    void import('../utils/BranchParser').then(({ extractBranchesFromMarkdown }) => {
                         const branches = extractBranchesFromMarkdown(content);
                         summaryEl.empty();
                         if (branches.length === 0) {
@@ -719,10 +731,10 @@ export class SceneModal extends ResponsiveModal {
 
         new Setting(section)
             .addButton(btn => btn
-                .setButtonText('Edit Branches & Encounter Table')
+                .setButtonText('Edit branches & encounter table')
                 .setIcon('pencil')
                 .onClick(() => {
-                    import('./BranchEditorModal').then(({ BranchEditorModal }) => {
+                    void import('./BranchEditorModal').then(({ BranchEditorModal }) => {
                         new BranchEditorModal(this.app, this.plugin, this.scene.filePath!, () => {
                             this.renderBranchesSection(container);
                         }).open();

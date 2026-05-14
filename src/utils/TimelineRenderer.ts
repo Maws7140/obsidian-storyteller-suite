@@ -8,14 +8,7 @@ import { parseEventDate, toMillis, toDisplay } from './DateParsing';
 import { EventModal } from '../modals/EventModal';
 import { ConflictDetector, DetectedConflict } from './ConflictDetector';
 import { PlatformUtils } from './PlatformUtils';
-
-// @ts-ignore: vis-timeline is bundled dependency
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const VisStandalone = require('vis-timeline/standalone');
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const Timeline: any = VisStandalone.Timeline;
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const DataSet: any = VisStandalone.DataSet;
+import { Timeline, DataSet } from 'vis-timeline/standalone';
 // @ts-ignore: timeline-arrows bundled dependency
 import Arrow from '../vendor/timeline-arrows.js';
 
@@ -53,9 +46,9 @@ export class TimelineRenderer {
     private app: App;
     private plugin: StorytellerSuitePlugin;
     private container: HTMLElement;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     private timeline: any = null;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     private dependencyArrows: any = null;
 
     // Configuration
@@ -147,7 +140,7 @@ export class TimelineRenderer {
      */
     applyFilters(filters: Partial<TimelineFilters>): void {
         this.filters = { ...this.filters, ...filters };
-        this.render();
+        void this.render();
     }
 
     /**
@@ -155,7 +148,7 @@ export class TimelineRenderer {
      */
     setGanttMode(enabled: boolean): void {
         this.options.ganttMode = enabled;
-        this.render();
+        void this.render();
     }
 
     /**
@@ -163,7 +156,7 @@ export class TimelineRenderer {
      */
     setGroupMode(mode: 'none' | 'location' | 'group' | 'character' | 'track'): void {
         this.options.groupMode = mode;
-        this.render();
+        void this.render();
     }
 
     /**
@@ -189,7 +182,7 @@ export class TimelineRenderer {
     setShowEras(enabled: boolean): void {
         this.showEras = enabled;
         this.options.showEras = enabled;
-        this.render();
+        void this.render();
     }
 
     /**
@@ -198,7 +191,7 @@ export class TimelineRenderer {
     setNarrativeOrder(enabled: boolean): void {
         this.narrativeOrder = enabled;
         this.options.narrativeOrder = enabled;
-        this.render();
+        void this.render();
     }
 
     /**
@@ -206,7 +199,7 @@ export class TimelineRenderer {
      */
     setShowScenes(val: boolean): void {
         this.showScenes = val;
-        this.render();
+        void this.render();
     }
 
     /**
@@ -214,7 +207,7 @@ export class TimelineRenderer {
      */
     setShowWatchedNotes(val: boolean): void {
         this.showWatchedNotes = val;
-        this.render();
+        void this.render();
     }
 
     /**
@@ -234,13 +227,13 @@ export class TimelineRenderer {
             if (hasProp) {
                 results.push({
                     name: fm?.title || file.basename,
-                    date: dateVal as string,
+                    date: dateVal,
                     filePath: file.path
                 });
             } else if (hasTag && fm?.date && typeof fm.date === 'string') {
                 results.push({
                     name: fm?.title || file.basename,
-                    date: fm.date as string,
+                    date: fm.date,
                     filePath: file.path
                 });
             }
@@ -262,7 +255,7 @@ export class TimelineRenderer {
      */
     setStackEnabled(enabled: boolean): void {
         this.options.stackEnabled = enabled;
-        this.render();
+        void this.render();
     }
 
     /**
@@ -270,7 +263,7 @@ export class TimelineRenderer {
      */
     setDensity(density: number): void {
         this.options.density = density;
-        this.render();
+        void this.render();
     }
 
     private registerEventItem(itemId: string | number, eventIndex: number, groupId?: string): void {
@@ -436,7 +429,7 @@ export class TimelineRenderer {
      * Export timeline as image
      */
     async exportAsImage(format: 'png' | 'jpg'): Promise<void> {
-        const timelineEl = this.container.querySelector('.vis-timeline') as HTMLElement | null;
+        const timelineEl = this.container.querySelector('.vis-timeline');
         if (!timelineEl) {
             new Notice('No timeline visible to export.');
             return;
@@ -475,7 +468,7 @@ export class TimelineRenderer {
 
         const W = 1200, ROW = 28, PADDING = 48, LABEL_W = 220;
         const H = PADDING * 2 + events.length * ROW;
-        const canvas = document.createElement('canvas');
+        const canvas = activeDocument.createElement('canvas');
         canvas.width = W; canvas.height = H;
         const ctx = canvas.getContext('2d')!;
 
@@ -521,7 +514,7 @@ export class TimelineRenderer {
     }
 
     private downloadDataUrl(dataUrl: string, filename: string): void {
-        const a = document.createElement('a');
+        const a = activeDocument.createElement('a');
         a.href = dataUrl;
         a.download = filename;
         a.click();
@@ -722,8 +715,8 @@ export class TimelineRenderer {
             const items = build.items;
             const groups = build.groups;
             const hasGroups = !!groups && (
-                (typeof (groups as any).length === 'number' && (groups as any).length > 0) ||
-                (typeof (groups as any).getIds === 'function' && (groups as any).getIds().length > 0)
+                (typeof (groups).length === 'number' && (groups).length > 0) ||
+                (typeof (groups).getIds === 'function' && (groups).getIds().length > 0)
             );
 
             // Timeline options
@@ -750,9 +743,8 @@ export class TimelineRenderer {
                 calculatedZoomMax = Math.min(calculatedZoomMax, maxZoomMax);
             }
 
-            const showProgressBars = this.options.ganttMode && this.options.showProgressBars !== false;
             const useNativeMobileScroll = PlatformUtils.shouldUseSimplifiedUI();
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+             
             const timelineOptions: any = {
                 stack: grouped ? true : this.options.stackEnabled,
                 stackSubgroups: true,
@@ -778,7 +770,7 @@ export class TimelineRenderer {
                     overflowMethod: 'cap',
                     delay: 300
                 },
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                 
                 visibleFrameTemplate: function() {
                     return '';
                 }
@@ -799,7 +791,7 @@ export class TimelineRenderer {
                 };
                 
                 // Add proper onMove callback for drag-and-drop
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                 
                 timelineOptions.onMove = async (item: any, callback: (item: any) => void) => {
                     const eventIndex = this.resolveEventIndexFromItemId(item.id);
                     if (eventIndex == null) {
@@ -858,7 +850,7 @@ export class TimelineRenderer {
                     // Create a fallback message in the container
                     this.container.empty();
                     this.container.createDiv('storyteller-timeline-error', div => {
-                        div.createEl('h3', { text: 'Timeline Error' });
+                        div.createEl('h3', { text: 'Timeline error' });
                         div.createEl('p', { text: 'Failed to render timeline. This may be due to invalid date formats or vis-timeline configuration issues.' });
                         div.createEl('p', { text: 'Check the developer console (Ctrl+Shift+I) for more details.' });
                     });
@@ -880,7 +872,7 @@ export class TimelineRenderer {
             }
 
             // Handle double-click to edit
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+             
             this.timeline.on('doubleClick', (props: any) => {
                 if (props.item != null) {
                     const idx = this.resolveEventIndexFromItemId(props.item);
@@ -895,7 +887,7 @@ export class TimelineRenderer {
             });
 
             // Handle selection for synchronized list/search UX
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+             
             this.timeline.on('select', (props: any) => {
                 try {
                     const selectedId = Array.isArray(props?.items) ? props.items[0] : undefined;
@@ -913,7 +905,7 @@ export class TimelineRenderer {
 
             // Grouped timelines can drift a frame during horizontal pan/scroll.
             // Force a lightweight redraw after range changes so stems/boxes remain anchored.
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+             
             this.timeline.on('rangechanged', (_props: any) => {
                 if (!grouped) return;
                 window.requestAnimationFrame(() => {
@@ -959,7 +951,7 @@ export class TimelineRenderer {
             // Show error state in container
             this.container.empty();
             this.container.createDiv('storyteller-timeline-error', div => {
-                div.createEl('h3', { text: 'Timeline Error' });
+                div.createEl('h3', { text: 'Timeline error' });
                 div.createEl('p', { text: 'An unexpected error occurred while rendering the timeline.' });
                 div.createEl('p', { text: 'Check the developer console (Ctrl+Shift+I) for more details.' });
             });
@@ -1005,8 +997,8 @@ export class TimelineRenderer {
     private applyVerticalWheelFallback(deltaY: number, event: WheelEvent): boolean {
         if (!deltaY || !this.timeline) return false;
 
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const timelineAny = this.timeline as any;
+         
+        const timelineAny = this.timeline;
         if (typeof timelineAny._getScrollTop === 'function' && typeof timelineAny._setScrollTop === 'function') {
             const current = timelineAny._getScrollTop();
             const next = timelineAny._setScrollTop(current + deltaY);
@@ -1017,7 +1009,7 @@ export class TimelineRenderer {
             }
         }
 
-        const leftPanel = this.container.querySelector('.vis-panel.vis-left') as HTMLElement | null;
+        const leftPanel = this.container.querySelector('.vis-panel.vis-left');
         const scrollHost = leftPanel?.parentElement as HTMLElement | null;
         if (!scrollHost) return false;
 
@@ -1060,12 +1052,12 @@ export class TimelineRenderer {
      * Create a styled DOM element for group labels (sidebar chips)
      */
     private createGroupLabel(text: string, color: string): HTMLElement {
-        const el = document.createElement('div');
+        const el = activeDocument.createElement('div');
         el.className = 'sts-group-chip';
         el.innerText = text;
-        el.style.backgroundColor = this.hexWithAlpha(color, 0.15);
-        el.style.color = color;
-        el.style.borderColor = this.hexWithAlpha(color, 0.4);
+        el.setCssStyles({ backgroundColor: this.hexWithAlpha(color, 0.15) });
+        el.setCssStyles({ color: color });
+        el.setCssStyles({ borderColor: this.hexWithAlpha(color, 0.4) });
         return el;
     }
 
@@ -1073,16 +1065,16 @@ export class TimelineRenderer {
      * Build datasets for vis-timeline
      */
     private buildDatasets(referenceDate: Date): {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+         
         items: any;
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+         
         groups?: any;
         legend: Array<{ key: string; label: string; color: string }>;
     } {
         const items = new DataSet();
         const legend: Array<{ key: string; label: string; color: string }> = [];
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        let groupsDS: any | undefined;
+         
+        let groupsDS: any;
         this.itemIdToEventIndex.clear();
         this.eventIndexToItemIds.clear();
         this.eventIndexToGroupItemIds.clear();
@@ -1186,7 +1178,7 @@ export class TimelineRenderer {
             const originalIdx = this.events.findIndex(e => e === evt);
             if (originalIdx === -1) return;
 
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+             
             const parsed = evt.dateTime ? parseEventDate(evt.dateTime, { referenceDate }) : { error: 'empty' } as any;
             const startMs = toMillis(parsed.start);
             const endMs = toMillis(parsed.end);
@@ -1310,7 +1302,6 @@ export class TimelineRenderer {
 
             // Check for conflicts
             const eventConflicts = conflictsByEvent.get(evt.name) || [];
-            const hasConflicts = eventConflicts.length > 0;
             const hasErrors = eventConflicts.some(c => c.severity === 'error');
             const hasWarnings = eventConflicts.some(c => c.severity === 'warning');
 
@@ -1757,7 +1748,7 @@ export class TimelineRenderer {
     /**
      * Make tooltip for event
      */
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     private makeTooltip(evt: Event, parsed: any, conflicts: DetectedConflict[] = []): string {
         const parts: string[] = [evt.name || '(Untitled Event)'];
         const dt = parsed?.start ? toDisplay(parsed.start, undefined, parsed.isBCE, parsed.originalYear) : (evt.dateTime || '');
@@ -1839,15 +1830,15 @@ export class TimelineRenderer {
         const timelineContent = this.container.querySelector('.vis-timeline') as HTMLElement;
         if (!timelineContent) return;
 
-        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        const svg = activeDocument.createElementNS('http://www.w3.org/2000/svg', 'svg');
         svg.classList.add('narrative-connector-svg');
-        svg.style.position = 'absolute';
-        svg.style.top = '0';
-        svg.style.left = '0';
-        svg.style.width = '100%';
-        svg.style.height = '100%';
-        svg.style.pointerEvents = 'none';
-        svg.style.zIndex = '1';
+        svg.setCssStyles({ position: 'absolute' });
+        svg.setCssStyles({ top: '0' });
+        svg.setCssStyles({ left: '0' });
+        svg.setCssStyles({ width: '100%' });
+        svg.setCssStyles({ height: '100%' });
+        svg.setCssStyles({ pointerEvents: 'none' });
+        svg.setCssStyles({ zIndex: '1' });
         timelineContent.appendChild(svg);
 
         // Draw connectors
@@ -1869,10 +1860,9 @@ export class TimelineRenderer {
 
             // Create curved path
             const dx = x2 - x1;
-            const dy = y2 - y1;
             const curve = Math.abs(dx) * 0.3;
 
-            const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            const path = activeDocument.createElementNS('http://www.w3.org/2000/svg', 'path');
             const d = `M ${x1} ${y1} C ${x1 + curve} ${y1}, ${x2 - curve} ${y2}, ${x2} ${y2}`;
             path.setAttribute('d', d);
             path.setAttribute('fill', 'none');
@@ -1883,7 +1873,7 @@ export class TimelineRenderer {
             path.classList.add('narrative-connector-line');
 
             // Add arrowhead
-            const marker = document.createElementNS('http://www.w3.org/2000/svg', 'marker');
+            const marker = activeDocument.createElementNS('http://www.w3.org/2000/svg', 'marker');
             const markerId = `arrow-${type}-${fromIdx}-${toIdx}`;
             marker.setAttribute('id', markerId);
             marker.setAttribute('markerWidth', '10');
@@ -1892,7 +1882,7 @@ export class TimelineRenderer {
             marker.setAttribute('refY', '5');
             marker.setAttribute('orient', 'auto');
 
-            const arrowPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            const arrowPath = activeDocument.createElementNS('http://www.w3.org/2000/svg', 'path');
             arrowPath.setAttribute('d', 'M 0 0 L 10 5 L 0 10 z');
             arrowPath.setAttribute('fill', type === 'flashback' ? '#8B5C2E' : '#2563EB');
             marker.appendChild(arrowPath);

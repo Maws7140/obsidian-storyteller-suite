@@ -1,4 +1,4 @@
-import { App, Modal, Setting, TextComponent, DropdownComponent, Notice, setIcon } from 'obsidian';
+import { App, Modal, Setting, Notice, setIcon } from 'obsidian';
 import { TimelineTrack, Character, Location, Group } from '../types';
 import { t } from '../i18n/strings';
 import StorytellerSuitePlugin from '../main';
@@ -24,7 +24,7 @@ export class TrackManagerModal extends Modal {
     ) {
         super(app);
         this.plugin = plugin;
-        this.tracks = JSON.parse(JSON.stringify(tracks)); // Deep copy
+        this.tracks = structuredClone(tracks);
         this.onSave = onSave;
     }
 
@@ -125,7 +125,7 @@ export class TrackManagerModal extends Modal {
 
         // Track color indicator
         const colorIndicator = headerEl.createSpan({ cls: 'storyteller-track-color' });
-        colorIndicator.style.backgroundColor = track.color || '#888888';
+        colorIndicator.setCssStyles({ backgroundColor: track.color || '#888888' });
 
         // Track name (editable)
         const nameInput = headerEl.createEl('input', {
@@ -164,11 +164,11 @@ export class TrackManagerModal extends Modal {
             .setName(t('trackType') || 'Track Type')
             .addDropdown(dropdown => {
                 dropdown
-                    .addOption('global', 'Global (All Events)')
+                    .addOption('global', 'Global (all events)')
                     .addOption('character', 'Character-based')
                     .addOption('location', 'Location-based')
                     .addOption('group', 'Group-based')
-                    .addOption('custom', 'Custom Filter')
+                    .addOption('custom', 'Custom filter')
                     .setValue(track.type)
                     .onChange(value => {
                         track.type = value as TimelineTrack['type'];
@@ -189,7 +189,7 @@ export class TrackManagerModal extends Modal {
                     .setValue(track.color || '#888888')
                     .onChange(value => {
                         track.color = value;
-                        colorIndicator.style.backgroundColor = value;
+                        colorIndicator.setCssStyles({ backgroundColor: value });
                     });
             });
 
@@ -226,7 +226,7 @@ export class TrackManagerModal extends Modal {
         new Setting(containerEl)
             .setName(track.type.charAt(0).toUpperCase() + track.type.slice(1))
             .addDropdown(dropdown => {
-                dropdown.addOption('', '-- Select --');
+                dropdown.addOption('', '-- select --');
                 options.forEach(opt => {
                     dropdown.addOption(opt.value, opt.label);
                 });
@@ -243,7 +243,7 @@ export class TrackManagerModal extends Modal {
             track.filterCriteria = {};
         }
 
-        containerEl.createEl('h4', { text: 'Filter Criteria' });
+        containerEl.createEl('h4', { text: 'Filter criteria' });
 
         // Characters filter
         new Setting(containerEl)

@@ -76,10 +76,10 @@ export class TemplateVariableEditorModal extends ResponsiveModal {
     private renderForm(container: HTMLElement): void {
         // Variable Name
         new Setting(container)
-            .setName('Variable Name')
+            .setName('Variable name')
             .setDesc('Internal name used in {{variableName}} syntax. Use camelCase, no spaces.')
             .addText(text => {
-                text.setPlaceholder('e.g., characterName, kingdomAge')
+                text.setPlaceholder('E.g., charactername, kingdomage')
                     .setValue(this.variable.name);
                 
                 const inputEl = text.inputEl;
@@ -114,10 +114,10 @@ export class TemplateVariableEditorModal extends ResponsiveModal {
 
         // Variable Label
         new Setting(container)
-            .setName('Display Label')
+            .setName('Display label')
             .setDesc('User-friendly label shown in the template application UI')
             .addText(text => text
-                .setPlaceholder('e.g., Character Name, Kingdom Age')
+                .setPlaceholder('E.g., character name, kingdom age')
                 .setValue(this.variable.label)
                 .onChange(value => {
                     this.variable.label = value;
@@ -126,14 +126,14 @@ export class TemplateVariableEditorModal extends ResponsiveModal {
 
         // Variable Type
         new Setting(container)
-            .setName('Variable Type')
+            .setName('Variable type')
             .setDesc('Data type for this variable')
             .addDropdown(dropdown => dropdown
-                .addOption('text', 'Text - Single line text input')
-                .addOption('number', 'Number - Numeric input')
-                .addOption('boolean', 'Boolean - True/False toggle')
-                .addOption('select', 'Select - Dropdown with predefined options')
-                .addOption('date', 'Date - Date picker')
+                .addOption('text', 'Text - single line text input')
+                .addOption('number', 'Number - numeric input')
+                .addOption('boolean', 'Boolean - true/false toggle')
+                .addOption('select', 'Select - dropdown with predefined options')
+                .addOption('date', 'Date - date picker')
                 .setValue(this.variable.type)
                 .onChange(value => {
                     this.variable.type = value as TemplateVariable['type'];
@@ -151,7 +151,7 @@ export class TemplateVariableEditorModal extends ResponsiveModal {
             .setDesc('Help text explaining what this variable controls')
             .addTextArea(text => {
                 text
-                    .setPlaceholder('e.g., The name of the main character in your story')
+                    .setPlaceholder('E.g., the name of the main character in your story')
                     .setValue(this.variable.description || '')
                     .onChange(value => {
                         this.variable.description = value;
@@ -199,7 +199,7 @@ export class TemplateVariableEditorModal extends ResponsiveModal {
 
     private renderDefaultValueField(container: HTMLElement): void {
         const setting = new Setting(container)
-            .setName('Default Value')
+            .setName('Default value')
             .setDesc('Default value for this variable (optional)');
 
         switch (this.variable.type) {
@@ -250,7 +250,7 @@ export class TemplateVariableEditorModal extends ResponsiveModal {
     private renderOptionsField(container: HTMLElement): void {
         const optionsContainer = container.createDiv('variable-options-section');
 
-        optionsContainer.createEl('h4', { text: 'Select Options' });
+        optionsContainer.createEl('h4', { text: 'Select options' });
         optionsContainer.createEl('p', {
             text: 'Enter options one per line. Users will choose from these values.',
             cls: 'setting-item-description'
@@ -279,7 +279,7 @@ export class TemplateVariableEditorModal extends ResponsiveModal {
     private renderUsageInfo(container: HTMLElement): void {
         const usageSection = container.createDiv('variable-usage-section');
 
-        usageSection.createEl('h4', { text: 'Variable Usage' });
+        usageSection.createEl('h4', { text: 'Variable usage' });
         usageSection.createEl('p', {
             text: `This variable is used in ${this.variable.usedIn!.length} location(s):`,
             cls: 'setting-item-description'
@@ -299,7 +299,7 @@ export class TemplateVariableEditorModal extends ResponsiveModal {
     private renderExamplePreview(container: HTMLElement): void {
         const previewSection = container.createDiv('variable-example-preview');
 
-        previewSection.createEl('h4', { text: 'Example Usage' });
+        previewSection.createEl('h4', { text: 'Example usage' });
 
         const exampleCode = previewSection.createEl('code', {
             cls: 'variable-example-code'
@@ -382,7 +382,7 @@ export class TemplateVariableEditorModal extends ResponsiveModal {
         if (this.variable.type === 'date' && this.variable.defaultValue) {
             const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
             if (!dateRegex.test(this.variable.defaultValue as string)) {
-                new Notice('Date default value must be in YYYY-MM-DD format');
+                new Notice('Date default value must be in yyyy-mm-dd format');
                 return;
             }
         }

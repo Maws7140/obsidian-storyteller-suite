@@ -17,6 +17,10 @@ const MODES: Array<{ id: WritingPanelMode; icon: string; label: string }> = [
     { id: 'holes',   icon: 'shield-alert', label: 'Holes'   },
 ];
 
+function isWritingPanelState(state: unknown): state is { mode?: unknown } {
+    return typeof state === 'object' && state !== null;
+}
+
 export class WritingPanelView extends ItemView {
     plugin: StorytellerSuitePlugin;
     private renderers: WritingViewRenderers;
@@ -58,7 +62,7 @@ export class WritingPanelView extends ItemView {
                 input.value = this._filter;
                 input.addEventListener('input', () => {
                     this._filter = input.value.toLowerCase();
-                    this.renderers.renderKanbanBoard(this._bodyEl!.createDiv(), this._filter);
+                    void this.renderers.renderKanbanBoard(this._bodyEl!.createDiv(), this._filter);
                 });
             }
 
@@ -121,7 +125,7 @@ export class WritingPanelView extends ItemView {
     }
 
     async setState(state: Record<string, unknown>, _result: import('obsidian').ViewStateResult): Promise<void> {
-        if (state.mode && MODES.some(m => m.id === state.mode)) {
+        if (isWritingPanelState(state) && MODES.some(m => m.id === state.mode)) {
             this._mode = state.mode as WritingPanelMode;
         }
         await this.onOpen();

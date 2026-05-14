@@ -17,6 +17,16 @@ export interface MapModalOptions {
     refreshMapView?: boolean;
 }
 
+interface RefreshableMapView {
+    loadMap(mapId: string): Promise<void>;
+    currentMap: StoryMap | null;
+    mapContainer: HTMLElement | null;
+    leafletRenderer: { unload(): void } | null;
+    buildMapSelector(): Promise<void>;
+    buildEntityBar(): void;
+    updateFooterStatus(): void;
+}
+
 /**
  * Open MapModal with unified, consistent callbacks
  * This is the single entry point for all map editing
@@ -51,7 +61,7 @@ export function openMapModal(
                 const mapId = updatedMap.id || updatedMap.name;
                 const mapView = app.workspace.getLeavesOfType('storyteller-map-view')[0];
                 if (mapView) {
-                    const view = mapView.view as any;
+                    const view = mapView.view as Partial<RefreshableMapView>;
                     if (view && typeof view.loadMap === 'function') {
                         await view.loadMap(mapId);
                     }
@@ -72,7 +82,7 @@ export function openMapModal(
                 if (refreshMapView) {
                     const mapView = app.workspace.getLeavesOfType('storyteller-map-view')[0];
                     if (mapView) {
-                        const view = mapView.view as any;
+                        const view = mapView.view as Partial<RefreshableMapView>;
                         if (view && typeof view.loadMap === 'function') {
                             // Clear the map view
                             view.currentMap = null;
@@ -83,9 +93,9 @@ export function openMapModal(
                                 view.leafletRenderer.unload();
                                 view.leafletRenderer = null;
                             }
-                            await view.buildMapSelector();
-                            view.buildEntityBar();
-                            view.updateFooterStatus();
+                            await view.buildMapSelector?.();
+                            view.buildEntityBar?.();
+                            view.updateFooterStatus?.();
                         }
                     }
                 }

@@ -1,19 +1,21 @@
 import { App, Setting, Notice } from 'obsidian';
 import type {
-    LocationSensoryProfile,
-    SensoryDetails,
-    AtmosphereProfile,
-    MoodProfile,
-    ColorPalette,
-    SoundProfile,
     AmbientSound,
-    TimeVariation,
-    SeasonalVariation
+    ColorPalette,
+    LocationSensoryProfile,
+    SoundProfile,
+    TimeVariation
 } from '../types';
 import type StorytellerSuitePlugin from '../main';
 import { ResponsiveModal } from './ResponsiveModal';
 
 export type SensoryProfileModalSubmitCallback = (profile: LocationSensoryProfile) => Promise<void>;
+
+type ColorTemperature = NonNullable<ColorPalette['temperature']>;
+type SoundLevel = NonNullable<SoundProfile['soundLevel']>;
+type AmbientVolume = NonNullable<AmbientSound['volume']>;
+type AmbientFrequency = NonNullable<AmbientSound['frequency']>;
+type TimeOfDay = TimeVariation['timeOfDay'];
 
 /**
  * Modal for editing sensory profiles for locations
@@ -113,7 +115,7 @@ export class SensoryProfileModal extends ResponsiveModal {
 
     renderSensoryDetails(container: HTMLElement): void {
         container.empty();
-        container.createEl('h3', { text: 'Five Senses' });
+        container.createEl('h3', { text: 'Five senses' });
 
         if (!this.profile.sensoryDetails) {
             this.profile.sensoryDetails = {};
@@ -187,7 +189,7 @@ export class SensoryProfileModal extends ResponsiveModal {
 
     renderAtmosphere(container: HTMLElement): void {
         container.empty();
-        container.createEl('h3', { text: 'Atmosphere & Mood' });
+        container.createEl('h3', { text: 'Atmosphere & mood' });
 
         if (!this.profile.atmosphere) {
             this.profile.atmosphere = { mood: '', intensity: 5 };
@@ -198,11 +200,11 @@ export class SensoryProfileModal extends ResponsiveModal {
 
         // Atmosphere mood
         new Setting(container)
-            .setName('Atmosphere Mood')
+            .setName('Atmosphere mood')
             .setDesc('Overall feeling of the place')
             .addText(text => text
                 .setValue(this.profile.atmosphere?.mood || '')
-                .setPlaceholder('e.g., mysterious, peaceful, tense')
+                .setPlaceholder('E.g., mysterious, peaceful, tense')
                 .onChange(value => {
                     if (!this.profile.atmosphere) this.profile.atmosphere = { mood: '', intensity: 5 };
                     this.profile.atmosphere.mood = value;
@@ -210,11 +212,11 @@ export class SensoryProfileModal extends ResponsiveModal {
 
         // Atmosphere emotion
         new Setting(container)
-            .setName('Dominant Emotion')
+            .setName('Dominant emotion')
             .setDesc('Primary emotion evoked')
             .addText(text => text
                 .setValue(this.profile.atmosphere?.emotion || '')
-                .setPlaceholder('e.g., fear, wonder, nostalgia')
+                .setPlaceholder('E.g., fear, wonder, nostalgia')
                 .onChange(value => {
                     if (!this.profile.atmosphere) this.profile.atmosphere = { mood: '', intensity: 5 };
                     this.profile.atmosphere.emotion = value;
@@ -222,7 +224,7 @@ export class SensoryProfileModal extends ResponsiveModal {
 
         // Atmosphere intensity
         new Setting(container)
-            .setName('Atmosphere Intensity')
+            .setName('Atmosphere intensity')
             .setDesc('How strong is the atmosphere? (1-10)')
             .addSlider(slider => slider
                 .setLimits(1, 10, 1)
@@ -235,11 +237,11 @@ export class SensoryProfileModal extends ResponsiveModal {
 
         // Mood primary
         new Setting(container)
-            .setName('Primary Mood')
+            .setName('Primary mood')
             .setDesc('Main mood of the location')
             .addText(text => text
                 .setValue(this.profile.mood?.primary || '')
-                .setPlaceholder('e.g., somber, cheerful, oppressive')
+                .setPlaceholder('E.g., somber, cheerful, oppressive')
                 .onChange(value => {
                     if (!this.profile.mood) this.profile.mood = { primary: '', intensity: 5 };
                     this.profile.mood.primary = value;
@@ -247,11 +249,11 @@ export class SensoryProfileModal extends ResponsiveModal {
 
         // Mood secondary
         new Setting(container)
-            .setName('Secondary Mood')
+            .setName('Secondary mood')
             .setDesc('Secondary mood (optional)')
             .addText(text => text
                 .setValue(this.profile.mood?.secondary || '')
-                .setPlaceholder('e.g., hopeful, melancholic')
+                .setPlaceholder('E.g., hopeful, melancholic')
                 .onChange(value => {
                     if (!this.profile.mood) this.profile.mood = { primary: '', intensity: 5 };
                     this.profile.mood.secondary = value;
@@ -259,7 +261,7 @@ export class SensoryProfileModal extends ResponsiveModal {
 
         // Mood intensity
         new Setting(container)
-            .setName('Mood Intensity')
+            .setName('Mood intensity')
             .setDesc('How strong is the mood? (1-10)')
             .addSlider(slider => slider
                 .setLimits(1, 10, 1)
@@ -273,7 +275,7 @@ export class SensoryProfileModal extends ResponsiveModal {
 
     renderColors(container: HTMLElement): void {
         container.empty();
-        container.createEl('h3', { text: 'Color Palette' });
+        container.createEl('h3', { text: 'Color palette' });
 
         if (!this.profile.colors) {
             this.profile.colors = { dominant: [], accent: [], temperature: 'neutral' };
@@ -281,11 +283,11 @@ export class SensoryProfileModal extends ResponsiveModal {
 
         // Dominant colors
         new Setting(container)
-            .setName('Dominant Colors')
+            .setName('Dominant colors')
             .setDesc('Main colors (comma-separated)')
             .addText(text => text
                 .setValue(this.profile.colors?.dominant?.join(', ') || '')
-                .setPlaceholder('e.g., deep blue, silver, black')
+                .setPlaceholder('E.g., deep blue, silver, black')
                 .onChange(value => {
                     if (!this.profile.colors) this.profile.colors = { dominant: [], accent: [], temperature: 'neutral' };
                     this.profile.colors.dominant = value.split(',').map(c => c.trim()).filter(c => c);
@@ -293,11 +295,11 @@ export class SensoryProfileModal extends ResponsiveModal {
 
         // Accent colors
         new Setting(container)
-            .setName('Accent Colors')
+            .setName('Accent colors')
             .setDesc('Secondary/highlight colors (comma-separated)')
             .addText(text => text
                 .setValue(this.profile.colors?.accent?.join(', ') || '')
-                .setPlaceholder('e.g., gold, crimson')
+                .setPlaceholder('E.g., gold, crimson')
                 .onChange(value => {
                     if (!this.profile.colors) this.profile.colors = { dominant: [], accent: [], temperature: 'neutral' };
                     this.profile.colors.accent = value.split(',').map(c => c.trim()).filter(c => c);
@@ -305,7 +307,7 @@ export class SensoryProfileModal extends ResponsiveModal {
 
         // Color temperature
         new Setting(container)
-            .setName('Color Temperature')
+            .setName('Color temperature')
             .setDesc('Overall warmth or coolness')
             .addDropdown(dropdown => dropdown
                 .addOption('warm', 'Warm (reds, oranges, yellows)')
@@ -314,13 +316,13 @@ export class SensoryProfileModal extends ResponsiveModal {
                 .setValue(this.profile.colors?.temperature || 'neutral')
                 .onChange(value => {
                     if (!this.profile.colors) this.profile.colors = { dominant: [], accent: [], temperature: 'neutral' };
-                    this.profile.colors.temperature = value as any;
+                    this.profile.colors.temperature = value as ColorTemperature;
                 }));
     }
 
     renderSounds(container: HTMLElement): void {
         container.empty();
-        container.createEl('h3', { text: 'Sound Profile' });
+        container.createEl('h3', { text: 'Sound profile' });
 
         if (!this.profile.sounds) {
             this.profile.sounds = { ambient: [], soundLevel: 'moderate' };
@@ -328,7 +330,7 @@ export class SensoryProfileModal extends ResponsiveModal {
 
         // Sound level
         new Setting(container)
-            .setName('Overall Sound Level')
+            .setName('Overall sound level')
             .setDesc('How loud is this place generally?')
             .addDropdown(dropdown => dropdown
                 .addOption('silent', 'Silent')
@@ -339,11 +341,11 @@ export class SensoryProfileModal extends ResponsiveModal {
                 .setValue(this.profile.sounds?.soundLevel || 'moderate')
                 .onChange(value => {
                     if (!this.profile.sounds) this.profile.sounds = { ambient: [], soundLevel: 'moderate' };
-                    this.profile.sounds.soundLevel = value as any;
+                    this.profile.sounds.soundLevel = value as SoundLevel;
                 }));
 
         // Ambient sounds section
-        container.createEl('h4', { text: 'Ambient Sounds' });
+        container.createEl('h4', { text: 'Ambient sounds' });
 
         const soundsList = container.createDiv('storyteller-sounds-list');
         this.renderSoundsList(soundsList);
@@ -351,7 +353,7 @@ export class SensoryProfileModal extends ResponsiveModal {
         // Add sound button
         new Setting(container)
             .addButton(button => button
-                .setButtonText('+ Add Ambient Sound')
+                .setButtonText('+ add ambient sound')
                 .setCta()
                 .onClick(() => {
                     if (!this.profile.sounds) this.profile.sounds = { ambient: [], soundLevel: 'moderate' };
@@ -376,7 +378,7 @@ export class SensoryProfileModal extends ResponsiveModal {
                 .setName(`Sound ${index + 1}`)
                 .addText(text => text
                     .setValue(sound.name)
-                    .setPlaceholder('e.g., distant thunder, chirping birds')
+                    .setPlaceholder('E.g., distant thunder, chirping birds')
                     .onChange(value => {
                         if (this.profile.sounds?.ambient) {
                             this.profile.sounds.ambient[index].name = value;
@@ -392,7 +394,7 @@ export class SensoryProfileModal extends ResponsiveModal {
                     .setValue(sound.volume || 'moderate')
                     .onChange(value => {
                         if (this.profile.sounds?.ambient) {
-                            this.profile.sounds.ambient[index].volume = value as any;
+                            this.profile.sounds.ambient[index].volume = value as AmbientVolume;
                         }
                     }))
                 .addExtraButton(button => button
@@ -414,7 +416,7 @@ export class SensoryProfileModal extends ResponsiveModal {
                     .setValue(sound.frequency || 'constant')
                     .onChange(value => {
                         if (this.profile.sounds?.ambient) {
-                            this.profile.sounds.ambient[index].frequency = value as any;
+                            this.profile.sounds.ambient[index].frequency = value as AmbientFrequency;
                         }
                     }));
         });
@@ -422,7 +424,7 @@ export class SensoryProfileModal extends ResponsiveModal {
 
     renderTimeVariations(container: HTMLElement): void {
         container.empty();
-        container.createEl('h3', { text: 'Time of Day Variations' });
+        container.createEl('h3', { text: 'Time of day variations' });
         container.createEl('p', { text: 'How does this location change throughout the day?', cls: 'setting-item-description' });
 
         if (!this.profile.timeVariations) {
@@ -435,7 +437,7 @@ export class SensoryProfileModal extends ResponsiveModal {
         // Add time variation button
         new Setting(container)
             .addButton(button => button
-                .setButtonText('+ Add Time Variation')
+                .setButtonText('+ add time variation')
                 .setCta()
                 .onClick(() => {
                     if (!this.profile.timeVariations) this.profile.timeVariations = [];
@@ -473,7 +475,7 @@ export class SensoryProfileModal extends ResponsiveModal {
                     .setValue(timeVar.timeOfDay)
                     .onChange(value => {
                         if (this.profile.timeVariations) {
-                            this.profile.timeVariations[index].timeOfDay = value as any;
+                            this.profile.timeVariations[index].timeOfDay = value as TimeOfDay;
                         }
                     }))
                 .addExtraButton(button => button
@@ -487,10 +489,10 @@ export class SensoryProfileModal extends ResponsiveModal {
                     }));
 
             new Setting(timeItem)
-                .setName('Mood Change')
+                .setName('Mood change')
                 .addText(text => text
                     .setValue(timeVar.mood || '')
-                    .setPlaceholder('e.g., eerie, tranquil')
+                    .setPlaceholder('E.g., eerie, tranquil')
                     .onChange(value => {
                         if (this.profile.timeVariations) {
                             this.profile.timeVariations[index].mood = value;
@@ -498,7 +500,7 @@ export class SensoryProfileModal extends ResponsiveModal {
                     }));
 
             new Setting(timeItem)
-                .setName('Visual Changes')
+                .setName('Visual changes')
                 .addTextArea(text => {
                     if (!timeVar.changes) timeVar.changes = {};
                     text.setValue(timeVar.changes.sight || '')
@@ -515,7 +517,7 @@ export class SensoryProfileModal extends ResponsiveModal {
 
     renderSeasonalVariations(container: HTMLElement): void {
         container.empty();
-        container.createEl('h3', { text: 'Seasonal Variations' });
+        container.createEl('h3', { text: 'Seasonal variations' });
         container.createEl('p', { text: 'How does this location change with the seasons?', cls: 'setting-item-description' });
 
         if (!this.profile.seasonalVariations) {
@@ -528,7 +530,7 @@ export class SensoryProfileModal extends ResponsiveModal {
         // Add seasonal variation button
         new Setting(container)
             .addButton(button => button
-                .setButtonText('+ Add Seasonal Variation')
+                .setButtonText('+ add seasonal variation')
                 .setCta()
                 .onClick(() => {
                     if (!this.profile.seasonalVariations) this.profile.seasonalVariations = [];
@@ -556,7 +558,7 @@ export class SensoryProfileModal extends ResponsiveModal {
                 .setName(`Season ${index + 1}`)
                 .addText(text => text
                     .setValue(seasonVar.season)
-                    .setPlaceholder('e.g., Winter, Summer, Monsoon')
+                    .setPlaceholder('E.g., winter, summer, monsoon')
                     .onChange(value => {
                         if (this.profile.seasonalVariations) {
                             this.profile.seasonalVariations[index].season = value;
@@ -573,10 +575,10 @@ export class SensoryProfileModal extends ResponsiveModal {
                     }));
 
             new Setting(seasonItem)
-                .setName('Mood Change')
+                .setName('Mood change')
                 .addText(text => text
                     .setValue(seasonVar.mood || '')
-                    .setPlaceholder('e.g., bleak, vibrant')
+                    .setPlaceholder('E.g., bleak, vibrant')
                     .onChange(value => {
                         if (this.profile.seasonalVariations) {
                             this.profile.seasonalVariations[index].mood = value;

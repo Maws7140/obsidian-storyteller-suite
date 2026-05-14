@@ -4,7 +4,6 @@
 
 import { ItemView, WorkspaceLeaf, Notice, Setting, App, Modal, setIcon, TFile } from 'obsidian';
 import StorytellerSuitePlugin from '../main';
-import { t } from '../i18n/strings';
 import {
     StoryAnalytics,
     WritingSession,
@@ -13,10 +12,17 @@ import {
     POVStats,
     VelocityData,
     ForeshadowingPair,
-    DialogueAnalysis
+    DialogueAnalysis,
+    Event,
+    Scene,
+    Chapter
 } from '../types';
 
 export const VIEW_TYPE_ANALYTICS = 'storyteller-analytics-view';
+
+function isForeshadowingStatus(value: string): value is ForeshadowingPair['status'] {
+    return value === 'planted' || value === 'resolved' || value === 'abandoned';
+}
 
 /**
  * AnalyticsDashboardView provides comprehensive writing analytics
@@ -45,7 +51,7 @@ export class AnalyticsDashboardView extends ItemView {
     }
 
     getDisplayText(): string {
-        return 'Writing Analytics';
+        return 'Writing analytics';
     }
 
     getIcon(): string {
@@ -71,7 +77,7 @@ export class AnalyticsDashboardView extends ItemView {
         const header = this.contentContainer.createDiv('storyteller-analytics-header');
 
         // Title
-        header.createEl('h2', { text: 'Writing Analytics' });
+        header.createEl('h2', { text: 'Writing analytics' });
 
         // Toolbar
         const toolbar = header.createDiv('storyteller-analytics-toolbar');
@@ -79,16 +85,16 @@ export class AnalyticsDashboardView extends ItemView {
         // Refresh button
         const refreshBtn = toolbar.createEl('button', {
             cls: 'mod-cta',
-            text: 'Refresh Analytics'
+            text: 'Refresh analytics'
         });
-        refreshBtn.addEventListener('click', async () => {
+        refreshBtn.addEventListener('click', () => { void (async () => {
             await this.refreshAnalytics();
             this.renderAnalytics();
-        });
+        })(); });
 
         // Export button
         const exportBtn = toolbar.createEl('button', {
-            text: 'Export Report'
+            text: 'Export report'
         });
         exportBtn.addEventListener('click', () => {
             this.exportAnalyticsReport();
@@ -163,7 +169,7 @@ export class AnalyticsDashboardView extends ItemView {
         };
     }
 
-    calculateEventDistribution(events: any[]): EventDistribution[] {
+    calculateEventDistribution(events: Event[]): EventDistribution[] {
         const distribution: Record<string, number> = {};
         let datedTotal = 0;
 
@@ -185,7 +191,7 @@ export class AnalyticsDashboardView extends ItemView {
             .sort((a, b) => a.category.localeCompare(b.category));
     }
 
-    calculatePOVStats(scenes: any[], chapters: any[]): POVStats[] {
+    calculatePOVStats(scenes: Scene[], chapters: Chapter[]): POVStats[] {
         const povCounts: Record<string, number> = {};
         const total = scenes.length;
 
@@ -220,7 +226,7 @@ export class AnalyticsDashboardView extends ItemView {
             .sort((a, b) => a.date.localeCompare(b.date));
     }
 
-    async calculateTotalWords(scenes: any[]): Promise<number> {
+    async calculateTotalWords(scenes: Scene[]): Promise<number> {
         const activeStory = this.plugin.settings.stories.find(
             story => story.id === this.plugin.settings.activeStoryId
         );
@@ -316,7 +322,7 @@ export class AnalyticsDashboardView extends ItemView {
 
     renderCharacterScreenTime(container: HTMLElement): void {
         const section = container.createDiv('storyteller-analytics-section');
-        section.createEl('h3', { text: 'Character Screen Time' });
+        section.createEl('h3', { text: 'Character screen time' });
 
         if (!this.analytics?.characterScreenTime || this.analytics.characterScreenTime.length === 0) {
             section.createEl('p', { text: 'No character data available' });
@@ -341,13 +347,13 @@ export class AnalyticsDashboardView extends ItemView {
             const barCell = row.createEl('td');
             const bar = barCell.createDiv('storyteller-progress-bar');
             const fill = bar.createDiv('storyteller-progress-fill');
-            fill.style.width = `${char.percentage}%`;
+            fill.setCssStyles({ width: `${char.percentage}%` });
         });
     }
 
     renderEventDistribution(container: HTMLElement): void {
         const section = container.createDiv('storyteller-analytics-section');
-        section.createEl('h3', { text: 'Event Distribution' });
+        section.createEl('h3', { text: 'Event distribution' });
 
         if (!this.analytics?.eventDistribution || this.analytics.eventDistribution.length === 0) {
             section.createEl('p', { text: 'No event data available' });
@@ -361,7 +367,7 @@ export class AnalyticsDashboardView extends ItemView {
             const item = chart.createDiv('storyteller-bar-item');
             const bar = item.createDiv('storyteller-bar');
             const fill = bar.createDiv('storyteller-bar-fill');
-            fill.style.height = `${(dist.count / maxCount) * 100}%`;
+            fill.setCssStyles({ height: `${(dist.count / maxCount) * 100}%` });
             fill.setAttribute('title', `${dist.count} events`);
             item.createDiv('storyteller-bar-label').setText(dist.category);
         });
@@ -369,10 +375,10 @@ export class AnalyticsDashboardView extends ItemView {
 
     renderPOVStats(container: HTMLElement): void {
         const section = container.createDiv('storyteller-analytics-section');
-        section.createEl('h3', { text: 'Point of View Distribution' });
+        section.createEl('h3', { text: 'Point of view distribution' });
 
         if (!this.analytics?.povStats || this.analytics.povStats.length === 0) {
-            section.createEl('p', { text: 'No POV data available', cls: 'storyteller-analytics-empty' });
+            section.createEl('p', { text: 'No pov data available', cls: 'storyteller-analytics-empty' });
             return;
         }
 
@@ -382,7 +388,7 @@ export class AnalyticsDashboardView extends ItemView {
             row.createSpan({ text: pov.character, cls: 'storyteller-pov-name' });
             const barWrap = row.createDiv('storyteller-pov-bar-wrap');
             const fill = barWrap.createDiv('storyteller-pov-bar-fill');
-            fill.style.width = `${pov.percentage}%`;
+            fill.setCssStyles({ width: `${pov.percentage}%` });
             row.createSpan({ text: `${pov.sceneCount}`, cls: 'storyteller-pov-count' });
             row.createSpan({ text: `${pov.percentage?.toFixed(1)}%`, cls: 'storyteller-pov-pct' });
         });
@@ -390,7 +396,7 @@ export class AnalyticsDashboardView extends ItemView {
 
     renderWritingVelocity(container: HTMLElement): void {
         const section = container.createDiv('storyteller-analytics-section');
-        section.createEl('h3', { text: 'Writing Velocity' });
+        section.createEl('h3', { text: 'Writing velocity' });
 
         if (!this.analytics?.velocity || this.analytics.velocity.length === 0) {
             section.createEl('p', { text: 'No writing session data available. Start tracking your writing sessions!' });
@@ -404,7 +410,7 @@ export class AnalyticsDashboardView extends ItemView {
             const item = chart.createDiv('storyteller-velocity-item');
             const bar = item.createDiv('storyteller-velocity-bar');
             const fill = bar.createDiv('storyteller-velocity-fill');
-            fill.style.height = `${(day.wordsWritten / maxWords) * 100}%`;
+            fill.setCssStyles({ height: `${(day.wordsWritten / maxWords) * 100}%` });
             fill.setAttribute('title', `${day.wordsWritten} words on ${day.date}`);
             item.createDiv('storyteller-velocity-label').setText(day.date.split('-')[2]);
         });
@@ -412,7 +418,7 @@ export class AnalyticsDashboardView extends ItemView {
 
     renderForeshadowing(container: HTMLElement): void {
         const section = container.createDiv('storyteller-analytics-section');
-        section.createEl('h3', { text: 'Foreshadowing Tracker' });
+        section.createEl('h3', { text: 'Foreshadowing tracker' });
 
         const toolbar = section.createDiv('storyteller-section-toolbar');
         const addBtn = toolbar.createEl('button', { cls: 'mod-cta storyteller-analytics-add-btn' });
@@ -458,7 +464,7 @@ export class AnalyticsDashboardView extends ItemView {
 
     renderWritingSessions(container: HTMLElement): void {
         const section = container.createDiv('storyteller-analytics-section');
-        section.createEl('h3', { text: 'Recent Writing Sessions' });
+        section.createEl('h3', { text: 'Recent writing sessions' });
 
         const sessions = this.plugin.settings.writingSessions || [];
         if (sessions.length === 0) {
@@ -481,7 +487,7 @@ export class AnalyticsDashboardView extends ItemView {
     }
 
     addForeshadowing(): void {
-        const modal = new ForeshadowingModal(this.app, this.plugin, null, async (pair) => {
+        const modal = new ForeshadowingModal(this.app, this.plugin, null, (pair) => { void (async () => {
             if (!this.analytics) this.analytics = await this.calculateAnalytics();
             if (!this.analytics.foreshadowing) this.analytics.foreshadowing = [];
 
@@ -491,7 +497,7 @@ export class AnalyticsDashboardView extends ItemView {
 
             this.renderAnalytics();
             new Notice('Foreshadowing added');
-        });
+        })(); });
         modal.open();
     }
 
@@ -572,10 +578,10 @@ class ForeshadowingModal extends Modal {
     onOpen(): void {
         const { contentEl } = this;
         contentEl.empty();
-        contentEl.createEl('h2', { text: 'Add Foreshadowing' });
+        contentEl.createEl('h2', { text: 'Add foreshadowing' });
 
         new Setting(contentEl)
-            .setName('Setup/Hint')
+            .setName('Setup/hint')
             .setDesc('The foreshadowing element or hint')
             .addText(text => text
                 .setValue(this.pair.setup)
@@ -595,7 +601,11 @@ class ForeshadowingModal extends Modal {
                 .addOption('resolved', 'Resolved')
                 .addOption('abandoned', 'Abandoned')
                 .setValue(this.pair.status)
-                .onChange(value => this.pair.status = value as any));
+                .onChange(value => {
+                    if (isForeshadowingStatus(value)) {
+                        this.pair.status = value;
+                    }
+                }));
 
         new Setting(contentEl)
             .addButton(button => button

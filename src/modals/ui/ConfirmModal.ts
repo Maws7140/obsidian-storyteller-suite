@@ -6,6 +6,7 @@ export class ConfirmModal extends Modal {
   private bodyText: string;
   private confirmText: string;
   private onConfirm: () => void;
+  private onCloseCallback?: () => void;
 
   constructor(app: App, options: { title: string; body: string; confirmText?: string; onConfirm: () => void; }) {
     super(app);
@@ -25,6 +26,14 @@ export class ConfirmModal extends Modal {
     buttons.addButton(b => b.setButtonText(this.confirmText).setCta().onClick(() => { this.onConfirm(); this.close(); }));
     buttons.addButton(b => b.setButtonText(t('cancel')).onClick(() => this.close()));
   }
+
+  setOnCloseCallback(callback: () => void): void {
+    this.onCloseCallback = callback;
+  }
+
+  onClose(): void {
+    this.onCloseCallback?.();
+  }
 }
 
 export function confirmWithModal(
@@ -37,11 +46,9 @@ export function confirmWithModal(
       ...options,
       onConfirm: () => { confirmed = true; },
     });
-    const originalOnClose = modal.onClose?.bind(modal);
-    modal.onClose = () => {
-      originalOnClose?.();
+    modal.setOnCloseCallback(() => {
       resolve(confirmed);
-    };
+    });
     modal.open();
   });
 }

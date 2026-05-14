@@ -5,7 +5,7 @@ import { setIcon, Notice, Setting } from 'obsidian';
 import { t } from '../i18n/strings';
 import StorytellerSuitePlugin from '../main';
 import { TimelineRenderer } from './TimelineRenderer';
-import { TimelineUIState, TimelineUIFilters, Event } from '../types';
+import { TimelineUIState, Event } from '../types';
 import { TrackManagerModal } from '../modals/TrackManagerModal';
 import { ConflictViewModal } from '../modals/ConflictViewModal';
 import { TagTimelineModal } from '../modals/TagTimelineModal';
@@ -50,7 +50,7 @@ export class TimelineControlsBuilder {
     static createDefaultState(plugin: StorytellerSuitePlugin): TimelineUIState {
         return {
             ganttMode: false,
-            groupMode: (plugin.settings.defaultTimelineGroupMode || 'none') as 'none' | 'location' | 'group' | 'character',
+            groupMode: (plugin.settings.defaultTimelineGroupMode || 'none'),
             filters: {},
             stackEnabled: plugin.settings.defaultTimelineStack ?? true,
             density: plugin.settings.defaultTimelineDensity ?? 50,
@@ -294,10 +294,10 @@ export class TimelineControlsBuilder {
             }
         });
         setIcon(btn, 'refresh-cw');
-        btn.addEventListener('click', async () => {
+        btn.addEventListener('click', () => { void (async () => {
             await this.callbacks.getRenderer()?.refresh();
             this.callbacks.onStateChange();
-        });
+        })(); });
         return btn;
     }
 
@@ -371,9 +371,9 @@ export class TimelineControlsBuilder {
                 const range = renderer.getVisibleRange();
                 if (!range) return;
                 const text = `Timeline range: ${range.start.toISOString()} — ${range.end.toISOString()}`;
-                navigator.clipboard?.writeText(text);
+                void navigator.clipboard?.writeText(text);
                 new Notice(t('copyRange'));
-            } catch (e) {
+            } catch {
                 new Notice('Could not copy timeline range');
             }
         });
@@ -452,11 +452,11 @@ export class TimelineControlsBuilder {
                 this.plugin.app,
                 this.plugin,
                 tracks,
-                async (updatedTracks) => {
+                (updatedTracks) => { void (async () => {
                     this.plugin.settings.timelineTracks = updatedTracks;
                     await this.plugin.saveSettings();
                     this.callbacks.onRendererUpdate();
-                }
+                })(); }
             ).open();
         });
 
@@ -476,10 +476,10 @@ export class TimelineControlsBuilder {
         });
         setIcon(btn, 'calendar-range');
 
-        btn.addEventListener('click', async () => {
+        btn.addEventListener('click', () => { void (async () => {
             const { EraListModal } = await import('../modals/EraListModal');
             new EraListModal(this.plugin.app, this.plugin).open();
-        });
+        })(); });
 
         return btn;
     }
@@ -497,7 +497,7 @@ export class TimelineControlsBuilder {
         });
         setIcon(btn, 'alert-triangle');
 
-        btn.addEventListener('click', async () => {
+        btn.addEventListener('click', () => { void (async () => {
             const eventsPromise = this.callbacks.getEvents();
             const events = Array.isArray(eventsPromise) ? eventsPromise : await eventsPromise;
             const conflicts = ConflictDetector.detectAllConflicts(events);
@@ -509,11 +509,11 @@ export class TimelineControlsBuilder {
             const warningCount = conflicts.filter(c => c.severity === 'warning').length;
 
             if (conflicts.length === 0) {
-                new Notice('✓ No timeline conflicts detected');
+                new Notice('✓ no timeline conflicts detected');
             } else {
                 new Notice(`Found ${errorCount} error(s), ${warningCount} warning(s)`);
             }
-        });
+        })(); });
 
         return btn;
     }

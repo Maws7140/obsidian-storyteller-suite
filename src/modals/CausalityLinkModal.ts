@@ -1,4 +1,4 @@
-import { App, Modal, Setting, Notice, TextAreaComponent, DropdownComponent } from 'obsidian';
+import { App, Modal, Setting, Notice, TextComponent } from 'obsidian';
 import type StorytellerSuitePlugin from '../main';
 import type { CausalityLink, Event } from '../types';
 import { EventSuggestModal } from './EventSuggestModal';
@@ -59,7 +59,7 @@ export class CausalityLinkModal extends Modal {
 
         // Cause Event
         this.causeEventSetting = new Setting(contentEl)
-            .setName('Cause Event')
+            .setName('Cause event')
             .setDesc('The event that causes the effect');
 
         this.causeEventSetting.addText(text => text
@@ -84,12 +84,12 @@ export class CausalityLinkModal extends Modal {
 
         // Arrow indicator
         contentEl.createDiv('storyteller-causality-arrow', (div) => {
-            div.innerHTML = '<div style="text-align: center; font-size: 24px; margin: 10px 0;">⬇️</div>';
+            div.createDiv({ cls: 'storyteller-causality-arrow-icon', text: 'v' });
         });
 
         // Effect Event
         this.effectEventSetting = new Setting(contentEl)
-            .setName('Effect Event')
+            .setName('Effect event')
             .setDesc('The event that is caused');
 
         this.effectEventSetting.addText(text => text
@@ -114,7 +114,7 @@ export class CausalityLinkModal extends Modal {
 
         // Link Type
         new Setting(contentEl)
-            .setName('Link Type')
+            .setName('Link type')
             .setDesc('The nature of the causal relationship')
             .addDropdown(dropdown => dropdown
                 .addOptions({
@@ -129,7 +129,7 @@ export class CausalityLinkModal extends Modal {
 
         // Strength
         new Setting(contentEl)
-            .setName('Causal Strength')
+            .setName('Causal strength')
             .setDesc('How strong is the causal relationship?')
             .addDropdown(dropdown => dropdown
                 .addOptions({
@@ -151,7 +151,7 @@ export class CausalityLinkModal extends Modal {
                 text.setValue(this.link.description || '')
                     .onChange(value => this.link.description = value);
                 text.inputEl.rows = 4;
-                text.inputEl.style.width = '100%';
+                text.inputEl.setCssStyles({ width: '100%' });
             });
 
         // Preview of the relationship
@@ -205,8 +205,10 @@ export class CausalityLinkModal extends Modal {
      * Update the event display text field
      */
     private updateEventDisplay(setting: Setting, eventName: string): void {
-        const textInput = setting.components.find(c => 'inputEl' in c) as any;
-        if (textInput && textInput.setValue) {
+        const textInput = setting.components.find((component): component is TextComponent => (
+            'inputEl' in component && 'setValue' in component
+        ));
+        if (textInput) {
             textInput.setValue(eventName);
         }
     }
@@ -216,7 +218,7 @@ export class CausalityLinkModal extends Modal {
      */
     private updatePreview(previewDiv: HTMLElement): void {
         previewDiv.empty();
-        previewDiv.createEl('h4', { text: 'Relationship Preview:' });
+        previewDiv.createEl('h4', { text: 'Relationship preview:' });
 
         const previewText = previewDiv.createEl('div', { cls: 'storyteller-causality-preview-text' });
 
@@ -234,15 +236,13 @@ export class CausalityLinkModal extends Modal {
             catalyst: '⚡→'
         };
 
-        previewText.innerHTML = `
-            <div style="padding: 15px; background: var(--background-secondary); border-radius: 5px; margin-top: 10px;">
-                <strong>${this.link.causeEvent || '[Cause Event]'}</strong>
-                <div style="text-align: center; font-size: 20px; margin: 10px 0;">
-                    ${strengthEmoji[this.link.strength || 'strong']} ${typeDesc[this.link.linkType]} ${strengthEmoji[this.link.strength || 'strong']}
-                </div>
-                <strong>${this.link.effectEvent || '[Effect Event]'}</strong>
-            </div>
-        `;
+        const previewCard = previewText.createDiv({ cls: 'storyteller-causality-preview-card' });
+        previewCard.createEl('strong', { text: this.link.causeEvent || '[Cause Event]' });
+        previewCard.createDiv({
+            cls: 'storyteller-causality-preview-arrow',
+            text: `${strengthEmoji[this.link.strength || 'strong']} ${typeDesc[this.link.linkType]} ${strengthEmoji[this.link.strength || 'strong']}`
+        });
+        previewCard.createEl('strong', { text: this.link.effectEvent || '[Effect Event]' });
     }
 
     onClose(): void {

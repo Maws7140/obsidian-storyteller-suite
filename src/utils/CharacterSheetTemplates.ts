@@ -23,7 +23,7 @@ export interface CustomSheetTemplate {
     id: string;
     name: string;
     description: string;
-    /** Full HTML with {{token}} placeholders. May be a fragment or full document. */
+    /** Full HTML with {{token}} placeholders. May be a fragment or full activeDocument. */
     html: string;
 }
 
@@ -125,8 +125,8 @@ function buildRelationshipLines(data: SheetData): string[] {
             lines.push(noteLink(rel));
             return;
         }
-        const entry = rel as any;
-        const target = entry.target || entry.name || String(rel);
+        const entry = rel;
+        const target = entry.target;
         lines.push(`**${entry.type || 'Related'}**: ${noteLink(target)}${entry.label ? ` — ${entry.label}` : ''}`);
     });
     connections.forEach(conn => {
@@ -355,8 +355,8 @@ function sharedBuildHTML(
             if (typeof rel === 'string') {
                 rels.push(`<div class="cs-rel-item"><span class="cs-rel-type">Related</span><span class="cs-rel-name">${esc(rel)}</span></div>`);
             } else {
-                const r = rel as any;
-                const target = r.target || r.name || String(rel);
+                const r = rel;
+                const target = r.target;
                 const label  = r.label ? ` — ${esc(r.label)}` : '';
                 rels.push(`<div class="cs-rel-item"><span class="cs-rel-type">${esc(r.type || 'Related')}</span><span class="cs-rel-name">${esc(target)}${label}</span></div>`);
             }

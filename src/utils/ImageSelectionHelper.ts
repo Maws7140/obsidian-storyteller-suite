@@ -29,14 +29,14 @@ export function addImageSelectionButtons(
     plugin: StorytellerSuitePlugin,
     options: ImageSelectionOptions
 ): void {
-    const { currentPath, onSelect, descriptionEl, enableTileGeneration = false } = options;
+    const { onSelect, descriptionEl, enableTileGeneration = false } = options;
 
     // Gallery selection button
     setting.addButton(button => button
         .setButtonText(t('select'))
         .setTooltip(t('selectFromGallery'))
         .onClick(() => {
-            new GalleryImageSuggestModal(app, plugin, async (selectedImage) => {
+            new GalleryImageSuggestModal(app, plugin, (selectedImage) => { void (async () => {
                 const path = selectedImage ? selectedImage.filePath : '';
                 onSelect(path || undefined);
                 if (descriptionEl) {
@@ -47,7 +47,7 @@ export function addImageSelectionButtons(
                 // For map images, always force tile generation regardless of size threshold
                 if (enableTileGeneration && path) {
                     try {
-                        console.log('[ImageSelection] Tile generation enabled, forcing for map image from gallery:', path);
+                        console.debug('[ImageSelection] Tile generation enabled, forcing for map image from gallery:', path);
                         const imageData = await app.vault.adapter.readBinary(path);
                         plugin.maybeTriggerTileGeneration(path, imageData, true).catch((error) => {
                             console.error('[ImageSelection] Failed to trigger tile generation:', error);
@@ -58,7 +58,7 @@ export function addImageSelectionButtons(
                         new Notice('Warning: Could not read image for tile generation.');
                     }
                 }
-            }).open();
+            })(); }).open();
         }));
 
     // File upload button (from computer)
@@ -66,7 +66,7 @@ export function addImageSelectionButtons(
         .setButtonText(t('upload'))
         .setTooltip(t('uploadImage'))
         .onClick(async () => {
-            const fileInput = document.createElement('input');
+            const fileInput = activeDocument.createElement('input');
             fileInput.type = 'file';
             fileInput.accept = 'image/*';
             fileInput.onchange = async () => {
@@ -95,13 +95,13 @@ export function addImageSelectionButtons(
                         // Trigger tile generation for map images if enabled
                         // For map images, always force tile generation regardless of size threshold
                         if (enableTileGeneration) {
-                            console.log('[ImageUpload] Tile generation enabled, forcing for map image:', filePath);
+                            console.debug('[ImageUpload] Tile generation enabled, forcing for map image:', filePath);
                             plugin.maybeTriggerTileGeneration(filePath, arrayBuffer, true).catch((error) => {
                                 console.error('[ImageUpload] Failed to trigger tile generation:', error);
                                 new Notice('Warning: Failed to start tile generation. Check console for details.');
                             });
                         } else {
-                            console.log('[ImageUpload] Tile generation disabled for this upload');
+                            console.debug('[ImageUpload] Tile generation disabled for this upload');
                         }
 
                         // Call callback with new path

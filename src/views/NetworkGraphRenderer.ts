@@ -3,13 +3,11 @@
 
 import cytoscape, { Core, NodeSingular, EdgeSingular } from 'cytoscape';
 import StorytellerSuitePlugin from '../main';
-import { GraphFilters, GraphNode, GraphEdge, Character, Location, Event, PlotItem, Culture, Economy, MagicSystem, RelationshipType } from '../types';
+import { GraphFilters, GraphNode, GraphEdge, Character, Location, Event, PlotItem, Culture, Economy, MagicSystem } from '../types';
 import { 
     extractAllRelationships, 
     buildBidirectionalEdges,
-    filterRedundantReciprocalEdges, 
-    getRelationshipColor, 
-    getEntityShape 
+    filterRedundantReciprocalEdges
 } from '../utils/GraphUtils';
 import { TFile } from 'obsidian';
 
@@ -25,8 +23,8 @@ export class NetworkGraphRenderer {
     private pinnedNodes: Set<string> = new Set();
     private currentLayout: 'cose' | 'circle' | 'grid' | 'concentric' = 'cose';
     private showAllEdgeLabels = false; // Toggle for showing all edge labels
-    private infoPanelTimeout: NodeJS.Timeout | null = null; // Delay before updating info panel
-    private saveViewportTimeout: NodeJS.Timeout | null = null; // Debounce for saving viewport state
+    private infoPanelTimeout: number | null = null; // Delay before updating info panel
+    private saveViewportTimeout: number | null = null; // Debounce for saving viewport state
     private legendVisible = false; // Toggle for showing/hiding legend
     private legendPanelEl: HTMLElement | null = null; // Reference to legend panel element
     private legendToggleButtonEl: HTMLElement | null = null; // Floating button to show legend
@@ -41,10 +39,19 @@ export class NetworkGraphRenderer {
         this.allowWheelZoom = allowWheelZoom;
     }
 
+    private setParsedHtml(container: HTMLElement, html: string): void {
+        const parsed = new DOMParser().parseFromString(html, 'text/html');
+        parsed.querySelectorAll('script').forEach(script => script.remove());
+        container.empty();
+        for (const node of Array.from(parsed.body.childNodes)) {
+            container.appendChild(activeDocument.importNode(node, true));
+        }
+    }
+
     // Resolve CSS custom property to actual color value
     // Cytoscape.js doesn't support CSS variables, so we need to compute them
     private getCSSVariable(varName: string): string {
-        const style = getComputedStyle(document.body);
+        const style = getComputedStyle(activeDocument.body);
         let value = style.getPropertyValue(varName).trim();
 
         // Fallback values if CSS variable is not found or invalid
@@ -291,16 +298,16 @@ export class NetworkGraphRenderer {
 
         // Create canvas container
         this.canvasEl = this.containerEl.createDiv('storyteller-network-canvas');
-        this.canvasEl.style.width = '100%';
+        this.canvasEl.setCssStyles({ width: '100%' });
         // Responsive height: use viewport height for better space utilization
         const minHeight = window.innerWidth <= 768 ? '400px' : '500px';
         const maxHeight = 'calc(90vh - 250px)'; // Account for filters and controls
-        this.canvasEl.style.height = maxHeight;
-        this.canvasEl.style.minHeight = minHeight;
-        this.canvasEl.style.backgroundColor = 'var(--background-primary)';
-        this.canvasEl.style.border = '1px solid var(--background-modifier-border)';
-        this.canvasEl.style.borderRadius = '8px';
-        this.canvasEl.style.position = 'relative';
+        this.canvasEl.setCssStyles({ height: maxHeight });
+        this.canvasEl.setCssStyles({ minHeight: minHeight });
+        this.canvasEl.setCssStyles({ backgroundColor: 'var(--background-primary)' });
+        this.canvasEl.setCssStyles({ border: '1px solid var(--background-modifier-border)' });
+        this.canvasEl.setCssStyles({ borderRadius: '8px' });
+        this.canvasEl.setCssStyles({ position: 'relative' });
 
         // Build graph data
         const { nodes, edges } = await this.buildGraphData();
@@ -756,7 +763,7 @@ export class NetworkGraphRenderer {
 
     // Track currently hovered node to prevent redundant updates and race conditions
     private currentHoveredNode: NodeSingular | null = null;
-    private panZoomTimeout: NodeJS.Timeout | null = null;
+    private panZoomTimeout: number | null = null;
 
     // Setup event listeners for graph interactions
     private setupEventListeners(): void {
@@ -780,7 +787,7 @@ export class NetworkGraphRenderer {
 
             // Cancel any pending hide operation
             if (this.infoPanelTimeout) {
-                clearTimeout(this.infoPanelTimeout);
+                window.clearTimeout(this.infoPanelTimeout);
                 this.infoPanelTimeout = null;
             }
 
@@ -794,12 +801,12 @@ export class NetworkGraphRenderer {
         this.cy.on('mouseout', 'node', () => {
             // Don't immediately hide - give time for user to move to info panel or adjacent node
             if (this.infoPanelTimeout) {
-                clearTimeout(this.infoPanelTimeout);
+                window.clearTimeout(this.infoPanelTimeout);
                 this.infoPanelTimeout = null;
             }
             
             // Short delay before clearing - allows moving between adjacent nodes smoothly
-            this.infoPanelTimeout = setTimeout(() => {
+            this.infoPanelTimeout = window.setTimeout(() => {
                 if (this.currentHoveredNode) {
                     this.currentHoveredNode = null;
                     this.cy?.elements().removeClass('highlighted dimmed');
@@ -813,7 +820,7 @@ export class NetworkGraphRenderer {
             this.infoPanelEl.addEventListener('mouseenter', () => {
                 // Cancel any pending hide
                 if (this.infoPanelTimeout) {
-                    clearTimeout(this.infoPanelTimeout);
+                    window.clearTimeout(this.infoPanelTimeout);
                     this.infoPanelTimeout = null;
                 }
             });
@@ -841,9 +848,9 @@ export class NetworkGraphRenderer {
             
             // Only clear highlights after pan/zoom settles
             if (this.panZoomTimeout) {
-                clearTimeout(this.panZoomTimeout);
+                window.clearTimeout(this.panZoomTimeout);
             }
-            this.panZoomTimeout = setTimeout(() => {
+            this.panZoomTimeout = window.setTimeout(() => {
                 // Only clear if we're not currently hovering a node
                 if (!this.currentHoveredNode) {
                     this.cy?.elements().removeClass('highlighted dimmed');
@@ -875,7 +882,7 @@ export class NetworkGraphRenderer {
         if (entityData && entityData.filePath) {
             const file = this.plugin.app.vault.getAbstractFileByPath(entityData.filePath);
             if (file instanceof TFile) {
-                this.plugin.app.workspace.getLeaf(false).openFile(file);
+                void this.plugin.app.workspace.getLeaf(false).openFile(file);
             }
         }
     }
@@ -884,44 +891,44 @@ export class NetworkGraphRenderer {
     private createInfoPanel(): void {
         if (!this.canvasEl) return;
 
-        this.infoPanelEl = document.createElement('div');
+        this.infoPanelEl = activeDocument.createElement('div');
         this.infoPanelEl.className = 'storyteller-network-info-panel';
-        this.infoPanelEl.style.position = 'absolute'; // Absolute to canvas container
+        this.infoPanelEl.setCssStyles({ position: 'absolute' }); // Absolute to canvas container
 
         // Different positioning for modal vs sidebar view
         if (this.isModal) {
             // Modal: higher bottom position to avoid modal's bottom bar
-            this.infoPanelEl.style.bottom = '60px';
-            this.infoPanelEl.style.maxHeight = 'calc(100% - 80px)'; // More room in modal
+            this.infoPanelEl.setCssStyles({ bottom: '60px' });
+            this.infoPanelEl.setCssStyles({ maxHeight: 'calc(100% - 80px)' }); // More room in modal
         } else {
             // Sidebar view: standard position
-            this.infoPanelEl.style.bottom = '20px';
-            this.infoPanelEl.style.maxHeight = 'calc(100% - 40px)'; // Ensure it fits
+            this.infoPanelEl.setCssStyles({ bottom: '20px' });
+            this.infoPanelEl.setCssStyles({ maxHeight: 'calc(100% - 40px)' }); // Ensure it fits
         }
 
-        this.infoPanelEl.style.right = '16px';
-        this.infoPanelEl.style.backgroundColor = 'var(--background-secondary)';
-        this.infoPanelEl.style.border = '2px solid var(--background-modifier-border)';
-        this.infoPanelEl.style.borderRadius = '12px';
-        this.infoPanelEl.style.padding = '0';
-        this.infoPanelEl.style.pointerEvents = 'auto';
-        this.infoPanelEl.style.zIndex = '1000'; // High within canvas context
-        this.infoPanelEl.style.minWidth = '140px';
-        this.infoPanelEl.style.maxWidth = '140px';
-        this.infoPanelEl.style.overflowY = 'auto'; // Allow scrolling if content is too tall
-        this.infoPanelEl.style.boxShadow = '0 4px 16px rgba(0,0,0,0.4)'; // Stronger shadow for visibility
-        this.infoPanelEl.style.cursor = 'pointer';
-        this.infoPanelEl.style.opacity = '0';
-        this.infoPanelEl.style.transform = 'translateY(10px)';
-        this.infoPanelEl.style.transition = 'opacity 0.3s ease, transform 0.3s ease, max-width 0.3s ease';
+        this.infoPanelEl.setCssStyles({ right: '16px' });
+        this.infoPanelEl.setCssStyles({ backgroundColor: 'var(--background-secondary)' });
+        this.infoPanelEl.setCssStyles({ border: '2px solid var(--background-modifier-border)' });
+        this.infoPanelEl.setCssStyles({ borderRadius: '12px' });
+        this.infoPanelEl.setCssStyles({ padding: '0' });
+        this.infoPanelEl.setCssStyles({ pointerEvents: 'auto' });
+        this.infoPanelEl.setCssStyles({ zIndex: '1000' }); // High within canvas context
+        this.infoPanelEl.setCssStyles({ minWidth: '140px' });
+        this.infoPanelEl.setCssStyles({ maxWidth: '140px' });
+        this.infoPanelEl.setCssStyles({ overflowY: 'auto' }); // Allow scrolling if content is too tall
+        this.infoPanelEl.setCssStyles({ boxShadow: '0 4px 16px rgba(0,0,0,0.4)' }); // Stronger shadow for visibility
+        this.infoPanelEl.setCssStyles({ cursor: 'pointer' });
+        this.infoPanelEl.setCssStyles({ opacity: '0' });
+        this.infoPanelEl.setCssStyles({ transform: 'translateY(10px)' });
+        this.infoPanelEl.setCssStyles({ transition: 'opacity 0.3s ease, transform 0.3s ease, max-width 0.3s ease' });
 
         // Initial hidden state message with icon
-        this.infoPanelEl.innerHTML = `
+        this.setParsedHtml(this.infoPanelEl, `
             <div style="text-align: center; padding: 12px 8px; color: var(--text-muted);">
                 <div style="font-size: 18px; opacity: 0.5;">🎯</div>
                 <div style="font-size: 9px; margin-top: 4px;">Hover node</div>
             </div>
-        `;
+        `);
 
         // Append to canvas element
         this.canvasEl.appendChild(this.infoPanelEl);
@@ -983,8 +990,8 @@ export class NetworkGraphRenderer {
                 </div>
             `;
             
-            this.infoPanelEl.innerHTML = content;
-            this.infoPanelEl.style.maxWidth = '140px';
+            this.setParsedHtml(this.infoPanelEl, content);
+            this.infoPanelEl.setCssStyles({ maxWidth: '140px' });
             
             // Add click handler for expand button
             const expandBtn = this.infoPanelEl.querySelector('button');
@@ -997,13 +1004,13 @@ export class NetworkGraphRenderer {
             }
             
             // Show with animation
-            this.infoPanelEl.style.opacity = '1';
-            this.infoPanelEl.style.transform = 'translateY(0)';
+            this.infoPanelEl.setCssStyles({ opacity: '1' });
+            this.infoPanelEl.setCssStyles({ transform: 'translateY(0)' });
             return;
         }
         
         // Expanded view - full details
-        this.infoPanelEl.style.maxWidth = '280px';
+        this.infoPanelEl.setCssStyles({ maxWidth: '280px' });
         
         // Header with gradient background
         content = `
@@ -1159,7 +1166,7 @@ export class NetworkGraphRenderer {
             </div>
         `;
 
-        this.infoPanelEl.innerHTML = content;
+        this.setParsedHtml(this.infoPanelEl, content);
         
         // Add click handler for collapse button
         const collapseBtn = this.infoPanelEl.querySelector('button');
@@ -1172,8 +1179,8 @@ export class NetworkGraphRenderer {
         }
         
         // Show with animation
-        this.infoPanelEl.style.opacity = '1';
-        this.infoPanelEl.style.transform = 'translateY(0)';
+        this.infoPanelEl.setCssStyles({ opacity: '1' });
+        this.infoPanelEl.setCssStyles({ transform: 'translateY(0)' });
     }
 
     // Hide info panel
@@ -1184,8 +1191,8 @@ export class NetworkGraphRenderer {
         this.infoPanelExpanded = false;
         
         // Fade out animation
-        this.infoPanelEl.style.opacity = '0';
-        this.infoPanelEl.style.transform = 'translateY(10px)';
+        this.infoPanelEl.setCssStyles({ opacity: '0' });
+        this.infoPanelEl.setCssStyles({ transform: 'translateY(10px)' });
     }
 
     // Toggle node pin state
@@ -1207,25 +1214,25 @@ export class NetworkGraphRenderer {
     private createLegendPanel(): void {
         if (!this.canvasEl) return;
         
-        const legendPanel = document.createElement('div');
+        const legendPanel = activeDocument.createElement('div');
         legendPanel.className = 'storyteller-network-legend-panel';
-        legendPanel.style.position = 'absolute';
-        legendPanel.style.top = '16px';
-        legendPanel.style.left = '16px';
-        legendPanel.style.backgroundColor = 'var(--background-secondary)';
-        legendPanel.style.border = '2px solid var(--background-modifier-border)';
-        legendPanel.style.borderRadius = '12px';
-        legendPanel.style.padding = '0';
-        legendPanel.style.zIndex = '999'; // Just below info panel but above canvas
-        legendPanel.style.minWidth = '200px';
-        legendPanel.style.maxWidth = '280px';
-        legendPanel.style.boxShadow = '0 8px 24px rgba(0,0,0,0.3)';
-        legendPanel.style.maxHeight = 'calc(100% - 32px)'; // Stay within canvas bounds
-        legendPanel.style.overflowY = 'auto';
-        legendPanel.style.opacity = '0';
-        legendPanel.style.transform = 'translateX(-100%)';
-        legendPanel.style.pointerEvents = 'none';
-        legendPanel.style.display = 'none'; // Start completely hidden
+        legendPanel.setCssStyles({ position: 'absolute' });
+        legendPanel.setCssStyles({ top: '16px' });
+        legendPanel.setCssStyles({ left: '16px' });
+        legendPanel.setCssStyles({ backgroundColor: 'var(--background-secondary)' });
+        legendPanel.setCssStyles({ border: '2px solid var(--background-modifier-border)' });
+        legendPanel.setCssStyles({ borderRadius: '12px' });
+        legendPanel.setCssStyles({ padding: '0' });
+        legendPanel.setCssStyles({ zIndex: '999' }); // Just below info panel but above canvas
+        legendPanel.setCssStyles({ minWidth: '200px' });
+        legendPanel.setCssStyles({ maxWidth: '280px' });
+        legendPanel.setCssStyles({ boxShadow: '0 8px 24px rgba(0,0,0,0.3)' });
+        legendPanel.setCssStyles({ maxHeight: 'calc(100% - 32px)' }); // Stay within canvas bounds
+        legendPanel.setCssStyles({ overflowY: 'auto' });
+        legendPanel.setCssStyles({ opacity: '0' });
+        legendPanel.setCssStyles({ transform: 'translateX(-100%)' });
+        legendPanel.setCssStyles({ pointerEvents: 'none' });
+        legendPanel.setCssStyles({ display: 'none' }); // Start completely hidden
         
         let content = `
             <div style="background: linear-gradient(135deg, var(--background-secondary-alt) 0%, var(--background-secondary) 100%); padding: 12px 16px; border-bottom: 2px solid var(--background-modifier-border); position: sticky; top: 0; z-index: 1; display: flex; justify-content: space-between; align-items: center;">
@@ -1329,14 +1336,14 @@ export class NetworkGraphRenderer {
             </div>
         `;
         
-        legendPanel.innerHTML = content;
+        this.setParsedHtml(legendPanel, content);
         this.canvasEl.appendChild(legendPanel);
         this.legendPanelEl = legendPanel;
         
         // Add transition after DOM is ready to prevent flash
-        setTimeout(() => {
+        window.setTimeout(() => {
             if (this.legendPanelEl) {
-                this.legendPanelEl.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
+                this.legendPanelEl.setCssStyles({ transition: 'opacity 0.3s ease, transform 0.3s ease' });
             }
         }, 0);
         
@@ -1356,37 +1363,37 @@ export class NetworkGraphRenderer {
     private createLegendToggleButton(): void {
         if (!this.canvasEl) return;
         
-        const toggleButton = document.createElement('button');
+        const toggleButton = activeDocument.createElement('button');
         toggleButton.className = 'storyteller-legend-toggle-btn';
-        toggleButton.title = 'Show Legend';
-        toggleButton.innerHTML = '🗺️';
-        toggleButton.style.position = 'absolute';
-        toggleButton.style.top = '16px';
-        toggleButton.style.left = '16px';
-        toggleButton.style.width = '40px';
-        toggleButton.style.height = '40px';
-        toggleButton.style.borderRadius = '50%';
-        toggleButton.style.backgroundColor = 'var(--background-secondary)';
-        toggleButton.style.border = '2px solid var(--background-modifier-border)';
-        toggleButton.style.cursor = 'pointer';
-        toggleButton.style.display = 'flex';
-        toggleButton.style.alignItems = 'center';
-        toggleButton.style.justifyContent = 'center';
-        toggleButton.style.fontSize = '18px';
-        toggleButton.style.zIndex = '998'; // Below legend panel but above canvas
-        toggleButton.style.boxShadow = '0 4px 12px rgba(0,0,0,0.2)';
-        toggleButton.style.opacity = '1';
-        toggleButton.style.pointerEvents = 'auto';
-        toggleButton.style.transition = 'opacity 0.3s ease, transform 0.2s ease';
+        toggleButton.title = 'Show legend';
+        toggleButton.textContent = 'Map';
+        toggleButton.setCssStyles({ position: 'absolute' });
+        toggleButton.setCssStyles({ top: '16px' });
+        toggleButton.setCssStyles({ left: '16px' });
+        toggleButton.setCssStyles({ width: '40px' });
+        toggleButton.setCssStyles({ height: '40px' });
+        toggleButton.setCssStyles({ borderRadius: '50%' });
+        toggleButton.setCssStyles({ backgroundColor: 'var(--background-secondary)' });
+        toggleButton.setCssStyles({ border: '2px solid var(--background-modifier-border)' });
+        toggleButton.setCssStyles({ cursor: 'pointer' });
+        toggleButton.setCssStyles({ display: 'flex' });
+        toggleButton.setCssStyles({ alignItems: 'center' });
+        toggleButton.setCssStyles({ justifyContent: 'center' });
+        toggleButton.setCssStyles({ fontSize: '18px' });
+        toggleButton.setCssStyles({ zIndex: '998' }); // Below legend panel but above canvas
+        toggleButton.setCssStyles({ boxShadow: '0 4px 12px rgba(0,0,0,0.2)' });
+        toggleButton.setCssStyles({ opacity: '1' });
+        toggleButton.setCssStyles({ pointerEvents: 'auto' });
+        toggleButton.setCssStyles({ transition: 'opacity 0.3s ease, transform 0.2s ease' });
         
         toggleButton.addEventListener('mouseenter', () => {
             if (!this.legendVisible) {
-                toggleButton.style.transform = 'scale(1.1)';
+                toggleButton.setCssStyles({ transform: 'scale(1.1)' });
             }
         });
         
         toggleButton.addEventListener('mouseleave', () => {
-            toggleButton.style.transform = 'scale(1)';
+            toggleButton.setCssStyles({ transform: 'scale(1)' });
         });
         
         toggleButton.addEventListener('click', () => {
@@ -1402,20 +1409,20 @@ export class NetworkGraphRenderer {
         this.legendVisible = !this.legendVisible;
         if (this.legendPanelEl) {
             if (this.legendVisible) {
-                this.legendPanelEl.style.display = 'block';
+                this.legendPanelEl.setCssStyles({ display: 'block' });
                 // Force reflow before animating
-                this.legendPanelEl.offsetHeight;
-                this.legendPanelEl.style.opacity = '1';
-                this.legendPanelEl.style.transform = 'translateX(0)';
-                this.legendPanelEl.style.pointerEvents = 'auto';
+                void this.legendPanelEl.offsetHeight;
+                this.legendPanelEl.setCssStyles({ opacity: '1' });
+                this.legendPanelEl.setCssStyles({ transform: 'translateX(0)' });
+                this.legendPanelEl.setCssStyles({ pointerEvents: 'auto' });
             } else {
-                this.legendPanelEl.style.opacity = '0';
-                this.legendPanelEl.style.transform = 'translateX(-100%)';
-                this.legendPanelEl.style.pointerEvents = 'none';
+                this.legendPanelEl.setCssStyles({ opacity: '0' });
+                this.legendPanelEl.setCssStyles({ transform: 'translateX(-100%)' });
+                this.legendPanelEl.setCssStyles({ pointerEvents: 'none' });
                 // Hide after animation
-                setTimeout(() => {
+                window.setTimeout(() => {
                     if (this.legendPanelEl && !this.legendVisible) {
-                        this.legendPanelEl.style.display = 'none';
+                        this.legendPanelEl.setCssStyles({ display: 'none' });
                     }
                 }, 300);
             }
@@ -1424,11 +1431,11 @@ export class NetworkGraphRenderer {
         // Toggle floating button visibility
         if (this.legendToggleButtonEl) {
             if (this.legendVisible) {
-                this.legendToggleButtonEl.style.opacity = '0';
-                this.legendToggleButtonEl.style.pointerEvents = 'none';
+                this.legendToggleButtonEl.setCssStyles({ opacity: '0' });
+                this.legendToggleButtonEl.setCssStyles({ pointerEvents: 'none' });
             } else {
-                this.legendToggleButtonEl.style.opacity = '1';
-                this.legendToggleButtonEl.style.pointerEvents = 'auto';
+                this.legendToggleButtonEl.setCssStyles({ opacity: '1' });
+                this.legendToggleButtonEl.setCssStyles({ pointerEvents: 'auto' });
             }
         }
     }
@@ -1452,7 +1459,7 @@ export class NetworkGraphRenderer {
         if (!this.canvasEl) return;
         
         const emptyState = this.canvasEl.createDiv('storyteller-network-empty-state');
-        emptyState.innerHTML = `
+        this.setParsedHtml(emptyState, `
             <div style="text-align: center; padding: 3rem;">
                 <div style="font-size: 3rem; margin-bottom: 1rem; opacity: 0.3;">📊</div>
                 <div style="font-size: 1.2rem; font-weight: 600; margin-bottom: 0.5rem;">No entities to display</div>
@@ -1461,7 +1468,7 @@ export class NetworkGraphRenderer {
                     Add relationships between entities to see connections visualized here.
                 </div>
             </div>
-        `;
+        `);
     }
 
     // Search and highlight nodes
@@ -1573,18 +1580,18 @@ export class NetworkGraphRenderer {
 
         // Clear existing timeout
         if (this.saveViewportTimeout) {
-            clearTimeout(this.saveViewportTimeout);
+            window.clearTimeout(this.saveViewportTimeout);
         }
 
         // Debounce the save operation (wait 500ms after last change)
-        this.saveViewportTimeout = setTimeout(() => {
+        this.saveViewportTimeout = window.setTimeout(() => {
             if (!this.cy) return;
             const zoom = this.cy.zoom();
             const pan = this.cy.pan();
 
             this.plugin.settings.networkGraphZoom = zoom;
             this.plugin.settings.networkGraphPan = { x: pan.x, y: pan.y };
-            this.plugin.saveSettings();
+            void this.plugin.saveSettings();
         }, 500);
     }
 
@@ -1706,15 +1713,15 @@ export class NetworkGraphRenderer {
 
         const dataUrl = this.cy.png({
             output: 'blob',
-            bg: getComputedStyle(document.body).getPropertyValue('--background-primary') || '#ffffff',
+            bg: getComputedStyle(activeDocument.body).getPropertyValue('--background-primary') || '#ffffff',
             full: true,
             scale: 2
         });
 
         // Create download link
-        const link = document.createElement('a');
+        const link = activeDocument.createElement('a');
         link.download = `network-graph-${Date.now()}.${format}`;
-        link.href = URL.createObjectURL(dataUrl as Blob);
+        link.href = URL.createObjectURL(dataUrl);
         link.click();
         URL.revokeObjectURL(link.href);
     }
@@ -1733,13 +1740,13 @@ export class NetworkGraphRenderer {
     destroy(): void {
         // Clear any pending info panel timeout
         if (this.infoPanelTimeout) {
-            clearTimeout(this.infoPanelTimeout);
+            window.clearTimeout(this.infoPanelTimeout);
             this.infoPanelTimeout = null;
         }
 
         // Clear viewport save timeout to prevent memory leaks
         if (this.saveViewportTimeout) {
-            clearTimeout(this.saveViewportTimeout);
+            window.clearTimeout(this.saveViewportTimeout);
             this.saveViewportTimeout = null;
         }
 

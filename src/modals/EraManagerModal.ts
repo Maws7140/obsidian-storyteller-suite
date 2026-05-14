@@ -23,7 +23,7 @@ export class EraManagerModal extends Modal {
     ) {
         super(app);
         this.plugin = plugin;
-        this.eras = JSON.parse(JSON.stringify(eras)); // Deep copy
+        this.eras = structuredClone(eras);
         this.onSave = onSave;
     }
 
@@ -56,10 +56,10 @@ export class EraManagerModal extends Modal {
 
         // Auto-assign events button
         new Setting(contentEl)
-            .setName('Auto-Assign Events')
+            .setName('Auto-assign events')
             .setDesc('Automatically assign events to eras based on their dates')
             .addButton(btn => btn
-                .setButtonText('Auto-Assign')
+                .setButtonText('Auto-assign')
                 .onClick(() => this.autoAssignEvents())
             );
 
@@ -80,7 +80,7 @@ export class EraManagerModal extends Modal {
         );
 
         // Add CSS
-        this.addStyles();
+        // Styles are loaded from styles.css.
     }
 
     private addNewEra(): void {
@@ -133,7 +133,7 @@ export class EraManagerModal extends Modal {
 
         const eraEl = this.eraListEl.createDiv({ cls: 'storyteller-era-item' });
         if (level > 0) {
-            eraEl.style.marginLeft = `${level * 2}em`;
+            eraEl.setCssStyles({ marginLeft: `${level * 2}em` });
         }
 
         // Era header
@@ -141,7 +141,7 @@ export class EraManagerModal extends Modal {
 
         // Era color indicator
         const colorIndicator = headerEl.createSpan({ cls: 'storyteller-era-color' });
-        colorIndicator.style.backgroundColor = era.color || '#888888';
+        colorIndicator.setCssStyles({ backgroundColor: era.color || '#888888' });
 
         // Era name (editable)
         const nameInput = headerEl.createEl('input', {
@@ -161,7 +161,7 @@ export class EraManagerModal extends Modal {
 
         // Event count badge
         const eventCount = this.getEventCountForEra(era);
-        const eventBadge = headerEl.createSpan({
+        headerEl.createSpan({
             text: `${eventCount} event${eventCount !== 1 ? 's' : ''}`,
             cls: 'storyteller-era-event-badge'
         });
@@ -194,10 +194,10 @@ export class EraManagerModal extends Modal {
             .addDropdown(dropdown => {
                 dropdown
                     .addOption('act', 'Act')
-                    .addOption('arc', 'Story Arc')
-                    .addOption('period', 'Time Period')
+                    .addOption('arc', 'Story arc')
+                    .addOption('period', 'Time period')
                     .addOption('season', 'Season')
-                    .addOption('chapter', 'Chapter Group')
+                    .addOption('chapter', 'Chapter group')
                     .addOption('custom', 'Custom')
                     .setValue(era.type || 'period')
                     .onChange(value => {
@@ -211,7 +211,7 @@ export class EraManagerModal extends Modal {
             .addText(text => {
                 text
                     .setValue(era.startDate)
-                    .setPlaceholder('e.g., 2024-01-01, 1500 BCE')
+                    .setPlaceholder('E.g., 2024-01-01, 1500 bce')
                     .onChange(value => {
                         era.startDate = value;
                         this.updateDateBadge(era, dateRangeBadge);
@@ -224,7 +224,7 @@ export class EraManagerModal extends Modal {
             .addText(text => {
                 text
                     .setValue(era.endDate)
-                    .setPlaceholder('e.g., 2024-12-31, 1400 BCE')
+                    .setPlaceholder('E.g., 2024-12-31, 1400 bce')
                     .onChange(value => {
                         era.endDate = value;
                         this.updateDateBadge(era, dateRangeBadge);
@@ -239,7 +239,7 @@ export class EraManagerModal extends Modal {
                     .setValue(era.color || '#888888')
                     .onChange(value => {
                         era.color = value;
-                        colorIndicator.style.backgroundColor = value;
+                        colorIndicator.setCssStyles({ backgroundColor: value });
                     });
             });
 
@@ -281,10 +281,10 @@ export class EraManagerModal extends Modal {
         const parentOptions = this.eras.filter(e => e.id !== era.id && !e.parentEraId);
 
         new Setting(containerEl)
-            .setName('Parent Era')
+            .setName('Parent era')
             .setDesc('Nest this era within another era')
             .addDropdown(dropdown => {
-                dropdown.addOption('', '-- None (Top Level) --');
+                dropdown.addOption('', '-- none (top level) --');
                 parentOptions.forEach(parent => {
                     dropdown.addOption(parent.id, parent.name);
                 });
@@ -414,117 +414,6 @@ export class EraManagerModal extends Modal {
         ];
         return colors[Math.floor(Math.random() * colors.length)];
     }
-
-    private addStyles(): void {
-        const styleEl = document.createElement('style');
-        styleEl.textContent = `
-            .storyteller-era-manager {
-                padding: 1em;
-            }
-
-            .storyteller-era-manager-desc {
-                margin-bottom: 1.5em;
-                color: var(--text-muted);
-                font-size: 0.9em;
-            }
-
-            .storyteller-era-list {
-                max-height: 60vh;
-                overflow-y: auto;
-                margin: 1em 0;
-            }
-
-            .storyteller-era-item {
-                border: 1px solid var(--background-modifier-border);
-                border-radius: 6px;
-                margin-bottom: 1em;
-                background: var(--background-secondary);
-            }
-
-            .storyteller-era-header {
-                display: flex;
-                align-items: center;
-                padding: 0.75em;
-                gap: 0.5em;
-                background: var(--background-primary);
-                border-bottom: 1px solid var(--background-modifier-border);
-                border-radius: 6px 6px 0 0;
-                flex-wrap: wrap;
-            }
-
-            .storyteller-era-color {
-                width: 16px;
-                height: 16px;
-                border-radius: 50%;
-                border: 2px solid var(--background-modifier-border);
-            }
-
-            .storyteller-era-name-input {
-                flex: 1;
-                min-width: 150px;
-                border: none;
-                background: transparent;
-                font-weight: 600;
-                font-size: 1em;
-                color: var(--text-normal);
-            }
-
-            .storyteller-era-name-input:focus {
-                outline: none;
-                background: var(--background-secondary);
-                padding: 0.25em 0.5em;
-                border-radius: 3px;
-            }
-
-            .storyteller-era-date-badge {
-                background: var(--background-modifier-border);
-                padding: 0.25em 0.5em;
-                border-radius: 3px;
-                font-size: 0.85em;
-                color: var(--text-muted);
-            }
-
-            .storyteller-era-date-badge-empty {
-                opacity: 0.5;
-            }
-
-            .storyteller-era-event-badge {
-                background: var(--interactive-accent);
-                color: var(--text-on-accent);
-                padding: 0.25em 0.5em;
-                border-radius: 3px;
-                font-size: 0.85em;
-            }
-
-            .storyteller-era-visibility-btn,
-            .storyteller-era-delete-btn {
-                background: transparent;
-                border: none;
-                cursor: pointer;
-                font-size: 1.1em;
-                padding: 0.25em 0.5em;
-                border-radius: 3px;
-            }
-
-            .storyteller-era-visibility-btn:hover,
-            .storyteller-era-delete-btn:hover {
-                background: var(--background-modifier-hover);
-            }
-
-            .storyteller-era-details {
-                padding: 1em;
-            }
-
-            .storyteller-empty-state {
-                text-align: center;
-                padding: 3em;
-                color: var(--text-muted);
-                font-style: italic;
-            }
-        `;
-        this.contentEl.appendChild(styleEl);
-    }
-
     onClose(): void {
         const { contentEl } = this;
         contentEl.empty();

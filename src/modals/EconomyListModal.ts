@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
+ 
 
 // Core Obsidian imports for modal functionality
 import { App, Modal, Setting, Notice, ButtonComponent, TFile } from 'obsidian';
@@ -51,7 +51,7 @@ export class EconomyListModal extends Modal {
         this.listContainer = contentEl.createDiv('storyteller-list-container');
 
         // Add search input with real-time filtering
-        const searchInput = new Setting(contentEl)
+        new Setting(contentEl)
             .setName(t('search'))
             .addText(text => {
                 text.setPlaceholder(t('searchEconomies'))
@@ -184,9 +184,9 @@ export class EconomyListModal extends Modal {
                     }
 
                     // Find and open the economy file
-                    const file = this.app.vault.getAbstractFileByPath(economy.filePath!);
+                    const file = this.app.vault.getAbstractFileByPath(economy.filePath);
                     if (file instanceof TFile) {
-                        this.app.workspace.getLeaf(false).openFile(file);
+                        void this.app.workspace.getLeaf(false).openFile(file);
                         this.close(); // Close modal after opening file
                     } else {
                         new Notice(t('workspaceLeafRevealError'));

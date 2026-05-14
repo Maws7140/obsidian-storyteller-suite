@@ -33,7 +33,7 @@ export class PromptModal extends Modal {
       });
 
     errorEl = contentEl.createDiv({ cls: 'mod-warning' });
-    errorEl.style.display = 'none';
+    errorEl.setCssStyles({ display: 'none' });
 
     const submit = () => {
       if (isSubmitting) return;
@@ -41,7 +41,7 @@ export class PromptModal extends Modal {
       if (this.validator) {
         const err = this.validator(value);
         if (err) {
-          errorEl!.style.display = '';
+          errorEl!.setCssStyles({ display: '' });
           errorEl!.setText(err);
           isSubmitting = false;
           return;

@@ -3,10 +3,9 @@
  * Inspired by Obsidian Longform plugin
  */
 
-import { App, TFile, normalizePath } from 'obsidian';
+import { TFile, normalizePath } from 'obsidian';
 import type {
     CompileStepDefinition,
-    CompileContext,
     SceneCompileInput,
     ManuscriptCompileInput
 } from '../types';
@@ -77,7 +76,7 @@ const prependSceneTitleStep: CompileStepDefinition = {
                 .replace(/\$2/g, scene.sceneNumber || String(scene.index + 1));
             
             // Handle $3{text} pattern - repeat text by indent level + 1
-            title = title.replace(/\$3\{([^}]+)\}/g, (_, text) => {
+            title = title.replace(/\$3\{([^}]+)\}/g, (_match: string, text: string) => {
                 return text.repeat(scene.indentLevel + 1);
             });
 
@@ -652,9 +651,6 @@ const extractContentSectionStep: CompileStepDefinition = {
         const fallbackToAll = context.optionValues.fallbackToAll !== false;
         
         const hashes = '#'.repeat(headerLevel);
-        // Match section header pattern
-        const sectionPattern = new RegExp(`^${hashes}\\s+(.+)$`, 'gm');
-
         const extractContent = (text: string): string => {
             if (!text || typeof text !== 'string') return '';
             
@@ -675,7 +671,7 @@ const extractContentSectionStep: CompileStepDefinition = {
             
             // Find all sections at the specified level
             const sections: { header: string; headerRaw: string; startIndex: number; endIndex: number; headerMatchIndex: number }[] = [];
-            let match;
+            let match: RegExpExecArray | null;
             const regex = new RegExp(`^${hashes}\\s+(.+)$`, 'gm');
             
             while ((match = regex.exec(content)) !== null) {
@@ -757,7 +753,6 @@ const extractContentSectionStep: CompileStepDefinition = {
                     
                     if (isExcluded) {
                         // Remove from header match to end index
-                        const headerLineEnd = section.headerMatchIndex + hashes.length + 1 + section.headerRaw.length;
                         const sectionText = content.substring(section.headerMatchIndex, section.endIndex);
                         result = result.replace(sectionText, '');
                     }
@@ -857,7 +852,7 @@ const extractBeatSheetStep: CompileStepDefinition = {
             // Find all sections at the specified level
             const sections: { header: string; startIndex: number; endIndex: number }[] = [];
             const regex = new RegExp(`^${hashes}\\s+(.+)$`, 'gm');
-            let match;
+            let match: RegExpExecArray | null;
             
             while ((match = regex.exec(content)) !== null) {
                 const headerRaw = match[1];
@@ -1326,7 +1321,7 @@ const exportMarkdownStep: CompileStepDefinition = {
         const fullPath = normalizePath(context.projectPath ? `${context.projectPath}/${outputPath}` : outputPath);
 
         // Create or update file
-        const app = context.app as App;
+        const app = context.app;
         const existingFile = app.vault.getAbstractFileByPath(fullPath);
         
         if (existingFile instanceof TFile) {
@@ -1347,7 +1342,7 @@ const exportMarkdownStep: CompileStepDefinition = {
         if (openAfter) {
             const file = app.vault.getAbstractFileByPath(fullPath);
             if (file instanceof TFile) {
-                app.workspace.openLinkText(fullPath, '', true);
+                void app.workspace.openLinkText(fullPath, '', true);
             }
         }
 
@@ -1445,7 +1440,7 @@ ${html}
         const fullPath = normalizePath(context.projectPath ? `${context.projectPath}/${outputPath}` : outputPath);
 
         // Create or update file
-        const app = context.app as App;
+        const app = context.app;
         const existingFile = app.vault.getAbstractFileByPath(fullPath);
         
         if (existingFile instanceof TFile) {

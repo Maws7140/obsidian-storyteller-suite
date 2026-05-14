@@ -101,8 +101,8 @@ export function extractAllRelationships(
         }
 
         // Process legacy character relationships
-        if (type === 'character' && (entity as Character).relationships) {
-            const char = entity as Character;
+        if (type === 'character' && (entity).relationships) {
+            const char = entity;
             // Ensure relationships is an array before iterating
             const relationships = Array.isArray(char.relationships) ? char.relationships : [];
             relationships.forEach(rel => {
@@ -134,8 +134,8 @@ export function extractAllRelationships(
 
         // Extract implicit connections from entity fields
         // Characters -> locations
-        if (type === 'character' && (entity as Character).locations) {
-            const charLocations = (entity as Character).locations;
+        if (type === 'character' && (entity).locations) {
+            const charLocations = (entity).locations;
             const locations = Array.isArray(charLocations) ? charLocations : [];
             locations.forEach(locName => {
                 const targetId = resolveEntityId(locName, entityMap);
@@ -151,8 +151,8 @@ export function extractAllRelationships(
         }
 
         // Characters -> events
-        if (type === 'character' && (entity as Character).events) {
-            const charEvents = (entity as Character).events;
+        if (type === 'character' && (entity).events) {
+            const charEvents = (entity).events;
             const events = Array.isArray(charEvents) ? charEvents : [];
             events.forEach(evtName => {
                 const targetId = resolveEntityId(evtName, entityMap);
@@ -168,8 +168,8 @@ export function extractAllRelationships(
         }
 
         // Events -> characters
-        if (type === 'event' && (entity as Event).characters) {
-            const evtChars = (entity as Event).characters;
+        if (type === 'event' && (entity).characters) {
+            const evtChars = (entity).characters;
             const eventCharacters = Array.isArray(evtChars) ? evtChars : [];
             eventCharacters.forEach(charName => {
                 const targetId = resolveEntityId(charName, entityMap);
@@ -185,8 +185,8 @@ export function extractAllRelationships(
         }
 
         // Events -> locations
-        if (type === 'event' && (entity as Event).location) {
-            const targetId = resolveEntityId((entity as Event).location!, entityMap);
+        if (type === 'event' && (entity).location) {
+            const targetId = resolveEntityId((entity).location, entityMap);
             if (targetId && !edgeExists(edges, sourceId, targetId, 'neutral', 'occurred at')) {
                 edges.push({
                     source: sourceId,
@@ -198,8 +198,8 @@ export function extractAllRelationships(
         }
 
         // Items -> owner (character)
-        if (type === 'item' && (entity as PlotItem).currentOwner) {
-            const targetId = resolveEntityId((entity as PlotItem).currentOwner!, entityMap);
+        if (type === 'item' && (entity).currentOwner) {
+            const targetId = resolveEntityId((entity).currentOwner, entityMap);
             if (targetId && !edgeExists(edges, sourceId, targetId, 'neutral', 'owned by')) {
                 edges.push({
                     source: sourceId,
@@ -211,8 +211,8 @@ export function extractAllRelationships(
         }
 
         // Items -> location
-        if (type === 'item' && (entity as PlotItem).currentLocation) {
-            const targetId = resolveEntityId((entity as PlotItem).currentLocation!, entityMap);
+        if (type === 'item' && (entity).currentLocation) {
+            const targetId = resolveEntityId((entity).currentLocation, entityMap);
             if (targetId && !edgeExists(edges, sourceId, targetId, 'neutral', 'located at')) {
                 edges.push({
                     source: sourceId,
@@ -224,8 +224,8 @@ export function extractAllRelationships(
         }
 
         // Items -> events
-        if (type === 'item' && (entity as PlotItem).associatedEvents) {
-            const itemEvents = (entity as PlotItem).associatedEvents;
+        if (type === 'item' && (entity).associatedEvents) {
+            const itemEvents = (entity).associatedEvents;
             const associatedEvents = Array.isArray(itemEvents) ? itemEvents : [];
             associatedEvents.forEach(evtName => {
                 const targetId = resolveEntityId(evtName, entityMap);
@@ -241,8 +241,8 @@ export function extractAllRelationships(
         }
 
         // Locations -> parent location
-        if (type === 'location' && (entity as Location).parentLocation) {
-            const targetId = resolveEntityId((entity as Location).parentLocation!, entityMap);
+        if (type === 'location' && (entity).parentLocation) {
+            const targetId = resolveEntityId((entity).parentLocation, entityMap);
             if (targetId && !edgeExists(edges, sourceId, targetId, 'neutral', 'within')) {
                 edges.push({
                     source: sourceId,
@@ -254,8 +254,8 @@ export function extractAllRelationships(
         }
 
         // Character -> Owned Items
-        if (type === 'character' && (entity as Character).ownedItems) {
-            const charOwnedItems = (entity as Character).ownedItems;
+        if (type === 'character' && (entity).ownedItems) {
+            const charOwnedItems = (entity).ownedItems;
             const ownedItems = Array.isArray(charOwnedItems) ? charOwnedItems : [];
             ownedItems.forEach(itemId => {
                 const targetId = resolveEntityId(itemId, entityMap);
@@ -266,8 +266,8 @@ export function extractAllRelationships(
         }
 
         // Character -> Cultures
-        if (type === 'character' && (entity as Character).cultures) {
-            const charCultures = (entity as Character).cultures;
+        if (type === 'character' && (entity).cultures) {
+            const charCultures = (entity).cultures;
             const cultures = Array.isArray(charCultures) ? charCultures : [];
             cultures.forEach(cultureId => {
                 const targetId = resolveEntityId(cultureId, entityMap);
@@ -278,8 +278,8 @@ export function extractAllRelationships(
         }
 
         // Character -> Magic Systems
-        if (type === 'character' && (entity as Character).magicSystems) {
-            const charMagicSystems = (entity as Character).magicSystems;
+        if (type === 'character' && (entity).magicSystems) {
+            const charMagicSystems = (entity).magicSystems;
             const magicSystems = Array.isArray(charMagicSystems) ? charMagicSystems : [];
             magicSystems.forEach(magicId => {
                 const targetId = resolveEntityId(magicId, entityMap);
@@ -290,8 +290,8 @@ export function extractAllRelationships(
         }
 
         // Event -> Items
-        if (type === 'event' && (entity as Event).items) {
-            const evtItems = (entity as Event).items;
+        if (type === 'event' && (entity).items) {
+            const evtItems = (entity).items;
             const eventItems = Array.isArray(evtItems) ? evtItems : [];
             eventItems.forEach(itemId => {
                 const targetId = resolveEntityId(itemId, entityMap);
@@ -302,8 +302,8 @@ export function extractAllRelationships(
         }
 
         // Event -> Cultures
-        if (type === 'event' && (entity as Event).cultures) {
-            const evtCultures = (entity as Event).cultures;
+        if (type === 'event' && (entity).cultures) {
+            const evtCultures = (entity).cultures;
             const eventCultures = Array.isArray(evtCultures) ? evtCultures : [];
             eventCultures.forEach(cultureId => {
                 const targetId = resolveEntityId(cultureId, entityMap);
@@ -314,8 +314,8 @@ export function extractAllRelationships(
         }
 
         // Event -> Magic Systems
-        if (type === 'event' && (entity as Event).magicSystems) {
-            const evtMagicSystems = (entity as Event).magicSystems;
+        if (type === 'event' && (entity).magicSystems) {
+            const evtMagicSystems = (entity).magicSystems;
             const eventMagicSystems = Array.isArray(evtMagicSystems) ? evtMagicSystems : [];
             eventMagicSystems.forEach(magicId => {
                 const targetId = resolveEntityId(magicId, entityMap);
@@ -326,8 +326,8 @@ export function extractAllRelationships(
         }
 
         // Culture -> Linked Locations
-        if (type === 'culture' && (entity as Culture).linkedLocations) {
-            const cultLocations = (entity as Culture).linkedLocations;
+        if (type === 'culture' && (entity).linkedLocations) {
+            const cultLocations = (entity).linkedLocations;
             const cultureLocations = Array.isArray(cultLocations) ? cultLocations : [];
             cultureLocations.forEach(locId => {
                 const targetId = resolveEntityId(locId, entityMap);
@@ -338,8 +338,8 @@ export function extractAllRelationships(
         }
 
         // Culture -> Linked Characters
-        if (type === 'culture' && (entity as Culture).linkedCharacters) {
-            const cultCharacters = (entity as Culture).linkedCharacters;
+        if (type === 'culture' && (entity).linkedCharacters) {
+            const cultCharacters = (entity).linkedCharacters;
             const cultureCharacters = Array.isArray(cultCharacters) ? cultCharacters : [];
             cultureCharacters.forEach(charId => {
                 const targetId = resolveEntityId(charId, entityMap);
@@ -350,8 +350,8 @@ export function extractAllRelationships(
         }
 
         // Culture -> Linked Events
-        if (type === 'culture' && (entity as Culture).linkedEvents) {
-            const cultEvents = (entity as Culture).linkedEvents;
+        if (type === 'culture' && (entity).linkedEvents) {
+            const cultEvents = (entity).linkedEvents;
             const cultureEvents = Array.isArray(cultEvents) ? cultEvents : [];
             cultureEvents.forEach(evtId => {
                 const targetId = resolveEntityId(evtId, entityMap);
@@ -362,8 +362,8 @@ export function extractAllRelationships(
         }
 
         // Economy -> Linked Locations
-        if (type === 'economy' && (entity as Economy).linkedLocations) {
-            const econLocations = (entity as Economy).linkedLocations;
+        if (type === 'economy' && (entity).linkedLocations) {
+            const econLocations = (entity).linkedLocations;
             const economyLocations = Array.isArray(econLocations) ? econLocations : [];
             economyLocations.forEach(locId => {
                 const targetId = resolveEntityId(locId, entityMap);
@@ -374,8 +374,8 @@ export function extractAllRelationships(
         }
 
         // MagicSystem -> Linked Locations
-        if (type === 'magicsystem' && (entity as MagicSystem).linkedLocations) {
-            const magicSysLocations = (entity as MagicSystem).linkedLocations;
+        if (type === 'magicsystem' && (entity).linkedLocations) {
+            const magicSysLocations = (entity).linkedLocations;
             const magicLocations = Array.isArray(magicSysLocations) ? magicSysLocations : [];
             magicLocations.forEach(locId => {
                 const targetId = resolveEntityId(locId, entityMap);
@@ -386,8 +386,8 @@ export function extractAllRelationships(
         }
 
         // MagicSystem -> Linked Characters
-        if (type === 'magicsystem' && (entity as MagicSystem).linkedCharacters) {
-            const magicSysCharacters = (entity as MagicSystem).linkedCharacters;
+        if (type === 'magicsystem' && (entity).linkedCharacters) {
+            const magicSysCharacters = (entity).linkedCharacters;
             const magicCharacters = Array.isArray(magicSysCharacters) ? magicSysCharacters : [];
             magicCharacters.forEach(charId => {
                 const targetId = resolveEntityId(charId, entityMap);
@@ -398,8 +398,8 @@ export function extractAllRelationships(
         }
 
         // MagicSystem -> Linked Events
-        if (type === 'magicsystem' && (entity as MagicSystem).linkedEvents) {
-            const magicSysEvents = (entity as MagicSystem).linkedEvents;
+        if (type === 'magicsystem' && (entity).linkedEvents) {
+            const magicSysEvents = (entity).linkedEvents;
             const magicEvents = Array.isArray(magicSysEvents) ? magicSysEvents : [];
             magicEvents.forEach(evtId => {
                 const targetId = resolveEntityId(evtId, entityMap);
@@ -410,8 +410,8 @@ export function extractAllRelationships(
         }
 
         // MagicSystem -> Linked Items
-        if (type === 'magicsystem' && (entity as MagicSystem).linkedItems) {
-            const magicSysItems = (entity as MagicSystem).linkedItems;
+        if (type === 'magicsystem' && (entity).linkedItems) {
+            const magicSysItems = (entity).linkedItems;
             const magicItems = Array.isArray(magicSysItems) ? magicSysItems : [];
             magicItems.forEach(itemId => {
                 const targetId = resolveEntityId(itemId, entityMap);
@@ -583,7 +583,7 @@ export function getEntityShape(type: 'character' | 'location' | 'event' | 'item'
 export function migrateStringRelationshipsToTyped(relationships: string[]): TypedRelationship[] {
     return relationships.map(rel => ({
         target: rel,
-        type: 'neutral' as RelationshipType,
+        type: 'neutral',
         label: undefined
     }));
 }
@@ -599,7 +599,7 @@ export function normalizeRelationships(relationships: (string | TypedRelationshi
         if (typeof rel === 'string') {
             return {
                 target: rel,
-                type: 'neutral' as RelationshipType,
+                type: 'neutral',
                 label: undefined
             };
         }

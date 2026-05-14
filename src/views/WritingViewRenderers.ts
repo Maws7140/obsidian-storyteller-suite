@@ -53,12 +53,12 @@ export class WritingViewRenderers {
 
         let boardEl: HTMLElement | null = null;
 
-        const reloadBoard = async () => {
+        const reloadBoard = () => { void (async () => {
             const freshScenes = (await this.plugin.listScenes()).filter(filterFn);
             boardEl?.remove();
             boardEl = container.createDiv('storyteller-kanban-board');
             this._renderKanbanColumns(boardEl, freshScenes, chapters, this.kanbanGroupBy, reloadBoard);
-        };
+        })(); };
 
         groupByOptions.forEach(opt => {
             const btn = controls.createEl('button', {
@@ -69,11 +69,11 @@ export class WritingViewRenderers {
                 this.kanbanGroupBy = opt.id;
                 controls.querySelectorAll('.storyteller-kanban-group-btn').forEach(b => b.removeClass('is-active'));
                 btn.addClass('is-active');
-                reloadBoard();
+                void reloadBoard();
             };
         });
 
-        await reloadBoard();
+        reloadBoard();
     }
 
     private _renderKanbanColumns(
@@ -134,7 +134,7 @@ export class WritingViewRenderers {
                 setIcon(editBtn, 'pencil');
                 editBtn.title = `Edit chapter "${groupName}"`;
                 editBtn.onclick = () => {
-                    import('../modals/ChapterModal').then(({ ChapterModal }) => {
+                    void import('../modals/ChapterModal').then(({ ChapterModal }) => {
                         new ChapterModal(this.app, this.plugin, ch, async (updated: any) => {
                             await this.plugin.saveChapter(updated);
                             new Notice(`Chapter "${updated.name}" updated.`);
@@ -162,7 +162,7 @@ export class WritingViewRenderers {
                     body.removeClass('storyteller-kanban-drop-over');
                 }
             });
-            body.addEventListener('drop', async (e) => {
+            body.addEventListener('drop', (e) => { void (async () => {
                 e.preventDefault();
                 body.removeClass('storyteller-kanban-drop-over');
                 try {
@@ -189,7 +189,7 @@ export class WritingViewRenderers {
                     await this.plugin.saveScene(updated);
                     if (rerender) rerender();
                 } catch { /* ignore parse/save errors */ }
-            });
+            })(); });
 
             if (groupScenes.length === 0) {
                 body.createDiv({ cls: 'storyteller-kanban-empty', text: 'No scenes' });
@@ -223,7 +223,7 @@ export class WritingViewRenderers {
         title.addEventListener('click', () => {
             if (sc.filePath) {
                 const f = this.app.vault.getAbstractFileByPath(sc.filePath);
-                if (f instanceof TFile) this.app.workspace.openLinkText(sc.filePath, '', false);
+                if (f instanceof TFile) void this.app.workspace.openLinkText(sc.filePath, '', false);
             }
         });
 
@@ -243,7 +243,7 @@ export class WritingViewRenderers {
         if (sc.intensity !== undefined && sc.intensity !== null) {
             const barWrap = card.createDiv('storyteller-intensity-mini');
             const fill = barWrap.createDiv('storyteller-intensity-fill');
-            fill.style.width = `${Math.round(((Number(sc.intensity) + 10) / 20) * 100)}%`;
+            fill.setCssStyles({ width: `${Math.round(((Number(sc.intensity) + 10) / 20) * 100)}%` });
             fill.title = `Intensity: ${sc.intensity}`;
         }
 
@@ -253,7 +253,7 @@ export class WritingViewRenderers {
         setIcon(editBtn, 'pencil');
         editBtn.title = 'Edit scene';
         editBtn.onclick = () => {
-            import('../modals/SceneModal').then(({ SceneModal }) => {
+            void import('../modals/SceneModal').then(({ SceneModal }) => {
                 new SceneModal(this.app, this.plugin, sc, async (updated) => {
                     await this.plugin.saveScene(updated);
                     new Notice(`Scene "${updated.name}" updated.`);
@@ -269,7 +269,7 @@ export class WritingViewRenderers {
         openBtn.onclick = () => {
             if (sc.filePath) {
                 const f = this.app.vault.getAbstractFileByPath(sc.filePath);
-                if (f instanceof TFile) this.app.workspace.openLinkText(sc.filePath, '', false);
+                if (f instanceof TFile) void this.app.workspace.openLinkText(sc.filePath, '', false);
             }
         };
     }
@@ -301,9 +301,9 @@ export class WritingViewRenderers {
         const svgNS = 'http://www.w3.org/2000/svg';
 
         const wrapper = container.createDiv('storyteller-arc-wrapper');
-        wrapper.createEl('h4', { text: 'Intensity Arc', cls: 'storyteller-arc-title' });
+        wrapper.createEl('h4', { text: 'Intensity arc', cls: 'storyteller-arc-title' });
 
-        const svg = document.createElementNS(svgNS, 'svg') as SVGSVGElement;
+        const svg = activeDocument.createElementNS(svgNS, 'svg');
         svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
         svg.setAttribute('width', '100%');
         svg.setAttribute('height', String(H));
@@ -311,16 +311,16 @@ export class WritingViewRenderers {
         wrapper.appendChild(svg);
 
         // ── Defs: gradient ──
-        const defs = document.createElementNS(svgNS, 'defs');
-        const grad = document.createElementNS(svgNS, 'linearGradient');
+        const defs = activeDocument.createElementNS(svgNS, 'defs');
+        const grad = activeDocument.createElementNS(svgNS, 'linearGradient');
         grad.setAttribute('id', 'sts-arc-area-grad');
         grad.setAttribute('x1', '0'); grad.setAttribute('y1', '0');
         grad.setAttribute('x2', '0'); grad.setAttribute('y2', '1');
-        const stop1 = document.createElementNS(svgNS, 'stop');
+        const stop1 = activeDocument.createElementNS(svgNS, 'stop');
         stop1.setAttribute('offset', '0%');
         stop1.setAttribute('stop-color', 'var(--interactive-accent)');
         stop1.setAttribute('stop-opacity', '0.28');
-        const stop2 = document.createElementNS(svgNS, 'stop');
+        const stop2 = activeDocument.createElementNS(svgNS, 'stop');
         stop2.setAttribute('offset', '100%');
         stop2.setAttribute('stop-color', 'var(--interactive-accent)');
         stop2.setAttribute('stop-opacity', '0');
@@ -328,14 +328,14 @@ export class WritingViewRenderers {
         defs.appendChild(grad);
         svg.appendChild(defs);
 
-        const g = document.createElementNS(svgNS, 'g');
+        const g = activeDocument.createElementNS(svgNS, 'g');
         g.setAttribute('transform', `translate(${PAD.left},${PAD.top})`);
         svg.appendChild(g);
 
         const zeroY = iH / 2;
 
         const makeLine = (x1: number, y1: number, x2: number, y2: number, stroke: string, dash?: string, opacity?: number) => {
-            const l = document.createElementNS(svgNS, 'line');
+            const l = activeDocument.createElementNS(svgNS, 'line');
             l.setAttribute('x1', String(x1)); l.setAttribute('y1', String(y1));
             l.setAttribute('x2', String(x2)); l.setAttribute('y2', String(y2));
             l.setAttribute('stroke', stroke);
@@ -354,7 +354,7 @@ export class WritingViewRenderers {
             const rawX2 = n <= 1 ? iW : (lastIdx / (n - 1)) * iW + (n > 1 ? iW / (n - 1) : iW);
             const x2 = Math.min(rawX2, iW);
             if (ci % 2 === 1) {
-                const band = document.createElementNS(svgNS, 'rect');
+                const band = activeDocument.createElementNS(svgNS, 'rect');
                 band.setAttribute('x', x1.toFixed(1));
                 band.setAttribute('y', '0');
                 band.setAttribute('width', Math.max(0, x2 - x1).toFixed(1));
@@ -374,7 +374,7 @@ export class WritingViewRenderers {
         // ── Y-axis labels ──
         [10, 5, 0, -5, -10].forEach(val => {
             const y = iH / 2 - (val / 10) * (iH / 2);
-            const t = document.createElementNS(svgNS, 'text');
+            const t = activeDocument.createElementNS(svgNS, 'text');
             t.setAttribute('x', '-6'); t.setAttribute('y', String(y + 4));
             t.setAttribute('text-anchor', 'end');
             t.setAttribute('font-size', '9');
@@ -413,14 +413,14 @@ export class WritingViewRenderers {
             const first = pts[0], last = pts[pts.length - 1];
 
             // Area fill (gradient)
-            const areaPath = document.createElementNS(svgNS, 'path');
+            const areaPath = activeDocument.createElementNS(svgNS, 'path');
             areaPath.setAttribute('d', `${curvePath} L ${last.x.toFixed(1)} ${zeroY} L ${first.x.toFixed(1)} ${zeroY} Z`);
             areaPath.setAttribute('fill', 'url(#sts-arc-area-grad)');
             areaPath.setAttribute('stroke', 'none');
             g.appendChild(areaPath);
 
             // Line
-            const linePath = document.createElementNS(svgNS, 'path');
+            const linePath = activeDocument.createElementNS(svgNS, 'path');
             linePath.setAttribute('d', curvePath);
             linePath.setAttribute('fill', 'none');
             linePath.setAttribute('stroke', 'var(--interactive-accent)');
@@ -436,7 +436,7 @@ export class WritingViewRenderers {
             const firstIdx = sorted.indexOf(chScenes[0]);
             const x = n <= 1 ? iW / 2 : (firstIdx / (n - 1)) * iW;
             g.appendChild(makeLine(x, iH + 2, x, iH + 8, 'var(--text-muted)'));
-            const lbl = document.createElementNS(svgNS, 'text');
+            const lbl = activeDocument.createElementNS(svgNS, 'text');
             lbl.setAttribute('x', x.toFixed(1));
             lbl.setAttribute('y', String(iH + 20));
             lbl.setAttribute('text-anchor', 'middle');
@@ -449,7 +449,7 @@ export class WritingViewRenderers {
         // ── Data points (on top, after area fill) ──
         pts.forEach(({ x, y, sc }) => {
             const color = sc.emotion ? (EMOTION_COLORS[sc.emotion] || '#90a4ae') : 'var(--text-muted)';
-            const circle = document.createElementNS(svgNS, 'circle');
+            const circle = activeDocument.createElementNS(svgNS, 'circle');
             circle.setAttribute('cx', x.toFixed(1));
             circle.setAttribute('cy', y.toFixed(1));
             circle.setAttribute('r', '7');
@@ -460,7 +460,7 @@ export class WritingViewRenderers {
                 circle.setAttribute('filter', `drop-shadow(0 0 4px ${color})`);
             }
             circle.classList.add('storyteller-arc-dot');
-            const tip = document.createElementNS(svgNS, 'title');
+            const tip = activeDocument.createElementNS(svgNS, 'title');
             tip.textContent = sc.name +
                 (sc.intensity !== undefined ? ` · intensity ${sc.intensity}` : '') +
                 (sc.emotion ? ` · ${sc.emotion}` : '');
@@ -476,10 +476,10 @@ export class WritingViewRenderers {
             Object.entries(emotionCounts).sort(([, a], [, b]) => b - a).forEach(([emotion, count]) => {
                 const color = EMOTION_COLORS[emotion] || '#90a4ae';
                 const chip = statsRow.createSpan({ cls: 'storyteller-arc-stat-chip' });
-                chip.style.background = color + '22';
-                chip.style.color = color;
+                chip.setCssStyles({ background: color + '22' });
+                chip.setCssStyles({ color: color });
                 const dot = chip.createSpan({ cls: 'storyteller-arc-stat-dot' });
-                dot.style.background = color;
+                dot.setCssStyles({ background: color });
                 chip.createSpan({ text: `${emotion} ×${count}` });
             });
         }
@@ -489,7 +489,7 @@ export class WritingViewRenderers {
         Object.entries(EMOTION_COLORS).forEach(([emotion, color]) => {
             const item = legend.createDiv('storyteller-arc-legend-item');
             const dot = item.createSpan({ cls: 'storyteller-arc-legend-dot' });
-            dot.style.background = color;
+            dot.setCssStyles({ background: color });
             item.createSpan({ text: emotion, cls: 'storyteller-arc-legend-label' });
         });
     }
@@ -546,7 +546,7 @@ export class WritingViewRenderers {
         heat.forEach(row => row.forEach(v => { if (v > maxCount) maxCount = v; }));
 
         const wrapper = container.createDiv('storyteller-heatmap-wrapper');
-        wrapper.createEl('h4', { text: 'Character Presence', cls: 'storyteller-heatmap-title' });
+        wrapper.createEl('h4', { text: 'Character presence', cls: 'storyteller-heatmap-title' });
 
         const scroll = wrapper.createDiv('storyteller-heatmap-scroll');
         const table = scroll.createEl('table', { cls: 'storyteller-heatmap-table' });
@@ -571,8 +571,8 @@ export class WritingViewRenderers {
                 if (count > 0) {
                     const alpha = (0.18 + (count / maxCount) * 0.72).toFixed(2);
                     // Green heatmap cells
-                    td.style.background = `rgba(74,222,128,${alpha})`;
-                    td.style.color = Number(alpha) > 0.55 ? '#0a2a14' : 'rgba(255,255,255,0.9)';
+                    td.setCssStyles({ background: `rgba(74,222,128,${alpha})` });
+                    td.setCssStyles({ color: Number(alpha) > 0.55 ? '#0a2a14' : 'rgba(255,255,255,0.9)' });
                     td.title = `${charName} · ${key}: ${count} scene${count !== 1 ? 's' : ''}`;
                     td.textContent = String(count);
                 }
@@ -640,7 +640,7 @@ export class WritingViewRenderers {
         }
 
         const hdr = container.createDiv('storyteller-holes-header');
-        hdr.createEl('h4', { text: 'Plot Hole Detector', cls: 'storyteller-holes-title' });
+        hdr.createEl('h4', { text: 'Plot hole detector', cls: 'storyteller-holes-title' });
 
         if (issues.length === 0) {
             hdr.remove();

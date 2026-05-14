@@ -3,7 +3,7 @@
  * Inspired by Obsidian Longform plugin's compile system
  */
 
-import { App, TFile, Notice, normalizePath } from 'obsidian';
+import { App, TFile, Notice } from 'obsidian';
 import type StorytellerSuitePlugin from '../main';
 import type {
     StoryDraft,
@@ -15,8 +15,7 @@ import type {
     ManuscriptCompileInput,
     CompileStepKind,
     CompileStepDefinition,
-    Scene,
-    Story
+    Scene
 } from '../types';
 import { builtInSteps } from './steps';
 
@@ -78,22 +77,18 @@ export class CompileEngine {
         const defs = this.plugin.settings.customCompileSteps ?? [];
         for (const def of defs) {
             const id = `custom:${def.id}`;
-            try {
-                // Build the function once and cache it in the registry
-                // eslint-disable-next-line no-new-func
-                const fn = new Function('input', 'context', `"use strict"; return (async (input, context) => { ${def.code} })(input, context);`);
-                const stepDef: CompileStepDefinition = {
-                    id,
-                    name: def.name,
-                    description: def.description,
-                    availableKinds: [def.context],
-                    options: [],
-                    compile: async (input, context) => fn(input, context)
-                };
-                this.stepRegistry.set(id, stepDef);
-            } catch (err) {
-                console.error(`[StorytellerSuite] Failed to register custom step "${def.name}":`, err);
-            }
+            const stepDef: CompileStepDefinition = {
+                id,
+                name: def.name,
+                description: `${def.description || 'Custom compile step'} (disabled: custom JavaScript execution is not supported).`,
+                availableKinds: [def.context],
+                options: [],
+                compile: async (input) => {
+                    new Notice(`Custom compile step "${def.name}" was skipped because custom JavaScript execution is disabled.`);
+                    return input;
+                }
+            };
+            this.stepRegistry.set(id, stepDef);
         }
     }
 
@@ -311,7 +306,6 @@ export class CompileEngine {
      */
     private calculateSceneNumber(index: number, indent: number, draft: StoryDraft): string {
         // Simple implementation - can be enhanced for nested numbering
-        const numbers: number[] = [];
         let currentLevel = 0;
         let counters: number[] = [0];
 

@@ -97,7 +97,6 @@ test/
 # Test-related scripts (generated/runtime)
 debug-test.js
 test-parsing.js
-fix-expect-webdriverio.js
 scripts/generate-test-vault.mjs
 scripts/run-e2e-with-7zip.ps1
 scripts/add-7zip-to-path.ps1

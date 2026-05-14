@@ -1,5 +1,5 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
-import { App, Modal, Setting, TextComponent, TextAreaComponent } from 'obsidian';
+ 
+import { App, ButtonComponent, Modal, Setting, TextComponent, TextAreaComponent } from 'obsidian';
 import { Story } from '../types';
 import { t } from '../i18n/strings';
 import type StorytellerSuitePlugin from '../main';
@@ -48,7 +48,7 @@ export class EditStoryModal extends Modal {
                 text.inputEl.addEventListener('keydown', (e: KeyboardEvent) => {
                     if (e.key === 'Enter') {
                         e.preventDefault();
-                        this.trySubmit();
+                        void this.trySubmit();
                     }
                 });
                 text.inputEl.focus();
@@ -74,11 +74,11 @@ export class EditStoryModal extends Modal {
 
         // Action buttons
         const buttonSetting = new Setting(contentEl);
-        buttonSetting.addButton((btn: any) =>
+        buttonSetting.addButton((btn: ButtonComponent) =>
             btn.setButtonText(t('cancel'))
                 .onClick(() => this.close())
         );
-        buttonSetting.addButton((btn: any) =>
+        buttonSetting.addButton((btn: ButtonComponent) =>
             btn.setButtonText(t('saveChanges'))
                 .setCta()
                 .onClick(() => this.trySubmit())
@@ -91,7 +91,7 @@ export class EditStoryModal extends Modal {
 
     private showError(msg: string) {
         this.errorEl.textContent = msg;
-        this.errorEl.style.color = 'var(--text-error, red)';
+        this.errorEl.setCssStyles({ color: 'var(--text-error, red)' });
     }
 
     private async trySubmit() {
@@ -108,7 +108,7 @@ export class EditStoryModal extends Modal {
         try {
             await this.onSubmit(this.name, this.description);
             this.close();
-        } catch (e) {
+        } catch {
             this.showError('Failed to update story.');
         }
     }

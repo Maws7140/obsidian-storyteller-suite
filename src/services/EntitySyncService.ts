@@ -16,18 +16,24 @@
  */
 
 import type StorytellerSuitePlugin from '../main';
-import type { Character, Location, Event, PlotItem, Scene, EntityRef, Culture, Economy, MagicSystem, TypedRelationship } from '../types';
+import type { Character, Location, Event, PlotItem, Scene, EntityRef, Culture, Economy, MagicSystem, TypedRelationship, Chapter, CompendiumEntry } from '../types';
+
+type EntityType = 'character' | 'location' | 'event' | 'item' | 'scene' | 'culture' | 'economy' | 'magicsystem' | 'chapter' | 'compendiumentry';
+type SyncEntityBase = { id?: string; name: string };
+type SyncEntity = (Character | Location | Event | PlotItem | Scene | Culture | Economy | MagicSystem | Chapter | CompendiumEntry) & Record<string, unknown>;
+type SyncValue = string | number | boolean | null | undefined | EntityRef | TypedRelationship | Record<string, unknown>;
+type RelationshipTransform = (value: never, sourceEntity: never) => SyncValue;
 
 /**
  * Relationship mapping configuration
  */
 interface RelationshipMapping {
     /** Source entity type */
-    sourceType: 'character' | 'location' | 'event' | 'item' | 'scene' | 'culture' | 'economy' | 'magicsystem' | 'chapter' | 'compendiumentry';
+    sourceType: EntityType;
     /** Field name on source entity */
     sourceField: string;
     /** Target entity type */
-    targetType: 'character' | 'location' | 'event' | 'item' | 'scene' | 'culture' | 'economy' | 'magicsystem' | 'chapter' | 'compendiumentry';
+    targetType: EntityType;
     /** Field name on target entity */
     targetField: string;
     /** Whether this relationship is bidirectional */
@@ -35,9 +41,9 @@ interface RelationshipMapping {
     /** Whether the target field is an array (for array handling) */
     isArray?: boolean;
     /** Transform function to convert source value to target format */
-    transform?: (value: any, sourceEntity: any) => any;
+    transform?: RelationshipTransform;
     /** Reverse transform for bidirectional relationships */
-    reverseTransform?: (value: any, targetEntity: any) => any;
+    reverseTransform?: RelationshipTransform;
 }
 
 /**
@@ -341,10 +347,6 @@ export class EntitySyncService {
             isArray: true,
             transform: (targetCharRef: string | TypedRelationship, sourceChar: Character) => {
                 // Extract target character ID/name from relationship
-                const targetId = typeof targetCharRef === 'string' 
-                    ? targetCharRef 
-                    : targetCharRef.target;
-                
                 // Return the source character's name/ID to add to target's relationships
                 // We'll add it as a simple string for now (can be enhanced to preserve relationship type)
                 return sourceChar.name || sourceChar.id || '';
@@ -587,7 +589,7 @@ export class EntitySyncService {
         newEntity: any,
         oldEntity?: any
     ): Promise<void> {
-        const entityId = (newEntity as any).id || (newEntity as any).name;
+        const entityId = (newEntity).id || (newEntity).name;
         const syncKey = `${entityType}:${entityId}`;
 
         // Prevent circular updates
@@ -651,7 +653,7 @@ export class EntitySyncService {
 
         // Handle array fields (e.g., event.characters)
         if (Array.isArray(sourceValue)) {
-            const newArray = (sourceValue as any[]) || [];
+            const newArray = (sourceValue) || [];
             const oldArray = (oldValue as any[]) || [];
 
             // Special handling for character relationships which can contain TypedRelationship objects
@@ -792,8 +794,8 @@ export class EntitySyncService {
                 const childLocation = await this.getEntity('location', childId);
                 if (childLocation && mapping.reverseTransform) {
                     const parentIdToSet = mapping.reverseTransform(childId, newLocation);
-                    if (parentIdToSet && (childLocation as any).parentLocationId !== parentIdToSet) {
-                        (childLocation as any).parentLocationId = parentIdToSet;
+                    if (parentIdToSet && (childLocation).parentLocationId !== parentIdToSet) {
+                        (childLocation).parentLocationId = parentIdToSet;
                         await this.saveEntity('location', childLocation);
                     }
                 }
@@ -806,8 +808,8 @@ export class EntitySyncService {
         for (const childId of removed) {
             try {
                 const childLocation = await this.getEntity('location', childId);
-                if (childLocation && (childLocation as any).parentLocationId === parentId) {
-                    (childLocation as any).parentLocationId = undefined;
+                if (childLocation && (childLocation).parentLocationId === parentId) {
+                    (childLocation).parentLocationId = undefined;
                     await this.saveEntity('location', childLocation);
                 }
             } catch (error) {
@@ -864,21 +866,21 @@ export class EntitySyncService {
                 if (sourceEntity && mapping.reverseTransform) {
                     const valueToSet = mapping.reverseTransform(itemId, newTarget);
                     
-                    if (!Array.isArray((sourceEntity as any)[mapping.sourceField])) {
+                    if (!Array.isArray((sourceEntity)[mapping.sourceField])) {
                         if (mapping.isArray) {
                             // Field should be an array but is undefined/null — initialize it
-                            (sourceEntity as any)[mapping.sourceField] = [];
+                            (sourceEntity)[mapping.sourceField] = [];
                         } else {
                             // Scalar field — set directly
-                            if ((sourceEntity as any)[mapping.sourceField] !== valueToSet) {
-                                (sourceEntity as any)[mapping.sourceField] = valueToSet;
+                            if ((sourceEntity)[mapping.sourceField] !== valueToSet) {
+                                (sourceEntity)[mapping.sourceField] = valueToSet;
                                 await this.saveEntity(mapping.sourceType, sourceEntity);
                             }
                             continue;
                         }
                     }
                     // Add to array
-                    const arr = (sourceEntity as any)[mapping.sourceField] as any[];
+                    const arr = (sourceEntity)[mapping.sourceField] as any[];
                     const exists = typeof valueToSet === 'string'
                         ? arr.some(x => typeof x === 'string' && x.toLowerCase() === valueToSet.toLowerCase())
                         : arr.includes(valueToSet);
@@ -899,9 +901,9 @@ export class EntitySyncService {
                 if (sourceEntity && mapping.reverseTransform) {
                     const valueToRemove = mapping.reverseTransform(itemId, newTarget);
                     
-                    if (Array.isArray((sourceEntity as any)[mapping.sourceField])) {
+                    if (Array.isArray((sourceEntity)[mapping.sourceField])) {
                         // Remove from array
-                        const arr = (sourceEntity as any)[mapping.sourceField] as any[];
+                        const arr = (sourceEntity)[mapping.sourceField] as any[];
                         const index = arr.findIndex(x => {
                             if (typeof x === 'string' && typeof valueToRemove === 'string') {
                                 return x.toLowerCase() === valueToRemove.toLowerCase();
@@ -915,13 +917,13 @@ export class EntitySyncService {
                         }
                     } else {
                         // Clear scalar (only if it matches what we expect)
-                        const currentValue = (sourceEntity as any)[mapping.sourceField];
+                        const currentValue = (sourceEntity)[mapping.sourceField];
                         const isMatch = typeof currentValue === 'string' && typeof valueToRemove === 'string'
                              ? currentValue.toLowerCase() === valueToRemove.toLowerCase()
                              : currentValue === valueToRemove;
 
                         if (isMatch) {
-                            (sourceEntity as any)[mapping.sourceField] = undefined;
+                            (sourceEntity)[mapping.sourceField] = undefined;
                             await this.saveEntity(mapping.sourceType, sourceEntity);
                         }
                     }
@@ -981,14 +983,14 @@ export class EntitySyncService {
                 const value = mapping.reverseTransform(entityRef, location);
                 if (value !== undefined && value !== null) {
                     // For array fields, ensure array exists and add if not present
-                    if (Array.isArray((sourceEntity as any)[mapping.sourceField])) {
-                        const array = (sourceEntity as any)[mapping.sourceField] as any[];
+                    if (Array.isArray((sourceEntity)[mapping.sourceField])) {
+                        const array = (sourceEntity)[mapping.sourceField] as any[];
                         if (!array.includes(value)) {
                             array.push(value);
                             await this.saveEntity(mapping.sourceType, sourceEntity);
                         }
                     } else {
-                        (sourceEntity as any)[mapping.sourceField] = value;
+                        (sourceEntity)[mapping.sourceField] = value;
                         await this.saveEntity(mapping.sourceType, sourceEntity);
                     }
                 }
@@ -1014,8 +1016,8 @@ export class EntitySyncService {
             }
 
             // For array fields, remove the value instead of clearing the whole field
-            if (Array.isArray((sourceEntity as any)[mapping.sourceField])) {
-                const array = (sourceEntity as any)[mapping.sourceField] as any[];
+            if (Array.isArray((sourceEntity)[mapping.sourceField])) {
+                const array = (sourceEntity)[mapping.sourceField] as any[];
                 // Get the location name to remove from the array
                 // For scenes, we need the location name (not ID) to remove from linkedLocations
                 let valueToRemove: string;
@@ -1046,7 +1048,7 @@ export class EntitySyncService {
                     await this.saveEntity(mapping.sourceType, sourceEntity);
                 }
             } else {
-                (sourceEntity as any)[mapping.sourceField] = undefined;
+                (sourceEntity)[mapping.sourceField] = undefined;
                 await this.saveEntity(mapping.sourceType, sourceEntity);
             }
         } catch (error) {
@@ -1096,7 +1098,7 @@ export class EntitySyncService {
             if (mapping.targetField === 'entityRefs') {
                 // Remove from entityRefs array
                 const entityRefs = (targetEntity.entityRefs || []) as EntityRef[];
-                const entityId = (sourceEntity as any).id || (sourceEntity as any).name;
+                const entityId = (sourceEntity).id || (sourceEntity).name;
                 const updatedRefs = entityRefs.filter(
                     (ref: EntityRef) => ref.entityId !== entityId
                 );
@@ -1107,9 +1109,9 @@ export class EntitySyncService {
                 if (mapping.targetType === 'location') {
                     await this.removeEntityRefFromParentsIfNotInChildren(targetEntity, entityId);
                 }
-            } else if (Array.isArray((targetEntity as any)[mapping.targetField])) {
+            } else if (Array.isArray((targetEntity)[mapping.targetField])) {
                 // Remove from array field (e.g., character.events)
-                const array = (targetEntity as any)[mapping.targetField] as any[];
+                const array = (targetEntity)[mapping.targetField] as any[];
                 const valueToRemove = mapping.transform 
                     ? mapping.transform(oldValue, sourceEntity)
                     : sourceEntity.name || sourceEntity.id;
@@ -1182,7 +1184,7 @@ export class EntitySyncService {
                 return;
             }
 
-            const parentRefs = ((parentLocation as any).entityRefs || []) as EntityRef[];
+            const parentRefs = ((parentLocation).entityRefs || []) as EntityRef[];
             const entityId = entityRef.entityId;
             
             // Check if entity already exists in parent
@@ -1193,7 +1195,7 @@ export class EntitySyncService {
                     ...entityRef,
                     // Keep the same relationship type, or could add a note that it's inherited
                 });
-                (parentLocation as any).entityRefs = parentRefs;
+                (parentLocation).entityRefs = parentRefs;
                 await this.saveEntity('location', parentLocation);
                 
                 // Recursively propagate to grandparent, etc.
@@ -1219,14 +1221,14 @@ export class EntitySyncService {
             }
 
             // Check if entity exists in any child locations of the parent
-            const childLocationIds = ((parentLocation as any).childLocationIds || []) as string[];
+            const childLocationIds = ((parentLocation).childLocationIds || []) as string[];
             let entityExistsInChildren = false;
 
             for (const childId of childLocationIds) {
                 try {
                     const childLocation = await this.getEntity('location', childId);
                     if (childLocation) {
-                        const childRefs = ((childLocation as any).entityRefs || []) as EntityRef[];
+                        const childRefs = ((childLocation).entityRefs || []) as EntityRef[];
                         if (childRefs.some((ref: EntityRef) => ref.entityId === entityId)) {
                             entityExistsInChildren = true;
                             break;
@@ -1240,11 +1242,11 @@ export class EntitySyncService {
 
             // Only remove from parent if entity doesn't exist in any child
             if (!entityExistsInChildren) {
-                const parentRefs = ((parentLocation as any).entityRefs || []) as EntityRef[];
+                const parentRefs = ((parentLocation).entityRefs || []) as EntityRef[];
                 const updatedRefs = parentRefs.filter((ref: EntityRef) => ref.entityId !== entityId);
                 
                 if (updatedRefs.length !== parentRefs.length) {
-                    (parentLocation as any).entityRefs = updatedRefs;
+                    (parentLocation).entityRefs = updatedRefs;
                     await this.saveEntity('location', parentLocation);
                     
                     // Recursively check and remove from grandparent, etc.
@@ -1291,7 +1293,7 @@ export class EntitySyncService {
             if (mapping.targetField === 'entityRefs') {
                 // Add to entityRefs array
                 const entityRefs = (targetEntity.entityRefs || []) as EntityRef[];
-                const entityId = (sourceEntity as any).id || (sourceEntity as any).name;
+                const entityId = (sourceEntity).id || (sourceEntity).name;
                 
                 // Check if already exists
                 const existingRef = entityRefs.find((ref: EntityRef) => ref.entityId === entityId);
@@ -1317,9 +1319,9 @@ export class EntitySyncService {
                         }
                     }
                 }
-            } else if (Array.isArray((targetEntity as any)[mapping.targetField])) {
+            } else if (Array.isArray((targetEntity)[mapping.targetField])) {
                 // Add to array field (e.g., character.events)
-                const array = (targetEntity as any)[mapping.targetField] as any[];
+                const array = (targetEntity)[mapping.targetField] as any[];
                 const valueToAdd = mapping.transform 
                     ? mapping.transform(newValue, sourceEntity)
                     : sourceEntity.name || sourceEntity.id;
@@ -1348,15 +1350,15 @@ export class EntitySyncService {
                         await this.saveEntity(mapping.targetType, targetEntity);
                     }
                 }
-            } else if ((targetEntity as any)[mapping.targetField] === undefined) {
+            } else if ((targetEntity)[mapping.targetField] === undefined) {
                 // Field doesn't exist yet - initialize as array if it should be an array
                 if (mapping.isArray || mapping.targetField === 'events') {
-                    (targetEntity as any)[mapping.targetField] = [];
+                    (targetEntity)[mapping.targetField] = [];
                     const valueToAdd = mapping.transform 
                         ? mapping.transform(newValue, sourceEntity)
                         : sourceEntity.name || sourceEntity.id;
                     if (valueToAdd) {
-                        (targetEntity as any)[mapping.targetField].push(valueToAdd);
+                        (targetEntity)[mapping.targetField].push(valueToAdd);
                         await this.saveEntity(mapping.targetType, targetEntity);
                     }
                 }
@@ -1415,15 +1417,15 @@ export class EntitySyncService {
             }
 
             let found = entities.find(e => {
-                const id = (e as any).id;
-                const name = (e as any).name;
+                const id = (e).id;
+                const name = (e).name;
                 return id === idOrName || name === idOrName;
             });
             if (found) return found;
 
             const lowerSearch = idOrName.toLowerCase().trim();
             found = entities.find(e => {
-                const name = (e as any).name;
+                const name = (e).name;
                 return name && name.toLowerCase().trim() === lowerSearch;
             });
             return found || null;
@@ -1521,7 +1523,7 @@ export class EntitySyncService {
         
         try {
             const deletedEntity = await this.getEntity(entityType, entityId);
-            const deletedName = ((deletedEntity as any)?.name as string | undefined) ?? knownDeletedName;
+            const deletedName = ((deletedEntity)?.name as string | undefined) ?? knownDeletedName;
 
             // Find all mappings where this entity type is a target or source
             const inboundMappings = this.relationshipMappings.filter(m => m.targetType === entityType);
@@ -1643,9 +1645,9 @@ export class EntitySyncService {
             try {
                 const deletedEntity = await this.getEntity(deletedType, deletedId);
                 if (deletedEntity) {
-                    deletedName = (deletedEntity as any)?.name;
+                    deletedName = (deletedEntity)?.name;
                 }
-            } catch (e) {
+            } catch {
                 // Entity already deleted, can't get name - that's okay
             }
 
@@ -1653,16 +1655,16 @@ export class EntitySyncService {
                 let needsUpdate = false;
 
                 if (mapping.sourceField === 'currentLocationId' || mapping.sourceField === 'currentLocation' || mapping.sourceField === 'location') {
-                    const value = (entity as any)[mapping.sourceField];
+                    const value = (entity)[mapping.sourceField];
                     // Match by ID or name (case-insensitive)
                     if (value === deletedId || 
                         (deletedName && typeof value === 'string' && 
                          value.toLowerCase().trim() === deletedName.toLowerCase().trim())) {
-                        (entity as any)[mapping.sourceField] = undefined;
+                        (entity)[mapping.sourceField] = undefined;
                         needsUpdate = true;
                     }
-                } else if (Array.isArray((entity as any)[mapping.sourceField])) {
-                    const array = (entity as any)[mapping.sourceField] as any[];
+                } else if (Array.isArray((entity)[mapping.sourceField])) {
+                    const array = (entity)[mapping.sourceField] as any[];
                     const isRelationshipsField = mapping.sourceField === 'relationships' && mapping.sourceType === 'character';
                     
                     // Try exact match first
@@ -1768,9 +1770,9 @@ export class EntitySyncService {
                             (previousName && refName === previousName)
                         ) {
                             if (replacement && typeof replacement === 'object') {
-                                const nextId = (replacement as any).entityId ?? ref.entityId;
-                                const nextName = (replacement as any).entityName ?? ref.entityName;
-                                const nextRelationship = (replacement as any).relationship ?? ref.relationship;
+                                const nextId = (replacement).entityId ?? ref.entityId;
+                                const nextName = (replacement).entityName ?? ref.entityName;
+                                const nextRelationship = (replacement).relationship ?? ref.relationship;
                                 if (ref.entityId !== nextId || ref.entityName !== nextName || ref.relationship !== nextRelationship) {
                                     ref.entityId = nextId;
                                     ref.entityName = nextName;
@@ -1783,8 +1785,8 @@ export class EntitySyncService {
                             }
                         }
                     }
-                } else if (Array.isArray((targetEntity as any)[mapping.targetField]) && typeof replacement === 'string' && replacement) {
-                    const original = (targetEntity as any)[mapping.targetField] as any[];
+                } else if (Array.isArray((targetEntity)[mapping.targetField]) && typeof replacement === 'string' && replacement) {
+                    const original = (targetEntity)[mapping.targetField] as any[];
                     let changed = false;
                     const updated = original.map((value: any) => {
                         if (typeof value !== 'string') return value;
@@ -1802,11 +1804,11 @@ export class EntitySyncService {
                         return value;
                     });
                     if (changed) {
-                        (targetEntity as any)[mapping.targetField] = updated;
+                        (targetEntity)[mapping.targetField] = updated;
                         needsUpdate = true;
                     }
-                } else if (typeof (targetEntity as any)[mapping.targetField] === 'string' && typeof replacement === 'string' && replacement) {
-                    const currentValue = (targetEntity as any)[mapping.targetField] as string;
+                } else if (typeof (targetEntity)[mapping.targetField] === 'string' && typeof replacement === 'string' && replacement) {
+                    const currentValue = (targetEntity)[mapping.targetField] as string;
                     const normalized = this.normalizeCompareValue(currentValue);
                     if (
                         normalized === currentId ||
@@ -1814,7 +1816,7 @@ export class EntitySyncService {
                         (previousName && normalized === previousName)
                     ) {
                         if (currentValue !== replacement) {
-                            (targetEntity as any)[mapping.targetField] = replacement;
+                            (targetEntity)[mapping.targetField] = replacement;
                             needsUpdate = true;
                         }
                     }
@@ -1885,8 +1887,8 @@ export class EntitySyncService {
                         targetEntity.entityRefs = updatedRefs;
                         needsUpdate = true;
                     }
-                } else if (Array.isArray((targetEntity as any)[mapping.targetField])) {
-                    const original = (targetEntity as any)[mapping.targetField] as any[];
+                } else if (Array.isArray((targetEntity)[mapping.targetField])) {
+                    const original = (targetEntity)[mapping.targetField] as any[];
                     const updated = original.filter((value: any) => {
                         if (typeof value === 'string') {
                             const normalized = this.normalizeCompareValue(value);
@@ -1895,14 +1897,14 @@ export class EntitySyncService {
                         return true;
                     });
                     if (updated.length !== original.length) {
-                        (targetEntity as any)[mapping.targetField] = updated;
+                        (targetEntity)[mapping.targetField] = updated;
                         needsUpdate = true;
                     }
                 } else {
-                    const value = (targetEntity as any)[mapping.targetField];
+                    const value = (targetEntity)[mapping.targetField];
                     const normalized = this.normalizeCompareValue(value);
                     if (normalized === deletedIdKey || (deletedNameKey && normalized === deletedNameKey)) {
-                        (targetEntity as any)[mapping.targetField] = undefined;
+                        (targetEntity)[mapping.targetField] = undefined;
                         needsUpdate = true;
                     }
                 }

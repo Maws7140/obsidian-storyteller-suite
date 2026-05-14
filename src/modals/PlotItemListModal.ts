@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
+ 
 
 import { App, Modal, Setting, Notice, ButtonComponent, TFile, setIcon } from 'obsidian';
 import { t } from '../i18n/strings';
@@ -82,7 +82,7 @@ export class PlotItemListModal extends Modal {
                 const starIcon = titleEl.createSpan();
                 setIcon(starIcon, 'star');
                 titleEl.appendText(` ${item.name}`);
-                titleEl.style.color = 'var(--text-accent)';
+                titleEl.setCssStyles({ color: 'var(--text-accent)' });
             }
 
             if (item.description) {
@@ -138,7 +138,7 @@ export class PlotItemListModal extends Modal {
                     }
                     const file = this.app.vault.getAbstractFileByPath(item.filePath);
                     if (file instanceof TFile) {
-                        this.app.workspace.getLeaf(false).openFile(file);
+                        void this.app.workspace.getLeaf(false).openFile(file);
                         this.close();
                     } else {
                         new Notice(t('workspaceLeafRevealError'));

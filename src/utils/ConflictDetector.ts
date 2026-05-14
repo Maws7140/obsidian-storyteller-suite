@@ -1,5 +1,5 @@
 import { DateTime } from 'luxon';
-import type { Event, TimelineConflict, Character, ConflictEntity } from '../types';
+import type { Event, TimelineConflict, ConflictEntity } from '../types';
 import { parseEventDate } from './DateParsing';
 
 /**
@@ -371,7 +371,7 @@ export class ConflictDetector {
                 if (!end) end = start.plus({ hours: 1 });
             }
             
-            return { start, end: end! };
+            return { start, end: end };
         };
 
         const range1 = normalizeRange(date1);
@@ -505,7 +505,7 @@ export class ConflictDetector {
             return {
                 id: c.id,
                 type: conflictType,
-                severity: severity as 'minor' | 'moderate' | 'critical',
+                severity: severity,
                 entities: entities,
                 events: c.events.map(e => e.id || e.name),
                 description: c.message,

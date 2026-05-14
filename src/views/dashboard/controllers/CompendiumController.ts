@@ -8,7 +8,7 @@ export const compendiumController: DashboardTabController = {
             context.setCurrentFilter(filter);
             await renderCompendiumList(container, context);
         }, () => {
-            import('../../../modals/CompendiumEntryModal').then(({ CompendiumEntryModal }) => {
+            void import('../../../modals/CompendiumEntryModal').then(({ CompendiumEntryModal }) => {
                 new CompendiumEntryModal(context.app, context.plugin, null, async (entry) => {
                     await context.mutationRunner.runCreate({
                         action: async () => {
@@ -94,7 +94,7 @@ async function renderCompendiumList(container: HTMLElement, context: DashboardCo
 
         const actionsEl = itemEl.createDiv('storyteller-list-item-actions');
         context.addEditButton(actionsEl, () => {
-            import('../../../modals/CompendiumEntryModal').then(({ CompendiumEntryModal }) => {
+            void import('../../../modals/CompendiumEntryModal').then(({ CompendiumEntryModal }) => {
                 new CompendiumEntryModal(context.app, context.plugin, entry, async (updated) => {
                     await context.mutationRunner.runUpdate({
                         action: async () => {

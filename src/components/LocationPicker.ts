@@ -26,7 +26,7 @@ export class LocationPicker {
         this.currentLocationId = currentLocationId;
         this.locationService = new LocationService(plugin);
         
-        this.render();
+        void this.render();
     }
 
     private async render(): Promise<void> {
@@ -40,30 +40,26 @@ export class LocationPicker {
         if (this.currentLocationId) {
             try {
                 const path = await this.locationService.getLocationPath(this.currentLocationId);
-                selectionDisplay.innerHTML = `
-                    <span class="selection-label">Current:</span>
-                    <span class="selection-path">${path.map(l => l.name).join(' › ')}</span>
-                    <button class="clear-btn">×</button>
-                `;
-                selectionDisplay.querySelector('.clear-btn')!.addEventListener('click', () => {
+                selectionDisplay.createSpan({ cls: 'selection-label', text: 'Current:' });
+                selectionDisplay.createSpan({ cls: 'selection-path', text: path.map(l => l.name).join(' > ') });
+                const clearButton = selectionDisplay.createEl('button', { cls: 'clear-btn', text: 'X' });
+                clearButton.addEventListener('click', () => {
                     this.onSelect('');
                     this.currentLocationId = undefined;
-                    this.render();
+                    void this.render();
                 });
             } catch (error) {
                 console.error('Error getting location path:', error);
-                selectionDisplay.innerHTML = `<span class="selection-empty">Invalid location</span>`;
+                selectionDisplay.createSpan({ cls: 'selection-empty', text: 'Invalid location' });
             }
         } else {
-            selectionDisplay.innerHTML = `<span class="selection-empty">No location set</span>`;
+            selectionDisplay.createSpan({ cls: 'selection-empty', text: 'No location set' });
         }
         
         // Dropdown trigger
         const dropdownTrigger = this.container.createDiv('dropdown-trigger');
-        dropdownTrigger.innerHTML = `
-            <span>Select Location</span>
-            <span class="dropdown-arrow">▼</span>
-        `;
+        dropdownTrigger.createSpan({ text: 'Select Location' });
+        dropdownTrigger.createSpan({ cls: 'dropdown-arrow', text: 'v' });
         
         // Dropdown content (hidden by default)
         const dropdownContent = this.container.createDiv('dropdown-content hidden');
@@ -95,7 +91,7 @@ export class LocationPicker {
             items.forEach((item: HTMLElement) => {
                 const name = item.dataset.name?.toLowerCase() || '';
                 const match = name.includes(query);
-                item.style.display = match || query === '' ? '' : 'none';
+                item.setCssStyles({ display: match || query === '' ? '' : 'none' });
             });
         });
     }
@@ -109,21 +105,19 @@ export class LocationPicker {
         for (const location of locations) {
             const item = container.createDiv({ cls: 'tree-item' });
             item.dataset.name = location.name;
-            item.style.paddingLeft = `${depth * 16}px`;
+            item.setCssStyles({ paddingLeft: `${depth * 16}px` });
             
             const hasChildren = location.childLocationIds && location.childLocationIds.length > 0;
             
-            item.innerHTML = `
-                ${hasChildren ? '<span class="expand-icon">▶</span>' : '<span class="expand-spacer"></span>'}
-                <span class="location-icon">${this.getLocationIcon(location.type || location.locationType || 'custom')}</span>
-                <span class="location-name">${location.name}</span>
-            `;
+            item.createSpan({ cls: hasChildren ? 'expand-icon' : 'expand-spacer', text: hasChildren ? '>' : '' });
+            item.createSpan({ cls: 'location-icon', text: this.getLocationIcon(location.type || location.locationType || 'custom') });
+            item.createSpan({ cls: 'location-name', text: location.name });
             
             item.addEventListener('click', (e) => {
                 e.stopPropagation();
                 this.onSelect(location.id || location.name);
                 this.currentLocationId = location.id || location.name;
-                this.render();
+                void this.render();
             });
             
             // Child container (collapsed by default)
@@ -139,7 +133,7 @@ export class LocationPicker {
                     expandIcon.addEventListener('click', (e) => {
                         e.stopPropagation();
                         childContainer.classList.toggle('hidden');
-                        expandIcon.textContent = childContainer.classList.contains('hidden') ? '▶' : '▼';
+                        expandIcon.textContent = childContainer.classList.contains('hidden') ? '>' : 'v';
                     });
                 }
             }
@@ -165,7 +159,7 @@ export class LocationPicker {
      */
     updateSelection(locationId: string | undefined): void {
         this.currentLocationId = locationId;
-        this.render();
+        void this.render();
     }
 }
 

@@ -494,7 +494,7 @@ export class ImportManager {
                         if (existing && existing.filePath) {
                             const fileToDelete = this.plugin.app.vault.getAbstractFileByPath(existing.filePath);
                             if (fileToDelete) {
-                                await this.plugin.app.vault.delete(fileToDelete);
+                                await this.plugin.app.fileManager.trashFile(fileToDelete);
                             }
                         }
                     }
@@ -535,7 +535,7 @@ export class ImportManager {
 
                 // Add custom metadata for draftVersion if using custom-metadata strategy
                 if (config.draftStrategy === 'custom-metadata' && config.draftVersion) {
-                    (chapter as any).draftVersion = config.draftVersion;
+                    chapter.draftVersion = config.draftVersion;
                 }
 
                 try {
@@ -627,7 +627,7 @@ export class ImportManager {
 
                                 // Add custom metadata for draftVersion if using custom-metadata strategy
                                 if (config.draftStrategy === 'custom-metadata' && config.draftVersion) {
-                                    (scene as any).draftVersion = config.draftVersion;
+                                    scene.draftVersion = config.draftVersion;
                                 }
 
                                 try {
@@ -702,7 +702,7 @@ export class ImportManager {
 
                             // Add custom metadata for draftVersion if using custom-metadata strategy
                             if (config.draftStrategy === 'custom-metadata' && config.draftVersion) {
-                                (scene as any).draftVersion = config.draftVersion;
+                                scene.draftVersion = config.draftVersion;
                             }
 
                             try {

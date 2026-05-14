@@ -3,6 +3,11 @@ import StorytellerSuitePlugin from '../main';
 import { Group } from '../types';
 import { t } from '../i18n/strings';
 
+interface QueryRefreshableSuggestModal {
+  setQuery?: (query: string) => void;
+  onInputChanged?: () => void;
+}
+
 export class GroupSuggestModal extends FuzzySuggestModal<Group> {
   private readonly plugin: StorytellerSuitePlugin;
   private readonly onChoose: (group: Group) => void;
@@ -17,17 +22,18 @@ export class GroupSuggestModal extends FuzzySuggestModal<Group> {
 
   // Load groups when opened to ensure freshness
   onOpen(): void {
-    super.onOpen();
+    void super.onOpen();
     try {
       this.groups = this.plugin.getGroups();
-    } catch (e) {
+    } catch {
       this.groups = [];
     }
     // Force initial render of suggestions
-    setTimeout(() => {
-      try { (this as any).setQuery?.(''); } catch {}
-      try { this.inputEl?.dispatchEvent(new window.Event('input')); } catch {}
-      try { (this as any).onInputChanged?.(); } catch {}
+    window.setTimeout(() => {
+      const modal = this as unknown as QueryRefreshableSuggestModal;
+      try { modal.setQuery?.(''); } catch { /* Ignore best-effort refresh errors. */ }
+      try { this.inputEl?.dispatchEvent(new window.Event('input')); } catch { /* Ignore best-effort refresh errors. */ }
+      try { modal.onInputChanged?.(); } catch { /* Ignore best-effort refresh errors. */ }
     }, 0);
   }
 
@@ -42,7 +48,7 @@ export class GroupSuggestModal extends FuzzySuggestModal<Group> {
     return items
       .map(g => {
         const match = fuzzy(this.getItemText(g));
-        return match ? ({ item: g, match } as FuzzyMatch<Group>) : null;
+        return match ? ({ item: g, match }) : null;
       })
       .filter((fm): fm is FuzzyMatch<Group> => !!fm);
   }

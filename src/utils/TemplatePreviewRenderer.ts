@@ -3,6 +3,14 @@
  * Renders note previews showing YAML frontmatter + markdown content
  */
 
+import { stringifyYaml } from 'obsidian';
+
+function asRecord(value: unknown): Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value)
+        ? value as Record<string, unknown>
+        : {};
+}
+
 /**
  * Render a complete note preview from YAML and markdown content
  * @param yamlContent YAML frontmatter content (without --- markers)
@@ -35,20 +43,27 @@ export function renderNotePreview(
  * Convert entity object to YAML string
  * Handles both new format (yamlContent) and old format (object fields)
  */
-export function entityToYaml(entity: any): string {
+export function entityToYaml(entity: unknown): string {
+    const entityRecord = asRecord(entity);
+
     // If yamlContent exists, use it directly
-    if (entity.yamlContent && typeof entity.yamlContent === 'string') {
-        return entity.yamlContent;
+    if (typeof entityRecord.yamlContent === 'string') {
+        return entityRecord.yamlContent;
     }
     
     // Otherwise, build YAML from entity fields
-    const { templateId, sectionContent, customYamlFields, yamlContent, markdownContent, ...fields } = entity;
+    const { customYamlFields, ...fields } = entityRecord;
+    delete fields.templateId;
+    delete fields.sectionContent;
+    delete fields.yamlContent;
+    delete fields.markdownContent;
     
     // Merge custom YAML fields
-    const allFields = { ...fields, ...(customYamlFields || {}) };
+    const customFieldsRecord = asRecord(customYamlFields);
+    const allFields = { ...fields, ...customFieldsRecord };
     
     // Remove undefined/null values and internal fields
-    const cleanFields: Record<string, any> = {};
+    const cleanFields: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(allFields)) {
         // Skip internal template fields
         if (key === 'templateId' || key === 'yamlContent' || key === 'markdownContent') {
@@ -69,7 +84,6 @@ export function entityToYaml(entity: any): string {
     
     // Use Obsidian's stringifyYaml if available
     try {
-        const { stringifyYaml } = require('obsidian');
         const yaml = stringifyYaml(cleanFields);
         return yaml.trim();
     } catch {
@@ -77,13 +91,13 @@ export function entityToYaml(entity: any): string {
         return Object.entries(cleanFields)
             .map(([key, value]) => {
                 if (Array.isArray(value)) {
-                    return `${key}: [${value.map(v => typeof v === 'string' ? `"${v}"` : v).join(', ')}]`;
+                    return `${key}: [${value.map(v => typeof v === 'string' ? `"${v}"` : String(v)).join(', ')}]`;
                 } else if (typeof value === 'string') {
                     return `${key}: "${value}"`;
-                } else if (typeof value === 'object') {
+                } else if (typeof value === 'object' && value !== null) {
                     return `${key}: ${JSON.stringify(value)}`;
                 }
-                return `${key}: ${value}`;
+                return `${key}: ${String(value)}`;
             })
             .join('\n');
     }
@@ -94,25 +108,29 @@ export function entityToYaml(entity: any): string {
  * Handles both new format (markdownContent) and old format (sectionContent object)
  * Also handles direct fields like description and backstory
  */
-export function entityToMarkdown(entity: any): string {
+export function entityToMarkdown(entity: unknown): string {
+    const entityRecord = asRecord(entity);
+
     // If markdownContent exists, use it directly
-    if (entity.markdownContent && typeof entity.markdownContent === 'string') {
-        return entity.markdownContent;
+    if (typeof entityRecord.markdownContent === 'string') {
+        return entityRecord.markdownContent;
     }
     
     // Build markdown from sectionContent if it exists
     const sections: Record<string, string> = {};
     
-    if (entity.sectionContent && typeof entity.sectionContent === 'object') {
-        Object.assign(sections, entity.sectionContent);
+    const sectionContent = asRecord(entityRecord.sectionContent);
+    for (const [sectionName, sectionValue] of Object.entries(sectionContent)) {
+        sections[sectionName] = String(sectionValue ?? '');
     }
     
     // Also check for common direct fields that should become markdown sections
     const commonFields = ['description', 'backstory', 'history', 'outcome', 'summary', 'content'];
     commonFields.forEach(field => {
-        if (entity[field] && typeof entity[field] === 'string' && entity[field].trim()) {
+        const value = entityRecord[field];
+        if (typeof value === 'string' && value.trim()) {
             const sectionName = field.charAt(0).toUpperCase() + field.slice(1);
-            sections[sectionName] = entity[field];
+            sections[sectionName] = value;
         }
     });
     
@@ -131,7 +149,7 @@ export function entityToMarkdown(entity: any): string {
 /**
  * Get complete note preview for an entity
  */
-export function getEntityNotePreview(entity: any): string {
+export function getEntityNotePreview(entity: unknown): string {
     const yaml = entityToYaml(entity);
     const markdown = entityToMarkdown(entity);
     return renderNotePreview(yaml, markdown);

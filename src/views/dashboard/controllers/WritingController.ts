@@ -1,5 +1,6 @@
 import { setIcon } from 'obsidian';
-import type { DashboardControllerContext, DashboardTabController, DashboardWritingViewMode } from './types';
+import type { DashboardTabController, DashboardWritingViewMode } from './types';
+import type { WritingPanelMode } from '../../WritingViewRenderers';
 
 const WRITING_MODES: Array<{ id: DashboardWritingViewMode; icon: string; label: string }> = [
     { id: 'list', icon: 'list', label: 'List' },
@@ -56,11 +57,11 @@ export const writingController: DashboardTabController = {
             });
 
             modeSelect.value = context.getWritingViewMode();
-            modeSelect.addEventListener('change', async () => {
+            modeSelect.addEventListener('change', () => { void (async () => {
                 context.setWritingViewMode(modeSelect.value as DashboardWritingViewMode);
                 updatePopOut();
                 await renderActive();
-            });
+            })(); });
             switcher.prepend(modeSelect);
         } else {
             WRITING_MODES.forEach(mode => {
@@ -84,8 +85,8 @@ export const writingController: DashboardTabController = {
 
         popOutBtn.onclick = () => {
             const currentMode = context.getWritingViewMode();
-            const mode = currentMode === 'list' ? 'board' : currentMode;
-            (context.plugin as any).activateWritingPanelView(mode);
+            const mode: WritingPanelMode = currentMode === 'list' ? 'board' : currentMode;
+            void context.plugin.activateWritingPanelView(mode);
         };
 
         context.renderHeaderControls(
@@ -96,7 +97,7 @@ export const writingController: DashboardTabController = {
                 await renderActive();
             },
             () => {
-                import('../../../modals/ChapterModal').then(({ ChapterModal }) => {
+                void import('../../../modals/ChapterModal').then(({ ChapterModal }) => {
                     new ChapterModal(context.app, context.plugin, null, async (chapter) => {
                         await context.mutationRunner.runCreate({
                             action: async () => {
@@ -112,8 +113,8 @@ export const writingController: DashboardTabController = {
             'Add Chapter',
             (setting) => {
                 setting.addButton(button => {
-                    button.setButtonText('Add Scene').onClick(() => {
-                        import('../../../modals/SceneModal').then(({ SceneModal }) => {
+                    button.setButtonText('Add scene').onClick(() => {
+                        void import('../../../modals/SceneModal').then(({ SceneModal }) => {
                             new SceneModal(context.app, context.plugin, null, async (scene) => {
                                 await context.mutationRunner.runCreate({
                                     action: async () => {
@@ -128,17 +129,17 @@ export const writingController: DashboardTabController = {
                     });
                 });
                 setting.addButton(button => {
-                    button.setIcon('layout-dashboard').setTooltip('Open Story Board canvas').onClick(async () => {
+                    button.setIcon('layout-dashboard').setTooltip('Open story board canvas').onClick(async () => {
                         await context.plugin.openStoryBoard();
                     });
                 });
             },
             (menu) => {
                 menu.addItem(item => {
-                    item.setTitle('Add Scene');
+                    item.setTitle('Add scene');
                     item.setIcon('plus-circle');
                     item.onClick(() => {
-                        import('../../../modals/SceneModal').then(({ SceneModal }) => {
+                        void import('../../../modals/SceneModal').then(({ SceneModal }) => {
                             new SceneModal(context.app, context.plugin, null, async (scene) => {
                                 await context.mutationRunner.runCreate({
                                     action: async () => {
@@ -153,7 +154,7 @@ export const writingController: DashboardTabController = {
                     });
                 });
                 menu.addItem(item => {
-                    item.setTitle('Open Story Board');
+                    item.setTitle('Open story board');
                     item.setIcon('layout-dashboard');
                     item.onClick(() => {
                         void context.plugin.openStoryBoard();

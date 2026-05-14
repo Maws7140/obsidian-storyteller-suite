@@ -57,6 +57,8 @@ export type TemplateEntityType =
     | 'scene'
     | 'reference';
 
+export type TemplateVariableValue = string | number | boolean;
+
 /**
  * Template entity - includes templateId for relationship mapping
  * and optional section content and custom YAML fields
@@ -83,7 +85,6 @@ export type TemplateEntity<T> = Partial<T> & {
      * Section content for markdown body (e.g., Description, Backstory, History)
      * Maps section names to their content
      * Example: { "Description": "A brave knight...", "Backstory": "Born in..." }
-     * @deprecated Use markdownContent instead. Kept for backward compatibility.
      */
     sectionContent?: Record<string, string>;
 
@@ -91,9 +92,8 @@ export type TemplateEntity<T> = Partial<T> & {
      * Custom YAML fields not in the core entity structure
      * Allows templates to define arbitrary frontmatter fields
      * Example: { "customRating": 5, "customTags": ["tag1", "tag2"] }
-     * @deprecated Use yamlContent instead. Kept for backward compatibility.
      */
-    customYamlFields?: Record<string, any>;
+    customYamlFields?: Record<string, unknown>;
 };
 
 /**
@@ -165,6 +165,12 @@ export interface Template {
 
     /** Template variables for advanced customization */
     variables?: TemplateVariable[];
+
+    /** Whether this template is backed by a markdown note */
+    isNoteBased?: boolean;
+
+    /** Source markdown file path for note-based templates */
+    noteFilePath?: string;
 }
 
 /**
@@ -193,7 +199,7 @@ export interface TemplateMetadata {
     requiredPlugins?: string[];
 
     /** Recommended settings for best experience */
-    recommendedSettings?: Record<string, any>;
+    recommendedSettings?: Record<string, unknown>;
 
     /** Setup instructions or tips for users */
     setupInstructions?: string;
@@ -263,7 +269,7 @@ export interface TemplateVariable {
     type: 'text' | 'number' | 'boolean' | 'select' | 'date';
 
     /** Default value */
-    defaultValue?: any;
+    defaultValue?: string | number | boolean;
 
     /** For select type, the available options */
     options?: string[];
@@ -299,7 +305,7 @@ export interface TemplateApplicationOptions {
     mergeRelationships?: boolean;
 
     /** Custom field overrides before applying */
-    fieldOverrides?: Map<string, Partial<any>>;
+    fieldOverrides?: Map<string, Partial<Record<string, unknown>>>;
 
     /** Whether to prompt for customization before applying */
     promptForCustomization?: boolean;
@@ -317,7 +323,7 @@ export interface TemplateApplicationOptions {
     skipRelationships?: boolean;
 
     /** Template variable values (for Phase 5) */
-    variableValues?: Record<string, any>;
+    variableValues?: Record<string, TemplateVariableValue>;
 }
 
 /**

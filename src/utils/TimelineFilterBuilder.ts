@@ -5,7 +5,7 @@ import { Setting } from 'obsidian';
 import { t } from '../i18n/strings';
 import StorytellerSuitePlugin from '../main';
 import { TimelineRenderer } from './TimelineRenderer';
-import { TimelineUIState, TimelineUIFilters, Event, Location } from '../types';
+import { TimelineUIState, Event, Location } from '../types';
 
 /**
  * Callbacks for filter operations
@@ -163,7 +163,7 @@ export class TimelineFilterBuilder {
      */
     createTagFilter(container: HTMLElement, events: Event[]): void {
         new Setting(container)
-            .setName('Filter by Tag')
+            .setName('Filter by tag')
             .addDropdown(dropdown => {
                 dropdown.addOption('', 'Select tag...');
 

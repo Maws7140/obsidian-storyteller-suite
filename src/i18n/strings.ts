@@ -7,11 +7,11 @@ import deJson from './locales/de.json';
 // Language registry - add imports here for new languages
 // Note: For new languages, import the JSON file and add to the registry below
 const languageRegistry: Record<string, Record<string, string>> = {
-  en: enJson as Record<string, string>,
-  zh: zhJson as Record<string, string>,
-  es: esJson as Record<string, string>,
-  fr: frJson as Record<string, string>,
-  de: deJson as Record<string, string>,
+  en: enJson,
+  zh: zhJson,
+  es: esJson,
+  fr: frJson,
+  de: deJson,
 };
 
 // Supported language codes
@@ -67,7 +67,7 @@ export function setLocale(lang: string) {
 export function getAvailableLanguages(): Lang[] {
   return Object.keys(locales).filter((lang): lang is Lang => {
     return lang in languageNames;
-  }) as Lang[];
+  });
 }
 
 /**
@@ -138,8 +138,8 @@ export function t<K extends TranslationKey>(key: K, ...args: (string | number)[]
       console.warn(`Translation key "${String(key)}" not found in any locale`);
       return String(key);
     }
-    return handlePluralization(key as string, fallback, ...args);
+    return handlePluralization(key, fallback, ...args);
   }
   
-  return handlePluralization(key as string, template, ...args);
+  return handlePluralization(key, template, ...args);
 }

@@ -3,6 +3,7 @@ import { t } from '../i18n/strings';
 import { GalleryImage } from '../types';
 import StorytellerSuitePlugin from '../main';
 import { ImageDetailModal } from './ImageDetailModal';
+import { scheduleSuggestRefresh } from './utils/SuggestModalRefresh';
 
 // Simple Suggester for image files
 export class ImageSuggestModal extends FuzzySuggestModal<TFile> { // Added export
@@ -17,22 +18,9 @@ export class ImageSuggestModal extends FuzzySuggestModal<TFile> { // Added expor
     }
 
     async onOpen() {
-        super.onOpen();
-        // Force-refresh suggestions so initial list shows without typing
-        setTimeout(() => {
-            if (this.inputEl) {
-                try { (this as any).setQuery?.(''); } catch {}
-                try { this.inputEl.dispatchEvent(new window.Event('input')); } catch {}
-            }
-            try { (this as any).onInputChanged?.(); } catch {}
-        }, 0);
-        setTimeout(() => {
-            if (this.inputEl) {
-                try { (this as any).setQuery?.(''); } catch {}
-                try { this.inputEl.dispatchEvent(new window.Event('input')); } catch {}
-            }
-            try { (this as any).onInputChanged?.(); } catch {}
-        }, 50);
+        void super.onOpen();
+        // Force-refresh suggestions so initial list shows without typing.
+        scheduleSuggestRefresh(this);
     }
 
     // Show all files initially; fuzzy-match when there is a query
@@ -45,7 +33,7 @@ export class ImageSuggestModal extends FuzzySuggestModal<TFile> { // Added expor
         return items
             .map((f) => {
                 const match = fuzzy(this.getItemText(f));
-                return match ? ({ item: f, match } as FuzzyMatch<TFile>) : null;
+                return match ? ({ item: f, match }) : null;
             })
             .filter((fm): fm is FuzzyMatch<TFile> => !!fm);
     }
@@ -119,7 +107,7 @@ export class GalleryModal extends Modal {
             .addButton(button => button
                 .setButtonText(t('addImage'))
                 .onClick(() => {
-                    new ImageSuggestModal(this.app, this.plugin, async (selectedFile: TFile) => {
+                    new ImageSuggestModal(this.app, this.plugin, (selectedFile: TFile) => { void (async () => {
                         // Add basic image data with required ID
                         const imageData: Omit<GalleryImage, 'id'> = { filePath: selectedFile.path };
                         // Use the plugin's addGalleryImage method to create with ID
@@ -128,7 +116,7 @@ export class GalleryModal extends Modal {
                         new ImageDetailModal(this.app, this.plugin, newImage, false, async () => {
                             await this.refreshGallery();
                         }).open();
-                    }).open();
+                    })(); }).open();
                 }))
             .addButton(button => button
                 .setButtonText(t('upload'))
@@ -151,7 +139,7 @@ export class GalleryModal extends Modal {
     }
 
     private async handleUploadClick(): Promise<void> {
-        const fileInput = document.createElement('input');
+        const fileInput = activeDocument.createElement('input');
         fileInput.type = 'file';
         fileInput.accept = 'image/*';
         fileInput.multiple = true;

@@ -1,4 +1,3 @@
-import { DateTime } from 'luxon';
 import type { Event, TimelineEra } from '../types';
 import { parseEventDate } from './DateParsing';
 import type StorytellerSuitePlugin from '../main';
@@ -48,7 +47,7 @@ export class EraManager {
 
         // Check for duplicate ID
         if (eras.find(e => e.id === era.id)) {
-            era.id = `era-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+            era.id = `era-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
         }
 
         // Set sort order if not provided
@@ -225,7 +224,7 @@ export class EraManager {
             }
 
             // Check for any overlap between the ranges
-            return eraStart.start! <= end.start! && eraEnd.start! >= start.start!;
+            return eraStart.start <= end.start! && eraEnd.start >= start.start!;
         });
     }
 
@@ -250,7 +249,7 @@ export class EraManager {
             const eventStart = eventDate.start;
             const eventEnd = eventDate.end || eventDate.start;
 
-            return eventStart! >= eraStart.start! && eventEnd! <= eraEnd.start!;
+            return eventStart >= eraStart.start! && eventEnd <= eraEnd.start!;
         });
     }
 

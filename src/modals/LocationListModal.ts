@@ -25,7 +25,7 @@ export class LocationListModal extends Modal {
         // Store the container element
         this.listContainer = contentEl.createDiv('storyteller-list-container');
 
-        const searchInput = new Setting(contentEl)
+        new Setting(contentEl)
             .setName(t('search'))
             .addText(text => {
                 text.setPlaceholder(t('searchX', t('locations')))
@@ -131,9 +131,9 @@ export class LocationListModal extends Modal {
         
         // Add indentation for nested locations
         if (depth > 0) {
-            itemEl.style.marginLeft = `${depth * 20}px`;
-            itemEl.style.borderLeft = '2px solid var(--background-modifier-border)';
-            itemEl.style.paddingLeft = '10px';
+            itemEl.setCssStyles({ marginLeft: `${depth * 20}px` });
+            itemEl.setCssStyles({ borderLeft: '2px solid var(--background-modifier-border)' });
+            itemEl.setCssStyles({ paddingLeft: '10px' });
         }
         
         const infoEl = itemEl.createDiv('storyteller-list-item-info');
@@ -194,9 +194,9 @@ export class LocationListModal extends Modal {
               new Notice(t('errorCannotOpenNoteWithoutFilePath', t('location')));
               return;
             }
-            const file = this.app.vault.getAbstractFileByPath(location.filePath!);
+            const file = this.app.vault.getAbstractFileByPath(location.filePath);
             if (file instanceof TFile) {
-                this.app.workspace.getLeaf(false).openFile(file);
+                void this.app.workspace.getLeaf(false).openFile(file);
                 this.close();
             } else {
                 new Notice(t('workspaceLeafRevealError'));

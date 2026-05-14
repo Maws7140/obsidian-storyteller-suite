@@ -14,6 +14,10 @@ type GroupSelectorOptions = {
     persistRemove?: (groupId: string) => Promise<void>;
 };
 
+interface CustomEventWorkspace {
+    on(name: 'storyteller:groups-changed', callback: () => void): EventRef;
+}
+
 export class EntityGroupSelector {
     private readonly plugin: StorytellerSuitePlugin;
     private readonly description: string;
@@ -41,7 +45,7 @@ export class EntityGroupSelector {
     attach(container: HTMLElement): void {
         this.containerEl = container;
         if (!this.groupChangedRef) {
-            this.groupChangedRef = (this.plugin.app.workspace as any).on('storyteller:groups-changed', () => {
+            this.groupChangedRef = (this.plugin.app.workspace as unknown as CustomEventWorkspace).on('storyteller:groups-changed', () => {
                 void this.refresh();
             });
         }
@@ -76,7 +80,7 @@ export class EntityGroupSelector {
         const allGroups = this.plugin.getGroups();
         if (allGroups.length === 0) {
             this.containerEl.createEl('p', {
-                text: 'No groups available. Create groups in the Groups section.'
+                text: 'No groups available. Create groups in the groups section.'
             });
             return;
         }

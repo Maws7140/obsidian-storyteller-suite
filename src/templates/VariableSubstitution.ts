@@ -7,9 +7,9 @@
 import { TemplateVariable } from './TemplateTypes';
 import { TemplateVariableValues } from '../modals/TemplateApplicationModal';
 
-export interface SubstitutionResult {
+export interface SubstitutionResult<T = unknown> {
     success: boolean;
-    value: any;
+    value: T;
     warnings: string[];
     errors: string[];
 }
@@ -22,7 +22,7 @@ export class VariableSubstitution {
         text: string,
         variableValues: TemplateVariableValues,
         strictMode: boolean = false
-    ): SubstitutionResult {
+    ): SubstitutionResult<string> {
         const warnings: string[] = [];
         const errors: string[] = [];
         let result = text;
@@ -35,7 +35,7 @@ export class VariableSubstitution {
             const fullMatch = match[0]; // {{variableName}}
             const variableName = match[1]; // variableName
 
-            if (variableValues.hasOwnProperty(variableName)) {
+            if (Object.prototype.hasOwnProperty.call(variableValues, variableName)) {
                 const value = variableValues[variableName];
 
                 // Convert value to string appropriately
@@ -78,10 +78,10 @@ export class VariableSubstitution {
      * Substitute variables in an object (recursive)
      */
     static substituteObject(
-        obj: any,
+        obj: unknown,
         variableValues: TemplateVariableValues,
         strictMode: boolean = false
-    ): SubstitutionResult {
+    ): SubstitutionResult<unknown> {
         const warnings: string[] = [];
         const errors: string[] = [];
 
@@ -95,7 +95,7 @@ export class VariableSubstitution {
         }
 
         if (Array.isArray(obj)) {
-            const newArray: any[] = [];
+            const newArray: unknown[] = [];
             obj.forEach((item, index) => {
                 const result = this.substituteObject(item, variableValues, strictMode);
                 newArray.push(result.value);
@@ -106,10 +106,11 @@ export class VariableSubstitution {
         }
 
         if (typeof obj === 'object') {
-            const newObj: any = {};
-            for (const key in obj) {
-                if (obj.hasOwnProperty(key)) {
-                    const result = this.substituteObject(obj[key], variableValues, strictMode);
+            const source = obj as Record<string, unknown>;
+            const newObj: Record<string, unknown> = {};
+            for (const key in source) {
+                if (Object.prototype.hasOwnProperty.call(source, key)) {
+                    const result = this.substituteObject(source[key], variableValues, strictMode);
                     newObj[key] = result.value;
                     warnings.push(...result.warnings);
                     errors.push(...result.errors);
@@ -134,7 +135,7 @@ export class VariableSubstitution {
     /**
      * Find all {{variables}} used in an object (recursive)
      */
-    static findVariablesInObject(obj: any): string[] {
+    static findVariablesInObject(obj: unknown): string[] {
         const variables: Set<string> = new Set();
 
         if (obj === null || obj === undefined) {
@@ -148,9 +149,10 @@ export class VariableSubstitution {
                 this.findVariablesInObject(item).forEach(v => variables.add(v));
             });
         } else if (typeof obj === 'object') {
-            for (const key in obj) {
-                if (obj.hasOwnProperty(key)) {
-                    this.findVariablesInObject(obj[key]).forEach(v => variables.add(v));
+            const source = obj as Record<string, unknown>;
+            for (const key in source) {
+                if (Object.prototype.hasOwnProperty.call(source, key)) {
+                    this.findVariablesInObject(source[key]).forEach(v => variables.add(v));
                 }
             }
         }
@@ -168,7 +170,7 @@ export class VariableSubstitution {
         const missingVariables: string[] = [];
 
         templateVariables.forEach(variable => {
-            if (!providedValues.hasOwnProperty(variable.name)) {
+            if (!Object.prototype.hasOwnProperty.call(providedValues, variable.name)) {
                 missingVariables.push(variable.name);
             }
         });
@@ -204,12 +206,12 @@ export class VariableSubstitution {
         entity: T,
         variableValues: TemplateVariableValues,
         strictMode: boolean = false
-    ): SubstitutionResult {
+    ): SubstitutionResult<T> {
         // Clone the entity to avoid mutations
-        const clonedEntity = JSON.parse(JSON.stringify(entity));
+        const clonedEntity = JSON.parse(JSON.stringify(entity)) as unknown;
 
         // Substitute all properties
-        const result = this.substituteObject(clonedEntity, variableValues, strictMode);
+        const result = this.substituteObject(clonedEntity, variableValues, strictMode) as SubstitutionResult<T>;
 
         return result;
     }
@@ -297,7 +299,7 @@ export class VariableSubstitution {
         let result = text;
 
         variablesToReplace.forEach(variableName => {
-            if (variableValues.hasOwnProperty(variableName)) {
+            if (Object.prototype.hasOwnProperty.call(variableValues, variableName)) {
                 const pattern = new RegExp(`\\{\\{${this.escapeRegex(variableName)}\\}\\}`, 'g');
                 const value = variableValues[variableName];
                 const replacement = value !== null && value !== undefined ? value.toString() : '';

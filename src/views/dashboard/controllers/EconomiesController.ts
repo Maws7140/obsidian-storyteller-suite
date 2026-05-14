@@ -11,7 +11,7 @@ export const economiesController: DashboardTabController = {
             context.setCurrentFilter(filter);
             await renderEconomiesList(container, context);
         }, () => {
-            import('../../../modals/EconomyModal').then(({ EconomyModal }) => {
+            void import('../../../modals/EconomyModal').then(({ EconomyModal }) => {
                 new EconomyModal(context.app, context.plugin, null, async (economy) => {
                     await context.mutationRunner.runCreate({
                         action: async () => {
@@ -105,7 +105,7 @@ async function renderEconomiesList(container: HTMLElement, context: DashboardCon
 
         const actionsEl = itemEl.createDiv('storyteller-list-item-actions');
         context.addEditButton(actionsEl, () => {
-            import('../../../modals/EconomyModal').then(({ EconomyModal }) => {
+            void import('../../../modals/EconomyModal').then(({ EconomyModal }) => {
                 new EconomyModal(context.app, context.plugin, economy, async (updated) => {
                     await context.mutationRunner.runUpdate({
                         action: async () => {

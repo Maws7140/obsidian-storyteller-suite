@@ -1,10 +1,19 @@
 import { App, TFile, normalizePath } from 'obsidian';
 import { MarkerDefinition } from './types';
 import type StorytellerSuitePlugin from '../main';
-import { StoryMap as Map } from '../types';
-import { buildFrontmatter, getWhitelistKeys } from '../yaml/EntitySections';
+import { Character, Culture, Economy, Event, Group, Location, MagicSystem, PlotItem, Reference, Scene, StoryMap as Map } from '../types';
+import { buildFrontmatter, EntityType, getWhitelistKeys } from '../yaml/EntitySections';
 import { stringifyYamlWithLogging } from '../utils/YamlSerializer';
 import { parseSectionsFromMarkdown } from '../yaml/EntitySections';
+
+type LinkableEntity = Character | Location | Event | PlotItem | Group | Culture | Scene | Economy | MagicSystem | Reference;
+type LinkableEntityType = 'character' | 'location' | 'event' | 'item' | 'group' | 'culture' | 'scene' | 'economy' | 'magicsystem' | 'reference';
+
+function toEntitySectionType(entityType: LinkableEntityType): EntityType {
+    if (entityType === 'group') return 'faction';
+    if (entityType === 'magicsystem') return 'magicSystem';
+    return entityType;
+}
 
 /**
  * Entity Linker
@@ -21,7 +30,7 @@ export class EntityLinker {
      * Supports all entity types uniformly
      */
     async linkEntityToMap(
-        entityType: 'character' | 'location' | 'event' | 'item' | 'group' | 'culture' | 'scene' | 'economy' | 'magicsystem' | 'reference',
+        entityType: LinkableEntityType,
         entityName: string,
         mapId: string,
         markerId: string,
@@ -57,9 +66,9 @@ export class EntityLinker {
 
         // Build frontmatter using whitelist
         // Note: 'group' is not a standard entity type - groups are stored in settings
-        const entityTypeForWhitelist = entityType === 'group' ? 'faction' : entityType;
-        const whitelist = getWhitelistKeys(entityTypeForWhitelist as any);
-        const finalFrontmatter = buildFrontmatter(entityTypeForWhitelist as any, updatedFrontmatter, whitelist, {
+        const entityTypeForWhitelist = toEntitySectionType(entityType);
+        const whitelist = getWhitelistKeys(entityTypeForWhitelist);
+        const finalFrontmatter = buildFrontmatter(entityTypeForWhitelist, updatedFrontmatter, whitelist, {
             customFieldsMode: 'flatten',
             originalFrontmatter: existingFrontmatter
         });
@@ -119,9 +128,9 @@ export class EntityLinker {
 
         // Build and save
         // Note: 'group' is not a standard entity type - groups are stored in settings
-        const entityTypeForWhitelist = entityType === 'group' ? 'faction' : entityType;
-        const whitelist = getWhitelistKeys(entityTypeForWhitelist as any);
-        const finalFrontmatter = buildFrontmatter(entityTypeForWhitelist as any, existingFrontmatter, whitelist, {
+        const entityTypeForWhitelist = toEntitySectionType(entityType);
+        const whitelist = getWhitelistKeys(entityTypeForWhitelist);
+        const finalFrontmatter = buildFrontmatter(entityTypeForWhitelist, existingFrontmatter, whitelist, {
             customFieldsMode: 'flatten',
             originalFrontmatter: existingFrontmatter
         });
@@ -163,7 +172,7 @@ export class EntityLinker {
 
         for (const marker of markers) {
             if (!marker.link) continue;
-            const linkPath = marker.link.replace(/[\[\]]/g, '');
+            const linkPath = marker.link.replace(/[[\]]/g, '');
             const entityFile = this.app.metadataCache.getFirstLinkpathDest(linkPath, map.filePath);
             if (!entityFile) continue;
 
@@ -257,9 +266,9 @@ export class EntityLinker {
      * Find entity by type and name - supports all entity types uniformly
      */
     private async findEntity(
-        entityType: 'character' | 'location' | 'event' | 'item' | 'group' | 'culture' | 'scene' | 'economy' | 'magicsystem' | 'reference',
+        entityType: LinkableEntityType,
         entityName: string
-    ): Promise<any | null> {
+    ): Promise<(LinkableEntity & { filePath?: string }) | null> {
         switch (entityType) {
             case 'character': {
                 const chars = await this.plugin.listCharacters();

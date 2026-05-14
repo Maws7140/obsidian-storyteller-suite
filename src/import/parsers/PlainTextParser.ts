@@ -9,7 +9,6 @@ import {
     ParsedDocument,
     ParsedChapter,
     ParsedScene,
-    DocumentMetadata,
     ChapterPattern
 } from '../ImportTypes';
 
@@ -214,7 +213,7 @@ export class PlainTextParser implements DocumentParser {
         // Validate chapter numbering
         const numbers = chapters.map(c => c.number).filter((n): n is number => n !== undefined);
         if (numbers.length > 1) {
-            const sequential = numbers.every((n, i) => i === 0 || n === numbers[i - 1]! + 1);
+            const sequential = numbers.every((n, i) => i === 0 || n === numbers[i - 1] + 1);
             if (!sequential) {
                 warnings.push('Chapter numbering is not sequential. Please review chapter numbers.');
             }

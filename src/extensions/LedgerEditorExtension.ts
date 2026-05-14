@@ -75,7 +75,7 @@ class LedgerWidget extends WidgetType {
     }
 
     toDOM(view: EditorView): HTMLElement {
-        const container = document.createElement('div');
+        const container = activeDocument.createElement('div');
         container.className = 'storyteller-codeblock-widget storyteller-codeblock-widget-ledger';
 
         const entries = parseLedger(this.source);
@@ -261,7 +261,7 @@ export function renderLedgerWidget(
 
         const dateInput = form.createEl('input', {
             cls: 'storyteller-ledger-input',
-            attr: { type: 'text', placeholder: 'YYYY-MM-DD' }
+            attr: { type: 'text', placeholder: 'Yyyy-mm-dd' }
         });
         dateInput.value = initialDate;
 
@@ -318,22 +318,26 @@ export function createLedgerViewExtension(_app: App) {
     return [sourceModeLedgerWidgetExtension];
 }
 
-export function registerLedgerBlockProcessor(app: App, plugin: { registerMarkdownCodeBlockProcessor: Function }): void {
+interface ProcessableVault {
+    process(file: TFile, fn: (content: string) => string): Promise<void>;
+}
+
+export function registerLedgerBlockProcessor(app: App, plugin: { registerMarkdownCodeBlockProcessor: (language: string, handler: (source: string, el: HTMLElement, ctx: { sourcePath: string }) => void) => void }): void {
     plugin.registerMarkdownCodeBlockProcessor('ledger', (source: string, el: HTMLElement, ctx: { sourcePath: string }) => {
         const entries = parseLedger(source);
 
-        renderLedgerWidget(el, entries, async (newEntries: LedgerEntry[]) => {
+        renderLedgerWidget(el, entries, (newEntries: LedgerEntry[]) => { void (async () => {
             const file = app.vault.getAbstractFileByPath(ctx.sourcePath);
             if (!(file instanceof TFile)) return;
 
             const oldBlock = '```ledger\n' + source + '```';
             const newBlock = serializeEntries(newEntries);
 
-            await (app.vault as any).process(file, (content: string) => {
+            await (app.vault as unknown as ProcessableVault).process(file, (content: string) => {
                 const idx = content.indexOf(oldBlock);
                 if (idx === -1) return content;
                 return content.slice(0, idx) + newBlock + content.slice(idx + oldBlock.length);
             });
-        });
+        })(); });
     });
 }

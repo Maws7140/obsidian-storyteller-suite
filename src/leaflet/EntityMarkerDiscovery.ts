@@ -11,8 +11,7 @@ import {
     MagicSystem,
     Group,
     Scene,
-    Reference,
-    StoryMap as Map
+    Reference
 } from '../types';
 
 /**
@@ -84,9 +83,6 @@ export class EntityMarkerDiscovery {
             this.plugin.listScenes().catch(() => [] as Scene[]),
             this.plugin.listReferences().catch(() => [] as Reference[])
         ]);
-
-        // Groups are stored in settings, not as entities
-        const groups = this.plugin.getGroups();
 
         // Check characters
         for (const char of characters) {

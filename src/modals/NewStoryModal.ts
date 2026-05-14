@@ -41,7 +41,7 @@ export class NewStoryModal extends Modal {
                 text.inputEl.addEventListener('keydown', (e) => {
                     if (e.key === 'Enter') {
                         e.preventDefault();
-                        this.trySubmit();
+                        void this.trySubmit();
                     }
                 });
                 text.inputEl.focus();
@@ -83,7 +83,7 @@ export class NewStoryModal extends Modal {
 
     private showError(msg: string) {
         this.errorEl.setText(msg);
-        this.errorEl.style.color = 'var(--text-error, red)';
+        this.errorEl.setCssStyles({ color: 'var(--text-error, red)' });
     }
 
     private async trySubmit() {
@@ -100,7 +100,7 @@ export class NewStoryModal extends Modal {
         try {
             await this.onSubmit(this.name, this.description);
             this.close();
-        } catch (e) {
+        } catch {
             this.showError('Failed to create story.');
         }
     }

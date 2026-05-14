@@ -55,7 +55,7 @@ export function getGettingStartedGuide(version: string): StorytellerGuideDocumen
                     <ul>
                         <li>Use the Writing view to manage books, chapters, scenes, and draft order.</li>
                         <li>Drafts control scene order and compile inclusion.</li>
-                        <li>Compile workflows can use built-in steps or your own custom JavaScript steps.</li>
+                        <li>Compile workflows can use configurable built-in steps for cleanup, formatting, and export.</li>
                         <li>Books are for structure. Drafts are for output.</li>
                     </ul>
                 `
@@ -176,7 +176,7 @@ export function renderGuideDocument(
     }
 
     const introEl = containerEl.createDiv('storyteller-guide-intro');
-    introEl.innerHTML = guide.introHtml;
+    renderGuideHtml(introEl, guide.introHtml);
 
     const sectionsEl = containerEl.createDiv('storyteller-guide-sections');
     guide.sections.forEach((section, index) => {
@@ -192,7 +192,7 @@ export function renderGuideDocument(
             });
 
             const bodyEl = detailsEl.createDiv('storyteller-guide-section-body');
-            bodyEl.innerHTML = section.bodyHtml;
+            renderGuideHtml(bodyEl, section.bodyHtml);
             return;
         }
 
@@ -202,6 +202,39 @@ export function renderGuideDocument(
             cls: 'storyteller-guide-section-heading'
         });
         const bodyEl = sectionEl.createDiv('storyteller-guide-section-body');
-        bodyEl.innerHTML = section.bodyHtml;
+        renderGuideHtml(bodyEl, section.bodyHtml);
     });
+}
+
+function renderGuideHtml(containerEl: HTMLElement, html: string): void {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(`<section>${html}</section>`, 'text/html');
+    const root = doc.body.firstElementChild;
+    if (!root) return;
+
+    Array.from(root.childNodes).forEach((node) => {
+        appendGuideNode(containerEl, node);
+    });
+}
+
+function appendGuideNode(parentEl: HTMLElement, node: Node): void {
+    if (node.nodeType === Node.TEXT_NODE) {
+        const text = node.textContent;
+        if (text?.trim()) {
+            parentEl.appendText(text);
+        }
+        return;
+    }
+
+    if (!(node.instanceOf(Element))) return;
+
+    const tagName = node.tagName.toLowerCase();
+    const allowedTags = new Set(['p', 'strong', 'code', 'ol', 'ul', 'li']);
+    if (!allowedTags.has(tagName)) {
+        Array.from(node.childNodes).forEach((child) => appendGuideNode(parentEl, child));
+        return;
+    }
+
+    const el = parentEl.createEl(tagName as keyof HTMLElementTagNameMap);
+    Array.from(node.childNodes).forEach((child) => appendGuideNode(el, child));
 }

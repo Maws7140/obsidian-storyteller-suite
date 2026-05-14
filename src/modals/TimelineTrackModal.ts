@@ -1,4 +1,4 @@
-import { App, Modal, Setting, Notice, DropdownComponent } from 'obsidian';
+import { App, Modal, Setting, Notice } from 'obsidian';
 import { TimelineTrack } from '../types';
 import StorytellerSuitePlugin from '../main';
 import { TimelineTrackManager } from '../utils/TimelineTrackManager';
@@ -53,10 +53,10 @@ export class TimelineTrackModal extends ResponsiveModal {
 
         // Name
         new Setting(contentEl)
-            .setName('Track Name')
+            .setName('Track name')
             .setDesc('Name of this timeline track')
             .addText(text => text
-                .setPlaceholder('e.g., "Main Character", "Political Events", "Location: Castle"')
+                .setPlaceholder('E.g., "main character", "political events", "location: Castle"')
                 .setValue(this.track.name)
                 .onChange(value => {
                     this.track.name = value;
@@ -65,15 +65,15 @@ export class TimelineTrackModal extends ResponsiveModal {
 
         // Type
         new Setting(contentEl)
-            .setName('Track Type')
+            .setName('Track type')
             .setDesc('Category of this track')
             .addDropdown(dropdown => {
                 dropdown
-                    .addOption('global', 'Global (All Events)')
-                    .addOption('character', 'Character-Specific')
-                    .addOption('location', 'Location-Specific')
-                    .addOption('group', 'Group-Specific')
-                    .addOption('custom', 'Custom Filter')
+                    .addOption('global', 'Global (all events)')
+                    .addOption('character', 'Character-specific')
+                    .addOption('location', 'Location-specific')
+                    .addOption('group', 'Group-specific')
+                    .addOption('custom', 'Custom filter')
                     .setValue(this.track.type || 'custom')
                     .onChange(value => {
                         this.track.type = value as TimelineTrack['type'];
@@ -95,16 +95,16 @@ export class TimelineTrackModal extends ResponsiveModal {
 
         // Color
         new Setting(contentEl)
-            .setName('Track Color')
+            .setName('Track color')
             .setDesc('Color for this track (hex or CSS color)')
             .addText(text => {
                 text
-                    .setPlaceholder('#RRGGBB or hsl(h, s%, l%)')
+                    .setPlaceholder('#Rrggbb or hsl(h, s%, l%)')
                     .setValue(this.track.color || '')
                     .onChange(value => {
                         this.track.color = value || TimelineTrackManager.generateTrackColor(0);
                     });
-                text.inputEl.style.width = '150px';
+                text.inputEl.setCssStyles({ width: '150px' });
             })
             .addButton(button => button
                 .setButtonText('Random')
@@ -136,9 +136,9 @@ export class TimelineTrackModal extends ResponsiveModal {
             });
 
         // Filter Criteria Section
-        contentEl.createEl('h3', { text: 'Filter Criteria' });
+        contentEl.createEl('h3', { text: 'Filter criteria' });
         contentEl.createEl('p', {
-            text: 'Define which events should appear in this track. Events matching ANY of the selected criteria will be included.',
+            text: 'Define which events should appear in this track. Events matching any of the selected criteria will be included.',
             cls: 'storyteller-modal-description'
         });
 
@@ -151,7 +151,7 @@ export class TimelineTrackModal extends ResponsiveModal {
             .setName('Characters')
             .setDesc('Show events with these characters (comma-separated)')
             .addText(text => text
-                .setPlaceholder('character1, character2')
+                .setPlaceholder('Character1, character2')
                 .setValue(this.track.filterCriteria?.characters?.join(', ') || '')
                 .onChange(value => {
                     if (!this.track.filterCriteria) this.track.filterCriteria = {};
@@ -165,7 +165,7 @@ export class TimelineTrackModal extends ResponsiveModal {
             .setName('Locations')
             .setDesc('Show events at these locations (comma-separated)')
             .addText(text => text
-                .setPlaceholder('location1, location2')
+                .setPlaceholder('Location1, location2')
                 .setValue(this.track.filterCriteria?.locations?.join(', ') || '')
                 .onChange(value => {
                     if (!this.track.filterCriteria) this.track.filterCriteria = {};
@@ -179,7 +179,7 @@ export class TimelineTrackModal extends ResponsiveModal {
             .setName('Groups')
             .setDesc('Show events in these groups (comma-separated)')
             .addText(text => text
-                .setPlaceholder('group1, group2')
+                .setPlaceholder('Group1, group2')
                 .setValue(this.track.filterCriteria?.groups?.join(', ') || '')
                 .onChange(value => {
                     if (!this.track.filterCriteria) this.track.filterCriteria = {};
@@ -193,7 +193,7 @@ export class TimelineTrackModal extends ResponsiveModal {
             .setName('Tags')
             .setDesc('Show events with these tags (comma-separated)')
             .addText(text => text
-                .setPlaceholder('tag1, tag2')
+                .setPlaceholder('Tag1, tag2')
                 .setValue(this.track.filterCriteria?.tags?.join(', ') || '')
                 .onChange(value => {
                     if (!this.track.filterCriteria) this.track.filterCriteria = {};
@@ -204,7 +204,7 @@ export class TimelineTrackModal extends ResponsiveModal {
 
         // Milestones only
         new Setting(contentEl)
-            .setName('Milestones Only')
+            .setName('Milestones only')
             .setDesc('Show only milestone events')
             .addToggle(toggle => toggle
                 .setValue(this.track.filterCriteria?.milestonesOnly || false)
@@ -215,7 +215,7 @@ export class TimelineTrackModal extends ResponsiveModal {
 
         // Visible Toggle
         new Setting(contentEl)
-            .setName('Visible in Track Selector')
+            .setName('Visible in track selector')
             .setDesc('Show this track in the track selector dropdown')
             .addToggle(toggle => toggle
                 .setValue(this.track.visible !== false)
@@ -225,7 +225,7 @@ export class TimelineTrackModal extends ResponsiveModal {
 
         // Sort Order
         new Setting(contentEl)
-            .setName('Sort Order')
+            .setName('Sort order')
             .setDesc('Lower numbers appear first in the track selector')
             .addText(text => text
                 .setPlaceholder('0')
@@ -241,7 +241,7 @@ export class TimelineTrackModal extends ResponsiveModal {
             this.createFooterButton(footerEl, 'Delete Track', async () => {
                 const confirm = await new Promise<boolean>(resolve => {
                     const confirmModal = new Modal(this.app);
-                    confirmModal.contentEl.createEl('h3', { text: 'Delete Track?' });
+                    confirmModal.contentEl.createEl('h3', { text: 'Delete track?' });
                     confirmModal.contentEl.createEl('p', {
                         text: `Are you sure you want to delete "${this.track.name}"? This action cannot be undone.`
                     });

@@ -25,7 +25,7 @@ export class CompileWorkflowModal extends Modal {
 
     constructor(app: App, options: CompileWorkflowModalOptions) {
         super(app);
-        this.workflow = JSON.parse(JSON.stringify(options.workflow));
+        this.workflow = structuredClone(options.workflow);
         this.availableSteps = [...options.availableSteps].sort((a, b) => a.name.localeCompare(b.name));
         this.onSaveCallback = options.onSave;
         this.mode = options.mode;
@@ -95,7 +95,7 @@ export class CompileWorkflowModal extends Modal {
         });
 
         const addBtn = addControls.createEl('button', {
-            text: 'Add Step',
+            text: 'Add step',
             cls: 'mod-cta storyteller-compile-workflow-add-btn'
         });
         addBtn.addEventListener('click', () => {
@@ -127,7 +127,7 @@ export class CompileWorkflowModal extends Modal {
         const cancelBtn = buttons.createEl('button', { text: 'Cancel' });
         cancelBtn.addEventListener('click', () => this.close());
 
-        const saveBtn = buttons.createEl('button', { text: 'Save Workflow', cls: 'mod-cta' });
+        const saveBtn = buttons.createEl('button', { text: 'Save workflow', cls: 'mod-cta' });
         saveBtn.addEventListener('click', () => void this.saveWorkflow(nameInput));
     }
 
@@ -214,7 +214,7 @@ export class CompileWorkflowModal extends Modal {
     }
 
     private renderOption(container: HTMLElement, step: CompileStepConfig, option: CompileStepOption): void {
-        const value = step.options[option.id] ?? option.default;
+        const value: string | boolean | number = step.options[option.id] ?? option.default;
 
         if (option.type === 'boolean') {
             new Setting(container)
@@ -233,7 +233,7 @@ export class CompileWorkflowModal extends Modal {
                 .setName(option.name)
                 .setDesc(option.description)
                 .addDropdown(dropdown => {
-                    option.choices?.forEach(choice => dropdown.addOption(choice.value, choice.label));
+                    option.choices?.forEach(choice => { dropdown.addOption(choice.value, choice.label); });
                     dropdown.setValue(String(value)).onChange(nextValue => {
                         step.options[option.id] = nextValue;
                     });
@@ -292,7 +292,7 @@ export class CompileWorkflowModal extends Modal {
     private showError(message: string): void {
         if (!this.errorEl) return;
         this.errorEl.textContent = message;
-        this.errorEl.style.color = 'var(--text-error, red)';
+        this.errorEl.setCssStyles({ color: 'var(--text-error, red)' });
     }
 
     private async saveWorkflow(nameInput: HTMLInputElement): Promise<void> {

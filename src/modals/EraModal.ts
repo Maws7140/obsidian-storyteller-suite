@@ -1,8 +1,7 @@
-import { App, Modal, Setting, Notice, DropdownComponent } from 'obsidian';
+import { App, Modal, Setting, Notice, ColorComponent } from 'obsidian';
 import { TimelineEra } from '../types';
 import StorytellerSuitePlugin from '../main';
 import { EraManager } from '../utils/EraManager';
-import { t } from '../i18n/strings';
 import { ResponsiveModal } from './ResponsiveModal';
 
 export type EraModalSubmitCallback = (era: TimelineEra) => Promise<void>;
@@ -57,10 +56,10 @@ export class EraModal extends ResponsiveModal {
 
         // Name
         new Setting(contentEl)
-            .setName('Era Name')
+            .setName('Era name')
             .setDesc('Name of this period, arc, or act')
             .addText(text => text
-                .setPlaceholder('e.g., "Act I: Rising Action", "Medieval Period"')
+                .setPlaceholder('E.g., "act i: Rising action", "medieval period"')
                 .setValue(this.era.name)
                 .onChange(value => {
                     this.era.name = value;
@@ -69,10 +68,10 @@ export class EraModal extends ResponsiveModal {
 
         // Start Date
         new Setting(contentEl)
-            .setName('Start Date')
+            .setName('Start date')
             .setDesc('When this era begins (supports flexible formats like events)')
             .addText(text => text
-                .setPlaceholder('e.g., "1200-01-01", "January 1200", "500 BCE"')
+                .setPlaceholder('E.g., "1200-01-01", "january 1200", "500 bce"')
                 .setValue(this.era.startDate)
                 .onChange(value => {
                     this.era.startDate = value;
@@ -80,10 +79,10 @@ export class EraModal extends ResponsiveModal {
 
         // End Date
         new Setting(contentEl)
-            .setName('End Date')
+            .setName('End date')
             .setDesc('When this era ends')
             .addText(text => text
-                .setPlaceholder('e.g., "1300-12-31", "December 1300"')
+                .setPlaceholder('E.g., "1300-12-31", "december 1300"')
                 .setValue(this.era.endDate)
                 .onChange(value => {
                     this.era.endDate = value;
@@ -91,16 +90,16 @@ export class EraModal extends ResponsiveModal {
 
         // Type
         new Setting(contentEl)
-            .setName('Era Type')
+            .setName('Era type')
             .setDesc('Category of this era')
             .addDropdown(dropdown => {
                 dropdown
                     .addOption('custom', 'Custom')
                     .addOption('act', 'Act')
-                    .addOption('arc', 'Story Arc')
-                    .addOption('period', 'Historical Period')
+                    .addOption('arc', 'Story arc')
+                    .addOption('period', 'Historical period')
                     .addOption('season', 'Season')
-                    .addOption('chapter', 'Chapter Range')
+                    .addOption('chapter', 'Chapter range')
                     .setValue(this.era.type || 'custom')
                     .onChange(value => {
                         this.era.type = value as TimelineEra['type'];
@@ -108,9 +107,9 @@ export class EraModal extends ResponsiveModal {
             });
 
         // Color
-        let colorPickerComponent: any;
+        let colorPickerComponent: ColorComponent | undefined;
         new Setting(contentEl)
-            .setName('Background Color')
+            .setName('Background color')
             .setDesc('Color for timeline visualization')
             .addColorPicker(colorPicker => {
                 colorPickerComponent = colorPicker;
@@ -126,9 +125,7 @@ export class EraModal extends ResponsiveModal {
                 .onClick(() => {
                     const randomColor = EraManager.generateEraColor();
                     this.era.color = randomColor;
-                    if (colorPickerComponent) {
-                        colorPickerComponent.setValue(randomColor);
-                    }
+                    colorPickerComponent?.setValue(randomColor);
                     new Notice(`Color set to ${randomColor}`);
                 }));
 
@@ -150,7 +147,7 @@ export class EraModal extends ResponsiveModal {
 
         // Visible Toggle
         new Setting(contentEl)
-            .setName('Visible on Timeline')
+            .setName('Visible on timeline')
             .setDesc('Show this era on the timeline')
             .addToggle(toggle => toggle
                 .setValue(this.era.visible !== false)
@@ -160,7 +157,7 @@ export class EraModal extends ResponsiveModal {
 
         // Sort Order
         new Setting(contentEl)
-            .setName('Sort Order')
+            .setName('Sort order')
             .setDesc('Lower numbers appear first (optional, defaults to start date)')
             .addText(text => text
                 .setPlaceholder('0')
@@ -188,7 +185,7 @@ export class EraModal extends ResponsiveModal {
             this.createFooterButton(footerEl, 'Delete Era', async () => {
                 const confirm = await new Promise<boolean>(resolve => {
                     const confirmModal = new Modal(this.app);
-                    confirmModal.contentEl.createEl('h3', { text: 'Delete Era?' });
+                    confirmModal.contentEl.createEl('h3', { text: 'Delete era?' });
                     confirmModal.contentEl.createEl('p', {
                         text: `Are you sure you want to delete "${this.era.name}"? This action cannot be undone.`
                     });

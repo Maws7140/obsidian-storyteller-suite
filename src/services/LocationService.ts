@@ -15,6 +15,48 @@ export interface GetEntitiesAtLocationOptions {
     entityTypes?: string[];
 }
 
+type NominatimAddress = Partial<Record<
+    | 'tourism'
+    | 'amenity'
+    | 'building'
+    | 'shop'
+    | 'historic'
+    | 'railway'
+    | 'aeroway'
+    | 'office'
+    | 'craft'
+    | 'neighbourhood'
+    | 'suburb'
+    | 'quarter'
+    | 'city'
+    | 'town'
+    | 'village'
+    | 'hamlet'
+    | 'municipality'
+    | 'state'
+    | 'province'
+    | 'county'
+    | 'region'
+    | 'country',
+    string
+>>;
+
+interface NominatimReverseResponse {
+    error?: string;
+    address?: NominatimAddress;
+    display_name?: string;
+    place_id?: string | number;
+    type?: string;
+}
+
+function firstAddressValue(address: NominatimAddress, keys: Array<keyof NominatimAddress>): string | undefined {
+    for (const key of keys) {
+        const value = address[key];
+        if (value) return value;
+    }
+    return undefined;
+}
+
 export class LocationService {
     private plugin: StorytellerSuitePlugin;
 
@@ -736,7 +778,7 @@ export class LocationService {
             });
 
             // requestUrl returns data directly in response.json
-            const data = response.json;
+            const data = response.json as NominatimReverseResponse | undefined;
             if (!data || data.error) {
                 console.warn('Nominatim returned error:', data?.error);
                 return null;
@@ -745,22 +787,23 @@ export class LocationService {
             const address = data.address || {};
 
             // Build hierarchy from address components
-            const building = address.tourism || address.amenity || address.building || 
-                           address.shop || address.historic || address.railway || 
-                           address.aeroway || address.office || address.craft;
+            const building = firstAddressValue(address, [
+                'tourism', 'amenity', 'building', 'shop', 'historic', 'railway', 'aeroway', 'office', 'craft'
+            ]);
             
-            const neighborhood = address.neighbourhood || address.suburb || address.quarter;
-            const city = address.city || address.town || address.village || address.hamlet || address.municipality;
-            const region = address.state || address.province || address.county || address.region;
+            const neighborhood = firstAddressValue(address, ['neighbourhood', 'suburb', 'quarter']);
+            const city = firstAddressValue(address, ['city', 'town', 'village', 'hamlet', 'municipality']);
+            const region = firstAddressValue(address, ['state', 'province', 'county', 'region']);
             const country = address.country;
             const continent = getContinent(country);
 
             // Build a meaningful default name (most specific available)
-            const name = building || neighborhood || city || region || country || data.display_name;
+            const displayName = data.display_name || '';
+            const name = building || neighborhood || city || region || country || displayName;
 
             return {
-                name: name || data.display_name,
-                displayName: data.display_name,
+                name: name || displayName,
+                displayName,
                 placeId: String(data.place_id),
                 type: data.type || 'place',
                 hierarchy: {
@@ -812,7 +855,7 @@ export class LocationService {
             } else {
                 effectiveLevel = 'continent';
             }
-            console.log(`[LocationService] Auto-detected level from zoom ${zoom}: ${effectiveLevel}`);
+            console.debug(`[LocationService] Auto-detected level from zoom ${zoom}: ${effectiveLevel}`);
         }
 
         // Select based on level, falling back to more general if specific not available
@@ -875,14 +918,14 @@ export class LocationService {
         const zoom = options?.zoom;
 
         // Step 1: Reverse geocode to get place information
-        console.log('[LocationService] Reverse geocoding coordinates:', coordinates);
+        console.debug('[LocationService] Reverse geocoding coordinates:', coordinates);
         const geoResult = await this.reverseGeocodeDetailed(coordinates[0], coordinates[1]);
         
         if (!geoResult) {
             console.warn('[LocationService] Reverse geocoding failed, creating location with coordinates');
             // Fallback: create location with coordinate-based name
             const coordText = `${coordinates[0].toFixed(4)}, ${coordinates[1].toFixed(4)}`;
-            const locationId = `loc-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+            const locationId = `loc-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
             
             const newLocation: Location = {
                 id: locationId,
@@ -901,10 +944,10 @@ export class LocationService {
 
         // Step 2: Select appropriate name based on level/zoom
         const selected = this.selectLocationByLevel(geoResult, level, zoom);
-        console.log('[LocationService] Selected location:', selected.name, 'at level:', level, 'zoom:', zoom);
+        console.debug('[LocationService] Selected location:', selected.name, 'at level:', level, 'zoom:', zoom);
         
         // Log available hierarchy for debugging
-        console.log('[LocationService] Available hierarchy:', geoResult.hierarchy);
+        console.debug('[LocationService] Available hierarchy:', geoResult.hierarchy);
         
         // Step 3: Search for existing location by name
         let existingLocation = await this.findLocationByName(selected.name);
@@ -915,7 +958,7 @@ export class LocationService {
         }
         
         if (existingLocation) {
-            console.log('[LocationService] Found existing location:', existingLocation.name);
+            console.debug('[LocationService] Found existing location:', existingLocation.name);
             
             // Check if this location already has a binding for this map
             const hasBinding = existingLocation.mapBindings?.some(b => b.mapId === mapId);
@@ -927,15 +970,15 @@ export class LocationService {
                     mapId,
                     coordinates
                 );
-                console.log('[LocationService] Added map binding to existing location');
+                console.debug('[LocationService] Added map binding to existing location');
             }
             
             return { location: existingLocation, isNew: false, selectedLevel: level };
         }
         
         // Step 4: Create new location with selected name
-        console.log('[LocationService] No existing location found, creating new:', selected.name);
-        const locationId = `loc-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        console.debug('[LocationService] No existing location found, creating new:', selected.name);
+        const locationId = `loc-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
         
         // Build a rich description with full hierarchy
         const h = geoResult.hierarchy;

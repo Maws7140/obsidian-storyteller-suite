@@ -1,6 +1,6 @@
-/* eslint-disable @typescript-eslint/no-inferrable-types */
-/* eslint-disable @typescript-eslint/no-unused-vars */
-import { ItemView, WorkspaceLeaf, Setting, Notice, App, ButtonComponent, TFile, normalizePath, debounce, Modal, Menu, setIcon } from 'obsidian'; // Added normalizePath, debounce
+ 
+ 
+import { ItemView, WorkspaceLeaf, Setting, Notice, App, ButtonComponent, TFile, debounce, Modal, Menu, setIcon } from 'obsidian'; // Added debounce
 import StorytellerSuitePlugin from '../main';
 import { t } from '../i18n/strings';
 // Import necessary modals for button actions (Edit/Create/Detail)
@@ -13,7 +13,7 @@ import { PlotItemModal } from '../modals/PlotItemModal';
 import { ImageDetailModal } from '../modals/ImageDetailModal';
 // Remove ImageSuggestModal import as we replace its usage
 // import { ImageSuggestModal } from '../modals/GalleryModal';
-import { Character, Location, Event, Group, PlotItem, GalleryImage, StoryMap, Book, IndentedSceneRef, StoryDraft, CompileWorkflow } from '../types'; // Import types
+import { Character, Location, Event, PlotItem, GalleryImage, IndentedSceneRef, StoryDraft, CompileWorkflow } from '../types'; // Import types
 import { NewStoryModal } from '../modals/NewStoryModal';
 import { GroupModal } from '../modals/GroupModal';
 import { PlatformUtils } from '../utils/PlatformUtils';
@@ -144,7 +144,7 @@ export class DashboardView extends ItemView {
             
             // Clear any existing dismissal timer to prevent overlapping timers
             if (this.dismissalTimer) {
-                clearTimeout(this.dismissalTimer);
+                window.clearTimeout(this.dismissalTimer);
             }
             
             // Clear the flag after 500ms - this delay allows normal interaction
@@ -272,9 +272,9 @@ export class DashboardView extends ItemView {
                 if (PlatformUtils.isMobile() &&
                     this.getDashboardLayoutMode() !== 'phone' &&
                     this.currentSearchInput &&
-                    document.activeElement !== this.currentSearchInput) {
+                    activeDocument.activeElement !== this.currentSearchInput) {
                     // Small delay to ensure DOM is ready
-                    setTimeout(() => {
+                    window.setTimeout(() => {
                         if (this.currentSearchInput) {
                             this.currentSearchInput.focus();
                         }
@@ -370,7 +370,7 @@ export class DashboardView extends ItemView {
         
         // On mobile, don't refresh while user is actively typing to prevent keyboard dismissal
         if (PlatformUtils.isMobile() && this.isUserTyping) {
-            console.log('Storyteller Suite: Skipping refresh while user is typing on mobile');
+            console.debug('Storyteller Suite: Skipping refresh while user is typing on mobile');
             return;
         }
         
@@ -402,7 +402,7 @@ export class DashboardView extends ItemView {
                 this.isRefreshingActiveTab = false;
                 if (this.pendingActiveTabRefresh) {
                     this.pendingActiveTabRefresh = false;
-                    queueMicrotask(() => this.refreshActiveTab());
+                    queueMicrotask(() => { void this.refreshActiveTab(); });
                 }
             }
         }
@@ -585,9 +585,9 @@ export class DashboardView extends ItemView {
 
         if (PlatformUtils.isMobile()) {
             const touchTargetSize = PlatformUtils.getTouchTargetSize();
-            storySelector.style.minHeight = `${touchTargetSize}px`;
-            storySelector.style.fontSize = `${1.1 * PlatformUtils.getFontScaling()}rem`;
-            storySelector.style.width = '100%';
+            storySelector.setCssStyles({ minHeight: `${touchTargetSize}px` });
+            storySelector.setCssStyles({ fontSize: `${1.1 * PlatformUtils.getFontScaling()}rem` });
+            storySelector.setCssStyles({ width: '100%' });
         }
 
         // Populate stories (also in custom-folder mode)
@@ -599,12 +599,12 @@ export class DashboardView extends ItemView {
         // If one-story mode is enabled but there is still no story, prompt initialization
         if (this.plugin.settings.enableOneStoryMode && this.plugin.settings.stories.length === 0) {
             // Fire and forget; will refresh active tab once folders are ensured
-            this.plugin.initializeOneStoryModeIfNeeded().then(() => this.onOpen());
+            void this.plugin.initializeOneStoryModeIfNeeded().then(() => this.onOpen());
         }
         storySelector.onchange = async (e) => {
             const id = (e.target as HTMLSelectElement).value;
             await this.plugin.setActiveStory(id);
-            this.onOpen();
+            void this.onOpen();
         };
 
         if (!this.plugin.settings.enableOneStoryMode) {
@@ -619,7 +619,7 @@ export class DashboardView extends ItemView {
                         await this.plugin.setActiveStory(story.id);
                         // @ts-ignore
                         new window.Notice(`Story "${name}" created and activated.`);
-                        this.onOpen();
+                        void this.onOpen();
                     }
                 ).open();
             };
@@ -639,7 +639,7 @@ export class DashboardView extends ItemView {
             this.applyDashboardLayoutMode();
             this.layoutTabs();
             // Use requestAnimationFrame to ensure layout is complete before measuring
-            requestAnimationFrame(() => {
+            window.requestAnimationFrame(() => {
                 this.updateStickyOffsets(headerContainer);
             });
         });
@@ -648,13 +648,13 @@ export class DashboardView extends ItemView {
         // Initial layout and sticky offset
         this.layoutTabs();
         // Use requestAnimationFrame to ensure initial layout is complete
-        requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
             this.updateStickyOffsets(headerContainer);
         });
 
         // --- Tab Content ---
         this.tabContentContainer = container.createDiv('storyteller-dashboard-content');
-        this.registerDomEvent(this.tabContentContainer, 'scroll', (evt: globalThis.Event) => {
+        this.registerDomEvent(this.tabContentContainer, 'scroll', (evt: UIEvent) => {
             if (this._suppressScrollCapture) return;
             const target = evt.target instanceof HTMLElement ? evt.target : this.tabContentContainer;
             this.captureTabScrollState(this.activeTabId, target);
@@ -674,14 +674,14 @@ export class DashboardView extends ItemView {
                 this.refreshCoordinator.requestRefresh({ source: 'manual', detail: 'workspace-resize' });
                 // Relayout tabs and update offsets on window resize
                 this.layoutTabs();
-                requestAnimationFrame(() => {
+                window.requestAnimationFrame(() => {
                     this.updateStickyOffsets(headerContainer);
                 });
             }));
 
             // --- Register Global Click Handler for Mobile Keyboard Dismissal ---
             if (PlatformUtils.isMobile()) {
-                this.registerDomEvent(document, 'click', (e: MouseEvent) => {
+                this.registerDomEvent(activeDocument, 'click', (e: MouseEvent) => {
                     try {
                         // Type guard: ensure e.target is a Node before proceeding
                         if (!e.target || !(e.target instanceof Node)) {
@@ -714,7 +714,7 @@ export class DashboardView extends ItemView {
         try {
             if (!this.tabHeaderContainer || !headerEl) return;
             // Force a layout recalculation to ensure proper rendering
-            this.tabHeaderContainer.style.display = 'flex';
+            this.tabHeaderContainer.setCssStyles({ display: 'flex' });
         } catch (e) {
             console.warn('Storyteller: failed to update layout', e);
         }
@@ -767,22 +767,22 @@ export class DashboardView extends ItemView {
 
         // Mobile gets one horizontal tab rail everywhere so phones and tablets behave the same way.
         if (isMobileLayout) {
-            this.tabHeaderRibbonEl.style.flexWrap = 'nowrap';
-            this.tabHeaderRibbonEl.style.overflowX = 'auto';
-            this.tabHeaderRibbonEl.style.overflowY = 'hidden';
-            this.tabHeaderRibbonEl.style.justifyContent = 'flex-start';
+            this.tabHeaderRibbonEl.setCssStyles({ flexWrap: 'nowrap' });
+            this.tabHeaderRibbonEl.setCssStyles({ overflowX: 'auto' });
+            this.tabHeaderRibbonEl.setCssStyles({ overflowY: 'hidden' });
+            this.tabHeaderRibbonEl.setCssStyles({ justifyContent: 'flex-start' });
             (this.tabHeaderRibbonEl.style as any).rowGap = '0px';
 
-            this.tabHeaderContainer.style.overflowX = 'auto';
-            this.tabHeaderContainer.style.overflowY = 'hidden';
+            this.tabHeaderContainer.setCssStyles({ overflowX: 'auto' });
+            this.tabHeaderContainer.setCssStyles({ overflowY: 'hidden' });
         } else {
-            this.tabHeaderRibbonEl.style.flexWrap = 'wrap';
+            this.tabHeaderRibbonEl.setCssStyles({ flexWrap: 'wrap' });
             (this.tabHeaderRibbonEl.style as any).rowGap = '6px';
-            this.tabHeaderRibbonEl.style.overflowX = 'visible';
-            this.tabHeaderRibbonEl.style.overflowY = 'visible';
+            this.tabHeaderRibbonEl.setCssStyles({ overflowX: 'visible' });
+            this.tabHeaderRibbonEl.setCssStyles({ overflowY: 'visible' });
 
-            this.tabHeaderContainer.style.overflowX = 'visible';
-            this.tabHeaderContainer.style.overflowY = 'visible';
+            this.tabHeaderContainer.setCssStyles({ overflowX: 'visible' });
+            this.tabHeaderContainer.setCssStyles({ overflowY: 'visible' });
         }
 
         // Reset
@@ -800,33 +800,33 @@ export class DashboardView extends ItemView {
     }
 
     private createTabButtonEl(tab: { id: string; label: string }, mode: 'normal' | 'compact', forMeasure = false): HTMLElement {
-        const btn = document.createElement('button');
+        const btn = activeDocument.createElement('button');
         btn.className = 'storyteller-tab-header';
         btn.setAttribute('role', 'tab');
         btn.dataset.tabId = tab.id;
         btn.title = mode === 'compact' ? tab.label : '';
-        btn.style.display = 'inline-flex';
-        btn.style.alignItems = 'center';
-        btn.style.justifyContent = 'center';
-        btn.style.gap = '0.25rem';
-        btn.style.padding = '6px 10px';
-        btn.style.borderRadius = '6px';
+        btn.setCssStyles({ display: 'inline-flex' });
+        btn.setCssStyles({ alignItems: 'center' });
+        btn.setCssStyles({ justifyContent: 'center' });
+        btn.setCssStyles({ gap: '0.25rem' });
+        btn.setCssStyles({ padding: '6px 10px' });
+        btn.setCssStyles({ borderRadius: '6px' });
         if (!forMeasure) {
             (btn.style as any).flex = '0 1 auto';
-            btn.style.minWidth = '96px';
-            btn.style.maxWidth = '220px';
+            btn.setCssStyles({ minWidth: '96px' });
+            btn.setCssStyles({ maxWidth: '220px' });
         }
 
-        const labelSpan = document.createElement('span');
+        const labelSpan = activeDocument.createElement('span');
         labelSpan.textContent = tab.label;
         // Always render label (icons removed); keep visible in all modes
-        labelSpan.style.display = 'inline';
+        labelSpan.setCssStyles({ display: 'inline' });
         btn.appendChild(labelSpan);
 
         if (!forMeasure) {
             if (!this.isSimplifiedMobileDashboard()) {
                 btn.setAttribute('draggable', 'true');
-                btn.style.cursor = 'grab';
+                btn.setCssStyles({ cursor: 'grab' });
 
                 btn.addEventListener('dragstart', (e: DragEvent) => {
                     this._draggedTabId = tab.id;
@@ -834,12 +834,12 @@ export class DashboardView extends ItemView {
                         e.dataTransfer.effectAllowed = 'move';
                         e.dataTransfer.setData('text/plain', tab.id);
                     }
-                    btn.style.opacity = '0.45';
+                    btn.setCssStyles({ opacity: '0.45' });
                 });
 
                 btn.addEventListener('dragend', () => {
                     this._draggedTabId = null;
-                    btn.style.opacity = '';
+                    btn.setCssStyles({ opacity: '' });
                     this.tabHeaderRibbonEl?.querySelectorAll('.storyteller-tab-drag-over').forEach(el => {
                         el.classList.remove('storyteller-tab-drag-over');
                     });
@@ -874,9 +874,9 @@ export class DashboardView extends ItemView {
                 });
             }
 
-            btn.addEventListener('click', async () => {
+            btn.addEventListener('click', () => { void (async () => {
                 await this.setActiveTab(tab.id);
-            });
+            })(); });
         }
         return btn;
     }
@@ -924,7 +924,7 @@ export class DashboardView extends ItemView {
         const saved = this._tabScrollPositions.get(tabId);
         const target = saved?.top ?? 0;
         await new Promise<void>((resolve) => {
-            requestAnimationFrame(() => {
+            window.requestAnimationFrame(() => {
                 if (!this.tabContentContainer) {
                     resolve();
                     return;
@@ -979,8 +979,8 @@ export class DashboardView extends ItemView {
             h.classList.toggle('active', !!isActive);
             h.setAttribute('aria-selected', isActive ? 'true' : 'false');
             h.setAttribute('tabindex', isActive ? '0' : '-1');
-            h.style.background = isActive ? 'var(--background-modifier-hover)' : 'transparent';
-            h.style.outline = 'none';
+            h.setCssStyles({ background: isActive ? 'var(--background-modifier-hover)' : 'transparent' });
+            h.setCssStyles({ outline: 'none' });
         });
     }
 
@@ -1009,14 +1009,14 @@ export class DashboardView extends ItemView {
         inputEl.addClass('search-input');
 
         if (PlatformUtils.isIOS()) {
-            inputEl.style.fontSize = '1.1rem';
+            inputEl.setCssStyles({ fontSize: '1.1rem' });
         }
 
         const startTyping = () => {
             this.isUserTyping = true;
             inputEl.removeAttribute('data-user-dismissed');
             if (this.typingTimer) {
-                clearTimeout(this.typingTimer);
+                window.clearTimeout(this.typingTimer);
             }
             this.typingTimer = window.setTimeout(() => {
                 this.isUserTyping = false;
@@ -1038,7 +1038,7 @@ export class DashboardView extends ItemView {
         inputEl.addEventListener('blur', () => {
             this.isUserTyping = false;
             if (this.typingTimer) {
-                clearTimeout(this.typingTimer);
+                window.clearTimeout(this.typingTimer);
                 this.typingTimer = null;
             }
         });
@@ -1061,17 +1061,17 @@ export class DashboardView extends ItemView {
 
             if (shouldRestoreFocus &&
                 !userDismissed &&
-                document.activeElement !== inputEl) {
+                activeDocument.activeElement !== inputEl) {
 
-                setTimeout(() => {
+                window.setTimeout(() => {
                     const stillUserDismissed = inputEl.hasAttribute('data-user-dismissed');
                     if (this.currentSearchInput === inputEl &&
                         !stillUserDismissed &&
-                        document.activeElement !== inputEl &&
+                        activeDocument.activeElement !== inputEl &&
                         inputEl.isConnected) {
                         try {
                             inputEl.focus();
-                        } catch (error) {
+                        } catch {
                             // Ignore focus errors
                         }
                     }
@@ -1130,8 +1130,8 @@ export class DashboardView extends ItemView {
         const listContainer = container.createDiv('storyteller-list-container');
         if (characters.length === 0) {
             const emptyMsg = listContainer.createEl('p', { text: t('noCharactersFound'), cls: 'storyteller-empty-state' });
-            emptyMsg.style.color = 'var(--text-muted)';
-            emptyMsg.style.fontStyle = 'italic';
+            emptyMsg.setCssStyles({ color: 'var(--text-muted)' });
+            emptyMsg.setCssStyles({ fontStyle: 'italic' });
             return;
         }
         this.renderCharacterList(characters, listContainer, container);
@@ -1216,7 +1216,7 @@ export class DashboardView extends ItemView {
                 .setButtonText(t('viewTimeline'))
                 .setCta()
                 .onClick(() => {
-                    this.plugin.activateTimelineView();
+                    void this.plugin.activateTimelineView();
                 }));
         });
 
@@ -1263,7 +1263,7 @@ export class DashboardView extends ItemView {
         let showPlotCriticalOnly = false; // State for the filter toggle
 
         const controlsGroup = container.createDiv('storyteller-controls-group');
-        const filterSetting = new Setting(controlsGroup)
+        new Setting(controlsGroup)
             .setName(t('filterItems'))
             .addText(text => text
                 .setPlaceholder(t('searchX', 'items'))
@@ -1359,7 +1359,7 @@ export class DashboardView extends ItemView {
             const titleEl = infoEl.createEl('strong', { text: item.name });
             if(item.isPlotCritical) {
                 titleEl.setText(`★ ${item.name}`);
-                titleEl.style.color = 'var(--text-accent)';
+                titleEl.setCssStyles({ color: 'var(--text-accent)' });
             }
             if (item.description) {
                 infoEl.createEl('p', { text: item.description.substring(0, 80) + '...' });
@@ -1433,7 +1433,7 @@ export class DashboardView extends ItemView {
                 new Notice(t('selectOrCreateStoryFirst'));
                 return;
             }
-            import('../utils/MapModalHelper').then(({ openMapModal }) => {
+            void import('../utils/MapModalHelper').then(({ openMapModal }) => {
                 openMapModal(this.app, this.plugin, null, {
                     onSave: async () => {
                         this.mutationRunner.requestRefresh('immediate', 'map-created');
@@ -1494,7 +1494,7 @@ export class DashboardView extends ItemView {
 
             const actionsEl = itemEl.createDiv('storyteller-list-item-actions');
             this.addEditButton(actionsEl, () => {
-                import('../utils/MapModalHelper').then(({ openMapModal }) => {
+                void import('../utils/MapModalHelper').then(({ openMapModal }) => {
                     openMapModal(this.app, this.plugin, map, {
                         onSave: async () => {
                             this.mutationRunner.requestRefresh('immediate', 'map-updated');
@@ -1519,7 +1519,7 @@ export class DashboardView extends ItemView {
             });
             // Open in Map View button
             new ButtonComponent(actionsEl)
-                .setButtonText('Open in View')
+                .setButtonText('Open in view')
                 .setIcon('map')
                 .onClick(async () => {
                     const mapId = map.id || map.name;
@@ -1551,33 +1551,33 @@ export class DashboardView extends ItemView {
         
         // Create controls container (search, zoom, layout)
         const controlsContainer = container.createDiv('storyteller-network-controls');
-        controlsContainer.style.marginBottom = '1rem';
-        controlsContainer.style.padding = '1rem';
-        controlsContainer.style.backgroundColor = 'var(--background-secondary)';
-        controlsContainer.style.borderRadius = '8px';
-        controlsContainer.style.display = 'flex';
-        controlsContainer.style.gap = '1rem';
-        controlsContainer.style.flexWrap = 'wrap';
-        controlsContainer.style.alignItems = 'center';
+        controlsContainer.setCssStyles({ marginBottom: '1rem' });
+        controlsContainer.setCssStyles({ padding: '1rem' });
+        controlsContainer.setCssStyles({ backgroundColor: 'var(--background-secondary)' });
+        controlsContainer.setCssStyles({ borderRadius: '8px' });
+        controlsContainer.setCssStyles({ display: 'flex' });
+        controlsContainer.setCssStyles({ gap: '1rem' });
+        controlsContainer.setCssStyles({ flexWrap: 'wrap' });
+        controlsContainer.setCssStyles({ alignItems: 'center' });
 
         // Use class property for graph renderer persistence
         let graphRenderer = this.networkGraphRenderer;
 
         // Search box
         const searchContainer = controlsContainer.createDiv();
-        searchContainer.style.flex = '1 1 300px';
-        searchContainer.style.minWidth = '200px';
+        searchContainer.setCssStyles({ flex: '1 1 300px' });
+        searchContainer.setCssStyles({ minWidth: '200px' });
         
         const searchInput = searchContainer.createEl('input', { 
             type: 'text',
             placeholder: t('searchEntities')
         });
-        searchInput.style.width = '100%';
-        searchInput.style.padding = '6px 12px';
-        searchInput.style.border = '1px solid var(--background-modifier-border)';
-        searchInput.style.borderRadius = '4px';
-        searchInput.style.backgroundColor = 'var(--background-primary)';
-        searchInput.style.color = 'var(--text-normal)';
+        searchInput.setCssStyles({ width: '100%' });
+        searchInput.setCssStyles({ padding: '6px 12px' });
+        searchInput.setCssStyles({ border: '1px solid var(--background-modifier-border)' });
+        searchInput.setCssStyles({ borderRadius: '4px' });
+        searchInput.setCssStyles({ backgroundColor: 'var(--background-primary)' });
+        searchInput.setCssStyles({ color: 'var(--text-normal)' });
         
         searchInput.addEventListener('input', () => {
             if (graphRenderer) {
@@ -1591,26 +1591,26 @@ export class DashboardView extends ItemView {
 
         // Zoom controls
         const zoomContainer = controlsContainer.createDiv();
-        zoomContainer.style.display = 'flex';
-        zoomContainer.style.gap = '0.5rem';
+        zoomContainer.setCssStyles({ display: 'flex' });
+        zoomContainer.setCssStyles({ gap: '0.5rem' });
         
         const createControlButton = (text: string, title: string, onClick: () => void) => {
             const btn = zoomContainer.createEl('button', { text });
             btn.title = title;
-            btn.style.padding = '6px 12px';
-            btn.style.border = '1px solid var(--background-modifier-border)';
-            btn.style.borderRadius = '4px';
-            btn.style.backgroundColor = 'var(--background-primary)';
-            btn.style.color = 'var(--text-normal)';
-            btn.style.cursor = 'pointer';
-            btn.style.fontSize = '14px';
-            btn.style.fontWeight = '600';
+            btn.setCssStyles({ padding: '6px 12px' });
+            btn.setCssStyles({ border: '1px solid var(--background-modifier-border)' });
+            btn.setCssStyles({ borderRadius: '4px' });
+            btn.setCssStyles({ backgroundColor: 'var(--background-primary)' });
+            btn.setCssStyles({ color: 'var(--text-normal)' });
+            btn.setCssStyles({ cursor: 'pointer' });
+            btn.setCssStyles({ fontSize: '14px' });
+            btn.setCssStyles({ fontWeight: '600' });
             btn.addEventListener('click', onClick);
             btn.addEventListener('mouseenter', () => {
-                btn.style.backgroundColor = 'var(--background-modifier-hover)';
+                btn.setCssStyles({ backgroundColor: 'var(--background-modifier-hover)' });
             });
             btn.addEventListener('mouseleave', () => {
-                btn.style.backgroundColor = 'var(--background-primary)';
+                btn.setCssStyles({ backgroundColor: 'var(--background-primary)' });
             });
             return btn;
         };
@@ -1621,21 +1621,21 @@ export class DashboardView extends ItemView {
 
         // Layout selector
         const layoutContainer = controlsContainer.createDiv();
-        layoutContainer.style.display = 'flex';
-        layoutContainer.style.alignItems = 'center';
-        layoutContainer.style.gap = '0.5rem';
+        layoutContainer.setCssStyles({ display: 'flex' });
+        layoutContainer.setCssStyles({ alignItems: 'center' });
+        layoutContainer.setCssStyles({ gap: '0.5rem' });
         
         const layoutLabel = layoutContainer.createSpan({ text: t('layout') + ':' });
-        layoutLabel.style.fontSize = '13px';
-        layoutLabel.style.color = 'var(--text-muted)';
+        layoutLabel.setCssStyles({ fontSize: '13px' });
+        layoutLabel.setCssStyles({ color: 'var(--text-muted)' });
         
         const layoutSelect = layoutContainer.createEl('select');
-        layoutSelect.style.padding = '6px 12px';
-        layoutSelect.style.border = '1px solid var(--background-modifier-border)';
-        layoutSelect.style.borderRadius = '4px';
-        layoutSelect.style.backgroundColor = 'var(--background-primary)';
-        layoutSelect.style.color = 'var(--text-normal)';
-        layoutSelect.style.cursor = 'pointer';
+        layoutSelect.setCssStyles({ padding: '6px 12px' });
+        layoutSelect.setCssStyles({ border: '1px solid var(--background-modifier-border)' });
+        layoutSelect.setCssStyles({ borderRadius: '4px' });
+        layoutSelect.setCssStyles({ backgroundColor: 'var(--background-primary)' });
+        layoutSelect.setCssStyles({ color: 'var(--text-normal)' });
+        layoutSelect.setCssStyles({ cursor: 'pointer' });
         
         const layouts = [
             { value: 'cose', label: t('forceDirected') },
@@ -1645,7 +1645,7 @@ export class DashboardView extends ItemView {
         ];
         
         layouts.forEach(layout => {
-            const option = layoutSelect.createEl('option', { 
+            layoutSelect.createEl('option', { 
                 text: layout.label,
                 value: layout.value
             });
@@ -1659,41 +1659,41 @@ export class DashboardView extends ItemView {
         
         // Expand buttons - Open in Panel and Modal
         const expandContainer = controlsContainer.createDiv();
-        expandContainer.style.display = 'flex';
-        expandContainer.style.gap = '0.5rem';
-        expandContainer.style.marginLeft = 'auto';
+        expandContainer.setCssStyles({ display: 'flex' });
+        expandContainer.setCssStyles({ gap: '0.5rem' });
+        expandContainer.setCssStyles({ marginLeft: 'auto' });
         
         const createExpandButton = (text: string, title: string, onClick: () => void) => {
             const btn = expandContainer.createEl('button', { text });
             btn.title = title;
-            btn.style.padding = '6px 12px';
-            btn.style.border = '1px solid var(--background-modifier-border)';
-            btn.style.borderRadius = '4px';
-            btn.style.backgroundColor = 'var(--interactive-accent)';
-            btn.style.color = 'var(--text-on-accent)';
-            btn.style.cursor = 'pointer';
-            btn.style.fontSize = '13px';
-            btn.style.fontWeight = '500';
+            btn.setCssStyles({ padding: '6px 12px' });
+            btn.setCssStyles({ border: '1px solid var(--background-modifier-border)' });
+            btn.setCssStyles({ borderRadius: '4px' });
+            btn.setCssStyles({ backgroundColor: 'var(--interactive-accent)' });
+            btn.setCssStyles({ color: 'var(--text-on-accent)' });
+            btn.setCssStyles({ cursor: 'pointer' });
+            btn.setCssStyles({ fontSize: '13px' });
+            btn.setCssStyles({ fontWeight: '500' });
             btn.addEventListener('click', onClick);
             btn.addEventListener('mouseenter', () => {
-                btn.style.backgroundColor = 'var(--interactive-accent-hover)';
+                btn.setCssStyles({ backgroundColor: 'var(--interactive-accent-hover)' });
             });
             btn.addEventListener('mouseleave', () => {
-                btn.style.backgroundColor = 'var(--interactive-accent)';
+                btn.setCssStyles({ backgroundColor: 'var(--interactive-accent)' });
             });
             return btn;
         };
 
-        createExpandButton(t('openInPanel'), t('openInPanel'), async () => {
+        createExpandButton(t('openInPanel'), t('openInPanel'), () => { void (async () => {
             await this.openNetworkGraphInPanel();
-        });
+        })(); });
         
         // Create filters container
         const filtersContainer = container.createDiv('storyteller-network-filters');
-        filtersContainer.style.marginBottom = '1rem';
-        filtersContainer.style.padding = '1rem';
-        filtersContainer.style.backgroundColor = 'var(--background-secondary)';
-        filtersContainer.style.borderRadius = '8px';
+        filtersContainer.setCssStyles({ marginBottom: '1rem' });
+        filtersContainer.setCssStyles({ padding: '1rem' });
+        filtersContainer.setCssStyles({ backgroundColor: 'var(--background-secondary)' });
+        filtersContainer.setCssStyles({ borderRadius: '8px' });
 
         // Filter state
         let currentFilters: any = {
@@ -1711,7 +1711,7 @@ export class DashboardView extends ItemView {
                 .setDesc(t('selectEntityTypes'))
                 .addDropdown(dropdown => {
                     dropdown.addOption('', t('all') || 'All');
-                    groups.forEach(g => dropdown.addOption(g.id, g.name));
+                    groups.forEach(g => { dropdown.addOption(g.id, g.name); });
                     dropdown.onChange(async (value) => {
                         currentFilters.groups = value ? [value] : [];
                         if (graphRenderer) {
@@ -1727,16 +1727,16 @@ export class DashboardView extends ItemView {
             .setDesc(t('selectEntityTypes'));
 
         const entityTypeContainer = entityTypeSetting.controlEl.createDiv('storyteller-entity-type-filters');
-        entityTypeContainer.style.display = 'flex';
-        entityTypeContainer.style.gap = '1rem';
-        entityTypeContainer.style.flexWrap = 'wrap';
+        entityTypeContainer.setCssStyles({ display: 'flex' });
+        entityTypeContainer.setCssStyles({ gap: '1rem' });
+        entityTypeContainer.setCssStyles({ flexWrap: 'wrap' });
 
         const entityTypes = ['character', 'location', 'event', 'item'] as const;
         entityTypes.forEach(type => {
             const checkboxContainer = entityTypeContainer.createDiv();
-            checkboxContainer.style.display = 'flex';
-            checkboxContainer.style.alignItems = 'center';
-            checkboxContainer.style.gap = '0.5rem';
+            checkboxContainer.setCssStyles({ display: 'flex' });
+            checkboxContainer.setCssStyles({ alignItems: 'center' });
+            checkboxContainer.setCssStyles({ gap: '0.5rem' });
 
             const checkbox = checkboxContainer.createEl('input', { type: 'checkbox' });
             checkbox.checked = true;
@@ -1756,7 +1756,7 @@ export class DashboardView extends ItemView {
 
             const label = checkboxContainer.createEl('label', { text: t((type + 's') as any) });
             label.htmlFor = `entity-type-${type}`;
-            label.style.cursor = 'pointer';
+            label.setCssStyles({ cursor: 'pointer' });
         });
 
         // Timeline filters
@@ -1765,9 +1765,9 @@ export class DashboardView extends ItemView {
             .setDesc(t('timelineStart') + t('timelineRangeSeparator') + t('timelineEnd'));
 
         const timelineContainer = timelineFilterSetting.controlEl.createDiv();
-        timelineContainer.style.display = 'flex';
-        timelineContainer.style.gap = '0.5rem';
-        timelineContainer.style.alignItems = 'center';
+        timelineContainer.setCssStyles({ display: 'flex' });
+        timelineContainer.setCssStyles({ gap: '0.5rem' });
+        timelineContainer.setCssStyles({ alignItems: 'center' });
 
         const startInput = timelineContainer.createEl('input', { type: 'date' });
         startInput.onchange = async () => {
@@ -1819,7 +1819,7 @@ export class DashboardView extends ItemView {
 
         // Create graph container
         const graphContainer = container.createDiv('storyteller-network-graph-container');
-        graphContainer.style.marginBottom = '1rem';
+        graphContainer.setCssStyles({ marginBottom: '1rem' });
 
         // Initialize graph renderer (legend is now built-in to the renderer)
         try {
@@ -1985,8 +1985,8 @@ export class DashboardView extends ItemView {
         const listContainer = container.createDiv('storyteller-list-container');
         if (groups.length === 0) {
             const emptyMsg = listContainer.createEl('p', { text: t('noGroupsFound'), cls: 'storyteller-empty-state' });
-            emptyMsg.style.color = 'var(--text-muted)';
-            emptyMsg.style.fontStyle = 'italic';
+            emptyMsg.setCssStyles({ color: 'var(--text-muted)' });
+            emptyMsg.setCssStyles({ fontStyle: 'italic' });
             return;
         }
         const allCharacters = await this.plugin.listCharacters();
@@ -2012,7 +2012,7 @@ export class DashboardView extends ItemView {
             const infoDiv = groupHeader.createDiv('storyteller-group-info');
             if (group.profileImagePath) {
                 const img = infoDiv.createEl('img', { cls: 'storyteller-group-pfp' });
-                try { img.src = this.getImageSrc(group.profileImagePath); } catch (e) { /* ignore */ }
+                try { img.src = this.getImageSrc(group.profileImagePath); } catch { /* ignore */ }
             }
             infoDiv.createEl('strong', { text: group.name });
             if (group.description) {
@@ -2113,7 +2113,7 @@ export class DashboardView extends ItemView {
                             li.addEventListener('click', (e) => {
                                 e.stopPropagation();
                                 const path = filePath as string;
-                                this.app.workspace.openLinkText(path, '', false);
+                                void this.app.workspace.openLinkText(path, '', false);
                             });
                         }
                     });
@@ -2144,9 +2144,9 @@ export class DashboardView extends ItemView {
     // --- Header Controls (Filter + Add Button) ---
     private renderHeaderControls(container: HTMLElement, title: string, filterFn: (filter: string) => Promise<void>, addFn: () => void, addButtonText: string = t('createNew'), extendButtons?: (s: Setting) => void, extendMobileActions?: (menu: Menu) => void) {
         const controlsGroup = container.createDiv('storyteller-controls-group');
-        controlsGroup.style.display = 'flex';
-        controlsGroup.style.alignItems = 'center';
-        controlsGroup.style.gap = '0.5em';
+        controlsGroup.setCssStyles({ display: 'flex' });
+        controlsGroup.setCssStyles({ alignItems: 'center' });
+        controlsGroup.setCssStyles({ gap: '0.5em' });
         
         // Determine entity type from title for folder resolvability check
         const titleKey = title.toLowerCase();
@@ -2277,7 +2277,7 @@ export class DashboardView extends ItemView {
                 this.currentFilter = filter;
                 await this.renderReferencesList(container);
             }, () => {
-                import('../modals/ReferenceModal').then(({ ReferenceModal }) => {
+                void import('../modals/ReferenceModal').then(({ ReferenceModal }) => {
                     new ReferenceModal(this.app, this.plugin, null, async (ref) => {
                         await this.mutationRunner.runCreate({
                             action: async () => {
@@ -2323,7 +2323,7 @@ export class DashboardView extends ItemView {
                 try {
                     imgEl.src = this.getImageSrc(ref.profileImagePath);
                     imgEl.alt = ref.name;
-                } catch (e) {
+                } catch {
                     pfpContainer.createSpan({ text: '?' });
                 }
             } else {
@@ -2331,7 +2331,7 @@ export class DashboardView extends ItemView {
             }
 
             const infoEl = itemEl.createDiv('storyteller-list-item-info');
-            const titleEl = infoEl.createEl('strong', { text: ref.name });
+            infoEl.createEl('strong', { text: ref.name });
             if (ref.category) {
                 infoEl.createEl('span', { text: ` (${ref.category})`, cls: 'storyteller-list-item-status' });
             }
@@ -2346,7 +2346,7 @@ export class DashboardView extends ItemView {
 
             const actionsEl = itemEl.createDiv('storyteller-list-item-actions');
             this.addEditButton(actionsEl, () => {
-                import('../modals/ReferenceModal').then(({ ReferenceModal }) => {
+                void import('../modals/ReferenceModal').then(({ ReferenceModal }) => {
                     new ReferenceModal(this.app, this.plugin, ref, async (updated) => {
                         await this.mutationRunner.runUpdate({
                             action: async () => {
@@ -2436,11 +2436,11 @@ export class DashboardView extends ItemView {
                 option.value = mode.id;
             });
             modeSelect.value = this._writingViewMode;
-            modeSelect.addEventListener('change', async () => {
+            modeSelect.addEventListener('change', () => { void (async () => {
                 this._writingViewMode = modeSelect.value as typeof this._writingViewMode;
                 updatePopOut();
                 await renderActive();
-            });
+            })(); });
             switcher.prepend(modeSelect);
         } else {
             modes.forEach(m => {
@@ -2476,7 +2476,7 @@ export class DashboardView extends ItemView {
                 await renderActive();
             },
             () => {
-                import('../modals/ChapterModal').then(({ ChapterModal }) => {
+                void import('../modals/ChapterModal').then(({ ChapterModal }) => {
                     new ChapterModal(this.app, this.plugin, null, async (ch) => {
                         await this.persistChapterFromDashboard(ch, `Chapter "${ch.name}" created.`, 'writing-chapter-created');
                     }).open();
@@ -2485,8 +2485,8 @@ export class DashboardView extends ItemView {
             'Add Chapter',
             (s) => {
                 s.addButton(btn => {
-                    btn.setButtonText('Add Scene').onClick(() => {
-                        import('../modals/SceneModal').then(({ SceneModal }) => {
+                    btn.setButtonText('Add scene').onClick(() => {
+                        void import('../modals/SceneModal').then(({ SceneModal }) => {
                             new SceneModal(this.app, this.plugin, null, async (sc) => {
                                 await this.persistSceneFromDashboard(sc, `Scene "${sc.name}" created.`, 'writing-scene-created');
                             }).open();
@@ -2494,17 +2494,17 @@ export class DashboardView extends ItemView {
                     });
                 });
                 s.addButton(btn => {
-                    btn.setIcon('layout-dashboard').setTooltip('Open Story Board canvas').onClick(async () => {
+                    btn.setIcon('layout-dashboard').setTooltip('Open story board canvas').onClick(async () => {
                         await this.plugin.openStoryBoard();
                     });
                 });
             },
             (menu) => {
                 menu.addItem(item => {
-                    item.setTitle('Add Scene');
+                    item.setTitle('Add scene');
                     item.setIcon('plus-circle');
                     item.onClick(() => {
-                        import('../modals/SceneModal').then(({ SceneModal }) => {
+                        void import('../modals/SceneModal').then(({ SceneModal }) => {
                             new SceneModal(this.app, this.plugin, null, async (sc) => {
                                 await this.persistSceneFromDashboard(sc, `Scene "${sc.name}" created.`, 'writing-scene-created-menu');
                             }).open();
@@ -2512,7 +2512,7 @@ export class DashboardView extends ItemView {
                     });
                 });
                 menu.addItem(item => {
-                    item.setTitle('Open Story Board');
+                    item.setTitle('Open story board');
                     item.setIcon('layout-dashboard');
                     item.onClick(() => {
                         void this.plugin.openStoryBoard();
@@ -2531,7 +2531,7 @@ export class DashboardView extends ItemView {
             this.currentFilter = filter;
             await this.renderChaptersWithScenesList(container);
         }, () => {
-            import('../modals/ChapterModal').then(({ ChapterModal }) => {
+            void import('../modals/ChapterModal').then(({ ChapterModal }) => {
                 new ChapterModal(this.app, this.plugin, null, async (ch) => {
                     await this.persistChapterFromDashboard(ch, `Chapter "${ch.name}" created.`, 'chapters-tab-created');
                 }).open();
@@ -2590,7 +2590,7 @@ export class DashboardView extends ItemView {
             
             // Expand/collapse toggle
             const toggleBtn = chapterHeader.createDiv('storyteller-chapter-toggle');
-            toggleBtn.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M7 10l5 5 5-5z"/></svg>';
+            setIcon(toggleBtn, 'chevron-down');
             
             const pfpContainer = chapterHeader.createDiv('storyteller-list-item-pfp');
             if (ch.profileImagePath) {
@@ -2598,7 +2598,7 @@ export class DashboardView extends ItemView {
                 try {
                     imgEl.src = this.getImageSrc(ch.profileImagePath);
                     imgEl.alt = ch.name;
-                } catch (e) {
+                } catch {
                     pfpContainer.createSpan({ text: '?' });
                 }
             } else {
@@ -2701,14 +2701,14 @@ export class DashboardView extends ItemView {
             const chapterKey = ch.id || ch.name;
             let isExpanded = this._chapterCollapseState.has(chapterKey) ? this._chapterCollapseState.get(chapterKey)! : true;
             if (!isExpanded) {
-                scenesContainer.style.display = 'none';
+                scenesContainer.setCssStyles({ display: 'none' });
                 toggleBtn.classList.add('collapsed');
             }
             toggleBtn.onclick = (e) => {
                 e.stopPropagation();
                 isExpanded = !isExpanded;
                 this._chapterCollapseState.set(chapterKey, isExpanded);
-                scenesContainer.style.display = isExpanded ? 'block' : 'none';
+                scenesContainer.setCssStyles({ display: isExpanded ? 'block' : 'none' });
                 toggleBtn.classList.toggle('collapsed', !isExpanded);
             };
         });
@@ -2726,14 +2726,14 @@ export class DashboardView extends ItemView {
             const unassignedHeader = unassignedGroup.createDiv('storyteller-chapter-header');
             
             const toggleBtn = unassignedHeader.createDiv('storyteller-chapter-toggle');
-            toggleBtn.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M7 10l5 5 5-5z"/></svg>';
+            setIcon(toggleBtn, 'chevron-down');
             
             const pfpContainer = unassignedHeader.createDiv('storyteller-list-item-pfp');
             pfpContainer.createDiv({ cls: 'storyteller-pfp-placeholder storyteller-unassigned-badge', text: '?' });
             
             const infoEl = unassignedHeader.createDiv('storyteller-list-item-info');
             const titleRow = infoEl.createDiv('storyteller-chapter-title-row');
-            titleRow.createEl('strong', { text: 'Unassigned Scenes' });
+            titleRow.createEl('strong', { text: 'Unassigned scenes' });
             titleRow.createSpan({ cls: 'storyteller-chapter-scene-count', text: `${unassignedScenes.length} scene${unassignedScenes.length !== 1 ? 's' : ''}` });
 
             const scenesContainer = unassignedGroup.createDiv('storyteller-chapter-scenes');
@@ -2744,14 +2744,14 @@ export class DashboardView extends ItemView {
             const unassignedKey = '__unassigned__';
             let isExpanded = this._chapterCollapseState.has(unassignedKey) ? this._chapterCollapseState.get(unassignedKey)! : true;
             if (!isExpanded) {
-                scenesContainer.style.display = 'none';
+                scenesContainer.setCssStyles({ display: 'none' });
                 toggleBtn.classList.add('collapsed');
             }
             toggleBtn.onclick = (e) => {
                 e.stopPropagation();
                 isExpanded = !isExpanded;
                 this._chapterCollapseState.set(unassignedKey, isExpanded);
-                scenesContainer.style.display = isExpanded ? 'block' : 'none';
+                scenesContainer.setCssStyles({ display: isExpanded ? 'block' : 'none' });
                 toggleBtn.classList.toggle('collapsed', !isExpanded);
             };
         }
@@ -2785,7 +2785,7 @@ export class DashboardView extends ItemView {
                 try {
                     imgEl.src = this.getImageSrc(ch.profileImagePath);
                     imgEl.alt = ch.name;
-                } catch (e) {
+                } catch {
                     pfpContainer.createSpan({ text: '?' });
                 }
             } else {
@@ -2807,7 +2807,7 @@ export class DashboardView extends ItemView {
 
             const actionsEl = itemEl.createDiv('storyteller-list-item-actions');
             this.addEditButton(actionsEl, () => {
-                import('../modals/ChapterModal').then(({ ChapterModal }) => {
+                void import('../modals/ChapterModal').then(({ ChapterModal }) => {
                     new ChapterModal(this.app, this.plugin, ch, async (updated) => {
                         await this.persistChapterFromDashboard(updated, `Chapter "${updated.name}" updated.`, 'chapters-tab-updated');
                     }, async (toDelete) => {
@@ -2837,7 +2837,7 @@ export class DashboardView extends ItemView {
             this.currentFilter = filter;
             await this.renderScenesGroupedByChapter(container);
         }, () => {
-            import('../modals/SceneModal').then(({ SceneModal }) => {
+            void import('../modals/SceneModal').then(({ SceneModal }) => {
                 new SceneModal(this.app, this.plugin, null, async (sc) => {
                     await this.persistSceneFromDashboard(sc, `Scene "${sc.name}" created.`, 'scenes-tab-created');
                 }).open();
@@ -2911,7 +2911,7 @@ export class DashboardView extends ItemView {
             
             // Expand/collapse toggle
             const toggleBtn = chapterHeader.createDiv('storyteller-chapter-toggle');
-            toggleBtn.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M7 10l5 5 5-5z"/></svg>';
+            setIcon(toggleBtn, 'chevron-down');
             
             const infoEl = chapterHeader.createDiv('storyteller-list-item-info');
             const chapterNum = chapter?.number ?? '?';
@@ -2927,7 +2927,7 @@ export class DashboardView extends ItemView {
                 chapterEditBtn2.title = 'Edit chapter';
                 chapterEditBtn2.addEventListener('click', (e) => {
                     e.stopPropagation();
-                    import('../modals/ChapterModal').then(({ ChapterModal }) => {
+                    void import('../modals/ChapterModal').then(({ ChapterModal }) => {
                         new ChapterModal(this.app, this.plugin, chapter, async (updated) => {
                             await this.persistChapterFromDashboard(updated, `Chapter "${updated.name}" updated.`, 'scenes-grouped-chapter-updated');
                         }, async (toDelete) => {
@@ -2958,14 +2958,14 @@ export class DashboardView extends ItemView {
             // Toggle expand/collapse — persist state across re-renders
             let isExpanded = this._sceneGroupCollapseState.has(key) ? this._sceneGroupCollapseState.get(key)! : true;
             if (!isExpanded) {
-                scenesContainer.style.display = 'none';
+                scenesContainer.setCssStyles({ display: 'none' });
                 toggleBtn.classList.add('collapsed');
             }
             toggleBtn.onclick = (e) => {
                 e.stopPropagation();
                 isExpanded = !isExpanded;
                 this._sceneGroupCollapseState.set(key, isExpanded);
-                scenesContainer.style.display = isExpanded ? 'block' : 'none';
+                scenesContainer.setCssStyles({ display: isExpanded ? 'block' : 'none' });
                 toggleBtn.classList.toggle('collapsed', !isExpanded);
             };
         }
@@ -2977,11 +2977,11 @@ export class DashboardView extends ItemView {
             const unassignedHeader = unassignedGroup.createDiv('storyteller-chapter-header storyteller-chapter-header-compact');
             
             const toggleBtn = unassignedHeader.createDiv('storyteller-chapter-toggle');
-            toggleBtn.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M7 10l5 5 5-5z"/></svg>';
+            setIcon(toggleBtn, 'chevron-down');
             
             const infoEl = unassignedHeader.createDiv('storyteller-list-item-info');
             const titleRow = infoEl.createDiv('storyteller-chapter-title-row');
-            titleRow.createEl('strong', { text: 'Unassigned Scenes' });
+            titleRow.createEl('strong', { text: 'Unassigned scenes' });
             titleRow.createSpan({ cls: 'storyteller-chapter-scene-count', text: `${unassigned.length} scene${unassigned.length !== 1 ? 's' : ''}` });
 
             const scenesContainer = unassignedGroup.createDiv('storyteller-chapter-scenes');
@@ -2992,14 +2992,14 @@ export class DashboardView extends ItemView {
             const sgUnassignedKey = '__unassigned__';
             let isExpanded = this._sceneGroupCollapseState.has(sgUnassignedKey) ? this._sceneGroupCollapseState.get(sgUnassignedKey)! : true;
             if (!isExpanded) {
-                scenesContainer.style.display = 'none';
+                scenesContainer.setCssStyles({ display: 'none' });
                 toggleBtn.classList.add('collapsed');
             }
             toggleBtn.onclick = (e) => {
                 e.stopPropagation();
                 isExpanded = !isExpanded;
                 this._sceneGroupCollapseState.set(sgUnassignedKey, isExpanded);
-                scenesContainer.style.display = isExpanded ? 'block' : 'none';
+                scenesContainer.setCssStyles({ display: isExpanded ? 'block' : 'none' });
                 toggleBtn.classList.toggle('collapsed', !isExpanded);
             };
         }
@@ -3015,7 +3015,7 @@ export class DashboardView extends ItemView {
             try {
                 imgEl.src = this.getImageSrc(sc.profileImagePath);
                 imgEl.alt = sc.name;
-            } catch (e) {
+            } catch {
                 pfpContainer.createSpan({ text: '?' });
             }
         } else {
@@ -3029,7 +3029,7 @@ export class DashboardView extends ItemView {
             nameEl.title = 'Click to open note';
             nameEl.addEventListener('click', () => {
                 const file = this.app.vault.getAbstractFileByPath(sc.filePath);
-                if (file instanceof TFile) this.app.workspace.openLinkText(sc.filePath, '', false);
+                if (file instanceof TFile) void this.app.workspace.openLinkText(sc.filePath, '', false);
             });
         }
 
@@ -3053,7 +3053,7 @@ export class DashboardView extends ItemView {
             const barWrap = infoEl.createDiv('storyteller-intensity-bar');
             const pct = Math.round(((Number(sc.intensity) + 10) / 20) * 100);
             const fill = barWrap.createDiv('storyteller-intensity-fill');
-            fill.style.width = `${pct}%`;
+            fill.setCssStyles({ width: `${pct}%` });
             fill.title = `Intensity: ${sc.intensity}`;
         }
 
@@ -3087,7 +3087,7 @@ export class DashboardView extends ItemView {
         }
         
         this.addEditButton(actionsEl, () => {
-            import('../modals/SceneModal').then(({ SceneModal }) => {
+            void import('../modals/SceneModal').then(({ SceneModal }) => {
                 new SceneModal(this.app, this.plugin, sc, async (updated) => {
                     await this.persistSceneFromDashboard(updated, `Scene "${updated.name}" updated.`, 'scene-item-updated');
                 }, async (toDelete) => {
@@ -3136,7 +3136,7 @@ export class DashboardView extends ItemView {
                 try {
                     imgEl.src = this.getImageSrc(sc.profileImagePath);
                     imgEl.alt = sc.name;
-                } catch (e) {
+                } catch {
                     pfpContainer.createSpan({ text: '?' });
                 }
             } else {
@@ -3144,7 +3144,7 @@ export class DashboardView extends ItemView {
             }
 
             const infoEl = itemEl.createDiv('storyteller-list-item-info');
-            const titleEl = infoEl.createEl('strong', { text: sc.name });
+            infoEl.createEl('strong', { text: sc.name });
             const meta = infoEl.createDiv('storyteller-list-item-extra');
             if (sc.chapterName) meta.createSpan({ text: `Chapter: ${sc.chapterName}` }); else meta.createSpan({ text: 'Unassigned' });
             if (sc.status) meta.createSpan({ text: ` • ${sc.status}` });
@@ -3169,7 +3169,7 @@ export class DashboardView extends ItemView {
                         if (chapterForScene.filePath) {
                             const file = this.app.vault.getAbstractFileByPath(chapterForScene.filePath);
                             if (file instanceof TFile) {
-                                this.app.workspace.openLinkText(chapterForScene.filePath, '', false);
+                                void this.app.workspace.openLinkText(chapterForScene.filePath, '', false);
                                 return;
                             }
                         }
@@ -3182,7 +3182,7 @@ export class DashboardView extends ItemView {
 
             const actionsEl = itemEl.createDiv('storyteller-list-item-actions');
             this.addEditButton(actionsEl, () => {
-                import('../modals/SceneModal').then(({ SceneModal }) => {
+                void import('../modals/SceneModal').then(({ SceneModal }) => {
                     new SceneModal(this.app, this.plugin, sc, async (updated) => {
                         await this.persistSceneFromDashboard(updated, `Scene "${updated.name}" updated.`, 'scenes-tab-updated');
                     }, async (toDelete) => {
@@ -3278,8 +3278,6 @@ export class DashboardView extends ItemView {
         
         if (activeDraft) {
             const stats = await sceneManager.getDraftStatistics(activeDraft);
-            const orderedScenes = await sceneManager.getOrderedScenes(activeDraft);
-            
             const statsGrid = statsEl.createDiv('storyteller-stats-grid');
             
             // Word count
@@ -3366,7 +3364,7 @@ export class DashboardView extends ItemView {
                     }
                     
                     const sceneEl = sceneListEl.createDiv('storyteller-ordered-scene-item');
-                    sceneEl.style.paddingLeft = `${(orderedScene.indentLevel + 1) * 16}px`;
+                    sceneEl.setCssStyles({ paddingLeft: `${(orderedScene.indentLevel + 1) * 16}px` });
                     
                     // Include checkbox
                     const sceneId = orderedScene.scene.id || orderedScene.scene.name;
@@ -3392,7 +3390,7 @@ export class DashboardView extends ItemView {
                     // Click to open
                     infoEl.onclick = () => {
                         if (orderedScene.scene.filePath) {
-                            this.app.workspace.openLinkText(orderedScene.scene.filePath, '', false);
+                            void this.app.workspace.openLinkText(orderedScene.scene.filePath, '', false);
                         }
                     };
                     
@@ -3462,9 +3460,9 @@ export class DashboardView extends ItemView {
         const workflowControlsEl = compileActionsEl.createDiv('storyteller-workflow-controls');
         const editWorkflowBtn = workflowControlsEl.createEl('button');
         const setDefaultWorkflowBtn = workflowControlsEl.createEl('button');
-        setDefaultWorkflowBtn.setText('Set Default');
+        setDefaultWorkflowBtn.setText('Set default');
         const deleteWorkflowBtn = workflowControlsEl.createEl('button');
-        deleteWorkflowBtn.setText('Delete Workflow');
+        deleteWorkflowBtn.setText('Delete workflow');
         const workflowStatusEl = compileActionsEl.createDiv('storyteller-workflow-status');
 
         const refreshWorkflowUi = () => {
@@ -3472,7 +3470,7 @@ export class DashboardView extends ItemView {
             const isCustom = customWorkflows.some(saved => saved.id === currentWorkflow.id);
             workflowDescEl.setText(currentWorkflow.description || '');
             editWorkflowBtn.setText(isCustom ? 'Edit Workflow' : 'Customize Workflow');
-            deleteWorkflowBtn.style.display = isCustom ? '' : 'none';
+            deleteWorkflowBtn.setCssStyles({ display: isCustom ? '' : 'none' });
 
             const statusBits: string[] = [isCustom ? 'Custom workflow' : 'Preset workflow'];
             if (engine.getWorkflowById(this.plugin.settings.defaultCompileWorkflow || '')?.id === currentWorkflow.id) {
@@ -3499,14 +3497,14 @@ export class DashboardView extends ItemView {
             );
         });
 
-        setDefaultWorkflowBtn.addEventListener('click', async () => {
+        setDefaultWorkflowBtn.addEventListener('click', () => { void (async () => {
             this.plugin.settings.defaultCompileWorkflow = workflowSelect.value;
             await this.plugin.saveSettings();
             refreshWorkflowUi();
             new Notice('Default compile workflow updated.');
-        });
+        })(); });
 
-        deleteWorkflowBtn.addEventListener('click', async () => {
+        deleteWorkflowBtn.addEventListener('click', () => { void (async () => {
             const currentWorkflow = engine.getWorkflowById(workflowSelect.value);
             if (!currentWorkflow) return;
             if (!customWorkflows.some(saved => saved.id === currentWorkflow.id)) return;
@@ -3523,7 +3521,7 @@ export class DashboardView extends ItemView {
             });
             await this.plugin.saveSettings();
             await this.renderCompileContent(container);
-        });
+        })(); });
 
         workflowSelect.onchange = async () => {
             if (activeDraft) {
@@ -3761,10 +3759,10 @@ export class DashboardView extends ItemView {
                         thumb.src = this.getImageSrc(imagePath);
                         thumb.alt = event.name + ' image';
                         thumb.loading = 'lazy';
-                        thumb.style.maxWidth = '48px';
-                        thumb.style.maxHeight = '48px';
-                        thumb.style.marginRight = '4px';
-                        thumb.style.cursor = 'pointer';
+                        thumb.setCssStyles({ maxWidth: '48px' });
+                        thumb.setCssStyles({ maxHeight: '48px' });
+                        thumb.setCssStyles({ marginRight: '4px' });
+                        thumb.setCssStyles({ cursor: 'pointer' });
                         thumb.addEventListener('click', () => {
                             // Open in modal (ImageDetailModal)
                             new ImageDetailModal(
@@ -3775,7 +3773,7 @@ export class DashboardView extends ItemView {
                                 () => Promise.resolve()
                             ).open();
                         });
-                    } catch (e) {
+                    } catch {
                         imagesRow.createSpan({ text: '?', title: 'Error loading image' });
                     }
                 });
@@ -3901,7 +3899,7 @@ export class DashboardView extends ItemView {
            .onClick(() => {
                const file = this.app.vault.getAbstractFileByPath(filePath);
                if (file instanceof TFile) {
-                   this.app.workspace.openLinkText(filePath, '', false);
+                   void this.app.workspace.openLinkText(filePath, '', false);
                } else {
                    new Notice('Could not find the note file.');
                }
@@ -3926,14 +3924,14 @@ export class DashboardView extends ItemView {
         const { workspace } = this.app;
         
         // Import NetworkGraphView dynamically
-        const { NetworkGraphView, VIEW_TYPE_NETWORK_GRAPH } = await import('./NetworkGraphView');
+        const { VIEW_TYPE_NETWORK_GRAPH } = await import('./NetworkGraphView');
         
         // Check if a network graph view already exists
         const existingLeaves = workspace.getLeavesOfType(VIEW_TYPE_NETWORK_GRAPH);
         
         if (existingLeaves.length > 0) {
             // Reveal existing view
-            workspace.revealLeaf(existingLeaves[0]);
+            void workspace.revealLeaf(existingLeaves[0]);
             return;
         }
         
@@ -3944,7 +3942,7 @@ export class DashboardView extends ItemView {
                 type: VIEW_TYPE_NETWORK_GRAPH,
                 active: true
             });
-            workspace.revealLeaf(leaf);
+            void workspace.revealLeaf(leaf);
         }
     }
     
@@ -3985,7 +3983,7 @@ export class DashboardView extends ItemView {
         refreshContainer: HTMLElement,
         activeDraft?: StoryDraft
     ): void {
-        import('../modals/CompileWorkflowModal').then(({ CompileWorkflowModal }) => {
+        void import('../modals/CompileWorkflowModal').then(({ CompileWorkflowModal }) => {
             new CompileWorkflowModal(this.app, {
                 workflow,
                 availableSteps: engine.getAvailableSteps(),
@@ -4016,7 +4014,7 @@ export class DashboardView extends ItemView {
         const section = container.createDiv('storyteller-compile-custom-steps');
 
         const header = section.createDiv('storyteller-compile-custom-header');
-        header.createEl('h4', { text: 'Custom Compile Steps' });
+        header.createEl('h4', { text: 'Custom compile steps' });
 
         const addBtn = header.createEl('button', { cls: 'mod-cta storyteller-compile-add-step-btn' });
         const addIcon = addBtn.createSpan();
@@ -4053,7 +4051,7 @@ export class DashboardView extends ItemView {
             const deleteBtn = actions.createEl('button');
             setIcon(deleteBtn, 'trash');
             deleteBtn.title = 'Delete step';
-            deleteBtn.addEventListener('click', async () => {
+            deleteBtn.addEventListener('click', () => { void (async () => {
                 const stepTypeToRemove = `custom:${step.id}`;
                 this.plugin.settings.customCompileSteps = (this.plugin.settings.customCompileSteps ?? [])
                     .filter(s => s.id !== step.id);
@@ -4063,7 +4061,7 @@ export class DashboardView extends ItemView {
                 }));
                 await this.plugin.saveSettings();
                 await this.renderCompileContent(container);
-            });
+            })(); });
         }
     }
 
@@ -4071,8 +4069,8 @@ export class DashboardView extends ItemView {
         existing: import('../types').CustomCompileStepDef | null,
         refreshContainer: HTMLElement
     ): void {
-        import('../modals/CustomCompileStepModal').then(({ CustomCompileStepModal }) => {
-            new CustomCompileStepModal(this.app, existing, async (saved) => {
+        void import('../modals/CustomCompileStepModal').then(({ CustomCompileStepModal }) => {
+            new CustomCompileStepModal(this.app, existing, (saved) => { void (async () => {
                 const steps = [...(this.plugin.settings.customCompileSteps ?? [])];
                 const idx = steps.findIndex(s => s.id === saved.id);
                 if (idx >= 0) steps[idx] = saved;
@@ -4080,7 +4078,7 @@ export class DashboardView extends ItemView {
                 this.plugin.settings.customCompileSteps = steps;
                 await this.plugin.saveSettings();
                 await this.renderCompileContent(refreshContainer);
-            }).open();
+            })(); }).open();
         });
     }
 
@@ -4093,7 +4091,7 @@ export class DashboardView extends ItemView {
                 this.currentFilter = filter;
                 await this.renderCulturesList(container);
             }, () => {
-                import('../modals/CultureModal').then(({ CultureModal }) => {
+                void import('../modals/CultureModal').then(({ CultureModal }) => {
                     new CultureModal(this.app, this.plugin, null, async (culture) => {
                         await this.mutationRunner.runCreate({
                             action: async () => {
@@ -4155,7 +4153,7 @@ export class DashboardView extends ItemView {
 
             const actionsEl = itemEl.createDiv('storyteller-list-item-actions');
             this.addEditButton(actionsEl, () => {
-                import('../modals/CultureModal').then(({ CultureModal }) => {
+                void import('../modals/CultureModal').then(({ CultureModal }) => {
                     new CultureModal(this.app, this.plugin, culture, async (updated) => {
                         await this.mutationRunner.runUpdate({
                             action: async () => {
@@ -4197,7 +4195,7 @@ export class DashboardView extends ItemView {
                 this.currentFilter = filter;
                 await this.renderEconomiesList(container);
             }, () => {
-                import('../modals/EconomyModal').then(({ EconomyModal }) => {
+                void import('../modals/EconomyModal').then(({ EconomyModal }) => {
                     new EconomyModal(this.app, this.plugin, null, async (economy) => {
                         await this.mutationRunner.runCreate({
                             action: async () => {
@@ -4297,7 +4295,7 @@ export class DashboardView extends ItemView {
 
             const actionsEl = itemEl.createDiv('storyteller-list-item-actions');
             this.addEditButton(actionsEl, () => {
-                import('../modals/EconomyModal').then(({ EconomyModal }) => {
+                void import('../modals/EconomyModal').then(({ EconomyModal }) => {
                     new EconomyModal(this.app, this.plugin, economy, async (updated) => {
                         await this.mutationRunner.runUpdate({
                             action: async () => {
@@ -4345,7 +4343,7 @@ export class DashboardView extends ItemView {
                 this.currentFilter = filter;
                 await this.renderMagicSystemsList(container);
             }, () => {
-                import('../modals/MagicSystemModal').then(({ MagicSystemModal }) => {
+                void import('../modals/MagicSystemModal').then(({ MagicSystemModal }) => {
                     new MagicSystemModal(this.app, this.plugin, null, async (magicSystem) => {
                         await this.mutationRunner.runCreate({
                             action: async () => {
@@ -4409,7 +4407,7 @@ export class DashboardView extends ItemView {
 
             const actionsEl = itemEl.createDiv('storyteller-list-item-actions');
             this.addEditButton(actionsEl, () => {
-                import('../modals/MagicSystemModal').then(({ MagicSystemModal }) => {
+                void import('../modals/MagicSystemModal').then(({ MagicSystemModal }) => {
                     new MagicSystemModal(this.app, this.plugin, magicSystem, async (updated) => {
                         await this.mutationRunner.runUpdate({
                             action: async () => {
@@ -4450,7 +4448,7 @@ export class DashboardView extends ItemView {
                 this.currentFilter = filter;
                 await this.renderCompendiumList(container);
             }, () => {
-                import('../modals/CompendiumEntryModal').then(({ CompendiumEntryModal }) => {
+                void import('../modals/CompendiumEntryModal').then(({ CompendiumEntryModal }) => {
                     new CompendiumEntryModal(this.app, this.plugin, null, async (entry) => {
                         await this.mutationRunner.runCreate({
                             action: async () => {
@@ -4535,7 +4533,7 @@ export class DashboardView extends ItemView {
 
             const actionsEl = itemEl.createDiv('storyteller-list-item-actions');
             this.addEditButton(actionsEl, () => {
-                import('../modals/CompendiumEntryModal').then(({ CompendiumEntryModal }) => {
+                void import('../modals/CompendiumEntryModal').then(({ CompendiumEntryModal }) => {
                     new CompendiumEntryModal(this.app, this.plugin, entry, async (updated) => {
                         await this.mutationRunner.runUpdate({
                             action: async () => {
@@ -4578,7 +4576,7 @@ export class DashboardView extends ItemView {
                 this.currentFilter = filter;
                 await this.renderBooksList(container);
             }, () => {
-                import('../modals/BookModal').then(({ BookModal }) => {
+                void import('../modals/BookModal').then(({ BookModal }) => {
                     new BookModal(this.app, this.plugin, null, async (book) => {
                         await this.mutationRunner.runCreate({
                             action: async () => {
@@ -4632,7 +4630,7 @@ export class DashboardView extends ItemView {
             const pfpContainer = itemEl.createDiv('storyteller-list-item-pfp');
             if (book.coverImagePath) {
                 const imgEl = pfpContainer.createEl('img');
-                try { imgEl.src = this.getImageSrc(book.coverImagePath); imgEl.alt = book.name; } catch (_) { pfpContainer.createSpan({ text: '📖' }); }
+                try { imgEl.src = this.getImageSrc(book.coverImagePath); imgEl.alt = book.name; } catch { pfpContainer.createSpan({ text: '📖' }); }
             } else {
                 pfpContainer.createDiv({ cls: 'storyteller-pfp-placeholder', text: (book.bookNumber ?? '?').toString() });
             }
@@ -4672,7 +4670,7 @@ export class DashboardView extends ItemView {
             const compileBtn = actionsEl.createEl('button', { cls: 'storyteller-action-btn' });
             setIcon(compileBtn, 'book-open');
             compileBtn.title = 'Compile this book into a draft';
-            compileBtn.addEventListener('click', async () => {
+            compileBtn.addEventListener('click', () => { void (async () => {
                 const sceneRefs: IndentedSceneRef[] = [];
                 for (const ch of bookChapters) {
                     const chScenes = allScenes
@@ -4686,10 +4684,9 @@ export class DashboardView extends ItemView {
                     new Notice(`No scenes found for "${book.name}". Add chapters and scenes first.`);
                     return;
                 }
-                const activeStory = this.plugin.settings.stories?.find(s => s.id === this.plugin.settings.activeStoryId);
                 const now = new Date().toISOString();
                 const draft: StoryDraft = {
-                    id: Date.now().toString(36) + Math.random().toString(36).substr(2, 5),
+                    id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
                     storyId: this.plugin.settings.activeStoryId ?? 'default',
                     name: `${book.name} — Draft`,
                     draftNumber: Date.now(),
@@ -4701,10 +4698,10 @@ export class DashboardView extends ItemView {
                 this.plugin.settings.storyDrafts.push(draft);
                 await this.plugin.saveSettings();
                 new Notice(`Draft created for "${book.name}" with ${sceneRefs.length} scenes. Switch to the Compile tab.`);
-            });
+            })(); });
 
             this.addEditButton(actionsEl, () => {
-                import('../modals/BookModal').then(({ BookModal }) => {
+                void import('../modals/BookModal').then(({ BookModal }) => {
                     new BookModal(this.app, this.plugin, book, async (updated) => {
                         await this.mutationRunner.runUpdate({
                             action: async () => {
@@ -4763,10 +4760,10 @@ export class DashboardView extends ItemView {
 
         // Create header with action button
         const header = container.createDiv('storyteller-templates-header');
-        header.style.display = 'flex';
-        header.style.justifyContent = 'space-between';
-        header.style.alignItems = 'flex-start';
-        header.style.marginBottom = '1rem';
+        header.setCssStyles({ display: 'flex' });
+        header.setCssStyles({ justifyContent: 'space-between' });
+        header.setCssStyles({ alignItems: 'flex-start' });
+        header.setCssStyles({ marginBottom: '1rem' });
 
         const headerText = header.createDiv('storyteller-templates-header-text');
         headerText.createEl('h3', { text: t('entityTemplates') });
@@ -4779,16 +4776,16 @@ export class DashboardView extends ItemView {
             text: t('createNewTemplate'),
             cls: 'mod-cta'
         });
-        createTemplateBtn.style.flexShrink = '0';
+        createTemplateBtn.setCssStyles({ flexShrink: '0' });
         createTemplateBtn.addEventListener('click', () => {
             new TemplateEditorModal(
                 this.app,
                 this.plugin,
                 null, // null = new template
-                async (template) => {
+                (template) => { void (async () => {
                     new Notice(t('templateCreated', template.name));
                     await this.renderTemplatesContent(container);
-                }
+                })(); }
             ).open();
         });
 
@@ -4804,28 +4801,28 @@ export class DashboardView extends ItemView {
      */
     private createTemplateFilterSection(container: HTMLElement): void {
         const filterContainer = container.createDiv({ cls: 'storyteller-template-library-filters' });
-        filterContainer.style.marginBottom = '1rem';
-        filterContainer.style.padding = '1rem';
-        filterContainer.style.backgroundColor = 'var(--background-secondary)';
-        filterContainer.style.borderRadius = '8px';
+        filterContainer.setCssStyles({ marginBottom: '1rem' });
+        filterContainer.setCssStyles({ padding: '1rem' });
+        filterContainer.setCssStyles({ backgroundColor: 'var(--background-secondary)' });
+        filterContainer.setCssStyles({ borderRadius: '8px' });
 
         // Search row
         const searchRow = filterContainer.createDiv('storyteller-filter-row');
-        searchRow.style.marginBottom = '0.75rem';
+        searchRow.setCssStyles({ marginBottom: '0.75rem' });
 
         const searchLabel = searchRow.createEl('label', { text: t('searchTemplates') });
-        searchLabel.style.display = 'block';
-        searchLabel.style.marginBottom = '0.25rem';
-        searchLabel.style.fontWeight = '500';
+        searchLabel.setCssStyles({ display: 'block' });
+        searchLabel.setCssStyles({ marginBottom: '0.25rem' });
+        searchLabel.setCssStyles({ fontWeight: '500' });
 
         const searchInput = searchRow.createEl('input', {
             type: 'text',
             placeholder: t('searchTemplatesPlaceholder')
         });
-        searchInput.style.width = '100%';
-        searchInput.style.padding = '0.5rem';
-        searchInput.style.borderRadius = '4px';
-        searchInput.style.border = '1px solid var(--background-modifier-border)';
+        searchInput.setCssStyles({ width: '100%' });
+        searchInput.setCssStyles({ padding: '0.5rem' });
+        searchInput.setCssStyles({ borderRadius: '4px' });
+        searchInput.setCssStyles({ border: '1px solid var(--background-modifier-border)' });
         searchInput.value = this.templateFilter.searchText || '';
         searchInput.addEventListener('input', () => {
             this.templateFilter.searchText = searchInput.value || undefined;
@@ -4834,17 +4831,17 @@ export class DashboardView extends ItemView {
 
         // Filter options row
         const filtersRow = filterContainer.createDiv('storyteller-filter-options');
-        filtersRow.style.display = 'flex';
-        filtersRow.style.flexWrap = 'wrap';
-        filtersRow.style.gap = '1rem';
-        filtersRow.style.alignItems = 'flex-end';
+        filtersRow.setCssStyles({ display: 'flex' });
+        filtersRow.setCssStyles({ flexWrap: 'wrap' });
+        filtersRow.setCssStyles({ gap: '1rem' });
+        filtersRow.setCssStyles({ alignItems: 'flex-end' });
 
         // Genre dropdown
         const genreGroup = filtersRow.createDiv('storyteller-filter-group');
-        genreGroup.createEl('label', { text: t('genre') }).style.display = 'block';
+        genreGroup.createEl('label', { text: t('genre') }).setCssStyles({ display: 'block' });
         const genreSelect = genreGroup.createEl('select');
-        genreSelect.style.padding = '0.35rem';
-        genreSelect.style.borderRadius = '4px';
+        genreSelect.setCssStyles({ padding: '0.35rem' });
+        genreSelect.setCssStyles({ borderRadius: '4px' });
         genreSelect.createEl('option', { text: t('allGenres'), value: '' });
         const genres: TemplateGenre[] = ['fantasy', 'scifi', 'mystery', 'horror', 'romance', 'historical', 'western', 'thriller', 'custom'];
         genres.forEach(g => genreSelect.createEl('option', { text: g.charAt(0).toUpperCase() + g.slice(1), value: g }));
@@ -4856,10 +4853,10 @@ export class DashboardView extends ItemView {
 
         // Category dropdown
         const categoryGroup = filtersRow.createDiv('storyteller-filter-group');
-        categoryGroup.createEl('label', { text: t('templateCategory') }).style.display = 'block';
+        categoryGroup.createEl('label', { text: t('templateCategory') }).setCssStyles({ display: 'block' });
         const categorySelect = categoryGroup.createEl('select');
-        categorySelect.style.padding = '0.35rem';
-        categorySelect.style.borderRadius = '4px';
+        categorySelect.setCssStyles({ padding: '0.35rem' });
+        categorySelect.setCssStyles({ borderRadius: '4px' });
         categorySelect.createEl('option', { text: t('allTemplateCategories'), value: '' });
         const categories: TemplateCategory[] = ['single-entity', 'entity-set', 'full-world'];
         const categoryLabels: Record<TemplateCategory, string> = {
@@ -4876,10 +4873,10 @@ export class DashboardView extends ItemView {
 
         // Sort dropdown
         const sortGroup = filtersRow.createDiv('storyteller-filter-group');
-        sortGroup.createEl('label', { text: t('sortBy') }).style.display = 'block';
+        sortGroup.createEl('label', { text: t('sortBy') }).setCssStyles({ display: 'block' });
         const sortSelect = sortGroup.createEl('select');
-        sortSelect.style.padding = '0.35rem';
-        sortSelect.style.borderRadius = '4px';
+        sortSelect.setCssStyles({ padding: '0.35rem' });
+        sortSelect.setCssStyles({ borderRadius: '4px' });
         sortSelect.createEl('option', { text: t('sortByName'), value: 'name' });
         sortSelect.createEl('option', { text: t('sortByUsage'), value: 'usage' });
         sortSelect.createEl('option', { text: t('sortByRecent'), value: 'recent' });
@@ -4892,16 +4889,16 @@ export class DashboardView extends ItemView {
 
         // Toggle row
         const togglesRow = filterContainer.createDiv('storyteller-filter-toggles');
-        togglesRow.style.display = 'flex';
-        togglesRow.style.gap = '1.5rem';
-        togglesRow.style.marginTop = '0.75rem';
+        togglesRow.setCssStyles({ display: 'flex' });
+        togglesRow.setCssStyles({ gap: '1.5rem' });
+        togglesRow.setCssStyles({ marginTop: '0.75rem' });
 
         // Built-in toggle
         const builtInLabel = togglesRow.createEl('label');
-        builtInLabel.style.display = 'flex';
-        builtInLabel.style.alignItems = 'center';
-        builtInLabel.style.gap = '0.5rem';
-        builtInLabel.style.cursor = 'pointer';
+        builtInLabel.setCssStyles({ display: 'flex' });
+        builtInLabel.setCssStyles({ alignItems: 'center' });
+        builtInLabel.setCssStyles({ gap: '0.5rem' });
+        builtInLabel.setCssStyles({ cursor: 'pointer' });
         const builtInCheck = builtInLabel.createEl('input', { type: 'checkbox' });
         builtInCheck.checked = this.templateFilter.showBuiltIn !== false;
         builtInCheck.addEventListener('change', () => {
@@ -4912,10 +4909,10 @@ export class DashboardView extends ItemView {
 
         // Custom toggle
         const customLabel = togglesRow.createEl('label');
-        customLabel.style.display = 'flex';
-        customLabel.style.alignItems = 'center';
-        customLabel.style.gap = '0.5rem';
-        customLabel.style.cursor = 'pointer';
+        customLabel.setCssStyles({ display: 'flex' });
+        customLabel.setCssStyles({ alignItems: 'center' });
+        customLabel.setCssStyles({ gap: '0.5rem' });
+        customLabel.setCssStyles({ cursor: 'pointer' });
         const customCheck = customLabel.createEl('input', { type: 'checkbox' });
         customCheck.checked = this.templateFilter.showCustom !== false;
         customCheck.addEventListener('change', () => {
@@ -4954,14 +4951,14 @@ export class DashboardView extends ItemView {
      * Create the template list element
      */
     private createTemplateListElement(): HTMLElement {
-        const listContainer = document.createElement('div');
+        const listContainer = activeDocument.createElement('div');
         listContainer.className = 'storyteller-template-library-list';
 
         if (this.templatesCache.length === 0) {
             const emptyState = listContainer.createDiv('storyteller-empty-state');
-            emptyState.style.padding = '2rem';
-            emptyState.style.textAlign = 'center';
-            emptyState.style.color = 'var(--text-muted)';
+            emptyState.setCssStyles({ padding: '2rem' });
+            emptyState.setCssStyles({ textAlign: 'center' });
+            emptyState.setCssStyles({ color: 'var(--text-muted)' });
             emptyState.createEl('p', {
                 text: t('noTemplatesFound')
             });
@@ -4973,14 +4970,14 @@ export class DashboardView extends ItemView {
             text: t('foundXTemplates', this.templatesCache.length),
             cls: 'storyteller-template-count'
         });
-        countEl.style.marginBottom = '0.75rem';
-        countEl.style.color = 'var(--text-muted)';
+        countEl.setCssStyles({ marginBottom: '0.75rem' });
+        countEl.setCssStyles({ color: 'var(--text-muted)' });
 
         // Create template cards grid
         const cardsGrid = listContainer.createDiv('storyteller-template-cards-grid');
-        cardsGrid.style.display = 'grid';
-        cardsGrid.style.gridTemplateColumns = 'repeat(auto-fill, minmax(280px, 1fr))';
-        cardsGrid.style.gap = '1rem';
+        cardsGrid.setCssStyles({ display: 'grid' });
+        cardsGrid.setCssStyles({ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' });
+        cardsGrid.setCssStyles({ gap: '1rem' });
 
         this.templatesCache.forEach(template => {
             this.renderFullTemplateCard(cardsGrid, template);
@@ -4994,125 +4991,125 @@ export class DashboardView extends ItemView {
      */
     private renderFullTemplateCard(container: HTMLElement, template: Template): void {
         const card = container.createDiv({ cls: 'storyteller-template-card-full' });
-        card.style.padding = '1rem';
-        card.style.backgroundColor = 'var(--background-primary)';
-        card.style.border = '1px solid var(--background-modifier-border)';
-        card.style.borderRadius = '8px';
+        card.setCssStyles({ padding: '1rem' });
+        card.setCssStyles({ backgroundColor: 'var(--background-primary)' });
+        card.setCssStyles({ border: '1px solid var(--background-modifier-border)' });
+        card.setCssStyles({ borderRadius: '8px' });
 
         // Header
         const header = card.createDiv('storyteller-template-card-header');
-        header.style.display = 'flex';
-        header.style.justifyContent = 'space-between';
-        header.style.alignItems = 'center';
-        header.style.marginBottom = '0.5rem';
+        header.setCssStyles({ display: 'flex' });
+        header.setCssStyles({ justifyContent: 'space-between' });
+        header.setCssStyles({ alignItems: 'center' });
+        header.setCssStyles({ marginBottom: '0.5rem' });
 
-        header.createEl('h4', { text: template.name }).style.margin = '0';
+        header.createEl('h4', { text: template.name }).setCssStyles({ margin: '0' });
 
         if (template.isBuiltIn) {
             const badge = header.createEl('span', { text: t('builtIn') });
-            badge.style.fontSize = '0.75em';
-            badge.style.padding = '0.2rem 0.5rem';
-            badge.style.backgroundColor = 'var(--interactive-accent)';
-            badge.style.color = 'var(--text-on-accent)';
-            badge.style.borderRadius = '4px';
+            badge.setCssStyles({ fontSize: '0.75em' });
+            badge.setCssStyles({ padding: '0.2rem 0.5rem' });
+            badge.setCssStyles({ backgroundColor: 'var(--interactive-accent)' });
+            badge.setCssStyles({ color: 'var(--text-on-accent)' });
+            badge.setCssStyles({ borderRadius: '4px' });
         }
 
         // Description
         const desc = card.createEl('p', { text: template.description });
-        desc.style.margin = '0.5rem 0';
-        desc.style.color = 'var(--text-muted)';
-        desc.style.fontSize = '0.9em';
+        desc.setCssStyles({ margin: '0.5rem 0' });
+        desc.setCssStyles({ color: 'var(--text-muted)' });
+        desc.setCssStyles({ fontSize: '0.9em' });
 
         // Metadata
         const meta = card.createDiv('storyteller-template-card-meta');
-        meta.style.display = 'flex';
-        meta.style.flexWrap = 'wrap';
-        meta.style.gap = '0.5rem';
-        meta.style.marginBottom = '0.5rem';
-        meta.style.fontSize = '0.85em';
+        meta.setCssStyles({ display: 'flex' });
+        meta.setCssStyles({ flexWrap: 'wrap' });
+        meta.setCssStyles({ gap: '0.5rem' });
+        meta.setCssStyles({ marginBottom: '0.5rem' });
+        meta.setCssStyles({ fontSize: '0.85em' });
 
         const genreBadge = meta.createEl('span', { text: template.genre });
-        genreBadge.style.padding = '0.15rem 0.4rem';
-        genreBadge.style.backgroundColor = 'var(--background-secondary)';
-        genreBadge.style.borderRadius = '4px';
+        genreBadge.setCssStyles({ padding: '0.15rem 0.4rem' });
+        genreBadge.setCssStyles({ backgroundColor: 'var(--background-secondary)' });
+        genreBadge.setCssStyles({ borderRadius: '4px' });
 
         const categoryBadge = meta.createEl('span', { text: template.category });
-        categoryBadge.style.padding = '0.15rem 0.4rem';
-        categoryBadge.style.backgroundColor = 'var(--background-secondary)';
-        categoryBadge.style.borderRadius = '4px';
+        categoryBadge.setCssStyles({ padding: '0.15rem 0.4rem' });
+        categoryBadge.setCssStyles({ backgroundColor: 'var(--background-secondary)' });
+        categoryBadge.setCssStyles({ borderRadius: '4px' });
 
         if (template.usageCount && template.usageCount > 0) {
             const usageBadge = meta.createEl('span', { text: t('usedXTimes', template.usageCount) });
-            usageBadge.style.padding = '0.15rem 0.4rem';
-            usageBadge.style.backgroundColor = 'var(--background-secondary)';
-            usageBadge.style.borderRadius = '4px';
+            usageBadge.setCssStyles({ padding: '0.15rem 0.4rem' });
+            usageBadge.setCssStyles({ backgroundColor: 'var(--background-secondary)' });
+            usageBadge.setCssStyles({ borderRadius: '4px' });
         }
 
         // Entity types
         if (template.entityTypes && template.entityTypes.length > 0) {
             const entityTypesEl = card.createDiv('storyteller-template-card-entity-types');
-            entityTypesEl.style.marginBottom = '0.5rem';
-            entityTypesEl.style.fontSize = '0.85em';
+            entityTypesEl.setCssStyles({ marginBottom: '0.5rem' });
+            entityTypesEl.setCssStyles({ fontSize: '0.85em' });
             entityTypesEl.createEl('span', { text: t('contains') });
             template.entityTypes.forEach(type => {
                 const typeBadge = entityTypesEl.createEl('span', { text: type });
-                typeBadge.style.marginLeft = '0.25rem';
-                typeBadge.style.padding = '0.1rem 0.3rem';
-                typeBadge.style.backgroundColor = 'var(--interactive-accent)';
-                typeBadge.style.color = 'var(--text-on-accent)';
-                typeBadge.style.borderRadius = '3px';
-                typeBadge.style.fontSize = '0.85em';
+                typeBadge.setCssStyles({ marginLeft: '0.25rem' });
+                typeBadge.setCssStyles({ padding: '0.1rem 0.3rem' });
+                typeBadge.setCssStyles({ backgroundColor: 'var(--interactive-accent)' });
+                typeBadge.setCssStyles({ color: 'var(--text-on-accent)' });
+                typeBadge.setCssStyles({ borderRadius: '3px' });
+                typeBadge.setCssStyles({ fontSize: '0.85em' });
             });
         }
 
         // Tags
         if (template.tags && template.tags.length > 0) {
             const tagsEl = card.createDiv('storyteller-template-card-tags');
-            tagsEl.style.display = 'flex';
-            tagsEl.style.flexWrap = 'wrap';
-            tagsEl.style.gap = '0.25rem';
-            tagsEl.style.marginBottom = '0.75rem';
+            tagsEl.setCssStyles({ display: 'flex' });
+            tagsEl.setCssStyles({ flexWrap: 'wrap' });
+            tagsEl.setCssStyles({ gap: '0.25rem' });
+            tagsEl.setCssStyles({ marginBottom: '0.75rem' });
             template.tags.forEach(tag => {
                 const tagEl = tagsEl.createEl('span', { text: tag });
-                tagEl.style.fontSize = '0.75em';
-                tagEl.style.padding = '0.1rem 0.3rem';
-                tagEl.style.backgroundColor = 'var(--background-modifier-border)';
-                tagEl.style.borderRadius = '3px';
+                tagEl.setCssStyles({ fontSize: '0.75em' });
+                tagEl.setCssStyles({ padding: '0.1rem 0.3rem' });
+                tagEl.setCssStyles({ backgroundColor: 'var(--background-modifier-border)' });
+                tagEl.setCssStyles({ borderRadius: '3px' });
             });
         }
 
         // Actions
         const actions = card.createDiv('storyteller-template-card-actions');
-        actions.style.display = 'flex';
-        actions.style.flexWrap = 'wrap';
-        actions.style.gap = '0.5rem';
-        actions.style.marginTop = '0.75rem';
-        actions.style.paddingTop = '0.75rem';
-        actions.style.borderTop = '1px solid var(--background-modifier-border)';
+        actions.setCssStyles({ display: 'flex' });
+        actions.setCssStyles({ flexWrap: 'wrap' });
+        actions.setCssStyles({ gap: '0.5rem' });
+        actions.setCssStyles({ marginTop: '0.75rem' });
+        actions.setCssStyles({ paddingTop: '0.75rem' });
+        actions.setCssStyles({ borderTop: '1px solid var(--background-modifier-border)' });
 
         const applyButton = actions.createEl('button', { text: t('applyTemplate'), cls: 'mod-cta' });
-        applyButton.addEventListener('click', () => this.handleUseTemplate(template));
+        applyButton.addEventListener('click', () => { void this.handleUseTemplate(template); });
 
         if (template.isEditable) {
             const editButton = actions.createEl('button', { text: t('edit') });
             editButton.addEventListener('click', () => this.handleEditTemplate(template, container));
 
             const deleteButton = actions.createEl('button', { text: t('delete'), cls: 'mod-warning' });
-            deleteButton.addEventListener('click', () => this.handleDeleteTemplate(template, container));
+            deleteButton.addEventListener('click', () => { void this.handleDeleteTemplate(template, container); });
         }
 
         const duplicateButton = actions.createEl('button', { text: t('duplicate') });
-        duplicateButton.addEventListener('click', () => this.handleDuplicateTemplate(template, container));
+        duplicateButton.addEventListener('click', () => { void this.handleDuplicateTemplate(template, container); });
     }
 
     /**
      * Handle using a template
      */
     private async handleUseTemplate(template: Template): Promise<void> {
-        console.log('DashboardView: handleUseTemplate called with template:', template.name);
+        console.debug('DashboardView: handleUseTemplate called with template:', template.name);
         // Apply the template with variable collection prompt
         await this.plugin.applyTemplateWithPrompt(template);
-        console.log('DashboardView: applyTemplateWithPrompt completed');
+        console.debug('DashboardView: applyTemplateWithPrompt completed');
     }
 
     /**
@@ -5123,9 +5120,9 @@ export class DashboardView extends ItemView {
             this.app,
             this.plugin,
             template,
-            async (updatedTemplate) => {
+            (updatedTemplate) => { void (async () => {
                 await this.renderTemplatesContent(container);
-            }
+            })(); }
         ).open();
     }
 
@@ -5205,7 +5202,7 @@ export class DashboardView extends ItemView {
 
         const barEl = banner.createDiv('storyteller-goal-bar');
         const fillEl = barEl.createDiv('storyteller-goal-fill');
-        fillEl.style.width = `${pct}%`;
+        fillEl.setCssStyles({ width: `${pct}%` });
 
         if (streak > 1) {
             if (isCompactMobile) {
@@ -5227,10 +5224,10 @@ export class DashboardView extends ItemView {
         container.empty();
 
         const header = container.createDiv('storyteller-section-header');
-        header.createEl('h3', { text: 'Writing Analytics' });
+        header.createEl('h3', { text: 'Writing analytics' });
 
-        const desc = container.createEl('p', {
-            text: 'Track character screen time, POV distribution, writing velocity, foreshadowing, and more.',
+        container.createEl('p', {
+            text: 'Track character screen time, pov distribution, writing velocity, foreshadowing, and more.',
             cls: 'storyteller-analytics-tab-desc'
         });
 
@@ -5253,7 +5250,7 @@ export class DashboardView extends ItemView {
             addStat('POVs', (cached.povStats?.length ?? 0).toString(), 'eye');
             addStat('Foreshadowing', (cached.foreshadowing?.length ?? 0).toString(), 'git-merge');
 
-            const updated = container.createEl('p', {
+            container.createEl('p', {
                 text: `Last updated: ${cached.lastUpdated ? new Date(cached.lastUpdated).toLocaleString() : 'never'}`,
                 cls: 'storyteller-analytics-tab-updated'
             });
@@ -5271,7 +5268,7 @@ export class DashboardView extends ItemView {
         setIcon(btnIcon, 'bar-chart-2');
         openBtn.createSpan({ text: ' Open Analytics Dashboard' });
         openBtn.addEventListener('click', () => {
-            this.plugin.activateAnalyticsView();
+            void this.plugin.activateAnalyticsView();
         });
     }
 
@@ -5317,13 +5314,13 @@ export class DashboardView extends ItemView {
 
         // Clean up typing timer
         if (this.typingTimer) {
-            clearTimeout(this.typingTimer);
+            window.clearTimeout(this.typingTimer);
             this.typingTimer = null;
         }
 
         // Clean up dismissal timer
         if (this.dismissalTimer) {
-            clearTimeout(this.dismissalTimer);
+            window.clearTimeout(this.dismissalTimer);
             this.dismissalTimer = null;
         }
 
@@ -5350,19 +5347,19 @@ export class DashboardView extends ItemView {
                 this.currentFilter = filter;
                 await this.renderCampaignList(container);
             }, () => {
-                import('../modals/CampaignSessionModal').then(({ CampaignSessionModal }) => {
-                    new CampaignSessionModal(this.app, this.plugin, async () => {
+                void import('../modals/CampaignSessionModal').then(({ CampaignSessionModal }) => {
+                    new CampaignSessionModal(this.app, this.plugin, () => { void (async () => {
                         this.queueDashboardRefresh('campaign-session-created-or-updated');
-                    }).open();
+                    })(); }).open();
                 });
             }, 'New Session');
 
-            const headerRow = container.querySelector('.storyteller-header-controls') as HTMLElement | null;
+            const headerRow = container.querySelector('.storyteller-header-controls');
             if (headerRow) {
-                const graphBtn = headerRow.createEl('button', { cls: 'storyteller-header-secondary-btn', text: 'Scene Graph' });
+                const graphBtn = headerRow.createEl('button', { cls: 'storyteller-header-secondary-btn', text: 'Scene graph' });
                 setIcon(graphBtn.createSpan(), 'git-branch');
                 graphBtn.addEventListener('click', () => {
-                    this.plugin.activateSceneGraphView();
+                    void this.plugin.activateSceneGraphView();
                 });
             }
 
@@ -5414,7 +5411,7 @@ export class DashboardView extends ItemView {
         const listContainer = container.createDiv('storyteller-list-container');
 
         if (filtered.length === 0) {
-            listContainer.createEl('p', { text: 'No sessions found. Click "New Session" to start a campaign.' });
+            listContainer.createEl('p', { text: 'No sessions found. Click "new session" to start a campaign.' });
             return;
         }
 
@@ -5440,8 +5437,8 @@ export class DashboardView extends ItemView {
 
             const resumeBtn = actionsEl.createEl('button', { cls: 'storyteller-list-item-btn mod-cta', text: 'Resume' });
             resumeBtn.addEventListener('click', () => {
-                import('../views/CampaignView').then(({ VIEW_TYPE_CAMPAIGN }) => {
-                    this.plugin.activateCampaignView(sess);
+                void import('../views/CampaignView').then(({ VIEW_TYPE_CAMPAIGN }) => {
+                    void this.plugin.activateCampaignView(sess);
                 });
             });
 
@@ -5451,13 +5448,13 @@ export class DashboardView extends ItemView {
                 openBtn.setAttribute('aria-label', 'Open session note');
                 openBtn.addEventListener('click', () => {
                     const file = this.app.vault.getAbstractFileByPath(sess.filePath!);
-                    if (file) this.app.workspace.openLinkText(file.name, '', true);
+                    if (file) void this.app.workspace.openLinkText(file.name, '', true);
                 });
 
                 const delBtn = actionsEl.createEl('button', { cls: 'storyteller-list-item-btn mod-warning' });
                 setIcon(delBtn, 'trash');
                 delBtn.setAttribute('aria-label', 'Delete session');
-                delBtn.addEventListener('click', async () => {
+                delBtn.addEventListener('click', () => { void (async () => {
                     if (sess.filePath) {
                         await this.mutationRunner.runDelete({
                             confirmMessage: `Delete session "${sess.name}"?`,
@@ -5468,7 +5465,7 @@ export class DashboardView extends ItemView {
                             refreshDetail: 'campaign-session-deleted',
                         });
                     }
-                });
+                })(); });
             }
         }
     }
@@ -5496,10 +5493,10 @@ class ConfirmDeleteTemplateModal extends Modal {
         });
 
         const buttonContainer = contentEl.createDiv({ cls: 'modal-button-container' });
-        buttonContainer.style.display = 'flex';
-        buttonContainer.style.gap = '0.5rem';
-        buttonContainer.style.justifyContent = 'flex-end';
-        buttonContainer.style.marginTop = '1rem';
+        buttonContainer.setCssStyles({ display: 'flex' });
+        buttonContainer.setCssStyles({ gap: '0.5rem' });
+        buttonContainer.setCssStyles({ justifyContent: 'flex-end' });
+        buttonContainer.setCssStyles({ marginTop: '1rem' });
 
         const cancelButton = buttonContainer.createEl('button', { text: t('cancel') });
         cancelButton.addEventListener('click', () => {

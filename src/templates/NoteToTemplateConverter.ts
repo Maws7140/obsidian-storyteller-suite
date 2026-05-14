@@ -4,7 +4,7 @@
  * Auto-detects variables and extracts YAML/markdown content
  */
 
-import { TFile } from 'obsidian';
+import { App, TFile } from 'obsidian';
 import {
     Template,
     TemplateEntity,
@@ -14,7 +14,41 @@ import {
     TemplateEntityType,
     TemplateVariable
 } from './TemplateTypes';
-import { parseSectionsFromMarkdown, parseFrontmatterFromContent } from '../yaml/EntitySections';
+import { parseFrontmatterFromContent } from '../yaml/EntitySections';
+
+const TEMPLATE_GENRES: readonly TemplateGenre[] = [
+    'fantasy',
+    'scifi',
+    'mystery',
+    'horror',
+    'romance',
+    'historical',
+    'western',
+    'thriller',
+    'custom'
+];
+
+const TEMPLATE_CATEGORIES: readonly TemplateCategory[] = [
+    'full-world',
+    'entity-set',
+    'single-entity'
+];
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function asTemplateGenre(value: unknown): TemplateGenre | undefined {
+    return typeof value === 'string' && TEMPLATE_GENRES.includes(value as TemplateGenre)
+        ? value as TemplateGenre
+        : undefined;
+}
+
+function asTemplateCategory(value: unknown): TemplateCategory | undefined {
+    return typeof value === 'string' && TEMPLATE_CATEGORIES.includes(value as TemplateCategory)
+        ? value as TemplateCategory
+        : undefined;
+}
 
 export interface NoteTemplateMetadata {
     templateName?: string;
@@ -33,7 +67,7 @@ export class NoteToTemplateConverter {
      * Convert a note file to a Template object
      */
     static async convertNoteToTemplate(
-        app: any,
+        app: App,
         file: TFile,
         entityType: TemplateEntityType,
         metadata: {
@@ -72,20 +106,18 @@ export class NoteToTemplateConverter {
         );
 
         // Create template entity
-        const templateEntity: TemplateEntity<any> = {
+        const templateEntity: TemplateEntity<Record<string, unknown>> = {
             templateId: `${entityType.toUpperCase()}_1`,
             yamlContent,
             markdownContent
         };
 
         // Create entities container
-        const entities: TemplateEntities = {};
-        const pluralKey = this.getEntityTypePlural(entityType);
-        (entities as any)[pluralKey] = [templateEntity];
+        const entities = this.createEntitiesContainer(entityType, templateEntity);
 
         // Create template
         const template: Template = {
-            id: `note-template-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            id: `note-template-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
             name: finalMetadata.name,
             description: finalMetadata.description,
             genre: finalMetadata.genre,
@@ -101,12 +133,10 @@ export class NoteToTemplateConverter {
             entityTypes: [entityType],
             usageCount: 0,
             quickApplyEnabled: true,
-            variables: finalVariables.length > 0 ? finalVariables : undefined
+            variables: finalVariables.length > 0 ? finalVariables : undefined,
+            isNoteBased: true,
+            noteFilePath: file.path
         };
-
-        // Mark as note-based template
-        (template as any).isNoteBased = true;
-        (template as any).noteFilePath = file.path;
 
         return template;
     }
@@ -134,7 +164,8 @@ export class NoteToTemplateConverter {
                 markdownContent = content.substring(frontmatterEndIndex + 4).trim();
                 
                 // Parse frontmatter
-                frontmatter = parseFrontmatterFromContent(content) || {};
+                const parsedFrontmatter = parseFrontmatterFromContent(content) as unknown;
+                frontmatter = isRecord(parsedFrontmatter) ? parsedFrontmatter : {};
             } else {
                 // No closing ---, treat entire content as markdown
                 markdownContent = content;
@@ -175,7 +206,7 @@ export class NoteToTemplateConverter {
         pattern: RegExp,
         variables: Map<string, TemplateVariable>
     ): void {
-        let match;
+        let match: RegExpExecArray | null;
         while ((match = pattern.exec(text)) !== null) {
             const varName = match[1];
             const defaultValue = match[2] || undefined;
@@ -217,19 +248,21 @@ export class NoteToTemplateConverter {
     ): NoteTemplateMetadata {
         const metadata: NoteTemplateMetadata = {};
 
-        if (frontmatter.templateName) {
+        if (frontmatter.templateName !== undefined) {
             metadata.templateName = String(frontmatter.templateName);
         }
-        if (frontmatter.templateDescription) {
+        if (frontmatter.templateDescription !== undefined) {
             metadata.templateDescription = String(frontmatter.templateDescription);
         }
-        if (frontmatter.templateGenre) {
-            metadata.templateGenre = frontmatter.templateGenre as TemplateGenre;
+        const genre = asTemplateGenre(frontmatter.templateGenre);
+        if (genre) {
+            metadata.templateGenre = genre;
         }
-        if (frontmatter.templateCategory) {
-            metadata.templateCategory = frontmatter.templateCategory as TemplateCategory;
+        const category = asTemplateCategory(frontmatter.templateCategory);
+        if (category) {
+            metadata.templateCategory = category;
         }
-        if (frontmatter.templateTags) {
+        if (frontmatter.templateTags !== undefined) {
             if (Array.isArray(frontmatter.templateTags)) {
                 metadata.templateTags = frontmatter.templateTags.map(t => String(t));
             } else {
@@ -238,7 +271,21 @@ export class NoteToTemplateConverter {
         }
         if (frontmatter.templateVariables) {
             if (Array.isArray(frontmatter.templateVariables)) {
-                metadata.templateVariables = frontmatter.templateVariables as TemplateVariable[];
+                metadata.templateVariables = frontmatter.templateVariables
+                    .filter(isRecord)
+                    .map(variable => ({
+                        name: String(variable.name ?? ''),
+                        label: String(variable.label ?? variable.name ?? ''),
+                        type: typeof variable.type === 'string' ? variable.type as TemplateVariable['type'] : 'text',
+                        defaultValue: typeof variable.defaultValue === 'string' ||
+                            typeof variable.defaultValue === 'number' ||
+                            typeof variable.defaultValue === 'boolean'
+                            ? variable.defaultValue
+                            : undefined,
+                        options: Array.isArray(variable.options)
+                            ? variable.options.map(option => String(option))
+                            : undefined
+                    }));
             }
         }
 
@@ -267,22 +314,36 @@ export class NoteToTemplateConverter {
     /**
      * Get plural form of entity type
      */
-    private static getEntityTypePlural(entityType: TemplateEntityType): string {
-        const pluralMap: Record<TemplateEntityType, string> = {
-            character: 'characters',
-            location: 'locations',
-            event: 'events',
-            item: 'items',
-            group: 'groups',
-            map: 'maps',
-            culture: 'cultures',
-            economy: 'economies',
-            magicSystem: 'magicSystems',
-            chapter: 'chapters',
-            scene: 'scenes',
-            reference: 'references'
-        };
-        return pluralMap[entityType];
+    private static createEntitiesContainer(
+        entityType: TemplateEntityType,
+        templateEntity: TemplateEntity<Record<string, unknown>>
+    ): TemplateEntities {
+        switch (entityType) {
+            case 'character':
+                return { characters: [templateEntity] };
+            case 'location':
+                return { locations: [templateEntity] };
+            case 'event':
+                return { events: [templateEntity] };
+            case 'item':
+                return { items: [templateEntity] };
+            case 'group':
+                return { groups: [templateEntity] };
+            case 'map':
+                return { maps: [templateEntity] };
+            case 'culture':
+                return { cultures: [templateEntity] };
+            case 'economy':
+                return { economies: [templateEntity] };
+            case 'magicSystem':
+                return { magicSystems: [templateEntity] };
+            case 'chapter':
+                return { chapters: [templateEntity] };
+            case 'scene':
+                return { scenes: [templateEntity] };
+            case 'reference':
+                return { references: [templateEntity] };
+        }
     }
 
     /**

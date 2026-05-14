@@ -16,12 +16,21 @@
  */
 
 import { ItemView, WorkspaceLeaf, setIcon, TFile, Notice } from 'obsidian';
-import cytoscape, { Core } from 'cytoscape';
+import cytoscape, { Core, EventObject, LayoutOptions, StylesheetJson } from 'cytoscape';
 import StorytellerSuitePlugin from '../main';
 import { extractBranchesFromMarkdown, extractEncounterTableFromMarkdown } from '../utils/BranchParser';
 import { Scene } from '../types';
 
 export const VIEW_TYPE_SCENE_GRAPH = 'storyteller-scene-graph';
+
+type CytoscapeEventTarget = {
+    id: () => string;
+    data: (key: string) => unknown;
+};
+
+function getCytoscapeTarget(event: EventObject): CytoscapeEventTarget {
+    return event.target as CytoscapeEventTarget;
+}
 
 export class SceneGraphView extends ItemView {
     private plugin: StorytellerSuitePlugin;
@@ -36,7 +45,7 @@ export class SceneGraphView extends ItemView {
     }
 
     getViewType(): string { return VIEW_TYPE_SCENE_GRAPH; }
-    getDisplayText(): string { return 'Scene Graph'; }
+    getDisplayText(): string { return 'Scene graph'; }
     getIcon(): string { return 'git-branch'; }
 
     async onOpen(): Promise<void> {
@@ -54,7 +63,7 @@ export class SceneGraphView extends ItemView {
             attr: { 'aria-label': 'Refresh' },
         });
         setIcon(refreshBtn, 'refresh-cw');
-        refreshBtn.addEventListener('click', () => this.buildGraph());
+        refreshBtn.addEventListener('click', () => { void this.buildGraph(); });
 
         const fitBtn = toolbar.createEl('button', {
             cls: 'clickable-icon storyteller-toolbar-btn',
@@ -87,7 +96,7 @@ export class SceneGraphView extends ItemView {
         runBtn.addEventListener('click', () => {
             if (!this.selectedSceneId) return;
             const scene = this._scenes.find(s => s.id === this.selectedSceneId || s.name === this.selectedSceneId);
-            if (scene) this.plugin.activateCampaignView(undefined, scene);
+            if (scene) void this.plugin.activateCampaignView(undefined, scene);
         });
 
         // Graph container
@@ -100,7 +109,7 @@ export class SceneGraphView extends ItemView {
         // Update run button on selection
         if (this.cy) {
             this.cy.on('select', 'node', (e) => {
-                this.selectedSceneId = e.target.id();
+                this.selectedSceneId = getCytoscapeTarget(e).id();
                 runBtn.disabled = false;
             });
             this.cy.on('unselect', 'node', () => {
@@ -258,19 +267,19 @@ export class SceneGraphView extends ItemView {
                             'shadow-blur': 9,
                             'shadow-offset-x': 0,
                             'shadow-offset-y': 2,
-                        } as any
+                        }
                     },
                     {
                         selector: 'node[?isEntry]',
-                        style: { 'border-color': theme.entryBorder, 'border-width': 2.5 } as any
+                        style: { 'border-color': theme.entryBorder, 'border-width': 2.5 }
                     },
                     {
                         selector: 'node[?isDeadEnd]',
-                        style: { 'border-color': theme.deadEndBorder, 'border-width': 2.5 } as any
+                        style: { 'border-color': theme.deadEndBorder, 'border-width': 2.5 }
                     },
                     {
                         selector: 'node[?hasEncounter]',
-                        style: { 'border-color': theme.encounterBorder, 'border-width': 2.5 } as any
+                        style: { 'border-color': theme.encounterBorder, 'border-width': 2.5 }
                     },
                     {
                         selector: 'node:selected',
@@ -278,7 +287,7 @@ export class SceneGraphView extends ItemView {
                             'background-color': theme.selectedBackground,
                             'border-width': 2.5,
                             'border-color': theme.selectedBorder,
-                        } as any
+                        }
                     },
                     {
                         selector: 'edge',
@@ -301,34 +310,36 @@ export class SceneGraphView extends ItemView {
                             'text-rotation': 'none',
                             'arrow-scale': 0.9,
                             'line-style': 'solid',
-                        } as any
+                        }
                     },
                     {
                         selector: 'edge[?hasCondition]',
-                        style: { 'line-color': theme.conditionEdge, 'target-arrow-color': theme.conditionEdge } as any
+                        style: { 'line-color': theme.conditionEdge, 'target-arrow-color': theme.conditionEdge }
                     },
-                ],
+                ] as StylesheetJson,
                 layout: this.getLayoutOptions(),
             });
 
             // Click → open note
-            this.cy.on('tap', 'node', async (e: any) => {
-                const fp = e.target.data('filePath') as string;
+            this.cy.on('tap', 'node', (e: EventObject) => { void (async () => {
+                const filePath = getCytoscapeTarget(e).data('filePath');
+                const fp = typeof filePath === 'string' ? filePath : '';
                 if (fp) {
                     const file = this.plugin.app.vault.getAbstractFileByPath(fp);
                     if (file) await this.plugin.app.workspace.openLinkText(file.name, '', true);
                 }
-            });
+            })(); });
 
             // Double-click → BranchEditorModal
-            this.cy.on('dblclick', 'node', async (e: any) => {
-                const fp = e.target.data('filePath') as string;
+            this.cy.on('dblclick', 'node', (e: EventObject) => { void (async () => {
+                const filePath = getCytoscapeTarget(e).data('filePath');
+                const fp = typeof filePath === 'string' ? filePath : '';
                 if (!fp) return;
                 const { BranchEditorModal } = await import('../modals/BranchEditorModal');
                 new BranchEditorModal(this.plugin.app, this.plugin, fp, () => {
-                    this.buildGraph();
+                    void this.buildGraph();
                 }).open();
-            });
+            })(); });
 
         } catch (err) {
             new Notice('Failed to render scene graph. Check console for details.');
@@ -346,7 +357,7 @@ export class SceneGraphView extends ItemView {
         });
     }
 
-    private getLayoutOptions(): any {
+    private getLayoutOptions(): LayoutOptions {
         const horizontal = this.layoutDirection === 'left-to-right';
         return {
             name: 'breadthfirst',
@@ -356,7 +367,7 @@ export class SceneGraphView extends ItemView {
             avoidOverlap: true,
             nodeDimensionsIncludeLabels: true,
             animate: false,
-            transform: (_node: any, pos: { x: number; y: number }) =>
+            transform: (_node: unknown, pos: { x: number; y: number }) =>
                 horizontal ? { x: pos.y, y: pos.x } : pos,
         };
     }
@@ -376,7 +387,7 @@ export class SceneGraphView extends ItemView {
         deadEndBorder: string;
         encounterBorder: string;
     } {
-        const styles = getComputedStyle(document.body);
+        const styles = getComputedStyle(activeDocument.body);
         const color = (name: string, fallback: string): string => {
             const value = styles.getPropertyValue(name).trim();
             return value || fallback;

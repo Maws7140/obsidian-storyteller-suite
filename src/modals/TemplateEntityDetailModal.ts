@@ -7,16 +7,23 @@
 import { App, Notice } from 'obsidian';
 import { ResponsiveModal } from './ResponsiveModal';
 import type StorytellerSuitePlugin from '../main';
-import { TemplateEntity, TemplateEntityType } from '../templates/TemplateTypes';
+import type { TemplateEntity, TemplateEntityType } from '../templates/TemplateTypes';
 import { entityToYaml, entityToMarkdown, getEntityNotePreview } from '../utils/TemplatePreviewRenderer';
-import { stringifyYamlWithEmptyFields } from '../utils/YamlSerializer';
 import { parseYaml } from 'obsidian';
+
+type EditableTemplateEntity = TemplateEntity<Record<string, unknown>> & {
+    name?: string;
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
 
 export class TemplateEntityDetailModal extends ResponsiveModal {
     private plugin: StorytellerSuitePlugin;
-    private entity: TemplateEntity<any>;
+    private entity: EditableTemplateEntity;
     private entityType: TemplateEntityType;
-    private onSave: (entity: TemplateEntity<any>) => void;
+    private onSave: (entity: EditableTemplateEntity) => void;
 
     // Editor state
     private yamlEditor: HTMLTextAreaElement | null = null;
@@ -26,9 +33,9 @@ export class TemplateEntityDetailModal extends ResponsiveModal {
     constructor(
         app: App,
         plugin: StorytellerSuitePlugin,
-        entity: TemplateEntity<any>,
+        entity: EditableTemplateEntity,
         entityType: TemplateEntityType,
-        onSave: (entity: TemplateEntity<any>) => void
+        onSave: (entity: EditableTemplateEntity) => void
     ) {
         super(app);
         this.plugin = plugin;
@@ -68,23 +75,23 @@ export class TemplateEntityDetailModal extends ResponsiveModal {
 
         // Split-pane layout
         const splitContainer = contentEl.createDiv('entity-detail-split');
-        splitContainer.style.display = 'flex';
-        splitContainer.style.gap = '20px';
-        splitContainer.style.height = 'calc(100vh - 200px)';
+        splitContainer.setCssStyles({ display: 'flex' });
+        splitContainer.setCssStyles({ gap: '20px' });
+        splitContainer.setCssStyles({ height: 'calc(100vh - 200px)' });
 
         // Left pane: Editors
         const editorPane = splitContainer.createDiv('entity-detail-editor-pane');
-        editorPane.style.flex = '1';
-        editorPane.style.display = 'flex';
-        editorPane.style.flexDirection = 'column';
-        editorPane.style.gap = '10px';
+        editorPane.setCssStyles({ flex: '1' });
+        editorPane.setCssStyles({ display: 'flex' });
+        editorPane.setCssStyles({ flexDirection: 'column' });
+        editorPane.setCssStyles({ gap: '10px' });
         this.renderEditorPane(editorPane);
 
         // Right pane: Preview
         const previewPane = splitContainer.createDiv('entity-detail-preview-pane');
-        previewPane.style.flex = '1';
-        previewPane.style.display = 'flex';
-        previewPane.style.flexDirection = 'column';
+        previewPane.setCssStyles({ flex: '1' });
+        previewPane.setCssStyles({ display: 'flex' });
+        previewPane.setCssStyles({ flexDirection: 'column' });
         this.renderPreviewPane(previewPane);
 
         // Footer
@@ -106,7 +113,7 @@ export class TemplateEntityDetailModal extends ResponsiveModal {
     private renderEditorPane(container: HTMLElement): void {
         // YAML Editor Section
         const yamlSection = container.createDiv('entity-detail-yaml-section');
-        yamlSection.createEl('h3', { text: 'YAML Frontmatter' });
+        yamlSection.createEl('h3', { text: 'YAML frontmatter' });
         yamlSection.createEl('p', {
             text: 'Edit the YAML frontmatter fields. Use {{variableName}} for template variables.',
             cls: 'setting-item-description'
@@ -116,15 +123,15 @@ export class TemplateEntityDetailModal extends ResponsiveModal {
             cls: 'entity-detail-yaml-editor',
             placeholder: 'name: {{characterName}}\nstatus: Alive\ntraits: [Brave, Loyal]'
         });
-        yamlTextarea.style.width = '100%';
-        yamlTextarea.style.flex = '1';
-        yamlTextarea.style.minHeight = '200px';
-        yamlTextarea.style.fontFamily = 'monospace';
-        yamlTextarea.style.fontSize = '12px';
-        yamlTextarea.style.padding = '10px';
-        yamlTextarea.style.border = '1px solid var(--background-modifier-border)';
-        yamlTextarea.style.borderRadius = '4px';
-        yamlTextarea.style.resize = 'vertical';
+        yamlTextarea.setCssStyles({ width: '100%' });
+        yamlTextarea.setCssStyles({ flex: '1' });
+        yamlTextarea.setCssStyles({ minHeight: '200px' });
+        yamlTextarea.setCssStyles({ fontFamily: 'monospace' });
+        yamlTextarea.setCssStyles({ fontSize: '12px' });
+        yamlTextarea.setCssStyles({ padding: '10px' });
+        yamlTextarea.setCssStyles({ border: '1px solid var(--background-modifier-border)' });
+        yamlTextarea.setCssStyles({ borderRadius: '4px' });
+        yamlTextarea.setCssStyles({ resize: 'vertical' });
 
         // Set initial value
         yamlTextarea.value = this.entity.yamlContent || entityToYaml(this.entity);
@@ -138,12 +145,12 @@ export class TemplateEntityDetailModal extends ResponsiveModal {
 
         // Markdown Editor Section
         const markdownSection = container.createDiv('entity-detail-markdown-section');
-        markdownSection.style.flex = '1';
-        markdownSection.style.display = 'flex';
-        markdownSection.style.flexDirection = 'column';
-        markdownSection.createEl('h3', { text: 'Markdown Content' });
+        markdownSection.setCssStyles({ flex: '1' });
+        markdownSection.setCssStyles({ display: 'flex' });
+        markdownSection.setCssStyles({ flexDirection: 'column' });
+        markdownSection.createEl('h3', { text: 'Markdown content' });
         markdownSection.createEl('p', {
-            text: 'Edit the markdown body content with sections (e.g., ## Description, ## Backstory).',
+            text: 'Edit the Markdown body content with sections (e.g., ## description, ## backstory).',
             cls: 'setting-item-description'
         });
 
@@ -151,15 +158,15 @@ export class TemplateEntityDetailModal extends ResponsiveModal {
             cls: 'entity-detail-markdown-editor',
             placeholder: '## Description\n\nEnter description here...\n\n## Backstory\n\nEnter backstory here...'
         });
-        markdownTextarea.style.width = '100%';
-        markdownTextarea.style.flex = '1';
-        markdownTextarea.style.minHeight = '200px';
-        markdownTextarea.style.fontFamily = 'monospace';
-        markdownTextarea.style.fontSize = '12px';
-        markdownTextarea.style.padding = '10px';
-        markdownTextarea.style.border = '1px solid var(--background-modifier-border)';
-        markdownTextarea.style.borderRadius = '4px';
-        markdownTextarea.style.resize = 'vertical';
+        markdownTextarea.setCssStyles({ width: '100%' });
+        markdownTextarea.setCssStyles({ flex: '1' });
+        markdownTextarea.setCssStyles({ minHeight: '200px' });
+        markdownTextarea.setCssStyles({ fontFamily: 'monospace' });
+        markdownTextarea.setCssStyles({ fontSize: '12px' });
+        markdownTextarea.setCssStyles({ padding: '10px' });
+        markdownTextarea.setCssStyles({ border: '1px solid var(--background-modifier-border)' });
+        markdownTextarea.setCssStyles({ borderRadius: '4px' });
+        markdownTextarea.setCssStyles({ resize: 'vertical' });
 
         // Set initial value
         markdownTextarea.value = this.entity.markdownContent || entityToMarkdown(this.entity);
@@ -180,15 +187,15 @@ export class TemplateEntityDetailModal extends ResponsiveModal {
         });
 
         const previewBox = container.createDiv('entity-detail-preview-box');
-        previewBox.style.flex = '1';
-        previewBox.style.border = '1px solid var(--background-modifier-border)';
-        previewBox.style.borderRadius = '4px';
-        previewBox.style.padding = '15px';
-        previewBox.style.overflow = 'auto';
-        previewBox.style.backgroundColor = 'var(--background-primary)';
-        previewBox.style.fontFamily = 'var(--font-text)';
-        previewBox.style.fontSize = '14px';
-        previewBox.style.lineHeight = '1.6';
+        previewBox.setCssStyles({ flex: '1' });
+        previewBox.setCssStyles({ border: '1px solid var(--background-modifier-border)' });
+        previewBox.setCssStyles({ borderRadius: '4px' });
+        previewBox.setCssStyles({ padding: '15px' });
+        previewBox.setCssStyles({ overflow: 'auto' });
+        previewBox.setCssStyles({ backgroundColor: 'var(--background-primary)' });
+        previewBox.setCssStyles({ fontFamily: 'var(--font-text)' });
+        previewBox.setCssStyles({ fontSize: '14px' });
+        previewBox.setCssStyles({ lineHeight: '1.6' });
 
         this.previewContainer = previewBox;
         this.updatePreview();
@@ -210,9 +217,9 @@ export class TemplateEntityDetailModal extends ResponsiveModal {
         const codeBlock = this.previewContainer.createEl('pre', {
             cls: 'entity-detail-preview-code'
         });
-        codeBlock.style.margin = '0';
-        codeBlock.style.whiteSpace = 'pre-wrap';
-        codeBlock.style.wordBreak = 'break-word';
+        codeBlock.setCssStyles({ margin: '0' });
+        codeBlock.setCssStyles({ whiteSpace: 'pre-wrap' });
+        codeBlock.setCssStyles({ wordBreak: 'break-word' });
         codeBlock.textContent = preview;
     }
 
@@ -220,15 +227,15 @@ export class TemplateEntityDetailModal extends ResponsiveModal {
 
     private renderFooter(container: HTMLElement): void {
         const footer = container.createDiv('entity-detail-footer');
-        footer.style.marginTop = '20px';
-        footer.style.display = 'flex';
-        footer.style.justifyContent = 'flex-end';
-        footer.style.gap = '10px';
+        footer.setCssStyles({ marginTop: '20px' });
+        footer.setCssStyles({ display: 'flex' });
+        footer.setCssStyles({ justifyContent: 'flex-end' });
+        footer.setCssStyles({ gap: '10px' });
 
         const cancelBtn = footer.createEl('button', { text: 'Cancel' });
         cancelBtn.addEventListener('click', () => this.close());
 
-        const saveBtn = footer.createEl('button', { text: 'Save Changes', cls: 'mod-cta' });
+        const saveBtn = footer.createEl('button', { text: 'Save changes', cls: 'mod-cta' });
         saveBtn.addEventListener('click', () => this.handleSave());
     }
 
@@ -238,7 +245,8 @@ export class TemplateEntityDetailModal extends ResponsiveModal {
             try {
                 parseYaml(this.entity.yamlContent);
             } catch (error) {
-                new Notice(`Invalid YAML: ${error.message}`);
+                const message = error instanceof Error ? error.message : String(error);
+                new Notice(`Invalid YAML: ${message}`);
                 return;
             }
         }
@@ -246,8 +254,8 @@ export class TemplateEntityDetailModal extends ResponsiveModal {
         // Extract name from YAML if not set
         if (!this.entity.name && this.entity.yamlContent) {
             try {
-                const parsed = parseYaml(this.entity.yamlContent);
-                if (parsed && typeof parsed === 'object' && 'name' in parsed) {
+                const parsed = parseYaml(this.entity.yamlContent) as unknown;
+                if (isRecord(parsed) && 'name' in parsed) {
                     this.entity.name = String(parsed.name || 'Unnamed');
                 }
             } catch {

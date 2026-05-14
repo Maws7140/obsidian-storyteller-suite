@@ -5,7 +5,7 @@
  * New format: yamlContent + markdownContent
  */
 
-import { Template } from './TemplateTypes';
+import { Template, TemplateEntities } from './TemplateTypes';
 import { entityToYaml, entityToMarkdown } from '../utils/TemplatePreviewRenderer';
 
 export class TemplateMigrator {
@@ -15,16 +15,16 @@ export class TemplateMigrator {
      */
     static migrateTemplateToNewFormat(template: Template): Template {
         // Deep clone to avoid mutations
-        const migrated = JSON.parse(JSON.stringify(template));
+        const migrated = structuredClone(template);
         
         // Convert all entity types
-        const entityTypes = ['characters', 'locations', 'events', 'items', 'groups', 
+        const entityTypes: Array<keyof TemplateEntities> = ['characters', 'locations', 'events', 'items', 'groups',
                           'cultures', 'economies', 'magicSystems', 'chapters', 'scenes', 'references'];
         
         entityTypes.forEach(entityType => {
-            const entities = (migrated.entities as any)[entityType];
+            const entities = migrated.entities[entityType] as Array<{ yamlContent?: string; markdownContent?: string }> | undefined;
             if (entities && Array.isArray(entities)) {
-                entities.forEach((entity: any) => {
+                entities.forEach(entity => {
                     this.migrateEntityToNewFormat(entity);
                 });
             }
@@ -36,7 +36,7 @@ export class TemplateMigrator {
     /**
      * Convert a single entity from old format to new format
      */
-    private static migrateEntityToNewFormat(entity: any): void {
+    private static migrateEntityToNewFormat(entity: { yamlContent?: string; markdownContent?: string }): void {
         // Skip if already in new format
         if (entity.yamlContent || entity.markdownContent) {
             return;

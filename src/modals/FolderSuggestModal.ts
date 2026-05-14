@@ -1,4 +1,4 @@
-import { App, SuggestModal, TAbstractFile, TFolder } from 'obsidian';
+import { App, SuggestModal, TFolder } from 'obsidian';
 import { t } from '../i18n/strings';
 
 /**
@@ -61,7 +61,7 @@ export class FolderSuggestModal extends SuggestModal<string> {
 
   onClose(): void {
     if (this.onCloseCb) {
-      try { this.onCloseCb(); } catch {}
+      try { this.onCloseCb(); } catch { /* Ignore best-effort refresh errors. */ }
     }
     super.onClose();
   }

@@ -1,4 +1,4 @@
-﻿/**
+/**
  * CampaignView â€” DM-facing play mode for running scenes interactively.
  *
  * Two states:
@@ -31,7 +31,6 @@ import {
     EncounterTable,
     PartyMemberState,
     Character,
-    Event,
     Group,
     Location,
     MapBinding,
@@ -61,6 +60,17 @@ type CampaignBoardLocation = {
     binding: MapBinding;
     scenes: Scene[];
 };
+
+type CharacterStatKey = 'dndStr' | 'dndDex' | 'dndCon' | 'dndInt' | 'dndWis' | 'dndCha';
+
+type BranchActorState = {
+    characterId: string;
+    characterName: string;
+    currentHp: number;
+    maxHp: number;
+    tempHp?: number;
+    conditions?: string[];
+} & Record<CharacterStatKey, number>;
 
 export class CampaignView extends ItemView {
     private plugin: StorytellerSuitePlugin;
@@ -188,22 +198,22 @@ export class CampaignView extends ItemView {
         const actions = card.createDiv('storyteller-campaign-session-actions');
 
         const resumeBtn = actions.createEl('button', { cls: 'storyteller-campaign-btn is-primary', text: 'Resume' });
-        resumeBtn.addEventListener('click', async () => {
+        resumeBtn.addEventListener('click', () => { void (async () => {
             await this.loadSession(session);
             await this.render();
-        });
+        })(); });
 
         const noteBtn = actions.createEl('button', { cls: 'storyteller-campaign-btn' });
         setIcon(noteBtn, 'file-text');
         noteBtn.addEventListener('click', () => {
-            if (session.filePath) this.plugin.app.workspace.openLinkText(session.filePath, '', 'tab');
+            if (session.filePath) void this.plugin.app.workspace.openLinkText(session.filePath, '', 'tab');
         });
 
         const delBtn = actions.createEl('button', { cls: 'storyteller-campaign-btn is-danger' });
         setIcon(delBtn, 'trash');
-        delBtn.addEventListener('click', async () => {
+        delBtn.addEventListener('click', () => { void (async () => {
             if (session.filePath) { await this.plugin.deleteSession(session.filePath); await this.render(); }
-        });
+        })(); });
     }
 
     private async renderNewSessionForm(container: HTMLElement): Promise<void> {
@@ -214,7 +224,7 @@ export class CampaignView extends ItemView {
         nameWrap.createEl('label', { text: 'Session name' });
         const nameInput = nameWrap.createEl('input', {
             cls: 'storyteller-campaign-input',
-            attr: { type: 'text', placeholder: 'The Silver Crown - Session 1' },
+            attr: { type: 'text', placeholder: 'The silver crown - session 1' },
         });
 
         // Starting scene
@@ -249,8 +259,8 @@ export class CampaignView extends ItemView {
             }
         } catch { /* no story loaded */ }
 
-        const startBtn = form.createEl('button', { cls: 'storyteller-campaign-btn is-primary', text: 'Start Session' });
-        startBtn.addEventListener('click', async () => {
+        const startBtn = form.createEl('button', { cls: 'storyteller-campaign-btn is-primary', text: 'Start session' });
+        startBtn.addEventListener('click', () => { void (async () => {
             const name = nameInput.value.trim();
             if (!name) { new Notice('Session name is required.'); return; }
             const story = this.plugin.getActiveStory();
@@ -283,7 +293,7 @@ export class CampaignView extends ItemView {
             await this.plugin.saveSession(newSession);
             await this.loadSession(newSession);
             await this.render();
-        });
+        })(); });
     }
 
     // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -301,7 +311,7 @@ export class CampaignView extends ItemView {
         const backBtn = toolbar.createEl('button', { cls: 'storyteller-campaign-toolbar-btn', attr: { 'aria-label': 'Go back' } });
         setIcon(backBtn, 'arrow-left');
         backBtn.disabled = this.sceneHistory.length === 0;
-        backBtn.addEventListener('click', () => this.navigateBack());
+        backBtn.addEventListener('click', () => { void this.navigateBack(); });
 
         toolbar.createEl('span', {
             cls: 'storyteller-campaign-scene-name',
@@ -319,16 +329,16 @@ export class CampaignView extends ItemView {
 
         const graphBtn = toolbar.createEl('button', { cls: 'storyteller-campaign-toolbar-btn', attr: { 'aria-label': 'Scene graph' } });
         setIcon(graphBtn, 'git-fork');
-        graphBtn.addEventListener('click', () => this.plugin.activateSceneGraphView());
+        graphBtn.addEventListener('click', () => { void this.plugin.activateSceneGraphView(); });
 
         const endBtn = toolbar.createEl('button', { cls: 'storyteller-campaign-toolbar-btn mod-warning', text: 'End' });
-        endBtn.addEventListener('click', async () => {
+        endBtn.addEventListener('click', () => { void (async () => {
             session.status = 'paused';
             await this.autosave('Session paused.');
             this.session = null;
             this.currentScene = null;
             await this.render();
-        });
+        })(); });
 
         // â”€â”€ Layout â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         const main = root.createDiv('storyteller-campaign-main');
@@ -367,7 +377,7 @@ export class CampaignView extends ItemView {
         noteBtn.createSpan({ text: ' Open note' });
         noteBtn.addEventListener('click', () => {
             if (this.currentScene?.filePath) {
-                this.plugin.app.workspace.openLinkText(this.currentScene.filePath, '', 'tab');
+                void this.plugin.app.workspace.openLinkText(this.currentScene.filePath, '', 'tab');
             }
         });
 
@@ -457,9 +467,9 @@ export class CampaignView extends ItemView {
                 const chip = row.createSpan({ cls: 'storyteller-campaign-context-chip is-item' });
                 chip.createSpan({ text: name });
                 const takeBtn = chip.createEl('button', { cls: 'storyteller-campaign-take-btn', text: 'Take' });
-                takeBtn.addEventListener('click', async () => {
+                takeBtn.addEventListener('click', () => { void (async () => {
                     await this.takePartyItem(name, `Took *${name}*`);
-                });
+                })(); });
             }
         }
 
@@ -502,7 +512,7 @@ export class CampaignView extends ItemView {
             setIcon(noteBtn.createSpan(), 'map');
             noteBtn.addEventListener('click', () => {
                 if (boardMap.filePath) {
-                    this.plugin.app.workspace.openLinkText(boardMap.filePath, '', 'tab');
+                    void this.plugin.app.workspace.openLinkText(boardMap.filePath, '', 'tab');
                 }
             });
         }
@@ -528,9 +538,9 @@ export class CampaignView extends ItemView {
                 } else if (boardMap.parentMapId === targetId) {
                     button.title = 'Parent board';
                 }
-                button.addEventListener('click', async () => {
+                button.addEventListener('click', () => { void (async () => {
                     await this.switchCampaignBoardMap(targetId);
-                });
+                })(); });
             }
         }
 
@@ -557,7 +567,7 @@ export class CampaignView extends ItemView {
 
         const frame = boardEl.createDiv('storyteller-campaign-board-frame');
         const stage = frame.createDiv('storyteller-campaign-board-stage');
-        stage.style.aspectRatio = `${dimensions.width} / ${dimensions.height}`;
+        stage.setCssStyles({ aspectRatio: `${dimensions.width} / ${dimensions.height}` });
         const imageEl = stage.createEl('img', {
             cls: 'storyteller-campaign-board-image',
             attr: { src: imageUrl, alt: boardMap.name },
@@ -582,12 +592,12 @@ export class CampaignView extends ItemView {
                     (selectedLocationKey === locationKey ? ' is-selected' : ''),
                 attr: { type: 'button' },
             });
-            button.style.top = `${topPercent}%`;
-            button.style.left = `${leftPercent}%`;
+            button.setCssStyles({ top: `${topPercent}%` });
+            button.setCssStyles({ left: `${leftPercent}%` });
             button.title = entry.location.name;
             button.createSpan({ cls: 'storyteller-campaign-board-pin-dot' });
             button.createSpan({ cls: 'storyteller-campaign-board-pin-label', text: entry.location.name });
-            button.addEventListener('click', async () => {
+            button.addEventListener('click', () => { void (async () => {
                 const isSameLocation = this.selectedBoardLocationId === locationKey;
                 this.selectedBoardLocationId = locationKey;
                 if (isSameLocation) {
@@ -596,7 +606,7 @@ export class CampaignView extends ItemView {
                 }
                 this.pendingBoardFocusLocationId = locationKey;
                 await this.render();
-            });
+            })(); });
         }
 
         const caption = boardEl.createDiv('storyteller-campaign-board-caption');
@@ -628,7 +638,7 @@ export class CampaignView extends ItemView {
             const noteBtn = actions.createEl('button', { cls: 'storyteller-campaign-btn', text: 'Open note' });
             noteBtn.addEventListener('click', () => {
                 if (entry.location.filePath) {
-                    this.plugin.app.workspace.openLinkText(entry.location.filePath, '', 'tab');
+                    void this.plugin.app.workspace.openLinkText(entry.location.filePath, '', 'tab');
                 }
             });
         }
@@ -652,9 +662,9 @@ export class CampaignView extends ItemView {
                     attr: { type: 'button' },
                 });
                 button.disabled = isCurrent;
-                button.addEventListener('click', async () => {
+                button.addEventListener('click', () => { void (async () => {
                     await this.doNavigate(scene.name, true);
-                });
+                })(); });
             }
         }
 
@@ -686,9 +696,9 @@ export class CampaignView extends ItemView {
                     attr: { type: 'button' },
                 });
                 takeBtn.disabled = hasItem || wasTakenFromBoard;
-                takeBtn.addEventListener('click', async () => {
+                takeBtn.addEventListener('click', () => { void (async () => {
                     await this.takePartyItem(name, `Took *${name}* from *${entry.location.name}*`, entry.location);
-                });
+                })(); });
             }
         }
 
@@ -1047,7 +1057,7 @@ export class CampaignView extends ItemView {
         card.addEventListener('click', () => {
             if (!check.met) { new Notice(check.unmet.join(' | ')); return; }
             if (resolvedBranch.dice) { this.showDiceOverlay(resolvedBranch, panelEl); }
-            else { this.executeChoice(resolvedBranch, 'success'); }
+            else { void this.executeChoice(resolvedBranch, 'success'); }
         });
     }
 
@@ -1093,7 +1103,7 @@ export class CampaignView extends ItemView {
         overWrap.createSpan({ cls: 'storyteller-dice-override-label', text: 'Override: ' });
         const overInput = overWrap.createEl('input', {
             cls: 'storyteller-campaign-input is-small',
-            attr: { type: 'number', placeholder: 'enter total' },
+            attr: { type: 'number', placeholder: 'Enter total' },
         });
 
         const btnRow = box.createDiv('storyteller-dice-btn-row');
@@ -1112,7 +1122,7 @@ export class CampaignView extends ItemView {
 
             face.addClass('rolling');
             face.textContent = '...';
-            setTimeout(() => {
+            window.setTimeout(() => {
                 face.removeClass('rolling');
                 face.textContent = String(total);
 
@@ -1141,7 +1151,7 @@ export class CampaignView extends ItemView {
         confirmBtn.addEventListener('click', () => {
             if (lastTotal === null) return;
             overlay.remove();
-            this.executeChoice(branch, resolveBranch(branch, lastTotal), lastTotal);
+            void this.executeChoice(branch, resolveBranch(branch, lastTotal), lastTotal);
         });
 
         const cancelBtn = btnRow.createEl('button', { cls: 'storyteller-campaign-btn', text: 'Cancel' });
@@ -1325,7 +1335,7 @@ export class CampaignView extends ItemView {
         }
         const goBtn = wrap.createEl('button', { cls: 'storyteller-campaign-btn is-primary', text: 'Go' });
         goBtn.disabled = !this.allScenes.length;
-        goBtn.addEventListener('click', () => { if (sel.value) this.doNavigate(sel.value, false); });
+        goBtn.addEventListener('click', () => { if (sel.value) void this.doNavigate(sel.value, false); });
     }
 
     // â”€â”€ Sidebar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -1369,7 +1379,7 @@ export class CampaignView extends ItemView {
         const fill = bar.createDiv('storyteller-hp-bar-fill');
         const setPct = () => {
             const pct = Math.max(0, Math.min(1, state.currentHp / Math.max(state.maxHp, 1)));
-            fill.style.width = `${pct * 100}%`;
+            fill.setCssStyles({ width: `${pct * 100}%` });
             fill.className = 'storyteller-hp-bar-fill' +
                 (pct <= 0.25 ? ' critical' : pct <= 0.5 ? ' wounded' : '');
         };
@@ -1393,18 +1403,18 @@ export class CampaignView extends ItemView {
             if (idx >= 0) session.partyState[idx] = state; else session.partyState.push(state);
             await this.autosave();
         };
-        minusBtn.addEventListener('click', () => mutate(-1));
-        plusBtn.addEventListener('click',  () => mutate(1));
+        minusBtn.addEventListener('click', () => { void mutate(-1); });
+        plusBtn.addEventListener('click',  () => { void mutate(1); });
     }
 
     private renderSetHpRow(row: HTMLElement, name: string, session: CampaignSession, body: HTMLElement): void {
         const ctrl = row.createDiv('storyteller-campaign-hp-controls');
         const input = ctrl.createEl('input', {
             cls: 'storyteller-campaign-input is-small',
-            attr: { type: 'number', placeholder: 'Max HP' },
+            attr: { type: 'number', placeholder: 'Max hp' },
         });
-        const setBtn = ctrl.createEl('button', { cls: 'storyteller-campaign-hp-btn', text: 'Set HP' });
-        setBtn.addEventListener('click', async () => {
+        const setBtn = ctrl.createEl('button', { cls: 'storyteller-campaign-hp-btn', text: 'Set hp' });
+        setBtn.addEventListener('click', () => { void (async () => {
             const maxHp = parseInt(input.value);
             if (!maxHp) return;
             if (!session.partyState) session.partyState = [];
@@ -1412,7 +1422,7 @@ export class CampaignView extends ItemView {
             await this.autosave();
             body.empty();
             this.renderPartySidebar(body.parentElement!.parentElement!, session);
-        });
+        })(); });
     }
 
     private async renderInventorySidebar(sidebar: HTMLElement, session: CampaignSession): Promise<void> {
@@ -1457,9 +1467,9 @@ export class CampaignView extends ItemView {
                 ownerSelect.value = plotItem?.currentOwner ?? '';
                 if (!plotItem) {
                     ownerSelect.disabled = true;
-                    ownerSelect.title = 'Create a matching Plot Item to track ownership.';
+                    ownerSelect.title = 'Create a matching plot item to track ownership.';
                 }
-                ownerSelect.addEventListener('change', async () => {
+                ownerSelect.addEventListener('change', () => { void (async () => {
                     const entry = getPlotItem(item);
                     if (!entry) return;
                     const nextOwner = ownerSelect.value.trim() || undefined;
@@ -1471,22 +1481,22 @@ export class CampaignView extends ItemView {
                             ? `Assigned *${item}* to *${nextOwner}*`
                             : `Set *${item}* as shared inventory`
                     );
-                });
+                })(); });
 
                 const useBtn = itemRow.createEl('button', { cls: 'storyteller-campaign-hp-btn', attr: { 'aria-label': 'Use' } });
                 setIcon(useBtn, 'zap');
-                useBtn.addEventListener('click', async () => {
+                useBtn.addEventListener('click', () => { void (async () => {
                     await this.useItem(item, session, rebuild);
-                });
+                })(); });
                 const del = itemRow.createEl('button', { cls: 'storyteller-campaign-hp-btn', attr: { 'aria-label': 'Remove' } });
                 setIcon(del, 'cross');
-                del.addEventListener('click', async () => {
+                del.addEventListener('click', () => { void (async () => {
                     const previousItems = [...(session.partyItems ?? [])];
                     session.partyItems = (session.partyItems ?? []).filter(i => i !== item);
                     await this.syncPartyInventoryOwnership(session, previousItems);
                     await this.autosave();
                     rebuild();
-                });
+                })(); });
             }
             syncAddOptions();
         };
@@ -1538,12 +1548,12 @@ export class CampaignView extends ItemView {
             addSelect.value = '';
             rebuild();
         };
-        addBtn.addEventListener('click', doAdd);
-        addSelect.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); doAdd(); } });
+        addBtn.addEventListener('click', () => { void doAdd(); });
+        addSelect.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); void doAdd(); } });
 
         // Active flags display
         if (session.flags?.length) {
-            const flagsHdr = body.createDiv({ cls: 'storyteller-campaign-sidebar-sub-hdr', text: 'Flags' });
+            body.createDiv({ cls: 'storyteller-campaign-sidebar-sub-hdr', text: 'Flags' });
             const flagList = body.createDiv('storyteller-campaign-flag-list');
             for (const flag of session.flags) {
                 flagList.createSpan({ cls: 'storyteller-branch-tag is-flag', text: `Flag: ${flag}` });
@@ -2148,8 +2158,8 @@ export class CampaignView extends ItemView {
         }
     }
 
-    private getStatKey(stat: SceneBranch['stat']): string {
-        return `dnd${stat!.charAt(0).toUpperCase()}${stat!.slice(1)}`;
+    private getStatKey(stat: SceneBranch['stat']): CharacterStatKey {
+        return `dnd${stat!.charAt(0).toUpperCase()}${stat!.slice(1)}` as CharacterStatKey;
     }
 
     private resolveSceneName(sceneId?: string, sceneName?: string): string | undefined {
@@ -2176,7 +2186,7 @@ export class CampaignView extends ItemView {
         return resolved;
     }
 
-    private getCharacterStateByName(name?: string | null): ({ characterName?: string } & Record<string, unknown>) | undefined {
+    private getCharacterStateByName(name?: string | null): BranchActorState | undefined {
         if (!name || !this.session) return undefined;
         const normalized = this.normalizeName(name);
         const character = this.partyCharacterStats.get(normalized);
@@ -2200,13 +2210,13 @@ export class CampaignView extends ItemView {
         };
     }
 
-    private getBestPartyStatState(stat?: SceneBranch['stat']): ({ characterName?: string } & Record<string, unknown>) | undefined {
+    private getBestPartyStatState(stat?: SceneBranch['stat']): BranchActorState | undefined {
         if (!stat) return undefined;
         const statKey = this.getStatKey(stat);
         let pickedName: string | null = null;
         let bestScore = Number.NEGATIVE_INFINITY;
         for (const [name, character] of this.partyCharacterStats.entries()) {
-            const score = Number((character as any)[statKey] ?? 10);
+            const score = Number(character[statKey] ?? 10);
             if (score > bestScore) {
                 bestScore = score;
                 pickedName = name;
@@ -2215,7 +2225,7 @@ export class CampaignView extends ItemView {
         return pickedName ? this.getCharacterStateByName(pickedName) : undefined;
     }
 
-    private getBranchActorState(branch: SceneBranch): ({ characterName?: string } & Record<string, unknown>) | undefined {
+    private getBranchActorState(branch: SceneBranch): BranchActorState | undefined {
         if (!branch.stat) return undefined;
 
         if (branch.requiresCharacter) {
@@ -2268,7 +2278,7 @@ export class CampaignView extends ItemView {
             }
 
             if (changed) {
-                await this.plugin.saveEvent(event as Event);
+                await this.plugin.saveEvent(event);
             }
 
             return `Triggered event: *${event.name}*`;

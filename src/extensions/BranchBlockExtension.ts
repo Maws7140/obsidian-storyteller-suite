@@ -72,7 +72,7 @@ class BranchEncounterWidget extends WidgetType {
     }
 
     toDOM(): HTMLElement {
-        const container = document.createElement('div');
+        const container = activeDocument.createElement('div');
         container.className = `storyteller-codeblock-widget storyteller-codeblock-widget-${this.language}`;
         if (this.language === 'branch') {
             const branches = parseBranches(this.source);
@@ -249,7 +249,7 @@ export function createBranchViewExtension() {
 
 export function registerBranchBlockProcessors(
     _app: App,
-    plugin: { registerMarkdownCodeBlockProcessor: Function }
+    plugin: { registerMarkdownCodeBlockProcessor: (language: string, handler: (source: string, el: HTMLElement) => void) => void }
 ): void {
     plugin.registerMarkdownCodeBlockProcessor('branch', (source: string, el: HTMLElement) => {
         const branches = parseBranches(source);

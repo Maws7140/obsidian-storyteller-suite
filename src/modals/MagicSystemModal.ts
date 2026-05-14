@@ -4,13 +4,17 @@ import type StorytellerSuitePlugin from '../main';
 import { ResponsiveModal } from './ResponsiveModal';
 import { addImageSelectionButtons } from '../utils/ImageSelectionHelper';
 import { TemplatePickerModal } from './TemplatePickerModal';
-import { Template } from '../templates/TemplateTypes';
+import type { Template, TemplateEntity, TemplateVariableValue } from '../templates/TemplateTypes';
 import { t } from '../i18n/strings';
 import { parseSectionsFromMarkdown } from '../yaml/EntitySections';
 import { EntityCustomFieldsEditor } from './entity/EntityCustomFieldsEditor';
 
 export type MagicSystemModalSubmitCallback = (magicSystem: MagicSystem) => Promise<void>;
 export type MagicSystemModalDeleteCallback = (magicSystem: MagicSystem) => Promise<void>;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
 
 /**
  * Modal for creating and editing magic systems
@@ -71,7 +75,7 @@ export class MagicSystemModal extends ResponsiveModal {
         this.modalEl.addClass('storyteller-magic-system-modal');
     }
 
-    async onOpen(): Promise<void> {
+    onOpen(): void { void (async () => {
         super.onOpen();
 
         const { contentEl, footerEl } = this.createStructuredModalLayout();
@@ -90,12 +94,12 @@ export class MagicSystemModal extends ResponsiveModal {
                     if ((defaultTemplate.variables && defaultTemplate.variables.length > 0) ||
                         this.hasMultipleEntities(defaultTemplate)) {
                         await new Promise<void>((resolve) => {
-                            import('./TemplateApplicationModal').then(({ TemplateApplicationModal }) => {
+                            void import('./TemplateApplicationModal').then(({ TemplateApplicationModal }) => {
                                 new TemplateApplicationModal(
                                     this.app,
                                     this.plugin,
                                     defaultTemplate,
-                                    async (variableValues, entityFileNames) => {
+                                    (variableValues, entityFileNames) => { void (async () => {
                                         try {
                                             await this.applyTemplateToMagicSystemWithVariables(defaultTemplate, variableValues);
                                             new Notice('Default template applied');
@@ -105,7 +109,7 @@ export class MagicSystemModal extends ResponsiveModal {
                                             new Notice('Error applying default template');
                                         }
                                         resolve();
-                                    }
+                                    })(); }
                                 ).open();
                             });
                         });
@@ -135,18 +139,18 @@ export class MagicSystemModal extends ResponsiveModal {
                         new TemplatePickerModal(
                             this.app,
                             this.plugin,
-                            async (template: Template) => {
+                            (template: Template) => { void (async () => {
                                 // Check if template has variables or multiple entities
                                 if ((template.variables && template.variables.length > 0) ||
                                     this.hasMultipleEntities(template)) {
                                     // Use TemplateApplicationModal for variable collection
                                     await new Promise<void>((resolve) => {
-                                        import('./TemplateApplicationModal').then(({ TemplateApplicationModal }) => {
+                                        void import('./TemplateApplicationModal').then(({ TemplateApplicationModal }) => {
                                             new TemplateApplicationModal(
                                                 this.app,
                                                 this.plugin,
                                                 template,
-                                                async (variableValues, entityFileNames) => {
+                                                (variableValues, entityFileNames) => { void (async () => {
                                                     try {
                                                         await this.applyTemplateToMagicSystemWithVariables(template, variableValues);
                                                         new Notice(t('templateApplied', template.name));
@@ -156,7 +160,7 @@ export class MagicSystemModal extends ResponsiveModal {
                                                         new Notice('Error applying template');
                                                     }
                                                     resolve();
-                                                }
+                                                })(); }
                                             ).open();
                                         });
                                     });
@@ -166,7 +170,7 @@ export class MagicSystemModal extends ResponsiveModal {
                                     this.refresh();
                                     new Notice(t('templateApplied', template.name));
                                 }
-                            },
+                            })(); },
                             'magicSystem'
                         ).open();
                     })
@@ -284,7 +288,7 @@ export class MagicSystemModal extends ResponsiveModal {
                 text.setValue(this.magicSystem.description || '')
                     .onChange(value => this.magicSystem.description = value);
                 text.inputEl.rows = 4;
-                text.inputEl.style.width = '100%';
+                text.inputEl.setCssStyles({ width: '100%' });
             });
 
         // Rules (Markdown Section)
@@ -296,7 +300,7 @@ export class MagicSystemModal extends ResponsiveModal {
                 text.setValue(this.magicSystem.rules || '')
                     .onChange(value => this.magicSystem.rules = value);
                 text.inputEl.rows = 4;
-                text.inputEl.style.width = '100%';
+                text.inputEl.setCssStyles({ width: '100%' });
             });
 
         // Source (Markdown Section)
@@ -308,7 +312,7 @@ export class MagicSystemModal extends ResponsiveModal {
                 text.setValue(this.magicSystem.source || '')
                     .onChange(value => this.magicSystem.source = value);
                 text.inputEl.rows = 3;
-                text.inputEl.style.width = '100%';
+                text.inputEl.setCssStyles({ width: '100%' });
             });
 
         // Costs (Markdown Section)
@@ -320,7 +324,7 @@ export class MagicSystemModal extends ResponsiveModal {
                 text.setValue(this.magicSystem.costs || '')
                     .onChange(value => this.magicSystem.costs = value);
                 text.inputEl.rows = 3;
-                text.inputEl.style.width = '100%';
+                text.inputEl.setCssStyles({ width: '100%' });
             });
 
         // Limitations (Markdown Section)
@@ -332,7 +336,7 @@ export class MagicSystemModal extends ResponsiveModal {
                 text.setValue(this.magicSystem.limitations || '')
                     .onChange(value => this.magicSystem.limitations = value);
                 text.inputEl.rows = 3;
-                text.inputEl.style.width = '100%';
+                text.inputEl.setCssStyles({ width: '100%' });
             });
 
         // Training (Markdown Section)
@@ -344,7 +348,7 @@ export class MagicSystemModal extends ResponsiveModal {
                 text.setValue(this.magicSystem.training || '')
                     .onChange(value => this.magicSystem.training = value);
                 text.inputEl.rows = 3;
-                text.inputEl.style.width = '100%';
+                text.inputEl.setCssStyles({ width: '100%' });
             });
 
         // History (Markdown Section)
@@ -356,7 +360,7 @@ export class MagicSystemModal extends ResponsiveModal {
                 text.setValue(this.magicSystem.history || '')
                     .onChange(value => this.magicSystem.history = value);
                 text.inputEl.rows = 3;
-                text.inputEl.style.width = '100%';
+                text.inputEl.setCssStyles({ width: '100%' });
             });
 
         this.customFieldsEditor.setFields(this.magicSystem.customFields);
@@ -385,7 +389,7 @@ export class MagicSystemModal extends ResponsiveModal {
             await this.onSubmit(this.magicSystem);
             this.close();
         }, { cta: true });
-    }
+    })(); }
 
     private hasMultipleEntities(template: Template): boolean {
         let entityCount = 0;
@@ -408,7 +412,7 @@ export class MagicSystemModal extends ResponsiveModal {
         await this.applyProcessedTemplateToMagicSystem(templateMagic);
     }
 
-    private async applyTemplateToMagicSystemWithVariables(template: Template, variableValues: Record<string, any>): Promise<void> {
+    private async applyTemplateToMagicSystemWithVariables(template: Template, variableValues: Record<string, TemplateVariableValue>): Promise<void> {
         if (!template.entities.magicSystems || template.entities.magicSystems.length === 0) {
             new Notice('This template does not contain any magic systems');
             return;
@@ -434,20 +438,27 @@ export class MagicSystemModal extends ResponsiveModal {
         await this.applyProcessedTemplateToMagicSystem(templateMagic);
     }
 
-    private async applyProcessedTemplateToMagicSystem(templateMagic: any): Promise<void> {
-        const { templateId, yamlContent, markdownContent, sectionContent, customYamlFields, id, filePath, ...rest } = templateMagic as any;
+    private async applyProcessedTemplateToMagicSystem(templateMagic: TemplateEntity<MagicSystem>): Promise<void> {
+        const { yamlContent, markdownContent, sectionContent, customYamlFields } = templateMagic;
 
-        let fields: any = { ...rest };
+        let fields: Record<string, unknown> = { ...templateMagic };
+        delete fields.templateId;
+        delete fields.yamlContent;
+        delete fields.markdownContent;
+        delete fields.sectionContent;
+        delete fields.customYamlFields;
+        delete fields.id;
+        delete fields.filePath;
         let allTemplateSections: Record<string, string> = {};
 
         // Handle new format: yamlContent (parse YAML string)
         if (yamlContent && typeof yamlContent === 'string') {
             try {
-                const parsed = parseYaml(yamlContent);
-                if (parsed && typeof parsed === 'object') {
+                const parsed = parseYaml(yamlContent) as unknown;
+                if (isRecord(parsed)) {
                     fields = { ...fields, ...parsed };
                 }
-                console.log('[MagicSystemModal] Parsed YAML fields:', parsed);
+                console.debug('[MagicSystemModal] Parsed YAML fields:', parsed);
             } catch (error) {
                 console.warn('[MagicSystemModal] Failed to parse yamlContent:', error);
             }
@@ -485,16 +496,16 @@ export class MagicSystemModal extends ResponsiveModal {
                     fields.history = parsedSections['History'];
                 }
 
-                console.log('[MagicSystemModal] Parsed markdown sections:', parsedSections);
+                console.debug('[MagicSystemModal] Parsed markdown sections:', parsedSections);
             } catch (error) {
                 console.warn('[MagicSystemModal] Failed to parse markdownContent:', error);
             }
         } else if (sectionContent) {
             // Old format: apply section content
-            for (const [k, v] of Object.entries(sectionContent)) { allTemplateSections[k as string] = v as string; }
+            for (const [k, v] of Object.entries(sectionContent)) { allTemplateSections[k] = v; }
             for (const [sectionName, content] of Object.entries(sectionContent)) {
                 const propName = sectionName.toLowerCase().replace(/\s+/g, '');
-                (fields as any)[propName] = content;
+                fields[propName] = content;
             }
         }
 
@@ -508,7 +519,7 @@ export class MagicSystemModal extends ResponsiveModal {
                 configurable: true
             });
         }
-        console.log('[MagicSystemModal] Final magic system after template:', this.magicSystem);
+        console.debug('[MagicSystemModal] Final magic system after template:', this.magicSystem);
 
         // Clear relationships as they reference template entities
         this.magicSystem.linkedCharacters = [];

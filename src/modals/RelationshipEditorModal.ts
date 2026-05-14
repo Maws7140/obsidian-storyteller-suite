@@ -2,7 +2,7 @@
 
 import { App, Modal, Setting, Notice } from 'obsidian';
 import StorytellerSuitePlugin from '../main';
-import { TypedRelationship, RelationshipType, Character, Location, Event, PlotItem } from '../types';
+import { TypedRelationship, RelationshipType } from '../types';
 import { CharacterSuggestModal } from './CharacterSuggestModal';
 import { LocationSuggestModal } from './LocationSuggestModal';
 import { EventSuggestModal } from './EventSuggestModal';

@@ -8,10 +8,16 @@ import { getGettingStartedGuide, renderGuideDocument } from './tutorial/Storytel
 import { BUILT_IN_SHEET_TEMPLATES } from './utils/CharacterSheetTemplates';
 import { setLocale, t, getAvailableLanguages, getLanguageName, isLanguageAvailable } from './i18n/strings';
 import { VIEW_TYPE_DASHBOARD } from './views/DashboardView';
+import { confirmWithModal } from './modals/ui/ConfirmModal';
+import type { TemplateEntityType } from './templates/TemplateTypes';
 
 type TabId = 'stories' | 'dashboard' | 'folders' | 'timeline' | 'maps' | 'templates' | 'gallery' | 'help';
 
 interface TabDef { id: TabId; icon: string; label: string; }
+
+interface ReopenableView {
+    onOpen(): Promise<void> | void;
+}
 
 export class StorytellerSuiteSettingTab extends PluginSettingTab {
     plugin: StorytellerSuitePlugin;
@@ -111,15 +117,15 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                     if (suppress) return;
                     new FolderSuggestModal(
                         this.app,
-                        async (folderPath) => {
+                        (folderPath) => { void (async () => {
                             setValue(folderPath);
                             comp.setValue(folderPath);
                             await this.plugin.saveSettings();
-                        },
+                        })(); },
                         () => {
                             suppress = true;
-                            setTimeout(() => { suppress = false; }, 300);
-                            setTimeout(() => comp.inputEl.focus(), 0);
+                            window.setTimeout(() => { suppress = false; }, 300);
+                            window.setTimeout(() => comp.inputEl.focus(), 0);
                         }
                     ).open();
                 };
@@ -142,7 +148,7 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
             .setDesc(t('selectLanguage'))
             .addDropdown(dropdown => {
                 const availableLanguages = getAvailableLanguages();
-                availableLanguages.forEach(lang => dropdown.addOption(lang, getLanguageName(lang)));
+                availableLanguages.forEach(lang => { dropdown.addOption(lang, getLanguageName(lang)); });
                 const currentLang = isLanguageAvailable(this.plugin.settings.language)
                     ? this.plugin.settings.language : 'en';
                 dropdown.setValue(currentLang);
@@ -189,7 +195,11 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                     .setIcon('trash')
                     .setTooltip(t('delete'))
                     .onClick(async () => {
-                        if (confirm(t('confirmDeleteStory', story.name))) {
+                        if (await confirmWithModal(this.app, {
+                            title: t('delete'),
+                            body: t('confirmDeleteStory', story.name),
+                            confirmText: t('delete')
+                        })) {
                             this.plugin.settings.stories = this.plugin.settings.stories.filter(s => s.id !== story.id);
                             if (this.plugin.settings.activeStoryId === story.id) {
                                 this.plugin.settings.activeStoryId = this.plugin.settings.stories[0]?.id || '';
@@ -237,7 +247,7 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
 
     // ─── Tab: Dashboard ───────────────────────────────────────────────────────
     private renderDashboardTab(container: HTMLElement): void {
-        new Setting(container).setName('Writing Goal').setHeading();
+        new Setting(container).setName('Writing goal').setHeading();
 
         new Setting(container)
             .setName('Daily writing goal')
@@ -249,7 +259,7 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                     const n = parseInt(value, 10);
                     const goal = isNaN(n) || n < 0 ? 0 : n;
                     if (this.plugin.wordTracker) {
-                        this.plugin.wordTracker.setDailyGoal(goal);
+                        await this.plugin.wordTracker.setDailyGoal(goal);
                     } else {
                         this.plugin.settings.dailyWordCountGoal = goal;
                         await this.plugin.saveSettings();
@@ -267,8 +277,8 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                     await this.plugin.saveSettings();
                     const leaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_DASHBOARD);
                     await Promise.all(leaves.map(async (leaf) => {
-                        const view = leaf.view as any;
-                        if (view && typeof view.onOpen === 'function') {
+                        const view = leaf.view as unknown as Partial<ReopenableView>;
+                        if (typeof view.onOpen === 'function') {
                             await view.onOpen();
                         }
                     }));
@@ -358,7 +368,7 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                         const hasStoryPlaceholder = paths.some(p => (p || '').match(/\{story(Name|Slug|Id)\}/i));
                         if (hasStoryPlaceholder && !this.plugin.settings.activeStoryId) {
                             const banner = container.createDiv({ cls: 'mod-warning' });
-                            banner.style.marginTop = '8px';
+                            banner.setCssStyles({ marginTop: '8px' });
                             banner.setText(t('customFoldersPlaceholderWarning'));
                         } else {
                             await this.plugin.refreshCustomFolderDiscovery();
@@ -526,17 +536,17 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                         if (suppress) return;
                         new FolderSuggestModal(
                             this.app,
-                            async (folderPath) => {
+                            (folderPath) => { void (async () => {
                                 const chosen = (!folderPath || folderPath === '/') ? '' : folderPath;
                                 this.plugin.settings.oneStoryBaseFolder = chosen || 'StorytellerSuite';
                                 comp.setValue(chosen);
                                 await this.plugin.saveSettings();
                                 await this.plugin.initializeOneStoryModeIfNeeded();
-                            },
+                            })(); },
                             () => {
                                 suppress = true;
-                                setTimeout(() => { suppress = false; }, 300);
-                                setTimeout(() => comp.inputEl.focus(), 0);
+                                window.setTimeout(() => { suppress = false; }, 300);
+                                window.setTimeout(() => comp.inputEl.focus(), 0);
                             }
                         ).open();
                     };
@@ -646,7 +656,7 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                 .onChange(async (v) => { this.plugin.settings.showTimelineLegend = v; await this.plugin.saveSettings(); }));
 
         // Gantt
-        container.createEl('h3', { text: t('ganttViewSettings') });
+        new Setting(container).setName(t('ganttViewSettings')).setHeading();
 
         new Setting(container)
             .setName(t('showProgressBarsInGantt'))
@@ -691,13 +701,13 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                 .onChange(async () => { /* no-op stub; future setting */ }));
 
         // Vault note inclusion
-        container.createEl('h3', { text: 'Vault Note Timeline Inclusion' });
+        new Setting(container).setName('Vault note timeline inclusion').setHeading();
 
         const watchPropSetting = new Setting(container)
             .setName('Timeline watch property')
             .setDesc('Frontmatter property name — any note with this property will appear on the timeline using its value as the date.')
             .addText(text => text
-                .setPlaceholder('timeline-date')
+                .setPlaceholder('Timeline-date')
                 .setValue(this.plugin.settings.timelineWatchProperty || 'timeline-date')
                 .onChange(async (v) => {
                     this.plugin.settings.timelineWatchProperty = v.trim() || 'timeline-date';
@@ -710,9 +720,9 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
 
         const watchTagSetting = new Setting(container)
             .setName('Timeline watch tag')
-            .setDesc('Tag to watch — any note with this tag AND a frontmatter "date" field will appear on the timeline.')
+            .setDesc('Tag to watch — any note with this tag and a frontmatter "date" field will appear on the timeline.')
             .addText(text => text
-                .setPlaceholder('timeline')
+                .setPlaceholder('Timeline')
                 .setValue(this.plugin.settings.timelineWatchTag || 'timeline')
                 .onChange(async (v) => {
                     this.plugin.settings.timelineWatchTag = v.trim() || 'timeline';
@@ -749,8 +759,8 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                 }));
 
         const leafletSetting = new Setting(container)
-            .setName('Disable Leaflet global exposure')
-            .setDesc('Prevents Storyteller Suite from exposing Leaflet globally. Use if you experience conflicts with the standalone Obsidian Leaflet plugin. Requires plugin reload.')
+            .setName('Disable leaflet global exposure')
+            .setDesc('Prevents storyteller suite from exposing leaflet globally. Use if you experience conflicts with the standalone Obsidian leaflet plugin. Requires plugin reload.')
             .addToggle(toggle => toggle
                 .setValue(!!this.plugin.settings.disableLeafletGlobalExposure)
                 .onChange(async (value) => {
@@ -764,8 +774,8 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
             'Storyteller Suite\'s MapView will continue to work as it imports Leaflet directly.'
         );
 
-        // Map Tile Settings
-        container.createEl('h3', { text: 'Map Tile Settings' });
+        // Map tiles
+        new Setting(container).setName('Map tiles').setHeading();
 
         new Setting(container)
             .setName('Auto-generate tiles')
@@ -801,9 +811,9 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
             .setName('Tile size')
             .setDesc('Tile dimensions in pixels (256 is standard, don\'t change unless you know what you\'re doing)')
             .addDropdown(dropdown => dropdown
-                .addOption('128', '128px')
-                .addOption('256', '256px (recommended)')
-                .addOption('512', '512px')
+                .addOption('128', '128Px')
+                .addOption('256', '256Px (recommended)')
+                .addOption('512', '512Px')
                 .setValue(String(this.plugin.settings.tiling?.tileSize || 256))
                 .onChange(async (value) => {
                     if (!this.plugin.settings.tiling) {
@@ -833,7 +843,7 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
 
         new Setting(container)
             .setName('Disable automatic folder creation')
-            .setDesc('Prevent the plugin from creating any folders (StorytellerSuite, Templates, entity folders, etc.) on startup. Enable this if you use your own custom folder structure. Folders will still be created when you explicitly create entities. Requires plugin reload.')
+            .setDesc('Prevent the plugin from creating any folders (storytellersuite, templates, entity folders, etc.) on startup. Enable this if you use your own custom folder structure. Folders will still be created when you explicitly create entities. Requires plugin reload.')
             .addToggle(toggle => toggle
                 .setValue(!!this.plugin.settings.disableAutoFolderCreation)
                 .onChange(async (value) => {
@@ -844,7 +854,7 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
 
         new Setting(container).setDesc(t('defaultTemplatesDesc'));
 
-        const entityTypesWithTemplates: Array<{ key: string; label: string }> = [
+        const entityTypesWithTemplates: Array<{ key: TemplateEntityType; label: string }> = [
             { key: 'character',   label: t('character') },
             { key: 'location',    label: t('location') },
             { key: 'event',       label: t('event') },
@@ -859,13 +869,13 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
         ];
 
         for (const entityType of entityTypesWithTemplates) {
-            const templates = this.plugin.templateManager?.getTemplatesByEntityType(entityType.key as any) || [];
+            const templates = this.plugin.templateManager?.getTemplatesByEntityType(entityType.key) || [];
             const currentTemplateId = this.plugin.settings.defaultTemplates?.[entityType.key] || '';
             new Setting(container)
                 .setName(t('defaultTemplateFor', entityType.label))
                 .addDropdown(dropdown => {
                     dropdown.addOption('', t('noDefaultTemplate'));
-                    templates.forEach(template => dropdown.addOption(template.id, template.name));
+                    templates.forEach(template => { dropdown.addOption(template.id, template.name); });
                     dropdown.setValue(currentTemplateId);
                     dropdown.onChange(async (value) => {
                         if (!this.plugin.settings.defaultTemplates) {
@@ -890,7 +900,7 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
     // ─── Character Sheet Templates section ────────────────────────────────────
 
     private renderCharacterSheetTemplatesSection(container: HTMLElement): void {
-        new Setting(container).setName('Character Sheet Templates').setHeading();
+        new Setting(container).setName('Character sheet templates').setHeading();
 
         // Default template picker
         new Setting(container)
@@ -945,38 +955,38 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                 const editBtn = actions.createEl('button', { cls: 'clickable-icon', attr: { 'aria-label': 'Edit' } });
                 setIcon(editBtn, 'pencil');
                 editBtn.addEventListener('click', () => {
-                    new CustomSheetTemplateModal(this.app, tpl, async updated => {
+                    new CustomSheetTemplateModal(this.app, tpl, updated => { void (async () => {
                         const idx = (this.plugin.settings.characterSheetTemplates ?? []).findIndex(t => t.id === tpl.id);
                         if (idx !== -1 && this.plugin.settings.characterSheetTemplates) {
                             this.plugin.settings.characterSheetTemplates[idx] = updated;
                             await this.plugin.saveSettings();
                             this.renderCharacterSheetTemplatesSection_refresh(container);
                         }
-                    }).open();
+                    })(); }).open();
                 });
 
                 const delBtn = actions.createEl('button', { cls: 'clickable-icon mod-warning', attr: { 'aria-label': 'Delete' } });
                 setIcon(delBtn, 'trash');
-                delBtn.addEventListener('click', async () => {
+                delBtn.addEventListener('click', () => { void (async () => {
                     this.plugin.settings.characterSheetTemplates = (this.plugin.settings.characterSheetTemplates ?? []).filter(t => t.id !== tpl.id);
                     if (this.plugin.settings.defaultCharacterSheetTemplateId === tpl.id) {
                         this.plugin.settings.defaultCharacterSheetTemplateId = 'classic';
                     }
                     await this.plugin.saveSettings();
                     this.renderCharacterSheetTemplatesSection_refresh(container);
-                });
+                })(); });
             }
         }
 
         const addRow = container.createDiv('sts-cstpl-add-btn-row');
-        const addBtn = addRow.createEl('button', { text: '+ Add custom template', cls: 'mod-cta' });
+        const addBtn = addRow.createEl('button', { text: '+ add custom template', cls: 'mod-cta' });
         addBtn.addEventListener('click', () => {
-            new CustomSheetTemplateModal(this.app, null, async tpl => {
+            new CustomSheetTemplateModal(this.app, null, tpl => { void (async () => {
                 if (!this.plugin.settings.characterSheetTemplates) this.plugin.settings.characterSheetTemplates = [];
                 this.plugin.settings.characterSheetTemplates.push(tpl);
                 await this.plugin.saveSettings();
                 this.renderCharacterSheetTemplatesSection_refresh(container);
-            }).open();
+            })(); }).open();
         });
     }
 
@@ -1006,7 +1016,7 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
             .setName('Auto-watch folder')
             .setDesc('Images placed in this folder are automatically added to the gallery. Leave empty to disable.')
             .addText(text => text
-                .setPlaceholder('e.g. StorytellerSuite/GalleryWatch')
+                .setPlaceholder('E.g. Storytellersuite/gallerywatch')
                 .setValue(this.plugin.settings.galleryWatchFolder ?? '')
                 .onChange(async (value) => {
                     this.plugin.settings.galleryWatchFolder = value;
@@ -1058,7 +1068,7 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
             .setDesc(t('supportDevDesc'))
             .addButton(button => button
                 .setButtonText(t('buyMeACoffee'))
-                .setTooltip('Support on Ko-fi')
+                .setTooltip('Support on ko-fi')
                 .onClick(() => window.open('https://ko-fi.com/kingmaws', '_blank'))
             );
 

@@ -140,7 +140,6 @@ export function parseBalanceString(raw: string): Balance {
  * Otherwise a new block is inserted before the last heading (or at the end).
  */
 export function appendLedgerEntry(markdown: string, entry: string): string {
-    const closeRe = /```(\s*)$/m;
     const openRe = /```ledger/i;
 
     if (openRe.test(markdown)) {

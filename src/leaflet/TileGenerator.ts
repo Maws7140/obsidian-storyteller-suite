@@ -49,21 +49,21 @@ export class TileGenerator {
         this.tilesGenerated = 0;
 
         try {
-            console.log('[TileGenerator] Starting tile generation for:', imagePath);
+            console.debug('[TileGenerator] Starting tile generation for:', imagePath);
 
             // 1. Read image data
             const imageData = await this.app.vault.adapter.readBinary(imagePath);
 
             // 2. Calculate hash
             const hash = await this.calculateImageHash(imageData);
-            console.log('[TileGenerator] Image hash:', hash);
+            console.debug('[TileGenerator] Image hash:', hash);
 
             // 3. Check if tiles already exist
             const metadataPath = `StorytellerSuite/MapTiles/${hash}/metadata.json`;
             const existingMetadata = this.app.vault.getAbstractFileByPath(metadataPath);
 
             if (existingMetadata instanceof TFile) {
-                console.log('[TileGenerator] Tiles already exist, skipping generation');
+                console.debug('[TileGenerator] Tiles already exist, skipping generation');
                 new Notice('Map tiles already exist for this image');
                 return hash;
             }
@@ -71,16 +71,16 @@ export class TileGenerator {
             // 4. Load image to get dimensions
             const img = await this.loadImage(imagePath);
             const { width, height } = img;
-            console.log('[TileGenerator] Image dimensions:', width, 'x', height);
+            console.debug('[TileGenerator] Image dimensions:', width, 'x', height);
 
             // 5. Calculate zoom levels
             const tileSize = this.plugin.settings.tiling?.tileSize || 256;
             const { minZoom, maxZoom } = this.calculateZoomLevels(width, height, tileSize);
-            console.log('[TileGenerator] Zoom levels:', minZoom, 'to', maxZoom);
+            console.debug('[TileGenerator] Zoom levels:', minZoom, 'to', maxZoom);
 
             // 6. Calculate total tiles for progress tracking
             this.totalTilesToGenerate = this.calculateTotalTiles(width, height, minZoom, maxZoom, tileSize);
-            console.log('[TileGenerator] Total tiles to generate:', this.totalTilesToGenerate);
+            console.debug('[TileGenerator] Total tiles to generate:', this.totalTilesToGenerate);
 
             // 7. Ensure output directory exists
             const outputPath = `StorytellerSuite/MapTiles/${hash}`;
@@ -104,12 +104,13 @@ export class TileGenerator {
             };
             await this.saveMetadata(hash, metadata);
 
-            console.log('[TileGenerator] Tile generation complete');
+            console.debug('[TileGenerator] Tile generation complete');
             return hash;
 
         } catch (error) {
             console.error('[TileGenerator] Tile generation failed:', error);
-            new Notice('Failed to generate map tiles: ' + error.message);
+            const message = error instanceof Error ? error.message : String(error);
+            new Notice('Failed to generate map tiles: ' + message);
             throw error;
         }
     }
@@ -197,7 +198,7 @@ export class TileGenerator {
 
         // Generate tiles for each zoom level (from max to min)
         for (let z = maxZoom; z >= minZoom; z--) {
-            console.log(`[TileGenerator] Generating zoom level ${z}...`);
+            console.debug(`[TileGenerator] Generating zoom level ${z}...`);
 
             // Calculate scale for this zoom level
             // At maxZoom: scale = 1 (full resolution)
@@ -210,13 +211,13 @@ export class TileGenerator {
             const tilesX = Math.ceil(scaledWidth / tileSize);
             const tilesY = Math.ceil(scaledHeight / tileSize);
 
-            console.log(`[TileGenerator] Zoom ${z}: ${tilesX}x${tilesY} tiles at scale ${scale.toFixed(3)}`);
+            console.debug(`[TileGenerator] Zoom ${z}: ${tilesX}x${tilesY} tiles at scale ${scale.toFixed(3)}`);
 
             // Generate each tile in the grid
             for (let x = 0; x < tilesX; x++) {
                 for (let y = 0; y < tilesY; y++) {
                     // Create canvas for this tile
-                    const canvas = document.createElement('canvas');
+                    const canvas = activeDocument.createElement('canvas');
                     canvas.width = tileSize;
                     canvas.height = tileSize;
                     const ctx = canvas.getContext('2d')!;
@@ -253,7 +254,7 @@ export class TileGenerator {
 
                     // Yield to UI every 10 tiles to prevent freezing
                     if (this.tilesGenerated % 10 === 0) {
-                        await new Promise(resolve => setTimeout(resolve, 0));
+                        await new Promise(resolve => window.setTimeout(resolve, 0));
                         this.emitProgress(currentZoomIndex + 1, totalZoomLevels);
                     }
                 }
@@ -293,7 +294,7 @@ export class TileGenerator {
 
             try {
                 await this.plugin.ensureFolder(currentPath);
-            } catch (error) {
+            } catch {
                 // Folder might already exist, ignore
             }
         }
@@ -319,7 +320,7 @@ export class TileGenerator {
 
         try {
             await this.app.vault.create(metadataPath, content);
-            console.log('[TileGenerator] Metadata saved:', metadataPath);
+            console.debug('[TileGenerator] Metadata saved:', metadataPath);
         } catch (error) {
             console.error('[TileGenerator] Failed to save metadata:', error);
             throw error;
@@ -346,10 +347,10 @@ export class TileGenerator {
             const imageUrl = this.app.vault.adapter.getResourcePath(imageFile.path);
             const img = new Image();
 
-            let timeoutId: NodeJS.Timeout;
+            let timeoutId: number;
 
             const cleanup = () => {
-                clearTimeout(timeoutId);
+                window.clearTimeout(timeoutId);
                 img.onload = null;
                 img.onerror = null;
             };
@@ -370,7 +371,7 @@ export class TileGenerator {
             };
 
             // Timeout after 30 seconds
-            timeoutId = setTimeout(() => {
+            timeoutId = window.setTimeout(() => {
                 cleanup();
                 reject(new Error(`Image load timeout: ${imagePath}`));
             }, 30000);

@@ -9,7 +9,7 @@ export const culturesController: DashboardTabController = {
             context.setCurrentFilter(filter);
             await renderCulturesList(container, context);
         }, () => {
-            import('../../../modals/CultureModal').then(({ CultureModal }) => {
+            void import('../../../modals/CultureModal').then(({ CultureModal }) => {
                 new CultureModal(context.app, context.plugin, null, async (culture) => {
                     await context.mutationRunner.runCreate({
                         action: async () => {
@@ -72,7 +72,7 @@ async function renderCulturesList(container: HTMLElement, context: DashboardCont
 
         const actionsEl = itemEl.createDiv('storyteller-list-item-actions');
         context.addEditButton(actionsEl, () => {
-            import('../../../modals/CultureModal').then(({ CultureModal }) => {
+            void import('../../../modals/CultureModal').then(({ CultureModal }) => {
                 new CultureModal(context.app, context.plugin, culture, async (updated) => {
                     await context.mutationRunner.runUpdate({
                         action: async () => {

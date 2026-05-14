@@ -1,11 +1,10 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
-import { App, Setting, Notice, TextAreaComponent, TextComponent, ButtonComponent, parseYaml, setIcon } from 'obsidian';
+ 
+import { App, Setting, Notice, ButtonComponent, parseYaml, setIcon } from 'obsidian';
 import { Location } from '../types'; // Assumes Location type no longer has charactersPresent, eventsHere, subLocations
 import { parseSectionsFromMarkdown } from '../yaml/EntitySections';
 import StorytellerSuitePlugin from '../main';
 import { t } from '../i18n/strings';
 import { addImageSelectionButtons } from '../utils/ImageSelectionHelper';
-import { LocationSuggestModal } from './LocationSuggestModal';
 import { LocationPicker } from '../components/LocationPicker';
 import { LocationService } from '../services/LocationService';
 import { AddEntityToLocationModal } from './AddEntityToLocationModal';
@@ -14,7 +13,7 @@ import { GalleryImageSuggestModal } from './GalleryImageSuggestModal';
 // import { MapSuggestModal } from './MapSuggestModal';
 import { ResponsiveModal } from './ResponsiveModal';
 import { TemplatePickerModal } from './TemplatePickerModal';
-import { Template } from '../templates/TemplateTypes';
+import type { Template, TemplateEntity, TemplateVariableValue } from '../templates/TemplateTypes';
 import { EntityCustomFieldsEditor } from './entity/EntityCustomFieldsEditor';
 import { EntityGroupSelector } from './entity/EntityGroupSelector';
 import { confirmWithModal } from './ui/ConfirmModal';
@@ -24,6 +23,10 @@ import { confirmWithModal } from './ui/ConfirmModal';
 
 export type LocationModalSubmitCallback = (location: Location) => Promise<void>;
 export type LocationModalDeleteCallback = (location: Location) => Promise<void>;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
 
 export class LocationModal extends ResponsiveModal {
     location: Location;
@@ -69,7 +72,7 @@ export class LocationModal extends ResponsiveModal {
             loadSelectedGroupIds: async () => {
                 const identifier = this.location.id || this.location.name;
                 const locations = await this.plugin.listLocations();
-                return (locations.find(current => (current.id || current.name) === identifier)?.groups || this.location.groups || []) as string[];
+                return (locations.find(current => (current.id || current.name) === identifier)?.groups || this.location.groups || []);
             },
             persistAdd: async groupId => {
                 await this.plugin.addMemberToGroup(groupId, 'location', this.location.id || this.location.name);
@@ -83,7 +86,7 @@ export class LocationModal extends ResponsiveModal {
         this.modalEl.addClass('storyteller-location-modal');
     }
 
-    async onOpen() {
+    onOpen() { void (async () => {
         super.onOpen(); // Call ResponsiveModal's mobile optimizations
 
         const { contentEl, footerEl } = this.createStructuredModalLayout();
@@ -99,12 +102,12 @@ export class LocationModal extends ResponsiveModal {
                     if ((defaultTemplate.variables && defaultTemplate.variables.length > 0) ||
                         this.hasMultipleEntities(defaultTemplate)) {
                         await new Promise<void>((resolve) => {
-                            import('./TemplateApplicationModal').then(({ TemplateApplicationModal }) => {
+                            void import('./TemplateApplicationModal').then(({ TemplateApplicationModal }) => {
                                 new TemplateApplicationModal(
                                     this.app,
                                     this.plugin,
                                     defaultTemplate,
-                                    async (variableValues, entityFileNames) => {
+                                    (variableValues, entityFileNames) => { void (async () => {
                                         try {
                                             await this.applyTemplateToLocationWithVariables(defaultTemplate, variableValues);
                                             new Notice('Default template applied');
@@ -114,7 +117,7 @@ export class LocationModal extends ResponsiveModal {
                                             new Notice('Error applying default template');
                                         }
                                         resolve();
-                                    },
+                                    })(); },
                                     resolve
                                 ).open();
                             });
@@ -170,27 +173,27 @@ export class LocationModal extends ResponsiveModal {
         // --- Template Selector (for new locations) ---
         if (this.isNew) {
             new Setting(contentEl)
-                .setName('Start from Template')
+                .setName('Start from template')
                 .setDesc('Optionally start with a pre-configured location template')
                 .addButton(button => button
-                    .setButtonText('Choose Template')
+                    .setButtonText('Choose template')
                     .setTooltip('Select a location template')
                     .onClick(() => {
                         new TemplatePickerModal(
                             this.app,
                             this.plugin,
-                            async (template: Template) => {
+                            (template: Template) => { void (async () => {
                                 // Check if template has variables or multiple entities
                                 if ((template.variables && template.variables.length > 0) ||
                                     this.hasMultipleEntities(template)) {
                                     // Use TemplateApplicationModal for variable collection
                                     await new Promise<void>((resolve) => {
-                                        import('./TemplateApplicationModal').then(({ TemplateApplicationModal }) => {
+                                        void import('./TemplateApplicationModal').then(({ TemplateApplicationModal }) => {
                                             new TemplateApplicationModal(
                                                 this.app,
                                                 this.plugin,
                                                 template,
-                                                async (variableValues, entityFileNames) => {
+                                                (variableValues, entityFileNames) => { void (async () => {
                                                     try {
                                                         await this.applyTemplateToLocationWithVariables(template, variableValues);
                                                         new Notice(`Template "${template.name}" applied`);
@@ -200,7 +203,7 @@ export class LocationModal extends ResponsiveModal {
                                                         new Notice('Error applying template');
                                                     }
                                                     resolve();
-                                                },
+                                                })(); },
                                                 resolve
                                             ).open();
                                         });
@@ -211,7 +214,7 @@ export class LocationModal extends ResponsiveModal {
                                     this.refresh();
                                     new Notice(`Template "${template.name}" applied`);
                                 }
-                            },
+                            })(); },
                             'location' // Filter to location templates only
                         ).open();
                     })
@@ -268,7 +271,7 @@ export class LocationModal extends ResponsiveModal {
 
         // --- Hierarchical Location Type ---
         new Setting(contentEl)
-            .setName('Hierarchy Type')
+            .setName('Hierarchy type')
             .setDesc('Type in the location hierarchy (world, continent, city, building, etc.)')
             .addDropdown(dropdown => {
                 dropdown
@@ -302,14 +305,14 @@ export class LocationModal extends ResponsiveModal {
                 .onChange(value => { this.location.status = value || undefined; }));
 
         // --- Parent Location (Hierarchical) ---
-        contentEl.createEl('h3', { text: 'Parent Location' });
+        contentEl.createEl('h3', { text: 'Parent location' });
         const parentLocationContainer = contentEl.createDiv('storyteller-location-picker-container');
         const locationService = new LocationService(this.plugin);
         new LocationPicker(
             this.plugin,
             parentLocationContainer,
             this.location.parentLocationId,
-            async (locationId: string) => {
+            (locationId: string) => { void (async () => {
                 if (locationId) {
                     // Check for circular reference
                     if (await this.wouldCreateCircularReferenceById(locationId)) {
@@ -325,7 +328,7 @@ export class LocationModal extends ResponsiveModal {
                 } else {
                     this.location.parentLocation = undefined;
                 }
-            }
+            })(); }
         );
 
         // --- Profile Image ---
@@ -387,7 +390,7 @@ export class LocationModal extends ResponsiveModal {
             .setButtonText(t('upload'))
             .setTooltip(t('uploadImage'))
             .onClick(async () => {
-                const fileInput = document.createElement('input');
+                const fileInput = activeDocument.createElement('input');
                 fileInput.type = 'file';
                 fileInput.accept = 'image/*';
                 fileInput.onchange = async () => {
@@ -419,7 +422,7 @@ export class LocationModal extends ResponsiveModal {
             }));
 
         // --- Map Bindings ---
-        contentEl.createEl('h3', { text: 'Map Bindings' });
+        contentEl.createEl('h3', { text: 'Map bindings' });
         const mapBindingsContainer = contentEl.createDiv('storyteller-map-bindings');
         
         if (this.location.mapBindings && this.location.mapBindings.length > 0) {
@@ -427,15 +430,13 @@ export class LocationModal extends ResponsiveModal {
             for (const binding of this.location.mapBindings) {
                 const li = bindingsList.createEl('li');
                 const mapName = getMapName(binding.mapId);
-                li.innerHTML = `
-                    <span class="map-id">${mapName}</span>
-                    <span class="map-coords">[${binding.coordinates[0]}, ${binding.coordinates[1]}]</span>
-                    <button class="remove-binding-btn">Remove</button>
-                `;
-                li.querySelector('.remove-binding-btn')?.addEventListener('click', async () => {
+                li.createSpan({ cls: 'map-id', text: mapName });
+                li.createSpan({ cls: 'map-coords', text: `[${binding.coordinates[0]}, ${binding.coordinates[1]}]` });
+                const removeButton = li.createEl('button', { cls: 'remove-binding-btn', text: 'Remove' });
+                removeButton.addEventListener('click', () => { void (async () => {
                     await locationService.removeMapBinding(this.location.id || this.location.name, binding.mapId);
                     this.refresh();
-                });
+                })(); });
             }
         } else {
             mapBindingsContainer.createDiv({ text: 'No map bindings', cls: 'no-bindings' });
@@ -443,7 +444,7 @@ export class LocationModal extends ResponsiveModal {
         
         new Setting(contentEl)
             .addButton(button => button
-                .setButtonText('Add Map Binding')
+                .setButtonText('Add map binding')
                 .setIcon('plus')
                 .onClick(() => {
                     new Notice('Add map binding functionality - select map and coordinates');
@@ -451,7 +452,7 @@ export class LocationModal extends ResponsiveModal {
                 }));
 
         // --- Entities at Location ---
-        contentEl.createEl('h3', { text: 'Entities Here' });
+        contentEl.createEl('h3', { text: 'Entities here' });
         const entitiesContainer = contentEl.createDiv('storyteller-location-entities');
         
         if (this.location.entityRefs && this.location.entityRefs.length > 0) {
@@ -462,15 +463,15 @@ export class LocationModal extends ResponsiveModal {
                 const supportedTypes = ['character', 'event', 'item'];
                 const isSupportedType = supportedTypes.includes(entityRef.entityType);
                 
-                li.innerHTML = `
-                    <span class="entity-type">${entityRef.entityType}</span>
-                    <span class="entity-name">${entityName}</span>
-                    ${entityRef.relationship ? `<span class="entity-rel">(${entityRef.relationship})</span>` : ''}
-                    ${isSupportedType ? '<button class="remove-entity-btn">Remove</button>' : ''}
-                `;
+                li.createSpan({ cls: 'entity-type', text: entityRef.entityType });
+                li.createSpan({ cls: 'entity-name', text: entityName });
+                if (entityRef.relationship) {
+                    li.createSpan({ cls: 'entity-rel', text: `(${entityRef.relationship})` });
+                }
                 
                 if (isSupportedType) {
-                    li.querySelector('.remove-entity-btn')?.addEventListener('click', async () => {
+                    const removeButton = li.createEl('button', { cls: 'remove-entity-btn', text: 'Remove' });
+                    removeButton.addEventListener('click', () => { void (async () => {
                         // Use comprehensive removal that also clears entity's location reference
                         await this.plugin.removeEntityFromMap(
                             entityRef.entityId,
@@ -485,7 +486,7 @@ export class LocationModal extends ResponsiveModal {
                             this.location = updatedLocation;
                         }
                         this.refresh();
-                    });
+                    })(); });
                 }
             }
         } else {
@@ -494,7 +495,7 @@ export class LocationModal extends ResponsiveModal {
         
         new Setting(contentEl)
             .addButton(button => button
-                .setButtonText('Add Character')
+                .setButtonText('Add character')
                 .setIcon('user')
                 .onClick(() => {
                     new AddEntityToLocationModal(
@@ -502,7 +503,7 @@ export class LocationModal extends ResponsiveModal {
                         this.plugin,
                         this.location,
                         'character',
-                        async (entityId, relationship) => {
+                        (entityId, relationship) => { void (async () => {
                             await locationService.addEntityToLocation(
                                 this.location.id || this.location.name,
                                 { entityId, entityType: 'character', relationship }
@@ -515,11 +516,11 @@ export class LocationModal extends ResponsiveModal {
                                 this.location = updatedLocation;
                             }
                             this.refresh();
-                        }
+                        })(); }
                     ).open();
                 }))
             .addButton(button => button
-                .setButtonText('Add Event')
+                .setButtonText('Add event')
                 .setIcon('calendar')
                 .onClick(() => {
                     new AddEntityToLocationModal(
@@ -527,7 +528,7 @@ export class LocationModal extends ResponsiveModal {
                         this.plugin,
                         this.location,
                         'event',
-                        async (entityId, relationship) => {
+                        (entityId, relationship) => { void (async () => {
                             await locationService.addEntityToLocation(
                                 this.location.id || this.location.name,
                                 { entityId, entityType: 'event', relationship }
@@ -540,11 +541,11 @@ export class LocationModal extends ResponsiveModal {
                                 this.location = updatedLocation;
                             }
                             this.refresh();
-                        }
+                        })(); }
                     ).open();
                 }))
             .addButton(button => button
-                .setButtonText('Add Item')
+                .setButtonText('Add item')
                 .setIcon('box')
                 .onClick(() => {
                     new AddEntityToLocationModal(
@@ -552,7 +553,7 @@ export class LocationModal extends ResponsiveModal {
                         this.plugin,
                         this.location,
                         'item',
-                        async (entityId, relationship) => {
+                        (entityId, relationship) => { void (async () => {
                             await locationService.addEntityToLocation(
                                 this.location.id || this.location.name,
                                 { entityId, entityType: 'item', relationship }
@@ -565,12 +566,12 @@ export class LocationModal extends ResponsiveModal {
                                 this.location = updatedLocation;
                             }
                             this.refresh();
-                        }
+                        })(); }
                     ).open();
                 }));
 
         // --- Child Locations ---
-        contentEl.createEl('h3', { text: 'Child Locations' });
+        contentEl.createEl('h3', { text: 'Child locations' });
         const childLocationsContainer = contentEl.createDiv('storyteller-child-locations');
         
         if (this.location.childLocationIds && this.location.childLocationIds.length > 0) {
@@ -584,7 +585,7 @@ export class LocationModal extends ResponsiveModal {
             for (const child of children) {
                 if (child) {
                     const li = childrenList.createEl('li');
-                    li.innerHTML = `<span class="child-name">${child.name}</span>`;
+                    li.createSpan({ cls: 'child-name', text: child.name });
                     li.addEventListener('click', () => {
                         // Open child location modal
                         new LocationModal(
@@ -623,7 +624,7 @@ export class LocationModal extends ResponsiveModal {
             .setName('Add culture')
             .addDropdown(dd => {
                 dd.addOption('', '— select culture —');
-                allCulturesForLoc.forEach(c => dd.addOption(c.name, c.name));
+                allCulturesForLoc.forEach(c => { dd.addOption(c.name, c.name); });
                 dd.onChange(val => {
                     if (val && !this.location.cultures!.includes(val)) {
                         this.location.cultures!.push(val);
@@ -636,7 +637,7 @@ export class LocationModal extends ResponsiveModal {
         // --- Finances ---
         contentEl.createEl('h3', { text: 'Finances' });
         new Setting(contentEl)
-            .setName('Treasury / Balance')
+            .setName('Treasury / balance')
             .setDesc('Economic wealth of this location (e.g. "5000gp 200sp"). Auto-computed from ledger blocks if present.')
             .addText(text => text
                 .setValue(this.location.balance || '')
@@ -672,7 +673,7 @@ export class LocationModal extends ResponsiveModal {
             .setName('Add economy')
             .addDropdown(dd => {
                 dd.addOption('', '— select economy —');
-                allEconomiesForLoc.forEach(e => dd.addOption(e.name, e.name));
+                allEconomiesForLoc.forEach(e => { dd.addOption(e.name, e.name); });
                 dd.onChange(val => {
                     if (val && !(this.location.linkedEconomies ?? []).includes(val)) {
                         if (!Array.isArray(this.location.linkedEconomies)) this.location.linkedEconomies = [];
@@ -780,7 +781,7 @@ export class LocationModal extends ResponsiveModal {
                 new Notice(t('failedToSave', t('location')));
             }
         }, { cta: true });
-    }
+    })(); }
 
     
 
@@ -862,7 +863,7 @@ export class LocationModal extends ResponsiveModal {
         await this.applyProcessedTemplateToLocation(templateLoc);
     }
 
-    private async applyTemplateToLocationWithVariables(template: Template, variableValues: Record<string, any>): Promise<void> {
+    private async applyTemplateToLocationWithVariables(template: Template, variableValues: Record<string, TemplateVariableValue>): Promise<void> {
         if (!template.entities.locations || template.entities.locations.length === 0) {
             new Notice('This template does not contain any locations');
             return;
@@ -888,20 +889,27 @@ export class LocationModal extends ResponsiveModal {
         await this.applyProcessedTemplateToLocation(templateLoc);
     }
 
-    private async applyProcessedTemplateToLocation(templateLoc: any): Promise<void> {
-        const { templateId, yamlContent, markdownContent, sectionContent, customYamlFields, id, filePath, ...rest } = templateLoc as any;
+    private async applyProcessedTemplateToLocation(templateLoc: TemplateEntity<Location>): Promise<void> {
+        const { yamlContent, markdownContent, sectionContent, customYamlFields } = templateLoc;
 
-        let fields: any = { ...rest };
+        let fields: Record<string, unknown> = { ...templateLoc };
+        delete fields.templateId;
+        delete fields.yamlContent;
+        delete fields.markdownContent;
+        delete fields.sectionContent;
+        delete fields.customYamlFields;
+        delete fields.id;
+        delete fields.filePath;
         let allTemplateSections: Record<string, string> = {};
 
         // Handle new format: yamlContent (parse YAML string)
         if (yamlContent && typeof yamlContent === 'string') {
             try {
-                const parsed = parseYaml(yamlContent);
-                if (parsed && typeof parsed === 'object') {
+                const parsed = parseYaml(yamlContent) as unknown;
+                if (isRecord(parsed)) {
                     fields = { ...fields, ...parsed };
                 }
-                console.log('[LocationModal] Parsed YAML fields:', parsed);
+                console.debug('[LocationModal] Parsed YAML fields:', parsed);
             } catch (error) {
                 console.warn('[LocationModal] Failed to parse yamlContent:', error);
             }
@@ -924,16 +932,16 @@ export class LocationModal extends ResponsiveModal {
                     fields.history = parsedSections['History'];
                 }
 
-                console.log('[LocationModal] Parsed markdown sections:', parsedSections);
+                console.debug('[LocationModal] Parsed markdown sections:', parsedSections);
             } catch (error) {
                 console.warn('[LocationModal] Failed to parse markdownContent:', error);
             }
         } else if (sectionContent) {
             // Old format: apply section content
-            for (const [k, v] of Object.entries(sectionContent)) { allTemplateSections[k as string] = v as string; }
+            for (const [k, v] of Object.entries(sectionContent)) { allTemplateSections[k] = v; }
             for (const [sectionName, content] of Object.entries(sectionContent)) {
                 const propName = sectionName.toLowerCase().replace(/\s+/g, '');
-                (fields as any)[propName] = content;
+                fields[propName] = content;
             }
         }
 
@@ -947,7 +955,7 @@ export class LocationModal extends ResponsiveModal {
                 configurable: true
             });
         }
-        console.log('[LocationModal] Final location after template:', this.location);
+        console.debug('[LocationModal] Final location after template:', this.location);
 
         // Clear relationships as they reference template entities
         this.location.connections = [];

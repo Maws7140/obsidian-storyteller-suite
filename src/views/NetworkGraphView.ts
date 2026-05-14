@@ -9,6 +9,13 @@ import { GraphFilters } from '../types';
 
 export const VIEW_TYPE_NETWORK_GRAPH = 'storyteller-network-graph-view';
 
+type ZoomableGraphRenderer = {
+    cy?: {
+        on: (event: 'zoom', handler: () => void) => void;
+        zoom: () => number;
+    } | null;
+};
+
 /**
  * NetworkGraphView provides a full-screen dedicated view for the network graph
  * Users can open this in any workspace leaf for a larger, more detailed visualization
@@ -130,10 +137,10 @@ export class NetworkGraphView extends ItemView {
             }
         });
         setIcon(refreshBtn, 'refresh-cw');
-        refreshBtn.addEventListener('click', async () => {
+        refreshBtn.addEventListener('click', () => { void (async () => {
             await this.graphRenderer?.refresh();
             this.updateFooterStatus();
-        });
+        })(); });
 
         // Zoom in button
         const zoomInBtn = this.toolbarEl.createEl('button', {
@@ -243,7 +250,7 @@ export class NetworkGraphView extends ItemView {
 
         // Content section (initially hidden)
         this.advancedFiltersContent = this.advancedFiltersEl.createDiv('storyteller-advanced-filters-content');
-        this.advancedFiltersContent.style.display = 'none';
+        this.advancedFiltersContent.setCssStyles({ display: 'none' });
 
         // Search input
         const searchContainer = this.advancedFiltersContent.createDiv('storyteller-filter-row');
@@ -275,7 +282,7 @@ export class NetworkGraphView extends ItemView {
         header.addEventListener('click', () => {
             this.advancedFiltersExpanded = !this.advancedFiltersExpanded;
             if (this.advancedFiltersContent) {
-                this.advancedFiltersContent.style.display = this.advancedFiltersExpanded ? 'block' : 'none';
+                this.advancedFiltersContent.setCssStyles({ display: this.advancedFiltersExpanded ? 'block' : 'none' });
             }
             chevron.empty();
             setIcon(chevron, this.advancedFiltersExpanded ? 'chevron-down' : 'chevron-right');
@@ -308,7 +315,7 @@ export class NetworkGraphView extends ItemView {
 
         // Initialize graph renderer asynchronously
         try {
-            await new Promise(resolve => setTimeout(resolve, 0)); // Yield to UI thread
+            await new Promise(resolve => window.setTimeout(resolve, 0)); // Yield to UI thread
             loader.remove();
             
             this.graphRenderer = new NetworkGraphRenderer(this.graphContainer, this.plugin);
@@ -347,11 +354,8 @@ export class NetworkGraphView extends ItemView {
     private updateFooterStatus(): void {
         if (!this.footerStatusEl || !this.graphRenderer) return;
         
-        // Get node and edge count - fallback if methods don't exist on renderer
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const nodeCount = (this.graphRenderer as any).getNodeCount?.() || 0;
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const edgeCount = (this.graphRenderer as any).getEdgeCount?.() || 0;
+        const nodeCount = this.graphRenderer.getNodeCount();
+        const edgeCount = this.graphRenderer.getEdgeCount();
         
         if (nodeCount === 0 && edgeCount === 0) {
             this.footerStatusEl.setText(t('emptyGraphMessage'));
@@ -406,11 +410,11 @@ export class NetworkGraphView extends ItemView {
      * Handle filter changes with debouncing
      */
     private onFilterChange(): void {
-        clearTimeout(this.filterDebounceTimer);
-        this.filterDebounceTimer = window.setTimeout(async () => {
+        window.clearTimeout(this.filterDebounceTimer);
+        this.filterDebounceTimer = window.setTimeout(() => { void (async () => {
             await this.applyCurrentFilters();
             this.updateFooterStatus();
-        }, 250);
+        })(); }, 250);
     }
 
     /**
@@ -479,7 +483,7 @@ export class NetworkGraphView extends ItemView {
             item.setTitle(t('exportAsPNG'))
                 .setIcon('image')
                 .onClick(() => {
-                    this.graphRenderer?.exportAsImage('png');
+                    void this.graphRenderer?.exportAsImage('png');
                 });
         });
 
@@ -487,7 +491,7 @@ export class NetworkGraphView extends ItemView {
             item.setTitle(t('exportAsJPG'))
                 .setIcon('image')
                 .onClick(() => {
-                    this.graphRenderer?.exportAsImage('jpg');
+                    void this.graphRenderer?.exportAsImage('jpg');
                 });
         });
 
@@ -507,7 +511,7 @@ export class NetworkGraphView extends ItemView {
         }
 
         // Clean up debounce timer
-        clearTimeout(this.filterDebounceTimer);
+        window.clearTimeout(this.filterDebounceTimer);
 
         // Clean up graph renderer
         if (this.graphRenderer) {
@@ -542,8 +546,8 @@ export class NetworkGraphView extends ItemView {
         
         // Update zoom on zoom events
         if (this.graphRenderer) {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const cy = (this.graphRenderer as any).cy;
+             
+            const cy = (this.graphRenderer as unknown as ZoomableGraphRenderer).cy;
             if (cy) {
                 cy.on('zoom', () => {
                     const zoom = cy.zoom();

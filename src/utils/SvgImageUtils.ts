@@ -120,7 +120,7 @@ export async function rasterizeSvgToBlob(
 
     try {
         const sourceImage = await loadHtmlImage(svgUrl);
-        const canvas = document.createElement('canvas');
+        const canvas = activeDocument.createElement('canvas');
         canvas.width = width;
         canvas.height = height;
         const ctx = canvas.getContext('2d');

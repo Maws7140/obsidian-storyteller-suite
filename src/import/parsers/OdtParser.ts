@@ -61,7 +61,7 @@ const SCENE_BREAK_PATTERNS = [
  */
 export class OdtParser implements DocumentParser {
     name = 'ODT Parser';
-    format: ImportFormat = 'odt' as ImportFormat;
+    format: ImportFormat = 'odt';
 
     canParse(content: string, fileName: string): boolean {
         const extension = fileName.toLowerCase().split('.').pop();

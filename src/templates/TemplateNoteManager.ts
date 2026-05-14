@@ -3,10 +3,52 @@
  * Manages note-based templates, syncs to JSON, and handles file operations
  */
 
-import { App, TFile, TFolder, Notice } from 'obsidian';
-import { Template, TemplateEntityType } from './TemplateTypes';
+import { App, TFile, TFolder, parseYaml, stringifyYaml } from 'obsidian';
+import { Template, TemplateCategory, TemplateEntityType, TemplateGenre } from './TemplateTypes';
 import { NoteToTemplateConverter } from './NoteToTemplateConverter';
 import { TemplateStorageManager } from './TemplateStorageManager';
+import { parseFrontmatterFromContent as parseFM } from '../yaml/EntitySections';
+
+const TEMPLATE_GENRES: readonly TemplateGenre[] = [
+    'fantasy',
+    'scifi',
+    'mystery',
+    'horror',
+    'romance',
+    'historical',
+    'western',
+    'thriller',
+    'custom'
+];
+
+const TEMPLATE_CATEGORIES: readonly TemplateCategory[] = [
+    'full-world',
+    'entity-set',
+    'single-entity'
+];
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function asTemplateGenre(value: unknown): TemplateGenre {
+    return typeof value === 'string' && TEMPLATE_GENRES.includes(value as TemplateGenre)
+        ? value as TemplateGenre
+        : 'custom';
+}
+
+function asTemplateCategory(value: unknown): TemplateCategory {
+    return typeof value === 'string' && TEMPLATE_CATEGORIES.includes(value as TemplateCategory)
+        ? value as TemplateCategory
+        : 'single-entity';
+}
+
+function asStringArray(value: unknown): string[] {
+    if (Array.isArray(value)) {
+        return value.map(item => String(item));
+    }
+    return value === undefined ? [] : [String(value)];
+}
 
 export class TemplateNoteManager {
     private app: App;
@@ -64,7 +106,7 @@ export class TemplateNoteManager {
             if (!folder) {
                 try {
                     await this.app.vault.createFolder(folderPath);
-                } catch (error) {
+                } catch {
                     // Folder might already exist
                 }
             }
@@ -189,15 +231,11 @@ export class TemplateNoteManager {
 
             // Extract metadata from frontmatter or use defaults
             const metadata = {
-                name: (frontmatter.templateName as string) || file.basename,
-                description: (frontmatter.templateDescription as string) || '',
-                genre: (frontmatter.templateGenre as any) || 'custom',
-                category: (frontmatter.templateCategory as any) || 'single-entity',
-                tags: frontmatter.templateTags
-                ? (Array.isArray(frontmatter.templateTags)
-                    ? frontmatter.templateTags.map(t => String(t))
-                    : [String(frontmatter.templateTags)])
-                : []
+                name: typeof frontmatter.templateName === 'string' ? frontmatter.templateName : file.basename,
+                description: typeof frontmatter.templateDescription === 'string' ? frontmatter.templateDescription : '',
+                genre: asTemplateGenre(frontmatter.templateGenre),
+                category: asTemplateCategory(frontmatter.templateCategory),
+                tags: asStringArray(frontmatter.templateTags)
             };
 
             // Convert note to template
@@ -209,8 +247,8 @@ export class TemplateNoteManager {
             );
 
             // Ensure note file path is stored
-            (template as any).isNoteBased = true;
-            (template as any).noteFilePath = file.path;
+            template.isNoteBased = true;
+            template.noteFilePath = file.path;
 
             return template;
         } catch (error) {
@@ -262,7 +300,10 @@ export class TemplateNoteManager {
         }
 
         // Load the template from the new note
-        const templateFile = this.app.vault.getAbstractFileByPath(targetFilePath) as TFile;
+        const templateFile = this.app.vault.getAbstractFileByPath(targetFilePath);
+        if (!(templateFile instanceof TFile)) {
+            throw new Error('Failed to create template note file');
+        }
         const template = await this.loadTemplateFromNote(templateFile);
 
         if (!template) {
@@ -292,7 +333,7 @@ export class TemplateNoteManager {
             entityType?: string;
         }
     ): string {
-        let frontmatter: Record<string, any> = {};
+        let frontmatter: Record<string, unknown> = {};
         let markdownContent = content;
 
         // Extract existing frontmatter
@@ -301,8 +342,8 @@ export class TemplateNoteManager {
             if (frontmatterEndIndex !== -1) {
                 const frontmatterContent = content.substring(3, frontmatterEndIndex);
                 try {
-                    const { parseYaml } = require('obsidian');
-                    frontmatter = parseYaml(frontmatterContent) || {};
+                    const parsed = parseYaml(frontmatterContent) as unknown;
+                    frontmatter = isRecord(parsed) ? parsed : {};
                 } catch {
                     // Fallback parsing
                     frontmatter = parseFrontmatterFromContent(content) || {};
@@ -325,7 +366,6 @@ export class TemplateNoteManager {
         }
 
         // Reconstruct content with enhanced frontmatter
-        const { stringifyYaml } = require('obsidian');
         const yamlContent = stringifyYaml(frontmatter);
         return `---\n${yamlContent}---\n\n${markdownContent}`;
     }
@@ -348,8 +388,8 @@ export class TemplateNoteManager {
         try {
             // Create a copy without note-specific fields
             const jsonTemplate = { ...template };
-            delete (jsonTemplate as any).isNoteBased;
-            delete (jsonTemplate as any).noteFilePath;
+            delete jsonTemplate.isNoteBased;
+            delete jsonTemplate.noteFilePath;
 
             // Save via template storage manager
             await this.templateStorageManager.saveTemplate(jsonTemplate);
@@ -382,11 +422,11 @@ export class TemplateNoteManager {
             throw new Error('Template not found');
         }
 
-        const noteFilePath = (template as any).noteFilePath;
-        if (noteFilePath) {
+        const noteFilePath = template.noteFilePath;
+        if (typeof noteFilePath === 'string') {
             const file = this.app.vault.getAbstractFileByPath(noteFilePath);
             if (file instanceof TFile) {
-                await this.app.vault.delete(file);
+                await this.app.fileManager.trashFile(file);
             }
         }
 
@@ -423,7 +463,7 @@ export class TemplateNoteManager {
 
 // Helper function for parsing frontmatter
 function parseFrontmatterFromContent(content: string): Record<string, unknown> | undefined {
-    const { parseFrontmatterFromContent: parseFM } = require('../yaml/EntitySections');
-    return parseFM(content);
+    const frontmatter = parseFM(content) as unknown;
+    return isRecord(frontmatter) ? frontmatter : undefined;
 }
 

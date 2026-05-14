@@ -270,7 +270,7 @@ export function buildFrontmatter(
   const originalKeys = originalFrontmatter ? new Set(Object.keys(originalFrontmatter)) : new Set<string>();
 
   // Handle customFields specially
-  const cfRaw = (source as any)?.customFields;
+  const cfRaw = source.customFields;
   if (cfRaw && typeof cfRaw === 'object' && !Array.isArray(cfRaw)) {
     const cfObj = cfRaw as Record<string, unknown>;
     if (mode === 'flatten') {
@@ -291,7 +291,7 @@ export function buildFrontmatter(
         if (cfVal === null || cfVal === undefined) continue;        // Skip new empty strings (they should not be preserved unless they existed in original)
         if (typeof cfVal === 'string' && cfVal === '') continue;        if (typeof cfVal === 'string' && cfVal.includes('\n')) { unpromoted[cfKey] = cfVal; continue; }
         if (Array.isArray(cfVal) && cfVal.length === 0) continue;
-        if (typeof cfVal === 'object' && Object.keys(cfVal as any).length === 0) continue;
+        if (typeof cfVal === 'object' && Object.keys(cfVal).length === 0) continue;
         // Promote to top-level
         output[cfKey] = cfVal;
       }
@@ -343,7 +343,7 @@ export function buildFrontmatter(
 
     if (typeof value === 'object') {
       // Skip empty objects for new fields
-      if (Object.keys(value as Record<string, unknown>).length === 0) continue;
+      if (Object.keys(value).length === 0) continue;
       output[key] = value;
       continue;
     }
@@ -371,7 +371,8 @@ export function buildFrontmatter(
   // (graph view, Properties panel). Plain names are restored when reading back.
   for (const field of WIKI_LINK_ARRAY_FIELDS) {
     if (Array.isArray(output[field])) {
-      output[field] = (output[field] as unknown[]).map(v =>
+      const linkValues = output[field] as unknown[];
+      output[field] = linkValues.map(v =>
         typeof v === 'string' && v.trim() !== '' && !v.startsWith('[[')
           ? `[[${v}]]`
           : v
@@ -487,7 +488,7 @@ export function parseFrontmatterFromContent(content: string): Record<string, unk
   if (!frontmatterContent) return {};
 
   try {
-    const parsed = parseYaml(frontmatterContent);
+    const parsed = parseYaml(frontmatterContent) as unknown;
     if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
       return parsed as Record<string, unknown>;
     }

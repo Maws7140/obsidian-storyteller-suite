@@ -46,28 +46,28 @@ export class NetworkGraphView extends ItemView {
 
         // Create header
         const header = container.createDiv('storyteller-network-graph-header');
-        header.style.padding = '1rem';
-        header.style.borderBottom = '1px solid var(--background-modifier-border)';
+        header.setCssStyles({ padding: '1rem' });
+        header.setCssStyles({ borderBottom: '1px solid var(--background-modifier-border)' });
         
         const title = header.createEl('h3', { text: t('networkGraph') });
-        title.style.margin = '0 0 0.5rem 0';
+        title.setCssStyles({ margin: '0 0 0.5rem 0' });
 
         const subtitle = header.createEl('p', { 
             text: 'Interactive visualization of relationships between story entities',
             cls: 'storyteller-network-graph-subtitle'
         });
-        subtitle.style.margin = '0';
-        subtitle.style.color = 'var(--text-muted)';
-        subtitle.style.fontSize = '0.9em';
+        subtitle.setCssStyles({ margin: '0' });
+        subtitle.setCssStyles({ color: 'var(--text-muted)' });
+        subtitle.setCssStyles({ fontSize: '0.9em' });
 
         // Create controls container
         this.controlsContainer = container.createDiv('storyteller-network-controls');
-        this.controlsContainer.style.padding = '1rem';
-        this.controlsContainer.style.display = 'flex';
-        this.controlsContainer.style.flexWrap = 'wrap';
-        this.controlsContainer.style.gap = '0.5rem';
-        this.controlsContainer.style.alignItems = 'center';
-        this.controlsContainer.style.borderBottom = '1px solid var(--background-modifier-border)';
+        this.controlsContainer.setCssStyles({ padding: '1rem' });
+        this.controlsContainer.setCssStyles({ display: 'flex' });
+        this.controlsContainer.setCssStyles({ flexWrap: 'wrap' });
+        this.controlsContainer.setCssStyles({ gap: '0.5rem' });
+        this.controlsContainer.setCssStyles({ alignItems: 'center' });
+        this.controlsContainer.setCssStyles({ borderBottom: '1px solid var(--background-modifier-border)' });
 
         // Initialize graph
         await this.initializeGraph(container);
@@ -80,18 +80,18 @@ export class NetworkGraphView extends ItemView {
 
         // Search box
         const searchContainer = this.controlsContainer.createDiv();
-        searchContainer.style.flex = '1';
-        searchContainer.style.minWidth = '200px';
+        searchContainer.setCssStyles({ flex: '1' });
+        searchContainer.setCssStyles({ minWidth: '200px' });
         const searchInput = searchContainer.createEl('input', {
             type: 'text',
             placeholder: t('searchEntities'),
             cls: 'storyteller-network-search'
         });
-        searchInput.style.width = '100%';
-        searchInput.style.padding = '6px 12px';
-        searchInput.style.border = '1px solid var(--background-modifier-border)';
-        searchInput.style.borderRadius = '4px';
-        searchInput.style.backgroundColor = 'var(--background-primary)';
+        searchInput.setCssStyles({ width: '100%' });
+        searchInput.setCssStyles({ padding: '6px 12px' });
+        searchInput.setCssStyles({ border: '1px solid var(--background-modifier-border)' });
+        searchInput.setCssStyles({ borderRadius: '4px' });
+        searchInput.setCssStyles({ backgroundColor: 'var(--background-primary)' });
 
         searchInput.addEventListener('input', () => {
             const term = searchInput.value.trim();
@@ -104,19 +104,19 @@ export class NetworkGraphView extends ItemView {
 
         // Layout dropdown
         const layoutContainer = this.controlsContainer.createDiv();
-        layoutContainer.style.display = 'flex';
-        layoutContainer.style.gap = '0.5rem';
-        layoutContainer.style.alignItems = 'center';
+        layoutContainer.setCssStyles({ display: 'flex' });
+        layoutContainer.setCssStyles({ gap: '0.5rem' });
+        layoutContainer.setCssStyles({ alignItems: 'center' });
         
         const layoutLabel = layoutContainer.createEl('label', { text: t('layout') + ':' });
-        layoutLabel.style.fontSize = '0.9em';
-        layoutLabel.style.color = 'var(--text-muted)';
+        layoutLabel.setCssStyles({ fontSize: '0.9em' });
+        layoutLabel.setCssStyles({ color: 'var(--text-muted)' });
         
         const layoutSelect = layoutContainer.createEl('select', { cls: 'dropdown' });
-        layoutSelect.style.padding = '4px 8px';
-        layoutSelect.style.border = '1px solid var(--background-modifier-border)';
-        layoutSelect.style.borderRadius = '4px';
-        layoutSelect.style.backgroundColor = 'var(--background-primary)';
+        layoutSelect.setCssStyles({ padding: '4px 8px' });
+        layoutSelect.setCssStyles({ border: '1px solid var(--background-modifier-border)' });
+        layoutSelect.setCssStyles({ borderRadius: '4px' });
+        layoutSelect.setCssStyles({ backgroundColor: 'var(--background-primary)' });
         
         const layouts = [
             { value: 'cose', label: t('forceDirected') },
@@ -139,15 +139,15 @@ export class NetworkGraphView extends ItemView {
 
         // Zoom controls
         const zoomContainer = this.controlsContainer.createDiv();
-        zoomContainer.style.display = 'flex';
-        zoomContainer.style.gap = '0.25rem';
+        zoomContainer.setCssStyles({ display: 'flex' });
+        zoomContainer.setCssStyles({ gap: '0.25rem' });
 
         const createZoomButton = (text: string, icon: string, onClick: () => void) => {
             const btn = new ButtonComponent(zoomContainer);
             btn.setButtonText(text)
                 .setTooltip(text)
                 .onClick(onClick);
-            btn.buttonEl.style.padding = '4px 12px';
+            btn.buttonEl.setCssStyles({ padding: '4px 12px' });
             return btn;
         };
 
@@ -159,13 +159,13 @@ export class NetworkGraphView extends ItemView {
         const filterBtn = new ButtonComponent(this.controlsContainer);
         filterBtn.setButtonText(t('graphFilters'))
             .onClick(() => this.showFilterModal());
-        filterBtn.buttonEl.style.padding = '6px 12px';
+        filterBtn.buttonEl.setCssStyles({ padding: '6px 12px' });
 
         // Export button
         const exportBtn = new ButtonComponent(this.controlsContainer);
         exportBtn.setButtonText(t('exportGraph'))
             .onClick(() => this.showExportMenu());
-        exportBtn.buttonEl.style.padding = '6px 12px';
+        exportBtn.buttonEl.setCssStyles({ padding: '6px 12px' });
 
         // Refresh button
         const refreshBtn = new ButtonComponent(this.controlsContainer);
@@ -174,15 +174,15 @@ export class NetworkGraphView extends ItemView {
             .onClick(async () => {
                 await graphRenderer?.refresh();
             });
-        refreshBtn.buttonEl.style.padding = '6px 12px';
+        refreshBtn.buttonEl.setCssStyles({ padding: '6px 12px' });
 
         // Create graph container
         this.graphContainer = container.createDiv('storyteller-network-graph-container');
-        this.graphContainer.style.flex = '1';
-        this.graphContainer.style.overflow = 'hidden';
-        this.graphContainer.style.position = 'relative';
-        this.graphContainer.style.height = 'calc(100vh - 250px)';
-        this.graphContainer.style.minHeight = '500px';
+        this.graphContainer.setCssStyles({ flex: '1' });
+        this.graphContainer.setCssStyles({ overflow: 'hidden' });
+        this.graphContainer.setCssStyles({ position: 'relative' });
+        this.graphContainer.setCssStyles({ height: 'calc(100vh - 250px)' });
+        this.graphContainer.setCssStyles({ minHeight: '500px' });
 
         // Initialize graph renderer
         try {
@@ -246,10 +246,10 @@ export class NetworkGraphView extends ItemView {
 
                 // Apply button
                 const btnContainer = contentEl.createDiv();
-                btnContainer.style.marginTop = '1rem';
-                btnContainer.style.display = 'flex';
-                btnContainer.style.gap = '0.5rem';
-                btnContainer.style.justifyContent = 'flex-end';
+                btnContainer.setCssStyles({ marginTop: '1rem' });
+                btnContainer.setCssStyles({ display: 'flex' });
+                btnContainer.setCssStyles({ gap: '0.5rem' });
+                btnContainer.setCssStyles({ justifyContent: 'flex-end' });
 
                 new ButtonComponent(btnContainer)
                     .setButtonText(t('applyFilters'))

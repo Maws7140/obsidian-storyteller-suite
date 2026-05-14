@@ -8,8 +8,7 @@ import {
     DocumentParser,
     ParsedDocument,
     ParsedChapter,
-    ParsedScene,
-    DocumentMetadata
+    ParsedScene
 } from '../ImportTypes';
 
 /**
@@ -92,7 +91,7 @@ export class JsonParser implements DocumentParser {
 
         // Try to parse and validate structure
         try {
-            const data = JSON.parse(content);
+            const data: unknown = JSON.parse(content);
             return this.isValidStoryJson(data);
         } catch {
             return false;
@@ -101,7 +100,10 @@ export class JsonParser implements DocumentParser {
 
     parse(content: string, fileName: string): ParsedDocument {
         try {
-            const data = JSON.parse(content) as StoryJson;
+            const data: unknown = JSON.parse(content);
+            if (!this.isValidStoryJson(data)) {
+                throw new Error('Invalid story JSON structure');
+            }
             return this.parseStoryJson(data, fileName);
         } catch (error) {
             return {
@@ -122,7 +124,7 @@ export class JsonParser implements DocumentParser {
     /**
      * Check if JSON data has valid story structure
      */
-    private isValidStoryJson(data: unknown): boolean {
+    private isValidStoryJson(data: unknown): data is StoryJson {
         if (!data || typeof data !== 'object') return false;
         
         const obj = data as Record<string, unknown>;

@@ -4,7 +4,7 @@ import 'leaflet/dist/leaflet.css';
 import * as L from 'leaflet';
 import { Component, MarkdownPostProcessorContext, Notice, TFile } from 'obsidian';
 import type StorytellerSuitePlugin from '../main';
-import type { BlockParameters, MarkerDefinition, MapOptions, TileMetadata } from './types';
+import type { BlockParameters, MarkerDefinition, TileMetadata } from './types';
 import { extractLinkPath, parseMarkerString } from './utils/parser';
 import { RasterCoords } from './utils/RasterCoords';
 import { EntityMarkerDiscovery } from './EntityMarkerDiscovery';
@@ -30,8 +30,8 @@ import {
 export class LeafletRenderer extends Component {
     public containerEl: HTMLElement;
     private map: L.Map | null = null;
-    private markers: globalThis.Map<string, L.Marker> = new globalThis.Map();
-    private layers: globalThis.Map<string, L.LayerGroup> = new globalThis.Map();
+    private markers: Map<string, L.Marker> = new Map();
+    private layers: Map<string, L.LayerGroup> = new Map();
     private imageOverlay: L.ImageOverlay | null = null;
     private resizeObserver: ResizeObserver | null = null;
     private intersectionObserver: IntersectionObserver | null = null;
@@ -159,9 +159,9 @@ export class LeafletRenderer extends Component {
                         const parentRect = parent.getBoundingClientRect();
                         if (parentRect.width > 0 && parentRect.height > 0) {
                             // Force explicit pixel dimensions based on parent
-                            this.containerEl.style.width = `${parentRect.width}px`;
-                            this.containerEl.style.height = `${parentRect.height}px`;
-                            console.log('[LeafletRenderer] Forced container dimensions from parent:', parentRect.width, 'x', parentRect.height);
+                            this.containerEl.setCssStyles({ width: `${parentRect.width}px` });
+                            this.containerEl.setCssStyles({ height: `${parentRect.height}px` });
+                            console.debug('[LeafletRenderer] Forced container dimensions from parent:', parentRect.width, 'x', parentRect.height);
                             resolve();
                             return;
                         }
@@ -169,25 +169,25 @@ export class LeafletRenderer extends Component {
                 }
 
                 if (hasDimensions) {
-                    console.log('[LeafletRenderer] Container dimensions ready:', rect.width, 'x', rect.height);
+                    console.debug('[LeafletRenderer] Container dimensions ready:', rect.width, 'x', rect.height);
                     resolve();
                 } else if (Date.now() - startTime > timeout) {
                     // Timeout - force explicit dimensions as fallback
                     console.warn('[LeafletRenderer] Timeout waiting for container dimensions, forcing defaults');
                     // Set explicit pixel dimensions - not percentages!
-                    this.containerEl.style.width = '800px';
-                    this.containerEl.style.height = '500px';
-                    this.containerEl.style.minHeight = '500px';
-                    this.containerEl.style.minWidth = '800px';
+                    this.containerEl.setCssStyles({ width: '800px' });
+                    this.containerEl.setCssStyles({ height: '500px' });
+                    this.containerEl.setCssStyles({ minHeight: '500px' });
+                    this.containerEl.setCssStyles({ minWidth: '800px' });
                     resolve();
                 } else {
                     // Use requestAnimationFrame to wait for next layout cycle
-                    requestAnimationFrame(checkDimensions);
+                    window.requestAnimationFrame(checkDimensions);
                 }
             };
 
             // Start checking on next frame
-            requestAnimationFrame(checkDimensions);
+            window.requestAnimationFrame(checkDimensions);
         });
     }
 
@@ -202,7 +202,7 @@ export class LeafletRenderer extends Component {
             return;
         }
 
-        let resizeTimeout: ReturnType<typeof setTimeout> | null = null;
+        let resizeTimeout: number | null = null;
         let lastWidth = 0;
         let lastHeight = 0;
 
@@ -210,7 +210,7 @@ export class LeafletRenderer extends Component {
             if (!this.map || !this.isInitialized) return;
             
             // Use requestAnimationFrame to ensure DOM has updated
-            requestAnimationFrame(() => {
+            window.requestAnimationFrame(() => {
                 if (!this.map || !this.isInitialized) return;
                 
                 const rect = this.containerEl.getBoundingClientRect();
@@ -224,9 +224,9 @@ export class LeafletRenderer extends Component {
 
                 // Debounce to prevent rapid fire during animations
                 if (resizeTimeout) {
-                    clearTimeout(resizeTimeout);
+                    window.clearTimeout(resizeTimeout);
                 }
-                resizeTimeout = setTimeout(() => {
+                resizeTimeout = window.setTimeout(() => {
                     this.invalidateSizeWithTileRefresh();
                 }, 150);
             });
@@ -242,7 +242,7 @@ export class LeafletRenderer extends Component {
         // This catches sidebar open/close events that ResizeObserver might miss
         this.registerEvent(this.plugin.app.workspace.on('resize', () => {
             // Delay slightly to let Obsidian finish its layout update
-            setTimeout(() => {
+            window.setTimeout(() => {
                 handleResize();
             }, 100);
         }));
@@ -261,7 +261,7 @@ export class LeafletRenderer extends Component {
         this.intersectionObserver = new IntersectionObserver((entries) => {
             for (const entry of entries) {
                 if (entry.isIntersecting && this.map && this.isInitialized) {
-                    console.log('[LeafletRenderer] Map became visible, forcing tile refresh');
+                    console.debug('[LeafletRenderer] Map became visible, forcing tile refresh');
                     // Force tiles to render when map becomes visible
                     this.forceTileRefresh();
                 }
@@ -328,7 +328,7 @@ export class LeafletRenderer extends Component {
             tilePane.style.display !== 'none';
 
         const verified = hasVisibleTiles && paneVisible;
-        console.log(`[LeafletRenderer] Tile verification: ${loadedTiles}/${totalTiles} tiles visible, pane visible: ${paneVisible}, verified: ${verified}`);
+        console.debug(`[LeafletRenderer] Tile verification: ${loadedTiles}/${totalTiles} tiles visible, pane visible: ${paneVisible}, verified: ${verified}`);
         
         return verified;
     }
@@ -345,22 +345,22 @@ export class LeafletRenderer extends Component {
         }
 
         const delay = Math.pow(2, attempt - 1) * 100; // 100ms, 200ms, 400ms
-        console.log(`[LeafletRenderer] Retrying tile refresh (attempt ${attempt}/${maxAttempts}) in ${delay}ms...`);
+        console.debug(`[LeafletRenderer] Retrying tile refresh (attempt ${attempt}/${maxAttempts}) in ${delay}ms...`);
 
-        setTimeout(() => {
+        window.setTimeout(() => {
             if (!this.map) return;
 
             // Perform the refresh
             this.performTileRefresh();
 
             // Verify after a short delay to allow tiles to load
-            setTimeout(() => {
+            window.setTimeout(() => {
                 if (!this.map) return;
 
                 if (this.verifyTilesVisible()) {
                     // Tiles are visible, mark as rendered
                     this.hasRenderedTiles = true;
-                    console.log(`[LeafletRenderer] Tiles verified visible after attempt ${attempt}`);
+                    console.debug(`[LeafletRenderer] Tiles verified visible after attempt ${attempt}`);
                 } else {
                     // Tiles still not visible, retry
                     this.retryTileRefresh(attempt + 1, maxAttempts);
@@ -396,16 +396,16 @@ export class LeafletRenderer extends Component {
                 // Force visibility on tile container
                 const container = layer.getContainer?.();
                 if (container) {
-                    container.style.opacity = '1';
-                    container.style.visibility = 'visible';
-                    container.style.display = 'block';
+                    container.setCssStyles({ opacity: '1' });
+                    container.setCssStyles({ visibility: 'visible' });
+                    container.setCssStyles({ display: 'block' });
                     
                     // Force visibility on all tile images
                     const tiles = container.querySelectorAll('img');
                     tiles.forEach((tile: HTMLElement) => {
-                        tile.style.opacity = '1';
-                        tile.style.visibility = 'visible';
-                        tile.style.display = 'block';
+                        tile.setCssStyles({ opacity: '1' });
+                        tile.setCssStyles({ visibility: 'visible' });
+                        tile.setCssStyles({ display: 'block' });
                     });
                 }
             }
@@ -414,9 +414,9 @@ export class LeafletRenderer extends Component {
         // Step 3: Force tile pane visibility
         const tilePane = this.map.getPane('tilePane');
         if (tilePane) {
-            tilePane.style.opacity = '1';
-            tilePane.style.visibility = 'visible';
-            tilePane.style.display = 'block';
+            tilePane.setCssStyles({ opacity: '1' });
+            tilePane.setCssStyles({ visibility: 'visible' });
+            tilePane.setCssStyles({ display: 'block' });
         }
 
         // Step 4: Fire Leaflet events to trigger tile loading
@@ -436,11 +436,11 @@ export class LeafletRenderer extends Component {
 
         // Don't proceed if we've already verified tiles are rendered
         if (this.hasRenderedTiles && this.verifyTilesVisible()) {
-            console.log('[LeafletRenderer] Tiles already verified as visible, skipping refresh');
+            console.debug('[LeafletRenderer] Tiles already verified as visible, skipping refresh');
             return;
         }
 
-        console.log('[LeafletRenderer] Forcing tile refresh...');
+        console.debug('[LeafletRenderer] Forcing tile refresh...');
 
         // Wait for map to be ready before attempting refresh
         this.map.whenReady(() => {
@@ -451,7 +451,7 @@ export class LeafletRenderer extends Component {
             if (mapSize.x === 0 || mapSize.y === 0) {
                 console.warn('[LeafletRenderer] Map has zero dimensions, waiting for resize...');
                 // Wait a bit and retry
-                setTimeout(() => {
+                window.setTimeout(() => {
                     this.forceTileRefresh();
                 }, 100);
                 return;
@@ -461,16 +461,16 @@ export class LeafletRenderer extends Component {
             this.performTileRefresh();
 
             // Verify tiles are visible after a short delay to allow loading
-            setTimeout(() => {
+            window.setTimeout(() => {
                 if (!this.map) return;
 
                 if (this.verifyTilesVisible()) {
                     // Tiles are visible, mark as rendered
                     this.hasRenderedTiles = true;
-                    console.log('[LeafletRenderer] Tiles verified visible after refresh');
+                    console.debug('[LeafletRenderer] Tiles verified visible after refresh');
                 } else {
                     // Tiles not visible yet, start retry logic
-                    console.log('[LeafletRenderer] Tiles not visible after initial refresh, starting retry...');
+                    console.debug('[LeafletRenderer] Tiles not visible after initial refresh, starting retry...');
                     this.hasRenderedTiles = false; // Reset flag to allow retry
                     this.retryTileRefresh(1, 3);
                 }
@@ -492,7 +492,7 @@ export class LeafletRenderer extends Component {
             const size = this.map.getSize();
             
             if (size.x > 0 && size.y > 0) {
-                console.log(`[LeafletRenderer] Map has dimensions: ${size.x} x ${size.y}`);
+                console.debug(`[LeafletRenderer] Map has dimensions: ${size.x} x ${size.y}`);
                 return;
             }
 
@@ -500,13 +500,13 @@ export class LeafletRenderer extends Component {
             const rect = this.containerEl.getBoundingClientRect();
             if (rect.width > 0 && rect.height > 0) {
                 // Container has dimensions but map doesn't see them - force invalidate
-                this.containerEl.style.width = `${rect.width}px`;
-                this.containerEl.style.height = `${rect.height}px`;
+                this.containerEl.setCssStyles({ width: `${rect.width}px` });
+                this.containerEl.setCssStyles({ height: `${rect.height}px` });
                 this.map.invalidateSize({ animate: false });
                 
                 const newSize = this.map.getSize();
                 if (newSize.x > 0 && newSize.y > 0) {
-                    console.log(`[LeafletRenderer] Map dimensions after fix: ${newSize.x} x ${newSize.y}`);
+                    console.debug(`[LeafletRenderer] Map dimensions after fix: ${newSize.x} x ${newSize.y}`);
                     return;
                 }
             }
@@ -517,27 +517,27 @@ export class LeafletRenderer extends Component {
                 const parentRect = parent.getBoundingClientRect();
                 if (parentRect.width > 0 && parentRect.height > 0) {
                     // Force container to use parent dimensions
-                    this.containerEl.style.width = `${parentRect.width}px`;
-                    this.containerEl.style.height = `${parentRect.height}px`;
+                    this.containerEl.setCssStyles({ width: `${parentRect.width}px` });
+                    this.containerEl.setCssStyles({ height: `${parentRect.height}px` });
                     this.map.invalidateSize({ animate: false });
                     
                     const newSize = this.map.getSize();
                     if (newSize.x > 0 && newSize.y > 0) {
-                        console.log(`[LeafletRenderer] Map dimensions from parent: ${newSize.x} x ${newSize.y}`);
+                        console.debug(`[LeafletRenderer] Map dimensions from parent: ${newSize.x} x ${newSize.y}`);
                         return;
                     }
                 }
             }
 
             // Wait and retry
-            await new Promise(resolve => setTimeout(resolve, 20));
+            await new Promise(resolve => window.setTimeout(resolve, 20));
             attempts++;
         }
 
         // Last resort: force explicit dimensions
         console.warn('[LeafletRenderer] Could not get dimensions, forcing 800x600');
-        this.containerEl.style.width = '800px';
-        this.containerEl.style.height = '600px';
+        this.containerEl.setCssStyles({ width: '800px' });
+        this.containerEl.setCssStyles({ height: '600px' });
         this.map.invalidateSize({ animate: false });
     }
 
@@ -563,12 +563,12 @@ export class LeafletRenderer extends Component {
             throw new Error('Image parameter required for image maps');
         }
 
-        console.log('[LeafletRenderer] === INITIALIZING IMAGE MAP ===');
-        console.log('[LeafletRenderer] Image param:', this.params.image);
+        console.debug('[LeafletRenderer] === INITIALIZING IMAGE MAP ===');
+        console.debug('[LeafletRenderer] Image param:', this.params.image);
 
         // Resolve image path
         const imagePath = extractLinkPath(this.params.image);
-        console.log('[LeafletRenderer] Extracted image path:', imagePath);
+        console.debug('[LeafletRenderer] Extracted image path:', imagePath);
         
         const imageFile = this.plugin.app.metadataCache.getFirstLinkpathDest(
             imagePath,
@@ -579,7 +579,7 @@ export class LeafletRenderer extends Component {
             // Try to find the file directly by path as fallback
             const directFile = this.plugin.app.vault.getAbstractFileByPath(imagePath);
             if (directFile instanceof TFile) {
-                console.log('[LeafletRenderer] Found image via direct path lookup:', directFile.path);
+                console.debug('[LeafletRenderer] Found image via direct path lookup:', directFile.path);
                 await this.initializeImageMapWithPath(directFile.path);
                 return;
             }
@@ -589,7 +589,7 @@ export class LeafletRenderer extends Component {
             throw new Error(`Image not found: ${imagePath}. Check that the image file exists and the path is correct.`);
         }
 
-        console.log('[LeafletRenderer] Resolved image file:', imageFile.path);
+        console.debug('[LeafletRenderer] Resolved image file:', imageFile.path);
         await this.initializeImageMapWithPath(imageFile.path);
     }
 
@@ -605,7 +605,7 @@ export class LeafletRenderer extends Component {
                 const svgInfo = getSvgSourceInfoFromText(svgText);
                 const svgMode = chooseSvgRenderMode(svgInfo);
 
-                console.log('[LeafletRenderer] SVG image map detected:', {
+                console.debug('[LeafletRenderer] SVG image map detected:', {
                     imagePath,
                     width: svgInfo.width,
                     height: svgInfo.height,
@@ -624,11 +624,11 @@ export class LeafletRenderer extends Component {
 
             if (tileInfo) {
                 // Tiles found - use tile-based rendering
-                console.log('[LeafletRenderer] Tiles found, using tiled rendering');
+                console.debug('[LeafletRenderer] Tiles found, using tiled rendering');
                 await this.initializeTiledMap(imagePath, tileInfo);
             } else {
                 // No tiles found - generate them first (map images require tiles)
-                console.log('[LeafletRenderer] No tiles found, generating tiles for map image...');
+                console.debug('[LeafletRenderer] No tiles found, generating tiles for map image...');
                 new Notice('Generating tiles for map image. This may take a moment...');
                 
                 try {
@@ -639,7 +639,7 @@ export class LeafletRenderer extends Component {
                     tileInfo = await this.checkForTiles(imagePath);
                     
                     if (tileInfo) {
-                        console.log('[LeafletRenderer] Tiles generated successfully, using tiled rendering');
+                        console.debug('[LeafletRenderer] Tiles generated successfully, using tiled rendering');
                         await this.initializeTiledMap(imagePath, tileInfo);
                     } else {
                         throw new Error('Tile generation completed but tiles not found');
@@ -666,7 +666,7 @@ export class LeafletRenderer extends Component {
         const containerRect = this.containerEl.getBoundingClientRect();
         const containerWidth = containerRect.width || 800;
         const containerHeight = containerRect.height || 600;
-        console.log('[LeafletRenderer] Initializing direct SVG overlay map:', {
+        console.debug('[LeafletRenderer] Initializing direct SVG overlay map:', {
             width: svgInfo.width,
             height: svgInfo.height,
             containerWidth,
@@ -706,7 +706,7 @@ export class LeafletRenderer extends Component {
             className: 'storyteller-map-svg-overlay-layer'
         }).addTo(this.map) as L.ImageOverlay;
 
-        await new Promise(resolve => requestAnimationFrame(resolve));
+        await new Promise(resolve => window.requestAnimationFrame(resolve));
         this.map.invalidateSize({ animate: false });
 
         const restoredSavedState = this.restoreSavedViewState();
@@ -719,12 +719,12 @@ export class LeafletRenderer extends Component {
 
         const overlayPane = this.map.getPane('overlayPane');
         if (overlayPane) {
-            overlayPane.style.opacity = '1';
-            overlayPane.style.visibility = 'visible';
+            overlayPane.setCssStyles({ opacity: '1' });
+            overlayPane.setCssStyles({ visibility: 'visible' });
         }
 
         this.hasRenderedTiles = true;
-        console.log('[LeafletRenderer] === SVG OVERLAY MAP READY ===');
+        console.debug('[LeafletRenderer] === SVG OVERLAY MAP READY ===');
     }
 
     /**
@@ -749,11 +749,11 @@ export class LeafletRenderer extends Component {
             if (metadataFile instanceof TFile) {
                 const content = await this.plugin.app.vault.read(metadataFile);
                 const metadata = JSON.parse(content) as TileMetadata;
-                console.log('[LeafletRenderer] Tile metadata found:', metadata);
+                console.debug('[LeafletRenderer] Tile metadata found:', metadata);
                 return metadata;
             }
         } catch (error) {
-            console.log('[LeafletRenderer] No tiles found for image:', error);
+            console.debug('[LeafletRenderer] No tiles found for image:', error);
         }
 
         return null;
@@ -801,10 +801,10 @@ export class LeafletRenderer extends Component {
             }
         });
 
-        console.log('[LeafletRenderer] Created custom CRS for tiled map');
-        console.log('[LeafletRenderer] Image dimensions:', tileInfo.width, 'x', tileInfo.height);
-        console.log('[LeafletRenderer] Tile size:', tileSize);
-        console.log('[LeafletRenderer] Max zoom:', maxZoom);
+        console.debug('[LeafletRenderer] Created custom CRS for tiled map');
+        console.debug('[LeafletRenderer] Image dimensions:', tileInfo.width, 'x', tileInfo.height);
+        console.debug('[LeafletRenderer] Tile size:', tileSize);
+        console.debug('[LeafletRenderer] Max zoom:', maxZoom);
 
         // Create map with custom CRS
         this.map = L.map(this.containerEl, {
@@ -826,7 +826,7 @@ export class LeafletRenderer extends Component {
 
         // Create and add custom tile layer
         const basePath = `StorytellerSuite/MapTiles/${tileInfo.imageHash}`;
-        console.log('[LeafletRenderer] Creating tile layer with basePath:', basePath);
+        console.debug('[LeafletRenderer] Creating tile layer with basePath:', basePath);
         
         const tileLayer = new ObsidianTileLayer(
             this.plugin,
@@ -844,7 +844,7 @@ export class LeafletRenderer extends Component {
             }
         );
 
-        console.log('[LeafletRenderer] Adding tile layer to map...');
+        console.debug('[LeafletRenderer] Adding tile layer to map...');
         
         // CRITICAL FIX: Don't add tile layer until container has real dimensions
         // Leaflet uses map.getSize() to determine which tiles to load
@@ -852,7 +852,7 @@ export class LeafletRenderer extends Component {
         await this.ensureMapHasDimensions();
         
         tileLayer.addTo(this.map);
-        console.log('[LeafletRenderer] Tile layer added');
+        console.debug('[LeafletRenderer] Tile layer added');
 
         // Add proper Leaflet event listeners for tile loading
         let tileLoadCount = 0;
@@ -862,24 +862,24 @@ export class LeafletRenderer extends Component {
         tileLayer.on('loading', () => {
             if (!tilesLoadingStarted) {
                 tilesLoadingStarted = true;
-                console.log('[LeafletRenderer] Tiles starting to load...');
+                console.debug('[LeafletRenderer] Tiles starting to load...');
             }
         });
 
         // Listen for each individual tile load
         tileLayer.on('tileload', () => {
             tileLoadCount++;
-            console.log(`[LeafletRenderer] Tile loaded (${tileLoadCount} total)`);
+            console.debug(`[LeafletRenderer] Tile loaded (${tileLoadCount} total)`);
         });
 
         // Listen for when all visible tiles have loaded
         tileLayer.on('load', () => {
-            console.log(`[LeafletRenderer] All visible tiles loaded (${tileLoadCount} tiles)`);
+            console.debug(`[LeafletRenderer] All visible tiles loaded (${tileLoadCount} tiles)`);
             // Verify tiles are actually visible before marking as rendered
-            setTimeout(() => {
+            window.setTimeout(() => {
                 if (this.map && this.verifyTilesVisible()) {
                     this.hasRenderedTiles = true;
-                    console.log('[LeafletRenderer] Tiles verified visible after load event');
+                    console.debug('[LeafletRenderer] Tiles verified visible after load event');
                 }
             }, 100);
         });
@@ -912,10 +912,10 @@ export class LeafletRenderer extends Component {
         // Sometimes CSS or Leaflet state can hide the tile pane initially
         const tilePane = this.map.getPane('tilePane');
         if (tilePane) {
-            tilePane.style.opacity = '1';
-            tilePane.style.visibility = 'visible';
-            tilePane.style.display = 'block';
-            console.log('[LeafletRenderer] Forced tile pane visibility');
+            tilePane.setCssStyles({ opacity: '1' });
+            tilePane.setCssStyles({ visibility: 'visible' });
+            tilePane.setCssStyles({ display: 'block' });
+            console.debug('[LeafletRenderer] Forced tile pane visibility');
         }
 
         // Force a tile redraw after setting view
@@ -931,12 +931,12 @@ export class LeafletRenderer extends Component {
         this.map.whenReady(() => {
             if (!this.map) return;
 
-            console.log('[LeafletRenderer] Map ready, initiating tile refresh...');
+            console.debug('[LeafletRenderer] Map ready, initiating tile refresh...');
             // Reset flag to allow forceTileRefresh to run
             this.hasRenderedTiles = false;
             
             // Use requestAnimationFrame to ensure DOM is fully updated
-            requestAnimationFrame(() => {
+            window.requestAnimationFrame(() => {
                 if (this.map) {
                     this.forceTileRefresh();
                 }
@@ -948,15 +948,15 @@ export class LeafletRenderer extends Component {
         const finalCenter = this.map.getCenter();
         const mapSize = this.map.getSize();
         const mapBounds = this.map.getBounds();
-        console.log('[LeafletRenderer] === TILED MAP READY ===');
-        console.log('[LeafletRenderer] Zoom range:', tileInfo.minZoom, 'to', tileInfo.maxZoom);
-        console.log('[LeafletRenderer] Tile size:', tileInfo.tileSize);
-        console.log('[LeafletRenderer] Final zoom:', finalZoom.toFixed(2));
-        console.log('[LeafletRenderer] Final center:', [finalCenter.lat.toFixed(1), finalCenter.lng.toFixed(1)]);
-        console.log('[LeafletRenderer] Map pixel size:', mapSize.x, 'x', mapSize.y);
-        console.log('[LeafletRenderer] Current map bounds:', mapBounds.getSouthWest(), mapBounds.getNorthEast());
-        console.log('[LeafletRenderer] Image bounds:', bounds);
-        console.log('[LeafletRenderer] Container dimensions:', this.containerEl.offsetWidth, 'x', this.containerEl.offsetHeight);
+        console.debug('[LeafletRenderer] === TILED MAP READY ===');
+        console.debug('[LeafletRenderer] Zoom range:', tileInfo.minZoom, 'to', tileInfo.maxZoom);
+        console.debug('[LeafletRenderer] Tile size:', tileInfo.tileSize);
+        console.debug('[LeafletRenderer] Final zoom:', finalZoom.toFixed(2));
+        console.debug('[LeafletRenderer] Final center:', [finalCenter.lat.toFixed(1), finalCenter.lng.toFixed(1)]);
+        console.debug('[LeafletRenderer] Map pixel size:', mapSize.x, 'x', mapSize.y);
+        console.debug('[LeafletRenderer] Current map bounds:', mapBounds.getSouthWest(), mapBounds.getNorthEast());
+        console.debug('[LeafletRenderer] Image bounds:', bounds);
+        console.debug('[LeafletRenderer] Container dimensions:', this.containerEl.offsetWidth, 'x', this.containerEl.offsetHeight);
     }
 
     /**
@@ -964,7 +964,7 @@ export class LeafletRenderer extends Component {
      * Used for small images or when tiles don't exist
      */
     private async initializeStandardImageMap(imagePath: string): Promise<void> {
-        console.log('[LeafletRenderer] initializeStandardImageMap called with path:', imagePath);
+        console.debug('[LeafletRenderer] initializeStandardImageMap called with path:', imagePath);
         
         // Verify file exists before attempting to get resource path
         const imageFile = this.plugin.app.vault.getAbstractFileByPath(imagePath);
@@ -973,16 +973,16 @@ export class LeafletRenderer extends Component {
         }
         
         const imageUrl = this.plugin.app.vault.adapter.getResourcePath(imagePath);
-        console.log('[LeafletRenderer] Resource URL generated:', imageUrl ? imageUrl.substring(0, 100) + '...' : 'NULL');
+        console.debug('[LeafletRenderer] Resource URL generated:', imageUrl ? imageUrl.substring(0, 100) + '...' : 'NULL');
         
         if (!imageUrl) {
             throw new Error(`Failed to get resource path for image: ${imagePath}`);
         }
 
         // Load image dimensions
-        console.log('[LeafletRenderer] Loading image dimensions...');
+        console.debug('[LeafletRenderer] Loading image dimensions...');
         const { width, height } = await this.loadImageDimensions(imageUrl);
-        console.log('[LeafletRenderer] Image dimensions:', width, 'x', height);
+        console.debug('[LeafletRenderer] Image dimensions:', width, 'x', height);
 
         if (width === 0 || height === 0) {
             throw new Error(`Image has invalid dimensions: ${width}x${height}`);
@@ -996,14 +996,14 @@ export class LeafletRenderer extends Component {
         const containerRect = this.containerEl.getBoundingClientRect();
         const containerWidth = containerRect.width || 800;
         const containerHeight = containerRect.height || 600;
-        console.log('[LeafletRenderer] Container dimensions:', containerWidth, 'x', containerHeight);
+        console.debug('[LeafletRenderer] Container dimensions:', containerWidth, 'x', containerHeight);
 
         if (containerWidth === 0 || containerHeight === 0) {
             console.warn('[LeafletRenderer] Container has zero dimensions, using defaults');
         }
 
         // Create map instance (needed for RasterCoords)
-        console.log('[LeafletRenderer] Creating Leaflet map instance...');
+        console.debug('[LeafletRenderer] Creating Leaflet map instance...');
         this.map = L.map(this.containerEl, {
             zoomSnap: 0,
             zoomDelta: 0.25,
@@ -1024,7 +1024,7 @@ export class LeafletRenderer extends Component {
         const minZoom = -10; 
         const maxZoom = rc.getMaxZoom() + 3;
 
-        console.log('[LeafletRenderer] Zoom config:', { minZoom, maxZoom, maxNativeZoom: rc.getMaxZoom() });
+        console.debug('[LeafletRenderer] Zoom config:', { minZoom, maxZoom, maxNativeZoom: rc.getMaxZoom() });
 
         this.map.setMinZoom(minZoom);
         this.map.setMaxZoom(maxZoom);
@@ -1033,7 +1033,7 @@ export class LeafletRenderer extends Component {
         const bounds: L.LatLngBoundsExpression = [[0, 0], [height, width]];
         this.imageBounds = L.latLngBounds(bounds);
 
-        console.log('[LeafletRenderer] Adding image overlay with bounds:', bounds);
+        console.debug('[LeafletRenderer] Adding image overlay with bounds:', bounds);
         this.imageOverlay = L.imageOverlay(imageUrl, bounds).addTo(this.map);
 
         // CRITICAL FIX: Listen for image load to trigger invalidateSize
@@ -1042,9 +1042,9 @@ export class LeafletRenderer extends Component {
         this.imageOverlay.on('load', () => {
             if (!imageLoaded) {
                 imageLoaded = true;
-                console.log('[LeafletRenderer] Image loaded, invalidating size...');
+                console.debug('[LeafletRenderer] Image loaded, invalidating size...');
                 this.hasRenderedTiles = true;
-                setTimeout(() => {
+                window.setTimeout(() => {
                     if (this.map) {
                         this.map.invalidateSize({ animate: false });
                     }
@@ -1053,7 +1053,7 @@ export class LeafletRenderer extends Component {
         });
 
         // Wait for DOM
-        await new Promise(resolve => requestAnimationFrame(resolve));
+        await new Promise(resolve => window.requestAnimationFrame(resolve));
 
         // Invalidate size first
         this.map.invalidateSize({ animate: false });
@@ -1073,17 +1073,17 @@ export class LeafletRenderer extends Component {
         // This addresses similar visibility issues as with tile layers
         const overlayPane = this.map.getPane('overlayPane');
         if (overlayPane) {
-            overlayPane.style.opacity = '1';
-            overlayPane.style.visibility = 'visible';
+            overlayPane.setCssStyles({ opacity: '1' });
+            overlayPane.setCssStyles({ visibility: 'visible' });
         }
 
         // Log final state
         const finalZoom = this.map.getZoom();
         const finalCenter = this.map.getCenter();
-        console.log('[LeafletRenderer] === STANDARD IMAGE MAP READY ===');
-        console.log('[LeafletRenderer] Final zoom:', finalZoom.toFixed(2));
-        console.log('[LeafletRenderer] Final center:', finalCenter ? `[${finalCenter.lat.toFixed(1)}, ${finalCenter.lng.toFixed(1)}]` : 'N/A');
-        console.log('[LeafletRenderer] Bounds:', bounds);
+        console.debug('[LeafletRenderer] === STANDARD IMAGE MAP READY ===');
+        console.debug('[LeafletRenderer] Final zoom:', finalZoom.toFixed(2));
+        console.debug('[LeafletRenderer] Final center:', finalCenter ? `[${finalCenter.lat.toFixed(1)}, ${finalCenter.lng.toFixed(1)}]` : 'N/A');
+        console.debug('[LeafletRenderer] Bounds:', bounds);
     }
 
     /**
@@ -1108,7 +1108,7 @@ export class LeafletRenderer extends Component {
         if (savedState) {
             initialCenter = [savedState.center.lat, savedState.center.lng];
             initialZoom = savedState.zoom;
-            console.log('[LeafletRenderer] Initializing real-world map from saved view state', {
+            console.debug('[LeafletRenderer] Initializing real-world map from saved view state', {
                 mapId,
                 center: initialCenter,
                 zoom: initialZoom
@@ -1120,19 +1120,19 @@ export class LeafletRenderer extends Component {
                 this.params.long ?? -0.1278
             ];
             initialZoom = this.params.defaultZoom ?? 13;
-            console.log('[LeafletRenderer] Initializing real-world map at default center', initialCenter, 'zoom', initialZoom);
+            console.debug('[LeafletRenderer] Initializing real-world map at default center', initialCenter, 'zoom', initialZoom);
         }
 
         // Ensure container has an ID for Leaflet
         if (!this.containerEl.id) {
-            this.containerEl.id = `leaflet-map-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+            this.containerEl.id = `leaflet-map-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
         }
 
         // Ensure container is in the DOM and has dimensions
         const rect = this.containerEl.getBoundingClientRect();
         if (rect.width === 0 || rect.height === 0) {
             console.warn('[LeafletRenderer] Container has no dimensions, waiting...');
-            await new Promise(resolve => setTimeout(resolve, 100));
+            await new Promise(resolve => window.setTimeout(resolve, 100));
         }
 
         // Create map using L.map() factory function with element directly
@@ -1159,12 +1159,12 @@ export class LeafletRenderer extends Component {
         if (this.params.minZoom !== undefined) this.map.setMinZoom(this.params.minZoom);
         if (this.params.maxZoom !== undefined) this.map.setMaxZoom(this.params.maxZoom);
 
-        console.log('[LeafletRenderer] Created real-world map using ID:', this.containerEl.id);
+        console.debug('[LeafletRenderer] Created real-world map using ID:', this.containerEl.id);
 
         // Determine tile server
         const tileUrl = this.getTileServerUrl();
 
-        console.log('[LeafletRenderer] Using tile server:', tileUrl);
+        console.debug('[LeafletRenderer] Using tile server:', tileUrl);
 
         // Add tile layer using L.tileLayer() factory function
         L.tileLayer(tileUrl, {
@@ -1187,7 +1187,7 @@ export class LeafletRenderer extends Component {
             }
         });
 
-        console.log('[LeafletRenderer] Real-world map initialization complete');
+        console.debug('[LeafletRenderer] Real-world map initialization complete');
     }
 
     /**
@@ -1524,7 +1524,7 @@ export class LeafletRenderer extends Component {
         );
 
         if (file) {
-            this.plugin.app.workspace.getLeaf(false).openFile(file);
+            void this.plugin.app.workspace.getLeaf(false).openFile(file);
         } else {
             new Notice(`File not found: ${linkPath}`);
         }
@@ -1717,10 +1717,10 @@ export class LeafletRenderer extends Component {
     private loadImageDimensions(url: string): Promise<{ width: number; height: number }> {
         return new Promise((resolve, reject) => {
             const img = new Image();
-            let timeoutId: NodeJS.Timeout;
+            let timeoutId: number;
 
             const cleanup = () => {
-                clearTimeout(timeoutId);
+                window.clearTimeout(timeoutId);
                 img.onload = null;
                 img.onerror = null;
             };
@@ -1730,7 +1730,7 @@ export class LeafletRenderer extends Component {
                 if (img.width === 0 || img.height === 0) {
                     reject(new Error('Image loaded but has zero dimensions'));
                 } else {
-                    console.log('[LeafletRenderer] Image loaded successfully:', {
+                    console.debug('[LeafletRenderer] Image loaded successfully:', {
                         width: img.width,
                         height: img.height,
                         naturalWidth: img.naturalWidth,
@@ -1747,7 +1747,7 @@ export class LeafletRenderer extends Component {
             };
 
             // Set timeout for image loading (30 seconds)
-            timeoutId = setTimeout(() => {
+            timeoutId = window.setTimeout(() => {
                 cleanup();
                 reject(new Error(`Image load timeout: ${url}`));
             }, 30000);
@@ -1761,7 +1761,7 @@ export class LeafletRenderer extends Component {
      * Generate a unique marker ID
      */
     private generateMarkerId(): string {
-        return `marker-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        return `marker-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
     }
 
     /**
@@ -1772,7 +1772,7 @@ export class LeafletRenderer extends Component {
     invalidateSize(): void {
         if (this.map) {
             // Use requestAnimationFrame to ensure DOM has updated
-            requestAnimationFrame(() => {
+            window.requestAnimationFrame(() => {
                 if (this.map) {
                     this.map.invalidateSize({ animate: false });
 
@@ -1806,10 +1806,10 @@ export class LeafletRenderer extends Component {
     private invalidateSizeWithTileRefresh(): void {
         if (!this.map || !this.isInitialized) return;
 
-        console.log('[LeafletRenderer] Invalidating size with tile refresh after resize');
+        console.debug('[LeafletRenderer] Invalidating size with tile refresh after resize');
 
         // Use requestAnimationFrame to ensure DOM has fully updated
-        requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
             if (!this.map) return;
 
             // Step 1: Invalidate the map size to recalculate dimensions
@@ -1832,15 +1832,15 @@ export class LeafletRenderer extends Component {
                     // Force visibility on tile container
                     const container = layer.getContainer?.();
                     if (container) {
-                        container.style.opacity = '1';
-                        container.style.visibility = 'visible';
-                        container.style.display = 'block';
+                        container.setCssStyles({ opacity: '1' });
+                        container.setCssStyles({ visibility: 'visible' });
+                        container.setCssStyles({ display: 'block' });
                         
                         // Force visibility on all tile images
                         const tiles = container.querySelectorAll('img');
                         tiles.forEach((tile: HTMLElement) => {
-                            tile.style.opacity = '1';
-                            tile.style.visibility = 'visible';
+                            tile.setCssStyles({ opacity: '1' });
+                            tile.setCssStyles({ visibility: 'visible' });
                         });
                     }
                 }
@@ -1849,9 +1849,9 @@ export class LeafletRenderer extends Component {
             // Step 3: Force tile pane visibility
             const tilePane = this.map.getPane('tilePane');
             if (tilePane) {
-                tilePane.style.opacity = '1';
-                tilePane.style.visibility = 'visible';
-                tilePane.style.display = 'block';
+                tilePane.setCssStyles({ opacity: '1' });
+                tilePane.setCssStyles({ visibility: 'visible' });
+                tilePane.setCssStyles({ display: 'block' });
             }
 
             // Step 4: Fire events to trigger Leaflet's internal tile loading
@@ -1863,12 +1863,12 @@ export class LeafletRenderer extends Component {
             const currentZoom = this.map.getZoom();
             const currentCenter = this.map.getCenter();
             
-            setTimeout(() => {
+            window.setTimeout(() => {
                 if (this.map && this.map.getZoom() === currentZoom) {
                     // Only do micro-zoom if zoom hasn't changed (user didn't zoom manually)
                     this.map.setView(currentCenter, currentZoom + 0.0001, { animate: false });
                     
-                    setTimeout(() => {
+                    window.setTimeout(() => {
                         if (this.map) {
                             // Return to original zoom
                             this.map.setView(currentCenter, currentZoom, { animate: false });
@@ -1929,11 +1929,11 @@ export class LeafletRenderer extends Component {
 
         const savedState = this.plugin.getMapViewState(mapId);
         if (!savedState) {
-            console.log('[LeafletRenderer] No saved view state for map:', mapId);
+            console.debug('[LeafletRenderer] No saved view state for map:', mapId);
             return false;
         }
 
-        console.log('[LeafletRenderer] Restoring saved view state for map:', mapId, savedState);
+        console.debug('[LeafletRenderer] Restoring saved view state for map:', mapId, savedState);
 
         try {
             // Restore view with saved zoom and center
@@ -1942,7 +1942,7 @@ export class LeafletRenderer extends Component {
                 savedState.zoom,
                 { animate: false }
             );
-            console.log('[LeafletRenderer] View state restored successfully');
+            console.debug('[LeafletRenderer] View state restored successfully');
             return true;
         } catch (error) {
             console.warn('[LeafletRenderer] Failed to restore view state:', error);
@@ -1967,24 +1967,24 @@ export class LeafletRenderer extends Component {
         const mapId = this.getMapId();
         if (!mapId) return;
 
-        let saveTimeout: ReturnType<typeof setTimeout> | null = null;
+        let saveTimeout: number | null = null;
 
         const savePosition = () => {
             if (!this.map) return;
             
             // Clear any pending save
             if (saveTimeout) {
-                clearTimeout(saveTimeout);
+                window.clearTimeout(saveTimeout);
             }
 
             // Debounce: wait 500ms after last movement before saving
-            saveTimeout = setTimeout(() => {
+            saveTimeout = window.setTimeout(() => {
                 if (!this.map) return;
                 
                 const zoom = this.map.getZoom();
                 const center = this.map.getCenter();
                 
-                this.plugin.saveMapViewState(mapId, zoom, {
+                void this.plugin.saveMapViewState(mapId, zoom, {
                     lat: center.lat,
                     lng: center.lng
                 });
@@ -1998,7 +1998,7 @@ export class LeafletRenderer extends Component {
         // Clean up on unload
         this.register(() => {
             if (saveTimeout) {
-                clearTimeout(saveTimeout);
+                window.clearTimeout(saveTimeout);
             }
             if (this.map) {
                 this.map.off('moveend', savePosition);
@@ -2014,7 +2014,7 @@ export class LeafletRenderer extends Component {
      * Following javalent-obsidian-leaflet pattern
      */
     onload(): void {
-        console.log('[LeafletRenderer] onload() called, isInitialized:', this.isInitialized);
+        console.debug('[LeafletRenderer] onload() called, isInitialized:', this.isInitialized);
         
         // If map hasn't been initialized yet, initialize it now
         // This ensures the container is in the DOM before initialization
@@ -2022,17 +2022,17 @@ export class LeafletRenderer extends Component {
         if (!this.isInitialized && !this.initializationPromise) {
             // Use setTimeout instead of requestAnimationFrame for more reliable timing
             // This gives the browser time to fully process the DOM insertion and layout
-            setTimeout(async () => {
+            window.setTimeout(() => { void (async () => {
                 try {
-                    console.log('[LeafletRenderer] Starting delayed initialization...');
+                    console.debug('[LeafletRenderer] Starting delayed initialization...');
                     await this.initialize();
-                    console.log('[LeafletRenderer] Initialization complete');
+                    console.debug('[LeafletRenderer] Initialization complete');
                     
                     // CRITICAL: Force tile refresh after initialization completes
                     // This ensures tiles render immediately without waiting for user interaction
-                    setTimeout(() => {
+                    window.setTimeout(() => {
                         if (this.map && this.isInitialized) {
-                            console.log('[LeafletRenderer] Post-initialization tile refresh...');
+                            console.debug('[LeafletRenderer] Post-initialization tile refresh...');
                             this.hasRenderedTiles = false;
                             this.forceTileRefresh();
                         }
@@ -2042,10 +2042,10 @@ export class LeafletRenderer extends Component {
                     // Show error in the container
                     this.showErrorInContainer(`Map initialization failed: ${error.message || error}`);
                 }
-            }, 50); // 50ms delay for DOM reflow
+            })(); }, 50); // 50ms delay for DOM reflow
         } else if (this.isInitialized && this.map) {
             // If already initialized, invalidate size and force tile refresh
-            requestAnimationFrame(() => {
+            window.requestAnimationFrame(() => {
                 this.invalidateSize();
                 // Also force tile refresh in case tiles didn't render
                 if (!this.hasRenderedTiles) {
@@ -2063,15 +2063,15 @@ export class LeafletRenderer extends Component {
         
         this.containerEl.empty();
         const errorDiv = this.containerEl.createDiv('storyteller-map-error');
-        errorDiv.style.padding = '1em';
-        errorDiv.style.border = '1px solid var(--background-modifier-error)';
-        errorDiv.style.borderRadius = '4px';
-        errorDiv.style.backgroundColor = 'var(--background-modifier-error)';
-        errorDiv.style.color = 'var(--text-error)';
-        errorDiv.style.textAlign = 'center';
+        errorDiv.setCssStyles({ padding: '1em' });
+        errorDiv.setCssStyles({ border: '1px solid var(--background-modifier-error)' });
+        errorDiv.setCssStyles({ borderRadius: '4px' });
+        errorDiv.setCssStyles({ backgroundColor: 'var(--background-modifier-error)' });
+        errorDiv.setCssStyles({ color: 'var(--text-error)' });
+        errorDiv.setCssStyles({ textAlign: 'center' });
 
         const title = errorDiv.createEl('strong');
-        title.textContent = 'Map Error: ';
+        title.textContent = 'Map error: ';
 
         const text = errorDiv.createSpan();
         text.textContent = message;
@@ -2083,7 +2083,7 @@ export class LeafletRenderer extends Component {
      * Component lifecycle: cleanup when unloaded
      * Called automatically by Obsidian when the markdown section is unloaded
      */
-    async onunload(): Promise<void> {
+    onunload(): void { void (async () => {
         // Clean up MapEntityRenderer
         if (this.mapEntityRenderer) {
             this.mapEntityRenderer.cleanup();
@@ -2113,14 +2113,13 @@ export class LeafletRenderer extends Component {
         this.isInitialized = false;
         this.initializationPromise = null;
         this.hasRenderedTiles = false;
-    }
+    })(); }
 
     /**
      * Destroy the map and cleanup (legacy method, kept for compatibility)
-     * @deprecated Use onunload() instead - it's called automatically
      */
     destroy(): void {
-        this.onunload();
+        void this.onunload();
     }
 
     /**
@@ -2175,6 +2174,6 @@ export class LeafletRenderer extends Component {
      * Unload the renderer (alias for onunload)
      */
     unload(): void {
-        this.onunload();
+        void this.onunload();
     }
 }

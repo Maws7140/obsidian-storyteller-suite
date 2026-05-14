@@ -1,8 +1,8 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
+ 
 import { App, Notice, Setting, TextAreaComponent, ButtonComponent, parseYaml, DropdownComponent } from 'obsidian';
 import { t } from '../i18n/strings';
 import StorytellerSuitePlugin from '../main';
-import { Chapter, Character, Location, Event, PlotItem, Group, Book } from '../types';
+import { Chapter } from '../types';
 import { CharacterSuggestModal } from './CharacterSuggestModal';
 import { LocationSuggestModal } from './LocationSuggestModal';
 import { EventSuggestModal } from './EventSuggestModal';
@@ -10,13 +10,21 @@ import { addImageSelectionButtons } from '../utils/ImageSelectionHelper';
 import { GroupSuggestModal } from './GroupSuggestModal';
 import { parseSectionsFromMarkdown } from '../yaml/EntitySections';
 import { TemplatePickerModal } from './TemplatePickerModal';
-import { Template } from '../templates/TemplateTypes';
+import type { Template, TemplateEntity, TemplateVariableValue } from '../templates/TemplateTypes';
 import { EntityCustomFieldsEditor } from './entity/EntityCustomFieldsEditor';
 import { ResponsiveModal } from './ResponsiveModal';
 import { confirmWithModal } from './ui/ConfirmModal';
 
 export type ChapterModalSubmitCallback = (ch: Chapter) => Promise<void>;
 export type ChapterModalDeleteCallback = (ch: Chapter) => Promise<void>;
+
+type ChapterWithCustomFields = Chapter & {
+    customFields?: Record<string, string>;
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
 
 export class ChapterModal extends ResponsiveModal {
     plugin: StorytellerSuitePlugin;
@@ -30,14 +38,15 @@ export class ChapterModal extends ResponsiveModal {
         super(app);
         this.plugin = plugin;
         this.isNew = ch == null;
-        this.chapter = ch ? { ...ch } : { name: '', tags: [], linkedCharacters: [], linkedLocations: [], linkedEvents: [], linkedItems: [], linkedGroups: [] } as Chapter;
-        this.customFieldsEditor = new EntityCustomFieldsEditor(this.app, 'chapter', ((this.chapter as any).customFields || {}) as Record<string, string>);
+        this.chapter = ch ? { ...ch } : { name: '', tags: [], linkedCharacters: [], linkedLocations: [], linkedEvents: [], linkedItems: [], linkedGroups: [] };
+        const chapterFields = this.chapter as ChapterWithCustomFields;
+        this.customFieldsEditor = new EntityCustomFieldsEditor(this.app, 'chapter', chapterFields.customFields || {});
         this.onSubmit = onSubmit;
         this.onDelete = onDelete;
         this.modalEl.addClass('storyteller-chapter-modal');
     }
 
-    async onOpen(): Promise<void> {
+    onOpen(): void { void (async () => {
         super.onOpen();
         const { contentEl, footerEl } = this.createStructuredModalLayout();
         contentEl.createEl('h2', { text: this.isNew ? t('createNewChapter') : `${t('editChapter')} ${this.chapter.name}` });
@@ -59,12 +68,12 @@ export class ChapterModal extends ResponsiveModal {
                                     resolve();
                                 }
                             };
-                            import('./TemplateApplicationModal').then(({ TemplateApplicationModal }) => {
+                            void import('./TemplateApplicationModal').then(({ TemplateApplicationModal }) => {
                                 new TemplateApplicationModal(
                                     this.app,
                                     this.plugin,
                                     defaultTemplate,
-                                    async (variableValues, entityFileNames) => {
+                                    (variableValues, entityFileNames) => { void (async () => {
                                         try {
                                             await this.applyTemplateToChapterWithVariables(defaultTemplate, variableValues);
                                             new Notice('Default template applied');
@@ -74,7 +83,7 @@ export class ChapterModal extends ResponsiveModal {
                                             new Notice('Error applying default template');
                                         }
                                         safeResolve();
-                                    },
+                                    })(); },
                                     safeResolve // onCancel callback
                                 ).open();
                             });
@@ -96,27 +105,27 @@ export class ChapterModal extends ResponsiveModal {
         // --- Template Selector (for new chapters) ---
         if (this.isNew) {
             new Setting(contentEl)
-                .setName('Start from Template')
+                .setName('Start from template')
                 .setDesc('Optionally start with a pre-configured chapter template')
                 .addButton(button => button
-                    .setButtonText('Choose Template')
+                    .setButtonText('Choose template')
                     .setTooltip('Select a chapter template')
                     .onClick(() => {
                         new TemplatePickerModal(
                             this.app,
                             this.plugin,
-                            async (template: Template) => {
+                            (template: Template) => { void (async () => {
                                 // Check if template has variables or multiple entities
                                 if ((template.variables && template.variables.length > 0) ||
                                     this.hasMultipleEntities(template)) {
                                     // Use TemplateApplicationModal for variable collection
                                     await new Promise<void>((resolve) => {
-                                        import('./TemplateApplicationModal').then(({ TemplateApplicationModal }) => {
+                                        void import('./TemplateApplicationModal').then(({ TemplateApplicationModal }) => {
                                             new TemplateApplicationModal(
                                                 this.app,
                                                 this.plugin,
                                                 template,
-                                                async (variableValues, entityFileNames) => {
+                                                (variableValues, entityFileNames) => { void (async () => {
                                                     try {
                                                         await this.applyTemplateToChapterWithVariables(template, variableValues);
                                                         new Notice(`Template "${template.name}" applied`);
@@ -126,7 +135,7 @@ export class ChapterModal extends ResponsiveModal {
                                                         new Notice('Error applying template');
                                                     }
                                                     resolve();
-                                                }
+                                                })(); }
                                             ).open();
                                         });
                                     });
@@ -136,7 +145,7 @@ export class ChapterModal extends ResponsiveModal {
                                     this.refresh();
                                     new Notice(`Template "${template.name}" applied`);
                                 }
-                            },
+                            })(); },
                             'chapter'
                         ).open();
                     })
@@ -207,17 +216,17 @@ export class ChapterModal extends ResponsiveModal {
             });
 
         // Custom fields (add only)
-        this.customFieldsEditor.setFields(((this.chapter as any).customFields || {}) as Record<string, string>);
+        this.customFieldsEditor.setFields((this.chapter as ChapterWithCustomFields).customFields || {});
         this.customFieldsEditor.renderSection(contentEl);
 
         // Book assignment
         contentEl.createEl('h3', { text: 'Book' });
         const books = await this.plugin.listBooks();
         new Setting(contentEl)
-            .setName('Assign to Book')
+            .setName('Assign to book')
             .setDesc('Which book this chapter belongs to')
             .addDropdown((dd: DropdownComponent) => {
-                dd.addOption('', '— None —');
+                dd.addOption('', '— none —');
                 for (const b of books) {
                     dd.addOption(b.id ?? b.name, b.name);
                 }
@@ -324,11 +333,11 @@ export class ChapterModal extends ResponsiveModal {
             if (!customFields) {
                 return;
             }
-            (this.chapter as any).customFields = customFields;
+            (this.chapter as ChapterWithCustomFields).customFields = customFields;
             await this.onSubmit(this.chapter);
             this.close();
         }, { cta: true });
-    }
+    })(); }
 
     // Helper method to render linked entities with individual delete buttons
     renderLinkedEntities(container: HTMLElement, items: string[] | undefined, entityType: string): void {
@@ -404,7 +413,7 @@ export class ChapterModal extends ResponsiveModal {
         await this.applyProcessedTemplateToChapter(templateChapter);
     }
 
-    private async applyTemplateToChapterWithVariables(template: Template, variableValues: Record<string, any>): Promise<void> {
+    private async applyTemplateToChapterWithVariables(template: Template, variableValues: Record<string, TemplateVariableValue>): Promise<void> {
         if (!template.entities.chapters || template.entities.chapters.length === 0) {
             new Notice('This template does not contain any chapters');
             return;
@@ -430,20 +439,27 @@ export class ChapterModal extends ResponsiveModal {
         await this.applyProcessedTemplateToChapter(templateChapter);
     }
 
-    private async applyProcessedTemplateToChapter(templateChapter: any): Promise<void> {
-        const { templateId, yamlContent, markdownContent, sectionContent, customYamlFields, id, filePath, ...rest } = templateChapter as any;
+    private async applyProcessedTemplateToChapter(templateChapter: TemplateEntity<Chapter>): Promise<void> {
+        const { yamlContent, markdownContent, sectionContent, customYamlFields } = templateChapter;
 
-        let fields: any = { ...rest };
+        let fields: Record<string, unknown> = { ...templateChapter };
+        delete fields.templateId;
+        delete fields.yamlContent;
+        delete fields.markdownContent;
+        delete fields.sectionContent;
+        delete fields.customYamlFields;
+        delete fields.id;
+        delete fields.filePath;
         let allTemplateSections: Record<string, string> = {};
 
         // Handle new format: yamlContent (parse YAML string)
         if (yamlContent && typeof yamlContent === 'string') {
             try {
-                const parsed = parseYaml(yamlContent);
-                if (parsed && typeof parsed === 'object') {
+                const parsed = parseYaml(yamlContent) as unknown;
+                if (isRecord(parsed)) {
                     fields = { ...fields, ...parsed };
                 }
-                console.log('[ChapterModal] Parsed YAML fields:', parsed);
+                console.debug('[ChapterModal] Parsed YAML fields:', parsed);
             } catch (error) {
                 console.warn('[ChapterModal] Failed to parse yamlContent:', error);
             }
@@ -462,16 +478,16 @@ export class ChapterModal extends ResponsiveModal {
                 if ('Summary' in parsedSections) {
                     fields.summary = parsedSections['Summary'];
                 }
-                console.log('[ChapterModal] Parsed markdown sections:', parsedSections);
+                console.debug('[ChapterModal] Parsed markdown sections:', parsedSections);
             } catch (error) {
                 console.warn('[ChapterModal] Failed to parse markdownContent:', error);
             }
         } else if (sectionContent) {
             // Old format: apply section content
-            for (const [k, v] of Object.entries(sectionContent)) { allTemplateSections[k as string] = v as string; }
+            for (const [k, v] of Object.entries(sectionContent)) { allTemplateSections[k] = v; }
             for (const [sectionName, content] of Object.entries(sectionContent)) {
                 const propName = sectionName.toLowerCase().replace(/\s+/g, '');
-                (fields as any)[propName] = content;
+                fields[propName] = content;
             }
         }
 
@@ -485,7 +501,7 @@ export class ChapterModal extends ResponsiveModal {
                 configurable: true
             });
         }
-        console.log('[ChapterModal] Final chapter after template:', this.chapter);
+        console.debug('[ChapterModal] Final chapter after template:', this.chapter);
 
         // Clear relationships as they reference template entities
         this.chapter.linkedCharacters = [];

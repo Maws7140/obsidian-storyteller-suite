@@ -129,11 +129,11 @@ export class EntityCustomFieldsEditor {
             const inputs = fieldSetting.controlEl.querySelectorAll('input');
             const nameInput = inputs.item(0);
             const valueInput = inputs.item(1);
-            if (nameInput instanceof HTMLInputElement) {
+            if (nameInput.instanceOf(HTMLInputElement)) {
                 nameInput.dataset.customFieldRowId = row.id;
                 nameInput.dataset.customFieldRole = 'name';
             }
-            if (valueInput instanceof HTMLInputElement) {
+            if (valueInput.instanceOf(HTMLInputElement)) {
                 valueInput.dataset.customFieldRowId = row.id;
                 valueInput.dataset.customFieldRole = 'value';
             }

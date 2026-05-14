@@ -3,10 +3,10 @@
  * Multi-step wizard for configuring story and chapter imports
  */
 
-import { App, Modal, Notice, Setting, TextComponent, DropdownComponent, ButtonComponent } from 'obsidian';
+import { App, Modal, Notice, Setting, ButtonComponent } from 'obsidian';
 import StorytellerSuitePlugin from '../main';
 import { ImportManager } from '../import/ImportManager';
-import { ImportConfiguration, ParsedDocument, ChapterImportConfig, ConflictResolution, ContentPlacement, EntityMappingConfig, EntityMappingAction, DraftStrategy } from '../import/ImportTypes';
+import { ImportConfiguration, ParsedDocument, ConflictResolution, ContentPlacement, EntityMappingAction, DraftStrategy } from '../import/ImportTypes';
 import { EntityExtractor, ExtractedEntity } from '../import/EntityExtractor';
 
 /**
@@ -58,7 +58,7 @@ export class ImportConfigModal extends Modal {
                 this.renderReviewStep();
                 break;
             case 'entities':
-                this.renderEntitiesStep();
+                void this.renderEntitiesStep();
                 break;
             case 'configure':
                 this.renderConfigureStep();
@@ -73,7 +73,7 @@ export class ImportConfigModal extends Modal {
      * Step 1: Upload file
      */
     private renderUploadStep(): void {
-        this.titleEl.setText('Import Story - Upload File');
+        this.titleEl.setText('Import story - upload file');
 
         const desc = this.contentEl.createEl('p', {
             text: 'Upload a file containing your story chapters.'
@@ -90,10 +90,10 @@ export class ImportConfigModal extends Modal {
             }
         });
         fileInput.addClass('storyteller-file-input');
-        fileInput.style.display = 'none'; // Hide the default file input
+        fileInput.setCssStyles({ display: 'none' }); // Hide the default file input
 
         const uploadButton = fileInputContainer.createEl('button', {
-            text: 'Choose File'
+            text: 'Choose file'
         });
         uploadButton.addClass('mod-cta');
 
@@ -106,7 +106,7 @@ export class ImportConfigModal extends Modal {
             fileInput.click();
         });
 
-        fileInput.addEventListener('change', async (event) => {
+        fileInput.addEventListener('change', (event) => { void (async () => {
             const target = event.target as HTMLInputElement;
             const file = target.files?.[0];
 
@@ -128,7 +128,7 @@ export class ImportConfigModal extends Modal {
                     if (docxParser) {
                         this.parsedDocument = await docxParser.parseAsync(arrayBuffer, this.fileName);
                     } else {
-                        new Notice('DOCX parser not available.');
+                        new Notice('Docx parser not available.');
                         return;
                     }
                 } else if (lowerFileName.endsWith('.epub')) {
@@ -138,7 +138,7 @@ export class ImportConfigModal extends Modal {
                     if (epubParser) {
                         this.parsedDocument = await epubParser.parseAsync(arrayBuffer, this.fileName);
                     } else {
-                        new Notice('EPUB parser not available.');
+                        new Notice('Epub parser not available.');
                         return;
                     }
                 } else if (lowerFileName.endsWith('.odt')) {
@@ -148,7 +148,7 @@ export class ImportConfigModal extends Modal {
                     if (odtParser) {
                         this.parsedDocument = await odtParser.parseAsync(arrayBuffer, this.fileName);
                     } else {
-                        new Notice('ODT parser not available.');
+                        new Notice('Odt parser not available.');
                         return;
                     }
                 } else if (lowerFileName.endsWith('.pdf')) {
@@ -176,23 +176,23 @@ export class ImportConfigModal extends Modal {
                 console.error('Error parsing file:', error);
                 new Notice(`Error parsing file: ${error}`);
             }
-        });
+        })(); });
 
         // Instructions
         const instructions = this.contentEl.createEl('div');
         instructions.addClass('storyteller-import-instructions');
-        instructions.createEl('h3', { text: 'Supported Formats:' });
+        instructions.createEl('h3', { text: 'Supported formats:' });
         const ul = instructions.createEl('ul');
-        ul.createEl('li', { text: 'Plain text (.txt) with chapter markers like "Chapter 1"' });
-        ul.createEl('li', { text: 'Markdown (.md) with heading hierarchy (# Chapter 1)' });
+        ul.createEl('li', { text: 'Plain text (.txt) with chapter markers like "chapter 1"' });
+        ul.createEl('li', { text: 'Markdown (.md) with heading hierarchy (# chapter 1)' });
         ul.createEl('li', { text: 'Word documents (.docx) with heading styles' });
-        ul.createEl('li', { text: 'EPUB e-books (.epub) - standard e-book format' });
-        ul.createEl('li', { text: 'PDF documents (.pdf) with chapter markers' });
-        ul.createEl('li', { text: 'HTML files (.html, .htm) with heading structure' });
-        ul.createEl('li', { text: 'Rich Text Format (.rtf) with chapter markers' });
-        ul.createEl('li', { text: 'OpenDocument Text (.odt) - LibreOffice/OpenOffice' });
+        ul.createEl('li', { text: 'Epub e-books (.epub) - standard e-book format' });
+        ul.createEl('li', { text: 'PDF documents (.PDF) with chapter markers' });
+        ul.createEl('li', { text: 'HTML files (.HTML, .htm) with heading structure' });
+        ul.createEl('li', { text: 'Rich text format (.rtf) with chapter markers' });
+        ul.createEl('li', { text: 'Opendocument text (.odt) - libreoffice/openoffice' });
         ul.createEl('li', { text: 'Fountain screenplays (.fountain) with act/scene structure' });
-        ul.createEl('li', { text: 'JSON (.json) with structured chapter data' });
+        ul.createEl('li', { text: 'JSON (.JSON) with structured chapter data' });
 
         // Buttons
         const buttonContainer = this.contentEl.createDiv('storyteller-modal-buttons');
@@ -217,7 +217,7 @@ export class ImportConfigModal extends Modal {
             );
         }
 
-        this.titleEl.setText('Import Story - Review Chapters');
+        this.titleEl.setText('Import story - review chapters');
 
         // Metadata
         const metadata = this.contentEl.createDiv('storyteller-import-metadata');
@@ -244,39 +244,39 @@ export class ImportConfigModal extends Modal {
         // Chapter list header with select all/none
         const chaptersDiv = this.contentEl.createDiv('storyteller-import-chapters');
         const chaptersHeader = chaptersDiv.createDiv('storyteller-chapters-header');
-        chaptersHeader.style.display = 'flex';
-        chaptersHeader.style.justifyContent = 'space-between';
-        chaptersHeader.style.alignItems = 'center';
-        chaptersHeader.style.marginBottom = '8px';
+        chaptersHeader.setCssStyles({ display: 'flex' });
+        chaptersHeader.setCssStyles({ justifyContent: 'space-between' });
+        chaptersHeader.setCssStyles({ alignItems: 'center' });
+        chaptersHeader.setCssStyles({ marginBottom: '8px' });
         
         chaptersHeader.createEl('h3', { text: 'Chapters:' });
         
         // Selection summary and controls
         const selectionControls = chaptersHeader.createDiv('storyteller-selection-controls');
-        selectionControls.style.display = 'flex';
-        selectionControls.style.gap = '8px';
-        selectionControls.style.alignItems = 'center';
+        selectionControls.setCssStyles({ display: 'flex' });
+        selectionControls.setCssStyles({ gap: '8px' });
+        selectionControls.setCssStyles({ alignItems: 'center' });
         
         const enabledCount = this.configuration.chapters.filter(c => c.enabled).length;
         const selectionSummary = selectionControls.createSpan('storyteller-selection-summary');
         selectionSummary.setText(`${enabledCount}/${this.configuration.chapters.length} selected`);
-        selectionSummary.style.fontSize = '0.9em';
-        selectionSummary.style.color = 'var(--text-muted)';
+        selectionSummary.setCssStyles({ fontSize: '0.9em' });
+        selectionSummary.setCssStyles({ color: 'var(--text-muted)' });
         
-        const selectAllBtn = selectionControls.createEl('button', { text: 'Select All' });
-        selectAllBtn.style.fontSize = '0.85em';
-        selectAllBtn.style.padding = '2px 8px';
+        const selectAllBtn = selectionControls.createEl('button', { text: 'Select all' });
+        selectAllBtn.setCssStyles({ fontSize: '0.85em' });
+        selectAllBtn.setCssStyles({ padding: '2px 8px' });
         
-        const selectNoneBtn = selectionControls.createEl('button', { text: 'Select None' });
-        selectNoneBtn.style.fontSize = '0.85em';
-        selectNoneBtn.style.padding = '2px 8px';
+        const selectNoneBtn = selectionControls.createEl('button', { text: 'Select none' });
+        selectNoneBtn.setCssStyles({ fontSize: '0.85em' });
+        selectNoneBtn.setCssStyles({ padding: '2px 8px' });
 
         const chapterList = chaptersDiv.createDiv('storyteller-chapter-list');
-        chapterList.style.maxHeight = '300px';
-        chapterList.style.overflowY = 'auto';
-        chapterList.style.border = '1px solid var(--background-modifier-border)';
-        chapterList.style.padding = '10px';
-        chapterList.style.marginBottom = '10px';
+        chapterList.setCssStyles({ maxHeight: '300px' });
+        chapterList.setCssStyles({ overflowY: 'auto' });
+        chapterList.setCssStyles({ border: '1px solid var(--background-modifier-border)' });
+        chapterList.setCssStyles({ padding: '10px' });
+        chapterList.setCssStyles({ marginBottom: '10px' });
 
         const checkboxes: HTMLInputElement[] = [];
 
@@ -290,18 +290,18 @@ export class ImportConfigModal extends Modal {
             const parsedChapter = this.parsedDocument.chapters[i];
 
             const chapterItem = chapterList.createDiv('storyteller-chapter-item');
-            chapterItem.style.marginBottom = '10px';
-            chapterItem.style.padding = '8px';
-            chapterItem.style.border = '1px solid var(--background-modifier-border)';
-            chapterItem.style.borderRadius = '4px';
-            chapterItem.style.display = 'flex';
-            chapterItem.style.alignItems = 'flex-start';
-            chapterItem.style.gap = '10px';
+            chapterItem.setCssStyles({ marginBottom: '10px' });
+            chapterItem.setCssStyles({ padding: '8px' });
+            chapterItem.setCssStyles({ border: '1px solid var(--background-modifier-border)' });
+            chapterItem.setCssStyles({ borderRadius: '4px' });
+            chapterItem.setCssStyles({ display: 'flex' });
+            chapterItem.setCssStyles({ alignItems: 'flex-start' });
+            chapterItem.setCssStyles({ gap: '10px' });
 
             // Checkbox for enabling/disabling
             const checkbox = chapterItem.createEl('input', { type: 'checkbox' });
             checkbox.checked = chapterConfig.enabled;
-            checkbox.style.marginTop = '4px';
+            checkbox.setCssStyles({ marginTop: '4px' });
             checkbox.addEventListener('change', () => {
                 chapterConfig.enabled = checkbox.checked;
                 updateSelectionSummary();
@@ -310,26 +310,26 @@ export class ImportConfigModal extends Modal {
 
             // Chapter info container
             const infoContainer = chapterItem.createDiv('storyteller-chapter-info');
-            infoContainer.style.flex = '1';
+            infoContainer.setCssStyles({ flex: '1' });
 
             // Editable row with chapter number and name
             const editableRow = infoContainer.createDiv('storyteller-chapter-editable');
-            editableRow.style.display = 'flex';
-            editableRow.style.gap = '8px';
-            editableRow.style.alignItems = 'center';
-            editableRow.style.marginBottom = '4px';
+            editableRow.setCssStyles({ display: 'flex' });
+            editableRow.setCssStyles({ gap: '8px' });
+            editableRow.setCssStyles({ alignItems: 'center' });
+            editableRow.setCssStyles({ marginBottom: '4px' });
 
             // Chapter number input
             const numberLabel = editableRow.createSpan();
             numberLabel.setText('Ch.');
-            numberLabel.style.fontSize = '0.9em';
-            numberLabel.style.color = 'var(--text-muted)';
+            numberLabel.setCssStyles({ fontSize: '0.9em' });
+            numberLabel.setCssStyles({ color: 'var(--text-muted)' });
 
             const numberInput = editableRow.createEl('input', { type: 'number' });
             numberInput.value = String(chapterConfig.targetNumber ?? '');
-            numberInput.style.width = '50px';
-            numberInput.style.padding = '2px 4px';
-            numberInput.style.fontSize = '0.9em';
+            numberInput.setCssStyles({ width: '50px' });
+            numberInput.setCssStyles({ padding: '2px 4px' });
+            numberInput.setCssStyles({ fontSize: '0.9em' });
             numberInput.placeholder = '#';
             numberInput.addEventListener('change', () => {
                 const num = parseInt(numberInput.value, 10);
@@ -339,9 +339,9 @@ export class ImportConfigModal extends Modal {
             // Chapter name input
             const nameInput = editableRow.createEl('input', { type: 'text' });
             nameInput.value = chapterConfig.targetName;
-            nameInput.style.flex = '1';
-            nameInput.style.padding = '2px 6px';
-            nameInput.style.fontSize = '0.9em';
+            nameInput.setCssStyles({ flex: '1' });
+            nameInput.setCssStyles({ padding: '2px 6px' });
+            nameInput.setCssStyles({ fontSize: '0.9em' });
             nameInput.placeholder = 'Chapter name';
             nameInput.addEventListener('change', () => {
                 chapterConfig.targetName = nameInput.value.trim() || chapterConfig.sourceTitle;
@@ -349,8 +349,8 @@ export class ImportConfigModal extends Modal {
 
             // Info line with word count and original title
             const infoLine = infoContainer.createDiv();
-            infoLine.style.fontSize = '0.85em';
-            infoLine.style.color = 'var(--text-muted)';
+            infoLine.setCssStyles({ fontSize: '0.85em' });
+            infoLine.setCssStyles({ color: 'var(--text-muted)' });
             const originalTitle = parsedChapter.title !== chapterConfig.targetName 
                 ? ` (original: "${parsedChapter.title}")` 
                 : '';
@@ -412,14 +412,14 @@ export class ImportConfigModal extends Modal {
                             ...characters.map(c => ({
                                 extractedName: c.name,
                                 type: 'character' as const,
-                                action: 'ignore' as EntityMappingAction,
+                                action: 'ignore' as const,
                                 occurrences: c.occurrences,
                                 confidence: c.confidence
                             })),
                             ...locations.map(l => ({
                                 extractedName: l.name,
                                 type: 'location' as const,
-                                action: 'ignore' as EntityMappingAction,
+                                action: 'ignore' as const,
                                 occurrences: l.occurrences,
                                 confidence: l.confidence
                             }))
@@ -438,15 +438,15 @@ export class ImportConfigModal extends Modal {
     private async renderEntitiesStep(): Promise<void> {
         if (!this.configuration) return;
 
-        this.titleEl.setText('Import Story - Entity Mapping');
+        this.titleEl.setText('Import story - entity mapping');
 
         const totalEntities = this.extractedCharacters.length + this.extractedLocations.length;
 
         if (totalEntities === 0) {
             // No entities found, skip to configure
             const noEntitiesDiv = this.contentEl.createDiv('storyteller-no-entities');
-            noEntitiesDiv.style.padding = '20px';
-            noEntitiesDiv.style.textAlign = 'center';
+            noEntitiesDiv.setCssStyles({ padding: '20px' });
+            noEntitiesDiv.setCssStyles({ textAlign: 'center' });
             noEntitiesDiv.createEl('p', { text: 'No character or location names were detected in your text.' });
             noEntitiesDiv.createEl('p', { 
                 text: 'You can continue without entity linking, or go back and check your chapters.',
@@ -457,7 +457,7 @@ export class ImportConfigModal extends Modal {
             const desc = this.contentEl.createEl('p', {
                 text: `Found ${this.extractedCharacters.length} potential characters and ${this.extractedLocations.length} potential locations. Choose how to handle each entity during import.`
             });
-            desc.style.marginBottom = '16px';
+            desc.setCssStyles({ marginBottom: '16px' });
 
             // Load existing entities for linking options
             const existingCharacters = await this.plugin.listCharacters();
@@ -495,7 +495,7 @@ export class ImportConfigModal extends Modal {
                 })
             )
             .addButton(btn => btn
-                .setButtonText('Skip Entity Linking')
+                .setButtonText('Skip entity linking')
                 .onClick(() => {
                     // Set all to ignore
                     for (const mapping of this.configuration!.entityMappings) {
@@ -531,17 +531,17 @@ export class ImportConfigModal extends Modal {
         existingEntities: Array<{ id: string; name: string }>
     ): void {
         const section = this.contentEl.createDiv('storyteller-entity-section');
-        section.style.marginBottom = '20px';
+        section.setCssStyles({ marginBottom: '20px' });
 
         const header = section.createEl('h3', { text: title });
-        header.style.marginBottom = '10px';
+        header.setCssStyles({ marginBottom: '10px' });
 
         const entityList = section.createDiv('storyteller-entity-list');
-        entityList.style.maxHeight = '200px';
-        entityList.style.overflowY = 'auto';
-        entityList.style.border = '1px solid var(--background-modifier-border)';
-        entityList.style.borderRadius = '4px';
-        entityList.style.padding = '8px';
+        entityList.setCssStyles({ maxHeight: '200px' });
+        entityList.setCssStyles({ overflowY: 'auto' });
+        entityList.setCssStyles({ border: '1px solid var(--background-modifier-border)' });
+        entityList.setCssStyles({ borderRadius: '4px' });
+        entityList.setCssStyles({ padding: '8px' });
 
         for (const entity of extracted) {
             // Find the mapping for this entity
@@ -551,68 +551,68 @@ export class ImportConfigModal extends Modal {
             if (!mapping) continue;
 
             const entityItem = entityList.createDiv('storyteller-entity-item');
-            entityItem.style.padding = '8px';
-            entityItem.style.marginBottom = '8px';
-            entityItem.style.border = '1px solid var(--background-modifier-border)';
-            entityItem.style.borderRadius = '4px';
-            entityItem.style.backgroundColor = 'var(--background-secondary)';
+            entityItem.setCssStyles({ padding: '8px' });
+            entityItem.setCssStyles({ marginBottom: '8px' });
+            entityItem.setCssStyles({ border: '1px solid var(--background-modifier-border)' });
+            entityItem.setCssStyles({ borderRadius: '4px' });
+            entityItem.setCssStyles({ backgroundColor: 'var(--background-secondary)' });
 
             // Entity name and info
             const nameRow = entityItem.createDiv();
-            nameRow.style.display = 'flex';
-            nameRow.style.justifyContent = 'space-between';
-            nameRow.style.alignItems = 'center';
-            nameRow.style.marginBottom = '8px';
+            nameRow.setCssStyles({ display: 'flex' });
+            nameRow.setCssStyles({ justifyContent: 'space-between' });
+            nameRow.setCssStyles({ alignItems: 'center' });
+            nameRow.setCssStyles({ marginBottom: '8px' });
 
-            const nameSpan = nameRow.createEl('strong', { text: entity.name });
+            nameRow.createEl('strong', { text: entity.name });
             
             const infoSpan = nameRow.createSpan();
-            infoSpan.style.fontSize = '0.85em';
-            infoSpan.style.color = 'var(--text-muted)';
+            infoSpan.setCssStyles({ fontSize: '0.85em' });
+            infoSpan.setCssStyles({ color: 'var(--text-muted)' });
             const confidenceLabel = entity.confidence === 'high' ? 'High' : 
                                    entity.confidence === 'medium' ? 'Med' : 'Low';
             infoSpan.setText(`${entity.occurrences}x | ${confidenceLabel} confidence`);
 
             // Action selection row
             const actionRow = entityItem.createDiv();
-            actionRow.style.display = 'flex';
-            actionRow.style.gap = '8px';
-            actionRow.style.alignItems = 'center';
-            actionRow.style.flexWrap = 'wrap';
+            actionRow.setCssStyles({ display: 'flex' });
+            actionRow.setCssStyles({ gap: '8px' });
+            actionRow.setCssStyles({ alignItems: 'center' });
+            actionRow.setCssStyles({ flexWrap: 'wrap' });
 
             // Action dropdown
             const actionLabel = actionRow.createSpan({ text: 'Action:' });
-            actionLabel.style.fontSize = '0.9em';
+            actionLabel.setCssStyles({ fontSize: '0.9em' });
 
             const actionSelect = actionRow.createEl('select');
-            actionSelect.style.padding = '2px 6px';
-            actionSelect.style.fontSize = '0.9em';
+            actionSelect.setCssStyles({ padding: '2px 6px' });
+            actionSelect.setCssStyles({ fontSize: '0.9em' });
 
-            const ignoreOption = actionSelect.createEl('option', { value: 'ignore', text: 'Ignore' });
-            const createOption = actionSelect.createEl('option', { value: 'create', text: 'Create new' });
+            actionSelect.createEl('option', { value: 'ignore', text: 'Ignore' });
+            actionSelect.createEl('option', { value: 'create', text: 'Create new' });
             
             if (existingEntities.length > 0) {
-                const linkOption = actionSelect.createEl('option', { value: 'link', text: 'Link to existing' });
+                actionSelect.createEl('option', { value: 'link', text: 'Link to existing' });
             }
 
             actionSelect.value = mapping.action;
 
             // Existing entity dropdown (shown only when action is 'link')
             const linkContainer = actionRow.createDiv();
-            linkContainer.style.display = mapping.action === 'link' ? 'flex' : 'none';
-            linkContainer.style.gap = '4px';
-            linkContainer.style.alignItems = 'center';
+            linkContainer.setCssStyles({ display: mapping.action === 'link' ? 'flex' : 'none' });
+            linkContainer.setCssStyles({ gap: '4px' });
+            linkContainer.setCssStyles({ alignItems: 'center' });
 
             const linkLabel = linkContainer.createSpan({ text: 'to:' });
-            linkLabel.style.fontSize = '0.9em';
+            linkLabel.setCssStyles({ fontSize: '0.9em' });
 
             const linkSelect = linkContainer.createEl('select');
-            linkSelect.style.padding = '2px 6px';
-            linkSelect.style.fontSize = '0.9em';
-            linkSelect.style.maxWidth = '150px';
+            linkSelect.setCssStyles({ padding: '2px 6px' });
+            linkSelect.setCssStyles({ fontSize: '0.9em' });
+            linkSelect.setCssStyles({ maxWidth: '150px' });
 
             for (const existing of existingEntities) {
-                const option = linkSelect.createEl('option', { 
+                linkSelect.createEl('option', { 
                     value: existing.id, 
                     text: existing.name 
                 });
@@ -627,7 +627,7 @@ export class ImportConfigModal extends Modal {
             // Event handlers
             actionSelect.addEventListener('change', () => {
                 mapping.action = actionSelect.value as EntityMappingAction;
-                linkContainer.style.display = mapping.action === 'link' ? 'flex' : 'none';
+                linkContainer.setCssStyles({ display: mapping.action === 'link' ? 'flex' : 'none' });
                 if (mapping.action === 'link' && existingEntities.length > 0 && !mapping.linkedEntityId) {
                     mapping.linkedEntityId = existingEntities[0].id;
                 }
@@ -640,19 +640,19 @@ export class ImportConfigModal extends Modal {
             // Context preview (collapsed by default)
             if (entity.contexts.length > 0) {
                 const contextToggle = entityItem.createEl('button', { text: 'Show context' });
-                contextToggle.style.fontSize = '0.8em';
-                contextToggle.style.padding = '2px 6px';
-                contextToggle.style.marginTop = '8px';
+                contextToggle.setCssStyles({ fontSize: '0.8em' });
+                contextToggle.setCssStyles({ padding: '2px 6px' });
+                contextToggle.setCssStyles({ marginTop: '8px' });
 
                 const contextDiv = entityItem.createDiv();
-                contextDiv.style.display = 'none';
-                contextDiv.style.marginTop = '8px';
-                contextDiv.style.padding = '8px';
-                contextDiv.style.backgroundColor = 'var(--background-primary)';
-                contextDiv.style.borderRadius = '4px';
-                contextDiv.style.fontSize = '0.85em';
-                contextDiv.style.fontStyle = 'italic';
-                contextDiv.style.color = 'var(--text-muted)';
+                contextDiv.setCssStyles({ display: 'none' });
+                contextDiv.setCssStyles({ marginTop: '8px' });
+                contextDiv.setCssStyles({ padding: '8px' });
+                contextDiv.setCssStyles({ backgroundColor: 'var(--background-primary)' });
+                contextDiv.setCssStyles({ borderRadius: '4px' });
+                contextDiv.setCssStyles({ fontSize: '0.85em' });
+                contextDiv.setCssStyles({ fontStyle: 'italic' });
+                contextDiv.setCssStyles({ color: 'var(--text-muted)' });
 
                 for (const ctx of entity.contexts.slice(0, 2)) {
                     contextDiv.createEl('p', { text: ctx });
@@ -660,7 +660,7 @@ export class ImportConfigModal extends Modal {
 
                 contextToggle.addEventListener('click', () => {
                     const isHidden = contextDiv.style.display === 'none';
-                    contextDiv.style.display = isHidden ? 'block' : 'none';
+                    contextDiv.setCssStyles({ display: isHidden ? 'block' : 'none' });
                     contextToggle.setText(isHidden ? 'Hide context' : 'Show context');
                 });
             }
@@ -673,7 +673,7 @@ export class ImportConfigModal extends Modal {
     private renderConfigureStep(): void {
         if (!this.configuration) return;
 
-        this.titleEl.setText('Import Story - Configure Options');
+        this.titleEl.setText('Import story - configure options');
 
         // Container for story target options
         const storyTargetContainer = this.contentEl.createDiv('storyteller-story-target-container');
@@ -682,16 +682,13 @@ export class ImportConfigModal extends Modal {
         const existingStories = this.plugin.settings.stories || [];
         const hasExistingStories = existingStories.length > 0;
 
-        let storyNameSetting: Setting | null = null;
-        let existingStorySetting: Setting | null = null;
-
         const updateStoryTargetUI = () => {
             // Clear the container
             storyTargetContainer.empty();
 
             // Create new story / Add to existing toggle
             new Setting(storyTargetContainer)
-                .setName('Import Target')
+                .setName('Import target')
                 .setDesc('Choose where to import the chapters')
                 .addDropdown(dropdown => {
                     dropdown
@@ -718,8 +715,8 @@ export class ImportConfigModal extends Modal {
 
             if (this.configuration!.createNewStory) {
                 // Story name input for new story
-                storyNameSetting = new Setting(storyTargetContainer)
-                    .setName('Story Name')
+                new Setting(storyTargetContainer)
+                    .setName('Story name')
                     .setDesc('Name for the new story')
                     .addText(text => text
                         .setValue(this.configuration!.targetStoryName || '')
@@ -729,8 +726,8 @@ export class ImportConfigModal extends Modal {
                     );
             } else {
                 // Existing story dropdown
-                existingStorySetting = new Setting(storyTargetContainer)
-                    .setName('Select Story')
+                new Setting(storyTargetContainer)
+                    .setName('Select story')
                     .setDesc('Choose an existing story to add chapters to')
                     .addDropdown(dropdown => {
                         for (const story of existingStories) {
@@ -748,10 +745,10 @@ export class ImportConfigModal extends Modal {
 
         // Draft version (for naming)
         new Setting(this.contentEl)
-            .setName('Draft Version')
-            .setDesc('Optional version label (e.g., "Rough Draft", "Revised")')
+            .setName('Draft version')
+            .setDesc('Optional version label (e.g., "rough draft", "revised")')
             .addText(text => text
-                .setPlaceholder('e.g., Rough Draft')
+                .setPlaceholder('E.g., rough draft')
                 .setValue(this.configuration!.draftVersion || '')
                 .onChange(value => {
                     this.configuration!.draftVersion = value;
@@ -765,13 +762,13 @@ export class ImportConfigModal extends Modal {
 
         // Draft strategy selector
         new Setting(this.contentEl)
-            .setName('Draft Strategy')
+            .setName('Draft strategy')
             .setDesc('How to organize multiple drafts of the same story')
             .addDropdown(dropdown => dropdown
                 .addOption('separate-stories', 'Separate stories (create new story per draft)')
                 .addOption('version-tags', 'Version tags (tag chapters with draft version)')
                 .addOption('scene-status', 'Scene status (use status field for version)')
-                .addOption('custom-metadata', 'Custom metadata (add draftVersion field)')
+                .addOption('custom-metadata', 'Custom metadata (add draftversion field)')
                 .setValue(this.configuration!.draftStrategy)
                 .onChange(value => {
                     this.configuration!.draftStrategy = value as DraftStrategy;
@@ -780,7 +777,7 @@ export class ImportConfigModal extends Modal {
 
         // Content placement choice
         new Setting(this.contentEl)
-            .setName('Content Placement')
+            .setName('Content placement')
             .setDesc('Where to store the imported chapter content')
             .addDropdown(dropdown => dropdown
                 .addOption('chapter-summary', 'Chapter summary (content in chapter file)')
@@ -793,7 +790,7 @@ export class ImportConfigModal extends Modal {
 
         // Conflict resolution
         new Setting(this.contentEl)
-            .setName('Conflict Resolution')
+            .setName('Conflict resolution')
             .setDesc('How to handle chapters with duplicate names')
             .addDropdown(dropdown => dropdown
                 .addOption('rename', 'Rename (add number suffix)')
@@ -810,7 +807,7 @@ export class ImportConfigModal extends Modal {
             .setName('Tags')
             .setDesc('Tags to apply to all imported chapters (comma-separated)')
             .addText(text => text
-                .setPlaceholder('e.g., imported, draft')
+                .setPlaceholder('E.g., imported, draft')
                 .onChange(value => {
                     const tags = value.split(',').map(t => t.trim()).filter(Boolean);
                     // Apply to all chapters
@@ -846,11 +843,11 @@ export class ImportConfigModal extends Modal {
     private renderConfirmStep(): void {
         if (!this.configuration) return;
 
-        this.titleEl.setText('Import Story - Confirm');
+        this.titleEl.setText('Import story - confirm');
 
         // Summary
         const summary = this.contentEl.createDiv('storyteller-import-summary');
-        summary.createEl('h3', { text: 'Import Summary:' });
+        summary.createEl('h3', { text: 'Import summary:' });
 
         const summaryList = summary.createEl('ul');
         
@@ -872,21 +869,21 @@ export class ImportConfigModal extends Modal {
         
         // Calculate words for enabled chapters only
         const enabledWords = enabledChapters.reduce((sum, ch) => sum + ch.content.split(/\s+/).length, 0);
-        summaryList.createEl('li', { text: `Total Words: ${enabledWords.toLocaleString()}` });
+        summaryList.createEl('li', { text: `Total words: ${enabledWords.toLocaleString()}` });
         
         // Content placement info
         const placementText = this.configuration.contentPlacement === 'scene-files'
             ? 'Scene files (will create scenes)'
             : 'Chapter summaries';
         summaryList.createEl('li', { text: `Content: ${placementText}` });
-        summaryList.createEl('li', { text: `Conflict Resolution: ${this.configuration.conflictResolution}` });
+        summaryList.createEl('li', { text: `Conflict resolution: ${this.configuration.conflictResolution}` });
 
         // Validation
         const validation = this.importManager.validateImport(this.configuration);
 
         if (!validation.isValid) {
             const errorsDiv = this.contentEl.createDiv('storyteller-import-errors');
-            errorsDiv.style.color = 'var(--text-error)';
+            errorsDiv.setCssStyles({ color: 'var(--text-error)' });
             errorsDiv.createEl('h3', { text: '❌ Errors:' });
             const errorsList = errorsDiv.createEl('ul');
             for (const error of validation.errors) {
@@ -896,7 +893,7 @@ export class ImportConfigModal extends Modal {
 
         if (validation.warnings.length > 0) {
             const warningsDiv = this.contentEl.createDiv('storyteller-import-warnings');
-            warningsDiv.createEl('h3', { text: '⚠️ Warnings:' });
+            warningsDiv.createEl('h3', { text: '⚠️ warnings:' });
             const warningsList = warningsDiv.createEl('ul');
             for (const warning of validation.warnings) {
                 warningsList.createEl('li', { text: warning });
@@ -905,30 +902,30 @@ export class ImportConfigModal extends Modal {
 
         // Progress container (hidden initially)
         const progressContainer = this.contentEl.createDiv('storyteller-import-progress');
-        progressContainer.style.display = 'none';
-        progressContainer.style.marginTop = '16px';
-        progressContainer.style.marginBottom = '16px';
+        progressContainer.setCssStyles({ display: 'none' });
+        progressContainer.setCssStyles({ marginTop: '16px' });
+        progressContainer.setCssStyles({ marginBottom: '16px' });
 
         const progressLabel = progressContainer.createDiv('storyteller-progress-label');
-        progressLabel.style.marginBottom = '8px';
-        progressLabel.style.fontSize = '0.9em';
+        progressLabel.setCssStyles({ marginBottom: '8px' });
+        progressLabel.setCssStyles({ fontSize: '0.9em' });
 
         const progressBarOuter = progressContainer.createDiv('storyteller-progress-bar-outer');
-        progressBarOuter.style.height = '8px';
-        progressBarOuter.style.backgroundColor = 'var(--background-modifier-border)';
-        progressBarOuter.style.borderRadius = '4px';
-        progressBarOuter.style.overflow = 'hidden';
+        progressBarOuter.setCssStyles({ height: '8px' });
+        progressBarOuter.setCssStyles({ backgroundColor: 'var(--background-modifier-border)' });
+        progressBarOuter.setCssStyles({ borderRadius: '4px' });
+        progressBarOuter.setCssStyles({ overflow: 'hidden' });
 
         const progressBarInner = progressBarOuter.createDiv('storyteller-progress-bar-inner');
-        progressBarInner.style.height = '100%';
-        progressBarInner.style.width = '0%';
-        progressBarInner.style.backgroundColor = 'var(--interactive-accent)';
-        progressBarInner.style.transition = 'width 0.2s ease';
+        progressBarInner.setCssStyles({ height: '100%' });
+        progressBarInner.setCssStyles({ width: '0%' });
+        progressBarInner.setCssStyles({ backgroundColor: 'var(--interactive-accent)' });
+        progressBarInner.setCssStyles({ transition: 'width 0.2s ease' });
 
         const progressDetail = progressContainer.createDiv('storyteller-progress-detail');
-        progressDetail.style.marginTop = '4px';
-        progressDetail.style.fontSize = '0.85em';
-        progressDetail.style.color = 'var(--text-muted)';
+        progressDetail.setCssStyles({ marginTop: '4px' });
+        progressDetail.setCssStyles({ fontSize: '0.85em' });
+        progressDetail.setCssStyles({ color: 'var(--text-muted)' });
 
         // Buttons
         const buttonContainer = this.contentEl.createDiv('storyteller-modal-buttons');
@@ -952,13 +949,13 @@ export class ImportConfigModal extends Modal {
                         button.setDisabled(true);
                         backButton.setDisabled(true);
                         button.setButtonText('Importing...');
-                        progressContainer.style.display = 'block';
+                        progressContainer.setCssStyles({ display: 'block' });
 
                         const result = await this.importManager.executeImport(
                             this.configuration!,
                             (progress) => {
                                 progressLabel.setText(progress.currentStep);
-                                progressBarInner.style.width = `${progress.percentage}%`;
+                                progressBarInner.setCssStyles({ width: `${progress.percentage}%` });
                                 if (progress.currentItem) {
                                     progressDetail.setText(`${progress.currentItem} (${progress.processed}/${progress.total})`);
                                 } else {
@@ -975,7 +972,7 @@ export class ImportConfigModal extends Modal {
                             this.close();
                         } else {
                             new Notice(`Import failed: ${result.error}`);
-                            progressContainer.style.display = 'none';
+                            progressContainer.setCssStyles({ display: 'none' });
                             button.setDisabled(false);
                             backButton.setDisabled(false);
                             button.setButtonText('Import');

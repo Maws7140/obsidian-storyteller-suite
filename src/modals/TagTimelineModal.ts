@@ -38,7 +38,7 @@ export class TagTimelineModal extends Modal {
         this.locations = await this.plugin.listLocations();
 
         // Title
-        contentEl.createEl('h2', { text: 'Generate Timeline from Tags' });
+        contentEl.createEl('h2', { text: 'Generate timeline from tags' });
 
         // Description
         contentEl.createDiv({
@@ -51,7 +51,7 @@ export class TagTimelineModal extends Modal {
 
         // Generate button
         new Setting(contentEl)
-            .setName('Generate Preview')
+            .setName('Generate preview')
             .setDesc('Scan notes and preview events that will be created')
             .addButton(btn => btn
                 .setButtonText('Generate')
@@ -69,7 +69,7 @@ export class TagTimelineModal extends Modal {
         // Action buttons
         const buttonContainer = new Setting(contentEl);
         buttonContainer.addButton(btn => btn
-            .setButtonText('Create Events')
+            .setButtonText('Create events')
             .setCta()
             .setDisabled(this.previews.length === 0)
             .onClick(() => this.createEvents())
@@ -80,7 +80,7 @@ export class TagTimelineModal extends Modal {
         );
 
         // Add CSS
-        this.addStyles();
+        // Styles are loaded from styles.css.
     }
 
     private async renderOptions(containerEl: HTMLElement): Promise<void> {
@@ -92,7 +92,7 @@ export class TagTimelineModal extends Modal {
         const tagStats = await this.generator.getTagStatistics();
 
         new Setting(optionsEl)
-            .setName('Tags to Include')
+            .setName('Tags to include')
             .setDesc('Select tags to filter notes (leave empty for all tags)')
             .addText(text => {
                 text
@@ -134,29 +134,29 @@ export class TagTimelineModal extends Modal {
 
         // Date extraction strategy
         new Setting(optionsEl)
-            .setName('Date Extraction Strategy')
+            .setName('Date extraction strategy')
             .setDesc('How to extract dates from notes')
             .addDropdown(dropdown => {
                 dropdown
                     .addOption('auto', 'Auto (try all methods)')
-                    .addOption('frontmatter', 'From Frontmatter')
-                    .addOption('content', 'From Content')
-                    .addOption('file-created', 'File Creation Date')
-                    .addOption('file-modified', 'File Modification Date')
+                    .addOption('frontmatter', 'From frontmatter')
+                    .addOption('content', 'From content')
+                    .addOption('file-created', 'File creation date')
+                    .addOption('file-modified', 'File modification date')
                     .setValue(this.options.dateStrategy)
                     .onChange(value => {
-                        this.options.dateStrategy = value as any;
+                        this.options.dateStrategy = value as TagTimelineOptions['dateStrategy'];
                     });
             });
 
         // Frontmatter field
         new Setting(optionsEl)
-            .setName('Frontmatter Date Field')
+            .setName('Frontmatter date field')
             .setDesc('Field name to extract date from (when using frontmatter strategy)')
             .addText(text => {
                 text
                     .setValue(this.options.dateFrontmatterField || 'date')
-                    .setPlaceholder('date')
+                    .setPlaceholder('Date')
                     .onChange(value => {
                         this.options.dateFrontmatterField = value;
                     });
@@ -164,7 +164,7 @@ export class TagTimelineModal extends Modal {
 
         // Include content
         new Setting(optionsEl)
-            .setName('Include Note Content')
+            .setName('Include note content')
             .setDesc('Add note content as event description')
             .addToggle(toggle => {
                 toggle
@@ -176,7 +176,7 @@ export class TagTimelineModal extends Modal {
 
         // Max content length
         new Setting(optionsEl)
-            .setName('Max Description Length')
+            .setName('Max description length')
             .setDesc('Maximum characters for event description')
             .addText(text => {
                 text
@@ -190,7 +190,7 @@ export class TagTimelineModal extends Modal {
 
         // Default status
         new Setting(optionsEl)
-            .setName('Default Status')
+            .setName('Default status')
             .setDesc('Status for generated events')
             .addText(text => {
                 text
@@ -426,196 +426,6 @@ export class TagTimelineModal extends Modal {
         new Notice(`Created ${created} events${failed > 0 ? `, ${failed} failed` : ''}`);
         this.close();
     }
-
-    private addStyles(): void {
-        const styleEl = document.createElement('style');
-        styleEl.textContent = `
-            .storyteller-tag-timeline-generator {
-                padding: 1em;
-                max-width: 900px;
-            }
-
-            .storyteller-tag-timeline-desc {
-                margin-bottom: 1.5em;
-                color: var(--text-muted);
-                font-size: 0.9em;
-            }
-
-            .storyteller-tag-timeline-options h3,
-            .storyteller-tag-timeline-preview-section h3 {
-                margin-top: 1.5em;
-                margin-bottom: 1em;
-                color: var(--text-accent);
-            }
-
-            .storyteller-tag-list {
-                margin-top: 0.5em;
-                padding: 0.75em;
-                background: var(--background-secondary);
-                border-radius: 4px;
-            }
-
-            .storyteller-tag-chips {
-                display: flex;
-                flex-wrap: wrap;
-                gap: 0.5em;
-                margin-top: 0.5em;
-            }
-
-            .storyteller-tag-chip {
-                padding: 0.25em 0.75em;
-                background: var(--background-modifier-border);
-                border-radius: 12px;
-                cursor: pointer;
-                font-size: 0.85em;
-                transition: all 0.2s;
-            }
-
-            .storyteller-tag-chip:hover {
-                background: var(--interactive-accent);
-                color: var(--text-on-accent);
-            }
-
-            .storyteller-tag-chip-selected {
-                background: var(--interactive-accent);
-                color: var(--text-on-accent);
-            }
-
-            .storyteller-tag-timeline-preview-list {
-                max-height: 50vh;
-                overflow-y: auto;
-                margin-top: 1em;
-            }
-
-            .storyteller-preview-summary {
-                display: flex;
-                gap: 1em;
-                margin-bottom: 1em;
-                padding: 0.75em;
-                background: var(--background-secondary);
-                border-radius: 6px;
-            }
-
-            .storyteller-preview-stat {
-                padding: 0.5em 1em;
-                border-radius: 4px;
-                background: var(--background-primary);
-                font-weight: 600;
-            }
-
-            .storyteller-preview-valid {
-                color: var(--text-success);
-                border-left: 3px solid var(--text-success);
-            }
-
-            .storyteller-preview-invalid {
-                color: var(--text-error);
-                border-left: 3px solid var(--text-error);
-            }
-
-            .storyteller-preview-item {
-                border: 1px solid var(--background-modifier-border);
-                border-radius: 6px;
-                margin-bottom: 1em;
-                padding: 1em;
-                background: var(--background-secondary);
-            }
-
-            .storyteller-preview-item.valid {
-                border-left: 3px solid var(--text-success);
-            }
-
-            .storyteller-preview-item.invalid {
-                border-left: 3px solid var(--text-error);
-                opacity: 0.7;
-            }
-
-            .storyteller-preview-header {
-                display: flex;
-                align-items: center;
-                gap: 0.75em;
-                margin-bottom: 0.75em;
-            }
-
-            .storyteller-preview-warning {
-                font-size: 1.2em;
-            }
-
-            .storyteller-preview-name {
-                flex: 1;
-                font-weight: 600;
-                font-size: 1.1em;
-            }
-
-            .storyteller-preview-confidence {
-                padding: 0.25em 0.5em;
-                border-radius: 3px;
-                font-size: 0.85em;
-                font-weight: 600;
-            }
-
-            .storyteller-confidence-high {
-                background: var(--text-success);
-                color: white;
-            }
-
-            .storyteller-confidence-medium {
-                background: var(--text-warning);
-                color: var(--text-on-accent);
-            }
-
-            .storyteller-confidence-low {
-                background: var(--text-error);
-                color: white;
-            }
-
-            .storyteller-preview-details {
-                margin-left: 0.5em;
-                font-size: 0.9em;
-            }
-
-            .storyteller-preview-detail {
-                margin-bottom: 0.35em;
-                color: var(--text-muted);
-            }
-
-            .storyteller-preview-source {
-                font-style: italic;
-            }
-
-            .storyteller-preview-method {
-                font-family: var(--font-monospace);
-                font-size: 0.85em;
-            }
-
-            .storyteller-preview-warnings,
-            .storyteller-preview-errors {
-                margin-top: 0.75em;
-                padding-top: 0.75em;
-                border-top: 1px solid var(--background-modifier-border);
-            }
-
-            .storyteller-preview-warning-item {
-                color: var(--text-warning);
-                margin-bottom: 0.25em;
-            }
-
-            .storyteller-preview-error-item {
-                color: var(--text-error);
-                margin-bottom: 0.25em;
-                font-weight: 600;
-            }
-
-            .storyteller-empty-state {
-                text-align: center;
-                padding: 3em;
-                color: var(--text-muted);
-                font-style: italic;
-            }
-        `;
-        this.contentEl.appendChild(styleEl);
-    }
-
     onClose(): void {
         const { contentEl } = this;
         contentEl.empty();

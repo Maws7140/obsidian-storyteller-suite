@@ -8,7 +8,7 @@ export interface DashboardStateSnapshot {
 export function captureDashboardStateSnapshot(searchInput: HTMLInputElement | null): DashboardStateSnapshot {
     return {
         searchValue: searchInput?.value ?? '',
-        searchWasFocused: document.activeElement === searchInput,
+        searchWasFocused: activeDocument.activeElement === searchInput,
     };
 }
 

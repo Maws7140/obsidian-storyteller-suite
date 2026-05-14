@@ -1,11 +1,11 @@
 // Timeline View - Full workspace view for timeline visualization
 // Provides a dedicated panel for viewing and interacting with the story timeline
 
-import { ItemView, WorkspaceLeaf, setIcon, Menu, DropdownComponent, Notice } from 'obsidian';
+import { ItemView, WorkspaceLeaf, setIcon, Menu, DropdownComponent, Notice, ViewStateResult } from 'obsidian';
 import StorytellerSuitePlugin from '../main';
 import { t } from '../i18n/strings';
 import { TimelineRenderer, TimelineFilters } from '../utils/TimelineRenderer';
-import { TimelineUIState, Event } from '../types';
+import { TimelineUIFilters, TimelineUIState } from '../types';
 import { TimelineTrackManager } from '../utils/TimelineTrackManager';
 import { TimelineControlsBuilder, TimelineControlCallbacks } from '../utils/TimelineControlsBuilder';
 import { TimelineFilterBuilder, TimelineFilterCallbacks } from '../utils/TimelineFilterBuilder';
@@ -16,6 +16,34 @@ export const VIEW_TYPE_TIMELINE = 'storyteller-timeline-view';
 
 // Re-export TimelineUIState as TimelineViewState for backward compatibility
 export type TimelineViewState = TimelineUIState;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isGroupMode(value: unknown): value is TimelineUIState['groupMode'] {
+    return value === 'none' || value === 'location' || value === 'group' || value === 'character' || value === 'track';
+}
+
+function asStringSet(value: unknown): Set<string> | undefined {
+    return Array.isArray(value) ? new Set(value.map(item => String(item))) : undefined;
+}
+
+function restoreFilters(value: unknown): TimelineUIFilters {
+    if (!isRecord(value)) {
+        return {};
+    }
+
+    return {
+        milestonesOnly: typeof value.milestonesOnly === 'boolean' ? value.milestonesOnly : undefined,
+        characters: asStringSet(value.characters),
+        locations: asStringSet(value.locations),
+        groups: asStringSet(value.groups),
+        tags: asStringSet(value.tags),
+        eras: asStringSet(value.eras),
+        forkId: typeof value.forkId === 'string' ? value.forkId : undefined
+    };
+}
 
 /**
  * TimelineView provides a full-screen dedicated view for the timeline
@@ -68,7 +96,7 @@ export class TimelineView extends ItemView {
                 this.updateFooterStatus();
                 this.updateSearchDropdown();
             },
-            onRendererUpdate: () => this.buildTimeline(),
+            onRendererUpdate: () => { void this.buildTimeline(); },
             getRenderer: () => this.renderer,
             getEvents: () => this.plugin.listEvents()
         };
@@ -121,7 +149,7 @@ export class TimelineView extends ItemView {
         this.advancedFiltersEl = container.createDiv('storyteller-timeline-advanced-filters');
         this.filterChipsEl = container.createDiv('storyteller-filter-chips');
         this.timelineContainer = container.createDiv('storyteller-timeline-container');
-        this.timelineContainer.style.minHeight = '260px';
+        this.timelineContainer.setCssStyles({ minHeight: '260px' });
         this.footerEl = container.createDiv('storyteller-timeline-footer');
 
         // Build each section
@@ -160,7 +188,7 @@ export class TimelineView extends ItemView {
         // Add main timeline option
         const mainOption = forkSelect.createEl('option', {
             value: 'main',
-            text: 'Main Timeline'
+            text: 'Main timeline'
         });
         mainOption.selected = true;
 
@@ -172,11 +200,11 @@ export class TimelineView extends ItemView {
                 text: fork.name
             });
             if (fork.color) {
-                option.style.color = fork.color;
+                option.setCssStyles({ color: fork.color });
             }
         });
 
-        forkSelect.addEventListener('change', async () => {
+        forkSelect.addEventListener('change', () => { void (async () => {
             const selectedFork = forkSelect.value;
             this.currentState.currentForkId = selectedFork === 'main' ? undefined : selectedFork;
 
@@ -200,7 +228,7 @@ export class TimelineView extends ItemView {
             // Rebuild timeline with new filters
             await this.buildTimeline();
             this.updateFooterStatus();
-        });
+        })(); });
 
         // Conflict warnings badge (if conflicts exist)
         const conflicts = this.plugin.settings.timelineConflicts || [];
@@ -216,7 +244,7 @@ export class TimelineView extends ItemView {
             const badgeIcon = conflictBadge.createSpan('storyteller-badge-icon');
             setIcon(badgeIcon, 'alert-triangle');
             conflictBadge.createSpan({ text: String(activeConflicts.length), cls: 'storyteller-badge-count' });
-            conflictBadge.addEventListener('click', async () => {
+            conflictBadge.addEventListener('click', () => { void (async () => {
                 const { ConflictListModal } = await import('../modals/ConflictListModal');
                 new ConflictListModal(
                     this.app,
@@ -226,7 +254,7 @@ export class TimelineView extends ItemView {
                         await this.refresh();
                     }
                 ).open();
-            });
+            })(); });
         }
 
         // Use shared controls for zoom and navigation buttons
@@ -249,20 +277,20 @@ export class TimelineView extends ItemView {
             }
         });
         setIcon(manageErasBtn, 'calendar-range');
-        manageErasBtn.addEventListener('click', async () => {
+        manageErasBtn.addEventListener('click', () => { void (async () => {
             const { EraListModal } = await import('../modals/EraListModal');
             new EraListModal(this.app, this.plugin).open();
-        });
+        })(); });
 
         // Track selector dropdown
         const trackSelectorContainer = this.toolbarEl.createDiv('storyteller-track-selector');
-        const trackLabel = trackSelectorContainer.createEl('span', {
+        trackSelectorContainer.createEl('span', {
             text: 'Track: ',
             cls: 'storyteller-track-label'
         });
 
         const trackDropdown = new DropdownComponent(trackSelectorContainer);
-        trackDropdown.addOption('', 'All Events (Global)');
+        trackDropdown.addOption('', 'All events (global)');
 
         // Populate tracks from settings
         const tracks = this.plugin.settings.timelineTracks || [];
@@ -286,11 +314,11 @@ export class TimelineView extends ItemView {
             }
         });
         setIcon(scenesBtn, 'pencil');
-        scenesBtn.addEventListener('click', async () => {
+        scenesBtn.addEventListener('click', () => { void (async () => {
             this.showScenes = !this.showScenes;
             scenesBtn.toggleClass('is-active', this.showScenes);
             this.renderer?.setShowScenes(this.showScenes);
-        });
+        })(); });
 
         // Vault notes toggle button
         const notesBtn = this.toolbarEl.createEl('button', {
@@ -301,11 +329,11 @@ export class TimelineView extends ItemView {
             }
         });
         setIcon(notesBtn, 'file');
-        notesBtn.addEventListener('click', async () => {
+        notesBtn.addEventListener('click', () => { void (async () => {
             this.showWatchedNotes = !this.showWatchedNotes;
             notesBtn.toggleClass('is-active', this.showWatchedNotes);
             this.renderer?.setShowWatchedNotes(this.showWatchedNotes);
-        });
+        })(); });
 
         // Export button
         const exportBtn = this.toolbarEl.createEl('button', {
@@ -396,7 +424,7 @@ export class TimelineView extends ItemView {
         filterBtn.addEventListener('click', () => {
             this.advancedFiltersExpanded = !this.advancedFiltersExpanded;
             if (this.advancedFiltersContent) {
-                this.advancedFiltersContent.style.display = this.advancedFiltersExpanded ? 'block' : 'none';
+                this.advancedFiltersContent.setCssStyles({ display: this.advancedFiltersExpanded ? 'block' : 'none' });
             }
         });
     }
@@ -410,7 +438,7 @@ export class TimelineView extends ItemView {
 
         // Content section (initially hidden)
         this.advancedFiltersContent = this.advancedFiltersEl.createDiv('storyteller-advanced-filters-content');
-        this.advancedFiltersContent.style.display = this.advancedFiltersExpanded ? 'block' : 'none';
+        this.advancedFiltersContent.setCssStyles({ display: this.advancedFiltersExpanded ? 'block' : 'none' });
 
         // Get events for filter population
         const events = await this.plugin.listEvents();
@@ -425,7 +453,7 @@ export class TimelineView extends ItemView {
     private async buildTimeline(): Promise<void> {
         if (!this.timelineContainer) return;
         this.timelineContainer.empty();
-        this.timelineContainer.style.flexGrow = '1';
+        this.timelineContainer.setCssStyles({ flexGrow: '1' });
 
         // Initialize timeline renderer
         this.renderer = new TimelineRenderer(this.timelineContainer, this.plugin, {
@@ -439,7 +467,7 @@ export class TimelineView extends ItemView {
             defaultGanttDuration: this.plugin.settings.ganttDefaultDuration ?? 1,
             showProgressBars: this.plugin.settings.ganttShowProgressBars ?? true,
             dependencyArrowStyle: this.plugin.settings.ganttArrowStyle ?? 'solid',
-            onConflictsDetected: (conflicts) => this.handleConflicts(conflicts)
+            onConflictsDetected: (conflicts) => { void this.handleConflicts(conflicts); }
         });
 
         try {
@@ -450,7 +478,7 @@ export class TimelineView extends ItemView {
             console.error('Storyteller Suite: Timeline view failed to initialize.', error);
             this.timelineContainer.empty();
             const errorEl = this.timelineContainer.createDiv('storyteller-timeline-error');
-            errorEl.createEl('h3', { text: 'Timeline Error' });
+            errorEl.createEl('h3', { text: 'Timeline error' });
             errorEl.createEl('p', { text: 'Failed to initialize timeline data. Check developer console for details.' });
             new Notice('Timeline failed to load. Check console for details.');
         }
@@ -679,13 +707,13 @@ export class TimelineView extends ItemView {
         menu.addItem((item) => {
             item.setTitle(t('exportAsPNG'))
                 .setIcon('image')
-                .onClick(() => { this.renderer?.exportAsImage('png'); });
+                .onClick(() => { void this.renderer?.exportAsImage('png'); });
         });
 
         menu.addItem((item) => {
             item.setTitle(t('exportAsJPG'))
                 .setIcon('image')
-                .onClick(() => { this.renderer?.exportAsImage('jpg'); });
+                .onClick(() => { void this.renderer?.exportAsImage('jpg'); });
         });
 
         menu.addSeparator();
@@ -693,19 +721,19 @@ export class TimelineView extends ItemView {
         menu.addItem((item) => {
             item.setTitle('Export as CSV')
                 .setIcon('table')
-                .onClick(() => { this.renderer?.exportAsCsv(); });
+                .onClick(() => { void this.renderer?.exportAsCsv(); });
         });
 
         menu.addItem((item) => {
             item.setTitle('Export as JSON')
                 .setIcon('braces')
-                .onClick(() => { this.renderer?.exportAsJson(); });
+                .onClick(() => { void this.renderer?.exportAsJson(); });
         });
 
         menu.addItem((item) => {
             item.setTitle('Export as Markdown')
                 .setIcon('file-text')
-                .onClick(() => { this.renderer?.exportAsMarkdown(); });
+                .onClick(() => { void this.renderer?.exportAsMarkdown(); });
         });
 
         menu.showAtMouseEvent(new MouseEvent('click', {
@@ -747,46 +775,36 @@ export class TimelineView extends ItemView {
     /**
      * Set view state from persistence
      */
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    async setState(state: any, result: any): Promise<void> {
+     
+    async setState(state: unknown, result: ViewStateResult): Promise<void> {
         await super.setState(state, result);
 
-        if (state) {
+        if (isRecord(state)) {
+            const filters = restoreFilters(state.filters);
             this.currentState = {
-                ganttMode: state.ganttMode ?? false,
-                groupMode: state.groupMode ?? 'none',
-                stackEnabled: state.stackEnabled ?? true,
-                density: state.density ?? 50,
-                editMode: state.editMode ?? false,
-                filters: state.filters || {},
-                showEras: state.showEras ?? false,
-                narrativeOrder: state.narrativeOrder ?? false
+                ganttMode: state.ganttMode === true,
+                groupMode: isGroupMode(state.groupMode) ? state.groupMode : 'none',
+                stackEnabled: typeof state.stackEnabled === 'boolean' ? state.stackEnabled : true,
+                density: typeof state.density === 'number' ? state.density : 50,
+                editMode: state.editMode === true,
+                filters,
+                showEras: state.showEras === true,
+                narrativeOrder: state.narrativeOrder === true
             };
 
-            // Restore Sets from arrays if needed
-            if (state.filters) {
-                if (state.filters.characters && Array.isArray(state.filters.characters)) {
-                    this.currentState.filters.characters = new Set(state.filters.characters);
-                }
-                if (state.filters.locations && Array.isArray(state.filters.locations)) {
-                    this.currentState.filters.locations = new Set(state.filters.locations);
-                }
-                if (state.filters.groups && Array.isArray(state.filters.groups)) {
-                    this.currentState.filters.groups = new Set(state.filters.groups);
-                }
-            }
-
             // Restore visible window range if available
-            if (state.visibleRange && this.renderer) {
+            if (isRecord(state.visibleRange) && this.renderer) {
                 try {
-                    const start = new Date(state.visibleRange.start);
-                    const end = new Date(state.visibleRange.end);
-                    // Use setTimeout to ensure timeline is fully initialized
-                    setTimeout(() => {
-                        if (this.renderer) {
-                            this.renderer.setVisibleRange(start, end);
-                        }
-                    }, 100);
+                    if (typeof state.visibleRange.start === 'string' && typeof state.visibleRange.end === 'string') {
+                        const start = new Date(state.visibleRange.start);
+                        const end = new Date(state.visibleRange.end);
+                        // Use setTimeout to ensure timeline is fully initialized
+                        window.setTimeout(() => {
+                            if (this.renderer) {
+                                this.renderer.setVisibleRange(start, end);
+                            }
+                        }, 100);
+                    }
                 } catch (error) {
                     console.warn('Timeline: Could not restore visible range from state:', error);
                 }

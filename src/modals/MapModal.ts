@@ -1,12 +1,12 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
-import { App, Setting, Notice, TextAreaComponent, TextComponent, ButtonComponent, DropdownComponent, Modal, parseYaml } from 'obsidian';
+ 
+import { App, Setting, Notice, DropdownComponent, Modal, parseYaml } from 'obsidian';
 import { StoryMap as Map } from '../types';
 import { parseSectionsFromMarkdown } from '../yaml/EntitySections';
 import StorytellerSuitePlugin from '../main';
 import { t } from '../i18n/strings';
 import { ResponsiveModal } from './ResponsiveModal';
 import { TemplatePickerModal } from './TemplatePickerModal';
-import { Template } from '../templates/TemplateTypes';
+import type { Template, TemplateEntity, TemplateVariableValue } from '../templates/TemplateTypes';
 import { LocationSuggestModal } from './LocationSuggestModal';
 import { MapHierarchyManager } from '../utils/MapHierarchyManager';
 import { addImageSelectionButtons } from '../utils/ImageSelectionHelper';
@@ -15,6 +15,10 @@ import { EntityGroupSelector } from './entity/EntityGroupSelector';
 
 export type MapModalSubmitCallback = (map: Map) => Promise<void>;
 export type MapModalDeleteCallback = (map: Map) => Promise<void>;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
 
 export class MapModal extends ResponsiveModal {
     map: Map;
@@ -70,7 +74,7 @@ export class MapModal extends ResponsiveModal {
         this.modalEl.addClass('storyteller-map-modal');
     }
 
-    async onOpen() {
+    onOpen() { void (async () => {
         super.onOpen();
 
         const { contentEl, footerEl } = this.createStructuredModalLayout();
@@ -98,7 +102,7 @@ export class MapModal extends ResponsiveModal {
                                     this.app,
                                     this.plugin,
                                     defaultTemplate,
-                                    async (variableValues, entityFileNames) => {
+                                    (variableValues, entityFileNames) => { void (async () => {
                                         try {
                                             await this.applyTemplateToMapWithVariables(defaultTemplate, variableValues);
                                             new Notice('Default template applied');
@@ -112,12 +116,12 @@ export class MapModal extends ResponsiveModal {
                                             new Notice('Error applying default template');
                                         }
                                         safeResolve();
-                                    }
-                                );
+                                    })(); }
+                                ) as { onClose: () => void; open: () => void };
                                 // Attach onClose handler to resolve when modal is dismissed/cancelled
-                                const originalOnClose = modal.onClose.bind(modal);
+                                const originalOnClose = modal.onClose;
                                 modal.onClose = () => {
-                                    originalOnClose();
+                                    originalOnClose.call(modal);
                                     safeResolve();
                                 };
                                 modal.open();
@@ -147,27 +151,27 @@ export class MapModal extends ResponsiveModal {
         // Template Selector (for new maps)
         if (this.isNew) {
             new Setting(contentEl)
-                .setName('Start from Template')
+                .setName('Start from template')
                 .setDesc('Optionally start with a pre-configured map template')
                 .addButton(button => button
-                    .setButtonText('Choose Template')
+                    .setButtonText('Choose template')
                     .setTooltip('Select a map template')
                     .onClick(() => {
                         new TemplatePickerModal(
                             this.app,
                             this.plugin,
-                            async (template: Template) => {
+                            (template: Template) => { void (async () => {
                                 // Check if template has variables or multiple entities
                                 if ((template.variables && template.variables.length > 0) ||
                                     this.hasMultipleEntities(template)) {
                                     // Use TemplateApplicationModal for variable collection
                                     await new Promise<void>((resolve) => {
-                                        import('./TemplateApplicationModal').then(({ TemplateApplicationModal }) => {
+                                        void import('./TemplateApplicationModal').then(({ TemplateApplicationModal }) => {
                                             new TemplateApplicationModal(
                                                 this.app,
                                                 this.plugin,
                                                 template,
-                                                async (variableValues, entityFileNames) => {
+                                                (variableValues, entityFileNames) => { void (async () => {
                                                     try {
                                                         await this.applyTemplateToMapWithVariables(template, variableValues);
                                                         new Notice(`Template "${template.name}" applied`);
@@ -177,7 +181,7 @@ export class MapModal extends ResponsiveModal {
                                                         new Notice('Error applying template');
                                                     }
                                                     resolve();
-                                                }
+                                                })(); }
                                             ).open();
                                         });
                                     });
@@ -187,8 +191,8 @@ export class MapModal extends ResponsiveModal {
                                     this.refresh();
                                     new Notice(`Template "${template.name}" applied`);
                                 }
-                            },
-                            'map' as any
+                            })(); },
+                            'map'
                         ).open();
                     })
                 );
@@ -223,12 +227,12 @@ export class MapModal extends ResponsiveModal {
 
         // Map Type
         new Setting(contentEl)
-            .setName('Map Type')
+            .setName('Map type')
             .setDesc('Image-based maps use custom images, real-world maps use tile servers')
             .addDropdown((dropdown: DropdownComponent) => {
                 dropdown
-                    .addOption('image', 'Image Map')
-                    .addOption('real', 'Real-World Map')
+                    .addOption('image', 'Image map')
+                    .addOption('real', 'Real-world map')
                     .setValue(this.map.type || 'image')
                     .onChange((value: 'image' | 'real') => {
                         this.map.type = value;
@@ -248,13 +252,13 @@ export class MapModal extends ResponsiveModal {
                     .addOption('building', 'Building')
                     .addOption('custom', 'Custom')
                     .setValue(this.map.scale || 'custom')
-                    .onChange((value: any) => {
-                        this.map.scale = value;
+                    .onChange((value) => {
+                        this.map.scale = value as Map['scale'];
                     });
             });
 
         // Corresponding Location
-        contentEl.createEl('h3', { text: 'Corresponding Location' });
+        contentEl.createEl('h3', { text: 'Corresponding location' });
         const locationService = new (await import('../services/LocationService')).LocationService(this.plugin);
         
         // Get current location name for display
@@ -271,10 +275,10 @@ export class MapModal extends ResponsiveModal {
             .setDesc(`Every map has a corresponding location. This location represents the area shown on the map. Current: ${currentLocationName}`)
             .addButton(button => {
                 button
-                    .setButtonText('Select Location')
+                    .setButtonText('Select location')
                     .setIcon('map-pin')
                     .onClick(() => {
-                        new LocationSuggestModal(this.app, this.plugin, async (selectedLocation) => {
+                        new LocationSuggestModal(this.app, this.plugin, (selectedLocation) => { void (async () => {
                             if (selectedLocation) {
                                 this.map.correspondingLocationId = selectedLocation.id || selectedLocation.name;
                                 locationSetting.setDesc(`Every map has a corresponding location. This location represents the area shown on the map. Current: ${selectedLocation.name}`);
@@ -285,16 +289,16 @@ export class MapModal extends ResponsiveModal {
                                 locationSetting.setDesc(`Every map has a corresponding location. This location represents the area shown on the map. Current: None`);
                                 new Notice('Corresponding location cleared');
                             }
-                        }).open();
+                        })(); }).open();
                     });
             });
 
         // Image Map Configuration
         if (this.map.type === 'image') {
-            contentEl.createEl('h3', { text: 'Image Map Settings' });
+            contentEl.createEl('h3', { text: 'Image map settings' });
 
             const backgroundImageSetting = new Setting(contentEl)
-                .setName('Background Image')
+                .setName('Background image')
                 .setDesc('')
                 .then(setting => {
                     setting.descEl.addClass('storyteller-modal-setting-vertical');
@@ -343,7 +347,7 @@ export class MapModal extends ResponsiveModal {
 
         // Real-World Map Configuration
         if (this.map.type === 'real') {
-            contentEl.createEl('h3', { text: 'Real-World Map Settings' });
+            contentEl.createEl('h3', { text: 'Real-world map settings' });
 
             new Setting(contentEl)
                 .setName('Latitude')
@@ -366,7 +370,7 @@ export class MapModal extends ResponsiveModal {
                     }));
 
             new Setting(contentEl)
-                .setName('Default Zoom')
+                .setName('Default zoom')
                 .setDesc('Initial zoom level')
                 .addText(text => text
                     .setValue(this.map.defaultZoom?.toString() || '13')
@@ -376,7 +380,7 @@ export class MapModal extends ResponsiveModal {
                     }));
 
             new Setting(contentEl)
-                .setName('Tile Server')
+                .setName('Tile server')
                 .setDesc('Custom tile server URL (optional)')
                 .addText(text => text
                     .setValue(this.map.tileServer || '')
@@ -385,7 +389,7 @@ export class MapModal extends ResponsiveModal {
                     }));
 
             new Setting(contentEl)
-                .setName('Dark Mode')
+                .setName('Dark mode')
                 .setDesc('Use dark mode tiles')
                 .addToggle(toggle => toggle
                     .setValue(this.map.darkMode || false)
@@ -395,10 +399,10 @@ export class MapModal extends ResponsiveModal {
         }
 
         // Common Map Settings
-        contentEl.createEl('h3', { text: 'Map Settings' });
+        contentEl.createEl('h3', { text: 'Map settings' });
 
         new Setting(contentEl)
-            .setName('Min Zoom')
+            .setName('Min zoom')
             .setDesc('Minimum zoom level')
             .addText(text => text
                 .setValue(this.map.minZoom?.toString() || '')
@@ -408,7 +412,7 @@ export class MapModal extends ResponsiveModal {
                 }));
 
         new Setting(contentEl)
-            .setName('Max Zoom')
+            .setName('Max zoom')
             .setDesc('Maximum zoom level')
             .addText(text => text
                 .setValue(this.map.maxZoom?.toString() || '')
@@ -419,7 +423,7 @@ export class MapModal extends ResponsiveModal {
 
         // Profile Image
         const profileImageSetting = new Setting(contentEl)
-            .setName('Thumbnail Image')
+            .setName('Thumbnail image')
             .setDesc('')
             .then(setting => {
                 setting.descEl.addClass('storyteller-modal-setting-vertical');
@@ -471,29 +475,30 @@ export class MapModal extends ResponsiveModal {
                     return;
                 }
 
-                console.log('MapModal: Starting save process for map:', this.map.name);
+                console.debug('MapModal: Starting save process for map:', this.map.name);
                 try {
                     await this.autoLinkMapAndLocation();
-                    console.log('MapModal: Auto-linking completed');
+                    console.debug('MapModal: Auto-linking completed');
                 } catch (linkError) {
                     console.error('MapModal: Auto-linking error (non-blocking):', linkError);
                 }
 
-                console.log('MapModal: Calling onSubmit');
+                console.debug('MapModal: Calling onSubmit');
                 const customFields = this.customFieldsEditor.getFields();
                 if (!customFields) {
                     return;
                 }
                 this.map.customFields = customFields;
                 await this.onSubmit(this.map);
-                console.log('MapModal: Save completed, closing modal');
+                console.debug('MapModal: Save completed, closing modal');
                 this.close();
             } catch (error) {
                 console.error('MapModal: Error during save:', error);
-                new Notice(`Error saving map: ${error.message || 'Unknown error'}`);
+                const message = error instanceof Error ? error.message : 'Unknown error';
+                new Notice(`Error saving map: ${message}`);
             }
         }, { cta: true });
-    }
+    })(); }
 
     onClose() {
         this.groupSelector.dispose();
@@ -536,14 +541,14 @@ export class MapModal extends ResponsiveModal {
                     // Set this map's parent to the parent location's map
                     if (this.map.parentMapId !== parentLocation.correspondingMapId) {
                         this.map.parentMapId = parentLocation.correspondingMapId;
-                        console.log(`Auto-linked parent map: ${parentLocation.correspondingMapId}`);
+                        console.debug(`Auto-linked parent map: ${parentLocation.correspondingMapId}`);
                     }
                 }
             } else {
                 // If location has no parent, this map should have no parent either
                 if (this.map.parentMapId) {
                     this.map.parentMapId = undefined;
-                    console.log('Cleared parent map (location has no parent)');
+                    console.debug('Cleared parent map (location has no parent)');
                 }
             }
 
@@ -564,20 +569,20 @@ export class MapModal extends ResponsiveModal {
 
                 if (childIdsChanged) {
                     this.map.childMapIds = childMapIds;
-                    console.log(`Auto-linked ${childMapIds.length} child map(s)`);
+                    console.debug(`Auto-linked ${childMapIds.length} child map(s)`);
                 }
             } else {
                 // No child locations, so no child maps
                 if (this.map.childMapIds && this.map.childMapIds.length > 0) {
                     this.map.childMapIds = [];
-                    console.log('Cleared child maps (location has no children)');
+                    console.debug('Cleared child maps (location has no children)');
                 }
             }
 
             // Save the location if it was updated
             if (locationUpdated) {
                 await this.plugin.saveLocation(location);
-                console.log(`Updated location ${location.name} with map reference`);
+                console.debug(`Updated location ${location.name} with map reference`);
             }
 
             // Validate the hierarchy
@@ -616,7 +621,7 @@ export class MapModal extends ResponsiveModal {
         await this.applyProcessedTemplateToMap(templateMap);
     }
 
-    private async applyTemplateToMapWithVariables(template: Template, variableValues: Record<string, any>): Promise<void> {
+    private async applyTemplateToMapWithVariables(template: Template, variableValues: Record<string, TemplateVariableValue>): Promise<void> {
         if (!template.entities.maps || template.entities.maps.length === 0) {
             new Notice('This template does not contain any maps');
             return;
@@ -642,20 +647,27 @@ export class MapModal extends ResponsiveModal {
         await this.applyProcessedTemplateToMap(templateMap);
     }
 
-    private async applyProcessedTemplateToMap(templateMap: any): Promise<void> {
-        const { templateId, yamlContent, markdownContent, sectionContent, customYamlFields, id, filePath, ...rest } = templateMap as any;
+    private async applyProcessedTemplateToMap(templateMap: TemplateEntity<Map>): Promise<void> {
+        const { yamlContent, markdownContent, sectionContent, customYamlFields } = templateMap;
 
-        let fields: any = { ...rest };
+        let fields: Record<string, unknown> = { ...templateMap };
+        delete fields.templateId;
+        delete fields.yamlContent;
+        delete fields.markdownContent;
+        delete fields.sectionContent;
+        delete fields.customYamlFields;
+        delete fields.id;
+        delete fields.filePath;
         let allTemplateSections: Record<string, string> = {};
 
         // Handle new format: yamlContent (parse YAML string)
         if (yamlContent && typeof yamlContent === 'string') {
             try {
-                const parsed = parseYaml(yamlContent);
-                if (parsed && typeof parsed === 'object') {
+                const parsed = parseYaml(yamlContent) as unknown;
+                if (isRecord(parsed)) {
                     fields = { ...fields, ...parsed };
                 }
-                console.log('[MapModal] Parsed YAML fields:', parsed);
+                console.debug('[MapModal] Parsed YAML fields:', parsed);
             } catch (error) {
                 console.warn('[MapModal] Failed to parse yamlContent:', error);
             }
@@ -675,16 +687,16 @@ export class MapModal extends ResponsiveModal {
                     fields.description = parsedSections['Description'];
                 }
 
-                console.log('[MapModal] Parsed markdown sections:', parsedSections);
+                console.debug('[MapModal] Parsed markdown sections:', parsedSections);
             } catch (error) {
                 console.warn('[MapModal] Failed to parse markdownContent:', error);
             }
         } else if (sectionContent) {
             // Old format: apply section content
-            for (const [k, v] of Object.entries(sectionContent)) { allTemplateSections[k as string] = v as string; }
+            for (const [k, v] of Object.entries(sectionContent)) { allTemplateSections[k] = v; }
             for (const [sectionName, content] of Object.entries(sectionContent)) {
                 const propName = sectionName.toLowerCase().replace(/\s+/g, '');
-                (fields as any)[propName] = content;
+                fields[propName] = content;
             }
         }
 
@@ -698,7 +710,7 @@ export class MapModal extends ResponsiveModal {
                 configurable: true
             });
         }
-        console.log('[MapModal] Final map after template:', this.map);
+        console.debug('[MapModal] Final map after template:', this.map);
 
         // Clear entity links as they reference template entities
         this.map.linkedLocations = [];
@@ -712,11 +724,12 @@ export class MapModal extends ResponsiveModal {
             this.map.markers = [];
         }
     }
-
+
+
    private async confirmDelete(): Promise<boolean> {
         return new Promise((resolve) => {
             const modal = new Modal(this.app);
-            modal.setTitle('Confirm Delete');
+            modal.setTitle('Confirm delete');
             modal.contentEl.createEl('p', {
                 text: `Are you sure you want to delete "${this.map.name}"? This action cannot be undone.`
             });
@@ -742,7 +755,7 @@ export class MapModal extends ResponsiveModal {
 
     refresh(): void {
         this.onClose();
-        this.onOpen();
+        void this.onOpen();
     }
 }
 

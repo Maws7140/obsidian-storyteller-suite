@@ -2,6 +2,7 @@ import { App, FuzzySuggestModal, prepareFuzzySearch, FuzzyMatch } from 'obsidian
 import { GalleryImage } from '../types';
 import StorytellerSuitePlugin from '../main';
 import { t } from '../i18n/strings';
+import { scheduleSuggestRefresh } from './utils/SuggestModalRefresh';
 
 const IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'avif']);
 
@@ -20,7 +21,7 @@ export class GalleryImageSuggestModal extends FuzzySuggestModal<GalleryImage> {
     }
 
     async onOpen() {
-        super.onOpen();
+        void super.onOpen();
         await this.plugin.syncGalleryWatchFolder();
 
         // Registered gallery images (have titles, tags, etc.)
@@ -41,21 +42,8 @@ export class GalleryImageSuggestModal extends FuzzySuggestModal<GalleryImage> {
 
         this.images = [...registered, ...vaultImages];
 
-        // Force-refresh suggestions so initial list shows without typing
-        setTimeout(() => {
-            if (this.inputEl) {
-                try { (this as any).setQuery?.(''); } catch {}
-                try { this.inputEl.dispatchEvent(new window.Event('input')); } catch {}
-            }
-            try { (this as any).onInputChanged?.(); } catch {}
-        }, 0);
-        setTimeout(() => {
-            if (this.inputEl) {
-                try { (this as any).setQuery?.(''); } catch {}
-                try { this.inputEl.dispatchEvent(new window.Event('input')); } catch {}
-            }
-            try { (this as any).onInputChanged?.(); } catch {}
-        }, 50);
+        // Force-refresh suggestions so initial list shows without typing.
+        scheduleSuggestRefresh(this);
     }
 
     // Show all items initially; fuzzy-match when there is a query
@@ -69,7 +57,7 @@ export class GalleryImageSuggestModal extends FuzzySuggestModal<GalleryImage> {
             .map((img) => {
                 const text = this.getItemText(img);
                 const match = fuzzy(text);
-                return match ? ({ item: img, match } as FuzzyMatch<GalleryImage>) : null;
+                return match ? ({ item: img, match }) : null;
             })
             .filter((fm): fm is FuzzyMatch<GalleryImage> => !!fm);
     }

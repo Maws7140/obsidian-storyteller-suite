@@ -4,13 +4,17 @@ import type StorytellerSuitePlugin from '../main';
 import { ResponsiveModal } from './ResponsiveModal';
 import { addImageSelectionButtons } from '../utils/ImageSelectionHelper';
 import { TemplatePickerModal } from './TemplatePickerModal';
-import { Template } from '../templates/TemplateTypes';
+import type { Template, TemplateEntity, TemplateVariableValue } from '../templates/TemplateTypes';
 import { t } from '../i18n/strings';
 import { parseSectionsFromMarkdown } from '../yaml/EntitySections';
 import { EntityCustomFieldsEditor } from './entity/EntityCustomFieldsEditor';
 
 export type EconomyModalSubmitCallback = (economy: Economy) => Promise<void>;
 export type EconomyModalDeleteCallback = (economy: Economy) => Promise<void>;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
 
 /**
  * Modal for creating and editing economic systems
@@ -68,7 +72,7 @@ export class EconomyModal extends ResponsiveModal {
         this.modalEl.addClass('storyteller-economy-modal');
     }
 
-    async onOpen(): Promise<void> {
+    onOpen(): void { void (async () => {
         super.onOpen();
 
         const { contentEl, footerEl } = this.createStructuredModalLayout();
@@ -87,12 +91,12 @@ export class EconomyModal extends ResponsiveModal {
                     if ((defaultTemplate.variables && defaultTemplate.variables.length > 0) ||
                         this.hasMultipleEntities(defaultTemplate)) {
                         await new Promise<void>((resolve) => {
-                            import('./TemplateApplicationModal').then(({ TemplateApplicationModal }) => {
+                            void import('./TemplateApplicationModal').then(({ TemplateApplicationModal }) => {
                                 new TemplateApplicationModal(
                                     this.app,
                                     this.plugin,
                                     defaultTemplate,
-                                    async (variableValues, entityFileNames) => {
+                                    (variableValues, entityFileNames) => { void (async () => {
                                         try {
                                             await this.applyTemplateToEconomyWithVariables(defaultTemplate, variableValues);
                                             new Notice('Default template applied');
@@ -102,7 +106,7 @@ export class EconomyModal extends ResponsiveModal {
                                             new Notice('Error applying default template');
                                         }
                                         resolve();
-                                    }
+                                    })(); }
                                 ).open();
                             });
                         });
@@ -132,18 +136,18 @@ export class EconomyModal extends ResponsiveModal {
                         new TemplatePickerModal(
                             this.app,
                             this.plugin,
-                            async (template: Template) => {
+                            (template: Template) => { void (async () => {
                                 // Check if template has variables or multiple entities
                                 if ((template.variables && template.variables.length > 0) ||
                                     this.hasMultipleEntities(template)) {
                                     // Use TemplateApplicationModal for variable collection
                                     await new Promise<void>((resolve) => {
-                                        import('./TemplateApplicationModal').then(({ TemplateApplicationModal }) => {
+                                        void import('./TemplateApplicationModal').then(({ TemplateApplicationModal }) => {
                                             new TemplateApplicationModal(
                                                 this.app,
                                                 this.plugin,
                                                 template,
-                                                async (variableValues, entityFileNames) => {
+                                                (variableValues, entityFileNames) => { void (async () => {
                                                     try {
                                                         await this.applyTemplateToEconomyWithVariables(template, variableValues);
                                                         new Notice(t('templateApplied', template.name));
@@ -153,7 +157,7 @@ export class EconomyModal extends ResponsiveModal {
                                                         new Notice('Error applying template');
                                                     }
                                                     resolve();
-                                                }
+                                                })(); }
                                             ).open();
                                         });
                                     });
@@ -163,7 +167,7 @@ export class EconomyModal extends ResponsiveModal {
                                     this.refresh();
                                     new Notice(t('templateApplied', template.name));
                                 }
-                            },
+                            })(); },
                             'economy'
                         ).open();
                     })
@@ -246,7 +250,7 @@ export class EconomyModal extends ResponsiveModal {
                 text.setValue(this.economy.description || '')
                     .onChange(value => this.economy.description = value);
                 text.inputEl.rows = 4;
-                text.inputEl.style.width = '100%';
+                text.inputEl.setCssStyles({ width: '100%' });
             });
 
         // Industries (Markdown Section)
@@ -258,7 +262,7 @@ export class EconomyModal extends ResponsiveModal {
                 text.setValue(this.economy.industries || '')
                     .onChange(value => this.economy.industries = value);
                 text.inputEl.rows = 4;
-                text.inputEl.style.width = '100%';
+                text.inputEl.setCssStyles({ width: '100%' });
             });
 
         // Taxation (Markdown Section)
@@ -270,7 +274,7 @@ export class EconomyModal extends ResponsiveModal {
                 text.setValue(this.economy.taxation || '')
                     .onChange(value => this.economy.taxation = value);
                 text.inputEl.rows = 3;
-                text.inputEl.style.width = '100%';
+                text.inputEl.setCssStyles({ width: '100%' });
             });
 
         // --- Linked Characters ---
@@ -296,7 +300,7 @@ export class EconomyModal extends ResponsiveModal {
             .setName('Add character')
             .addDropdown(dd => {
                 dd.addOption('', '— select character —');
-                allCharacters.forEach(c => dd.addOption(c.name, c.name));
+                allCharacters.forEach(c => { dd.addOption(c.name, c.name); });
                 dd.onChange(val => {
                     if (val && !(this.economy.linkedCharacters ?? []).includes(val)) {
                         if (!Array.isArray(this.economy.linkedCharacters)) this.economy.linkedCharacters = [];
@@ -330,7 +334,7 @@ export class EconomyModal extends ResponsiveModal {
             .setName('Add location')
             .addDropdown(dd => {
                 dd.addOption('', '— select location —');
-                allLocations.forEach(l => dd.addOption(l.name, l.name));
+                allLocations.forEach(l => { dd.addOption(l.name, l.name); });
                 dd.onChange(val => {
                     if (val && !(this.economy.linkedLocations ?? []).includes(val)) {
                         if (!Array.isArray(this.economy.linkedLocations)) this.economy.linkedLocations = [];
@@ -364,7 +368,7 @@ export class EconomyModal extends ResponsiveModal {
             .setName('Add culture')
             .addDropdown(dd => {
                 dd.addOption('', '— select culture —');
-                allCultures.forEach(c => dd.addOption(c.name, c.name));
+                allCultures.forEach(c => { dd.addOption(c.name, c.name); });
                 dd.onChange(val => {
                     if (val && !(this.economy.linkedCultures ?? []).includes(val)) {
                         if (!Array.isArray(this.economy.linkedCultures)) this.economy.linkedCultures = [];
@@ -401,7 +405,7 @@ export class EconomyModal extends ResponsiveModal {
             await this.onSubmit(this.economy);
             this.close();
         }, { cta: true });
-    }
+    })(); }
 
     private hasMultipleEntities(template: Template): boolean {
         let entityCount = 0;
@@ -424,7 +428,7 @@ export class EconomyModal extends ResponsiveModal {
         await this.applyProcessedTemplateToEconomy(templateEconomy);
     }
 
-    private async applyTemplateToEconomyWithVariables(template: Template, variableValues: Record<string, any>): Promise<void> {
+    private async applyTemplateToEconomyWithVariables(template: Template, variableValues: Record<string, TemplateVariableValue>): Promise<void> {
         if (!template.entities.economies || template.entities.economies.length === 0) {
             new Notice('This template does not contain any economies');
             return;
@@ -450,20 +454,27 @@ export class EconomyModal extends ResponsiveModal {
         await this.applyProcessedTemplateToEconomy(templateEconomy);
     }
 
-    private async applyProcessedTemplateToEconomy(templateEconomy: any): Promise<void> {
-        const { templateId, yamlContent, markdownContent, sectionContent, customYamlFields, id, filePath, ...rest } = templateEconomy as any;
+    private async applyProcessedTemplateToEconomy(templateEconomy: TemplateEntity<Economy>): Promise<void> {
+        const { yamlContent, markdownContent, sectionContent, customYamlFields } = templateEconomy;
 
-        let fields: any = { ...rest };
+        let fields: Record<string, unknown> = { ...templateEconomy };
+        delete fields.templateId;
+        delete fields.yamlContent;
+        delete fields.markdownContent;
+        delete fields.sectionContent;
+        delete fields.customYamlFields;
+        delete fields.id;
+        delete fields.filePath;
         let allTemplateSections: Record<string, string> = {};
 
         // Handle new format: yamlContent (parse YAML string)
         if (yamlContent && typeof yamlContent === 'string') {
             try {
-                const parsed = parseYaml(yamlContent);
-                if (parsed && typeof parsed === 'object') {
+                const parsed = parseYaml(yamlContent) as unknown;
+                if (isRecord(parsed)) {
                     fields = { ...fields, ...parsed };
                 }
-                console.log('[EconomyModal] Parsed YAML fields:', parsed);
+                console.debug('[EconomyModal] Parsed YAML fields:', parsed);
             } catch (error) {
                 console.warn('[EconomyModal] Failed to parse yamlContent:', error);
             }
@@ -489,16 +500,16 @@ export class EconomyModal extends ResponsiveModal {
                     fields.taxation = parsedSections['Taxation'];
                 }
 
-                console.log('[EconomyModal] Parsed markdown sections:', parsedSections);
+                console.debug('[EconomyModal] Parsed markdown sections:', parsedSections);
             } catch (error) {
                 console.warn('[EconomyModal] Failed to parse markdownContent:', error);
             }
         } else if (sectionContent) {
             // Old format: apply section content
-            for (const [k, v] of Object.entries(sectionContent)) { allTemplateSections[k as string] = v as string; }
+            for (const [k, v] of Object.entries(sectionContent)) { allTemplateSections[k] = v; }
             for (const [sectionName, content] of Object.entries(sectionContent)) {
                 const propName = sectionName.toLowerCase().replace(/\s+/g, '');
-                (fields as any)[propName] = content;
+                fields[propName] = content;
             }
         }
 
@@ -512,7 +523,7 @@ export class EconomyModal extends ResponsiveModal {
                 configurable: true
             });
         }
-        console.log('[EconomyModal] Final economy after template:', this.economy);
+        console.debug('[EconomyModal] Final economy after template:', this.economy);
 
         // Clear relationships as they reference template entities
         this.economy.linkedCharacters = [];

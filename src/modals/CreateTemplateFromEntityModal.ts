@@ -14,9 +14,11 @@ import {
 } from '../templates/TemplateTypes';
 import { EntityToTemplateConverter, ConversionOptions } from '../templates/EntityToTemplateConverter';
 
+type TemplateSourceEntity = { name?: string } & Record<string, unknown>;
+
 export class CreateTemplateFromEntityModal extends ResponsiveModal {
     private plugin: StorytellerSuitePlugin;
-    private entity: any;
+    private entity: TemplateSourceEntity;
     private entityType: TemplateEntityType;
     private onSubmit: (template: Template) => void;
 
@@ -35,7 +37,7 @@ export class CreateTemplateFromEntityModal extends ResponsiveModal {
     constructor(
         app: App,
         plugin: StorytellerSuitePlugin,
-        entity: any,
+        entity: TemplateSourceEntity,
         entityType: TemplateEntityType,
         onSubmit: (template: Template) => void
     ) {
@@ -58,7 +60,7 @@ export class CreateTemplateFromEntityModal extends ResponsiveModal {
 
         // Template name
         new Setting(contentEl)
-            .setName('Template Name')
+            .setName('Template name')
             .setDesc('Name for this template')
             .addText(text => text
                 .setPlaceholder('Enter template name')
@@ -85,7 +87,7 @@ export class CreateTemplateFromEntityModal extends ResponsiveModal {
             .setDesc('Genre classification for this template')
             .addDropdown(dropdown => dropdown
                 .addOption('fantasy', 'Fantasy')
-                .addOption('scifi', 'Sci-Fi')
+                .addOption('scifi', 'Sci-fi')
                 .addOption('mystery', 'Mystery')
                 .addOption('horror', 'Horror')
                 .addOption('romance', 'Romance')
@@ -102,9 +104,9 @@ export class CreateTemplateFromEntityModal extends ResponsiveModal {
             .setName('Category')
             .setDesc('Template scope')
             .addDropdown(dropdown => dropdown
-                .addOption('single-entity', 'Single Entity')
-                .addOption('entity-set', 'Entity Set')
-                .addOption('full-world', 'Full World')
+                .addOption('single-entity', 'Single entity')
+                .addOption('entity-set', 'Entity set')
+                .addOption('full-world', 'Full world')
                 .setValue(this.category)
                 .onChange(value => this.category = value as TemplateCategory)
             );
@@ -114,17 +116,17 @@ export class CreateTemplateFromEntityModal extends ResponsiveModal {
             .setName('Tags')
             .setDesc('Comma-separated tags for searching (e.g., king, ruler, noble)')
             .addText(text => text
-                .setPlaceholder('tag1, tag2, tag3')
+                .setPlaceholder('Tag1, tag2, tag3')
                 .setValue(this.tags)
                 .onChange(value => this.tags = value)
             );
 
         // Section header
-        contentEl.createEl('h3', { text: 'Include Options' });
+        contentEl.createEl('h3', { text: 'Include options' });
 
         // Include relationships
         new Setting(contentEl)
-            .setName('Include Relationships')
+            .setName('Include relationships')
             .setDesc('Include entity relationships in the template')
             .addToggle(toggle => toggle
                 .setValue(this.includeRelationships)
@@ -139,7 +141,7 @@ export class CreateTemplateFromEntityModal extends ResponsiveModal {
 
         // Include custom fields
         new Setting(contentEl)
-            .setName('Include Custom Fields')
+            .setName('Include custom fields')
             .setDesc('Include custom fields defined on this entity')
             .addToggle(toggle => toggle
                 .setValue(this.includeCustomFields)
@@ -148,7 +150,7 @@ export class CreateTemplateFromEntityModal extends ResponsiveModal {
 
         // Include profile images
         new Setting(contentEl)
-            .setName('Include Profile Image')
+            .setName('Include profile image')
             .setDesc('Include the entity\'s profile image in the template')
             .addToggle(toggle => toggle
                 .setValue(this.includeProfileImages)
@@ -162,10 +164,10 @@ export class CreateTemplateFromEntityModal extends ResponsiveModal {
         cancelButton.addEventListener('click', () => this.close());
 
         const createButton = buttonContainer.createEl('button', {
-            text: 'Create Template',
+            text: 'Create template',
             cls: 'mod-cta'
         });
-        createButton.addEventListener('click', () => this.handleCreate());
+        createButton.addEventListener('click', () => { void this.handleCreate(); });
     }
 
     /**
@@ -182,7 +184,7 @@ export class CreateTemplateFromEntityModal extends ResponsiveModal {
         }
 
         new Setting(this.relationshipOptionsContainer)
-            .setName('Make Relationships Generic')
+            .setName('Make relationships generic')
             .setDesc('Make relationships optional/generic (recommended for reusable templates)')
             .addToggle(toggle => toggle
                 .setValue(this.genericizeRelationships)
@@ -248,7 +250,8 @@ export class CreateTemplateFromEntityModal extends ResponsiveModal {
             this.close();
         } catch (error) {
             console.error('Error creating template:', error);
-            new Notice(`Failed to create template: ${error.message}`);
+            const message = error instanceof Error ? error.message : String(error);
+            new Notice(`Failed to create template: ${message}`);
         }
     }
 }

@@ -1,5 +1,5 @@
-﻿/* eslint-disable @typescript-eslint/no-unused-vars */
-import { App, Setting, Notice, TextAreaComponent, parseYaml, setIcon } from 'obsidian';
+ 
+import { App, Setting, Notice, parseYaml, setIcon } from 'obsidian';
 import {
     CampaignEffectTarget,
     CampaignItemEffect,
@@ -19,7 +19,7 @@ import { CharacterSuggestModal } from './CharacterSuggestModal';
 import { LocationSuggestModal } from './LocationSuggestModal';
 import { EventSuggestModal } from './EventSuggestModal';
 import { TemplatePickerModal } from './TemplatePickerModal';
-import { Template } from '../templates/TemplateTypes';
+import type { Template, TemplateEntity, TemplateVariableValue } from '../templates/TemplateTypes';
 import { EntityCustomFieldsEditor } from './entity/EntityCustomFieldsEditor';
 import { EntityGroupSelector } from './entity/EntityGroupSelector';
 import { ResponsiveModal } from './ResponsiveModal';
@@ -27,6 +27,10 @@ import { confirmWithModal } from './ui/ConfirmModal';
 
 export type PlotItemModalSubmitCallback = (item: PlotItem) => Promise<void>;
 export type PlotItemModalDeleteCallback = (item: PlotItem) => Promise<void>;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
 
 export class PlotItemModal extends ResponsiveModal {
     item: PlotItem;
@@ -78,7 +82,7 @@ export class PlotItemModal extends ResponsiveModal {
             loadSelectedGroupIds: async () => {
                 const identifier = this.item.id || this.item.name;
                 const items = await this.plugin.listPlotItems();
-                return (items.find(item => (item.id || item.name) === identifier)?.groups || this.item.groups || []) as string[];
+                return (items.find(item => (item.id || item.name) === identifier)?.groups || this.item.groups || []);
             },
             persistAdd: async groupId => {
                 const itemId = this.item.id || this.item.name;
@@ -94,7 +98,7 @@ export class PlotItemModal extends ResponsiveModal {
         this.modalEl.addClass('storyteller-item-modal');
     }
 
-    async onOpen() {
+    onOpen() { void (async () => {
         super.onOpen();
         const { contentEl, footerEl } = this.createStructuredModalLayout();
         contentEl.createEl('h2', { text: this.isNew ? t('createItem') : `${t('edit')} ${this.item.name}` });
@@ -109,12 +113,12 @@ export class PlotItemModal extends ResponsiveModal {
                     if ((defaultTemplate.variables && defaultTemplate.variables.length > 0) ||
                         this.hasMultipleEntities(defaultTemplate)) {
                         await new Promise<void>((resolve) => {
-                            import('./TemplateApplicationModal').then(({ TemplateApplicationModal }) => {
+                            void import('./TemplateApplicationModal').then(({ TemplateApplicationModal }) => {
                                 new TemplateApplicationModal(
                                     this.app,
                                     this.plugin,
                                     defaultTemplate,
-                                    async (variableValues, entityFileNames) => {
+                                    (variableValues, entityFileNames) => { void (async () => {
                                         try {
                                             await this.applyTemplateToItemWithVariables(defaultTemplate, variableValues);
                                             new Notice('Default template applied');
@@ -124,7 +128,7 @@ export class PlotItemModal extends ResponsiveModal {
                                             new Notice('Error applying default template');
                                         }
                                         resolve();
-                                    },
+                                    })(); },
                                     resolve
                                 ).open();
                             });
@@ -146,27 +150,27 @@ export class PlotItemModal extends ResponsiveModal {
         // --- Template Selector (for new items) ---
         if (this.isNew) {
             new Setting(contentEl)
-                .setName('Start from Template')
+                .setName('Start from template')
                 .setDesc('Optionally start with a pre-configured item template')
                 .addButton(button => button
-                    .setButtonText('Choose Template')
+                    .setButtonText('Choose template')
                     .setTooltip('Select an item template')
                     .onClick(() => {
                         new TemplatePickerModal(
                             this.app,
                             this.plugin,
-                            async (template: Template) => {
+                            (template: Template) => { void (async () => {
                                 // Check if template has variables or multiple entities
                                 if ((template.variables && template.variables.length > 0) ||
                                     this.hasMultipleEntities(template)) {
                                     // Use TemplateApplicationModal for variable collection
                                     await new Promise<void>((resolve) => {
-                                        import('./TemplateApplicationModal').then(({ TemplateApplicationModal }) => {
+                                        void import('./TemplateApplicationModal').then(({ TemplateApplicationModal }) => {
                                             new TemplateApplicationModal(
                                                 this.app,
                                                 this.plugin,
                                                 template,
-                                                async (variableValues, entityFileNames) => {
+                                                (variableValues, entityFileNames) => { void (async () => {
                                                     try {
                                                         await this.applyTemplateToItemWithVariables(template, variableValues);
                                                         new Notice(`Template "${template.name}" applied`);
@@ -176,7 +180,7 @@ export class PlotItemModal extends ResponsiveModal {
                                                         new Notice('Error applying template');
                                                     }
                                                     resolve();
-                                                },
+                                                })(); },
                                                 resolve
                                             ).open();
                                         });
@@ -187,7 +191,7 @@ export class PlotItemModal extends ResponsiveModal {
                                     this.refresh();
                                     new Notice(`Template "${template.name}" applied`);
                                 }
-                            },
+                            })(); },
                             'item'
                         ).open();
                     })
@@ -280,7 +284,7 @@ export class PlotItemModal extends ResponsiveModal {
                             );
                         }
                         this.item.currentOwner = char.name;
-                        this.onOpen(); // Re-render to update the description
+                        void this.onOpen(); // Re-render to update the description
                     }).open();
                 })
             );
@@ -308,7 +312,7 @@ export class PlotItemModal extends ResponsiveModal {
                             );
                         }
                         this.item.currentLocation = loc ? loc.name : undefined;
-                        this.onOpen(); // Re-render to update the description
+                        void this.onOpen(); // Re-render to update the description
                     }).open();
                 })
             );
@@ -381,7 +385,7 @@ export class PlotItemModal extends ResponsiveModal {
         renderAssocEvents();
 
         // --- Associated Characters (multiple owners/associations) ---
-        contentEl.createEl('h3', { text: 'Associated Characters' });
+        contentEl.createEl('h3', { text: 'Associated characters' });
         contentEl.createEl('p', {
             cls: 'storyteller-modal-hint',
             text: 'Characters with a claim or connection to this item beyond the primary bearer.'
@@ -407,7 +411,7 @@ export class PlotItemModal extends ResponsiveModal {
             .setName('Add associated character')
             .addDropdown(dd => {
                 dd.addOption('', 'â€” select character â€”');
-                allCharsForItem.forEach(c => dd.addOption(c.name, c.name));
+                allCharsForItem.forEach(c => { dd.addOption(c.name, c.name); });
                 dd.onChange(val => {
                     if (val && !(this.item.linkedCharacters ?? []).includes(val)) {
                         if (!Array.isArray(this.item.linkedCharacters)) this.item.linkedCharacters = [];
@@ -419,7 +423,7 @@ export class PlotItemModal extends ResponsiveModal {
             });
 
         // --- Magic Systems ---
-        contentEl.createEl('h3', { text: 'Magic Systems' });
+        contentEl.createEl('h3', { text: 'Magic systems' });
         if (!Array.isArray(this.item.magicSystems)) this.item.magicSystems = [];
         const magicChips = contentEl.createDiv('storyteller-linked-chips');
         const renderMagicChips = () => {
@@ -441,7 +445,7 @@ export class PlotItemModal extends ResponsiveModal {
             .setName('Add magic system')
             .addDropdown(dd => {
                 dd.addOption('', 'â€” select magic system â€”');
-                allMagicSystems.forEach(m => dd.addOption(m.name, m.name));
+                allMagicSystems.forEach(m => { dd.addOption(m.name, m.name); });
                 dd.onChange(val => {
                     if (val && !(this.item.magicSystems ?? []).includes(val)) {
                         if (!Array.isArray(this.item.magicSystems)) this.item.magicSystems = [];
@@ -461,18 +465,18 @@ export class PlotItemModal extends ResponsiveModal {
                 text.setValue(this.item.magicProperties || '')
                     .onChange(value => { this.item.magicProperties = value || undefined; });
                 text.inputEl.rows = 4;
-                text.inputEl.style.width = '100%';
+                text.inputEl.setCssStyles({ width: '100%' });
             });
 
         // --- Economic Value ---
-        contentEl.createEl('h3', { text: 'Economic Value' });
+        contentEl.createEl('h3', { text: 'Economic value' });
         new Setting(contentEl)
             .setName('Value')
             .setDesc('Monetary or trade value (e.g. "500gp", "priceless", "worthless")')
             .addText(text => {
                 text.setValue(this.item.economicValue || '')
                     .onChange(value => { this.item.economicValue = value || undefined; });
-                text.inputEl.placeholder = '500gp';
+                text.inputEl.placeholder = '500Gp';
             });
         if (!Array.isArray(this.item.linkedEconomies)) this.item.linkedEconomies = [];
         const econChips = contentEl.createDiv('storyteller-linked-chips');
@@ -495,7 +499,7 @@ export class PlotItemModal extends ResponsiveModal {
             .setName('Traded in economy')
             .addDropdown(dd => {
                 dd.addOption('', 'â€” select economy â€”');
-                allEconomies.forEach(e => dd.addOption(e.name, e.name));
+                allEconomies.forEach(e => { dd.addOption(e.name, e.name); });
                 dd.onChange(val => {
                     if (val && !(this.item.linkedEconomies ?? []).includes(val)) {
                         if (!Array.isArray(this.item.linkedEconomies)) this.item.linkedEconomies = [];
@@ -507,7 +511,7 @@ export class PlotItemModal extends ResponsiveModal {
             });
 
         // --- Cultural Significance ---
-        contentEl.createEl('h3', { text: 'Cultural Significance' });
+        contentEl.createEl('h3', { text: 'Cultural significance' });
         new Setting(contentEl)
             .setName('Significance')
             .setDesc('Cultural importance, symbolism, and meaning')
@@ -516,7 +520,7 @@ export class PlotItemModal extends ResponsiveModal {
                 text.setValue(this.item.culturalSignificance || '')
                     .onChange(value => { this.item.culturalSignificance = value || undefined; });
                 text.inputEl.rows = 3;
-                text.inputEl.style.width = '100%';
+                text.inputEl.setCssStyles({ width: '100%' });
             });
         if (!Array.isArray(this.item.linkedCultures)) this.item.linkedCultures = [];
         const cultChips = contentEl.createDiv('storyteller-linked-chips');
@@ -539,7 +543,7 @@ export class PlotItemModal extends ResponsiveModal {
             .setName('Significant to culture')
             .addDropdown(dd => {
                 dd.addOption('', 'â€” select culture â€”');
-                allCultures.forEach(c => dd.addOption(c.name, c.name));
+                allCultures.forEach(c => { dd.addOption(c.name, c.name); });
                 dd.onChange(val => {
                     if (val && !(this.item.linkedCultures ?? []).includes(val)) {
                         if (!Array.isArray(this.item.linkedCultures)) this.item.linkedCultures = [];
@@ -552,7 +556,7 @@ export class PlotItemModal extends ResponsiveModal {
 
         // --- Campaign Use ---
         const campaignHdr = contentEl.createDiv('storyteller-campaign-use-header');
-        campaignHdr.createEl('h3', { text: 'Campaign Use' });
+        campaignHdr.createEl('h3', { text: 'Campaign use' });
         const campaignToggle = campaignHdr.createEl('button', { cls: 'storyteller-campaign-use-toggle' });
         const campaignBody = contentEl.createDiv('storyteller-campaign-use-body');
         const isCampaignExpanded = !!(
@@ -575,26 +579,26 @@ export class PlotItemModal extends ResponsiveModal {
 
         new Setting(campaignBody)
             .setName('Item type')
-            .setDesc('D&D item category')
+            .setDesc('D&d item category')
             .addDropdown(dd => {
                 dd.addOption('', '- none -');
                 for (const t of ['weapon', 'armor', 'consumable', 'tool', 'key', 'treasure', 'other']) {
                     dd.addOption(t, t.charAt(0).toUpperCase() + t.slice(1));
                 }
                 dd.setValue(this.item.itemType ?? '');
-                dd.onChange(v => { this.item.itemType = (v || undefined) as any; });
+                dd.onChange(v => { this.item.itemType = (v || undefined) as PlotItem['itemType']; });
             });
 
         new Setting(campaignBody)
             .setName('Rarity')
-            .setDesc('D&D rarity tier')
+            .setDesc('D&d rarity tier')
             .addDropdown(dd => {
                 dd.addOption('', '- none -');
                 for (const r of ['common', 'uncommon', 'rare', 'very rare', 'legendary', 'artifact']) {
                     dd.addOption(r, r.charAt(0).toUpperCase() + r.slice(1));
                 }
                 dd.setValue(this.item.itemRarity ?? '');
-                dd.onChange(v => { this.item.itemRarity = (v || undefined) as any; });
+                dd.onChange(v => { this.item.itemRarity = (v || undefined) as PlotItem['itemRarity']; });
             });
 
         new Setting(campaignBody)
@@ -604,19 +608,19 @@ export class PlotItemModal extends ResponsiveModal {
 
         new Setting(campaignBody)
             .setName('Use effect')
-            .setDesc('DM description shown when this item is used')
+            .setDesc('Dm description shown when this item is used')
             .addTextArea(ta => {
                 ta.setValue(this.item.campaignEffect ?? '')
                     .onChange(v => { this.item.campaignEffect = v || undefined; });
                 ta.inputEl.rows = 3;
-                ta.inputEl.style.width = '100%';
+                ta.inputEl.setCssStyles({ width: '100%' });
             });
 
         new Setting(campaignBody)
             .setName('Sets flag on use')
             .setDesc('Session flag to set when item is used (e.g. "bribed-barkeep")')
             .addText(t => {
-                t.setPlaceholder('flag-name')
+                t.setPlaceholder('Flag-name')
                     .setValue(this.item.grantsFlag ?? '')
                     .onChange(v => { this.item.grantsFlag = v.trim() || undefined; });
             });
@@ -639,7 +643,7 @@ export class PlotItemModal extends ResponsiveModal {
         const sceneWrap = campaignBody.createDiv();
         new Setting(sceneWrap)
             .setName('Navigates to scene')
-            .setDesc('Open this scene when item is used (e.g. a key that unlocks a room)')
+            .setDesc('Open this scene when item is used (e.g. A key that unlocks a room)')
             .addDropdown(dd => {
                 dd.addOption('', '- none -');
                 for (const s of allScenesForItem) {
@@ -666,7 +670,7 @@ export class PlotItemModal extends ResponsiveModal {
             .setName('Requires flag to use')
             .setDesc('Session flag that must be set before this item can be used')
             .addText(t => {
-                t.setPlaceholder('flag-name')
+                t.setPlaceholder('Flag-name')
                     .setValue(this.item.useRequiresFlag ?? '')
                     .onChange(v => { this.item.useRequiresFlag = v.trim() || undefined; });
             });
@@ -714,7 +718,7 @@ export class PlotItemModal extends ResponsiveModal {
             await this.onSubmit(this.item);
             this.close();
         }, { cta: true });
-    }
+    })(); }
     private createCampaignEffectId(): string {
         return `itemfx-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     }
@@ -841,7 +845,7 @@ export class PlotItemModal extends ResponsiveModal {
                     { value: 'revealCompendium', label: 'Reveal compendium' },
                     { value: 'changeGroupStanding', label: 'Change group standing' }
                 ];
-                effectTypes.forEach(item => dd.addOption(item.value, item.label));
+                effectTypes.forEach(item => { dd.addOption(item.value, item.label); });
                 dd.setValue(effect.type);
                 dd.onChange(value => {
                     effect.type = value as CampaignItemEffectType;
@@ -857,7 +861,7 @@ export class PlotItemModal extends ResponsiveModal {
                     .setName('Flag')
                     .setDesc('Session flag name')
                     .addText(text => {
-                        text.setPlaceholder('flag-name')
+                        text.setPlaceholder('Flag-name')
                             .setValue(effect.flag ?? '')
                             .onChange(value => {
                                 effect.flag = value.trim() || undefined;
@@ -871,7 +875,7 @@ export class PlotItemModal extends ResponsiveModal {
                     .setDesc('Inventory item to add or remove')
                     .addDropdown(dd => {
                         dd.addOption('', '— select item —');
-                        options.items.forEach(item => dd.addOption(item.id || item.name, item.name));
+                        options.items.forEach(item => { dd.addOption(item.id || item.name, item.name); });
                         dd.setValue(effect.itemId ?? effect.itemName ?? '');
                         dd.onChange(value => {
                             const selected = options.items.find(item => (item.id || item.name) === value);
@@ -886,7 +890,7 @@ export class PlotItemModal extends ResponsiveModal {
                     .setDesc('Scene to open when this effect runs')
                     .addDropdown(dd => {
                         dd.addOption('', '— select scene —');
-                        options.scenes.forEach(scene => dd.addOption(scene.id || scene.name, scene.name));
+                        options.scenes.forEach(scene => { dd.addOption(scene.id || scene.name, scene.name); });
                         dd.setValue(effect.sceneId ?? effect.sceneName ?? '');
                         dd.onChange(value => {
                             const selected = options.scenes.find(scene => (scene.id || scene.name) === value);
@@ -898,7 +902,7 @@ export class PlotItemModal extends ResponsiveModal {
             case 'changeHp':
                 new Setting(row)
                     .setName('Target')
-                    .setDesc('Who this HP change applies to')
+                    .setDesc('Who this hp change applies to')
                     .addDropdown(dd => {
                         const targets: Array<{ value: CampaignEffectTarget; label: string }> = [
                             { value: 'activeActor', label: 'Active actor' },
@@ -906,7 +910,7 @@ export class PlotItemModal extends ResponsiveModal {
                             { value: 'allParty', label: 'All party members' },
                             { value: 'specificCharacter', label: 'Specific character' }
                         ];
-                        targets.forEach(target => dd.addOption(target.value, target.label));
+                        targets.forEach(target => { dd.addOption(target.value, target.label); });
                         dd.setValue(effect.target ?? 'activeActor');
                         dd.onChange(value => {
                             effect.target = value as CampaignEffectTarget;
@@ -916,7 +920,7 @@ export class PlotItemModal extends ResponsiveModal {
                     .addDropdown(dd => {
                         dd.addOption('heal', 'Heal');
                         dd.addOption('damage', 'Damage');
-                        dd.addOption('set', 'Set HP');
+                        dd.addOption('set', 'Set hp');
                         dd.setValue(effect.hpMode ?? 'heal');
                         dd.onChange(value => {
                             effect.hpMode = value as CampaignItemEffect['hpMode'];
@@ -936,7 +940,7 @@ export class PlotItemModal extends ResponsiveModal {
                         .setName('Character')
                         .addDropdown(dd => {
                             dd.addOption('', '— select character —');
-                            options.characters.forEach(character => dd.addOption(character.id || character.name, character.name));
+                            options.characters.forEach(character => { dd.addOption(character.id || character.name, character.name); });
                             dd.setValue(effect.characterId ?? effect.characterName ?? '');
                             dd.onChange(value => {
                                 const selected = options.characters.find(character => (character.id || character.name) === value);
@@ -957,7 +961,7 @@ export class PlotItemModal extends ResponsiveModal {
                             { value: 'allParty', label: 'All party members' },
                             { value: 'specificCharacter', label: 'Specific character' }
                         ];
-                        targets.forEach(target => dd.addOption(target.value, target.label));
+                        targets.forEach(target => { dd.addOption(target.value, target.label); });
                         dd.setValue(effect.target ?? 'activeActor');
                         dd.onChange(value => {
                             effect.target = value as CampaignEffectTarget;
@@ -984,7 +988,7 @@ export class PlotItemModal extends ResponsiveModal {
                         .setName('Character')
                         .addDropdown(dd => {
                             dd.addOption('', '— select character —');
-                            options.characters.forEach(character => dd.addOption(character.id || character.name, character.name));
+                            options.characters.forEach(character => { dd.addOption(character.id || character.name, character.name); });
                             dd.setValue(effect.characterId ?? effect.characterName ?? '');
                             dd.onChange(value => {
                                 const selected = options.characters.find(character => (character.id || character.name) === value);
@@ -997,10 +1001,10 @@ export class PlotItemModal extends ResponsiveModal {
             case 'revealCompendium':
                 new Setting(row)
                     .setName('Entry')
-                    .setDesc('Compendium entry to reveal in Campaign lore')
+                    .setDesc('Compendium entry to reveal in campaign lore')
                     .addDropdown(dd => {
                         dd.addOption('', '— select entry —');
-                        options.compendiumEntries.forEach(entry => dd.addOption(entry.id || entry.name, entry.name));
+                        options.compendiumEntries.forEach(entry => { dd.addOption(entry.id || entry.name, entry.name); });
                         dd.setValue(effect.compendiumEntryId ?? effect.compendiumEntryName ?? '');
                         dd.onChange(value => {
                             const selected = options.compendiumEntries.find(entry => (entry.id || entry.name) === value);
@@ -1015,7 +1019,7 @@ export class PlotItemModal extends ResponsiveModal {
                     .setDesc('Faction or group affected by this item')
                     .addDropdown(dd => {
                         dd.addOption('', '— select group —');
-                        options.groups.forEach(group => dd.addOption(group.id || group.name, group.name));
+                        options.groups.forEach(group => { dd.addOption(group.id || group.name, group.name); });
                         dd.setValue(effect.groupId ?? effect.groupName ?? '');
                         dd.onChange(value => {
                             const selected = options.groups.find(group => (group.id || group.name) === value);
@@ -1066,7 +1070,7 @@ export class PlotItemModal extends ResponsiveModal {
         await this.applyProcessedTemplateToItem(templateItem);
     }
 
-    private async applyTemplateToItemWithVariables(template: Template, variableValues: Record<string, any>): Promise<void> {
+    private async applyTemplateToItemWithVariables(template: Template, variableValues: Record<string, TemplateVariableValue>): Promise<void> {
         if (!template.entities.items || template.entities.items.length === 0) {
             new Notice('This template does not contain any items');
             return;
@@ -1092,20 +1096,27 @@ export class PlotItemModal extends ResponsiveModal {
         await this.applyProcessedTemplateToItem(templateItem);
     }
 
-    private async applyProcessedTemplateToItem(templateItem: any): Promise<void> {
-        const { templateId, yamlContent, markdownContent, sectionContent, customYamlFields, id, filePath, ...rest } = templateItem as any;
+    private async applyProcessedTemplateToItem(templateItem: TemplateEntity<PlotItem>): Promise<void> {
+        const { yamlContent, markdownContent, sectionContent, customYamlFields } = templateItem;
 
-        let fields: any = { ...rest };
+        let fields: Record<string, unknown> = { ...templateItem };
+        delete fields.templateId;
+        delete fields.yamlContent;
+        delete fields.markdownContent;
+        delete fields.sectionContent;
+        delete fields.customYamlFields;
+        delete fields.id;
+        delete fields.filePath;
         let allTemplateSections: Record<string, string> = {};
 
         // Handle new format: yamlContent (parse YAML string)
         if (yamlContent && typeof yamlContent === 'string') {
             try {
-                const parsed = parseYaml(yamlContent);
-                if (parsed && typeof parsed === 'object') {
+                const parsed = parseYaml(yamlContent) as unknown;
+                if (isRecord(parsed)) {
                     fields = { ...fields, ...parsed };
                 }
-                console.log('[PlotItemModal] Parsed YAML fields:', parsed);
+                console.debug('[PlotItemModal] Parsed YAML fields:', parsed);
             } catch (error) {
                 console.warn('[PlotItemModal] Failed to parse yamlContent:', error);
             }
@@ -1134,16 +1145,16 @@ export class PlotItemModal extends ResponsiveModal {
                     fields.magicProperties = parsedSections['Magic Properties'];
                 }
 
-                console.log('[PlotItemModal] Parsed markdown sections:', parsedSections);
+                console.debug('[PlotItemModal] Parsed markdown sections:', parsedSections);
             } catch (error) {
                 console.warn('[PlotItemModal] Failed to parse markdownContent:', error);
             }
         } else if (sectionContent) {
             // Old format: apply section content
-            for (const [k, v] of Object.entries(sectionContent)) { allTemplateSections[k as string] = v as string; }
+            for (const [k, v] of Object.entries(sectionContent)) { allTemplateSections[k] = v; }
             for (const [sectionName, content] of Object.entries(sectionContent)) {
                 const propName = sectionName.toLowerCase().replace(/\s+/g, '');
-                (fields as any)[propName] = content;
+                fields[propName] = content;
             }
         }
 
@@ -1157,7 +1168,7 @@ export class PlotItemModal extends ResponsiveModal {
                 configurable: true
             });
         }
-        console.log('[PlotItemModal] Final item after template:', this.item);
+        console.debug('[PlotItemModal] Final item after template:', this.item);
 
         // Clear relationships as they reference template entities
         this.item.currentOwner = undefined;

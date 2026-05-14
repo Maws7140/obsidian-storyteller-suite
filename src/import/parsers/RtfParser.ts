@@ -72,7 +72,7 @@ const SCENE_BREAK_PATTERNS = [
  */
 export class RtfParser implements DocumentParser {
     name = 'RTF Parser';
-    format: ImportFormat = 'rtf' as ImportFormat;
+    format: ImportFormat = 'rtf';
 
     canParse(content: string, fileName: string): boolean {
         const extension = fileName.toLowerCase().split('.').pop();

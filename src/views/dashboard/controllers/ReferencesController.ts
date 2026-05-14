@@ -9,7 +9,7 @@ export const referencesController: DashboardTabController = {
             context.setCurrentFilter(filter);
             await renderReferencesList(container, context);
         }, () => {
-            import('../../../modals/ReferenceModal').then(({ ReferenceModal }) => {
+            void import('../../../modals/ReferenceModal').then(({ ReferenceModal }) => {
                 new ReferenceModal(context.app, context.plugin, null, async (ref) => {
                     await context.mutationRunner.runCreate({
                         action: async () => {
@@ -78,7 +78,7 @@ async function renderReferencesList(container: HTMLElement, context: DashboardCo
 
         const actionsEl = itemEl.createDiv('storyteller-list-item-actions');
         context.addEditButton(actionsEl, () => {
-            import('../../../modals/ReferenceModal').then(({ ReferenceModal }) => {
+            void import('../../../modals/ReferenceModal').then(({ ReferenceModal }) => {
                 new ReferenceModal(context.app, context.plugin, ref, async (updated) => {
                     await context.mutationRunner.runUpdate({
                         action: async () => {

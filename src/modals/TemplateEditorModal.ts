@@ -19,6 +19,12 @@ import { TemplateEntityDetailModal } from './TemplateEntityDetailModal';
 import { TemplateVariableEditorModal } from './TemplateVariableEditorModal';
 import { getEntityNotePreview } from '../utils/TemplatePreviewRenderer';
 
+type TemplateEntityCollectionKey = keyof Template['entities'];
+type EditableTemplateEntity = TemplateEntity<Record<string, unknown>> & {
+    name?: string;
+    description?: string;
+};
+
 export class TemplateEditorModal extends ResponsiveModal {
     private plugin: StorytellerSuitePlugin;
     private template: Template;
@@ -54,7 +60,7 @@ export class TemplateEditorModal extends ResponsiveModal {
      */
     private createEmptyTemplate(): Template {
         return {
-            id: `template-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            id: `template-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
             name: 'New Template',
             description: '',
             genre: 'fantasy',
@@ -104,7 +110,7 @@ export class TemplateEditorModal extends ResponsiveModal {
 
         if (!this.template.isEditable) {
             const warning = header.createDiv('template-editor-warning');
-            warning.createEl('span', { text: '⚠️ This is a built-in template and cannot be edited. You can duplicate it to create an editable version.' });
+            warning.createEl('span', { text: '⚠️ this is a built-in template and cannot be edited. You can duplicate it to create an editable version.' });
         }
     }
 
@@ -181,7 +187,7 @@ export class TemplateEditorModal extends ResponsiveModal {
 
         // Template Name
         new Setting(section)
-            .setName('Template Name')
+            .setName('Template name')
             .setDesc('A descriptive name for this template')
             .addText(text => text
                 .setPlaceholder('Enter template name')
@@ -214,7 +220,7 @@ export class TemplateEditorModal extends ResponsiveModal {
             .setDesc('Genre classification for this template')
             .addDropdown(dropdown => dropdown
                 .addOption('fantasy', 'Fantasy')
-                .addOption('scifi', 'Sci-Fi')
+                .addOption('scifi', 'Sci-fi')
                 .addOption('mystery', 'Mystery')
                 .addOption('horror', 'Horror')
                 .addOption('romance', 'Romance')
@@ -234,9 +240,9 @@ export class TemplateEditorModal extends ResponsiveModal {
             .setName('Category')
             .setDesc('Template scope and complexity')
             .addDropdown(dropdown => dropdown
-                .addOption('single-entity', 'Single Entity - One character, location, or item')
-                .addOption('entity-set', 'Entity Set - Collection of related entities')
-                .addOption('full-world', 'Full World - Complete story world with all entity types')
+                .addOption('single-entity', 'Single entity - one character, location, or item')
+                .addOption('entity-set', 'Entity set - collection of related entities')
+                .addOption('full-world', 'Full world - complete story world with all entity types')
                 .setValue(this.template.category)
                 .onChange(value => {
                     this.template.category = value as TemplateCategory;
@@ -249,7 +255,7 @@ export class TemplateEditorModal extends ResponsiveModal {
             .setName('Tags')
             .setDesc('Comma-separated tags for searching (e.g., king, ruler, noble)')
             .addText(text => text
-                .setPlaceholder('tag1, tag2, tag3')
+                .setPlaceholder('Tag1, tag2, tag3')
                 .setValue(this.template.tags.join(', '))
                 .onChange(value => {
                     this.template.tags = value
@@ -275,7 +281,7 @@ export class TemplateEditorModal extends ResponsiveModal {
 
         // Quick Apply
         new Setting(section)
-            .setName('Enable Quick Apply')
+            .setName('Enable quick apply')
             .setDesc('Show this template in quick-apply menus')
             .addToggle(toggle => toggle
                 .setValue(this.template.quickApplyEnabled || false)
@@ -291,7 +297,7 @@ export class TemplateEditorModal extends ResponsiveModal {
     private renderEntitiesTab(container: HTMLElement): void {
         const section = container.createDiv('template-editor-section');
 
-        section.createEl('h3', { text: 'Entities in Template' });
+        section.createEl('h3', { text: 'Entities in template' });
         section.createEl('p', {
             text: 'Add and configure entities that will be created when this template is applied.',
             cls: 'setting-item-description'
@@ -307,7 +313,7 @@ export class TemplateEditorModal extends ResponsiveModal {
         ];
 
         const setting = new Setting(section)
-            .setName('Add New Entity')
+            .setName('Add new entity')
             .setDesc('Select the type of entity to add to this template');
 
         setting.addDropdown(dropdown => {
@@ -322,7 +328,7 @@ export class TemplateEditorModal extends ResponsiveModal {
 
         setting.addButton(button => {
             button
-                .setButtonText('Add Entity')
+                .setButtonText('Add entity')
                 .setCta()
                 .onClick(() => {
                     this.addEntity(selectedType);
@@ -353,15 +359,14 @@ export class TemplateEditorModal extends ResponsiveModal {
         ];
 
         entityTypeOrder.forEach(entityType => {
-            const pluralKey = this.getEntityTypePlural(entityType);
-            const entities = (this.template.entities as any)[pluralKey];
+            const entities = this.getEditableEntities(entityType);
 
             if (!entities || entities.length === 0) return;
 
             const typeSection = container.createDiv('template-entity-type-section');
             typeSection.createEl('h4', { text: this.getEntityTypeLabel(entityType) });
 
-            entities.forEach((entity: TemplateEntity<any>, index: number) => {
+            entities.forEach((entity, index: number) => {
                 this.renderEntityCard(typeSection, entity, entityType, index);
             });
         });
@@ -369,7 +374,7 @@ export class TemplateEditorModal extends ResponsiveModal {
 
     private renderEntityCard(
         container: HTMLElement,
-        entity: TemplateEntity<any>,
+        entity: EditableTemplateEntity,
         entityType: TemplateEntityType,
         index: number
     ): void {
@@ -401,7 +406,7 @@ export class TemplateEditorModal extends ResponsiveModal {
 
         // Show preview of key fields
         const preview = card.createDiv('template-entity-preview');
-        if (entity.description) {
+        if (typeof entity.description === 'string') {
             preview.createEl('p', {
                 text: entity.description.substring(0, 100) + (entity.description.length > 100 ? '...' : ''),
                 cls: 'template-entity-description'
@@ -421,7 +426,7 @@ export class TemplateEditorModal extends ResponsiveModal {
     private renderVariablesTab(container: HTMLElement): void {
         const section = container.createDiv('template-editor-section');
 
-        section.createEl('h3', { text: 'Template Variables' });
+        section.createEl('h3', { text: 'Template variables' });
         section.createEl('p', {
             text: 'Define variables that users can customize when applying the template. Use {{variableName}} in entity fields and content.',
             cls: 'setting-item-description'
@@ -429,7 +434,7 @@ export class TemplateEditorModal extends ResponsiveModal {
 
         // Add variable button
         const addButton = section.createEl('button', {
-            text: '+ Add Variable',
+            text: '+ add variable',
             cls: 'mod-cta'
         });
         addButton.addEventListener('click', () => {
@@ -438,20 +443,20 @@ export class TemplateEditorModal extends ResponsiveModal {
 
         // Bulk add section
         const bulkToggle = section.createEl('button', {
-            text: 'Bulk Add Variables',
+            text: 'Bulk add variables',
             cls: 'template-bulk-toggle'
         });
         const bulkPanel = section.createDiv('template-bulk-panel');
-        bulkPanel.style.display = 'none';
+        bulkPanel.setCssStyles({ display: 'none' });
 
         bulkToggle.addEventListener('click', () => {
             const hidden = bulkPanel.style.display === 'none';
-            bulkPanel.style.display = hidden ? 'block' : 'none';
-            bulkToggle.setText('Bulk Add Variables');
+            bulkPanel.setCssStyles({ display: hidden ? 'block' : 'none' });
+            bulkToggle.setText('Bulk add variables');
         });
 
         bulkPanel.createEl('p', {
-            text: 'One variable per line. Format: name  or  name:type  or  name:type:default  or  name:type:default:Label',
+            text: 'One variable per line. Format: name  or  name:type  or  name:type:default  or  name:type:default:label',
             cls: 'setting-item-description'
         });
         bulkPanel.createEl('p', {
@@ -460,12 +465,12 @@ export class TemplateEditorModal extends ResponsiveModal {
         });
 
         const bulkTextarea = bulkPanel.createEl('textarea', { cls: 'template-bulk-textarea' });
-        bulkTextarea.placeholder = 'characterName\ncharacterAge:number:25\nalignment:select::Lawful Good\nbirthDate:date::Date of Birth';
+        bulkTextarea.placeholder = 'Charactername\ncharacterage:number:25\nalignment:select::lawful good\nbirthdate:date::date of birth';
         bulkTextarea.rows = 6;
-        bulkTextarea.style.width = '100%';
-        bulkTextarea.style.fontFamily = 'monospace';
+        bulkTextarea.setCssStyles({ width: '100%' });
+        bulkTextarea.setCssStyles({ fontFamily: 'monospace' });
 
-        const bulkAddBtn = bulkPanel.createEl('button', { text: 'Add Variables', cls: 'mod-cta' });
+        const bulkAddBtn = bulkPanel.createEl('button', { text: 'Add variables', cls: 'mod-cta' });
         const bulkFeedback = bulkPanel.createDiv('template-bulk-feedback');
 
         bulkAddBtn.addEventListener('click', () => {
@@ -573,7 +578,7 @@ export class TemplateEditorModal extends ResponsiveModal {
     private renderPreviewTab(container: HTMLElement): void {
         const section = container.createDiv('template-editor-section');
 
-        section.createEl('h3', { text: 'Template Preview' });
+        section.createEl('h3', { text: 'Template preview' });
         section.createEl('p', {
             text: 'Preview what entities will be created when this template is applied.',
             cls: 'setting-item-description'
@@ -606,46 +611,45 @@ export class TemplateEditorModal extends ResponsiveModal {
         ];
 
         entityTypes.forEach(entityType => {
-            const pluralKey = this.getEntityTypePlural(entityType);
-            const entities = (this.template.entities as any)[pluralKey];
+            const entities = this.getEditableEntities(entityType);
 
             if (!entities || entities.length === 0) return;
 
             const typeSection = container.createDiv('template-preview-type-section');
             typeSection.createEl('h5', { text: `${this.getEntityTypeLabel(entityType)} (${entities.length})` });
 
-            entities.forEach((entity: TemplateEntity<any>) => {
+            entities.forEach((entity) => {
                 const entityPreview = typeSection.createDiv('template-preview-entity');
-                entityPreview.style.marginBottom = '20px';
-                entityPreview.style.border = '1px solid var(--background-modifier-border)';
-                entityPreview.style.borderRadius = '4px';
-                entityPreview.style.padding = '15px';
-                entityPreview.style.backgroundColor = 'var(--background-secondary)';
+                entityPreview.setCssStyles({ marginBottom: '20px' });
+                entityPreview.setCssStyles({ border: '1px solid var(--background-modifier-border)' });
+                entityPreview.setCssStyles({ borderRadius: '4px' });
+                entityPreview.setCssStyles({ padding: '15px' });
+                entityPreview.setCssStyles({ backgroundColor: 'var(--background-secondary)' });
 
                 // Entity header
                 const header = entityPreview.createDiv('template-preview-entity-header');
-                header.style.marginBottom = '10px';
-                header.style.paddingBottom = '10px';
-                header.style.borderBottom = '1px solid var(--background-modifier-border)';
+                header.setCssStyles({ marginBottom: '10px' });
+                header.setCssStyles({ paddingBottom: '10px' });
+                header.setCssStyles({ borderBottom: '1px solid var(--background-modifier-border)' });
                 const nameEl = header.createEl('strong', { text: entity.name || 'Unnamed' });
-                nameEl.style.fontSize = '16px';
+                nameEl.setCssStyles({ fontSize: '16px' });
 
                 // Note preview
                 const notePreview = getEntityNotePreview(entity);
                 const previewCode = entityPreview.createEl('pre', {
                     cls: 'template-preview-note-code'
                 });
-                previewCode.style.margin = '0';
-                previewCode.style.padding = '10px';
-                previewCode.style.backgroundColor = 'var(--background-primary)';
-                previewCode.style.border = '1px solid var(--background-modifier-border)';
-                previewCode.style.borderRadius = '4px';
-                previewCode.style.fontSize = '12px';
-                previewCode.style.fontFamily = 'monospace';
-                previewCode.style.whiteSpace = 'pre-wrap';
-                previewCode.style.wordBreak = 'break-word';
-                previewCode.style.maxHeight = '300px';
-                previewCode.style.overflow = 'auto';
+                previewCode.setCssStyles({ margin: '0' });
+                previewCode.setCssStyles({ padding: '10px' });
+                previewCode.setCssStyles({ backgroundColor: 'var(--background-primary)' });
+                previewCode.setCssStyles({ border: '1px solid var(--background-modifier-border)' });
+                previewCode.setCssStyles({ borderRadius: '4px' });
+                previewCode.setCssStyles({ fontSize: '12px' });
+                previewCode.setCssStyles({ fontFamily: 'monospace' });
+                previewCode.setCssStyles({ whiteSpace: 'pre-wrap' });
+                previewCode.setCssStyles({ wordBreak: 'break-word' });
+                previewCode.setCssStyles({ maxHeight: '300px' });
+                previewCode.setCssStyles({ overflow: 'auto' });
                 previewCode.textContent = notePreview;
             });
         });
@@ -669,19 +673,15 @@ export class TemplateEditorModal extends ResponsiveModal {
     // ==================== HELPER METHODS ====================
 
     private addEntity(entityType: TemplateEntityType): void {
-        const pluralKey = this.getEntityTypePlural(entityType);
+        const entities = this.ensureEditableEntities(entityType);
 
-        if (!this.template.entities[pluralKey]) {
-            (this.template.entities as any)[pluralKey] = [];
-        }
-
-        const newEntity: TemplateEntity<any> = {
+        const newEntity: EditableTemplateEntity = {
             templateId: `${entityType.toUpperCase()}_${Date.now()}`,
             name: '',
             description: ''
         };
 
-        (this.template.entities as any)[pluralKey].push(newEntity);
+        entities.push(newEntity);
 
         if (!this.template.entityTypes) {
             this.template.entityTypes = [];
@@ -694,8 +694,7 @@ export class TemplateEditorModal extends ResponsiveModal {
     }
 
     private editEntity(entityType: TemplateEntityType, index: number): void {
-        const pluralKey = this.getEntityTypePlural(entityType);
-        const entities = (this.template.entities as any)[pluralKey];
+        const entities = this.getEditableEntities(entityType);
 
         if (!entities || entities.length <= index) {
             new Notice('Entity not found');
@@ -721,15 +720,14 @@ export class TemplateEditorModal extends ResponsiveModal {
     }
 
     private deleteEntity(entityType: TemplateEntityType, index: number): void {
-        const pluralKey = this.getEntityTypePlural(entityType);
-        const entities = (this.template.entities as any)[pluralKey];
+        const entities = this.getEditableEntities(entityType);
 
         if (entities && entities.length > index) {
             entities.splice(index, 1);
 
             // Remove entity type if no more entities of this type
             if (entities.length === 0) {
-                delete (this.template.entities as any)[pluralKey];
+                this.deleteEditableEntities(entityType);
                 this.template.entityTypes = this.template.entityTypes?.filter(t => t !== entityType);
             }
 
@@ -829,13 +827,14 @@ export class TemplateEditorModal extends ResponsiveModal {
             this.close();
         } catch (error) {
             console.error('Error saving template:', error);
-            new Notice(`Failed to save template: ${error.message}`);
+            const message = error instanceof Error ? error.message : String(error);
+            new Notice(`Failed to save template: ${message}`);
         }
     }
 
     private async handleDuplicate(): Promise<void> {
         // Deep clone
-        let duplicate: Template = JSON.parse(JSON.stringify(this.template));
+        let duplicate = JSON.parse(JSON.stringify(this.template)) as Template;
         
         // Migrate to new format if needed
         const { TemplateMigrator } = await import('../templates/TemplateMigrator');
@@ -843,7 +842,7 @@ export class TemplateEditorModal extends ResponsiveModal {
         
         duplicate = {
             ...duplicate,
-            id: `template-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            id: `template-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
             name: `${this.template.name} (Copy)`,
             author: 'User',
             isBuiltIn: false,
@@ -858,8 +857,28 @@ export class TemplateEditorModal extends ResponsiveModal {
         await this.handleSave();
     }
 
-    private getEntityTypePlural(entityType: TemplateEntityType): string {
-        const pluralMap: Record<TemplateEntityType, string> = {
+    private getEditableEntityCollections(): Record<TemplateEntityCollectionKey, EditableTemplateEntity[] | undefined> {
+        return this.template.entities as unknown as Record<TemplateEntityCollectionKey, EditableTemplateEntity[] | undefined>;
+    }
+
+    private getEditableEntities(entityType: TemplateEntityType): EditableTemplateEntity[] | undefined {
+        return this.getEditableEntityCollections()[this.getEntityTypePlural(entityType)];
+    }
+
+    private ensureEditableEntities(entityType: TemplateEntityType): EditableTemplateEntity[] {
+        const collections = this.getEditableEntityCollections();
+        const pluralKey = this.getEntityTypePlural(entityType);
+        const entities = collections[pluralKey] ?? [];
+        collections[pluralKey] = entities;
+        return entities;
+    }
+
+    private deleteEditableEntities(entityType: TemplateEntityType): void {
+        delete this.getEditableEntityCollections()[this.getEntityTypePlural(entityType)];
+    }
+
+    private getEntityTypePlural(entityType: TemplateEntityType): TemplateEntityCollectionKey {
+        const pluralMap: Record<TemplateEntityType, TemplateEntityCollectionKey> = {
             character: 'characters',
             location: 'locations',
             event: 'events',

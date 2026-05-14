@@ -4,16 +4,21 @@
  */
 
 import { App, Modal, ButtonComponent, setIcon } from 'obsidian';
-import { MapTemplate, StoryMap } from '../types';
+import { MapTemplate } from '../types';
 // TODO: Maps feature - MapTemplates to be reimplemented
 // import { getAllTemplates, getTemplateCategories, applyTemplate } from '../utils/MapTemplates';
 import StorytellerSuitePlugin from '../main';
 import { PromptModal } from './ui/PromptModal';
 
+type TemplateCategoryOption = {
+    id: MapTemplate['category'] | 'all';
+    label: string;
+    icon: string;
+};
+
 // Temporary stubs until MapTemplates is reimplemented
-const getAllTemplates = (): any[] => [];
-const getTemplateCategories = (): any[] => [];
-const applyTemplate = (template: any, map: any): any => map;
+const getAllTemplates = (): MapTemplate[] => [];
+const getTemplateCategories = (): TemplateCategoryOption[] => [];
 
 export type TemplateSelectCallback = (template: MapTemplate, mapName: string) => void;
 
@@ -39,7 +44,7 @@ export class TemplateGalleryModal extends Modal {
 
         // Header
         const headerEl = contentEl.createDiv('storyteller-template-header');
-        headerEl.createEl('h2', { text: 'Choose a Map Template' });
+        headerEl.createEl('h2', { text: 'Choose a map template' });
         headerEl.createEl('p', {
             text: 'Select a template to start with, or create a blank map',
             cls: 'storyteller-template-subtitle'
@@ -61,8 +66,8 @@ export class TemplateGalleryModal extends Modal {
         container.empty();
         const filterContainer = container.createDiv('storyteller-template-filter');
 
-        const categories = [
-            { id: 'all' as const, label: 'All Templates', icon: 'layout-grid' },
+        const categories: TemplateCategoryOption[] = [
+            { id: 'all', label: 'All Templates', icon: 'layout-grid' },
             ...getTemplateCategories()
         ];
 
@@ -161,7 +166,7 @@ export class TemplateGalleryModal extends Modal {
         const actions = card.createDiv('storyteller-template-actions');
 
         new ButtonComponent(actions)
-            .setButtonText('Use Template')
+                .setButtonText('Use template')
             .setCta()
             .onClick(() => {
                 this.selectTemplate(template);
@@ -203,7 +208,7 @@ export class TemplateGalleryModal extends Modal {
             });
 
         new ButtonComponent(footer)
-            .setButtonText('Create Blank Map')
+            .setButtonText('Create blank map')
             .onClick(() => {
                 const blankTemplate = this.templates.find(t => t.id === 'blank-canvas');
                 if (blankTemplate) {

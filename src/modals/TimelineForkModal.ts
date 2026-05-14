@@ -1,4 +1,4 @@
-import { App, Modal, Setting, Notice, TextAreaComponent, DropdownComponent } from 'obsidian';
+import { App, Modal, Setting, Notice, TextComponent } from 'obsidian';
 import type StorytellerSuitePlugin from '../main';
 import type { TimelineFork, Event } from '../types';
 import { EventSuggestModal } from './EventSuggestModal';
@@ -58,27 +58,31 @@ export class TimelineForkModal extends Modal {
 
         // Name
         new Setting(contentEl)
-            .setName('Fork Name')
+            .setName('Fork name')
             .setDesc('Descriptive name for this alternate timeline')
             .addText(text => text
-                .setPlaceholder('e.g., "What if the hero died?"')
+                .setPlaceholder('E.g., "what if the hero died?"')
                 .setValue(this.fork.name)
                 .onChange(value => this.fork.name = value)
             );
 
         // Divergence Event (with suggester)
         const divergenceEventSetting = new Setting(contentEl)
-            .setName('Divergence Event')
+            .setName('Divergence event')
             .setDesc('The event where this timeline branches from the main timeline');
 
+        let divergenceEventTextInput: TextComponent | null = null;
         divergenceEventSetting.addText(text => text
             .setPlaceholder('Select or enter event name...')
             .setValue(this.fork.divergenceEvent)
             .onChange(value => this.fork.divergenceEvent = value)
+            .then(component => {
+                divergenceEventTextInput = component;
+            })
         );
 
         divergenceEventSetting.addButton(button => button
-            .setButtonText('Select Event')
+            .setButtonText('Select event')
             .onClick(async () => {
                 new EventSuggestModal(
                     this.app,
@@ -86,10 +90,7 @@ export class TimelineForkModal extends Modal {
                     (selectedEvent: Event) => {
                         this.fork.divergenceEvent = selectedEvent.name;
                         // Update the text input to show selected event
-                        const textInput = divergenceEventSetting.components.find(c => c instanceof TextAreaComponent || 'inputEl' in c) as any;
-                        if (textInput && textInput.setValue) {
-                            textInput.setValue(selectedEvent.name);
-                        }
+                        divergenceEventTextInput?.setValue(selectedEvent.name);
                     }
                 ).open();
             })
@@ -97,10 +98,10 @@ export class TimelineForkModal extends Modal {
 
         // Divergence Date
         new Setting(contentEl)
-            .setName('Divergence Date')
-            .setDesc('When this timeline diverges (YYYY-MM-DD format)')
+            .setName('Divergence date')
+            .setDesc('When this timeline diverges (yyyy-mm-dd format)')
             .addText(text => text
-                .setPlaceholder('e.g., 1985-02-15')
+                .setPlaceholder('E.g., 1985-02-15')
                 .setValue(this.fork.divergenceDate)
                 .onChange(value => this.fork.divergenceDate = value)
             );
@@ -122,25 +123,24 @@ export class TimelineForkModal extends Modal {
 
         // Color Picker
         const colorSetting = new Setting(contentEl)
-            .setName('Timeline Color')
+            .setName('Timeline color')
             .setDesc('Color for visualizing this fork in the timeline view');
 
+        let colorTextInput: TextComponent | null = null;
         colorSetting.addText(text => {
             text.setValue(this.fork.color || '#FF6B6B')
                 .onChange(value => this.fork.color = value);
             text.inputEl.setAttribute('type', 'color');
-            text.inputEl.style.width = '100px';
-            text.inputEl.style.height = '40px';
+            text.inputEl.setCssStyles({ width: '100px' });
+            text.inputEl.setCssStyles({ height: '40px' });
+            colorTextInput = text;
         });
 
         colorSetting.addButton(button => button
             .setButtonText('Random')
             .onClick(() => {
                 this.fork.color = this.plugin.generateRandomColor();
-                const colorInput = colorSetting.components.find(c => 'inputEl' in c) as any;
-                if (colorInput && colorInput.setValue) {
-                    colorInput.setValue(this.fork.color);
-                }
+                colorTextInput?.setValue(this.fork.color);
             })
         );
 
@@ -153,7 +153,7 @@ export class TimelineForkModal extends Modal {
                 text.setValue(this.fork.description || '')
                     .onChange(value => this.fork.description = value);
                 text.inputEl.rows = 4;
-                text.inputEl.style.width = '100%';
+                text.inputEl.setCssStyles({ width: '100%' });
             });
 
         // Notes
@@ -165,13 +165,13 @@ export class TimelineForkModal extends Modal {
                 text.setValue(this.fork.notes || '')
                     .onChange(value => this.fork.notes = value);
                 text.inputEl.rows = 4;
-                text.inputEl.style.width = '100%';
+                text.inputEl.setCssStyles({ width: '100%' });
             });
 
         // Display altered entities if editing existing fork
         if (!this.isNew) {
             const alteredSection = contentEl.createDiv('storyteller-fork-altered-entities');
-            alteredSection.createEl('h3', { text: 'Altered Entities' });
+            alteredSection.createEl('h3', { text: 'Altered entities' });
 
             if (this.fork.alteredCharacters && this.fork.alteredCharacters.length > 0) {
                 alteredSection.createEl('h4', { text: 'Characters:' });
@@ -190,7 +190,7 @@ export class TimelineForkModal extends Modal {
             }
 
             if (this.fork.forkEvents && this.fork.forkEvents.length > 0) {
-                alteredSection.createEl('h4', { text: 'Fork-specific Events:' });
+                alteredSection.createEl('h4', { text: 'Fork-specific events:' });
                 const eventList = alteredSection.createEl('ul');
                 this.fork.forkEvents.forEach(eventId => {
                     eventList.createEl('li', { text: eventId });

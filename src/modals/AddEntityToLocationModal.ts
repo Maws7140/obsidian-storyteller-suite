@@ -7,7 +7,6 @@ import { App, Modal, Notice, getIcon } from 'obsidian';
 import type StorytellerSuitePlugin from '../main';
 import type {
     Location,
-    EntityRef,
     Character,
     Event,
     PlotItem,

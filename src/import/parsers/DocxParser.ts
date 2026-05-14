@@ -8,9 +8,15 @@ import {
     ImportFormat,
     DocumentParser,
     ParsedDocument,
-    ParsedChapter,
-    DocumentMetadata
+    ParsedChapter
 } from '../ImportTypes';
+
+interface MammothModule {
+    convertToHtml(input: { arrayBuffer: ArrayBuffer }): Promise<{
+        value: string;
+        messages: Array<{ message?: string; type?: string }>;
+    }>;
+}
 
 /**
  * Count words in text
@@ -84,7 +90,7 @@ export class DocxParser implements DocumentParser {
         try {
             // Dynamically import mammoth to avoid bundling issues
             // @ts-ignore - mammoth may not have types
-            const mammoth = await import('mammoth');
+            const mammoth = (await import('mammoth')) as unknown as MammothModule;
             
             const result = await mammoth.convertToHtml({ arrayBuffer });
             const html = result.value;
@@ -92,7 +98,7 @@ export class DocxParser implements DocumentParser {
 
             // Log any conversion warnings
             if (messages.length > 0) {
-                console.log('DOCX conversion messages:', messages);
+                console.debug('DOCX conversion messages:', messages);
             }
 
             return this.parseFromHtml(html, fileName);
@@ -201,7 +207,7 @@ export class DocxParser implements DocumentParser {
         // Validate chapter numbering
         const numbers = chapters.map(c => c.number).filter((n): n is number => n !== undefined);
         if (numbers.length > 1) {
-            const sequential = numbers.every((n, i) => i === 0 || n === numbers[i - 1]! + 1);
+            const sequential = numbers.every((n, i) => i === 0 || n === numbers[i - 1] + 1);
             if (!sequential) {
                 warnings.push('Chapter numbering is not sequential. Please review chapter numbers.');
             }

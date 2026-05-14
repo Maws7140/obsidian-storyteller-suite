@@ -89,7 +89,7 @@ export class CustomCompileStepModal extends Modal {
         const codeArea = codeRow.createEl('textarea', { cls: 'storyteller-step-code-area' });
         codeArea.rows = 12;
         codeArea.spellcheck = false;
-        codeArea.placeholder = '// Click "Show example" to load a template for the selected stage.';
+        codeArea.placeholder = '// click "show example" to load a template for the selected stage.';
         codeArea.value = this.def.code ?? '';
 
         // Update example when stage changes
@@ -118,7 +118,7 @@ export class CustomCompileStepModal extends Modal {
         const cancelBtn = btnRow.createEl('button', { text: 'Cancel' });
         cancelBtn.addEventListener('click', () => this.close());
 
-        const saveBtn = btnRow.createEl('button', { text: 'Save Step', cls: 'mod-cta' });
+        const saveBtn = btnRow.createEl('button', { text: 'Save step', cls: 'mod-cta' });
         saveBtn.addEventListener('click', () => {
             const name = nameInput.value.trim();
             if (!name) {

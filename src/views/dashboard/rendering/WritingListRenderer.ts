@@ -46,7 +46,7 @@ export async function renderWritingChapterSceneList(container: HTMLElement, cont
         const chapterHeader = chapterGroup.createDiv('storyteller-chapter-header');
 
         const toggleButton = chapterHeader.createDiv('storyteller-chapter-toggle');
-        toggleButton.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M7 10l5 5 5-5z"/></svg>';
+        setIcon(toggleButton, 'chevron-down');
 
         const pfpContainer = chapterHeader.createDiv('storyteller-list-item-pfp');
         if (chapter.profileImagePath) {
@@ -85,7 +85,7 @@ export async function renderWritingChapterSceneList(container: HTMLElement, cont
         inlineEditButton.title = 'Edit chapter';
         inlineEditButton.addEventListener('click', event => {
             event.stopPropagation();
-            import('../../../modals/ChapterModal').then(({ ChapterModal }) => {
+            void import('../../../modals/ChapterModal').then(({ ChapterModal }) => {
                 new ChapterModal(context.app, context.plugin, chapter, async (updated) => {
                     await context.persistChapter(updated, `Chapter "${updated.name}" updated.`, 'writing-inline-chapter-updated');
                 }, async (toDelete) => {
@@ -108,7 +108,7 @@ export async function renderWritingChapterSceneList(container: HTMLElement, cont
 
         const actionsEl = chapterHeader.createDiv('storyteller-list-item-actions');
         context.addEditButton(actionsEl, () => {
-            import('../../../modals/ChapterModal').then(({ ChapterModal }) => {
+            void import('../../../modals/ChapterModal').then(({ ChapterModal }) => {
                 new ChapterModal(context.app, context.plugin, chapter, async (updated) => {
                     await context.persistChapter(updated, `Chapter "${updated.name}" updated.`, 'writing-chapter-updated');
                 }, async (toDelete) => {
@@ -138,7 +138,7 @@ export async function renderWritingChapterSceneList(container: HTMLElement, cont
         setIcon(addSceneButton.createSpan(), 'plus');
         addSceneButton.createSpan({ text: ' Add scene to this chapter' });
         addSceneButton.onclick = () => {
-            import('../../../modals/SceneModal').then(({ SceneModal }) => {
+            void import('../../../modals/SceneModal').then(({ SceneModal }) => {
                 const newScene = { chapterId: chapter.id, chapterName: chapter.name } as any;
                 new SceneModal(context.app, context.plugin, newScene, async (scene) => {
                     scene.chapterId = chapter.id;
@@ -151,14 +151,14 @@ export async function renderWritingChapterSceneList(container: HTMLElement, cont
         const chapterKey = chapter.id || chapter.name;
         let isExpanded = context.chapterCollapseState.has(chapterKey) ? context.chapterCollapseState.get(chapterKey)! : true;
         if (!isExpanded) {
-            scenesContainer.style.display = 'none';
+            scenesContainer.setCssStyles({ display: 'none' });
             toggleButton.classList.add('collapsed');
         }
         toggleButton.onclick = event => {
             event.stopPropagation();
             isExpanded = !isExpanded;
             context.chapterCollapseState.set(chapterKey, isExpanded);
-            scenesContainer.style.display = isExpanded ? 'block' : 'none';
+            scenesContainer.setCssStyles({ display: isExpanded ? 'block' : 'none' });
             toggleButton.classList.toggle('collapsed', !isExpanded);
         };
     });
@@ -175,14 +175,14 @@ export async function renderWritingChapterSceneList(container: HTMLElement, cont
         const unassignedHeader = unassignedGroup.createDiv('storyteller-chapter-header');
 
         const toggleButton = unassignedHeader.createDiv('storyteller-chapter-toggle');
-        toggleButton.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M7 10l5 5 5-5z"/></svg>';
+        setIcon(toggleButton, 'chevron-down');
 
         const pfpContainer = unassignedHeader.createDiv('storyteller-list-item-pfp');
         pfpContainer.createDiv({ cls: 'storyteller-pfp-placeholder storyteller-unassigned-badge', text: '?' });
 
         const infoEl = unassignedHeader.createDiv('storyteller-list-item-info');
         const titleRow = infoEl.createDiv('storyteller-chapter-title-row');
-        titleRow.createEl('strong', { text: 'Unassigned Scenes' });
+        titleRow.createEl('strong', { text: 'Unassigned scenes' });
         titleRow.createSpan({ cls: 'storyteller-chapter-scene-count', text: `${unassignedScenes.length} scene${unassignedScenes.length !== 1 ? 's' : ''}` });
 
         const scenesContainer = unassignedGroup.createDiv('storyteller-chapter-scenes');
@@ -193,14 +193,14 @@ export async function renderWritingChapterSceneList(container: HTMLElement, cont
         const unassignedKey = '__unassigned__';
         let isExpanded = context.chapterCollapseState.has(unassignedKey) ? context.chapterCollapseState.get(unassignedKey)! : true;
         if (!isExpanded) {
-            scenesContainer.style.display = 'none';
+            scenesContainer.setCssStyles({ display: 'none' });
             toggleButton.classList.add('collapsed');
         }
         toggleButton.onclick = event => {
             event.stopPropagation();
             isExpanded = !isExpanded;
             context.chapterCollapseState.set(unassignedKey, isExpanded);
-            scenesContainer.style.display = isExpanded ? 'block' : 'none';
+            scenesContainer.setCssStyles({ display: isExpanded ? 'block' : 'none' });
             toggleButton.classList.toggle('collapsed', !isExpanded);
         };
     }
@@ -261,7 +261,7 @@ function renderWritingSceneItem(
         const barWrap = infoEl.createDiv('storyteller-intensity-bar');
         const pct = Math.round(((Number(scene.intensity) + 10) / 20) * 100);
         const fill = barWrap.createDiv('storyteller-intensity-fill');
-        fill.style.width = `${pct}%`;
+        fill.setCssStyles({ width: `${pct}%` });
         fill.title = `Intensity: ${scene.intensity}`;
     }
 
@@ -293,7 +293,7 @@ function renderWritingSceneItem(
     }
 
     context.addEditButton(actionsEl, () => {
-        import('../../../modals/SceneModal').then(({ SceneModal }) => {
+        void import('../../../modals/SceneModal').then(({ SceneModal }) => {
             new SceneModal(context.app, context.plugin, scene, async (updated) => {
                 await context.persistScene(updated, `Scene "${updated.name}" updated.`, 'scene-item-updated');
             }, async (toDelete) => {

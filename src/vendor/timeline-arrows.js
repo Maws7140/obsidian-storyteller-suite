@@ -551,7 +551,7 @@ export default class Arrow {
             if (dep.hasOwnProperty("title")) {
                 this._tooltipConfig
                     ? this._tooltipConfig(this._dependencyPath[index], dep.title ?? '')
-                    : this._dependencyPath[index].innerHTML = "<title>" + dep.title + "</title>";
+                    : this._setPathTitle(this._dependencyPath[index], dep.title ?? '');
             }
         } else {
             this._dependencyPath[index].setAttribute("marker-end", "");
@@ -561,6 +561,13 @@ export default class Arrow {
     }
 
     /** @private Función que recibe in Item y devuelve la posición en pantalla del item. */
+    _setPathTitle(path, title) {
+        path.querySelectorAll("title").forEach((titleEl) => titleEl.remove());
+        const titleEl = document.createElementNS("http://www.w3.org/2000/svg", "title");
+        titleEl.textContent = title;
+        path.appendChild(titleEl);
+    }
+
     _getItemPos(item) {
         let left_x = item.left;
         let top_y;

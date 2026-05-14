@@ -80,12 +80,35 @@ const CHAPTER_PATTERNS = [
     /^section\s+\d+/i,
 ];
 
+interface PdfJsTextItem {
+    str: string;
+    transform: number[];
+}
+
+interface PdfJsPage {
+    getTextContent(): Promise<{ items: PdfJsTextItem[] }>;
+}
+
+interface PdfJsDocument {
+    numPages: number;
+    getMetadata(): Promise<{ info?: { Title?: string; Author?: string } }>;
+    getPage(pageNumber: number): Promise<PdfJsPage>;
+}
+
+interface PdfJsLoadingTask {
+    promise: Promise<PdfJsDocument>;
+}
+
+interface PdfJsLibrary {
+    getDocument(options: { data: Uint8Array }): PdfJsLoadingTask;
+}
+
 /**
  * PDF document parser
  */
 export class PdfParser implements DocumentParser {
     name = 'PDF Parser';
-    format: ImportFormat = 'pdf' as ImportFormat;
+    format: ImportFormat = 'pdf';
 
     canParse(content: string, fileName: string): boolean {
         const extension = fileName.toLowerCase().split('.').pop();
@@ -116,7 +139,7 @@ export class PdfParser implements DocumentParser {
     async parseAsync(arrayBuffer: ArrayBuffer, fileName: string): Promise<ParsedDocument> {
         try {
             // Load Obsidian's built-in PDF.js library
-            const pdfjsLib = await loadPdfJs();
+            const pdfjsLib = (await loadPdfJs()) as PdfJsLibrary;
 
             // Load the PDF document
             const loadingTask = pdfjsLib.getDocument({
@@ -128,7 +151,7 @@ export class PdfParser implements DocumentParser {
             // Extract text from all pages
             const fullText: string[] = [];
             let pdfTitle = '';
-            let pdfAuthor = '';
+            let pdfAuthor: string | undefined = '';
 
             // Try to get metadata
             try {
@@ -151,9 +174,7 @@ export class PdfParser implements DocumentParser {
                     let currentLine = '';
                     let lastY = -1;
 
-                    for (const item of textContent.items) {
-                        const textItem = item as any;
-
+                    for (const textItem of textContent.items) {
                         // Check if we've moved to a new line
                         if (lastY !== -1 && Math.abs(textItem.transform[5] - lastY) > 5) {
                             if (currentLine.trim()) {
@@ -215,7 +236,7 @@ export class PdfParser implements DocumentParser {
             const warnings: string[] = [];
             const numbers = chapters.map(c => c.number).filter((n): n is number => n !== undefined);
             if (numbers.length > 1) {
-                const sequential = numbers.every((n, i) => i === 0 || n === numbers[i - 1]! + 1);
+                const sequential = numbers.every((n, i) => i === 0 || n === numbers[i - 1] + 1);
                 if (!sequential) {
                     warnings.push('Chapter numbering is not sequential. Please review chapter numbers.');
                 }

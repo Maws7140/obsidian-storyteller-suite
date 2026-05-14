@@ -1,5 +1,5 @@
 import { App, normalizePath, TFile } from 'obsidian';
-import { Character } from '../types';
+import { Character, TypedRelationship } from '../types';
 import StorytellerSuitePlugin from '../main';
 import { BUILT_IN_SHEET_TEMPLATES, CustomSheetTemplate } from './CharacterSheetTemplates';
 
@@ -11,6 +11,16 @@ export interface SheetData {
     groups: { name: string; description?: string }[];
     portraitDataUrl?: string;
 }
+
+type CharacterSheetCharacter = Character & {
+    occupation?: string;
+    birthDate?: string;
+    birthday?: string;
+};
+
+type LegacyRelationship = TypedRelationship & {
+    name?: string;
+};
 
 export class CharacterSheetGenerator {
     constructor(private app: App, private plugin: StorytellerSuitePlugin) {}
@@ -142,7 +152,7 @@ ${inner}
 
     private applyCustomTemplate(tpl: CustomSheetTemplate, data: SheetData): string {
         const { character, events, locations, items, groups, portraitDataUrl } = data;
-        const c   = character as any;
+        const c: CharacterSheetCharacter = character;
         const esc = (s: string) => this.esc(s);
         const nl  = (s: string) => esc(s).replace(/\n/g, '<br>');
 
@@ -162,7 +172,7 @@ ${inner}
                 if (typeof rel === 'string') {
                     li.push(`<li>${esc(rel)}</li>`);
                 } else {
-                    const r = rel as any;
+                    const r: LegacyRelationship = rel;
                     const target = r.target || r.name || '';
                     li.push(`<li><strong>${esc(r.type || 'Related')}</strong>: ${esc(target)}${r.label ? ` — ${esc(r.label)}` : ''}</li>`);
                 }
@@ -311,7 +321,7 @@ ${inner}
         lines.push('');
         lines.push('| Field | Value |');
         lines.push('|-------|-------|');
-        const c = character as any;
+        const c: CharacterSheetCharacter = character;
         if (character.status)      lines.push(`| **Status** | ${character.status} |`);
         if (character.affiliation) lines.push(`| **Affiliation** | ${character.affiliation} |`);
         if (c.age)                 lines.push(`| **Age** | ${c.age} |`);
@@ -348,8 +358,8 @@ ${inner}
                 if (typeof rel === 'string') {
                     lines.push(`- [[${rel}]]`);
                 } else {
-                    const r = rel as any;
-                    const target = r.target || r.name || String(rel);
+                    const r = rel;
+                    const target = r.target;
                     lines.push(`- **${r.type || 'Related'}**: [[${target}]]${r.label ? ` — ${r.label}` : ''}`);
                 }
             });

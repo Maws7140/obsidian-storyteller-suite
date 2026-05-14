@@ -1,4 +1,4 @@
-import { DateTime } from 'luxon';
+import { DateTime, FixedOffsetZone } from 'luxon';
 import * as chrono from 'chrono-node';
 import type { Event } from '../types';
 
@@ -69,10 +69,16 @@ function coerceDateInput(input: unknown): string | undefined {
   return text && text !== '[object Object]' ? text : undefined;
 }
 
+function getLuxonZone(timezone: ParseOptions['timezone']): string | FixedOffsetZone | undefined {
+  if (typeof timezone === 'number') return FixedOffsetZone.instance(timezone);
+  return timezone;
+}
+
 /** Try CE/BCE patterns first, then Luxon ISO, SQL, Chrono (casual), then ad-hoc formats. */export function parseEventDate(input?: unknown, opts: ParseOptions = {}): ParsedEventDate {
   const text = coerceDateInput(input);
   if (!text) return { error: 'empty' };
   const approximate = APPROX_RE.test(text);
+  const zone = getLuxonZone(opts.timezone);
 
   // 0) CE date detection
   const ceMatch = text.match(CE_RE);
@@ -85,7 +91,7 @@ function coerceDateInput(input: unknown): string | undefined {
       // Check if it's a simple year-only CE date
       const isSimpleYear = /^\s*\d+\s*(?:CE|ce|A\.D\.|AD|ad|a\.d\.)\s*$/i.test(text);
       if (isSimpleYear) {
-        const yearOnly = DateTime.fromObject({ year: year }, { zone: opts.timezone as any });
+        const yearOnly = DateTime.fromObject({ year: year }, { zone });
 
         if (yearOnly.isValid) {
           return {
@@ -104,7 +110,7 @@ function coerceDateInput(input: unknown): string | undefined {
 
       for (const testText of testFormats) {
         // Try ISO format
-        const iso = DateTime.fromISO(testText, { zone: opts.timezone as any });
+        const iso = DateTime.fromISO(testText, { zone });
         if (iso.isValid) {
           return {
             start: iso,
@@ -114,7 +120,7 @@ function coerceDateInput(input: unknown): string | undefined {
         }
 
         // Try SQL format
-        const sql = DateTime.fromSQL(testText, { zone: opts.timezone as any });
+        const sql = DateTime.fromSQL(testText, { zone });
         if (sql.isValid) {
           return {
             start: sql,
@@ -127,11 +133,11 @@ function coerceDateInput(input: unknown): string | undefined {
       // Try Chrono parsing as fallback
       try {
         const reference: Date | undefined = opts.referenceDate;
-        const results = chrono.parse(text, reference as any, { forwardDate: !!opts.forwardDate });
+        const results = chrono.parse(text, reference, { forwardDate: !!opts.forwardDate });
         if (results && results.length > 0) {
           const r = results[0];
-          const start = DateTime.fromJSDate(r.start.date(), { zone: opts.timezone as any });
-          const end = r.end ? DateTime.fromJSDate(r.end.date(), { zone: opts.timezone as any }) : undefined;
+          const start = DateTime.fromJSDate(r.start.date(), { zone });
+          const end = r.end ? DateTime.fromJSDate(r.end.date(), { zone }) : undefined;
           const precision = inferPrecisionFromChrono(r);
           return {
             start,
@@ -140,7 +146,7 @@ function coerceDateInput(input: unknown): string | undefined {
             approximate,
           };
         }
-      } catch (e) {
+      } catch {
         // Fall through to regular parsing
       }
     }
@@ -159,7 +165,7 @@ function coerceDateInput(input: unknown): string | undefined {
       // Don't use this for dates that might have month/day info
       const isSimpleYear = /^\s*\d+\s*(?:BC|bce|BCE|B\.C\.|B\.C|B\.C\.E\.|b\.c\.|b\.c\.e\.|bc|b\.c\.e)\s*$/i.test(text);
       if (isSimpleYear) {
-        const yearOnly = DateTime.fromObject({ year: jsYear }, { zone: opts.timezone as any });
+        const yearOnly = DateTime.fromObject({ year: jsYear }, { zone });
 
         if (yearOnly.isValid) {
           return {
@@ -182,7 +188,7 @@ function coerceDateInput(input: unknown): string | undefined {
 
       for (const testText of testFormats) {
         // Try ISO format
-        const iso = DateTime.fromISO(testText, { zone: opts.timezone as any });
+        const iso = DateTime.fromISO(testText, { zone });
         if (iso.isValid) {
           return {
             start: iso,
@@ -194,7 +200,7 @@ function coerceDateInput(input: unknown): string | undefined {
         }
 
         // Try SQL format
-        const sql = DateTime.fromSQL(testText, { zone: opts.timezone as any });
+        const sql = DateTime.fromSQL(testText, { zone });
         if (sql.isValid) {
           return {
             start: sql,
@@ -209,17 +215,15 @@ function coerceDateInput(input: unknown): string | undefined {
       // Try Chrono parsing as fallback
       try {
         const reference: Date | undefined = opts.referenceDate;
-        const results = chrono.parse(text, reference as any, { forwardDate: !!opts.forwardDate });
+        const results = chrono.parse(text, reference, { forwardDate: !!opts.forwardDate });
         if (results && results.length > 0) {
           const r = results[0];
           // Check if the parsed date is in BCE range (negative year) or if the original text contains BCE
           const jsDate = r.start.date();
-          const start = DateTime.fromJSDate(jsDate, { zone: opts.timezone as any });
+          const start = DateTime.fromJSDate(jsDate, { zone });
           if (start.year < 0 || bceMatch) {
-            const end = r.end ? DateTime.fromJSDate(r.end.date(), { zone: opts.timezone as any }) : undefined;
+            const end = r.end ? DateTime.fromJSDate(r.end.date(), { zone }) : undefined;
             const precision = inferPrecisionFromChrono(r);
-            const isBceDetected = bceMatch || start.year < 0;
-
             // If we detected BCE from the regex, use the converted year from BCE detection
             // Otherwise, convert negative year to positive BCE year
             const originalYear = bceMatch ? year : (start.year === 0 ? 1 : Math.abs(start.year));
@@ -244,14 +248,14 @@ function coerceDateInput(input: unknown): string | undefined {
             };
           }
         }
-      } catch (e) {
+      } catch {
         // Fall through to regular parsing
       }
     }
   }
 
   // 1) ISO
-  const iso = DateTime.fromISO(text, { zone: opts.timezone as any });
+  const iso = DateTime.fromISO(text, { zone });
   if (iso.isValid) {
     // Infer precision from the text format if possible, as Luxon loses this info
     let precision: ParsedPrecision = 'day';
@@ -273,7 +277,7 @@ function coerceDateInput(input: unknown): string | undefined {
   }
 
   // 2) SQL
-  const sql = DateTime.fromSQL(text, { zone: opts.timezone as any });
+  const sql = DateTime.fromSQL(text, { zone });
   if (sql.isValid) {
     return { start: sql, precision: inferPrecisionFromLuxon(sql), approximate };
   }
@@ -281,15 +285,15 @@ function coerceDateInput(input: unknown): string | undefined {
   // 3) Chrono parse (supports ranges)
   try {
     const reference: Date | undefined = opts.referenceDate;
-    const results = chrono.parse(text, reference as any, { forwardDate: !!opts.forwardDate });
+    const results = chrono.parse(text, reference, { forwardDate: !!opts.forwardDate });
     if (results && results.length > 0) {
       const r = results[0];
-      const start = DateTime.fromJSDate(r.start.date(), { zone: opts.timezone as any });
-      const end = r.end ? DateTime.fromJSDate(r.end.date(), { zone: opts.timezone as any }) : undefined;
+      const start = DateTime.fromJSDate(r.start.date(), { zone });
+      const end = r.end ? DateTime.fromJSDate(r.end.date(), { zone }) : undefined;
       const precision = inferPrecisionFromChrono(r);
       return { start, end, precision, approximate };
     }
-  } catch (e) {
+  } catch {
     // fallthrough
   }
 
@@ -301,7 +305,7 @@ function coerceDateInput(input: unknown): string | undefined {
     ['LLLL dd yyyy', 'day'],
   ] as const;
   for (const [fmt, prec] of candidates) {
-    const dt = DateTime.fromFormat(text, fmt, { zone: opts.timezone as any });
+    const dt = DateTime.fromFormat(text, fmt, { zone });
     if (dt.isValid) return { start: dt, precision: prec, approximate };
   }
 

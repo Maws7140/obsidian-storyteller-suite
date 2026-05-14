@@ -6,10 +6,17 @@
 import {
     Template,
     TemplateValidationResult,
-    TemplateEntityType,
-    TemplatePlaceholder,
-    TemplateVariable
+    TemplateEntityType
 } from './TemplateTypes';
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function getStringField(value: Record<string, unknown>, field: string): string | undefined {
+    const fieldValue = value[field];
+    return typeof fieldValue === 'string' ? fieldValue : undefined;
+}
 
 export class TemplateValidator {
     /**
@@ -89,11 +96,14 @@ export class TemplateValidator {
         const allIds = new Set<string>();
         const entities = template.entities;
 
-        const addIds = (items: any[] | undefined) => {
+        const addIds = (items: readonly unknown[] | undefined) => {
             if (items) {
                 items.forEach(item => {
-                    if (item.templateId) {
-                        allIds.add(item.templateId);
+                    if (isRecord(item)) {
+                        const templateId = getStringField(item, 'templateId');
+                        if (templateId) {
+                            allIds.add(templateId);
+                        }
                     }
                 });
             }
@@ -218,7 +228,7 @@ export class TemplateValidator {
      * Validate references for a specific entity type
      */
     private static validateReferences(
-        items: any[] | undefined,
+        items: readonly unknown[] | undefined,
         entityType: TemplateEntityType,
         allIds: Set<string>,
         result: TemplateValidationResult,
@@ -227,18 +237,27 @@ export class TemplateValidator {
         if (!items) return;
 
         items.forEach(item => {
+            if (!isRecord(item)) {
+                return;
+            }
+
+            const entityId = getStringField(item, 'templateId');
+            if (!entityId) {
+                return;
+            }
+
             fields.forEach(({ field }) => {
                 const value = item[field];
                 if (!value) return;
 
                 // Handle arrays
                 if (Array.isArray(value)) {
-                    value.forEach((ref: any) => {
-                        const refId = typeof ref === 'string' ? ref : ref.target || ref.name;
+                    value.forEach(ref => {
+                        const refId = this.getReferenceId(ref);
                         if (refId && !allIds.has(refId)) {
                             result.brokenReferences.push({
                                 entityType,
-                                entityId: item.templateId,
+                                entityId,
                                 referenceType: field,
                                 targetId: refId
                             });
@@ -250,25 +269,36 @@ export class TemplateValidator {
                     if (!allIds.has(value)) {
                         result.brokenReferences.push({
                             entityType,
-                            entityId: item.templateId,
+                            entityId,
                             referenceType: field,
                             targetId: value
                         });
                     }
                 }
                 // Handle Group members (special case)
-                else if (field === 'members' && value.name) {
-                    if (!allIds.has(value.name)) {
+                else if (field === 'members' && isRecord(value)) {
+                    const memberName = getStringField(value, 'name');
+                    if (memberName && !allIds.has(memberName)) {
                         result.brokenReferences.push({
                             entityType,
-                            entityId: item.templateId,
+                            entityId,
                             referenceType: 'members',
-                            targetId: value.name
+                            targetId: memberName
                         });
                     }
                 }
             });
         });
+    }
+
+    private static getReferenceId(ref: unknown): string | undefined {
+        if (typeof ref === 'string') {
+            return ref;
+        }
+        if (!isRecord(ref)) {
+            return undefined;
+        }
+        return getStringField(ref, 'target') ?? getStringField(ref, 'name');
     }
 
     /**
@@ -303,7 +333,7 @@ export class TemplateValidator {
             if (placeholder.validationRule) {
                 try {
                     new RegExp(placeholder.validationRule);
-                } catch (e) {
+                } catch {
                     result.errors.push(
                         `Placeholder ${index}: invalid validation rule regex "${placeholder.validationRule}"`
                     );

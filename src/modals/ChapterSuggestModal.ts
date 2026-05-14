@@ -2,6 +2,10 @@ import { App, FuzzySuggestModal, Notice, FuzzyMatch, prepareFuzzySearch } from '
 import { Chapter } from '../types';
 import StorytellerSuitePlugin from '../main';
 
+interface InputRefreshableSuggestModal {
+    onInputChanged?: () => void;
+}
+
 export class ChapterSuggestModal extends FuzzySuggestModal<Chapter | 'new'> {
     plugin: StorytellerSuitePlugin;
     onChoose: (ch: Chapter | 'new') => void;
@@ -15,7 +19,7 @@ export class ChapterSuggestModal extends FuzzySuggestModal<Chapter | 'new'> {
     }
 
     async onOpen() {
-        super.onOpen();
+        void super.onOpen();
         try {
             this.chapters = (await this.plugin.listChapters())
                 .sort((a, b) => (a.number ?? 999) - (b.number ?? 999));
@@ -23,9 +27,9 @@ export class ChapterSuggestModal extends FuzzySuggestModal<Chapter | 'new'> {
             new Notice('Error loading chapters');
             this.chapters = [];
         }
-        setTimeout(() => {
-            try { this.inputEl?.dispatchEvent(new window.Event('input')); } catch {}
-            try { (this as any).onInputChanged?.(); } catch {}
+        window.setTimeout(() => {
+            try { this.inputEl?.dispatchEvent(new window.Event('input')); } catch { /* Ignore best-effort refresh errors. */ }
+            try { (this as unknown as InputRefreshableSuggestModal).onInputChanged?.(); } catch { /* Ignore best-effort refresh errors. */ }
         }, 0);
     }
 
@@ -41,7 +45,9 @@ export class ChapterSuggestModal extends FuzzySuggestModal<Chapter | 'new'> {
         const results = this.chapters
             .map(ch => {
                 const m = fuzzy(this.getItemText(ch));
-                return m ? ({ item: ch, match: m } as FuzzyMatch<Chapter | 'new'>) : null;
+                if (!m) return null;
+                const result: FuzzyMatch<Chapter | 'new'> = { item: ch, match: m };
+                return result;
             })
             .filter((r): r is FuzzyMatch<Chapter | 'new'> => !!r);
         return [newItem, ...results];

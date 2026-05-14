@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
+ 
 
 // Core Obsidian imports for modal functionality
 import { App, Modal, Setting, Notice, ButtonComponent, TFile } from 'obsidian';
@@ -51,7 +51,7 @@ export class CultureListModal extends Modal {
         this.listContainer = contentEl.createDiv('storyteller-list-container');
 
         // Add search input with real-time filtering
-        const searchInput = new Setting(contentEl)
+        new Setting(contentEl)
             .setName(t('search'))
             .addText(text => {
                 text.setPlaceholder(t('searchCultures'))
@@ -182,9 +182,9 @@ export class CultureListModal extends Modal {
                     }
 
                     // Find and open the culture file
-                    const file = this.app.vault.getAbstractFileByPath(culture.filePath!);
+                    const file = this.app.vault.getAbstractFileByPath(culture.filePath);
                     if (file instanceof TFile) {
-                        this.app.workspace.getLeaf(false).openFile(file);
+                        void this.app.workspace.getLeaf(false).openFile(file);
                         this.close(); // Close modal after opening file
                     } else {
                         new Notice(t('workspaceLeafRevealError'));

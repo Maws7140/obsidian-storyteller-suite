@@ -150,7 +150,7 @@ export class EntityExtractor {
         ]).flat();
 
         for (const pattern of dialoguePatterns) {
-            let match;
+            let match: RegExpExecArray | null;
             while ((match = pattern.exec(text)) !== null) {
                 const name = match[1];
                 if (this.isValidCharacterName(name)) {
@@ -161,7 +161,7 @@ export class EntityExtractor {
 
         // Pattern 2: Possessive forms - "John's"
         const possessivePattern = /\b([A-Z][a-z]+)'s\b/g;
-        let match;
+        let match: RegExpExecArray | null;
         while ((match = possessivePattern.exec(text)) !== null) {
             const name = match[1];
             if (this.isValidCharacterName(name)) {
@@ -201,7 +201,7 @@ export class EntityExtractor {
         // e.g., "in the Castle", "at the Dark Forest"
         for (const prep of LOCATION_PREPOSITIONS) {
             const pattern = new RegExp(`${prep}\\s+(?:the\\s+)?([A-Z][a-z]+(?:\\s+[A-Z][a-z]+)*)`, 'gi');
-            let match;
+            let match: RegExpExecArray | null;
             while ((match = pattern.exec(text)) !== null) {
                 const location = match[1];
                 if (this.isValidLocationName(location)) {
@@ -212,7 +212,7 @@ export class EntityExtractor {
 
         // Pattern 2: Multi-word proper nouns (e.g., "Dark Forest", "Crystal Palace")
         const multiWordPattern = /\b([A-Z][a-z]+\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b/g;
-        let match;
+        let match: RegExpExecArray | null;
         while ((match = multiWordPattern.exec(text)) !== null) {
             const location = match[1];
             // Check if it looks like a location (has location-type words)
@@ -222,7 +222,7 @@ export class EntityExtractor {
         }
 
         // Pattern 3: Scene headers (screenplay-style)
-        const scenePattern = /^(?:INT|EXT|INTERIOR|EXTERIOR)[\.\s]+([A-Z][^\n-]+)/gim;
+        const scenePattern = /^(?:INT|EXT|INTERIOR|EXTERIOR)[.\s]+([A-Z][^\n-]+)/gim;
         while ((match = scenePattern.exec(text)) !== null) {
             const location = match[1].trim();
             if (location.length > 2 && location.length < 50) {

@@ -10,7 +10,8 @@ import {
     TemplateApplicationOptions,
     TemplateApplicationResult,
     TemplateEntity,
-    TemplateEntitySelection
+    TemplateEntitySelection,
+    TemplateVariableValue
 } from './TemplateTypes';
 import {
     Character,
@@ -28,6 +29,12 @@ import {
 } from '../types';
 import { VariableSubstitution } from './VariableSubstitution';
 import { parseSectionsFromMarkdown } from '../yaml/EntitySections';
+
+type TemplateFieldOverrides = Map<string, Partial<Record<string, unknown>>>;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
 
 export class TemplateApplicator {
     private plugin: StorytellerSuitePlugin;
@@ -48,7 +55,7 @@ export class TemplateApplicator {
         template: Template,
         options: TemplateApplicationOptions
     ): Promise<TemplateApplicationResult> {
-        console.log('TemplateApplicator: Starting applyTemplate with:', { templateName: template.name, options });
+        console.debug('TemplateApplicator: Starting applyTemplate with:', { templateName: template.name, options });
 
         const result: TemplateApplicationResult = {
             success: false,
@@ -85,19 +92,19 @@ export class TemplateApplicator {
 
             // Apply variable values if provided
             const variableValues = options.variableValues || {};
-            console.log('TemplateApplicator: Variable values:', variableValues);
+            console.debug('TemplateApplicator: Variable values:', variableValues);
 
             // Substitute variables in template entities
             const substitutedTemplate = this.substituteTemplateVariables(template, variableValues);
-            console.log('TemplateApplicator: Substituted template entities:', substitutedTemplate.entities);
+            console.debug('TemplateApplicator: Substituted template entities:', substitutedTemplate.entities);
 
             // Filter entities based on selection
             const filteredEntities = this.filterEntities(substitutedTemplate.entities, options.includeEntities);
-            console.log('TemplateApplicator: Filtered entities:', filteredEntities);
+            console.debug('TemplateApplicator: Filtered entities:', filteredEntities);
 
             // Phase 1: Create all groups first (they need IDs for other entities)
             if (filteredEntities.groups && filteredEntities.groups.length > 0) {
-                console.log(`TemplateApplicator: Creating ${filteredEntities.groups.length} groups`);
+                console.debug(`TemplateApplicator: Creating ${filteredEntities.groups.length} groups`);
                 result.created.groups = await this.createGroups(
                     filteredEntities.groups,
                     options.storyId,
@@ -106,14 +113,14 @@ export class TemplateApplicator {
             }
 
             // Phase 2: Create all entities without relationships
-            const creationPromises: Promise<any>[] = [];
+            const creationPromises: Promise<unknown>[] = [];
 
             if (filteredEntities.characters && filteredEntities.characters.length > 0) {
-                console.log(`TemplateApplicator: Creating ${filteredEntities.characters.length} characters`);
+                console.debug(`TemplateApplicator: Creating ${filteredEntities.characters.length} characters`);
                 creationPromises.push(
                     this.createCharacters(filteredEntities.characters, options.storyId, options.fieldOverrides)
                         .then(chars => {
-                            console.log(`TemplateApplicator: Created ${chars.length} characters`);
+                            console.debug(`TemplateApplicator: Created ${chars.length} characters`);
                             result.created.characters = chars;
                         })
                 );
@@ -169,11 +176,11 @@ export class TemplateApplicator {
             }
 
             if (filteredEntities.scenes && filteredEntities.scenes.length > 0) {
-                console.log(`TemplateApplicator: Creating ${filteredEntities.scenes.length} scenes`);
+                console.debug(`TemplateApplicator: Creating ${filteredEntities.scenes.length} scenes`);
                 creationPromises.push(
                     this.createScenes(filteredEntities.scenes, options.storyId, options.fieldOverrides)
                         .then(scenes => {
-                            console.log(`TemplateApplicator: Created ${scenes.length} scenes`);
+                            console.debug(`TemplateApplicator: Created ${scenes.length} scenes`);
                             result.created.scenes = scenes;
                         })
                 );
@@ -187,18 +194,18 @@ export class TemplateApplicator {
             }
 
             // Wait for all entity creation
-            console.log('TemplateApplicator: Waiting for all entity creation promises...');
+            console.debug('TemplateApplicator: Waiting for all entity creation promises...');
             await Promise.all(creationPromises);
-            console.log('TemplateApplicator: All entities created:', result.created);
+            console.debug('TemplateApplicator: All entities created:', result.created);
 
             // Phase 3: Map all relationships now that all entities exist
-            console.log('TemplateApplicator: Mapping relationships...');
+            console.debug('TemplateApplicator: Mapping relationships...');
             await this.mapAllRelationships(result.created, options.mergeRelationships || false);
 
             // Phase 4: Save all entities with mapped relationships
-            console.log('TemplateApplicator: Saving all entities...');
+            console.debug('TemplateApplicator: Saving all entities...');
             await this.saveAllEntities(result.created);
-            console.log('TemplateApplicator: All entities saved');
+            console.debug('TemplateApplicator: All entities saved');
 
             // Success!
             result.success = true;
@@ -327,7 +334,7 @@ export class TemplateApplicator {
     private async createGroups(
         templateGroups: TemplateEntity<Group>[],
         storyId: string,
-        overrides?: Map<string, Partial<any>>
+        overrides?: TemplateFieldOverrides
     ): Promise<Group[]> {
         const groups: Group[] = [];
 
@@ -339,21 +346,18 @@ export class TemplateApplicator {
             const group: Group = {
                 ...fields,
                 ...override,
-                id: override?.id || this.generateId(),
+                id: this.getOverrideId(override),
                 storyId,
-                members: (fields as any).members || []
-            } as Group;
+                members: Array.isArray(fields.members) ? fields.members as Group['members'] : []
+            } as unknown as Group;
 
             // Apply sections to entity properties
-            for (const [sectionName, content] of Object.entries(sections)) {
-                const propName = sectionName.toLowerCase().replace(/\s+/g, '');
-                (group as any)[propName] = content;
-            }
+            this.applyEntitySections(group, sections);
 
             // Store mapping
-            this.idMap.set(templateId, group.id!);
-            this.groupIdMap.set(templateId, group.id!);
-            this.nameToIdMap.set(group.name, group.id!);
+            this.idMap.set(templateId, group.id);
+            this.groupIdMap.set(templateId, group.id);
+            this.nameToIdMap.set(group.name, group.id);
 
             // Add to plugin settings (groups are stored in settings)
             this.plugin.settings.groups.push(group);
@@ -371,23 +375,29 @@ export class TemplateApplicator {
     /**
      * Process template entity to extract fields from new format (yamlContent/markdownContent) or old format
      */
-    private processTemplateEntity<T>(templateEntity: TemplateEntity<T>): { fields: any; sections: Record<string, string> } {
-        const { templateId, yamlContent, markdownContent, sectionContent, customYamlFields, ...rest } = templateEntity as any;
+    private processTemplateEntity<T>(templateEntity: TemplateEntity<T>): { fields: Record<string, unknown>; sections: Record<string, string> } {
+        const templateRecord = templateEntity as Record<string, unknown>;
+        const { yamlContent, markdownContent, sectionContent, customYamlFields } = templateRecord;
         
-        let fields: any = { ...rest };
+        let fields: Record<string, unknown> = { ...templateRecord };
+        delete fields.templateId;
+        delete fields.yamlContent;
+        delete fields.markdownContent;
+        delete fields.sectionContent;
+        delete fields.customYamlFields;
         let sections: Record<string, string> = {};
 
         // Handle new format: yamlContent and markdownContent
         if (yamlContent && typeof yamlContent === 'string') {
             try {
-                const parsed = parseYaml(yamlContent);
-                if (parsed && typeof parsed === 'object') {
+                const parsed = parseYaml(yamlContent) as unknown;
+                if (isRecord(parsed)) {
                     fields = { ...fields, ...parsed };
                 }
             } catch (error) {
                 console.warn('Failed to parse yamlContent:', error);
             }
-        } else if (customYamlFields) {
+        } else if (isRecord(customYamlFields)) {
             // Old format: merge custom YAML fields
             fields = { ...fields, ...customYamlFields };
         }
@@ -400,22 +410,24 @@ export class TemplateApplicator {
                 
                 // Map well-known sections to entity properties
                 if ('Description' in parsedSections) {
-                    (fields as any).description = parsedSections['Description'];
+                    (fields).description = parsedSections['Description'];
                 }
                 if ('Backstory' in parsedSections) {
-                    (fields as any).backstory = parsedSections['Backstory'];
+                    (fields).backstory = parsedSections['Backstory'];
                 }
             } catch (error) {
                 console.warn('Failed to parse markdownContent:', error);
             }
-        } else if (sectionContent) {
+        } else if (isRecord(sectionContent)) {
             // Old format: use sectionContent
-            sections = sectionContent;
+            sections = Object.fromEntries(
+                Object.entries(sectionContent).map(([key, value]) => [key, String(value ?? '')])
+            );
             
             // Map section content to individual properties
             for (const [sectionName, content] of Object.entries(sectionContent)) {
                 const propName = sectionName.toLowerCase().replace(/\s+/g, '');
-                (fields as any)[propName] = content;
+                (fields)[propName] = content;
             }
         }
 
@@ -425,7 +437,7 @@ export class TemplateApplicator {
     private async createCharacters(
         templateChars: TemplateEntity<Character>[],
         storyId: string,
-        overrides?: Map<string, Partial<any>>
+        overrides?: TemplateFieldOverrides
     ): Promise<Character[]> {
         const characters: Character[] = [];
 
@@ -465,23 +477,11 @@ export class TemplateApplicator {
                 connections: [],
                 ...fields,
                 ...override,
-                id: override?.id || this.generateId(),
-            } as Character;
+                id: this.getOverrideId(override),
+            } as unknown as Character;
 
             // Apply sections to entity properties (for backward compatibility with save methods)
-            for (const [sectionName, content] of Object.entries(sections)) {
-                const propName = sectionName.toLowerCase().replace(/\s+/g, '');
-                (character as any)[propName] = content;
-            }
-
-            // Store all template sections for saveCharacter to use (hidden property)
-            // This preserves all sections from note-based templates, not just Description/Backstory
-            Object.defineProperty(character, '_templateSections', {
-                value: sections,
-                enumerable: false,
-                writable: true,
-                configurable: true
-            });
+            this.applyEntitySections(character, sections);
 
             // Store mapping
             this.idMap.set(templateId, character.id!);
@@ -510,10 +510,11 @@ export class TemplateApplicator {
     }
 
     /** Helper: apply sections to entity and store _templateSections */
-    private applyEntitySections(entity: any, sections: Record<string, string>): void {
+    private applyEntitySections(entity: object, sections: Record<string, string>): void {
+        const target = entity as Record<string, unknown>;
         for (const [sectionName, content] of Object.entries(sections)) {
             const propName = sectionName.toLowerCase().replace(/\s+/g, '');
-            entity[propName] = content;
+            target[propName] = content;
         }
         if (Object.keys(sections).length > 0) {
             Object.defineProperty(entity, '_templateSections', {
@@ -531,7 +532,7 @@ export class TemplateApplicator {
     private async createLocations(
         templateLocs: TemplateEntity<Location>[],
         storyId: string,
-        overrides?: Map<string, Partial<any>>
+        overrides?: TemplateFieldOverrides
     ): Promise<Location[]> {
         const locations: Location[] = [];
 
@@ -545,8 +546,8 @@ export class TemplateApplicator {
                 connections: [],
                 ...fields,
                 ...override,
-                id: override?.id || this.generateId(),
-            } as Location;
+                id: this.getOverrideId(override),
+            } as unknown as Location;
 
             this.applyEntitySections(location, sections);
             this.idMap.set(templateId, location.id!);
@@ -564,7 +565,7 @@ export class TemplateApplicator {
     private async createEvents(
         templateEvents: TemplateEntity<Event>[],
         storyId: string,
-        overrides?: Map<string, Partial<any>>
+        overrides?: TemplateFieldOverrides
     ): Promise<Event[]> {
         const events: Event[] = [];
 
@@ -580,8 +581,8 @@ export class TemplateApplicator {
                 dependencies: [],
                 ...fields,
                 ...override,
-                id: override?.id || this.generateId(),
-            } as Event;
+                id: this.getOverrideId(override),
+            } as unknown as Event;
 
             this.applyEntitySections(event, sections);
             this.idMap.set(templateId, event.id!);
@@ -599,7 +600,7 @@ export class TemplateApplicator {
     private async createItems(
         templateItems: TemplateEntity<PlotItem>[],
         storyId: string,
-        overrides?: Map<string, Partial<any>>
+        overrides?: TemplateFieldOverrides
     ): Promise<PlotItem[]> {
         const items: PlotItem[] = [];
 
@@ -615,8 +616,8 @@ export class TemplateApplicator {
                 connections: [],
                 ...fields,
                 ...override,
-                id: override?.id || this.generateId(),
-            } as PlotItem;
+                id: this.getOverrideId(override),
+            } as unknown as PlotItem;
 
             this.applyEntitySections(item, sections);
             this.idMap.set(templateId, item.id!);
@@ -634,7 +635,7 @@ export class TemplateApplicator {
     private async createCultures(
         templateCultures: TemplateEntity<Culture>[],
         storyId: string,
-        overrides?: Map<string, Partial<any>>
+        overrides?: TemplateFieldOverrides
     ): Promise<Culture[]> {
         const cultures: Culture[] = [];
 
@@ -650,8 +651,8 @@ export class TemplateApplicator {
                 relatedCultures: [],
                 ...fields,
                 ...override,
-                id: override?.id || this.generateId(),
-            } as Culture;
+                id: this.getOverrideId(override),
+            } as unknown as Culture;
 
             this.applyEntitySections(culture, sections);
             this.idMap.set(templateId, culture.id!);
@@ -669,7 +670,7 @@ export class TemplateApplicator {
     private async createEconomies(
         templateEconomies: TemplateEntity<Economy>[],
         storyId: string,
-        overrides?: Map<string, Partial<any>>
+        overrides?: TemplateFieldOverrides
     ): Promise<Economy[]> {
         const economies: Economy[] = [];
 
@@ -685,8 +686,8 @@ export class TemplateApplicator {
                 linkedEvents: [],
                 ...fields,
                 ...override,
-                id: override?.id || this.generateId(),
-            } as Economy;
+                id: this.getOverrideId(override),
+            } as unknown as Economy;
 
             this.applyEntitySections(economy, sections);
             this.idMap.set(templateId, economy.id!);
@@ -704,7 +705,7 @@ export class TemplateApplicator {
     private async createMagicSystems(
         templateMagicSystems: TemplateEntity<MagicSystem>[],
         storyId: string,
-        overrides?: Map<string, Partial<any>>
+        overrides?: TemplateFieldOverrides
     ): Promise<MagicSystem[]> {
         const magicSystems: MagicSystem[] = [];
 
@@ -721,8 +722,8 @@ export class TemplateApplicator {
                 linkedItems: [],
                 ...fields,
                 ...override,
-                id: override?.id || this.generateId(),
-            } as MagicSystem;
+                id: this.getOverrideId(override),
+            } as unknown as MagicSystem;
 
             this.applyEntitySections(magicSystem, sections);
             this.idMap.set(templateId, magicSystem.id!);
@@ -740,7 +741,7 @@ export class TemplateApplicator {
     private async createChapters(
         templateChapters: TemplateEntity<Chapter>[],
         storyId: string,
-        overrides?: Map<string, Partial<any>>
+        overrides?: TemplateFieldOverrides
     ): Promise<Chapter[]> {
         const chapters: Chapter[] = [];
 
@@ -757,8 +758,8 @@ export class TemplateApplicator {
                 linkedGroups: [],
                 ...fields,
                 ...override,
-                id: override?.id || this.generateId(),
-            } as Chapter;
+                id: this.getOverrideId(override),
+            } as unknown as Chapter;
 
             this.applyEntitySections(chapter, sections);
             this.idMap.set(templateId, chapter.id!);
@@ -776,7 +777,7 @@ export class TemplateApplicator {
     private async createScenes(
         templateScenes: TemplateEntity<Scene>[],
         storyId: string,
-        overrides?: Map<string, Partial<any>>
+        overrides?: TemplateFieldOverrides
     ): Promise<Scene[]> {
         const scenes: Scene[] = [];
 
@@ -793,8 +794,8 @@ export class TemplateApplicator {
                 linkedGroups: [],
                 ...fields,
                 ...override,
-                id: override?.id || this.generateId(),
-            } as Scene;
+                id: this.getOverrideId(override),
+            } as unknown as Scene;
 
             this.applyEntitySections(scene, sections);
             this.idMap.set(templateId, scene.id!);
@@ -812,7 +813,7 @@ export class TemplateApplicator {
     private async createReferences(
         templateRefs: TemplateEntity<Reference>[],
         storyId: string,
-        overrides?: Map<string, Partial<any>>
+        overrides?: TemplateFieldOverrides
     ): Promise<Reference[]> {
         const references: Reference[] = [];
 
@@ -824,7 +825,7 @@ export class TemplateApplicator {
             const reference: Reference = {
                 ...fields,
                 ...override,
-                id: override?.id || this.generateId(),
+                id: this.getOverrideId(override),
             } as Reference;
 
             this.applyEntitySections(reference, sections);
@@ -1027,7 +1028,7 @@ export class TemplateApplicator {
      * Save all created entities to vault
      */
     private async saveAllEntities(created: TemplateApplicationResult['created']): Promise<void> {
-        const savePromises: Promise<any>[] = [];
+        const savePromises: Promise<void>[] = [];
 
         // Save characters
         for (const char of created.characters) {
@@ -1090,7 +1091,7 @@ export class TemplateApplicator {
      */
     private substituteTemplateVariables(
         template: Template,
-        variableValues: Record<string, any>
+        variableValues: Record<string, TemplateVariableValue>
     ): Template {
         // If no variables or no variable values, return original template
         if (!template.variables || template.variables.length === 0 || Object.keys(variableValues).length === 0) {
@@ -1098,7 +1099,7 @@ export class TemplateApplicator {
         }
 
         // Clone the template to avoid mutations
-        const clonedTemplate: Template = JSON.parse(JSON.stringify(template));
+        const clonedTemplate = JSON.parse(JSON.stringify(template)) as Template;
 
         // Substitute variables in all entity types
         const allWarnings: string[] = [];
@@ -1114,7 +1115,7 @@ export class TemplateApplicator {
                     allWarnings.push(...result.warnings);
                 }
 
-                return result.value as TemplateEntity<T>;
+                return result.value;
             });
         };
 
@@ -1142,7 +1143,11 @@ export class TemplateApplicator {
     /**
      * Generate unique ID
      */
+    private getOverrideId(override: Partial<Record<string, unknown>> | undefined): string {
+        return typeof override?.id === 'string' ? override.id : this.generateId();
+    }
+
     private generateId(): string {
-        return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        return `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
     }
 }

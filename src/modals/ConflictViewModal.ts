@@ -4,6 +4,9 @@ import { Event, Location } from '../types';
 import { t } from '../i18n/strings';
 import StorytellerSuitePlugin from '../main';
 
+type ConflictSeverityFilter = 'all' | 'error' | 'warning' | 'info';
+type ConflictTypeFilter = 'all' | 'location' | 'character' | 'temporal' | 'dependency';
+
 /**
  * Modal for viewing and managing timeline conflicts
  * Shows detected conflicts grouped by type and severity
@@ -12,8 +15,8 @@ export class ConflictViewModal extends Modal {
     private plugin: StorytellerSuitePlugin;
     private conflicts: DetectedConflict[];
     private filteredConflicts: DetectedConflict[];
-    private selectedSeverity: 'all' | 'error' | 'warning' | 'info' = 'all';
-    private selectedType: 'all' | 'location' | 'character' | 'temporal' | 'dependency' = 'all';
+    private selectedSeverity: ConflictSeverityFilter = 'all';
+    private selectedType: ConflictTypeFilter = 'all';
     private conflictListEl: HTMLElement | null = null;
     private locations: Location[] = [];
 
@@ -37,7 +40,7 @@ export class ConflictViewModal extends Modal {
         this.locations = await this.plugin.listLocations();
 
         // Title
-        contentEl.createEl('h2', { text: 'Timeline Conflicts' });
+        contentEl.createEl('h2', { text: 'Timeline conflicts' });
 
         // Summary stats
         this.renderSummary(contentEl);
@@ -47,8 +50,8 @@ export class ConflictViewModal extends Modal {
 
         // Export button
         new Setting(contentEl)
-            .setName('Export Report')
-            .setDesc('Generate a markdown report of all conflicts')
+            .setName('Export report')
+            .setDesc('Generate a Markdown report of all conflicts')
             .addButton(btn => btn
                 .setButtonText('Export')
                 .onClick(() => this.exportReport())
@@ -65,8 +68,7 @@ export class ConflictViewModal extends Modal {
             .onClick(() => this.close())
         );
 
-        // Add CSS
-        this.addStyles();
+        // Styles are loaded from styles.css.
     }
 
     private renderSummary(containerEl: HTMLElement): void {
@@ -104,7 +106,7 @@ export class ConflictViewModal extends Modal {
 
         if (this.conflicts.length === 0) {
             summaryEl.createEl('div', {
-                text: '✓ No conflicts detected',
+                text: '✓ no conflicts detected',
                 cls: 'storyteller-conflict-none'
             });
         }
@@ -115,33 +117,33 @@ export class ConflictViewModal extends Modal {
 
         // Severity filter
         new Setting(filtersEl)
-            .setName('Filter by Severity')
+            .setName('Filter by severity')
             .addDropdown(dropdown => {
                 dropdown
                     .addOption('all', 'All')
-                    .addOption('error', 'Errors Only')
-                    .addOption('warning', 'Warnings Only')
-                    .addOption('info', 'Info Only')
+                    .addOption('error', 'Errors only')
+                    .addOption('warning', 'Warnings only')
+                    .addOption('info', 'Info only')
                     .setValue(this.selectedSeverity)
                     .onChange(value => {
-                        this.selectedSeverity = value as any;
+                        this.selectedSeverity = value as ConflictSeverityFilter;
                         this.applyFilters();
                     });
             });
 
         // Type filter
         new Setting(filtersEl)
-            .setName('Filter by Type')
+            .setName('Filter by type')
             .addDropdown(dropdown => {
                 dropdown
-                    .addOption('all', 'All Types')
-                    .addOption('location', 'Location Conflicts')
-                    .addOption('character', 'Character Conflicts')
-                    .addOption('temporal', 'Temporal Conflicts')
-                    .addOption('dependency', 'Dependency Conflicts')
+                    .addOption('all', 'All types')
+                    .addOption('location', 'Location conflicts')
+                    .addOption('character', 'Character conflicts')
+                    .addOption('temporal', 'Temporal conflicts')
+                    .addOption('dependency', 'Dependency conflicts')
                     .setValue(this.selectedType)
                     .onChange(value => {
-                        this.selectedType = value as any;
+                        this.selectedType = value as ConflictTypeFilter;
                         this.applyFilters();
                     });
             });
@@ -204,12 +206,12 @@ export class ConflictViewModal extends Modal {
         // Header with severity badge
         const headerEl = conflictEl.createDiv({ cls: 'storyteller-conflict-header' });
 
-        const severityBadge = headerEl.createSpan({
+        headerEl.createSpan({
             text: conflict.severity.toUpperCase(),
             cls: `storyteller-conflict-badge storyteller-conflict-badge-${conflict.severity}`
         });
 
-        const messageEl = headerEl.createSpan({
+        headerEl.createSpan({
             text: conflict.message,
             cls: 'storyteller-conflict-message'
         });
@@ -234,7 +236,7 @@ export class ConflictViewModal extends Modal {
         // Involved events
         if (conflict.events.length > 0) {
             const eventsEl = detailsEl.createDiv({ cls: 'storyteller-conflict-events' });
-            eventsEl.createEl('strong', { text: 'Involved Events:' });
+            eventsEl.createEl('strong', { text: 'Involved events:' });
 
             const eventList = eventsEl.createEl('ul');
             conflict.events.forEach(event => {
@@ -244,7 +246,7 @@ export class ConflictViewModal extends Modal {
                     cls: 'storyteller-conflict-event-link'
                 });
                 eventLink.addEventListener('click', () => {
-                    this.openEvent(event);
+                    void this.openEvent(event);
                 });
 
                 if (event.dateTime) {
@@ -340,180 +342,6 @@ export class ConflictViewModal extends Modal {
             new Notice(`Failed to export report: ${error}`);
         }
     }
-
-    private addStyles(): void {
-        const styleEl = document.createElement('style');
-        styleEl.textContent = `
-            .storyteller-conflict-viewer {
-                padding: 1em;
-                max-width: 800px;
-            }
-
-            .storyteller-conflict-summary {
-                display: flex;
-                gap: 1em;
-                margin-bottom: 1.5em;
-                padding: 1em;
-                background: var(--background-secondary);
-                border-radius: 6px;
-                flex-wrap: wrap;
-            }
-
-            .storyteller-conflict-stat {
-                padding: 0.5em 1em;
-                border-radius: 4px;
-                background: var(--background-primary);
-                font-weight: 600;
-            }
-
-            .storyteller-conflict-error {
-                color: var(--text-error);
-                border-left: 3px solid var(--text-error);
-            }
-
-            .storyteller-conflict-warning {
-                color: var(--text-warning);
-                border-left: 3px solid var(--text-warning);
-            }
-
-            .storyteller-conflict-info {
-                color: var(--text-accent);
-                border-left: 3px solid var(--text-accent);
-            }
-
-            .storyteller-conflict-none {
-                color: var(--text-success);
-                font-weight: 600;
-                width: 100%;
-                text-align: center;
-                padding: 1em;
-            }
-
-            .storyteller-conflict-filters {
-                margin-bottom: 1.5em;
-            }
-
-            .storyteller-conflict-list {
-                max-height: 60vh;
-                overflow-y: auto;
-            }
-
-            .storyteller-conflict-type-section {
-                margin-bottom: 2em;
-            }
-
-            .storyteller-conflict-type-section h3 {
-                margin-bottom: 1em;
-                color: var(--text-accent);
-            }
-
-            .storyteller-conflict-item {
-                border: 1px solid var(--background-modifier-border);
-                border-radius: 6px;
-                margin-bottom: 1em;
-                padding: 1em;
-                background: var(--background-secondary);
-            }
-
-            .storyteller-conflict-item.storyteller-conflict-error {
-                border-left: 4px solid var(--text-error);
-            }
-
-            .storyteller-conflict-item.storyteller-conflict-warning {
-                border-left: 4px solid var(--text-warning);
-            }
-
-            .storyteller-conflict-item.storyteller-conflict-info {
-                border-left: 4px solid var(--text-accent);
-            }
-
-            .storyteller-conflict-header {
-                display: flex;
-                align-items: center;
-                gap: 0.75em;
-                margin-bottom: 0.75em;
-            }
-
-            .storyteller-conflict-badge {
-                padding: 0.25em 0.5em;
-                border-radius: 3px;
-                font-size: 0.75em;
-                font-weight: 700;
-                letter-spacing: 0.5px;
-            }
-
-            .storyteller-conflict-badge-error {
-                background: var(--text-error);
-                color: white;
-            }
-
-            .storyteller-conflict-badge-warning {
-                background: var(--text-warning);
-                color: var(--text-on-accent);
-            }
-
-            .storyteller-conflict-badge-info {
-                background: var(--text-accent);
-                color: var(--text-on-accent);
-            }
-
-            .storyteller-conflict-message {
-                font-weight: 600;
-                flex: 1;
-            }
-
-            .storyteller-conflict-details {
-                margin-left: 0.5em;
-                color: var(--text-muted);
-            }
-
-            .storyteller-conflict-detail,
-            .storyteller-conflict-description,
-            .storyteller-conflict-overlap,
-            .storyteller-conflict-locations {
-                margin-bottom: 0.5em;
-                font-size: 0.9em;
-            }
-
-            .storyteller-conflict-events {
-                margin-top: 0.75em;
-            }
-
-            .storyteller-conflict-events ul {
-                margin-top: 0.5em;
-                margin-left: 1.5em;
-            }
-
-            .storyteller-conflict-events li {
-                margin-bottom: 0.25em;
-            }
-
-            .storyteller-conflict-event-link {
-                cursor: pointer;
-                color: var(--link-color);
-                text-decoration: none;
-            }
-
-            .storyteller-conflict-event-link:hover {
-                text-decoration: underline;
-            }
-
-            .storyteller-conflict-event-date,
-            .storyteller-conflict-event-location {
-                font-size: 0.85em;
-                color: var(--text-muted);
-            }
-
-            .storyteller-empty-state {
-                text-align: center;
-                padding: 3em;
-                color: var(--text-muted);
-                font-style: italic;
-            }
-        `;
-        this.contentEl.appendChild(styleEl);
-    }
-
     onClose(): void {
         const { contentEl } = this;
         contentEl.empty();

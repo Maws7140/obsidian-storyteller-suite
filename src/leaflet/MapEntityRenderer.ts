@@ -4,12 +4,57 @@
  */
 
 import * as L from 'leaflet';
-import { Menu, Notice, TFile, getIcon, setIcon } from 'obsidian';
+import { Menu, Notice, TFile, setIcon } from 'obsidian';
 import type StorytellerSuitePlugin from '../main';
 import type { Location, MapBinding, EntityRef, Character, Event, PlotItem, StoryMap, Scene, Culture, Economy, MagicSystem, Reference } from '../types';
 import { LocationService } from '../services/LocationService';
 import { MapHierarchyManager } from '../utils/MapHierarchyManager';
 import { stripWikiLinkToString } from '../utils/WikiLinks';
+import { confirmWithModal } from '../modals/ui/ConfirmModal';
+
+interface MapViewWithLoadMap {
+    loadMap(mapId: string): Promise<void>;
+}
+
+interface MapViewWithRefreshEntities {
+    refreshEntities(): Promise<void>;
+}
+
+interface MapViewWithRefresh {
+    refresh(): Promise<void>;
+}
+
+interface MapViewWithRendererParams {
+    leafletRenderer?: {
+        params?: {
+            mapId?: string;
+        };
+    };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function hasLoadMap(view: unknown): view is MapViewWithLoadMap {
+    return isRecord(view) && typeof view.loadMap === 'function';
+}
+
+function hasRefreshEntities(view: unknown): view is MapViewWithRefreshEntities {
+    return isRecord(view) && typeof view.refreshEntities === 'function';
+}
+
+function hasRefresh(view: unknown): view is MapViewWithRefresh {
+    return isRecord(view) && typeof view.refresh === 'function';
+}
+
+function getMapViewMapId(view: unknown): string | undefined {
+    if (!isRecord(view)) {
+        return undefined;
+    }
+    const viewWithRenderer = view as MapViewWithRendererParams;
+    return viewWithRenderer.leafletRenderer?.params?.mapId;
+}
 
 export class MapEntityRenderer {
     private map: L.Map;
@@ -76,7 +121,7 @@ export class MapEntityRenderer {
 
         // Update visibility on zoom change
         this.map.on('zoomend', () => {
-            this.updateMarkerVisibility(mapId);
+            void this.updateMarkerVisibility(mapId);
         });
     }
 
@@ -181,18 +226,18 @@ export class MapEntityRenderer {
         });
 
         // Click handler - navigate to child map
-        marker.on('click', async (e) => {
+        marker.on('click', (e) => { void (async () => {
             // Don't navigate if user is holding modifier key
             if (!e.originalEvent.ctrlKey && !e.originalEvent.metaKey) {
                 // Open child map in MapView
                 const mapView = this.plugin.app.workspace.getLeavesOfType('storyteller-map-view')[0];
-                if (mapView && mapView.view && 'loadMap' in mapView.view) {
+                if (hasLoadMap(mapView?.view)) {
                     const mapId = childMap.id || childMap.name;
-                    await (mapView.view as any).loadMap(mapId);
+                    await mapView.view.loadMap(mapId);
                     new Notice(`Navigated to ${childMap.name}`);
                 }
             }
-        });
+        })(); });
 
         // Context menu
         marker.on('contextmenu', (e) => {
@@ -204,20 +249,20 @@ export class MapEntityRenderer {
                     .setIcon('map')
                     .onClick(async () => {
                         const mapView = this.plugin.app.workspace.getLeavesOfType('storyteller-map-view')[0];
-                        if (mapView && mapView.view && 'loadMap' in mapView.view) {
+                        if (hasLoadMap(mapView?.view)) {
                             const mapId = childMap.id || childMap.name;
-                            await (mapView.view as any).loadMap(mapId);
+                            await mapView.view.loadMap(mapId);
                         }
                     })
             );
 
             menu.addItem((item) =>
                 item
-                    .setTitle('View Location')
+                    .setTitle('View location')
                     .setIcon('map-pin')
                     .onClick(() => {
                         if (location.filePath) {
-                            this.plugin.app.workspace.openLinkText(location.filePath, '', true);
+                            void this.plugin.app.workspace.openLinkText(location.filePath, '', true);
                         }
                     })
             );
@@ -226,15 +271,15 @@ export class MapEntityRenderer {
 
             menu.addItem((item) =>
                 item
-                    .setTitle('Edit Map')
+                    .setTitle('Edit map')
                     .setIcon('edit')
-                    .onClick(() => {
-                        const { openMapModal } = require('../utils/MapModalHelper');
+                    .onClick(async () => {
+                        const { openMapModal } = await import('../utils/MapModalHelper');
                         openMapModal(this.plugin.app, this.plugin, childMap);
                     })
             );
 
-            menu.showAtMouseEvent(e.originalEvent as MouseEvent);
+            menu.showAtMouseEvent(e.originalEvent);
         });
 
         return marker;
@@ -257,7 +302,7 @@ export class MapEntityRenderer {
         coordinates: [number, number],
         offset: [number, number]
     ): [number, number] {
-        const basePoint = this.map.latLngToLayerPoint(coordinates as unknown as L.LatLngExpression);
+        const basePoint = this.map.latLngToLayerPoint(coordinates);
         const offsetX = offset[0];
         const offsetY = offset[1];
         const shiftedPoint = L.point(basePoint.x + offsetX, basePoint.y + offsetY);
@@ -296,7 +341,7 @@ export class MapEntityRenderer {
      * Build popup HTML for portal marker
      */
     private buildPortalPopup(childMap: StoryMap, location: Location): HTMLElement {
-        const container = document.createElement('div');
+        const container = activeDocument.createElement('div');
         container.className = 'storyteller-portal-popup';
 
         const header = container.createDiv('popup-header portal-header');
@@ -320,14 +365,14 @@ export class MapEntityRenderer {
         button.appendText(' Zoom to Map');
 
         // Add click handler to button
-        button.addEventListener('click', async () => {
+        button.addEventListener('click', () => { void (async () => {
                 const mapView = this.plugin.app.workspace.getLeavesOfType('storyteller-map-view')[0];
-                if (mapView && mapView.view && 'loadMap' in mapView.view) {
+                if (hasLoadMap(mapView?.view)) {
                     const mapId = childMap.id || childMap.name;
-                    await (mapView.view as any).loadMap(mapId);
+                    await mapView.view.loadMap(mapId);
                     new Notice(`Navigated to ${childMap.name}`);
                 }
-            });
+            })(); });
 
         return container;
     }
@@ -475,7 +520,7 @@ export class MapEntityRenderer {
         }
 
         // Render entities with offset for stacked ones
-        for (const [coordKey, entities] of entityGroups) {
+        for (const entities of entityGroups.values()) {
             const totalAtLocation = entities.length;
             
             for (let i = 0; i < entities.length; i++) {
@@ -572,17 +617,18 @@ export class MapEntityRenderer {
             if (!(fileObj instanceof TFile)) continue;
 
             const cache = app.metadataCache.getFileCache(fileObj);
-            const fm = cache?.frontmatter as any;
+            const frontmatter = cache?.frontmatter as unknown;
+            const fm = isRecord(frontmatter) ? frontmatter : {};
 
             // Check if this entity is linked to this map
-            const isLinkedToMap = fm?.mapId === mapId || 
-                (Array.isArray(fm?.relatedMapIds) && fm.relatedMapIds.includes(mapId));
+            const isLinkedToMap = fm.mapId === mapId ||
+                (Array.isArray(fm.relatedMapIds) && fm.relatedMapIds.some(relatedMapId => relatedMapId === mapId));
 
             if (!isLinkedToMap) continue;
 
             // Get coordinates from frontmatter
             let coords: [number, number] | undefined;
-            if (fm?.mapCoordinates && Array.isArray(fm.mapCoordinates) && fm.mapCoordinates.length >= 2) {
+            if (Array.isArray(fm.mapCoordinates) && fm.mapCoordinates.length >= 2) {
                 coords = [Number(fm.mapCoordinates[0]), Number(fm.mapCoordinates[1])];
             }
 
@@ -694,7 +740,7 @@ export class MapEntityRenderer {
                             id: group.id || group.name,
                             name: group.name,
                             filePath: undefined // Groups don't have file paths
-                        } as any;
+                        };
                     }
                     break;
                 }
@@ -835,11 +881,12 @@ export class MapEntityRenderer {
                     background-color: ${color.bg};
                     position: relative;
                 ">
+                    <span class="storyteller-entity-avatar-fallback">${this.getInitials(entityName)}</span>
                     <img src="${imageUrl}" alt="" style="
                         width: 100%;
                         height: 100%;
                         object-fit: cover;
-                    " onerror="this.style.display='none'; this.parentElement.innerHTML='${this.getInitials(entityName)}'"/>
+                    " onerror="this.style.display='none'"/>
                     ${stackBadge}
                 </div>
             `;
@@ -960,10 +1007,11 @@ export class MapEntityRenderer {
                 return (entity as Character).profileImagePath || null;
             case 'item':
                 return (entity as PlotItem).profileImagePath || null;
-            case 'event':
+            case 'event': {
                 // Events use images array - return first image
                 const eventImages = (entity as Event).images;
                 return eventImages && eventImages.length > 0 ? eventImages[0] : null;
+            }
             case 'scene':
                 return (entity as Scene).profileImagePath || null;
             case 'culture':
@@ -983,7 +1031,7 @@ export class MapEntityRenderer {
      * Build popup HTML showing location and its entities
      */
     private async buildLocationPopup(location: Location): Promise<HTMLElement> {
-        const container = document.createElement('div');
+        const container = activeDocument.createElement('div');
         container.className = 'storyteller-location-popup';
         const effectiveRefs = await this.getEffectiveLocationEntityRefs(location);
 
@@ -991,18 +1039,15 @@ export class MapEntityRenderer {
         const path = await this.locationService.getLocationPath(location.id || location.name);
         const pathText = path.map(l => l.name).join(' › ');
 
-        container.innerHTML = `
-            <div class="popup-header">
-                <span class="popup-path">${pathText}</span>
-                <h3 class="popup-title">${location.name}</h3>
-                <span class="popup-type">${location.type || location.locationType || 'location'}</span>
-            </div>
-        `;
+        const header = container.createDiv({ cls: 'popup-header' });
+        header.createSpan({ cls: 'popup-path', text: pathText });
+        header.createEl('h3', { cls: 'popup-title', text: location.name });
+        header.createSpan({ cls: 'popup-type', text: location.type || location.locationType || 'location' });
 
         // Child locations (if any)
         if (location.childLocationIds && location.childLocationIds.length > 0) {
             const childSection = container.createDiv('popup-section');
-            childSection.innerHTML = `<h4>Contains</h4>`;
+            childSection.createEl('h4', { text: 'Contains' });
             const childList = childSection.createEl('ul', { cls: 'popup-entity-list' });
 
             for (const childId of location.childLocationIds.slice(0, 5)) {
@@ -1014,7 +1059,7 @@ export class MapEntityRenderer {
                     li.appendText(` ${child.name}`);
                     li.onclick = () => {
                         if (child.filePath) {
-                            this.plugin.app.workspace.openLinkText(child.filePath, '', true);
+                            void this.plugin.app.workspace.openLinkText(child.filePath, '', true);
                         }
                     };
                 }
@@ -1031,7 +1076,7 @@ export class MapEntityRenderer {
         // Entities at this location
         if (effectiveRefs.length > 0) {
             const entitySection = container.createDiv('popup-section');
-            entitySection.innerHTML = `<h4>Here</h4>`;
+            entitySection.createEl('h4', { text: 'Here' });
             const entityList = entitySection.createEl('ul', { cls: 'popup-entity-list' });
 
             // Group by type
@@ -1061,14 +1106,16 @@ export class MapEntityRenderer {
 
                         if (entity) {
                             const li = entityList.createEl('li');
-                            const icon = this.getEntityIcon(type);
-                            li.innerHTML = `<span class="entity-icon">${icon}</span> ${entity.name}`;
+                            const icon = li.createSpan({ cls: 'entity-icon' });
+                            setIcon(icon, this.getEntityIconName(type));
+                            li.appendText(` ${entity.name}`);
                             if (ref.relationship) {
-                                li.innerHTML += ` <span class="entity-rel">(${ref.relationship})</span>`;
+                                li.appendText(' ');
+                                li.createSpan({ cls: 'entity-rel', text: `(${ref.relationship})` });
                             }
                             li.onclick = () => {
                                 if (entity?.filePath) {
-                                    this.plugin.app.workspace.openLinkText(entity.filePath, '', true);
+                                    void this.plugin.app.workspace.openLinkText(entity.filePath, '', true);
                                 }
                             };
                         }
@@ -1081,25 +1128,23 @@ export class MapEntityRenderer {
 
         // Action buttons
         const actions = container.createDiv('popup-actions');
-        actions.innerHTML = `
-            <button class="popup-btn" data-action="open">Open Note</button>
-            <button class="popup-btn" data-action="add-entity">Add Entity</button>
-            <button class="popup-btn" data-action="edit">Edit Location</button>
-        `;
+        const openButton = actions.createEl('button', { cls: 'popup-btn', text: 'Open note' });
+        const addEntityButton = actions.createEl('button', { cls: 'popup-btn', text: 'Add entity' });
+        const editButton = actions.createEl('button', { cls: 'popup-btn', text: 'Edit location' });
 
         // Button handlers
-        actions.querySelector('[data-action="open"]')?.addEventListener('click', () => {
+        openButton.addEventListener('click', () => {
             if (location.filePath) {
-                this.plugin.app.workspace.openLinkText(location.filePath, '', true);
+                void this.plugin.app.workspace.openLinkText(location.filePath, '', true);
             }
         });
 
-        actions.querySelector('[data-action="add-entity"]')?.addEventListener('click', (event) => {
+        addEntityButton.addEventListener('click', (event) => {
             this.showAddEntityTypeMenu(location, event.currentTarget as HTMLElement);
         });
 
-        actions.querySelector('[data-action="edit"]')?.addEventListener('click', () => {
-            this.showEditLocationModal(location);
+        editButton.addEventListener('click', () => {
+            void this.showEditLocationModal(location);
         });
 
         return container;
@@ -1113,14 +1158,14 @@ export class MapEntityRenderer {
         entityRef: EntityRef,
         location: Location | null
     ): HTMLElement {
-        const container = document.createElement('div');
+        const container = activeDocument.createElement('div');
         container.className = 'storyteller-entity-popup';
 
         // Build enhanced popup based on entity type
         if (entityRef.entityType === 'character') {
-            return this.buildCharacterPopup(entity as Character, location, entityRef);
+            return this.buildCharacterPopup(entity, location, entityRef);
         } else if (entityRef.entityType === 'event') {
-            return this.buildEventPopup(entity as Event, location, entityRef);
+            return this.buildEventPopup(entity, location, entityRef);
         } else {
             return this.buildDefaultEntityPopup(entity, entityRef, location);
         }
@@ -1134,7 +1179,7 @@ export class MapEntityRenderer {
         location: Location | null,
         entityRef: EntityRef
     ): HTMLElement {
-        const container = document.createElement('div');
+        const container = activeDocument.createElement('div');
         container.className = 'storyteller-entity-popup storyteller-character-popup';
 
         // Header with image and name
@@ -1148,11 +1193,11 @@ export class MapEntityRenderer {
                 const img = imgContainer.createEl('img', {
                     attr: { src: imageUrl, alt: character.name }
                 });
-                img.style.width = '60px';
-                img.style.height = '60px';
-                img.style.borderRadius = '50%';
-                img.style.objectFit = 'cover';
-                img.style.border = '2px solid var(--interactive-accent)';
+                img.setCssStyles({ width: '60px' });
+                img.setCssStyles({ height: '60px' });
+                img.setCssStyles({ borderRadius: '50%' });
+                img.setCssStyles({ objectFit: 'cover' });
+                img.setCssStyles({ border: '2px solid var(--interactive-accent)' });
             }
         }
 
@@ -1163,12 +1208,9 @@ export class MapEntityRenderer {
         // Location info
         if (location) {
             const locationSection = container.createDiv('popup-section');
-            locationSection.innerHTML = `
-                <div class="popup-field">
-                    <span class="popup-field-label">Location:</span>
-                    <span class="popup-field-value">${location.name}</span>
-                </div>
-            `;
+            const field = locationSection.createDiv({ cls: 'popup-field' });
+            field.createSpan({ cls: 'popup-field-label', text: 'Location:' });
+            field.createSpan({ cls: 'popup-field-value', text: location.name });
         }
 
         // Character details
@@ -1181,12 +1223,9 @@ export class MapEntityRenderer {
             }
 
             if (character.status) {
-                detailsSection.innerHTML += `
-                    <div class="popup-field">
-                        <span class="popup-field-label">Status:</span>
-                        <span class="popup-field-value">${character.status}</span>
-                    </div>
-                `;
+                const field = detailsSection.createDiv({ cls: 'popup-field' });
+                field.createSpan({ cls: 'popup-field-label', text: 'Status:' });
+                field.createSpan({ cls: 'popup-field-value', text: character.status });
             }
 
             if (character.traits && character.traits.length > 0) {
@@ -1199,13 +1238,11 @@ export class MapEntityRenderer {
 
         // Action buttons
         const actions = container.createDiv('popup-actions');
-        actions.innerHTML = `
-            <button class="popup-btn popup-btn-primary" data-action="open">Open Character</button>
-        `;
+        const openButton = actions.createEl('button', { cls: 'popup-btn popup-btn-primary', text: 'Open character' });
 
-        actions.querySelector('[data-action="open"]')?.addEventListener('click', () => {
+        openButton.addEventListener('click', () => {
             if (character.filePath) {
-                this.plugin.app.workspace.openLinkText(character.filePath, '', true);
+                void this.plugin.app.workspace.openLinkText(character.filePath, '', true);
             }
         });
 
@@ -1220,27 +1257,34 @@ export class MapEntityRenderer {
         location: Location | null,
         entityRef: EntityRef
     ): HTMLElement {
-        const container = document.createElement('div');
+        const container = activeDocument.createElement('div');
         container.className = 'storyteller-entity-popup storyteller-event-popup';
 
-        container.innerHTML = `
-            <div class="popup-header">
-                <h3 class="popup-title">${event.name}</h3>
-                <span class="popup-type">Event</span>
-            </div>
-            <div class="popup-section">
-                ${location ? `<p>At: <strong>${location.name}</strong></p>` : ''}
-                ${event.dateTime ? `<p>Date: <strong>${event.dateTime}</strong></p>` : ''}
-                ${event.description ? `<p class="popup-description">${this.truncateText(event.description, 100)}</p>` : ''}
-            </div>
-        `;
+        const header = container.createDiv({ cls: 'popup-header' });
+        header.createEl('h3', { cls: 'popup-title', text: event.name });
+        header.createSpan({ cls: 'popup-type', text: 'Event' });
+
+        const section = container.createDiv({ cls: 'popup-section' });
+        if (location) {
+            const paragraph = section.createEl('p');
+            paragraph.appendText('At: ');
+            paragraph.createEl('strong', { text: location.name });
+        }
+        if (event.dateTime) {
+            const paragraph = section.createEl('p');
+            paragraph.appendText('Date: ');
+            paragraph.createEl('strong', { text: event.dateTime });
+        }
+        if (event.description) {
+            section.createEl('p', { cls: 'popup-description', text: this.truncateText(event.description, 100) });
+        }
 
         const actions = container.createDiv('popup-actions');
-        actions.innerHTML = `<button class="popup-btn" data-action="open">Open Event</button>`;
+        const openButton = actions.createEl('button', { cls: 'popup-btn', text: 'Open event' });
 
-        actions.querySelector('[data-action="open"]')?.addEventListener('click', () => {
+        openButton.addEventListener('click', () => {
             if (event.filePath) {
-                this.plugin.app.workspace.openLinkText(event.filePath, '', true);
+                void this.plugin.app.workspace.openLinkText(event.filePath, '', true);
             }
         });
 
@@ -1255,26 +1299,31 @@ export class MapEntityRenderer {
         entityRef: EntityRef,
         location: Location | null
     ): HTMLElement {
-        const container = document.createElement('div');
+        const container = activeDocument.createElement('div');
         container.className = 'storyteller-entity-popup';
 
-        container.innerHTML = `
-            <div class="popup-header">
-                <h3 class="popup-title">${entity.name}</h3>
-                <span class="popup-type">${entityRef.entityType}</span>
-            </div>
-            <div class="popup-section">
-                ${location ? `<p>At: <strong>${location.name}</strong></p>` : ''}
-                ${entityRef.relationship ? `<p>Relationship: <em>${entityRef.relationship}</em></p>` : ''}
-            </div>
-        `;
+        const header = container.createDiv({ cls: 'popup-header' });
+        header.createEl('h3', { cls: 'popup-title', text: entity.name });
+        header.createSpan({ cls: 'popup-type', text: entityRef.entityType });
+
+        const section = container.createDiv({ cls: 'popup-section' });
+        if (location) {
+            const paragraph = section.createEl('p');
+            paragraph.appendText('At: ');
+            paragraph.createEl('strong', { text: location.name });
+        }
+        if (entityRef.relationship) {
+            const paragraph = section.createEl('p');
+            paragraph.appendText('Relationship: ');
+            paragraph.createEl('em', { text: entityRef.relationship });
+        }
 
         const actions = container.createDiv('popup-actions');
-        actions.innerHTML = `<button class="popup-btn" data-action="open">Open Note</button>`;
+        const openButton = actions.createEl('button', { cls: 'popup-btn', text: 'Open note' });
 
-        actions.querySelector('[data-action="open"]')?.addEventListener('click', () => {
+        openButton.addEventListener('click', () => {
             if (entity.filePath) {
-                this.plugin.app.workspace.openLinkText(entity.filePath, '', true);
+                void this.plugin.app.workspace.openLinkText(entity.filePath, '', true);
             }
         });
 
@@ -1294,8 +1343,8 @@ export class MapEntityRenderer {
 
         // Handle vault paths
         const file = this.plugin.app.vault.getAbstractFileByPath(imagePath);
-        if (file) {
-            return this.plugin.app.vault.getResourcePath(file as any);
+        if (file instanceof TFile) {
+            return this.plugin.app.vault.getResourcePath(file);
         }
 
         // Try to find file by name
@@ -1368,9 +1417,9 @@ export class MapEntityRenderer {
     }
 
     /**
-     * Get entity icon SVG by type (for popups and lists)
+     * Get entity icon name by type (for popups and lists)
      */
-    private getEntityIcon(type: string): string {
+    private getEntityIconName(type: string): string {
         const icons: Record<string, string> = {
             character: 'user',
             event: 'calendar',
@@ -1383,8 +1432,7 @@ export class MapEntityRenderer {
             reference: 'book-open',
             custom: 'map-pin',
         };
-        const iconName = icons[type] ?? 'map-pin';
-        return getIcon(iconName)?.outerHTML ?? '';
+        return icons[type] ?? 'map-pin';
     }
 
     /**
@@ -1394,11 +1442,11 @@ export class MapEntityRenderer {
         const menu = new Menu();
 
         menu.addItem(item => {
-            item.setTitle('Open Location Note')
+            item.setTitle('Open location note')
                 .setIcon('file-text')
                 .onClick(() => {
                     if (location.filePath) {
-                        this.plugin.app.workspace.openLinkText(location.filePath, '', true);
+                        void this.plugin.app.workspace.openLinkText(location.filePath, '', true);
                     }
                 });
         });
@@ -1410,7 +1458,7 @@ export class MapEntityRenderer {
         menu.addSeparator();
 
         menu.addItem(item => {
-            item.setTitle('Create Child Location')
+            item.setTitle('Create child location')
                 .setIcon('map-pin')
                 .onClick(() => {
                     new Notice('Create child location functionality coming soon');
@@ -1419,7 +1467,7 @@ export class MapEntityRenderer {
 
         if (location.childLocationIds && location.childLocationIds.length > 0) {
             menu.addItem(item => {
-                item.setTitle('Zoom to Child Map')
+                item.setTitle('Zoom to child map')
                     .setIcon('zoom-in')
                     .onClick(() => {
                         new Notice('Zoom to child map functionality coming soon');
@@ -1430,7 +1478,7 @@ export class MapEntityRenderer {
         menu.addSeparator();
 
         menu.addItem(item => {
-            item.setTitle('Edit Marker Position')
+            item.setTitle('Edit marker position')
                 .setIcon('move')
                 .onClick(() => {
                     this.startMoveLocationMarker(location);
@@ -1491,23 +1539,23 @@ export class MapEntityRenderer {
         }
 
         const binding = location.mapBindings?.find(b => b.mapId === mapId);
-        const originalCoords = binding?.coordinates as [number, number] | undefined;
+        const originalCoords = binding?.coordinates;
 
         this.isMovingMarker = true;
-        new Notice('Click on the map to set the new marker position (ESC to cancel).');
+        new Notice('Click on the map to set the new marker position (esc to cancel).');
 
         const onKeyDown = (evt: KeyboardEvent) => {
             if (evt.key === 'Escape') {
-                this.map.off('click', onClick as any);
-                document.removeEventListener('keydown', onKeyDown);
+                this.map.off('click', onClick);
+                activeDocument.removeEventListener('keydown', onKeyDown);
                 this.isMovingMarker = false;
                 new Notice('Marker move cancelled');
             }
         };
 
-        const onClick = async (e: L.LeafletMouseEvent) => {
-            this.map.off('click', onClick as any);
-            document.removeEventListener('keydown', onKeyDown);
+        const onClick = (e: L.LeafletMouseEvent) => { void (async () => {
+            this.map.off('click', onClick);
+            activeDocument.removeEventListener('keydown', onKeyDown);
 
             const newCoords: [number, number] = [e.latlng.lat, e.latlng.lng];
 
@@ -1546,11 +1594,11 @@ export class MapEntityRenderer {
             } finally {
                 this.isMovingMarker = false;
             }
-        };
+        })(); };
 
         // Use once-style behaviour but keep explicit off() calls for safety
-        this.map.on('click', onClick as any);
-        document.addEventListener('keydown', onKeyDown);
+        this.map.on('click', onClick);
+        activeDocument.addEventListener('keydown', onKeyDown);
     }
 
     /**
@@ -1576,18 +1624,18 @@ export class MapEntityRenderer {
                 .setIcon('file-text')
                 .onClick(() => {
                     if (entity.filePath) {
-                        this.plugin.app.workspace.openLinkText(entity.filePath, '', true);
+                        void this.plugin.app.workspace.openLinkText(entity.filePath, '', true);
                     }
                 });
         });
 
         if (location) {
             menu.addItem(item => {
-                item.setTitle('View Location')
+                item.setTitle('View location')
                     .setIcon('map-pin')
                     .onClick(() => {
                         if (location.filePath) {
-                            this.plugin.app.workspace.openLinkText(location.filePath, '', true);
+                            void this.plugin.app.workspace.openLinkText(location.filePath, '', true);
                         }
                     });
             });
@@ -1598,30 +1646,33 @@ export class MapEntityRenderer {
         menu.addItem(item => {
             item.setTitle(`Edit ${entityTypeName}`)
                 .setIcon('edit')
-                .onClick(() => {
+                .onClick(async () => {
                     // Open the appropriate modal based on entity type
                     switch (entityRef.entityType) {
-                        case 'character':
-                            const { CharacterModal } = require('../modals/CharacterModal');
-                            new CharacterModal(this.plugin.app, this.plugin, entity as Character, async (updated) => {
+                        case 'character': {
+                            const { CharacterModal } = await import('../modals/CharacterModal');
+                            new CharacterModal(this.plugin.app, this.plugin, entity, async (updated) => {
                                 await this.plugin.saveCharacter(updated);
                                 new Notice(`${updated.name} updated`);
                             }).open();
                             break;
-                        case 'event':
-                            const { EventModal } = require('../modals/EventModal');
-                            new EventModal(this.plugin.app, this.plugin, entity as Event, async (updated) => {
+                        }
+                        case 'event': {
+                            const { EventModal } = await import('../modals/EventModal');
+                            new EventModal(this.plugin.app, this.plugin, entity, async (updated) => {
                                 await this.plugin.saveEvent(updated);
                                 new Notice(`${updated.name} updated`);
                             }).open();
                             break;
-                        case 'item':
-                            const { PlotItemModal } = require('../modals/PlotItemModal');
+                        }
+                        case 'item': {
+                            const { PlotItemModal } = await import('../modals/PlotItemModal');
                             new PlotItemModal(this.plugin.app, this.plugin, entity as PlotItem, async (updated) => {
                                 await this.plugin.savePlotItem(updated);
                                 new Notice(`${updated.name} updated`);
                             }).open();
                             break;
+                        }
                     }
                 });
         });
@@ -1631,18 +1682,19 @@ export class MapEntityRenderer {
         // Only show remove option for supported entity types
         if (isSupportedType) {
             menu.addItem(item => {
-                item.setTitle('Remove from Map')
+                item.setTitle('Remove from map')
                     .setIcon('trash-2')
                     .onClick(async () => {
                         // Confirmation
                         const locationName = location?.name || 'this map';
-                        const confirmed = confirm(
-                            `Remove "${entity.name}" from "${locationName}"?\n\n` +
-                            `This will:\n` +
-                            `• Remove the marker from this map\n` +
-                            `• Clear the ${entityRef.entityType}'s location reference\n\n` +
-                            `The ${entityRef.entityType} itself will NOT be deleted.`
-                        );
+                        const confirmed = await confirmWithModal(this.plugin.app, {
+                            title: 'Remove from map',
+                            body:
+                                `Remove "${entity.name}" from "${locationName}"?` + '\n\n' +
+                                `This will remove the marker from this map and clear the ${entityRef.entityType}'s location reference.` + '\n\n' +
+                                `The ${entityRef.entityType} itself will not be deleted.`,
+                            confirmText: 'Remove'
+                        });
 
                         if (confirmed) {
                             try {
@@ -1673,13 +1725,14 @@ export class MapEntityRenderer {
                                         const file = this.plugin.app.vault.getAbstractFileByPath(entity.filePath);
                                         if (file instanceof TFile) {
                                             await this.plugin.app.fileManager.processFrontMatter(file, (frontmatter) => {
-                                                delete frontmatter.mapCoordinates;
+                                                const frontmatterRecord = frontmatter as unknown as Record<string, unknown>;
+                                                delete frontmatterRecord.mapCoordinates;
                                                 // Only clear mapId if it matches current map
                                                 // relatedMapIds will be handled separately if needed
                                                 const mapView = this.plugin.app.workspace.getLeavesOfType('storyteller-map-view')[0];
-                                                const currentMapId = (mapView?.view as any)?.leafletRenderer?.params?.mapId;
-                                                if (frontmatter.mapId === currentMapId) {
-                                                    delete frontmatter.mapId;
+                                                const currentMapId = getMapViewMapId(mapView?.view);
+                                                if (frontmatterRecord.mapId === currentMapId) {
+                                                    delete frontmatterRecord.mapId;
                                                 }
                                             });
                                         }
@@ -1688,8 +1741,8 @@ export class MapEntityRenderer {
 
                                 // Refresh the map to remove the marker
                                 const mapView = this.plugin.app.workspace.getLeavesOfType('storyteller-map-view')[0];
-                                if (mapView && mapView.view && 'refreshEntities' in mapView.view) {
-                                    await (mapView.view as any).refreshEntities();
+                                if (hasRefreshEntities(mapView?.view)) {
+                                    await mapView.view.refreshEntities();
                                 }
                             } catch (error) {
                                 console.error('Error removing entity from map:', error);
@@ -1708,35 +1761,39 @@ export class MapEntityRenderer {
      * Uniform helper for all entity types
      */
     private showAddEntityToLocation(location: Location, entityType: string): void {
-        const { AddEntityToLocationModal } = require('../modals/AddEntityToLocationModal');
-        const { LocationService } = require('../services/LocationService');
+        void this.openAddEntityToLocation(location, entityType);
+    }
+
+    private async openAddEntityToLocation(location: Location, entityType: string): Promise<void> {
+        const { AddEntityToLocationModal } = await import('../modals/AddEntityToLocationModal');
 
         const modal = new AddEntityToLocationModal(
             this.plugin.app,
             this.plugin,
             location,
             entityType,
-            async (entityId: string, relationship: string) => {
+            (entityId: string, relationship: string) => { void (async () => {
                 try {
                     const locationService = new LocationService(this.plugin);
                     await locationService.addEntityToLocation(location.id || location.name, {
                         entityId,
-                        entityType,
+                        entityType: entityType as EntityRef['entityType'],
                         relationship,
                     });
                     new Notice(`${entityType.charAt(0).toUpperCase() + entityType.slice(1)} added to ${location.name}`);
                     await this.refreshOpenMapView();
                 } catch (error) {
                     console.error('Error adding entity to location:', error);
-                    new Notice(`Failed to add ${entityType}: ${error.message}`);
+                    const message = error instanceof Error ? error.message : String(error);
+                    new Notice(`Failed to add ${entityType}: ${message}`);
                 }
-            }
+            })(); }
         );
         modal.open();
     }
 
-    private showEditLocationModal(location: Location): void {
-        const { LocationModal } = require('../modals/LocationModal');
+    private async showEditLocationModal(location: Location): Promise<void> {
+        const { LocationModal } = await import('../modals/LocationModal');
         new LocationModal(this.plugin.app, this.plugin, location, async (updatedData: Location) => {
             await this.plugin.saveLocation(updatedData);
             new Notice(`Location "${updatedData.name}" updated.`);
@@ -1746,8 +1803,8 @@ export class MapEntityRenderer {
 
     private async refreshOpenMapView(): Promise<void> {
         const mapLeaf = this.plugin.app.workspace.getLeavesOfType('storyteller-map-view')[0];
-        const view = mapLeaf?.view as any;
-        if (view && typeof view.refresh === 'function') {
+        const view = mapLeaf?.view;
+        if (hasRefresh(view)) {
             await view.refresh();
         }
     }

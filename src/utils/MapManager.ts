@@ -1,4 +1,4 @@
-import { App, TFile, normalizePath } from 'obsidian';
+import { App, normalizePath } from 'obsidian';
 import { StoryMap as Map } from '../types';
 import StorytellerSuitePlugin from '../main';
 

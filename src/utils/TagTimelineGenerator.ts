@@ -1,7 +1,16 @@
-import { App, TFile, getAllTags, parseFrontMatterTags } from 'obsidian';
+import { App, TFile, getAllTags, CachedMetadata } from 'obsidian';
 import { Event } from '../types';
 import { parseEventDate } from './DateParsing';
 import * as chrono from 'chrono-node';
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function getFrontmatter(cache: CachedMetadata | null): Record<string, unknown> | undefined {
+    const frontmatter = cache?.frontmatter as unknown;
+    return isRecord(frontmatter) ? frontmatter : undefined;
+}
 
 /**
  * Options for tag timeline generation
@@ -102,7 +111,7 @@ export class TagTimelineGenerator {
 
         // Extract date based on strategy
         switch (options.dateStrategy) {
-            case 'frontmatter':
+            case 'frontmatter': {
                 const result = this.extractDateFromFrontmatter(cache, options.dateFrontmatterField);
                 extractedDate = result.date;
                 extractionMethod = result.method;
@@ -111,8 +120,9 @@ export class TagTimelineGenerator {
                     warnings.push('No date found in frontmatter');
                 }
                 break;
+            }
 
-            case 'content':
+            case 'content': {
                 const contentResult = this.extractDateFromContent(content, options.datePatterns);
                 extractedDate = contentResult.date;
                 extractionMethod = contentResult.method;
@@ -121,6 +131,7 @@ export class TagTimelineGenerator {
                     warnings.push('No date found in content');
                 }
                 break;
+            }
 
             case 'file-created':
                 extractedDate = new Date(file.stat.ctime).toISOString();
@@ -135,7 +146,7 @@ export class TagTimelineGenerator {
                 break;
 
             case 'auto':
-            default:
+            default: {
                 // Try frontmatter first, then content, then file dates
                 const autoResult = this.extractDateAuto(file, cache, content, options);
                 extractedDate = autoResult.date;
@@ -145,6 +156,7 @@ export class TagTimelineGenerator {
                     warnings.push('Could not extract date using any method');
                 }
                 break;
+            }
         }
 
         // Extract event name (use note name without extension)
@@ -186,19 +198,19 @@ export class TagTimelineGenerator {
      * Extract date from frontmatter
      */
     private extractDateFromFrontmatter(
-        cache: any,
+        cache: CachedMetadata | null,
         dateField: string = 'date'
     ): { date: string | null; method: string; confidence: number } {
-        if (!cache?.frontmatter) {
+        const frontmatter = getFrontmatter(cache);
+        if (!frontmatter) {
             return { date: null, method: '', confidence: 0 };
         }
 
-        const frontmatter = cache.frontmatter;
-
         // Try specified field
-        if (frontmatter[dateField]) {
+        const explicitDate = frontmatter[dateField];
+        if (explicitDate) {
             return {
-                date: frontmatter[dateField],
+                date: String(explicitDate),
                 method: `Frontmatter field: ${dateField}`,
                 confidence: 1.0
             };
@@ -207,9 +219,10 @@ export class TagTimelineGenerator {
         // Try common date fields
         const commonFields = ['date', 'created', 'datetime', 'time', 'when', 'eventDate'];
         for (const field of commonFields) {
-            if (frontmatter[field]) {
+            const dateValue = frontmatter[field];
+            if (dateValue) {
                 return {
-                    date: frontmatter[field],
+                    date: String(dateValue),
                     method: `Frontmatter field: ${field}`,
                     confidence: 0.9
                 };
@@ -271,7 +284,7 @@ export class TagTimelineGenerator {
                     confidence: 0.6
                 };
             }
-        } catch (error) {
+        } catch {
             // Chrono parsing failed, continue
         }
 
@@ -283,7 +296,7 @@ export class TagTimelineGenerator {
      */
     private extractDateAuto(
         file: TFile,
-        cache: any,
+        cache: CachedMetadata | null,
         content: string,
         options: TagTimelineOptions
     ): { date: string | null; method: string; confidence: number } {
@@ -330,14 +343,16 @@ export class TagTimelineGenerator {
     /**
      * Extract characters from frontmatter or content
      */
-    private extractCharacters(cache: any, content: string): string[] | undefined {
+    private extractCharacters(cache: CachedMetadata | null, content: string): string[] | undefined {
         // Check frontmatter
-        if (cache?.frontmatter?.characters) {
-            if (Array.isArray(cache.frontmatter.characters)) {
-                return cache.frontmatter.characters;
+        const frontmatter = getFrontmatter(cache);
+        const frontmatterCharacters = frontmatter?.characters;
+        if (frontmatterCharacters) {
+            if (Array.isArray(frontmatterCharacters)) {
+                return frontmatterCharacters.map(character => String(character));
             }
-            if (typeof cache.frontmatter.characters === 'string') {
-                return cache.frontmatter.characters.split(',').map(s => s.trim());
+            if (typeof frontmatterCharacters === 'string') {
+                return frontmatterCharacters.split(',').map(s => s.trim());
             }
         }
 
@@ -360,10 +375,12 @@ export class TagTimelineGenerator {
     /**
      * Extract location from frontmatter or content
      */
-    private extractLocation(cache: any, content: string): string | undefined {
+    private extractLocation(cache: CachedMetadata | null, content: string): string | undefined {
         // Check frontmatter
-        if (cache?.frontmatter?.location) {
-            return cache.frontmatter.location;
+        const frontmatter = getFrontmatter(cache);
+        const frontmatterLocation = frontmatter?.location;
+        if (frontmatterLocation) {
+            return String(frontmatterLocation);
         }
 
         // Look for location patterns in content

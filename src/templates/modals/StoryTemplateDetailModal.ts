@@ -54,7 +54,7 @@ export class StoryTemplateDetailModal extends Modal {
         const backBtn = header.createEl('button', {
             cls: 'storyteller-back-btn'
         });
-        backBtn.setText('← Back to Gallery');
+        backBtn.setText('← back to gallery');
         backBtn.onclick = () => {
             this.close();
             // Optionally reopen gallery
@@ -76,7 +76,7 @@ export class StoryTemplateDetailModal extends Modal {
         });
         genreBadge.setAttribute('data-genre', this.template.genre);
 
-        const categoryBadge = metaRow.createEl('span', {
+        metaRow.createEl('span', {
             text: this.template.category.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase()),
             cls: 'storyteller-badge'
         });
@@ -118,14 +118,14 @@ export class StoryTemplateDetailModal extends Modal {
         // Setup instructions (if any)
         if (this.template.metadata?.setupInstructions) {
             const instructions = infoSection.createDiv('storyteller-template-instructions');
-            instructions.createEl('h4', { text: 'Setup Instructions' });
+            instructions.createEl('h4', { text: 'Setup instructions' });
             instructions.createEl('p', { text: this.template.metadata.setupInstructions });
         }
     }
 
     private renderEntityBreakdown(container: HTMLElement): void {
         const breakdownSection = container.createDiv('storyteller-entity-breakdown');
-        breakdownSection.createEl('h3', { text: 'Included Entities' });
+        breakdownSection.createEl('h3', { text: 'Included entities' });
 
         const stats = this.templateManager.getTemplateStats(this.template);
         const grid = breakdownSection.createDiv('storyteller-entity-grid');
@@ -180,7 +180,7 @@ export class StoryTemplateDetailModal extends Modal {
         this.renderEntityList(previewSection, 'Magic Systems', this.template.entities.magicSystems || [], '✨');
     }
 
-    private renderEntityList(container: HTMLElement, title: string, entities: any[], icon: string): void {
+    private renderEntityList(container: HTMLElement, title: string, entities: Array<{ name?: string; description?: string }>, icon: string): void {
         if (entities.length === 0) return;
 
         const section = container.createDiv('storyteller-entity-list-section');
@@ -193,11 +193,11 @@ export class StoryTemplateDetailModal extends Modal {
         });
 
         const list = section.createDiv('storyteller-entity-list');
-        list.style.display = 'none'; // Start collapsed
+        list.setCssStyles({ display: 'none' }); // Start collapsed
 
-        entities.slice(0, 10).forEach((entity: any) => {
+        entities.slice(0, 10).forEach(entity => {
             const item = list.createDiv('storyteller-entity-list-item');
-            item.createEl('strong', { text: entity.name });
+            item.createEl('strong', { text: entity.name ?? 'Unnamed entity' });
             if (entity.description) {
                 item.createEl('p', { text: entity.description });
             }
@@ -214,7 +214,7 @@ export class StoryTemplateDetailModal extends Modal {
         let isExpanded = false;
         toggleBtn.onclick = () => {
             isExpanded = !isExpanded;
-            list.style.display = isExpanded ? 'block' : 'none';
+            list.setCssStyles({ display: isExpanded ? 'block' : 'none' });
             toggleBtn.setText(isExpanded ? '▲' : '▼');
         };
     }
@@ -224,7 +224,7 @@ export class StoryTemplateDetailModal extends Modal {
 
         // Application mode selector
         const modeSection = footer.createDiv('storyteller-mode-section');
-        modeSection.createEl('label', { text: 'Application Mode:' });
+        modeSection.createEl('label', { text: 'Application mode:' });
 
         const modeRadios = modeSection.createDiv('storyteller-radio-group');
 
@@ -250,7 +250,7 @@ export class StoryTemplateDetailModal extends Modal {
 
         if (!this.template.isBuiltIn && this.template.isEditable) {
             new ButtonComponent(actions)
-                .setButtonText('Edit Template')
+                .setButtonText('Edit template')
                 .onClick(() => {
                     new Notice('Template editor coming soon!');
                 });
@@ -258,7 +258,7 @@ export class StoryTemplateDetailModal extends Modal {
 
         if (this.template.isBuiltIn) {
             new ButtonComponent(actions)
-                .setButtonText('Copy & Customize')
+                .setButtonText('Copy & customize')
                 .onClick(async () => {
                     try {
                         const copy = await this.templateManager.copyTemplate(
@@ -267,19 +267,20 @@ export class StoryTemplateDetailModal extends Modal {
                         );
                         new Notice(`Created custom copy: ${copy.name}`);
                     } catch (error) {
-                        new Notice(`Failed to copy template: ${error.message}`);
+                        const message = error instanceof Error ? error.message : String(error);
+                        new Notice(`Failed to copy template: ${message}`);
                     }
                 });
         }
 
         new ButtonComponent(actions)
-            .setButtonText('Customize Before Applying')
+            .setButtonText('Customize before applying')
             .onClick(() => {
                 new Notice('Template customization coming soon!');
             });
 
         new ButtonComponent(actions)
-            .setButtonText('Apply Template')
+            .setButtonText('Apply template')
             .setCta()
             .onClick(async () => {
                 await this.applyTemplate();
@@ -337,7 +338,8 @@ export class StoryTemplateDetailModal extends Modal {
             }
         } catch (error) {
             notice.hide();
-            new Notice(`Error applying template: ${error.message}`, 8000);
+            const message = error instanceof Error ? error.message : String(error);
+            new Notice(`Error applying template: ${message}`, 8000);
             console.error('Template application error:', error);
         }
     }
@@ -345,7 +347,7 @@ export class StoryTemplateDetailModal extends Modal {
     private async confirmReplace(): Promise<boolean> {
         return new Promise((resolve) => {
             const confirmModal = new Modal(this.app);
-            confirmModal.contentEl.createEl('h2', { text: '⚠️ Replace Story?' });
+            confirmModal.contentEl.createEl('h2', { text: '⚠️ replace story?' });
             confirmModal.contentEl.createEl('p', {
                 text: 'This will delete all existing entities in the current story and replace them with the template. This action cannot be undone!'
             });
@@ -364,7 +366,7 @@ export class StoryTemplateDetailModal extends Modal {
                 });
 
             new ButtonComponent(buttonContainer)
-                .setButtonText('Replace Story')
+                .setButtonText('Replace story')
                 .setWarning()
                 .onClick(() => {
                     confirmModal.close();

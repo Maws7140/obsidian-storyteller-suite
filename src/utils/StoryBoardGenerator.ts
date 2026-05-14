@@ -457,12 +457,13 @@ export class StoryBoardGenerator {
                 // This indicates the scene moved to a different column (chapter or status)
                 return xDiff > columnWidth / 2;
 
-            case 'timeline':
+            case 'timeline': {
                 // For timeline layout, check both X (timeline position) and Y (lane)
                 // Reposit if either changed significantly
                 const significantXChange = xDiff > 100; // Date changed
                 const significantYChange = yDiff > 100; // Lane changed
                 return significantXChange || significantYChange;
+            }
 
             default:
                 return false;

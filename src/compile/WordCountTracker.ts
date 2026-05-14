@@ -5,7 +5,7 @@
 
 import { TFile, Notice } from 'obsidian';
 import type StorytellerSuitePlugin from '../main';
-import type { DailyWritingStats, Scene, Story } from '../types';
+import type { DailyWritingStats, Story } from '../types';
 
 /**
  * Session writing statistics
@@ -59,7 +59,7 @@ export class WordCountTracker {
             }
             return record;
         }
-        return stats as unknown as Record<string, DailyWritingStats>;
+        return stats;
     }
 
     /**
@@ -78,7 +78,7 @@ export class WordCountTracker {
         const activeFile = file ?? this.plugin.app.workspace.getActiveFile();
         if (activeFile) {
             this.sessionStartTime = Date.now();
-            this.getFileWordCount(activeFile).then(count => {
+            void this.getFileWordCount(activeFile).then(count => {
                 this.sessionStartWordCount = count;
                 this.lastKnownWordCount = count;
                 this.wordsDeleted = 0;

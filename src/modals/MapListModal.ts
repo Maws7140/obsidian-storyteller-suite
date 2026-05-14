@@ -24,7 +24,7 @@ export class MapListModal extends Modal {
 
         this.listContainer = contentEl.createDiv('storyteller-list-container');
 
-        const searchInput = new Setting(contentEl)
+        new Setting(contentEl)
             .setName(t('search'))
             .addText(text => {
                 text.setPlaceholder('Search maps...')
@@ -40,7 +40,7 @@ export class MapListModal extends Modal {
             .addButton(button => {
                 const hasActiveStory = !!this.plugin.getActiveStory();
                 button
-                    .setButtonText('Create Map')
+                    .setButtonText('Create map')
                     .setCta()
                     .onClick(() => {
                         if (!this.plugin.getActiveStory()) {
@@ -89,7 +89,7 @@ export class MapListModal extends Modal {
             const actionsEl = itemEl.createDiv('storyteller-list-item-actions');
 
             new ButtonComponent(actionsEl)
-                .setButtonText('Open in View')
+                .setButtonText('Open in view')
                 .setIcon('map')
                 .setCta()
                 .onClick(async () => {
@@ -130,12 +130,12 @@ export class MapListModal extends Modal {
 
             if (map.filePath) {
                 new ButtonComponent(actionsEl)
-                    .setButtonText('Open Note')
+                    .setButtonText('Open note')
                     .setIcon('file-text')
                     .onClick(() => {
                         const file = this.app.vault.getAbstractFileByPath(map.filePath!);
                         if (file instanceof TFile) {
-                            this.app.workspace.openLinkText(map.filePath!, '', false);
+                            void this.app.workspace.openLinkText(map.filePath!, '', false);
                         }
                     });
             }

@@ -6,7 +6,7 @@
  */
 
 import { App, Modal, Notice, Setting, TFile, normalizePath, setIcon } from 'obsidian';
-import { SceneBranch, EncounterTable, EncounterTableRow, Scene, Character, Event, Group, CompendiumEntry } from '../types';
+import { SceneBranch, EncounterTable, Scene, Character, Event, Group, CompendiumEntry } from '../types';
 import {
     serializeBranches, serializeEncounterTable,
     extractBranchesFromMarkdown, extractEncounterTableFromMarkdown
@@ -15,6 +15,10 @@ import StorytellerSuitePlugin from '../main';
 
 const DICE_TYPES = ['d4', 'd6', 'd8', 'd10', 'd12', 'd20', 'd100'] as const;
 const STAT_TYPES = ['str', 'dex', 'con', 'int', 'wis', 'cha'] as const;
+
+interface ProcessableVault {
+    process(file: TFile, fn: (content: string) => string): Promise<void>;
+}
 
 export class BranchEditorModal extends Modal {
     private filePath: string;
@@ -65,12 +69,12 @@ export class BranchEditorModal extends Modal {
         this.compendiumOptions = compendiumEntries.status === 'fulfilled' ? compendiumEntries.value : [];
 
         // Title
-        contentEl.createEl('h2', { text: 'Branch & Encounter Editor' });
+        contentEl.createEl('h2', { text: 'Branch & encounter editor' });
 
         // Tab bar
         const tabBar = contentEl.createDiv('storyteller-tab-bar');
         const choicesTab = tabBar.createEl('button', { cls: 'storyteller-tab-btn', text: 'Choices' });
-        const encounterTab = tabBar.createEl('button', { cls: 'storyteller-tab-btn', text: 'Encounter Table' });
+        const encounterTab = tabBar.createEl('button', { cls: 'storyteller-tab-btn', text: 'Encounter table' });
 
         const tabBody = contentEl.createDiv('storyteller-tab-body');
 
@@ -96,14 +100,14 @@ export class BranchEditorModal extends Modal {
         cancelBtn.addEventListener('click', () => this.close());
 
         const saveBtn = footer.createEl('button', { cls: 'storyteller-modal-btn mod-cta', text: 'Save' });
-        saveBtn.addEventListener('click', () => this.save());
+        saveBtn.addEventListener('click', () => { void this.save(); });
     }
 
     // ─── Choices Tab ──────────────────────────────────────────────────────────
 
     private renderChoicesTab(container: HTMLElement): void {
         if (this.branches.length === 0) {
-            container.createEl('p', { cls: 'storyteller-modal-list-empty', text: 'No choices yet. Click "Add Choice" to begin.' });
+            container.createEl('p', { cls: 'storyteller-modal-list-empty', text: 'No choices yet. Click "add choice" to begin.' });
         }
 
         const listEl = container.createDiv('storyteller-branch-editor-list');
@@ -111,7 +115,7 @@ export class BranchEditorModal extends Modal {
 
         new Setting(container)
             .addButton(btn => btn
-                .setButtonText('Add Choice')
+                .setButtonText('Add choice')
                 .setIcon('plus')
                 .onClick(() => {
                     this.branches.push({ id: `branch-${Date.now()}`, label: 'New choice' });
@@ -180,7 +184,7 @@ export class BranchEditorModal extends Modal {
 
             // Dice condition (collapsible toggle)
             const diceToggle = fields.createEl('details', { cls: 'storyteller-branch-dice-details' });
-            const diceSummary = diceToggle.createEl('summary', { text: 'Dice condition' });
+            diceToggle.createEl('summary', { text: 'Dice condition' });
             if (branch.dice) diceToggle.setAttribute('open', '');
 
             const diceRow = diceToggle.createDiv('storyteller-branch-dice-row');
@@ -207,7 +211,7 @@ export class BranchEditorModal extends Modal {
                 .setName('Threshold (≥)')
                 .addText(t => t
                     .setValue(branch.threshold != null ? String(branch.threshold) : '')
-                    .setPlaceholder('e.g. 14')
+                    .setPlaceholder('E.g. 14')
                     .onChange(v => {
                         const n = parseInt(v);
                         branch.threshold = isNaN(n) ? undefined : n;
@@ -280,10 +284,10 @@ export class BranchEditorModal extends Modal {
 
             new Setting(fields)
                 .setName('Requires stat min')
-                .setDesc('Only used when Stat is set.')
+                .setDesc('Only used when stat is set.')
                 .addText(t => t
                     .setValue(branch.requiresStatMin != null ? String(branch.requiresStatMin) : '')
-                    .setPlaceholder('e.g. 12')
+                    .setPlaceholder('E.g. 12')
                     .onChange(v => {
                         const n = parseInt(v);
                         branch.requiresStatMin = isNaN(n) ? undefined : n;
@@ -414,7 +418,7 @@ export class BranchEditorModal extends Modal {
                 .addText(t => t.setValue(branch.triggersEvent ?? '').setPlaceholder('Event name').onChange(v => { branch.triggersEvent = v || undefined; }));
             new Setting(outcomeFields)
                 .setName('Triggers event (linked)')
-                .setDesc('Uses Event ID to survive renames.')
+                .setDesc('Uses event ID to survive renames.')
                 .addDropdown(dd => {
                     dd.addOption('', 'None');
                     for (const event of this.eventOptions) {
@@ -434,7 +438,7 @@ export class BranchEditorModal extends Modal {
 
             new Setting(fields)
                 .setName('Hidden')
-                .setDesc('Hide this branch from players in Campaign play mode.')
+                .setDesc('Hide this branch from players in campaign play mode.')
                 .addToggle(toggle => {
                     toggle.setValue(Boolean(branch.hidden));
                     toggle.onChange(value => { branch.hidden = value || undefined; });
@@ -469,13 +473,13 @@ export class BranchEditorModal extends Modal {
         new Setting(container)
             .setName('Trigger')
             .addDropdown(dd => {
-                dd.addOption('manual', 'Manual (DM rolls)');
-                dd.addOption('on-enter', 'On Enter (auto-roll)');
+                    dd.addOption('manual', 'Manual (dm rolls)');
+                    dd.addOption('on-enter', 'On enter (auto-roll)');
                 dd.setValue(table.trigger);
                 dd.onChange(v => { table.trigger = v as EncounterTable['trigger']; });
             });
 
-        container.createEl('h3', { text: 'Roll Table Rows' });
+        container.createEl('h3', { text: 'Roll table rows' });
         const rowsEl = container.createDiv('storyteller-encounter-rows');
         const renderRows = () => {
             rowsEl.empty();
@@ -498,7 +502,7 @@ export class BranchEditorModal extends Modal {
 
         new Setting(container)
             .addButton(btn => btn
-                .setButtonText('Add Row')
+                .setButtonText('Add row')
                 .setIcon('plus')
                 .onClick(() => {
                     const last = table.rows[table.rows.length - 1];
@@ -511,7 +515,7 @@ export class BranchEditorModal extends Modal {
         // Remove entire encounter table button
         new Setting(container)
             .addButton(btn => btn
-                .setButtonText('Remove Encounter Table')
+                .setButtonText('Remove encounter table')
                 .setClass('mod-warning')
                 .onClick(() => {
                     this.encounterTable = null;
@@ -544,7 +548,7 @@ export class BranchEditorModal extends Modal {
             ? '```encounter\n' + serializeEncounterTable(this.encounterTable) + '\n```'
             : null;
 
-        await (this.app.vault as any).process(file, (content: string) => {
+        await (this.app.vault as unknown as ProcessableVault).process(file, (content: string) => {
             let updated = content;
 
             // Update ## Choices section

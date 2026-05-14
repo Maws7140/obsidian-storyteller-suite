@@ -114,7 +114,7 @@ export function checkBranchConditions(
     if (branch.requiresStatMin != null && branch.stat) {
         // Check the highest value of the relevant stat across all party members.
         // The caller can pass a specific characterState to override this.
-        const statKey = `dnd${branch.stat.charAt(0).toUpperCase() + branch.stat.slice(1)}` as string;
+        const statKey = `dnd${branch.stat.charAt(0).toUpperCase() + branch.stat.slice(1)}`;
         let best = characterState ? Number(characterState[statKey] ?? 0) : 0;
         if (!characterState) {
             // partyState doesn't carry D&D stats directly — CampaignView will need to

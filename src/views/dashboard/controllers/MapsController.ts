@@ -14,7 +14,7 @@ export const mapsController: DashboardTabController = {
                 new Notice(t('selectOrCreateStoryFirst'));
                 return;
             }
-            import('../../../utils/MapModalHelper').then(({ openMapModal }) => {
+            void import('../../../utils/MapModalHelper').then(({ openMapModal }) => {
                 openMapModal(context.app, context.plugin, null, {
                     onSave: async () => {
                         context.mutationRunner.requestRefresh('immediate', 'map-created');
@@ -69,7 +69,7 @@ async function renderMapsList(container: HTMLElement, context: DashboardControll
 
         const actionsEl = itemEl.createDiv('storyteller-list-item-actions');
         context.addEditButton(actionsEl, () => {
-            import('../../../utils/MapModalHelper').then(({ openMapModal }) => {
+            void import('../../../utils/MapModalHelper').then(({ openMapModal }) => {
                 openMapModal(context.app, context.plugin, map, {
                     onSave: async () => {
                         context.mutationRunner.requestRefresh('immediate', 'map-updated');

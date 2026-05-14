@@ -43,7 +43,7 @@ export class StoryTemplateGalleryModal extends Modal {
 
     private renderHeader(container: HTMLElement): void {
         const header = container.createDiv('storyteller-template-header');
-        header.createEl('h2', { text: 'Story Template Gallery' });
+        header.createEl('h2', { text: 'Story template gallery' });
         header.createEl('p', {
             text: 'Choose a pre-built template to jumpstart your story with characters, locations, and relationships',
             cls: 'storyteller-template-subtitle'
@@ -221,7 +221,7 @@ export class StoryTemplateGalleryModal extends Modal {
             const breakdownText = topEntities
                 .map(([type, count]) => `${count} ${this.pluralizeEntityType(type)}`)
                 .join(', ');
-            const breakdown = details.createEl('div', {
+            details.createEl('div', {
                 text: breakdownText,
                 cls: 'storyteller-template-breakdown'
             });
@@ -237,7 +237,7 @@ export class StoryTemplateGalleryModal extends Modal {
             });
 
         new ButtonComponent(actions)
-            .setButtonText('Use Template')
+            .setButtonText('Use template')
             .setCta()
             .onClick(() => {
                 this.previewTemplate(template);
@@ -272,14 +272,14 @@ export class StoryTemplateGalleryModal extends Modal {
             });
 
         new ButtonComponent(footer)
-            .setButtonText('Import Template')
+            .setButtonText('Import template')
             .onClick(() => {
                 // TODO: Implement template import
                 new Notice('Template import coming soon!');
             });
 
         new ButtonComponent(footer)
-            .setButtonText('Create Custom Template')
+            .setButtonText('Create custom template')
             .setCta()
             .onClick(() => {
                 this.close();
@@ -287,11 +287,11 @@ export class StoryTemplateGalleryModal extends Modal {
                     this.app,
                     this.plugin,
                     null, // null = create new template
-                    async (template) => {
+                    (template) => { void (async () => {
                         new Notice(`Template "${template.name}" created! You can now use it.`);
                         // Reopen gallery to show new template
                         new StoryTemplateGalleryModal(this.app, this.plugin, this.templateManager).open();
-                    }
+                    })(); }
                 ).open();
             });
     }

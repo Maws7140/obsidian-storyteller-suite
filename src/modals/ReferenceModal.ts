@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
+ 
 import { App, Notice, Setting, TextAreaComponent, parseYaml } from 'obsidian';
 import { t } from '../i18n/strings';
 import StorytellerSuitePlugin from '../main';
@@ -6,13 +6,21 @@ import { Reference } from '../types';
 import { addImageSelectionButtons } from '../utils/ImageSelectionHelper';
 import { parseSectionsFromMarkdown } from '../yaml/EntitySections';
 import { TemplatePickerModal } from './TemplatePickerModal';
-import { Template } from '../templates/TemplateTypes';
+import type { Template, TemplateEntity, TemplateVariableValue } from '../templates/TemplateTypes';
 import { EntityCustomFieldsEditor } from './entity/EntityCustomFieldsEditor';
 import { ResponsiveModal } from './ResponsiveModal';
 import { confirmWithModal } from './ui/ConfirmModal';
 
 export type ReferenceModalSubmitCallback = (ref: Reference) => Promise<void>;
 export type ReferenceModalDeleteCallback = (ref: Reference) => Promise<void>;
+
+type ReferenceWithCustomFields = Reference & {
+    customFields?: Record<string, string>;
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
 
 export class ReferenceModal extends ResponsiveModal {
     plugin: StorytellerSuitePlugin;
@@ -26,15 +34,16 @@ export class ReferenceModal extends ResponsiveModal {
         super(app);
         this.plugin = plugin;
         this.isNew = ref == null;
-        this.refData = ref ? { ...ref } : { name: '', category: 'Misc', tags: [] } as Reference;
+        this.refData = ref ? { ...ref } : { name: '', category: 'Misc', tags: [] };
         if (!this.refData.tags) this.refData.tags = [];
-        this.customFieldsEditor = new EntityCustomFieldsEditor(this.app, 'reference', ((this.refData as any).customFields || {}) as Record<string, string>);
+        const referenceFields = this.refData as ReferenceWithCustomFields;
+        this.customFieldsEditor = new EntityCustomFieldsEditor(this.app, 'reference', referenceFields.customFields || {});
         this.onSubmit = onSubmit;
         this.onDelete = onDelete;
         this.modalEl.addClass('storyteller-reference-modal');
     }
 
-    async onOpen(): Promise<void> {
+    onOpen(): void { void (async () => {
         super.onOpen();
         const { contentEl, footerEl } = this.createStructuredModalLayout();
         contentEl.createEl('h2', { text: this.isNew ? t('createReference') : `${t('editReference')} ${this.refData.name}` });
@@ -54,7 +63,7 @@ export class ReferenceModal extends ResponsiveModal {
                                 this.app,
                                 this.plugin,
                                 defaultTemplate,
-                                async (variableValues, entityFileNames) => {
+                                (variableValues, entityFileNames) => { void (async () => {
                                     try {
                                         await this.applyTemplateToReferenceWithVariables(defaultTemplate, variableValues);
                                         new Notice('Default template applied');
@@ -65,7 +74,7 @@ export class ReferenceModal extends ResponsiveModal {
                                         resolve();
                                         this.refresh();
                                     }
-                                }
+                                })(); }
                             ).open();
                         });
                     } else {
@@ -85,27 +94,27 @@ export class ReferenceModal extends ResponsiveModal {
         // --- Template Selector (for new references) ---
         if (this.isNew) {
             new Setting(contentEl)
-                .setName('Start from Template')
+                .setName('Start from template')
                 .setDesc('Optionally start with a pre-configured reference template')
                 .addButton(button => button
-                    .setButtonText('Choose Template')
+                    .setButtonText('Choose template')
                     .setTooltip('Select a reference template')
                     .onClick(() => {
                         new TemplatePickerModal(
                             this.app,
                             this.plugin,
-                            async (template: Template) => {
+                            (template: Template) => { void (async () => {
                                 // Check if template has variables or multiple entities
                                 if ((template.variables && template.variables.length > 0) ||
                                     this.hasMultipleEntities(template)) {
                                     // Use TemplateApplicationModal for variable collection
                                     await new Promise<void>((resolve) => {
-                                        import('./TemplateApplicationModal').then(({ TemplateApplicationModal }) => {
+                                        void import('./TemplateApplicationModal').then(({ TemplateApplicationModal }) => {
                                             new TemplateApplicationModal(
                                                 this.app,
                                                 this.plugin,
                                                 template,
-                                                async (variableValues, entityFileNames) => {
+                                                (variableValues, entityFileNames) => { void (async () => {
                                                     try {
                                                         await this.applyTemplateToReferenceWithVariables(template, variableValues);
                                                         new Notice(`Template "${template.name}" applied`);
@@ -115,7 +124,7 @@ export class ReferenceModal extends ResponsiveModal {
                                                         new Notice('Error applying template');
                                                     }
                                                     resolve();
-                                                }
+                                                })(); }
                                             ).open();
                                         });
                                     });
@@ -125,7 +134,7 @@ export class ReferenceModal extends ResponsiveModal {
                                     this.refresh();
                                     new Notice(`Template "${template.name}" applied`);
                                 }
-                            },
+                            })(); },
                             'reference'
                         ).open();
                     })
@@ -193,7 +202,7 @@ export class ReferenceModal extends ResponsiveModal {
             });
 
         // Custom fields (add only)
-        this.customFieldsEditor.setFields(((this.refData as any).customFields || {}) as Record<string, string>);
+        this.customFieldsEditor.setFields((this.refData as ReferenceWithCustomFields).customFields || {});
         this.customFieldsEditor.renderSection(contentEl);
 
         if (!this.isNew && this.onDelete) {
@@ -220,11 +229,11 @@ export class ReferenceModal extends ResponsiveModal {
             if (!customFields) {
                 return;
             }
-            (this.refData as any).customFields = customFields;
+            (this.refData as ReferenceWithCustomFields).customFields = customFields;
             await this.onSubmit(this.refData);
             this.close();
         }, { cta: true });
-    }
+    })(); }
 
     private hasMultipleEntities(template: Template): boolean {
         let entityCount = 0;
@@ -247,7 +256,7 @@ export class ReferenceModal extends ResponsiveModal {
         await this.applyProcessedTemplateToReference(templateRef);
     }
 
-    private async applyTemplateToReferenceWithVariables(template: Template, variableValues: Record<string, any>): Promise<void> {
+    private async applyTemplateToReferenceWithVariables(template: Template, variableValues: Record<string, TemplateVariableValue>): Promise<void> {
         if (!template.entities.references || template.entities.references.length === 0) {
             new Notice('This template does not contain any references');
             return;
@@ -273,20 +282,27 @@ export class ReferenceModal extends ResponsiveModal {
         await this.applyProcessedTemplateToReference(templateRef);
     }
 
-    private async applyProcessedTemplateToReference(templateRef: any): Promise<void> {
-        const { templateId, yamlContent, markdownContent, sectionContent, customYamlFields, id, filePath, ...rest } = templateRef as any;
+    private async applyProcessedTemplateToReference(templateRef: TemplateEntity<Reference>): Promise<void> {
+        const { yamlContent, markdownContent, sectionContent, customYamlFields } = templateRef;
 
-        let fields: any = { ...rest };
+        let fields: Record<string, unknown> = { ...templateRef };
+        delete fields.templateId;
+        delete fields.yamlContent;
+        delete fields.markdownContent;
+        delete fields.sectionContent;
+        delete fields.customYamlFields;
+        delete fields.id;
+        delete fields.filePath;
         let allTemplateSections: Record<string, string> = {};
 
         // Handle new format: yamlContent (parse YAML string)
         if (yamlContent && typeof yamlContent === 'string') {
             try {
-                const parsed = parseYaml(yamlContent);
-                if (parsed && typeof parsed === 'object') {
+                const parsed = parseYaml(yamlContent) as unknown;
+                if (isRecord(parsed)) {
                     fields = { ...fields, ...parsed };
                 }
-                console.log('[ReferenceModal] Parsed YAML fields:', parsed);
+                console.debug('[ReferenceModal] Parsed YAML fields:', parsed);
             } catch (error) {
                 console.warn('[ReferenceModal] Failed to parse yamlContent:', error);
             }
@@ -350,19 +366,23 @@ export class ReferenceModal extends ResponsiveModal {
 
                 // Merge customFields into fields if there are any unmapped sections
                 if (Object.keys(customFields).length > 0) {
-                    fields.customFields = { ...(fields.customFields || {}), ...customFields };
+                    const existingCustomFields =
+                        isRecord(fields.customFields)
+                            ? fields.customFields
+                            : {};
+                    fields.customFields = { ...existingCustomFields, ...customFields };
                 }
 
-                console.log('[ReferenceModal] Parsed markdown sections:', parsedSections);
+                console.debug('[ReferenceModal] Parsed markdown sections:', parsedSections);
             } catch (error) {
                 console.warn('[ReferenceModal] Failed to parse markdownContent:', error);
             }
         } else if (sectionContent) {
             // Old format: apply section content
-            for (const [k, v] of Object.entries(sectionContent)) { allTemplateSections[k as string] = v as string; }
+            for (const [k, v] of Object.entries(sectionContent)) { allTemplateSections[k] = v; }
             for (const [sectionName, content] of Object.entries(sectionContent)) {
                 const propName = sectionName.toLowerCase().replace(/\s+/g, '');
-                (fields as any)[propName] = content;
+                fields[propName] = content;
             }
         }
 
@@ -376,7 +396,7 @@ export class ReferenceModal extends ResponsiveModal {
                 configurable: true
             });
         }
-        console.log('[ReferenceModal] Final reference after template:', this.refData);
+        console.debug('[ReferenceModal] Final reference after template:', this.refData);
     }
 
     private refresh(): void {

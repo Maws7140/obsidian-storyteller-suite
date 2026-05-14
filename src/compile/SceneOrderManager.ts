@@ -101,7 +101,7 @@ export class SceneOrderManager {
         if (copyFromDraftId) {
             const sourceDraft = this.getStoryDrafts().find(d => d.id === copyFromDraftId);
             if (sourceDraft) {
-                newDraft.sceneOrder = JSON.parse(JSON.stringify(sourceDraft.sceneOrder));
+                newDraft.sceneOrder = structuredClone(sourceDraft.sceneOrder);
                 newDraft.workflow = sourceDraft.workflow || this.plugin.settings.defaultCompileWorkflow;
             }
         } else {
@@ -762,7 +762,6 @@ export class SceneOrderManager {
         chapterCount: number;
         unassignedScenes: number;
     }> {
-        const scenes = await this.plugin.listScenes();
         const orderedScenes = await this.getOrderedScenes(draft);
         
         const chapterIds = new Set<string>();

@@ -1,6 +1,7 @@
 import { App, FuzzySuggestModal, Notice, prepareFuzzySearch, FuzzyMatch } from 'obsidian';
 import { CompendiumEntry } from '../types';
 import StorytellerSuitePlugin from '../main';
+import { scheduleSuggestRefresh } from './utils/SuggestModalRefresh';
 
 export class CompendiumEntrySuggestModal extends FuzzySuggestModal<CompendiumEntry> {
     plugin: StorytellerSuitePlugin;
@@ -23,13 +24,13 @@ export class CompendiumEntrySuggestModal extends FuzzySuggestModal<CompendiumEnt
         return items
             .map(e => {
                 const match = fuzzy(this.getItemText(e));
-                return match ? ({ item: e, match } as FuzzyMatch<CompendiumEntry>) : null;
+                return match ? ({ item: e, match }) : null;
             })
             .filter((fm): fm is FuzzyMatch<CompendiumEntry> => !!fm);
     }
 
     async onOpen() {
-        super.onOpen();
+        void super.onOpen();
         try {
             this.entries = await this.plugin.listCompendiumEntries();
         } catch (error) {
@@ -37,20 +38,7 @@ export class CompendiumEntrySuggestModal extends FuzzySuggestModal<CompendiumEnt
             new Notice('Error loading compendium entries.');
             this.entries = [];
         }
-        setTimeout(() => {
-            if (this.inputEl) {
-                try { (this as any).setQuery?.(''); } catch {}
-                try { this.inputEl.dispatchEvent(new window.Event('input')); } catch {}
-            }
-            try { (this as any).onInputChanged?.(); } catch {}
-        }, 0);
-        setTimeout(() => {
-            if (this.inputEl) {
-                try { (this as any).setQuery?.(''); } catch {}
-                try { this.inputEl.dispatchEvent(new window.Event('input')); } catch {}
-            }
-            try { (this as any).onInputChanged?.(); } catch {}
-        }, 50);
+        scheduleSuggestRefresh(this);
     }
 
     getItems(): CompendiumEntry[] {

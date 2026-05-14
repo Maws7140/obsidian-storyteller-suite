@@ -46,7 +46,7 @@ export class TimelineTrackManager {
 
         // Check for duplicate ID
         if (tracks.find(t => t.id === track.id)) {
-            track.id = `track-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+            track.id = `track-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
         }
 
         // Set sort order if not provided

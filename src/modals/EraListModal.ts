@@ -1,4 +1,4 @@
-import { App, Modal, Setting, Notice } from 'obsidian';
+import { App, Modal } from 'obsidian';
 import { TimelineEra } from '../types';
 import StorytellerSuitePlugin from '../main';
 import { EraModal } from './EraModal';
@@ -21,7 +21,7 @@ export class EraListModal extends ResponsiveModal {
         super.onOpen();
         const { contentEl, footerEl } = this.createStructuredModalLayout();
 
-        contentEl.createEl('h2', { text: 'Timeline Eras & Periods' });
+        contentEl.createEl('h2', { text: 'Timeline eras & periods' });
 
         contentEl.createEl('p', {
             text: 'Organize your timeline into acts, arcs, or historical periods. Eras display as colored backgrounds on the timeline.',
@@ -31,7 +31,7 @@ export class EraListModal extends ResponsiveModal {
         // Create New Era Button
         const headerContainer = contentEl.createDiv('storyteller-list-header');
         headerContainer.createEl('button', {
-            text: '+ Create New Era',
+            text: '+ create new era',
             cls: 'mod-cta'
         }, btn => {
             btn.addEventListener('click', () => {
@@ -61,7 +61,7 @@ export class EraListModal extends ResponsiveModal {
 
         if (this.eras.length === 0) {
             this.listContainer.createEl('p', {
-                text: 'No eras created yet. Click "Create New Era" to get started.',
+                text: 'No eras created yet. Click "create new era" to get started.',
                 cls: 'storyteller-empty-state'
             });
             return;
@@ -76,7 +76,7 @@ export class EraListModal extends ResponsiveModal {
             // Color indicator
             const colorBar = eraCard.createDiv('storyteller-era-color-bar');
             if (era.color) {
-                colorBar.style.backgroundColor = era.color;
+                colorBar.setCssStyles({ backgroundColor: era.color });
             }
 
             // Era content
@@ -115,7 +115,7 @@ export class EraListModal extends ResponsiveModal {
                 });
             } else {
                 eraContent.createDiv('storyteller-era-error', div => {
-                    div.createEl('strong', { text: '⚠️ Invalid: ' });
+                    div.createEl('strong', { text: '⚠️ invalid: ' });
                     div.createSpan({ text: validation.errors.join(', ') });
                 });
             }
@@ -136,7 +136,7 @@ export class EraListModal extends ResponsiveModal {
                 return EraManager.getEventsInEra(era, allEvents);
             })() : Promise.resolve([]);
 
-            events.then(eventsInEra => {
+            void events.then(eventsInEra => {
                 eraContent.createDiv('storyteller-era-events', div => {
                     div.createEl('strong', { text: 'Events: ' });
                     div.createSpan({ text: eventsInEra.length.toString() });
@@ -159,25 +159,25 @@ export class EraListModal extends ResponsiveModal {
                 text: era.visible === false ? 'Show' : 'Hide',
                 cls: 'storyteller-era-action-btn'
             }, btn => {
-                btn.addEventListener('click', async () => {
+                btn.addEventListener('click', () => { void (async () => {
                     era.visible = era.visible === false ? true : false;
                     await this.plugin.updateTimelineEra(era);
                     this.renderEraList();
-                });
+                })(); });
             });
 
             actionRow.createEl('button', {
                 text: 'Delete',
                 cls: 'storyteller-era-action-btn mod-warning'
             }, btn => {
-                btn.addEventListener('click', async () => {
+                btn.addEventListener('click', () => { void (async () => {
                     const confirm = await this.confirmDelete(era.name);
                     if (confirm) {
                         await this.plugin.deleteTimelineEra(era.id);
                         this.eras = this.plugin.settings.timelineEras || [];
                         this.renderEraList();
                     }
-                });
+                })(); });
             });
         }
     }
@@ -211,7 +211,7 @@ export class EraListModal extends ResponsiveModal {
     private async confirmDelete(eraName: string): Promise<boolean> {
         return new Promise<boolean>(resolve => {
             const confirmModal = new Modal(this.app);
-            confirmModal.contentEl.createEl('h3', { text: 'Delete Era?' });
+            confirmModal.contentEl.createEl('h3', { text: 'Delete era?' });
             confirmModal.contentEl.createEl('p', {
                 text: `Are you sure you want to delete "${eraName}"? This action cannot be undone.`
             });

@@ -348,7 +348,7 @@ export class MapHierarchyManager {
             }
         }
 
-        console.log(`Auto-linked maps to locations: ${linked} linked, ${created} created`);
+        console.debug(`Auto-linked maps to locations: ${linked} linked, ${created} created`);
     }
 
     /**

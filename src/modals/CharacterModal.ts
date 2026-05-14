@@ -1,5 +1,5 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
-import { App, Setting, Notice, TextAreaComponent, TextComponent, ButtonComponent, parseYaml, TFile, setIcon } from 'obsidian';
+ 
+import { App, Setting, Notice, ButtonComponent, parseYaml, setIcon } from 'obsidian';
 import { Character, PlotItem } from '../types'; // Assumes Character type has relationships?: string[], associatedLocations?: string[], associatedEvents?: string[]
 import { LocationPicker } from '../components/LocationPicker';
 import { LocationService } from '../services/LocationService';
@@ -8,9 +8,8 @@ import StorytellerSuitePlugin from '../main';
 import { t } from '../i18n/strings';
 import { addImageSelectionButtons } from '../utils/ImageSelectionHelper';
 import { ResponsiveModal } from './ResponsiveModal';
-import { PlatformUtils } from '../utils/PlatformUtils';
 import { TemplatePickerModal } from './TemplatePickerModal';
-import { Template } from '../templates/TemplateTypes';
+import type { Template, TemplateEntity, TemplateVariableValue } from '../templates/TemplateTypes';
 import { CharacterSheetPreviewModal } from './CharacterSheetPreviewModal';
 import { getTrackedItemOwner, isSameName } from '../utils/ItemOwnership';
 import { EntityCustomFieldsEditor } from './entity/EntityCustomFieldsEditor';
@@ -23,6 +22,14 @@ import { confirmWithModal } from './ui/ConfirmModal';
 
 export type CharacterModalSubmitCallback = (character: Character) => Promise<void>;
 export type CharacterModalDeleteCallback = (character: Character) => Promise<void>;
+
+type TemplateSectionCarrier = {
+    _templateSections?: Record<string, string>;
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
 
 export class CharacterModal extends ResponsiveModal {
     character: Character;
@@ -51,9 +58,10 @@ export class CharacterModal extends ResponsiveModal {
         // Preserve filePath if editing
         if (character && character.filePath) initialCharacter.filePath = character.filePath;
         // Preserve _templateSections if set on the source character (non-enumerable, not copied by spread)
-        if (character && (character as any)._templateSections) {
+        const templateSections = (character as unknown as TemplateSectionCarrier | null)?._templateSections;
+        if (templateSections) {
             Object.defineProperty(initialCharacter, '_templateSections', {
-                value: (character as any)._templateSections,
+                value: templateSections,
                 enumerable: false,
                 writable: true,
                 configurable: true
@@ -71,7 +79,7 @@ export class CharacterModal extends ResponsiveModal {
             loadSelectedGroupIds: async () => {
                 const identifier = this.character.id || this.character.name;
                 const characters = await this.plugin.listCharacters();
-                return (characters.find(character => (character.id || character.name) === identifier)?.groups || this.character.groups || []) as string[];
+                return (characters.find(character => (character.id || character.name) === identifier)?.groups || this.character.groups || []);
             },
             persistAdd: async groupId => {
                 await this.plugin.addMemberToGroup(groupId, 'character', this.character.id || this.character.name);
@@ -85,24 +93,24 @@ export class CharacterModal extends ResponsiveModal {
         this.modalEl.addClass('storyteller-character-modal');
     }
 
-    async onOpen() {
+    onOpen() { void (async () => {
         super.onOpen(); // Call the parent's mobile optimizations
 
         const rootEl = this.contentEl;
         rootEl.empty();
         rootEl.addClass('storyteller-character-modal-content');
-        rootEl.style.display = 'flex';
-        rootEl.style.flexDirection = 'column';
-        rootEl.style.overflow = 'hidden';
-        rootEl.style.paddingBottom = '0';
-        rootEl.style.maxHeight = this.isFullScreen ? '100%' : '80vh';
+        rootEl.setCssStyles({ display: 'flex' });
+        rootEl.setCssStyles({ flexDirection: 'column' });
+        rootEl.setCssStyles({ overflow: 'hidden' });
+        rootEl.setCssStyles({ paddingBottom: '0' });
+        rootEl.setCssStyles({ maxHeight: this.isFullScreen ? '100%' : '80vh' });
 
         const contentEl = rootEl.createDiv('storyteller-character-modal-scroll');
-        contentEl.style.flex = '1 1 auto';
-        contentEl.style.minHeight = '0';
-        if (!this.isFullScreen) contentEl.style.maxHeight = '75vh';
-        contentEl.style.overflowY = 'auto';
-        contentEl.style.overflowX = 'hidden';
+        contentEl.setCssStyles({ flex: '1 1 auto' });
+        contentEl.setCssStyles({ minHeight: '0' });
+        if (!this.isFullScreen) contentEl.setCssStyles({ maxHeight: '75vh' });
+        contentEl.setCssStyles({ overflowY: 'auto' });
+        contentEl.setCssStyles({ overflowX: 'hidden' });
         contentEl.createEl('h2', { text: this.isNew ? t('createNewCharacter') : `${t('edit')} ${this.character.name}` });
 
         // Auto-apply default template for new characters
@@ -115,12 +123,12 @@ export class CharacterModal extends ResponsiveModal {
                     if ((defaultTemplate.variables && defaultTemplate.variables.length > 0) ||
                         this.hasMultipleEntities(defaultTemplate)) {
                         await new Promise<void>((resolve) => {
-                            import('./TemplateApplicationModal').then(({ TemplateApplicationModal }) => {
+                            void import('./TemplateApplicationModal').then(({ TemplateApplicationModal }) => {
                                 new TemplateApplicationModal(
                                     this.app,
                                     this.plugin,
                                     defaultTemplate,
-                                    async (variableValues, entityFileNames) => {
+                                    (variableValues, entityFileNames) => { void (async () => {
                                         try {
                                             await this.applyTemplateToCharacterWithVariables(defaultTemplate, variableValues);
                                             new Notice('Default template applied');
@@ -130,7 +138,7 @@ export class CharacterModal extends ResponsiveModal {
                                             new Notice('Error applying default template');
                                         }
                                         resolve();
-                                    },
+                                    })(); },
                                     () => {
                                         // User cancelled the template application modal
                                         resolve();
@@ -155,27 +163,27 @@ export class CharacterModal extends ResponsiveModal {
         // --- Template Selector (for new characters) ---
         if (this.isNew) {
             new Setting(contentEl)
-                .setName('Start from Template')
+                .setName('Start from template')
                 .setDesc('Optionally start with a pre-configured character template')
                 .addButton(button => button
-                    .setButtonText('Choose Template')
+                    .setButtonText('Choose template')
                     .setTooltip('Select a character template')
                     .onClick(() => {
                         new TemplatePickerModal(
                             this.app,
                             this.plugin,
-                            async (template: Template) => {
+                            (template: Template) => { void (async () => {
                                 // Check if template has variables or multiple entities
                                 if ((template.variables && template.variables.length > 0) ||
                                     this.hasMultipleEntities(template)) {
                                     // Use TemplateApplicationModal for variable collection
                                     await new Promise<void>((resolve) => {
-                                        import('./TemplateApplicationModal').then(({ TemplateApplicationModal }) => {
+                                        void import('./TemplateApplicationModal').then(({ TemplateApplicationModal }) => {
                                             new TemplateApplicationModal(
                                                 this.app,
                                                 this.plugin,
                                                 template,
-                                                async (variableValues, entityFileNames) => {
+                                                (variableValues, entityFileNames) => { void (async () => {
                                                     try {
                                                         await this.applyTemplateToCharacterWithVariables(template, variableValues);
                                                         new Notice(`Template "${template.name}" applied`);
@@ -185,7 +193,7 @@ export class CharacterModal extends ResponsiveModal {
                                                         new Notice('Error applying template');
                                                     }
                                                     resolve();
-                                                },
+                                                })(); },
                                                 resolve
                                             ).open();
                                         });
@@ -196,7 +204,7 @@ export class CharacterModal extends ResponsiveModal {
                                     this.refresh();
                                     new Notice(`Template "${template.name}" applied`);
                                 }
-                            },
+                            })(); },
                             'character' // Filter to character templates only
                         ).open();
                     })
@@ -308,7 +316,7 @@ export class CharacterModal extends ResponsiveModal {
         new Setting(genderCol)
             .setName(t('gender'))
             .addText(text => text
-                .setPlaceholder('e.g., Female, Male, Non-binary')
+                .setPlaceholder('E.g., female, male, non-binary')
                 .setValue(this.character.gender || '')
                 .onChange(value => { this.character.gender = value || undefined; }));
 
@@ -316,7 +324,7 @@ export class CharacterModal extends ResponsiveModal {
         new Setting(raceCol)
             .setName(t('race'))
             .addText(text => text
-                .setPlaceholder('e.g., Human, Elf, Dwarf')
+                .setPlaceholder('E.g., human, elf, dwarf')
                 .setValue(this.character.race || '')
                 .onChange(value => { this.character.race = value || undefined; }));
 
@@ -324,7 +332,7 @@ export class CharacterModal extends ResponsiveModal {
         new Setting(ageCol)
             .setName(t('age'))
             .addText(text => text
-                .setPlaceholder('e.g., 34, Ancient, Unknown')
+                .setPlaceholder('E.g., 34, ancient, unknown')
                 .setValue(this.character.age || '')
                 .onChange(value => { this.character.age = value || undefined; }));
 
@@ -332,7 +340,7 @@ export class CharacterModal extends ResponsiveModal {
         new Setting(heightCol)
             .setName(t('height'))
             .addText(text => text
-                .setPlaceholder("e.g., 5'10\", Tall")
+                .setPlaceholder("E.g., 5'10\", tall")
                 .setValue(this.character.height || '')
                 .onChange(value => { this.character.height = value || undefined; }));
 
@@ -356,7 +364,7 @@ export class CharacterModal extends ResponsiveModal {
             this.plugin,
             locationContainer,
             this.character.currentLocationId,
-            async (locationId: string) => {
+            (locationId: string) => { void (async () => {
                 this.character.currentLocationId = locationId || undefined;
                 // Location sync will be handled automatically by EntitySyncService when character is saved
                 if (locationId) {
@@ -374,13 +382,13 @@ export class CharacterModal extends ResponsiveModal {
                         });
                     }
                 }
-            }
+            })(); }
         );
 
         // --- Location History ---
         if (this.character.locationHistory && this.character.locationHistory.length > 0) {
             const historyContainer = contentEl.createDiv('storyteller-location-history');
-            historyContainer.createEl('h4', { text: 'Location History' });
+            historyContainer.createEl('h4', { text: 'Location history' });
             const historyList = historyContainer.createEl('ul', { cls: 'storyteller-location-history-list' });
             
             // Load all locations in parallel
@@ -394,10 +402,8 @@ export class CharacterModal extends ResponsiveModal {
                 const location = locations[i];
                 const li = historyList.createEl('li');
                 if (location) {
-                    li.innerHTML = `
-                        <span class="location-name">${location.name}</span>
-                        <span class="location-relationship">${entry.relationship}</span>
-                    `;
+                    li.createSpan({ cls: 'location-name', text: location.name });
+                    li.createSpan({ cls: 'location-relationship', text: entry.relationship });
                 } else {
                     li.textContent = entry.locationId;
                 }
@@ -427,7 +433,7 @@ export class CharacterModal extends ResponsiveModal {
             .setName('Add culture')
             .addDropdown(dd => {
                 dd.addOption('', '— select culture —');
-                allCulturesForChar.forEach(c => dd.addOption(c.name, c.name));
+                allCulturesForChar.forEach(c => { dd.addOption(c.name, c.name); });
                 dd.onChange(val => {
                     if (val && !this.character.cultures!.includes(val)) {
                         this.character.cultures!.push(val);
@@ -536,7 +542,7 @@ export class CharacterModal extends ResponsiveModal {
             .setName('Add economy')
             .addDropdown(dd => {
                 dd.addOption('', '— select economy —');
-                allEconomies.forEach(e => dd.addOption(e.name, e.name));
+                allEconomies.forEach(e => { dd.addOption(e.name, e.name); });
                 dd.onChange(val => {
                     if (val && !(this.character.linkedEconomies ?? []).includes(val)) {
                         if (!Array.isArray(this.character.linkedEconomies)) this.character.linkedEconomies = [];
@@ -592,7 +598,7 @@ export class CharacterModal extends ResponsiveModal {
 
         // --- Action Buttons ---
         const footer = rootEl.createDiv('storyteller-modal-footer');
-        footer.style.flex = '0 0 auto';
+        footer.setCssStyles({ flex: '0 0 auto' });
 
         if (!this.isNew && this.onDelete) {
             const deleteBtn = footer.createEl('button', {
@@ -600,7 +606,7 @@ export class CharacterModal extends ResponsiveModal {
                 cls: 'storyteller-modal-btn mod-warning',
                 attr: { type: 'button' }
             });
-            deleteBtn.addEventListener('click', async () => {
+            deleteBtn.addEventListener('click', () => { void (async () => {
                 if (await confirmWithModal(this.app, {
                     title: t('confirm') || 'Confirm',
                     body: t('confirmDeleteCharacter', this.character.name),
@@ -617,7 +623,7 @@ export class CharacterModal extends ResponsiveModal {
                         }
                     }
                 }
-            });
+            })(); });
         }
 
         const spacer = footer.createDiv('storyteller-modal-button-spacer');
@@ -625,7 +631,7 @@ export class CharacterModal extends ResponsiveModal {
 
         if (!this.isNew) {
             const sheetBtn = footer.createEl('button', {
-                text: 'Character Sheet',
+                text: 'Character sheet',
                 cls: 'storyteller-modal-btn',
                 attr: { type: 'button', title: 'Preview and export a styled character sheet' }
             });
@@ -652,7 +658,7 @@ export class CharacterModal extends ResponsiveModal {
             cls: 'storyteller-modal-btn mod-cta',
             attr: { type: 'button' }
         });
-        saveBtn.addEventListener('click', async () => {
+        saveBtn.addEventListener('click', () => { void (async () => {
                 if (!this.character.name?.trim()) {
                     new Notice(t('characterNameRequired'));
                     return;
@@ -671,8 +677,8 @@ export class CharacterModal extends ResponsiveModal {
                     console.error("Error saving character:", error);
                     new Notice(t('failedToSave', t('character')));
                 }
-            });
-    }
+            })(); });
+    })(); }
 
     // Helper to render connections list
     renderConnectionsList(container: HTMLElement) {
@@ -747,7 +753,7 @@ export class CharacterModal extends ResponsiveModal {
         await this.applyProcessedTemplateToCharacter(templateChar);
     }
 
-    private async applyTemplateToCharacterWithVariables(template: Template, variableValues: Record<string, any>): Promise<void> {
+    private async applyTemplateToCharacterWithVariables(template: Template, variableValues: Record<string, TemplateVariableValue>): Promise<void> {
         if (!template.entities.characters || template.entities.characters.length === 0) {
             new Notice('This template does not contain any characters');
             return;
@@ -773,20 +779,27 @@ export class CharacterModal extends ResponsiveModal {
         await this.applyProcessedTemplateToCharacter(templateChar);
     }
 
-    private async applyProcessedTemplateToCharacter(templateChar: any): Promise<void> {
-        const { templateId, yamlContent, markdownContent, sectionContent, customYamlFields, id, filePath, ...rest } = templateChar as any;
+    private async applyProcessedTemplateToCharacter(templateChar: TemplateEntity<Character>): Promise<void> {
+        const { yamlContent, markdownContent, sectionContent, customYamlFields } = templateChar;
 
-        let fields: any = { ...rest };
+        let fields: Record<string, unknown> = { ...templateChar };
+        delete fields.templateId;
+        delete fields.yamlContent;
+        delete fields.markdownContent;
+        delete fields.sectionContent;
+        delete fields.customYamlFields;
+        delete fields.id;
+        delete fields.filePath;
         let allTemplateSections: Record<string, string> = {};
 
         // Handle new format: yamlContent (parse YAML string)
         if (yamlContent && typeof yamlContent === 'string') {
             try {
-                const parsed = parseYaml(yamlContent);
-                if (parsed && typeof parsed === 'object') {
+                const parsed = parseYaml(yamlContent) as unknown;
+                if (isRecord(parsed)) {
                     fields = { ...fields, ...parsed };
                 }
-                console.log('[CharacterModal] Parsed YAML fields:', parsed);
+                console.debug('[CharacterModal] Parsed YAML fields:', parsed);
             } catch (error) {
                 console.warn('[CharacterModal] Failed to parse yamlContent:', error);
             }
@@ -819,16 +832,16 @@ export class CharacterModal extends ResponsiveModal {
                     }
                 }
 
-                console.log('[CharacterModal] Parsed markdown sections:', parsedSections);
+                console.debug('[CharacterModal] Parsed markdown sections:', parsedSections);
             } catch (error) {
                 console.warn('[CharacterModal] Failed to parse markdownContent:', error);
             }
         } else if (sectionContent) {
             // Old format: apply section content
-            for (const [k, v] of Object.entries(sectionContent)) { allTemplateSections[k as string] = v as string; }
+            for (const [k, v] of Object.entries(sectionContent)) { allTemplateSections[k] = v; }
             for (const [sectionName, content] of Object.entries(sectionContent)) {
                 const propName = sectionName.toLowerCase().replace(/\s+/g, '');
-                (fields as any)[propName] = content;
+                fields[propName] = content;
             }
         }
 
@@ -842,7 +855,7 @@ export class CharacterModal extends ResponsiveModal {
                 configurable: true
             });
         }
-        console.log('[CharacterModal] Final character after template:', this.character);
+        console.debug('[CharacterModal] Final character after template:', this.character);
 
         // Clear relationships as they reference template entities
         this.character.relationships = [];
@@ -862,12 +875,12 @@ export class CharacterModal extends ResponsiveModal {
         let expanded = !!(ch.dndClass || ch.dndStr || ch.dndMaxHp);
 
         const applyExpanded = () => {
-            body.style.display = expanded ? '' : 'none';
+            body.setCssStyles({ display: expanded ? '' : 'none' });
             setIcon(toggleIcon, expanded ? 'chevron-down' : 'chevron-right');
         };
         applyExpanded();
 
-        header.style.cursor = 'pointer';
+        header.setCssStyles({ cursor: 'pointer' });
         header.addEventListener('click', () => { expanded = !expanded; applyExpanded(); });
 
         // Class / Subclass / Race / Level / Hit Dice row
@@ -875,14 +888,14 @@ export class CharacterModal extends ResponsiveModal {
         const mkText = (parent: HTMLElement, label: string, get: () => string | undefined, set: (v: string) => void) => {
             const wrap = parent.createDiv('storyteller-dnd-field');
             wrap.createEl('label', { text: label, cls: 'storyteller-dnd-label' });
-            const inp = wrap.createEl('input', { attr: { type: 'text', placeholder: label } }) as HTMLInputElement;
+            const inp = wrap.createEl('input', { attr: { type: 'text', placeholder: label } });
             inp.value = get() ?? '';
             inp.addEventListener('input', () => set(inp.value));
         };
         const mkNum = (parent: HTMLElement, label: string, get: () => number | undefined, set: (v: number | undefined) => void, placeholder?: string) => {
             const wrap = parent.createDiv('storyteller-dnd-field');
             wrap.createEl('label', { text: label, cls: 'storyteller-dnd-label' });
-            const inp = wrap.createEl('input', { attr: { type: 'number', placeholder: placeholder ?? label } }) as HTMLInputElement;
+            const inp = wrap.createEl('input', { attr: { type: 'number', placeholder: placeholder ?? label } });
             const v = get();
             inp.value = v != null ? String(v) : '';
             inp.addEventListener('input', () => {
@@ -899,7 +912,7 @@ export class CharacterModal extends ResponsiveModal {
         mkText(row1, 'Hit Dice', () => ch.dndHitDice, v => { ch.dndHitDice = v || undefined; });
 
         // Ability score grid (STR DEX CON INT WIS CHA)
-        body.createEl('label', { text: 'Ability Scores', cls: 'storyteller-dnd-label' });
+        body.createEl('label', { text: 'Ability scores', cls: 'storyteller-dnd-label' });
         const statGrid = body.createDiv('storyteller-dnd-stat-grid');
 
         const STATS: Array<[string, keyof typeof ch & `dnd${'Str'|'Dex'|'Con'|'Int'|'Wis'|'Cha'}`]> = [
@@ -910,8 +923,8 @@ export class CharacterModal extends ResponsiveModal {
         for (const [label, field] of STATS) {
             const cell = statGrid.createDiv('storyteller-dnd-stat-cell');
             cell.createEl('div', { cls: 'storyteller-dnd-stat-name', text: label });
-            const inp = cell.createEl('input', { attr: { type: 'number', min: '1', max: '30', placeholder: '10' } }) as HTMLInputElement;
-            const score = ch[field] as number | undefined;
+            const inp = cell.createEl('input', { attr: { type: 'number', min: '1', max: '30', placeholder: '10' } });
+            const score = ch[field];
             inp.value = score != null ? String(score) : '';
 
             const modEl = cell.createEl('div', { cls: 'storyteller-dnd-stat-modifier' });
@@ -928,7 +941,7 @@ export class CharacterModal extends ResponsiveModal {
             inp.addEventListener('input', () => {
                 const n = parseFloat(inp.value);
                 const v = isNaN(n) ? undefined : n;
-                (ch as any)[field] = v;
+                ch[field] = v;
                 updateMod(v);
             });
         }
@@ -951,13 +964,13 @@ export class CharacterModal extends ResponsiveModal {
                 chipWrap.empty();
                 for (const val of current) {
                     const chip = chipWrap.createSpan({ cls: 'storyteller-dnd-condition', text: val });
-                    chip.style.cursor = 'pointer';
+                    chip.setCssStyles({ cursor: 'pointer' });
                     chip.setAttribute('title', 'Click to remove');
                     chip.addEventListener('click', () => { current = current.filter(v => v !== val); set(current); render(); });
                 }
                 // Quick-add select
-                const sel = chipWrap.createEl('select', { cls: 'storyteller-dnd-chip-add' }) as HTMLSelectElement;
-                sel.createEl('option', { value: '', text: '+ Add…' });
+                const sel = chipWrap.createEl('select', { cls: 'storyteller-dnd-chip-add' });
+                sel.createEl('option', { value: '', text: '+ add…' });
                 for (const s of suggestions) if (!current.includes(s)) sel.createEl('option', { value: s, text: s });
                 sel.addEventListener('change', () => { if (sel.value) { current = [...current, sel.value]; set(current); render(); } });
             };

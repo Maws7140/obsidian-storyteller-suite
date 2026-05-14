@@ -16,21 +16,21 @@ export abstract class ResponsiveModal extends Modal {
         const rootEl = this.contentEl;
         rootEl.empty();
         rootEl.addClass('storyteller-structured-modal-content');
-        rootEl.style.display = 'flex';
-        rootEl.style.flexDirection = 'column';
-        rootEl.style.overflow = 'hidden';
-        rootEl.style.paddingBottom = '0';
-        rootEl.style.maxHeight = this.isFullScreen ? '100%' : '80vh';
+        rootEl.setCssStyles({ display: 'flex' });
+        rootEl.setCssStyles({ flexDirection: 'column' });
+        rootEl.setCssStyles({ overflow: 'hidden' });
+        rootEl.setCssStyles({ paddingBottom: '0' });
+        rootEl.setCssStyles({ maxHeight: this.isFullScreen ? '100%' : '80vh' });
 
         const contentEl = rootEl.createDiv('storyteller-structured-modal-scroll');
-        contentEl.style.flex = '1 1 auto';
-        contentEl.style.minHeight = '0';
-        if (!this.isFullScreen) contentEl.style.maxHeight = '75vh';
-        contentEl.style.overflowY = 'auto';
-        contentEl.style.overflowX = 'hidden';
+        contentEl.setCssStyles({ flex: '1 1 auto' });
+        contentEl.setCssStyles({ minHeight: '0' });
+        if (!this.isFullScreen) contentEl.setCssStyles({ maxHeight: '75vh' });
+        contentEl.setCssStyles({ overflowY: 'auto' });
+        contentEl.setCssStyles({ overflowX: 'hidden' });
 
         const footerEl = rootEl.createDiv('storyteller-modal-footer');
-        footerEl.style.flex = '0 0 auto';
+        footerEl.setCssStyles({ flex: '0 0 auto' });
         return { rootEl, contentEl, footerEl };
     }
 
@@ -127,7 +127,7 @@ export abstract class ResponsiveModal extends Modal {
      */
     onOpen(): void {
         this.setupMobileLayout();
-        super.onOpen();
+        void super.onOpen();
     }
 
     /**
@@ -138,18 +138,18 @@ export abstract class ResponsiveModal extends Modal {
         
         // Apply mobile padding
         if (PlatformUtils.isMobile()) {
-            contentEl.style.padding = PlatformUtils.getModalPadding();
+            contentEl.setCssStyles({ padding: PlatformUtils.getModalPadding() });
         }
 
         // Add touch-friendly scrolling
         if (PlatformUtils.isMobile()) {
-            contentEl.style.overflowY = 'auto';
+            contentEl.setCssStyles({ overflowY: 'auto' });
         }
 
         // Handle safe areas on iOS
         if (PlatformUtils.isIOS()) {
-            contentEl.style.paddingTop = 'env(safe-area-inset-top, 0)';
-            contentEl.style.paddingBottom = 'env(safe-area-inset-bottom, 0)';
+            contentEl.setCssStyles({ paddingTop: 'env(safe-area-inset-top, 0)' });
+            contentEl.setCssStyles({ paddingBottom: 'env(safe-area-inset-bottom, 0)' });
         }
     }
 
@@ -171,7 +171,7 @@ export abstract class ResponsiveModal extends Modal {
             
             // Ensure minimum touch target size
             const touchTargetSize = PlatformUtils.getTouchTargetSize();
-            setting.settingEl.style.minHeight = `${touchTargetSize}px`;
+            setting.settingEl.setCssStyles({ minHeight: `${touchTargetSize}px` });
         }
 
         return setting;
@@ -185,16 +185,16 @@ export abstract class ResponsiveModal extends Modal {
      * @returns ButtonComponent
      */
     protected createMobileButton(text: string, callback: () => void, isPrimary = false): ButtonComponent {
-        const button = new ButtonComponent(document.createElement('button'))
+        const button = new ButtonComponent(activeDocument.createElement('button'))
             .setButtonText(text)
             .onClick(callback);
 
         // Mobile-specific styling
         if (PlatformUtils.isMobile()) {
             const touchTargetSize = PlatformUtils.getTouchTargetSize();
-            button.buttonEl.style.minHeight = `${touchTargetSize}px`;
-            button.buttonEl.style.minWidth = `${touchTargetSize}px`;
-            button.buttonEl.style.fontSize = `${1.1 * PlatformUtils.getFontScaling()}rem`;
+            button.buttonEl.setCssStyles({ minHeight: `${touchTargetSize}px` });
+            button.buttonEl.setCssStyles({ minWidth: `${touchTargetSize}px` });
+            button.buttonEl.setCssStyles({ fontSize: `${1.1 * PlatformUtils.getFontScaling()}rem` });
             button.buttonEl.addClass('mobile-button');
             
             if (isPrimary) {
@@ -227,9 +227,9 @@ export abstract class ResponsiveModal extends Modal {
         // Mobile optimizations
         if (PlatformUtils.isMobile()) {
             textarea.addClass('mobile-textarea');
-            textarea.style.fontSize = `${1.1 * PlatformUtils.getFontScaling()}rem`;
-            textarea.style.minHeight = '120px'; // Taller for mobile
-            textarea.style.padding = '12px'; // Larger padding
+            textarea.setCssStyles({ fontSize: `${1.1 * PlatformUtils.getFontScaling()}rem` });
+            textarea.setCssStyles({ minHeight: '120px' }); // Taller for mobile
+            textarea.setCssStyles({ padding: '12px' }); // Larger padding
             
             // Enable better mobile editing
             textarea.setAttribute('autocapitalize', 'sentences');
@@ -266,9 +266,9 @@ export abstract class ResponsiveModal extends Modal {
         if (PlatformUtils.isMobile()) {
             input.addClass('mobile-input');
             const touchTargetSize = PlatformUtils.getTouchTargetSize();
-            input.style.minHeight = `${touchTargetSize}px`;
-            input.style.fontSize = `${1.1 * PlatformUtils.getFontScaling()}rem`;
-            input.style.padding = '12px';
+            input.setCssStyles({ minHeight: `${touchTargetSize}px` });
+            input.setCssStyles({ fontSize: `${1.1 * PlatformUtils.getFontScaling()}rem` });
+            input.setCssStyles({ padding: '12px' });
         }
 
         input.addEventListener('input', () => onChange(input.value));

@@ -1,4 +1,4 @@
-import { App, Modal, TFile, ButtonComponent, setIcon } from 'obsidian';
+import { App, Modal, TFile, ButtonComponent } from 'obsidian';
 import { Economy } from '../types';
 import StorytellerSuitePlugin from '../main';
 import { extractLedgerEntries, computeBalance, formatBalance } from '../utils/LedgerParser';
@@ -45,7 +45,7 @@ export class EconomyDetailModal extends Modal {
         }
 
         const balanceEl = headerInfo.createDiv({ cls: 'storyteller-economy-detail-balance', text: 'Balance: …' });
-        this.loadBalance().then(bal => { balanceEl.textContent = 'Balance: ' + bal; });
+        void this.loadBalance().then(bal => { balanceEl.textContent = 'Balance: ' + bal; });
 
         const headerActions = header.createDiv('storyteller-economy-detail-header-actions');
 
@@ -54,7 +54,7 @@ export class EconomyDetailModal extends Modal {
             .setTooltip('Edit')
             .onClick(() => {
                 this.close();
-                import('./EconomyModal').then(({ EconomyModal }) => {
+                void import('./EconomyModal').then(({ EconomyModal }) => {
                     new EconomyModal(this.app, this.plugin, this.economy, async (updated) => {
                         await this.plugin.saveEconomy(updated);
                     }).open();
@@ -115,7 +115,7 @@ export class EconomyDetailModal extends Modal {
 
             if (hasRoutes) {
                 const routeSec = twoCol.createDiv('storyteller-economy-detail-section');
-                routeSec.createEl('h3', { text: 'Trade Routes' });
+                routeSec.createEl('h3', { text: 'Trade routes' });
                 for (const route of this.economy.tradeRoutes!) {
                     const item = routeSec.createDiv('storyteller-trade-route-item');
                     item.createEl('span', { cls: 'storyteller-trade-route-name', text: route.name });

@@ -1,7 +1,7 @@
 import { Notice } from 'obsidian';
 
 export function info(message: string): void {
-  console.info(message);
+  console.debug(message);
 }
 
 export function warn(message: string, error?: unknown): void {

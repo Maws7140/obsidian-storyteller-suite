@@ -41,8 +41,8 @@ async function renderCharactersList(container: HTMLElement, context: DashboardCo
     const listContainer = container.createDiv('storyteller-list-container');
     if (characters.length === 0) {
         const emptyMsg = listContainer.createEl('p', { text: t('noCharactersFound'), cls: 'storyteller-empty-state' });
-        emptyMsg.style.color = 'var(--text-muted)';
-        emptyMsg.style.fontStyle = 'italic';
+        emptyMsg.setCssStyles({ color: 'var(--text-muted)' });
+        emptyMsg.setCssStyles({ fontStyle: 'italic' });
         return;
     }
 

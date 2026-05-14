@@ -65,7 +65,7 @@ export class CompendiumEntryModal extends ResponsiveModal {
             loadSelectedGroupIds: async () => {
                 const identifier = this.entry.id || this.entry.name;
                 const entries = await this.plugin.listCompendiumEntries();
-                return (entries.find(current => (current.id || current.name) === identifier)?.groups || this.entry.groups || []) as string[];
+                return (entries.find(current => (current.id || current.name) === identifier)?.groups || this.entry.groups || []);
             },
             persistAdd: async groupId => {
                 const entryId = this.entry.id || this.entry.name;
@@ -82,7 +82,7 @@ export class CompendiumEntryModal extends ResponsiveModal {
         this.modalEl.addClass('storyteller-compendium-modal');
     }
 
-    async onOpen(): Promise<void> {
+    onOpen(): void { void (async () => {
         super.onOpen();
         const { contentEl, footerEl } = this.createStructuredModalLayout();
 
@@ -100,7 +100,7 @@ export class CompendiumEntryModal extends ResponsiveModal {
 
         // Entry Type
         new Setting(contentEl)
-            .setName('Entry Type')
+            .setName('Entry type')
             .addDropdown(dd => dd
                 .addOptions({
                     'creature': 'Creature / Beast',
@@ -132,7 +132,7 @@ export class CompendiumEntryModal extends ResponsiveModal {
 
         // Danger Rating
         new Setting(contentEl)
-            .setName('Danger Rating')
+            .setName('Danger rating')
             .addDropdown(dd => dd
                 .addOptions({
                     '': '— none —',
@@ -148,7 +148,7 @@ export class CompendiumEntryModal extends ResponsiveModal {
 
         // Profile Image
         const profileImageSetting = new Setting(contentEl)
-            .setName('Profile Image')
+            .setName('Profile image')
             .setDesc('');
         const imagePathDesc = profileImageSetting.descEl.createEl('small', {
             text: `Current: ${this.entry.profileImagePath || 'none'}`
@@ -170,18 +170,18 @@ export class CompendiumEntryModal extends ResponsiveModal {
             .addTextArea(text => {
                 text.setValue(this.entry.description || '').onChange(v => this.entry.description = v);
                 text.inputEl.rows = 4;
-                text.inputEl.style.width = '100%';
+                text.inputEl.setCssStyles({ width: '100%' });
             });
 
         // Behavior & Ecology
         new Setting(contentEl)
-            .setName('Behavior & Ecology')
+            .setName('Behavior & ecology')
             .setDesc('Habits, habitat, growth conditions')
             .setClass('storyteller-modal-setting-vertical')
             .addTextArea(text => {
                 text.setValue(this.entry.behavior || '').onChange(v => this.entry.behavior = v);
                 text.inputEl.rows = 4;
-                text.inputEl.style.width = '100%';
+                text.inputEl.setCssStyles({ width: '100%' });
             });
 
         // Properties
@@ -192,18 +192,18 @@ export class CompendiumEntryModal extends ResponsiveModal {
             .addTextArea(text => {
                 text.setValue(this.entry.properties || '').onChange(v => this.entry.properties = v);
                 text.inputEl.rows = 4;
-                text.inputEl.style.width = '100%';
+                text.inputEl.setCssStyles({ width: '100%' });
             });
 
         // History & Lore
         new Setting(contentEl)
-            .setName('History & Lore')
+            .setName('History & lore')
             .setDesc('World history and mythology')
             .setClass('storyteller-modal-setting-vertical')
             .addTextArea(text => {
                 text.setValue(this.entry.history || '').onChange(v => this.entry.history = v);
                 text.inputEl.rows = 3;
-                text.inputEl.style.width = '100%';
+                text.inputEl.setCssStyles({ width: '100%' });
             });
 
         // Dimorphism
@@ -214,18 +214,18 @@ export class CompendiumEntryModal extends ResponsiveModal {
             .addTextArea(text => {
                 text.setValue(this.entry.dimorphism || '').onChange(v => this.entry.dimorphism = v);
                 text.inputEl.rows = 3;
-                text.inputEl.style.width = '100%';
+                text.inputEl.setCssStyles({ width: '100%' });
             });
 
         // Hunting Notes
         new Setting(contentEl)
-            .setName('Hunting Notes')
+            .setName('Hunting notes')
             .setDesc('Tactics, vulnerabilities, harvest method')
             .setClass('storyteller-modal-setting-vertical')
             .addTextArea(text => {
                 text.setValue(this.entry.huntingNotes || '').onChange(v => this.entry.huntingNotes = v);
                 text.inputEl.rows = 3;
-                text.inputEl.style.width = '100%';
+                text.inputEl.setCssStyles({ width: '100%' });
             });
 
         // --- Locations ---
@@ -249,7 +249,7 @@ export class CompendiumEntryModal extends ResponsiveModal {
         const allLocations = await this.plugin.listLocations();
         new Setting(contentEl).setName('Add location').addDropdown(dd => {
             dd.addOption('', '— select location —');
-            allLocations.forEach(l => dd.addOption(l.name, l.name));
+            allLocations.forEach(l => { dd.addOption(l.name, l.name); });
             dd.onChange(val => {
                 if (val && !(this.entry.linkedLocations ?? []).includes(val)) {
                     if (!Array.isArray(this.entry.linkedLocations)) this.entry.linkedLocations = [];
@@ -281,7 +281,7 @@ export class CompendiumEntryModal extends ResponsiveModal {
         const allCharacters = await this.plugin.listCharacters();
         new Setting(contentEl).setName('Add character').addDropdown(dd => {
             dd.addOption('', '— select character —');
-            allCharacters.forEach(c => dd.addOption(c.name, c.name));
+            allCharacters.forEach(c => { dd.addOption(c.name, c.name); });
             dd.onChange(val => {
                 if (val && !(this.entry.linkedCharacters ?? []).includes(val)) {
                     if (!Array.isArray(this.entry.linkedCharacters)) this.entry.linkedCharacters = [];
@@ -313,7 +313,7 @@ export class CompendiumEntryModal extends ResponsiveModal {
         const allItems = await this.plugin.listPlotItems();
         new Setting(contentEl).setName('Add item').addDropdown(dd => {
             dd.addOption('', '— select item —');
-            allItems.forEach(i => dd.addOption(i.name, i.name));
+            allItems.forEach(i => { dd.addOption(i.name, i.name); });
             dd.onChange(val => {
                 if (val && !(this.entry.linkedItems ?? []).includes(val)) {
                     if (!Array.isArray(this.entry.linkedItems)) this.entry.linkedItems = [];
@@ -325,7 +325,7 @@ export class CompendiumEntryModal extends ResponsiveModal {
         });
 
         // --- Magic Systems ---
-        contentEl.createEl('h3', { text: 'Magic Systems' });
+        contentEl.createEl('h3', { text: 'Magic systems' });
         if (!Array.isArray(this.entry.linkedMagicSystems)) this.entry.linkedMagicSystems = [];
         const magicChips = contentEl.createDiv('storyteller-linked-chips');
         const renderMagicChips = () => {
@@ -345,7 +345,7 @@ export class CompendiumEntryModal extends ResponsiveModal {
         const allMagicSystems = await this.plugin.listMagicSystems();
         new Setting(contentEl).setName('Add magic system').addDropdown(dd => {
             dd.addOption('', '— select magic system —');
-            allMagicSystems.forEach(m => dd.addOption(m.name, m.name));
+            allMagicSystems.forEach(m => { dd.addOption(m.name, m.name); });
             dd.onChange(val => {
                 if (val && !(this.entry.linkedMagicSystems ?? []).includes(val)) {
                     if (!Array.isArray(this.entry.linkedMagicSystems)) this.entry.linkedMagicSystems = [];
@@ -377,7 +377,7 @@ export class CompendiumEntryModal extends ResponsiveModal {
         const allCultures = await this.plugin.listCultures();
         new Setting(contentEl).setName('Add culture').addDropdown(dd => {
             dd.addOption('', '— select culture —');
-            allCultures.forEach(c => dd.addOption(c.name, c.name));
+            allCultures.forEach(c => { dd.addOption(c.name, c.name); });
             dd.onChange(val => {
                 if (val && !(this.entry.linkedCultures ?? []).includes(val)) {
                     if (!Array.isArray(this.entry.linkedCultures)) this.entry.linkedCultures = [];
@@ -409,7 +409,7 @@ export class CompendiumEntryModal extends ResponsiveModal {
         const allEvents = await this.plugin.listEvents();
         new Setting(contentEl).setName('Add event').addDropdown(dd => {
             dd.addOption('', '— select event —');
-            allEvents.forEach(e => dd.addOption(e.name, e.name));
+            allEvents.forEach(e => { dd.addOption(e.name, e.name); });
             dd.onChange(val => {
                 if (val && !(this.entry.linkedEvents ?? []).includes(val)) {
                     if (!Array.isArray(this.entry.linkedEvents)) this.entry.linkedEvents = [];
@@ -452,7 +452,7 @@ export class CompendiumEntryModal extends ResponsiveModal {
             await this.onSubmit(this.entry);
             this.close();
         }, { cta: true });
-    }
+    })(); }
 
     onClose(): void {
         this.groupSelector.dispose();

@@ -2,6 +2,7 @@ import { App, FuzzySuggestModal, Notice, prepareFuzzySearch, FuzzyMatch } from '
 import { Location } from '../types';
 import StorytellerSuitePlugin from '../main';
 import { t } from '../i18n/strings';
+import { scheduleSuggestRefresh } from './utils/SuggestModalRefresh';
 
 export class LocationSuggestModal extends FuzzySuggestModal<Location> {
 	plugin: StorytellerSuitePlugin;
@@ -18,7 +19,7 @@ export class LocationSuggestModal extends FuzzySuggestModal<Location> {
 
     // Override onOpen to fetch data asynchronously *before* getItems is needed
     async onOpen() {
-        super.onOpen(); // Important: Call parent onOpen
+        void super.onOpen(); // Important: Call parent onOpen
         try {
             this.locations = await this.plugin.listLocations();
         } catch (error) {
@@ -26,21 +27,8 @@ export class LocationSuggestModal extends FuzzySuggestModal<Location> {
             new Notice(t('errorLoadingLocations'));
             this.locations = []; // Ensure it's an empty array on error
         }
-        // Force-refresh suggestions so initial list shows without typing
-        setTimeout(() => {
-            if (this.inputEl) {
-                try { (this as any).setQuery?.(''); } catch {}
-                try { this.inputEl.dispatchEvent(new window.Event('input')); } catch {}
-            }
-            try { (this as any).onInputChanged?.(); } catch {}
-        }, 0);
-        setTimeout(() => {
-            if (this.inputEl) {
-                try { (this as any).setQuery?.(''); } catch {}
-                try { this.inputEl.dispatchEvent(new window.Event('input')); } catch {}
-            }
-            try { (this as any).onInputChanged?.(); } catch {}
-        }, 50);
+        // Force-refresh suggestions so initial list shows without typing.
+        scheduleSuggestRefresh(this);
     }
 
     // Show all items initially; fuzzy-match when there is a query
@@ -53,7 +41,7 @@ export class LocationSuggestModal extends FuzzySuggestModal<Location> {
         return items
             .map((loc) => {
                 const match = fuzzy(this.getItemText(loc));
-                return match ? ({ item: loc, match } as FuzzyMatch<Location>) : null;
+                return match ? ({ item: loc, match }) : null;
             })
             .filter((fm): fm is FuzzyMatch<Location> => !!fm);
     }

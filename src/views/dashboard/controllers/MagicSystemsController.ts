@@ -9,7 +9,7 @@ export const magicSystemsController: DashboardTabController = {
             context.setCurrentFilter(filter);
             await renderMagicSystemsList(container, context);
         }, () => {
-            import('../../../modals/MagicSystemModal').then(({ MagicSystemModal }) => {
+            void import('../../../modals/MagicSystemModal').then(({ MagicSystemModal }) => {
                 new MagicSystemModal(context.app, context.plugin, null, async (magicSystem) => {
                     await context.mutationRunner.runCreate({
                         action: async () => {
@@ -74,7 +74,7 @@ async function renderMagicSystemsList(container: HTMLElement, context: Dashboard
 
         const actionsEl = itemEl.createDiv('storyteller-list-item-actions');
         context.addEditButton(actionsEl, () => {
-            import('../../../modals/MagicSystemModal').then(({ MagicSystemModal }) => {
+            void import('../../../modals/MagicSystemModal').then(({ MagicSystemModal }) => {
                 new MagicSystemModal(context.app, context.plugin, magicSystem, async (updated) => {
                     await context.mutationRunner.runUpdate({
                         action: async () => {

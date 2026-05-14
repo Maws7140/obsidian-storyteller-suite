@@ -3,6 +3,22 @@ import { parseBlockParameters } from './utils/parser';
 import { LeafletRenderer } from './renderer';
 import type { BlockParameters } from './types';
 import type StorytellerSuitePlugin from '../main';
+import type { StoryMap } from '../types';
+
+type MapEntityConfig = StoryMap & {
+    type?: BlockParameters['type'];
+    image?: string;
+    lat?: number;
+    long?: number;
+    minZoom?: number;
+    maxZoom?: number;
+    darkMode?: boolean;
+    markers?: unknown[];
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
 
 /**
  * Code Block Processor for storyteller-map blocks
@@ -16,11 +32,11 @@ import type StorytellerSuitePlugin from '../main';
  */
 export class LeafletCodeBlockProcessor {
     // Track active maps for cleanup
-    private activeMaps: globalThis.Map<string, LeafletRenderer> = new globalThis.Map();
+    private activeMaps: Map<string, LeafletRenderer> = new Map();
 
     // Track per-file map counters for generating unique IDs within a file
     // Key: filePath + contentId, Value: counter for how many times this combo has been seen
-    private mapIdCounters: globalThis.Map<string, number> = new globalThis.Map();
+    private mapIdCounters: Map<string, number> = new Map();
 
     constructor(private plugin: StorytellerSuitePlugin) {}
 
@@ -56,7 +72,7 @@ export class LeafletCodeBlockProcessor {
     register(): void {
         this.plugin.registerMarkdownCodeBlockProcessor(
             'storyteller-map',
-            this.processCodeBlock.bind(this)
+            (source, el, ctx) => this.processCodeBlock(source, el, ctx)
         );
     }
 
@@ -69,11 +85,11 @@ export class LeafletCodeBlockProcessor {
         ctx: MarkdownPostProcessorContext
     ): Promise<void> {
         try {
-            console.log('[LeafletProcessor] Processing code block, source:', source.substring(0, 100));
+            console.debug('[LeafletProcessor] Processing code block, source:', source.substring(0, 100));
             
             // Parse YAML parameters
             let params = parseBlockParameters(source);
-            console.log('[LeafletProcessor] Parsed params:', JSON.stringify(params, null, 2));
+            console.debug('[LeafletProcessor] Parsed params:', JSON.stringify(params, null, 2));
 
             // If mapId is provided, load config from Map entity
             if (params.mapId) {
@@ -81,7 +97,7 @@ export class LeafletCodeBlockProcessor {
                 if (mapEntity) {
                     // Merge: inline params override entity config
                     params = this.mergeMapConfig(mapEntity, params);
-                    console.log('[LeafletProcessor] Merged with map entity config');
+                    console.debug('[LeafletProcessor] Merged with map entity config');
                 } else {
                     this.renderError(el, `Map entity not found: ${params.mapId}`);
                     return;
@@ -100,7 +116,7 @@ export class LeafletCodeBlockProcessor {
                 params.id = this.generateMapId(ctx, el, params);
             }
 
-            console.log('[LeafletProcessor] Creating map container...');
+            console.debug('[LeafletProcessor] Creating map container...');
             
             // Create map container
             const container = this.createMapContainer(el, params);
@@ -117,13 +133,13 @@ export class LeafletCodeBlockProcessor {
             // Following javalent-obsidian-leaflet pattern: renderer implements Component
             // This ensures onload() is called automatically when the component is added to the DOM
             // onload() will handle initialization - no need to call initialize() manually
-            ctx.addChild(renderer as any);
+            ctx.addChild(renderer);
 
             // Track the map - clean up any existing map with the same ID first
             const existingMap = this.activeMaps.get(params.id);
             if (existingMap) {
                 // This shouldn't normally happen with stable IDs, but clean up just in case
-                console.log('[LeafletProcessor] Replacing existing map with ID:', params.id);
+                console.debug('[LeafletProcessor] Replacing existing map with ID:', params.id);
                 existingMap.destroy();
             }
             this.activeMaps.set(params.id, renderer);
@@ -133,16 +149,17 @@ export class LeafletCodeBlockProcessor {
                 this.activeMaps.delete(params.id!);
             });
 
-            console.log('[LeafletProcessor] Map renderer created and registered');
+            console.debug('[LeafletProcessor] Map renderer created and registered');
             // Note: No manual initialization needed here
             // The onload() lifecycle method will be called automatically by Obsidian
             // when the component is added to the DOM via ctx.addChild()
 
         } catch (error) {
             console.error('[LeafletProcessor] Error rendering storyteller-map:', error);
+            const message = error instanceof Error ? error.message : String(error);
             this.renderError(
                 el,
-                `Failed to render map: ${error.message || error}`
+                `Failed to render map: ${message}`
             );
         }
     }
@@ -217,11 +234,11 @@ export class LeafletCodeBlockProcessor {
 
         // Ensure explicit pixel dimensions for Leaflet
         // If percentage-based, set a minimum to ensure Leaflet can calculate
-        container.style.height = typeof height === 'number' ? `${height}px` : height;
-        container.style.width = typeof width === 'number' ? `${width}px` : width;
-        container.style.position = 'relative';
-        container.style.minHeight = typeof height === 'number' ? `${height}px` : '500px';
-        container.style.minWidth = typeof width === 'number' ? `${width}px` : '100px';
+        container.setCssStyles({ height: typeof height === 'number' ? `${height}px` : height });
+        container.setCssStyles({ width: typeof width === 'number' ? `${width}px` : width });
+        container.setCssStyles({ position: 'relative' });
+        container.setCssStyles({ minHeight: typeof height === 'number' ? `${height}px` : '500px' });
+        container.setCssStyles({ minWidth: typeof width === 'number' ? `${width}px` : '100px' });
 
         // Set the actual id attribute for Leaflet to use
         // Following standard Leaflet pattern: L.map('id-string')
@@ -238,14 +255,14 @@ export class LeafletCodeBlockProcessor {
      */
     private renderError(el: HTMLElement, message: string): void {
         const errorDiv = el.createDiv('storyteller-map-error');
-        errorDiv.style.padding = '1em';
-        errorDiv.style.border = '1px solid var(--background-modifier-error)';
-        errorDiv.style.borderRadius = '4px';
-        errorDiv.style.backgroundColor = 'var(--background-modifier-error)';
-        errorDiv.style.color = 'var(--text-error)';
+        errorDiv.setCssStyles({ padding: '1em' });
+        errorDiv.setCssStyles({ border: '1px solid var(--background-modifier-error)' });
+        errorDiv.setCssStyles({ borderRadius: '4px' });
+        errorDiv.setCssStyles({ backgroundColor: 'var(--background-modifier-error)' });
+        errorDiv.setCssStyles({ color: 'var(--text-error)' });
 
         const title = errorDiv.createEl('strong');
-        title.textContent = 'Map Error: ';
+        title.textContent = 'Map error: ';
 
         const text = errorDiv.createSpan();
         text.textContent = message;
@@ -293,9 +310,9 @@ export class LeafletCodeBlockProcessor {
     /**
      * Load map configuration from Map entity
      */
-    private async loadMapFromEntity(mapId: string, sourcePath: string): Promise<any | null> {
+    private async loadMapFromEntity(mapId: string, sourcePath: string): Promise<StoryMap | null> {
         // Extract map name from link
-        const mapName = mapId.replace(/[\[\]]/g, '').split('|')[0];
+        const mapName = mapId.replace(/[[\]]/g, '').split('|')[0];
         
         // Try to find the map entity
         const map = await this.plugin.getMapByName(mapName);
@@ -312,7 +329,7 @@ export class LeafletCodeBlockProcessor {
      * Merge map entity config with inline parameters
      * Inline parameters override entity config
      */
-    private mergeMapConfig(mapEntity: any, inlineParams: BlockParameters): BlockParameters {
+    private mergeMapConfig(mapEntity: MapEntityConfig, inlineParams: BlockParameters): BlockParameters {
         const merged: BlockParameters = {
             // Start with entity config
             type: mapEntity.type || 'image',
@@ -334,17 +351,7 @@ export class LeafletCodeBlockProcessor {
 
         // Merge markers: combine entity markers with inline markers
         if (mapEntity.markers && Array.isArray(mapEntity.markers)) {
-            const entityMarkers = mapEntity.markers.map((m: any) => {
-                if (typeof m === 'string') return m;
-                // Convert marker object to string format
-                const coords = m.lat !== undefined && m.lng !== undefined
-                    ? `${m.lat},${m.lng}`
-                    : m.loc ? `${m.loc[0]},${m.loc[1]}` : '';
-                const parts = [coords];
-                if (m.link) parts.push(m.link);
-                if (m.description) parts.push(m.description);
-                return parts.join(',');
-            });
+            const entityMarkers = mapEntity.markers.map(marker => this.serializeMarker(marker));
             
             if (inlineParams.marker) {
                 const inlineMarkers = Array.isArray(inlineParams.marker)
@@ -357,5 +364,23 @@ export class LeafletCodeBlockProcessor {
         }
 
         return merged;
+    }
+
+    private serializeMarker(marker: unknown): string {
+        if (typeof marker === 'string') return marker;
+        if (!isRecord(marker)) return '';
+
+        const lat = marker.lat;
+        const lng = marker.lng;
+        const loc = marker.loc;
+        const coords = typeof lat !== 'undefined' && typeof lng !== 'undefined'
+            ? `${String(lat)},${String(lng)}`
+            : Array.isArray(loc)
+                ? `${String(loc[0])},${String(loc[1])}`
+                : '';
+        const parts = [coords];
+        if (marker.link) parts.push(String(marker.link));
+        if (marker.description) parts.push(String(marker.description));
+        return parts.join(',');
     }
 }

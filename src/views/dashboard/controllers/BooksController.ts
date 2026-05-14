@@ -10,7 +10,7 @@ export const booksController: DashboardTabController = {
             context.setCurrentFilter(filter);
             await renderBooksList(container, context);
         }, () => {
-            import('../../../modals/BookModal').then(({ BookModal }) => {
+            void import('../../../modals/BookModal').then(({ BookModal }) => {
                 new BookModal(context.app, context.plugin, null, async (book) => {
                     await context.mutationRunner.runCreate({
                         action: async () => {
@@ -98,7 +98,7 @@ async function renderBooksList(container: HTMLElement, context: DashboardControl
         const compileBtn = actionsEl.createEl('button', { cls: 'storyteller-action-btn' });
         setIcon(compileBtn, 'book-open');
         compileBtn.title = 'Compile this book into a draft';
-        compileBtn.addEventListener('click', async () => {
+        compileBtn.addEventListener('click', () => { void (async () => {
             const sceneRefs: IndentedSceneRef[] = [];
             for (const chapter of bookChapters) {
                 const chapterScenes = allScenes
@@ -114,7 +114,7 @@ async function renderBooksList(container: HTMLElement, context: DashboardControl
             }
             const now = new Date().toISOString();
             const draft: StoryDraft = {
-                id: Date.now().toString(36) + Math.random().toString(36).substr(2, 5),
+                id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
                 storyId: context.plugin.settings.activeStoryId ?? 'default',
                 name: `${book.name} — Draft`,
                 draftNumber: Date.now(),
@@ -126,10 +126,10 @@ async function renderBooksList(container: HTMLElement, context: DashboardControl
             context.plugin.settings.storyDrafts.push(draft);
             await context.plugin.saveSettings();
             new Notice(`Draft created for "${book.name}" with ${sceneRefs.length} scenes. Switch to the Compile tab.`);
-        });
+        })(); });
 
         context.addEditButton(actionsEl, () => {
-            import('../../../modals/BookModal').then(({ BookModal }) => {
+            void import('../../../modals/BookModal').then(({ BookModal }) => {
                 new BookModal(context.app, context.plugin, book, async (updated) => {
                     await context.mutationRunner.runUpdate({
                         action: async () => {

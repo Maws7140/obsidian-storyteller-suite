@@ -2,6 +2,7 @@ import { App, FuzzySuggestModal, Notice, prepareFuzzySearch, FuzzyMatch } from '
 import { Event } from '../types';
 import StorytellerSuitePlugin from '../main';
 import { t } from '../i18n/strings';
+import { scheduleSuggestRefresh } from './utils/SuggestModalRefresh';
 
 export class EventSuggestModal extends FuzzySuggestModal<Event> {
     plugin: StorytellerSuitePlugin;
@@ -25,13 +26,13 @@ export class EventSuggestModal extends FuzzySuggestModal<Event> {
         return items
             .map((e) => {
                 const match = fuzzy(this.getItemText(e));
-                return match ? ({ item: e, match } as FuzzyMatch<Event>) : null;
+                return match ? ({ item: e, match }) : null;
             })
             .filter((fm): fm is FuzzyMatch<Event> => !!fm);
     }
 
     async onOpen() {
-        super.onOpen();
+        void super.onOpen();
         try {
             this.events = await this.plugin.listEvents();
         } catch (error) {
@@ -39,21 +40,8 @@ export class EventSuggestModal extends FuzzySuggestModal<Event> {
             new Notice(t('errorLoadingEvents'));
             this.events = [];
         }
-        // Force-refresh suggestions so initial list shows without typing
-        setTimeout(() => {
-            if (this.inputEl) {
-                try { (this as any).setQuery?.(''); } catch {}
-                try { this.inputEl.dispatchEvent(new window.Event('input')); } catch {}
-            }
-            try { (this as any).onInputChanged?.(); } catch {}
-        }, 0);
-        setTimeout(() => {
-            if (this.inputEl) {
-                try { (this as any).setQuery?.(''); } catch {}
-                try { this.inputEl.dispatchEvent(new window.Event('input')); } catch {}
-            }
-            try { (this as any).onInputChanged?.(); } catch {}
-        }, 50);
+        // Force-refresh suggestions so initial list shows without typing.
+        scheduleSuggestRefresh(this);
     }
 
     getItems(): Event[] {

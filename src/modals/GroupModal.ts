@@ -1,21 +1,25 @@
-import { App, Setting, Notice, ButtonComponent, parseYaml } from 'obsidian';
+import { App, Setting, Notice, parseYaml } from 'obsidian';
 import { t } from '../i18n/strings';
-import { Group, Character, Location, Event, PlotItem, GroupMemberDetails, GroupRelationship, Culture } from '../types';
+import { Group, Character, Location, Event, PlotItem, Culture, GroupRelationship } from '../types';
 import StorytellerSuitePlugin from '../main';
 import { ResponsiveModal } from './ResponsiveModal';
 import { addImageSelectionButtons } from '../utils/ImageSelectionHelper';
-import { getWhitelistKeys, parseSectionsFromMarkdown } from '../yaml/EntitySections';
+import { parseSectionsFromMarkdown } from '../yaml/EntitySections';
 import { CharacterSuggestModal } from './CharacterSuggestModal';
 import { LocationSuggestModal } from './LocationSuggestModal';
 import { EventSuggestModal } from './EventSuggestModal';
 import { PlotItemSuggestModal } from './PlotItemSuggestModal';
 import { TemplatePickerModal } from './TemplatePickerModal';
-import { Template } from '../templates/TemplateTypes';
+import { Template, TemplateEntity } from '../templates/TemplateTypes';
+import type { TemplateVariableValues } from './TemplateApplicationModal';
 import { EntityCustomFieldsEditor } from './entity/EntityCustomFieldsEditor';
 import { confirmWithModal } from './ui/ConfirmModal';
 
 export type GroupModalSubmitCallback = (group: Group) => Promise<void>;
 export type GroupModalDeleteCallback = (groupId: string) => Promise<void>;
+type GroupType = NonNullable<Group['groupType']>;
+type GroupRelationshipType = GroupRelationship['relationshipType'];
+type LinkRepairEntity = Character | Location | Event | PlotItem;
 
 export class GroupModal extends ResponsiveModal {
     plugin: StorytellerSuitePlugin;
@@ -73,7 +77,7 @@ export class GroupModal extends ResponsiveModal {
         this.modalEl.addClass('storyteller-group-modal');
     }
 
-    async onOpen() {
+    onOpen() { void (async () => {
         super.onOpen();
 
         // Auto-apply default template for new groups
@@ -86,12 +90,12 @@ export class GroupModal extends ResponsiveModal {
                     if ((defaultTemplate.variables && defaultTemplate.variables.length > 0) ||
                         this.hasMultipleEntities(defaultTemplate)) {
                         await new Promise<void>((resolve) => {
-                            import('./TemplateApplicationModal').then(({ TemplateApplicationModal }) => {
+                            void import('./TemplateApplicationModal').then(({ TemplateApplicationModal }) => {
                                 new TemplateApplicationModal(
                                     this.app,
                                     this.plugin,
                                     defaultTemplate,
-                                    async (variableValues, entityFileNames) => {
+                                    (variableValues, entityFileNames) => { void (async () => {
                                         try {
                                             await this.applyTemplateToGroupWithVariables(defaultTemplate, variableValues);
                                             new Notice('Default template applied');
@@ -101,7 +105,7 @@ export class GroupModal extends ResponsiveModal {
                                             new Notice('Error applying default template');
                                         }
                                         resolve();
-                                    }
+                                    })(); }
                                 ).open();
                             });
                         });
@@ -133,27 +137,27 @@ export class GroupModal extends ResponsiveModal {
         // --- Template Selector (for new groups) ---
         if (this.isNew) {
             new Setting(contentEl)
-                .setName('Start from Template')
+                .setName('Start from template')
                 .setDesc('Optionally start with a pre-configured group template')
                 .addButton(button => button
-                    .setButtonText('Choose Template')
+                    .setButtonText('Choose template')
                     .setTooltip('Select a group template')
                     .onClick(() => {
                         new TemplatePickerModal(
                             this.app,
                             this.plugin,
-                            async (template: Template) => {
+                            (template: Template) => { void (async () => {
                                 // Check if template has variables or multiple entities
                                 if ((template.variables && template.variables.length > 0) ||
                                     this.hasMultipleEntities(template)) {
                                     // Use TemplateApplicationModal for variable collection
                                     await new Promise<void>((resolve) => {
-                                        import('./TemplateApplicationModal').then(({ TemplateApplicationModal }) => {
+                                        void import('./TemplateApplicationModal').then(({ TemplateApplicationModal }) => {
                                             new TemplateApplicationModal(
                                                 this.app,
                                                 this.plugin,
                                                 template,
-                                                async (variableValues, entityFileNames) => {
+                                                (variableValues, entityFileNames) => { void (async () => {
                                                     try {
                                                         await this.applyTemplateToGroupWithVariables(template, variableValues);
                                                         new Notice(`Template "${template.name}" applied`);
@@ -163,7 +167,7 @@ export class GroupModal extends ResponsiveModal {
                                                         new Notice('Error applying template');
                                                     }
                                                     resolve();
-                                                }
+                                                })(); }
                                             ).open();
                                         });
                                     });
@@ -173,7 +177,7 @@ export class GroupModal extends ResponsiveModal {
                                     this.refresh();
                                     new Notice(`Template "${template.name}" applied`);
                                 }
-                            },
+                            })(); },
                             'group'
                         ).open();
                     })
@@ -184,7 +188,7 @@ export class GroupModal extends ResponsiveModal {
         await this.loadAllEntities();
 
         // === BASIC INFORMATION ===
-        contentEl.createEl('h3', { text: 'Basic Information' });
+        contentEl.createEl('h3', { text: 'Basic information' });
 
         // Name
         new Setting(contentEl)
@@ -207,10 +211,10 @@ export class GroupModal extends ResponsiveModal {
 
         // Group Type
         new Setting(contentEl)
-            .setName('Group Type')
+            .setName('Group type')
             .setDesc('Type of group or organization')
             .addDropdown(dropdown => dropdown
-                .addOption('collection', 'Simple Collection')
+                .addOption('collection', 'Simple collection')
                 .addOption('faction', 'Faction')
                 .addOption('organization', 'Organization')
                 .addOption('guild', 'Guild')
@@ -274,7 +278,7 @@ export class GroupModal extends ResponsiveModal {
 
         // === FACTION DETAILS === (only show if not collection type)
         if (this.group.groupType && this.group.groupType !== 'collection') {
-            contentEl.createEl('h3', { text: 'Faction Details' });
+            contentEl.createEl('h3', { text: 'Faction details' });
 
             // History
             new Setting(contentEl)
@@ -335,11 +339,11 @@ export class GroupModal extends ResponsiveModal {
                 );
 
             // === POWER & INFLUENCE ===
-            contentEl.createEl('h3', { text: 'Power & Influence' });
+            contentEl.createEl('h3', { text: 'Power & influence' });
 
             // Military Power
             new Setting(contentEl)
-                .setName('Military Power')
+                .setName('Military power')
                 .setDesc('Military strength (0-100)')
                 .addSlider(slider => slider
                     .setLimits(0, 100, 1)
@@ -350,7 +354,7 @@ export class GroupModal extends ResponsiveModal {
 
             // Economic Power
             new Setting(contentEl)
-                .setName('Economic Power')
+                .setName('Economic power')
                 .setDesc('Economic influence (0-100)')
                 .addSlider(slider => slider
                     .setLimits(0, 100, 1)
@@ -361,7 +365,7 @@ export class GroupModal extends ResponsiveModal {
 
             // Political Influence
             new Setting(contentEl)
-                .setName('Political Influence')
+                .setName('Political influence')
                 .setDesc('Political power (0-100)')
                 .addSlider(slider => slider
                     .setLimits(0, 100, 1)
@@ -371,7 +375,7 @@ export class GroupModal extends ResponsiveModal {
                 );
 
             // === IDENTITY & SYMBOLS ===
-            contentEl.createEl('h3', { text: 'Identity & Symbols' });
+            contentEl.createEl('h3', { text: 'Identity & symbols' });
 
             // Colors
             new Setting(contentEl)
@@ -426,24 +430,24 @@ export class GroupModal extends ResponsiveModal {
 
             // Linked Culture
             new Setting(contentEl)
-                .setName('Linked Culture')
+                .setName('Linked culture')
                 .setDesc('Associated culture')
                 .addDropdown(dropdown => {
                     dropdown.addOption('', 'None');
-                    this.allCultures.forEach(c => dropdown.addOption(c.name, c.name));
+                    this.allCultures.forEach(c => { dropdown.addOption(c.name, c.name); });
                     dropdown.setValue(this.group.linkedCulture || '')
                         .onChange(value => { this.group.linkedCulture = value || undefined; });
                 });
 
             // Parent Group
             new Setting(contentEl)
-                .setName('Parent Group')
+                .setName('Parent group')
                 .setDesc('Larger organization this group belongs to')
                 .addDropdown(dropdown => {
                     dropdown.addOption('', 'None');
                     this.allGroups
                         .filter(g => g.id !== this.group.id)
-                        .forEach(g => dropdown.addOption(g.name, g.name));
+                        .forEach(g => { dropdown.addOption(g.name, g.name); });
                     dropdown.setValue(this.group.parentGroup || '')
                         .onChange(value => { this.group.parentGroup = value || undefined; });
                 });
@@ -502,19 +506,19 @@ export class GroupModal extends ResponsiveModal {
                     await this.plugin.addMemberToGroup(newGroup.id, member.type, member.id);
                 }
                 for (const member of this.group.members) {
-                    await this.plugin.addGroupIdToEntity?.(member.type as any, member.id, this.group.id);
+                    await this.plugin.addGroupIdToEntity?.(member.type, member.id, this.group.id);
                 }
             } else {
                 await this.plugin.saveGroupFull(this.group);
                 await this.syncMembers();
                 for (const member of this.group.members) {
-                    await this.plugin.addGroupIdToEntity?.(member.type as any, member.id, this.group.id);
+                    await this.plugin.addGroupIdToEntity?.(member.type, member.id, this.group.id);
                 }
             }
             if (this.onSubmit) await this.onSubmit(this.group);
             this.close();
         }, { cta: true });
-    }
+    })(); }
 
     async loadAllEntities() {
         this.allCharacters = await this.plugin.listCharacters();
@@ -628,14 +632,14 @@ export class GroupModal extends ResponsiveModal {
 
         // Save changes if needed
         if (needsSave && this.group.id) {
-            await this.plugin.updateGroup(this.group.id, this.group as any);
+            await this.plugin.updateGroup(this.group.id, this.group);
             await this.plugin.saveSettings();
         }
 
         // Notify user of repairs and broken links
         if (repairedLinks.length > 0) {
             new Notice(`Repaired ${repairedLinks.length} entity link(s) in group "${this.group.name}"`);
-            console.log('Repaired entity links:', repairedLinks);
+            console.debug('Repaired entity links:', repairedLinks);
         }
 
         if (brokenLinks.length > 0) {
@@ -653,7 +657,7 @@ export class GroupModal extends ResponsiveModal {
 
     private renderGroupRelationshipEditor(container: HTMLElement): void {
         container.empty();
-        container.createEl('h4', { text: 'Inter-Group Relationships', cls: 'storyteller-subsection-header' });
+        container.createEl('h4', { text: 'Inter-group relationships', cls: 'storyteller-subsection-header' });
 
         if (!this.group.groupRelationships || this.group.groupRelationships.length === 0) {
             container.createEl('p', {
@@ -668,7 +672,7 @@ export class GroupModal extends ResponsiveModal {
                         dropdown.addOption('', 'Select group...');
                         this.allGroups
                             .filter(g => g.id !== this.group.id)
-                            .forEach(g => dropdown.addOption(g.name, g.name));
+                            .forEach(g => { dropdown.addOption(g.name, g.name); });
                         dropdown.setValue(rel.groupName || '')
                             .onChange(value => { rel.groupName = value; });
                     })
@@ -679,7 +683,7 @@ export class GroupModal extends ResponsiveModal {
                             .addOption('neutral', 'Neutral')
                             .addOption('rival', 'Rival')
                             .addOption('hostile', 'Hostile')
-                            .addOption('at-war', 'At War')
+                            .addOption('at-war', 'At war')
                             .setValue(rel.relationshipType || 'neutral')
                             .onChange(value => { rel.relationshipType = value as any; });
                     })
@@ -695,7 +699,7 @@ export class GroupModal extends ResponsiveModal {
 
         new Setting(container)
             .addButton(btn => btn
-                .setButtonText('Add Group Relationship')
+                .setButtonText('Add group relationship')
                 .onClick(() => {
                     if (!this.group.groupRelationships) this.group.groupRelationships = [];
                     this.group.groupRelationships.push({
@@ -722,9 +726,9 @@ export class GroupModal extends ResponsiveModal {
             if (char) {
                 const tag = charTagContainer.createSpan({ cls: 'group-tag' });
                 const nameLink = tag.createEl('a', { text: char.name, cls: 'group-member-link' });
-                nameLink.onclick = (e) => {
+                nameLink.onclick = async (e) => {
                     e.preventDefault();
-                    const { CharacterModal } = require('./CharacterModal');
+                    const { CharacterModal } = await import('./CharacterModal');
                     new CharacterModal(this.app, this.plugin, char, async () => {}).open();
                 };
                 const removeBtn = tag.createSpan({ text: ' ×', cls: 'remove-group-btn' });
@@ -741,7 +745,7 @@ export class GroupModal extends ResponsiveModal {
             btn.setButtonText(t('add'))
                 .setCta()
                 .onClick(() => {
-                    new CharacterSuggestModal(this.app, this.plugin, async (selectedChar) => {
+                    new CharacterSuggestModal(this.app, this.plugin, (selectedChar) => { void (async () => {
                         if (selectedChar && !isMember('character', selectedChar.id || selectedChar.name)) {
                             this.group.members.push({ type: 'character', id: selectedChar.id || selectedChar.name, name: selectedChar.name });
                             // Only update in settings if group already exists (not new)
@@ -750,7 +754,7 @@ export class GroupModal extends ResponsiveModal {
                             }
                             this.renderMemberSelectors(container);
                         }
-                    }).open();
+                    })(); }).open();
                 });
         });
 
@@ -763,9 +767,9 @@ export class GroupModal extends ResponsiveModal {
             if (loc) {
                 const tag = locTagContainer.createSpan({ cls: 'group-tag' });
                 const nameLink = tag.createEl('a', { text: loc.name, cls: 'group-member-link' });
-                nameLink.onclick = (e) => {
+                nameLink.onclick = async (e) => {
                     e.preventDefault();
-                    const { LocationModal } = require('./LocationModal');
+                    const { LocationModal } = await import('./LocationModal');
                     new LocationModal(this.app, this.plugin, loc, async () => {}).open();
                 };
                 const removeBtn = tag.createSpan({ text: ' ×', cls: 'remove-group-btn' });
@@ -782,7 +786,7 @@ export class GroupModal extends ResponsiveModal {
             btn.setButtonText(t('add'))
                 .setCta()
                 .onClick(() => {
-                    new LocationSuggestModal(this.app, this.plugin, async (selectedLoc) => {
+                    new LocationSuggestModal(this.app, this.plugin, (selectedLoc) => { void (async () => {
                         if (selectedLoc && !isMember('location', selectedLoc.id || selectedLoc.name)) {
                             this.group.members.push({ type: 'location', id: selectedLoc.id || selectedLoc.name, name: selectedLoc.name });
                             // Only update in settings if group already exists (not new)
@@ -791,7 +795,7 @@ export class GroupModal extends ResponsiveModal {
                             }
                             this.renderMemberSelectors(container);
                         }
-                    }).open();
+                    })(); }).open();
                 });
         });
 
@@ -804,9 +808,9 @@ export class GroupModal extends ResponsiveModal {
             if (evt) {
                 const tag = evtTagContainer.createSpan({ cls: 'group-tag' });
                 const nameLink = tag.createEl('a', { text: evt.name, cls: 'group-member-link' });
-                nameLink.onclick = (e) => {
+                nameLink.onclick = async (e) => {
                     e.preventDefault();
-                    const { EventModal } = require('./EventModal');
+                    const { EventModal } = await import('./EventModal');
                     new EventModal(this.app, this.plugin, evt, async () => {}).open();
                 };
                 const removeBtn = tag.createSpan({ text: ' ×', cls: 'remove-group-btn' });
@@ -823,7 +827,7 @@ export class GroupModal extends ResponsiveModal {
             btn.setButtonText(t('add'))
                 .setCta()
                 .onClick(() => {
-                    new EventSuggestModal(this.app, this.plugin, async (selectedEvt) => {
+                    new EventSuggestModal(this.app, this.plugin, (selectedEvt) => { void (async () => {
                         if (selectedEvt && !isMember('event', selectedEvt.id || selectedEvt.name)) {
                             this.group.members.push({ type: 'event', id: selectedEvt.id || selectedEvt.name, name: selectedEvt.name });
                             // Only update in settings if group already exists (not new)
@@ -832,7 +836,7 @@ export class GroupModal extends ResponsiveModal {
                             }
                             this.renderMemberSelectors(container);
                         }
-                    }).open();
+                    })(); }).open();
                 });
         });
 
@@ -844,9 +848,9 @@ export class GroupModal extends ResponsiveModal {
             if (item) {
                 const tag = itemTagContainer.createSpan({ cls: 'group-tag' });
                 const nameLink = tag.createEl('a', { text: item.name, cls: 'group-member-link' });
-                nameLink.onclick = (e) => {
+                nameLink.onclick = async (e) => {
                     e.preventDefault();
-                    const { PlotItemModal } = require('./PlotItemModal');
+                    const { PlotItemModal } = await import('./PlotItemModal');
                     new PlotItemModal(this.app, this.plugin, item, async () => {}).open();
                 };
                 const removeBtn = tag.createSpan({ text: ' ×', cls: 'remove-group-btn' });
@@ -861,7 +865,7 @@ export class GroupModal extends ResponsiveModal {
         });
         itemSetting.addButton(btn => {
             btn.setButtonText(t('add')).setCta().onClick(() => {
-                new PlotItemSuggestModal(this.app, this.plugin, async (selectedItem) => {
+                new PlotItemSuggestModal(this.app, this.plugin, (selectedItem) => { void (async () => {
                     const itemId = selectedItem.id || selectedItem.name;
                     if (selectedItem && !this.group.members.some(m => m.type === 'item' && m.id === itemId)) {
                         this.group.members.push({ type: 'item', id: itemId, name: selectedItem.name });
@@ -871,7 +875,7 @@ export class GroupModal extends ResponsiveModal {
                         }
                         this.renderMemberSelectors(container);
                     }
-                }).open();
+                })(); }).open();
             });
         });
     }
@@ -943,9 +947,17 @@ export class GroupModal extends ResponsiveModal {
     }
 
     private async applyProcessedTemplateToGroup(templateGroup: any): Promise<void> {
-        const { templateId, yamlContent, markdownContent, sectionContent, customYamlFields, id, filePath, storyId, ...rest } = templateGroup as any;
+        const { yamlContent, markdownContent, sectionContent, customYamlFields } = templateGroup;
 
-        let fields: any = { ...rest };
+        let fields: Record<string, any> = { ...templateGroup };
+        delete fields.templateId;
+        delete fields.yamlContent;
+        delete fields.markdownContent;
+        delete fields.sectionContent;
+        delete fields.customYamlFields;
+        delete fields.id;
+        delete fields.filePath;
+        delete fields.storyId;
         let allTemplateSections: Record<string, string> = {};
 
         // Handle new format: yamlContent (parse YAML string)
@@ -955,7 +967,7 @@ export class GroupModal extends ResponsiveModal {
                 if (parsed && typeof parsed === 'object') {
                     fields = { ...fields, ...parsed };
                 }
-                console.log('[GroupModal] Parsed YAML fields:', parsed);
+                console.debug('[GroupModal] Parsed YAML fields:', parsed);
             } catch (error) {
                 console.warn('[GroupModal] Failed to parse yamlContent:', error);
             }
@@ -987,16 +999,16 @@ export class GroupModal extends ResponsiveModal {
                     fields.goals = parsedSections['Goals'];
                 }
 
-                console.log('[GroupModal] Parsed markdown sections:', parsedSections);
+                console.debug('[GroupModal] Parsed markdown sections:', parsedSections);
             } catch (error) {
                 console.warn('[GroupModal] Failed to parse markdownContent:', error);
             }
         } else if (sectionContent) {
             // Old format: apply section content
-            for (const [k, v] of Object.entries(sectionContent)) { allTemplateSections[k as string] = v as string; }
+            for (const [k, v] of Object.entries(sectionContent)) { allTemplateSections[k] = v as string; }
             for (const [sectionName, content] of Object.entries(sectionContent)) {
                 const propName = sectionName.toLowerCase().replace(/\s+/g, '');
-                (fields as any)[propName] = content;
+                fields[propName] = content;
             }
         }
 
@@ -1011,7 +1023,7 @@ export class GroupModal extends ResponsiveModal {
                 configurable: true
             });
         }
-        console.log('[GroupModal] Final group after template:', this.group);
+        console.debug('[GroupModal] Final group after template:', this.group);
 
         // Clear relationships as they reference template entities
         this.group.members = [];

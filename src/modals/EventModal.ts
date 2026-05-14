@@ -1,6 +1,6 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
-import { App, Setting, Notice, TextAreaComponent, TextComponent, ButtonComponent, parseYaml } from 'obsidian';
-import { Event, GalleryImage, Character, Location } from '../types'; // Added Character, Location
+ 
+import { App, Setting, Notice, ButtonComponent, parseYaml } from 'obsidian';
+import { Event } from '../types';
 import StorytellerSuitePlugin from '../main';
 import { parseSectionsFromMarkdown } from '../yaml/EntitySections';
 import { t } from '../i18n/strings';
@@ -15,13 +15,17 @@ import { CharacterSuggestModal } from './CharacterSuggestModal';
 import { LocationSuggestModal } from './LocationSuggestModal';
 import { EventSuggestModal } from './EventSuggestModal';
 import { TemplatePickerModal } from './TemplatePickerModal';
-import { Template } from '../templates/TemplateTypes';
+import type { Template, TemplateEntity, TemplateVariableValue } from '../templates/TemplateTypes';
 // Remove placeholder import for multi-image
 // import { MultiGalleryImageSuggestModal } from './MultiGalleryImageSuggestModal';
 import { confirmWithModal } from './ui/ConfirmModal';
 
 export type EventModalSubmitCallback = (event: Event) => Promise<void>;
 export type EventModalDeleteCallback = (event: Event) => Promise<void>;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
 
 export class EventModal extends ResponsiveModal {
     event: Event;
@@ -66,7 +70,7 @@ export class EventModal extends ResponsiveModal {
             loadSelectedGroupIds: async () => {
                 const identifier = this.event.id || this.event.name;
                 const events = await this.plugin.listEvents();
-                return (events.find(evt => (evt.id || evt.name) === identifier)?.groups || this.event.groups || []) as string[];
+                return (events.find(evt => (evt.id || evt.name) === identifier)?.groups || this.event.groups || []);
             },
             persistAdd: async groupId => {
                 await this.plugin.addMemberToGroup(groupId, 'event', this.event.id || this.event.name);
@@ -90,7 +94,7 @@ export class EventModal extends ResponsiveModal {
         this.event.dependencyNames?.splice(index, 1);
     }
 
-    async onOpen() {
+    onOpen() { void (async () => {
         super.onOpen();
         const { contentEl, footerEl } = this.createStructuredModalLayout();
         contentEl.createEl('h2', { text: this.isNew ? t('createNewEvent') : `${t('edit')} ${this.event.name}` });
@@ -110,7 +114,7 @@ export class EventModal extends ResponsiveModal {
                                     this.app,
                                     this.plugin,
                                     defaultTemplate,
-                                    async (variableValues, entityFileNames) => {
+                                    (variableValues, entityFileNames) => { void (async () => {
                                         try {
                                             await this.applyTemplateToEventWithVariables(defaultTemplate, variableValues);
                                             new Notice(t('defaultTemplateApplied'));
@@ -120,7 +124,7 @@ export class EventModal extends ResponsiveModal {
                                             new Notice('Error applying default template');
                                         }
                                         resolve();
-                                    },
+                                    })(); },
                                     resolve
                                 ).open();
                             }).catch((error) => {
@@ -146,27 +150,27 @@ export class EventModal extends ResponsiveModal {
         // --- Template Selector (for new events) ---
         if (this.isNew) {
             new Setting(contentEl)
-                .setName('Start from Template')
+                .setName('Start from template')
                 .setDesc('Optionally start with a pre-configured event template')
                 .addButton(button => button
-                    .setButtonText('Choose Template')
+                    .setButtonText('Choose template')
                     .setTooltip('Select an event template')
                     .onClick(() => {
                         new TemplatePickerModal(
                             this.app,
                             this.plugin,
-                            async (template: Template) => {
+                            (template: Template) => { void (async () => {
                                 // Check if template has variables or multiple entities
                                 if ((template.variables && template.variables.length > 0) ||
                                     this.hasMultipleEntities(template)) {
                                     // Use TemplateApplicationModal for variable collection
                                     await new Promise<void>((resolve) => {
-                                        import('./TemplateApplicationModal').then(({ TemplateApplicationModal }) => {
+                                        void import('./TemplateApplicationModal').then(({ TemplateApplicationModal }) => {
                                             new TemplateApplicationModal(
                                                 this.app,
                                                 this.plugin,
                                                 template,
-                                                async (variableValues, entityFileNames) => {
+                                                (variableValues, entityFileNames) => { void (async () => {
                                                     try {
                                                         await this.applyTemplateToEventWithVariables(template, variableValues);
                                                         new Notice(`Template "${template.name}" applied`);
@@ -176,7 +180,7 @@ export class EventModal extends ResponsiveModal {
                                                         new Notice('Error applying template');
                                                     }
                                                     resolve();
-                                                },
+                                                })(); },
                                                 resolve
                                             ).open();
                                         });
@@ -187,7 +191,7 @@ export class EventModal extends ResponsiveModal {
                                     this.refresh();
                                     new Notice(`Template "${template.name}" applied`);
                                 }
-                            },
+                            })(); },
                             'event' // Filter to event templates only
                         ).open();
                     })
@@ -204,7 +208,7 @@ export class EventModal extends ResponsiveModal {
                 .onChange(value => { this.event.name = value; })
                 .inputEl.addClass('storyteller-modal-input-large'));
 
-        const dateTimeSetting = new Setting(contentEl)
+        new Setting(contentEl)
             .setName(t('dateTime'))
             .setDesc(t('statusPlaceholderEvent'))
             .addText(text => text
@@ -285,7 +289,7 @@ export class EventModal extends ResponsiveModal {
         };
         renderDependenciesList();
         dependenciesSetting.addButton(button => button
-            .setButtonText('Add Dependency')
+            .setButtonText('Add dependency')
             .setTooltip('Add event dependency')
             .setCta()
             .onClick(() => {
@@ -341,25 +345,25 @@ export class EventModal extends ResponsiveModal {
                 }));
 
         new Setting(contentEl)
-            .setName('Narrative Date')
+            .setName('Narrative date')
             .setDesc('When this event is narrated in the story (if different from chronological date)')
             .addText(text => text
                 .setValue(this.event.narrativeMarkers?.narrativeDate || '')
-                .setPlaceholder('e.g., 2024-01-15')
+                .setPlaceholder('E.g., 2024-01-15')
                 .onChange(value => {
                     if (!this.event.narrativeMarkers) this.event.narrativeMarkers = {};
                     this.event.narrativeMarkers.narrativeDate = value || undefined;
                 }));
 
         const targetEventSetting = new Setting(contentEl)
-            .setName('Frame Event')
+            .setName('Frame event')
             .setDesc('The event from which this flashback/flash-forward is told');
         const targetEventDisplay = targetEventSetting.controlEl.createSpan({
             text: this.event.narrativeMarkers?.targetEvent || 'None',
             cls: 'storyteller-modal-target-event'
         });
         targetEventSetting.addButton(button => button
-            .setButtonText('Select Event')
+            .setButtonText('Select event')
             .onClick(() => {
                 new EventSuggestModal(this.app, this.plugin, (selectedEvent) => {
                     if (selectedEvent && selectedEvent.name) {
@@ -378,12 +382,12 @@ export class EventModal extends ResponsiveModal {
                 }));
 
         new Setting(contentEl)
-            .setName('Narrative Context')
+            .setName('Narrative context')
             .setDesc('Description of how this event is narrated or framed in the story')
             .addTextArea(text => {
                 text
                     .setValue(this.event.narrativeMarkers?.narrativeContext || '')
-                    .setPlaceholder('e.g., "Told by the protagonist in a fever dream"')
+                    .setPlaceholder('E.g., "told by the protagonist in a fever dream"')
                     .onChange(value => {
                         if (!this.event.narrativeMarkers) this.event.narrativeMarkers = {};
                         this.event.narrativeMarkers.narrativeContext = value || undefined;
@@ -516,7 +520,7 @@ export class EventModal extends ResponsiveModal {
             .setButtonText(t('upload'))
             .setTooltip(t('uploadImage'))
             .onClick(async () => {
-                const fileInput = document.createElement('input');
+                const fileInput = activeDocument.createElement('input');
                 fileInput.type = 'file';
                 fileInput.accept = 'image/*';
                 fileInput.onchange = async () => {
@@ -550,7 +554,7 @@ export class EventModal extends ResponsiveModal {
         // --- Tags ---
         contentEl.createEl('h3', { text: 'Tags' });
         const tagsSetting = new Setting(contentEl)
-            .setName('Event Tags')
+            .setName('Event tags')
             .setDesc('Tags for categorization and filtering');
         const tagsListEl = tagsSetting.controlEl.createDiv('storyteller-modal-list');
         const renderTagsList = () => {
@@ -574,7 +578,7 @@ export class EventModal extends ResponsiveModal {
         };
         renderTagsList();
         tagsSetting.addButton(button => button
-            .setButtonText('Add Tag')
+            .setButtonText('Add tag')
             .setTooltip('Add a tag to this event')
             .setCta()
             .onClick(() => {
@@ -600,7 +604,7 @@ export class EventModal extends ResponsiveModal {
             }));
 
         // --- Era Membership ---
-        contentEl.createEl('h3', { text: 'Timeline Eras' });
+        contentEl.createEl('h3', { text: 'Timeline eras' });
         const eras = this.plugin.settings.timelineEras || [];
         if (eras.length > 0) {
             contentEl.createEl('p', {
@@ -611,7 +615,7 @@ export class EventModal extends ResponsiveModal {
             const eraBadgesContainer = contentEl.createDiv('storyteller-era-badges-container');
 
             // Import EraManager to find eras for this event
-            import('../utils/EraManager').then(({ EraManager }) => {
+            void import('../utils/EraManager').then(({ EraManager }) => {
                 const eventEras = EraManager.findErasForEvent(this.event, eras);
 
                 if (eventEras.length === 0) {
@@ -623,7 +627,7 @@ export class EventModal extends ResponsiveModal {
                     for (const era of eventEras) {
                         const badge = eraBadgesContainer.createDiv('storyteller-era-badge');
                         if (era.color) {
-                            badge.style.borderLeftColor = era.color;
+                            badge.setCssStyles({ borderLeftColor: era.color });
                         }
                         badge.createEl('strong', { text: era.name });
                         badge.createEl('span', {
@@ -635,7 +639,7 @@ export class EventModal extends ResponsiveModal {
             });
         } else {
             contentEl.createEl('p', {
-                text: 'No timeline eras have been created yet. Use the "Manage timeline eras" command to create eras.',
+                text: 'No timeline eras have been created yet. Use the "manage timeline eras" command to create eras.',
                 cls: 'storyteller-modal-description storyteller-era-empty-state'
             });
         }
@@ -652,7 +656,7 @@ export class EventModal extends ResponsiveModal {
         // --- Timeline Forks ---
         const forks = this.plugin.getTimelineForks();
         if (forks.length > 0) {
-            contentEl.createEl('h3', { text: 'Timeline Forks' });
+            contentEl.createEl('h3', { text: 'Timeline forks' });
             contentEl.createEl('p', {
                 text: 'Assign this event to alternate timeline forks',
                 cls: 'storyteller-modal-description'
@@ -705,18 +709,18 @@ export class EventModal extends ResponsiveModal {
                 new Notice(t('workspaceLeafRevealError'));
             }
         }, { cta: true });
-    }
+    })(); }
 
     // Updated Helper to add/remove the location clear button dynamically
     updateLocationClearButton() {
         // Ensure the setting container exists
-        if (!this.locationSetting || !this.locationSetting.controlEl) return;
+        if (this.locationSetting === undefined || !this.locationSetting.controlEl) return;
 
         const controlEl = this.locationSetting.controlEl;
         const existingClearButton = controlEl.querySelector('.storyteller-clear-location-button');
 
         // Update Select/Change button text
-        if (this.selectLocationButton) {
+        if (this.selectLocationButton !== undefined) {
             this.selectLocationButton.setButtonText(this.event.location ? 'Change location' : 'Select location');
         }
 
@@ -766,7 +770,8 @@ export class EventModal extends ResponsiveModal {
                 });
         });
     }
-
+
+
    renderForkSelector(container: HTMLElement) {
         container.empty();
         const allForks = this.plugin.getTimelineForks();
@@ -781,10 +786,10 @@ export class EventModal extends ResponsiveModal {
         });
 
         new Setting(container)
-            .setName('Timeline Forks')
+            .setName('Timeline forks')
             .setDesc('Add this event to alternate timelines')
             .addDropdown(dropdown => {
-                dropdown.addOption('', '-- Select a fork --');
+                dropdown.addOption('', '-- select a fork --');
                 allForks.forEach(fork => {
                     // Only show forks that don't already contain this event
                     if (!selectedForkIds.has(fork.id)) {
@@ -804,25 +809,25 @@ export class EventModal extends ResponsiveModal {
         // Show selected forks as removable tags
         if (selectedForkIds.size > 0) {
             const selectedDiv = container.createDiv('selected-forks');
-            selectedDiv.style.marginTop = '8px';
+            selectedDiv.setCssStyles({ marginTop: '8px' });
             allForks.filter(f => selectedForkIds.has(f.id)).forEach(fork => {
                 const tag = selectedDiv.createSpan({ cls: 'fork-tag' });
-                tag.style.display = 'inline-flex';
-                tag.style.alignItems = 'center';
-                tag.style.padding = '2px 8px';
-                tag.style.marginRight = '4px';
-                tag.style.marginBottom = '4px';
-                tag.style.borderRadius = '4px';
-                tag.style.backgroundColor = fork.color || '#666';
-                tag.style.color = '#fff';
-                tag.style.fontSize = '12px';
+                tag.setCssStyles({ display: 'inline-flex' });
+                tag.setCssStyles({ alignItems: 'center' });
+                tag.setCssStyles({ padding: '2px 8px' });
+                tag.setCssStyles({ marginRight: '4px' });
+                tag.setCssStyles({ marginBottom: '4px' });
+                tag.setCssStyles({ borderRadius: '4px' });
+                tag.setCssStyles({ backgroundColor: fork.color || '#666' });
+                tag.setCssStyles({ color: '#fff' });
+                tag.setCssStyles({ fontSize: '12px' });
 
                 tag.createSpan({ text: fork.name });
 
                 const removeBtn = tag.createSpan({ text: ' x', cls: 'remove-fork-btn' });
-                removeBtn.style.cursor = 'pointer';
-                removeBtn.style.marginLeft = '4px';
-                removeBtn.style.fontWeight = 'bold';
+                removeBtn.setCssStyles({ cursor: 'pointer' });
+                removeBtn.setCssStyles({ marginLeft: '4px' });
+                removeBtn.setCssStyles({ fontWeight: 'bold' });
                 removeBtn.onclick = async () => {
                     await this.plugin.removeEventFromFork(fork.id, eventIdentifier);
                     selectedForkIds.delete(fork.id);
@@ -833,13 +838,17 @@ export class EventModal extends ResponsiveModal {
     }
 
     private hasMultipleEntities(template: Template): boolean {
-        const entityCount = Object.values(template.entities).reduce((count, entities) => {
-            return count + (Array.isArray(entities) ? entities.length : 0);
-        }, 0);
+        let entityCount = 0;
+        if (template.entities.events?.length) entityCount += template.entities.events.length;
+        if (template.entities.characters?.length) entityCount += template.entities.characters.length;
+        if (template.entities.locations?.length) entityCount += template.entities.locations.length;
+        if (template.entities.items?.length) entityCount += template.entities.items.length;
+        if (template.entities.groups?.length) entityCount += template.entities.groups.length;
+        if (template.entities.scenes?.length) entityCount += template.entities.scenes.length;
         return entityCount > 1;
     }
 
-    private async applyTemplateToEventWithVariables(template: Template, variableValues: Record<string, any>): Promise<void> {
+    private async applyTemplateToEventWithVariables(template: Template, variableValues: Record<string, TemplateVariableValue>): Promise<void> {
         if (!template.entities.events || template.entities.events.length === 0) {
             new Notice('This template does not contain any events');
             return;
@@ -876,21 +885,28 @@ export class EventModal extends ResponsiveModal {
         await this.applyProcessedTemplateToEvent(templateEvt);
     }
 
-    private async applyProcessedTemplateToEvent(templateEvt: any): Promise<void> {
+    private async applyProcessedTemplateToEvent(templateEvt: TemplateEntity<Event>): Promise<void> {
 
-        const { templateId, yamlContent, markdownContent, sectionContent, customYamlFields, id, filePath, ...rest } = templateEvt as any;
+        const { yamlContent, markdownContent, sectionContent, customYamlFields } = templateEvt;
 
-        let fields: any = { ...rest };
+        let fields: Record<string, unknown> = { ...templateEvt };
+        delete fields.templateId;
+        delete fields.yamlContent;
+        delete fields.markdownContent;
+        delete fields.sectionContent;
+        delete fields.customYamlFields;
+        delete fields.id;
+        delete fields.filePath;
         let allTemplateSections: Record<string, string> = {};
 
         // Handle new format: yamlContent (parse YAML string)
         if (yamlContent && typeof yamlContent === 'string') {
             try {
-                const parsed = parseYaml(yamlContent);
-                if (parsed && typeof parsed === 'object') {
+                const parsed = parseYaml(yamlContent) as unknown;
+                if (isRecord(parsed)) {
                     fields = { ...fields, ...parsed };
                 }
-                console.log('[EventModal] Parsed YAML fields:', parsed);
+                console.debug('[EventModal] Parsed YAML fields:', parsed);
             } catch (error) {
                 console.warn('[EventModal] Failed to parse yamlContent:', error);
             }
@@ -912,16 +928,16 @@ export class EventModal extends ResponsiveModal {
                 if ('Outcome' in parsedSections) {
                     fields.outcome = parsedSections['Outcome'];
                 }
-                console.log('[EventModal] Parsed markdown sections:', parsedSections);
+                console.debug('[EventModal] Parsed markdown sections:', parsedSections);
             } catch (error) {
                 console.warn('[EventModal] Failed to parse markdownContent:', error);
             }
         } else if (sectionContent) {
             // Old format: apply section content
-            for (const [k, v] of Object.entries(sectionContent)) { allTemplateSections[k as string] = v as string; }
+            for (const [k, v] of Object.entries(sectionContent)) { allTemplateSections[k] = v; }
             for (const [sectionName, content] of Object.entries(sectionContent)) {
                 const propName = sectionName.toLowerCase().replace(/\s+/g, '');
-                (fields as any)[propName] = content;
+                fields[propName] = content;
             }
         }
 
@@ -935,7 +951,7 @@ export class EventModal extends ResponsiveModal {
                 configurable: true
             });
         }
-        console.log('[EventModal] Final event after template:', this.event);
+        console.debug('[EventModal] Final event after template:', this.event);
 
         // Clear relationships as they reference template entities
         this.event.characters = [];

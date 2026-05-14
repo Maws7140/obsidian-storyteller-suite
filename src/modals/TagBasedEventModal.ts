@@ -1,7 +1,7 @@
 import { App, Setting, Notice } from 'obsidian';
 import { Event } from '../types';
 import StorytellerSuitePlugin from '../main';
-import { TagEventGenerator, TagGenerationOptions } from '../utils/TagEventGenerator';
+import { TagEventGenerator, TagGenerationOptions, TaggedEntity } from '../utils/TagEventGenerator';
 import { ResponsiveModal } from './ResponsiveModal';
 
 export class TagBasedEventModal extends ResponsiveModal {
@@ -10,7 +10,7 @@ export class TagBasedEventModal extends ResponsiveModal {
     private selectedEntityTypes: Set<'scene' | 'chapter' | 'reference'> = new Set(['scene', 'chapter', 'reference']);
     private nameTemplate = '[{type}] {name}';
     private previewContainer: HTMLElement;
-    private previewEvents: Array<{ event: Event; source: any; warnings: string[] }> = [];
+    private previewEvents: Array<{ event: Event; source: TaggedEntity; warnings: string[] }> = [];
 
     constructor(app: App, plugin: StorytellerSuitePlugin) {
         super(app);
@@ -18,11 +18,11 @@ export class TagBasedEventModal extends ResponsiveModal {
         this.modalEl.addClass('storyteller-tag-event-modal');
     }
 
-    async onOpen() {
+    onOpen() { void (async () => {
         super.onOpen();
         const { contentEl, footerEl } = this.createStructuredModalLayout();
 
-        contentEl.createEl('h2', { text: 'Generate Timeline Events from Tags' });
+        contentEl.createEl('h2', { text: 'Generate timeline events from tags' });
 
         contentEl.createEl('p', {
             text: 'This will scan your scenes, chapters, and references for specific tags and create timeline events from them.',
@@ -37,7 +37,7 @@ export class TagBasedEventModal extends ResponsiveModal {
 
         if (allTags.length === 0) {
             contentEl.createEl('p', {
-                text: '⚠️ No tags found in your scenes, chapters, or references. Please add tags to your entities first.',
+                text: '⚠️ no tags found in your scenes, chapters, or references. Please add tags to your entities first.',
                 cls: 'storyteller-warning'
             });
 
@@ -49,9 +49,9 @@ export class TagBasedEventModal extends ResponsiveModal {
 
         // Tag Selection
         const tagSection = contentEl.createDiv('storyteller-tag-selection-section');
-        tagSection.createEl('h3', { text: 'Select Tags to Scan' });
+        tagSection.createEl('h3', { text: 'Select tags to scan' });
         tagSection.createEl('p', {
-            text: 'Events will be created from entities that have ANY of these tags:'
+            text: 'Events will be created from entities that have any of these tags:'
         });
 
         const tagContainer = tagSection.createDiv('storyteller-tag-checkboxes');
@@ -78,7 +78,7 @@ export class TagBasedEventModal extends ResponsiveModal {
 
         // Select All / Deselect All
         const tagActions = tagSection.createDiv('storyteller-tag-actions');
-        tagActions.createEl('button', { text: 'Select All' }, btn => {
+        tagActions.createEl('button', { text: 'Select all' }, btn => {
             btn.addEventListener('click', () => {
                 allTags.forEach(tag => this.selectedTags.add(tag));
                 tagContainer.querySelectorAll('input[type="checkbox"]').forEach(cb => {
@@ -86,7 +86,7 @@ export class TagBasedEventModal extends ResponsiveModal {
                 });
             });
         });
-        tagActions.createEl('button', { text: 'Deselect All' }, btn => {
+        tagActions.createEl('button', { text: 'Deselect all' }, btn => {
             btn.addEventListener('click', () => {
                 this.selectedTags.clear();
                 tagContainer.querySelectorAll('input[type="checkbox"]').forEach(cb => {
@@ -97,7 +97,7 @@ export class TagBasedEventModal extends ResponsiveModal {
 
         // Entity Type Selection
         const entitySection = contentEl.createDiv('storyteller-entity-type-section');
-        entitySection.createEl('h3', { text: 'Entity Types to Scan' });
+        entitySection.createEl('h3', { text: 'Entity types to scan' });
 
         const entityContainer = entitySection.createDiv('storyteller-entity-checkboxes');
 
@@ -128,7 +128,7 @@ export class TagBasedEventModal extends ResponsiveModal {
 
         // Name Template
         new Setting(contentEl)
-            .setName('Event Name Template')
+            .setName('Event name template')
             .setDesc('Template for generated event names. Use {type} for entity type and {name} for entity name.')
             .addText(text => text
                 .setPlaceholder('[{type}] {name}')
@@ -140,12 +140,12 @@ export class TagBasedEventModal extends ResponsiveModal {
         // Preview Button
         const previewSection = contentEl.createDiv('storyteller-preview-section');
         previewSection.createEl('button', {
-            text: 'Preview Events',
+            text: 'Preview events',
             cls: 'mod-cta'
         }, btn => {
-            btn.addEventListener('click', async () => {
+            btn.addEventListener('click', () => { void (async () => {
                 await this.generatePreview();
-            });
+            })(); });
         });
 
         // Preview Container
@@ -159,7 +159,7 @@ export class TagBasedEventModal extends ResponsiveModal {
         this.createFooterButton(footerEl, 'Generate Events', async () => {
             await this.generateAndSaveEvents();
         }, { cta: true });
-    }
+    })(); }
 
     private async generatePreview() {
         if (this.selectedTags.size === 0) {

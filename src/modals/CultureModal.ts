@@ -1,16 +1,20 @@
-import { App, Setting, Notice, TextAreaComponent, parseYaml, setIcon } from 'obsidian';
+import { App, Setting, Notice, parseYaml, setIcon } from 'obsidian';
 import type { Culture } from '../types';
 import type StorytellerSuitePlugin from '../main';
 import { ResponsiveModal } from './ResponsiveModal';
 import { addImageSelectionButtons } from '../utils/ImageSelectionHelper';
 import { TemplatePickerModal } from './TemplatePickerModal';
-import { Template } from '../templates/TemplateTypes';
+import type { Template, TemplateEntity, TemplateVariableValue } from '../templates/TemplateTypes';
 import { t } from '../i18n/strings';
 import { parseSectionsFromMarkdown } from '../yaml/EntitySections';
 import { EntityCustomFieldsEditor } from './entity/EntityCustomFieldsEditor';
 
 export type CultureModalSubmitCallback = (culture: Culture) => Promise<void>;
 export type CultureModalDeleteCallback = (culture: Culture) => Promise<void>;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
 
 /**
  * Modal for creating and editing cultures/societies
@@ -69,7 +73,7 @@ export class CultureModal extends ResponsiveModal {
         this.modalEl.addClass('storyteller-culture-modal');
     }
 
-    async onOpen(): Promise<void> {
+    onOpen(): void { void (async () => {
         // Auto-apply default template for new cultures
         if (this.isNew && !this.culture.name) {
             const defaultTemplateId = this.plugin.settings.defaultTemplates?.['culture'];
@@ -80,12 +84,12 @@ export class CultureModal extends ResponsiveModal {
                     if ((defaultTemplate.variables && defaultTemplate.variables.length > 0) ||
                         this.hasMultipleEntities(defaultTemplate)) {
                         await new Promise<void>((resolve) => {
-                            import('./TemplateApplicationModal').then(({ TemplateApplicationModal }) => {
+                            void import('./TemplateApplicationModal').then(({ TemplateApplicationModal }) => {
                                 new TemplateApplicationModal(
                                     this.app,
                                     this.plugin,
                                     defaultTemplate,
-                                    async (variableValues, entityFileNames) => {
+                                    (variableValues, entityFileNames) => { void (async () => {
                                         try {
                                             await this.applyTemplateToCultureWithVariables(defaultTemplate, variableValues);
                                             new Notice('Default template applied');
@@ -95,7 +99,7 @@ export class CultureModal extends ResponsiveModal {
                                             new Notice('Error applying default template');
                                         }
                                         resolve();
-                                    }
+                                    })(); }
                                 ).open();
                             });
                         });
@@ -133,18 +137,18 @@ export class CultureModal extends ResponsiveModal {
                         new TemplatePickerModal(
                             this.app,
                             this.plugin,
-                            async (template: Template) => {
+                            (template: Template) => { void (async () => {
                                 // Check if template has variables or multiple entities
                                 if ((template.variables && template.variables.length > 0) ||
                                     this.hasMultipleEntities(template)) {
                                     // Use TemplateApplicationModal for variable collection
                                     await new Promise<void>((resolve) => {
-                                        import('./TemplateApplicationModal').then(({ TemplateApplicationModal }) => {
+                                        void import('./TemplateApplicationModal').then(({ TemplateApplicationModal }) => {
                                             new TemplateApplicationModal(
                                                 this.app,
                                                 this.plugin,
                                                 template,
-                                                async (variableValues, entityFileNames) => {
+                                                (variableValues, entityFileNames) => { void (async () => {
                                                     try {
                                                         await this.applyTemplateToCultureWithVariables(template, variableValues);
                                                         new Notice(t('templateApplied', template.name));
@@ -154,7 +158,7 @@ export class CultureModal extends ResponsiveModal {
                                                         new Notice('Error applying template');
                                                     }
                                                     resolve();
-                                                }
+                                                })(); }
                                             ).open();
                                         });
                                     });
@@ -169,7 +173,7 @@ export class CultureModal extends ResponsiveModal {
                                         new Notice(t('templateApplyFailed', template.name));
                                     }
                                 }
-                            },
+                            })(); },
                             'culture'
                         ).open();
                     })
@@ -297,7 +301,7 @@ export class CultureModal extends ResponsiveModal {
                 text.setValue(this.culture.description || '')
                     .onChange(value => this.culture.description = value);
                 text.inputEl.rows = 4;
-                text.inputEl.style.width = '100%';
+                text.inputEl.setCssStyles({ width: '100%' });
             });
 
         // Values & Beliefs (Markdown Section)
@@ -309,7 +313,7 @@ export class CultureModal extends ResponsiveModal {
                 text.setValue(this.culture.values || '')
                     .onChange(value => this.culture.values = value);
                 text.inputEl.rows = 4;
-                text.inputEl.style.width = '100%';
+                text.inputEl.setCssStyles({ width: '100%' });
             });
 
         // Religion (Markdown Section)
@@ -321,7 +325,7 @@ export class CultureModal extends ResponsiveModal {
                 text.setValue(this.culture.religion || '')
                     .onChange(value => this.culture.religion = value);
                 text.inputEl.rows = 4;
-                text.inputEl.style.width = '100%';
+                text.inputEl.setCssStyles({ width: '100%' });
             });
 
         // Social Structure (Markdown Section)
@@ -333,7 +337,7 @@ export class CultureModal extends ResponsiveModal {
                 text.setValue(this.culture.socialStructure || '')
                     .onChange(value => this.culture.socialStructure = value);
                 text.inputEl.rows = 4;
-                text.inputEl.style.width = '100%';
+                text.inputEl.setCssStyles({ width: '100%' });
             });
 
         // History (Markdown Section)
@@ -345,7 +349,7 @@ export class CultureModal extends ResponsiveModal {
                 text.setValue(this.culture.history || '')
                     .onChange(value => this.culture.history = value);
                 text.inputEl.rows = 4;
-                text.inputEl.style.width = '100%';
+                text.inputEl.setCssStyles({ width: '100%' });
             });
 
         // Naming Conventions (Markdown Section)
@@ -357,7 +361,7 @@ export class CultureModal extends ResponsiveModal {
                 text.setValue(this.culture.namingConventions || '')
                     .onChange(value => this.culture.namingConventions = value);
                 text.inputEl.rows = 3;
-                text.inputEl.style.width = '100%';
+                text.inputEl.setCssStyles({ width: '100%' });
             });
 
         // Customs (Markdown Section)
@@ -369,7 +373,7 @@ export class CultureModal extends ResponsiveModal {
                 text.setValue(this.culture.customs || '')
                     .onChange(value => this.culture.customs = value);
                 text.inputEl.rows = 4;
-                text.inputEl.style.width = '100%';
+                text.inputEl.setCssStyles({ width: '100%' });
             });
 
         // --- Linked Characters ---
@@ -394,7 +398,7 @@ export class CultureModal extends ResponsiveModal {
             .setName('Add character')
             .addDropdown(dd => {
                 dd.addOption('', '— select character —');
-                allCharacters.forEach(c => dd.addOption(c.name, c.name));
+                allCharacters.forEach(c => { dd.addOption(c.name, c.name); });
                 dd.onChange(val => {
                     if (val && !(this.culture.linkedCharacters ?? []).includes(val)) {
                         if (!this.culture.linkedCharacters) this.culture.linkedCharacters = [];
@@ -427,7 +431,7 @@ export class CultureModal extends ResponsiveModal {
             .setName('Add location')
             .addDropdown(dd => {
                 dd.addOption('', '— select location —');
-                allLocations.forEach(l => dd.addOption(l.name, l.name));
+                allLocations.forEach(l => { dd.addOption(l.name, l.name); });
                 dd.onChange(val => {
                     if (val && !(this.culture.linkedLocations ?? []).includes(val)) {
                         if (!this.culture.linkedLocations) this.culture.linkedLocations = [];
@@ -441,7 +445,7 @@ export class CultureModal extends ResponsiveModal {
         // --- Finances ---
         contentEl.createEl('h3', { text: 'Finances' });
         new Setting(contentEl)
-            .setName('Collective Wealth')
+            .setName('Collective wealth')
             .setDesc('Economic wealth of this culture (e.g. "10000gp"). Auto-computed from ledger blocks if present.')
             .addText(text => text
                 .setValue(this.culture.balance || '')
@@ -477,7 +481,7 @@ export class CultureModal extends ResponsiveModal {
             .setName('Add economy')
             .addDropdown(dd => {
                 dd.addOption('', '— select economy —');
-                allEconomiesForCult.forEach(e => dd.addOption(e.name, e.name));
+                allEconomiesForCult.forEach(e => { dd.addOption(e.name, e.name); });
                 dd.onChange(val => {
                     if (val && !(this.culture.linkedEconomies ?? []).includes(val)) {
                         if (!this.culture.linkedEconomies) this.culture.linkedEconomies = [];
@@ -514,7 +518,7 @@ export class CultureModal extends ResponsiveModal {
             await this.onSubmit(this.culture);
             this.close();
         }, { cta: true });
-    }
+    })(); }
 
     private hasMultipleEntities(template: Template): boolean {
         let entityCount = 0;
@@ -537,7 +541,7 @@ export class CultureModal extends ResponsiveModal {
         await this.applyProcessedTemplateToCulture(templateCulture);
     }
 
-    private async applyTemplateToCultureWithVariables(template: Template, variableValues: Record<string, any>): Promise<void> {
+    private async applyTemplateToCultureWithVariables(template: Template, variableValues: Record<string, TemplateVariableValue>): Promise<void> {
         if (!template.entities.cultures || template.entities.cultures.length === 0) {
             new Notice('This template does not contain any cultures');
             return;
@@ -563,20 +567,27 @@ export class CultureModal extends ResponsiveModal {
         await this.applyProcessedTemplateToCulture(templateCulture);
     }
 
-    private async applyProcessedTemplateToCulture(templateCulture: any): Promise<void> {
-        const { templateId, yamlContent, markdownContent, sectionContent, customYamlFields, id, filePath, ...rest } = templateCulture as any;
+    private async applyProcessedTemplateToCulture(templateCulture: TemplateEntity<Culture>): Promise<void> {
+        const { yamlContent, markdownContent, sectionContent, customYamlFields } = templateCulture;
 
-        let fields: any = { ...rest };
+        let fields: Record<string, unknown> = { ...templateCulture };
+        delete fields.templateId;
+        delete fields.yamlContent;
+        delete fields.markdownContent;
+        delete fields.sectionContent;
+        delete fields.customYamlFields;
+        delete fields.id;
+        delete fields.filePath;
         let allTemplateSections: Record<string, string> = {};
 
         // Handle new format: yamlContent (parse YAML string)
         if (yamlContent && typeof yamlContent === 'string') {
             try {
-                const parsed = parseYaml(yamlContent);
-                if (parsed && typeof parsed === 'object') {
+                const parsed = parseYaml(yamlContent) as unknown;
+                if (isRecord(parsed)) {
                     fields = { ...fields, ...parsed };
                 }
-                console.log('[CultureModal] Parsed YAML fields:', parsed);
+                console.debug('[CultureModal] Parsed YAML fields:', parsed);
             } catch (error) {
                 console.warn('[CultureModal] Failed to parse yamlContent:', error);
             }
@@ -611,16 +622,16 @@ export class CultureModal extends ResponsiveModal {
                     fields.customs = parsedSections['Customs'];
                 }
 
-                console.log('[CultureModal] Parsed markdown sections:', parsedSections);
+                console.debug('[CultureModal] Parsed markdown sections:', parsedSections);
             } catch (error) {
                 console.warn('[CultureModal] Failed to parse markdownContent:', error);
             }
         } else if (sectionContent) {
             // Old format: apply section content
-            for (const [k, v] of Object.entries(sectionContent)) { allTemplateSections[k as string] = v as string; }
+            for (const [k, v] of Object.entries(sectionContent)) { allTemplateSections[k] = v; }
             for (const [sectionName, content] of Object.entries(sectionContent)) {
                 const propName = sectionName.toLowerCase().replace(/\s+/g, '');
-                (fields as any)[propName] = content;
+                fields[propName] = content;
             }
         }
 
@@ -634,7 +645,7 @@ export class CultureModal extends ResponsiveModal {
                 configurable: true
             });
         }
-        console.log('[CultureModal] Final culture after template:', this.culture);
+        console.debug('[CultureModal] Final culture after template:', this.culture);
 
         // Clear relationships as they reference template entities
         this.culture.linkedLocations = [];
