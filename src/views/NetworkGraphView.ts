@@ -320,12 +320,13 @@ export class NetworkGraphView extends ItemView {
             
             this.graphRenderer = new NetworkGraphRenderer(this.graphContainer, this.plugin);
             await this.graphRenderer.initializeCytoscape();
+            await new Promise(resolve => window.requestAnimationFrame(resolve));
             await this.applyCurrentFilters();
             
             // Add zoom indicator
             this.addZoomIndicator();
-        } catch {
-            
+        } catch (err) {
+            console.error('[Storyteller] Network graph init error:', err);
             loader.remove();
             this.graphContainer.createEl('p', {
                 text: 'Error loading network graph. See console for details.',

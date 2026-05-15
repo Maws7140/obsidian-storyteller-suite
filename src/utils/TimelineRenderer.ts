@@ -769,7 +769,6 @@ export class TimelineRenderer {
                 // vertical lane scrolling does not intermittently win wheel events.
                 horizontalScrollKey: grouped && !useNativeMobileScroll ? 'shiftKey' : undefined,
                 verticalScroll: grouped && !useNativeMobileScroll,
-                verticalScrollSticky: false,
                 // Keep rows in vis-timeline's native auto mode to avoid
                 // horizontal-scroll desync where box/point stems can mis-anchor.
                 groupHeightMode: 'auto',
@@ -849,7 +848,6 @@ export class TimelineRenderer {
                     const safeOptions = {
                         ...timelineOptions,
                         verticalScroll: undefined,
-                        verticalScrollSticky: undefined,
                         groupHeightMode: undefined,
                         stackSubgroups: undefined
                     };

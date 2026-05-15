@@ -517,16 +517,35 @@ export function filterRedundantReciprocalEdges(
 }
 
 // Resolve entity name/id to actual entity id using lookup map
-function resolveEntityId(nameOrId: string, entityMap: Map<string, GraphNode>): string | null {
+function resolveEntityId(nameOrId: unknown, entityMap: Map<string, GraphNode>): string | null {
+    // Coerce common non-string shapes: typed relationship objects, wikilinks, numbers
+    let key: string | null = null;
+    if (typeof nameOrId === 'string') {
+        key = nameOrId;
+    } else if (nameOrId && typeof nameOrId === 'object') {
+        const obj = nameOrId as { target?: unknown; id?: unknown; name?: unknown };
+        if (typeof obj.target === 'string') key = obj.target;
+        else if (typeof obj.id === 'string') key = obj.id;
+        else if (typeof obj.name === 'string') key = obj.name;
+    } else if (typeof nameOrId === 'number') {
+        key = String(nameOrId);
+    }
+
+    if (!key) return null;
+
+    // Strip wikilink brackets if present: [[Name]] or [[Name|alias]]
+    const stripped = key.replace(/^\[\[|\]\]$/g, '').split('|')[0].trim();
+    if (!stripped) return null;
+
     // Try direct match first (by id or name)
-    if (entityMap.has(nameOrId)) {
-        return nameOrId;
+    if (entityMap.has(stripped)) {
+        return stripped;
     }
 
     // Try case-insensitive name match
-    const lowerName = nameOrId.toLowerCase();
+    const lowerName = stripped.toLowerCase();
     for (const [id, node] of entityMap.entries()) {
-        if (node.label.toLowerCase() === lowerName) {
+        if (typeof node.label === 'string' && node.label.toLowerCase() === lowerName) {
             return id;
         }
     }

@@ -126,3 +126,10 @@ nul
 /diff_timeline.txt
 /gcm-diagnose.log
 /gcm-login-output.txt
+
+# Lint reports and one-off codemod scripts
+eslint-*.json
+fresh-lint.json
+repo-eslint.json
+scripts/fix-*.js
+scripts/fix-*.py

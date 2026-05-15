@@ -19,7 +19,7 @@ export class NetworkGraphRenderer {
     private cy: Core | null = null;
     private canvasEl: HTMLElement | null = null;
     private currentFilters: GraphFilters = {
-        entityTypes: ['character', 'location', 'event', 'item']
+        entityTypes: ['character', 'location', 'event', 'item', 'culture', 'economy', 'magicsystem']
     };
     private infoPanelEl: HTMLElement | null = null; // Fixed info panel instead of tooltip
     private pinnedNodes: Set<string> = new Set();
@@ -1642,7 +1642,7 @@ export class NetworkGraphRenderer {
 
         // Validate dimensions before proceeding
         if (width === 0 || height === 0) {
-            throw new Error('Canvas element has invalid dimensions (width or height is 0)');
+            return;
         }
 
         // Resize cytoscape to match current container dimensions

@@ -134,25 +134,27 @@ export function getWhatsNewGuide(version: string): StorytellerGuideDocument {
     return {
         title: `What is new in ${version}`,
         introHtml: `
-            <p>This update fixes a note classification bug that could make the plugin pick up the wrong files in some folder setups.</p>
+            <p>This update brings dashboard improvements for mobile and smaller screens, plus a round of stability fixes under the hood.</p>
         `,
         sections: [
             {
-                title: 'Entity type fix',
+                title: 'Dashboard improvements',
                 bodyHtml: `
                     <ul>
-                        <li>Fixed notes being picked up as the wrong entity type in some folder setups.</li>
-                        <li>Added a guard so characters, books, and other entity notes do not get cross-listed incorrectly.</li>
-                        <li>Added a startup repair pass so older notes get stamped with their entity type after reload.</li>
+                        <li>Improved layout and spacing on mobile and narrow-width views.</li>
+                        <li>Tab bar and controls now wrap cleanly on small screens instead of overflowing.</li>
+                        <li>Filter inputs and action buttons are easier to tap on touch devices.</li>
+                        <li>List items and cards resize more gracefully at different viewport widths.</li>
                     </ul>
                 `
             },
             {
-                title: 'Cleanup',
+                title: 'Stability fixes',
                 bodyHtml: `
                     <ul>
-                        <li>Cleaned up assistant-specific repo files that should not have been public.</li>
-                        <li>Added ignore rules for local debug logs and scratch files.</li>
+                        <li>Fixed several edge cases where opening or editing an entity could produce a silent error.</li>
+                        <li>Improved how the plugin handles notes with unexpected or missing frontmatter.</li>
+                        <li>Cleaned up a number of internal type issues that could cause unpredictable behaviour in certain vaults.</li>
                     </ul>
                 `
             }

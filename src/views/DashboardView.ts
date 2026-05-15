@@ -1836,8 +1836,8 @@ export class DashboardView extends ItemView {
             await graphRenderer.initializeCytoscape();
             // Store renderer instance for future refreshes
             this.networkGraphRenderer = graphRenderer;
-        } catch {
-            
+        } catch (err) {
+            console.error('[Storyteller] Dashboard network graph init error:', err);
             graphContainer.createEl('p', {
                 text: 'Error loading network graph. See console for details.',
                 cls: 'storyteller-empty-state'
