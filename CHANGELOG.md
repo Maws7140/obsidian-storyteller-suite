@@ -1,3 +1,17 @@
+## 1.8.0
+
+### Fixed
+- Network graph: stopped crashing with "toLowerCase is not a function" when an entity field held a typed-relationship object, wikilink-wrapped value, or non-string instead of a plain name. The resolver now coerces those shapes and falls back to skipping the bad value instead of killing the whole graph.
+- Network graph: surfaced initialization errors in the console instead of swallowing them silently, so future failures can be diagnosed.
+- Timeline: removed the invalid `verticalScrollSticky` vis-timeline option that produced an "Unknown option" warning on every render.
+
+### Changed
+- Storyteller guide modal now includes a Ko-fi support button alongside the dashboard / what's new / close actions.
+- Updated "What's new" guide copy for the 1.8.0 dashboard mobile improvements.
+
+### Internal
+- Fixed all ESLint violations flagged by the Obsidian community plugin scorecard.
+
 ## 1.7.9-beta.1
 
 - Migrate Culture and Economy modals onto the shared `createStructuredModalLayout` + `createFooterButton` footer used by every other entity modal, so their Save / Cancel / Delete buttons match the rest of the suite on mobile (sticky footer, correct touch targets) instead of rendering as a stacked legacy `Setting` row.
@@ -81,6 +95,11 @@
 - Fix character create modal on mobile so the form body scrolls separately and the footer actions stay visible, including the save button.
 
 # Changelog
+
+## 1.7.8
+
+### Fixed
+- Fixed dashboard sidebar duplication caused by stacked refresh and listener behavior when the dashboard view was reopened or refreshed
 
 ## 1.7.8-beta.4
 

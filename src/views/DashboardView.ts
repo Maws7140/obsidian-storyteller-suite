@@ -702,9 +702,8 @@ export class DashboardView extends ItemView {
                             this.markSearchInputDismissal();
                             this.currentSearchInput.blur();
                         }
-                    } catch {
-                    	// intentional
-                        
+                    } catch (error) {
+                        console.error('Storyteller Suite: Error in mobile keyboard dismissal handler:', error);
                     }
                 });
             }
