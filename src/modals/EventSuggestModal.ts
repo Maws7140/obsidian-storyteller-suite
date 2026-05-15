@@ -35,7 +35,7 @@ export class EventSuggestModal extends FuzzySuggestModal<Event> {
         void super.onOpen();
         try {
             this.events = await this.plugin.listEvents();
-        } catch (error) {
+        } catch {
             
             new Notice(t('errorLoadingEvents'));
             this.events = [];

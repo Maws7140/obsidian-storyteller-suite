@@ -231,7 +231,7 @@ export class EraModal extends ResponsiveModal {
                 await this.onSubmit(this.era);
                 new Notice(`Era "${this.era.name}" ${this.isNew ? 'created' : 'updated'} successfully`);
                 this.close();
-            } catch (error) {
+            } catch {
                 
                 new Notice('Error saving era. Check console for details.');
             }

@@ -1,10 +1,10 @@
 // Map View - Full workspace view for interactive map visualization
 // Provides a dedicated panel for viewing and interacting with story maps
 
-import { ItemView, WorkspaceLeaf, setIcon, Menu, DropdownComponent, Notice, TFile, FuzzySuggestModal } from 'obsidian';
+import { ItemView, WorkspaceLeaf, setIcon, Menu, DropdownComponent, Notice, TFile, FuzzySuggestModal, App } from 'obsidian';
 import * as L from 'leaflet';
 import StorytellerSuitePlugin from '../main';
-import { Location, StoryMap } from '../types';
+import { Location, StoryMap, MapBinding } from '../types';
 import { t } from '../i18n/strings';
 import { LeafletRenderer } from '../leaflet/renderer';
 import { BlockParameters } from '../leaflet/types';
@@ -18,6 +18,26 @@ import { openMapModal } from '../utils/MapModalHelper';
 import { MapHierarchyManager } from '../utils/MapHierarchyManager';
 
 export const VIEW_TYPE_MAP = 'storyteller-map-view';
+
+/** Minimal shape for any entity that has a name + optional id/filePath. */
+type NamedEntity = { id?: string; name: string; filePath?: string };
+
+/** Internal shape for Leaflet tile layer private APIs we call. */
+interface LeafletTileLayerInternal {
+    _url?: string;
+    getTileUrl?: (coords: unknown) => string;
+    redraw?: () => void;
+    _update?: () => void;
+    _resetView?: () => void;
+    getContainer?: () => HTMLElement | undefined;
+}
+
+/** Saved map view state shape returned by getState() / consumed by setState(). */
+interface MapViewState extends Record<string, unknown> {
+    mapId?: string;
+    zoom?: number;
+    center?: { lat: number; lng: number } | L.LatLng | null;
+}
 
 /**
  * MapView provides a full-screen dedicated view for interactive maps
@@ -58,6 +78,8 @@ export class MapView extends ItemView {
     private placementOverlay: HTMLElement | null = null;
     private escapeHandler: ((e: KeyboardEvent) => void) | null = null;
     private _savedCenter: { lat: number; lng: number } | null = null;
+    private _wheelHandler: ((ev: WheelEvent) => void) | null = null;
+    private _touchMoveHandler: ((ev: TouchEvent) => void) | null = null;
 
     constructor(leaf: WorkspaceLeaf, plugin: StorytellerSuitePlugin) {
         super(leaf);
@@ -114,7 +136,7 @@ export class MapView extends ItemView {
 
         // Load map from state if provided
         const state = this.getState();
-        if (state?.mapId) {
+        if (state.mapId) {
             await this.loadMap(state.mapId);
         }
     }
@@ -749,7 +771,7 @@ export class MapView extends ItemView {
 
                     new Notice(`Added ${selectedLocation.name} to map at [${coordinates[0].toFixed(2)}, ${coordinates[1].toFixed(2)}]`);
                     await this.refresh();
-                } catch (error) {
+                } catch {
                     
                     new Notice('Error adding location to map');
                 }
@@ -773,13 +795,13 @@ export class MapView extends ItemView {
             const locationService = new LocationService(this.plugin);
 
             // Check if character has a current location
-            let characterLocation: any = null;
+            let characterLocation: Location | null = null;
             if (selectedCharacter.currentLocationId) {
                 characterLocation = await locationService.getLocation(selectedCharacter.currentLocationId);
 
                 // Check if location is already on this map
                 if (characterLocation) {
-                    const binding = characterLocation.mapBindings?.find((b: any) => b.mapId === mapId);
+                    const binding = characterLocation.mapBindings?.find((b: MapBinding) => b.mapId === mapId);
                     if (binding) {
                         new Notice(`Character "${selectedCharacter.name}" is already on the map at their current location`);
                         return;
@@ -817,7 +839,7 @@ export class MapView extends ItemView {
                             this.currentMap.tileServer?.includes('tile')
                         );
 
-                        let targetLocation: any;
+                        let targetLocation: Location;
                         let isNewLocation = false;
 
                         if (isRealWorldMap) {
@@ -851,9 +873,9 @@ export class MapView extends ItemView {
                                         selected = true;
                                         resolve(res);
                                     });
-                                    const originalOnClose = modal.onClose.bind(modal);
+                                    const originalClose = modal.onClose.bind(modal) as () => void;
                                     modal.onClose = () => {
-                                        originalOnClose();
+                                        originalClose();
                                         if (!selected) resolve(null);
                                     };
                                     modal.open();
@@ -938,7 +960,7 @@ export class MapView extends ItemView {
                     } else {
                         await this.refresh();
                     }
-                } catch (error) {
+                } catch {
                     
                     new Notice('Error adding character to map');
                 }
@@ -962,13 +984,13 @@ export class MapView extends ItemView {
             const locationService = new LocationService(this.plugin);
 
             // Check if event has a location
-            let eventLocation: any = null;
+            let eventLocation: Location | null = null;
             if (selectedEvent.location) {
                 eventLocation = await locationService.getLocation(selectedEvent.location);
 
                 // Check if location is already on this map
                 if (eventLocation) {
-                    const binding = eventLocation.mapBindings?.find((b: any) => b.mapId === mapId);
+                    const binding = eventLocation.mapBindings?.find((b: MapBinding) => b.mapId === mapId);
                     if (binding) {
                         new Notice(`Event "${selectedEvent.name}" is already on the map at its location`);
                         return;
@@ -1006,7 +1028,7 @@ export class MapView extends ItemView {
                             this.currentMap.tileServer?.includes('tile')
                         );
 
-                        let targetLocation: any;
+                        let targetLocation: Location;
                         let isNewLocation = false;
 
                         if (isRealWorldMap) {
@@ -1040,9 +1062,9 @@ export class MapView extends ItemView {
                                         selected = true;
                                         resolve(res);
                                     });
-                                    const originalOnClose = modal.onClose.bind(modal);
+                                    const originalClose = modal.onClose.bind(modal) as () => void;
                                     modal.onClose = () => {
-                                        originalOnClose();
+                                        originalClose();
                                         if (!selected) resolve(null);
                                     };
                                     modal.open();
@@ -1127,7 +1149,7 @@ export class MapView extends ItemView {
                     } else {
                         await this.refresh();
                     }
-                } catch (error) {
+                } catch {
                     
                     new Notice('Error adding event to map');
                 }
@@ -1151,13 +1173,13 @@ export class MapView extends ItemView {
             const locationService = new LocationService(this.plugin);
 
             // Check if item has a current location
-            let itemLocation: any = null;
+            let itemLocation: Location | null = null;
             if (selectedItem.currentLocation) {
                 itemLocation = await locationService.getLocation(selectedItem.currentLocation);
 
                 // Check if location is already on this map
                 if (itemLocation) {
-                    const binding = itemLocation.mapBindings?.find((b: any) => b.mapId === mapId);
+                    const binding = itemLocation.mapBindings?.find((b: MapBinding) => b.mapId === mapId);
                     if (binding) {
                         new Notice(`Item "${selectedItem.name}" is already on the map at its current location`);
                         return;
@@ -1195,7 +1217,7 @@ export class MapView extends ItemView {
                             this.currentMap.tileServer?.includes('tile')
                         );
 
-                        let targetLocation: any;
+                        let targetLocation: Location;
                         let isNewLocation = false;
 
                         if (isRealWorldMap) {
@@ -1229,9 +1251,9 @@ export class MapView extends ItemView {
                                         selected = true;
                                         resolve(res);
                                     });
-                                    const originalOnClose = modal.onClose.bind(modal);
+                                    const originalClose = modal.onClose.bind(modal) as () => void;
                                     modal.onClose = () => {
-                                        originalOnClose();
+                                        originalClose();
                                         if (!selected) resolve(null);
                                     };
                                     modal.open();
@@ -1316,7 +1338,7 @@ export class MapView extends ItemView {
                     } else {
                         await this.refresh();
                     }
-                } catch (error) {
+                } catch {
                     
                     new Notice('Error adding item to map');
                 }
@@ -1337,7 +1359,7 @@ export class MapView extends ItemView {
         const locationService = new LocationService(this.plugin);
 
         // Get all entities of the specified type
-        let entities: any[] = [];
+        let entities: NamedEntity[] = [];
         let entityTypeName = '';
 
         switch (entityType) {
@@ -1373,24 +1395,25 @@ export class MapView extends ItemView {
         }
 
         // Create a simple selection modal
-        class EntitySelectionModal extends FuzzySuggestModal<any> {
+        class EntitySelectionModal extends FuzzySuggestModal<NamedEntity> {
             constructor(
-                app: any,
-                private entities: any[],
-                private onChoose: (entity: any) => void
+                app: App,
+                private entities: NamedEntity[],
+                private onChoose: (entity: NamedEntity) => void
             ) {
                 super(app);
             }
 
-            getItems(): any[] {
+            getItems(): NamedEntity[] {
                 return this.entities;
             }
 
-            getItemText(entity: any): string {
+            getItemText(entity: NamedEntity): string {
                 return entity.name || entity.id || 'Unnamed';
             }
 
-            onChooseItem(entity: any, evt: MouseEvent | KeyboardEvent): void {
+            onChooseItem(entity: NamedEntity, evt: MouseEvent | KeyboardEvent): void {
+                void evt;
                 this.onChoose(entity);
             }
         }
@@ -1402,7 +1425,7 @@ export class MapView extends ItemView {
             this.enablePlacementMode(entityType, (coordinates) => { void (async () => {
                 try {
                     // Find or create location at coordinates
-                    let targetLocation: any = null;
+                    let targetLocation: Location | null = null;
                     let isNewLocation = false;
 
                     // Detect if this is a real-world map
@@ -1428,7 +1451,7 @@ export class MapView extends ItemView {
 
                             // Only add binding if this location doesn't already have one for this map
                             // This prevents updating coordinates and moving existing pins
-                            const hasBinding = targetLocation.mapBindings?.some((b: any) => b.mapId === mapId);
+                            const hasBinding = targetLocation.mapBindings?.some((b: MapBinding) => b.mapId === mapId);
                             if (!hasBinding) {
                                 await locationService.addMapBinding(
                                     targetLocation.id || targetLocation.name,
@@ -1444,9 +1467,9 @@ export class MapView extends ItemView {
                                     selected = true;
                                     resolve(res);
                                 });
-                                const originalOnClose = modal.onClose.bind(modal);
+                                const originalClose = modal.onClose.bind(modal) as () => void;
                                 modal.onClose = () => {
-                                    originalOnClose();
+                                    originalClose();
                                     if (!selected) resolve(null);
                                 };
                                 modal.open();
@@ -1500,7 +1523,8 @@ export class MapView extends ItemView {
                                     locationName = geoName;
                                     locationDescription = `${geoName} - Auto-created for ${entityTypeName.toLowerCase()} "${selectedEntity.name}"`;
                                 }
-                            } catch (error) {
+                            } catch {
+                            	// intentional
                                 
                             }
                         }
@@ -1547,7 +1571,7 @@ export class MapView extends ItemView {
                     } else {
                         await this.refresh();
                     }
-                } catch (error) {
+                } catch {
                     
                     new Notice(`Error adding ${entityTypeName.toLowerCase()} to map`);
                 }
@@ -1562,7 +1586,7 @@ export class MapView extends ItemView {
      * This ensures EntityMarkerDiscovery can find and render the entity directly on the map
      */
     private async updateEntityMapBinding(
-        entity: any,
+        entity: NamedEntity,
         entityType: 'culture' | 'economy' | 'magicsystem' | 'group' | 'scene' | 'reference',
         mapId: string,
         coordinates: [number, number]
@@ -1582,31 +1606,33 @@ export class MapView extends ItemView {
 
         try {
             // Update the entity's frontmatter with map coordinates
-            await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
+            await this.app.fileManager.processFrontMatter(file, (frontmatter: Record<string, unknown>) => {
                 // Set mapId if not already set, or add to relatedMapIds
-                if (!frontmatter.mapId) {
-                    frontmatter.mapId = mapId;
-                } else if (frontmatter.mapId !== mapId) {
+                if (!frontmatter['mapId']) {
+                    frontmatter['mapId'] = mapId;
+                } else if (frontmatter['mapId'] !== mapId) {
                     // Add to relatedMapIds if different from primary mapId
-                    if (!frontmatter.relatedMapIds) {
-                        frontmatter.relatedMapIds = [];
+                    if (!Array.isArray(frontmatter['relatedMapIds'])) {
+                        frontmatter['relatedMapIds'] = [];
                     }
-                    if (!frontmatter.relatedMapIds.includes(mapId)) {
-                        frontmatter.relatedMapIds.push(mapId);
+                    const relatedMapIds = frontmatter['relatedMapIds'] as string[];
+                    if (!relatedMapIds.includes(mapId)) {
+                        relatedMapIds.push(mapId);
                     }
                 }
 
                 // Set map coordinates
-                frontmatter.mapCoordinates = coordinates;
+                frontmatter['mapCoordinates'] = coordinates;
 
                 // Generate a marker ID if not present
-                if (!frontmatter.markerId) {
-                    frontmatter.markerId = `${entityType}-${entity.id || entity.name}-${Date.now()}`;
+                if (!frontmatter['markerId']) {
+                    frontmatter['markerId'] = `${entityType}-${entity.id || entity.name}-${Date.now()}`;
                 }
             });
 
             
-        } catch (error) {
+        } catch {
+        	// intentional
             
         }
     }
@@ -1711,7 +1737,7 @@ export class MapView extends ItemView {
                 const dy = offsetLatLng.lat - center.lat;
                 return Math.sqrt(dx*dx + dy*dy);
             }
-        } catch (e) {
+        } catch {
             
             return this.currentMap.type === 'real' ? 0.001 : 400;
         }
@@ -1737,7 +1763,8 @@ export class MapView extends ItemView {
             // This keeps parent/child relationships bidirectionally consistent
             try {
                 await this.hierarchyManager.syncMapLocationHierarchy(resolvedMapId);
-            } catch (syncError) {
+            } catch {
+            	// intentional
                 
             }
 
@@ -1758,7 +1785,7 @@ export class MapView extends ItemView {
             await this.buildBreadcrumb();
             this.buildEntityBar();
 
-        } catch (error) {
+        } catch {
             
             new Notice('Error loading map. See console for details.');
         }
@@ -1774,7 +1801,8 @@ export class MapView extends ItemView {
         if (this.leafletRenderer) {
             try {
                 this.leafletRenderer.onunload();
-            } catch (e) {
+            } catch {
+            	// intentional
                 
             }
             this.leafletRenderer = null;
@@ -1834,7 +1862,7 @@ export class MapView extends ItemView {
             // Create mock context for renderer that supports Component lifecycle
             const mockContext = {
                 sourcePath: this.currentMap.filePath || '',
-                addChild: (component: any) => {
+                addChild: (component: { onload?: () => void }) => {
                     // Trigger onload() lifecycle method after container is in DOM
                     // This matches the code block processor pattern
                     window.requestAnimationFrame(() => {
@@ -1844,7 +1872,7 @@ export class MapView extends ItemView {
                     });
                 },
                 getSectionInfo: () => null
-            } as any;
+            } as unknown as import('obsidian').MarkdownPostProcessorContext;
 
             // Ensure container has explicit dimensions like code block processor
             const containerRect = leafletContainer.getBoundingClientRect();
@@ -1935,8 +1963,8 @@ export class MapView extends ItemView {
             activeDocument.addEventListener('touchmove', touchMoveHandler);
 
             // Store handlers for cleanup
-            (this as any)._wheelHandler = wheelHandler;
-            (this as any)._touchMoveHandler = touchMoveHandler;
+            this._wheelHandler = wheelHandler;
+            this._touchMoveHandler = touchMoveHandler;
 
             // Make container focusable for keyboard navigation
             leafletContainer.tabIndex = 0;
@@ -1967,10 +1995,11 @@ export class MapView extends ItemView {
                     map.invalidateSize({ animate: false });
 
                     // Force tile layers to update after invalidateSize
-                    const tileLayers: any[] = [];
-                    map.eachLayer((layer: any) => {
-                        if (layer._url || layer.getTileUrl) {
-                            tileLayers.push(layer);
+                    const tileLayers: LeafletTileLayerInternal[] = [];
+                    map.eachLayer((layer: L.Layer) => {
+                        const tl = layer as unknown as LeafletTileLayerInternal;
+                        if (tl._url || tl.getTileUrl) {
+                            tileLayers.push(tl);
                         }
                     });
 
@@ -1989,7 +2018,7 @@ export class MapView extends ItemView {
             window.setTimeout(forceMapUpdate, 300);
             window.setTimeout(forceMapUpdate, 500);
 
-        } catch (error) {
+        } catch {
             
             leafletContainer.empty();
             leafletContainer.createEl('div', {
@@ -2257,8 +2286,8 @@ export class MapView extends ItemView {
                 .onClick(async () => {
                     if (this.currentMap?.filePath) {
                         const file = this.app.vault.getAbstractFileByPath(this.currentMap.filePath);
-                        if (file) {
-                            await this.app.workspace.getLeaf('tab').openFile(file as any);
+                        if (file instanceof TFile) {
+                            await this.app.workspace.getLeaf('tab').openFile(file);
                         }
                     }
                 });
@@ -2332,10 +2361,11 @@ export class MapView extends ItemView {
 
                         // CRITICAL FIX: After resize invalidateSize, force tile layers to update
                         // Without this, tiles can disappear after initial load or sidebar toggle
-                        const tileLayers: any[] = [];
-                        map.eachLayer((layer: any) => {
-                            if (layer._url || layer.getTileUrl) {
-                                tileLayers.push(layer);
+                        const tileLayers: LeafletTileLayerInternal[] = [];
+                        map.eachLayer((layer: L.Layer) => {
+                            const tl = layer as unknown as LeafletTileLayerInternal;
+                            if (tl._url || tl.getTileUrl) {
+                                tileLayers.push(tl);
                             }
                         });
 
@@ -2349,7 +2379,7 @@ export class MapView extends ItemView {
                             if (tileLayer._resetView) {
                                 tileLayer._resetView();
                             }
-                            
+
                             // Force visibility on tile container
                             const container = tileLayer.getContainer?.();
                             if (container) {
@@ -2424,13 +2454,13 @@ export class MapView extends ItemView {
         }
 
         // Clean up activeDocument-level event handlers
-        if ((this as any)._wheelHandler) {
-            activeDocument.removeEventListener('wheel', (this as any)._wheelHandler);
-            (this as any)._wheelHandler = null;
+        if (this._wheelHandler) {
+            activeDocument.removeEventListener('wheel', this._wheelHandler);
+            this._wheelHandler = null;
         }
-        if ((this as any)._touchMoveHandler) {
-            activeDocument.removeEventListener('touchmove', (this as any)._touchMoveHandler);
-            (this as any)._touchMoveHandler = null;
+        if (this._touchMoveHandler) {
+            activeDocument.removeEventListener('touchmove', this._touchMoveHandler);
+            this._touchMoveHandler = null;
         }
 
         // Clean up resize observer
@@ -2496,7 +2526,7 @@ export class MapView extends ItemView {
     /**
      * Get state for persistence
      */
-    getState(): any {
+    getState(): MapViewState {
         return {
             mapId: this.currentMap?.id || this.currentMap?.name,
             zoom: this.currentZoom,
@@ -2507,25 +2537,28 @@ export class MapView extends ItemView {
     /**
      * Set state from persistence
      */
-    async setState(state: any, result: any): Promise<void> {
+    async setState(state: unknown, result: import('obsidian').ViewStateResult): Promise<void> {
+        void result;
+        const s = state as MapViewState;
         // Guard: Don't reload if we already have this map loaded
         const currentMapId = this.currentMap?.id || this.currentMap?.name;
-        if (state?.mapId && state.mapId !== currentMapId) {
-            await this.loadMap(state.mapId);
+        if (s.mapId && s.mapId !== currentMapId) {
+            await this.loadMap(s.mapId);
         }
 
         // Restore zoom and position after map loads (or if same map)
-        if (state?.zoom !== undefined) {
+        if (s.zoom !== undefined) {
             window.setTimeout(() => {
                 const map = this.leafletRenderer?.getMap();
                 if (map) {
+                    const center = s.center;
                     map.setView(
-                        state.center || map.getCenter(),
-                        state.zoom,
+                        center ? center : map.getCenter(),
+                        s.zoom ?? 0,
                         { animate: false }  // Instant restore
                     );
-                    this.currentZoom = state.zoom;
-                    this._savedCenter = state.center || null;
+                    this.currentZoom = s.zoom ?? 0;
+                    this._savedCenter = (s.center && 'lat' in s.center) ? { lat: s.center.lat, lng: s.center.lng } : null;
                 }
             }, 200);  // Small delay to ensure map is fully initialized
         }

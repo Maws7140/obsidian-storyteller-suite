@@ -14,6 +14,7 @@ import {
     Reference
 } from '../types';
 
+
 /**
  * Entity Marker Discovery
  * Discovers entities from various sources and converts them to map markers
@@ -89,8 +90,8 @@ export class EntityMarkerDiscovery {
             const file = char.filePath ? this.app.vault.getAbstractFileByPath(char.filePath) : null;
             if (file instanceof TFile) {
                 const cache = this.app.metadataCache.getFileCache(file);
-                const fm = cache?.frontmatter as any;
-                if (fm?.mapId === mapId || (Array.isArray(fm?.relatedMapIds) && fm.relatedMapIds.includes(mapId))) {
+                const fm: Record<string, unknown> | undefined = cache?.frontmatter;
+                if (fm?.['mapId'] === mapId || (fm && Array.isArray(fm['relatedMapIds']) && (fm['relatedMapIds'] as string[]).includes(mapId))) {
                     const marker = await this.entityToMarker(char, 'character', file);
                     if (marker) markers.push(marker);
                 }
@@ -102,8 +103,8 @@ export class EntityMarkerDiscovery {
             const file = loc.filePath ? this.app.vault.getAbstractFileByPath(loc.filePath) : null;
             if (file instanceof TFile) {
                 const cache = this.app.metadataCache.getFileCache(file);
-                const fm = cache?.frontmatter as any;
-                if (fm?.mapId === mapId || (Array.isArray(fm?.relatedMapIds) && fm.relatedMapIds.includes(mapId))) {
+                const fm: Record<string, unknown> | undefined = cache?.frontmatter;
+                if (fm?.['mapId'] === mapId || (fm && Array.isArray(fm['relatedMapIds']) && (fm['relatedMapIds'] as string[]).includes(mapId))) {
                     const marker = await this.entityToMarker(loc, 'location', file);
                     if (marker) markers.push(marker);
                 }
@@ -115,8 +116,8 @@ export class EntityMarkerDiscovery {
             const file = evt.filePath ? this.app.vault.getAbstractFileByPath(evt.filePath) : null;
             if (file instanceof TFile) {
                 const cache = this.app.metadataCache.getFileCache(file);
-                const fm = cache?.frontmatter as any;
-                if (fm?.mapId === mapId || (Array.isArray(fm?.relatedMapIds) && fm.relatedMapIds.includes(mapId))) {
+                const fm: Record<string, unknown> | undefined = cache?.frontmatter;
+                if (fm?.['mapId'] === mapId || (fm && Array.isArray(fm['relatedMapIds']) && (fm['relatedMapIds'] as string[]).includes(mapId))) {
                     const marker = await this.entityToMarker(evt, 'event', file);
                     if (marker) markers.push(marker);
                 }
@@ -128,8 +129,8 @@ export class EntityMarkerDiscovery {
             const file = item.filePath ? this.app.vault.getAbstractFileByPath(item.filePath) : null;
             if (file instanceof TFile) {
                 const cache = this.app.metadataCache.getFileCache(file);
-                const fm = cache?.frontmatter as any;
-                if (fm?.mapId === mapId || (Array.isArray(fm?.relatedMapIds) && fm.relatedMapIds.includes(mapId))) {
+                const fm: Record<string, unknown> | undefined = cache?.frontmatter;
+                if (fm?.['mapId'] === mapId || (fm && Array.isArray(fm['relatedMapIds']) && (fm['relatedMapIds'] as string[]).includes(mapId))) {
                     const marker = await this.entityToMarker(item, 'item', file);
                     if (marker) markers.push(marker);
                 }
@@ -141,8 +142,8 @@ export class EntityMarkerDiscovery {
             const file = culture.filePath ? this.app.vault.getAbstractFileByPath(culture.filePath) : null;
             if (file instanceof TFile) {
                 const cache = this.app.metadataCache.getFileCache(file);
-                const fm = cache?.frontmatter as any;
-                if (fm?.mapId === mapId || (Array.isArray(fm?.relatedMapIds) && fm.relatedMapIds.includes(mapId))) {
+                const fm: Record<string, unknown> | undefined = cache?.frontmatter;
+                if (fm?.['mapId'] === mapId || (fm && Array.isArray(fm['relatedMapIds']) && (fm['relatedMapIds'] as string[]).includes(mapId))) {
                     const marker = await this.entityToMarker(culture, 'culture', file);
                     if (marker) markers.push(marker);
                 }
@@ -154,8 +155,8 @@ export class EntityMarkerDiscovery {
             const file = economy.filePath ? this.app.vault.getAbstractFileByPath(economy.filePath) : null;
             if (file instanceof TFile) {
                 const cache = this.app.metadataCache.getFileCache(file);
-                const fm = cache?.frontmatter as any;
-                if (fm?.mapId === mapId || (Array.isArray(fm?.relatedMapIds) && fm.relatedMapIds.includes(mapId))) {
+                const fm: Record<string, unknown> | undefined = cache?.frontmatter;
+                if (fm?.['mapId'] === mapId || (fm && Array.isArray(fm['relatedMapIds']) && (fm['relatedMapIds'] as string[]).includes(mapId))) {
                     const marker = await this.entityToMarker(economy, 'economy', file);
                     if (marker) markers.push(marker);
                 }
@@ -167,8 +168,8 @@ export class EntityMarkerDiscovery {
             const file = magicSystem.filePath ? this.app.vault.getAbstractFileByPath(magicSystem.filePath) : null;
             if (file instanceof TFile) {
                 const cache = this.app.metadataCache.getFileCache(file);
-                const fm = cache?.frontmatter as any;
-                if (fm?.mapId === mapId || (Array.isArray(fm?.relatedMapIds) && fm.relatedMapIds.includes(mapId))) {
+                const fm: Record<string, unknown> | undefined = cache?.frontmatter;
+                if (fm?.['mapId'] === mapId || (fm && Array.isArray(fm['relatedMapIds']) && (fm['relatedMapIds'] as string[]).includes(mapId))) {
                     const marker = await this.entityToMarker(magicSystem, 'magicsystem', file);
                     if (marker) markers.push(marker);
                 }
@@ -180,8 +181,8 @@ export class EntityMarkerDiscovery {
             const file = scene.filePath ? this.app.vault.getAbstractFileByPath(scene.filePath) : null;
             if (file instanceof TFile) {
                 const cache = this.app.metadataCache.getFileCache(file);
-                const fm = cache?.frontmatter as any;
-                if (fm?.mapId === mapId || (Array.isArray(fm?.relatedMapIds) && fm.relatedMapIds.includes(mapId))) {
+                const fm: Record<string, unknown> | undefined = cache?.frontmatter;
+                if (fm?.['mapId'] === mapId || (fm && Array.isArray(fm['relatedMapIds']) && (fm['relatedMapIds'] as string[]).includes(mapId))) {
                     const marker = await this.entityToMarker(scene, 'scene', file);
                     if (marker) markers.push(marker);
                 }
@@ -193,8 +194,8 @@ export class EntityMarkerDiscovery {
             const file = reference.filePath ? this.app.vault.getAbstractFileByPath(reference.filePath) : null;
             if (file instanceof TFile) {
                 const cache = this.app.metadataCache.getFileCache(file);
-                const fm = cache?.frontmatter as any;
-                if (fm?.mapId === mapId || (Array.isArray(fm?.relatedMapIds) && fm.relatedMapIds.includes(mapId))) {
+                const fm: Record<string, unknown> | undefined = cache?.frontmatter;
+                if (fm?.['mapId'] === mapId || (fm && Array.isArray(fm['relatedMapIds']) && (fm['relatedMapIds'] as string[]).includes(mapId))) {
                     const marker = await this.entityToMarker(reference, 'reference', file);
                     if (marker) markers.push(marker);
                 }
@@ -246,16 +247,20 @@ export class EntityMarkerDiscovery {
             if (!(fileObj instanceof TFile)) continue;
 
             const cache = this.app.metadataCache.getFileCache(fileObj);
-            const fm = cache?.frontmatter as any;
+            const fm: Record<string, unknown> | undefined = cache?.frontmatter;
 
             // Check for mapCoordinates, lat/long, or location array
             let coords: [number, number] | undefined;
-            if (fm?.mapCoordinates && Array.isArray(fm.mapCoordinates) && fm.mapCoordinates.length >= 2) {
-                coords = [Number(fm.mapCoordinates[0]), Number(fm.mapCoordinates[1])];
-            } else if (fm?.lat !== undefined && fm?.long !== undefined) {
-                coords = [Number(fm.lat), Number(fm.long)];
-            } else if (fm?.location && Array.isArray(fm.location) && fm.location.length >= 2) {
-                coords = [Number(fm.location[0]), Number(fm.location[1])];
+            const fmCoords = fm?.['mapCoordinates'];
+            const fmLat = fm?.['lat'];
+            const fmLong = fm?.['long'];
+            const fmLoc = fm?.['location'];
+            if (fmCoords && Array.isArray(fmCoords) && fmCoords.length >= 2) {
+                coords = [Number(fmCoords[0]), Number(fmCoords[1])];
+            } else if (fmLat !== undefined && fmLong !== undefined) {
+                coords = [Number(fmLat), Number(fmLong)];
+            } else if (fmLoc && Array.isArray(fmLoc) && fmLoc.length >= 2) {
+                coords = [Number(fmLoc[0]), Number(fmLoc[1])];
             }
 
             if (coords && !isNaN(coords[0]) && !isNaN(coords[1])) {
@@ -278,7 +283,8 @@ export class EntityMarkerDiscovery {
             const cache = this.app.metadataCache.getFileCache(file);
             if (!cache?.frontmatter) continue;
 
-            const fileTags = cache.frontmatter.tags || [];
+            const fmTags: Record<string, unknown> = cache.frontmatter;
+            const fileTags: string[] = Array.isArray(fmTags['tags']) ? (fmTags['tags'] as unknown[]).map(String) : [];
             const hasMatchingTag = tags.some(tag =>
                 fileTags.includes(tag) || fileTags.includes(`#${tag}`)
             );
@@ -305,17 +311,21 @@ export class EntityMarkerDiscovery {
         const cache = this.app.metadataCache.getFileCache(file);
         if (!cache?.frontmatter) return null;
 
-        const fm = cache.frontmatter as any;
+        const fm: Record<string, unknown> = cache.frontmatter;
 
         // Get coordinates
         let location: [number, number] | undefined = coords;
         if (!location) {
-            if (fm?.mapCoordinates && Array.isArray(fm.mapCoordinates) && fm.mapCoordinates.length >= 2) {
-                location = [Number(fm.mapCoordinates[0]), Number(fm.mapCoordinates[1])];
-            } else if (fm?.lat !== undefined && fm?.long !== undefined) {
-                location = [Number(fm.lat), Number(fm.long)];
-            } else if (fm?.location && Array.isArray(fm.location) && fm.location.length >= 2) {
-                location = [Number(fm.location[0]), Number(fm.location[1])];
+            const fmCoords = fm['mapCoordinates'];
+            const fmLat = fm['lat'];
+            const fmLong = fm['long'];
+            const fmLoc = fm['location'];
+            if (fmCoords && Array.isArray(fmCoords) && fmCoords.length >= 2) {
+                location = [Number(fmCoords[0]), Number(fmCoords[1])];
+            } else if (fmLat !== undefined && fmLong !== undefined) {
+                location = [Number(fmLat), Number(fmLong)];
+            } else if (fmLoc && Array.isArray(fmLoc) && fmLoc.length >= 2) {
+                location = [Number(fmLoc[0]), Number(fmLoc[1])];
             }
         }
 
@@ -326,14 +336,14 @@ export class EntityMarkerDiscovery {
             loc: location,
             link: `[[${file.basename}]]`,
             description: entity.name,
-            id: fm?.markerId || `${type}-${file.basename}`
+            id: (fm['markerId'] as string | undefined) || `${type}-${file.basename}`
         };
 
         // Add custom icon/color if specified
-        if (fm?.mapIcon) marker.icon = fm.mapIcon;
-        if (fm?.mapColor) marker.iconColor = fm.mapColor;
-        if (fm?.markerIcon) marker.icon = fm.markerIcon;
-        if (fm?.markerColor) marker.iconColor = fm.markerColor;
+        if (fm['mapIcon']) marker.icon = String(fm['mapIcon']);
+        if (fm['mapColor']) marker.iconColor = String(fm['mapColor']);
+        if (fm['markerIcon']) marker.icon = String(fm['markerIcon']);
+        if (fm['markerColor']) marker.iconColor = String(fm['markerColor']);
 
         return marker;
     }
@@ -345,16 +355,20 @@ export class EntityMarkerDiscovery {
         const cache = this.app.metadataCache.getFileCache(file);
         if (!cache?.frontmatter) return null;
 
-        const fm = cache.frontmatter as any;
+        const fm: Record<string, unknown> = cache.frontmatter;
 
         // Get coordinates
         let location: [number, number] | undefined;
-        if (fm?.mapCoordinates && Array.isArray(fm.mapCoordinates) && fm.mapCoordinates.length >= 2) {
-            location = [Number(fm.mapCoordinates[0]), Number(fm.mapCoordinates[1])];
-        } else if (fm?.lat !== undefined && fm?.long !== undefined) {
-            location = [Number(fm.lat), Number(fm.long)];
-        } else if (fm?.location && Array.isArray(fm.location) && fm.location.length >= 2) {
-            location = [Number(fm.location[0]), Number(fm.location[1])];
+        const fmCoords2 = fm['mapCoordinates'];
+        const fmLat2 = fm['lat'];
+        const fmLong2 = fm['long'];
+        const fmLoc2 = fm['location'];
+        if (fmCoords2 && Array.isArray(fmCoords2) && fmCoords2.length >= 2) {
+            location = [Number(fmCoords2[0]), Number(fmCoords2[1])];
+        } else if (fmLat2 !== undefined && fmLong2 !== undefined) {
+            location = [Number(fmLat2), Number(fmLong2)];
+        } else if (fmLoc2 && Array.isArray(fmLoc2) && fmLoc2.length >= 2) {
+            location = [Number(fmLoc2[0]), Number(fmLoc2[1])];
         }
 
         if (!location) return null;
@@ -367,8 +381,8 @@ export class EntityMarkerDiscovery {
             id: `marker-${file.basename}`
         };
 
-        if (fm?.mapIcon) marker.icon = fm.mapIcon;
-        if (fm?.mapColor) marker.iconColor = fm.mapColor;
+        if (fm['mapIcon']) marker.icon = String(fm['mapIcon']);
+        if (fm['mapColor']) marker.iconColor = String(fm['mapColor']);
 
         return marker;
     }

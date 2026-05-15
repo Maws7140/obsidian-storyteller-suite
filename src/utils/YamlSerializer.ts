@@ -140,17 +140,17 @@ export function stringifyYamlWithLogging(
     originalFrontmatter?: Record<string, unknown>,
     context?: string
 ): string {
-    const prefix = context ? `[${context}]` : '[YamlSerializer]';
-
     // Validate before serialization
     if (originalFrontmatter) {
         const validation = validateFrontmatterPreservation(obj, originalFrontmatter);
 
         if (!validation.valid) {
+        	// intentional
             
         }
 
         if (validation.lostFields.length > 0) {
+        	// intentional
             
         }
     }
@@ -161,6 +161,7 @@ export function stringifyYamlWithLogging(
         .map(([key]) => key);
 
     if (emptyFields.length > 0) {
+    	// intentional
         
     }
 
@@ -170,6 +171,7 @@ export function stringifyYamlWithLogging(
     // Verify empty fields made it through
     for (const field of emptyFields) {
         if (!yaml.includes(`${field}:`)) {
+        	// intentional
             
         }
     }

@@ -112,7 +112,7 @@ export class LocationModal extends ResponsiveModal {
                                             await this.applyTemplateToLocationWithVariables(defaultTemplate, variableValues);
                                             new Notice('Default template applied');
                                             this.refresh();
-                                        } catch (error) {
+                                        } catch {
                                             
                                             new Notice('Error applying default template');
                                         }
@@ -127,7 +127,7 @@ export class LocationModal extends ResponsiveModal {
                         try {
                             await this.applyTemplateToLocation(defaultTemplate);
                             new Notice('Default template applied');
-                        } catch (error) {
+                        } catch {
                             
                             new Notice('Error applying default template');
                         }
@@ -198,7 +198,7 @@ export class LocationModal extends ResponsiveModal {
                                                         await this.applyTemplateToLocationWithVariables(template, variableValues);
                                                         new Notice(`Template "${template.name}" applied`);
                                                         this.refresh();
-                                                    } catch (error) {
+                                                    } catch {
                                                         
                                                         new Notice('Error applying template');
                                                     }
@@ -412,7 +412,7 @@ export class LocationModal extends ResponsiveModal {
                                 this.renderImagesList(this.imagesListEl, this.location.images);
                             }
                             new Notice(t('imageUploaded', fileName));
-                        } catch (error) {
+                        } catch {
                             
                             new Notice(t('errorUploadingImage'));
                         }
@@ -746,7 +746,7 @@ export class LocationModal extends ResponsiveModal {
                             await this.onDelete(this.location);
                             new Notice(t('locationDeleted', this.location.name));
                             this.close();
-                        } catch (error) {
+                        } catch {
                             
                             new Notice(t('failedToDelete', t('location')));
                         }
@@ -776,7 +776,7 @@ export class LocationModal extends ResponsiveModal {
                 this.location.customFields = customFields;
                 await this.onSubmit(this.location);
                 this.close();
-            } catch (error) {
+            } catch {
                 
                 new Notice(t('failedToSave', t('location')));
             }
@@ -882,6 +882,7 @@ export class LocationModal extends ResponsiveModal {
         templateLoc = substitutionResult.value;
 
         if (substitutionResult.warnings.length > 0) {
+        	// intentional
             
         }
 
@@ -910,7 +911,8 @@ export class LocationModal extends ResponsiveModal {
                     fields = { ...fields, ...parsed };
                 }
                 
-            } catch (error) {
+            } catch {
+            	// intentional
                 
             }
         } else if (customYamlFields) {
@@ -933,7 +935,8 @@ export class LocationModal extends ResponsiveModal {
                 }
 
                 
-            } catch (error) {
+            } catch {
+            	// intentional
                 
             }
         } else if (sectionContent) {

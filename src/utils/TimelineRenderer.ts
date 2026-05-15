@@ -4,11 +4,22 @@
 import { App, Notice, TFile } from 'obsidian';
 import StorytellerSuitePlugin from '../main';
 import { Event, Location, Scene } from '../types';
-import { parseEventDate, toMillis, toDisplay } from './DateParsing';
+import { parseEventDate, toMillis, toDisplay, type ParsedEventDate } from './DateParsing';
 import { EventModal } from '../modals/EventModal';
 import { ConflictDetector, DetectedConflict } from './ConflictDetector';
 import { PlatformUtils } from './PlatformUtils';
 import { Timeline, DataSet } from 'vis-timeline/standalone';
+import type { DataItem, DataGroup, TimelineOptions, TimelineEventPropertiesResult, TimelineItem } from 'vis-timeline';
+
+/** Minimal interface for the vis DataSet operations used in this file. */
+interface VisDataSet<T extends { id?: string | number }> {
+    add(data: T | T[]): (string | number)[];
+    getIds(): (string | number)[];
+    length: number;
+}
+
+/** Typed constructor wrapper because DataSet from vis-timeline/standalone lacks generic types. */
+const TypedDataSet = DataSet as unknown as new <T extends { id?: string | number }>() => VisDataSet<T>;
 // @ts-ignore: timeline-arrows bundled dependency
 import Arrow from '../vendor/timeline-arrows.js';
 
@@ -46,10 +57,8 @@ export class TimelineRenderer {
     private app: App;
     private plugin: StorytellerSuitePlugin;
     private container: HTMLElement;
-     
-    private timeline: any = null;
-     
-    private dependencyArrows: any = null;
+    private timeline: Timeline | null = null;
+    private dependencyArrows: Record<string, unknown> | null = null;
 
     // Configuration
     private options: TimelineRendererOptions;
@@ -122,14 +131,14 @@ export class TimelineRenderer {
     private async loadOptionalTimelineSources(): Promise<void> {
         try {
             this.scenes = await this.plugin.listScenes();
-        } catch (error) {
+        } catch {
             this.scenes = [];
             
         }
 
         try {
             this.watchedNotes = this.scanWatchedNotes();
-        } catch (error) {
+        } catch {
             this.watchedNotes = [];
             
         }
@@ -220,20 +229,20 @@ export class TimelineRenderer {
         for (const file of this.app.vault.getMarkdownFiles()) {
             const cache = this.app.metadataCache.getFileCache(file);
             if (!cache) continue;
-            const fm = cache.frontmatter;
+            const fm: Record<string, unknown> | undefined = cache.frontmatter;
             const dateVal = fm?.[prop];
             const hasProp = dateVal && typeof dateVal === 'string';
             const hasTag = cache.tags?.some(t => t.tag === '#' + tag);
-            if (hasProp) {
+            if (hasProp && typeof dateVal === 'string') {
                 results.push({
-                    name: fm?.title || file.basename,
+                    name: (typeof fm?.['title'] === 'string' ? fm['title'] : null) || file.basename,
                     date: dateVal,
                     filePath: file.path
                 });
-            } else if (hasTag && fm?.date && typeof fm.date === 'string') {
+            } else if (hasTag && fm?.['date'] && typeof fm['date'] === 'string') {
                 results.push({
-                    name: fm?.title || file.basename,
-                    date: fm.date,
+                    name: (typeof fm?.['title'] === 'string' ? fm['title'] : null) || file.basename,
+                    date: fm['date'],
                     filePath: file.path
                 });
             }
@@ -358,7 +367,7 @@ export class TimelineRenderer {
         const itemIds = this.eventIndexToItemIds.get(idx) || [idx];
 
         try {
-            this.timeline.setSelection([itemIds[0]], { focus: true, animation: { duration: 220, easingFunction: 'easeInOutQuad' } });
+            this.timeline.setSelection([itemIds[0]], { focus: true, animation: { animation: { duration: 220, easingFunction: 'easeInOutQuad' } } });
             const parsed = event.dateTime ? parseEventDate(event.dateTime, { referenceDate: this.plugin.getReferenceTodayDate() }) : null;
             const startMs = toMillis(parsed?.start);
             if (startMs != null) {
@@ -435,8 +444,8 @@ export class TimelineRenderer {
             return;
         }
         try {
-            // Serialize the timeline DOM to SVG-backed canvas via inline serialization
-            const { default: domtoimage } = await import('dom-to-image' as any).catch(() => null) || { default: null };
+            const dtiMod = await import('dom-to-image').catch(() => null);
+            const domtoimage = dtiMod?.default ?? null;
             if (domtoimage) {
                 const dataUrl = format === 'png'
                     ? await domtoimage.toPng(timelineEl)
@@ -557,7 +566,7 @@ export class TimelineRenderer {
                 await this.app.vault.create(filePath, content);
             }
             new Notice(`Timeline exported to ${filePath}`);
-        } catch (e) {
+        } catch {
             new Notice('Failed to write CSV export.');
             
         }
@@ -595,7 +604,7 @@ export class TimelineRenderer {
                 await this.app.vault.create(filePath, content);
             }
             new Notice(`Timeline exported to ${filePath}`);
-        } catch (e) {
+        } catch {
             new Notice('Failed to write JSON export.');
             
         }
@@ -636,7 +645,7 @@ export class TimelineRenderer {
                 await this.app.vault.create(filePath, content);
             }
             new Notice(`Timeline exported to ${filePath}`);
-        } catch (e) {
+        } catch {
             new Notice('Failed to write Markdown export.');
             
         }
@@ -683,7 +692,10 @@ export class TimelineRenderer {
         }
         if (this.dependencyArrows) {
             try {
-                this.dependencyArrows.removeArrows();
+                const removeAll = this.dependencyArrows['removeArrows'];
+                if (typeof removeAll === 'function') {
+                    (removeAll as () => void).call(this.dependencyArrows);
+                }
             } catch {
                 // Ignore errors removing arrows
             }
@@ -745,7 +757,7 @@ export class TimelineRenderer {
 
             const useNativeMobileScroll = PlatformUtils.shouldUseSimplifiedUI();
              
-            const timelineOptions: any = {
+            const timelineOptions: TimelineOptions & Record<string, unknown> = {
                 stack: grouped ? true : this.options.stackEnabled,
                 stackSubgroups: true,
                 margin: { item: itemMargin, axis: 32 },
@@ -792,7 +804,7 @@ export class TimelineRenderer {
                 
                 // Add proper onMove callback for drag-and-drop
                  
-                timelineOptions.onMove = async (item: any, callback: (item: any) => void) => {
+                timelineOptions.onMove = (item: TimelineItem, callback: (item: TimelineItem | null) => void) => { void (async () => {
                     const eventIndex = this.resolveEventIndexFromItemId(item.id);
                     if (eventIndex == null) {
                         callback(null); // Cancel move if event not found
@@ -818,12 +830,12 @@ export class TimelineRenderer {
                         await this.plugin.saveEvent(event);
                         new Notice(`Event "${event.name}" rescheduled`);
                         callback(item); // Confirm the move
-                    } catch (error) {
+                    } catch {
                         
                         new Notice('Error saving event changes');
                         callback(null); // Cancel move on error
                     }
-                };
+                })(); };
             }
 
             // Create timeline with error handling (retry with safe options if advanced options fail)
@@ -831,7 +843,7 @@ export class TimelineRenderer {
                 this.timeline = groups 
                     ? new Timeline(this.container, items, groups, timelineOptions)
                     : new Timeline(this.container, items, timelineOptions);
-            } catch (timelineError) {
+            } catch {
                 
                 try {
                     const safeOptions = {
@@ -844,7 +856,7 @@ export class TimelineRenderer {
                     this.timeline = groups
                         ? new Timeline(this.container, items, groups, safeOptions)
                         : new Timeline(this.container, items, safeOptions);
-                } catch (safeError) {
+                } catch {
                     
                     new Notice('Timeline rendering failed. Check console for details.');
                     // Create a fallback message in the container
@@ -866,14 +878,15 @@ export class TimelineRenderer {
                     if (typeof this.timeline.setCurrentTime === 'function') {
                         this.timeline.setCurrentTime(referenceDate);
                     }
-                } catch (timeError) {
+                } catch {
+                	// intentional
                     
                 }
             }
 
             // Handle double-click to edit
              
-            this.timeline.on('doubleClick', (props: any) => {
+            this.timeline.on('doubleClick', (props: TimelineEventPropertiesResult) => {
                 if (props.item != null) {
                     const idx = this.resolveEventIndexFromItemId(props.item);
                     if (idx == null) return;
@@ -888,7 +901,7 @@ export class TimelineRenderer {
 
             // Handle selection for synchronized list/search UX
              
-            this.timeline.on('select', (props: any) => {
+            this.timeline.on('select', (props: { items?: (string | number)[] }) => {
                 try {
                     const selectedId = Array.isArray(props?.items) ? props.items[0] : undefined;
                     const selectedIdx = this.resolveEventIndexFromItemId(selectedId);
@@ -906,7 +919,7 @@ export class TimelineRenderer {
             // Grouped timelines can drift a frame during horizontal pan/scroll.
             // Force a lightweight redraw after range changes so stems/boxes remain anchored.
              
-            this.timeline.on('rangechanged', (_props: any) => {
+            this.timeline.on('rangechanged', (_props: unknown) => {
                 if (!grouped) return;
                 window.requestAnimationFrame(() => {
                     try {
@@ -928,9 +941,9 @@ export class TimelineRenderer {
                             strokeWidth: 2.75,
                             hideWhenItemsNotVisible: true
                         };
-                        this.dependencyArrows = new Arrow(this.timeline, arrowSpecs, arrowOptions);
+                        this.dependencyArrows = new Arrow(this.timeline, arrowSpecs, arrowOptions) as unknown as Record<string, unknown>;
                     }
-                } catch (arrowError) {
+                } catch {
                     
                     // Non-critical, continue without arrows
                 }
@@ -940,12 +953,12 @@ export class TimelineRenderer {
             if (this.narrativeOrder) {
                 try {
                     this.renderNarrativeConnectors();
-                } catch (connectorError) {
+                } catch {
                     
                     // Non-critical, continue without connectors
                 }
             }
-        } catch (error) {
+        } catch {
             
             new Notice('Timeline could not be rendered. Check console for details.');
             // Show error state in container
@@ -997,13 +1010,12 @@ export class TimelineRenderer {
     private applyVerticalWheelFallback(deltaY: number, event: WheelEvent): boolean {
         if (!deltaY || !this.timeline) return false;
 
-         
-        const timelineAny = this.timeline;
-        if (typeof timelineAny._getScrollTop === 'function' && typeof timelineAny._setScrollTop === 'function') {
-            const current = timelineAny._getScrollTop();
-            const next = timelineAny._setScrollTop(current + deltaY);
+        const timelineInternal = this.timeline as unknown as { _getScrollTop?: () => number; _setScrollTop?: (v: number) => number; _redraw?: () => void };
+        if (typeof timelineInternal._getScrollTop === 'function' && typeof timelineInternal._setScrollTop === 'function') {
+            const current = timelineInternal._getScrollTop();
+            const next = timelineInternal._setScrollTop(current + deltaY);
             if (next !== current) {
-                timelineAny._redraw?.();
+                timelineInternal._redraw?.();
                 event.preventDefault();
                 return true;
             }
@@ -1065,16 +1077,13 @@ export class TimelineRenderer {
      * Build datasets for vis-timeline
      */
     private buildDatasets(referenceDate: Date): {
-         
-        items: any;
-         
-        groups?: any;
+        items: VisDataSet<DataItem>;
+        groups?: VisDataSet<DataGroup>;
         legend: Array<{ key: string; label: string; color: string }>;
     } {
-        const items = new DataSet();
+        const items = new TypedDataSet<DataItem>();
         const legend: Array<{ key: string; label: string; color: string }> = [];
-         
-        let groupsDS: any;
+        let groupsDS: VisDataSet<DataGroup> | undefined;
         this.itemIdToEventIndex.clear();
         this.eventIndexToItemIds.clear();
         this.eventIndexToGroupItemIds.clear();
@@ -1179,7 +1188,7 @@ export class TimelineRenderer {
             if (originalIdx === -1) return;
 
              
-            const parsed = evt.dateTime ? parseEventDate(evt.dateTime, { referenceDate }) : { error: 'empty' } as any;
+            const parsed = evt.dateTime ? parseEventDate(evt.dateTime, { referenceDate }) : { error: 'empty' };
             const startMs = toMillis(parsed.start);
             const endMs = toMillis(parsed.end);
             if (startMs == null) return;
@@ -1311,6 +1320,7 @@ export class TimelineRenderer {
             let contentText = eventName;
             
             if (!evt.name?.trim()) {
+            	// intentional
                 
             }
             if (this.narrativeOrder && evt.narrativeSequence !== undefined) {
@@ -1408,7 +1418,7 @@ export class TimelineRenderer {
                     group: target.id,
                     style,
                     progress: clampedProgress
-                });
+                } as DataItem);
                 this.registerEventItem(itemId, originalIdx, target.id);
             });
         });
@@ -1487,7 +1497,7 @@ export class TimelineRenderer {
                 .filter(group => usedGroupIds.has(group.id));
 
             if (activeGroups.length > 0) {
-                groupsDS = new DataSet();
+                groupsDS = new TypedDataSet<DataGroup>();
                 legend.length = 0;
                 activeGroups.forEach(group => {
                     groupsDS!.add({ id: group.id, content: group.content });
@@ -1749,7 +1759,7 @@ export class TimelineRenderer {
      * Make tooltip for event
      */
      
-    private makeTooltip(evt: Event, parsed: any, conflicts: DetectedConflict[] = []): string {
+    private makeTooltip(evt: Event, parsed: ParsedEventDate | null, conflicts: DetectedConflict[] = []): string {
         const parts: string[] = [evt.name || '(Untitled Event)'];
         const dt = parsed?.start ? toDisplay(parsed.start, undefined, parsed.isBCE, parsed.originalYear) : (evt.dateTime || '');
         if (dt) parts.push(dt);

@@ -747,7 +747,7 @@ export class MapEntityRenderer {
                 default:
                     return null;
             }
-        } catch (error) {
+        } catch {
             
             return null;
         }
@@ -1119,7 +1119,8 @@ export class MapEntityRenderer {
                                 }
                             };
                         }
-                    } catch (error) {
+                    } catch {
+                    	// intentional
                         
                     }
                 }
@@ -1579,7 +1580,7 @@ export class MapEntityRenderer {
                 await this.renderEntitiesForMap(mapId);
 
                 new Notice('Marker position updated.');
-            } catch (error) {
+            } catch {
                 
                 new Notice('Error updating marker position. See console for details.');
 

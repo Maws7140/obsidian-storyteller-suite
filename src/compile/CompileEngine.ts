@@ -268,7 +268,7 @@ export class CompileEngine {
                         
                         contents = ''; // Empty content if file missing
                     }
-                } catch (error) {
+                } catch {
                     
                     contents = ''; // Empty content on read error
                 }

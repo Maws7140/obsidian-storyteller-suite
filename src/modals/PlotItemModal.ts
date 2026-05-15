@@ -123,7 +123,7 @@ export class PlotItemModal extends ResponsiveModal {
                                             await this.applyTemplateToItemWithVariables(defaultTemplate, variableValues);
                                             new Notice('Default template applied');
                                             this.refresh();
-                                        } catch (error) {
+                                        } catch {
                                             
                                             new Notice('Error applying default template');
                                         }
@@ -138,7 +138,7 @@ export class PlotItemModal extends ResponsiveModal {
                         try {
                             await this.applyTemplateToItem(defaultTemplate);
                             new Notice('Default template applied');
-                        } catch (error) {
+                        } catch {
                             
                             new Notice('Error applying default template');
                         }
@@ -175,7 +175,7 @@ export class PlotItemModal extends ResponsiveModal {
                                                         await this.applyTemplateToItemWithVariables(template, variableValues);
                                                         new Notice(`Template "${template.name}" applied`);
                                                         this.refresh();
-                                                    } catch (error) {
+                                                    } catch {
                                                         
                                                         new Notice('Error applying template');
                                                     }
@@ -1089,6 +1089,7 @@ export class PlotItemModal extends ResponsiveModal {
         templateItem = substitutionResult.value;
 
         if (substitutionResult.warnings.length > 0) {
+        	// intentional
             
         }
 
@@ -1117,7 +1118,8 @@ export class PlotItemModal extends ResponsiveModal {
                     fields = { ...fields, ...parsed };
                 }
                 
-            } catch (error) {
+            } catch {
+            	// intentional
                 
             }
         } else if (customYamlFields) {
@@ -1146,7 +1148,8 @@ export class PlotItemModal extends ResponsiveModal {
                 }
 
                 
-            } catch (error) {
+            } catch {
+            	// intentional
                 
             }
         } else if (sectionContent) {

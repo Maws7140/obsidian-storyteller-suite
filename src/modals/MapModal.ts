@@ -111,7 +111,7 @@ export class MapModal extends ResponsiveModal {
                                                 this.map.name = 'Untitled Map';
                                             }
                                             this.refresh();
-                                        } catch (error) {
+                                        } catch {
                                             
                                             new Notice('Error applying default template');
                                         }
@@ -139,7 +139,7 @@ export class MapModal extends ResponsiveModal {
                             if (!this.map.name) {
                                 this.map.name = 'Untitled Map';
                             }
-                        } catch (error) {
+                        } catch {
                             
                             new Notice('Error applying default template');
                         }
@@ -176,7 +176,7 @@ export class MapModal extends ResponsiveModal {
                                                         await this.applyTemplateToMapWithVariables(template, variableValues);
                                                         new Notice(`Template "${template.name}" applied`);
                                                         this.refresh();
-                                                    } catch (error) {
+                                                    } catch {
                                                         
                                                         new Notice('Error applying template');
                                                     }
@@ -479,7 +479,8 @@ export class MapModal extends ResponsiveModal {
                 try {
                     await this.autoLinkMapAndLocation();
                     
-                } catch (linkError) {
+                } catch {
+                	// intentional
                     
                 }
 
@@ -593,7 +594,7 @@ export class MapModal extends ResponsiveModal {
                 new Notice(`Warning: ${validation.errors[0]} (map will still be saved)`, 5000);
             }
 
-        } catch (error) {
+        } catch {
             
             // Don't block save on auto-link errors
             new Notice('Note: Could not auto-link all hierarchies. Map will still be saved.', 4000);
@@ -640,6 +641,7 @@ export class MapModal extends ResponsiveModal {
         templateMap = substitutionResult.value;
 
         if (substitutionResult.warnings.length > 0) {
+        	// intentional
             
         }
 
@@ -668,7 +670,8 @@ export class MapModal extends ResponsiveModal {
                     fields = { ...fields, ...parsed };
                 }
                 
-            } catch (error) {
+            } catch {
+            	// intentional
                 
             }
         } else if (customYamlFields) {
@@ -688,7 +691,8 @@ export class MapModal extends ResponsiveModal {
                 }
 
                 
-            } catch (error) {
+            } catch {
+            	// intentional
                 
             }
         } else if (sectionContent) {

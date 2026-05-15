@@ -163,7 +163,7 @@ export class GalleryModal extends Modal {
                         new Notice(`Failed to import ${failed.length} image${failed.length === 1 ? '' : 's'}. Check console for details.`);
                     }
                 }
-            } catch (error) {
+            } catch {
                 
                 new Notice('Error uploading gallery images. Check console for details.');
             } finally {

@@ -37,7 +37,8 @@ export class SaveNoteAsTemplateCommand {
             const { parseFrontmatterFromContent } = await import('../yaml/EntitySections');
             const frontmatter = parseFrontmatterFromContent(content);
             detectedEntityType = NoteToTemplateConverter.detectEntityType(file, frontmatter);
-        } catch (error) {
+        } catch {
+        	// intentional
             
         }
 

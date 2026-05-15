@@ -48,7 +48,7 @@ export class LocationPicker {
                     this.currentLocationId = undefined;
                     void this.render();
                 });
-            } catch (error) {
+            } catch {
                 
                 selectionDisplay.createSpan({ cls: 'selection-empty', text: 'Invalid location' });
             }

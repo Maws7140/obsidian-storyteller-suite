@@ -78,7 +78,7 @@ export class ChapterModal extends ResponsiveModal {
                                             await this.applyTemplateToChapterWithVariables(defaultTemplate, variableValues);
                                             new Notice('Default template applied');
                                             this.refresh();
-                                        } catch (error) {
+                                        } catch {
                                             
                                             new Notice('Error applying default template');
                                         }
@@ -93,7 +93,7 @@ export class ChapterModal extends ResponsiveModal {
                         try {
                             await this.applyTemplateToChapter(defaultTemplate);
                             new Notice('Default template applied');
-                        } catch (error) {
+                        } catch {
                             
                             new Notice('Error applying default template');
                         }
@@ -130,7 +130,7 @@ export class ChapterModal extends ResponsiveModal {
                                                         await this.applyTemplateToChapterWithVariables(template, variableValues);
                                                         new Notice(`Template "${template.name}" applied`);
                                                         this.refresh();
-                                                    } catch (error) {
+                                                    } catch {
                                                         
                                                         new Notice('Error applying template');
                                                     }
@@ -432,6 +432,7 @@ export class ChapterModal extends ResponsiveModal {
         templateChapter = substitutionResult.value;
 
         if (substitutionResult.warnings.length > 0) {
+        	// intentional
             
         }
 
@@ -460,7 +461,8 @@ export class ChapterModal extends ResponsiveModal {
                     fields = { ...fields, ...parsed };
                 }
                 
-            } catch (error) {
+            } catch {
+            	// intentional
                 
             }
         } else if (customYamlFields) {
@@ -479,7 +481,8 @@ export class ChapterModal extends ResponsiveModal {
                     fields.summary = parsedSections['Summary'];
                 }
                 
-            } catch (error) {
+            } catch {
+            	// intentional
                 
             }
         } else if (sectionContent) {

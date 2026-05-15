@@ -274,8 +274,6 @@ export class MapHierarchyManager {
      */
     async autoLinkMapsToLocations(): Promise<void> {
         const maps = await this.mapManager.listMaps();
-        let created = 0;
-        let linked = 0;
 
         for (const map of maps) {
             // Skip if already has corresponding location
@@ -315,7 +313,6 @@ export class MapHierarchyManager {
                 }
 
                 await this.plugin.saveMap(map);
-                linked++;
             } else {
                 // Create new location for this map
                 const newLocation: Location = {
@@ -344,7 +341,6 @@ export class MapHierarchyManager {
                 // Update map with location reference (use name since we just created it)
                 map.correspondingLocationId = newLocation.name;
                 await this.plugin.saveMap(map);
-                created++;
             }
         }
 

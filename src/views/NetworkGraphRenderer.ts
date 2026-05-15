@@ -1,9 +1,11 @@
 // Network Graph Renderer using Cytoscape.js
 // Visualizes relationships between story entities
 
-import cytoscape, { Core, NodeSingular, EdgeSingular } from 'cytoscape';
+import cytoscape, { Core, NodeSingular, EdgeSingular, LayoutOptions } from 'cytoscape';
 import StorytellerSuitePlugin from '../main';
 import { GraphFilters, GraphNode, GraphEdge, Character, Location, Event, PlotItem, Culture, Economy, MagicSystem } from '../types';
+
+type NodeEntityData = Character | Location | Event | PlotItem | Culture | Economy | MagicSystem;
 import { 
     extractAllRelationships, 
     buildBidirectionalEdges,
@@ -356,7 +358,7 @@ export class NetworkGraphRenderer {
         this.cy = cytoscape({
             container: this.canvasEl,
             elements: elements,
-            style: this.getCytoscapeStyle(),
+            style: this.getCytoscapeStyle() as unknown as cytoscape.StylesheetStyle[],
             layout: this.getLayoutOptions('cose'),
             minZoom: 0.2,
             maxZoom: 4,
@@ -403,7 +405,7 @@ export class NetworkGraphRenderer {
     }
 
     // Get layout configuration options based on selected layout type
-    private getLayoutOptions(layoutName: 'cose' | 'circle' | 'grid' | 'concentric'): any {
+    private getLayoutOptions(layoutName: 'cose' | 'circle' | 'grid' | 'concentric'): LayoutOptions {
         const baseOptions = {
             animate: true,
             animationDuration: 500,
@@ -416,31 +418,31 @@ export class NetworkGraphRenderer {
                 return {
                     ...baseOptions,
                     name: 'cose',
-                    nodeRepulsion: 25000, // Increased from 15000 for better spacing
-                    idealEdgeLength: 200, // Increased from 150 for more space
+                    nodeRepulsion: 25000,
+                    idealEdgeLength: 200,
                     edgeElasticity: 100,
                     nestingFactor: 5,
-                    gravity: 30, // Reduced from 50 for more spread
+                    gravity: 30,
                     numIter: 1000,
                     initialTemp: 200,
                     coolingFactor: 0.95,
                     minTemp: 1.0,
-                    componentSpacing: 150, // NEW: space between disconnected components
-                    nodeOverlap: 20, // NEW: prevent node overlap
-                    nodeDimensionsIncludeLabels: true // Prevent label overlap
+                    componentSpacing: 150,
+                    nodeOverlap: 20,
+                    nodeDimensionsIncludeLabels: true
                 };
             case 'circle':
                 return {
                     ...baseOptions,
                     name: 'circle',
-                    radius: undefined, // Auto-calculate
+                    radius: undefined,
                     spacingFactor: 1.5
                 };
             case 'grid':
                 return {
                     ...baseOptions,
                     name: 'grid',
-                    rows: undefined, // Auto-calculate
+                    rows: undefined,
                     cols: undefined,
                     spacingFactor: 1.5
                 };
@@ -449,16 +451,16 @@ export class NetworkGraphRenderer {
                     ...baseOptions,
                     name: 'concentric',
                     minNodeSpacing: 100,
-                    concentric: (node: any) => node.data('degree') || 0,
+                    concentric: (node: NodeSingular) => (node.data('degree') as number) || 0,
                     levelWidth: () => 2
                 };
             default:
-                return baseOptions;
+                return { ...baseOptions, name: 'cose' };
         }
     }
 
     // Get Cytoscape stylesheet with Obsidian theme integration
-    private getCytoscapeStyle(): any[] {
+    private getCytoscapeStyle() {
         // Compute CSS variables at runtime (Cytoscape doesn't support CSS vars)
         const borderColor = this.getCSSVariable('--background-modifier-border');
         const accentColor = this.getCSSVariable('--interactive-accent');
@@ -470,9 +472,8 @@ export class NetworkGraphRenderer {
             {
                 selector: 'node',
                 style: {
-                    'label': (node: any) => {
-                        const label = node.data('label');
-                        // Truncate long labels with ellipsis
+                    'label': (node: NodeSingular) => {
+                        const label = node.data('label') as string;
                         return label && label.length > 15 ? label.substring(0, 15) + '...' : label;
                     },
                     'text-valign': 'center', // Center labels on nodes for better readability
@@ -491,12 +492,12 @@ export class NetworkGraphRenderer {
                     'border-width': 2,
                     'border-color': borderColor,
                     // Enhanced dynamic sizing based on degree (connections)
-                    'width': (node: any) => {
-                        const degree = node.data('degree') || 0;
-                        return Math.max(40, Math.min(120, 40 + degree * 8)); // More pronounced: 40-120px
+                    'width': (node: NodeSingular) => {
+                        const degree = (node.data('degree') as number) || 0;
+                        return Math.max(40, Math.min(120, 40 + degree * 8));
                     },
-                    'height': (node: any) => {
-                        const degree = node.data('degree') || 0;
+                    'height': (node: NodeSingular) => {
+                        const degree = (node.data('degree') as number) || 0;
                         return Math.max(40, Math.min(120, 40 + degree * 8));
                     },
                     'text-wrap': 'wrap',
@@ -771,13 +772,13 @@ export class NetworkGraphRenderer {
 
         // Click on node to navigate to entity
         this.cy.on('tap', 'node', (evt) => {
-            const node = evt.target;
+            const node = evt.target as NodeSingular;
             this.handleNodeClick(node);
         });
 
         // Enhanced hover effects with highlighting and info panel update
         this.cy.on('mouseover', 'node', (evt) => {
-            const node = evt.target;
+            const node = evt.target as NodeSingular;
 
             // Skip if already hovering this node - prevents redundant updates
             if (this.currentHoveredNode && this.currentHoveredNode.id() === node.id()) {
@@ -837,7 +838,7 @@ export class NetworkGraphRenderer {
         // Right-click to pin/unpin nodes
         this.cy.on('cxttap', 'node', (evt) => {
             evt.preventDefault();
-            const node = evt.target;
+            const node = evt.target as NodeSingular;
             this.toggleNodePin(node);
         });
 
@@ -878,8 +879,8 @@ export class NetworkGraphRenderer {
 
     // Handle node click - navigate to entity file
     private handleNodeClick(node: NodeSingular): void {
-        const entityData = node.data('entityData');
-        if (entityData && entityData.filePath) {
+        const entityData = node.data('entityData') as NodeEntityData | undefined;
+        if (entityData?.filePath) {
             const file = this.plugin.app.vault.getAbstractFileByPath(entityData.filePath);
             if (file instanceof TFile) {
                 void this.plugin.app.workspace.getLeaf(false).openFile(file);
@@ -938,9 +939,9 @@ export class NetworkGraphRenderer {
     private updateInfoPanel(node: NodeSingular): void {
         if (!this.infoPanelEl) return;
 
-        const entityData = node.data('entityData');
-        const type = node.data('type');
-        const label = node.data('label');
+        const entityData = node.data('entityData') as NodeEntityData | undefined;
+        const type = node.data('type') as string;
+        const label = node.data('label') as string;
         
         // Calculate actual degree by counting connected edges
         const degree = node.degree(false); // false = count each edge once (undirected)
@@ -1054,14 +1055,14 @@ export class NetworkGraphRenderer {
             const relationshipTypes: Record<string, number> = {};
             
             connectedNodes.forEach((n: NodeSingular) => {
-                const nodeType = n.data('type');
+                const nodeType = n.data('type') as string;
                 typeCounts[nodeType] = (typeCounts[nodeType] || 0) + 1;
             });
-            
+
             // Count relationship types
             const connectedEdges = node.connectedEdges();
             connectedEdges.forEach((e: EdgeSingular) => {
-                const relType = e.data('relationshipType') || 'unknown';
+                const relType = (e.data('relationshipType') as string | undefined) || 'unknown';
                 relationshipTypes[relType] = (relationshipTypes[relType] || 0) + 1;
             });
             
@@ -1484,7 +1485,7 @@ export class NetworkGraphRenderer {
         let found = false;
 
         this.cy.nodes().forEach(node => {
-            const label = node.data('label').toLowerCase();
+            const label = (node.data('label') as string).toLowerCase();
             if (label.includes(term)) {
                 node.addClass('highlighted');
                 found = true;
@@ -1681,7 +1682,7 @@ export class NetworkGraphRenderer {
         ];
 
         // Store positions of pinned nodes
-        const pinnedPositions = new Map<string, any>();
+        const pinnedPositions = new Map<string, { x: number; y: number }>();
         this.pinnedNodes.forEach(nodeId => {
             const node = this.cy?.getElementById(nodeId);
             if (node) {
@@ -1697,7 +1698,7 @@ export class NetworkGraphRenderer {
         this.pinnedNodes.forEach(nodeId => {
             const node = this.cy?.getElementById(nodeId);
             if (node && pinnedPositions.has(nodeId)) {
-                node.position(pinnedPositions.get(nodeId));
+                node.position(pinnedPositions.get(nodeId)!);
                 node.addClass('pinned');
                 node.lock();
             }

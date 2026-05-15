@@ -324,7 +324,7 @@ export class NetworkGraphView extends ItemView {
             
             // Add zoom indicator
             this.addZoomIndicator();
-        } catch (error) {
+        } catch {
             
             loader.remove();
             this.graphContainer.createEl('p', {

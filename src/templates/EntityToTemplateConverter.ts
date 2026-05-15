@@ -381,7 +381,7 @@ export class EntityToTemplateConverter {
         try {
             converted['yamlContent'] = entityToYaml(converted);
             converted['markdownContent'] = entityToMarkdown(converted);
-        } catch (error) {
+        } catch {
             
             // Fallback: keep old format if conversion fails
         }

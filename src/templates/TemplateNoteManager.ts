@@ -88,7 +88,8 @@ export class TemplateNoteManager {
         if (!folder) {
             try {
                 await this.app.vault.createFolder(this.notesFolder);
-            } catch (error) {
+            } catch {
+            	// intentional
                 
             }
         }
@@ -180,7 +181,8 @@ export class TemplateNoteManager {
                 if (template) {
                     this.noteTemplates.set(template.id, template);
                 }
-            } catch (error) {
+            } catch {
+            	// intentional
                 
             }
         }
@@ -251,7 +253,7 @@ export class TemplateNoteManager {
             template.noteFilePath = file.path;
 
             return template;
-        } catch (error) {
+        } catch {
             
             return null;
         }
@@ -393,7 +395,7 @@ export class TemplateNoteManager {
 
             // Save via template storage manager
             await this.templateStorageManager.saveTemplate(jsonTemplate);
-        } catch (error) {
+        } catch {
             
             // Don't throw - note is the source of truth
         }

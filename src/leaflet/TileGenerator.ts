@@ -303,12 +303,7 @@ export class TileGenerator {
         const arrayBuffer = await blob.arrayBuffer();
 
         // Save using Obsidian vault API
-        try {
-            await this.app.vault.createBinary(tilePath, arrayBuffer);
-        } catch (error) {
-            
-            throw error;
-        }
+        await this.app.vault.createBinary(tilePath, arrayBuffer);
     }
 
     /**
@@ -318,13 +313,7 @@ export class TileGenerator {
         const metadataPath = `StorytellerSuite/MapTiles/${hash}/metadata.json`;
         const content = JSON.stringify(metadata, null, 2);
 
-        try {
-            await this.app.vault.create(metadataPath, content);
-            
-        } catch (error) {
-            
-            throw error;
-        }
+        await this.app.vault.create(metadataPath, content);
     }
 
     /**

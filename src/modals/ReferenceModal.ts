@@ -67,7 +67,7 @@ export class ReferenceModal extends ResponsiveModal {
                                     try {
                                         await this.applyTemplateToReferenceWithVariables(defaultTemplate, variableValues);
                                         new Notice('Default template applied');
-                                    } catch (error) {
+                                    } catch {
                                         
                                         new Notice('Error applying default template');
                                     } finally {
@@ -82,7 +82,7 @@ export class ReferenceModal extends ResponsiveModal {
                         try {
                             await this.applyTemplateToReference(defaultTemplate);
                             new Notice('Default template applied');
-                        } catch (error) {
+                        } catch {
                             
                             new Notice('Error applying default template');
                         }
@@ -119,7 +119,7 @@ export class ReferenceModal extends ResponsiveModal {
                                                         await this.applyTemplateToReferenceWithVariables(template, variableValues);
                                                         new Notice(`Template "${template.name}" applied`);
                                                         this.refresh();
-                                                    } catch (error) {
+                                                    } catch {
                                                         
                                                         new Notice('Error applying template');
                                                     }
@@ -275,6 +275,7 @@ export class ReferenceModal extends ResponsiveModal {
         templateRef = substitutionResult.value;
 
         if (substitutionResult.warnings.length > 0) {
+        	// intentional
             
         }
 
@@ -303,7 +304,8 @@ export class ReferenceModal extends ResponsiveModal {
                     fields = { ...fields, ...parsed };
                 }
                 
-            } catch (error) {
+            } catch {
+            	// intentional
                 
             }
         } else if (customYamlFields) {
@@ -374,7 +376,8 @@ export class ReferenceModal extends ResponsiveModal {
                 }
 
                 
-            } catch (error) {
+            } catch {
+            	// intentional
                 
             }
         } else if (sectionContent) {

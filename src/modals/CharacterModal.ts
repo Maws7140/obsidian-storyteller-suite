@@ -133,7 +133,7 @@ export class CharacterModal extends ResponsiveModal {
                                             await this.applyTemplateToCharacterWithVariables(defaultTemplate, variableValues);
                                             new Notice('Default template applied');
                                             this.refresh();
-                                        } catch (error) {
+                                        } catch {
                                             
                                             new Notice('Error applying default template');
                                         }
@@ -151,7 +151,7 @@ export class CharacterModal extends ResponsiveModal {
                         try {
                             await this.applyTemplateToCharacter(defaultTemplate);
                             new Notice('Default template applied');
-                        } catch (error) {
+                        } catch {
                             
                             new Notice('Error applying default template');
                         }
@@ -188,7 +188,7 @@ export class CharacterModal extends ResponsiveModal {
                                                         await this.applyTemplateToCharacterWithVariables(template, variableValues);
                                                         new Notice(`Template "${template.name}" applied`);
                                                         this.refresh();
-                                                    } catch (error) {
+                                                    } catch {
                                                         
                                                         new Notice('Error applying template');
                                                     }
@@ -617,7 +617,7 @@ export class CharacterModal extends ResponsiveModal {
                             await this.onDelete(this.character);
                             new Notice(t('characterDeleted', this.character.name));
                             this.close();
-                        } catch (error) {
+                        } catch {
                             
                             new Notice(t('failedToDelete', t('character')));
                         }
@@ -673,7 +673,7 @@ export class CharacterModal extends ResponsiveModal {
                     this.character.customFields = customFields;
                     await this.onSubmit(this.character);
                     this.close();
-                } catch (error) {
+                } catch {
                     
                     new Notice(t('failedToSave', t('character')));
                 }
@@ -772,6 +772,7 @@ export class CharacterModal extends ResponsiveModal {
         templateChar = substitutionResult.value;
 
         if (substitutionResult.warnings.length > 0) {
+        	// intentional
             
         }
 
@@ -800,7 +801,8 @@ export class CharacterModal extends ResponsiveModal {
                     fields = { ...fields, ...parsed };
                 }
                 
-            } catch (error) {
+            } catch {
+            	// intentional
                 
             }
         } else if (customYamlFields) {
@@ -833,7 +835,8 @@ export class CharacterModal extends ResponsiveModal {
                 }
 
                 
-            } catch (error) {
+            } catch {
+            	// intentional
                 
             }
         } else if (sectionContent) {

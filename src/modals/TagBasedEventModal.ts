@@ -260,7 +260,7 @@ export class TagBasedEventModal extends ResponsiveModal {
                 try {
                     await this.plugin.saveEvent(event);
                     successCount++;
-                } catch (error) {
+                } catch {
                     
                     errorCount++;
                 }
@@ -277,7 +277,7 @@ export class TagBasedEventModal extends ResponsiveModal {
             if (successCount > 0) {
                 this.close();
             }
-        } catch (error) {
+        } catch {
             
             new Notice('Error generating events. Check console for details.');
         }

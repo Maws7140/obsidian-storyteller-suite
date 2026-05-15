@@ -417,7 +417,7 @@ export class TagTimelineModal extends Modal {
 
                 await this.plugin.saveEvent(event);
                 created++;
-            } catch (error) {
+            } catch {
                 
                 failed++;
             }

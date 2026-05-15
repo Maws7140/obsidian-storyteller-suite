@@ -50,7 +50,7 @@ export class ConfirmModal extends Modal {
                 resolve(result);
             });
             
-            const originalOnClose = modal.onClose.bind(modal);
+            const originalOnClose = modal.onClose.bind(modal) as () => void;
             modal.onClose = () => {
                 if (!resolved) {
                     resolve(false);

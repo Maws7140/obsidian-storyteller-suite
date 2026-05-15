@@ -53,7 +53,7 @@ export function addImageSelectionButtons(
                             
                             new Notice('Warning: Failed to start tile generation. Check console for details.');
                         });
-                    } catch (error) {
+                    } catch {
                         
                         new Notice('Warning: Could not read image for tile generation.');
                     }
@@ -101,6 +101,7 @@ export function addImageSelectionButtons(
                                 new Notice('Warning: Failed to start tile generation. Check console for details.');
                             });
                         } else {
+                        	// intentional
                             
                         }
 
@@ -111,7 +112,7 @@ export function addImageSelectionButtons(
                         }
                         
                         new Notice(t('imageUploaded', fileName));
-                    } catch (error) {
+                    } catch {
                         
                         new Notice(t('errorUploadingImage'));
                     }

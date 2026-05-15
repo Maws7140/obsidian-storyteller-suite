@@ -12,6 +12,7 @@ export default defineConfig([
 			'styles.css',
 			'styles.css.backup',
 			'**/*.backup.ts',
+			'src/vendor/**',
 			'Obsidian/**',
 			'StorytellerSuite/**',
 			'screenshots/**',

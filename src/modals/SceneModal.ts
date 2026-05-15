@@ -67,7 +67,7 @@ export class SceneModal extends ResponsiveModal {
                                             await this.applyTemplateToSceneWithVariables(defaultTemplate, variableValues);
                                             new Notice('Default template applied');
                                             this.refresh();
-                                        } catch (error) {
+                                        } catch {
                                             
                                             new Notice('Error applying default template');
                                         }
@@ -82,7 +82,7 @@ export class SceneModal extends ResponsiveModal {
                         try {
                             await this.applyTemplateToScene(defaultTemplate);
                             new Notice('Default template applied');
-                        } catch (error) {
+                        } catch {
                             
                             new Notice('Error applying default template');
                         }
@@ -119,7 +119,7 @@ export class SceneModal extends ResponsiveModal {
                                                         await this.applyTemplateToSceneWithVariables(template, variableValues);
                                                         new Notice(`Template "${template.name}" applied`);
                                                         this.refresh();
-                                                    } catch (error) {
+                                                    } catch {
                                                         
                                                         new Notice('Error applying template');
                                                     }
@@ -607,6 +607,7 @@ export class SceneModal extends ResponsiveModal {
         templateScene = substitutionResult.value;
 
         if (substitutionResult.warnings.length > 0) {
+        	// intentional
             
         }
 
@@ -637,7 +638,8 @@ export class SceneModal extends ResponsiveModal {
                     fields = { ...fields, ...parsed };
                 }
                 
-            } catch (error) {
+            } catch {
+            	// intentional
                 
             }
         } else if (customYamlFields) {
@@ -663,7 +665,8 @@ export class SceneModal extends ResponsiveModal {
                     }
                 }
                 
-            } catch (error) {
+            } catch {
+            	// intentional
                 
             }
         } else if (sectionContent) {

@@ -322,7 +322,8 @@ export class ImportManager {
                 try {
                     await this.plugin.saveCharacter(character);
                     createdCharacters.push(character);
-                } catch (error) {
+                } catch {
+                	// intentional
                     
                 }
             } else if (mapping.type === 'location') {
@@ -334,7 +335,8 @@ export class ImportManager {
                 try {
                     await this.plugin.saveLocation(location);
                     createdLocations.push(location);
-                } catch (error) {
+                } catch {
+                	// intentional
                     
                 }
             }

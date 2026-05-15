@@ -20,7 +20,7 @@ export class PlotItemSuggestModal extends FuzzySuggestModal<PlotItem> {
         void super.onOpen();
         try {
             this.items = await this.plugin.listPlotItems();
-        } catch (error) {
+        } catch {
             
             new Notice(t('errorLoadingItems'));
             this.items = [];

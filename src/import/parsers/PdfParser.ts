@@ -158,7 +158,7 @@ export class PdfParser implements DocumentParser {
                 const metadata = await pdf.getMetadata();
                 pdfTitle = metadata?.info?.Title || fileName.replace(/\.pdf$/i, '');
                 pdfAuthor = metadata?.info?.Author || undefined;
-            } catch (metaError) {
+            } catch {
                 
                 pdfTitle = fileName.replace(/\.pdf$/i, '');
             }
@@ -197,7 +197,8 @@ export class PdfParser implements DocumentParser {
                     if (pageText.trim()) {
                         fullText.push(pageText);
                     }
-                } catch (pageError) {
+                } catch {
+                	// intentional
                     
                 }
             }

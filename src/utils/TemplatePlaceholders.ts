@@ -151,7 +151,8 @@ export class TemplatePlaceholderProcessor {
                         error: placeholder.helpText || `${placeholder.field} does not match required format`
                     };
                 }
-            } catch (e) {
+            } catch {
+            	// intentional
                 
             }
         }

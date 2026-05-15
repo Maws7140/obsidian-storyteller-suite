@@ -65,7 +65,7 @@ export class CharacterSheetPreviewModal extends Modal {
 
         try {
             this.sheetData = await this.generator.collectData(this.character);
-        } catch (err) {
+        } catch {
             loading.setText('Failed to load character data.');
             
             return;

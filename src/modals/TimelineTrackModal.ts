@@ -287,7 +287,7 @@ export class TimelineTrackModal extends ResponsiveModal {
                 await this.onSubmit(this.track);
                 new Notice(`Track "${this.track.name}" ${this.isNew ? 'created' : 'updated'} successfully`);
                 this.close();
-            } catch (error) {
+            } catch {
                 
                 new Notice('Error saving track. Check console for details.');
             }

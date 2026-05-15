@@ -119,7 +119,7 @@ export class EventModal extends ResponsiveModal {
                                             await this.applyTemplateToEventWithVariables(defaultTemplate, variableValues);
                                             new Notice(t('defaultTemplateApplied'));
                                             this.refresh(); // Refresh to show applied values
-                                        } catch (error) {
+                                        } catch {
                                             
                                             new Notice('Error applying default template');
                                         }
@@ -138,7 +138,7 @@ export class EventModal extends ResponsiveModal {
                         try {
                             await this.applyTemplateToEvent(defaultTemplate);
                             new Notice(t('defaultTemplateApplied'));
-                        } catch (error) {
+                        } catch {
                             
                             new Notice(t('errorApplyingDefaultTemplate'));
                         }
@@ -175,7 +175,7 @@ export class EventModal extends ResponsiveModal {
                                                         await this.applyTemplateToEventWithVariables(template, variableValues);
                                                         new Notice(`Template "${template.name}" applied`);
                                                         this.refresh();
-                                                    } catch (error) {
+                                                    } catch {
                                                         
                                                         new Notice('Error applying template');
                                                     }
@@ -542,7 +542,7 @@ export class EventModal extends ResponsiveModal {
                                 this.renderList(this.imagesListEl, this.event.images, 'image');
                             }
                             new Notice(t('imageUploaded', fileName));
-                        } catch (error) {
+                        } catch {
                             
                             new Notice(t('errorUploadingImage'));
                         }
@@ -677,7 +677,7 @@ export class EventModal extends ResponsiveModal {
                         try {
                             await this.onDelete(this.event);
                             this.close();
-                        } catch (error) {
+                        } catch {
                             
                             new Notice(t('workspaceLeafCreateError'));
                         }
@@ -704,7 +704,7 @@ export class EventModal extends ResponsiveModal {
                 this.event.customFields = customFields;
                 await this.onSubmit(this.event);
                 this.close();
-            } catch (error) {
+            } catch {
                 
                 new Notice(t('workspaceLeafRevealError'));
             }
@@ -867,6 +867,7 @@ export class EventModal extends ResponsiveModal {
         templateEvt = substitutionResult.value;
 
         if (substitutionResult.warnings.length > 0) {
+        	// intentional
             
         }
 
@@ -907,7 +908,8 @@ export class EventModal extends ResponsiveModal {
                     fields = { ...fields, ...parsed };
                 }
                 
-            } catch (error) {
+            } catch {
+            	// intentional
                 
             }
         } else if (customYamlFields) {
@@ -929,7 +931,8 @@ export class EventModal extends ResponsiveModal {
                     fields.outcome = parsedSections['Outcome'];
                 }
                 
-            } catch (error) {
+            } catch {
+            	// intentional
                 
             }
         } else if (sectionContent) {

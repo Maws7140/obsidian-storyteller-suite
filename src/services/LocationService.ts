@@ -242,7 +242,8 @@ export class LocationService {
             const maps = await this.plugin.listMaps();
             const map = maps.find(m => (m.id || m.name) === mapId);
             mapName = map?.name;
-        } catch (e) {
+        } catch {
+        	// intentional
             
         }
 
@@ -460,7 +461,8 @@ export class LocationService {
                     break;
                 }
             }
-        } catch (e) {
+        } catch {
+        	// intentional
             
         }
 
@@ -548,7 +550,8 @@ export class LocationService {
                     break;
                 }
             }
-        } catch (e) {
+        } catch {
+        	// intentional
             
         }
 
@@ -819,7 +822,7 @@ export class LocationService {
                 state: region,
                 country
             };
-        } catch (error) {
+        } catch {
             
             return null;
         }

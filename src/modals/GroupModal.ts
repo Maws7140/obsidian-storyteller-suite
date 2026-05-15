@@ -1,6 +1,8 @@
 import { App, Setting, Notice, parseYaml } from 'obsidian';
 import { t } from '../i18n/strings';
-import { Group, Character, Location, Event, PlotItem, Culture, GroupRelationship } from '../types';
+import { Group, Character, Location, Event, PlotItem, Culture } from '../types';
+import type { TemplateEntity } from '../templates/TemplateTypes';
+import type { TemplateVariableValues } from './TemplateApplicationModal';
 import StorytellerSuitePlugin from '../main';
 import { ResponsiveModal } from './ResponsiveModal';
 import { addImageSelectionButtons } from '../utils/ImageSelectionHelper';
@@ -10,16 +12,12 @@ import { LocationSuggestModal } from './LocationSuggestModal';
 import { EventSuggestModal } from './EventSuggestModal';
 import { PlotItemSuggestModal } from './PlotItemSuggestModal';
 import { TemplatePickerModal } from './TemplatePickerModal';
-import { Template, TemplateEntity } from '../templates/TemplateTypes';
-import type { TemplateVariableValues } from './TemplateApplicationModal';
+import { Template } from '../templates/TemplateTypes';
 import { EntityCustomFieldsEditor } from './entity/EntityCustomFieldsEditor';
 import { confirmWithModal } from './ui/ConfirmModal';
 
 export type GroupModalSubmitCallback = (group: Group) => Promise<void>;
 export type GroupModalDeleteCallback = (groupId: string) => Promise<void>;
-type GroupType = NonNullable<Group['groupType']>;
-type GroupRelationshipType = GroupRelationship['relationshipType'];
-type LinkRepairEntity = Character | Location | Event | PlotItem;
 
 export class GroupModal extends ResponsiveModal {
     plugin: StorytellerSuitePlugin;
@@ -100,7 +98,7 @@ export class GroupModal extends ResponsiveModal {
                                             await this.applyTemplateToGroupWithVariables(defaultTemplate, variableValues);
                                             new Notice('Default template applied');
                                             this.refresh();
-                                        } catch (error) {
+                                        } catch {
                                             
                                             new Notice('Error applying default template');
                                         }
@@ -114,7 +112,7 @@ export class GroupModal extends ResponsiveModal {
                         try {
                             await this.applyTemplateToGroup(defaultTemplate);
                             new Notice('Default template applied');
-                        } catch (error) {
+                        } catch {
                             
                             new Notice('Error applying default template');
                         }
@@ -162,7 +160,7 @@ export class GroupModal extends ResponsiveModal {
                                                         await this.applyTemplateToGroupWithVariables(template, variableValues);
                                                         new Notice(`Template "${template.name}" applied`);
                                                         this.refresh();
-                                                    } catch (error) {
+                                                    } catch {
                                                         
                                                         new Notice('Error applying template');
                                                     }
@@ -224,7 +222,7 @@ export class GroupModal extends ResponsiveModal {
                 .addOption('custom', 'Custom')
                 .setValue(this.group.groupType || 'collection')
                 .onChange(value => {
-                    this.group.groupType = value as any;
+                    this.group.groupType = value as Group['groupType'];
                     // Re-render modal to show/hide faction-enhanced sections
                     void this.onOpen();
                 })
@@ -539,13 +537,14 @@ export class GroupModal extends ResponsiveModal {
         const membersToRemove: typeof this.group.members = [];
         let needsSave = false;
 
+        type GroupMemberEntity = Character | Location | Event | PlotItem;
         for (const member of [...this.group.members]) {
             let found = false;
-            let entity: any = null;
+            let entity: GroupMemberEntity | undefined;
             let newId: string | undefined;
 
             // Get the entity list based on type
-            let entityList: any[] = [];
+            let entityList: GroupMemberEntity[] = [];
             switch (member.type) {
                 case 'character':
                     entityList = this.allCharacters;
@@ -682,7 +681,7 @@ export class GroupModal extends ResponsiveModal {
                             .addOption('hostile', 'Hostile')
                             .addOption('at-war', 'At war')
                             .setValue(rel.relationshipType || 'neutral')
-                            .onChange(value => { rel.relationshipType = value as any; });
+                            .onChange(value => { rel.relationshipType = value as 'allied' | 'friendly' | 'neutral' | 'rival' | 'hostile' | 'at-war'; });
                     })
                     .addButton(btn => btn
                         .setIcon('trash')
@@ -917,7 +916,7 @@ export class GroupModal extends ResponsiveModal {
         await this.applyProcessedTemplateToGroup(templateGroup);
     }
 
-    private async applyTemplateToGroupWithVariables(template: Template, variableValues: Record<string, any>): Promise<void> {
+    private async applyTemplateToGroupWithVariables(template: Template, variableValues: TemplateVariableValues): Promise<void> {
         if (!template.entities.groups || template.entities.groups.length === 0) {
             new Notice('This template does not contain any groups');
             return;
@@ -936,6 +935,7 @@ export class GroupModal extends ResponsiveModal {
         templateGroup = substitutionResult.value;
 
         if (substitutionResult.warnings.length > 0) {
+        	// intentional
             
         }
 
@@ -943,10 +943,10 @@ export class GroupModal extends ResponsiveModal {
         await this.applyProcessedTemplateToGroup(templateGroup);
     }
 
-    private async applyProcessedTemplateToGroup(templateGroup: any): Promise<void> {
+    private async applyProcessedTemplateToGroup(templateGroup: TemplateEntity<Group>): Promise<void> {
         const { yamlContent, markdownContent, sectionContent, customYamlFields } = templateGroup;
 
-        let fields: Record<string, any> = { ...templateGroup };
+        let fields: Record<string, unknown> = { ...(templateGroup as Record<string, unknown>) };
         delete fields.templateId;
         delete fields.yamlContent;
         delete fields.markdownContent;
@@ -960,12 +960,13 @@ export class GroupModal extends ResponsiveModal {
         // Handle new format: yamlContent (parse YAML string)
         if (yamlContent && typeof yamlContent === 'string') {
             try {
-                const parsed = parseYaml(yamlContent);
+                const parsed = parseYaml(yamlContent) as Record<string, unknown> | null;
                 if (parsed && typeof parsed === 'object') {
                     fields = { ...fields, ...parsed };
                 }
                 
-            } catch (error) {
+            } catch {
+            	// intentional
                 
             }
         } else if (customYamlFields) {
@@ -997,12 +998,13 @@ export class GroupModal extends ResponsiveModal {
                 }
 
                 
-            } catch (error) {
+            } catch {
+            	// intentional
                 
             }
         } else if (sectionContent) {
             // Old format: apply section content
-            for (const [k, v] of Object.entries(sectionContent)) { allTemplateSections[k] = v as string; }
+            for (const [k, v] of Object.entries(sectionContent)) { allTemplateSections[k] = v; }
             for (const [sectionName, content] of Object.entries(sectionContent)) {
                 const propName = sectionName.toLowerCase().replace(/\s+/g, '');
                 fields[propName] = content;

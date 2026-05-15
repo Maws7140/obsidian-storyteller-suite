@@ -35,8 +35,8 @@ import { PromptModal } from './modals/ui/PromptModal';
 import { ConfirmModal } from './modals/ui/ConfirmModal';
 import { CharacterModal } from './modals/CharacterModal';
 import {
-    Character, Location, Event, GalleryImage, GalleryData, Story, Group, PlotItem, Reference, Chapter, Scene,
-    Culture, Economy, MagicSystem, CompendiumEntry, Book,
+    Character, Location, Event, GalleryImage, GalleryData, Story, Group, GroupMemberDetails, GroupRelationship, PlotItem, Reference, Chapter, Scene,
+    Culture, Economy, MagicSystem, CompendiumEntry, Book, EntityRef,
     TimelineFork, CausalityLink, TimelineConflict, TimelineEra, TimelineTrack,
     PacingAnalysis, WritingSession, StoryAnalytics, LocationSensoryProfile,
     StoryMap
@@ -74,6 +74,7 @@ import { CompendiumListModal } from './modals/CompendiumListModal';
 import { PlatformUtils } from './utils/PlatformUtils';
 import { getTemplateSections, BODY_SECTION_FIELD_MAP } from './utils/EntityTemplates';
 import { getSvgSourceInfoFromArrayBuffer, isSvgArrayBuffer } from './utils/SvgImageUtils';
+import type { CanvasData as StoryBoardCanvasData } from './utils/StoryBoardGenerator';
 // Removed: Codeblock maps no longer supported - use MapView instead
 // import { LeafletCodeBlockProcessor } from './leaflet/processor';
 import { TemplateStorageManager } from './templates/TemplateStorageManager';
@@ -95,6 +96,14 @@ import type { SessionStats } from './compile';
 import { createLedgerViewExtension, registerLedgerBlockProcessor } from './extensions/LedgerEditorExtension';
 import { createBranchViewExtension, registerBranchBlockProcessors } from './extensions/BranchBlockExtension';
 import { CampaignSession } from './types';
+
+/** Runtime-only flags added to entity objects during save/sync to prevent recursion. Not persisted. */
+type WithSyncFlags<T> = T & {
+    _skipSync?: boolean;
+    _skipDependencySync?: boolean;
+    _skipConflictDetection?: boolean;
+    _templateSections?: Record<string, string>;
+};
 
 type FrontmatterReferenceFieldConfig = {
     field: string;
@@ -563,7 +572,7 @@ export default class StorytellerSuitePlugin extends Plugin {
                 const hasConflict = Object.keys(currentCustom).some(k => k.toLowerCase() === key.toLowerCase());
                 if (!hasConflict) {
                     currentCustom[key] = ''; // Convert null to empty string for modal editing
-                    delete (src as any)[key];
+                    delete src[key];
                 }
                 continue;
             }
@@ -574,7 +583,7 @@ export default class StorytellerSuitePlugin extends Plugin {
                 const hasConflict = Object.keys(currentCustom).some(k => k.toLowerCase() === key.toLowerCase());
                 if (!hasConflict) {
                     currentCustom[key] = value;
-                    delete (src as any)[key];
+                    delete src[key];
                 }
             }
         }
@@ -589,7 +598,7 @@ export default class StorytellerSuitePlugin extends Plugin {
             deduped[k] = v;
         }
 
-        (entity as any).customFields = deduped;
+        src.customFields = deduped;
         return entity;
     }
 
@@ -599,7 +608,7 @@ export default class StorytellerSuitePlugin extends Plugin {
         const results = resolver.resolveAll();
         const errors: string[] = [];
         for (const [k, v] of Object.entries(results)) {
-            if ((v as any).error) errors.push(`${k}: ${(v as any).error}`);
+            if (v.error) errors.push(`${k}: ${v.error}`);
         }
         if (errors.length > 0) {
             const message = errors.some(e => e.includes('No active story'))
@@ -691,10 +700,12 @@ export default class StorytellerSuitePlugin extends Plugin {
             if (!isNaN(parsed.getTime())) {
                 // Validate that the parsed date matches the input for BCE dates
                 if (iso.startsWith('-') && parsed.getFullYear() >= 0) {
+                	// intentional
                     
                 }
                 return parsed;
             } else {
+            	// intentional
                 
             }
         }
@@ -1306,11 +1317,14 @@ export default class StorytellerSuitePlugin extends Plugin {
 			}
 
 			if (migratedCount > 0) {
+				// intentional
 				
 			} else {
+				// intentional
 				
 			}
-		} catch (error) {
+		} catch {
+			// intentional
 			
 		}
 	}
@@ -1386,7 +1400,8 @@ export default class StorytellerSuitePlugin extends Plugin {
 
 			
             new Notice(`Storyteller: Updated links for ${updatedCount} entities.`);
-		} catch (error) {
+		} catch {
+			// intentional
 			
 		}
 	}
@@ -1411,7 +1426,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		// Conditionally expose Leaflet to global scope to prevent conflicts with standalone Obsidian Leaflet plugin
 		// Only expose if not explicitly disabled in settings (defaults to false for backward compatibility)
 		if (!this.settings.disableLeafletGlobalExposure) {
-			(window as any).L = L;
+			(window as Window & { L: typeof L }).L = L;
 		}
 
 		// Initialize locale from settings
@@ -1446,7 +1461,8 @@ export default class StorytellerSuitePlugin extends Plugin {
 						// Sync note changes to JSON
 						try {
 							await this.templateNoteManager.handleNoteChange(file);
-						} catch (error) {
+						} catch {
+							// intentional
 							
 						}
 					}
@@ -1761,7 +1777,8 @@ export default class StorytellerSuitePlugin extends Plugin {
 					}
 				}
 			}
-		} catch (e) {
+		} catch {
+			// intentional
 			
 		}
 
@@ -1790,7 +1807,8 @@ export default class StorytellerSuitePlugin extends Plugin {
                     return { newStories: [story], totalStories: this.settings.stories.length };
                 }
             }
-        } catch (e) {
+        } catch {
+        	// intentional
 			
 		}
 
@@ -1812,8 +1830,8 @@ export default class StorytellerSuitePlugin extends Plugin {
 				new Notice(`Storyteller: Auto-detected and imported ${result.newStories.length} new story folder(s).`);
 			}
 		} catch (error) {
-			
-			new Notice(`Storyteller suite: Error discovering stories: ${error.message}`);
+
+			new Notice(`Storyteller suite: Error discovering stories: ${error instanceof Error ? error.message : String(error)}`);
 		}
 	}
 
@@ -1836,8 +1854,8 @@ export default class StorytellerSuitePlugin extends Plugin {
 				new Notice('Storyteller: No new story folders found.');
 			}
 		} catch (error) {
-			
-			new Notice(`Storyteller suite: Error refreshing stories: ${error.message}`);
+
+			new Notice(`Storyteller suite: Error refreshing stories: ${error instanceof Error ? error.message : String(error)}`);
 		}
 	}
 
@@ -1857,8 +1875,7 @@ export default class StorytellerSuitePlugin extends Plugin {
                 return;
             }
             for (const v of Object.values(resolved.results)) {
-                const path = (v as any).path as string;
-                if (path) await this.ensureFolder(path);
+                if (v.path) await this.ensureFolder(v.path);
             }
 
 			// Count markdown files in each folder to provide feedback
@@ -1868,7 +1885,7 @@ export default class StorytellerSuitePlugin extends Plugin {
                 const prefix = normalizePath(base) + '/';
                 return files.filter(f => f.path.startsWith(prefix)).length;
             };
-            const r = resolved.results as any;
+            const r = resolved.results;
             const counts = {
                 characters: countMdResolved(r.character.path),
                 locations: countMdResolved(r.location.path),
@@ -1889,8 +1906,8 @@ export default class StorytellerSuitePlugin extends Plugin {
 				`Refs ${counts.references}, Chaps ${counts.chapters}, Scenes ${counts.scenes}.`
 			);
 		} catch (error) {
-			
-			new Notice(`Storyteller suite: Error scanning custom folders: ${error.message}`);
+
+			new Notice(`Storyteller suite: Error scanning custom folders: ${error instanceof Error ? error.message : String(error)}`);
 		}
 	}
 
@@ -1961,12 +1978,22 @@ export default class StorytellerSuitePlugin extends Plugin {
 	refreshDashboardActiveTab(): void {
 		try {
 			const leaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_DASHBOARD);
-			const view: any = leaves[0]?.view;
-			if (view && typeof view.requestActiveTabRefresh === 'function') {
+			const view = leaves[0]?.view instanceof DashboardView ? leaves[0]?.view : null;
+			if (view) {
 				view.requestActiveTabRefresh('plugin-refresh');
-			} else if (view && typeof view.refreshActiveTab === 'function') {
-				view.refreshActiveTab();
 			}
+		} catch {
+			// no-op
+		}
+	}
+
+	/** Navigate the dashboard to a specific tab by clicking its header element. */
+	private navigateDashboardToTab(tabId: string): void {
+		try {
+			const leaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_DASHBOARD);
+			const view = leaves[0]?.view instanceof DashboardView ? leaves[0].view : null;
+			if (!view) return;
+			(view.tabHeaderContainer?.querySelector(`[data-tab-id="${tabId}"]`) as HTMLElement)?.click();
 		} catch {
 			// no-op
 		}
@@ -2005,7 +2032,7 @@ export default class StorytellerSuitePlugin extends Plugin {
         const syncActiveFile = (file: TFile | null): void => {
             this.writingSessionTransition = this.writingSessionTransition
                 .then(() => this.syncWritingSessionForFile(file))
-                .catch(error => { new Notice("Session sync failed: " + error?.message); });
+                .catch(error => { new Notice("Session sync failed: " + (error instanceof Error ? error.message : String(error))); });
         };
 
         this.registerEvent(
@@ -2141,7 +2168,8 @@ export default class StorytellerSuitePlugin extends Plugin {
 				await manager.addSceneToDraft(activeDraft, file.basename);
 				new Notice(`Added "${file.basename}" to ${activeDraft.name}`);
 				const leaves = this.app.workspace.getLeavesOfType('storyteller-dashboard-view');
-				if (leaves.length > 0) (leaves[0].view as any).refreshActiveTab?.();
+				const dashView = leaves[0]?.view instanceof DashboardView ? leaves[0].view : null;
+					if (dashView) dashView.requestActiveTabRefresh('scene-added');
 			})(); }
 		}).open();
 	}
@@ -2154,14 +2182,16 @@ export default class StorytellerSuitePlugin extends Plugin {
 		// Clean up mobile platform classes to prevent class leakage
 		try {
 			this.removeMobilePlatformClasses();
-		} catch (error) {
+		} catch {
+			// intentional
 			
 		}
 
 		// Cleanup orientation and resize handlers
 		try {
 			this.cleanupMobileOrientationHandlers();
-		} catch (error) {
+		} catch {
+			// intentional
 			
 		}
 
@@ -2290,7 +2320,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 								await this.saveSession(targetSession);
 								await this.appendToSessionLog(targetSession.filePath!, `- ${value.trim()}`);
 								new Notice(`Added log entry to "${targetSession.name}".`);
-							} catch (error) {
+							} catch {
 								
 								new Notice('Failed to add campaign log entry.');
 							}
@@ -2359,14 +2389,15 @@ export default class StorytellerSuitePlugin extends Plugin {
 						return;
 					}
 
-					const beforeCount = this.templateManager.getAllTemplates().filter(t => !(t as any).builtIn).length;
+					const beforeCount = this.templateManager.getAllTemplates().filter(t => !t.isBuiltIn).length;
 					await this.templateManager.loadUserTemplates();
 					await this.templateNoteManager.loadNoteTemplates();
-					const afterCount = this.templateManager.getAllTemplates().filter(t => !(t as any).builtIn).length;
+					const afterCount = this.templateManager.getAllTemplates().filter(t => !t.isBuiltIn).length;
 					this.refreshDashboardActiveTab();
 					new Notice('Loaded ' + afterCount + ' custom template' + (afterCount !== 1 ? 's' : ''));
 
 					if (afterCount > beforeCount) {
+						// intentional
 						
 					}
 				} catch (error) {
@@ -2750,14 +2781,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 			name: 'View references',
 			callback: async () => {
 				await this.activateView();
-				window.setTimeout(() => {
-					const leaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_DASHBOARD);
-					const view = (leaves[0]?.view as any);
-					if (view && typeof view === 'object' && 'tabHeaderContainer' in view) {
-						const header = view.tabHeaderContainer?.querySelector('[data-tab-id="references"]') as HTMLElement;
-						header?.click();
-					}
-				}, 50);
+				window.setTimeout(() => { this.navigateDashboardToTab('references'); }, 50);
 			}
 		});
 
@@ -2780,14 +2804,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 			name: 'View chapters',
 			callback: async () => {
 				await this.activateView();
-				window.setTimeout(() => {
-					const leaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_DASHBOARD);
-					const view = (leaves[0]?.view as any);
-					if (view && typeof view === 'object' && 'tabHeaderContainer' in view) {
-						const header = view.tabHeaderContainer?.querySelector('[data-tab-id="chapters"]') as HTMLElement;
-						header?.click();
-					}
-				}, 50);
+				window.setTimeout(() => { this.navigateDashboardToTab('chapters'); }, 50);
 			}
 		});
 
@@ -2821,14 +2838,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 			name: 'View scenes',
 			callback: async () => {
 				await this.activateView();
-				window.setTimeout(() => {
-					const leaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_DASHBOARD);
-					const view = (leaves[0]?.view as any);
-					if (view && typeof view === 'object' && 'tabHeaderContainer' in view) {
-						const header = view.tabHeaderContainer?.querySelector('[data-tab-id="scenes"]') as HTMLElement;
-						header?.click();
-					}
-				}, 50);
+				window.setTimeout(() => { this.navigateDashboardToTab('scenes'); }, 50);
 			}
 		});
 
@@ -2855,14 +2865,7 @@ export default class StorytellerSuitePlugin extends Plugin {
       name: 'View groups',
       callback: async () => {
         await this.activateView();
-        window.setTimeout(() => {
-          const leaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_DASHBOARD);
-          const view = (leaves[0]?.view as any);
-          if (view && typeof view === 'object' && 'tabHeaderContainer' in view) {
-            const header = view.tabHeaderContainer?.querySelector('[data-tab-id="groups"]') as HTMLElement;
-            header?.click();
-          }
-        }, 50);
+        window.setTimeout(() => { this.navigateDashboardToTab('groups'); }, 50);
       }
     });
 		this.addCommand({
@@ -3434,8 +3437,8 @@ export default class StorytellerSuitePlugin extends Plugin {
     }
 
     private getLoadedCampaignSession(): CampaignSession | null {
-        const view = this.getCampaignViewInstance() as any;
-        const session = view?.session as CampaignSession | null | undefined;
+        const view = this.getCampaignViewInstance();
+        const session = view?.getLoadedSession();
         return session ? { ...session } : null;
     }
 
@@ -3681,9 +3684,9 @@ export default class StorytellerSuitePlugin extends Plugin {
                 }
             }).then(() => {
                 new Notice('Map tiles generated successfully!');
-            }).catch((error) => {
-                
-                new Notice('Failed to generate map tiles: ' + error.message);
+            }).catch((error: unknown) => {
+
+                new Notice('Failed to generate map tiles: ' + (error instanceof Error ? error.message : String(error)));
             });
 
         } catch (error) {
@@ -3885,7 +3888,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 			// Combine frontmatter and defaults with file path
 			// IMPORTANT: Do NOT spread allSections into top-level props to avoid leaking into YAML later.
 			const data: Record<string, unknown> = {
-				...typeDefaults as unknown as Record<string, unknown>,
+				...(typeDefaults as Record<string, unknown>),
 				...frontmatter,
 				filePath: file.path
 			};
@@ -3966,7 +3969,7 @@ export default class StorytellerSuitePlugin extends Plugin {
             }
 
             // Do not carry forward a raw sections map on the entity; only mapped fields are kept
-            if ((data as any).sections) delete (data as any).sections;
+            if (data.sections) delete data.sections;
 
             // Strip [[...]] wikilink brackets from linked entity arrays — stored with brackets
             // in YAML for Obsidian Graph/Properties support, but used internally as plain names
@@ -4048,36 +4051,36 @@ export default class StorytellerSuitePlugin extends Plugin {
         });
     }
 
-    private buildFrontmatterForCharacter(src: any, originalFrontmatter?: Record<string, unknown>): Promise<Record<string, unknown>> {
+    private buildFrontmatterForCharacter(src: Record<string, unknown>, originalFrontmatter?: Record<string, unknown>): Promise<Record<string, unknown>> {
         return this.buildLinkedFrontmatter('character', src, originalFrontmatter);
     }
 
-    private buildFrontmatterForLocation(src: any, originalFrontmatter?: Record<string, unknown>): Promise<Record<string, unknown>> {
+    private buildFrontmatterForLocation(src: Record<string, unknown>, originalFrontmatter?: Record<string, unknown>): Promise<Record<string, unknown>> {
         return this.buildLinkedFrontmatter('location', src, originalFrontmatter);
     }
 
-    private buildFrontmatterForEvent(src: any, originalFrontmatter?: Record<string, unknown>): Promise<Record<string, unknown>> {
+    private buildFrontmatterForEvent(src: Record<string, unknown>, originalFrontmatter?: Record<string, unknown>): Promise<Record<string, unknown>> {
         return this.buildLinkedFrontmatter('event', src, originalFrontmatter);
     }
 
-    private buildFrontmatterForItem(src: any, originalFrontmatter?: Record<string, unknown>): Promise<Record<string, unknown>> {
+    private buildFrontmatterForItem(src: Record<string, unknown>, originalFrontmatter?: Record<string, unknown>): Promise<Record<string, unknown>> {
         return this.buildLinkedFrontmatter('item', src, originalFrontmatter);
     }
 
-    private buildFrontmatterForCulture(src: any, originalFrontmatter?: Record<string, unknown>): Promise<Record<string, unknown>> {
+    private buildFrontmatterForCulture(src: Record<string, unknown>, originalFrontmatter?: Record<string, unknown>): Promise<Record<string, unknown>> {
         return this.buildLinkedFrontmatter('culture', src, originalFrontmatter);
     }
 
 
-    private buildFrontmatterForEconomy(src: any, originalFrontmatter?: Record<string, unknown>): Promise<Record<string, unknown>> {
+    private buildFrontmatterForEconomy(src: Record<string, unknown>, originalFrontmatter?: Record<string, unknown>): Promise<Record<string, unknown>> {
         return this.buildLinkedFrontmatter('economy', src, originalFrontmatter);
     }
 
-    private buildFrontmatterForMagicSystem(src: any, originalFrontmatter?: Record<string, unknown>): Promise<Record<string, unknown>> {
+    private buildFrontmatterForMagicSystem(src: Record<string, unknown>, originalFrontmatter?: Record<string, unknown>): Promise<Record<string, unknown>> {
         return this.buildLinkedFrontmatter('magicSystem', src, originalFrontmatter);
     }
 
-    private buildFrontmatterForCompendiumEntry(src: any, originalFrontmatter?: Record<string, unknown>): Promise<Record<string, unknown>> {
+    private buildFrontmatterForCompendiumEntry(src: Record<string, unknown>, originalFrontmatter?: Record<string, unknown>): Promise<Record<string, unknown>> {
         return this.buildLinkedFrontmatter('compendiumEntry', src, originalFrontmatter);
     }
 
@@ -4101,8 +4104,11 @@ export default class StorytellerSuitePlugin extends Plugin {
 		const filePath = normalizePath(`${folderPath}/${fileName}`);
 
 		// Separate content fields from frontmatter fields (do not let sections leak)
-        const { filePath: currentFilePath, backstory, description } = character as any;
-        const rest: Record<string, unknown> = { ...(character as unknown as Record<string, unknown>) };
+        const charRecord = character as unknown as Record<string, unknown>;
+        const currentFilePath = charRecord.filePath as string | undefined;
+        const backstory = charRecord.backstory as string | undefined;
+        const description = charRecord.description as string | undefined;
+        const rest: Record<string, unknown> = { ...charRecord };
         delete rest.filePath;
         delete rest.backstory;
         delete rest.description;
@@ -4140,13 +4146,14 @@ export default class StorytellerSuitePlugin extends Plugin {
 				}
 
 				// Load old character for sync comparison (only if not skipping sync)
-				if (!(character as any)._skipSync) {
+				if (!(character as WithSyncFlags<Character>)._skipSync) {
 					const parsed = await this.parseFile<Character>(existingFile, { name: '' }, 'character');
 					if (parsed) {
 						oldCharacter = this.normalizeEntityCustomFields('character', parsed);
 					}
 				}
-			} catch (error) {
+			} catch {
+				// intentional
 				
 			}
 		}
@@ -4158,6 +4165,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		if (originalFrontmatter) {
 			const validation = validateFrontmatterPreservation(finalFrontmatter, originalFrontmatter);
 			if (validation.lostFields.length > 0) {
+				// intentional
 				
 			}
 		}
@@ -4174,7 +4182,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		};
 
 		// Check for template-provided sections (from TemplateApplicator)
-		const templateOnlySections = (character as any)._templateSections || {};
+		const templateOnlySections = (character as WithSyncFlags<Character>)._templateSections || {};
 
 		const defaultSections = getTemplateSections('character', providedSections);
 
@@ -4221,12 +4229,12 @@ export default class StorytellerSuitePlugin extends Plugin {
 		character.filePath = finalFilePath;
 		
 		// Sync bidirectional relationships (skip if _skipSync flag is set to prevent recursion)
-		if (!(character as any)._skipSync) {
+		if (!(character as WithSyncFlags<Character>)._skipSync) {
 			try {
 				const { EntitySyncService } = await import('./services/EntitySyncService');
 				const syncService = new EntitySyncService(this);
 				await syncService.syncEntity('character', character, oldCharacter);
-			} catch (error) {
+			} catch {
 				
 				// Don't throw - sync failures shouldn't prevent saves
 			}
@@ -4283,7 +4291,8 @@ export default class StorytellerSuitePlugin extends Plugin {
 					characterId = character.id || character.name;
 					characterName = character.name;
 				}
-			} catch (e) {
+			} catch {
+				// intentional
 				
 			}
 			
@@ -4293,7 +4302,8 @@ export default class StorytellerSuitePlugin extends Plugin {
 					const { EntitySyncService } = await import('./services/EntitySyncService');
 					const syncService = new EntitySyncService(this);
 					await syncService.handleEntityDeletion('character', characterId, characterName);
-				} catch (error) {
+				} catch {
+					// intentional
 					
 				}
 			}
@@ -4337,8 +4347,11 @@ export default class StorytellerSuitePlugin extends Plugin {
 		const filePath = normalizePath(`${folderPath}/${fileName}`);
 
 		// Separate content fields from frontmatter fields (do not let sections leak)
-        const { filePath: currentFilePath, history, description } = location as any;
-        const rest: Record<string, unknown> = { ...(location as unknown as Record<string, unknown>) };
+        const locRecord = location as unknown as Record<string, unknown>;
+        const currentFilePath = locRecord.filePath as string | undefined;
+        const history = locRecord.history as string | undefined;
+        const description = locRecord.description as string | undefined;
+        const rest: Record<string, unknown> = { ...locRecord };
         delete rest.filePath;
         delete rest.history;
         delete rest.description;
@@ -4375,13 +4388,14 @@ export default class StorytellerSuitePlugin extends Plugin {
 				}
 
 				// Load old location for sync comparison (only if not skipping sync)
-				if (!(location as any)._skipSync) {
+				if (!(location as WithSyncFlags<Location>)._skipSync) {
 					const parsed = await this.parseFile<Location>(existingFile, { name: '' }, 'location');
 					if (parsed) {
 						oldLocation = this.normalizeEntityCustomFields('location', parsed);
 					}
 				}
-			} catch (error) {
+			} catch {
+				// intentional
 				
 			}
 		}
@@ -4393,6 +4407,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		if (originalFrontmatter) {
 			const validation = validateFrontmatterPreservation(finalFrontmatter, originalFrontmatter);
 			if (validation.lostFields.length > 0) {
+				// intentional
 				
 			}
 		}
@@ -4409,7 +4424,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		};
 
 		// Check for template-provided sections (from TemplateApplicator)
-		const templateOnlySections = (location as any)._templateSections || {};
+		const templateOnlySections = (location as WithSyncFlags<Location>)._templateSections || {};
 
 		const defaultSections = getTemplateSections('location', providedSections);
 
@@ -4445,12 +4460,12 @@ export default class StorytellerSuitePlugin extends Plugin {
 		location.filePath = finalFilePath;
 		
 		// Sync bidirectional relationships (skip if _skipSync flag is set to prevent recursion)
-		if (!(location as any)._skipSync) {
+		if (!(location as WithSyncFlags<Location>)._skipSync) {
 			try {
 				const { EntitySyncService } = await import('./services/EntitySyncService');
 				const syncService = new EntitySyncService(this);
 				await syncService.syncEntity('location', location, oldLocation);
-			} catch (error) {
+			} catch {
 				
 				// Don't throw - sync failures shouldn't prevent saves
 			}
@@ -4506,7 +4521,8 @@ export default class StorytellerSuitePlugin extends Plugin {
 					locationId = location.id || location.name;
 					locationName = location.name;
 				}
-			} catch (e) {
+			} catch {
+				// intentional
 				
 			}
 			
@@ -4516,7 +4532,8 @@ export default class StorytellerSuitePlugin extends Plugin {
 					const { EntitySyncService } = await import('./services/EntitySyncService');
 					const syncService = new EntitySyncService(this);
 					await syncService.handleEntityDeletion('location', locationId, locationName);
-				} catch (error) {
+				} catch {
+					// intentional
 					
 				}
 			}
@@ -4631,8 +4648,13 @@ export default class StorytellerSuitePlugin extends Plugin {
 		const filePath = normalizePath(`${folderPath}/${fileName}`);
 
 		// Separate content fields from frontmatter fields
-		const { filePath: currentFilePath, description, ...rest } = map as any;
-		if ((rest).sections) delete (rest).sections;
+		const mapRecord = map as unknown as Record<string, unknown>;
+		const currentFilePath = mapRecord.filePath as string | undefined;
+		const description = mapRecord.description as string | undefined;
+		const rest: Record<string, unknown> = { ...mapRecord };
+		delete rest.filePath;
+		delete rest.description;
+		if (rest.sections) delete rest.sections;
 
 		// Handle renaming if filePath is present and name changed
 		let finalFilePath = filePath;
@@ -4657,7 +4679,8 @@ export default class StorytellerSuitePlugin extends Plugin {
 				if (directFrontmatter || cachedFrontmatter) {
 					originalFrontmatter = { ...(cachedFrontmatter || {}), ...(directFrontmatter || {}) };
 				}
-			} catch (error) {
+			} catch {
+				// intentional
 				
 			}
 		}
@@ -4675,7 +4698,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 			Description: description || ''
 		};
 
-		const templateOnlySections = (map as any)._templateSections || {};
+		const templateOnlySections = (map as WithSyncFlags<StoryMap>)._templateSections || {};
 		const defaultSections = getTemplateSections('map', providedSections);
 
 		const allSections: Record<string, string> = (existingFile && existingFile instanceof TFile)
@@ -4702,7 +4725,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		}
 
 		// Update filePath on the map object
-		(map as any).filePath = finalFilePath;
+		(map as unknown as Record<string, unknown>).filePath = finalFilePath;
 	}
 
 	/**
@@ -5095,7 +5118,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 			try {
 				const folder = this.getEntityFolder(type);
 				entityTypes.push({ type, folder });
-			} catch (error) {
+			} catch {
 				// Skip entity types that can't resolve (e.g., no active story and no custom path)
 				
 			}
@@ -5103,7 +5126,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 
 		let cleanedCount = 0;
 
-		for (const { type, folder } of entityTypes) {
+		for (const { folder } of entityTypes) {
 			try {
 				const folderPath = normalizePath(folder);
 				const allFiles = this.app.vault.getMarkdownFiles();
@@ -5114,7 +5137,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 				for (const file of entityFiles) {
 					let needsUpdate = false;
 
-					await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
+					await this.app.fileManager.processFrontMatter(file, (frontmatter: Record<string, unknown>) => {
 						// Check if mapId matches the deleted map
 						if (frontmatter.mapId === mapId) {
 							delete frontmatter.mapId;
@@ -5126,11 +5149,11 @@ export default class StorytellerSuitePlugin extends Plugin {
 
 						// Remove from relatedMapIds array
 						if (Array.isArray(frontmatter.relatedMapIds)) {
-							const originalLength = frontmatter.relatedMapIds.length;
+							const originalLength = (frontmatter.relatedMapIds as unknown[]).length;
 							frontmatter.relatedMapIds = (frontmatter.relatedMapIds as string[]).filter(id => id !== mapId);
-							if (frontmatter.relatedMapIds.length !== originalLength) {
+							if ((frontmatter.relatedMapIds as unknown[]).length !== originalLength) {
 								// Remove the array if it's now empty
-								if (frontmatter.relatedMapIds.length === 0) {
+								if ((frontmatter.relatedMapIds as unknown[]).length === 0) {
 									delete frontmatter.relatedMapIds;
 								}
 								needsUpdate = true;
@@ -5142,12 +5165,14 @@ export default class StorytellerSuitePlugin extends Plugin {
 						cleanedCount++;
 					}
 				}
-			} catch (error) {
+			} catch {
+				// intentional
 				
 			}
 		}
 
 		if (cleanedCount > 0) {
+			// intentional
 			
 		}
 	}
@@ -5183,8 +5208,15 @@ export default class StorytellerSuitePlugin extends Plugin {
 		const filePath = normalizePath(`${folderPath}/${fileName}`);
 
 		// Separate content fields from frontmatter fields (do not let sections leak)
-        const { filePath: currentFilePath, description, outcome, ...rest } = event as any;
-        if ((rest).sections) delete (rest).sections;
+        const eventRecord = event as unknown as Record<string, unknown>;
+        const currentFilePath = eventRecord.filePath as string | undefined;
+        const description = eventRecord.description as string | undefined;
+        const outcome = eventRecord.outcome as string | undefined;
+        const rest: Record<string, unknown> = { ...eventRecord };
+        delete rest.filePath;
+        delete rest.description;
+        delete rest.outcome;
+        if (rest.sections) delete rest.sections;
 
 		let finalFilePath = filePath;
 		if (currentFilePath && currentFilePath !== filePath) {
@@ -5215,13 +5247,14 @@ export default class StorytellerSuitePlugin extends Plugin {
 				}
 
 				// Load old event for sync comparison (only if not skipping sync)
-				if (!(event as any)._skipSync) {
+				if (!(event as WithSyncFlags<Event>)._skipSync) {
 					const parsed = await this.parseFile<Event>(existingFile, { name: '' }, 'event');
 					if (parsed) {
 						oldEvent = this.normalizeEntityCustomFields('event', parsed);
 					}
 				}
-			} catch (error) {
+			} catch {
+				// intentional
 				
 			}
 		}
@@ -5233,6 +5266,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		if (originalFrontmatter) {
 			const validation = validateFrontmatterPreservation(finalFrontmatter, originalFrontmatter);
 			if (validation.lostFields.length > 0) {
+				// intentional
 				
 			}
 		}
@@ -5249,7 +5283,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		};
 
 		// Check for template-provided sections (from TemplateApplicator)
-		const templateOnlySections = (event as any)._templateSections || {};
+		const templateOnlySections = (event as WithSyncFlags<Event>)._templateSections || {};
 
 		const defaultSections = getTemplateSections('event', providedSections);
 
@@ -5283,16 +5317,17 @@ export default class StorytellerSuitePlugin extends Plugin {
 		// Set filePath for reference before any follow-up sync work.
 		event.filePath = finalFilePath;
 
-		if (!(event as any)._skipDependencySync) {
+		if (!(event as WithSyncFlags<Event>)._skipDependencySync) {
 			try {
 				await this.syncEventDependencyReferences(event, oldEvent);
-			} catch (error) {
+			} catch {
+				// intentional
 				
 			}
 		}
 
 		// Auto-detect conflicts if enabled
-		if (!(event as any)._skipConflictDetection && this.settings.autoDetectConflicts !== false) {  // Default to true
+		if (!(event as WithSyncFlags<Event>)._skipConflictDetection && this.settings.autoDetectConflicts !== false) {  // Default to true
 			try {
 				const allEvents = await this.listEvents();
 				const conflicts = ConflictDetector.detectAllConflicts(allEvents);
@@ -5317,19 +5352,19 @@ export default class StorytellerSuitePlugin extends Plugin {
 						);
 					}
 				}
-			} catch (error) {
+			} catch {
 				// Don't fail save if conflict detection fails
 				
 			}
 		}
 
 		// Sync bidirectional relationships (skip if _skipSync flag is set to prevent recursion)
-		if (!(event as any)._skipSync) {
+		if (!(event as WithSyncFlags<Event>)._skipSync) {
 			try {
 				const { EntitySyncService } = await import('./services/EntitySyncService');
 				const syncService = new EntitySyncService(this);
 				await syncService.syncEntity('event', event, oldEvent);
-			} catch (error) {
+			} catch {
 				
 				// Don't throw - sync failures shouldn't prevent saves
 			}
@@ -5379,12 +5414,8 @@ export default class StorytellerSuitePlugin extends Plugin {
 
 			candidate.dependencies = dependencyIds;
 			candidate.dependencyNames = dependencyNames;
-			await this.saveEvent({
-				...candidate,
-				_skipSync: true,
-				_skipDependencySync: true,
-				_skipConflictDetection: true
-			} as Event);
+			const syncFlaggedEvent: WithSyncFlags<Event> = { ...candidate, _skipSync: true, _skipDependencySync: true, _skipConflictDetection: true };
+			await this.saveEvent(syncFlaggedEvent);
 		}
 	}
 
@@ -5416,10 +5447,10 @@ export default class StorytellerSuitePlugin extends Plugin {
         // Robust chronological sort using parsed times; unresolved go last
         const referenceDate = this.getReferenceTodayDate();
         return events.sort((a, b) => {
-            const pa = a.dateTime ? parseEventDate(a.dateTime, { referenceDate }) : { error: 'empty' };
-            const pb = b.dateTime ? parseEventDate(b.dateTime, { referenceDate }) : { error: 'empty' };
-            const ma = toMillis((pa as any).start);
-            const mb = toMillis((pb as any).start);
+            const pa = a.dateTime ? parseEventDate(a.dateTime, { referenceDate }) : { start: undefined, error: 'empty' as const };
+            const pb = b.dateTime ? parseEventDate(b.dateTime, { referenceDate }) : { start: undefined, error: 'empty' as const };
+            const ma = toMillis(pa.start);
+            const mb = toMillis(pb.start);
             if (ma != null && mb != null) return ma - mb;
             if (ma != null) return -1;
             if (mb != null) return 1;
@@ -5445,7 +5476,8 @@ export default class StorytellerSuitePlugin extends Plugin {
 					eventId = event.id || event.name;
 					eventName = event.name;
 				}
-			} catch (e) {
+			} catch {
+				// intentional
 				
 			}
 			
@@ -5455,7 +5487,8 @@ export default class StorytellerSuitePlugin extends Plugin {
 					const { EntitySyncService } = await import('./services/EntitySyncService');
 					const syncService = new EntitySyncService(this);
 					await syncService.handleEntityDeletion('event', eventId, eventName);
-				} catch (error) {
+				} catch {
+					// intentional
 					
 				}
 			}
@@ -5497,8 +5530,19 @@ export default class StorytellerSuitePlugin extends Plugin {
 		const fileName = `${item.name.replace(/[\\/:"*?<>|]+/g, '')}.md`;
 		const filePath = normalizePath(`${folderPath}/${fileName}`);
 
-        const { filePath: currentFilePath, description, history, culturalSignificance, magicProperties, ...rest } = item as any;
-        if ((rest).sections) delete (rest).sections;
+        const itemRecord = item as unknown as Record<string, unknown>;
+        const currentFilePath = itemRecord.filePath as string | undefined;
+        const description = itemRecord.description as string | undefined;
+        const history = itemRecord.history as string | undefined;
+        const culturalSignificance = itemRecord.culturalSignificance as string | undefined;
+        const magicProperties = itemRecord.magicProperties as string | undefined;
+        const rest: Record<string, unknown> = { ...itemRecord };
+        delete rest.filePath;
+        delete rest.description;
+        delete rest.history;
+        delete rest.culturalSignificance;
+        delete rest.magicProperties;
+        if (rest.sections) delete rest.sections;
 
 		let finalFilePath = filePath;
 		if (currentFilePath && currentFilePath !== filePath) {
@@ -5529,13 +5573,14 @@ export default class StorytellerSuitePlugin extends Plugin {
 				}
 
 				// Load old item for sync comparison (only if not skipping sync)
-				if (!(item as any)._skipSync) {
+				if (!(item as WithSyncFlags<PlotItem>)._skipSync) {
 					const parsed = await this.parseFile<PlotItem>(existingFile, { name: '' }, 'item');
 					if (parsed) {
 						oldItem = this.normalizeEntityCustomFields('item', parsed);
 					}
 				}
-			} catch (error) {
+			} catch {
+				// intentional
 				
 			}
 		}
@@ -5547,6 +5592,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		if (originalFrontmatter) {
 			const validation = validateFrontmatterPreservation(finalFrontmatter, originalFrontmatter);
 			if (validation.lostFields.length > 0) {
+				// intentional
 				
 			}
 		}
@@ -5586,12 +5632,12 @@ export default class StorytellerSuitePlugin extends Plugin {
 		item.filePath = finalFilePath;
 		
 		// Sync bidirectional relationships (skip if _skipSync flag is set to prevent recursion)
-		if (!(item as any)._skipSync) {
+		if (!(item as WithSyncFlags<PlotItem>)._skipSync) {
 			try {
 				const { EntitySyncService } = await import('./services/EntitySyncService');
 				const syncService = new EntitySyncService(this);
 				await syncService.syncEntity('item', item, oldItem);
-			} catch (error) {
+			} catch {
 				
 				// Don't throw - sync failures shouldn't prevent saves
 			}
@@ -5642,7 +5688,8 @@ export default class StorytellerSuitePlugin extends Plugin {
 					itemId = item.id || item.name;
 					itemName = item.name;
 				}
-			} catch (e) {
+			} catch {
+				// intentional
 				
 			}
 			
@@ -5652,7 +5699,8 @@ export default class StorytellerSuitePlugin extends Plugin {
 					const { EntitySyncService } = await import('./services/EntitySyncService');
 					const syncService = new EntitySyncService(this);
 					await syncService.handleEntityDeletion('item', itemId, itemName);
-				} catch (error) {
+				} catch {
+					// intentional
 					
 				}
 			}
@@ -5678,8 +5726,13 @@ export default class StorytellerSuitePlugin extends Plugin {
 		const fileName = `${(reference.name || 'Untitled').replace(/[\\/:"*?<>|]+/g, '')}.md`;
 		const filePath = normalizePath(`${folderPath}/${fileName}`);
 
-        const { filePath: currentFilePath, content, ...rest } = reference as any;
-        if ((rest).sections) delete (rest).sections;
+        const refRecord = reference as unknown as Record<string, unknown>;
+        const currentFilePath = refRecord.filePath as string | undefined;
+        const content = refRecord.content as string | undefined;
+        const rest: Record<string, unknown> = { ...refRecord };
+        delete rest.filePath;
+        delete rest.content;
+        if (rest.sections) delete rest.sections;
 
 		// Handle rename
 		let finalFilePath = filePath;
@@ -5697,7 +5750,8 @@ export default class StorytellerSuitePlugin extends Plugin {
 			try {
 				const existingContent = await this.app.vault.cachedRead(existingFile);
 				existingSections = parseSectionsFromMarkdown(existingContent);
-			} catch (e) {
+			} catch {
+				// intentional
 				
 			}
 		}
@@ -5705,7 +5759,7 @@ export default class StorytellerSuitePlugin extends Plugin {
         // Build frontmatter (preserve any custom fields and original frontmatter)
         const preserveRef = new Set<string>(Object.keys(rest || {}));
         const mode = this.settings.customFieldsMode ?? 'flatten';
-        const preparedRef = await this.serializeFrontmatterEntityReferences(rest as Record<string, unknown>);
+        const preparedRef = await this.serializeFrontmatterEntityReferences(rest);
         const fm: Record<string, unknown> = buildFrontmatter('reference', preparedRef.source, preserveRef, {
             customFieldsMode: mode,
             originalFrontmatter,
@@ -5716,6 +5770,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		if (originalFrontmatter) {
 			const validation = validateFrontmatterPreservation(fm, originalFrontmatter);
 			if (validation.lostFields.length > 0) {
+				// intentional
 				
 			}
 		}
@@ -5796,8 +5851,23 @@ export default class StorytellerSuitePlugin extends Plugin {
             chapter.id = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
         }
 
-        const { filePath: currentFilePath, summary, linkedCharacters, linkedLocations, linkedEvents, linkedItems, linkedGroups, ...rest } = chapter as any;
-        if ((rest).sections) delete (rest).sections;
+        const chapRecord = chapter as unknown as Record<string, unknown>;
+        const currentFilePath = chapRecord.filePath as string | undefined;
+        const summary = chapRecord.summary as string | undefined;
+        const linkedCharacters = chapRecord.linkedCharacters;
+        const linkedLocations = chapRecord.linkedLocations;
+        const linkedEvents = chapRecord.linkedEvents;
+        const linkedItems = chapRecord.linkedItems;
+        const linkedGroups = chapRecord.linkedGroups;
+        const rest: Record<string, unknown> = { ...chapRecord };
+        delete rest.filePath;
+        delete rest.summary;
+        delete rest.linkedCharacters;
+        delete rest.linkedLocations;
+        delete rest.linkedEvents;
+        delete rest.linkedItems;
+        delete rest.linkedGroups;
+        if (rest.sections) delete rest.sections;
 
         // Rename if needed
         let finalFilePath = filePath;
@@ -5816,15 +5886,17 @@ export default class StorytellerSuitePlugin extends Plugin {
             try {
                 const existingContent = await this.app.vault.cachedRead(existingFile);
                 existingSections = parseSectionsFromMarkdown(existingContent);
-            } catch (e) {
+            } catch {
+            	// intentional
                 
             }
             // Load old chapter for sync diff (only when not already inside a sync operation)
-            if (!(chapter as any)._skipSync) {
+            if (!(chapter as WithSyncFlags<Chapter>)._skipSync) {
                 try {
                     const parsed = await this.parseFile<Chapter>(existingFile, { name: '' }, 'chapter');
                     if (parsed) oldChapter = parsed;
-                } catch (e) {
+                } catch {
+                	// intentional
                     
                 }
             }
@@ -5845,6 +5917,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		if (originalFrontmatter) {
 			const validation = validateFrontmatterPreservation(fm, originalFrontmatter);
 			if (validation.lostFields.length > 0) {
+				// intentional
 				
 			}
 		}
@@ -5880,7 +5953,7 @@ export default class StorytellerSuitePlugin extends Plugin {
         chapter.filePath = finalFilePath;
         this.app.metadataCache.trigger('dataview:refresh-views');
 
-        if (!(chapter as any)._skipSync) {
+        if (!(chapter as WithSyncFlags<Chapter>)._skipSync) {
             // Sync chapter into parent book's linkedChapters
             try {
                 const newBid = chapter.bookId;
@@ -5891,7 +5964,8 @@ export default class StorytellerSuitePlugin extends Plugin {
                 if (newBid) {
                     await this._addChapterToBook(chapter.name, newBid);
                 }
-            } catch (e) {
+            } catch {
+            	// intentional
                 
             }
 
@@ -5899,7 +5973,8 @@ export default class StorytellerSuitePlugin extends Plugin {
                 const { EntitySyncService } = await import('./services/EntitySyncService');
                 const syncService = new EntitySyncService(this);
                 await syncService.syncEntity('chapter', chapter, oldChapter);
-            } catch (error) {
+            } catch {
+            	// intentional
                 
             }
         }
@@ -5960,7 +6035,8 @@ export default class StorytellerSuitePlugin extends Plugin {
                 if (chapter?.bookId) {
                     await this._removeChapterFromBook(chapter.name, chapter.bookId);
                 }
-            } catch (e) {
+            } catch {
+            	// intentional
                 
             }
             await this.app.fileManager.trashFile(file);
@@ -6009,7 +6085,7 @@ export default class StorytellerSuitePlugin extends Plugin {
         if (!Array.isArray(chapter.linkedScenes)) chapter.linkedScenes = [];
         if (!chapter.linkedScenes.includes(sceneName)) {
             chapter.linkedScenes = [...chapter.linkedScenes, sceneName];
-            (chapter as any)._skipSync = true;
+            (chapter as WithSyncFlags<Chapter>)._skipSync = true;
             await this.saveChapter(chapter);
         }
     }
@@ -6023,7 +6099,7 @@ export default class StorytellerSuitePlugin extends Plugin {
         const filtered = chapter.linkedScenes.filter(n => n !== sceneName);
         if (filtered.length !== chapter.linkedScenes.length) {
             chapter.linkedScenes = filtered;
-            (chapter as any)._skipSync = true;
+            (chapter as WithSyncFlags<Chapter>)._skipSync = true;
             await this.saveChapter(chapter);
         }
     }
@@ -6036,7 +6112,7 @@ export default class StorytellerSuitePlugin extends Plugin {
         if (!Array.isArray(book.linkedChapters)) book.linkedChapters = [];
         if (!book.linkedChapters.includes(chapterName)) {
             book.linkedChapters = [...book.linkedChapters, chapterName];
-            (book as any)._skipSync = true;
+            (book as WithSyncFlags<Book>)._skipSync = true;
             await this.saveBook(book);
         }
     }
@@ -6050,14 +6126,14 @@ export default class StorytellerSuitePlugin extends Plugin {
         const filtered = book.linkedChapters.filter(n => n !== chapterName);
         if (filtered.length !== book.linkedChapters.length) {
             book.linkedChapters = filtered;
-            (book as any)._skipSync = true;
+            (book as WithSyncFlags<Book>)._skipSync = true;
             await this.saveBook(book);
         }
     }
 
     // ─── Book CRUD ────────────────────────────────────────────────────────────
 
-    private buildFrontmatterForBook(src: any, originalFrontmatter?: Record<string, unknown>): Promise<Record<string, unknown>> {
+    private buildFrontmatterForBook(src: Record<string, unknown>, originalFrontmatter?: Record<string, unknown>): Promise<Record<string, unknown>> {
         return this.buildLinkedFrontmatter('book', src, originalFrontmatter);
     }
 
@@ -6072,8 +6148,17 @@ export default class StorytellerSuitePlugin extends Plugin {
             book.id = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
         }
 
-        const { filePath: currentFilePath, description, synopsis, linkedChapters, ...rest } = book as any;
-        if ((rest).sections) delete (rest).sections;
+        const bookRecord = book as unknown as Record<string, unknown>;
+        const currentFilePath = bookRecord.filePath as string | undefined;
+        const description = bookRecord.description as string | undefined;
+        const synopsis = bookRecord.synopsis as string | undefined;
+        const linkedChapters = bookRecord.linkedChapters;
+        const rest: Record<string, unknown> = { ...bookRecord };
+        delete rest.filePath;
+        delete rest.description;
+        delete rest.synopsis;
+        delete rest.linkedChapters;
+        if (rest.sections) delete rest.sections;
 
         let finalFilePath = filePath;
         if (currentFilePath && currentFilePath !== filePath) {
@@ -6089,7 +6174,8 @@ export default class StorytellerSuitePlugin extends Plugin {
             try {
                 const existingContent = await this.app.vault.cachedRead(existingFile);
                 existingSections = parseSectionsFromMarkdown(existingContent);
-            } catch (e) {
+            } catch {
+            	// intentional
                 
             }
         }
@@ -6153,7 +6239,7 @@ export default class StorytellerSuitePlugin extends Plugin {
                     if (ch.bookId === book.id && ch.filePath) {
                         ch.bookId = undefined;
                         ch.bookName = undefined;
-                        (ch as any)._skipSync = true;
+                        (ch as WithSyncFlags<Chapter>)._skipSync = true;
                         await this.saveChapter(ch);
                     }
                 }
@@ -6188,7 +6274,7 @@ export default class StorytellerSuitePlugin extends Plugin {
         if (!session.created) session.created = now;
         if (!session.id) session.id = `sess-${Date.now()}`;
 
-        const preparedSession = await this.serializeFrontmatterEntityReferences(session as any);
+        const preparedSession = await this.serializeFrontmatterEntityReferences(session as unknown as Record<string, unknown>);
         const frontmatter = buildFrontmatter('campaignSession', preparedSession.source, undefined, {
             omitOriginalKeys: preparedSession.omitOriginalKeys,
         });
@@ -6197,7 +6283,7 @@ export default class StorytellerSuitePlugin extends Plugin {
         const existingFile = this.app.vault.getAbstractFileByPath(filePath);
         if (existingFile instanceof TFile) {
             // Preserve existing log body
-            await (this.app.vault as any).process(existingFile, (content: string) => {
+            await this.app.vault.process(existingFile, (content: string) => {
                 const bodyStart = content.indexOf('\n---', 3);
                 const existingBody = bodyStart !== -1 ? content.slice(bodyStart + 4).trim() : '';
                 const logSection = existingBody || '## Session Log\n';
@@ -6256,7 +6342,7 @@ export default class StorytellerSuitePlugin extends Plugin {
             .filter(Boolean);
         if (!cleaned.length) return;
 
-        await (this.app.vault as any).process(file, (content: string) => {
+        await this.app.vault.process(file, (content: string) => {
             const logHeader = '## Session Log';
             const idx = content.indexOf(logHeader);
             const rendered = cleaned.map(entry => `- ${entry}`).join('\n');
@@ -6306,8 +6392,25 @@ export default class StorytellerSuitePlugin extends Plugin {
         const fileName = `${(scene.name || 'Untitled').replace(/[\\/:"*?<>|]+/g, '')}.md`;
         const filePath = normalizePath(`${folderPath}/${fileName}`);
 
-        const { filePath: currentFilePath, content, beats, linkedCharacters, linkedLocations, linkedEvents, linkedItems, linkedGroups, ...rest } = scene as any;
-        if ((rest).sections) delete (rest).sections;
+        const sceneRecord = scene as unknown as Record<string, unknown>;
+        const currentFilePath = sceneRecord.filePath as string | undefined;
+        const content = sceneRecord.content;
+        const beats = sceneRecord.beats;
+        const linkedCharacters = sceneRecord.linkedCharacters;
+        const linkedLocations = sceneRecord.linkedLocations;
+        const linkedEvents = sceneRecord.linkedEvents;
+        const linkedItems = sceneRecord.linkedItems;
+        const linkedGroups = sceneRecord.linkedGroups;
+        const rest: Record<string, unknown> = { ...sceneRecord };
+        delete rest.filePath;
+        delete rest.content;
+        delete rest.beats;
+        delete rest.linkedCharacters;
+        delete rest.linkedLocations;
+        delete rest.linkedEvents;
+        delete rest.linkedItems;
+        delete rest.linkedGroups;
+        if (rest.sections) delete rest.sections;
 
         // Rename if needed
         let finalFilePath = filePath;
@@ -6329,10 +6432,11 @@ export default class StorytellerSuitePlugin extends Plugin {
             try {
                 const existingContent = await this.app.vault.cachedRead(existingFile);
                 existingSections = parseSectionsFromMarkdown(existingContent);
-                if (!(scene as any)._skipSync) {
+                if (!(scene as WithSyncFlags<Scene>)._skipSync) {
                     oldScene = (await this.parseFile<Scene>(existingFile, { name: '' }, 'scene')) || undefined;
                 }
-            } catch (e) {
+            } catch {
+            	// intentional
                 
             }
         }
@@ -6352,6 +6456,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		if (originalFrontmatter) {
 			const validation = validateFrontmatterPreservation(fm, originalFrontmatter);
 			if (validation.lostFields.length > 0) {
+				// intentional
 				
 			}
 		}
@@ -6395,7 +6500,7 @@ export default class StorytellerSuitePlugin extends Plugin {
         }
         
         // Sync scene into parent chapter's linkedScenes
-        if (!(scene as any)._skipSync) {
+        if (!(scene as WithSyncFlags<Scene>)._skipSync) {
             try {
                 const newCid = scene.chapterId;
                 const oldSceneName = oldScene?.name;
@@ -6405,18 +6510,19 @@ export default class StorytellerSuitePlugin extends Plugin {
                 if (newCid) {
                     await this._addSceneToChapter(scene.name, newCid);
                 }
-            } catch (e) {
+            } catch {
+            	// intentional
                 
             }
         }
 
         // Sync bidirectional relationships (skip if _skipSync flag is set to prevent recursion)
-        if (!(scene as any)._skipSync) {
+        if (!(scene as WithSyncFlags<Scene>)._skipSync) {
             try {
                 const { EntitySyncService } = await import('./services/EntitySyncService');
                 const syncService = new EntitySyncService(this);
                 await syncService.syncEntity('scene', scene, oldScene);
-            } catch (error) {
+            } catch {
                 
                 // Don't throw - sync failures shouldn't prevent saves
             }
@@ -6482,7 +6588,8 @@ export default class StorytellerSuitePlugin extends Plugin {
                 if (sceneToDelete?.chapterId) {
                     await this._removeSceneFromChapter(sceneToDelete.name, sceneToDelete.chapterId);
                 }
-            } catch (e) {
+            } catch {
+            	// intentional
                 
             }
 
@@ -6491,7 +6598,8 @@ export default class StorytellerSuitePlugin extends Plugin {
                     const { EntitySyncService } = await import('./services/EntitySyncService');
                     const syncService = new EntitySyncService(this);
                     await syncService.handleEntityDeletion('scene', sceneToDelete.id || sceneToDelete.name);
-                } catch (e) {
+                } catch {
+                	// intentional
                     
                 }
             }
@@ -6516,8 +6624,16 @@ export default class StorytellerSuitePlugin extends Plugin {
         const fileName = `${culture.name.replace(/[\\/:"*?<>|]+/g, '')}.md`;
         const filePath = normalizePath(`${folderPath}/${fileName}`);
 
-        const { filePath: currentFilePath, description, values, religion, socialStructure, history, namingConventions, customs } = culture as any;
-        const rest: Record<string, unknown> = { ...(culture as unknown as Record<string, unknown>) };
+        const cultureRecord = culture as unknown as Record<string, unknown>;
+        const currentFilePath = cultureRecord.filePath as string | undefined;
+        const description = cultureRecord.description as string | undefined;
+        const values = cultureRecord.values as string | undefined;
+        const religion = cultureRecord.religion as string | undefined;
+        const socialStructure = cultureRecord.socialStructure as string | undefined;
+        const history = cultureRecord.history as string | undefined;
+        const namingConventions = cultureRecord.namingConventions as string | undefined;
+        const customs = cultureRecord.customs as string | undefined;
+        const rest: Record<string, unknown> = { ...cultureRecord };
         delete rest.filePath;
         delete rest.description;
         delete rest.values;
@@ -6553,13 +6669,14 @@ export default class StorytellerSuitePlugin extends Plugin {
                 }
 
                 // Load old culture for sync comparison (only if not skipping sync)
-                if (!(culture as any)._skipSync) {
+                if (!(culture as WithSyncFlags<Culture>)._skipSync) {
                     const parsed = await this.parseFile<Culture>(existingFile, { name: '' }, 'culture');
                     if (parsed) {
                         oldCulture = this.normalizeEntityCustomFields('culture', parsed);
                     }
                 }
-            } catch (error) {
+            } catch {
+            	// intentional
                 
             }
         }
@@ -6569,6 +6686,7 @@ export default class StorytellerSuitePlugin extends Plugin {
         if (originalFrontmatter) {
             const validation = validateFrontmatterPreservation(finalFrontmatter, originalFrontmatter);
             if (validation.lostFields.length > 0) {
+            	// intentional
                 
             }
         }
@@ -6614,12 +6732,13 @@ export default class StorytellerSuitePlugin extends Plugin {
         culture.filePath = finalFilePath;
 
         // Sync relationships (unless this save was triggered by a sync)
-        if (!(culture as any)._skipSync) {
+        if (!(culture as WithSyncFlags<Culture>)._skipSync) {
             try {
                 const { EntitySyncService } = await import('./services/EntitySyncService');
                 const syncService = new EntitySyncService(this);
                 await syncService.syncEntity('culture', culture, oldCulture);
-            } catch (error) {
+            } catch {
+            	// intentional
                 
             }
         }
@@ -6662,8 +6781,17 @@ export default class StorytellerSuitePlugin extends Plugin {
         const fileName = `${economy.name.replace(/[\\/:"*?<>|]+/g, '')}.md`;
         const filePath = normalizePath(`${folderPath}/${fileName}`);
 
-        const { filePath: currentFilePath, description, industries, taxation, ...rest } = economy as any;
-        if ((rest).sections) delete (rest).sections;
+        const econRecord = economy as unknown as Record<string, unknown>;
+        const currentFilePath = econRecord.filePath as string | undefined;
+        const description = econRecord.description as string | undefined;
+        const industries = econRecord.industries as string | undefined;
+        const taxation = econRecord.taxation as string | undefined;
+        const rest: Record<string, unknown> = { ...econRecord };
+        delete rest.filePath;
+        delete rest.description;
+        delete rest.industries;
+        delete rest.taxation;
+        if (rest.sections) delete rest.sections;
 
         let finalFilePath = filePath;
         if (currentFilePath && currentFilePath !== filePath) {
@@ -6689,13 +6817,14 @@ export default class StorytellerSuitePlugin extends Plugin {
                 }
 
                 // Load old economy for sync comparison (only if not skipping sync)
-                if (!(economy as any)._skipSync) {
+                if (!(economy as WithSyncFlags<Economy>)._skipSync) {
                     const parsed = await this.parseFile<Economy>(existingFile, { name: '' }, 'economy');
                     if (parsed) {
                         oldEconomy = this.normalizeEntityCustomFields('economy', parsed);
                     }
                 }
-            } catch (error) {
+            } catch {
+            	// intentional
                 
             }
         }
@@ -6705,6 +6834,7 @@ export default class StorytellerSuitePlugin extends Plugin {
         if (originalFrontmatter) {
             const validation = validateFrontmatterPreservation(finalFrontmatter, originalFrontmatter);
             if (validation.lostFields.length > 0) {
+            	// intentional
                 
             }
         }
@@ -6746,7 +6876,7 @@ export default class StorytellerSuitePlugin extends Plugin {
         economy.filePath = finalFilePath;
 
         // Sync relationships (unless this save was triggered by a sync)
-        if (!(economy as any)._skipSync) {
+        if (!(economy as WithSyncFlags<Economy>)._skipSync) {
             const { EntitySyncService } = await import('./services/EntitySyncService');
             const syncService = new EntitySyncService(this);
             await syncService.syncEntity('economy', economy, oldEconomy);
@@ -6790,8 +6920,23 @@ export default class StorytellerSuitePlugin extends Plugin {
         const fileName = `${entry.name.replace(/[\\/:"*?<>|]+/g, '')}.md`;
         const filePath = normalizePath(`${folderPath}/${fileName}`);
 
-        const { filePath: currentFilePath, description, behavior, properties, history, dimorphism, huntingNotes, ...rest } = entry as any;
-        if ((rest).sections) delete (rest).sections;
+        const entryRecord = entry as unknown as Record<string, unknown>;
+        const currentFilePath = entryRecord.filePath as string | undefined;
+        const description = entryRecord.description as string | undefined;
+        const behavior = entryRecord.behavior as string | undefined;
+        const properties = entryRecord.properties as string | undefined;
+        const history = entryRecord.history as string | undefined;
+        const dimorphism = entryRecord.dimorphism as string | undefined;
+        const huntingNotes = entryRecord.huntingNotes as string | undefined;
+        const rest: Record<string, unknown> = { ...entryRecord };
+        delete rest.filePath;
+        delete rest.description;
+        delete rest.behavior;
+        delete rest.properties;
+        delete rest.history;
+        delete rest.dimorphism;
+        delete rest.huntingNotes;
+        if (rest.sections) delete rest.sections;
 
         let finalFilePath = filePath;
         if (currentFilePath && currentFilePath !== filePath) {
@@ -6816,11 +6961,12 @@ export default class StorytellerSuitePlugin extends Plugin {
                     originalFrontmatter = { ...(cachedFrontmatter || {}), ...(directFrontmatter || {}) };
                 }
 
-                if (!(entry as any)._skipSync) {
+                if (!(entry as WithSyncFlags<CompendiumEntry>)._skipSync) {
                     const parsed = await this.parseFile<CompendiumEntry>(existingFile, { name: '' }, 'compendiumEntry');
                     if (parsed) oldEntry = parsed;
                 }
-            } catch (error) {
+            } catch {
+            	// intentional
                 
             }
         }
@@ -6866,7 +7012,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 
         entry.filePath = finalFilePath;
 
-        if (!(entry as any)._skipSync) {
+        if (!(entry as WithSyncFlags<CompendiumEntry>)._skipSync) {
             const { EntitySyncService } = await import('./services/EntitySyncService');
             const syncService = new EntitySyncService(this);
             await syncService.syncEntity('compendiumentry', entry, oldEntry);
@@ -6910,8 +7056,25 @@ export default class StorytellerSuitePlugin extends Plugin {
         const fileName = `${magicSystem.name.replace(/[\\/:"*?<>|]+/g, '')}.md`;
         const filePath = normalizePath(`${folderPath}/${fileName}`);
 
-        const { filePath: currentFilePath, description, rules, source, costs, limitations, training, history, ...rest } = magicSystem as any;
-        if ((rest).sections) delete (rest).sections;
+        const msRecord = magicSystem as unknown as Record<string, unknown>;
+        const currentFilePath = msRecord.filePath as string | undefined;
+        const description = msRecord.description as string | undefined;
+        const rules = msRecord.rules as string | undefined;
+        const source = msRecord.source as string | undefined;
+        const costs = msRecord.costs as string | undefined;
+        const limitations = msRecord.limitations as string | undefined;
+        const training = msRecord.training as string | undefined;
+        const history = msRecord.history as string | undefined;
+        const rest: Record<string, unknown> = { ...msRecord };
+        delete rest.filePath;
+        delete rest.description;
+        delete rest.rules;
+        delete rest.source;
+        delete rest.costs;
+        delete rest.limitations;
+        delete rest.training;
+        delete rest.history;
+        if (rest.sections) delete rest.sections;
 
         let finalFilePath = filePath;
         if (currentFilePath && currentFilePath !== filePath) {
@@ -6937,13 +7100,14 @@ export default class StorytellerSuitePlugin extends Plugin {
                 }
 
                 // Load old magic system for sync comparison (only if not skipping sync)
-                if (!(magicSystem as any)._skipSync) {
+                if (!(magicSystem as WithSyncFlags<MagicSystem>)._skipSync) {
                     const parsed = await this.parseFile<MagicSystem>(existingFile, { name: '' }, 'magicSystem');
                     if (parsed) {
                         oldMagicSystem = this.normalizeEntityCustomFields('magicSystem', parsed);
                     }
                 }
-            } catch (error) {
+            } catch {
+            	// intentional
                 
             }
         }
@@ -6953,6 +7117,7 @@ export default class StorytellerSuitePlugin extends Plugin {
         if (originalFrontmatter) {
             const validation = validateFrontmatterPreservation(finalFrontmatter, originalFrontmatter);
             if (validation.lostFields.length > 0) {
+            	// intentional
                 
             }
         }
@@ -6962,13 +7127,13 @@ export default class StorytellerSuitePlugin extends Plugin {
             : '';
 
         const providedSections: Record<string, string | undefined> = {
-            Description: description !== undefined ? (description as string) : undefined,
-            Rules: rules !== undefined ? (rules as string) : undefined,
-            Source: source !== undefined ? (source as string) : undefined,
-            Costs: costs !== undefined ? (costs as string) : undefined,
-            Limitations: limitations !== undefined ? (limitations as string) : undefined,
-            Training: training !== undefined ? (training as string) : undefined,
-            History: history !== undefined ? (history as string) : undefined
+            Description: description,
+            Rules: rules,
+            Source: source,
+            Costs: costs,
+            Limitations: limitations,
+            Training: training,
+            History: history
         };
         const templateSections = getTemplateSections('magicSystem', providedSections);
 
@@ -6995,12 +7160,13 @@ export default class StorytellerSuitePlugin extends Plugin {
         magicSystem.filePath = finalFilePath;
         this.app.metadataCache.trigger("dataview:refresh-views");
 
-        if (!(magicSystem as any)._skipSync) {
+        if (!(magicSystem as WithSyncFlags<MagicSystem>)._skipSync) {
             try {
                 const { EntitySyncService } = await import('./services/EntitySyncService');
                 const syncService = new EntitySyncService(this);
                 await syncService.syncEntity('magicsystem', magicSystem, oldMagicSystem);
-            } catch (error) {
+            } catch {
+            	// intentional
                 
             }
         }
@@ -7528,10 +7694,10 @@ export default class StorytellerSuitePlugin extends Plugin {
 
 			// Read existing canvas
 			const existingContent = await this.app.vault.read(existingFile);
-			let existingCanvas: any;
+			let existingCanvas: StoryBoardCanvasData;
 			try {
-				existingCanvas = JSON.parse(existingContent);
-			} catch (error) {
+				existingCanvas = JSON.parse(existingContent) as StoryBoardCanvasData;
+			} catch {
 				new Notice('Error reading existing story board. It may be corrupted.');
 				
 				return;
@@ -7565,7 +7731,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 			const leaf = this.app.workspace.getLeaf(false);
 			await leaf.openFile(existingFile);
 
-		} catch (error) {
+		} catch {
 			
 			new Notice('Error updating story board. See console for details.');
 		}
@@ -7606,7 +7772,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 			const leaf = this.app.workspace.getLeaf(false);
 			await leaf.openFile(existingFile);
 
-		} catch (error) {
+		} catch {
 			
 			new Notice('Error opening story board. See console for details.');
 		}
@@ -7796,8 +7962,8 @@ export default class StorytellerSuitePlugin extends Plugin {
 			}
 			if (!needsUpdate) {
 				for (const field of ARRAY_FIELDS) {
-					const arr = fm[field];
-					if (Array.isArray(arr) && arr.some(x => matches(x))) {
+					const arr = fm[field] as unknown;
+					if (Array.isArray(arr) && (arr as unknown[]).some(x => matches(x))) {
 						needsUpdate = true;
 						break;
 					}
@@ -7814,13 +7980,14 @@ export default class StorytellerSuitePlugin extends Plugin {
 					for (const field of ARRAY_FIELDS) {
 						const arr = frontmatter[field];
 						if (Array.isArray(arr)) {
-							frontmatter[field] = arr.map(x =>
+							frontmatter[field] = (arr as unknown[]).map(x =>
 								matches(x) ? remap(x) : x
 							);
 						}
 					}
 				});
-			} catch (e) {
+			} catch {
+				// intentional
 				
 			}
 		}
@@ -8178,7 +8345,8 @@ export default class StorytellerSuitePlugin extends Plugin {
 			} else {
 				await this.app.vault.create(filePath, content);
 			}
-		} catch (err) {
+		} catch {
+			// intentional
 			
 		}
 	}
@@ -8194,7 +8362,8 @@ export default class StorytellerSuitePlugin extends Plugin {
 			if (file instanceof TFile) {
 				await this.app.fileManager.trashFile(file);
 			}
-		} catch (err) {
+		} catch {
+			// intentional
 			
 		}
 	}
@@ -8245,24 +8414,25 @@ export default class StorytellerSuitePlugin extends Plugin {
 					}
 				}
 				if (!fm) continue;
+				const fmr = fm as Record<string, unknown>;
 
 				// Legacy compatibility:
 				// - storyteller-type may be missing in older notes
 				// - id/story-id may be stored under older keys
-				const typeValue = String(fm['storyteller-type'] ?? fm['type'] ?? '').toLowerCase().trim();
+				const typeValue = String(fmr['storyteller-type'] ?? fmr['type'] ?? '').toLowerCase().trim();
 				const looksLikeGroup =
 					typeValue === 'group' ||
-					fm['group-type'] !== undefined ||
-					Array.isArray(fm['members']) ||
-					fm['storyteller-id'] !== undefined ||
-					fm['storyteller-story-id'] !== undefined;
+					fmr['group-type'] !== undefined ||
+					Array.isArray(fmr['members']) ||
+					fmr['storyteller-id'] !== undefined ||
+					fmr['storyteller-story-id'] !== undefined;
 				if (!looksLikeGroup) continue;
 
-				let id: string = String(fm['storyteller-id'] ?? fm['id'] ?? '').trim();
+				let id: string = String(fmr['storyteller-id'] ?? fmr['id'] ?? '').trim();
 				const storyId: string = String(
-					fm['storyteller-story-id'] ??
-					fm['storyId'] ??
-					fm['story-id'] ??
+					fmr['storyteller-story-id'] ??
+					fmr['storyId'] ??
+					fmr['story-id'] ??
 					this.inferStoryIdFromPath(file.path) ??
 					this.getActiveStory()?.id ??
 					''
@@ -8299,7 +8469,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 						.map(item => this.stripWikiLinkValue(item))
 						.filter((item): item is string => Boolean(item));
 				};
-				const rawMembers = Array.isArray(fm['members']) ? fm['members'] as Record<string, unknown>[] : [];
+				const rawMembers = Array.isArray(fmr['members']) ? (fmr['members'] as unknown[]).map(m => m as Record<string, unknown>) : [];
 				const members = await Promise.all(rawMembers.map(async member => {
 					const typeValue = String(member?.['type'] ?? '').trim();
 					const memberType: EntityFolderType | null =
@@ -8320,38 +8490,38 @@ export default class StorytellerSuitePlugin extends Plugin {
 					if (resolvedName) cleanedMember['name'] = resolvedName;
 					return cleanedMember;
 				}));
-				const groupRelationships = Array.isArray(fm['group-relationships'])
-					? (fm['group-relationships'] as Record<string, unknown>[]).map(rel => ({
-						...rel,
-						groupName: stripScalar(rel?.['groupName']) ?? rel?.['groupName'],
-					}))
+				const groupRelationships = Array.isArray(fmr['group-relationships'])
+					? (fmr['group-relationships'] as unknown[]).map(r => {
+						const rel = r as Record<string, unknown>;
+						return { ...rel, groupName: stripScalar(rel['groupName']) ?? String(rel['groupName'] ?? '') };
+					})
 					: undefined;
 
 				const fromFile: Group = {
 					id,
 					storyId,
-					name:               stripScalar(fm['name']) ?? file.basename,
-					color:              fm['color'],
-					groupType:          fm['group-type'],
-					tags:               fm['tags']               ?? [],
-					profileImagePath:   fm['profile-image'],
-					strength:           fm['strength'],
-					status:             fm['status'],
-					emblem:             fm['emblem'],
-					motto:              fm['motto'],
-					militaryPower:      fm['military-power'],
-					economicPower:      fm['economic-power'],
-					politicalInfluence: fm['political-influence'],
-					colors:             fm['colors'],
-					territories:        stripArray(fm['territories']),
-					linkedEvents:       stripArray(fm['linked-events']),
-					linkedCulture:      stripScalar(fm['linked-culture']),
-					parentGroup:        stripScalar(fm['parent-group']),
-					subgroups:          stripArray(fm['subgroups']),
-					members:            members as any,
-					groupRelationships: groupRelationships as any,
-					connections:        fm['connections'],
-					customFields:       fm['custom-fields'],
+					name:               stripScalar(fmr['name']) ?? file.basename,
+					color:              fmr['color'] as string | undefined,
+					groupType:          fmr['group-type'] as Group['groupType'],
+					tags:               Array.isArray(fmr['tags']) ? (fmr['tags'] as unknown[]).map(String) : [],
+					profileImagePath:   fmr['profile-image'] as string | undefined,
+					strength:           fmr['strength'] as string | undefined,
+					status:             fmr['status'] as string | undefined,
+					emblem:             fmr['emblem'] as string | undefined,
+					motto:              fmr['motto'] as string | undefined,
+					militaryPower:      typeof fmr['military-power'] === 'number' ? fmr['military-power'] : undefined,
+					economicPower:      typeof fmr['economic-power'] === 'number' ? fmr['economic-power'] : undefined,
+					politicalInfluence: typeof fmr['political-influence'] === 'number' ? fmr['political-influence'] : undefined,
+					colors:             Array.isArray(fmr['colors']) ? (fmr['colors'] as unknown[]).map(String) : undefined,
+					territories:        stripArray(fmr['territories']),
+					linkedEvents:       stripArray(fmr['linked-events']),
+					linkedCulture:      stripScalar(fmr['linked-culture']),
+					parentGroup:        stripScalar(fmr['parent-group']),
+					subgroups:          stripArray(fmr['subgroups']),
+					members:            members as unknown as GroupMemberDetails[],
+					groupRelationships: groupRelationships as GroupRelationship[] | undefined,
+					connections:        fmr['connections'] as Group['connections'],
+					customFields:       fmr['custom-fields'] as Record<string, string> | undefined,
 					description,
 					history,
 					structure,
@@ -8374,7 +8544,8 @@ export default class StorytellerSuitePlugin extends Plugin {
 				await this.saveSettings();
 				this.emitGroupsChanged?.();
 			}
-		} catch (err) {
+		} catch {
+			// intentional
 			
 		}
 	}
@@ -8618,21 +8789,21 @@ export default class StorytellerSuitePlugin extends Plugin {
 
                 let changed = false;
                 const seenRefs = new Set<string>();
-                const repairedRefs = refs.flatMap((ref: any) => {
-                    const typeKey = this.normalizeEntityRefType(ref?.entityType);
+                const repairedRefs = refs.flatMap((ref: EntityRef) => {
+                    const typeKey = this.normalizeEntityRefType(ref.entityType);
                     const bucket = lookup.get(typeKey);
                     if (!bucket) return [ref];
 
-                    const resolved = bucket.get(this.normalizeEntityRefLookupValue(ref?.entityId))
-                        || bucket.get(this.normalizeEntityRefLookupValue(ref?.entityName));
+                    const resolved = bucket.get(this.normalizeEntityRefLookupValue(ref.entityId))
+                        || bucket.get(this.normalizeEntityRefLookupValue(ref.entityName));
 
                     if (!resolved) {
                         changed = true;
                         return [];
                     }
 
-                    const nextId = resolved.id || ref.entityId || resolved.name;
-                    const nextName = resolved.name || ref.entityName || ref.entityId;
+                    const nextId: string = resolved.id || ref.entityId || resolved.name || ref.entityId;
+                    const nextName: string = resolved.name || ref.entityName || ref.entityId;
                     const dedupeKey = `${typeKey}:${this.normalizeEntityRefLookupValue(nextId || nextName)}`;
 
                     if (seenRefs.has(dedupeKey)) {
@@ -8650,14 +8821,14 @@ export default class StorytellerSuitePlugin extends Plugin {
                 });
 
                 if (changed) {
-                    location.entityRefs = repairedRefs as any;
+                    location.entityRefs = repairedRefs;
                     await this.saveLocation(location);
                     updatedCount += 1;
                 }
             }
 
             return updatedCount;
-        } catch (error) {
+        } catch {
             
             return 0;
         }
@@ -8736,8 +8907,9 @@ export default class StorytellerSuitePlugin extends Plugin {
     }
 	async loadSettings() {
 		// Load old settings if present
-		const loaded = await this.loadData();
-        const isFreshInstall = !loaded || Object.keys(loaded).length === 0;
+		const loadedRaw = await this.loadData() as Record<string, unknown> | null | undefined;
+		const loaded = loadedRaw ?? {};
+        const isFreshInstall = !loadedRaw || Object.keys(loaded).length === 0;
 		this.settings = Object.assign({}, DEFAULT_SETTINGS, loaded);
 
 		let settingsUpdated = false;
@@ -8752,7 +8924,7 @@ export default class StorytellerSuitePlugin extends Plugin {
                     const allMd = this.app.vault.getMarkdownFiles();
                     const resolved = this.getFolderResolver().resolveAll();
                     const prefixes: string[] = Object.values(resolved)
-                        .map(v => (v as any).path as string | undefined)
+                        .map(v => v.path)
                         .filter((p): p is string => !!p)
                         .map(p => normalizePath(p) + '/');
                     const anyEntityFiles = allMd.some(f => prefixes.some(pref => f.path.startsWith(pref)));
@@ -8773,7 +8945,7 @@ export default class StorytellerSuitePlugin extends Plugin {
                     settingsUpdated = true;
                 }
             }
-        } catch (e) {
+        } catch {
             // Best-effort sanitization; ignore errors
             
         }
@@ -8782,9 +8954,9 @@ export default class StorytellerSuitePlugin extends Plugin {
 		if ((!this.settings.stories || this.settings.stories.length === 0)) {
 			// Try to detect old folders with data
 			const vault = this.app.vault;
-			const oldCharacterFolder = loaded?.characterFolder || 'StorytellerSuite/Characters';
-			const oldLocationFolder = loaded?.locationFolder || 'StorytellerSuite/Locations';
-			const oldEventFolder = loaded?.eventFolder || 'StorytellerSuite/Events';
+			const oldCharacterFolder = (loaded['characterFolder'] as string | undefined) || 'StorytellerSuite/Characters';
+			const oldLocationFolder = (loaded['locationFolder'] as string | undefined) || 'StorytellerSuite/Locations';
+			const oldEventFolder = (loaded['eventFolder'] as string | undefined) || 'StorytellerSuite/Events';
 			// Check if any files exist in these folders
 			const hasOldData = vault.getMarkdownFiles().some(f =>
 				f.path.startsWith(oldCharacterFolder + '/') ||
@@ -8826,7 +8998,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 				
 				if (targetStoryId) {
 					for (const group of groupsWithoutStoryId) {
-						(group as any).storyId = targetStoryId;
+						group.storyId = targetStoryId;
 					}
 					settingsUpdated = true;
 				}
@@ -8859,9 +9031,9 @@ export default class StorytellerSuitePlugin extends Plugin {
         if (!('locationFolderPath' in this.settings)) { this.settings.locationFolderPath = DEFAULT_SETTINGS.locationFolderPath; settingsUpdated = true; }
         if (!('eventFolderPath' in this.settings)) { this.settings.eventFolderPath = DEFAULT_SETTINGS.eventFolderPath; settingsUpdated = true; }
         if (!('itemFolderPath' in this.settings)) { this.settings.itemFolderPath = DEFAULT_SETTINGS.itemFolderPath; settingsUpdated = true; }
-        if (!('referenceFolderPath' in this.settings)) { (this.settings as any).referenceFolderPath = DEFAULT_SETTINGS.referenceFolderPath as any; settingsUpdated = true; }
-        if (!('chapterFolderPath' in this.settings)) { (this.settings as any).chapterFolderPath = DEFAULT_SETTINGS.chapterFolderPath as any; settingsUpdated = true; }
-        if (!('sceneFolderPath' in this.settings)) { (this.settings as any).sceneFolderPath = DEFAULT_SETTINGS.sceneFolderPath as any; settingsUpdated = true; }
+        if (!('referenceFolderPath' in this.settings)) { this.settings.referenceFolderPath = DEFAULT_SETTINGS.referenceFolderPath; settingsUpdated = true; }
+        if (!('chapterFolderPath' in this.settings)) { this.settings.chapterFolderPath = DEFAULT_SETTINGS.chapterFolderPath; settingsUpdated = true; }
+        if (!('sceneFolderPath' in this.settings)) { this.settings.sceneFolderPath = DEFAULT_SETTINGS.sceneFolderPath; settingsUpdated = true; }
         if (!('groupFolderPath' in this.settings)) { this.settings.groupFolderPath = DEFAULT_SETTINGS.groupFolderPath; settingsUpdated = true; }
         if (!('bookFolderPath' in this.settings)) { this.settings.bookFolderPath = DEFAULT_SETTINGS.bookFolderPath; settingsUpdated = true; }
         if (!('sessionsFolderPath' in this.settings)) { this.settings.sessionsFolderPath = DEFAULT_SETTINGS.sessionsFolderPath; settingsUpdated = true; }
@@ -8913,7 +9085,7 @@ export default class StorytellerSuitePlugin extends Plugin {
         // Ensure new optional fields exist on groups for backward compatibility
         if (this.settings.groups.length > 0) {
             for (const g of this.settings.groups) {
-                if (!('tags' in (g as any))) (g as any).tags = [];
+                if (!g.tags) g.tags = [];
                 // profileImagePath may be undefined; leave as-is if missing
             }
         }
@@ -8945,26 +9117,30 @@ export default class StorytellerSuitePlugin extends Plugin {
 
     private async runDeferredStartupMaintenance(): Promise<void> {
         try {
-            const beforeCount = this.templateManager.getAllTemplates().filter(t => (t as any).isNoteBased).length;
+            const beforeCount = this.templateManager.getAllTemplates().filter(t => t.isNoteBased).length;
             await this.templateNoteManager.initialize();
-            const afterCount = this.templateManager.getAllTemplates().filter(t => (t as any).isNoteBased).length;
+            const afterCount = this.templateManager.getAllTemplates().filter(t => t.isNoteBased).length;
             if (afterCount > beforeCount) {
+            	// intentional
                 
             }
-        } catch (error) {
+        } catch {
+        	// intentional
             
         }
 
         try {
             await this.syncGalleryWatchFolder();
-        } catch (error) {
+        } catch {
+        	// intentional
             
         }
 
         try {
             await this.migrateGroupsToVault();
             await this.syncGroupsFromVault();
-        } catch (error) {
+        } catch {
+        	// intentional
             
         }
 
@@ -8974,7 +9150,8 @@ export default class StorytellerSuitePlugin extends Plugin {
                 this.settings.relationshipsMigrated = true;
                 await this.saveSettings();
             }
-        } catch (error) {
+        } catch {
+        	// intentional
             
         }
 
@@ -8985,7 +9162,8 @@ export default class StorytellerSuitePlugin extends Plugin {
                 this.settings.bidirectionalLinksBackfilled = true;
                 await this.saveSettings();
             }
-        } catch (error) {
+        } catch {
+        	// intentional
             
         }
 
@@ -8995,7 +9173,8 @@ export default class StorytellerSuitePlugin extends Plugin {
                 this.settings.staleEntityRefsPrunedVersion = this.manifest.version;
                 await this.saveSettings();
             }
-        } catch (error) {
+        } catch {
+        	// intentional
             
         }
 
@@ -9005,7 +9184,8 @@ export default class StorytellerSuitePlugin extends Plugin {
                 this.settings.entityTypeBackfilledVersion = this.manifest.version;
                 await this.saveSettings();
             }
-        } catch (error) {
+        } catch {
+        	// intentional
             
         }
     }
@@ -9042,9 +9222,9 @@ export default class StorytellerSuitePlugin extends Plugin {
       this.app.workspace.trigger('storyteller:groups-changed');
       // Ping the dashboard view to refresh if the groups tab is active
       const leaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_DASHBOARD);
-      const view: any = leaves[0]?.view;
-      if (view && view.activeTabId === 'groups' && typeof view.refreshActiveTab === 'function') {
-        view.refreshActiveTab();
+      const view = leaves[0]?.view instanceof DashboardView ? leaves[0].view : null;
+      if (view && view.activeTabId === 'groups') {
+        view.refreshCurrentTab();
       }
     } catch {
       // no-op
@@ -9144,8 +9324,8 @@ export default class StorytellerSuitePlugin extends Plugin {
 				new Notice(`Failed to apply template: ${result.error || 'Unknown error'}`);
 			}
 		} catch (error) {
-			
-			new Notice(`Error applying template: ${error.message}`);
+
+			new Notice(`Error applying template: ${error instanceof Error ? error.message : String(error)}`);
 		}
 	}
 
@@ -9219,7 +9399,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 			if (body.classList.contains('storyteller-mobile-enabled')) {
 				body.classList.remove('storyteller-mobile-enabled');
 			}
-		} catch (error) {
+		} catch {
 			// Silently fail to prevent plugin unload from being blocked
 			
 		}

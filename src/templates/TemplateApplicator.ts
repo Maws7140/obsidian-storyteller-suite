@@ -394,7 +394,8 @@ export class TemplateApplicator {
                 if (isRecord(parsed)) {
                     fields = { ...fields, ...parsed };
                 }
-            } catch (error) {
+            } catch {
+            	// intentional
                 
             }
         } else if (isRecord(customYamlFields)) {
@@ -415,7 +416,8 @@ export class TemplateApplicator {
                 if ('Backstory' in parsedSections) {
                     (fields).backstory = parsedSections['Backstory'];
                 }
-            } catch (error) {
+            } catch {
+            	// intentional
                 
             }
         } else if (isRecord(sectionContent)) {
@@ -1134,6 +1136,7 @@ export class TemplateApplicator {
 
         // Log warnings if any
         if (allWarnings.length > 0) {
+        	// intentional
             
         }
 

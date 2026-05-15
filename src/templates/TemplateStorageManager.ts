@@ -69,6 +69,7 @@ export class TemplateStorageManager {
             const { FANTASY_KINGDOM_TEMPLATE } = await import('./prebuilt/FantasyKingdom');
             this.builtInTemplates.set(FANTASY_KINGDOM_TEMPLATE.id, FANTASY_KINGDOM_TEMPLATE);
         } catch {
+        	// intentional
             
         }
 
@@ -76,6 +77,7 @@ export class TemplateStorageManager {
             const { CYBERPUNK_METROPOLIS_TEMPLATE } = await import('./prebuilt/CyberpunkMetropolis');
             this.builtInTemplates.set(CYBERPUNK_METROPOLIS_TEMPLATE.id, CYBERPUNK_METROPOLIS_TEMPLATE);
         } catch {
+        	// intentional
             
         }
 
@@ -83,6 +85,7 @@ export class TemplateStorageManager {
             const { MURDER_MYSTERY_TEMPLATE } = await import('./prebuilt/MurderMystery');
             this.builtInTemplates.set(MURDER_MYSTERY_TEMPLATE.id, MURDER_MYSTERY_TEMPLATE);
         } catch {
+        	// intentional
             
         }
 
@@ -92,7 +95,8 @@ export class TemplateStorageManager {
             BUILTIN_CHARACTER_TEMPLATES.forEach(template => {
                 this.builtInTemplates.set(template.id, template);
             });
-        } catch (error) {
+        } catch {
+        	// intentional
             
         }
 
@@ -102,7 +106,8 @@ export class TemplateStorageManager {
             BUILTIN_LOCATION_TEMPLATES.forEach(template => {
                 this.builtInTemplates.set(template.id, template);
             });
-        } catch (error) {
+        } catch {
+        	// intentional
             
         }
 
@@ -112,7 +117,8 @@ export class TemplateStorageManager {
             BUILTIN_EVENT_TEMPLATES.forEach(template => {
                 this.builtInTemplates.set(template.id, template);
             });
-        } catch (error) {
+        } catch {
+        	// intentional
             
         }
 
@@ -122,7 +128,8 @@ export class TemplateStorageManager {
             BUILTIN_ITEM_TEMPLATES.forEach(template => {
                 this.builtInTemplates.set(template.id, template);
             });
-        } catch (error) {
+        } catch {
+        	// intentional
             
         }
 
@@ -132,7 +139,8 @@ export class TemplateStorageManager {
             BUILTIN_GROUP_TEMPLATES.forEach(template => {
                 this.builtInTemplates.set(template.id, template);
             });
-        } catch (error) {
+        } catch {
+        	// intentional
             
         }
 
@@ -142,7 +150,8 @@ export class TemplateStorageManager {
             BUILTIN_WORLDBUILDING_TEMPLATES.forEach(template => {
                 this.builtInTemplates.set(template.id, template);
             });
-        } catch (error) {
+        } catch {
+        	// intentional
             
         }
 
@@ -152,7 +161,8 @@ export class TemplateStorageManager {
             BUILTIN_STORY_STRUCTURE_TEMPLATES.forEach(template => {
                 this.builtInTemplates.set(template.id, template);
             });
-        } catch (error) {
+        } catch {
+        	// intentional
             
         }
 
@@ -162,7 +172,8 @@ export class TemplateStorageManager {
             MAP_TEMPLATES.forEach(template => {
                 this.builtInTemplates.set(template.id, template);
             });
-        } catch (error) {
+        } catch {
+        	// intentional
             
         }
     }
@@ -219,9 +230,11 @@ export class TemplateStorageManager {
                     if (validation.isValid) {
                         this.userTemplates.set(template.id, template);
                     } else {
+                    	// intentional
                         
                     }
-                } catch (error) {
+                } catch {
+                	// intentional
                     
                 }
             }
@@ -236,7 +249,7 @@ export class TemplateStorageManager {
         if (!folder) {
             try {
                 await this.app.vault.createFolder(this.templateFolder);
-            } catch (error) {
+            } catch {
                 // Folder might have been created by another process
                 
             }

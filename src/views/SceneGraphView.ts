@@ -341,7 +341,7 @@ export class SceneGraphView extends ItemView {
                 }).open();
             })(); });
 
-        } catch (err) {
+        } catch {
             new Notice('Failed to render scene graph. Check console for details.');
             
         }

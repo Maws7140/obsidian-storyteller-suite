@@ -73,42 +73,43 @@ function buildCalloutMarkdown(type: string, title: string, lines: string[]): str
 
 function getIdentityRows(data: SheetData): Array<[string, string]> {
     const { character } = data;
-    const c = character as any;
     const rows: Array<[string, string]> = [];
     if (character.status) rows.push(['Status', character.status]);
     if (character.affiliation) rows.push(['Affiliation', character.affiliation]);
-    if (c.age) rows.push(['Age', String(c.age)]);
-    if (c.occupation) rows.push(['Occupation', String(c.occupation)]);
-    const born = c.birthDate || c.birthday;
+    if (character.age) rows.push(['Age', String(character.age)]);
+    if (character.occupation) rows.push(['Occupation', String(character.occupation)]);
+    const born = character.birthDate || character.birthday;
     if (born) rows.push(['Born', String(born)]);
-    if (c.race || c.dndRace) rows.push(['Race', String(c.dndRace || c.race)]);
+    if (character.race || character.dndRace) rows.push(['Race', String(character.dndRace || character.race)]);
     return rows;
 }
 
 function getDndDetailRows(data: SheetData): Array<[string, string]> {
-    const c = data.character as any;
+    const { character } = data;
     const rows: Array<[string, string]> = [];
-    if (c.dndLevel != null) rows.push(['Level', String(c.dndLevel)]);
-    if (c.dndClass) rows.push(['Class', String(c.dndClass)]);
-    if (c.dndSubclass) rows.push(['Subclass', String(c.dndSubclass)]);
-    if (c.dndRace) rows.push(['Ancestry', String(c.dndRace)]);
-    if (c.dndCurrentHp != null || c.dndMaxHp != null) {
-        const hp = `${c.dndCurrentHp ?? c.dndMaxHp ?? 0}/${c.dndMaxHp ?? c.dndCurrentHp ?? 0}`;
+    if (character.dndLevel != null) rows.push(['Level', String(character.dndLevel)]);
+    if (character.dndClass) rows.push(['Class', String(character.dndClass)]);
+    if (character.dndSubclass) rows.push(['Subclass', String(character.dndSubclass)]);
+    if (character.dndRace) rows.push(['Ancestry', String(character.dndRace)]);
+    if (character.dndCurrentHp != null || character.dndMaxHp != null) {
+        const hp = `${character.dndCurrentHp ?? character.dndMaxHp ?? 0}/${character.dndMaxHp ?? character.dndCurrentHp ?? 0}`;
         rows.push(['HP', hp]);
     }
-    if (c.dndTempHp != null) rows.push(['Temp HP', String(c.dndTempHp)]);
-    if (c.dndAc != null) rows.push(['Armor Class', String(c.dndAc)]);
-    if (c.dndSpeed != null) rows.push(['Speed', `${c.dndSpeed} ft`]);
-    if (c.dndProficiencyBonus != null) rows.push(['Proficiency', `${c.dndProficiencyBonus >= 0 ? '+' : ''}${c.dndProficiencyBonus}`]);
-    if (c.dndHitDice) rows.push(['Hit Dice', String(c.dndHitDice)]);
-    if (Array.isArray(c.dndConditions) && c.dndConditions.length > 0) rows.push(['Conditions', c.dndConditions.join(', ')]);
+    if (character.dndTempHp != null) rows.push(['Temp HP', String(character.dndTempHp)]);
+    if (character.dndAc != null) rows.push(['Armor Class', String(character.dndAc)]);
+    if (character.dndSpeed != null) rows.push(['Speed', `${character.dndSpeed} ft`]);
+    if (character.dndProficiencyBonus != null) rows.push(['Proficiency', `${character.dndProficiencyBonus >= 0 ? '+' : ''}${character.dndProficiencyBonus}`]);
+    if (character.dndHitDice) rows.push(['Hit Dice', String(character.dndHitDice)]);
+    if (Array.isArray(character.dndConditions) && character.dndConditions.length > 0) rows.push(['Conditions', character.dndConditions.join(', ')]);
     return rows;
 }
 
 function getAbilityRows(data: SheetData): Array<[string, string]> {
-    const c = data.character as any;
     return ABILITY_SCORE_LABELS
-        .map(([label, key]) => [label, c[key] != null ? String(c[key]) : '—'] as [string, string]);
+        .map(([label, key]) => {
+            const val = data.character[key] as number | string | boolean | null | undefined;
+            return [label, val != null ? String(val) : '—'] as [string, string];
+        });
 }
 
 function buildBulletLines(items: string[]): string[] {
@@ -330,14 +331,13 @@ function sharedBuildHTML(
     rootCls: string
 ): string {
     const { character, events, locations, items, groups, portraitDataUrl } = data;
-    const c = character as any;
 
     const statItems: string[] = [];
     if (character.status)      statItems.push(`<span class="cs-stat"><span class="cs-sl">Status</span><span class="cs-sv">${esc(character.status)}</span></span>`);
     if (character.affiliation) statItems.push(`<span class="cs-stat"><span class="cs-sl">Affiliation</span><span class="cs-sv">${esc(character.affiliation)}</span></span>`);
-    if (c.age)                 statItems.push(`<span class="cs-stat"><span class="cs-sl">Age</span><span class="cs-sv">${esc(String(c.age))}</span></span>`);
-    if (c.occupation)          statItems.push(`<span class="cs-stat"><span class="cs-sl">Occupation</span><span class="cs-sv">${esc(c.occupation)}</span></span>`);
-    const born = c.birthDate || c.birthday;
+    if (character.age)         statItems.push(`<span class="cs-stat"><span class="cs-sl">Age</span><span class="cs-sv">${esc(String(character.age))}</span></span>`);
+    if (character.occupation)  statItems.push(`<span class="cs-stat"><span class="cs-sl">Occupation</span><span class="cs-sv">${esc(character.occupation)}</span></span>`);
+    const born = character.birthDate || character.birthday;
     if (born)                  statItems.push(`<span class="cs-stat"><span class="cs-sl">Born</span><span class="cs-sv">${esc(String(born))}</span></span>`);
 
     const traitsHTML   = (character.traits || []).map(t => `<span class="cs-trait">${esc(t)}</span>`).join('');
@@ -768,11 +768,10 @@ const adventurerPanelTemplate: BuiltInSheetTemplate = {
 
     buildInnerHTML(data, esc, nl) {
         const { character, portraitDataUrl } = data;
-        const c = character as any;
         const metaBits = [
-            c.dndLevel != null ? `Level ${esc(String(c.dndLevel))}` : 'Player Character',
-            c.dndClass ? esc(String(c.dndClass)) : null,
-            c.dndSubclass ? esc(String(c.dndSubclass)) : null,
+            character.dndLevel != null ? `Level ${esc(String(character.dndLevel))}` : 'Player Character',
+            character.dndClass ? esc(String(character.dndClass)) : null,
+            character.dndSubclass ? esc(String(character.dndSubclass)) : null,
             character.affiliation ? esc(character.affiliation) : null,
             character.status ? esc(character.status) : null,
         ].filter(Boolean) as string[];

@@ -13,7 +13,7 @@ import { PlotItemModal } from '../modals/PlotItemModal';
 import { ImageDetailModal } from '../modals/ImageDetailModal';
 // Remove ImageSuggestModal import as we replace its usage
 // import { ImageSuggestModal } from '../modals/GalleryModal';
-import { Character, Location, Event, PlotItem, GalleryImage, IndentedSceneRef, StoryDraft, CompileWorkflow } from '../types'; // Import types
+import { Character, Location, Event, PlotItem, GalleryImage, IndentedSceneRef, StoryDraft, CompileWorkflow, GraphFilters } from '../types'; // Import types
 import { NewStoryModal } from '../modals/NewStoryModal';
 import { GroupModal } from '../modals/GroupModal';
 import { PlatformUtils } from '../utils/PlatformUtils';
@@ -93,7 +93,7 @@ export class DashboardView extends ItemView {
     private dismissalTimer: number | null = null;
 
     /** Network graph renderer instance for persistence across refreshes */
-    private networkGraphRenderer: any = null;
+    private networkGraphRenderer: import('./NetworkGraphRenderer').NetworkGraphRenderer | null = null;
 
     /** Tab being dragged (ID), null when no drag is in progress */
     private _draggedTabId: string | null = null;
@@ -238,25 +238,25 @@ export class DashboardView extends ItemView {
 
         // Initialize tab configuration
         this.tabs = [
-            { id: 'characters', label: t('characters'), renderFn: this.renderCharactersContent.bind(this) },
-            { id: 'locations', label: t('locations'), renderFn: this.renderLocationsContent.bind(this) },
-            { id: 'events', label: t('timeline'), renderFn: this.renderEventsContent.bind(this) },
-            { id: 'items', label: t('items'), renderFn: this.renderItemsContent.bind(this) },
-            { id: 'maps', label: 'Maps', renderFn: this.renderMapsContent.bind(this) },
-            { id: 'network', label: t('networkGraph'), renderFn: this.renderNetworkContent.bind(this) },
-            { id: 'gallery', label: t('gallery'), renderFn: this.renderGalleryContent.bind(this) },
-            { id: 'groups', label: t('groups'), renderFn: this.renderGroupsContent.bind(this) },
-            { id: 'references', label: t('references'), renderFn: this.renderReferencesContent.bind(this) },
-            { id: 'writing', label: 'Writing', renderFn: this.renderWritingContent.bind(this) },
-            { id: 'compile', label: t('compile'), renderFn: this.renderCompileContent.bind(this) },
-            { id: 'cultures', label: t('cultures'), renderFn: this.renderCulturesContent.bind(this) },
-            { id: 'economies', label: t('economies'), renderFn: this.renderEconomiesContent.bind(this) },
-            { id: 'magicsystems', label: t('magicSystems'), renderFn: this.renderMagicSystemsContent.bind(this) },
-            { id: 'compendium', label: 'Compendium', renderFn: this.renderCompendiumContent.bind(this) },
-            { id: 'books', label: 'Books', renderFn: this.renderBooksContent.bind(this) },
-            { id: 'campaign', label: 'Campaign', renderFn: this.renderCampaignContent.bind(this) },
-            { id: 'templates', label: t('templates'), renderFn: this.renderTemplatesContent.bind(this) },
-            { id: 'analytics', label: 'Analytics', renderFn: this.renderAnalyticsContent.bind(this) },
+            { id: 'characters', label: t('characters'), renderFn: (c: HTMLElement) => this.renderCharactersContent(c) },
+            { id: 'locations', label: t('locations'), renderFn: (c: HTMLElement) => this.renderLocationsContent(c) },
+            { id: 'events', label: t('timeline'), renderFn: (c: HTMLElement) => this.renderEventsContent(c) },
+            { id: 'items', label: t('items'), renderFn: (c: HTMLElement) => this.renderItemsContent(c) },
+            { id: 'maps', label: 'Maps', renderFn: (c: HTMLElement) => this.renderMapsContent(c) },
+            { id: 'network', label: t('networkGraph'), renderFn: (c: HTMLElement) => this.renderNetworkContent(c) },
+            { id: 'gallery', label: t('gallery'), renderFn: (c: HTMLElement) => this.renderGalleryContent(c) },
+            { id: 'groups', label: t('groups'), renderFn: (c: HTMLElement) => this.renderGroupsContent(c) },
+            { id: 'references', label: t('references'), renderFn: (c: HTMLElement) => this.renderReferencesContent(c) },
+            { id: 'writing', label: 'Writing', renderFn: (c: HTMLElement) => this.renderWritingContent(c) },
+            { id: 'compile', label: t('compile'), renderFn: (c: HTMLElement) => this.renderCompileContent(c) },
+            { id: 'cultures', label: t('cultures'), renderFn: (c: HTMLElement) => this.renderCulturesContent(c) },
+            { id: 'economies', label: t('economies'), renderFn: (c: HTMLElement) => this.renderEconomiesContent(c) },
+            { id: 'magicsystems', label: t('magicSystems'), renderFn: (c: HTMLElement) => this.renderMagicSystemsContent(c) },
+            { id: 'compendium', label: 'Compendium', renderFn: (c: HTMLElement) => this.renderCompendiumContent(c) },
+            { id: 'books', label: 'Books', renderFn: (c: HTMLElement) => this.renderBooksContent(c) },
+            { id: 'campaign', label: 'Campaign', renderFn: (c: HTMLElement) => this.renderCampaignContent(c) },
+            { id: 'templates', label: t('templates'), renderFn: (c: HTMLElement) => this.renderTemplatesContent(c) },
+            { id: 'analytics', label: 'Analytics', renderFn: (c: HTMLElement) => this.renderAnalyticsContent(c) },
         ];
 
         this.applyTabOrder();
@@ -280,7 +280,8 @@ export class DashboardView extends ItemView {
                         }
                     }, 50);
                 }
-            } catch (error) {
+            } catch {
+            	// intentional
                 
             }
         }, PlatformUtils.getSearchDebounceDelay());
@@ -358,6 +359,11 @@ export class DashboardView extends ItemView {
      * Refresh the currently active tab (with mobile typing protection)
      * Prevents refresh while user is actively typing on mobile to avoid keyboard dismissal
      */
+    /** Public entry point for external callers (e.g. plugin) to trigger an active-tab refresh. */
+    refreshCurrentTab(): void {
+        void this.refreshActiveTab();
+    }
+
     private async refreshActiveTab() {
         if (!this.tabContentContainer) {
             return;
@@ -395,7 +401,8 @@ export class DashboardView extends ItemView {
                     },
                     () => !this.isSimplifiedMobileDashboard()
                 );
-            } catch (error) {
+            } catch {
+            	// intentional
                 
             } finally {
                 this._suppressScrollCapture = false;
@@ -425,7 +432,7 @@ export class DashboardView extends ItemView {
                 this.currentFilter = filter.toLowerCase();
             },
             isSimplifiedMobileDashboard: () => this.isSimplifiedMobileDashboard(),
-            renderWritingGoalBanner: this.renderWritingGoalBanner.bind(this),
+            renderWritingGoalBanner: (c: HTMLElement) => this.renderWritingGoalBanner(c),
             getWritingViewMode: () => this._writingViewMode,
             setWritingViewMode: (mode) => {
                 this._writingViewMode = mode;
@@ -438,16 +445,16 @@ export class DashboardView extends ItemView {
                             plugin: this.plugin,
                             currentFilter: this.currentFilter,
                             chapterCollapseState: this._chapterCollapseState,
-                            getImageSrc: this.getImageSrc.bind(this),
-                            addEditButton: this.addEditButton.bind(this),
-                            addDeleteButton: this.addDeleteButton.bind(this),
-                            addOpenFileButton: this.addOpenFileButton.bind(this),
-                            persistChapter: this.persistChapterFromDashboard.bind(this),
-                            persistScene: this.persistSceneFromDashboard.bind(this),
-                            removeChapter: this.removeChapterFromDashboard.bind(this),
-                            removeScene: this.removeSceneFromDashboard.bind(this),
-                            confirmDeleteChapter: this.confirmDeleteChapterFromDashboard.bind(this),
-                            confirmDeleteScene: this.confirmDeleteSceneFromDashboard.bind(this),
+                            getImageSrc: (p: string) => this.getImageSrc(p),
+                            addEditButton: (c: HTMLElement, fn: () => void) => this.addEditButton(c, fn),
+                            addDeleteButton: (c: HTMLElement, fn: () => Promise<void>) => this.addDeleteButton(c, fn),
+                            addOpenFileButton: (c: HTMLElement, fp: string | undefined): import('obsidian').ButtonComponent | null => { this.addOpenFileButton(c, fp); return null; },
+                            persistChapter: (ch, n, d) => this.persistChapterFromDashboard(ch, n, d),
+                            persistScene: (sc, n, d) => this.persistSceneFromDashboard(sc, n, d),
+                            removeChapter: (fp: string, d: string) => this.removeChapterFromDashboard(fp, d),
+                            removeScene: (fp: string, d: string) => this.removeSceneFromDashboard(fp, d),
+                            confirmDeleteChapter: (fp: string, cn: string, d: string) => this.confirmDeleteChapterFromDashboard(fp, cn, d),
+                            confirmDeleteScene: (fp: string, sn: string, d: string) => this.confirmDeleteSceneFromDashboard(fp, sn, d),
                         });
                         break;
                     case 'board':
@@ -464,14 +471,14 @@ export class DashboardView extends ItemView {
                         break;
                 }
             },
-            renderHeaderControls: this.renderHeaderControls.bind(this),
-            getImageSrc: this.getImageSrc.bind(this),
-            resolveLocationName: this.resolveLocationName.bind(this),
-            addEditButton: this.addEditButton.bind(this),
-            addDeleteButton: this.addDeleteButton.bind(this),
-            addOpenFileButton: this.addOpenFileButton.bind(this),
+            renderHeaderControls: (...args) => this.renderHeaderControls(...args),
+            getImageSrc: (p: string) => this.getImageSrc(p),
+            resolveLocationName: (v: string, locs: import('../types').Location[]) => this.resolveLocationName(v, locs),
+            addEditButton: (c: HTMLElement, fn: () => void) => this.addEditButton(c, fn),
+            addDeleteButton: (c: HTMLElement, fn: () => Promise<void>) => this.addDeleteButton(c, fn),
+            addOpenFileButton: (c: HTMLElement, fp: string | undefined): import('obsidian').ButtonComponent | null => { this.addOpenFileButton(c, fp); return null; },
             mutationRunner: this.mutationRunner,
-            queueDashboardRefresh: this.queueDashboardRefresh.bind(this),
+            queueDashboardRefresh: (d: string) => this.queueDashboardRefresh(d),
         };
     }
 
@@ -484,7 +491,7 @@ export class DashboardView extends ItemView {
         await controller.render(container, this.getDashboardControllerContext());
     }
 
-    private async persistChapterFromDashboard(chapter: any, successNotice: string, detail: string): Promise<void> {
+    private async persistChapterFromDashboard(chapter: import('../types').Chapter, successNotice: string, detail: string): Promise<void> {
         await this.mutationRunner.runUpdate({
             action: async () => {
                 await this.plugin.saveChapter(chapter);
@@ -495,7 +502,7 @@ export class DashboardView extends ItemView {
         });
     }
 
-    private async persistSceneFromDashboard(scene: any, successNotice: string, detail: string): Promise<void> {
+    private async persistSceneFromDashboard(scene: import('../types').Scene, successNotice: string, detail: string): Promise<void> {
         await this.mutationRunner.runUpdate({
             action: async () => {
                 await this.plugin.saveScene(scene);
@@ -617,8 +624,7 @@ export class DashboardView extends ItemView {
                     async (name, description) => {
                         const story = await this.plugin.createStory(name, description);
                         await this.plugin.setActiveStory(story.id);
-                        // @ts-ignore
-                        new window.Notice(`Story "${name}" created and activated.`);
+                        new Notice(`Story "${name}" created and activated.`);
                         void this.onOpen();
                     }
                 ).open();
@@ -696,7 +702,8 @@ export class DashboardView extends ItemView {
                             this.markSearchInputDismissal();
                             this.currentSearchInput.blur();
                         }
-                    } catch (error) {
+                    } catch {
+                    	// intentional
                         
                     }
                 });
@@ -715,7 +722,8 @@ export class DashboardView extends ItemView {
             if (!this.tabHeaderContainer || !headerEl) return;
             // Force a layout recalculation to ensure proper rendering
             this.tabHeaderContainer.setCssStyles({ display: 'flex' });
-        } catch (e) {
+        } catch {
+        	// intentional
             
         }
     }
@@ -771,13 +779,13 @@ export class DashboardView extends ItemView {
             this.tabHeaderRibbonEl.setCssStyles({ overflowX: 'auto' });
             this.tabHeaderRibbonEl.setCssStyles({ overflowY: 'hidden' });
             this.tabHeaderRibbonEl.setCssStyles({ justifyContent: 'flex-start' });
-            (this.tabHeaderRibbonEl.style as any).rowGap = '0px';
+            this.tabHeaderRibbonEl.setCssStyles({ rowGap: '0px' });
 
             this.tabHeaderContainer.setCssStyles({ overflowX: 'auto' });
             this.tabHeaderContainer.setCssStyles({ overflowY: 'hidden' });
         } else {
             this.tabHeaderRibbonEl.setCssStyles({ flexWrap: 'wrap' });
-            (this.tabHeaderRibbonEl.style as any).rowGap = '6px';
+            this.tabHeaderRibbonEl.setCssStyles({ rowGap: '6px' });
             this.tabHeaderRibbonEl.setCssStyles({ overflowX: 'visible' });
             this.tabHeaderRibbonEl.setCssStyles({ overflowY: 'visible' });
 
@@ -812,7 +820,7 @@ export class DashboardView extends ItemView {
         btn.setCssStyles({ padding: '6px 10px' });
         btn.setCssStyles({ borderRadius: '6px' });
         if (!forMeasure) {
-            (btn.style as any).flex = '0 1 auto';
+            btn.setCssStyles({ flex: '0 1 auto' });
             btn.setCssStyles({ minWidth: '96px' });
             btn.setCssStyles({ maxWidth: '220px' });
         }
@@ -1561,7 +1569,7 @@ export class DashboardView extends ItemView {
         controlsContainer.setCssStyles({ alignItems: 'center' });
 
         // Use class property for graph renderer persistence
-        let graphRenderer = this.networkGraphRenderer;
+        let graphRenderer: import('./NetworkGraphRenderer').NetworkGraphRenderer | null = this.networkGraphRenderer;
 
         // Search box
         const searchContainer = controlsContainer.createDiv();
@@ -1653,7 +1661,7 @@ export class DashboardView extends ItemView {
         
         layoutSelect.addEventListener('change', () => {
             if (graphRenderer) {
-                graphRenderer.changeLayout(layoutSelect.value as any);
+                graphRenderer.changeLayout(layoutSelect.value as 'cose' | 'circle' | 'grid' | 'concentric');
             }
         });
         
@@ -1696,7 +1704,7 @@ export class DashboardView extends ItemView {
         filtersContainer.setCssStyles({ borderRadius: '8px' });
 
         // Filter state
-        let currentFilters: any = {
+        let currentFilters: GraphFilters = {
             groups: [],
             timelineStart: undefined,
             timelineEnd: undefined,
@@ -1743,18 +1751,19 @@ export class DashboardView extends ItemView {
             checkbox.id = `entity-type-${type}`;
             checkbox.onchange = async () => {
                 if (checkbox.checked) {
-                    if (!currentFilters.entityTypes.includes(type)) {
-                        currentFilters.entityTypes.push(type);
+                    if (!(currentFilters.entityTypes ?? []).includes(type)) {
+                        (currentFilters.entityTypes ??= []).push(type);
                     }
                 } else {
-                    currentFilters.entityTypes = currentFilters.entityTypes.filter((t: string) => t !== type);
+                    currentFilters.entityTypes = (currentFilters.entityTypes ?? []).filter((t) => t !== type);
                 }
                 if (graphRenderer) {
                     await graphRenderer.applyFilters(currentFilters);
                 }
             };
 
-            const label = checkboxContainer.createEl('label', { text: t((type + 's') as any) });
+            const labelText = { character: 'Characters', location: 'Locations', event: 'Events', item: 'Items' }[type] ?? type;
+            const label = checkboxContainer.createEl('label', { text: labelText });
             label.htmlFor = `entity-type-${type}`;
             label.setCssStyles({ cursor: 'pointer' });
         });
@@ -1827,7 +1836,7 @@ export class DashboardView extends ItemView {
             await graphRenderer.initializeCytoscape();
             // Store renderer instance for future refreshes
             this.networkGraphRenderer = graphRenderer;
-        } catch (error) {
+        } catch {
             
             graphContainer.createEl('p', {
                 text: 'Error loading network graph. See console for details.',
@@ -1879,7 +1888,7 @@ export class DashboardView extends ItemView {
                                 new Notice(`Failed to import ${failed.length} image${failed.length === 1 ? '' : 's'}. Check console for details.`);
                             }
                         }
-                    } catch (error) {
+                    } catch {
                         
                         new Notice("Error uploading file. Check console for details.");
                     } finally {
@@ -2388,7 +2397,7 @@ export class DashboardView extends ItemView {
 
         // ── View mode switcher ─────────────────────────────────────────────
         const switcher = container.createDiv(`storyteller-writing-switcher${this.isSimplifiedMobileDashboard() ? ' storyteller-writing-switcher--mobile' : ''}`);
-        const modes: Array<{ id: typeof this._writingViewMode; icon: string; label: string }> = [
+        const modes: Array<{ id: 'list' | 'board' | 'arc' | 'heatmap' | 'holes'; icon: string; label: string }> = [
             { id: 'list',    icon: 'list',           label: 'List'     },
             { id: 'board',   icon: 'columns-3',      label: 'Board'    },
             { id: 'arc',     icon: 'activity',       label: 'Arc'      },
@@ -2432,8 +2441,7 @@ export class DashboardView extends ItemView {
                 }
             });
             modes.forEach(mode => {
-                const option = modeSelect.createEl('option', { text: mode.label });
-                option.value = mode.id;
+                modeSelect.createEl('option', { text: mode.label, value: mode.id });
             });
             modeSelect.value = this._writingViewMode;
             modeSelect.addEventListener('change', () => { void (async () => {
@@ -2449,14 +2457,14 @@ export class DashboardView extends ItemView {
                 });
                 setIcon(btn.createSpan(), m.icon);
                 btn.createSpan({ text: m.label });
-                btn.onclick = async () => {
+                btn.addEventListener('click', () => { void (async () => {
                     this._writingViewMode = m.id;
                     switcher.querySelectorAll('.storyteller-switcher-btn:not(.storyteller-switcher-popout)')
                         .forEach(b => b.removeClass('is-active'));
                     btn.addClass('is-active');
                     updatePopOut();
                     await renderActive();
-                };
+                })(); });
             });
         }
 
@@ -2464,7 +2472,7 @@ export class DashboardView extends ItemView {
 
         popOutBtn.onclick = () => {
             const mode = this._writingViewMode === 'list' ? 'board' : this._writingViewMode;
-            (this.plugin as any).activateWritingPanelView(mode);
+            void this.plugin.activateWritingPanelView(mode);
         };
 
         // ── Header controls (search + add buttons, only for list/board) ──
@@ -2548,16 +2556,16 @@ export class DashboardView extends ItemView {
             plugin: this.plugin,
             currentFilter: this.currentFilter,
             chapterCollapseState: this._chapterCollapseState,
-            getImageSrc: this.getImageSrc.bind(this),
-            addEditButton: this.addEditButton.bind(this),
-            addDeleteButton: this.addDeleteButton.bind(this),
-            addOpenFileButton: this.addOpenFileButton.bind(this),
-            persistChapter: this.persistChapterFromDashboard.bind(this),
-            persistScene: this.persistSceneFromDashboard.bind(this),
-            removeChapter: this.removeChapterFromDashboard.bind(this),
-            removeScene: this.removeSceneFromDashboard.bind(this),
-            confirmDeleteChapter: this.confirmDeleteChapterFromDashboard.bind(this),
-            confirmDeleteScene: this.confirmDeleteSceneFromDashboard.bind(this),
+            getImageSrc: (p: string) => this.getImageSrc(p),
+            addEditButton: (c: HTMLElement, fn: () => void) => this.addEditButton(c, fn),
+            addDeleteButton: (c: HTMLElement, fn: () => Promise<void>) => this.addDeleteButton(c, fn),
+            addOpenFileButton: (c: HTMLElement, fp: string | undefined): import('obsidian').ButtonComponent | null => { this.addOpenFileButton(c, fp); return null; },
+            persistChapter: (ch, n, d) => this.persistChapterFromDashboard(ch, n, d),
+            persistScene: (sc, n, d) => this.persistSceneFromDashboard(sc, n, d),
+            removeChapter: (fp: string, d: string) => this.removeChapterFromDashboard(fp, d),
+            removeScene: (fp: string, d: string) => this.removeSceneFromDashboard(fp, d),
+            confirmDeleteChapter: (fp: string, cn: string, d: string) => this.confirmDeleteChapterFromDashboard(fp, cn, d),
+            confirmDeleteScene: (fp: string, sn: string, d: string) => this.confirmDeleteSceneFromDashboard(fp, sn, d),
         });
         // The old inline renderer under this was dead weight. Leaving it live is how this file gets gross again.
         return;
@@ -2866,7 +2874,7 @@ export class DashboardView extends ItemView {
         const listContainer = container.createDiv('storyteller-list-container');
         
         if (allScenes.length === 0) {
-            listContainer.createEl('p', { text: t('noScenesFound' as any) || ('No scenes found.' + (this.currentFilter ? t('matchingFilter') : '')) });
+            listContainer.createEl('p', { text: 'No scenes found.' + (this.currentFilter ? ' Matching current filter.' : '') });
             return;
         }
 
@@ -3006,7 +3014,7 @@ export class DashboardView extends ItemView {
     }
 
     /** Helper to render a single scene item */
-    private renderSceneItem(container: HTMLElement, sc: any, showChapterAssign: boolean, chapters?: any[]) {
+    private renderSceneItem(container: HTMLElement, sc: import('../types').Scene, showChapterAssign: boolean, chapters?: import('../types').Chapter[]) {
         const itemEl = container.createDiv('storyteller-list-item storyteller-scene-item');
 
         const pfpContainer = itemEl.createDiv('storyteller-list-item-pfp');
@@ -3025,11 +3033,12 @@ export class DashboardView extends ItemView {
         const infoEl = itemEl.createDiv('storyteller-list-item-info');
         const nameEl = infoEl.createEl('strong', { text: sc.name });
         if (sc.filePath) {
+            const scFilePath = sc.filePath;
             nameEl.addClass('storyteller-scene-name-link');
             nameEl.title = 'Click to open note';
             nameEl.addEventListener('click', () => {
-                const file = this.app.vault.getAbstractFileByPath(sc.filePath);
-                if (file instanceof TFile) void this.app.workspace.openLinkText(sc.filePath, '', false);
+                const file = this.app.vault.getAbstractFileByPath(scFilePath);
+                if (file instanceof TFile) void this.app.workspace.openLinkText(scFilePath, '', false);
             });
         }
 
@@ -3123,7 +3132,7 @@ export class DashboardView extends ItemView {
 
         const listContainer = container.createDiv('storyteller-list-container');
         if (scenes.length === 0) {
-            listContainer.createEl('p', { text: t('noScenesFound' as any) || ('No scenes found.' + (this.currentFilter ? t('matchingFilter') : '')) });
+            listContainer.createEl('p', { text: 'No scenes found.' + (this.currentFilter ? ' Matching current filter.' : '') });
             return;
         }
 
@@ -3577,7 +3586,7 @@ export class DashboardView extends ItemView {
                 try {
                     imgEl.src = this.getImageSrc(character.profileImagePath);
                     imgEl.alt = character.name;
-                } catch (e) {
+                } catch {
                     
                     imgContainer.createSpan({ text: '?', title: 'Error loading image' }); // Placeholder on error
                 }
@@ -3653,7 +3662,7 @@ export class DashboardView extends ItemView {
                 try {
                     imgEl.src = this.getImageSrc(location.profileImagePath);
                     imgEl.alt = location.name;
-                } catch (e) {
+                } catch {
                     
                     pfpContainer.createSpan({ text: '?', title: 'Error loading image' });
                 }
@@ -3731,7 +3740,7 @@ export class DashboardView extends ItemView {
                 try {
                     imgEl.src = this.getImageSrc(event.profileImagePath);
                     imgEl.alt = event.name;
-                } catch (e) {
+                } catch {
                     
                     pfpContainer.createSpan({ text: '?', title: 'Error loading image' });
                 }
@@ -3781,7 +3790,7 @@ export class DashboardView extends ItemView {
 
             // --- Add Extra Info ---
             const extraInfoEl = infoEl.createDiv('storyteller-list-item-extra');
-            if ((event as any).isMilestone) {
+            if (event.isMilestone) {
                 extraInfoEl.createSpan({ cls: 'storyteller-meta-badge storyteller-event-milestone-badge', text: 'Milestone' });
             }
             if (event.status) {
@@ -5179,7 +5188,7 @@ export class DashboardView extends ItemView {
         const wordsToday = todayStats?.wordsWritten ?? 0;
         const pct = Math.min(100, (wordsToday / goal) * 100);
         const met = wordsToday >= goal;
-        const streak = (tracker as any).getWritingStreak?.() ?? 0;
+        const streak = tracker.getWritingStreak?.() ?? 0;
 
         const banner = container.createDiv({
             cls: `storyteller-goal-banner${met ? ' storyteller-goal-banner--met' : ''}`

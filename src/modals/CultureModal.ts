@@ -94,7 +94,7 @@ export class CultureModal extends ResponsiveModal {
                                             await this.applyTemplateToCultureWithVariables(defaultTemplate, variableValues);
                                             new Notice('Default template applied');
                                             this.refresh();
-                                        } catch (error) {
+                                        } catch {
                                             
                                             new Notice('Error applying default template');
                                         }
@@ -108,7 +108,7 @@ export class CultureModal extends ResponsiveModal {
                         try {
                             await this.applyTemplateToCulture(defaultTemplate);
                             new Notice('Default template applied');
-                        } catch (error) {
+                        } catch {
                             
                             new Notice('Error applying default template');
                         }
@@ -153,7 +153,7 @@ export class CultureModal extends ResponsiveModal {
                                                         await this.applyTemplateToCultureWithVariables(template, variableValues);
                                                         new Notice(t('templateApplied', template.name));
                                                         this.refresh();
-                                                    } catch (error) {
+                                                    } catch {
                                                         
                                                         new Notice('Error applying template');
                                                     }
@@ -168,7 +168,7 @@ export class CultureModal extends ResponsiveModal {
                                         await this.applyTemplateToCulture(template);
                                         this.refresh();
                                         new Notice(t('templateApplied', template.name));
-                                    } catch (error) {
+                                    } catch {
                                         
                                         new Notice(t('templateApplyFailed', template.name));
                                     }
@@ -560,6 +560,7 @@ export class CultureModal extends ResponsiveModal {
         templateCulture = substitutionResult.value;
 
         if (substitutionResult.warnings.length > 0) {
+        	// intentional
             
         }
 
@@ -588,7 +589,8 @@ export class CultureModal extends ResponsiveModal {
                     fields = { ...fields, ...parsed };
                 }
                 
-            } catch (error) {
+            } catch {
+            	// intentional
                 
             }
         } else if (customYamlFields) {
@@ -623,7 +625,8 @@ export class CultureModal extends ResponsiveModal {
                 }
 
                 
-            } catch (error) {
+            } catch {
+            	// intentional
                 
             }
         } else if (sectionContent) {

@@ -21,7 +21,7 @@ export class CharacterSuggestModal extends FuzzySuggestModal<Character> {
         void super.onOpen(); // Important: Call parent onOpen
         try {
             this.characters = await this.plugin.listCharacters();
-        } catch (error) {
+        } catch {
             
             new Notice(t('errorLoadingCharacters'));
             this.characters = []; // Ensure it's an empty array on error

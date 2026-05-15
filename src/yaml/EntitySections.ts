@@ -125,7 +125,7 @@ const FRONTMATTER_WHITELISTS: Record<EntityType, Set<string>> = {
   character: new Set([
     'id', 'entityType', 'name', 'traits', 'relationships', 'locations', 'events',
     'currentLocationId', 'locationHistory', 'ownedItems', 'cultures', 'magicSystems',
-    'status', 'affiliation', 'gender', 'race', 'age', 'height', 'quirks',
+    'status', 'affiliation', 'gender', 'race', 'age', 'occupation', 'birthDate', 'birthday', 'height', 'quirks',
     'groups', 'profileImagePath', 'customFields', 'connections',
     'balance', 'linkedEconomies', 'linkedChapters', 'linkedScenes', 'linkedItems', 'compendiumEntries',
     'mapCoordinates', 'mapId', 'markerId', 'relatedMapIds', 'mapIcon', 'mapColor',
@@ -493,7 +493,7 @@ export function parseFrontmatterFromContent(content: string): Record<string, unk
       return parsed as Record<string, unknown>;
     }
     return {};
-  } catch (e) {
+  } catch {
     
     return undefined;
   }

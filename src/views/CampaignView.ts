@@ -77,6 +77,8 @@ export class CampaignView extends ItemView {
 
     // â”€â”€ State â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     private session: CampaignSession | null = null;
+    /** Read-only access to the currently loaded session (used by plugin to snapshot state). */
+    getLoadedSession(): CampaignSession | null { return this.session; }
     private currentScene: Scene | null = null;
     private branches: SceneBranch[] = [];
     private encounterTable: EncounterTable | null = null;
@@ -2282,7 +2284,7 @@ export class CampaignView extends ItemView {
             }
 
             return `Triggered event: *${event.name}*`;
-        } catch (error) {
+        } catch {
             
             const fallback = eventName || eventId;
             return `Triggered event: *${fallback}* (sync failed)`;

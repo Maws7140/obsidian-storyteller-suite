@@ -33,7 +33,7 @@ export class CompendiumEntrySuggestModal extends FuzzySuggestModal<CompendiumEnt
         void super.onOpen();
         try {
             this.entries = await this.plugin.listCompendiumEntries();
-        } catch (error) {
+        } catch {
             
             new Notice('Error loading compendium entries.');
             this.entries = [];

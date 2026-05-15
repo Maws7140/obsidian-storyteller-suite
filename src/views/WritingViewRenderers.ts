@@ -7,6 +7,7 @@
 
 import { App, TFile, Notice, setIcon } from 'obsidian';
 import StorytellerSuitePlugin from '../main';
+import { Scene, Chapter } from '../types';
 
 export type KanbanGroupBy = 'status' | 'chapter' | 'pov';
 export type WritingPanelMode = 'board' | 'arc' | 'heatmap' | 'holes';
@@ -36,7 +37,7 @@ export class WritingViewRenderers {
 
     async renderKanbanBoard(container: HTMLElement, filter: string) {
         const chapters = await this.plugin.listChapters();
-        const filterFn = (sc: any) =>
+        const filterFn = (sc: Scene) =>
             !filter ||
             sc.name.toLowerCase().includes(filter) ||
             (sc.chapterName || '').toLowerCase().includes(filter) ||
@@ -78,13 +79,13 @@ export class WritingViewRenderers {
 
     private _renderKanbanColumns(
         board: HTMLElement,
-        scenes: any[],
-        chapters: any[],
+        scenes: Scene[],
+        chapters: Chapter[],
         groupBy: KanbanGroupBy,
         rerender?: () => void,
     ) {
         board.empty();
-        const groups = new Map<string, any[]>();
+        const groups = new Map<string, Scene[]>();
 
         if (groupBy === 'status') {
             ['Outline', 'Draft', 'WIP', 'Revised', 'Final', '(none)'].forEach(s => groups.set(s, []));
@@ -95,7 +96,7 @@ export class WritingViewRenderers {
             });
         } else if (groupBy === 'chapter') {
             [...chapters].sort((a, b) => (a.number ?? 999) - (b.number ?? 999))
-                .forEach(ch => groups.set(ch.name || ch.id, []));
+                .forEach(ch => groups.set(ch.name || ch.id || '(unknown)', []));
             groups.set('(unassigned)', []);
             scenes.forEach(sc => {
                 const key = sc.chapterName || '(unassigned)';
@@ -111,7 +112,7 @@ export class WritingViewRenderers {
             });
         }
 
-        const chapterByName = new Map<string, any>(chapters.map(ch => [ch.name || ch.id, ch]));
+        const chapterByName = new Map<string, Chapter>(chapters.map(ch => [ch.name || ch.id || '(unknown)', ch]));
 
         groups.forEach((groupScenes, groupName) => {
             if (groupScenes.length === 0 && groupBy !== 'status') return;
@@ -135,10 +136,10 @@ export class WritingViewRenderers {
                 editBtn.title = `Edit chapter "${groupName}"`;
                 editBtn.onclick = () => {
                     void import('../modals/ChapterModal').then(({ ChapterModal }) => {
-                        new ChapterModal(this.app, this.plugin, ch, async (updated: any) => {
+                        new ChapterModal(this.app, this.plugin, ch, async (updated: Chapter) => {
                             await this.plugin.saveChapter(updated);
                             new Notice(`Chapter "${updated.name}" updated.`);
-                        }, async (toDelete: any) => {
+                        }, async (toDelete: Chapter) => {
                             if (toDelete.filePath) await this.plugin.deleteChapter(toDelete.filePath);
                         }).open();
                     });
@@ -168,8 +169,8 @@ export class WritingViewRenderers {
                 try {
                     const raw = e.dataTransfer?.getData('text/plain');
                     if (!raw) return;
-                    const data = JSON.parse(raw);
-                    const sc = scenes.find((s: any) => s.filePath === data.filePath);
+                    const data = JSON.parse(raw) as { filePath?: string };
+                    const sc = scenes.find((s: Scene) => s.filePath === data.filePath);
                     if (!sc) return;
                     const updated = { ...sc };
                     if (groupBy === 'status') {
@@ -199,7 +200,7 @@ export class WritingViewRenderers {
         });
     }
 
-    private _renderKanbanCard(col: HTMLElement, sc: any, groupBy?: KanbanGroupBy) {
+    private _renderKanbanCard(col: HTMLElement, sc: Scene, groupBy?: KanbanGroupBy) {
         const card = col.createDiv('storyteller-kanban-card');
 
         // Status color on card border-left
@@ -601,7 +602,7 @@ export class WritingViewRenderers {
         if (setupNoPayoff.length > 0) {
             issues.push({ severity: 'warning',
                 title: `${setupNoPayoff.length} scene${setupNoPayoff.length !== 1 ? 's' : ''} foreshadow other scenes but have no recorded payoff`,
-                detail: setupNoPayoff.map((sc: any) => sc.name).join(', ') });
+                detail: setupNoPayoff.map((sc: Scene) => sc.name).join(', ') });
         }
 
         const payoffNoSetup = scenes.filter(sc =>
@@ -609,11 +610,11 @@ export class WritingViewRenderers {
         if (payoffNoSetup.length > 0) {
             issues.push({ severity: 'info',
                 title: `${payoffNoSetup.length} scene${payoffNoSetup.length !== 1 ? 's' : ''} pay off other scenes without any foreshadowing`,
-                detail: payoffNoSetup.map((sc: any) => sc.name).join(', ') });
+                detail: payoffNoSetup.map((sc: Scene) => sc.name).join(', ') });
         }
 
         const unknownRefs: string[] = [];
-        scenes.forEach((sc: any) => {
+        scenes.forEach((sc: Scene) => {
             (sc.linkedCharacters || []).forEach((n: string) => {
                 const entry = `"${n}" in "${sc.name}"`;
                 if (!charNames.has(n) && !unknownRefs.includes(entry)) unknownRefs.push(entry);
@@ -625,7 +626,7 @@ export class WritingViewRenderers {
                 detail: unknownRefs.join('; ') });
         }
 
-        const noLocation = scenes.filter((sc: any) => (sc.linkedLocations || []).length === 0);
+        const noLocation = scenes.filter((sc: Scene) => (sc.linkedLocations || []).length === 0);
         if (noLocation.length > 0) {
             issues.push({ severity: 'info',
                 title: `${noLocation.length} scene${noLocation.length !== 1 ? 's' : ''} have no linked location`,

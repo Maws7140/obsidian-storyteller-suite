@@ -463,6 +463,15 @@ export interface Character {
     /** Character's age (string to support values like "ancient" or "unknown") */
     age?: string;
 
+    /** Character's occupation or role */
+    occupation?: string;
+
+    /** Character's birth date */
+    birthDate?: string;
+
+    /** Legacy alias for birthDate */
+    birthday?: string;
+
     /** Character's height or build */
     height?: string;
 

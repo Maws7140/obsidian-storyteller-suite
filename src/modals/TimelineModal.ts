@@ -228,7 +228,7 @@ export class TimelineModal extends Modal {
                 this.renderer.applyFilters(this.currentState.filters);
             }
             this.updateSearchDropdown();
-        } catch (error) {
+        } catch {
             
             this.timelineContainer.empty();
             const errorEl = this.timelineContainer.createDiv('storyteller-timeline-error');

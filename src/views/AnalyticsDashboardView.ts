@@ -114,7 +114,7 @@ export class AnalyticsDashboardView extends ItemView {
             // Save to settings
             this.plugin.settings.analyticsData = this.analytics;
             await this.plugin.saveSettings();
-        } catch (error) {
+        } catch {
             
             new Notice('Failed to refresh analytics');
         } finally {

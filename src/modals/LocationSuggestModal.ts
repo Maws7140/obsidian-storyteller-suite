@@ -22,7 +22,7 @@ export class LocationSuggestModal extends FuzzySuggestModal<Location> {
         void super.onOpen(); // Important: Call parent onOpen
         try {
             this.locations = await this.plugin.listLocations();
-        } catch (error) {
+        } catch {
             
             new Notice(t('errorLoadingLocations'));
             this.locations = []; // Ensure it's an empty array on error

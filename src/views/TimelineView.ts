@@ -474,7 +474,7 @@ export class TimelineView extends ItemView {
             await this.renderer.initialize();
             this.renderer.applyFilters(this.currentState.filters);
             this.updateSearchDropdown();
-        } catch (error) {
+        } catch {
             
             this.timelineContainer.empty();
             const errorEl = this.timelineContainer.createDiv('storyteller-timeline-error');
@@ -692,7 +692,8 @@ export class TimelineView extends ItemView {
                 // The timeline library handles resize automatically, but we need to ensure it updates
                 // No need to call fitToView() as that would change the user's zoom level
                 // vis-timeline has internal resize handling
-            } catch (error) {
+            } catch {
+            	// intentional
                 
             }
         }
@@ -805,7 +806,8 @@ export class TimelineView extends ItemView {
                             }
                         }, 100);
                     }
-                } catch (error) {
+                } catch {
+                	// intentional
                     
                 }
             }

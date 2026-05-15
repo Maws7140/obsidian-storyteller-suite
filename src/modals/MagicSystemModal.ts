@@ -104,7 +104,7 @@ export class MagicSystemModal extends ResponsiveModal {
                                             await this.applyTemplateToMagicSystemWithVariables(defaultTemplate, variableValues);
                                             new Notice('Default template applied');
                                             this.refresh();
-                                        } catch (error) {
+                                        } catch {
                                             
                                             new Notice('Error applying default template');
                                         }
@@ -118,7 +118,7 @@ export class MagicSystemModal extends ResponsiveModal {
                         try {
                             await this.applyTemplateToMagicSystem(defaultTemplate);
                             new Notice('Default template applied');
-                        } catch (error) {
+                        } catch {
                             
                             new Notice('Error applying default template');
                         }
@@ -155,7 +155,7 @@ export class MagicSystemModal extends ResponsiveModal {
                                                         await this.applyTemplateToMagicSystemWithVariables(template, variableValues);
                                                         new Notice(t('templateApplied', template.name));
                                                         this.refresh();
-                                                    } catch (error) {
+                                                    } catch {
                                                         
                                                         new Notice('Error applying template');
                                                     }
@@ -431,6 +431,7 @@ export class MagicSystemModal extends ResponsiveModal {
         templateMagic = substitutionResult.value;
 
         if (substitutionResult.warnings.length > 0) {
+        	// intentional
             
         }
 
@@ -459,7 +460,8 @@ export class MagicSystemModal extends ResponsiveModal {
                     fields = { ...fields, ...parsed };
                 }
                 
-            } catch (error) {
+            } catch {
+            	// intentional
                 
             }
         } else if (customYamlFields) {
@@ -497,7 +499,8 @@ export class MagicSystemModal extends ResponsiveModal {
                 }
 
                 
-            } catch (error) {
+            } catch {
+            	// intentional
                 
             }
         } else if (sectionContent) {

@@ -1,5 +1,6 @@
 import { App, ButtonComponent, TFile, setIcon } from 'obsidian';
 import type StorytellerSuitePlugin from '../../../main';
+import type { Chapter, Scene } from '../../../types';
 
 interface WritingListRendererContext {
     app: App;
@@ -10,8 +11,8 @@ interface WritingListRendererContext {
     addEditButton(container: HTMLElement, onClick: () => void): void;
     addDeleteButton(container: HTMLElement, onClick: () => Promise<void>): void;
     addOpenFileButton(container: HTMLElement, filePath: string | undefined): ButtonComponent | null;
-    persistChapter(chapter: any, successNotice: string, detail: string): Promise<void>;
-    persistScene(scene: any, successNotice: string, detail: string): Promise<void>;
+    persistChapter(chapter: Chapter, successNotice: string, detail: string): Promise<void>;
+    persistScene(scene: Scene, successNotice: string, detail: string): Promise<void>;
     removeChapter(filePath: string, detail: string): Promise<void>;
     removeScene(filePath: string, detail: string): Promise<void>;
     confirmDeleteChapter(filePath: string, chapterName: string, detail: string): Promise<void>;
@@ -139,7 +140,7 @@ export async function renderWritingChapterSceneList(container: HTMLElement, cont
         addSceneButton.createSpan({ text: ' Add scene to this chapter' });
         addSceneButton.onclick = () => {
             void import('../../../modals/SceneModal').then(({ SceneModal }) => {
-                const newScene = { chapterId: chapter.id, chapterName: chapter.name } as any;
+                const newScene = { chapterId: chapter.id, chapterName: chapter.name } as unknown as Scene;
                 new SceneModal(context.app, context.plugin, newScene, async (scene) => {
                     scene.chapterId = chapter.id;
                     scene.chapterName = chapter.name;
@@ -208,10 +209,10 @@ export async function renderWritingChapterSceneList(container: HTMLElement, cont
 
 function renderWritingSceneItem(
     container: HTMLElement,
-    scene: any,
+    scene: Scene,
     showChapterAssign: boolean,
     context: WritingListRendererContext,
-    chapters?: any[],
+    chapters?: Chapter[],
 ): void {
     const itemEl = container.createDiv('storyteller-list-item storyteller-scene-item');
 
@@ -231,12 +232,13 @@ function renderWritingSceneItem(
     const infoEl = itemEl.createDiv('storyteller-list-item-info');
     const nameEl = infoEl.createEl('strong', { text: scene.name });
     if (scene.filePath) {
+        const sceneFilePath = scene.filePath;
         nameEl.addClass('storyteller-scene-name-link');
         nameEl.title = 'Click to open note';
         nameEl.addEventListener('click', () => {
-            const file = context.app.vault.getAbstractFileByPath(scene.filePath);
+            const file = context.app.vault.getAbstractFileByPath(sceneFilePath);
             if (file instanceof TFile) {
-                void context.app.workspace.openLinkText(scene.filePath, '', false);
+                void context.app.workspace.openLinkText(sceneFilePath, '', false);
             }
         });
     }
