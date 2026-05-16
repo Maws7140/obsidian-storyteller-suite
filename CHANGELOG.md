@@ -1,3 +1,15 @@
+## 1.8.1
+
+### Changed
+- Reduced `!important` usage in styles by 107 declarations (288 → 181) — remaining instances are vendor overrides for Leaflet, vis-timeline, and Obsidian core that genuinely require it.
+- Expanded all 3-digit hex colors in styles to the 6-digit format for consistency.
+- Replaced `:has()` selectors in the gallery markdown rendering with a tagging post-processor that adds explicit classes, avoiding the selector-invalidation performance pitfall.
+- Replaced the `:has()` selectors used for mobile modal button-container sizing with explicit classes.
+
+### Internal
+- Dropped `js-yaml`, `dotenv`, `@types/js-yaml`, and `builtin-modules` from devDependencies; the build's Node-builtins list is now hardcoded instead of imported.
+- Release workflow now produces GitHub artifact attestations (`actions/attest-build-provenance@v2`) for `main.js`, `manifest.json`, `styles.css`, and the release zip.
+
 ## 1.8.0
 
 ### Fixed
