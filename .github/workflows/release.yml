@@ -17,6 +17,8 @@ on:
 
 permissions:
   contents: write
+  id-token: write
+  attestations: write
 
 env:
   PLUGIN_NAME: storyteller-suite
@@ -167,6 +169,15 @@ jobs:
           fi
           zip -r ${{ env.PLUGIN_NAME }}-${{ steps.release_meta.outputs.version }}.zip ${{ env.PLUGIN_NAME }}/
           ls -lh ${{ env.PLUGIN_NAME }}-${{ steps.release_meta.outputs.version }}.zip
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            main.js
+            manifest.json
+            styles.css
+            ${{ env.PLUGIN_NAME }}-${{ steps.release_meta.outputs.version }}.zip
 
       - name: Commit and tag version changes
         if: github.event_name == 'workflow_dispatch'

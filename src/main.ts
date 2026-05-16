@@ -1562,6 +1562,18 @@ export default class StorytellerSuitePlugin extends Plugin {
 		this.registerEditorExtension(createBranchViewExtension());
 		registerBranchBlockProcessors(this.app, this);
 
+		this.registerMarkdownPostProcessor((el) => {
+			const headings = el.querySelectorAll('h2');
+			headings.forEach((h) => {
+				const sibling = h.nextElementSibling;
+				if (!sibling || sibling.tagName !== 'P') return;
+				const embeds = sibling.querySelectorAll(':scope > .internal-embed.image-embed');
+				if (embeds.length === 0) return;
+				h.classList.add('storyteller-gallery-heading');
+				sibling.classList.add('storyteller-gallery-row');
+			});
+		});
+
 		// Track vault renames to keep gallery filePath references and entity-file
 		// image references (profileImagePath, coverImagePath, backgroundImagePath,
 		// image, images[]) in sync. Handles both individual image renames and
