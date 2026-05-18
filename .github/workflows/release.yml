@@ -160,16 +160,6 @@ jobs:
             echo "Warning: styles.css not found"
           fi
 
-      - name: Create release package
-        run: |
-          mkdir -p ${{ env.PLUGIN_NAME }}
-          cp main.js manifest.json ${{ env.PLUGIN_NAME }}/
-          if [ -f "styles.css" ]; then
-            cp styles.css ${{ env.PLUGIN_NAME }}/
-          fi
-          zip -r ${{ env.PLUGIN_NAME }}-${{ steps.release_meta.outputs.version }}.zip ${{ env.PLUGIN_NAME }}/
-          ls -lh ${{ env.PLUGIN_NAME }}-${{ steps.release_meta.outputs.version }}.zip
-
       - name: Attest build provenance
         uses: actions/attest-build-provenance@v2
         with:
@@ -177,7 +167,6 @@ jobs:
             main.js
             manifest.json
             styles.css
-            ${{ env.PLUGIN_NAME }}-${{ steps.release_meta.outputs.version }}.zip
 
       - name: Commit and tag version changes
         if: github.event_name == 'workflow_dispatch'
@@ -199,22 +188,20 @@ jobs:
           name: Release ${{ steps.release_meta.outputs.version }}
           body: |
             ## Changes in ${{ steps.release_meta.outputs.version }}
-            
+
             ${{ steps.release_notes.outputs.body }}
-            
+
             ## Installation
-            
-            1. Download the `${{ env.PLUGIN_NAME }}-${{ steps.release_meta.outputs.version }}.zip` file
-            2. Extract it to your Obsidian vault's `.obsidian/plugins/${{ env.PLUGIN_NAME }}/` folder
-            3. Restart Obsidian or reload the plugin
-            
+
+            Download `main.js`, `manifest.json`, and `styles.css` into your
+            vault's `.obsidian/plugins/${{ env.PLUGIN_NAME }}/` folder and reload Obsidian.
+
             ## Files
-            
+
             - `main.js` - Main plugin file
             - `manifest.json` - Plugin manifest
-            - `styles.css` - Plugin styles (if present)
+            - `styles.css` - Plugin styles
           files: |
-            ${{ env.PLUGIN_NAME }}-${{ steps.release_meta.outputs.version }}.zip
             main.js
             manifest.json
             styles.css

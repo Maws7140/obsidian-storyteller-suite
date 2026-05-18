@@ -2542,11 +2542,14 @@ If your plugin does not need CSS, delete this file.
     max-width: 100%;
 }
 
-/* Setting item controls should not overflow */
+/* Setting item controls should not overflow.
+   Note: do NOT set overflow:hidden here — Obsidian right-aligns .setting-item-control
+   via flex (justify-content: flex-end), so when the input is wider than its container
+   the LEFT side gets clipped. max-width + min-width are enough to keep flex shrinking
+   well-behaved without truncating input text. */
 [class*="storyteller-"][class*="-modal"] .setting-item-control {
     max-width: 100%;
     min-width: 0;
-    overflow: hidden;
 }
 
 /* Ensure setting items themselves don't cause overflow */
