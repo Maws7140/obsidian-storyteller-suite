@@ -2417,9 +2417,11 @@ If your plugin does not need CSS, delete this file.
 /* Better pointer support for different input methods */
 @media (pointer: coarse) {
     /* Touch/stylus on tablets - increase touch targets */
-    .mobile-button,
-    .storyteller-tab-header,
-    button {
+    .storyteller-modal .mobile-button,
+    .storyteller-modal .storyteller-tab-header,
+    .storyteller-modal button,
+    .view-type-storyteller-dashboard-view button,
+    .storyteller-responsive-modal button {
         min-height: 48px; /* Larger touch targets */
         min-width: 48px;
     }
@@ -2427,8 +2429,10 @@ If your plugin does not need CSS, delete this file.
 
 @media (pointer: fine) {
     /* Mouse or precise stylus - allow smaller targets */
-    .mobile-button,
-    button {
+    .storyteller-modal .mobile-button,
+    .storyteller-modal button,
+    .view-type-storyteller-dashboard-view button,
+    .storyteller-responsive-modal button {
         min-height: 36px;
         min-width: 36px;
     }
@@ -2436,8 +2440,10 @@ If your plugin does not need CSS, delete this file.
 
 /* Support for hover-capable styluses (S Pen Air Actions) */
 @media (hover: hover) and (pointer: fine) {
-    .mobile-button:hover,
-    button:hover {
+    .storyteller-modal .mobile-button:hover,
+    .storyteller-modal button:hover,
+    .view-type-storyteller-dashboard-view button:hover,
+    .storyteller-responsive-modal button:hover {
         opacity: 0.8;
         transition: opacity 0.2s ease;
     }
