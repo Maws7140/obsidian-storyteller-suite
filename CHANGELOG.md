@@ -1,3 +1,11 @@
+## 1.8.5
+
+### Fixed
+- SceneModal Date field and Campaign board map dropdown no longer overflow past the left edge of their setting row. The plugin-scope `.setting-item-control` rule now constrains its input/select/dropdown children with `max-width: 100%; min-width: 0; box-sizing: border-box` instead of clipping the container with `overflow: hidden`, so wide inputs shrink to fit rather than spilling out and overlapping the label.
+
+### Internal
+- Release workflow no longer builds or uploads the `storyteller-suite-X.Y.Z.zip` artifact. Releases now ship only `main.js`, `manifest.json`, and `styles.css` — the three files Obsidian actually loads.
+
 ## 1.8.1
 
 ### Changed
