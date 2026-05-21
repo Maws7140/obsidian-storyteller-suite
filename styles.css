@@ -133,45 +133,12 @@
    Your MapView needs proper flex layout and positioning.
 */
 
-.storyteller-map-view {
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-    width: 100%;
-    overflow: hidden;
-}
-
-.storyteller-map-toolbar {
-    display: flex;
-    align-items: center;
-    padding: 4px 8px;
-    border-bottom: 1px solid var(--background-modifier-border);
-    flex-shrink: 0;
-}
-
 .storyteller-map-toolbar-spacer {
     flex: 1;
 }
 
 .storyteller-toolbar-btn {
     margin: 0 2px;
-}
-
-.storyteller-map-selector {
-    display: flex;
-    align-items: center;
-    padding: 8px;
-    border-bottom: 1px solid var(--background-modifier-border);
-    flex-shrink: 0;
-}
-
-.storyteller-map-selector-label {
-    margin-right: 8px;
-}
-
-.storyteller-map-selector-dropdown {
-    flex: 1;
-    max-width: 300px;
 }
 
 /* CRITICAL: Map container positioning */
@@ -255,16 +222,6 @@
 .entity-bar-btn-small {
     padding: 4px 8px;
     min-width: auto;
-}
-
-.storyteller-map-footer {
-    display: flex;
-    align-items: center;
-    padding: 4px 8px;
-    border-top: 1px solid var(--background-modifier-border);
-    font-size: var(--font-ui-smaller);
-    color: var(--text-muted);
-    flex-shrink: 0;
 }
 
 .storyteller-map-error {
@@ -743,6 +700,13 @@
 /* Entity avatar positioning for stacked markers */
 .storyteller-entity-avatar {
     position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    font-size: 12px;
+    color: #ffffff;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
 }
 
 .storyteller-entity-avatar-fallback {
@@ -1070,7 +1034,6 @@
 /* Image overlay styling - improve image quality and rendering */
 .storyteller-map-image-overlay {
   /* Improve image quality for high-res displays */
-  image-rendering: -webkit-optimize-contrast;
   image-rendering: crisp-edges;
   /* Prevent interaction with overlay to allow map dragging */
   pointer-events: none;
@@ -1318,13 +1281,6 @@
     font-style: italic;
 }
 
-.storyteller-dashboard-tabs {
-  border-bottom: 1px solid var(--background-modifier-border);
-  padding: 6px 8px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
 .storyteller-tab-header {
   color: var(--text-normal);
   border: 1px solid transparent;
@@ -2621,46 +2577,6 @@ If your plugin does not need CSS, delete this file.
     box-shadow: 0 0 0 1px var(--interactive-accent);
 }
 
-/* Larger text input for name */
-.storyteller-modal-input-large {
-    font-size: var(--font-ui-large);
-    padding: var(--size-4-3);
-}
-
-/* Textarea styling */
-.storyteller-modal-textarea {
-    min-height: 80px; /* Minimum height */
-    resize: vertical; /* Allow vertical resize */
-}
-
-/* Vertical layout for description/backstory */
-.storyteller-modal-setting-vertical .setting-item-info {
-    width: 100%;
-    margin-bottom: var(--size-4-1);
-}
-.storyteller-modal-setting-vertical .setting-item-control {
-    width: 100%;
-}
-
-/* Custom Fields Styling */
-.storyteller-custom-fields-container .setting-item {
-    padding: var(--size-4-1) 0; /* Less padding for custom fields */
-}
-.storyteller-custom-field-name {
-    flex: 1 1 30%; /* Allow name to take up some space */
-    font-style: italic;
-    color: var(--text-faint);
-}
-.storyteller-custom-field-control {
-    flex: 1 1 70%; /* Allow control to take up more space */
-    display: flex;
-    align-items: center;
-}
-.storyteller-custom-field-control input[type="text"] {
-    flex-grow: 1; /* Input takes available space */
-    margin-right: var(--size-4-2); /* Space before delete button */
-}
-
 /* Button styling */
 .storyteller-character-modal .setting-item .button.mod-cta {
   background-color: var(--interactive-accent);
@@ -2999,7 +2915,7 @@ If your plugin does not need CSS, delete this file.
 }
 
 /* Conflict Badge in Toolbar */
-.storyteller-conflict-badge {
+.storyteller-toolbar-btn.storyteller-conflict-badge {
     position: relative;
     color: var(--text-error);
     background: rgba(var(--text-error-rgb), 0.1);
@@ -3025,17 +2941,6 @@ If your plugin does not need CSS, delete this file.
 .storyteller-badge-icon svg {
     width: 14px;
     height: 14px;
-}
-
-/* Timeline Tooltip Overrides */
-.vis-tooltip {
-    border: 1px solid var(--background-modifier-border);
-    background-color: var(--background-primary);
-    border-radius: 8px;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
-    padding: 12px;
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
 }
 
 /* Modernize the horizontal axis */
@@ -3131,6 +3036,8 @@ If your plugin does not need CSS, delete this file.
   border-radius: 6px;
   padding: 8px 12px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   max-width: 350px;
   word-wrap: break-word;
   white-space: normal;
@@ -3405,6 +3312,8 @@ If your plugin does not need CSS, delete this file.
   /* Create isolated stacking context for proper z-index layering */
   isolation: isolate;
   position: relative;
+  container-type: inline-size;
+  container-name: storyteller-dashboard;
 }
 
 /* ==============================================
@@ -3574,13 +3483,6 @@ If your plugin does not need CSS, delete this file.
 }
 
 /* Dashboard header & title */
-.storyteller-dashboard-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: var(--size-4-4);
-}
-.storyteller-dashboard-title { margin: 0; }
 .storyteller-kofi-link { margin-left: var(--size-4-4); }
 
 /* Utility class to hide elements */
@@ -3646,6 +3548,8 @@ If your plugin does not need CSS, delete this file.
   display: flex;
   flex-direction: row;
   align-items: center;
+  flex: 1;
+  order: 1;
   gap: 0.5rem;
   font-size: 1.05rem;
   font-weight: 600;
@@ -3668,6 +3572,7 @@ If your plugin does not need CSS, delete this file.
 .storyteller-group-actions {
   display: flex;
   flex-direction: row;
+  order: 2;
   gap: 0.5rem;
 }
 .storyteller-group-edit-btn {
@@ -3677,6 +3582,7 @@ If your plugin does not need CSS, delete this file.
 }
 
 .storyteller-group-members {
+  display: block;
   margin-inline-start: 0.25rem;
   padding-inline: 0.25rem 0.5rem;
   color: var(--text-muted);
@@ -3703,6 +3609,7 @@ body.mod-rtl .storyteller-group-members {
 
 /* --- Collapsible Group Card States --- */
 .storyteller-group-toggle-btn {
+  order: 0;
   background: none;
   border: none;
   color: var(--text-accent);
@@ -3750,27 +3657,12 @@ body.mod-rtl .storyteller-group-members {
 /* New: two-column responsive layout for group sections */
 .storyteller-group-section {
   display: grid;
-  grid-template-columns: 1fr;
-  gap: 0.25rem;
-}
-/* Balanced two-column layout only for sections, not the whole members wrapper */
-.storyteller-group-members { display: block; }
-.storyteller-group-section {
-  display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 0.25rem 2rem;
 }
 @media (max-width: 560px) {
   .storyteller-group-section { grid-template-columns: 1fr; }
 }
-
-/* Tidy toggle + header alignment */
-.storyteller-group-header {
-  align-items: center;
-}
-.storyteller-group-toggle-btn { order: 0; }
-.storyteller-group-info { flex: 1; order: 1; }
-.storyteller-group-actions { order: 2; }
 
 /* Group avatar */
 .storyteller-group-pfp {
@@ -4399,7 +4291,6 @@ body.mod-rtl .storyteller-group-members {
    IMPROVED EMPTY STATES
    ============================================== */
 
-.storyteller-empty-state,
 .storyteller-network-empty-state {
   padding: var(--sts-space-6, 48px);
   text-align: center;
@@ -4407,23 +4298,39 @@ body.mod-rtl .storyteller-group-members {
   margin: 0 auto;
 }
 
+.storyteller-empty-state.storyteller-empty-state {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  max-width: 400px;
+  padding: 2rem;
+}
+
 .storyteller-empty-state-icon {
   font-size: 64px;
-  margin-bottom: var(--sts-space-3, 24px);
-  opacity: 0.5;
+  color: var(--text-faint);
+  margin-bottom: 1.5rem;
+  opacity: 0.6;
+}
+
+.storyteller-empty-state-icon svg {
+  width: 64px;
+  height: 64px;
 }
 
 .storyteller-empty-state h3 {
-  font-size: var(--sts-text-xl, 20px);
+  font-size: 20px;
   font-weight: 600;
-  margin-bottom: 12px;
   color: var(--text-normal);
+  margin-bottom: 0.75rem;
 }
 
 .storyteller-empty-state-message {
-  font-size: var(--sts-text-base, 16px);
+  font-size: 14px;
   color: var(--text-muted);
-  margin-bottom: var(--sts-space-3, 24px);
+  margin-bottom: 1.5rem;
   line-height: 1.6;
 }
 
@@ -4431,22 +4338,24 @@ body.mod-rtl .storyteller-group-members {
   background-color: var(--background-secondary);
   border-radius: 8px;
   padding: var(--sts-space-2, 16px);
-  margin-bottom: var(--sts-space-3, 24px);
+  margin-bottom: 1.5rem;
   text-align: left;
 }
 
 .storyteller-empty-state-tip {
-  font-size: var(--sts-text-sm, 14px);
+  font-size: 13px;
   color: var(--text-muted);
-  padding: 8px 0;
+  background-color: var(--background-secondary);
+  padding: 0.75rem 1rem;
+  border-radius: 6px;
+  margin-bottom: 0.5rem;
+  text-align: left;
   border-left: 3px solid var(--interactive-accent);
-  padding-left: 12px;
-  margin-bottom: 8px;
 }
 
 .storyteller-empty-state-actions {
   display: flex;
-  gap: 12px;
+  gap: 0.75rem;
   justify-content: center;
   flex-wrap: wrap;
 }
@@ -4504,95 +4413,10 @@ body.mod-rtl .storyteller-group-members {
   line-height: 1.4;
 }
 
-/* Priority 1: Improved Empty State */
-.storyteller-empty-state {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  text-align: center;
-  max-width: 400px;
-  padding: 2rem;
-}
-
-.storyteller-empty-state-icon {
-  color: var(--text-faint);
-  margin-bottom: 1.5rem;
-  opacity: 0.6;
-}
-
-.storyteller-empty-state-icon svg {
-  width: 64px;
-  height: 64px;
-}
-
-.storyteller-empty-state h3 {
-  font-size: 20px;
-  font-weight: 600;
-  color: var(--text-normal);
-  margin-bottom: 0.75rem;
-}
-
-.storyteller-empty-state-message {
-  font-size: 14px;
-  color: var(--text-muted);
-  margin-bottom: 1.5rem;
-  line-height: 1.6;
-}
-
-.storyteller-empty-state-tips {
-  margin-bottom: 1.5rem;
-}
-
-.storyteller-empty-state-tip {
-  font-size: 13px;
-  color: var(--text-muted);
-  background-color: var(--background-secondary);
-  padding: 0.75rem 1rem;
-  border-radius: 6px;
-  margin-bottom: 0.5rem;
-  text-align: left;
-  border-left: 3px solid var(--interactive-accent);
-}
-
-.storyteller-empty-state-actions {
-  display: flex;
-  gap: 0.75rem;
-  justify-content: center;
-}
-
 .storyteller-empty-state-actions button {
   min-height: 44px; /* WCAG touch target size */
   padding: 0.5rem 1.5rem;
   font-size: 14px;
-}
-
-/* Loading state */
-.storyteller-network-loading {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 400px;
-  color: var(--text-muted);
-  font-size: 16px;
-  padding: 2rem;
-}
-
-.storyteller-network-loading::after {
-  content: '';
-  display: inline-block;
-  width: 20px;
-  height: 20px;
-  margin-left: 10px;
-  border: 2px solid var(--text-faint);
-  border-radius: 50%;
-  border-top-color: var(--interactive-accent);
-  animation: spin 1s linear infinite;
-}
-
-/* Cytoscape canvas styling */
-.storyteller-network-canvas canvas {
-  border-radius: 8px;
 }
 
 /* Priority 1: Status Bar for node/edge counts */
@@ -5669,6 +5493,8 @@ body.mod-rtl .storyteller-group-members {
     flex-grow: 1;
     position: relative;
     overflow: hidden;
+    overscroll-behavior: contain;
+    pointer-events: auto;
     background: var(--background-secondary);
     /* Override code block styles when inside MapView */
     height: auto;
@@ -5901,13 +5727,13 @@ body.mod-rtl .storyteller-group-members {
     text-align: center;
 }
 
-.storyteller-stat-value {
+.storyteller-compile-stats .storyteller-stat-value {
     font-size: 1.5em;
     font-weight: 600;
     color: var(--text-accent);
 }
 
-.storyteller-stat-label {
+.storyteller-compile-stats .storyteller-stat-label {
     font-size: 0.85em;
     color: var(--text-muted);
     margin-top: 4px;
@@ -8759,7 +8585,7 @@ body.mod-rtl .storyteller-group-members {
     gap: 0.3rem;
 }
 
-.storyteller-linked-chip {
+.storyteller-economy-linked-chips .storyteller-linked-chip {
     background: var(--background-secondary);
     border-radius: 4px;
     padding: 0.15rem 0.5rem;
@@ -9603,7 +9429,7 @@ body.mod-rtl .storyteller-group-members {
 .storyteller-dice-result { font-weight: 700; font-size: 1.25rem; }
 .storyteller-dice-override { display: flex; gap: 0.5rem; align-items: center; }
 .storyteller-dice-override input { width: 80px; }
-.storyteller-dice-btn-row { display: flex; gap: 0.5rem; }
+.storyteller-dice-box .storyteller-dice-btn-row { display: flex; gap: 0.5rem; }
 .storyteller-dice-face.outcome-success { color: var(--color-green); }
 .storyteller-dice-face.outcome-fail { color: var(--color-red); }
 .storyteller-campaign-party-row { display: flex; flex-direction: column; gap: 0.25rem; margin-bottom: 0.75rem; }
@@ -9935,7 +9761,7 @@ body.mod-rtl .storyteller-group-members {
 .storyteller-campaign-empty-text { color: var(--text-faint); font-style: italic; font-size: 0.8rem; }
 .storyteller-campaign-party-member { display: flex; flex-direction: column; gap: 0.25rem; padding: 0.55rem 0.6rem; border: 1px solid var(--background-modifier-border); border-radius: 8px; background: color-mix(in srgb, var(--background-secondary) 60%, transparent); margin-bottom: 0.2rem; }
 .storyteller-campaign-party-member:last-child { border-bottom: none; margin-bottom: 0; }
-.storyteller-campaign-party-name { font-size: 0.84rem; font-weight: 700; line-height: 1.2; word-break: break-word; }
+.storyteller-campaign-sidebar .storyteller-campaign-party-name { font-size: 0.84rem; font-weight: 700; line-height: 1.2; word-break: break-word; }
 .storyteller-campaign-hp-row { display: flex; align-items: center; gap: 0.5rem; }
 .storyteller-campaign-hp-text { font-size: 0.74rem; color: var(--text-muted); white-space: nowrap; min-width: 40px; font-variant-numeric: tabular-nums; }
 .storyteller-campaign-hp-controls { display: flex; align-items: center; gap: 0.3rem; }
@@ -10000,7 +9826,7 @@ body.mod-rtl .storyteller-group-members {
 .storyteller-campaign-standing-value.is-neutral { background: rgba(158, 158, 158, 0.14); color: var(--text-muted); }
 .storyteller-campaign-standing-label { font-size: 0.72rem; color: var(--text-muted); }
 .storyteller-campaign-log-list { max-height: 180px; overflow-y: auto; display: flex; flex-direction: column; gap: 0.2rem; }
-.storyteller-campaign-log-entry { font-size: 0.75rem; color: var(--text-muted); padding: 2px 0; border-bottom: 1px solid var(--background-modifier-border); line-height: 1.4; }
+.storyteller-campaign-log-list .storyteller-campaign-log-entry { font-size: 0.75rem; color: var(--text-muted); padding: 2px 0; border-bottom: 1px solid var(--background-modifier-border); line-height: 1.4; }
 .storyteller-campaign-party-chip { background: rgba(239,83,80,0.12); color: #ef5350; padding: 2px 8px; border-radius: 10px; font-size: 0.8rem; margin-right: 4px; }
 .storyteller-campaign-party-add { margin-left: 4px; }
 .storyteller-branch-block { border: 1px solid var(--background-modifier-border); border-radius: 8px; padding: 1rem; margin: 0.5rem 0; }
@@ -10311,6 +10137,7 @@ body.mod-rtl .storyteller-group-members {
 .storyteller-timeline-view .vis-item.vis-selected,
 .storyteller-timeline-modal .vis-item.vis-selected {
     box-shadow: var(--sts-tl-item-shadow-focus);
+    z-index: 6;
 }
 
 /* Keep stems independent from card styling so long stems do not get clipped/fade out. */
@@ -10333,11 +10160,6 @@ body.mod-rtl .storyteller-group-members {
     box-shadow: none;
     z-index: 4;
     pointer-events: none;
-}
-
-.storyteller-timeline-view .vis-item.vis-selected,
-.storyteller-timeline-modal .vis-item.vis-selected {
-    z-index: 6;
 }
 
 .storyteller-timeline-view .vis-item[style*="--sts-group-color"].vis-line,
@@ -10866,18 +10688,6 @@ body.mod-rtl .storyteller-group-members {
   flex-direction: column;
 }
 
-.storyteller-dashboard-view-container {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  min-height: 0;
-  overflow: hidden;
-  isolation: isolate;
-  position: relative;
-  container-type: inline-size;
-  container-name: storyteller-dashboard;
-}
-
 .storyteller-dashboard-view-container[data-layout] .storyteller-dashboard-header {
   z-index: var(--layer-status-bar, 15);
   background: var(--background-primary);
@@ -11244,13 +11054,6 @@ body.mod-rtl .storyteller-group-members {
   overscroll-behavior: contain;
 }
 
-.storyteller-map-view .storyteller-map-container {
-  position: relative;
-  overflow: hidden;
-  overscroll-behavior: contain;
-  pointer-events: auto;
-}
-
 .storyteller-map-view .storyteller-map-container .leaflet-container {
   position: absolute;
   top: 0;
@@ -11282,16 +11085,6 @@ body.mod-rtl .storyteller-group-members {
 .storyteller-map-view .leaflet-overlay-pane img,
 .storyteller-map-view .leaflet-image-layer {
   pointer-events: none;
-}
-
-.storyteller-entity-avatar {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: bold;
-  font-size: 12px;
-  color: #ffffff;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
 }
 
 .storyteller-entity-avatar img {
@@ -11331,10 +11124,6 @@ body.mod-rtl .storyteller-group-members {
 
 .storyteller-location-marker:hover {
   transform: scale(1.1);
-}
-
-.storyteller-map-image-overlay {
-  pointer-events: none;
 }
 
 .storyteller-conflict-viewer {
