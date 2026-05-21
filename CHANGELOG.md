@@ -1,3 +1,8 @@
+## 1.8.6
+
+### Fixed
+- Removed obsolete generated CSS output and consolidated duplicate stylesheet rules so Obsidian's CSS lint warnings no longer report stale `main.css` issues or duplicate selectors from Storyteller Suite styles.
+
 ## 1.8.5
 
 ### Fixed
