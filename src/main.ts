@@ -1,8 +1,7 @@
  
  
 
-// Import Leaflet CSS and JS so esbuild can bundle it properly
-import 'leaflet/dist/leaflet.css';
+// Leaflet base styles are maintained in styles.css so Obsidian can lint authored CSS.
 import * as L from 'leaflet';
 
 // Note: Global Leaflet exposure is now conditional and happens in onload() after settings are loaded

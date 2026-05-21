@@ -1,6 +1,5 @@
 // Use global L object that's set in main.ts: (window as any).L = L
-// Import Leaflet CSS to ensure it's loaded when renderer is used
-import 'leaflet/dist/leaflet.css';
+// Leaflet base styles are maintained in styles.css so Obsidian can lint authored CSS.
 import * as L from 'leaflet';
 import { Component, MarkdownPostProcessorContext, Notice, TFile } from 'obsidian';
 import type StorytellerSuitePlugin from '../main';

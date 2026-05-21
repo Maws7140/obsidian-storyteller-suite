@@ -44,10 +44,11 @@
     top: 0;
 }
 
-.leaflet-container {
+.storyteller-map-container.leaflet-container,
+.storyteller-map-container .leaflet-container {
     overflow: hidden;
-    position: relative !important;
-    background: transparent !important;
+    position: relative;
+    background: transparent;
 }
 
 .leaflet-tile,
@@ -71,33 +72,34 @@
 */
 
 /* Reset ALL image styles within leaflet containers */
-.leaflet-container img {
-    max-width: none !important;
-    max-height: none !important;
-    width: auto !important;
-    height: auto !important;
-    padding: 0 !important;
-    margin: 0 !important;
-    border: none !important;
-    border-radius: 0 !important;
-    box-shadow: none !important;
-    object-fit: unset !important;
-    display: block !important;
+.storyteller-map-container.leaflet-container img,
+.storyteller-map-container .leaflet-container img {
+    max-width: none;
+    max-height: none;
+    width: auto;
+    height: auto;
+    padding: 0;
+    margin: 0;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    object-fit: unset;
+    display: block;
 }
 
 /* Specific tile image fixes */
-.leaflet-tile {
+.storyteller-map-container .leaflet-tile {
     filter: inherit;
     visibility: inherit;
-    max-width: none !important;
-    max-height: none !important;
+    max-width: none;
+    max-height: none;
 }
 
-.leaflet-tile-pane img {
-    max-width: none !important;
-    max-height: none !important;
-    object-fit: unset !important;
-    border-radius: 0 !important;
+.storyteller-map-container .leaflet-tile-pane img {
+    max-width: none;
+    max-height: none;
+    object-fit: unset;
+    border-radius: 0;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -182,14 +184,15 @@
 
 /* The actual Leaflet container inside */
 .storyteller-map-container .leaflet-map-container,
+.storyteller-map-container.leaflet-container,
 .storyteller-map-container .leaflet-container {
-    position: absolute !important;
-    top: 0 !important;
-    left: 0 !important;
-    right: 0 !important;
-    bottom: 0 !important;
-    width: 100% !important;
-    height: 100% !important;
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100%;
+    height: 100%;
     z-index: 1;
 }
 
@@ -1078,12 +1081,12 @@
 /* Leaflet image overlay - ensure it doesn't tile/repeat */
 .storyteller-map-container .leaflet-image-layer {
   /* Prevent image from repeating */
-  background-repeat: no-repeat !important;
-  background-size: contain !important;
+  background-repeat: no-repeat;
+  background-size: contain;
   /* Ensure image uses object-fit instead of background */
-  object-fit: fill !important;
+  object-fit: fill;
   /* Ensure proper positioning */
-  object-position: 0 0 !important;
+  object-position: 0 0;
 }
 
 /* Image layer as background - ensure it covers entire area */
@@ -1092,21 +1095,21 @@
   /* width and height are set by Leaflet based on bounds */
   /* Leaflet uses CSS transforms to scale the image in place - don't interfere with this */
   /* No background color - image should be the background */
-  background-color: transparent !important;
+  background-color: transparent;
   /* Ensure proper z-index - should be below markers but above tilePane background */
-  z-index: 200 !important;
+  z-index: 200;
   /* Ensure image is visible */
-  opacity: 1 !important;
-  visibility: visible !important;
-  display: block !important;
+  opacity: 1;
+  visibility: visible;
+  display: block;
   /* CRITICAL: Don't override transform - Leaflet handles scaling via CSS transforms */
   /* Don't set position: fixed or any positioning that would interfere with Leaflet's transforms */
 }
 
 /* Tile pane for image maps - should be transparent */
 .storyteller-map-container .leaflet-tile-pane {
-  background-color: transparent !important;
-  z-index: 100 !important;
+  background-color: transparent;
+  z-index: 100;
 }
 
 /* Leaflet panes - ensure proper z-index stacking */
@@ -1668,9 +1671,7 @@ If your plugin does not need CSS, delete this file.
     bottom: 0;
     /* Use 100% instead of 100vh/100vw to avoid mobile viewport issues */
     width: 100%;
-    height: 100%;
-    /* Fallback for older browsers, then modern dynamic viewport units for mobile */
-    height: 100vh;
+    /* Dynamic viewport height accounts for mobile browser UI. */
     height: 100dvh; /* Dynamic viewport height - accounts for mobile browser UI */
     max-width: none;
     max-height: none;
@@ -2050,8 +2051,7 @@ If your plugin does not need CSS, delete this file.
         bottom: 0;
         /* Use 100% and dynamic viewport units for better mobile compatibility */
         width: 100%;
-        height: 100%;
-        height: 100vh;
+        /* Dynamic viewport height is supported by Obsidian's Electron runtime. */
         height: 100dvh; /* Dynamic viewport height - better for mobile */
         max-width: none;
         max-height: none;
@@ -2093,7 +2093,7 @@ If your plugin does not need CSS, delete this file.
     
     /* Card layouts become single column */
     .entity-grid {
-        grid-template-columns: 1fr !important;
+        grid-template-columns: 1fr;
         gap: 0.75rem;
     }
     
@@ -2130,7 +2130,7 @@ If your plugin does not need CSS, delete this file.
     .view-type-storyteller-dashboard-view input[type="date"],
     .view-type-storyteller-dashboard-view textarea,
     .view-type-storyteller-dashboard-view select {
-        font-size: 16px !important; /* Prevent iOS zoom */
+        font-size: 16px; /* Prevent iOS zoom */
         min-height: var(--sts-touch-target, 44px);
         padding: 12px 16px;
         /* Improve touch interaction */
@@ -2173,7 +2173,7 @@ If your plugin does not need CSS, delete this file.
         border-color: var(--interactive-accent);
         box-shadow: 0 0 0 3px rgba(var(--interactive-accent-rgb, 100, 100, 255), 0.1);
         /* Prevent zoom on focus */
-        font-size: 16px !important;
+        font-size: 16px;
         /* Maintain stable layout */
         transform: none;
     }
@@ -2195,7 +2195,7 @@ If your plugin does not need CSS, delete this file.
     /* Mobile form layouts */
     .setting-item {
         flex-direction: column;
-        align-items: flex-start !important;
+        align-items: flex-start;
     }
     
     .setting-item-info {
@@ -3029,13 +3029,13 @@ If your plugin does not need CSS, delete this file.
 
 /* Timeline Tooltip Overrides */
 .vis-tooltip {
-    border: 1px solid var(--background-modifier-border) !important;
-    background-color: var(--background-primary) !important;
-    border-radius: 8px !important;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25) !important;
-    padding: 12px !important;
-    backdrop-filter: blur(8px) !important;
-    -webkit-backdrop-filter: blur(8px) !important;
+    border: 1px solid var(--background-modifier-border);
+    background-color: var(--background-primary);
+    border-radius: 8px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
+    padding: 12px;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
 }
 
 /* Modernize the horizontal axis */
@@ -3124,34 +3124,34 @@ If your plugin does not need CSS, delete this file.
 
 /* Vis-timeline tooltip fixes - prevent cut-off */
 .vis-tooltip {
-  position: absolute !important;
-  z-index: 10000 !important;
-  background: var(--background-primary) !important;
-  border: 1px solid var(--background-modifier-border) !important;
-  border-radius: 6px !important;
-  padding: 8px 12px !important;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
-  max-width: 350px !important;
-  word-wrap: break-word !important;
-  white-space: normal !important;
-  color: var(--text-normal) !important;
-  font-size: 13px !important;
-  line-height: 1.5 !important;
-  pointer-events: none !important;
+  position: absolute;
+  z-index: 10000;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  padding: 8px 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  max-width: 350px;
+  word-wrap: break-word;
+  white-space: normal;
+  color: var(--text-normal);
+  font-size: 13px;
+  line-height: 1.5;
+  pointer-events: none;
 }
 
 /* Keep timeline internals bounded; tooltip remains absolute/z-indexed */
 .vis-timeline {
-  overflow: hidden !important;
+  overflow: hidden;
 }
 
 /* Make vis-timeline fill the container height in timeline view */
 .storyteller-timeline-view .vis-timeline {
-  height: 100% !important;
+  height: 100%;
 }
 
 .storyteller-timeline-view .storyteller-timeline-container .vis-timeline {
-  height: 100% !important;
+  height: 100%;
 }
 
 .storyteller-timeline-filter-toggle {
@@ -3501,7 +3501,6 @@ If your plugin does not need CSS, delete this file.
   align-content: center;
   width: max-content;
   gap: 0.5rem;
-  row-gap: 0;
   box-sizing: border-box;
   min-height: 0;
   overflow-x: auto;
@@ -3592,10 +3591,10 @@ If your plugin does not need CSS, delete this file.
 .storyteller-dashboard-header,
 .storyteller-dashboard-content .storyteller-list-container,
 .storyteller-dashboard-content .storyteller-gallery-grid {
-  overflow-x: hidden !important;
-  min-width: 0 !important;
-  max-width: 100% !important;
-  width: 100% !important;
+  overflow-x: hidden;
+  min-width: 0;
+  max-width: 100%;
+  width: 100%;
   box-sizing: border-box;
 }
 
@@ -3604,8 +3603,8 @@ If your plugin does not need CSS, delete this file.
 .storyteller-dashboard-tabs > *,
 .storyteller-dashboard-content .storyteller-list-container > *,
 .storyteller-dashboard-content .storyteller-gallery-grid > * {
-  min-width: 0 !important;
-  max-width: 100% !important;
+  min-width: 0;
+  max-width: 100%;
   box-sizing: border-box;
 }
 
@@ -3759,8 +3758,7 @@ body.mod-rtl .storyteller-group-members {
 .storyteller-group-section {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  column-gap: 2rem;
-  row-gap: 0.25rem;
+  gap: 0.25rem 2rem;
 }
 @media (max-width: 560px) {
   .storyteller-group-section { grid-template-columns: 1fr; }
@@ -4145,7 +4143,7 @@ body.mod-rtl .storyteller-group-members {
 
 .mobile-dashboard.storyteller-dashboard-simplified .storyteller-group-section {
   grid-template-columns: 1fr;
-  column-gap: 0.75rem;
+  gap: 0.25rem 0.75rem;
 }
 
 .mobile-dashboard.storyteller-dashboard-simplified .storyteller-chapter-header {
@@ -4180,8 +4178,7 @@ body.mod-rtl .storyteller-group-members {
 .mobile-dashboard.storyteller-dashboard-simplified .storyteller-gallery-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   grid-auto-rows: minmax(156px, auto);
-  row-gap: 8px;
-  column-gap: 8px;
+  gap: 8px;
   padding: 6px 0 12px;
 }
 
@@ -5674,11 +5671,11 @@ body.mod-rtl .storyteller-group-members {
     overflow: hidden;
     background: var(--background-secondary);
     /* Override code block styles when inside MapView */
-    height: auto !important;
-    border: none !important;
-    border-radius: 0 !important;
-    margin: 0 !important;
-    box-shadow: none !important;
+    height: auto;
+    border: none;
+    border-radius: 0;
+    margin: 0;
+    box-shadow: none;
 }
 
 .storyteller-map-view .storyteller-map-container .leaflet-map-container {
@@ -6479,7 +6476,7 @@ body.mod-rtl .storyteller-group-members {
 */
 
 .sts-settings-root {
-    padding: 0 !important;
+    padding: 0;
 }
 
 .sts-settings-wrapper {
@@ -6582,7 +6579,7 @@ body.mod-rtl .storyteller-group-members {
 */
 
 .sts-character-sheet-modal {
-    width: min(900px, 96vw) !important;
+    width: min(900px, 96vw);
     max-height: 90vh;
 }
 
@@ -6706,7 +6703,7 @@ body.mod-rtl .storyteller-group-members {
 /* ── Custom template editor modal ───────────────────────────────────────── */
 
 .sts-custom-sheet-tpl-modal {
-    width: min(680px, 96vw) !important;
+    width: min(680px, 96vw);
 }
 
 .sts-cstpl-form {
@@ -10241,9 +10238,9 @@ body.mod-rtl .storyteller-group-members {
 
 .storyteller-timeline-view .vis-timeline,
 .storyteller-timeline-modal .vis-timeline {
-    background: transparent !important;
-    border: none !important;
-    border-radius: 0 !important;
+    background: transparent;
+    border: none;
+    border-radius: 0;
 }
 
 .storyteller-timeline-view .vis-panel.vis-left,
@@ -10252,14 +10249,14 @@ body.mod-rtl .storyteller-group-members {
 .storyteller-timeline-modal .vis-panel.vis-top,
 .storyteller-timeline-view .vis-time-axis,
 .storyteller-timeline-modal .vis-time-axis {
-    background: var(--sts-tl-panel) !important;
+    background: var(--sts-tl-panel);
 }
 
 .storyteller-timeline-view .vis-labelset .vis-label,
 .storyteller-timeline-modal .vis-labelset .vis-label {
-    justify-content: flex-start !important;
-    padding-left: 8px !important;
-    padding-right: 8px !important;
+    justify-content: flex-start;
+    padding-left: 8px;
+    padding-right: 8px;
 }
 
 .storyteller-timeline-view .vis-label .vis-inner,
@@ -10276,18 +10273,18 @@ body.mod-rtl .storyteller-group-members {
 
 .storyteller-timeline-view .vis-foreground .vis-group,
 .storyteller-timeline-modal .vis-foreground .vis-group {
-    min-height: 38px !important;
-    border-bottom: 1px solid var(--sts-tl-border) !important;
+    min-height: 38px;
+    border-bottom: 1px solid var(--sts-tl-border);
 }
 
 .storyteller-timeline-view .vis-item:not(.vis-line):not(.vis-dot),
 .storyteller-timeline-modal .vis-item:not(.vis-line):not(.vis-dot) {
-    border-radius: 8px !important;
-    border: 1px solid var(--sts-tl-border) !important;
+    border-radius: 8px;
+    border: 1px solid var(--sts-tl-border);
     box-shadow: var(--sts-tl-item-shadow);
-    z-index: 3 !important;
-    transition: none !important;
-    animation: none !important;
+    z-index: 3;
+    transition: none;
+    animation: none;
 }
 
 /* No vertical "bobbing" on scroll/hover */
@@ -10299,78 +10296,78 @@ body.mod-rtl .storyteller-group-members {
 .storyteller-timeline-modal .vis-item.vis-box:hover .vis-item-content,
 .storyteller-timeline-view .vis-item.vis-point:hover .vis-item-content,
 .storyteller-timeline-modal .vis-item.vis-point:hover .vis-item-content {
-    transition: none !important;
-    animation: none !important;
+    transition: none;
+    animation: none;
 }
 
 .storyteller-timeline-view .vis-item:hover,
 .storyteller-timeline-modal .vis-item:hover,
 .storyteller-timeline-view .vis-item:hover .vis-item-content,
 .storyteller-timeline-modal .vis-item:hover .vis-item-content {
-    box-shadow: var(--sts-tl-item-shadow) !important;
-    border-color: var(--sts-tl-border) !important;
+    box-shadow: var(--sts-tl-item-shadow);
+    border-color: var(--sts-tl-border);
 }
 
 .storyteller-timeline-view .vis-item.vis-selected,
 .storyteller-timeline-modal .vis-item.vis-selected {
-    box-shadow: var(--sts-tl-item-shadow-focus) !important;
+    box-shadow: var(--sts-tl-item-shadow-focus);
 }
 
 /* Keep stems independent from card styling so long stems do not get clipped/fade out. */
 .storyteller-timeline-view .vis-item.vis-line,
 .storyteller-timeline-modal .vis-item.vis-line {
-    background: transparent !important;
-    border: none !important;
-    border-left: 1px solid color-mix(in srgb, var(--text-muted) 65%, transparent) !important;
-    border-radius: 0 !important;
-    box-shadow: none !important;
-    z-index: 1 !important;
+    background: transparent;
+    border: none;
+    border-left: 1px solid color-mix(in srgb, var(--text-muted) 65%, transparent);
+    border-radius: 0;
+    box-shadow: none;
+    z-index: 1;
     pointer-events: none;
 }
 
 .storyteller-timeline-view .vis-item.vis-dot,
 .storyteller-timeline-modal .vis-item.vis-dot {
-    background: var(--background-primary) !important;
-    border-radius: 50% !important;
-    border: 3px solid var(--interactive-accent) !important;
-    box-shadow: none !important;
-    z-index: 4 !important;
+    background: var(--background-primary);
+    border-radius: 50%;
+    border: 3px solid var(--interactive-accent);
+    box-shadow: none;
+    z-index: 4;
     pointer-events: none;
 }
 
 .storyteller-timeline-view .vis-item.vis-selected,
 .storyteller-timeline-modal .vis-item.vis-selected {
-    z-index: 6 !important;
+    z-index: 6;
 }
 
 .storyteller-timeline-view .vis-item[style*="--sts-group-color"].vis-line,
 .storyteller-timeline-modal .vis-item[style*="--sts-group-color"].vis-line {
-    border-left-color: var(--sts-group-color) !important;
+    border-left-color: var(--sts-group-color);
 }
 
 .storyteller-timeline-view .vis-item[style*="--sts-group-color"].vis-dot,
 .storyteller-timeline-modal .vis-item[style*="--sts-group-color"].vis-dot {
-    border-color: var(--sts-group-color) !important;
+    border-color: var(--sts-group-color);
 }
 
 .storyteller-timeline-view .vis-item.vis-box,
 .storyteller-timeline-modal .vis-item.vis-box,
 .storyteller-timeline-view .vis-item.vis-point,
 .storyteller-timeline-modal .vis-item.vis-point {
-    background: var(--sts-tl-item-bg) !important;
-    border-color: var(--sts-tl-border) !important;
-    box-shadow: var(--sts-tl-item-shadow) !important;
-    overflow: hidden !important;
+    background: var(--sts-tl-item-bg);
+    border-color: var(--sts-tl-border);
+    box-shadow: var(--sts-tl-item-shadow);
+    overflow: hidden;
 }
 
 .storyteller-timeline-view .vis-item.vis-box .vis-item-content,
 .storyteller-timeline-modal .vis-item.vis-box .vis-item-content,
 .storyteller-timeline-view .vis-item.vis-point .vis-item-content,
 .storyteller-timeline-modal .vis-item.vis-point .vis-item-content {
-    background: transparent !important;
-    border: none !important;
-    border-radius: inherit !important;
-    box-shadow: none !important;
+    background: transparent;
+    border: none;
+    border-radius: inherit;
+    box-shadow: none;
 }
 
 .storyteller-timeline-view .vis-item.vis-range,
@@ -10379,8 +10376,8 @@ body.mod-rtl .storyteller-group-members {
 .storyteller-timeline-modal .vis-item.gantt-bar {
     min-height: 30px;
     min-width: 88px;
-    border-width: 1px !important;
-    background-image: none !important;
+    border-width: 1px;
+    background-image: none;
 }
 
 .storyteller-timeline-view .vis-item .vis-item-content,
@@ -10467,28 +10464,28 @@ body.mod-rtl .storyteller-group-members {
 .storyteller-timeline-modal .vis-item.timeline-milestone,
 .storyteller-timeline-view .vis-item.gantt-milestone,
 .storyteller-timeline-modal .vis-item.gantt-milestone {
-    background: rgba(234, 179, 8, 0.2) !important;
-    border-color: rgba(234, 179, 8, 0.55) !important;
-    color: var(--text-normal) !important;
+    background: rgba(234, 179, 8, 0.2);
+    border-color: rgba(234, 179, 8, 0.55);
+    color: var(--text-normal);
 }
 
 .storyteller-timeline-view .vis-item.timeline-milestone .vis-item-content,
 .storyteller-timeline-modal .vis-item.timeline-milestone .vis-item-content,
 .storyteller-timeline-view .vis-item.gantt-milestone .vis-item-content,
 .storyteller-timeline-modal .vis-item.gantt-milestone .vis-item-content {
-    background: transparent !important;
-    border: none !important;
-    box-shadow: none !important;
-    color: var(--text-normal) !important;
-    font-weight: 700 !important;
-    text-shadow: none !important;
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    color: var(--text-normal);
+    font-weight: 700;
+    text-shadow: none;
 }
 
 /* Stronger status color language shared by timeline and gantt */
 .storyteller-timeline-view .vis-item.sts-status-upcoming,
 .storyteller-timeline-modal .vis-item.sts-status-upcoming {
-    background: linear-gradient(90deg, rgba(59, 130, 246, 0.16), rgba(59, 130, 246, 0.08)) !important;
-    border-left: 3px solid #3b82f6 !important;
+    background: linear-gradient(90deg, rgba(59, 130, 246, 0.16), rgba(59, 130, 246, 0.08));
+    border-left: 3px solid #3b82f6;
 }
 .storyteller-timeline-view .vis-item.sts-status-ongoing,
 .storyteller-timeline-modal .vis-item.sts-status-ongoing,
@@ -10496,8 +10493,8 @@ body.mod-rtl .storyteller-group-members {
 .storyteller-timeline-modal .vis-item.sts-status-in-progress,
 .storyteller-timeline-view .vis-item.sts-status-active,
 .storyteller-timeline-modal .vis-item.sts-status-active {
-    background: linear-gradient(90deg, rgba(245, 158, 11, 0.2), rgba(245, 158, 11, 0.1)) !important;
-    border-left: 3px solid #f59e0b !important;
+    background: linear-gradient(90deg, rgba(245, 158, 11, 0.2), rgba(245, 158, 11, 0.1));
+    border-left: 3px solid #f59e0b;
 }
 .storyteller-timeline-view .vis-item.sts-status-completed,
 .storyteller-timeline-modal .vis-item.sts-status-completed,
@@ -10505,15 +10502,15 @@ body.mod-rtl .storyteller-group-members {
 .storyteller-timeline-modal .vis-item.sts-status-resolved,
 .storyteller-timeline-view .vis-item.sts-status-done,
 .storyteller-timeline-modal .vis-item.sts-status-done {
-    background: linear-gradient(90deg, rgba(16, 185, 129, 0.18), rgba(16, 185, 129, 0.08)) !important;
-    border-left: 3px solid #10b981 !important;
+    background: linear-gradient(90deg, rgba(16, 185, 129, 0.18), rgba(16, 185, 129, 0.08));
+    border-left: 3px solid #10b981;
 }
 .storyteller-timeline-view .vis-item.sts-status-failed,
 .storyteller-timeline-modal .vis-item.sts-status-failed,
 .storyteller-timeline-view .vis-item.sts-status-cancelled,
 .storyteller-timeline-modal .vis-item.sts-status-cancelled {
-    background: linear-gradient(90deg, rgba(239, 68, 68, 0.18), rgba(239, 68, 68, 0.08)) !important;
-    border-left: 3px solid #ef4444 !important;
+    background: linear-gradient(90deg, rgba(239, 68, 68, 0.18), rgba(239, 68, 68, 0.08));
+    border-left: 3px solid #ef4444;
 }
 
 .storyteller-timeline-view .storyteller-timeline-toolbar,
@@ -10643,8 +10640,8 @@ body.mod-rtl .storyteller-group-members {
 .storyteller-timeline-modal .vis-item.vis-line,
 .storyteller-timeline-view .vis-item.vis-dot,
 .storyteller-timeline-modal .vis-item.vis-dot {
-    transition: none !important;
-    animation: none !important;
+    transition: none;
+    animation: none;
 }
 
 .storyteller-timeline-view .vis-item .vis-item-content,
@@ -10655,7 +10652,7 @@ body.mod-rtl .storyteller-group-members {
 
 .storyteller-timeline-view .vis-item.timeline-milestone:hover,
 .storyteller-timeline-modal .vis-item.timeline-milestone:hover {
-    transition: none !important;
+    transition: none;
 }
 
 /* Group color fidelity: items should match the color of the group they are rendered under. */
@@ -10663,8 +10660,8 @@ body.mod-rtl .storyteller-group-members {
 .storyteller-timeline-modal .vis-item[style*="--sts-group-color"].vis-box,
 .storyteller-timeline-view .vis-item[style*="--sts-group-color"].vis-point,
 .storyteller-timeline-modal .vis-item[style*="--sts-group-color"].vis-point {
-    background: var(--sts-group-bg, var(--sts-tl-item-bg)) !important;
-    border-color: var(--sts-group-color, var(--sts-tl-border)) !important;
+    background: var(--sts-group-bg, var(--sts-tl-item-bg));
+    border-color: var(--sts-group-color, var(--sts-tl-border));
 }
 
 .storyteller-timeline-view .vis-item[style*="--sts-group-color"].vis-range,
@@ -10673,14 +10670,14 @@ body.mod-rtl .storyteller-group-members {
 .storyteller-timeline-modal .vis-item[style*="--sts-group-color"].gantt-bar,
 .storyteller-timeline-view .vis-item[style*="--sts-group-color"].timeline-milestone,
 .storyteller-timeline-modal .vis-item[style*="--sts-group-color"].timeline-milestone {
-    background: var(--sts-group-bg, var(--sts-tl-item-bg)) !important;
-    border-color: var(--sts-group-color, var(--sts-tl-border)) !important;
+    background: var(--sts-group-bg, var(--sts-tl-item-bg));
+    border-color: var(--sts-group-color, var(--sts-tl-border));
 }
 
 .storyteller-timeline-view .vis-item[class*="sts-status-"][style*="--sts-group-color"],
 .storyteller-timeline-modal .vis-item[class*="sts-status-"][style*="--sts-group-color"] {
-    background: var(--sts-group-bg, var(--sts-tl-item-bg)) !important;
-    border-left: 3px solid var(--sts-group-color, var(--sts-tl-border)) !important;
+    background: var(--sts-group-bg, var(--sts-tl-item-bg));
+    border-left: 3px solid var(--sts-group-color, var(--sts-tl-border));
 }
 
 /* Milestone + narrative marker combos: keep both signals visible and stable. */
@@ -10692,45 +10689,45 @@ body.mod-rtl .storyteller-group-members {
 
 .storyteller-timeline-view .vis-item.timeline-milestone-flashback,
 .storyteller-timeline-modal .vis-item.timeline-milestone-flashback {
-    box-shadow: inset 0 2px 0 0 rgba(96, 165, 250, 0.85), var(--sts-tl-item-shadow) !important;
+    box-shadow: inset 0 2px 0 0 rgba(96, 165, 250, 0.85), var(--sts-tl-item-shadow);
 }
 
 .storyteller-timeline-view .vis-item.timeline-milestone-flashforward,
 .storyteller-timeline-modal .vis-item.timeline-milestone-flashforward {
-    box-shadow: inset 0 2px 0 0 rgba(245, 158, 11, 0.85), var(--sts-tl-item-shadow) !important;
+    box-shadow: inset 0 2px 0 0 rgba(245, 158, 11, 0.85), var(--sts-tl-item-shadow);
 }
 
 /* Timeline hover normalization: one consistent interaction model across all item types. */
 .storyteller-timeline-view .vis-item,
 .storyteller-timeline-modal .vis-item {
     cursor: pointer;
-    transition: border-color 120ms ease, box-shadow 120ms ease, background-color 120ms ease !important;
+    transition: border-color 120ms ease, box-shadow 120ms ease, background-color 120ms ease;
 }
 
 .storyteller-timeline-view .vis-item .vis-item-content,
 .storyteller-timeline-modal .vis-item .vis-item-content {
-    transition: border-color 120ms ease, box-shadow 120ms ease, background-color 120ms ease !important;
+    transition: border-color 120ms ease, box-shadow 120ms ease, background-color 120ms ease;
 }
 
 .storyteller-timeline-view .vis-item:hover:not(.vis-selected),
 .storyteller-timeline-modal .vis-item:hover:not(.vis-selected) {
-    border-color: color-mix(in srgb, var(--interactive-accent) 58%, var(--sts-tl-border) 42%) !important;
-    box-shadow: 0 0 0 1px rgba(var(--interactive-accent-rgb, 124, 77, 255), 0.28), var(--sts-tl-item-shadow) !important;
+    border-color: color-mix(in srgb, var(--interactive-accent) 58%, var(--sts-tl-border) 42%);
+    box-shadow: 0 0 0 1px rgba(var(--interactive-accent-rgb, 124, 77, 255), 0.28), var(--sts-tl-item-shadow);
 }
 
 .storyteller-timeline-view .vis-item.vis-range:hover:not(.vis-selected),
 .storyteller-timeline-modal .vis-item.vis-range:hover:not(.vis-selected),
 .storyteller-timeline-view .vis-item.gantt-bar:hover:not(.vis-selected),
 .storyteller-timeline-modal .vis-item.gantt-bar:hover:not(.vis-selected) {
-    box-shadow: 0 0 0 1px rgba(var(--interactive-accent-rgb, 124, 77, 255), 0.28), var(--sts-tl-item-shadow) !important;
+    box-shadow: 0 0 0 1px rgba(var(--interactive-accent-rgb, 124, 77, 255), 0.28), var(--sts-tl-item-shadow);
 }
 
 .storyteller-timeline-view .vis-item.timeline-milestone:hover:not(.vis-selected),
 .storyteller-timeline-modal .vis-item.timeline-milestone:hover:not(.vis-selected),
 .storyteller-timeline-view .vis-item.gantt-milestone:hover:not(.vis-selected),
 .storyteller-timeline-modal .vis-item.gantt-milestone:hover:not(.vis-selected) {
-    border-color: color-mix(in srgb, #f59e0b 70%, var(--interactive-accent) 30%) !important;
-    box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.34), var(--sts-tl-item-shadow) !important;
+    border-color: color-mix(in srgb, #f59e0b 70%, var(--interactive-accent) 30%);
+    box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.34), var(--sts-tl-item-shadow);
 }
 
 /* Mobile timeline view: stop clipping the desktop-height frame so the leaf can scroll naturally. */
@@ -10750,7 +10747,7 @@ body.mod-rtl .storyteller-group-members {
 
 .storyteller-timeline-view--mobile .vis-timeline,
 .storyteller-timeline-view--mobile .storyteller-timeline-container .vis-timeline {
-    height: auto !important;
+    height: auto;
     min-height: 360px;
 }
 
@@ -10972,8 +10969,7 @@ body.mod-rtl .storyteller-group-members {
   justify-content: flex-start;
   align-items: center;
   align-content: center;
-  row-gap: 0;
-  column-gap: 0.45rem;
+  gap: 0 0.45rem;
   overflow-x: auto;
   overflow-y: hidden;
   white-space: nowrap;
@@ -11118,7 +11114,6 @@ body.mod-rtl .storyteller-group-members {
     overflow-x: auto;
     overflow-y: hidden;
     white-space: nowrap;
-    row-gap: 0;
   }
 
   .storyteller-tab-header {
@@ -11213,17 +11208,17 @@ body.mod-rtl .storyteller-group-members {
 .storyteller-map-view .leaflet-container img,
 .storyteller-map-view .leaflet-tile-pane img,
 .storyteller-map-view .leaflet-tile {
-  max-width: none !important;
-  max-height: none !important;
-  width: auto !important;
-  height: auto !important;
-  padding: 0 !important;
-  margin: 0 !important;
-  border: none !important;
-  border-radius: 0 !important;
-  box-shadow: none !important;
-  object-fit: unset !important;
-  display: block !important;
+  max-width: none;
+  max-height: none;
+  width: auto;
+  height: auto;
+  padding: 0;
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  object-fit: unset;
+  display: block;
 }
 
 .storyteller-map-view .leaflet-pane,
@@ -11242,11 +11237,11 @@ body.mod-rtl .storyteller-group-members {
 }
 
 .storyteller-map-view .leaflet-container {
-  position: relative !important;
-  overflow: hidden !important;
-  touch-action: none !important;
-  outline: none !important;
-  overscroll-behavior: contain !important;
+  position: relative;
+  overflow: hidden;
+  touch-action: none;
+  outline: none;
+  overscroll-behavior: contain;
 }
 
 .storyteller-map-view .storyteller-map-container {
@@ -11257,19 +11252,19 @@ body.mod-rtl .storyteller-group-members {
 }
 
 .storyteller-map-view .storyteller-map-container .leaflet-container {
-  position: absolute !important;
-  top: 0 !important;
-  left: 0 !important;
-  right: 0 !important;
-  bottom: 0 !important;
-  width: 100% !important;
-  height: 100% !important;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  height: 100%;
 }
 
 .storyteller-map-view .leaflet-map-container {
-  overflow: hidden !important;
-  touch-action: none !important;
-  overscroll-behavior: contain !important;
+  overflow: hidden;
+  touch-action: none;
+  overscroll-behavior: contain;
 }
 
 .storyteller-map-view .leaflet-map-pane,
@@ -11281,12 +11276,12 @@ body.mod-rtl .storyteller-group-members {
 .storyteller-map-view .leaflet-popup-pane,
 .storyteller-map-view .leaflet-control-zoom,
 .storyteller-map-view .leaflet-control-zoom a {
-  pointer-events: auto !important;
+  pointer-events: auto;
 }
 
 .storyteller-map-view .leaflet-overlay-pane img,
 .storyteller-map-view .leaflet-image-layer {
-  pointer-events: none !important;
+  pointer-events: none;
 }
 
 .storyteller-entity-avatar {
@@ -11300,12 +11295,12 @@ body.mod-rtl .storyteller-group-members {
 }
 
 .storyteller-entity-avatar img {
-  max-width: none !important;
-  max-height: none !important;
-  width: 100% !important;
-  height: 100% !important;
-  border-radius: 50% !important;
-  object-fit: cover !important;
+  max-width: none;
+  max-height: none;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
 }
 
 .storyteller-entity-marker.has-image {
