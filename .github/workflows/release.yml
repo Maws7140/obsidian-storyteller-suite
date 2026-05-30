@@ -204,7 +204,7 @@ jobs:
           git push origin "${{ steps.release_meta.outputs.version }}"
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.release_meta.outputs.version }}
           name: Release ${{ steps.release_meta.outputs.version }}
