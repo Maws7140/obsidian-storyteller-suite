@@ -140,6 +140,28 @@ jobs:
           cat manifest.json | grep '"version"'
           tail -3 versions.json
 
+      - name: Verify version matches tag
+        shell: bash
+        run: |
+          VERSION="${{ steps.release_meta.outputs.version }}"
+          MANIFEST_VERSION=$(node -e "console.log(require('./manifest.json').version)")
+          PACKAGE_VERSION=$(node -e "console.log(require('./package.json').version)")
+
+          echo "Release ref/version: $VERSION"
+          echo "manifest.json:       $MANIFEST_VERSION"
+          echo "package.json:        $PACKAGE_VERSION"
+
+          if [ "$MANIFEST_VERSION" != "$VERSION" ] || [ "$PACKAGE_VERSION" != "$VERSION" ]; then
+            echo "::error::Version mismatch — manifest.json ($MANIFEST_VERSION) and package.json ($PACKAGE_VERSION) must both equal the release version ($VERSION)."
+            echo "If this was a manual tag push, the tag was likely created on a commit before the version bump. Re-tag the bump commit (or use the workflow_dispatch release flow)."
+            exit 1
+          fi
+
+          if ! node -e "const v=require('./versions.json'); process.exit(v['$VERSION'] ? 0 : 1)"; then
+            echo "::error::versions.json has no entry for $VERSION. Add it before releasing."
+            exit 1
+          fi
+
       - name: Type check
         run: npx tsc -p tsconfig.json --noEmit
 

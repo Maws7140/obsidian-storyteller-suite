@@ -1,3 +1,14 @@
+## 1.8.7
+
+### Fixed
+- Map panels now apply the dynamic viewport height (`dvh`) via an `@supports` fallback instead of a duplicate `max-height` declaration, clearing Obsidian's duplicate-property CSS lint warnings.
+
+### Security
+- Character-sheet previews now strip inline event handlers (`on*`) and `javascript:` URLs in addition to `<script>`/`<iframe>`/`<object>`/`<embed>`, so user-authored sheet templates cannot execute code.
+
+### Internal
+- Release workflow verifies that `manifest.json`/`package.json`/`versions.json` agree with the release tag before building, preventing mismatched release artifacts (the cause of the mis-tagged 1.8.6).
+
 ## 1.8.6
 
 ### Fixed

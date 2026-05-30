@@ -134,27 +134,23 @@ export function getWhatsNewGuide(version: string): StorytellerGuideDocument {
     return {
         title: `What is new in ${version}`,
         introHtml: `
-            <p>This update brings dashboard improvements for mobile and smaller screens, plus a round of stability fixes under the hood.</p>
+            <p>A small maintenance update: a display fix for map panels and extra hardening around how generated HTML is rendered.</p>
         `,
         sections: [
             {
-                title: 'Dashboard improvements',
+                title: 'Fixes',
                 bodyHtml: `
                     <ul>
-                        <li>Improved layout and spacing on mobile and narrow-width views.</li>
-                        <li>Tab bar and controls now wrap cleanly on small screens instead of overflowing.</li>
-                        <li>Filter inputs and action buttons are easier to tap on touch devices.</li>
-                        <li>List items and cards resize more gracefully at different viewport widths.</li>
+                        <li>Map panels now use the dynamic viewport height cleanly via an <code>@supports</code> fallback, clearing duplicate-style lint warnings.</li>
+                        <li>Character-sheet previews now strip inline event handlers and <code>javascript:</code> links in addition to scripts, so custom templates can't run code.</li>
                     </ul>
                 `
             },
             {
-                title: 'Stability fixes',
+                title: 'Under the hood',
                 bodyHtml: `
                     <ul>
-                        <li>Fixed several edge cases where opening or editing an entity could produce a silent error.</li>
-                        <li>Improved how the plugin handles notes with unexpected or missing frontmatter.</li>
-                        <li>Cleaned up a number of internal type issues that could cause unpredictable behaviour in certain vaults.</li>
+                        <li>The release pipeline now verifies that the built version matches the release tag, preventing mismatched release artifacts.</li>
                     </ul>
                 `
             }

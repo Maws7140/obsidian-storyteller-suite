@@ -2298,7 +2298,12 @@ If your plugin does not need CSS, delete this file.
     /* Reduce map height in portrait to keep controls visible */
     .storyteller-map-container {
         max-height: 40vh;
-        max-height: 40dvh;
+    }
+
+    @supports (height: 1dvh) {
+        .storyteller-map-container {
+            max-height: 40dvh;
+        }
     }
 
     /* Dashboard-specific portrait fixes */
@@ -2342,7 +2347,12 @@ If your plugin does not need CSS, delete this file.
     /* Maps can be taller in landscape */
     .storyteller-map-container {
         max-height: 60vh;
-        max-height: 60dvh;
+    }
+
+    @supports (height: 1dvh) {
+        .storyteller-map-container {
+            max-height: 60dvh;
+        }
     }
 }
 
