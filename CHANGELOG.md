@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.8.8
+
+### Security
+- The bundled JSZip dependency no longer ships the `immediate`/`setimmediate` IE-era scheduler fallbacks that injected `<script>` elements at runtime. A build-time transform collapses those four branches to their existing `setTimeout` path, so `main.js` contains no dynamic script-element creation. EPUB/ODT import is unaffected — the `MutationObserver` scheduler JSZip actually uses in Obsidian is left intact.
+
 ## 1.8.7
 
 ### Fixed

@@ -1,5 +1,47 @@
 import esbuild from "esbuild";
 import process from "process";
+import fs from "fs";
+
+// JSZip's `browser` field remaps `lib/index` -> `dist/jszip.min.js`, a browserify bundle
+// with the `immediate` and `setimmediate` async-scheduler polyfills baked in. Both inject
+// <script> elements (via onreadystatechange) as an IE 6-8 fallback. Those branches are
+// unreachable in Obsidian's Chromium runtime, but they ship in main.js and trip static
+// scanners ("dynamic script element creation can load arbitrary external code").
+//
+// Collapse each ternary to its existing setTimeout fallback at load time, so the bundle
+// contains no dynamic script creation. The throw guards against silent reintroduction if
+// JSZip is upgraded (re-minification would change these literals).
+const SCRIPT_INJECTION_PATCHES = [
+	{
+		// `immediate` polyfill scheduleDrain: cond ? createScript : setTimeout
+		find: `r="document"in t&&"onreadystatechange"in t.document.createElement("script")?function(){var e=t.document.createElement("script");e.onreadystatechange=function(){u(),e.onreadystatechange=null,e.parentNode.removeChild(e),e=null},t.document.documentElement.appendChild(e)}:function(){setTimeout(u,0)}`,
+		replace: `r=function(){setTimeout(u,0)}`,
+	},
+	{
+		// `setimmediate` registerImmediate: cond ? createScript : setTimeout
+		find: `l&&"onreadystatechange"in l.createElement("script")?(s=l.documentElement,function(e){var t=l.createElement("script");t.onreadystatechange=function(){c(e),t.onreadystatechange=null,s.removeChild(t),t=null},s.appendChild(t)}):function(e){setTimeout(c,0,e)}`,
+		replace: `function(e){setTimeout(c,0,e)}`,
+	},
+];
+
+const stripScriptInjection = {
+	name: "strip-script-injection",
+	setup(build) {
+		build.onLoad({ filter: /[\\/]jszip[\\/]dist[\\/]jszip\.min\.js$/ }, (args) => {
+			let src = fs.readFileSync(args.path, "utf8");
+			for (const { find, replace } of SCRIPT_INJECTION_PATCHES) {
+				if (!src.includes(find)) {
+					throw new Error("strip-script-injection: JSZip <script>-injection branch not found (jszip upgraded?)");
+				}
+				src = src.split(find).join(replace);
+			}
+			if (src.includes('createElement("script")')) {
+				throw new Error("strip-script-injection: createElement(\"script\") still present in JSZip after patching");
+			}
+			return { contents: src, loader: "js" };
+		});
+	},
+};
 
 const builtins = [
 	"assert", "async_hooks", "buffer", "child_process", "cluster", "console",
@@ -26,6 +68,7 @@ const context = await esbuild.context({
 	},
 	entryPoints: ["src/main.ts"], // Updated path
 	bundle: true,
+	plugins: [stripScriptInjection],
 	external: [
 		"obsidian",
 		"electron",
