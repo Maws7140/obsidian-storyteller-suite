@@ -134,23 +134,24 @@ export function getWhatsNewGuide(version: string): StorytellerGuideDocument {
     return {
         title: `What is new in ${version}`,
         introHtml: `
-            <p>A small maintenance update: a display fix for map panels and extra hardening around how generated HTML is rendered.</p>
+            <p>Dashboard polish: the Story Board confirmation flow, long group descriptions, and quick access to your maps.</p>
         `,
         sections: [
             {
                 title: 'Fixes',
                 bodyHtml: `
                     <ul>
-                        <li>Map panels now use the dynamic viewport height cleanly via an <code>@supports</code> fallback, clearing duplicate-style lint warnings.</li>
-                        <li>Character-sheet previews now strip inline event handlers and <code>javascript:</code> links in addition to scripts, so custom templates can't run code.</li>
+                        <li>Story Board: the create and overwrite prompts no longer slip past on a timing race. The plugin waits for your answer, and creating a board opens the new canvas for you.</li>
+                        <li>Groups: long group descriptions now show a tidy, clamped preview on the dashboard instead of overflowing the card.</li>
+                        <li>Maps: the dashboard adds an <strong>Open maps panel</strong> action and per-map open buttons, so every map is one click away.</li>
                     </ul>
                 `
             },
             {
-                title: 'Under the hood',
+                title: 'Also included',
                 bodyHtml: `
                     <ul>
-                        <li>The release pipeline now verifies that the built version matches the release tag, preventing mismatched release artifacts.</li>
+                        <li>The 1.8.7 and 1.8.8 hardening is carried forward: map panels render via an <code>@supports</code> dynamic-viewport fallback, character-sheet previews strip inline event handlers and <code>javascript:</code> links, and the bundle ships no dynamic <code>&lt;script&gt;</code> creation.</li>
                     </ul>
                 `
             }

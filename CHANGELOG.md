@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.8.9
+
+### Fixed
+- Story Board: the create/overwrite confirmation no longer resolves on a 100ms timeout race. It now awaits the modal result, and creating a new story board opens the generated canvas automatically.
+- Groups dashboard: long group descriptions render as a clamped markdown preview instead of overflowing the card.
+- Maps dashboard: added an **Open maps panel** action and per-map open buttons so maps are reachable directly from the dashboard.
+
 ## 1.8.8
 
 ### Security
