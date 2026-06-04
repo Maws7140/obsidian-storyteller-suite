@@ -1,3 +1,19 @@
+## 1.8.8
+
+### Security
+- The bundled JSZip dependency no longer ships the `immediate`/`setimmediate` IE-era scheduler fallbacks that injected `<script>` elements at runtime. A build-time transform collapses those four branches to their existing `setTimeout` path, so `main.js` contains no dynamic script-element creation. EPUB/ODT import is unaffected.
+
+## 1.8.7
+
+### Fixed
+- Map panels now apply the dynamic viewport height (`dvh`) via an `@supports` fallback instead of a duplicate `max-height` declaration, clearing Obsidian's duplicate-property CSS lint warnings.
+
+### Security
+- Character-sheet previews now strip inline event handlers (`on*`) and `javascript:` URLs in addition to `<script>`/`<iframe>`/`<object>`/`<embed>`, so user-authored sheet templates cannot execute code.
+
+### Internal
+- Release workflow verifies that `manifest.json`/`package.json`/`versions.json` agree with the release tag before building, preventing mismatched release artifacts.
+
 ## 1.8.6
 
 ### Fixed

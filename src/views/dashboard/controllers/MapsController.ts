@@ -6,22 +6,50 @@ export const mapsController: DashboardTabController = {
     id: 'maps',
     async render(container, context) {
         container.empty();
-        context.renderHeaderControls(container, 'Maps', async (filter: string) => {
-            context.setCurrentFilter(filter);
-            await renderMapsList(container, context);
-        }, () => {
-            if (!context.plugin.getActiveStory()) {
-                new Notice(t('selectOrCreateStoryFirst'));
-                return;
-            }
-            void import('../../../utils/MapModalHelper').then(({ openMapModal }) => {
-                openMapModal(context.app, context.plugin, null, {
-                    onSave: async () => {
-                        context.mutationRunner.requestRefresh('immediate', 'map-created');
-                    }
+        const openMapsPanel = async () => {
+            await context.plugin.activateMapView();
+        };
+        context.renderHeaderControls(
+            container,
+            'Maps',
+            async (filter: string) => {
+                context.setCurrentFilter(filter);
+                await renderMapsList(container, context);
+            },
+            () => {
+                if (!context.plugin.getActiveStory()) {
+                    new Notice(t('selectOrCreateStoryFirst'));
+                    return;
+                }
+                void import('../../../utils/MapModalHelper').then(({ openMapModal }) => {
+                    openMapModal(context.app, context.plugin, null, {
+                        onSave: async () => {
+                            context.mutationRunner.requestRefresh('immediate', 'map-created');
+                        }
+                    });
                 });
-            });
-        }, t('createNew'));
+            },
+            t('createNew'),
+            (setting) => {
+                setting.addButton(button => {
+                    button
+                        .setIcon('panel-right-open')
+                        .setTooltip('Open maps panel')
+                        .onClick(() => {
+                            void openMapsPanel();
+                        });
+                });
+            },
+            (menu) => {
+                menu.addItem(item => {
+                    item.setTitle('Open maps panel');
+                    item.setIcon('panel-right-open');
+                    item.onClick(() => {
+                        void openMapsPanel();
+                    });
+                });
+            }
+        );
 
         await renderMapsList(container, context);
     },
@@ -68,6 +96,7 @@ async function renderMapsList(container: HTMLElement, context: DashboardControll
         }
 
         const actionsEl = itemEl.createDiv('storyteller-list-item-actions');
+        addOpenMapViewButton(actionsEl, context, map.id || map.name);
         context.addEditButton(actionsEl, () => {
             void import('../../../utils/MapModalHelper').then(({ openMapModal }) => {
                 openMapModal(context.app, context.plugin, map, {
@@ -93,5 +122,20 @@ async function renderMapsList(container: HTMLElement, context: DashboardControll
             }
         });
         context.addOpenFileButton(actionsEl, map.filePath);
+    });
+}
+
+function addOpenMapViewButton(container: HTMLElement, context: DashboardControllerContext, mapId: string | undefined): void {
+    if (!mapId) {
+        return;
+    }
+
+    const button = container.createEl('button', { cls: 'clickable-icon' });
+    button.type = 'button';
+    button.setAttribute('aria-label', 'Open in map view');
+    button.title = 'Open in map view';
+    setIcon(button, 'map');
+    button.addEventListener('click', () => {
+        void context.plugin.activateMapView(mapId);
     });
 }

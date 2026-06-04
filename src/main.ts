@@ -31,7 +31,7 @@ import { stripWikiLink } from './utils/WikiLinks';
 import { setLocale, t } from './i18n/strings';
 import { FolderResolver, FolderResolverOptions, EntityFolderType } from './folders/FolderResolver';
 import { PromptModal } from './modals/ui/PromptModal';
-import { ConfirmModal } from './modals/ui/ConfirmModal';
+import { ConfirmModal, confirmWithModal } from './modals/ui/ConfirmModal';
 import { CharacterModal } from './modals/CharacterModal';
 import {
     Character, Location, Event, GalleryImage, GalleryData, Story, Group, GroupMemberDetails, GroupRelationship, PlotItem, Reference, Chapter, Scene,
@@ -7630,19 +7630,9 @@ export default class StorytellerSuitePlugin extends Plugin {
 			const existingFile = this.app.vault.getAbstractFileByPath(canvasPath);
 			if (existingFile instanceof TFile) {
 				// Ask user if they want to overwrite
-				const { ConfirmModal } = await import('./modals/ui/ConfirmModal');
-				let userConfirmed = false;
-				await new Promise<void>((resolve) => {
-					new ConfirmModal(this.app, {
-						title: 'Overwrite Story Board?',
-						body: 'A story board already exists. Do you want to overwrite it?',
-						onConfirm: () => {
-							userConfirmed = true;
-							resolve();
-						}
-					}).open();
-					// If modal is closed without confirming, resolve after a short delay
-					window.setTimeout(() => resolve(), 100);
+				const userConfirmed = await confirmWithModal(this.app, {
+					title: 'Overwrite Story Board?',
+					body: 'A story board already exists. Do you want to overwrite it?',
 				});
 
 				if (userConfirmed) {
@@ -7759,18 +7749,9 @@ export default class StorytellerSuitePlugin extends Plugin {
 
 			if (!(existingFile instanceof TFile)) {
 				// Story board doesn't exist - ask if user wants to create it
-				const { ConfirmModal } = await import('./modals/ui/ConfirmModal');
-				let userConfirmed = false;
-				await new Promise<void>((resolve) => {
-					new ConfirmModal(this.app, {
-						title: 'Create Story Board?',
-						body: 'No story board found. Would you like to create one?',
-						onConfirm: () => {
-							userConfirmed = true;
-							resolve();
-						}
-					}).open();
-					window.setTimeout(() => resolve(), 100);
+				const userConfirmed = await confirmWithModal(this.app, {
+					title: 'Create Story Board?',
+					body: 'No story board found. Would you like to create one?',
 				});
 
 				if (userConfirmed) {

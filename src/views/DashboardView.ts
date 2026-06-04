@@ -1432,22 +1432,50 @@ export class DashboardView extends ItemView {
     async renderMapsContent(container: HTMLElement) {
         await this.renderWithController('maps', container, async () => {
         container.empty();
-        this.renderHeaderControls(container, 'Maps', async (filter: string) => {
-            this.currentFilter = filter;
-            await this.renderMapsList(container);
-        }, () => {
-            if (!this.plugin.getActiveStory()) {
-                new Notice(t('selectOrCreateStoryFirst'));
-                return;
-            }
-            void import('../utils/MapModalHelper').then(({ openMapModal }) => {
-                openMapModal(this.app, this.plugin, null, {
-                    onSave: async () => {
-                        this.mutationRunner.requestRefresh('immediate', 'map-created');
-                    }
+        const openMapsPanel = async () => {
+            await this.plugin.activateMapView();
+        };
+        this.renderHeaderControls(
+            container,
+            'Maps',
+            async (filter: string) => {
+                this.currentFilter = filter;
+                await this.renderMapsList(container);
+            },
+            () => {
+                if (!this.plugin.getActiveStory()) {
+                    new Notice(t('selectOrCreateStoryFirst'));
+                    return;
+                }
+                void import('../utils/MapModalHelper').then(({ openMapModal }) => {
+                    openMapModal(this.app, this.plugin, null, {
+                        onSave: async () => {
+                            this.mutationRunner.requestRefresh('immediate', 'map-created');
+                        }
+                    });
                 });
-            });
-        }, t('createNew'));
+            },
+            t('createNew'),
+            (setting) => {
+                setting.addButton(button => {
+                    button
+                        .setIcon('panel-right-open')
+                        .setTooltip('Open maps panel')
+                        .onClick(() => {
+                            void openMapsPanel();
+                        });
+                });
+            },
+            (menu) => {
+                menu.addItem(item => {
+                    item.setTitle('Open maps panel');
+                    item.setIcon('panel-right-open');
+                    item.onClick(() => {
+                        void openMapsPanel();
+                    });
+                });
+            }
+        );
 
         await this.renderMapsList(container);
         });
@@ -1500,6 +1528,7 @@ export class DashboardView extends ItemView {
             }
 
             const actionsEl = itemEl.createDiv('storyteller-list-item-actions');
+            this.addOpenMapViewButton(actionsEl, map.id || map.name);
             this.addEditButton(actionsEl, () => {
                 void import('../utils/MapModalHelper').then(({ openMapModal }) => {
                     openMapModal(this.app, this.plugin, map, {
@@ -1524,14 +1553,6 @@ export class DashboardView extends ItemView {
                     });
                 }
             });
-            // Open in Map View button
-            new ButtonComponent(actionsEl)
-                .setButtonText('Open in view')
-                .setIcon('map')
-                .onClick(async () => {
-                    const mapId = map.id || map.name;
-                    await this.plugin.activateMapView(mapId);
-                });
             this.addOpenFileButton(actionsEl, map.filePath);
         });
     }
@@ -1971,6 +1992,23 @@ export class DashboardView extends ItemView {
         await this.renderGroupsList(container);
     }
 
+    private getGroupDescriptionPreview(description: string, maxLength = 160): string {
+        const plainText = description
+            .replace(/```[\s\S]*?```/g, ' ')
+            .replace(/`([^`]*)`/g, '$1')
+            .replace(/!\[[^\]]*\]\([^)]+\)/g, ' ')
+            .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+            .replace(/[#>*_~|[\]-]+/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+
+        if (plainText.length <= maxLength) {
+            return plainText;
+        }
+
+        return `${plainText.substring(0, maxLength).trimEnd()}...`;
+    }
+
     /**
      * Render just the groups list (without header controls)
      * Used by filter function to avoid infinite recursion
@@ -2024,7 +2062,11 @@ export class DashboardView extends ItemView {
             }
             infoDiv.createEl('strong', { text: group.name });
             if (group.description) {
-                infoDiv.createEl('span', { text: group.description, cls: 'storyteller-group-desc' });
+                const descEl = infoDiv.createEl('span', {
+                    text: this.getGroupDescriptionPreview(group.description),
+                    cls: 'storyteller-group-desc'
+                });
+                descEl.title = 'Open or edit the group to view the full description.';
             }
             if (group.tags && group.tags.length > 0) {
                 const tagsRow = infoDiv.createDiv('storyteller-group-tags');

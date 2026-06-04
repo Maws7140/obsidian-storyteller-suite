@@ -2061,7 +2061,12 @@ If your plugin does not need CSS, delete this file.
     }
     
     /* Mobile typography */
-    .modal h2, .modal h3 {
+    .storyteller-responsive-modal h2,
+    .storyteller-responsive-modal h3,
+    .storyteller-modal h2,
+    .storyteller-modal h3,
+    .modal.storyteller-legacy-modal h2,
+    .modal.storyteller-legacy-modal h3 {
         font-size: 1.25rem;
         line-height: 1.3;
     }
@@ -2149,17 +2154,26 @@ If your plugin does not need CSS, delete this file.
     }
     
     /* Mobile form layouts */
-    .setting-item {
+    .storyteller-responsive-modal .setting-item,
+    .storyteller-modal .setting-item,
+    .modal.storyteller-legacy-modal .setting-item,
+    .view-type-storyteller-dashboard-view .setting-item {
         flex-direction: column;
         align-items: flex-start;
     }
     
-    .setting-item-info {
+    .storyteller-responsive-modal .setting-item-info,
+    .storyteller-modal .setting-item-info,
+    .modal.storyteller-legacy-modal .setting-item-info,
+    .view-type-storyteller-dashboard-view .setting-item-info {
         margin-bottom: 0.5rem;
         width: 100%;
     }
     
-    .setting-item-control {
+    .storyteller-responsive-modal .setting-item-control,
+    .storyteller-modal .setting-item-control,
+    .modal.storyteller-legacy-modal .setting-item-control,
+    .view-type-storyteller-dashboard-view .setting-item-control {
         width: 100%;
     }
 }
@@ -2171,7 +2185,9 @@ If your plugin does not need CSS, delete this file.
         grid-template-columns: repeat(2, 1fr);
     }
     
-    .modal {
+    .storyteller-responsive-modal,
+    .storyteller-modal,
+    .modal.storyteller-legacy-modal {
         max-width: 90vw;
         max-height: 90vh;
     }
@@ -2298,7 +2314,12 @@ If your plugin does not need CSS, delete this file.
     /* Reduce map height in portrait to keep controls visible */
     .storyteller-map-container {
         max-height: 40vh;
-        max-height: 40dvh;
+    }
+
+    @supports (height: 1dvh) {
+        .storyteller-map-container {
+            max-height: 40dvh;
+        }
     }
 
     /* Dashboard-specific portrait fixes */
@@ -2342,7 +2363,12 @@ If your plugin does not need CSS, delete this file.
     /* Maps can be taller in landscape */
     .storyteller-map-container {
         max-height: 60vh;
-        max-height: 60dvh;
+    }
+
+    @supports (height: 1dvh) {
+        .storyteller-map-container {
+            max-height: 60dvh;
+        }
     }
 }
 
@@ -2356,9 +2382,13 @@ If your plugin does not need CSS, delete this file.
 .storyteller-modal input,
 .storyteller-modal select,
 .storyteller-modal textarea,
-.mobile-button,
+.storyteller-responsive-modal .mobile-button,
+.storyteller-modal .mobile-button,
 .storyteller-tab-header,
-.setting-item-control {
+.storyteller-responsive-modal .setting-item-control,
+.storyteller-modal .setting-item-control,
+.modal.storyteller-legacy-modal .setting-item-control,
+.view-type-storyteller-dashboard-view .setting-item-control {
     /* Allow both touch and stylus interactions */
     touch-action: manipulation;
     /* Disable browser's double-tap zoom for precise stylus control */
@@ -2406,9 +2436,13 @@ If your plugin does not need CSS, delete this file.
 }
 
 /* Prevent accidental text selection when using stylus for UI interaction */
-.mobile-button-bar,
+.storyteller-responsive-modal .mobile-button-bar,
+.storyteller-modal .mobile-button-bar,
+.modal.storyteller-legacy-modal .mobile-button-bar,
 .storyteller-tab-header,
-.modal-button-container {
+.storyteller-responsive-modal .modal-button-container,
+.storyteller-modal .modal-button-container,
+.modal.storyteller-legacy-modal .modal-button-container {
     -webkit-user-select: none;
     user-select: none;
 }
@@ -2736,24 +2770,39 @@ If your plugin does not need CSS, delete this file.
 }
 
 /* Button styling */
-.setting-item .button.mod-cta {
+.storyteller-responsive-modal .setting-item .button.mod-cta,
+.storyteller-modal .setting-item .button.mod-cta,
+.modal.storyteller-legacy-modal .setting-item .button.mod-cta,
+.view-type-storyteller-dashboard-view .setting-item .button.mod-cta {
   background-color: var(--interactive-accent);
   color: var(--text-on-accent);
   font-weight: 600;
   padding: var(--size-4-2) var(--size-4-4);
   border-radius: var(--radius-m);
 }
-.setting-item .button.mod-cta:hover {
+.storyteller-responsive-modal .setting-item .button.mod-cta:hover,
+.storyteller-modal .setting-item .button.mod-cta:hover,
+.modal.storyteller-legacy-modal .setting-item .button.mod-cta:hover,
+.view-type-storyteller-dashboard-view .setting-item .button.mod-cta:hover {
   background-color: var(--interactive-accent-hover);
 }
-.setting-item .button.mod-warning {
+.storyteller-responsive-modal .setting-item .button.mod-warning,
+.storyteller-modal .setting-item .button.mod-warning,
+.modal.storyteller-legacy-modal .setting-item .button.mod-warning,
+.view-type-storyteller-dashboard-view .setting-item .button.mod-warning {
     color: var(--text-on-accent);
     background-color: var(--interactive-warning);
 }
-.setting-item .button.mod-warning:hover {
+.storyteller-responsive-modal .setting-item .button.mod-warning:hover,
+.storyteller-modal .setting-item .button.mod-warning:hover,
+.modal.storyteller-legacy-modal .setting-item .button.mod-warning:hover,
+.view-type-storyteller-dashboard-view .setting-item .button.mod-warning:hover {
     background-color: var(--interactive-warning-hover);
 }
-.setting-item .button { /* General button style in settings */
+.storyteller-responsive-modal .setting-item .button,
+.storyteller-modal .setting-item .button,
+.modal.storyteller-legacy-modal .setting-item .button,
+.view-type-storyteller-dashboard-view .setting-item .button { /* General button style in plugin settings */
     margin-left: var(--size-4-2);
 }
 
@@ -3549,6 +3598,8 @@ If your plugin does not need CSS, delete this file.
   flex-direction: row;
   align-items: center;
   flex: 1;
+  min-width: 0;
+  flex-wrap: wrap;
   order: 1;
   gap: 0.5rem;
   font-size: 1.05rem;
@@ -3557,6 +3608,7 @@ If your plugin does not need CSS, delete this file.
 .storyteller-group-info strong {
   color: var(--text-accent);
   font-weight: 700;
+  flex-shrink: 0;
 }
 .storyteller-group-info span {
   color: var(--text-muted);
@@ -3568,6 +3620,14 @@ If your plugin does not need CSS, delete this file.
   font-size: 1rem;
   font-weight: 400;
   margin-inline-start: 0.5em;
+  display: -webkit-box;
+  max-width: min(60ch, 100%);
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  white-space: normal;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-height: 1.35;
 }
 .storyteller-group-actions {
   display: flex;

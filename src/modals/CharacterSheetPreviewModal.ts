@@ -3,6 +3,7 @@ import { Character } from '../types';
 import StorytellerSuitePlugin from '../main';
 import { CharacterSheetGenerator, SheetData } from '../utils/CharacterSheetGenerator';
 import { BUILT_IN_SHEET_TEMPLATES } from '../utils/CharacterSheetTemplates';
+import { sanitizeNode } from '../utils/HtmlSanitize';
 
 export class CharacterSheetPreviewModal extends Modal {
     private generator: CharacterSheetGenerator;
@@ -92,7 +93,7 @@ export class CharacterSheetPreviewModal extends Modal {
             scopedCss ? `<style>${scopedCss}</style>${inner}` : inner,
             'text/html'
         );
-        previewDocument.querySelectorAll('script').forEach(script => script.remove());
+        sanitizeNode(previewDocument);
         this.previewEl.empty();
         for (const node of Array.from(previewDocument.body.childNodes)) {
             this.previewEl.appendChild(activeDocument.importNode(node, true));
