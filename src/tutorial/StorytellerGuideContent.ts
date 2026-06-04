@@ -142,7 +142,7 @@ export function getWhatsNewGuide(version: string): StorytellerGuideDocument {
                 bodyHtml: `
                     <ul>
                         <li>Map panels now use the dynamic viewport height cleanly via an <code>@supports</code> fallback, clearing duplicate-style lint warnings.</li>
-                        <li>Character-sheet previews now strip inline event handlers and <code>javascript:</code> links in addition to scripts, so custom templates cannot run code.</li>
+                        <li>Character-sheet previews now strip inline event handlers and <code>javascript:</code> links in addition to scripts, so custom templates can't run code.</li>
                     </ul>
                 `
             },

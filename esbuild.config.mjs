@@ -2,15 +2,23 @@ import esbuild from "esbuild";
 import process from "process";
 import fs from "fs";
 
-// JSZip's browser bundle includes IE-era scheduler fallbacks that create
-// <script> elements. They are unreachable in Obsidian's Chromium runtime, but
-// static scanners still flag them, so collapse those branches at build time.
+// JSZip's `browser` field remaps `lib/index` -> `dist/jszip.min.js`, a browserify bundle
+// with the `immediate` and `setimmediate` async-scheduler polyfills baked in. Both inject
+// <script> elements (via onreadystatechange) as an IE 6-8 fallback. Those branches are
+// unreachable in Obsidian's Chromium runtime, but they ship in main.js and trip static
+// scanners ("dynamic script element creation can load arbitrary external code").
+//
+// Collapse each ternary to its existing setTimeout fallback at load time, so the bundle
+// contains no dynamic script creation. The throw guards against silent reintroduction if
+// JSZip is upgraded (re-minification would change these literals).
 const SCRIPT_INJECTION_PATCHES = [
 	{
+		// `immediate` polyfill scheduleDrain: cond ? createScript : setTimeout
 		find: `r="document"in t&&"onreadystatechange"in t.document.createElement("script")?function(){var e=t.document.createElement("script");e.onreadystatechange=function(){u(),e.onreadystatechange=null,e.parentNode.removeChild(e),e=null},t.document.documentElement.appendChild(e)}:function(){setTimeout(u,0)}`,
 		replace: `r=function(){setTimeout(u,0)}`,
 	},
 	{
+		// `setimmediate` registerImmediate: cond ? createScript : setTimeout
 		find: `l&&"onreadystatechange"in l.createElement("script")?(s=l.documentElement,function(e){var t=l.createElement("script");t.onreadystatechange=function(){c(e),t.onreadystatechange=null,s.removeChild(t),t=null},s.appendChild(t)}):function(e){setTimeout(c,0,e)}`,
 		replace: `function(e){setTimeout(c,0,e)}`,
 	},

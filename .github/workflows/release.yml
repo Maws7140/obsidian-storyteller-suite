@@ -152,7 +152,7 @@ jobs:
           echo "package.json:        $PACKAGE_VERSION"
 
           if [ "$MANIFEST_VERSION" != "$VERSION" ] || [ "$PACKAGE_VERSION" != "$VERSION" ]; then
-            echo "::error::Version mismatch - manifest.json ($MANIFEST_VERSION) and package.json ($PACKAGE_VERSION) must both equal the release version ($VERSION)."
+            echo "::error::Version mismatch — manifest.json ($MANIFEST_VERSION) and package.json ($PACKAGE_VERSION) must both equal the release version ($VERSION)."
             echo "If this was a manual tag push, the tag was likely created on a commit before the version bump. Re-tag the bump commit (or use the workflow_dispatch release flow)."
             exit 1
           fi
