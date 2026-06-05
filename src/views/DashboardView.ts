@@ -2159,11 +2159,11 @@ export class DashboardView extends ItemView {
                         }
                         li.textContent = displayName;
                         if (filePath) {
+                            const linkPath = filePath;
                             li.classList.add('is-link');
                             li.addEventListener('click', (e) => {
                                 e.stopPropagation();
-                                const path = filePath as string;
-                                void this.app.workspace.openLinkText(path, '', false);
+                                void this.app.workspace.openLinkText(linkPath, '', false);
                             });
                         }
                     });

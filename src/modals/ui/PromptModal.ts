@@ -23,7 +23,6 @@ export class PromptModal extends Modal {
     contentEl.createEl('h3', { text: this.titleText });
 
     let input: TextComponent | null = null;
-    let errorEl: HTMLElement | null = null;
     let isSubmitting = false;
 
     new Setting(contentEl)
@@ -32,7 +31,7 @@ export class PromptModal extends Modal {
         input = t.setValue(this.defaultValue);
       });
 
-    errorEl = contentEl.createDiv({ cls: 'mod-warning' });
+    const errorEl = contentEl.createDiv({ cls: 'mod-warning' });
     errorEl.setCssStyles({ display: 'none' });
 
     const submit = () => {
@@ -41,8 +40,8 @@ export class PromptModal extends Modal {
       if (this.validator) {
         const err = this.validator(value);
         if (err) {
-          errorEl!.setCssStyles({ display: '' });
-          errorEl!.setText(err);
+          errorEl.setCssStyles({ display: '' });
+          errorEl.setText(err);
           isSubmitting = false;
           return;
         }

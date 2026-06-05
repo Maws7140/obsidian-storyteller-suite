@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.8.10
+
+### Internal
+- Cleared the remaining Obsidian plugin-review lint findings: the timeline dependency-arrow layer now uses `activeDocument` for popout-window compatibility, its static SVG styling moved out of inline assignments into stylesheet classes (with `--dashed`/`--dotted` modifiers for line types), `hasOwnProperty` is called via `Object.prototype`, and a ternary-as-statement became an explicit `if`/`else`. Removed redundant type assertions in the save-as-template, prompt, and dashboard code by narrowing through `const` captures. No user-facing behavior change.
+
 ## 1.8.9
 
 ### Fixed

@@ -43,7 +43,8 @@ export class SaveNoteAsTemplateCommand {
         }
 
         // Get default name from file
-        const defaultName = file.basename.replace(/[-_]/g, ' ');
+        const targetFile = file;
+        const defaultName = targetFile.basename.replace(/[-_]/g, ' ');
 
         // Show modal to collect metadata
         new SaveNoteAsTemplateModal(
@@ -61,7 +62,7 @@ export class SaveNoteAsTemplateCommand {
 
                     // Save note as template
                     const template = await plugin.templateNoteManager.saveNoteAsTemplate(
-                        file!,
+                        targetFile,
                         result.entityType,
                         {
                             name: result.name,

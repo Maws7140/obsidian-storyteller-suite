@@ -1,7 +1,7 @@
 {
 	"id": "storyteller-suite",
 	"name": "Storyteller Suite",
-	"version": "1.8.9",
+	"version": "1.8.10",
 	"minAppVersion": "1.7.2",
 	"description": "World-building and story management - characters, locations, events, maps, compendium, timeline, manuscript compilation, and more.",
 	"author": "Maws",

@@ -67,7 +67,7 @@ export default class Arrow {
      * @param {ArrowOptions} [options] 
      */
     constructor(timeline, dependencies, options) {
-        this._svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        this._svg = activeDocument.createElementNS("http://www.w3.org/2000/svg", "svg");
         this._timeline = timeline;
 
         /** @private @type {boolean | undefined} if true, arrows can point backwards and will follow the relationships set in the data */
@@ -99,14 +99,7 @@ export default class Arrow {
 
     _initialize() {
         //Configures the SVG layer and add it to timeline
-        this._svg.style.position = "absolute";
-        this._svg.style.top = "0px";
-        this._svg.style.height = "100%";
-        this._svg.style.width = "100%";
-        this._svg.style.display = "block";
-        this._svg.style.zIndex = "1"; // Should it be above or below? (1 for above, -1 for below)
-        this._svg.style.pointerEvents = "none"; // To click through, if we decide to put it above other elements.
-        this._svg.style.overflow = "visible";
+        // Static layer styles live in styles.css (.sts-timeline-dependency-layer).
         this._svg.classList.add("sts-timeline-dependency-layer");
         this._timeline.dom.center.appendChild(this._svg);
 
@@ -130,7 +123,7 @@ export default class Arrow {
         if (!this._colorMarkers.has(arrowColor)) {
             const markerId = `arrowhead-${safeColorId}-${Math.random().toString(36).substring(2)}`;
 
-            const arrowHead = document.createElementNS("http://www.w3.org/2000/svg", "marker");
+            const arrowHead = activeDocument.createElementNS("http://www.w3.org/2000/svg", "marker");
             arrowHead.setAttribute("id", markerId);
             arrowHead.setAttribute("viewBox", "-10 -5 10 10");
             arrowHead.setAttribute("refX", "-6.5");
@@ -140,7 +133,7 @@ export default class Arrow {
             arrowHead.setAttribute("markerHeight", "4");
             arrowHead.setAttribute("orient", "auto-start-reverse");
 
-            const arrowHeadPath = document.createElementNS("http://www.w3.org/2000/svg", "path");
+            const arrowHeadPath = activeDocument.createElementNS("http://www.w3.org/2000/svg", "path");
             arrowHeadPath.setAttribute("d", "M 0 0 L -10 -5 L -7.5 0 L -10 5 z");
             arrowHeadPath.style.fill = arrowColor;
 
@@ -156,33 +149,24 @@ export default class Arrow {
     /** @private */
     _createPath(color, lineType) {
         //Add a new path to array dependencyPath and to svg
-        let somePath = document.createElementNS(
+        let somePath = activeDocument.createElementNS(
             "http://www.w3.org/2000/svg",
             "path"
         );
         somePath.setAttribute("d", "M 0 0");
+        // Dynamic per-arrow styles stay inline; static styles live in styles.css.
         somePath.style.stroke = color || this._arrowsColor;
         somePath.style.strokeWidth = this._arrowsStrokeWidth + "px";
-        somePath.style.fill = "none";
-        somePath.style.pointerEvents = "auto";
-        somePath.style.strokeLinecap = "round";
-        somePath.style.strokeLinejoin = "round";
-        somePath.style.vectorEffect = "non-scaling-stroke";
-        somePath.style.filter = "drop-shadow(0 1px 2px rgba(0, 0, 0, 0.35))";
-        somePath.style.opacity = "0.96";
         somePath.classList.add("sts-timeline-dependency-arrow");
 
-        // Set the line type
+        // Set the line type (dash patterns live in styles.css via modifier classes).
         const line = lineType !== undefined ? lineType : 0; // Default to solid line
-        if (line === 0) {
-            // Type 0: Solid line (default)
-            somePath.style.strokeDasharray = "none";
-        } else if (line === 1) {
+        if (line === 1) {
             // Type 1: Dashed line
-            somePath.style.strokeDasharray = "7,5";
+            somePath.classList.add("sts-timeline-dependency-arrow--dashed");
         } else if (line === 2) {
             // Type 2: Dotted line
-            somePath.style.strokeDasharray = "2,4";
+            somePath.classList.add("sts-timeline-dependency-arrow--dotted");
         }
 
         this._dependencyPath.push(somePath);
@@ -548,10 +532,12 @@ export default class Arrow {
             }
 
             // Adding the title if property title has been added in the dependency
-            if (dep.hasOwnProperty("title")) {
-                this._tooltipConfig
-                    ? this._tooltipConfig(this._dependencyPath[index], dep.title ?? '')
-                    : this._setPathTitle(this._dependencyPath[index], dep.title ?? '');
+            if (Object.prototype.hasOwnProperty.call(dep, "title")) {
+                if (this._tooltipConfig) {
+                    this._tooltipConfig(this._dependencyPath[index], dep.title ?? '');
+                } else {
+                    this._setPathTitle(this._dependencyPath[index], dep.title ?? '');
+                }
             }
         } else {
             this._dependencyPath[index].setAttribute("marker-end", "");
@@ -563,7 +549,7 @@ export default class Arrow {
     /** @private Función que recibe in Item y devuelve la posición en pantalla del item. */
     _setPathTitle(path, title) {
         path.querySelectorAll("title").forEach((titleEl) => titleEl.remove());
-        const titleEl = document.createElementNS("http://www.w3.org/2000/svg", "title");
+        const titleEl = activeDocument.createElementNS("http://www.w3.org/2000/svg", "title");
         titleEl.textContent = title;
         path.appendChild(titleEl);
     }
@@ -629,7 +615,7 @@ export default class Arrow {
         if (index >= 0) {
 
             //var list = document.getElementsByTagName("path"); //FALTA QUE ESTA SELECCION LA HAGA PARA EL DOM DEL TIMELINE INSTANCIADO!!!!
-            const list = document.querySelectorAll("#" + this._timeline.dom.container.id + " path");
+            const list = activeDocument.querySelectorAll("#" + this._timeline.dom.container.id + " path");
 
             this._dependency.splice(index, 1); //Elimino del array dependency
             this._dependencyPath.splice(index, 1); //Elimino del array dependencyPath
