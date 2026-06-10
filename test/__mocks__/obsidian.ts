@@ -46,9 +46,11 @@ export class TFile {
   }
 }
 
+export const noticeMessages: string[] = [];
+
 export class Notice {
   constructor(message: string) {
-    // No-op in tests
+    noticeMessages.push(message);
   }
 }
 

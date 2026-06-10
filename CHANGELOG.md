@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.8.11
+
+### Fixed
+- Daily writing goal notifications now fire only when the day's word count first crosses the configured goal, instead of repeating after every later writing-session save.
+
 ## 1.8.10
 
 ### Internal

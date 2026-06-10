@@ -1,11 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { TFile } from 'obsidian';
+import { noticeMessages, TFile } from 'obsidian';
 import { WordCountTracker } from '../../src/compile/WordCountTracker';
 
 describe('WordCountTracker', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     vi.useRealTimers();
+    noticeMessages.length = 0;
   });
 
   it('includes live session progress in today stats before a session is persisted', () => {
@@ -55,6 +56,27 @@ describe('WordCountTracker', () => {
       netWords: 3,
     });
   });
+
+  it('notifies only once when the daily writing goal has already been reached', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 2, 31, 12, 0, 0));
+
+    const plugin = createPluginStub();
+    plugin.settings.notifyOnGoalReached = true;
+    const tracker = new WordCountTracker(plugin as any);
+
+    await tracker.recordDailyStats(60);
+    await tracker.recordDailyStats(10);
+
+    expect(noticeMessages).toEqual([
+      'Daily writing goal reached! 60 words written today.',
+    ]);
+    expect(plugin.settings.dailyWritingStats[0]).toMatchObject({
+      date: '2026-03-31',
+      wordsWritten: 70,
+      goalMet: true,
+    });
+  });
 });
 
 function createPluginStub(options?: {
@@ -71,6 +93,7 @@ function createPluginStub(options?: {
       dailyWritingStats: [],
       dailyWordCountGoal: 50,
       countDeletionsForGoal: true,
+      notifyOnGoalReached: false,
     },
     app: {
       workspace: {

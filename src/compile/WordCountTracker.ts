@@ -161,6 +161,8 @@ export class WordCountTracker {
         const today = this.getTodayKey();
         const stats = this.getDailyStats();
         const existingStats = stats[today];
+        const dailyGoal = this.plugin.settings.dailyWordCountGoal || 0;
+        const previousWordsWritten = existingStats?.wordsWritten ?? 0;
 
         if (existingStats) {
             existingStats.wordsWritten += Math.max(0, netWords);
@@ -181,15 +183,18 @@ export class WordCountTracker {
         }
 
         // Check if goal is met
-        const dailyGoal = this.plugin.settings.dailyWordCountGoal || 0;
         if (dailyGoal > 0 && stats[today].wordsWritten >= dailyGoal) {
             stats[today].goalMet = true;
         }
+        const didReachGoal = dailyGoal > 0
+            && previousWordsWritten < dailyGoal
+            && stats[today].wordsWritten >= dailyGoal;
 
         await this.saveDailyStats(stats);
         
-        // Check if goal reached
-        this.checkDailyGoal();
+        if (didReachGoal) {
+            this.notifyDailyGoalReached(stats[today]);
+        }
     }
 
     /**
@@ -269,6 +274,15 @@ export class WordCountTracker {
         const startDate = new Date();
         startDate.setDate(startDate.getDate() - 29);
         return this.getStatsForRange(startDate, endDate);
+    }
+
+    /**
+     * Notify when the daily goal is crossed.
+     */
+    private notifyDailyGoalReached(todayStats: DailyWritingStats): void {
+        if (!this.plugin.settings.notifyOnGoalReached) return;
+
+        new Notice(`Daily writing goal reached! ${todayStats.wordsWritten} words written today.`);
     }
 
     /**

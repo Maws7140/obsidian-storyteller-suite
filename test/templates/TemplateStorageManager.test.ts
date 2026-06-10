@@ -13,7 +13,7 @@ describe('TemplateStorageManager', () => {
       JSON.stringify(createTemplate('map-template', 'Map template'))
     );
 
-    const manager = new TemplateStorageManager({ vault } as any);
+    const manager = new TemplateStorageManager(createMockApp(vault) as any);
     vi.spyOn(manager, 'validateTemplate').mockReturnValue({
       isValid: true,
       errors: [],
@@ -37,7 +37,7 @@ describe('TemplateStorageManager', () => {
       JSON.stringify({ stale: true })
     );
 
-    const manager = new TemplateStorageManager({ vault } as any);
+    const manager = new TemplateStorageManager(createMockApp(vault) as any);
     vi.spyOn(manager, 'validateTemplate').mockReturnValue({
       isValid: true,
       errors: [],
@@ -143,6 +143,15 @@ class MockVault {
       parent.children.push(child);
     }
   }
+}
+
+function createMockApp(vault: MockVault) {
+  return {
+    vault,
+    fileManager: {
+      trashFile: async (file: TFile) => vault.delete(file),
+    },
+  };
 }
 
 function createTemplate(id: string, name: string): Template {
