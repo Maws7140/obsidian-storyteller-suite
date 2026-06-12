@@ -1,3 +1,18 @@
+function hasStorytellerOwnedClass(el?: Element | null): boolean {
+    if (!el) return false;
+    return Array.from(el.classList).some((className) =>
+        className.startsWith('storyteller-') || className.startsWith('sts-')
+    );
+}
+
+function isStorytellerOwnedModalContent(contentEl: HTMLElement, modalEl?: HTMLElement): boolean {
+    if (hasStorytellerOwnedClass(modalEl) || hasStorytellerOwnedClass(contentEl)) {
+        return true;
+    }
+
+    return Array.from(contentEl.querySelectorAll('[class]')).some(hasStorytellerOwnedClass);
+}
+
 export function upgradeLegacyModalLayout(contentEl: HTMLElement, modalEl?: HTMLElement): void {
     const actionEl = Array.from(contentEl.children).find((child) =>
         child.instanceOf(HTMLElement) &&
@@ -5,6 +20,7 @@ export function upgradeLegacyModalLayout(contentEl: HTMLElement, modalEl?: HTMLE
     ) as HTMLElement | undefined;
 
     if (!actionEl) return;
+    if (!isStorytellerOwnedModalContent(contentEl, modalEl)) return;
 
     modalEl?.classList.add('storyteller-legacy-modal');
     contentEl.classList.add('storyteller-mobile-modal-layout');

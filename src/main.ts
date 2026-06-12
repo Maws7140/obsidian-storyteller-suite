@@ -9348,8 +9348,8 @@ export default class StorytellerSuitePlugin extends Plugin {
 	}
 
 	/**
-	 * Applies mobile-specific CSS classes to the activeDocument body
-	 * This allows for platform-specific styling throughout the app
+	 * Applies Storyteller-specific mobile CSS classes to the activeDocument body.
+	 * Obsidian owns the core platform classes on <body>; do not rewrite them here.
 	 */
 	private applyMobilePlatformClasses(): void {
 		const body = activeDocument.body;
@@ -9358,19 +9358,10 @@ export default class StorytellerSuitePlugin extends Plugin {
 			return;
 		}
 
-		const mobileClasses = PlatformUtils.getMobileCssClasses();
-		
-		// Remove any existing platform classes first
-		body.classList.remove('is-mobile', 'is-ios', 'is-android', 'is-desktop');
-		
-		// Add current platform classes
-		mobileClasses.forEach(className => {
-			body.classList.add(className);
-		});
-
-		// Add Storyteller suite specific mobile class
 		if (PlatformUtils.isMobile()) {
 			body.classList.add('storyteller-mobile-enabled');
+		} else {
+			body.classList.remove('storyteller-mobile-enabled');
 		}
 	}
 

@@ -29,16 +29,26 @@
    included here.
 */
 
-.leaflet-pane,
-.leaflet-tile,
-.leaflet-marker-icon,
-.leaflet-marker-shadow,
-.leaflet-tile-container,
-.leaflet-pane > svg,
-.leaflet-pane > canvas,
-.leaflet-zoom-box,
-.leaflet-image-layer,
-.leaflet-layer {
+.storyteller-map-container .leaflet-pane,
+.storyteller-map-container .leaflet-tile,
+.storyteller-map-container .leaflet-marker-icon,
+.storyteller-map-container .leaflet-marker-shadow,
+.storyteller-map-container .leaflet-tile-container,
+.storyteller-map-container .leaflet-pane > svg,
+.storyteller-map-container .leaflet-pane > canvas,
+.storyteller-map-container .leaflet-zoom-box,
+.storyteller-map-container .leaflet-image-layer,
+.storyteller-map-container .leaflet-layer,
+.storyteller-map-view .leaflet-pane,
+.storyteller-map-view .leaflet-tile,
+.storyteller-map-view .leaflet-marker-icon,
+.storyteller-map-view .leaflet-marker-shadow,
+.storyteller-map-view .leaflet-tile-container,
+.storyteller-map-view .leaflet-pane > svg,
+.storyteller-map-view .leaflet-pane > canvas,
+.storyteller-map-view .leaflet-zoom-box,
+.storyteller-map-view .leaflet-image-layer,
+.storyteller-map-view .leaflet-layer {
     position: absolute;
     left: 0;
     top: 0;
@@ -51,16 +61,20 @@
     background: transparent;
 }
 
-.leaflet-tile,
-.leaflet-marker-icon,
-.leaflet-marker-shadow {
+.storyteller-map-container .leaflet-tile,
+.storyteller-map-container .leaflet-marker-icon,
+.storyteller-map-container .leaflet-marker-shadow,
+.storyteller-map-view .leaflet-tile,
+.storyteller-map-view .leaflet-marker-icon,
+.storyteller-map-view .leaflet-marker-shadow {
     -webkit-user-select: none;
     -moz-user-select: none;
     user-select: none;
     -webkit-user-drag: none;
 }
 
-.leaflet-tile-container {
+.storyteller-map-container .leaflet-tile-container,
+.storyteller-map-view .leaflet-tile-container {
     pointer-events: none;
 }
 
@@ -240,71 +254,86 @@
    Ensure other Leaflet components aren't affected by Obsidian CSS
 */
 
-.leaflet-control-container {
+.storyteller-map-container .leaflet-control-container,
+.storyteller-map-view .leaflet-control-container {
     position: absolute;
 }
 
-.leaflet-control {
+.storyteller-map-container .leaflet-control,
+.storyteller-map-view .leaflet-control {
     position: relative;
     z-index: 800;
     pointer-events: auto;
 }
 
-.leaflet-top,
-.leaflet-bottom {
+.storyteller-map-container .leaflet-top,
+.storyteller-map-container .leaflet-bottom,
+.storyteller-map-view .leaflet-top,
+.storyteller-map-view .leaflet-bottom {
     position: absolute;
     z-index: 1000;
     pointer-events: none;
 }
 
-.leaflet-top {
+.storyteller-map-container .leaflet-top,
+.storyteller-map-view .leaflet-top {
     top: 0;
 }
 
-.leaflet-right {
+.storyteller-map-container .leaflet-right,
+.storyteller-map-view .leaflet-right {
     right: 0;
 }
 
-.leaflet-bottom {
+.storyteller-map-container .leaflet-bottom,
+.storyteller-map-view .leaflet-bottom {
     bottom: 0;
 }
 
-.leaflet-left {
+.storyteller-map-container .leaflet-left,
+.storyteller-map-view .leaflet-left {
     left: 0;
 }
 
 /* Popup and tooltip fixes */
-.leaflet-popup-content-wrapper,
-.leaflet-popup-tip {
+.storyteller-map-container .leaflet-popup-content-wrapper,
+.storyteller-map-container .leaflet-popup-tip,
+.storyteller-map-view .leaflet-popup-content-wrapper,
+.storyteller-map-view .leaflet-popup-tip {
     background: var(--background-primary);
     color: var(--text-normal);
 }
 
-.leaflet-popup-content {
+.storyteller-map-container .leaflet-popup-content,
+.storyteller-map-view .leaflet-popup-content {
     margin: 13px 19px;
     line-height: 1.4;
 }
 
 /* Attribution styling for Obsidian */
-.leaflet-control-attribution {
+.storyteller-map-container .leaflet-control-attribution,
+.storyteller-map-view .leaflet-control-attribution {
     background: var(--background-secondary);
     color: var(--text-muted);
     font-size: 10px;
     padding: 0 5px;
 }
 
-.leaflet-control-attribution a {
+.storyteller-map-container .leaflet-control-attribution a,
+.storyteller-map-view .leaflet-control-attribution a {
     color: var(--text-accent);
 }
 
 /* Zoom controls */
-.leaflet-control-zoom a {
+.storyteller-map-container .leaflet-control-zoom a,
+.storyteller-map-view .leaflet-control-zoom a {
     background: var(--background-primary);
     color: var(--text-normal);
     border-color: var(--background-modifier-border);
 }
 
-.leaflet-control-zoom a:hover {
+.storyteller-map-container .leaflet-control-zoom a:hover,
+.storyteller-map-view .leaflet-control-zoom a:hover {
     background: var(--background-secondary);
 }
 
@@ -313,7 +342,9 @@
    ===========================================
 */
 
-.leaflet-container .dark-mode {
+.storyteller-map-container .leaflet-container .dark-mode,
+.storyteller-map-container.leaflet-container .dark-mode,
+.storyteller-map-view .leaflet-container .dark-mode {
     filter: brightness(0.6) invert(1) contrast(3) hue-rotate(200deg) saturate(0.3) brightness(0.7);
 }
 
