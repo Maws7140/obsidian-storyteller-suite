@@ -7,6 +7,7 @@
 
 import { Template, TemplateEntities } from './TemplateTypes';
 import { entityToYaml, entityToMarkdown } from '../utils/TemplatePreviewRenderer';
+import { TEMPLATE_ENTITY_DEFINITIONS } from './TemplateEntityRegistry';
 
 export class TemplateMigrator {
     /**
@@ -18,8 +19,9 @@ export class TemplateMigrator {
         const migrated = structuredClone(template);
         
         // Convert all entity types
-        const entityTypes: Array<keyof TemplateEntities> = ['characters', 'locations', 'events', 'items', 'groups',
-                          'cultures', 'economies', 'magicSystems', 'chapters', 'scenes', 'references'];
+        const entityTypes: Array<keyof TemplateEntities> = TEMPLATE_ENTITY_DEFINITIONS.map(
+            definition => definition.pluralKey
+        );
         
         entityTypes.forEach(entityType => {
             const entities = migrated.entities[entityType] as Array<{ yamlContent?: string; markdownContent?: string }> | undefined;

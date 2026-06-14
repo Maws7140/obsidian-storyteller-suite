@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.8.13
+
+### Added
+- Templates can link the entities they create to **existing** vault entities (locations, magic systems, groups, cultures, etc.) chosen when the template is applied. Define links in a new **Links** tab in the template editor; the apply dialog then prompts for the existing entities to attach. No duplicate entities are created.
+- The gallery upload folder is now selected from a dropdown of vault folders instead of a free-text field.
+
+### Fixed
+- Plugin settings no longer render blank under newer Obsidian settings windows: the settings layout uses a non-collapsing height, missing settings collections are guarded before rendering, and a failing settings section shows a message instead of blanking the whole pane.
+
+### Internal
+- Rolls up ongoing template, timeline, and map editor improvements.
+
+## 1.8.12
+
+### Internal
+- Isolated the Storyteller UI styles so they no longer leak into the rest of the Obsidian workspace.
+
 ## 1.8.11
 
 ### Fixed

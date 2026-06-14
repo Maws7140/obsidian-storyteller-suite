@@ -3,7 +3,7 @@
  * Supports: characters, events, items, cultures, economies, magic systems, groups, scenes, references
  */
 
-import { App, Modal, Notice, getIcon } from 'obsidian';
+import { App, ButtonComponent, Modal, Notice, getIcon } from 'obsidian';
 import type StorytellerSuitePlugin from '../main';
 import type {
     Location,
@@ -44,7 +44,7 @@ export class AddEntityToLocationModal extends Modal {
         super(app);
         this.plugin = plugin;
         this.location = location;
-        this.entityType = entityType;
+        this.entityType = this.normalizeEntityType(entityType);
         this.onSelect = onSelect;
         this.locationService = new LocationService(plugin);
     }
@@ -73,6 +73,14 @@ export class AddEntityToLocationModal extends Modal {
         relationships.forEach(rel => {
             this.relSelect!.createEl('option', { value: rel, text: rel });
         });
+
+        const actionContainer = contentEl.createDiv('storyteller-add-entity-actions');
+        new ButtonComponent(actionContainer)
+            .setButtonText(`Create New ${this.getEntityTypeLabel()}`)
+            .setIcon('plus')
+            .onClick(() => {
+                void this.openCreateEntityModal();
+            });
 
         // Results list
         this.resultsContainer = contentEl.createDiv('results-container');
@@ -103,6 +111,7 @@ export class AddEntityToLocationModal extends Modal {
      * Get semantically appropriate relationships for each entity type
      */
     private getRelationshipsForType(type: string): string[] {
+        type = this.normalizeEntityType(type);
         const relationships: Record<string, string[]> = {
             character: ['lives here', 'works here', 'born here', 'died here', 'visited', 'imprisoned', 'rules'],
             event: ['occurred here', 'started here', 'ended here'],
@@ -122,7 +131,7 @@ export class AddEntityToLocationModal extends Modal {
      * Load entities of the specified type uniformly
      */
     private async loadEntities(): Promise<LoadableEntity[]> {
-        switch (this.entityType) {
+        switch (this.normalizeEntityType(this.entityType)) {
             case 'character':
                 return await this.plugin.listCharacters();
             case 'event':
@@ -155,7 +164,7 @@ export class AddEntityToLocationModal extends Modal {
         const available = entities.filter(e => !existingIds.has(e.id || e.name));
 
         if (available.length === 0) {
-            this.resultsContainer.createDiv({ text: 'No available entities', cls: 'no-results' });
+            this.resultsContainer.createDiv({ text: `No available ${this.getEntityTypeLabel().toLowerCase()}s`, cls: 'no-results' });
             return;
         }
 
@@ -220,6 +229,117 @@ export class AddEntityToLocationModal extends Modal {
         return typeof value === 'string' ? value.trim().toLowerCase() : '';
     }
 
+    private getEntityTypeLabel(): string {
+        const labels: Record<string, string> = {
+            character: 'Character',
+            event: 'Event',
+            item: 'Item',
+            culture: 'Culture',
+            economy: 'Economy',
+            magicsystem: 'Magic System',
+            group: 'Group',
+            scene: 'Scene',
+            reference: 'Reference'
+        };
+        return labels[this.normalizeEntityType(this.entityType)] || 'Entity';
+    }
+
+    private getDefaultRelationship(): string {
+        if (this.relSelect?.value) return this.relSelect.value;
+        return this.getRelationshipsForType(this.entityType)[0] || 'located here';
+    }
+
+    private async openCreateEntityModal(): Promise<void> {
+        const entityType = this.normalizeEntityType(this.entityType);
+        const relationship = this.getDefaultRelationship();
+        const placeEntity = (entity: LoadableEntity) => {
+            this.onSelect(entity.id || entity.name, relationship);
+            this.close();
+        };
+
+        try {
+            switch (entityType) {
+                case 'character': {
+                    const { CharacterModal } = await import('./CharacterModal');
+                    new CharacterModal(this.app, this.plugin, null, async (entity: Character) => {
+                        await this.plugin.saveCharacter(entity);
+                        placeEntity(entity);
+                    }).open();
+                    break;
+                }
+                case 'event': {
+                    const { EventModal } = await import('./EventModal');
+                    new EventModal(this.app, this.plugin, null, async (entity: Event) => {
+                        await this.plugin.saveEvent(entity);
+                        placeEntity(entity);
+                    }).open();
+                    break;
+                }
+                case 'item': {
+                    const { PlotItemModal } = await import('./PlotItemModal');
+                    new PlotItemModal(this.app, this.plugin, null, async (entity: PlotItem) => {
+                        await this.plugin.savePlotItem(entity);
+                        placeEntity(entity);
+                    }).open();
+                    break;
+                }
+                case 'culture': {
+                    const { CultureModal } = await import('./CultureModal');
+                    new CultureModal(this.app, this.plugin, null, async (entity: Culture) => {
+                        await this.plugin.saveCulture(entity);
+                        placeEntity(entity);
+                    }).open();
+                    break;
+                }
+                case 'economy': {
+                    const { EconomyModal } = await import('./EconomyModal');
+                    new EconomyModal(this.app, this.plugin, null, async (entity: Economy) => {
+                        await this.plugin.saveEconomy(entity);
+                        placeEntity(entity);
+                    }).open();
+                    break;
+                }
+                case 'magicsystem': {
+                    const { MagicSystemModal } = await import('./MagicSystemModal');
+                    new MagicSystemModal(this.app, this.plugin, null, async (entity: MagicSystem) => {
+                        await this.plugin.saveMagicSystem(entity);
+                        placeEntity(entity);
+                    }).open();
+                    break;
+                }
+                case 'group': {
+                    const { GroupModal } = await import('./GroupModal');
+                    new GroupModal(this.app, this.plugin, null, async (entity: Group) => {
+                        await this.plugin.saveGroupFull(entity);
+                        placeEntity(entity);
+                    }).open();
+                    break;
+                }
+                case 'scene': {
+                    const { SceneModal } = await import('./SceneModal');
+                    new SceneModal(this.app, this.plugin, null, async (entity: Scene) => {
+                        await this.plugin.saveScene(entity);
+                        placeEntity(entity);
+                    }).open();
+                    break;
+                }
+                case 'reference': {
+                    const { ReferenceModal } = await import('./ReferenceModal');
+                    new ReferenceModal(this.app, this.plugin, null, async (entity: Reference) => {
+                        await this.plugin.saveReference(entity);
+                        placeEntity(entity);
+                    }).open();
+                    break;
+                }
+                default:
+                    new Notice(`Cannot create ${this.getEntityTypeLabel()} from here yet.`);
+                    return;
+            }
+        } catch {
+            new Notice(`Could not open ${this.getEntityTypeLabel()} creator.`);
+        }
+    }
+
     private async cacheItemOwners(entities: LoadableEntity[]): Promise<void> {
         this.itemOwnerByName.clear();
         if (this.entityType !== 'item') return;
@@ -249,6 +369,13 @@ export class AddEntityToLocationModal extends Modal {
             scene: 'film',
             reference: 'book-open'
         };
-        return icons[this.entityType] || 'map-pin';
+        return icons[this.normalizeEntityType(this.entityType)] || 'map-pin';
+    }
+
+    private normalizeEntityType(entityType: string): string {
+        if (entityType === 'magicSystem' || entityType === 'magic-system' || entityType === 'magic_system') {
+            return 'magicsystem';
+        }
+        return entityType;
     }
 }

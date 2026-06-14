@@ -1,4 +1,4 @@
-import { App, PluginSettingTab, Setting, Notice, setIcon } from 'obsidian';
+import { App, PluginSettingTab, Setting, Notice, TFolder, setIcon } from 'obsidian';
 import StorytellerSuitePlugin from './main';
 import { NewStoryModal } from './modals/NewStoryModal';
 import { EditStoryModal } from './modals/EditStoryModal';
@@ -44,6 +44,16 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
         containerEl.empty();
         containerEl.addClass('sts-settings-root');
 
+        // Defensive: settings loaded from disk may be missing collections (older or
+        // partially-migrated data). Without this guard a later `.forEach` throws and
+        // the whole settings pane renders blank.
+        if (!Array.isArray(this.plugin.settings.stories)) {
+            this.plugin.settings.stories = [];
+        }
+        if (!Array.isArray(this.plugin.settings.groups)) {
+            this.plugin.settings.groups = [];
+        }
+
         const wrapper = containerEl.createDiv('sts-settings-wrapper');
         const nav     = wrapper.createDiv('sts-settings-nav');
         const content = wrapper.createDiv('sts-settings-content');
@@ -68,15 +78,24 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
     }
 
     private renderTab(tabId: TabId, container: HTMLElement): void {
-        switch (tabId) {
-            case 'stories':   this.renderStoriesTab(container);   break;
-            case 'dashboard': this.renderDashboardTab(container); break;
-            case 'folders':   this.renderFoldersTab(container);   break;
-            case 'timeline':  this.renderTimelineTab(container);  break;
-            case 'maps':      this.renderMapsTab(container);      break;
-            case 'templates': this.renderTemplatesTab(container); break;
-            case 'gallery':   this.renderGalleryTab(container);   break;
-            case 'help':      this.renderHelpTab(container);      break;
+        try {
+            switch (tabId) {
+                case 'stories':   this.renderStoriesTab(container);   break;
+                case 'dashboard': this.renderDashboardTab(container); break;
+                case 'folders':   this.renderFoldersTab(container);   break;
+                case 'timeline':  this.renderTimelineTab(container);  break;
+                case 'maps':      this.renderMapsTab(container);      break;
+                case 'templates': this.renderTemplatesTab(container); break;
+                case 'gallery':   this.renderGalleryTab(container);   break;
+                case 'help':      this.renderHelpTab(container);      break;
+            }
+        } catch (error) {
+            // Surface a message instead of leaving the settings pane blank.
+            container.empty();
+            container.createEl('p', {
+                text: `Could not render this settings section: ${error instanceof Error ? error.message : String(error)}`,
+                cls: 'setting-item-description'
+            });
         }
     }
 
@@ -138,6 +157,43 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                 comp.inputEl.addEventListener('focus', openSuggest);
                 comp.inputEl.addEventListener('click', openSuggest);
                 return comp;
+            });
+    }
+
+    // ─── Utility: all vault folder paths (sorted) ────────────────────────────
+    private getVaultFolderPaths(): string[] {
+        const paths = this.app.vault.getAllLoadedFiles()
+            .filter((file): file is TFolder => file instanceof TFolder)
+            .map(folder => folder.path)
+            .filter(path => path && path !== '/');
+        return Array.from(new Set(paths)).sort((a, b) => a.localeCompare(b));
+    }
+
+    // ─── Utility: folder dropdown setting ────────────────────────────────────
+    private addFolderDropdownSetting(
+        container: HTMLElement,
+        name: string,
+        desc: string,
+        getValue: () => string,
+        setValue: (v: string) => void
+    ): Setting {
+        return new Setting(container)
+            .setName(name)
+            .setDesc(desc)
+            .addDropdown(dropdown => {
+                dropdown.addOption('', '— Vault root —');
+                const folders = this.getVaultFolderPaths();
+                const current = getValue();
+                // Keep the saved value selectable even if that folder no longer exists.
+                if (current && !folders.includes(current)) {
+                    dropdown.addOption(current, `${current} (missing)`);
+                }
+                folders.forEach(path => dropdown.addOption(path, path));
+                dropdown.setValue(current ?? '');
+                dropdown.onChange(async (value) => {
+                    setValue(value);
+                    await this.plugin.saveSettings();
+                });
             });
     }
 
@@ -266,6 +322,28 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                     }
                 })
             );
+
+        new Setting(container)
+            .setName('Writing goal folders')
+            .setDesc('Optional. One folder per line. When set, only Markdown files in these folders count toward the daily writing goal.')
+            .addTextArea(text => {
+                text
+                    .setPlaceholder('Drafts\nManuscript/Scenes')
+                    .setValue((this.plugin.settings.dailyWordCountGoalFolders || []).join('\n'))
+                    .onChange(async (value) => {
+                        const folders = value
+                            .split(/\r?\n/)
+                            .map(folder => folder.trim())
+                            .filter(Boolean);
+                        if (this.plugin.wordTracker) {
+                            await this.plugin.wordTracker.setDailyGoalFolders(folders);
+                        } else {
+                            this.plugin.settings.dailyWordCountGoalFolders = folders;
+                            await this.plugin.saveSettings();
+                        }
+                    });
+                text.inputEl.rows = 3;
+            });
 
         new Setting(container)
             .setName('Show dashboard accent borders')
@@ -1005,11 +1083,49 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
     private renderGalleryTab(container: HTMLElement): void {
         new Setting(container).setName(t('gallery')).setHeading();
 
-        this.addFolderPathSetting(container,
+        new Setting(container)
+            .setName('Gallery scope')
+            .setDesc('Keep the existing vault-wide gallery, or scope gallery entries by story and book.')
+            .addDropdown(dropdown => dropdown
+                .addOption('vault', 'Vault-wide gallery')
+                .addOption('book', 'Story/book scoped gallery')
+                .setValue(this.plugin.settings.galleryScopeMode ?? 'vault')
+                .onChange(async (value) => {
+                    this.plugin.settings.galleryScopeMode = value as 'vault' | 'book';
+                    await this.plugin.saveSettings();
+                    this.display();
+                }));
+
+        if ((this.plugin.settings.galleryScopeMode ?? 'vault') === 'book') {
+            new Setting(container)
+                .setName('Shared gallery stories')
+                .setDesc('Selected stories share visible gallery entries with the active story while scoped mode is enabled.')
+                .setHeading();
+
+            const sharedStoryIds = new Set(this.plugin.settings.gallerySharedStoryIds ?? []);
+            for (const story of this.plugin.settings.stories) {
+                const isActive = story.id === this.plugin.settings.activeStoryId;
+                new Setting(container)
+                    .setName(story.name)
+                    .setDesc(isActive ? 'Active story is always included.' : 'Include this story in the current scoped gallery.')
+                    .addToggle(toggle => toggle
+                        .setValue(isActive || sharedStoryIds.has(story.id))
+                        .setDisabled(isActive)
+                        .onChange(async (value) => {
+                            const next = new Set(this.plugin.settings.gallerySharedStoryIds ?? []);
+                            if (value) next.add(story.id);
+                            else next.delete(story.id);
+                            next.delete(this.plugin.settings.activeStoryId);
+                            this.plugin.settings.gallerySharedStoryIds = Array.from(next);
+                            await this.plugin.saveSettings();
+                        }));
+            }
+        }
+
+        this.addFolderDropdownSetting(container,
             t('galleryUploadFolder'), t('galleryFolderDesc'),
             () => this.plugin.settings.galleryUploadFolder,
-            v => { this.plugin.settings.galleryUploadFolder = v; },
-            t('galleryUploadFolderPh')
+            v => { this.plugin.settings.galleryUploadFolder = v; }
         );
 
         new Setting(container)

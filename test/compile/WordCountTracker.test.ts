@@ -77,11 +77,41 @@ describe('WordCountTracker', () => {
       goalMet: true,
     });
   });
+
+  it('only counts files under configured daily goal folders', async () => {
+    const includedFile = new TFile('Drafts/Scene One.md');
+    const excludedFile = new TFile('Notes/Research.md');
+    const plugin = createPluginStub({
+      activeFile: includedFile,
+      fileContents: new Map([
+        [includedFile.path, 'one two three four'],
+        [excludedFile.path, 'one two three four five'],
+      ]),
+      dailyGoalFolders: ['Drafts'],
+    });
+    const tracker = new WordCountTracker(plugin as any) as any;
+
+    expect(tracker.shouldCountFileForDailyGoal(includedFile)).toBe(true);
+    expect(tracker.shouldCountFileForDailyGoal(excludedFile)).toBe(false);
+
+    tracker.sessionStartTime = Date.now() - 5_000;
+    tracker.sessionStartWordCount = 1;
+    tracker.lastKnownWordCount = 1;
+    tracker.wordsDeleted = 0;
+    tracker.isTracking = true;
+
+    await tracker.onDocumentChange(excludedFile);
+    expect(tracker.lastKnownWordCount).toBe(1);
+
+    const stats = await tracker.endSession(includedFile);
+    expect(stats.wordsWritten).toBe(3);
+  });
 });
 
 function createPluginStub(options?: {
   activeFile?: TFile | null;
   fileContents?: Map<string, string>;
+  dailyGoalFolders?: string[];
 }) {
   const activeFile = options?.activeFile ?? new TFile('Story/active.md');
   const fileContents = options?.fileContents ?? new Map<string, string>([
@@ -92,6 +122,7 @@ function createPluginStub(options?: {
     settings: {
       dailyWritingStats: [],
       dailyWordCountGoal: 50,
+      dailyWordCountGoalFolders: options?.dailyGoalFolders ?? [],
       countDeletionsForGoal: true,
       notifyOnGoalReached: false,
     },

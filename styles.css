@@ -681,6 +681,27 @@
     display: inline-block;
 }
 
+.leaflet-div-icon.storyteller-location-marker,
+.leaflet-div-icon.storyteller-entity-marker,
+.leaflet-div-icon.storyteller-custom-marker,
+.leaflet-div-icon.storyteller-portal-marker,
+.storyteller-location-marker.leaflet-marker-icon,
+.storyteller-entity-marker.leaflet-marker-icon,
+.storyteller-custom-marker.leaflet-marker-icon,
+.storyteller-portal-marker.leaflet-marker-icon {
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+}
+
+.storyteller-location-marker svg,
+.storyteller-entity-marker svg,
+.storyteller-custom-marker svg,
+.storyteller-portal-marker svg,
+.storyteller-marker-wrapper svg {
+    display: block;
+}
+
 /* Badge showing entity count on location markers */
 .storyteller-entity-count-badge {
     position: absolute;
@@ -776,6 +797,12 @@
 }
 
 .relationship-container {
+    margin-bottom: 16px;
+}
+
+.storyteller-add-entity-actions {
+    display: flex;
+    justify-content: flex-end;
     margin-bottom: 16px;
 }
 
@@ -3104,7 +3131,19 @@ If your plugin does not need CSS, delete this file.
 
 /* Restrict height only in modals */
 .storyteller-timeline-modal .storyteller-timeline-container {
-  max-height: 60vh;
+  height: clamp(420px, 68vh, 780px);
+  max-height: none;
+}
+
+.storyteller-timeline-modal .modal-content {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 120px);
+  overflow: hidden;
+}
+
+.storyteller-timeline-modal .storyteller-timeline-details {
+  flex: 0 0 auto;
 }
 
 /* Vis-timeline tooltip fixes - prevent cut-off */
@@ -6398,8 +6437,11 @@ body.mod-rtl .storyteller-group-members {
 
 .sts-settings-wrapper {
     display: flex;
-    height: 100%;
-    min-height: 0;
+    align-items: flex-start;
+    /* Use min-height rather than height:100%. Inside Obsidian 1.13's settings
+       window the parent has no resolved height, so height:100% collapses the
+       flex row to zero and the panel renders blank. */
+    min-height: 360px;
 }
 
 .sts-settings-nav {
@@ -11679,4 +11721,46 @@ body.mod-rtl .storyteller-group-members {
   padding: 3em;
   color: var(--text-muted);
   font-style: italic;
+}
+
+/* Template existing-entity link UI (editor Links tab + apply modal) */
+.template-links-list {
+  margin-top: 1em;
+}
+
+.template-link-card {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  padding: 0.5em 0.75em;
+  margin-bottom: 1em;
+  background: var(--background-secondary);
+}
+
+.template-application-links {
+  margin-top: 1.5em;
+}
+
+.template-link-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 4px 0 8px;
+}
+
+.template-link-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 12px;
+  background: var(--background-modifier-hover);
+  font-size: var(--font-ui-smaller);
+}
+
+.template-link-chip-remove {
+  cursor: pointer;
+  color: var(--text-muted);
+}
+
+.template-link-chip-remove:hover {
+  color: var(--text-error);
 }

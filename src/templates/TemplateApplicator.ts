@@ -11,8 +11,10 @@ import {
     TemplateApplicationResult,
     TemplateEntity,
     TemplateEntitySelection,
+    TemplateExistingEntityLink,
     TemplateVariableValue
 } from './TemplateTypes';
+import { getTemplateEntityPluralKey } from './TemplateEntityRegistry';
 import {
     Character,
     Location,
@@ -25,6 +27,10 @@ import {
     Chapter,
     Scene,
     Reference,
+    StoryMap,
+    Book,
+    CampaignSession,
+    CompendiumEntry,
     TypedRelationship
 } from '../types';
 import { VariableSubstitution } from './VariableSubstitution';
@@ -66,12 +72,16 @@ export class TemplateApplicator {
                 events: [],
                 items: [],
                 groups: [],
+                maps: [],
                 cultures: [],
                 economies: [],
                 magicSystems: [],
                 chapters: [],
                 scenes: [],
-                references: []
+                references: [],
+                compendiumEntries: [],
+                books: [],
+                campaignSessions: []
             },
             warnings: []
         };
@@ -147,6 +157,13 @@ export class TemplateApplicator {
                 );
             }
 
+            if (filteredEntities.maps && filteredEntities.maps.length > 0) {
+                creationPromises.push(
+                    this.createMaps(filteredEntities.maps, options.storyId, options.fieldOverrides)
+                        .then(maps => result.created.maps = maps)
+                );
+            }
+
             if (filteredEntities.cultures && filteredEntities.cultures.length > 0) {
                 creationPromises.push(
                     this.createCultures(filteredEntities.cultures, options.storyId, options.fieldOverrides)
@@ -193,17 +210,47 @@ export class TemplateApplicator {
                 );
             }
 
+            if (filteredEntities.compendiumEntries && filteredEntities.compendiumEntries.length > 0) {
+                creationPromises.push(
+                    this.createCompendiumEntries(filteredEntities.compendiumEntries, options.storyId, options.fieldOverrides)
+                        .then(entries => result.created.compendiumEntries = entries)
+                );
+            }
+
+            if (filteredEntities.books && filteredEntities.books.length > 0) {
+                creationPromises.push(
+                    this.createBooks(filteredEntities.books, options.storyId, options.fieldOverrides)
+                        .then(books => result.created.books = books)
+                );
+            }
+
+            if (filteredEntities.campaignSessions && filteredEntities.campaignSessions.length > 0) {
+                creationPromises.push(
+                    this.createCampaignSessions(filteredEntities.campaignSessions, options.storyId, options.fieldOverrides)
+                        .then(sessions => result.created.campaignSessions = sessions)
+                );
+            }
+
             // Wait for all entity creation
             
             await Promise.all(creationPromises);
             
 
             // Phase 3: Map all relationships now that all entities exist
-            
+
             await this.mapAllRelationships(result.created, options.mergeRelationships || false);
 
+            // Phase 3.5: Attach user-selected existing vault entities to created entities.
+            // Done after relationship mapping so the selected values are written verbatim
+            // and not transformed by the ID/name resolution passes above.
+            this.applyExistingEntityLinks(
+                template,
+                result.created,
+                options.existingEntityLinkSelections
+            );
+
             // Phase 4: Save all entities with mapped relationships
-            
+
             await this.saveAllEntities(result.created);
             
 
@@ -277,6 +324,14 @@ export class TemplateApplicator {
             filtered.groups = entities.groups;
         }
 
+        if (selection.maps && entities.maps) {
+            filtered.maps = entities.maps.filter(e =>
+                selection.maps!.includes(e.templateId)
+            );
+        } else if (!selection.maps) {
+            filtered.maps = entities.maps;
+        }
+
         if (selection.cultures && entities.cultures) {
             filtered.cultures = entities.cultures.filter(e =>
                 selection.cultures!.includes(e.templateId)
@@ -323,6 +378,30 @@ export class TemplateApplicator {
             );
         } else if (!selection.references) {
             filtered.references = entities.references;
+        }
+
+        if (selection.compendiumEntries && entities.compendiumEntries) {
+            filtered.compendiumEntries = entities.compendiumEntries.filter(e =>
+                selection.compendiumEntries!.includes(e.templateId)
+            );
+        } else if (!selection.compendiumEntries) {
+            filtered.compendiumEntries = entities.compendiumEntries;
+        }
+
+        if (selection.books && entities.books) {
+            filtered.books = entities.books.filter(e =>
+                selection.books!.includes(e.templateId)
+            );
+        } else if (!selection.books) {
+            filtered.books = entities.books;
+        }
+
+        if (selection.campaignSessions && entities.campaignSessions) {
+            filtered.campaignSessions = entities.campaignSessions.filter(e =>
+                selection.campaignSessions!.includes(e.templateId)
+            );
+        } else if (!selection.campaignSessions) {
+            filtered.campaignSessions = entities.campaignSessions;
         }
 
         return filtered;
@@ -840,6 +919,218 @@ export class TemplateApplicator {
         return references;
     }
 
+    private async createMaps(
+        templateMaps: TemplateEntity<StoryMap>[],
+        storyId: string,
+        overrides?: TemplateFieldOverrides
+    ): Promise<StoryMap[]> {
+        const maps: StoryMap[] = [];
+
+        for (const templateMap of templateMaps) {
+            const { templateId } = templateMap;
+            const override = overrides?.get(templateId);
+            const { fields, sections } = this.processTemplateEntity(templateMap);
+
+            const map: StoryMap = {
+                markers: [],
+                scale: 'custom',
+                ...fields,
+                ...override,
+                id: this.getOverrideId(override),
+            } as unknown as StoryMap;
+
+            this.applyEntitySections(map, sections);
+            this.idMap.set(templateId, map.id!);
+            this.nameToIdMap.set(map.name, map.id!);
+            this.templateIdToNameMap.set(templateId, map.name);
+            maps.push(map);
+        }
+
+        return maps;
+    }
+
+    private async createCompendiumEntries(
+        templateEntries: TemplateEntity<CompendiumEntry>[],
+        storyId: string,
+        overrides?: TemplateFieldOverrides
+    ): Promise<CompendiumEntry[]> {
+        const entries: CompendiumEntry[] = [];
+
+        for (const templateEntry of templateEntries) {
+            const { templateId } = templateEntry;
+            const override = overrides?.get(templateId);
+            const { fields, sections } = this.processTemplateEntity(templateEntry);
+
+            const entry: CompendiumEntry = {
+                linkedLocations: [],
+                linkedCharacters: [],
+                linkedItems: [],
+                linkedMagicSystems: [],
+                linkedCultures: [],
+                linkedEvents: [],
+                groups: [],
+                connections: [],
+                ...fields,
+                ...override,
+                id: this.getOverrideId(override),
+            } as unknown as CompendiumEntry;
+
+            this.applyEntitySections(entry, sections);
+            this.idMap.set(templateId, entry.id!);
+            this.nameToIdMap.set(entry.name, entry.id!);
+            this.templateIdToNameMap.set(templateId, entry.name);
+            entries.push(entry);
+        }
+
+        return entries;
+    }
+
+    private async createBooks(
+        templateBooks: TemplateEntity<Book>[],
+        storyId: string,
+        overrides?: TemplateFieldOverrides
+    ): Promise<Book[]> {
+        const books: Book[] = [];
+
+        for (const templateBook of templateBooks) {
+            const { templateId } = templateBook;
+            const override = overrides?.get(templateId);
+            const { fields, sections } = this.processTemplateEntity(templateBook);
+
+            const book: Book = {
+                linkedChapters: [],
+                groups: [],
+                connections: [],
+                ...fields,
+                ...override,
+                id: this.getOverrideId(override),
+            } as unknown as Book;
+
+            this.applyEntitySections(book, sections);
+            this.idMap.set(templateId, book.id!);
+            this.nameToIdMap.set(book.name, book.id!);
+            this.templateIdToNameMap.set(templateId, book.name);
+            books.push(book);
+        }
+
+        return books;
+    }
+
+    private async createCampaignSessions(
+        templateSessions: TemplateEntity<CampaignSession>[],
+        storyId: string,
+        overrides?: TemplateFieldOverrides
+    ): Promise<CampaignSession[]> {
+        const sessions: CampaignSession[] = [];
+
+        for (const templateSession of templateSessions) {
+            const { templateId } = templateSession;
+            const override = overrides?.get(templateId);
+            const { fields, sections } = this.processTemplateEntity(templateSession);
+
+            const session: CampaignSession = {
+                storyId,
+                partyCharacterIds: [],
+                partyCharacterNames: [],
+                partyItems: [],
+                flags: [],
+                revealedCompendiumEntryIds: [],
+                revealedCompendiumEntryNames: [],
+                collectedBoardItemKeys: [],
+                groupStandings: [],
+                ...fields,
+                ...override,
+                id: this.getOverrideId(override),
+            } as unknown as CampaignSession;
+
+            this.applyEntitySections(session, sections);
+            this.idMap.set(templateId, session.id!);
+            this.nameToIdMap.set(session.name, session.id!);
+            this.templateIdToNameMap.set(templateId, session.name);
+            sessions.push(session);
+        }
+
+        return sessions;
+    }
+
+    /**
+     * Attach existing vault entities (chosen at apply time) to the entities this
+     * template created. Writes the selected reference into the configured field on
+     * the matching source entity. Never creates new target entities.
+     */
+    private applyExistingEntityLinks(
+        template: Template,
+        created: TemplateApplicationResult['created'],
+        selections: TemplateApplicationOptions['existingEntityLinkSelections']
+    ): void {
+        const links = template.existingEntityLinks;
+        if (!links || links.length === 0 || !selections) {
+            return;
+        }
+
+        for (const link of links) {
+            const selection = selections[link.id];
+            if (selection === undefined) continue;
+
+            const values = (Array.isArray(selection) ? selection : [selection])
+                .map(value => (typeof value === 'string' ? value.trim() : ''))
+                .filter(value => value.length > 0);
+            if (values.length === 0) continue;
+
+            const sourceEntity = this.findCreatedSourceEntity(created, link);
+            if (!sourceEntity) continue;
+
+            this.writeLinkValues(sourceEntity, link, values);
+        }
+    }
+
+    /**
+     * Find the created entity that a link targets, by resolving its template ID to
+     * the generated real ID and matching within the source type's created collection.
+     */
+    private findCreatedSourceEntity(
+        created: TemplateApplicationResult['created'],
+        link: TemplateExistingEntityLink
+    ): Record<string, unknown> | undefined {
+        const pluralKey = getTemplateEntityPluralKey(link.sourceType);
+        const collection = (created as unknown as Record<string, unknown>)[pluralKey];
+        if (!Array.isArray(collection)) return undefined;
+
+        const realId = this.idMap.get(link.sourceTemplateId);
+        const entities = collection as Array<Record<string, unknown>>;
+        if (realId) {
+            const byId = entities.find(entity => entity.id === realId);
+            if (byId) return byId;
+        }
+        // Fall back to the only entity of that type, if unambiguous
+        return entities.length === 1 ? entities[0] : undefined;
+    }
+
+    /**
+     * Write selected reference values into the link's target field. Array fields
+     * append without duplicates; scalar fields take the first value.
+     */
+    private writeLinkValues(
+        entity: Record<string, unknown>,
+        link: TemplateExistingEntityLink,
+        values: string[]
+    ): void {
+        if (link.multiple) {
+            const existing = Array.isArray(entity[link.targetField])
+                ? (entity[link.targetField] as unknown[]).map(value => String(value))
+                : [];
+            const merged = [...existing];
+            for (const value of values) {
+                if (!merged.includes(value)) {
+                    merged.push(value);
+                }
+            }
+            entity[link.targetField] = merged;
+        } else {
+            entity[link.targetField] = values[0];
+        }
+    }
+
     /**
      * Map all relationships using the ID map
      */
@@ -888,6 +1179,27 @@ export class TemplateApplicator {
             item.associatedEvents = this.mapStringArray(item.associatedEvents);
             item.groups = this.mapGroups(item.groups);
             item.connections = this.mapTypedRelationships(item.connections);
+        }
+
+        // Map map relationships
+        for (const map of created.maps) {
+            if (map.parentMapId) {
+                map.parentMapId = this.resolveId(map.parentMapId) || map.parentMapId;
+            }
+            if (map.correspondingLocationId) {
+                map.correspondingLocationId = this.resolveId(map.correspondingLocationId) || map.correspondingLocationId;
+            }
+            map.childMapIds = this.mapStringArray(map.childMapIds);
+            map.linkedLocations = this.mapStringArray(map.linkedLocations);
+            map.linkedCharacters = this.mapStringArray(map.linkedCharacters);
+            map.linkedEvents = this.mapStringArray(map.linkedEvents);
+            map.linkedItems = this.mapStringArray(map.linkedItems);
+            map.linkedGroups = this.mapGroups(map.linkedGroups);
+            map.linkedCultures = this.mapStringArray(map.linkedCultures);
+            map.linkedEconomies = this.mapStringArray(map.linkedEconomies);
+            map.linkedMagicSystems = this.mapStringArray(map.linkedMagicSystems);
+            map.linkedScenes = this.mapStringArray(map.linkedScenes);
+            map.linkedReferences = this.mapStringArray(map.linkedReferences);
         }
 
         // Map group relationships
@@ -962,6 +1274,45 @@ export class TemplateApplicator {
             scene.linkedEvents = this.mapStringArray(scene.linkedEvents);
             scene.linkedItems = this.mapStringArray(scene.linkedItems);
             scene.linkedGroups = this.mapGroups(scene.linkedGroups);
+        }
+
+        // Map compendium entry relationships
+        for (const entry of created.compendiumEntries) {
+            entry.linkedLocations = this.mapStringArray(entry.linkedLocations);
+            entry.linkedCharacters = this.mapStringArray(entry.linkedCharacters);
+            entry.linkedItems = this.mapStringArray(entry.linkedItems);
+            entry.linkedMagicSystems = this.mapStringArray(entry.linkedMagicSystems);
+            entry.linkedCultures = this.mapStringArray(entry.linkedCultures);
+            entry.linkedEvents = this.mapStringArray(entry.linkedEvents);
+            entry.groups = this.mapGroups(entry.groups);
+            entry.connections = this.mapTypedRelationships(entry.connections);
+            entry.triggeredAtLocations = this.mapStringArray(entry.triggeredAtLocations);
+            if (entry.triggeredByItem) {
+                entry.triggeredByItem = this.resolveToName(entry.triggeredByItem) || entry.triggeredByItem;
+            }
+        }
+
+        // Map book relationships
+        for (const book of created.books) {
+            book.linkedChapters = this.mapStringArray(book.linkedChapters);
+            book.groups = this.mapGroups(book.groups);
+            book.connections = this.mapTypedRelationships(book.connections);
+        }
+
+        // Map campaign session relationships
+        for (const session of created.campaignSessions) {
+            if (session.currentSceneId) {
+                session.currentSceneId = this.resolveId(session.currentSceneId) || session.currentSceneId;
+                session.currentSceneName = this.resolveToName(session.currentSceneId) || session.currentSceneName;
+            }
+            if (session.activeMapId) {
+                session.activeMapId = this.resolveId(session.activeMapId) || session.activeMapId;
+            }
+            session.partyCharacterIds = this.mapStringArray(session.partyCharacterIds);
+            session.partyCharacterNames = this.mapStringArray(session.partyCharacterNames);
+            session.partyItems = this.mapStringArray(session.partyItems);
+            session.revealedCompendiumEntryIds = this.mapStringArray(session.revealedCompendiumEntryIds);
+            session.revealedCompendiumEntryNames = this.mapStringArray(session.revealedCompendiumEntryNames);
         }
     }
 
@@ -1052,6 +1403,10 @@ export class TemplateApplicator {
             savePromises.push(this.plugin.savePlotItem(item));
         }
 
+        for (const map of created.maps) {
+            savePromises.push(this.plugin.saveMap(map));
+        }
+
         // Save cultures
         for (const cult of created.cultures) {
             savePromises.push(this.plugin.saveCulture(cult));
@@ -1080,6 +1435,18 @@ export class TemplateApplicator {
         // Save references
         for (const ref of created.references) {
             savePromises.push(this.plugin.saveReference(ref));
+        }
+
+        for (const entry of created.compendiumEntries) {
+            savePromises.push(this.plugin.saveCompendiumEntry(entry));
+        }
+
+        for (const book of created.books) {
+            savePromises.push(this.plugin.saveBook(book));
+        }
+
+        for (const session of created.campaignSessions) {
+            savePromises.push(this.plugin.saveSession(session));
         }
 
         // Groups were already saved in createGroups()
@@ -1127,12 +1494,16 @@ export class TemplateApplicator {
         clonedTemplate.entities.events = substituteEntityArray(clonedTemplate.entities.events);
         clonedTemplate.entities.items = substituteEntityArray(clonedTemplate.entities.items);
         clonedTemplate.entities.groups = substituteEntityArray(clonedTemplate.entities.groups);
+        clonedTemplate.entities.maps = substituteEntityArray(clonedTemplate.entities.maps);
         clonedTemplate.entities.cultures = substituteEntityArray(clonedTemplate.entities.cultures);
         clonedTemplate.entities.economies = substituteEntityArray(clonedTemplate.entities.economies);
         clonedTemplate.entities.magicSystems = substituteEntityArray(clonedTemplate.entities.magicSystems);
         clonedTemplate.entities.chapters = substituteEntityArray(clonedTemplate.entities.chapters);
         clonedTemplate.entities.scenes = substituteEntityArray(clonedTemplate.entities.scenes);
         clonedTemplate.entities.references = substituteEntityArray(clonedTemplate.entities.references);
+        clonedTemplate.entities.compendiumEntries = substituteEntityArray(clonedTemplate.entities.compendiumEntries);
+        clonedTemplate.entities.books = substituteEntityArray(clonedTemplate.entities.books);
+        clonedTemplate.entities.campaignSessions = substituteEntityArray(clonedTemplate.entities.campaignSessions);
 
         // Log warnings if any
         if (allWarnings.length > 0) {

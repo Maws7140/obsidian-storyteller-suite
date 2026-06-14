@@ -473,6 +473,7 @@ export class TimelineView extends ItemView {
         try {
             await this.renderer.initialize();
             this.renderer.applyFilters(this.currentState.filters);
+            this.scheduleTimelineRedraw();
             this.updateSearchDropdown();
         } catch {
             
@@ -482,6 +483,13 @@ export class TimelineView extends ItemView {
             errorEl.createEl('p', { text: 'Failed to initialize timeline data. Check developer console for details.' });
             new Notice('Timeline failed to load. Check console for details.');
         }
+    }
+
+    private scheduleTimelineRedraw(): void {
+        window.requestAnimationFrame(() => {
+            this.renderer?.redraw();
+            window.setTimeout(() => this.renderer?.redraw(), 80);
+        });
     }
 
     /**
@@ -687,15 +695,7 @@ export class TimelineView extends ItemView {
         // Timeline should auto-adjust to container size
         // Force redraw to ensure proper rendering after resize
         if (this.renderer) {
-            // Request a redraw from vis-timeline without losing zoom position
-            try {
-                // The timeline library handles resize automatically, but we need to ensure it updates
-                // No need to call fitToView() as that would change the user's zoom level
-                // vis-timeline has internal resize handling
-            } catch {
-            	// intentional
-                
-            }
+            this.scheduleTimelineRedraw();
         }
     }
 

@@ -7,12 +7,16 @@ import { stringifyYamlWithLogging } from '../utils/YamlSerializer';
 import { parseSectionsFromMarkdown } from '../yaml/EntitySections';
 
 type LinkableEntity = Character | Location | Event | PlotItem | Group | Culture | Scene | Economy | MagicSystem | Reference;
-type LinkableEntityType = 'character' | 'location' | 'event' | 'item' | 'group' | 'culture' | 'scene' | 'economy' | 'magicsystem' | 'reference';
+type LinkableEntityType = 'character' | 'location' | 'event' | 'item' | 'group' | 'culture' | 'scene' | 'economy' | 'magicsystem' | 'magicSystem' | 'reference';
 
 function toEntitySectionType(entityType: LinkableEntityType): EntityType {
     if (entityType === 'group') return 'faction';
-    if (entityType === 'magicsystem') return 'magicSystem';
+    if (entityType === 'magicsystem' || entityType === 'magicSystem') return 'magicSystem';
     return entityType;
+}
+
+function normalizeLinkableEntityType(entityType: LinkableEntityType): LinkableEntityType {
+    return entityType === 'magicSystem' ? 'magicsystem' : entityType;
 }
 
 /**
@@ -36,7 +40,8 @@ export class EntityLinker {
         markerId: string,
         coordinates?: [number, number]
     ): Promise<void> {
-        const entity = await this.findEntity(entityType, entityName);
+        const normalizedEntityType = normalizeLinkableEntityType(entityType);
+        const entity = await this.findEntity(normalizedEntityType, entityName);
         if (!entity || !entity.filePath) return;
         const maps = await this.plugin.listMaps().catch(() => [] as Map[]);
         const linkedMap = maps.find(map => (map.id ?? map.name) === mapId);
@@ -66,7 +71,7 @@ export class EntityLinker {
 
         // Build frontmatter using whitelist
         // Note: 'group' is not a standard entity type - groups are stored in settings
-        const entityTypeForWhitelist = toEntitySectionType(entityType);
+        const entityTypeForWhitelist = toEntitySectionType(normalizedEntityType);
         const whitelist = getWhitelistKeys(entityTypeForWhitelist);
         const finalFrontmatter = buildFrontmatter(entityTypeForWhitelist, updatedFrontmatter, whitelist, {
             customFieldsMode: 'flatten',
@@ -92,11 +97,12 @@ export class EntityLinker {
      * Supports all entity types uniformly
      */
     async unlinkEntityFromMap(
-        entityType: 'character' | 'location' | 'event' | 'item' | 'group' | 'culture' | 'scene' | 'economy' | 'magicsystem' | 'reference',
+        entityType: LinkableEntityType,
         entityName: string,
         mapId: string
     ): Promise<void> {
-        const entity = await this.findEntity(entityType, entityName);
+        const normalizedEntityType = normalizeLinkableEntityType(entityType);
+        const entity = await this.findEntity(normalizedEntityType, entityName);
         if (!entity || !entity.filePath) return;
         const maps = await this.plugin.listMaps().catch(() => [] as Map[]);
         const linkedMap = maps.find(map => (map.id ?? map.name) === mapId);
@@ -128,7 +134,7 @@ export class EntityLinker {
 
         // Build and save
         // Note: 'group' is not a standard entity type - groups are stored in settings
-        const entityTypeForWhitelist = toEntitySectionType(entityType);
+        const entityTypeForWhitelist = toEntitySectionType(normalizedEntityType);
         const whitelist = getWhitelistKeys(entityTypeForWhitelist);
         const finalFrontmatter = buildFrontmatter(entityTypeForWhitelist, existingFrontmatter, whitelist, {
             customFieldsMode: 'flatten',

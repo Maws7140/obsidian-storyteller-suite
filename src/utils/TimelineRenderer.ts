@@ -260,6 +260,18 @@ export class TimelineRenderer {
     }
 
     /**
+     * Redraw without changing the current visible range.
+     */
+    redraw(): void {
+        if (!this.timeline) return;
+        try {
+            this.timeline.redraw();
+        } catch {
+            // Non-fatal; vis-timeline may not be ready during modal layout.
+        }
+    }
+
+    /**
      * Set stack mode
      */
     setStackEnabled(enabled: boolean): void {

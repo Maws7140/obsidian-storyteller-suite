@@ -8,6 +8,12 @@ import {
     TemplateValidationResult,
     TemplateEntityType
 } from './TemplateTypes';
+import {
+    TEMPLATE_ENTITY_DEFINITIONS,
+    getTemplateEntityCounts,
+    getTemplateEntityPluralKey
+} from './TemplateEntityRegistry';
+import { getLinkFieldDefinition } from './TemplateLinkFields';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -52,6 +58,11 @@ export class TemplateValidator {
         // Validate entity types list matches actual entities
         if (template.entityTypes) {
             this.validateEntityTypes(template, result);
+        }
+
+        // Validate existing-entity links
+        if (template.existingEntityLinks) {
+            this.validateExistingEntityLinks(template, allIds, result);
         }
 
         // Add warnings for broken references
@@ -109,17 +120,9 @@ export class TemplateValidator {
             }
         };
 
-        addIds(entities.characters);
-        addIds(entities.locations);
-        addIds(entities.events);
-        addIds(entities.items);
-        addIds(entities.groups);
-        addIds(entities.cultures);
-        addIds(entities.economies);
-        addIds(entities.magicSystems);
-        addIds(entities.chapters);
-        addIds(entities.scenes);
-        addIds(entities.references);
+        TEMPLATE_ENTITY_DEFINITIONS.forEach(definition => {
+            addIds(entities[definition.pluralKey]);
+        });
 
         return allIds;
     }
@@ -166,6 +169,23 @@ export class TemplateValidator {
             { field: 'currentLocation' },
             { field: 'associatedEvents' },
             { field: 'groups' }
+        ]);
+
+        // Validate map references
+        this.validateReferences(entities.maps, 'map', allIds, result, [
+            { field: 'parentMapId' },
+            { field: 'childMapIds' },
+            { field: 'correspondingLocationId' },
+            { field: 'linkedLocations' },
+            { field: 'linkedCharacters' },
+            { field: 'linkedEvents' },
+            { field: 'linkedItems' },
+            { field: 'linkedGroups' },
+            { field: 'linkedCultures' },
+            { field: 'linkedEconomies' },
+            { field: 'linkedMagicSystems' },
+            { field: 'linkedScenes' },
+            { field: 'linkedReferences' }
         ]);
 
         // Validate group references
@@ -221,6 +241,36 @@ export class TemplateValidator {
             { field: 'linkedEvents' },
             { field: 'linkedItems' },
             { field: 'linkedGroups' }
+        ]);
+
+        // Validate compendium references
+        this.validateReferences(entities.compendiumEntries, 'compendiumEntry', allIds, result, [
+            { field: 'linkedLocations' },
+            { field: 'linkedCharacters' },
+            { field: 'linkedItems' },
+            { field: 'linkedMagicSystems' },
+            { field: 'linkedCultures' },
+            { field: 'linkedEvents' },
+            { field: 'groups' },
+            { field: 'connections' },
+            { field: 'triggeredAtLocations' },
+            { field: 'triggeredByItem' }
+        ]);
+
+        // Validate book references
+        this.validateReferences(entities.books, 'book', allIds, result, [
+            { field: 'linkedChapters' },
+            { field: 'groups' },
+            { field: 'connections' }
+        ]);
+
+        // Validate campaign session references
+        this.validateReferences(entities.campaignSessions, 'campaignSession', allIds, result, [
+            { field: 'currentSceneId' },
+            { field: 'activeMapId' },
+            { field: 'partyCharacterIds' },
+            { field: 'partyItems' },
+            { field: 'revealedCompendiumEntryIds' }
         ]);
     }
 
@@ -401,19 +451,12 @@ export class TemplateValidator {
         result: TemplateValidationResult
     ): void {
         const actualTypes = new Set<TemplateEntityType>();
-        const entities = template.entities;
-
-        if (entities.characters && entities.characters.length > 0) actualTypes.add('character');
-        if (entities.locations && entities.locations.length > 0) actualTypes.add('location');
-        if (entities.events && entities.events.length > 0) actualTypes.add('event');
-        if (entities.items && entities.items.length > 0) actualTypes.add('item');
-        if (entities.groups && entities.groups.length > 0) actualTypes.add('group');
-        if (entities.cultures && entities.cultures.length > 0) actualTypes.add('culture');
-        if (entities.economies && entities.economies.length > 0) actualTypes.add('economy');
-        if (entities.magicSystems && entities.magicSystems.length > 0) actualTypes.add('magicSystem');
-        if (entities.chapters && entities.chapters.length > 0) actualTypes.add('chapter');
-        if (entities.scenes && entities.scenes.length > 0) actualTypes.add('scene');
-        if (entities.references && entities.references.length > 0) actualTypes.add('reference');
+        const entityCounts = getTemplateEntityCounts(template.entities);
+        TEMPLATE_ENTITY_DEFINITIONS.forEach(definition => {
+            if (entityCounts[definition.type] > 0) {
+                actualTypes.add(definition.type);
+            }
+        });
 
         // Check if entityTypes list matches actual entities
         const declaredTypes = new Set(template.entityTypes);
@@ -431,6 +474,74 @@ export class TemplateValidator {
                 result.warnings.push(
                     `Template declares ${type} in entityTypes but contains no ${type} entities`
                 );
+            }
+        });
+    }
+
+    /**
+     * Validate existing-entity links: source entity must exist and match its declared
+     * type, the target field must be allowlisted for that source type, and the link's
+     * cardinality/target type must match the allowlist. Required links need a label.
+     */
+    private static validateExistingEntityLinks(
+        template: Template,
+        allIds: Set<string>,
+        result: TemplateValidationResult
+    ): void {
+        const links = template.existingEntityLinks;
+        if (!links) return;
+
+        const seenIds = new Set<string>();
+
+        links.forEach((link, index) => {
+            if (!link.id || link.id.trim() === '') {
+                result.errors.push(`Link ${index}: id is required`);
+            } else if (seenIds.has(link.id)) {
+                result.errors.push(`Link ${index}: duplicate link id "${link.id}"`);
+            } else {
+                seenIds.add(link.id);
+            }
+
+            // Source entity must exist in the template
+            if (!allIds.has(link.sourceTemplateId)) {
+                result.errors.push(
+                    `Link ${index}: source entity "${link.sourceTemplateId}" does not exist in template`
+                );
+            } else {
+                // Source entity must be of the declared source type
+                const collection = template.entities[getTemplateEntityPluralKey(link.sourceType)] as
+                    Array<{ templateId?: string }> | undefined;
+                const matchesType = Array.isArray(collection)
+                    && collection.some(entity => entity?.templateId === link.sourceTemplateId);
+                if (!matchesType) {
+                    result.errors.push(
+                        `Link ${index}: source entity "${link.sourceTemplateId}" is not a ${link.sourceType}`
+                    );
+                }
+            }
+
+            // Target field must be allowlisted for the source type
+            const definition = getLinkFieldDefinition(link.sourceType, link.targetField);
+            if (!definition) {
+                result.errors.push(
+                    `Link ${index}: field "${link.targetField}" is not linkable for ${link.sourceType}`
+                );
+            } else {
+                if (definition.targetType !== link.targetType) {
+                    result.errors.push(
+                        `Link ${index}: field "${link.targetField}" targets ${definition.targetType}, not ${link.targetType}`
+                    );
+                }
+                if (definition.multiple !== link.multiple) {
+                    result.errors.push(
+                        `Link ${index}: field "${link.targetField}" cardinality mismatch (expected multiple=${definition.multiple})`
+                    );
+                }
+            }
+
+            // Required links must have a label
+            if (link.required && (!link.label || link.label.trim() === '')) {
+                result.errors.push(`Link ${index}: required links must have a label`);
             }
         });
     }

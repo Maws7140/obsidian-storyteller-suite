@@ -206,7 +206,7 @@ export class TemplatePlaceholderProcessor {
         entityType: TemplateEntityType,
         field: string
     ): string {
-        const placeholders: Record<TemplateEntityType, Record<string, string>> = {
+        const placeholders: Partial<Record<TemplateEntityType, Record<string, string>>> = {
             character: {
                 name: 'Enter character name...',
                 description: 'Describe the character\'s appearance and personality...',
@@ -266,6 +266,21 @@ export class TemplatePlaceholderProcessor {
             reference: {
                 name: 'Enter reference name...',
                 content: 'Enter reference content...'
+            },
+            compendiumEntry: {
+                name: 'Enter compendium entry name...',
+                description: 'Describe this lore entry...',
+                entryType: 'creature',
+                rarity: 'common'
+            },
+            book: {
+                name: 'Enter book title...',
+                description: 'Describe this book...',
+                synopsis: 'Summarize the book...'
+            },
+            campaignSession: {
+                name: 'Enter session name...',
+                status: 'active'
             }
         };
 

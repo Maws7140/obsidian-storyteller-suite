@@ -8,6 +8,7 @@ import { Template, TemplateCategory, TemplateEntityType, TemplateGenre } from '.
 import { NoteToTemplateConverter } from './NoteToTemplateConverter';
 import { TemplateStorageManager } from './TemplateStorageManager';
 import { parseFrontmatterFromContent as parseFM } from '../yaml/EntitySections';
+import { TEMPLATE_ENTITY_TYPES, getTemplateEntityFolder } from './TemplateEntityRegistry';
 
 const TEMPLATE_GENRES: readonly TemplateGenre[] = [
     'fantasy',
@@ -95,12 +96,7 @@ export class TemplateNoteManager {
         }
 
         // Ensure entity type subfolders exist
-        const entityTypes: TemplateEntityType[] = [
-            'character', 'location', 'event', 'item', 'group', 'map',
-            'culture', 'economy', 'magicSystem', 'chapter', 'scene', 'reference'
-        ];
-
-        for (const entityType of entityTypes) {
+        for (const entityType of TEMPLATE_ENTITY_TYPES) {
             const folderName = this.getEntityTypeFolder(entityType);
             const folderPath = `${this.notesFolder}/${folderName}`;
             const folder = this.app.vault.getAbstractFileByPath(folderPath);
@@ -118,21 +114,7 @@ export class TemplateNoteManager {
      * Get the folder name for a given entity type
      */
     private getEntityTypeFolder(entityType: TemplateEntityType): string {
-        const folderMap: Record<TemplateEntityType, string> = {
-            character: 'Characters',
-            location: 'Locations',
-            event: 'Events',
-            item: 'Items',
-            group: 'Groups',
-            map: 'Maps',
-            culture: 'Cultures',
-            economy: 'Economies',
-            magicSystem: 'MagicSystems',
-            chapter: 'Chapters',
-            scene: 'Scenes',
-            reference: 'References'
-        };
-        return folderMap[entityType] || 'General';
+        return getTemplateEntityFolder(entityType);
     }
 
     /**
@@ -150,12 +132,7 @@ export class TemplateNoteManager {
         await this.loadTemplatesFromFolder(this.notesFolder);
 
         // Load from entity type subfolders
-        const entityTypes: TemplateEntityType[] = [
-            'character', 'location', 'event', 'item', 'group', 'map',
-            'culture', 'economy', 'magicSystem', 'chapter', 'scene', 'reference'
-        ];
-
-        for (const entityType of entityTypes) {
+        for (const entityType of TEMPLATE_ENTITY_TYPES) {
             const folderName = this.getEntityTypeFolder(entityType);
             const folderPath = `${this.notesFolder}/${folderName}`;
             await this.loadTemplatesFromFolder(folderPath);

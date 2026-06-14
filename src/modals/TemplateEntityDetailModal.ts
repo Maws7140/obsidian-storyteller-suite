@@ -10,6 +10,7 @@ import type StorytellerSuitePlugin from '../main';
 import type { TemplateEntity, TemplateEntityType } from '../templates/TemplateTypes';
 import { entityToYaml, entityToMarkdown, getEntityNotePreview } from '../utils/TemplatePreviewRenderer';
 import { parseYaml } from 'obsidian';
+import { getTemplateEntityLabel } from '../templates/TemplateEntityRegistry';
 
 type EditableTemplateEntity = TemplateEntity<Record<string, unknown>> & {
     name?: string;
@@ -279,21 +280,7 @@ export class TemplateEntityDetailModal extends ResponsiveModal {
     // ==================== HELPER METHODS ====================
 
     private getEntityTypeLabel(entityType: TemplateEntityType): string {
-        const labelMap: Record<TemplateEntityType, string> = {
-            character: 'Character',
-            location: 'Location',
-            event: 'Event',
-            item: 'Item',
-            group: 'Group',
-            map: 'Map',
-            culture: 'Culture',
-            economy: 'Economy',
-            magicSystem: 'Magic System',
-            chapter: 'Chapter',
-            scene: 'Scene',
-            reference: 'Reference'
-        };
-        return labelMap[entityType];
+        return getTemplateEntityLabel(entityType);
     }
 
     onClose(): void {

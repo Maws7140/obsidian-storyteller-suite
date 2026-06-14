@@ -7,8 +7,29 @@
 import { App, Notice, Setting, parseYaml } from 'obsidian';
 import { ResponsiveModal } from './ResponsiveModal';
 import type StorytellerSuitePlugin from '../main';
-import { Template, TemplateEntities, TemplateEntityType, TemplateVariable } from '../templates/TemplateTypes';
+import {
+    ExistingEntityLinkSelections,
+    Template,
+    TemplateEntities,
+    TemplateEntityType,
+    TemplateExistingEntityLink,
+    TemplateVariable
+} from '../templates/TemplateTypes';
 import { VariableSubstitution } from '../templates/VariableSubstitution';
+import {
+    TEMPLATE_ENTITY_TYPES,
+    findTemplateEntityType,
+    getTemplateEntityLabel,
+    getTemplateEntityPluralKey
+} from '../templates/TemplateEntityRegistry';
+
+/** An existing vault entity offered as a link target */
+interface LinkTargetOption {
+    /** Value written into the field (id or name, per the link's valueKind) */
+    value: string;
+    /** Display label (always the entity name) */
+    label: string;
+}
 
 export type TemplateVariableValue = string | number | boolean;
 
@@ -31,18 +52,27 @@ export interface EntityFileName {
 export class TemplateApplicationModal extends ResponsiveModal {
     private plugin: StorytellerSuitePlugin;
     private template: Template;
-    private onApply: (variableValues: TemplateVariableValues, entityFileNames: EntityFileName[]) => void;
+    private onApply: (
+        variableValues: TemplateVariableValues,
+        entityFileNames: EntityFileName[],
+        existingEntityLinkSelections?: ExistingEntityLinkSelections
+    ) => void;
     private onCancel?: () => void;
     private variableValues: TemplateVariableValues = {};
     private entityFileNames: EntityFileName[] = [];
     private previewNames: Map<string, string> = new Map(); // templateId -> preview name
+    private linkSelections: ExistingEntityLinkSelections = {};
     private didApply = false;
 
     constructor(
         app: App,
         plugin: StorytellerSuitePlugin,
         template: Template,
-        onApply: (variableValues: TemplateVariableValues, entityFileNames: EntityFileName[]) => void,
+        onApply: (
+            variableValues: TemplateVariableValues,
+            entityFileNames: EntityFileName[],
+            existingEntityLinkSelections?: ExistingEntityLinkSelections
+        ) => void,
         onCancel?: () => void
     ) {
         super(app);
@@ -101,8 +131,161 @@ export class TemplateApplicationModal extends ResponsiveModal {
         // Entity naming section
         this.renderEntityNamingSection(contentEl);
 
+        // Existing-entity links section (async: loads vault entities)
+        this.renderExistingLinksSection(contentEl);
+
         // Footer
         this.renderFooter(contentEl);
+    }
+
+    /**
+     * Render the "Linked existing entities" section. Loads candidate vault entities
+     * for each link's target type, then renders a selector per link.
+     */
+    private renderExistingLinksSection(container: HTMLElement): void {
+        const links = this.template.existingEntityLinks;
+        if (!links || links.length === 0) return;
+
+        const section = container.createDiv('template-application-links');
+        section.createEl('h3', { text: 'Linked existing entities' });
+        section.createEl('p', {
+            text: 'Attach existing entities from your vault to the notes this template creates.',
+            cls: 'template-application-instruction'
+        });
+
+        const loading = section.createEl('p', { text: 'Loading vault entities…', cls: 'template-application-message' });
+
+        void (async () => {
+            // Cache candidates per target type so each type is loaded only once
+            const cache = new Map<TemplateEntityType, LinkTargetOption[]>();
+            for (const link of links) {
+                if (!cache.has(link.targetType)) {
+                    cache.set(link.targetType, await this.loadTargetOptions(link.targetType, link.valueKind));
+                }
+            }
+            loading.remove();
+            links.forEach(link => this.renderLinkSelector(section, link, cache.get(link.targetType) ?? []));
+        })();
+    }
+
+    private renderLinkSelector(
+        container: HTMLElement,
+        link: TemplateExistingEntityLink,
+        options: LinkTargetOption[]
+    ): void {
+        const targetLabel = getTemplateEntityLabel(link.targetType);
+        const setting = new Setting(container)
+            .setName(link.label || targetLabel)
+            .setDesc(`Choose existing ${targetLabel.toLowerCase()}${link.multiple ? '(s)' : ''}`);
+
+        if (link.required) {
+            setting.nameEl.createSpan({ text: ' *', cls: 'template-required-indicator' });
+        }
+
+        if (options.length === 0) {
+            setting.descEl.setText(`No ${targetLabel.toLowerCase()} entities exist in this story yet.`);
+            return;
+        }
+
+        if (link.multiple) {
+            this.renderMultiLinkSelector(setting, container, link, options);
+        } else {
+            setting.addDropdown(dropdown => {
+                dropdown.addOption('', '-- none --');
+                options.forEach(option => dropdown.addOption(option.value, option.label));
+                const current = this.linkSelections[link.id];
+                dropdown.setValue(typeof current === 'string' ? current : '');
+                dropdown.onChange(value => {
+                    if (value) {
+                        this.linkSelections[link.id] = value;
+                    } else {
+                        delete this.linkSelections[link.id];
+                    }
+                });
+            });
+        }
+    }
+
+    private renderMultiLinkSelector(
+        setting: Setting,
+        container: HTMLElement,
+        link: TemplateExistingEntityLink,
+        options: LinkTargetOption[]
+    ): void {
+        const chips = container.createDiv('template-link-chips');
+
+        const getSelected = (): string[] => {
+            const current = this.linkSelections[link.id];
+            return Array.isArray(current) ? current : [];
+        };
+
+        const renderChips = (): void => {
+            chips.empty();
+            const selected = getSelected();
+            selected.forEach(value => {
+                const option = options.find(o => o.value === value);
+                const chip = chips.createSpan({ cls: 'template-link-chip', text: option?.label ?? value });
+                const remove = chip.createSpan({ cls: 'template-link-chip-remove', text: ' ✕' });
+                remove.addEventListener('click', () => {
+                    this.linkSelections[link.id] = getSelected().filter(v => v !== value);
+                    if ((this.linkSelections[link.id] as string[]).length === 0) {
+                        delete this.linkSelections[link.id];
+                    }
+                    renderChips();
+                });
+            });
+        };
+
+        setting.addDropdown(dropdown => {
+            dropdown.addOption('', '-- add --');
+            options.forEach(option => dropdown.addOption(option.value, option.label));
+            dropdown.onChange(value => {
+                if (!value) return;
+                const selected = getSelected();
+                if (!selected.includes(value)) {
+                    this.linkSelections[link.id] = [...selected, value];
+                    renderChips();
+                }
+                dropdown.setValue('');
+            });
+        });
+
+        renderChips();
+    }
+
+    /**
+     * Load existing vault entities of a target type as selectable options.
+     * The stored value is the entity ID or name depending on the link's valueKind.
+     */
+    private async loadTargetOptions(
+        targetType: TemplateEntityType,
+        valueKind: TemplateExistingEntityLink['valueKind']
+    ): Promise<LinkTargetOption[]> {
+        const entities = await this.loadEntitiesForType(targetType);
+        return entities
+            .filter(entity => typeof entity.name === 'string' && entity.name.trim().length > 0)
+            .map(entity => {
+                const value = valueKind === 'id' ? (entity.id ?? entity.name!) : entity.name!;
+                return { value: String(value), label: entity.name! };
+            })
+            .sort((a, b) => a.label.localeCompare(b.label));
+    }
+
+    private async loadEntitiesForType(targetType: TemplateEntityType): Promise<Array<{ id?: string; name?: string }>> {
+        switch (targetType) {
+            case 'character': return this.plugin.listCharacters();
+            case 'location': return this.plugin.listLocations();
+            case 'event': return this.plugin.listEvents();
+            case 'item': return this.plugin.listPlotItems();
+            case 'culture': return this.plugin.listCultures();
+            case 'magicSystem': return this.plugin.listMagicSystems();
+            case 'scene': return this.plugin.listScenes();
+            case 'group': {
+                const activeStory = this.plugin.getActiveStory();
+                return (this.plugin.settings.groups ?? []).filter(g => !activeStory || g.storyId === activeStory.id);
+            }
+            default: return [];
+        }
     }
 
     private renderHeader(container: HTMLElement): void {
@@ -279,12 +462,7 @@ export class TemplateApplicationModal extends ResponsiveModal {
         
         // Extract all entities from template
         const entities = this.template.entities;
-        const entityTypes: TemplateEntityType[] = [
-            'character', 'location', 'event', 'item', 'group',
-            'culture', 'economy', 'magicSystem', 'chapter', 'scene', 'reference'
-        ];
-
-        entityTypes.forEach(entityType => {
+        TEMPLATE_ENTITY_TYPES.forEach(entityType => {
             const entityArray = this.getTemplateEntities(entities, entityType);
             if (entityArray.length > 0) {
                 entityArray.forEach((entity) => {
@@ -315,12 +493,7 @@ export class TemplateApplicationModal extends ResponsiveModal {
     private updatePreviewNames(): void {
         // Substitute variables in template entities to get updated names
         const entities = this.template.entities;
-        const entityTypes: TemplateEntityType[] = [
-            'character', 'location', 'event', 'item', 'group',
-            'culture', 'economy', 'magicSystem', 'chapter', 'scene', 'reference'
-        ];
-
-        entityTypes.forEach(entityType => {
+        TEMPLATE_ENTITY_TYPES.forEach(entityType => {
             const entityArray = this.getTemplateEntities(entities, entityType);
             if (entityArray.length > 0) {
                 entityArray.forEach((entity) => {
@@ -426,21 +599,7 @@ export class TemplateApplicationModal extends ResponsiveModal {
      * Get plural form of entity type
      */
     private getEntityTypePlural(entityType: TemplateEntityType): string {
-        const pluralMap: Record<TemplateEntityType, string> = {
-            character: 'characters',
-            location: 'locations',
-            event: 'events',
-            item: 'items',
-            group: 'groups',
-            map: 'maps',
-            culture: 'cultures',
-            economy: 'economies',
-            magicSystem: 'magicSystems',
-            chapter: 'chapters',
-            scene: 'scenes',
-            reference: 'references'
-        };
-        return pluralMap[entityType] || entityType + 's';
+        return getTemplateEntityPluralKey(entityType);
     }
 
     private getTemplateEntities(entities: TemplateEntities, entityType: TemplateEntityType): NameableTemplateEntity[] {
@@ -536,27 +695,31 @@ export class TemplateApplicationModal extends ResponsiveModal {
             return;
         }
 
+        // Validate required existing-entity links
+        const linkErrors: string[] = [];
+        (this.template.existingEntityLinks ?? []).forEach(link => {
+            if (!link.required) return;
+            const selection = this.linkSelections[link.id];
+            const hasValue = Array.isArray(selection) ? selection.length > 0 : Boolean(selection);
+            if (!hasValue) {
+                linkErrors.push(`${link.label || getTemplateEntityLabel(link.targetType)} is required`);
+            }
+        });
+
+        if (linkErrors.length > 0) {
+            new Notice(`Please fix the following errors:\n${linkErrors.join('\n')}`);
+            return;
+        }
+
         // All validation passed, call the callback
-        this.onApply(this.variableValues, this.entityFileNames);
+        this.onApply(this.variableValues, this.entityFileNames, this.linkSelections);
         new Notice(`Applying template "${this.template.name}"...`);
         this.close();
     }
 
     private getEntityTypeLabel(entityType: string): string {
-        const labelMap: Record<string, string> = {
-            character: 'Character',
-            location: 'Location',
-            event: 'Event',
-            item: 'Item',
-            group: 'Group',
-            culture: 'Culture',
-            economy: 'Economy',
-            magicSystem: 'Magic System',
-            chapter: 'Chapter',
-            scene: 'Scene',
-            reference: 'Reference'
-        };
-        return labelMap[entityType] || entityType;
+        const templateEntityType = findTemplateEntityType(entityType);
+        return templateEntityType ? getTemplateEntityLabel(templateEntityType) : entityType;
     }
 
     onClose(): void {

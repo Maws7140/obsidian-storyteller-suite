@@ -227,6 +227,7 @@ export class TimelineModal extends Modal {
             if (this.filterBuilder.hasActiveFilters()) {
                 this.renderer.applyFilters(this.currentState.filters);
             }
+            this.scheduleTimelineRedraw();
             this.updateSearchDropdown();
         } catch {
             
@@ -236,6 +237,13 @@ export class TimelineModal extends Modal {
             errorEl.createEl('p', { text: 'Failed to initialize timeline data. Check developer console for details.' });
             new Notice('Timeline failed to load. Check console for details.');
         }
+    }
+
+    private scheduleTimelineRedraw(): void {
+        window.requestAnimationFrame(() => {
+            this.renderer?.redraw();
+            window.setTimeout(() => this.renderer?.redraw(), 80);
+        });
     }
 
 

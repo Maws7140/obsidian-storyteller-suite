@@ -1016,6 +1016,12 @@ export interface GalleryImage {
     
     /** User-defined tags for categorizing and searching images */
     tags?: string[];
+
+    /** Story ids this image is available to when scoped gallery mode is enabled */
+    storyIds?: string[];
+
+    /** Book ids this image is associated with when scoped gallery mode is enabled */
+    bookIds?: string[];
 }
 
 /**

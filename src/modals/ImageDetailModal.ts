@@ -1,6 +1,6 @@
 import { App, Setting, Notice } from 'obsidian';
 import { t } from '../i18n/strings';
-import { GalleryImage } from '../types';
+import { Book, GalleryImage } from '../types';
 import StorytellerSuitePlugin from '../main';
 import { ResponsiveModal } from './ResponsiveModal';
 import { confirmWithModal } from './ui/ConfirmModal';
@@ -116,6 +116,8 @@ export class ImageDetailModal extends ResponsiveModal {
                     this.image.linkedEvents = value.split(',').map(s => s.trim()).filter(s => s.length > 0);
                 }));
 
+        this.renderGalleryScopeControls(formEl);
+
         // Action Buttons
         if (!this.isNew) {
             this.createFooterButton(footerEl, t('removeFromGallery'), async () => {
@@ -145,6 +147,57 @@ export class ImageDetailModal extends ResponsiveModal {
             }
             this.close();
         }, { cta: true });
+    }
+
+    private renderGalleryScopeControls(formEl: HTMLElement): void {
+        if ((this.plugin.settings.galleryScopeMode ?? 'vault') !== 'book') return;
+
+        formEl.createEl('h3', { text: 'Gallery scope' });
+
+        const storyIds = new Set(this.image.storyIds ?? []);
+        if (storyIds.size === 0 && this.plugin.settings.activeStoryId) {
+            storyIds.add(this.plugin.settings.activeStoryId);
+            this.image.storyIds = Array.from(storyIds);
+        }
+
+        for (const story of this.plugin.settings.stories) {
+            new Setting(formEl)
+                .setName(story.name)
+                .setDesc('Make this image available to this story.')
+                .addToggle(toggle => toggle
+                    .setValue(storyIds.has(story.id))
+                    .onChange(value => {
+                        if (value) storyIds.add(story.id);
+                        else storyIds.delete(story.id);
+                        this.image.storyIds = Array.from(storyIds);
+                    }));
+        }
+
+        const bookContainer = formEl.createDiv();
+        void this.renderBookScopeControls(bookContainer);
+    }
+
+    private async renderBookScopeControls(container: HTMLElement): Promise<void> {
+        const books: Book[] = await this.plugin.listBooks();
+        if (books.length === 0) return;
+
+        container.createEl('h4', { text: 'Books' });
+        const bookIds = new Set(this.image.bookIds ?? []);
+
+        for (const book of books) {
+            if (!book.id) continue;
+            new Setting(container)
+                .setName(book.name)
+                .setDesc('Associate this image with this book.')
+                .addToggle(toggle => toggle
+                    .setValue(bookIds.has(book.id!))
+                    .onChange(value => {
+                        if (!book.id) return;
+                        if (value) bookIds.add(book.id);
+                        else bookIds.delete(book.id);
+                        this.image.bookIds = Array.from(bookIds);
+                    }));
+        }
     }
 
     onClose() {

@@ -14,7 +14,8 @@ import {
     TemplateEntityType,
     TemplateVariable
 } from './TemplateTypes';
-import { parseFrontmatterFromContent } from '../yaml/EntitySections';
+import { normalizeEntityType, parseFrontmatterFromContent } from '../yaml/EntitySections';
+import { findTemplateEntityType, getTemplateEntityPluralKey } from './TemplateEntityRegistry';
 
 const TEMPLATE_GENRES: readonly TemplateGenre[] = [
     'fantasy',
@@ -318,32 +319,10 @@ export class NoteToTemplateConverter {
         entityType: TemplateEntityType,
         templateEntity: TemplateEntity<Record<string, unknown>>
     ): TemplateEntities {
-        switch (entityType) {
-            case 'character':
-                return { characters: [templateEntity] };
-            case 'location':
-                return { locations: [templateEntity] };
-            case 'event':
-                return { events: [templateEntity] };
-            case 'item':
-                return { items: [templateEntity] };
-            case 'group':
-                return { groups: [templateEntity] };
-            case 'map':
-                return { maps: [templateEntity] };
-            case 'culture':
-                return { cultures: [templateEntity] };
-            case 'economy':
-                return { economies: [templateEntity] };
-            case 'magicSystem':
-                return { magicSystems: [templateEntity] };
-            case 'chapter':
-                return { chapters: [templateEntity] };
-            case 'scene':
-                return { scenes: [templateEntity] };
-            case 'reference':
-                return { references: [templateEntity] };
-        }
+        const entities: TemplateEntities = {};
+        const pluralKey = getTemplateEntityPluralKey(entityType);
+        (entities as Record<string, TemplateEntity<Record<string, unknown>>[]>)[pluralKey] = [templateEntity];
+        return entities;
     }
 
     /**
@@ -393,23 +372,22 @@ export class NoteToTemplateConverter {
      * Check if string is a valid entity type (case-insensitive)
      */
     private static isValidEntityType(type: string): boolean {
-        const validTypes: TemplateEntityType[] = [
-            'character', 'location', 'event', 'item', 'group',
-            'culture', 'economy', 'magicSystem', 'chapter', 'scene', 'reference'
-        ];
-        return validTypes.some(validType => validType.toLowerCase() === type.toLowerCase());
+        return this.findMatchingEntityType(type) !== null;
     }
 
     /**
      * Find matching entity type (case-insensitive) and return the correctly-cased type
      */
     private static findMatchingEntityType(type: string): TemplateEntityType | null {
-        const validTypes: TemplateEntityType[] = [
-            'character', 'location', 'event', 'item', 'group',
-            'culture', 'economy', 'magicSystem', 'chapter', 'scene', 'reference'
-        ];
-        const match = validTypes.find(validType => validType.toLowerCase() === type.toLowerCase());
-        return match || null;
+        const normalizedCoreType = normalizeEntityType(type);
+        if (normalizedCoreType === 'faction') {
+            return 'group';
+        }
+        if (normalizedCoreType) {
+            const match = findTemplateEntityType(normalizedCoreType);
+            if (match) return match;
+        }
+        return findTemplateEntityType(type);
     }
 }
 

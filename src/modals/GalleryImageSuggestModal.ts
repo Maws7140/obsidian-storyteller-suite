@@ -26,7 +26,8 @@ export class GalleryImageSuggestModal extends FuzzySuggestModal<GalleryImage> {
 
         // Registered gallery images (have titles, tags, etc.)
         const registered = this.plugin.getGalleryImages();
-        const registeredPaths = new Set(registered.map(img => img.filePath));
+        const allRegistered = this.plugin.getGalleryImages({ includeAll: true });
+        const registeredPaths = new Set(allRegistered.map(img => img.filePath));
 
         // Any image file in the vault not already registered
         const vaultImages: GalleryImage[] = this.app.vault.getFiles()

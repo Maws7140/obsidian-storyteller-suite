@@ -11,6 +11,7 @@ import {
     TemplateCategory,
     TemplateEntityType
 } from '../templates/TemplateTypes';
+import { TEMPLATE_ENTITY_TYPES, getTemplateEntityLabel } from '../templates/TemplateEntityRegistry';
 
 export interface SaveNoteAsTemplateResult {
     name: string;
@@ -88,18 +89,10 @@ export class SaveNoteAsTemplateModal extends ResponsiveModal {
             .setName('Entity type')
             .setDesc('What type of entity is this template for?')
             .addDropdown(dropdown => {
+                TEMPLATE_ENTITY_TYPES.forEach(entityType => {
+                    dropdown.addOption(entityType, getTemplateEntityLabel(entityType));
+                });
                 dropdown
-                    .addOption('character', 'Character')
-                    .addOption('location', 'Location')
-                    .addOption('event', 'Event')
-                    .addOption('item', 'Item')
-                    .addOption('group', 'Group')
-                    .addOption('culture', 'Culture')
-                    .addOption('economy', 'Economy')
-                    .addOption('magicSystem', 'Magic system')
-                    .addOption('chapter', 'Chapter')
-                    .addOption('scene', 'Scene')
-                    .addOption('reference', 'Reference')
                     .setValue(this.entityType)
                     .onChange(value => this.entityType = value as TemplateEntityType);
             });

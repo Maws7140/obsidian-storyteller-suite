@@ -118,6 +118,7 @@ export class WordCountTracker {
      */
     async onDocumentChange(file: TFile): Promise<void> {
         if (!this.isTracking) return;
+        if (!this.shouldCountFileForDailyGoal(file)) return;
 
         const currentCount = await this.getFileWordCount(file);
         const diff = currentCount - this.lastKnownWordCount;
@@ -136,6 +137,24 @@ export class WordCountTracker {
     async getFileWordCount(file: TFile): Promise<number> {
         const content = await this.plugin.app.vault.cachedRead(file);
         return this.countWords(content);
+    }
+
+    /**
+     * Whether this file should contribute to daily writing goal statistics.
+     * Empty folder scope preserves the existing behavior: all markdown files count.
+     */
+    shouldCountFileForDailyGoal(file: TFile | null | undefined): boolean {
+        if (!file || file.extension !== 'md') {
+            return false;
+        }
+
+        const folders = this.getDailyGoalFolders();
+        if (folders.length === 0) {
+            return true;
+        }
+
+        const normalizedPath = this.normalizePath(file.path);
+        return folders.some(folder => normalizedPath === folder || normalizedPath.startsWith(`${folder}/`));
     }
 
     /**
@@ -389,6 +408,20 @@ export class WordCountTracker {
         };
     }
 
+    private getDailyGoalFolders(): string[] {
+        return (this.plugin.settings.dailyWordCountGoalFolders || [])
+            .map(folder => this.normalizeFolderPath(folder))
+            .filter(Boolean);
+    }
+
+    private normalizeFolderPath(path: string): string {
+        return this.normalizePath(path).replace(/\/$/, '');
+    }
+
+    private normalizePath(path: string): string {
+        return path.trim().replace(/\\/g, '/').replace(/\/+/g, '/').replace(/^\/|\/$/g, '');
+    }
+
     /**
      * Get writing streak (consecutive days)
      */
@@ -439,6 +472,13 @@ export class WordCountTracker {
      */
     async setDailyGoal(goal: number): Promise<void> {
         this.plugin.settings.dailyWordCountGoal = goal;
+        await this.plugin.saveSettings();
+    }
+
+    async setDailyGoalFolders(folders: string[]): Promise<void> {
+        this.plugin.settings.dailyWordCountGoalFolders = folders
+            .map(folder => this.normalizeFolderPath(folder))
+            .filter((folder, index, all) => folder.length > 0 && all.indexOf(folder) === index);
         await this.plugin.saveSettings();
     }
 

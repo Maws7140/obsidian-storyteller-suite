@@ -13,11 +13,22 @@ import {
     TemplateCategory,
     TemplateEntityType,
     TemplateEntity,
+    TemplateExistingEntityLink,
     TemplateVariable
 } from '../templates/TemplateTypes';
 import { TemplateEntityDetailModal } from './TemplateEntityDetailModal';
 import { TemplateVariableEditorModal } from './TemplateVariableEditorModal';
 import { getEntityNotePreview } from '../utils/TemplatePreviewRenderer';
+import {
+    TEMPLATE_ENTITY_TYPES,
+    getTemplateEntityLabel,
+    getTemplateEntityPluralKey
+} from '../templates/TemplateEntityRegistry';
+import {
+    TEMPLATE_LINK_SOURCE_TYPES,
+    getLinkFieldsForSourceType,
+    getLinkFieldDefinition
+} from '../templates/TemplateLinkFields';
 
 type TemplateEntityCollectionKey = keyof Template['entities'];
 type EditableTemplateEntity = TemplateEntity<Record<string, unknown>> & {
@@ -32,7 +43,7 @@ export class TemplateEditorModal extends ResponsiveModal {
     private onSave: (template: Template) => void;
 
     // Current editing state
-    private currentTab: 'metadata' | 'entities' | 'variables' | 'preview' = 'metadata';
+    private currentTab: 'metadata' | 'entities' | 'links' | 'variables' | 'preview' = 'metadata';
     private selectedEntityType: TemplateEntityType | null = null;
     private selectedEntityIndex: number = -1;
     private tabsHostEl: HTMLElement | null = null;
@@ -117,9 +128,10 @@ export class TemplateEditorModal extends ResponsiveModal {
     private renderTabs(container: HTMLElement): void {
         const tabContainer = container.createDiv('template-editor-tabs');
 
-        const tabs: Array<{ id: 'metadata' | 'entities' | 'variables' | 'preview', label: string, icon: string }> = [
+        const tabs: Array<{ id: 'metadata' | 'entities' | 'links' | 'variables' | 'preview', label: string, icon: string }> = [
             { id: 'metadata', label: 'Metadata', icon: 'clipboard-list' },
             { id: 'entities', label: 'Entities', icon: 'users' },
+            { id: 'links', label: 'Links', icon: 'link' },
             { id: 'variables', label: 'Variables', icon: 'settings-2' },
             { id: 'preview', label: 'Preview', icon: 'eye' }
         ];
@@ -170,6 +182,9 @@ export class TemplateEditorModal extends ResponsiveModal {
                 break;
             case 'entities':
                 this.renderEntitiesTab(container);
+                break;
+            case 'links':
+                this.renderLinksTab(container);
                 break;
             case 'variables':
                 this.renderVariablesTab(container);
@@ -307,17 +322,12 @@ export class TemplateEditorModal extends ResponsiveModal {
         let selectedType: TemplateEntityType = 'character';
 
         // Use Obsidian's Setting class for proper dropdown styling
-        const entityTypes: TemplateEntityType[] = [
-            'character', 'location', 'event', 'item', 'group',
-            'culture', 'economy', 'magicSystem', 'chapter', 'scene', 'reference'
-        ];
-
         const setting = new Setting(section)
             .setName('Add new entity')
             .setDesc('Select the type of entity to add to this template');
 
         setting.addDropdown(dropdown => {
-            entityTypes.forEach(type => {
+            TEMPLATE_ENTITY_TYPES.forEach(type => {
                 dropdown.addOption(type, this.getEntityTypeLabel(type));
             });
             dropdown.setValue(selectedType);
@@ -353,12 +363,7 @@ export class TemplateEditorModal extends ResponsiveModal {
         }
 
         // Group entities by type
-        const entityTypeOrder: TemplateEntityType[] = [
-            'character', 'location', 'event', 'item', 'group',
-            'culture', 'economy', 'magicSystem', 'chapter', 'scene', 'reference'
-        ];
-
-        entityTypeOrder.forEach(entityType => {
+        TEMPLATE_ENTITY_TYPES.forEach(entityType => {
             const entities = this.getEditableEntities(entityType);
 
             if (!entities || entities.length === 0) return;
@@ -419,6 +424,184 @@ export class TemplateEditorModal extends ResponsiveModal {
             text: `${fieldCount} fields defined`,
             cls: 'template-entity-meta'
         });
+    }
+
+    // ==================== LINKS TAB ====================
+
+    /** All template entities whose type supports existing-entity links */
+    private getLinkSourceEntities(): Array<{ templateId: string; type: TemplateEntityType; name: string }> {
+        const sources: Array<{ templateId: string; type: TemplateEntityType; name: string }> = [];
+        TEMPLATE_LINK_SOURCE_TYPES.forEach(type => {
+            const entities = this.getEditableEntities(type);
+            entities?.forEach((entity, index) => {
+                if (!entity.templateId) return;
+                sources.push({
+                    templateId: entity.templateId,
+                    type,
+                    name: entity.name || `${this.getEntityTypeLabel(type)} ${index + 1}`
+                });
+            });
+        });
+        return sources;
+    }
+
+    private renderLinksTab(container: HTMLElement): void {
+        const section = container.createDiv('template-editor-section');
+
+        section.createEl('h3', { text: 'Existing entity links' });
+        section.createEl('p', {
+            text: 'Prompt the user to attach existing vault entities (a location, magic system, group, etc.) to the notes this template creates. No new entities are created from these links.',
+            cls: 'setting-item-description'
+        });
+
+        const sources = this.getLinkSourceEntities();
+        if (sources.length === 0) {
+            section.createEl('p', {
+                text: 'Add a character, item, event, scene, or magic system entity first — those types can link to existing entities.',
+                cls: 'template-empty-state'
+            });
+            return;
+        }
+
+        const addButton = section.createEl('button', { text: '+ add link', cls: 'mod-cta' });
+        addButton.addEventListener('click', () => {
+            this.addLink(sources[0]);
+            this.refreshCurrentTab();
+        });
+
+        const list = section.createDiv('template-links-list');
+        const links = this.template.existingEntityLinks ?? [];
+        if (links.length === 0) {
+            list.createEl('p', { text: 'No links defined yet.', cls: 'template-empty-state' });
+            return;
+        }
+
+        links.forEach((link, index) => this.renderLinkCard(list, link, index, sources));
+    }
+
+    private addLink(source: { templateId: string; type: TemplateEntityType }): void {
+        const fields = getLinkFieldsForSourceType(source.type);
+        const field = fields[0];
+        if (!field) return;
+
+        if (!this.template.existingEntityLinks) {
+            this.template.existingEntityLinks = [];
+        }
+        this.template.existingEntityLinks.push({
+            id: `link-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            sourceTemplateId: source.templateId,
+            sourceType: source.type,
+            targetType: field.targetType,
+            targetField: field.field,
+            label: field.label,
+            required: false,
+            multiple: field.multiple,
+            valueKind: field.valueKind
+        });
+        this.template.modified = new Date().toISOString();
+    }
+
+    private applyLinkFieldDefinition(link: TemplateExistingEntityLink, field: string): void {
+        const definition = getLinkFieldDefinition(link.sourceType, field);
+        if (!definition) return;
+        link.targetField = definition.field;
+        link.targetType = definition.targetType;
+        link.multiple = definition.multiple;
+        link.valueKind = definition.valueKind;
+    }
+
+    private renderLinkCard(
+        container: HTMLElement,
+        link: TemplateExistingEntityLink,
+        index: number,
+        sources: Array<{ templateId: string; type: TemplateEntityType; name: string }>
+    ): void {
+        const card = container.createDiv('template-link-card');
+
+        // Source entity
+        new Setting(card)
+            .setName('Source entity')
+            .setDesc('The entity this template creates that receives the link')
+            .addDropdown(dropdown => {
+                sources.forEach(source => {
+                    dropdown.addOption(source.templateId, `${source.name} (${this.getEntityTypeLabel(source.type)})`);
+                });
+                dropdown.setValue(link.sourceTemplateId);
+                dropdown.onChange(value => {
+                    const source = sources.find(s => s.templateId === value);
+                    if (!source) return;
+                    link.sourceTemplateId = source.templateId;
+                    if (source.type !== link.sourceType) {
+                        link.sourceType = source.type;
+                        // Reset field to a valid one for the new source type
+                        const field = getLinkFieldsForSourceType(source.type)[0];
+                        if (field) {
+                            this.applyLinkFieldDefinition(link, field.field);
+                            link.label = field.label;
+                        }
+                    }
+                    this.template.modified = new Date().toISOString();
+                    this.refreshCurrentTab();
+                });
+            });
+
+        // Target field
+        new Setting(card)
+            .setName('Field to fill')
+            .setDesc('Which field on the created entity receives the existing entity')
+            .addDropdown(dropdown => {
+                getLinkFieldsForSourceType(link.sourceType).forEach(field => {
+                    dropdown.addOption(field.field, `${field.label} → ${this.getEntityTypeLabel(field.targetType)}`);
+                });
+                dropdown.setValue(link.targetField);
+                dropdown.onChange(value => {
+                    this.applyLinkFieldDefinition(link, value);
+                    this.template.modified = new Date().toISOString();
+                    this.refreshCurrentTab();
+                });
+            });
+
+        // Label
+        new Setting(card)
+            .setName('Prompt label')
+            .setDesc('Shown to the user when applying the template')
+            .addText(text => text
+                .setPlaceholder('e.g. Home magic system')
+                .setValue(link.label)
+                .onChange(value => {
+                    link.label = value;
+                    this.template.modified = new Date().toISOString();
+                })
+            );
+
+        // Required + delete
+        new Setting(card)
+            .setName('Required')
+            .setDesc(`Allows ${link.multiple ? 'multiple selections' : 'a single selection'}. Required links must be filled before applying.`)
+            .addToggle(toggle => toggle
+                .setValue(link.required)
+                .onChange(value => {
+                    link.required = value;
+                    this.template.modified = new Date().toISOString();
+                })
+            )
+            .addExtraButton(button => button
+                .setIcon('trash')
+                .setTooltip('Delete link')
+                .onClick(() => {
+                    this.deleteLink(index);
+                })
+            );
+    }
+
+    private deleteLink(index: number): void {
+        if (!this.template.existingEntityLinks) return;
+        this.template.existingEntityLinks.splice(index, 1);
+        if (this.template.existingEntityLinks.length === 0) {
+            delete this.template.existingEntityLinks;
+        }
+        this.template.modified = new Date().toISOString();
+        this.refreshCurrentTab();
     }
 
     // ==================== VARIABLES TAB ====================
@@ -605,12 +788,7 @@ export class TemplateEditorModal extends ResponsiveModal {
     }
 
     private renderEntitiesPreview(container: HTMLElement): void {
-        const entityTypes: TemplateEntityType[] = [
-            'character', 'location', 'event', 'item', 'group',
-            'culture', 'economy', 'magicSystem', 'chapter', 'scene', 'reference'
-        ];
-
-        entityTypes.forEach(entityType => {
+        TEMPLATE_ENTITY_TYPES.forEach(entityType => {
             const entities = this.getEditableEntities(entityType);
 
             if (!entities || entities.length === 0) return;
@@ -878,39 +1056,11 @@ export class TemplateEditorModal extends ResponsiveModal {
     }
 
     private getEntityTypePlural(entityType: TemplateEntityType): TemplateEntityCollectionKey {
-        const pluralMap: Record<TemplateEntityType, TemplateEntityCollectionKey> = {
-            character: 'characters',
-            location: 'locations',
-            event: 'events',
-            item: 'items',
-            group: 'groups',
-            map: 'maps',
-            culture: 'cultures',
-            economy: 'economies',
-            magicSystem: 'magicSystems',
-            chapter: 'chapters',
-            scene: 'scenes',
-            reference: 'references'
-        };
-        return pluralMap[entityType];
+        return getTemplateEntityPluralKey(entityType);
     }
 
     private getEntityTypeLabel(entityType: TemplateEntityType): string {
-        const labelMap: Record<TemplateEntityType, string> = {
-            character: 'Character',
-            location: 'Location',
-            event: 'Event',
-            item: 'Item',
-            group: 'Group',
-            map: 'Map',
-            culture: 'Culture',
-            economy: 'Economy',
-            magicSystem: 'Magic System',
-            chapter: 'Chapter',
-            scene: 'Scene',
-            reference: 'Reference'
-        };
-        return labelMap[entityType];
+        return getTemplateEntityLabel(entityType);
     }
 
     onClose(): void {

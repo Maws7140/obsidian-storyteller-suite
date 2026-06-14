@@ -15,7 +15,10 @@ import {
     Chapter,
     Scene,
     Reference,
-    StoryMap
+    StoryMap,
+    Book,
+    CampaignSession,
+    CompendiumEntry
 } from '../types';
 
 /**
@@ -55,9 +58,61 @@ export type TemplateEntityType =
     | 'magicSystem'
     | 'chapter'
     | 'scene'
-    | 'reference';
+    | 'reference'
+    | 'compendiumEntry'
+    | 'book'
+    | 'campaignSession';
 
 export type TemplateVariableValue = string | number | boolean;
+
+/**
+ * Whether a link writes the selected existing entity's ID or its display name
+ * into the target field. Some fields store IDs (e.g. currentLocationId, groups),
+ * others store names (e.g. locations, event.characters).
+ */
+export type TemplateLinkValueKind = 'id' | 'name';
+
+/**
+ * Declares that an entity created by this template should be linked to an
+ * existing vault entity (chosen at apply time) by writing the chosen entity's
+ * reference into one of the created entity's fields.
+ *
+ * No new target entity is created — the link only attaches an existing one.
+ */
+export interface TemplateExistingEntityLink {
+    /** Unique identifier for this link (keys the user's selection at apply time) */
+    id: string;
+
+    /** templateId of the entity inside this template that receives the link (e.g. "CHAR_1") */
+    sourceTemplateId: string;
+
+    /** Entity type of the source template entity */
+    sourceType: TemplateEntityType;
+
+    /** Existing vault entity type the user chooses from */
+    targetType: TemplateEntityType;
+
+    /** Field on the created source entity to write the selected reference into */
+    targetField: string;
+
+    /** Label shown in the apply modal */
+    label: string;
+
+    /** Whether the user must provide a selection */
+    required: boolean;
+
+    /** Whether the field holds multiple references (array) or a single value */
+    multiple: boolean;
+
+    /** Whether to write the selected entity's ID or display name */
+    valueKind: TemplateLinkValueKind;
+}
+
+/**
+ * User selections for existing-entity links, keyed by link ID.
+ * Single links store a string; multiple links store a string array.
+ */
+export type ExistingEntityLinkSelections = Record<string, string | string[]>;
 
 /**
  * Template entity - includes templateId for relationship mapping
@@ -171,6 +226,9 @@ export interface Template {
 
     /** Source markdown file path for note-based templates */
     noteFilePath?: string;
+
+    /** Links from template-created entities to existing vault entities (chosen at apply time) */
+    existingEntityLinks?: TemplateExistingEntityLink[];
 }
 
 /**
@@ -189,6 +247,9 @@ export interface TemplateEntities {
     chapters?: TemplateEntity<Chapter>[];
     scenes?: TemplateEntity<Scene>[];
     references?: TemplateEntity<Reference>[];
+    compendiumEntries?: TemplateEntity<CompendiumEntry>[];
+    books?: TemplateEntity<Book>[];
+    campaignSessions?: TemplateEntity<CampaignSession>[];
 }
 
 /**
@@ -205,7 +266,7 @@ export interface TemplateMetadata {
     setupInstructions?: string;
 
     /** Total entity counts for quick reference */
-    entityCounts?: Record<TemplateEntityType, number>;
+    entityCounts?: Partial<Record<TemplateEntityType, number>>;
 
     /** Preview/showcase images */
     showcaseImages?: string[];
@@ -324,6 +385,9 @@ export interface TemplateApplicationOptions {
 
     /** Template variable values (for Phase 5) */
     variableValues?: Record<string, TemplateVariableValue>;
+
+    /** Selected existing vault entities for the template's existingEntityLinks, keyed by link ID */
+    existingEntityLinkSelections?: ExistingEntityLinkSelections;
 }
 
 /**
@@ -335,12 +399,16 @@ export interface TemplateEntitySelection {
     events?: string[];
     items?: string[];
     groups?: string[];
+    maps?: string[];
     cultures?: string[];
     economies?: string[];
     magicSystems?: string[];
     chapters?: string[];
     scenes?: string[];
     references?: string[];
+    compendiumEntries?: string[];
+    books?: string[];
+    campaignSessions?: string[];
 }
 
 /**
@@ -363,12 +431,16 @@ export interface TemplateApplicationResult {
         events: Event[];
         items: PlotItem[];
         groups: Group[];
+        maps: StoryMap[];
         cultures: Culture[];
         economies: Economy[];
         magicSystems: MagicSystem[];
         chapters: Chapter[];
         scenes: Scene[];
         references: Reference[];
+        compendiumEntries: CompendiumEntry[];
+        books: Book[];
+        campaignSessions: CampaignSession[];
     };
 
     /** Warnings or issues encountered */
@@ -416,6 +488,27 @@ export interface TemplateExportData {
         data: string;
         mimeType: string;
     }[];
+}
+
+/**
+ * Shareable package format for exchanging templates between vaults/users.
+ * This wraps existing Template objects instead of replacing the internal
+ * template JSON shape used by the plugin.
+ */
+export interface SharedTemplatePackage {
+    packageVersion: string;
+    exportedAt: string;
+    appVersion?: string;
+    manifest: {
+        name: string;
+        description?: string;
+        author?: string;
+        tags?: string[];
+        entityTypes?: TemplateEntityType[];
+        license?: string;
+        sourceUrl?: string;
+    };
+    templates: Template[];
 }
 
 /**

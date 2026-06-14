@@ -79,7 +79,7 @@ import type { CanvasData as StoryBoardCanvasData } from './utils/StoryBoardGener
 import { TemplateStorageManager } from './templates/TemplateStorageManager';
 import { TemplateNoteManager } from './templates/TemplateNoteManager';
 import { SaveNoteAsTemplateCommand } from './commands/SaveNoteAsTemplateCommand';
-import { Template, TemplateApplicationOptions, TemplateApplicationResult } from './templates/TemplateTypes';
+import { ExistingEntityLinkSelections, Template, TemplateApplicationOptions, TemplateApplicationResult } from './templates/TemplateTypes';
 import type { EntityFileName, TemplateVariableValues } from './modals/TemplateApplicationModal';
 import { StoryTemplateGalleryModal } from './templates/modals/StoryTemplateGalleryModal';
 import { upgradeLegacyModalLayout } from './modals/utils/LegacyModalLayout';
@@ -206,6 +206,10 @@ const FRONTMATTER_LINK_ONLY_SCALAR_FIELDS = new Set([
     galleryUploadFolder: string; // New setting for uploads
     galleryData: GalleryData; // Store gallery metadata here
     galleryWatchFolder?: string; // Folder to auto-scan for images
+    /** Gallery visibility mode. Defaults to vault for backward compatibility. */
+    galleryScopeMode?: 'vault' | 'book';
+    /** In scoped mode, include images from these stories alongside the active story. */
+    gallerySharedStoryIds?: string[];
     /** Array of all user-defined groups (story-specific) */
     groups: Group[];
     /** Whether to show the tutorial section in settings */
@@ -361,6 +365,9 @@ const FRONTMATTER_LINK_ONLY_SCALAR_FIELDS = new Set([
     
     /** Daily word count goal */
     dailyWordCountGoal?: number;
+
+    /** Folder paths that count toward the daily writing goal. Empty means all markdown files. */
+    dailyWordCountGoalFolders?: string[];
     
     /** Whether to show word count in status bar */
     showWordCountInStatusBar?: boolean;
@@ -401,6 +408,8 @@ const FRONTMATTER_LINK_ONLY_SCALAR_FIELDS = new Set([
     galleryUploadFolder: 'StorytellerSuite/GalleryUploads',
     galleryData: { images: [] },
     galleryWatchFolder: '',
+    galleryScopeMode: 'vault',
+    gallerySharedStoryIds: [],
     groups: [],
     showTutorial: true,
     hasCompletedOnboarding: false,
@@ -476,6 +485,7 @@ const FRONTMATTER_LINK_ONLY_SCALAR_FIELDS = new Set([
     compileWorkflows: [],
     defaultCompileWorkflow: 'reader-draft-workflow',
     dailyWordCountGoal: 1000,
+    dailyWordCountGoalFolders: [],
     showWordCountInStatusBar: true,
     notifyOnGoalReached: true,
     countDeletionsForGoal: false,
@@ -2084,7 +2094,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 
         await this.finishActiveWritingSession();
 
-        if (file && file.extension === 'md') {
+        if (file && file.extension === 'md' && this.wordTracker.shouldCountFileForDailyGoal(file)) {
             this.wordTracker.startSession(file);
             this.activeWritingSessionFilePath = file.path;
         }
@@ -2144,6 +2154,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 			const wordCount = this.wordTracker.countWords(content);
 			const goal = this.settings.dailyWordCountGoal ?? 0;
 			const todayWords = this.wordTracker.getTodayStats()?.wordsWritten ?? 0;
+			const countsForGoal = this.wordTracker.shouldCountFileForDailyGoal(activeFile);
 
 			this.statusBarWordCountEl.empty();
 
@@ -2154,7 +2165,8 @@ export default class StorytellerSuitePlugin extends Plugin {
 				this.statusBarWordCountEl.createSpan({ cls: 'storyteller-bar-sep', text: ' · ' });
 				const goalSpan = this.statusBarWordCountEl.createSpan({ cls: 'storyteller-bar-goal' });
 				const pct = Math.min(100, Math.round((todayWords / goal) * 100));
-				goalSpan.setText(`${todayWords.toLocaleString()} / ${goal.toLocaleString()} today (${pct}%)`);
+				const scopeSuffix = countsForGoal ? '' : ' (not counted)';
+				goalSpan.setText(`${todayWords.toLocaleString()} / ${goal.toLocaleString()} today (${pct}%)${scopeSuffix}`);
 				if (todayWords >= goal) goalSpan.addClass('storyteller-bar-goal--met');
 			}
 		} catch {
@@ -7834,15 +7846,53 @@ export default class StorytellerSuitePlugin extends Plugin {
 		const exists = this.settings.galleryData.images.some(img => img.filePath === file.path);
 		if (exists) return false;
 
-		this.settings.galleryData.images.unshift({
+		this.settings.galleryData.images.unshift(this.withDefaultGalleryScope({
 			id: `gallery-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
 			filePath: file.path,
 			title: file.basename,
 			caption: '',
 			description: '',
 			tags: []
-		});
+		}));
 		await this.saveSettings();
+		return true;
+	}
+
+	private getGalleryVisibleStoryIds(): string[] {
+		const ids = new Set<string>();
+		if (this.settings.activeStoryId) ids.add(this.settings.activeStoryId);
+		for (const storyId of this.settings.gallerySharedStoryIds ?? []) {
+			if (storyId) ids.add(storyId);
+		}
+		return Array.from(ids);
+	}
+
+	private withDefaultGalleryScope<T extends GalleryImage>(image: T): T {
+		if ((this.settings.galleryScopeMode ?? 'vault') !== 'book') return image;
+		if (!image.storyIds || image.storyIds.length === 0) {
+			const storyIds = this.getGalleryVisibleStoryIds();
+			if (storyIds.length > 0) image.storyIds = storyIds;
+		}
+		if (!image.bookIds) image.bookIds = [];
+		return image;
+	}
+
+	private isGalleryImageVisible(image: GalleryImage, options?: { includeAll?: boolean; storyIds?: string[]; bookId?: string; bookIds?: string[] }): boolean {
+		if (options?.includeAll) return true;
+		if ((this.settings.galleryScopeMode ?? 'vault') === 'vault') return true;
+
+		const visibleStoryIds = options?.storyIds?.length ? options.storyIds : this.getGalleryVisibleStoryIds();
+		const imageStoryIds = image.storyIds ?? [];
+		if (imageStoryIds.length > 0 && visibleStoryIds.length > 0 && !imageStoryIds.some(id => visibleStoryIds.includes(id))) {
+			return false;
+		}
+
+		const requestedBookIds = options?.bookIds ?? (options?.bookId ? [options.bookId] : []);
+		if (requestedBookIds.length > 0) {
+			const imageBookIds = image.bookIds ?? [];
+			return imageBookIds.some(id => requestedBookIds.includes(id));
+		}
+
 		return true;
 	}
 
@@ -7850,8 +7900,8 @@ export default class StorytellerSuitePlugin extends Plugin {
 	 * Get all gallery images from plugin settings
 	 * @returns Array of gallery image metadata
 	 */
-	getGalleryImages(): GalleryImage[] {
-		return this.settings.galleryData.images || [];
+	getGalleryImages(options?: { includeAll?: boolean; storyIds?: string[]; bookId?: string; bookIds?: string[] }): GalleryImage[] {
+		return (this.settings.galleryData.images || []).filter(image => this.isGalleryImageVisible(image, options));
 	}
 
 	/**
@@ -7875,14 +7925,14 @@ export default class StorytellerSuitePlugin extends Plugin {
 			);
 			if (!alreadyExists) {
 				const id = `gallery-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-				this.settings.galleryData.images.push({
+				this.settings.galleryData.images.push(this.withDefaultGalleryScope({
 					id,
 					filePath: file.path,
 					title: file.basename,
 					caption: '',
 					description: '',
 					tags: []
-				});
+				}));
 				added++;
 			}
 		}
@@ -8005,7 +8055,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 
 	private createGalleryImageRecord(imageData: Omit<GalleryImage, 'id'>): GalleryImage {
 		const id = Date.now().toString() + Math.random().toString(36).slice(2, 11);
-		return { ...imageData, id };
+		return this.withDefaultGalleryScope({ ...imageData, id });
 	}
 
 	private sanitizeGalleryUploadName(fileName: string): string {
@@ -9002,8 +9052,16 @@ export default class StorytellerSuitePlugin extends Plugin {
 			this.settings.galleryUploadFolder = DEFAULT_SETTINGS.galleryUploadFolder;
 			settingsUpdated = true;
 		}
-		if (!this.settings.galleryData) {
+        if (!this.settings.galleryData) {
 			this.settings.galleryData = DEFAULT_SETTINGS.galleryData;
+			settingsUpdated = true;
+		}
+		if (!('galleryScopeMode' in this.settings) || !this.settings.galleryScopeMode) {
+			this.settings.galleryScopeMode = DEFAULT_SETTINGS.galleryScopeMode;
+			settingsUpdated = true;
+		}
+		if (!Array.isArray(this.settings.gallerySharedStoryIds)) {
+			this.settings.gallerySharedStoryIds = [];
 			settingsUpdated = true;
 		}
         // Defaults for newly added settings (backward-compatible)
@@ -9250,10 +9308,10 @@ export default class StorytellerSuitePlugin extends Plugin {
 				this.app,
 				this,
 				template,
-				(variableValues: TemplateVariableValues, entityFileNames: EntityFileName[]) => { void (async () => {
-					
-					
-					
+				(variableValues: TemplateVariableValues, entityFileNames: EntityFileName[], existingEntityLinkSelections?: ExistingEntityLinkSelections) => { void (async () => {
+
+
+
 					// Build field overrides from entity file names (file name becomes entity name)
 					const fieldOverrides = new Map<string, { name?: string }>();
 					entityFileNames.forEach(entityInfo => {
@@ -9266,12 +9324,12 @@ export default class StorytellerSuitePlugin extends Plugin {
 						}
 					});
 
-				// Apply template with variable values and field overrides
+				// Apply template with variable values, field overrides, and existing-entity links
 				await this.applyTemplateInternal(
 					template,
 					activeStory.id,
 					variableValues,
-					{ ...options, fieldOverrides }
+					{ ...options, fieldOverrides, existingEntityLinkSelections }
 				);
 			})(); }
 		).open();
@@ -9331,12 +9389,16 @@ export default class StorytellerSuitePlugin extends Plugin {
 		count += created.events.length;
 		count += created.items.length;
 		count += created.groups.length;
+		count += created.maps.length;
 		count += created.cultures.length;
 		count += created.economies.length;
 		count += created.magicSystems.length;
 		count += created.chapters.length;
 		count += created.scenes.length;
 		count += created.references.length;
+		count += created.compendiumEntries.length;
+		count += created.books.length;
+		count += created.campaignSessions.length;
 		return count;
 	}
 

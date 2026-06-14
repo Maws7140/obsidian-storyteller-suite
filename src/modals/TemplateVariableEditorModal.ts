@@ -8,6 +8,7 @@ import { App, Notice, Setting, setIcon } from 'obsidian';
 import { ResponsiveModal } from './ResponsiveModal';
 import type StorytellerSuitePlugin from '../main';
 import { TemplateVariable } from '../templates/TemplateTypes';
+import { findTemplateEntityType, getTemplateEntityLabel } from '../templates/TemplateEntityRegistry';
 
 export class TemplateVariableEditorModal extends ResponsiveModal {
     private plugin: StorytellerSuitePlugin;
@@ -395,20 +396,8 @@ export class TemplateVariableEditorModal extends ResponsiveModal {
     }
 
     private getEntityTypeLabel(entityType: string): string {
-        const labelMap: Record<string, string> = {
-            character: 'Character',
-            location: 'Location',
-            event: 'Event',
-            item: 'Item',
-            group: 'Group',
-            culture: 'Culture',
-            economy: 'Economy',
-            magicSystem: 'Magic System',
-            chapter: 'Chapter',
-            scene: 'Scene',
-            reference: 'Reference'
-        };
-        return labelMap[entityType] || entityType;
+        const templateEntityType = findTemplateEntityType(entityType);
+        return templateEntityType ? getTemplateEntityLabel(templateEntityType) : entityType;
     }
 
     onClose(): void {

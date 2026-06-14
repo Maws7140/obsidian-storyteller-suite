@@ -3,14 +3,15 @@
  * Browse, filter, and manage templates
  */
 
-import { App, Notice, Setting, setIcon } from 'obsidian';
+import { App, Notice, Setting, TFile, normalizePath, setIcon } from 'obsidian';
 import { ResponsiveModal } from './ResponsiveModal';
 import type StorytellerSuitePlugin from '../main';
 import {
     Template,
     TemplateFilter,
     TemplateGenre,
-    TemplateCategory
+    TemplateCategory,
+    SharedTemplatePackage
 } from '../templates/TemplateTypes';
 import { TemplateEditorModal } from './TemplateEditorModal';
 
@@ -70,6 +71,13 @@ export class TemplateLibraryModal extends ResponsiveModal {
         });
         createButton.setCssStyles({ marginTop: '1em' });
         createButton.addEventListener('click', () => this.handleCreateNew());
+
+        const importButton = contentEl.createEl('button', {
+            text: 'Import shared template'
+        });
+        importButton.setCssStyles({ marginTop: '1em' });
+        importButton.setCssStyles({ marginLeft: '0.5em' });
+        importButton.addEventListener('click', () => this.handleImportSharedTemplate());
     }
 
     private createFilterSection(container: HTMLElement): void {
@@ -292,6 +300,9 @@ export class TemplateLibraryModal extends ResponsiveModal {
             const duplicateButton = actions.createEl('button', { text: 'Duplicate' });
             duplicateButton.addEventListener('click', () => { void this.handleDuplicateTemplate(template); });
         }
+
+        const exportButton = actions.createEl('button', { text: 'Export' });
+        exportButton.addEventListener('click', () => { void this.handleExportTemplate(template); });
     }
 
     private refreshAndDisplay(): void {
@@ -378,6 +389,87 @@ export class TemplateLibraryModal extends ResponsiveModal {
                 this.refreshAndDisplay();
             })(); }
         ).open();
+    }
+
+    private async handleExportTemplate(template: Template): Promise<void> {
+        try {
+            const sharedPackage = this.plugin.templateManager.exportSharedTemplatePackage([template.id], template.name);
+            const exportFolder = normalizePath(`${this.plugin.templateManager.getTemplateFolder()}/Exports`);
+            await this.ensureFolder(exportFolder);
+
+            const safeName = this.toSafeFileName(template.name || template.id);
+            const filePath = normalizePath(`${exportFolder}/${safeName}.storyteller-template.json`);
+            const content = JSON.stringify(sharedPackage, null, 2);
+            const existingFile = this.app.vault.getAbstractFileByPath(filePath);
+            if (existingFile instanceof TFile) {
+                await this.app.vault.modify(existingFile, content);
+            } else {
+                await this.app.vault.create(filePath, content);
+            }
+            new Notice(`Template exported to ${filePath}`);
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            new Notice(`Failed to export template: ${message}`);
+        }
+    }
+
+    private handleImportSharedTemplate(): void {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = '.json,.storyteller-template.json,application/json';
+        input.addEventListener('change', () => {
+            const file = input.files?.[0];
+            if (!file) {
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = () => {
+                void this.importSharedTemplateContent(String(reader.result ?? ''));
+            };
+            reader.onerror = () => {
+                new Notice('Failed to read template package file');
+            };
+            reader.readAsText(file);
+        });
+        input.click();
+    }
+
+    private async importSharedTemplateContent(content: string): Promise<void> {
+        try {
+            const sharedPackage = JSON.parse(content) as SharedTemplatePackage;
+            const imported = await this.plugin.templateManager.importSharedTemplatePackage(sharedPackage);
+            new Notice(`Imported ${imported.length} template${imported.length !== 1 ? 's' : ''}`);
+            this.refreshAndDisplay();
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            new Notice(`Failed to import template package: ${message}`);
+        }
+    }
+
+    private async ensureFolder(folderPath: string): Promise<void> {
+        const normalizedPath = normalizePath(folderPath);
+        if (this.app.vault.getAbstractFileByPath(normalizedPath)) {
+            return;
+        }
+
+        const parts = normalizedPath.split('/');
+        let currentPath = '';
+        for (const part of parts) {
+            currentPath = currentPath ? `${currentPath}/${part}` : part;
+            if (!this.app.vault.getAbstractFileByPath(currentPath)) {
+                await this.app.vault.createFolder(currentPath);
+            }
+        }
+    }
+
+    private toSafeFileName(name: string): string {
+        const safeName = name
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, '-')
+            .replace(/^-+|-+$/g, '')
+            .substring(0, 100);
+        return safeName || 'template';
     }
 
     private handleEditNoteTemplate(template: Template): void {

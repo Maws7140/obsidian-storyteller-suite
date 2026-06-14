@@ -22,9 +22,18 @@ import {
     MagicSystem,
     Chapter,
     Scene,
-    Reference
+    Reference,
+    StoryMap,
+    Book,
+    CampaignSession,
+    CompendiumEntry
 } from '../types';
 import { entityToYaml, entityToMarkdown } from '../utils/TemplatePreviewRenderer';
+import {
+    TEMPLATE_ENTITY_DEFINITIONS,
+    getTemplateEntityIdPrefix,
+    getTemplateEntityPluralKey
+} from './TemplateEntityRegistry';
 
 export interface ConversionOptions {
     /** Template name */
@@ -131,144 +140,33 @@ export class EntityToTemplateConverter {
             chapters?: Chapter[];
             scenes?: Scene[];
             references?: Reference[];
+            maps?: StoryMap[];
+            compendiumEntries?: CompendiumEntry[];
+            books?: Book[];
+            campaignSessions?: CampaignSession[];
         },
         options: ConversionOptions
     ): Template {
         const templateEntities: TemplateEntities = {};
         const entityTypes: TemplateEntityType[] = [];
 
-        // Convert each entity type
-        if (entities.characters && entities.characters.length > 0) {
-            templateEntities.characters = entities.characters.map((char, index) =>
-                this.convertToTemplateEntity(
-                    char,
-                    'character',
-                    `CHAR_${index + 1}`,
-                    options
-                )
-            );
-            entityTypes.push('character');
-        }
+        TEMPLATE_ENTITY_DEFINITIONS.forEach(definition => {
+            const sourceEntities = entities[definition.pluralKey as keyof typeof entities] as unknown[] | undefined;
+            if (!sourceEntities || sourceEntities.length === 0) {
+                return;
+            }
 
-        if (entities.locations && entities.locations.length > 0) {
-            templateEntities.locations = entities.locations.map((loc, index) =>
-                this.convertToTemplateEntity(
-                    loc,
-                    'location',
-                    `LOC_${index + 1}`,
-                    options
-                )
-            );
-            entityTypes.push('location');
-        }
-
-        if (entities.events && entities.events.length > 0) {
-            templateEntities.events = entities.events.map((evt, index) =>
-                this.convertToTemplateEntity(
-                    evt,
-                    'event',
-                    `EVT_${index + 1}`,
-                    options
-                )
-            );
-            entityTypes.push('event');
-        }
-
-        if (entities.items && entities.items.length > 0) {
-            templateEntities.items = entities.items.map((item, index) =>
-                this.convertToTemplateEntity(
-                    item,
-                    'item',
-                    `ITEM_${index + 1}`,
-                    options
-                )
-            );
-            entityTypes.push('item');
-        }
-
-        if (entities.groups && entities.groups.length > 0) {
-            templateEntities.groups = entities.groups.map((group, index) =>
-                this.convertToTemplateEntity(
-                    group,
-                    'group',
-                    `GROUP_${index + 1}`,
-                    options
-                )
-            );
-            entityTypes.push('group');
-        }
-
-        if (entities.cultures && entities.cultures.length > 0) {
-            templateEntities.cultures = entities.cultures.map((cult, index) =>
-                this.convertToTemplateEntity(
-                    cult,
-                    'culture',
-                    `CULT_${index + 1}`,
-                    options
-                )
-            );
-            entityTypes.push('culture');
-        }
-
-        if (entities.economies && entities.economies.length > 0) {
-            templateEntities.economies = entities.economies.map((econ, index) =>
-                this.convertToTemplateEntity(
-                    econ,
-                    'economy',
-                    `ECON_${index + 1}`,
-                    options
-                )
-            );
-            entityTypes.push('economy');
-        }
-
-        if (entities.magicSystems && entities.magicSystems.length > 0) {
-            templateEntities.magicSystems = entities.magicSystems.map((magic, index) =>
-                this.convertToTemplateEntity(
-                    magic,
-                    'magicSystem',
-                    `MAGIC_${index + 1}`,
-                    options
-                )
-            );
-            entityTypes.push('magicSystem');
-        }
-
-        if (entities.chapters && entities.chapters.length > 0) {
-            templateEntities.chapters = entities.chapters.map((chap, index) =>
-                this.convertToTemplateEntity(
-                    chap,
-                    'chapter',
-                    `CHAP_${index + 1}`,
-                    options
-                )
-            );
-            entityTypes.push('chapter');
-        }
-
-        if (entities.scenes && entities.scenes.length > 0) {
-            templateEntities.scenes = entities.scenes.map((scene, index) =>
-                this.convertToTemplateEntity(
-                    scene,
-                    'scene',
-                    `SCENE_${index + 1}`,
-                    options
-                )
-            );
-            entityTypes.push('scene');
-        }
-
-        if (entities.references && entities.references.length > 0) {
-            templateEntities.references = entities.references.map((ref, index) =>
-                this.convertToTemplateEntity(
-                    ref,
-                    'reference',
-                    `REF_${index + 1}`,
-                    options
-                )
-            );
-            entityTypes.push('reference');
-        }
+            (templateEntities as Record<string, TemplateEntity<unknown>[]>)[definition.pluralKey] =
+                sourceEntities.map((entity, index) =>
+                    this.convertToTemplateEntity(
+                        entity,
+                        definition.type,
+                        `${definition.idPrefix}_${index + 1}`,
+                        options
+                    )
+                );
+            entityTypes.push(definition.type);
+        });
 
         const template: Template = {
             id: `template-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
@@ -413,8 +311,7 @@ export class EntityToTemplateConverter {
      * Generate a template ID for an entity
      */
     private static generateTemplateId(entityType: TemplateEntityType): string {
-        const prefix = entityType.toUpperCase().substring(0, 4);
-        return `${prefix}_1`;
+        return `${getTemplateEntityIdPrefix(entityType)}_1`;
     }
 
     /**
@@ -424,32 +321,10 @@ export class EntityToTemplateConverter {
         entityType: TemplateEntityType,
         templateEntity: TemplateEntity<T>
     ): TemplateEntities {
-        switch (entityType) {
-            case 'character':
-                return { characters: [templateEntity] };
-            case 'location':
-                return { locations: [templateEntity] };
-            case 'event':
-                return { events: [templateEntity] };
-            case 'item':
-                return { items: [templateEntity] };
-            case 'group':
-                return { groups: [templateEntity] };
-            case 'map':
-                return { maps: [templateEntity] };
-            case 'culture':
-                return { cultures: [templateEntity] };
-            case 'economy':
-                return { economies: [templateEntity] };
-            case 'magicSystem':
-                return { magicSystems: [templateEntity] };
-            case 'chapter':
-                return { chapters: [templateEntity] };
-            case 'scene':
-                return { scenes: [templateEntity] };
-            case 'reference':
-                return { references: [templateEntity] };
-        }
+        const entities: TemplateEntities = {};
+        const pluralKey = getTemplateEntityPluralKey(entityType);
+        (entities as Record<string, TemplateEntity<T>[]>)[pluralKey] = [templateEntity];
+        return entities;
     }
 
     private static deleteFields(target: Record<string, unknown>, fields: string[]): void {
@@ -478,6 +353,9 @@ export class EntityToTemplateConverter {
         if ('order' in entity && 'linkedCharacters' in entity) return 'chapter';
         if ('chapterId' in entity) return 'scene';
         if ('referenceType' in entity) return 'reference';
+        if ('entryType' in entity || 'dangerRating' in entity) return 'compendiumEntry';
+        if ('bookNumber' in entity || 'linkedChapters' in entity) return 'book';
+        if ('partyCharacterIds' in entity || 'currentSceneId' in entity || 'partyState' in entity) return 'campaignSession';
 
         return null;
     }

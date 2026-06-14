@@ -56,6 +56,13 @@ function getMapViewMapId(view: unknown): string | undefined {
     return viewWithRenderer.leafletRenderer?.params?.mapId;
 }
 
+function normalizeMapEntityType(entityType: string): string {
+    if (entityType === 'magicSystem' || entityType === 'magic-system' || entityType === 'magic_system') {
+        return 'magicsystem';
+    }
+    return entityType;
+}
+
 export class MapEntityRenderer {
     private map: L.Map;
     private plugin: StorytellerSuitePlugin;
@@ -485,6 +492,7 @@ export class MapEntityRenderer {
             const coordKey = `${binding.coordinates[0].toFixed(4)},${binding.coordinates[1].toFixed(4)}`;
             
             for (const entityRef of effectiveRefs) {
+                entityRef.entityType = normalizeMapEntityType(entityRef.entityType) as EntityRef['entityType'];
                 if (!entityGroups.has(coordKey)) {
                     entityGroups.set(coordKey, []);
                 }
@@ -500,6 +508,7 @@ export class MapEntityRenderer {
         // This includes entities that may not be linked to a location
         const entitiesWithCoordinates = await this.discoverEntitiesWithMapCoordinates(mapId);
         for (const { entityRef, coordinates } of entitiesWithCoordinates) {
+            entityRef.entityType = normalizeMapEntityType(entityRef.entityType) as EntityRef['entityType'];
             const coordKey = `${coordinates[0].toFixed(4)},${coordinates[1].toFixed(4)}`;
             
             // Check if this entity is already in the groups (linked to a location)
@@ -539,7 +548,7 @@ export class MapEntityRenderer {
                 );
                 
                 if (marker) {
-                    switch (entityRef.entityType) {
+                    switch (normalizeMapEntityType(entityRef.entityType)) {
                         case 'character':
                             charactersLayer.addLayer(marker);
                             break;
@@ -861,7 +870,8 @@ export class MapEntityRenderer {
             reference: { bg: '#64748b', border: '#475569' }       // Slate
         };
 
-        const color = colors[entityType] || colors.character;
+        const normalizedEntityType = normalizeMapEntityType(entityType);
+        const color = colors[normalizedEntityType] || colors.character;
         
         // Show stack badge on first marker only when there are multiple
         const stackBadge = stackInfo && stackInfo.stackIndex === 0 && stackInfo.stackTotal > 1
@@ -893,7 +903,7 @@ export class MapEntityRenderer {
 
             return L.divIcon({
                 html: iconHtml,
-                className: `storyteller-entity-marker storyteller-entity-${entityType} has-image${stackInfo && stackInfo.stackTotal > 1 ? ' stacked' : ''}`,
+                className: `storyteller-entity-marker storyteller-entity-${normalizedEntityType} has-image${stackInfo && stackInfo.stackTotal > 1 ? ' stacked' : ''}`,
                 iconSize: [36, 36],
                 iconAnchor: [18, 36],
                 popupAnchor: [0, -36]
@@ -975,11 +985,11 @@ export class MapEntityRenderer {
             `
         };
 
-        const iconHtml = icons[entityType] || icons.character;
+        const iconHtml = icons[normalizedEntityType] || icons.character;
 
         return L.divIcon({
             html: iconHtml,
-            className: `storyteller-entity-marker storyteller-entity-${entityType}${stackInfo && stackInfo.stackTotal > 1 ? ' stacked' : ''}`,
+            className: `storyteller-entity-marker storyteller-entity-${normalizedEntityType}${stackInfo && stackInfo.stackTotal > 1 ? ' stacked' : ''}`,
             iconSize: [28, 28],
             iconAnchor: [14, 28],
             popupAnchor: [0, -28]
@@ -1002,7 +1012,7 @@ export class MapEntityRenderer {
      * Get image path from an entity based on its type
      */
     private getEntityImagePath(entity: Character | Event | PlotItem | Scene | Culture | Economy | MagicSystem | Reference, entityType: string): string | null {
-        switch (entityType) {
+        switch (normalizeMapEntityType(entityType)) {
             case 'character':
                 return (entity as Character).profileImagePath || null;
             case 'item':
@@ -1762,7 +1772,7 @@ export class MapEntityRenderer {
      * Uniform helper for all entity types
      */
     private showAddEntityToLocation(location: Location, entityType: string): void {
-        void this.openAddEntityToLocation(location, entityType);
+        void this.openAddEntityToLocation(location, normalizeMapEntityType(entityType));
     }
 
     private async openAddEntityToLocation(location: Location, entityType: string): Promise<void> {
@@ -1778,7 +1788,7 @@ export class MapEntityRenderer {
                     const locationService = new LocationService(this.plugin);
                     await locationService.addEntityToLocation(location.id || location.name, {
                         entityId,
-                        entityType: entityType as EntityRef['entityType'],
+                        entityType: normalizeMapEntityType(entityType) as EntityRef['entityType'],
                         relationship,
                     });
                     new Notice(`${entityType.charAt(0).toUpperCase() + entityType.slice(1)} added to ${location.name}`);

@@ -10,9 +10,15 @@ import {
     TemplateValidationResult,
     TemplateExportData,
     TemplateStats,
-    TemplateEntityType
+    TemplateEntityType,
+    SharedTemplatePackage
 } from './TemplateTypes';
 import { TemplateValidator } from './TemplateValidator';
+import {
+    TEMPLATE_ENTITY_TYPES,
+    getTemplateEntityCounts,
+    getTemplateEntityFolder
+} from './TemplateEntityRegistry';
 
 interface TemplateNoteManagerLike {
     getAllNoteTemplates(): Template[];
@@ -194,12 +200,7 @@ export class TemplateStorageManager {
         await this.loadTemplatesFromFolder(this.templateFolder);
 
         // Load templates from entity-type subfolders
-        const entityTypes: TemplateEntityType[] = [
-            'character', 'location', 'event', 'item', 'group', 'map',
-            'culture', 'economy', 'magicSystem', 'chapter', 'scene', 'reference'
-        ];
-
-        for (const entityType of entityTypes) {
+        for (const entityType of TEMPLATE_ENTITY_TYPES) {
             const entityTypeFolder = this.getEntityTypeFolder(entityType);
             const folderPath = `${this.templateFolder}/${entityTypeFolder}`;
             await this.loadTemplatesFromFolder(folderPath);
@@ -260,21 +261,7 @@ export class TemplateStorageManager {
      * Get the folder name for a given entity type
      */
     private getEntityTypeFolder(entityType: TemplateEntityType): string {
-        const folderMap: Record<TemplateEntityType, string> = {
-            character: 'Characters',
-            location: 'Locations',
-            event: 'Events',
-            item: 'Items',
-            group: 'Groups',
-            map: 'Maps',
-            culture: 'Cultures',
-            economy: 'Economies',
-            magicSystem: 'MagicSystems',
-            chapter: 'Chapters',
-            scene: 'Scenes',
-            reference: 'References'
-        };
-        return folderMap[entityType] || 'General';
+        return getTemplateEntityFolder(entityType);
     }
 
     /**
@@ -293,12 +280,7 @@ export class TemplateStorageManager {
      * Ensure all entity type subfolders exist
      */
     private async ensureEntityTypeFoldersExist(): Promise<void> {
-        const entityTypes: TemplateEntityType[] = [
-            'character', 'location', 'event', 'item', 'group', 'map',
-            'culture', 'economy', 'magicSystem', 'chapter', 'scene', 'reference'
-        ];
-
-        for (const entityType of entityTypes) {
+        for (const entityType of TEMPLATE_ENTITY_TYPES) {
             const folderName = this.getEntityTypeFolder(entityType);
             const folderPath = `${this.templateFolder}/${folderName}`;
             const folder = this.app.vault.getAbstractFileByPath(folderPath);
@@ -462,7 +444,7 @@ export class TemplateStorageManager {
         const oldFile = this.app.vault.getAbstractFileByPath(oldFilePath);
         if (oldFile instanceof TFile) {
             // Delete old file if it exists
-            await this.app.fileManager.trashFile(oldFile);
+            await this.deleteTemplateFile(oldFile);
         }
 
         // Remove stale copies in legacy/root or previous entity-type folders before writing.
@@ -498,7 +480,7 @@ export class TemplateStorageManager {
         for (const filePath of this.getTemplateCandidatePaths(id)) {
             const file = this.app.vault.getAbstractFileByPath(filePath);
             if (file instanceof TFile) {
-                await this.app.fileManager.trashFile(file);
+                await this.deleteTemplateFile(file);
             }
         }
 
@@ -552,20 +534,7 @@ export class TemplateStorageManager {
      */
     getTemplateStats(template: Template): TemplateStats {
         const entities = template.entities;
-        const entityCounts: Record<TemplateEntityType, number> = {
-            character: entities.characters?.length || 0,
-            location: entities.locations?.length || 0,
-            event: entities.events?.length || 0,
-            item: entities.items?.length || 0,
-            group: entities.groups?.length || 0,
-            map: entities.maps?.length || 0,
-            culture: entities.cultures?.length || 0,
-            economy: entities.economies?.length || 0,
-            magicSystem: entities.magicSystems?.length || 0,
-            chapter: entities.chapters?.length || 0,
-            scene: entities.scenes?.length || 0,
-            reference: entities.references?.length || 0
-        };
+        const entityCounts = getTemplateEntityCounts(entities);
 
         const totalEntities = Object.values(entityCounts).reduce((a, b) => a + b, 0);
 
@@ -625,6 +594,87 @@ export class TemplateStorageManager {
         }
 
         return exportData;
+    }
+
+    /**
+     * Export one or more templates as a shareable package.
+     */
+    exportSharedTemplatePackage(templateIds: string[], packageName?: string): SharedTemplatePackage {
+        const templates = templateIds.map(id => {
+            const template = this.getTemplate(id);
+            if (!template) {
+                throw new Error(`Template not found: ${id}`);
+            }
+            return this.prepareTemplateForSharing(template);
+        });
+
+        const entityTypes = Array.from(new Set(
+            templates.flatMap(template => template.entityTypes ?? [])
+        ));
+        const tags = Array.from(new Set(
+            templates.flatMap(template => template.tags ?? [])
+        ));
+
+        return {
+            packageVersion: '1.0.0',
+            exportedAt: new Date().toISOString(),
+            manifest: {
+                name: packageName || (templates.length === 1 ? templates[0].name : 'Storyteller Template Pack'),
+                description: templates.length === 1 ? templates[0].description : `${templates.length} Storyteller Suite templates`,
+                author: templates.length === 1 ? templates[0].author : 'User',
+                tags,
+                entityTypes
+            },
+            templates
+        };
+    }
+
+    /**
+     * Import a shareable template package. New IDs are generated by default to
+     * prevent accidental overwrites of local templates.
+     */
+    async importSharedTemplatePackage(
+        sharedPackage: SharedTemplatePackage,
+        options: { generateNewIds?: boolean } = {}
+    ): Promise<Template[]> {
+        if (!sharedPackage || sharedPackage.packageVersion !== '1.0.0' || !Array.isArray(sharedPackage.templates)) {
+            throw new Error('Invalid or unsupported template package');
+        }
+
+        const generateNewIds = options.generateNewIds ?? true;
+        const importedTemplates: Template[] = [];
+        const { TemplateMigrator } = await import('./TemplateMigrator');
+
+        for (const sourceTemplate of sharedPackage.templates) {
+            let template = TemplateMigrator.migrateTemplateToNewFormat(
+                JSON.parse(JSON.stringify(sourceTemplate)) as Template
+            );
+
+            if (generateNewIds) {
+                template = {
+                    ...template,
+                    id: `imported-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
+                    parentTemplateId: sourceTemplate.id
+                };
+            }
+
+            template.isBuiltIn = false;
+            template.isEditable = true;
+            template.author = template.author || sharedPackage.manifest.author || 'Imported';
+            template.created = new Date().toISOString();
+            template.modified = new Date().toISOString();
+            template.usageCount = 0;
+            template.lastUsed = undefined;
+            template.isNoteBased = false;
+            template.noteFilePath = undefined;
+
+            this.autoPopulateEntityTypes(template);
+            await this.saveTemplate(template);
+            const savedTemplate = this.getTemplate(template.id) ?? template;
+            importedTemplates.push(savedTemplate);
+        }
+
+        return importedTemplates;
     }
 
     /**
@@ -726,20 +776,12 @@ export class TemplateStorageManager {
      */
     autoPopulateEntityTypes(template: Template): void {
         const entityTypes: TemplateEntityType[] = [];
-        const entities = template.entities;
-
-        if (entities.characters && entities.characters.length > 0) entityTypes.push('character');
-        if (entities.locations && entities.locations.length > 0) entityTypes.push('location');
-        if (entities.events && entities.events.length > 0) entityTypes.push('event');
-        if (entities.items && entities.items.length > 0) entityTypes.push('item');
-        if (entities.groups && entities.groups.length > 0) entityTypes.push('group');
-        if (entities.maps && entities.maps.length > 0) entityTypes.push('map');
-        if (entities.cultures && entities.cultures.length > 0) entityTypes.push('culture');
-        if (entities.economies && entities.economies.length > 0) entityTypes.push('economy');
-        if (entities.magicSystems && entities.magicSystems.length > 0) entityTypes.push('magicSystem');
-        if (entities.chapters && entities.chapters.length > 0) entityTypes.push('chapter');
-        if (entities.scenes && entities.scenes.length > 0) entityTypes.push('scene');
-        if (entities.references && entities.references.length > 0) entityTypes.push('reference');
+        const counts = getTemplateEntityCounts(template.entities);
+        TEMPLATE_ENTITY_TYPES.forEach(entityType => {
+            if (counts[entityType] > 0) {
+                entityTypes.push(entityType);
+            }
+        });
 
         template.entityTypes = entityTypes;
     }
@@ -748,12 +790,7 @@ export class TemplateStorageManager {
         const candidatePaths = new Set<string>();
         candidatePaths.add(`${this.templateFolder}/${templateId}.json`);
 
-        const entityTypes: TemplateEntityType[] = [
-            'character', 'location', 'event', 'item', 'group', 'map',
-            'culture', 'economy', 'magicSystem', 'chapter', 'scene', 'reference'
-        ];
-
-        entityTypes.forEach(entityType => {
+        TEMPLATE_ENTITY_TYPES.forEach(entityType => {
             candidatePaths.add(
                 `${this.templateFolder}/${this.getEntityTypeFolder(entityType)}/${templateId}.json`
             );
@@ -771,8 +808,38 @@ export class TemplateStorageManager {
 
             const file = this.app.vault.getAbstractFileByPath(candidatePath);
             if (file instanceof TFile) {
-                await this.app.fileManager.trashFile(file);
+                await this.deleteTemplateFile(file);
             }
         }
+    }
+
+    private async deleteTemplateFile(file: TFile): Promise<void> {
+        if (this.app.fileManager?.trashFile) {
+            await this.app.fileManager.trashFile(file);
+            return;
+        }
+
+        const vaultWithDelete = this.app.vault as typeof this.app.vault & {
+            delete?: (file: TFile) => Promise<void>;
+            trash?: (file: TFile, system?: boolean) => Promise<void>;
+        };
+        if (vaultWithDelete.trash) {
+            await vaultWithDelete.trash(file, true);
+            return;
+        }
+        if (vaultWithDelete.delete) {
+            await vaultWithDelete.delete(file);
+        }
+    }
+
+    private prepareTemplateForSharing(template: Template): Template {
+        const shared = JSON.parse(JSON.stringify(template)) as Template;
+        shared.isBuiltIn = false;
+        shared.isEditable = true;
+        shared.usageCount = 0;
+        shared.lastUsed = undefined;
+        shared.isNoteBased = false;
+        shared.noteFilePath = undefined;
+        return shared;
     }
 }
