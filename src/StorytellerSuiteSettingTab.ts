@@ -39,21 +39,40 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
         this.plugin = plugin;
     }
 
+    private activeRenderToken = 0;
+
     display(): void {
+        const token = ++this.activeRenderToken;
         this.renderWithGuard();
 
-        // Obsidian 1.13 opens Settings in a separate window and can invoke
-        // display() before the container is attached to that window's document.
-        // When that happens the initial render is discarded and the pane stays
-        // blank until settings are reopened (confirmed: manually re-running
-        // display() repopulates it). Re-render if the container ends up empty
-        // after it settles. renderSettings() empties first, so this is
-        // idempotent and a no-op once the pane has content.
-        [0, 60, 200].forEach(delay => window.setTimeout(() => {
+        // Obsidian 1.13 opens Settings in a separate window and can swap in the
+        // real container *after* display() first runs, discarding our initial
+        // render so the pane stays blank until settings are reopened. The delay
+        // before the container settles varies by device, so a fixed timer isn't
+        // enough. Instead, keep re-rendering whenever the current container is
+        // empty until it sticks (or we hit the time budget). This automates the
+        // manual "call display() again" that reliably repopulates the pane.
+        // renderSettings() empties first, so re-rendering a populated pane never
+        // happens (guarded by the empty check) and this is a no-op once content
+        // is present.
+        const started = Date.now();
+        const tick = () => {
+            if (token !== this.activeRenderToken) return; // navigated away or re-displayed
             if (this.containerEl && this.containerEl.childElementCount === 0) {
                 this.renderWithGuard();
             }
-        }, delay));
+            if (Date.now() - started < 5000) {
+                window.setTimeout(tick, 150);
+            }
+        };
+        window.setTimeout(tick, 50);
+    }
+
+    hide(): void {
+        // Invalidate any pending re-render loop so it can't repopulate the pane
+        // after the user has navigated away or closed settings.
+        this.activeRenderToken++;
+        super.hide();
     }
 
     private renderWithGuard(): void {

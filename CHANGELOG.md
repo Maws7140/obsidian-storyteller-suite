@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.8.17
+
+### Fixed
+- Blank Storyteller settings pane in Obsidian 1.13+ (separate settings window), now fixed reliably across devices. Obsidian can swap in the real settings container after the first render, and the delay varies by device, so the pane now keeps re-rendering until it actually shows content instead of relying on a fixed timer.
+
 ## 1.8.16
 
 ### Fixed
