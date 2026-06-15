@@ -40,6 +40,23 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
     }
 
     display(): void {
+        this.renderWithGuard();
+
+        // Obsidian 1.13 opens Settings in a separate window and can invoke
+        // display() before the container is attached to that window's document.
+        // When that happens the initial render is discarded and the pane stays
+        // blank until settings are reopened (confirmed: manually re-running
+        // display() repopulates it). Re-render if the container ends up empty
+        // after it settles. renderSettings() empties first, so this is
+        // idempotent and a no-op once the pane has content.
+        [0, 60, 200].forEach(delay => window.setTimeout(() => {
+            if (this.containerEl && this.containerEl.childElementCount === 0) {
+                this.renderWithGuard();
+            }
+        }, delay));
+    }
+
+    private renderWithGuard(): void {
         try {
             this.renderSettings();
         } catch (error) {

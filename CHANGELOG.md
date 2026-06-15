@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.8.16
+
+### Fixed
+- Settings pane blank on first open in Obsidian 1.13+ (separate settings window): Obsidian can call the settings renderer before the container is attached to the new window, so the first render was discarded and the pane stayed blank until settings were reopened. The pane now re-renders automatically if it ends up empty, so it shows on the first open.
+
 ## 1.8.15
 
 ### Fixed

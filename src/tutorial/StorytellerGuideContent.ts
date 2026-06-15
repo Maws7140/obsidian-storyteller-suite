@@ -141,7 +141,7 @@ export function getWhatsNewGuide(version: string): StorytellerGuideDocument {
                 title: 'Fixed',
                 bodyHtml: `
                     <ul>
-                        <li>The Storyteller settings pane no longer shows up blank in Obsidian 1.13+. Settings rendering is now fully guarded, so even if a section fails it shows the details in place instead of leaving the whole pane empty.</li>
+                        <li>The Storyteller settings pane no longer shows up blank in Obsidian 1.13+. The pane now reliably renders on first open in Obsidian&rsquo;s separate settings window, and if a section ever fails it shows the details in place instead of leaving the whole pane empty.</li>
                     </ul>
                 `
             },
