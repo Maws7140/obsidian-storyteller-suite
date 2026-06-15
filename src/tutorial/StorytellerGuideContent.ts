@@ -134,9 +134,17 @@ export function getWhatsNewGuide(version: string): StorytellerGuideDocument {
     return {
         title: `What is new in ${version}`,
         introHtml: `
-            <p>Templates can now link to entities you already have, gallery uploads pick their folder from a dropdown, and the settings pane renders reliably on newer Obsidian builds.</p>
+            <p>The settings pane now renders correctly in Obsidian 1.13&rsquo;s separate Settings window. Plus: templates can link to entities you already have, and gallery uploads pick their folder from a dropdown.</p>
         `,
         sections: [
+            {
+                title: 'Fixed',
+                bodyHtml: `
+                    <ul>
+                        <li>Settings no longer appear blank in Obsidian 1.13+, which opens Settings in its own window. The layout is now applied directly so it renders no matter which window hosts it.</li>
+                    </ul>
+                `
+            },
             {
                 title: 'New',
                 bodyHtml: `

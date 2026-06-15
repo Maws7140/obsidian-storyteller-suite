@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.8.14
+
+### Fixed
+- Settings pane no longer renders blank in Obsidian 1.13+, which opens Settings in a separate window where the plugin stylesheet is not guaranteed to apply. The settings layout's non-collapsing height and flex structure are now set inline, so the pane renders regardless of which window hosts it.
+
 ## 1.8.13
 
 ### Added

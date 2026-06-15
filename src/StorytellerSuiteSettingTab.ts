@@ -58,6 +58,23 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
         const nav     = wrapper.createDiv('sts-settings-nav');
         const content = wrapper.createDiv('sts-settings-content');
 
+        // Obsidian 1.13 opens Settings in a separate window where the plugin's
+        // styles.css is not guaranteed to be injected. Without it the layout
+        // rules below are missing, the flex row collapses, and the pane renders
+        // blank. Apply the essential, non-collapsing layout inline so it holds
+        // regardless of whether the stylesheet reached this window.
+        containerEl.style.minHeight = '360px';
+        wrapper.style.display = 'flex';
+        wrapper.style.alignItems = 'flex-start';
+        wrapper.style.minHeight = '360px';
+        wrapper.style.width = '100%';
+        nav.style.flexShrink = '0';
+        nav.style.display = 'flex';
+        nav.style.flexDirection = 'column';
+        if (!nav.style.width) nav.style.width = '160px';
+        content.style.flex = '1';
+        content.style.minWidth = '0';
+
         const tabBtns: HTMLElement[] = [];
         this.TABS.forEach(tab => {
             const btn = nav.createDiv('sts-settings-tab-btn');
