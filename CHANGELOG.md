@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.8.15
+
+### Fixed
+- Settings pane reliability in Obsidian 1.13+: the entire settings render is now guarded, so if any part fails the pane shows the error in place (with details) instead of going completely blank. This resolves the blank Storyteller settings pane reported on Obsidian 1.13's separate settings window.
+
 ## 1.8.14
 
 ### Fixed

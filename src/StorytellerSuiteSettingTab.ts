@@ -40,6 +40,26 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
     }
 
     display(): void {
+        try {
+            this.renderSettings();
+        } catch (error) {
+            // Never leave the pane blank: surface the failure in-place so we (and
+            // the user) can see what went wrong instead of an empty window.
+            const msg = error instanceof Error ? (error.stack || error.message) : String(error);
+            console.error('[STS] settings display() failed:', error);
+            try {
+                this.containerEl.empty();
+                this.containerEl.addClass('sts-settings-root');
+                this.containerEl.createEl('h3', { text: 'Storyteller settings failed to render' });
+                this.containerEl.createEl('pre', {
+                    text: msg,
+                    cls: 'setting-item-description',
+                });
+            } catch { /* last resort: swallow */ }
+        }
+    }
+
+    private renderSettings(): void {
         const { containerEl } = this;
         containerEl.empty();
         containerEl.addClass('sts-settings-root');
