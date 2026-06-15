@@ -134,16 +134,23 @@ export function getWhatsNewGuide(version: string): StorytellerGuideDocument {
     return {
         title: `What is new in ${version}`,
         introHtml: `
-            <p>Dashboard polish: the Story Board confirmation flow, long group descriptions, and quick access to your maps.</p>
+            <p>Templates can now link to entities you already have, gallery uploads pick their folder from a dropdown, and the settings pane renders reliably on newer Obsidian builds.</p>
         `,
         sections: [
+            {
+                title: 'New',
+                bodyHtml: `
+                    <ul>
+                        <li>Templates can link the entities they create to <strong>existing</strong> vault entities &mdash; locations, magic systems, groups, cultures, and more &mdash; chosen when the template is applied. Define the links in the new <strong>Links</strong> tab of the template editor; the apply dialog then prompts for the existing entities to attach. No duplicate entities are created.</li>
+                        <li>The gallery upload folder is now chosen from a dropdown of your vault folders instead of a free-text field.</li>
+                    </ul>
+                `
+            },
             {
                 title: 'Fixes',
                 bodyHtml: `
                     <ul>
-                        <li>Story Board: the create and overwrite prompts no longer slip past on a timing race. The plugin waits for your answer, and creating a board opens the new canvas for you.</li>
-                        <li>Groups: long group descriptions now show a tidy, clamped preview on the dashboard instead of overflowing the card.</li>
-                        <li>Maps: the dashboard adds an <strong>Open maps panel</strong> action and per-map open buttons, so every map is one click away.</li>
+                        <li>Plugin settings no longer render blank under newer Obsidian settings windows: the layout uses a non-collapsing height, missing settings collections are guarded before rendering, and a failing section shows a message instead of blanking the whole pane.</li>
                     </ul>
                 `
             },
@@ -151,7 +158,7 @@ export function getWhatsNewGuide(version: string): StorytellerGuideDocument {
                 title: 'Also included',
                 bodyHtml: `
                     <ul>
-                        <li>The 1.8.7 and 1.8.8 hardening is carried forward: map panels render via an <code>@supports</code> dynamic-viewport fallback, character-sheet previews strip inline event handlers and <code>javascript:</code> links, and the bundle ships no dynamic <code>&lt;script&gt;</code> creation.</li>
+                        <li>Ongoing template, timeline, and map editor improvements, plus the earlier UI-style isolation so Storyteller&rsquo;s styles stay scoped to its own views.</li>
                     </ul>
                 `
             }
