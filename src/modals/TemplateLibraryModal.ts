@@ -414,7 +414,7 @@ export class TemplateLibraryModal extends ResponsiveModal {
     }
 
     private handleImportSharedTemplate(): void {
-        const input = document.createElement('input');
+        const input = activeDocument.createElement('input');
         input.type = 'file';
         input.accept = '.json,.storyteller-template.json,application/json';
         input.addEventListener('change', () => {
@@ -425,7 +425,8 @@ export class TemplateLibraryModal extends ResponsiveModal {
 
             const reader = new FileReader();
             reader.onload = () => {
-                void this.importSharedTemplateContent(String(reader.result ?? ''));
+                const result = reader.result;
+                void this.importSharedTemplateContent(typeof result === 'string' ? result : '');
             };
             reader.onerror = () => {
                 new Notice('Failed to read template package file');

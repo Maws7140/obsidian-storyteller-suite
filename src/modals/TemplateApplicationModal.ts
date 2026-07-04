@@ -192,7 +192,7 @@ export class TemplateApplicationModal extends ResponsiveModal {
         } else {
             setting.addDropdown(dropdown => {
                 dropdown.addOption('', '-- none --');
-                options.forEach(option => dropdown.addOption(option.value, option.label));
+                options.forEach(option => { dropdown.addOption(option.value, option.label); });
                 const current = this.linkSelections[link.id];
                 dropdown.setValue(typeof current === 'string' ? current : '');
                 dropdown.onChange(value => {
@@ -238,7 +238,7 @@ export class TemplateApplicationModal extends ResponsiveModal {
 
         setting.addDropdown(dropdown => {
             dropdown.addOption('', '-- add --');
-            options.forEach(option => dropdown.addOption(option.value, option.label));
+            options.forEach(option => { dropdown.addOption(option.value, option.label); });
             dropdown.onChange(value => {
                 if (!value) return;
                 const selected = getSelected();

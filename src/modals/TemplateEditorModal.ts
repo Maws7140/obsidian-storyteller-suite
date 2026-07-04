@@ -566,7 +566,7 @@ export class TemplateEditorModal extends ResponsiveModal {
             .setName('Prompt label')
             .setDesc('Shown to the user when applying the template')
             .addText(text => text
-                .setPlaceholder('e.g. Home magic system')
+                .setPlaceholder('E.g. Home magic system')
                 .setValue(link.label)
                 .onChange(value => {
                     link.label = value;

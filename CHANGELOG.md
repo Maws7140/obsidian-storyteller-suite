@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.8.18
+
+### Added
+- Timeline dates accept unpadded fantasy and historical years. A year can be written the natural way (`342`) or zero-padded (`0342`) and both place identically in Timeline and Gantt mode; one-, two-, and three-digit years are read as years. Unpadded year-month and year-month-day (`342-3-1`) work too.
+- Date ranges render Gantt bars. An event with a span such as `342 to 367` draws a bar instead of a single dot, and `through`, `until`, `..`, and an en-dash also work as separators. Full-date spans (`0342-03-01 to 0342-09-15`) and BCE spans (`500 BCE to 400 BCE`) are handled on both ends.
+
+### Fixed
+- A bare year like `342` was misread as a clock time (3:42) and landed the event at the present day instead of on the intended ancient timeline. Short years are now parsed as years ahead of the casual-date pass, so historical and fantasy events sit where they belong. Already-padded dates are unaffected.
+
+### Internal
+- Cleared Obsidian plugin-review lint findings in the template modals and converter (block-body `forEach` callbacks, `activeDocument`, sentence-case placeholders, a base-to-string guard, and a redundant type assertion). No user-facing behavior change.
+
 ## 1.8.17
 
 ### Fixed

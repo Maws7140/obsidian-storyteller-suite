@@ -151,7 +151,7 @@ export class EntityToTemplateConverter {
         const entityTypes: TemplateEntityType[] = [];
 
         TEMPLATE_ENTITY_DEFINITIONS.forEach(definition => {
-            const sourceEntities = entities[definition.pluralKey as keyof typeof entities] as unknown[] | undefined;
+            const sourceEntities = entities[definition.pluralKey] as unknown[] | undefined;
             if (!sourceEntities || sourceEntities.length === 0) {
                 return;
             }

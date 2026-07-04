@@ -108,6 +108,83 @@ describe('DateParsing', () => {
     expect(r.error).toBe('empty');
   });
 
+  describe('unpadded fantasy/historical years', () => {
+    it('parses a bare 3-digit year without a leading zero', () => {
+      const r = parseEventDate('342');
+      expect(r.error).toBeUndefined();
+      expect(r.start).toBeDefined();
+      expect(r.start?.year).toBe(342);
+      expect(r.precision).toBe('year');
+    });
+
+    it('parses a bare 1- and 2-digit year', () => {
+      expect(parseEventDate('7').start?.year).toBe(7);
+      expect(parseEventDate('42').start?.year).toBe(42);
+    });
+
+    it('does not misread a bare year as a clock time', () => {
+      // "342" must not become 3:42 today (the pre-fix chrono behaviour)
+      const r = parseEventDate('342');
+      expect(r.precision).toBe('year');
+      expect(r.start?.year).toBe(342);
+    });
+
+    it('parses an unpadded year-month-day', () => {
+      const r = parseEventDate('342-3-1');
+      expect(r.error).toBeUndefined();
+      expect(r.start?.year).toBe(342);
+      expect(r.start?.month).toBe(3);
+      expect(r.start?.day).toBe(1);
+      expect(r.precision).toBe('day');
+    });
+
+    it('parses an unpadded year-month', () => {
+      const r = parseEventDate('342-09');
+      expect(r.start?.year).toBe(342);
+      expect(r.start?.month).toBe(9);
+      expect(r.precision).toBe('month');
+    });
+
+    it('still parses a normal padded year the same way', () => {
+      const r = parseEventDate('0342');
+      expect(r.start?.year).toBe(342);
+      expect(r.precision).toBe('year');
+    });
+  });
+
+  describe('date ranges', () => {
+    it('parses an unpadded year range with "to" into a span', () => {
+      const r = parseEventDate('342 to 367');
+      expect(r.error).toBeUndefined();
+      expect(r.start?.year).toBe(342);
+      expect(r.end?.year).toBe(367);
+    });
+
+    it('parses a padded full-date range', () => {
+      const r = parseEventDate('0342-03-01 to 0342-09-15');
+      expect(r.start?.year).toBe(342);
+      expect(r.start?.month).toBe(3);
+      expect(r.end?.month).toBe(9);
+      expect(r.end?.day).toBe(15);
+    });
+
+    it('parses ranges split by "through" and ".."', () => {
+      expect(parseEventDate('342 through 367').end?.year).toBe(367);
+      expect(parseEventDate('342 .. 367').end?.year).toBe(367);
+    });
+
+    it('carries BCE handling into both range endpoints', () => {
+      const r = parseEventDate('500 BCE to 400 BCE');
+      expect(r.start).toBeDefined();
+      expect(r.isBCE).toBe(true);
+      expect(r.originalYear).toBe(500);
+      const startMillis = toMillis(r.start);
+      const endMillis = toMillis(r.end);
+      if (startMillis === undefined || endMillis === undefined) throw new Error('range millis undefined');
+      expect(startMillis).toBeLessThan(endMillis);
+    });
+  });
+
   describe('leap year validation', () => {
     it('accepts Feb 29 in leap year 2024', () => {
       const r = parseEventDate('February 29, 2024');

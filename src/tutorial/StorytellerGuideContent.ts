@@ -134,23 +134,15 @@ export function getWhatsNewGuide(version: string): StorytellerGuideDocument {
     return {
         title: `What is new in ${version}`,
         introHtml: `
-            <p>The settings pane now renders correctly in Obsidian 1.13&rsquo;s separate Settings window. Plus: templates can link to entities you already have, and gallery uploads pick their folder from a dropdown.</p>
+            <p>Fantasy and historical dates now work on the timeline the way you would actually write them. Padding a year with a leading zero is no longer required &mdash; though it still works if you prefer it.</p>
         `,
         sections: [
-            {
-                title: 'Fixed',
-                bodyHtml: `
-                    <ul>
-                        <li>The Storyteller settings pane no longer shows up blank in Obsidian 1.13+. The pane now reliably renders on first open in Obsidian&rsquo;s separate settings window, and if a section ever fails it shows the details in place instead of leaving the whole pane empty.</li>
-                    </ul>
-                `
-            },
             {
                 title: 'New',
                 bodyHtml: `
                     <ul>
-                        <li>Templates can link the entities they create to <strong>existing</strong> vault entities &mdash; locations, magic systems, groups, cultures, and more &mdash; chosen when the template is applied. Define the links in the new <strong>Links</strong> tab of the template editor; the apply dialog then prompts for the existing entities to attach. No duplicate entities are created.</li>
-                        <li>The gallery upload folder is now chosen from a dropdown of your vault folders instead of a free-text field.</li>
+                        <li><strong>Short years just work.</strong> Write a year either way &mdash; <code>342</code> or <code>0342</code> &mdash; and both place correctly in Timeline and Gantt mode. One, two, and three digit years are now read as years, and every date you already padded keeps working exactly as before.</li>
+                        <li><strong>Date ranges for Gantt bars.</strong> Give an event a span and it draws a bar instead of a single dot. Write it as <code>342 to 367</code>, and <code>through</code>, <code>until</code>, <code>..</code>, or an en-dash also work as separators. Full dates span too: <code>0342-03-01 to 0342-09-15</code>. BCE spans like <code>500 BCE to 400 BCE</code> are handled on both ends.</li>
                     </ul>
                 `
             },
@@ -158,7 +150,7 @@ export function getWhatsNewGuide(version: string): StorytellerGuideDocument {
                 title: 'Fixes',
                 bodyHtml: `
                     <ul>
-                        <li>Plugin settings no longer render blank under newer Obsidian settings windows: the layout uses a non-collapsing height, missing settings collections are guarded before rendering, and a failing section shows a message instead of blanking the whole pane.</li>
+                        <li>A bare year such as <code>342</code> could be misread as a clock time (3:42) and quietly land at the present day instead of on your ancient timeline. Short years are now read as years first, so historical and fantasy events sit where they belong.</li>
                     </ul>
                 `
             },
@@ -166,7 +158,8 @@ export function getWhatsNewGuide(version: string): StorytellerGuideDocument {
                 title: 'Also included',
                 bodyHtml: `
                     <ul>
-                        <li>Ongoing template, timeline, and map editor improvements, plus the earlier UI-style isolation so Storyteller&rsquo;s styles stay scoped to its own views.</li>
+                        <li>Recent fixes carry over: the Storyteller settings pane no longer shows up blank in Obsidian 1.13+&rsquo;s separate settings window, templates can link the entities they create to <strong>existing</strong> vault entities from the template editor&rsquo;s <strong>Links</strong> tab, and the gallery upload folder is chosen from a dropdown.</li>
+                        <li>Ongoing template, timeline, and map editor polish, plus internal code cleanup so Storyteller keeps its styles scoped to its own views.</li>
                     </ul>
                 `
             }

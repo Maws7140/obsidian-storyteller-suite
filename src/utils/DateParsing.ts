@@ -74,9 +74,67 @@ function getLuxonZone(timezone: ParseOptions['timezone']): string | FixedOffsetZ
   return timezone;
 }
 
+/**
+ * Pad an ISO-shaped numeric date so Luxon will accept it.
+ * Fantasy/historical years are commonly written unpadded ("342", "342-03-15"),
+ * but Luxon's ISO parser requires a 4-digit year (and 2-digit month/day).
+ * Left-pads the year to 4 digits and month/day to 2 so `342` -> `0342`,
+ * `342-3-1` -> `0342-03-01`. Returns the trimmed input unchanged if it is not
+ * a bare numeric ISO date (e.g. "next Friday", "March 15, 500 BCE").
+ * Luxon still stores the true integer year, so display is not zero-padded.
+ */
+function padIsoDate(s: string): string {
+  const trimmed = s.trim();
+  const m = trimmed.match(/^(\d{1,4})(?:-(\d{1,2}))?(?:-(\d{1,2}))?$/);
+  if (!m) return trimmed;
+  let out = m[1].padStart(4, '0');
+  if (m[2]) out += '-' + m[2].padStart(2, '0');
+  if (m[3]) out += '-' + m[3].padStart(2, '0');
+  return out;
+}
+
+/**
+ * Split a date range into its two endpoints on an explicit separator.
+ * Only splits on unambiguous separators (`to`, `through`, `until`, `thru`, `..`,
+ * or a spaced en/em dash) so ISO hyphens are never touched. Returns null when
+ * there is not exactly one separator producing two non-empty sides, letting the
+ * caller fall through to single-date / chrono parsing.
+ */
+function splitRange(text: string): [string, string] | null {
+  const parts = text.split(/\s+(?:to|through|until|thru)\s+|\s*\.\.\s*|\s+[–—]\s+/i);
+  if (parts.length === 2) {
+    const a = parts[0].trim();
+    const b = parts[1].trim();
+    if (a && b) return [a, b];
+  }
+  return null;
+}
+
 /** Try CE/BCE patterns first, then Luxon ISO, SQL, Chrono (casual), then ad-hoc formats. */export function parseEventDate(input?: unknown, opts: ParseOptions = {}): ParsedEventDate {
   const text = coerceDateInput(input);
   if (!text) return { error: 'empty' };
+
+  // 0) Explicit ranges ("0342 to 0367", "342 through 367", "0342-03-01 .. 0342-09-15").
+  // Parse each endpoint through the full pipeline (so BCE + unpadded-year handling
+  // apply to both sides), then combine into a single start/end span. Done before
+  // chrono so it never has to guess where a range splits.
+  const range = splitRange(text);
+  if (range) {
+    const startRes = parseEventDate(range[0], opts);
+    const endRes = parseEventDate(range[1], opts);
+    if (startRes.start && !startRes.error) {
+      return {
+        start: startRes.start,
+        end: endRes.end ?? endRes.start,
+        precision: startRes.precision,
+        approximate: startRes.approximate || endRes.approximate,
+        isBCE: startRes.isBCE,
+        originalYear: startRes.originalYear,
+      };
+    }
+    // If the range didn't resolve, fall through and let the full string be tried as-is.
+  }
+
   const approximate = APPROX_RE.test(text);
   const zone = getLuxonZone(opts.timezone);
 
@@ -254,13 +312,16 @@ function getLuxonZone(timezone: ParseOptions['timezone']): string | FixedOffsetZ
     }
   }
 
-  // 1) ISO
-  const iso = DateTime.fromISO(text, { zone });
+  // 1) ISO (pad unpadded fantasy/historical years first so Luxon's parser accepts
+  // them, and so this catches a bare year like "342" ahead of chrono — which would
+  // otherwise misread it as the time 3:42).
+  const isoText = padIsoDate(text);
+  const iso = DateTime.fromISO(isoText, { zone });
   if (iso.isValid) {
     // Infer precision from the text format if possible, as Luxon loses this info
     let precision: ParsedPrecision = 'day';
-    const trimmed = text.trim();
-    
+    const trimmed = isoText;
+
     if (/^\d{4}$/.test(trimmed)) {
         precision = 'year';
     } else if (/^\d{4}-\d{2}$/.test(trimmed)) {

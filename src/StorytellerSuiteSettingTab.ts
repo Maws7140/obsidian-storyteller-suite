@@ -119,6 +119,10 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
         // rules below are missing, the flex row collapses, and the pane renders
         // blank. Apply the essential, non-collapsing layout inline so it holds
         // regardless of whether the stylesheet reached this window.
+        // These assignments are inline on purpose (see comment above): in Obsidian 1.13's
+        // separate settings window the stylesheet is not guaranteed to apply, so the essential
+        // non-collapsing layout has to be set directly or the pane renders blank.
+        /* eslint-disable obsidianmd/no-static-styles-assignment */
         containerEl.style.minHeight = '360px';
         wrapper.style.display = 'flex';
         wrapper.style.alignItems = 'flex-start';
@@ -130,6 +134,7 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
         if (!nav.style.width) nav.style.width = '160px';
         content.style.flex = '1';
         content.style.minWidth = '0';
+        /* eslint-enable obsidianmd/no-static-styles-assignment */
 
         const tabBtns: HTMLElement[] = [];
         this.TABS.forEach(tab => {
@@ -254,14 +259,14 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
             .setName(name)
             .setDesc(desc)
             .addDropdown(dropdown => {
-                dropdown.addOption('', '— Vault root —');
+                dropdown.addOption('', '— vault root —');
                 const folders = this.getVaultFolderPaths();
                 const current = getValue();
                 // Keep the saved value selectable even if that folder no longer exists.
                 if (current && !folders.includes(current)) {
                     dropdown.addOption(current, `${current} (missing)`);
                 }
-                folders.forEach(path => dropdown.addOption(path, path));
+                folders.forEach(path => { dropdown.addOption(path, path); });
                 dropdown.setValue(current ?? '');
                 dropdown.onChange(async (value) => {
                     setValue(value);
@@ -401,7 +406,7 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
             .setDesc('Optional. One folder per line. When set, only Markdown files in these folders count toward the daily writing goal.')
             .addTextArea(text => {
                 text
-                    .setPlaceholder('Drafts\nManuscript/Scenes')
+                    .setPlaceholder('Drafts\nmanuscript/scenes')
                     .setValue((this.plugin.settings.dailyWordCountGoalFolders || []).join('\n'))
                     .onChange(async (value) => {
                         const folders = value
