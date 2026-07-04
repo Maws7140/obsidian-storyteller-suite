@@ -93,7 +93,10 @@ vitest.config.ts
 tsconfig.vitest.json
 
 # Test source files and directories
-test/
+# Unit tests and mocks ARE version-controlled. Only the local/generated e2e and
+# AI-driven harnesses stay ignored (they are heavy and machine-specific).
+test/e2e/
+test/playwright-ai/
 
 # Test-related scripts (generated/runtime)
 debug-test.js
