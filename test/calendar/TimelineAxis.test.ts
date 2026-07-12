@@ -89,6 +89,22 @@ describe('TimelineAxis — Gregorian tick generation', () => {
     expect(ticks.some((t) => t.label === '15')).toBe(true);
   });
 
+  it('uses hour ticks when zoomed inside a day', () => {
+    const start = toAbsolute(G, { year: 2024, month: 2, day: 1, unitOfDay: 8 * 60 }).absoluteDay;
+    const ticks = generateTicks(G, { startDay: start, endDay: start + 12 / 24, widthPx: 900 });
+    expect(ticks.length).toBeGreaterThan(1);
+    expect(ticks.every((tick) => tick.level === 'hour')).toBe(true);
+    expect(ticks.some((tick) => tick.label === '12:00')).toBe(true);
+  });
+
+  it('uses minute ticks at the closest zoom level', () => {
+    const start = toAbsolute(G, { year: 2024, month: 2, day: 1, unitOfDay: 10 * 60 }).absoluteDay;
+    const ticks = generateTicks(G, { startDay: start, endDay: start + 30 / 1440, widthPx: 900 });
+    expect(ticks.length).toBeGreaterThan(1);
+    expect(ticks.every((tick) => tick.level === 'minute')).toBe(true);
+    expect(ticks.some((tick) => tick.label === '10:15')).toBe(true);
+  });
+
   it('keeps every tick inside the view window', () => {
     const view: AxisView = {
       startDay: dayOf(1950, 6, 15),

@@ -177,6 +177,8 @@ export class TimelineView extends ItemView {
         // Use shared controls builder for common controls
         this.controlsBuilder.createGanttToggle(this.toolbarEl);
         this.controlsBuilder.createOrientationToggle(this.toolbarEl);
+        this.controlsBuilder.createZoomInButton(this.toolbarEl);
+        this.controlsBuilder.createZoomOutButton(this.toolbarEl);
         this.controlsBuilder.createGroupingDropdown(this.toolbarEl);
 
         // Fork selector dropdown

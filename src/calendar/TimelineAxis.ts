@@ -27,7 +27,7 @@ export interface AxisView {
   widthPx: number;
 }
 
-export type TickLevel = 'year' | 'month' | 'day';
+export type TickLevel = 'year' | 'month' | 'day' | 'hour' | 'minute';
 
 export interface AxisTick {
   /** Position on the shared axis. */
@@ -71,6 +71,8 @@ function chooseLevel(cal: CalendarSystem, spanDays: number): TickLevel {
   const avgMonthLen = yearLen / cal.months.length;
   if (spanDays >= yearLen * 3) return 'year';
   if (spanDays >= avgMonthLen * 3) return 'month';
+  if (cal.baseUnit === 'minute' && spanDays <= 3 / 24) return 'minute';
+  if (cal.baseUnit === 'minute' && spanDays <= 3) return 'hour';
   return 'day';
 }
 
@@ -119,6 +121,27 @@ export function generateTicks(
         const day = toAbsolute(cal, { year: y, month: m, day: 1 }).absoluteDay;
         push(day, cal.months[m].name, 'month');
       }
+    }
+    return ticks;
+  }
+
+  if (level === 'hour' || level === 'minute') {
+    const startUnit = Math.floor(view.startDay * cal.unitsPerDay);
+    const endUnit = Math.ceil(view.endDay * cal.unitsPerDay);
+    const candidates = level === 'hour'
+      ? [60, 120, 180, 360, 720]
+      : [1, 2, 5, 10, 15, 30, 60];
+    const rawStep = Math.max(1, (endUnit - startUnit) / maxTicks);
+    const stepUnits = candidates.find(step => step >= rawStep) ?? Math.ceil(rawStep / 60) * 60;
+    const firstUnit = Math.ceil(startUnit / stepUnits) * stepUnits;
+    for (let unit = firstUnit; unit < endUnit; unit += stepUnits) {
+      const absoluteDay = unit / cal.unitsPerDay;
+      const date = fromAbsolute(cal, { absoluteDay });
+      const unitOfDay = Math.round(date.unitOfDay ?? 0);
+      const label = cal.unitsPerDay === 1440
+        ? `${String(Math.floor(unitOfDay / 60)).padStart(2, '0')}:${String(unitOfDay % 60).padStart(2, '0')}`
+        : `Unit ${unitOfDay}`;
+      push(absoluteDay, label, level);
     }
     return ticks;
   }

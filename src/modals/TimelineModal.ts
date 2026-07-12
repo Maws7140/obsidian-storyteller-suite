@@ -82,6 +82,8 @@ export class TimelineModal extends Modal {
         // Create toolbar controls using shared builder
         this.controlsBuilder.createGanttToggle(toolbarContainer);
         this.controlsBuilder.createOrientationToggle(toolbarContainer);
+        this.controlsBuilder.createZoomInButton(toolbarContainer);
+        this.controlsBuilder.createZoomOutButton(toolbarContainer);
         this.controlsBuilder.createGroupingDropdown(toolbarContainer);
         this.controlsBuilder.createFitButton(toolbarContainer);
         this.controlsBuilder.createFitGroupsButton(toolbarContainer);

@@ -67,7 +67,6 @@ const DAY_MS = 86_400_000;
 const YEAR_MS = 365.2425 * DAY_MS;
 const SIDEBAR_WIDTH = 174;
 const AXIS_HEIGHT = 42;
-const MIN_SPAN = DAY_MS;
 const MAX_SPAN = 2_000_000 * YEAR_MS;
 
 export class NativeTimelineRenderer {
@@ -204,6 +203,14 @@ export class NativeTimelineRenderer {
     zoomPresetYears(years: number): void {
         const center = (this.viewStart + this.viewEnd) / 2;
         const span = Math.max(1, years) * YEAR_MS;
+        this.viewStart = center - span / 2;
+        this.viewEnd = center + span / 2;
+        this.scheduleDraw();
+    }
+
+    zoomBy(factor: number): void {
+        const center = (this.viewStart + this.viewEnd) / 2;
+        const span = Math.max(this.minimumSpan(), Math.min(MAX_SPAN, (this.viewEnd - this.viewStart) * factor));
         this.viewStart = center - span / 2;
         this.viewEnd = center + span / 2;
         this.scheduleDraw();
@@ -574,17 +581,17 @@ export class NativeTimelineRenderer {
         ctx.fillStyle = this.css('--text-muted', '#9ca3af');
         ctx.font = `12px ${this.css('--font-interface', 'sans-serif')}`;
 
-        const ticks = 7;
-        for (let i = 0; i <= ticks; i++) {
-            const ratio = i / ticks;
-            const time = this.viewStart + ratio * (this.viewEnd - this.viewStart);
+        const calendar = this.calendarRegistry.getActiveCalendar();
+        const absoluteStart = this.viewStart / DAY_MS + this.unixEpochAbsoluteDay();
+        const absoluteEnd = this.viewEnd / DAY_MS + this.unixEpochAbsoluteDay();
+        const ticks = generateTicks(calendar, { startDay: absoluteStart, endDay: absoluteEnd, widthPx: bottom - top }, 8);
+        ticks.forEach(tick => {
+            const time = (tick.absoluteDay - this.unixEpochAbsoluteDay()) * DAY_MS;
+            const ratio = (time - this.viewStart) / (this.viewEnd - this.viewStart);
             const y = top + ratio * (bottom - top);
             ctx.beginPath(); ctx.moveTo(axisX - 5, y); ctx.lineTo(axisX + 5, y); ctx.stroke();
-            const label = this.calendarRegistry.getActiveCalendar().id === GREGORIAN_CALENDAR.id
-                ? this.formatTick(time, (this.viewEnd - this.viewStart) / ticks)
-                : formatAbsoluteDay(time / DAY_MS + this.unixEpochAbsoluteDay(), this.calendarRegistry.getActiveCalendar(), 'day');
-            ctx.fillText(label, axisX - ctx.measureText(label).width - 10, y + 4);
-        }
+            ctx.fillText(tick.label, axisX - ctx.measureText(tick.label).width - 10, y + 4);
+        });
 
         const items = this.lanes.flatMap(lane => lane.items).filter(item => item.start >= this.viewStart && item.start <= this.viewEnd).sort((a, b) => a.start - b.start);
         this.visibleItems = [];
@@ -795,7 +802,7 @@ export class NativeTimelineRenderer {
             const pointer = vertical ? Math.max(0, event.offsetY - 28) : Math.max(0, event.offsetX - SIDEBAR_WIDTH);
             const anchor = this.viewStart + pointer / plotSize * (this.viewEnd - this.viewStart);
             const factor = Math.exp(event.deltaY * 0.0015);
-            const span = Math.max(MIN_SPAN, Math.min(MAX_SPAN, (this.viewEnd - this.viewStart) * factor));
+            const span = Math.max(this.minimumSpan(), Math.min(MAX_SPAN, (this.viewEnd - this.viewStart) * factor));
             const ratio = (anchor - this.viewStart) / (this.viewEnd - this.viewStart);
             this.viewStart = anchor - span * ratio; this.viewEnd = this.viewStart + span;
         } else if (!this.options.ganttMode && this.options.timelineOrientation === 'vertical') {
@@ -875,6 +882,7 @@ export class NativeTimelineRenderer {
     private timeToX(time: number, width: number): number { return SIDEBAR_WIDTH + (time - this.viewStart) / (this.viewEnd - this.viewStart) * Math.max(1, width - SIDEBAR_WIDTH); }
     private rowHeight(): number { return Math.round(24 + (100 - this.options.density) * 0.16); }
     private snapUnit(): number { const span = this.viewEnd - this.viewStart; return span < DAY_MS * 4 ? 60_000 : span < DAY_MS * 60 ? DAY_MS : 30 * DAY_MS; }
+    private minimumSpan(): number { return this.calendarRegistry.getActiveCalendar().baseUnit === 'minute' ? 60_000 : DAY_MS; }
     private snap(value: number): number { const unit = this.snapUnit(); return Math.round(value / unit) * unit; }
     private formatEditDate(value: number): string {
         const calendar = this.calendarRegistry.getActiveCalendar();

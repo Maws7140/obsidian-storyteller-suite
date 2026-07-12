@@ -177,6 +177,26 @@ export class TimelineControlsBuilder {
         return btn;
     }
 
+    createZoomInButton(container: HTMLElement): HTMLButtonElement {
+        const btn = container.createEl('button', {
+            cls: 'clickable-icon storyteller-toolbar-btn',
+            attr: { 'aria-label': 'Zoom in', 'title': 'Zoom in' }
+        });
+        setIcon(btn, 'zoom-in');
+        btn.addEventListener('click', () => this.callbacks.getRenderer()?.zoomBy(0.25));
+        return btn;
+    }
+
+    createZoomOutButton(container: HTMLElement): HTMLButtonElement {
+        const btn = container.createEl('button', {
+            cls: 'clickable-icon storyteller-toolbar-btn',
+            attr: { 'aria-label': 'Zoom out', 'title': 'Zoom out' }
+        });
+        setIcon(btn, 'zoom-out');
+        btn.addEventListener('click', () => this.callbacks.getRenderer()?.zoomBy(4));
+        return btn;
+    }
+
     /**
      * Create fit visible groups button (same core action as fit, labeled for grouped workflows)
      */
