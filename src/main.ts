@@ -203,6 +203,10 @@ const FRONTMATTER_LINK_ONLY_SCALAR_FIELDS = new Set([
  interface StorytellerSuiteSettings {
     stories: Story[]; // List of all stories
     activeStoryId: string; // Currently selected story
+    /** User-installed portable calendar systems. */
+    calendarSystems?: import('./calendar/types').CalendarSystem[];
+    /** User-installed portable timeline appearance themes. */
+    timelineThemes?: import('./calendar/TimelineDocuments').TimelineTheme[];
     galleryUploadFolder: string; // New setting for uploads
     galleryData: GalleryData; // Store gallery metadata here
     galleryWatchFolder?: string; // Folder to auto-scan for images
@@ -390,6 +394,13 @@ const FRONTMATTER_LINK_ONLY_SCALAR_FIELDS = new Set([
     /** User-defined custom compile steps (JavaScript) */
     customCompileSteps?: import('./types').CustomCompileStepDef[];
 
+    /**
+     * Allow custom compile steps to execute their JavaScript.
+     * Off by default: step code lives in synced settings, so enabling it runs
+     * arbitrary JS from data that can travel between devices/imports.
+     */
+    enableCustomCompileJs?: boolean;
+
     /** Whether to prompt when a new .md file appears in the scene folder */
     promptNewSceneFiles?: boolean;
 
@@ -497,6 +508,7 @@ const FRONTMATTER_LINK_ONLY_SCALAR_FIELDS = new Set([
     characterSheetTemplates: [],
     defaultCharacterSheetTemplateId: 'classic',
     customCompileSteps: [],
+    enableCustomCompileJs: false,
     promptNewSceneFiles: true,
 }
 
@@ -636,6 +648,7 @@ export default class StorytellerSuitePlugin extends Plugin {
     trackManager: TimelineTrackManager;
     eraManager: EraManager;
     private warnedMissingNameFiles: Set<string> = new Set();
+    private warnedMalformedFiles: Set<string> = new Set();
     private groupVaultSyncTimer: number | null = null;
     private deferredStartupMaintenanceTimer: number | null = null;
     private frontmatterReferenceIndexCache: Map<string, Promise<FrontmatterReferenceIndex>> = new Map();
@@ -994,7 +1007,10 @@ export default class StorytellerSuitePlugin extends Plugin {
                 }
             }
 
-            serialized[config.field] = resolvedValues;
+            // An array holding both an id and the name of the same entity
+            // resolves to the same display name twice — dedupe so notes don't
+            // accumulate double links ([[id]] + [[Name]]) on every save.
+            serialized[config.field] = Array.from(new Set(resolvedValues));
             if (config.mirrorField) {
                 delete serialized[config.mirrorField];
                 omitOriginalKeys.add(config.mirrorField);
@@ -1106,8 +1122,10 @@ export default class StorytellerSuitePlugin extends Plugin {
                 if (resolvedName) resolvedNames.push(resolvedName);
             }
 
-            data[config.field] = resolvedIds;
-            if (config.mirrorField) data[config.mirrorField] = resolvedNames;
+            // Same-entity duplicates (id form + name form in the source note)
+            // collapse to identical resolved values — dedupe on read as well.
+            data[config.field] = Array.from(new Set(resolvedIds));
+            if (config.mirrorField) data[config.mirrorField] = Array.from(new Set(resolvedNames));
         }
 
         for (const config of FRONTMATTER_OBJECT_REFERENCE_FIELDS) {
@@ -3904,6 +3922,26 @@ export default class StorytellerSuitePlugin extends Plugin {
 			// Direct parsing captures empty values that the cache might miss
 			const frontmatter = { ...(cachedFrontmatter || {}), ...(directFrontmatter || {}) };
 
+			// Strip runtime-only flags that older builds leaked into notes —
+			// a persisted _skipSync loaded onto the entity would silently
+			// disable bidirectional sync for it on every future save.
+			for (const key of Object.keys(frontmatter)) {
+				if (key.startsWith('_')) delete frontmatter[key];
+			}
+
+			// A file with a frontmatter block that neither the cache nor the direct
+			// parser could read (duplicate keys, bad indentation…) would otherwise
+			// vanish from every list with no trace — tell the user once per file.
+			const frontmatterUnparsable = content.startsWith('---') && !cachedFrontmatter && directFrontmatter === undefined;
+			if (frontmatterUnparsable) {
+				if (!this.warnedMalformedFiles.has(file.path)) {
+					this.warnedMalformedFiles.add(file.path);
+					new Notice(`Storyteller Suite: "${file.name}" has malformed frontmatter (check for duplicate keys or bad indentation). The note is hidden from lists until it's fixed.`, 10000);
+				}
+			} else if (this.warnedMalformedFiles.has(file.path)) {
+				this.warnedMalformedFiles.delete(file.path);
+			}
+
             if (!isStampedEntityTypeCompatible(frontmatter['entityType'], entityType)) {
                 return null;
             }
@@ -4002,8 +4040,13 @@ export default class StorytellerSuitePlugin extends Plugin {
 			if (!data['name']) {
 				// Only warn once per file to avoid console spam
 				if (!this.warnedMissingNameFiles.has(file.path)) {
-					
 					this.warnedMissingNameFiles.add(file.path);
+					// Only surface notes that are clearly meant to be entities
+					// (stamped with entityType or id) — not sheets or plain notes.
+					const looksLikeEntity = frontmatter['entityType'] !== undefined || frontmatter['id'] !== undefined;
+					if (!frontmatterUnparsable && looksLikeEntity) {
+						new Notice(`Storyteller Suite: "${file.name}" has no name in its frontmatter and is hidden from lists.`, 10000);
+					}
 				}
 				return null;
 			}

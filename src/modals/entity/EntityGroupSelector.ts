@@ -79,8 +79,11 @@ export class EntityGroupSelector {
         this.containerEl.empty();
         const allGroups = this.plugin.getGroups();
         if (allGroups.length === 0) {
+            const totalGroups = (this.plugin.settings.groups ?? []).length;
             this.containerEl.createEl('p', {
-                text: 'No groups available. Create groups in the groups section.'
+                text: totalGroups > 0
+                    ? `No groups in this story. ${totalGroups} group${totalGroups === 1 ? '' : 's'} belong${totalGroups === 1 ? 's' : ''} to other stories — switch stories or fix their story id to use them here.`
+                    : 'No groups available. Create groups in the groups section.'
             });
             return;
         }

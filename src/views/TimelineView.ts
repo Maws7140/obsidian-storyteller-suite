@@ -4,7 +4,7 @@
 import { ItemView, WorkspaceLeaf, setIcon, Menu, DropdownComponent, Notice, ViewStateResult } from 'obsidian';
 import StorytellerSuitePlugin from '../main';
 import { t } from '../i18n/strings';
-import { TimelineRenderer, TimelineFilters } from '../utils/TimelineRenderer';
+import { TimelineRenderer, TimelineFilters } from '../utils/NativeTimelineRenderer';
 import { TimelineUIFilters, TimelineUIState } from '../types';
 import { TimelineTrackManager } from '../utils/TimelineTrackManager';
 import { TimelineControlsBuilder, TimelineControlCallbacks } from '../utils/TimelineControlsBuilder';
@@ -190,10 +190,17 @@ export class TimelineView extends ItemView {
             value: 'main',
             text: 'Main timeline'
         });
-        mainOption.selected = true;
+        mainOption.selected = !this.currentState.currentForkId;
 
         // Add fork options
         const forks = this.plugin.getTimelineForks();
+        if (forks.length > 0) {
+            const compareOption = forkSelect.createEl('option', {
+                value: '__compare__',
+                text: 'Compare branches'
+            });
+            compareOption.selected = this.currentState.currentForkId === '__compare__';
+        }
         forks.forEach(fork => {
             const option = forkSelect.createEl('option', {
                 value: fork.id,
@@ -202,6 +209,7 @@ export class TimelineView extends ItemView {
             if (fork.color) {
                 option.setCssStyles({ color: fork.color });
             }
+            option.selected = this.currentState.currentForkId === fork.id;
         });
 
         forkSelect.addEventListener('change', () => { void (async () => {
@@ -213,6 +221,11 @@ export class TimelineView extends ItemView {
                 this.currentState.filters = {
                     ...this.currentState.filters,
                     forkId: undefined
+                };
+            } else if (selectedFork === '__compare__') {
+                this.currentState.filters = {
+                    ...this.currentState.filters,
+                    forkId: '__compare__'
                 };
             } else {
                 // Filter to fork-specific events

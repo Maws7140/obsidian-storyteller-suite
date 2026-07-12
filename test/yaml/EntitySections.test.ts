@@ -21,6 +21,21 @@ describe('EntitySections', () => {
     expect(fm).not.toHaveProperty('extra');
   });
 
+  it('buildFrontmatter never writes runtime flags, even via preserveKeys', () => {
+    // Regression: sync-triggered saves passed _skipSync through preserveKeys,
+    // persisting it into notes and permanently disabling bidirectional sync
+    // for those entities on read-back.
+    const src = {
+      id: '1',
+      name: 'Name',
+      _skipSync: true
+    } as any;
+    const preserveKeys = new Set(Object.keys(src));
+    const fm = buildFrontmatter('character', src, preserveKeys);
+    expect(fm).not.toHaveProperty('_skipSync');
+    expect(fm).toHaveProperty('name', 'Name');
+  });
+
   it('parseSectionsFromMarkdown extracts all ## sections', () => {
     const body = `---\n---\n\n## Description\nText here\n\n## Backstory\nStory`; 
     const sections = parseSectionsFromMarkdown(body);

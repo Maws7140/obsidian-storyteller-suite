@@ -7962,6 +7962,12 @@ body.mod-rtl .storyteller-group-members {
     margin: 0;
 }
 
+.storyteller-compile-custom-disabled-hint {
+    font-size: 0.825rem;
+    color: var(--color-yellow, var(--text-muted));
+    margin: 0 0 0.5em;
+}
+
 .storyteller-compile-custom-list {
     display: flex;
     flex-direction: column;
@@ -10240,6 +10246,8 @@ body.mod-rtl .storyteller-group-members {
 .storyteller-timeline-modal .vis-item:not(.vis-line):not(.vis-dot) {
     border-radius: 8px;
     border: 1px solid var(--sts-tl-border);
+    /* vis-timeline's runtime-injected CSS sets color:#1a1a1a — unreadable on dark item surfaces */
+    color: var(--text-normal);
     box-shadow: var(--sts-tl-item-shadow);
     z-index: 3;
     transition: none;
@@ -10333,6 +10341,8 @@ body.mod-rtl .storyteller-group-members {
     min-width: 88px;
     border-width: 1px;
     background-image: none;
+    /* Replace vis's injected #d5ddf6 default so text stays readable on theme surfaces */
+    background-color: var(--sts-tl-item-bg);
 }
 
 .storyteller-timeline-view .vis-item .vis-item-content,
@@ -11763,4 +11773,32 @@ body.mod-rtl .storyteller-group-members {
 
 .template-link-chip-remove:hover {
   color: var(--text-error);
+}
+.sts-native-timeline {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 240px;
+  overflow: hidden;
+  background: var(--background-primary);
+  color: var(--text-normal);
+  outline: none;
+  touch-action: none;
+  user-select: none;
+}
+
+.sts-native-timeline:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--interactive-accent);
+}
+
+.sts-native-timeline-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+}
+
+.sts-native-timeline.is-editing .sts-native-timeline-canvas,
+.is-editing .sts-native-timeline-canvas {
+  cursor: ew-resize;
 }

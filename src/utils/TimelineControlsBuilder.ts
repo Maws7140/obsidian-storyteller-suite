@@ -4,7 +4,7 @@
 import { setIcon, Notice, Setting } from 'obsidian';
 import { t } from '../i18n/strings';
 import StorytellerSuitePlugin from '../main';
-import { TimelineRenderer } from './TimelineRenderer';
+import { TimelineRenderer } from './NativeTimelineRenderer';
 import { TimelineUIState, Event } from '../types';
 import { TrackManagerModal } from '../modals/TrackManagerModal';
 import { ConflictViewModal } from '../modals/ConflictViewModal';

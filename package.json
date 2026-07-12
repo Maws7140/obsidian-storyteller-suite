@@ -1,6 +1,6 @@
 {
 	"name": "storyteller-suite",
-	"version": "1.8.18",
+	"version": "2.0.0-beta.1",
 	"description": "A comprehensive suite for managing characters, locations, events, and galleries for your novels.",
 	"main": "main.js",
 	"scripts": {
@@ -21,7 +21,7 @@
 	"license": "MIT",
 	"devDependencies": {
 		"@codemirror/state": "6.5.0",
-		"@codemirror/view": "6.38.1",
+		"@codemirror/view": "^6.38.6",
 		"@eslint/js": "^9.39.4",
 		"@eslint/json": "^0.14.0",
 		"@midscene/web": "^1.2.1",
@@ -49,13 +49,12 @@
 		"eslint": "^9.39.4",
 		"eslint-plugin-obsidianmd": "^0.3.0",
 		"luxon": "3.4.4",
-		"obsidian": "1.10.2",
+		"obsidian": "^1.13.1",
 		"obsidian-launcher": "^1.1.0",
 		"playwright": "^1.57.0",
 		"tslib": "2.4.0",
 		"typescript": "^4.7.4",
 		"typescript-eslint": "^8.59.3",
-		"vis-timeline": "^8.5.0",
 		"vitest": "1.6.0",
 		"wdio-obsidian-service": "^1.0.0"
 	},
@@ -66,8 +65,7 @@
 		"jszip": "^3.10.1",
 		"leaflet": "^1.9.4",
 		"leaflet-draw": "^1.0.4",
-		"leaflet.markercluster": "^1.5.3",
-		"timeline-arrows": "^4.8.0"
+		"leaflet.markercluster": "^1.5.3"
 	},
 	"optionalDependencies": {
 		"@esbuild/linux-x64": "^0.27.2"

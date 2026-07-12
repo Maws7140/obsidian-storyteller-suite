@@ -14,6 +14,7 @@ import { CharacterSheetPreviewModal } from './CharacterSheetPreviewModal';
 import { getTrackedItemOwner, isSameName } from '../utils/ItemOwnership';
 import { EntityCustomFieldsEditor } from './entity/EntityCustomFieldsEditor';
 import { EntityGroupSelector } from './entity/EntityGroupSelector';
+import { buildEntityNameIndex, getRelationshipTargetRef, resolveEntityRefName } from '../utils/EntityRefUtils';
 import { confirmWithModal } from './ui/ConfirmModal';
 // Placeholder imports for suggesters - these would need to be created
 // import { CharacterSuggestModal } from './CharacterSuggestModal';
@@ -39,6 +40,7 @@ export class CharacterModal extends ResponsiveModal {
     isNew: boolean;
     private readonly customFieldsEditor: EntityCustomFieldsEditor;
     private readonly groupSelector: EntityGroupSelector;
+    private entityNameIndex: Map<string, string> | null = null;
 
     constructor(app: App, plugin: StorytellerSuitePlugin, character: Character | null, onSubmit: CharacterModalSubmitCallback, onDelete?: CharacterModalDeleteCallback) {
         super(app);
@@ -566,6 +568,13 @@ export class CharacterModal extends ResponsiveModal {
         }
 
         const connectionsListContainer = contentEl.createDiv('storyteller-modal-linked-entities');
+        // Older notes store connection targets as ids (targetId) — build an
+        // id → name index so the list shows display names instead of raw ids.
+        try {
+            this.entityNameIndex = await buildEntityNameIndex(this.plugin);
+        } catch {
+            this.entityNameIndex = null;
+        }
         this.renderConnectionsList(connectionsListContainer);
 
         new Setting(contentEl)
@@ -692,16 +701,19 @@ export class CharacterModal extends ResponsiveModal {
 
         connections.forEach((conn, index) => {
             const item = container.createDiv('storyteller-modal-list-item');
-            
+
+            // Accept target/targetId/name shapes and resolve ids to display names
+            const targetRef = getRelationshipTargetRef(conn);
+            const targetName = resolveEntityRefName(targetRef, this.entityNameIndex);
             const infoSpan = item.createSpan();
-            infoSpan.setText(`${conn.target} (${t(conn.type)})`);
+            infoSpan.setText(`${targetName} (${t(conn.type || 'custom')})`);
             if (conn.label) {
                 infoSpan.appendText(` - ${conn.label}`);
             }
 
             new ButtonComponent(item)
                 .setClass('storyteller-modal-list-remove')
-                .setTooltip(t('removeX', conn.target))
+                .setTooltip(t('removeX', targetName))
                 .setIcon('cross')
                 .onClick(() => {
                     this.character.connections?.splice(index, 1);

@@ -1,5 +1,5 @@
 /**
- * CampaignView â€” DM-facing play mode for running scenes interactively.
+ * CampaignView — DM-facing play mode for running scenes interactively.
  *
  * Two states:
  *   - session-select: session cards + inline "New Session" form
@@ -279,7 +279,7 @@ export class CampaignView extends ItemView {
                         }
                     }
                 }
-            } catch { /* ignore â€” no characters loaded */ }
+            } catch { /* ignore — no characters loaded */ }
 
             const newSession: CampaignSession = {
                 name,
@@ -1196,7 +1196,7 @@ export class CampaignView extends ItemView {
         } else if (branch.failMode === 'scene') {
             target = this.resolveSceneName(branch.failSceneId, branch.fail);
         }
-        // 'continue' â€” no navigation
+        // 'continue' — no navigation
 
         const logEntries = [
             rollTotal != null

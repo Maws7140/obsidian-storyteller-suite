@@ -327,7 +327,7 @@ export class PlotItemModal extends ResponsiveModal {
                 const listDiv = pastOwnersContainer.createDiv('storyteller-tags-list');
                 this.item.pastOwners.forEach((owner, idx) => {
                     const tag = listDiv.createSpan({ text: owner, cls: 'storyteller-tag' });
-                    const removeBtn = tag.createSpan({ text: ' Ã—', cls: 'remove-tag-btn' });
+                    const removeBtn = tag.createSpan({ text: ' ×', cls: 'remove-tag-btn' });
                     removeBtn.onclick = () => {
                         this.item.pastOwners!.splice(idx, 1);
                         renderPastOwners();
@@ -360,7 +360,7 @@ export class PlotItemModal extends ResponsiveModal {
                 const listDiv = assocEventsContainer.createDiv('storyteller-tags-list');
                 this.item.associatedEvents.forEach((eventName, idx) => {
                     const tag = listDiv.createSpan({ text: eventName, cls: 'storyteller-tag' });
-                    const removeBtn = tag.createSpan({ text: ' Ã—', cls: 'remove-tag-btn' });
+                    const removeBtn = tag.createSpan({ text: ' ×', cls: 'remove-tag-btn' });
                     removeBtn.onclick = () => {
                         this.item.associatedEvents!.splice(idx, 1);
                         renderAssocEvents();
@@ -410,7 +410,7 @@ export class PlotItemModal extends ResponsiveModal {
         new Setting(contentEl)
             .setName('Add associated character')
             .addDropdown(dd => {
-                dd.addOption('', 'â€” select character â€”');
+                dd.addOption('', '— select character —');
                 allCharsForItem.forEach(c => { dd.addOption(c.name, c.name); });
                 dd.onChange(val => {
                     if (val && !(this.item.linkedCharacters ?? []).includes(val)) {
@@ -444,7 +444,7 @@ export class PlotItemModal extends ResponsiveModal {
         new Setting(contentEl)
             .setName('Add magic system')
             .addDropdown(dd => {
-                dd.addOption('', 'â€” select magic system â€”');
+                dd.addOption('', '— select magic system —');
                 allMagicSystems.forEach(m => { dd.addOption(m.name, m.name); });
                 dd.onChange(val => {
                     if (val && !(this.item.magicSystems ?? []).includes(val)) {
@@ -498,7 +498,7 @@ export class PlotItemModal extends ResponsiveModal {
         new Setting(contentEl)
             .setName('Traded in economy')
             .addDropdown(dd => {
-                dd.addOption('', 'â€” select economy â€”');
+                dd.addOption('', '— select economy —');
                 allEconomies.forEach(e => { dd.addOption(e.name, e.name); });
                 dd.onChange(val => {
                     if (val && !(this.item.linkedEconomies ?? []).includes(val)) {
@@ -542,7 +542,7 @@ export class PlotItemModal extends ResponsiveModal {
         new Setting(contentEl)
             .setName('Significant to culture')
             .addDropdown(dd => {
-                dd.addOption('', 'â€” select culture â€”');
+                dd.addOption('', '— select culture —');
                 allCultures.forEach(c => { dd.addOption(c.name, c.name); });
                 dd.onChange(val => {
                     if (val && !(this.item.linkedCultures ?? []).includes(val)) {

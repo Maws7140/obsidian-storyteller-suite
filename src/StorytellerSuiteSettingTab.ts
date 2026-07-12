@@ -1,4 +1,13 @@
-import { App, PluginSettingTab, Setting, Notice, TFolder, setIcon } from 'obsidian';
+import {
+    App,
+    PluginSettingTab,
+    Setting,
+    Notice,
+    TFolder,
+    setIcon,
+    SettingPage,
+    type SettingDefinitionItem,
+} from 'obsidian';
 import StorytellerSuitePlugin from './main';
 import { NewStoryModal } from './modals/NewStoryModal';
 import { EditStoryModal } from './modals/EditStoryModal';
@@ -10,6 +19,8 @@ import { setLocale, t, getAvailableLanguages, getLanguageName, isLanguageAvailab
 import { VIEW_TYPE_DASHBOARD } from './views/DashboardView';
 import { confirmWithModal } from './modals/ui/ConfirmModal';
 import type { TemplateEntityType } from './templates/TemplateTypes';
+import { CalendarRegistry } from './calendar/CalendarRegistry';
+import { encodeShareCode, makeCalendarDocument, makeThemeDocument } from './calendar/TimelineDocuments';
 
 type TabId = 'stories' | 'dashboard' | 'folders' | 'timeline' | 'maps' | 'templates' | 'gallery' | 'help';
 
@@ -17,6 +28,26 @@ interface TabDef { id: TabId; icon: string; label: string; }
 
 interface ReopenableView {
     onOpen(): Promise<void> | void;
+}
+
+class StorytellerSettingsPage extends SettingPage {
+    constructor(
+        title: string,
+        private readonly renderPage: (containerEl: HTMLElement) => void,
+        private readonly onHidePage: (containerEl: HTMLElement) => void
+    ) {
+        super();
+        this.title = title;
+    }
+
+    display(): void {
+        this.renderPage(this.containerEl);
+    }
+
+    hide(): void {
+        this.onHidePage(this.containerEl);
+        super.hide();
+    }
 }
 
 export class StorytellerSuiteSettingTab extends PluginSettingTab {
@@ -37,61 +68,93 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
     constructor(app: App, plugin: StorytellerSuitePlugin) {
         super(app, plugin);
         this.plugin = plugin;
+
+        // Obsidian 1.13 moves settings content into a separate window. On some
+        // devices the move leaves this connected container empty even though
+        // the tab and its declarative definitions are registered correctly.
+        // Use Obsidian's window-migration hook so recovery runs in the target
+        // window after the move has completed.
+        const removeWindowMigrationListener = this.containerEl.onWindowMigrated(win => {
+            win.setTimeout(() => {
+                if (this.containerEl.isConnected && this.containerEl.childElementCount === 0) {
+                    this.display();
+                }
+            }, 0);
+        });
+        plugin.register(removeWindowMigrationListener);
     }
 
-    private activeRenderToken = 0;
+    private declarativeContainer: HTMLElement | null = null;
+
+    getSettingDefinitions(): SettingDefinitionItem[] {
+        return this.TABS.map(tab => ({
+            type: 'page',
+            name: tab.label,
+            page: () => new StorytellerSettingsPage(
+                tab.label,
+                containerEl => this.renderDeclarativePage(tab.id, containerEl),
+                containerEl => {
+                    if (this.declarativeContainer === containerEl) {
+                        this.declarativeContainer = null;
+                    }
+                }
+            ),
+        }));
+    }
 
     display(): void {
-        const token = ++this.activeRenderToken;
         this.renderWithGuard();
-
-        // Obsidian 1.13 opens Settings in a separate window and can swap in the
-        // real container *after* display() first runs, discarding our initial
-        // render so the pane stays blank until settings are reopened. The delay
-        // before the container settles varies by device, so a fixed timer isn't
-        // enough. Instead, keep re-rendering whenever the current container is
-        // empty until it sticks (or we hit the time budget). This automates the
-        // manual "call display() again" that reliably repopulates the pane.
-        // renderSettings() empties first, so re-rendering a populated pane never
-        // happens (guarded by the empty check) and this is a no-op once content
-        // is present.
-        const started = Date.now();
-        const tick = () => {
-            if (token !== this.activeRenderToken) return; // navigated away or re-displayed
-            if (this.containerEl && this.containerEl.childElementCount === 0) {
-                this.renderWithGuard();
-            }
-            if (Date.now() - started < 5000) {
-                window.setTimeout(tick, 150);
-            }
-        };
-        window.setTimeout(tick, 50);
     }
 
-    hide(): void {
-        // Invalidate any pending re-render loop so it can't repopulate the pane
-        // after the user has navigated away or closed settings.
-        this.activeRenderToken++;
-        super.hide();
+    private renderDeclarativePage(tabId: TabId, containerEl: HTMLElement): void {
+        this.activeTab = tabId;
+        this.declarativeContainer = containerEl;
+        containerEl.empty();
+        containerEl.addClass('sts-settings-root');
+        this.ensureSettingsCollections();
+        try {
+            this.renderTab(tabId, containerEl);
+        } catch (error) {
+            this.renderFailure(containerEl, error);
+        }
+    }
+
+    private refreshSettingsView(): void {
+        if (this.declarativeContainer?.isConnected) {
+            this.renderDeclarativePage(this.activeTab, this.declarativeContainer);
+            return;
+        }
+        this.display();
     }
 
     private renderWithGuard(): void {
         try {
             this.renderSettings();
         } catch (error) {
-            // Never leave the pane blank: surface the failure in-place so we (and
-            // the user) can see what went wrong instead of an empty window.
-            const msg = error instanceof Error ? (error.stack || error.message) : String(error);
             console.error('[STS] settings display() failed:', error);
-            try {
-                this.containerEl.empty();
-                this.containerEl.addClass('sts-settings-root');
-                this.containerEl.createEl('h3', { text: 'Storyteller settings failed to render' });
-                this.containerEl.createEl('pre', {
-                    text: msg,
-                    cls: 'setting-item-description',
-                });
-            } catch { /* last resort: swallow */ }
+            this.renderFailure(this.containerEl, error);
+        }
+    }
+
+    private renderFailure(containerEl: HTMLElement, error: unknown): void {
+        const msg = error instanceof Error ? (error.stack || error.message) : String(error);
+        try {
+            containerEl.empty();
+            containerEl.addClass('sts-settings-root');
+            containerEl.createEl('h3', { text: 'Storyteller settings failed to render' });
+            containerEl.createEl('pre', {
+                text: msg,
+                cls: 'setting-item-description',
+            });
+        } catch { /* last resort: swallow */ }
+    }
+
+    private ensureSettingsCollections(): void {
+        if (!Array.isArray(this.plugin.settings.stories)) {
+            this.plugin.settings.stories = [];
+        }
+        if (!Array.isArray(this.plugin.settings.groups)) {
+            this.plugin.settings.groups = [];
         }
     }
 
@@ -103,12 +166,7 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
         // Defensive: settings loaded from disk may be missing collections (older or
         // partially-migrated data). Without this guard a later `.forEach` throws and
         // the whole settings pane renders blank.
-        if (!Array.isArray(this.plugin.settings.stories)) {
-            this.plugin.settings.stories = [];
-        }
-        if (!Array.isArray(this.plugin.settings.groups)) {
-            this.plugin.settings.groups = [];
-        }
+        this.ensureSettingsCollections();
 
         const wrapper = containerEl.createDiv('sts-settings-wrapper');
         const nav     = wrapper.createDiv('sts-settings-nav');
@@ -291,7 +349,7 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                     await this.plugin.saveSettings();
                     setLocale(value);
                     new Notice(t('languageChanged'));
-                    this.display();
+                    this.refreshSettingsView();
                 });
             });
 
@@ -308,7 +366,7 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                     .setDisabled(isActive)
                     .onClick(async () => {
                         await this.plugin.setActiveStory(story.id);
-                        this.display();
+                        this.refreshSettingsView();
                     })
                 )
                 .addExtraButton(btn => btn
@@ -320,7 +378,7 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                             this.app, this.plugin, story, existingNames,
                             async (name: string, description?: string) => {
                                 await this.plugin.updateStory(story.id, name, description);
-                                this.display();
+                                this.refreshSettingsView();
                             }
                         ).open();
                     })
@@ -339,7 +397,7 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                                 this.plugin.settings.activeStoryId = this.plugin.settings.stories[0]?.id || '';
                             }
                             await this.plugin.saveSettings();
-                            this.display();
+                            this.refreshSettingsView();
                         }
                     })
                 );
@@ -355,7 +413,7 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                         this.app, this.plugin, existingNames,
                         async (name: string, description?: string) => {
                             await this.plugin.createStory(name, description);
-                            this.display();
+                            this.refreshSettingsView();
                         }
                     ).open();
                 })
@@ -373,7 +431,7 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                         await this.plugin.refreshStoryDiscovery();
                     } finally {
                         btn.setDisabled(false);
-                        this.display();
+                        this.refreshSettingsView();
                     }
                 })
             );
@@ -438,6 +496,22 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                             await view.onOpen();
                         }
                     }));
+                })
+            );
+
+        new Setting(container).setName('Compile').setHeading();
+
+        new Setting(container)
+            .setName('Enable custom JavaScript compile steps')
+            .setDesc('Run the JavaScript code of your custom compile steps during compilation. Warning: this executes arbitrary JavaScript stored in plugin settings, which can sync between devices and travel with imported data. Only enable if you trust every custom step in this vault. When off, custom steps are skipped with a notice.')
+            .addToggle(toggle => toggle
+                .setValue(!!this.plugin.settings.enableCustomCompileJs)
+                .onChange(async (value) => {
+                    this.plugin.settings.enableCustomCompileJs = value;
+                    await this.plugin.saveSettings();
+                    if (value) {
+                        new Notice('Custom compile steps will now execute their JavaScript. Review your steps before compiling.');
+                    }
                 })
             );
 
@@ -530,7 +604,7 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                             await this.plugin.refreshCustomFolderDiscovery();
                         }
                     }
-                    this.display();
+                    this.refreshSettingsView();
                 })
             );
         this.addInfoToggle(customToggleSetting,
@@ -664,7 +738,7 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                     this.plugin.settings.enableOneStoryMode = value;
                     await this.plugin.saveSettings();
                     if (value) await this.plugin.initializeOneStoryModeIfNeeded();
-                    this.display();
+                    this.refreshSettingsView();
                 })
             );
         this.addInfoToggle(oneStoryModeSetting,
@@ -723,6 +797,55 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
     private renderTimelineTab(container: HTMLElement): void {
         new Setting(container).setName(t('timelineAndParsing')).setHeading();
 
+        const calendarRegistry = new CalendarRegistry(this.plugin);
+        const activeCalendar = calendarRegistry.getActiveCalendar();
+        const activeTheme = calendarRegistry.getActiveTheme();
+
+        new Setting(container)
+            .setName('Dating system')
+            .setDesc('Calendar used to parse and display dates for the active story.')
+            .addDropdown(dropdown => {
+                calendarRegistry.listCalendars().forEach(calendar => dropdown.addOption(calendar.id, calendar.name));
+                dropdown.setValue(activeCalendar.id).onChange(async id => {
+                    await calendarRegistry.setActiveCalendar(id);
+                    new Notice(`Dating system changed to ${calendarRegistry.getActiveCalendar().name}`);
+                });
+            })
+            .addExtraButton(button => button.setIcon('copy').setTooltip('Copy calendar share code').onClick(() => { void (async () => {
+                await navigator.clipboard.writeText(encodeShareCode(makeCalendarDocument(calendarRegistry.getActiveCalendar())));
+                new Notice('Calendar share code copied');
+            })(); }));
+
+        new Setting(container)
+            .setName('Timeline theme')
+            .setDesc('Appearance layer applied over the active Obsidian theme for this story.')
+            .addDropdown(dropdown => {
+                calendarRegistry.listThemes().forEach(theme => dropdown.addOption(theme.id, theme.name));
+                dropdown.setValue(activeTheme.id).onChange(async id => {
+                    await calendarRegistry.setActiveTheme(id);
+                    new Notice(`Timeline theme changed to ${calendarRegistry.getActiveTheme().name}`);
+                });
+            })
+            .addExtraButton(button => button.setIcon('copy').setTooltip('Copy timeline theme share code').onClick(() => { void (async () => {
+                await navigator.clipboard.writeText(encodeShareCode(makeThemeDocument(calendarRegistry.getActiveTheme())));
+                new Notice('Timeline theme share code copied');
+            })(); }));
+
+        let portableImport = '';
+        new Setting(container)
+            .setName('Import dating system or timeline theme')
+            .setDesc('Paste a .storycal.json/.storytl.json document or Storyteller share code.')
+            .addTextArea(text => text.setPlaceholder('Storyteller:cal:1:...').onChange(value => { portableImport = value; }))
+            .addButton(button => button.setButtonText('Import').setCta().onClick(async () => {
+                try {
+                    const imported = await calendarRegistry.importText(portableImport, 'copy');
+                    new Notice(imported.kind === 'storyteller-calendar' ? 'Dating system imported' : 'Timeline theme imported');
+                    this.refreshSettingsView();
+                } catch (error) {
+                    new Notice(`Import failed: ${error instanceof Error ? error.message : String(error)}`);
+                }
+            }));
+
         const cfSetting = new Setting(container)
             .setName(t('customFieldsSerialization'))
             .setDesc(t('customFieldsDesc'))
@@ -765,7 +888,7 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                 .onClick(async () => {
                     this.plugin.settings.customTodayISO = undefined;
                     await this.plugin.saveSettings();
-                    this.display();
+                    this.refreshSettingsView();
                 }));
 
         // Timeline defaults
@@ -1171,7 +1294,7 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                 .onChange(async (value) => {
                     this.plugin.settings.galleryScopeMode = value as 'vault' | 'book';
                     await this.plugin.saveSettings();
-                    this.display();
+                    this.refreshSettingsView();
                 }));
 
         if ((this.plugin.settings.galleryScopeMode ?? 'vault') === 'book') {
@@ -1248,7 +1371,7 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                 .onChange(async (value) => {
                     this.plugin.settings.showTutorial = value;
                     await this.plugin.saveSettings();
-                    this.display();
+                    this.refreshSettingsView();
                 }));
 
         if (this.plugin.settings.showTutorial) {

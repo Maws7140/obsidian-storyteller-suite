@@ -308,6 +308,10 @@ export function buildFrontmatter(
   }
 
   for (const [key, value] of Object.entries(source || {})) {
+    // Runtime-only flags (e.g. _skipSync) must never reach the note: a
+    // persisted _skipSync is read back by parseFile and permanently disables
+    // bidirectional sync for that entity.
+    if (key.startsWith('_')) continue;
     const allowKey = whitelist.has(key) || (preserveKeys?.has(key) ?? false);
     if (!allowKey) continue;
     // In flatten mode, avoid writing the customFields container when we promoted its entries

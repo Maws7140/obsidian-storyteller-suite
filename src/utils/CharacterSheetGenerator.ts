@@ -2,6 +2,7 @@ import { App, normalizePath, TFile } from 'obsidian';
 import { Character, TypedRelationship } from '../types';
 import StorytellerSuitePlugin from '../main';
 import { BUILT_IN_SHEET_TEMPLATES, CustomSheetTemplate } from './CharacterSheetTemplates';
+import { getRelationshipTargetRef, firstString, toStringArray, resolveEntityRefName } from './EntityRefUtils';
 
 export interface SheetData {
     character: Character;
@@ -26,7 +27,7 @@ export class CharacterSheetGenerator {
     constructor(private app: App, private plugin: StorytellerSuitePlugin) {}
 
     private esc(str: string): string {
-        return str
+        return String(str ?? '')
             .replace(/&/g, '&amp;')
             .replace(/</g, '&lt;')
             .replace(/>/g, '&gt;')
@@ -40,19 +41,51 @@ export class CharacterSheetGenerator {
         const allItems     = await this.plugin.listPlotItems();
         const allGroups    = this.plugin.getGroups();
 
-        const events = allEvents.filter(e =>
-            e.characters?.some(c => c.toLowerCase() === character.name.toLowerCase())
-        );
+        // Field shapes are hand-editable YAML: owner may be a list, locations a
+        // scalar, characters a scalar. Coerce before any string method so one
+        // malformed note can't take down every character's sheet.
+        const charName = String(character.name ?? '').toLowerCase();
+        const ownsName = (value: unknown) => toStringArray(value).some(entry => entry.toLowerCase() === charName);
+
+        const events = allEvents.filter(e => ownsName(e.characters));
         const locations = allLocations.filter(l =>
-            (character.locations || []).some(loc => loc.toLowerCase() === l.name.toLowerCase())
+            toStringArray(character.locations).some(loc => loc.toLowerCase() === String(l.name ?? '').toLowerCase())
         );
-        const items = allItems.filter(i =>
-            i.currentOwner?.toLowerCase() === character.name.toLowerCase() ||
-            i.pastOwners?.some(o => o.toLowerCase() === character.name.toLowerCase())
-        );
+        const items = allItems
+            .filter(i => ownsName(i.currentOwner) || ownsName(i.pastOwners))
+            .map(i => ({
+                name: i.name,
+                currentOwner: firstString(i.currentOwner),
+                pastOwners: toStringArray(i.pastOwners),
+                isPlotCritical: !!i.isPlotCritical,
+            }));
         const groups = allGroups.filter(g =>
-            (character.groups || []).includes(g.id)
+            toStringArray(character.groups).includes(g.id)
         );
+
+        // Resolve connection/relationship targets (target vs targetId vs name,
+        // id vs display name) once so every template renders names, not ids.
+        const allCharacters = await this.plugin.listCharacters();
+        const nameIndex = new Map<string, string>();
+        [...allCharacters, ...allLocations, ...allEvents, ...allItems].forEach(entity => {
+            if (entity.id && entity.name) nameIndex.set(entity.id, entity.name);
+        });
+        (this.plugin.settings.groups ?? []).forEach(group => {
+            if (group.id && group.name) nameIndex.set(group.id, group.name);
+        });
+        const normalizedCharacter: Character = {
+            ...character,
+            connections: (character.connections ?? []).map(conn => ({
+                ...conn,
+                target: resolveEntityRefName(getRelationshipTargetRef(conn), nameIndex),
+            })),
+            relationships: (character.relationships ?? []).map(rel =>
+                typeof rel === 'string'
+                    ? resolveEntityRefName(rel, nameIndex)
+                    : { ...rel, target: resolveEntityRefName(getRelationshipTargetRef(rel), nameIndex) }
+            ),
+        };
+        character = normalizedCharacter;
 
         let portraitDataUrl: string | undefined;
         if (character.profileImagePath) {
@@ -301,15 +334,12 @@ ${inner}
     // ── Legacy markdown generation (kept for backward compat) ─────────────────
 
     async generate(character: Character): Promise<string> {
-        const allEvents    = await this.plugin.listEvents();
-        const allLocations = await this.plugin.listLocations();
-        const allItems     = await this.plugin.listPlotItems();
-        const allGroups    = this.plugin.getGroups();
-
-        const charEvents    = allEvents.filter(e => e.characters?.some(c => c.toLowerCase() === character.name.toLowerCase()));
-        const charLocations = allLocations.filter(l => (character.locations || []).some(loc => loc.toLowerCase() === l.name.toLowerCase()));
-        const charItems     = allItems.filter(i => i.currentOwner?.toLowerCase() === character.name.toLowerCase() || i.pastOwners?.some(o => o.toLowerCase() === character.name.toLowerCase()));
-        const charGroups    = allGroups.filter(g => (character.groups || []).includes(g.id));
+        const data = await this.collectData(character);
+        character = data.character;
+        const charEvents    = data.events;
+        const charLocations = data.locations;
+        const charItems     = data.items;
+        const charGroups    = data.groups;
 
         const lines: string[] = [];
 

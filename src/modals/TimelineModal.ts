@@ -3,7 +3,7 @@ import { t } from '../i18n/strings';
 import { Event, TimelineUIState } from '../types';
 import StorytellerSuitePlugin from '../main';
 import { EventModal } from './EventModal';
-import { TimelineRenderer } from '../utils/TimelineRenderer';
+import { TimelineRenderer } from '../utils/NativeTimelineRenderer';
 import { TimelineControlsBuilder, TimelineControlCallbacks } from '../utils/TimelineControlsBuilder';
 import { TimelineFilterBuilder, TimelineFilterCallbacks } from '../utils/TimelineFilterBuilder';
 import { PlatformUtils } from '../utils/PlatformUtils';

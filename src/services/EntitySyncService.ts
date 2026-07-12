@@ -45,6 +45,10 @@ interface RelationshipMapping {
     bidirectional: boolean;
     /** Whether the target field is an array (for array handling) */
     isArray?: boolean;
+    /** Whether the SOURCE field is an array. Defaults to isArray — set false
+     *  for scalar sources with array targets (e.g. currentOwner ↔ ownedItems),
+     *  otherwise reverse sync array-wraps the scalar and corrupts the note. */
+    sourceIsArray?: boolean;
     /** Transform function to convert source value to target format */
     transform?: RelationshipTransform;
     /** Reverse transform for bidirectional relationships */
@@ -142,6 +146,7 @@ export class EntitySyncService {
             targetField: 'ownedItems',
             bidirectional: true,
             isArray: true,
+            sourceIsArray: false,
             transform: (ownerName: string, item: PlotItem) => item.name,
             reverseTransform: (itemId: string, character: Character) => character.name
         },
@@ -724,16 +729,21 @@ export class EntitySyncService {
         };
 
         const normalizedNew = normalizeValue(sourceValue);
-        const normalizedOld = normalizeValue(oldValue);
+        // A scalar field may carry an array in hand-edited or previously
+        // corrupted notes — treat every old element as a former target.
+        const normalizedOldValues = (Array.isArray(oldValue) ? oldValue : [oldValue])
+            .map(normalizeValue)
+            .filter(v => v !== null && v !== '');
 
         // Skip if value hasn't changed (handles whitespace differences)
-        if (normalizedNew === normalizedOld) {
+        if (normalizedOldValues.length === 1 && normalizedNew === normalizedOldValues[0]) {
             return;
         }
 
-        // Remove from old target if value changed
-        if (normalizedOld !== null && normalizedOld !== '') {
-            await this.removeFromTarget(mapping, normalizedOld, newEntity);
+        // Remove from old targets if value changed
+        for (const oldTargetValue of normalizedOldValues) {
+            if (oldTargetValue === normalizedNew) continue;
+            await this.removeFromTarget(mapping, oldTargetValue, newEntity);
         }
 
         // Add to new target if value is set
@@ -869,19 +879,28 @@ export class EntitySyncService {
                 const sourceEntity = await this.getEntity(mapping.sourceType, itemId as string);
                 if (sourceEntity && mapping.reverseTransform) {
                     const valueToSet = mapping.reverseTransform(itemId, newTarget);
-                    
-                    if (!Array.isArray((sourceEntity)[mapping.sourceField])) {
-                        if (mapping.isArray) {
-                            // Field should be an array but is undefined/null — initialize it
-                            (sourceEntity)[mapping.sourceField] = [];
-                        } else {
-                            // Scalar field — set directly
-                            if ((sourceEntity as unknown as Record<string, unknown>)[mapping.sourceField] !== valueToSet) {
-                                (sourceEntity as unknown as Record<string, unknown>)[mapping.sourceField] = valueToSet;
-                                await this.saveEntity(mapping.sourceType, sourceEntity);
-                            }
-                            continue;
+                    // mapping.isArray describes the TARGET field — the source
+                    // field's shape must be decided by sourceIsArray, or a
+                    // scalar like currentOwner gets array-wrapped in the note.
+                    const sourceShouldBeArray = mapping.sourceIsArray ?? mapping.isArray ?? false;
+
+                    if (!sourceShouldBeArray) {
+                        // Scalar source field — set directly. This also heals
+                        // values array-corrupted by the old code path.
+                        const current = (sourceEntity as unknown as Record<string, unknown>)[mapping.sourceField];
+                        const matches = typeof current === 'string' && typeof valueToSet === 'string'
+                            ? current.toLowerCase().trim() === valueToSet.toLowerCase().trim()
+                            : current === valueToSet;
+                        if (!matches) {
+                            (sourceEntity as unknown as Record<string, unknown>)[mapping.sourceField] = valueToSet;
+                            await this.saveEntity(mapping.sourceType, sourceEntity);
                         }
+                        continue;
+                    }
+
+                    if (!Array.isArray((sourceEntity)[mapping.sourceField])) {
+                        // Field should be an array but is undefined/null — initialize it
+                        (sourceEntity)[mapping.sourceField] = [];
                     }
                     // Add to array
                     const arr = (sourceEntity)[mapping.sourceField] as unknown[];
@@ -904,9 +923,21 @@ export class EntitySyncService {
                 const sourceEntity = await this.getEntity(mapping.sourceType, itemId as string);
                 if (sourceEntity && mapping.reverseTransform) {
                     const valueToRemove = mapping.reverseTransform(itemId, newTarget);
-                    
+                    const sourceShouldBeArray = mapping.sourceIsArray ?? mapping.isArray ?? false;
+
                     const sourceValue = (sourceEntity as unknown as Record<string, unknown>)[mapping.sourceField];
-                    if (Array.isArray(sourceValue)) {
+                    if (!sourceShouldBeArray && Array.isArray(sourceValue)) {
+                        // Scalar field carrying an array (corrupted by the old
+                        // code path) — remove the match and collapse the shape.
+                        const remaining = (sourceValue as unknown[]).filter(x => !(
+                            typeof x === 'string' && typeof valueToRemove === 'string'
+                                ? x.toLowerCase().trim() === valueToRemove.toLowerCase().trim()
+                                : x === valueToRemove
+                        ));
+                        (sourceEntity as unknown as Record<string, unknown>)[mapping.sourceField] =
+                            remaining.length === 0 ? undefined : remaining[0];
+                        await this.saveEntity(mapping.sourceType, sourceEntity);
+                    } else if (Array.isArray(sourceValue)) {
                         // Remove from array
                         const arr = sourceValue as unknown[];
                         const index = arr.findIndex(x => {

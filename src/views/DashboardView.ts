@@ -17,6 +17,7 @@ import { Character, Location, Event, PlotItem, GalleryImage, IndentedSceneRef, S
 import { NewStoryModal } from '../modals/NewStoryModal';
 import { GroupModal } from '../modals/GroupModal';
 import { PlatformUtils } from '../utils/PlatformUtils';
+import { toStringArray } from '../utils/EntityRefUtils';
 import type { DashboardLayoutMode } from '../utils/PlatformUtils';
 import {
     Template,
@@ -62,6 +63,8 @@ export class DashboardView extends ItemView {
     
     /** Current filter text applied to entity lists */
     currentFilter: string = '';
+    /** Items-tab "Plot Critical only" toggle — view-level so dashboard refreshes don't silently reset it */
+    private itemsPlotCriticalOnly = false;
     
     /** File input element reference for gallery image uploads */
     fileInput: HTMLInputElement | null = null;
@@ -430,6 +433,10 @@ export class DashboardView extends ItemView {
             getCurrentFilter: () => this.currentFilter,
             setCurrentFilter: (filter: string) => {
                 this.currentFilter = filter.toLowerCase();
+            },
+            getItemsPlotCriticalOnly: () => this.itemsPlotCriticalOnly,
+            setItemsPlotCriticalOnly: (value: boolean) => {
+                this.itemsPlotCriticalOnly = value;
             },
             isSimplifiedMobileDashboard: () => this.isSimplifiedMobileDashboard(),
             renderWritingGoalBanner: (c: HTMLElement) => this.renderWritingGoalBanner(c),
@@ -1267,7 +1274,6 @@ export class DashboardView extends ItemView {
     async renderItemsContent(container: HTMLElement) {
         await this.renderWithController('items', container, async () => {
         container.empty();
-        let showPlotCriticalOnly = false; // State for the filter toggle
 
         const controlsGroup = container.createDiv('storyteller-controls-group');
         new Setting(controlsGroup)
@@ -1276,18 +1282,19 @@ export class DashboardView extends ItemView {
                 .setPlaceholder(t('searchX', 'items'))
                 .onChange(async (value) => {
                     this.currentFilter = value.toLowerCase();
-                    await this.renderItemsList(container, showPlotCriticalOnly);
+                    await this.renderItemsList(container, this.itemsPlotCriticalOnly);
                 }));
 
-        // "Plot Critical Only" Toggle Button
+        // "Plot Critical Only" Toggle Button — state is view-level so a
+        // dashboard refresh mid-session doesn't silently reset the filter
         new Setting(controlsGroup)
             .setName(t('plotCritical'))
             .setDesc(t('filterX', 'bookmarked'))
             .addToggle(toggle => {
-                toggle.setValue(showPlotCriticalOnly)
+                toggle.setValue(this.itemsPlotCriticalOnly)
                     .onChange(async (value) => {
-                        showPlotCriticalOnly = value;
-                        await this.renderItemsList(container, showPlotCriticalOnly);
+                        this.itemsPlotCriticalOnly = value;
+                        await this.renderItemsList(container, value);
                     });
             });
 
@@ -1318,7 +1325,7 @@ export class DashboardView extends ItemView {
                 }
             });
 
-        await this.renderItemsList(container, showPlotCriticalOnly);
+        await this.renderItemsList(container, this.itemsPlotCriticalOnly);
         });
     }
 
@@ -1373,11 +1380,12 @@ export class DashboardView extends ItemView {
             }
 
             const extraInfoEl = infoEl.createDiv('storyteller-list-item-extra');
-            if (item.currentOwner) {
-                extraInfoEl.createSpan({ text: `Owner: ${item.currentOwner}` });
+            const ownerNames = toStringArray(item.currentOwner);
+            if (ownerNames.length > 0) {
+                extraInfoEl.createSpan({ text: `Owner: ${ownerNames.join(', ')}` });
             }
              if (item.currentLocation) {
-                if(item.currentOwner) extraInfoEl.appendText(' • ');
+                if (ownerNames.length > 0) extraInfoEl.appendText(' • ');
                 // Resolve location ID to display name
                 const locationName = this.resolveLocationName(item.currentLocation, locations);
                 extraInfoEl.createSpan({ text: `Location: ${locationName}` });
@@ -2033,6 +2041,16 @@ export class DashboardView extends ItemView {
             const emptyMsg = listContainer.createEl('p', { text: t('noGroupsFound'), cls: 'storyteller-empty-state' });
             emptyMsg.setCssStyles({ color: 'var(--text-muted)' });
             emptyMsg.setCssStyles({ fontStyle: 'italic' });
+            // Groups exist but are filtered out by story — "No groups found"
+            // alone reads as data loss, so say where they went.
+            const hiddenByStory = this.plugin.settings.groups.length - this.plugin.getGroups().length;
+            if (hiddenByStory > 0) {
+                const hintMsg = listContainer.createEl('p', {
+                    text: `${hiddenByStory} group${hiddenByStory === 1 ? '' : 's'} belong${hiddenByStory === 1 ? 's' : ''} to other stories and ${hiddenByStory === 1 ? 'is' : 'are'} hidden. Switch stories, or fix the group's story id if it should appear here.`,
+                    cls: 'storyteller-empty-state'
+                });
+                hintMsg.setCssStyles({ color: 'var(--text-muted)', fontStyle: 'italic' });
+            }
             return;
         }
         const allCharacters = await this.plugin.listCharacters();
@@ -3729,7 +3747,7 @@ export class DashboardView extends ItemView {
                 extraInfoEl.createSpan({ cls: 'storyteller-meta-badge storyteller-loc-region-badge', text: location.region });
             }
             if (location.parentLocationId) {
-                extraInfoEl.createSpan({ cls: 'storyteller-meta-badge storyteller-loc-parent-badge', text: `↑ ${location.parentLocationId}` });
+                extraInfoEl.createSpan({ cls: 'storyteller-meta-badge storyteller-loc-parent-badge', text: `↑ ${this.resolveLocationName(location.parentLocationId, locations)}` });
             }
             if (location.status) {
                 const statusSlug = location.status.toLowerCase().replace(/\s+/g, '-');
@@ -4071,6 +4089,13 @@ export class DashboardView extends ItemView {
         setIcon(addIcon, 'plus');
         addBtn.createSpan({ text: ' Add Step' });
         addBtn.addEventListener('click', () => this.openCustomStepModal(null, container));
+
+        if (!this.plugin.settings.enableCustomCompileJs) {
+            section.createEl('p', {
+                text: 'Custom step JavaScript is currently disabled — steps will be skipped during compile. Enable it in Settings → Storyteller Suite → Dashboard → Compile.',
+                cls: 'storyteller-compile-custom-disabled-hint'
+            });
+        }
 
         const steps = this.plugin.settings.customCompileSteps ?? [];
         if (steps.length === 0) {

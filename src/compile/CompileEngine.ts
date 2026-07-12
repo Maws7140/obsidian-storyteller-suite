@@ -74,19 +74,40 @@ export class CompileEngine {
             }
         }
 
+        const jsEnabled = this.plugin.settings.enableCustomCompileJs === true;
         const defs = this.plugin.settings.customCompileSteps ?? [];
         for (const def of defs) {
             const id = `custom:${def.id}`;
             const stepDef: CompileStepDefinition = {
                 id,
                 name: def.name,
-                description: `${def.description || 'Custom compile step'} (disabled: custom JavaScript execution is not supported).`,
+                description: jsEnabled
+                    ? (def.description || 'Custom compile step')
+                    : `${def.description || 'Custom compile step'} (disabled: enable custom JavaScript compile steps in settings).`,
                 availableKinds: [def.context],
                 options: [],
-                compile: async (input) => {
-                    new Notice(`Custom compile step "${def.name}" was skipped because custom JavaScript execution is disabled.`);
-                    return input;
-                }
+                compile: jsEnabled
+                    ? async (input, context) => {
+                        try {
+                            const AsyncFunction = Object.getPrototypeOf(async function () { /* */ }).constructor as new (...args: string[]) => (
+                                input: SceneCompileInput[] | ManuscriptCompileInput,
+                                context: CompileContext
+                            ) => Promise<SceneCompileInput[] | ManuscriptCompileInput | undefined>;
+                            const fn = new AsyncFunction('input', 'context', def.code || '');
+                            const out = await fn(input, context);
+                            // Tolerate step code that mutates input in place without returning it
+                            return out === undefined ? input : out;
+                        } catch (err) {
+                            const message = err instanceof Error ? err.message : String(err);
+                            new Notice(`Custom compile step "${def.name}" failed: ${message}`);
+                            console.error(`[Storyteller] Custom compile step "${def.name}" failed`, err);
+                            return input;
+                        }
+                    }
+                    : async (input) => {
+                        new Notice(`Custom compile step "${def.name}" was skipped because custom JavaScript execution is disabled in settings.`);
+                        return input;
+                    }
             };
             this.stepRegistry.set(id, stepDef);
         }

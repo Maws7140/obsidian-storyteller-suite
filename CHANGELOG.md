@@ -1,5 +1,20 @@
 # Changelog
 
+## 2.0.0-beta.1
+
+### Added
+- Native high-performance Canvas timeline with viewport culling, calendar-native axes, track and entity lanes, eras, Gantt dependencies, narrative connectors, drag editing, and branch comparison for forked timelines.
+- Per-story dating systems with arbitrary month counts, leap rules, day or minute precision, cycle overlays, holidays, and bundled Gregorian, 13 Moons, and Japanese kō examples.
+- Portable `.storycal.json` calendar and `.storytl.json` appearance documents with validation and Unicode-safe share codes for Vault Hub distribution.
+- Timeline themes inherit from the active Obsidian theme by default and can selectively override semantic colors and layout roles.
+
+### Changed
+- Alternate timelines can be compared as visual branches that inherit main-history events through their divergence points.
+- Removed the vis-timeline and timeline-arrows runtime dependencies.
+
+### Beta notes
+- Install through BRAT from the repository's `2.0.0-beta.1` prerelease. This beta does not alter or migrate existing event notes.
+
 ## 1.8.18
 
 ### Added

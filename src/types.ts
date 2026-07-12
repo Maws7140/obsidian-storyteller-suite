@@ -1046,6 +1046,10 @@ export interface Story {
     created: string;
     /** Optional description of the story */
     description?: string;
+    /** Calendar used to parse and display this story's dates. */
+    activeCalendarId?: string;
+    /** Portable appearance theme used by this story's timeline. */
+    activeTimelineThemeId?: string;
 }
 
 /**
