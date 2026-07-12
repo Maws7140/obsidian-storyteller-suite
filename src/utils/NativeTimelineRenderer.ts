@@ -350,6 +350,8 @@ export class NativeTimelineRenderer {
 
     private layoutRows(): void {
         const rowHeight = this.rowHeight();
+        const plotWidth = Math.max(1, (this.root?.clientWidth || 900) - SIDEBAR_WIDTH);
+        const visualReservation = (this.viewEnd - this.viewStart) * (210 / plotWidth);
         let top = AXIS_HEIGHT;
         this.lanes.forEach(lane => {
             lane.items.sort((a, b) => a.start - b.start || a.end - b.end);
@@ -358,12 +360,16 @@ export class NativeTimelineRenderer {
                 let row = 0;
                 if (this.options.stackEnabled) while (row < rowEnds.length && rowEnds[row] > item.start) row++;
                 item.row = row;
-                rowEnds[row] = item.end || item.start;
+                rowEnds[row] = Math.max(item.end, item.start + visualReservation);
             });
             lane.top = top;
             lane.height = Math.max(rowHeight + 12, rowEnds.length * rowHeight + 12);
             top += lane.height;
         });
+        if (this.lanes.length === 1 && this.root) {
+            this.lanes[0].height = Math.max(this.lanes[0].height, this.root.clientHeight - AXIS_HEIGHT);
+            top = AXIS_HEIGHT + this.lanes[0].height;
+        }
         const maxScroll = Math.max(0, top - (this.root?.clientHeight || 0));
         this.scrollTop = Math.min(this.scrollTop, maxScroll);
     }
@@ -414,6 +420,7 @@ export class NativeTimelineRenderer {
 
     private draw(): void {
         if (!this.canvas || !this.ctx || !this.root) return;
+        this.layoutRows();
         const ctx = this.ctx;
         const width = this.root.clientWidth;
         const height = this.root.clientHeight;
@@ -488,27 +495,46 @@ export class NativeTimelineRenderer {
             const x2 = this.timeToX(item.end, width);
             const y = top + 7 + item.row * rowHeight;
             const itemHeight = rowHeight - 7;
-            const milestone = item.event.isMilestone || Math.abs(x2 - x1) < 3;
-            const itemWidth = milestone ? 14 : Math.max(8, x2 - x1);
-            const x = milestone ? x1 - 7 : x1;
+            const isPoint = Math.abs(x2 - x1) < 3;
+            ctx.font = `11px ${this.css('--font-interface', 'sans-serif')}`;
+            const markers = `${item.event.narrativeMarkers?.isFlashback ? 'FB ' : ''}${item.event.narrativeMarkers?.isFlashforward ? 'FF ' : ''}`;
+            const chipWidth = Math.max(88, Math.min(210, ctx.measureText(markers + item.event.name).width + 34));
+            const itemWidth = isPoint ? chipWidth : Math.max(24, x2 - x1);
+            const x = isPoint ? x1 - 7 : x1;
             item.rect = new DOMRect(x, y, itemWidth, itemHeight);
             this.visibleItems.push(item);
-            this.drawItem(ctx, item, milestone);
+            this.drawItem(ctx, item, isPoint);
         }
     }
 
-    private drawItem(ctx: CanvasRenderingContext2D, item: NativeItem, milestone: boolean): void {
+    private drawItem(ctx: CanvasRenderingContext2D, item: NativeItem, isPoint: boolean): void {
         const rect = item.rect!;
         ctx.save();
         ctx.globalAlpha = item.inherited ? 0.45 : 1;
-        ctx.fillStyle = item === this.selected ? this.css('--interactive-accent', '#8b5cf6') : item.laneColor;
-        if (milestone) {
-            ctx.translate(rect.x + rect.width / 2, rect.y + rect.height / 2);
-            ctx.rotate(Math.PI / 4);
-            ctx.fillRect(-5, -5, 10, 10);
-            ctx.rotate(-Math.PI / 4);
-            ctx.translate(-(rect.x + rect.width / 2), -(rect.y + rect.height / 2));
+        const accent = item === this.selected ? this.css('--interactive-accent', '#8b5cf6') : item.laneColor;
+        if (isPoint) {
+            ctx.fillStyle = this.css('--background-secondary', '#1f2937');
+            this.roundedRect(ctx, rect.x, rect.y, rect.width, rect.height, 3);
+            ctx.fill();
+            ctx.strokeStyle = item === this.selected ? this.css('--interactive-accent', '#8b5cf6') : this.css('--background-modifier-border', '#374151');
+            ctx.lineWidth = item === this.selected ? 2 : 1;
+            ctx.stroke();
+            ctx.fillStyle = accent;
+            const markerX = rect.x + 10;
+            const markerY = rect.y + rect.height / 2;
+            if (item.event.isMilestone) {
+                ctx.save();
+                ctx.translate(markerX, markerY);
+                ctx.rotate(Math.PI / 4);
+                ctx.fillRect(-5, -5, 10, 10);
+                ctx.restore();
+            } else {
+                ctx.beginPath();
+                ctx.arc(markerX, markerY, 4, 0, Math.PI * 2);
+                ctx.fill();
+            }
         } else {
+            ctx.fillStyle = accent;
             this.roundedRect(ctx, rect.x, rect.y, rect.width, rect.height, 3); ctx.fill();
             if (this.options.showProgressBars && typeof item.event.progress === 'number') {
                 ctx.fillStyle = this.css('--text-on-accent', '#fff');
@@ -517,12 +543,12 @@ export class NativeTimelineRenderer {
             }
         }
         ctx.globalAlpha = 1;
-        const labelX = milestone ? rect.x + rect.width + 4 : rect.x + 6;
-        const available = milestone ? 160 : Math.max(0, rect.width - 12);
+        const labelX = isPoint ? rect.x + 22 : rect.x + 6;
+        const available = isPoint ? Math.max(0, rect.width - 28) : Math.max(0, rect.width - 12);
         if (available > 18) {
-            ctx.fillStyle = this.css('--text-on-accent', '#fff');
+            ctx.fillStyle = isPoint ? this.css('--text-normal', '#e5e7eb') : this.css('--text-on-accent', '#fff');
             ctx.font = `11px ${this.css('--font-interface', 'sans-serif')}`;
-            const markers = `${item.event.narrativeMarkers?.isFlashback ? '↶ ' : ''}${item.event.narrativeMarkers?.isFlashforward ? '↷ ' : ''}`;
+            const markers = `${item.event.narrativeMarkers?.isFlashback ? 'FB ' : ''}${item.event.narrativeMarkers?.isFlashforward ? 'FF ' : ''}`;
             ctx.fillText(this.truncate(ctx, markers + item.event.name, available), labelX, rect.y + rect.height / 2 + 4);
         }
         ctx.restore();
