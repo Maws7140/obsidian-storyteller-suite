@@ -94,6 +94,8 @@ export class NativeTimelineRenderer {
     private viewEnd = Date.now() + YEAR_MS;
     private scrollTop = 0;
     private dragging: { kind: 'pan' | 'move'; x: number; y: number; start: number; end: number; item?: NativeItem } | null = null;
+    private activePointers = new Map<number, { x: number; y: number }>();
+    private pinch: { distance: number; span: number; anchorTime: number } | null = null;
     private referenceDate = new Date();
     private palette = ['#7c3aed', '#2563eb', '#059669', '#ca8a04', '#dc2626', '#ea580c', '#0ea5e9', '#22c55e', '#d946ef', '#f59e0b'];
 
@@ -748,10 +750,20 @@ export class NativeTimelineRenderer {
     private onPointerDown(event: PointerEvent): void {
         if (!this.canvas) return;
         this.canvas.setPointerCapture(event.pointerId);
+        this.activePointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+        if (this.activePointers.size === 2) {
+            this.beginPinch();
+            this.dragging = null;
+            return;
+        }
         const item = this.hit(event.offsetX, event.offsetY);
         if (item) {
             this.selected = item; this.options.onEventSelected?.(item.event);
-            this.dragging = this.options.editMode ? { kind: 'move', x: event.clientX, y: event.clientY, start: item.start, end: item.end, item } : null;
+            this.dragging = this.options.editMode
+                ? { kind: 'move', x: event.clientX, y: event.clientY, start: item.start, end: item.end, item }
+                : event.pointerType === 'touch'
+                    ? { kind: 'pan', x: event.clientX, y: event.clientY, start: this.viewStart, end: this.viewEnd }
+                    : null;
             this.scheduleDraw();
             return;
         }
@@ -760,6 +772,11 @@ export class NativeTimelineRenderer {
     }
 
     private onPointerMove(event: PointerEvent): void {
+        if (this.activePointers.has(event.pointerId)) this.activePointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+        if (this.activePointers.size >= 2 && this.pinch) {
+            this.updatePinch();
+            return;
+        }
         if (!this.dragging || !this.root) return;
         const vertical = !this.options.ganttMode && this.options.timelineOrientation === 'vertical';
         const plotSize = vertical ? Math.max(1, this.root.clientHeight - 52) : Math.max(1, this.root.clientWidth - SIDEBAR_WIDTH);
@@ -767,7 +784,10 @@ export class NativeTimelineRenderer {
         const deltaTime = -pointerDelta / plotSize * (this.dragging.end - this.dragging.start);
         if (this.dragging.kind === 'pan') {
             this.viewStart = this.dragging.start + deltaTime; this.viewEnd = this.dragging.end + deltaTime;
-            this.scrollTop = Math.max(0, this.scrollTop - (event.clientY - this.dragging.y)); this.dragging.y = event.clientY;
+            if (!vertical) {
+                this.scrollTop = Math.max(0, Math.min(this.maxLaneScroll(), this.scrollTop - (event.clientY - this.dragging.y)));
+                this.dragging.y = event.clientY;
+            }
         } else if (this.dragging.item) {
             const duration = this.dragging.end - this.dragging.start;
             const snapped = this.snap(this.dragging.start + deltaTime);
@@ -777,7 +797,19 @@ export class NativeTimelineRenderer {
     }
 
     private async onPointerUp(event: PointerEvent): Promise<void> {
-        if (!this.dragging) return;
+        this.activePointers.delete(event.pointerId);
+        if (this.pinch) {
+            this.pinch = null;
+            this.dragging = null;
+            this.canvas?.releasePointerCapture(event.pointerId);
+            const remaining = Array.from(this.activePointers.values())[0];
+            if (remaining) this.dragging = { kind: 'pan', x: remaining.x, y: remaining.y, start: this.viewStart, end: this.viewEnd };
+            return;
+        }
+        if (!this.dragging) {
+            this.canvas?.releasePointerCapture(event.pointerId);
+            return;
+        }
         const dragging = this.dragging; this.dragging = null;
         this.canvas?.releasePointerCapture(event.pointerId);
         if (dragging.kind === 'move' && dragging.item && dragging.item.start !== dragging.start) {
@@ -808,14 +840,59 @@ export class NativeTimelineRenderer {
         } else if (!this.options.ganttMode && this.options.timelineOrientation === 'vertical') {
             const delta = event.deltaY / 900 * (this.viewEnd - this.viewStart);
             this.viewStart += delta; this.viewEnd += delta;
-        } else if (Math.abs(event.deltaX) > Math.abs(event.deltaY) || event.shiftKey) {
-            const delta = (event.deltaX || event.deltaY) / 1200 * (this.viewEnd - this.viewStart);
-            this.viewStart += delta; this.viewEnd += delta;
         } else {
-            const total = this.lanes.reduce((sum, lane) => sum + lane.height, AXIS_HEIGHT);
-            this.scrollTop = Math.max(0, Math.min(Math.max(0, total - this.root.clientHeight), this.scrollTop + event.deltaY));
+            const verticalWheel = Math.abs(event.deltaY) >= Math.abs(event.deltaX);
+            const canScrollLanes = this.maxLaneScroll() > 0;
+            if (!event.shiftKey && verticalWheel && canScrollLanes) {
+                const before = this.scrollTop;
+                this.scrollTop = Math.max(0, Math.min(this.maxLaneScroll(), this.scrollTop + event.deltaY));
+                if (this.scrollTop !== before) {
+                    this.scheduleDraw();
+                    return;
+                }
+            }
+            const wheelDelta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
+            const delta = wheelDelta / 900 * (this.viewEnd - this.viewStart);
+            this.viewStart += delta; this.viewEnd += delta;
         }
         this.scheduleDraw();
+    }
+
+    private beginPinch(): void {
+        if (!this.root) return;
+        const points = Array.from(this.activePointers.values());
+        if (points.length < 2) return;
+        const distance = Math.hypot(points[1].x - points[0].x, points[1].y - points[0].y);
+        const vertical = !this.options.ganttMode && this.options.timelineOrientation === 'vertical';
+        const center = vertical ? (points[0].y + points[1].y) / 2 : (points[0].x + points[1].x) / 2;
+        const bounds = this.root.getBoundingClientRect();
+        const local = vertical ? center - bounds.top - 28 : center - bounds.left - SIDEBAR_WIDTH;
+        const size = vertical ? Math.max(1, this.root.clientHeight - 52) : Math.max(1, this.root.clientWidth - SIDEBAR_WIDTH);
+        const ratio = Math.max(0, Math.min(1, local / size));
+        this.pinch = { distance: Math.max(1, distance), span: this.viewEnd - this.viewStart, anchorTime: this.viewStart + ratio * (this.viewEnd - this.viewStart) };
+    }
+
+    private updatePinch(): void {
+        if (!this.root || !this.pinch) return;
+        const points = Array.from(this.activePointers.values());
+        if (points.length < 2) return;
+        const distance = Math.max(1, Math.hypot(points[1].x - points[0].x, points[1].y - points[0].y));
+        const span = Math.max(this.minimumSpan(), Math.min(MAX_SPAN, this.pinch.span * this.pinch.distance / distance));
+        const vertical = !this.options.ganttMode && this.options.timelineOrientation === 'vertical';
+        const center = vertical ? (points[0].y + points[1].y) / 2 : (points[0].x + points[1].x) / 2;
+        const bounds = this.root.getBoundingClientRect();
+        const local = vertical ? center - bounds.top - 28 : center - bounds.left - SIDEBAR_WIDTH;
+        const size = vertical ? Math.max(1, this.root.clientHeight - 52) : Math.max(1, this.root.clientWidth - SIDEBAR_WIDTH);
+        const ratio = Math.max(0, Math.min(1, local / size));
+        this.viewStart = this.pinch.anchorTime - span * ratio;
+        this.viewEnd = this.viewStart + span;
+        this.scheduleDraw();
+    }
+
+    private maxLaneScroll(): number {
+        if (!this.root) return 0;
+        const total = this.lanes.reduce((sum, lane) => sum + lane.height, AXIS_HEIGHT);
+        return Math.max(0, total - this.root.clientHeight);
     }
 
     private onKeyDown(event: KeyboardEvent): void {
