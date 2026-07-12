@@ -176,6 +176,7 @@ export class TimelineView extends ItemView {
 
         // Use shared controls builder for common controls
         this.controlsBuilder.createGanttToggle(this.toolbarEl);
+        this.controlsBuilder.createOrientationToggle(this.toolbarEl);
         this.controlsBuilder.createGroupingDropdown(this.toolbarEl);
 
         // Fork selector dropdown
@@ -471,6 +472,7 @@ export class TimelineView extends ItemView {
         // Initialize timeline renderer
         this.renderer = new TimelineRenderer(this.timelineContainer, this.plugin, {
             ganttMode: this.currentState.ganttMode,
+            timelineOrientation: this.currentState.timelineOrientation,
             groupMode: this.currentState.groupMode,
             stackEnabled: this.currentState.stackEnabled,
             density: this.currentState.density,
@@ -765,6 +767,7 @@ export class TimelineView extends ItemView {
 
         return {
             ganttMode: this.currentState.ganttMode,
+            timelineOrientation: this.currentState.timelineOrientation,
             groupMode: this.currentState.groupMode,
             stackEnabled: this.currentState.stackEnabled,
             density: this.currentState.density,
@@ -797,6 +800,7 @@ export class TimelineView extends ItemView {
             const filters = restoreFilters(state.filters);
             this.currentState = {
                 ganttMode: state.ganttMode === true,
+                timelineOrientation: state.timelineOrientation === 'vertical' ? 'vertical' : 'horizontal',
                 groupMode: isGroupMode(state.groupMode) ? state.groupMode : 'none',
                 stackEnabled: typeof state.stackEnabled === 'boolean' ? state.stackEnabled : true,
                 density: typeof state.density === 'number' ? state.density : 50,

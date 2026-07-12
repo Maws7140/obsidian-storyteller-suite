@@ -81,6 +81,7 @@ export class TimelineModal extends Modal {
 
         // Create toolbar controls using shared builder
         this.controlsBuilder.createGanttToggle(toolbarContainer);
+        this.controlsBuilder.createOrientationToggle(toolbarContainer);
         this.controlsBuilder.createGroupingDropdown(toolbarContainer);
         this.controlsBuilder.createFitButton(toolbarContainer);
         this.controlsBuilder.createFitGroupsButton(toolbarContainer);
@@ -208,6 +209,7 @@ export class TimelineModal extends Modal {
         // Initialize new renderer with current settings from shared state
         this.renderer = new TimelineRenderer(this.timelineContainer, this.plugin, {
             ganttMode: this.currentState.ganttMode,
+            timelineOrientation: this.currentState.timelineOrientation,
             groupMode: this.currentState.groupMode,
             stackEnabled: this.currentState.stackEnabled,
             density: this.currentState.density,

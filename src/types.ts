@@ -2338,6 +2338,8 @@ export interface LocationSensoryProfile {
 export interface TimelineUIState {
     /** Whether Gantt chart view is enabled */
     ganttMode: boolean;
+    /** Chronology orientation; Gantt always renders horizontally. */
+    timelineOrientation: 'horizontal' | 'vertical';
     /** Grouping mode for events */
     groupMode: 'none' | 'location' | 'group' | 'character' | 'track';
     /** Active filters */

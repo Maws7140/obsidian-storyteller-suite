@@ -50,6 +50,7 @@ export class TimelineControlsBuilder {
     static createDefaultState(plugin: StorytellerSuitePlugin): TimelineUIState {
         return {
             ganttMode: false,
+            timelineOrientation: 'horizontal',
             groupMode: (plugin.settings.defaultTimelineGroupMode || 'none'),
             filters: {},
             stackEnabled: plugin.settings.defaultTimelineStack ?? true,
@@ -79,6 +80,11 @@ export class TimelineControlsBuilder {
             btn.setAttribute('aria-label', this.state.ganttMode ? t('timelineView') : t('ganttView'));
             btn.setAttribute('title', this.state.ganttMode ? t('timelineView') : t('ganttView'));
             this.callbacks.getRenderer()?.setGanttMode(this.state.ganttMode);
+            const orientationButton = container.querySelector<HTMLButtonElement>('.storyteller-orientation-toggle');
+            if (orientationButton) {
+                orientationButton.disabled = this.state.ganttMode;
+                orientationButton.setAttribute('aria-disabled', String(this.state.ganttMode));
+            }
             
             // Toggle gantt-mode class on the timeline view container
             const timelineView = container.closest('.storyteller-timeline-view');
@@ -93,6 +99,33 @@ export class TimelineControlsBuilder {
             this.callbacks.onStateChange();
         });
 
+        return btn;
+    }
+
+    /** Toggle horizontal/vertical chronology. Gantt remains horizontal. */
+    createOrientationToggle(container: HTMLElement): HTMLButtonElement {
+        const btn = container.createEl('button', {
+            cls: `clickable-icon storyteller-toolbar-btn storyteller-orientation-toggle${this.state.timelineOrientation === 'vertical' ? ' is-active' : ''}`,
+            attr: {
+                'aria-label': this.state.timelineOrientation === 'vertical' ? 'Use horizontal timeline' : 'Use vertical timeline',
+                'title': this.state.timelineOrientation === 'vertical' ? 'Horizontal timeline' : 'Vertical timeline'
+            }
+        });
+        const sync = () => {
+            const vertical = this.state.timelineOrientation === 'vertical';
+            setIcon(btn, vertical ? 'move-horizontal' : 'move-vertical');
+            btn.toggleClass('is-active', vertical);
+            btn.disabled = this.state.ganttMode;
+            btn.setAttribute('aria-disabled', String(this.state.ganttMode));
+        };
+        sync();
+        btn.addEventListener('click', () => {
+            if (this.state.ganttMode) return;
+            this.state.timelineOrientation = this.state.timelineOrientation === 'horizontal' ? 'vertical' : 'horizontal';
+            sync();
+            this.callbacks.getRenderer()?.setTimelineOrientation(this.state.timelineOrientation);
+            this.callbacks.onStateChange();
+        });
         return btn;
     }
 

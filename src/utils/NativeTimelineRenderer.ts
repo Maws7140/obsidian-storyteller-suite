@@ -13,6 +13,7 @@ import { generateTicks } from '../calendar/TimelineAxis';
 
 export interface TimelineRendererOptions {
     ganttMode?: boolean;
+    timelineOrientation?: 'horizontal' | 'vertical';
     groupMode?: 'none' | 'location' | 'group' | 'character' | 'track';
     showDependencies?: boolean;
     showProgressBars?: boolean;
@@ -104,6 +105,7 @@ export class NativeTimelineRenderer {
         this.calendarRegistry = new CalendarRegistry(plugin);
         this.options = {
             ganttMode: false,
+            timelineOrientation: 'horizontal',
             groupMode: 'none',
             showDependencies: true,
             showProgressBars: true,
@@ -135,6 +137,7 @@ export class NativeTimelineRenderer {
 
     applyFilters(filters: Partial<TimelineFilters>): void { this.filters = { ...this.filters, ...filters }; this.rebuild(false); }
     setGanttMode(value: boolean): void { this.options.ganttMode = value; this.rebuild(false); }
+    setTimelineOrientation(value: 'horizontal' | 'vertical'): void { this.options.timelineOrientation = value; this.rebuild(false); }
     setGroupMode(value: TimelineRendererOptions['groupMode']): void { this.options.groupMode = value || 'none'; this.rebuild(false); }
     setEditMode(value: boolean): void { this.options.editMode = value; this.container.toggleClass('is-editing', value); }
     setShowEras(value: boolean): void { this.options.showEras = value; this.scheduleDraw(); }
@@ -427,6 +430,10 @@ export class NativeTimelineRenderer {
         ctx.clearRect(0, 0, width, height);
         ctx.fillStyle = this.css('--background-primary', '#111827');
         ctx.fillRect(0, 0, width, height);
+        if (!this.options.ganttMode && this.options.timelineOrientation === 'vertical') {
+            this.drawVerticalTimeline(ctx, width, height);
+            return;
+        }
         this.drawAxis(ctx, width, height);
         this.drawEras(ctx, width, height);
         this.visibleItems = [];
@@ -472,6 +479,10 @@ export class NativeTimelineRenderer {
     }
 
     private drawLane(ctx: CanvasRenderingContext2D, lane: Lane, width: number, height: number): void {
+        if (!this.options.ganttMode) {
+            this.drawChronologyLane(ctx, lane, width, height);
+            return;
+        }
         const top = lane.top - this.scrollTop;
         if (top > height || top + lane.height < AXIS_HEIGHT) return;
         ctx.fillStyle = this.css('--background-secondary-alt', '#18202d');
@@ -507,7 +518,105 @@ export class NativeTimelineRenderer {
         }
     }
 
-    private drawItem(ctx: CanvasRenderingContext2D, item: NativeItem, isPoint: boolean): void {
+    private drawChronologyLane(ctx: CanvasRenderingContext2D, lane: Lane, width: number, height: number): void {
+        const top = lane.top - this.scrollTop;
+        if (top > height || top + lane.height < AXIS_HEIGHT) return;
+        ctx.fillStyle = this.css('--background-secondary-alt', '#18202d');
+        ctx.fillRect(0, top, SIDEBAR_WIDTH, lane.height);
+        ctx.fillStyle = lane.color;
+        ctx.fillRect(0, top, 4, lane.height);
+        ctx.fillStyle = this.css('--text-normal', '#e5e7eb');
+        ctx.font = `600 12px ${this.css('--font-interface', 'sans-serif')}`;
+        ctx.fillText(this.truncate(ctx, lane.label, SIDEBAR_WIDTH - 24), 13, top + 22);
+
+        const baselineY = top + 18;
+        ctx.strokeStyle = this.css('--background-modifier-border', '#374151');
+        ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(SIDEBAR_WIDTH, baselineY); ctx.lineTo(width, baselineY); ctx.stroke();
+
+        const rowHeight = this.rowHeight();
+        const startIndex = this.lowerBound(lane.items, this.viewStart);
+        for (let i = Math.max(0, startIndex - 1); i < lane.items.length; i++) {
+            const item = lane.items[i];
+            if (item.start > this.viewEnd) break;
+            if (item.end < this.viewStart) continue;
+            const pointX = this.timeToX(item.start, width);
+            const endX = this.timeToX(item.end, width);
+            const chipY = top + 34 + item.row * rowHeight;
+            const markers = `${item.event.narrativeMarkers?.isFlashback ? 'FB ' : ''}${item.event.narrativeMarkers?.isFlashforward ? 'FF ' : ''}`;
+            ctx.font = `11px ${this.css('--font-interface', 'sans-serif')}`;
+            const chipWidth = Math.max(92, Math.min(210, ctx.measureText(markers + item.event.name).width + 34));
+            const chipHeight = rowHeight - 7;
+            const chipX = Math.min(Math.max(SIDEBAR_WIDTH + 4, pointX + 9), width - chipWidth - 4);
+            item.rect = new DOMRect(chipX, chipY, chipWidth, chipHeight);
+            this.visibleItems.push(item);
+
+            ctx.strokeStyle = item.laneColor;
+            ctx.globalAlpha = item.inherited ? 0.45 : 0.8;
+            ctx.beginPath(); ctx.moveTo(pointX, baselineY); ctx.lineTo(pointX, chipY + chipHeight / 2); ctx.lineTo(chipX, chipY + chipHeight / 2); ctx.stroke();
+            if (endX - pointX > 3) {
+                ctx.beginPath(); ctx.moveTo(pointX, baselineY); ctx.lineTo(endX, baselineY); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(endX, baselineY - 4); ctx.lineTo(endX, baselineY + 4); ctx.stroke();
+            }
+            ctx.globalAlpha = 1;
+            this.drawPointMarker(ctx, pointX, baselineY, item);
+            this.drawItem(ctx, item, true);
+        }
+    }
+
+    private drawVerticalTimeline(ctx: CanvasRenderingContext2D, width: number, height: number): void {
+        const top = 28;
+        const bottom = Math.max(top + 1, height - 24);
+        const axisX = Math.max(220, Math.min(width / 2, width - 230));
+        ctx.strokeStyle = this.css('--background-modifier-border', '#374151');
+        ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(axisX, top); ctx.lineTo(axisX, bottom); ctx.stroke();
+        ctx.fillStyle = this.css('--text-muted', '#9ca3af');
+        ctx.font = `12px ${this.css('--font-interface', 'sans-serif')}`;
+
+        const ticks = 7;
+        for (let i = 0; i <= ticks; i++) {
+            const ratio = i / ticks;
+            const time = this.viewStart + ratio * (this.viewEnd - this.viewStart);
+            const y = top + ratio * (bottom - top);
+            ctx.beginPath(); ctx.moveTo(axisX - 5, y); ctx.lineTo(axisX + 5, y); ctx.stroke();
+            const label = this.calendarRegistry.getActiveCalendar().id === GREGORIAN_CALENDAR.id
+                ? this.formatTick(time, (this.viewEnd - this.viewStart) / ticks)
+                : formatAbsoluteDay(time / DAY_MS + this.unixEpochAbsoluteDay(), this.calendarRegistry.getActiveCalendar(), 'day');
+            ctx.fillText(label, axisX - ctx.measureText(label).width - 10, y + 4);
+        }
+
+        const items = this.lanes.flatMap(lane => lane.items).filter(item => item.start >= this.viewStart && item.start <= this.viewEnd).sort((a, b) => a.start - b.start);
+        this.visibleItems = [];
+        let previousLeft = -Infinity;
+        let previousRight = -Infinity;
+        items.forEach((item, index) => {
+            const desiredY = top + (item.start - this.viewStart) / (this.viewEnd - this.viewStart) * (bottom - top);
+            const rightSide = index % 2 === 0 || axisX < 280;
+            const last = rightSide ? previousRight : previousLeft;
+            const placedY = Math.max(desiredY, last + 34);
+            if (rightSide) previousRight = placedY; else previousLeft = placedY;
+            if (placedY > bottom) return;
+            const markers = `${item.event.narrativeMarkers?.isFlashback ? 'FB ' : ''}${item.event.narrativeMarkers?.isFlashforward ? 'FF ' : ''}`;
+            const lanePrefix = this.lanes.length > 1 ? `${item.laneLabel}: ` : '';
+            const label = lanePrefix + markers + item.event.name;
+            const chipWidth = Math.max(110, Math.min(230, ctx.measureText(label).width + 34));
+            const chipHeight = 27;
+            const chipX = rightSide ? axisX + 28 : Math.max(4, axisX - 28 - chipWidth);
+            const chipY = placedY - chipHeight / 2;
+            item.rect = new DOMRect(chipX, chipY, chipWidth, chipHeight);
+            this.visibleItems.push(item);
+            ctx.strokeStyle = item.laneColor;
+            ctx.lineWidth = 1.5;
+            ctx.beginPath(); ctx.moveTo(axisX, desiredY); ctx.lineTo(rightSide ? chipX : chipX + chipWidth, placedY); ctx.stroke();
+            this.drawPointMarker(ctx, axisX, desiredY, item);
+            this.drawItem(ctx, item, true, label);
+        });
+        this.drawConnectors(ctx, width, height);
+        this.drawNowVertical(ctx, axisX, top, bottom);
+    }
+
+    private drawItem(ctx: CanvasRenderingContext2D, item: NativeItem, isPoint: boolean, labelOverride?: string): void {
         const rect = item.rect!;
         ctx.save();
         ctx.globalAlpha = item.inherited ? 0.45 : 1;
@@ -549,7 +658,18 @@ export class NativeTimelineRenderer {
             ctx.fillStyle = isPoint ? this.css('--text-normal', '#e5e7eb') : this.css('--text-on-accent', '#fff');
             ctx.font = `11px ${this.css('--font-interface', 'sans-serif')}`;
             const markers = `${item.event.narrativeMarkers?.isFlashback ? 'FB ' : ''}${item.event.narrativeMarkers?.isFlashforward ? 'FF ' : ''}`;
-            ctx.fillText(this.truncate(ctx, markers + item.event.name, available), labelX, rect.y + rect.height / 2 + 4);
+            ctx.fillText(this.truncate(ctx, labelOverride || markers + item.event.name, available), labelX, rect.y + rect.height / 2 + 4);
+        }
+        ctx.restore();
+    }
+
+    private drawPointMarker(ctx: CanvasRenderingContext2D, x: number, y: number, item: NativeItem): void {
+        ctx.save();
+        ctx.fillStyle = item === this.selected ? this.css('--interactive-accent', '#8b5cf6') : item.laneColor;
+        if (item.event.isMilestone) {
+            ctx.translate(x, y); ctx.rotate(Math.PI / 4); ctx.fillRect(-6, -6, 12, 12);
+        } else {
+            ctx.beginPath(); ctx.arc(x, y, 5, 0, Math.PI * 2); ctx.fill();
         }
         ctx.restore();
     }
@@ -610,6 +730,14 @@ export class NativeTimelineRenderer {
         const x = this.timeToX(now, width); ctx.save(); ctx.strokeStyle = this.css('--color-red', '#ef4444'); ctx.setLineDash([4, 4]); ctx.beginPath(); ctx.moveTo(x, AXIS_HEIGHT); ctx.lineTo(x, height); ctx.stroke(); ctx.restore();
     }
 
+    private drawNowVertical(ctx: CanvasRenderingContext2D, axisX: number, top: number, bottom: number): void {
+        const now = Date.now();
+        if (now < this.viewStart || now > this.viewEnd) return;
+        const y = top + (now - this.viewStart) / (this.viewEnd - this.viewStart) * (bottom - top);
+        ctx.save(); ctx.strokeStyle = this.css('--color-red', '#ef4444'); ctx.setLineDash([4, 4]);
+        ctx.beginPath(); ctx.moveTo(axisX - 16, y); ctx.lineTo(axisX + 16, y); ctx.stroke(); ctx.restore();
+    }
+
     private onPointerDown(event: PointerEvent): void {
         if (!this.canvas) return;
         this.canvas.setPointerCapture(event.pointerId);
@@ -626,8 +754,10 @@ export class NativeTimelineRenderer {
 
     private onPointerMove(event: PointerEvent): void {
         if (!this.dragging || !this.root) return;
-        const plotWidth = Math.max(1, this.root.clientWidth - SIDEBAR_WIDTH);
-        const deltaTime = -(event.clientX - this.dragging.x) / plotWidth * (this.dragging.end - this.dragging.start);
+        const vertical = !this.options.ganttMode && this.options.timelineOrientation === 'vertical';
+        const plotSize = vertical ? Math.max(1, this.root.clientHeight - 52) : Math.max(1, this.root.clientWidth - SIDEBAR_WIDTH);
+        const pointerDelta = vertical ? event.clientY - this.dragging.y : event.clientX - this.dragging.x;
+        const deltaTime = -pointerDelta / plotSize * (this.dragging.end - this.dragging.start);
         if (this.dragging.kind === 'pan') {
             this.viewStart = this.dragging.start + deltaTime; this.viewEnd = this.dragging.end + deltaTime;
             this.scrollTop = Math.max(0, this.scrollTop - (event.clientY - this.dragging.y)); this.dragging.y = event.clientY;
@@ -660,12 +790,17 @@ export class NativeTimelineRenderer {
         if (!this.root) return;
         event.preventDefault();
         if (event.ctrlKey || event.metaKey) {
-            const plotWidth = Math.max(1, this.root.clientWidth - SIDEBAR_WIDTH);
-            const anchor = this.viewStart + Math.max(0, event.offsetX - SIDEBAR_WIDTH) / plotWidth * (this.viewEnd - this.viewStart);
+            const vertical = !this.options.ganttMode && this.options.timelineOrientation === 'vertical';
+            const plotSize = vertical ? Math.max(1, this.root.clientHeight - 52) : Math.max(1, this.root.clientWidth - SIDEBAR_WIDTH);
+            const pointer = vertical ? Math.max(0, event.offsetY - 28) : Math.max(0, event.offsetX - SIDEBAR_WIDTH);
+            const anchor = this.viewStart + pointer / plotSize * (this.viewEnd - this.viewStart);
             const factor = Math.exp(event.deltaY * 0.0015);
             const span = Math.max(MIN_SPAN, Math.min(MAX_SPAN, (this.viewEnd - this.viewStart) * factor));
             const ratio = (anchor - this.viewStart) / (this.viewEnd - this.viewStart);
             this.viewStart = anchor - span * ratio; this.viewEnd = this.viewStart + span;
+        } else if (!this.options.ganttMode && this.options.timelineOrientation === 'vertical') {
+            const delta = event.deltaY / 900 * (this.viewEnd - this.viewStart);
+            this.viewStart += delta; this.viewEnd += delta;
         } else if (Math.abs(event.deltaX) > Math.abs(event.deltaY) || event.shiftKey) {
             const delta = (event.deltaX || event.deltaY) / 1200 * (this.viewEnd - this.viewStart);
             this.viewStart += delta; this.viewEnd += delta;
