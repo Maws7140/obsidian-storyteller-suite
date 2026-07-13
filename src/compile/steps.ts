@@ -3,7 +3,7 @@
  * Inspired by Obsidian Longform plugin
  */
 
-import { TFile, normalizePath } from 'obsidian';
+import { App, Component, MarkdownRenderer, TFile, normalizePath } from 'obsidian';
 import type {
     CompileStepDefinition,
     SceneCompileInput,
@@ -1395,8 +1395,7 @@ const exportHtmlStep: CompileStepDefinition = {
             outputPath += '.html';
         }
 
-        // Convert markdown to HTML (basic conversion)
-        let html = convertMarkdownToHtml(manuscript.contents);
+        let html = await convertMarkdownToHtml(context.app, manuscript.contents, '');
 
         if (wrapInDocument) {
             const styles = includeStyles ? `
@@ -1415,12 +1414,18 @@ const exportHtmlStep: CompileStepDefinition = {
         p { margin-bottom: 1rem; text-indent: 1.5rem; }
         p:first-of-type { text-indent: 0; }
         hr { margin: 2rem 0; border: none; border-top: 1px solid #ccc; }
-        blockquote { 
-            margin: 1rem 2rem; 
-            padding-left: 1rem; 
-            border-left: 3px solid #ccc; 
+        blockquote {
+            margin: 1rem 2rem;
+            padding-left: 1rem;
+            border-left: 3px solid #ccc;
             font-style: italic;
         }
+        img { max-width: 100%; height: auto; }
+        ul, ol { margin-bottom: 1rem; padding-left: 2rem; }
+        table { border-collapse: collapse; margin-bottom: 1rem; }
+        th, td { border: 1px solid #ccc; padding: 0.4rem 0.8rem; }
+        pre { background: #f5f5f5; padding: 1rem; overflow-x: auto; }
+        code { font-family: 'Consolas', 'Menlo', monospace; font-size: 0.9em; }
     </style>` : '';
 
             html = `<!DOCTYPE html>
@@ -1461,64 +1466,81 @@ ${html}
 };
 
 /**
- * Basic markdown to HTML conversion
+ * Render manuscript markdown to HTML using Obsidian's own renderer, then
+ * inline vault images as base64 data URIs so the exported file works
+ * outside the vault.
  */
-function convertMarkdownToHtml(markdown: string): string {
-    let html = markdown;
+async function convertMarkdownToHtml(app: App, markdown: string, sourcePath: string): Promise<string> {
+    const component = new Component();
+    component.load();
+    const el = document.createElement('div');
+    try {
+        await MarkdownRenderer.render(app, markdown, el, sourcePath, component);
+        await inlineVaultImages(app, el, sourcePath);
+        return el.innerHTML;
+    } finally {
+        component.unload();
+    }
+}
 
-    // Headers
-    html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
-    html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
-    html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
+const IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg', 'bmp', 'avif']);
 
-    // Bold and italic
-    html = html.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>');
-    html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-    html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
-    html = html.replace(/_(.+?)_/g, '<em>$1</em>');
+function imageMimeType(extension: string): string {
+    const ext = extension.toLowerCase();
+    switch (ext) {
+        case 'jpg':
+        case 'jpeg': return 'image/jpeg';
+        case 'webp': return 'image/webp';
+        case 'gif':  return 'image/gif';
+        case 'svg':  return 'image/svg+xml';
+        case 'bmp':  return 'image/bmp';
+        case 'avif': return 'image/avif';
+        default:     return 'image/png';
+    }
+}
 
-    // Horizontal rules
-    html = html.replace(/^---+$/gm, '<hr>');
-    html = html.replace(/^\*\*\*+$/gm, '<hr>');
+async function vaultImageToDataUri(app: App, file: TFile): Promise<string | null> {
+    try {
+        const buf = await app.vault.readBinary(file);
+        const arr = new Uint8Array(buf);
+        let binary = '';
+        for (let i = 0; i < arr.length; i++) binary += String.fromCharCode(arr[i]);
+        return `data:${imageMimeType(file.extension)};base64,${btoa(binary)}`;
+    } catch {
+        return null;
+    }
+}
 
-    // Blockquotes
-    html = html.replace(/^> (.+)$/gm, '<blockquote>$1</blockquote>');
-
-    // Paragraphs - wrap non-empty lines that aren't already HTML
-    const lines = html.split('\n');
-    const processed: string[] = [];
-    let inParagraph = false;
-
-    for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed) {
-            if (inParagraph) {
-                processed.push('</p>');
-                inParagraph = false;
-            }
-            processed.push('');
-        } else if (trimmed.startsWith('<h') || trimmed.startsWith('<hr') || 
-                   trimmed.startsWith('<blockquote') || trimmed.startsWith('</')) {
-            if (inParagraph) {
-                processed.push('</p>');
-                inParagraph = false;
-            }
-            processed.push(line);
-        } else {
-            if (!inParagraph) {
-                processed.push('<p>' + line);
-                inParagraph = true;
-            } else {
-                processed.push(line);
-            }
-        }
+/**
+ * Replace image embeds and vault-relative <img> sources with data URIs.
+ * Detached rendering leaves ![[embeds]] as unresolved .internal-embed spans,
+ * so both forms have to be handled here.
+ */
+async function inlineVaultImages(app: App, el: HTMLElement, sourcePath: string): Promise<void> {
+    // ![[file.png]] embeds
+    for (const embed of Array.from(el.querySelectorAll('.internal-embed[src]'))) {
+        const src = embed.getAttribute('src');
+        if (!src) continue;
+        const file = app.metadataCache.getFirstLinkpathDest(src, sourcePath);
+        if (!(file instanceof TFile) || !IMAGE_EXTENSIONS.has(file.extension.toLowerCase())) continue;
+        const dataUri = await vaultImageToDataUri(app, file);
+        if (!dataUri) continue;
+        const img = el.doc.createElement('img');
+        img.src = dataUri;
+        img.alt = embed.getAttribute('alt') || file.basename;
+        embed.replaceWith(img);
     }
 
-    if (inParagraph) {
-        processed.push('</p>');
+    // ![alt](file.png) images with vault-relative sources
+    for (const img of Array.from(el.querySelectorAll('img'))) {
+        const src = img.getAttribute('src');
+        if (!src || src.startsWith('data:') || /^https?:\/\//i.test(src)) continue;
+        const linkpath = decodeURIComponent(src.replace(/^app:\/\/[^/]+\//, '').split(/[?#]/)[0]);
+        const file = app.metadataCache.getFirstLinkpathDest(linkpath, sourcePath);
+        if (!(file instanceof TFile)) continue;
+        const dataUri = await vaultImageToDataUri(app, file);
+        if (dataUri) img.src = dataUri;
     }
-
-    return processed.join('\n');
 }
 
 // ============================================================
