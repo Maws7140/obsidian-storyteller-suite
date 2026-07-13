@@ -8,7 +8,7 @@ import { ConflictDetector } from './ConflictDetector';
 import { CalendarRegistry } from '../calendar/CalendarRegistry';
 import { GREGORIAN_CALENDAR } from '../calendar/builtins';
 import { parseToAbsoluteDay, formatAbsoluteDay } from '../calendar/CalendarDateText';
-import { toAbsolute } from '../calendar/CalendarEngine';
+import { fromAbsolute, normalYearLength, toAbsolute } from '../calendar/CalendarEngine';
 import { generateTicks } from '../calendar/TimelineAxis';
 
 export interface TimelineRendererOptions {
@@ -409,8 +409,9 @@ export class NativeTimelineRenderer {
     }
 
     private matchTrack(event: Event): TimelineTrack | undefined {
-        return (this.plugin.settings.timelineTracks || []).filter(track => track.visible !== false).find(track => {
-            if (track.type === 'global') return true;
+        const tracks = (this.plugin.settings.timelineTracks || []).filter(track => track.visible !== false);
+        const specific = tracks.find(track => {
+            if (track.type === 'global') return false;
             if (track.type === 'character') return !!track.entityId && !!event.characters?.includes(track.entityId);
             if (track.type === 'location') return event.location === track.entityId;
             if (track.type === 'group') return !!track.entityId && !!event.groups?.includes(track.entityId);
@@ -423,6 +424,7 @@ export class NativeTimelineRenderer {
             if (criteria.status?.length && (!event.status || !criteria.status.includes(event.status))) return false;
             return !criteria.milestonesOnly || !!event.isMilestone;
         });
+        return specific || tracks.find(track => track.type === 'global');
     }
 
     private scheduleDraw(): void {
@@ -570,43 +572,54 @@ export class NativeTimelineRenderer {
     }
 
     private drawVerticalTimeline(ctx: CanvasRenderingContext2D, width: number, height: number): void {
-        const top = 28;
+        const top = 38;
         const bottom = Math.max(top + 1, height - 24);
-        const axisX = Math.max(220, Math.min(width / 2, width - 230));
+        const alternateSides = width >= 620;
+        const axisX = alternateSides ? width / 2 : Math.min(112, Math.max(82, width * 0.28));
+        const calendar = this.calendarRegistry.getActiveCalendar();
+        const absoluteStart = this.viewStart / DAY_MS + this.unixEpochAbsoluteDay();
+        const absoluteEnd = this.viewEnd / DAY_MS + this.unixEpochAbsoluteDay();
+
+        this.drawVerticalEras(ctx, absoluteStart, absoluteEnd, top, bottom, width);
+        this.drawVerticalCalendarPeriods(ctx, calendar, absoluteStart, absoluteEnd, axisX, top, bottom, width);
         ctx.strokeStyle = this.css('--background-modifier-border', '#374151');
         ctx.lineWidth = 2;
         ctx.beginPath(); ctx.moveTo(axisX, top); ctx.lineTo(axisX, bottom); ctx.stroke();
         ctx.fillStyle = this.css('--text-muted', '#9ca3af');
         ctx.font = `12px ${this.css('--font-interface', 'sans-serif')}`;
 
-        const calendar = this.calendarRegistry.getActiveCalendar();
-        const absoluteStart = this.viewStart / DAY_MS + this.unixEpochAbsoluteDay();
-        const absoluteEnd = this.viewEnd / DAY_MS + this.unixEpochAbsoluteDay();
-        const ticks = generateTicks(calendar, { startDay: absoluteStart, endDay: absoluteEnd, widthPx: bottom - top }, 8);
+        const ticks = generateTicks(calendar, { startDay: absoluteStart, endDay: absoluteEnd, widthPx: bottom - top }, Math.max(4, Math.floor((bottom - top) / 90)));
         ticks.forEach(tick => {
             const time = (tick.absoluteDay - this.unixEpochAbsoluteDay()) * DAY_MS;
             const ratio = (time - this.viewStart) / (this.viewEnd - this.viewStart);
             const y = top + ratio * (bottom - top);
             ctx.beginPath(); ctx.moveTo(axisX - 5, y); ctx.lineTo(axisX + 5, y); ctx.stroke();
-            ctx.fillText(tick.label, axisX - ctx.measureText(tick.label).width - 10, y + 4);
+            if (!alternateSides) ctx.fillText(tick.label, axisX - ctx.measureText(tick.label).width - 10, y + 4);
         });
 
         const items = this.lanes.flatMap(lane => lane.items).filter(item => item.start >= this.viewStart && item.start <= this.viewEnd).sort((a, b) => a.start - b.start);
         this.visibleItems = [];
-        let previousLeft = -Infinity;
-        let previousRight = -Infinity;
-        items.forEach((item, index) => {
+        const placements = items.map((item, index) => {
             const desiredY = top + (item.start - this.viewStart) / (this.viewEnd - this.viewStart) * (bottom - top);
-            const rightSide = index % 2 === 0 || axisX < 280;
-            const last = rightSide ? previousRight : previousLeft;
-            const placedY = Math.max(desiredY, last + 34);
-            if (rightSide) previousRight = placedY; else previousLeft = placedY;
-            if (placedY > bottom) return;
-            const markers = `${item.event.narrativeMarkers?.isFlashback ? 'FB ' : ''}${item.event.narrativeMarkers?.isFlashforward ? 'FF ' : ''}`;
-            const lanePrefix = this.lanes.length > 1 ? `${item.laneLabel}: ` : '';
-            const label = lanePrefix + markers + item.event.name;
-            const chipWidth = Math.max(110, Math.min(230, ctx.measureText(label).width + 34));
-            const chipHeight = 27;
+            return { item, desiredY, placedY: desiredY, rightSide: !alternateSides || index % 2 === 0 };
+        });
+        [true, false].forEach(rightSide => {
+            const side = placements.filter(placement => placement.rightSide === rightSide);
+            if (!side.length) return;
+            const gap = Math.max(40, Math.min(58, (bottom - top) / Math.max(1, side.length - 1)));
+            side.forEach((placement, index) => {
+                placement.placedY = index === 0 ? Math.max(top, placement.desiredY) : Math.max(placement.desiredY, side[index - 1].placedY + gap);
+            });
+            if (side[side.length - 1].placedY > bottom) {
+                side[side.length - 1].placedY = bottom;
+                for (let i = side.length - 2; i >= 0; i--) side[i].placedY = Math.min(side[i].placedY, side[i + 1].placedY - gap);
+            }
+        });
+
+        placements.forEach(({ item, desiredY, placedY, rightSide }) => {
+            const availableWidth = rightSide ? width - axisX - 38 : axisX - 38;
+            const chipWidth = Math.max(130, Math.min(260, availableWidth));
+            const chipHeight = 42;
             const chipX = rightSide ? axisX + 28 : Math.max(4, axisX - 28 - chipWidth);
             const chipY = placedY - chipHeight / 2;
             item.rect = new DOMRect(chipX, chipY, chipWidth, chipHeight);
@@ -615,10 +628,108 @@ export class NativeTimelineRenderer {
             ctx.lineWidth = 1.5;
             ctx.beginPath(); ctx.moveTo(axisX, desiredY); ctx.lineTo(rightSide ? chipX : chipX + chipWidth, placedY); ctx.stroke();
             this.drawPointMarker(ctx, axisX, desiredY, item);
-            this.drawItem(ctx, item, true, label);
+            this.drawVerticalEventCard(ctx, item, calendar);
         });
         this.drawConnectors(ctx, width, height);
         this.drawNowVertical(ctx, axisX, top, bottom);
+    }
+
+    private drawVerticalCalendarPeriods(ctx: CanvasRenderingContext2D, calendar: ReturnType<CalendarRegistry['getActiveCalendar']>, absoluteStart: number, absoluteEnd: number, axisX: number, top: number, bottom: number, width: number): void {
+        const spanDays = absoluteEnd - absoluteStart;
+        const useYears = spanDays > normalYearLength(calendar) * 4;
+        const startDate = fromAbsolute(calendar, { absoluteDay: absoluteStart });
+        const periods: Array<{ day: number; label: string }> = [];
+        let year = startDate.year;
+        let month = useYears ? 0 : startDate.month;
+        for (let count = 0; count < 80; count++) {
+            const day = toAbsolute(calendar, { year, month, day: 1 }).absoluteDay;
+            const monthName = calendar.months[month]?.name || `Month ${month + 1}`;
+            periods.push({ day, label: useYears ? this.calendarYearLabel(calendar, year) : `${monthName} ${this.calendarYearLabel(calendar, year)}` });
+            if (useYears) year++;
+            else if (++month >= calendar.months.length) { month = 0; year++; }
+            if (day > absoluteEnd) break;
+        }
+        if (!periods.length) return;
+        const current = periods[0];
+        current.day = absoluteStart;
+        periods.filter(period => period.day >= absoluteStart && period.day < absoluteEnd).forEach((period, index) => {
+            const y = top + (period.day - absoluteStart) / spanDays * (bottom - top);
+            ctx.save();
+            ctx.strokeStyle = this.css('--background-modifier-border-hover', '#4b5563');
+            ctx.globalAlpha = index === 0 ? 0.9 : 0.55;
+            ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.moveTo(4, y); ctx.lineTo(width - 4, y); ctx.stroke();
+            ctx.globalAlpha = 1;
+            ctx.fillStyle = this.css('--background-primary', '#111827');
+            const labelWidth = Math.min(150, Math.max(86, axisX - 18));
+            this.roundedRect(ctx, 6, Math.max(4, y - 13), labelWidth, 22, 3); ctx.fill();
+            ctx.fillStyle = this.css('--text-accent', '#a78bfa');
+            ctx.font = `600 11px ${this.css('--font-interface', 'sans-serif')}`;
+            ctx.fillText(this.truncate(ctx, period.label.toUpperCase(), labelWidth - 12), 12, Math.max(19, y + 2));
+            ctx.restore();
+        });
+    }
+
+    private drawVerticalEras(ctx: CanvasRenderingContext2D, absoluteStart: number, absoluteEnd: number, top: number, bottom: number, width: number): void {
+        if (!this.options.showEras) return;
+        const span = absoluteEnd - absoluteStart;
+        (this.plugin.settings.timelineEras || []).filter(era => era.visible !== false).forEach(era => {
+            const start = this.parseDate(era.startDate) / DAY_MS + this.unixEpochAbsoluteDay();
+            const end = this.parseDate(era.endDate) / DAY_MS + this.unixEpochAbsoluteDay();
+            if (!Number.isFinite(start) || !Number.isFinite(end) || end < absoluteStart || start > absoluteEnd) return;
+            const y1 = top + (Math.max(start, absoluteStart) - absoluteStart) / span * (bottom - top);
+            const y2 = top + (Math.min(end, absoluteEnd) - absoluteStart) / span * (bottom - top);
+            ctx.save();
+            ctx.globalAlpha = 0.09;
+            ctx.fillStyle = era.color || '#8b5cf6';
+            ctx.fillRect(0, y1, width, Math.max(2, y2 - y1));
+            ctx.globalAlpha = 0.85;
+            ctx.fillStyle = era.color || this.css('--text-accent', '#a78bfa');
+            ctx.font = `600 10px ${this.css('--font-interface', 'sans-serif')}`;
+            const label = era.name.toUpperCase();
+            ctx.fillText(this.truncate(ctx, label, 150), Math.max(8, width - Math.min(160, ctx.measureText(label).width + 10)), Math.min(bottom - 5, y1 + 14));
+            ctx.restore();
+        });
+    }
+
+    private drawVerticalEventCard(ctx: CanvasRenderingContext2D, item: NativeItem, calendar: ReturnType<CalendarRegistry['getActiveCalendar']>): void {
+        const rect = item.rect!;
+        const accent = item === this.selected ? this.css('--interactive-accent', '#8b5cf6') : item.laneColor;
+        const markers = `${item.event.narrativeMarkers?.isFlashback ? 'FB ' : ''}${item.event.narrativeMarkers?.isFlashforward ? 'FF ' : ''}`;
+        const title = `${markers}${item.event.name}`;
+        const dateLabel = this.verticalEventDate(item.start, calendar);
+        const meta = this.lanes.length > 1 ? item.laneLabel : (item.event.status || (item.event.isMilestone ? 'Milestone' : 'Event'));
+        ctx.save();
+        ctx.globalAlpha = item.inherited ? 0.45 : 1;
+        ctx.fillStyle = this.css('--background-secondary', '#1f2937');
+        this.roundedRect(ctx, rect.x, rect.y, rect.width, rect.height, 4); ctx.fill();
+        ctx.strokeStyle = item === this.selected ? accent : this.css('--background-modifier-border', '#374151');
+        ctx.lineWidth = item === this.selected ? 2 : 1; ctx.stroke();
+        ctx.fillStyle = accent; ctx.fillRect(rect.x, rect.y, 3, rect.height);
+        ctx.fillStyle = this.css('--text-normal', '#e5e7eb');
+        ctx.font = `600 11px ${this.css('--font-interface', 'sans-serif')}`;
+        ctx.fillText(this.truncate(ctx, title, rect.width - 18), rect.x + 10, rect.y + 16);
+        ctx.fillStyle = this.css('--text-muted', '#9ca3af');
+        ctx.font = `10px ${this.css('--font-interface', 'sans-serif')}`;
+        const detail = `${dateLabel}  ·  ${meta}`;
+        ctx.fillText(this.truncate(ctx, detail, rect.width - 18), rect.x + 10, rect.y + 32);
+        ctx.restore();
+    }
+
+    private verticalEventDate(time: number, calendar: ReturnType<CalendarRegistry['getActiveCalendar']>): string {
+        const absoluteDay = time / DAY_MS + this.unixEpochAbsoluteDay();
+        const date = fromAbsolute(calendar, { absoluteDay });
+        const month = calendar.months[date.month]?.name || `Month ${date.month + 1}`;
+        let label = `${month} ${date.day}, ${this.calendarYearLabel(calendar, date.year)}`;
+        if ((date.unitOfDay || 0) > 0 && calendar.unitsPerDay === 1440) {
+            const units = Math.round(date.unitOfDay || 0);
+            label += ` ${String(Math.floor(units / 60)).padStart(2, '0')}:${String(units % 60).padStart(2, '0')}`;
+        }
+        return label;
+    }
+
+    private calendarYearLabel(calendar: ReturnType<CalendarRegistry['getActiveCalendar']>, year: number): string {
+        return calendar.epochLabel ? `${year} ${calendar.epochLabel}` : String(year);
     }
 
     private drawItem(ctx: CanvasRenderingContext2D, item: NativeItem, isPoint: boolean, labelOverride?: string): void {
