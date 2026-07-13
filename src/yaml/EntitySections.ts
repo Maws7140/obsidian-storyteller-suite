@@ -308,6 +308,102 @@ export function parseTypedRelationships(value: unknown[]): Array<{ type: string;
   return out;
 }
 
+/**
+ * Serialize location entityRefs as readable strings: `entityType: [[Name]] — relationship`.
+ * Same grammar as connections; entityId arrives already wiki-wrapped from
+ * serializeFrontmatterEntityReferences.
+ */
+export function serializeEntityRefs(value: unknown[]): unknown[] {
+  return value.map(entry => {
+    if (typeof entry === 'string') return entry;
+    if (entry && typeof entry === 'object' && !Array.isArray(entry)) {
+      const ref = entry as { entityType?: unknown; entityId?: unknown; entityName?: unknown; relationship?: unknown };
+      const id = typeof ref.entityId === 'string' && ref.entityId.trim()
+        ? ref.entityId.trim()
+        : (typeof ref.entityName === 'string' ? ref.entityName.trim() : '');
+      if (!id) return entry;
+      const type = typeof ref.entityType === 'string' && ref.entityType.trim() ? ref.entityType.trim() : 'custom';
+      const relationship = typeof ref.relationship === 'string' && ref.relationship.trim() ? ref.relationship.trim() : '';
+      const target = id.startsWith('[[') ? id : `[[${id}]]`;
+      return relationship ? `${type}: ${target} — ${relationship}` : `${type}: ${target}`;
+    }
+    return entry;
+  });
+}
+
+const ENTITY_REF_TYPES = new Set(['character', 'event', 'item', 'culture', 'economy', 'magicsystem', 'group', 'scene', 'reference']);
+
+/** Parse entityRef strings back to objects; legacy object entries pass through. */
+export function parseEntityRefs(value: unknown[]): unknown[] {
+  return value.map(entry => {
+    if (typeof entry !== 'string' || !entry.trim()) return entry;
+    const match = entry.match(TYPED_RELATIONSHIP_PATTERN);
+    if (!match) return entry;
+    const target = (match[2] ?? match[3] ?? '').split('|')[0].trim();
+    if (!target) return entry;
+    const rawType = match[1].trim().toLowerCase();
+    const relationship = (match[4] ?? '').trim();
+    return {
+      entityType: ENTITY_REF_TYPES.has(rawType) ? rawType : 'custom',
+      entityId: target,
+      ...(relationship ? { relationship } : {})
+    };
+  });
+}
+
+/**
+ * Serialize character locationHistory as readable strings:
+ * `relationship: [[Location]]`, optionally with `(start – end)`, `(from start)`
+ * or `(until end)` when a time range is present.
+ */
+export function serializeLocationHistory(value: unknown[]): unknown[] {
+  return value.map(entry => {
+    if (typeof entry === 'string') return entry;
+    if (entry && typeof entry === 'object' && !Array.isArray(entry)) {
+      const item = entry as { locationId?: unknown; relationship?: unknown; timeRange?: { start?: unknown; end?: unknown } };
+      const id = typeof item.locationId === 'string' ? item.locationId.trim() : '';
+      if (!id) return entry;
+      const relationship = typeof item.relationship === 'string' && item.relationship.trim() ? item.relationship.trim() : 'visited';
+      const target = id.startsWith('[[') ? id : `[[${id}]]`;
+      const start = typeof item.timeRange?.start === 'string' ? item.timeRange.start.trim() : '';
+      const end = typeof item.timeRange?.end === 'string' ? item.timeRange.end.trim() : '';
+      let range = '';
+      if (start && end) range = ` (${start} – ${end})`;
+      else if (start) range = ` (from ${start})`;
+      else if (end) range = ` (until ${end})`;
+      return `${relationship}: ${target}${range}`;
+    }
+    return entry;
+  });
+}
+
+const LOCATION_HISTORY_PATTERN = /^\s*(.+?)\s*:\s*(?:\[\[([^\]]+)\]\]|([^(]+?))\s*(?:\((.*)\))?\s*$/;
+
+/** Parse locationHistory strings back to objects; legacy object entries pass through. */
+export function parseLocationHistory(value: unknown[]): unknown[] {
+  return value.map(entry => {
+    if (typeof entry !== 'string' || !entry.trim()) return entry;
+    const match = entry.match(LOCATION_HISTORY_PATTERN);
+    if (!match) return entry;
+    const target = (match[2] ?? match[3] ?? '').split('|')[0].trim();
+    if (!target) return entry;
+    const out: { locationId: string; relationship: string; timeRange?: { start?: string; end?: string } } = {
+      locationId: target,
+      relationship: match[1].trim()
+    };
+    const rawRange = (match[4] ?? '').trim();
+    if (rawRange) {
+      const fromMatch = rawRange.match(/^from\s+(.+)$/i);
+      const untilMatch = rawRange.match(/^until\s+(.+)$/i);
+      const spanMatch = rawRange.match(/^(.+?)\s*[–—-]\s*(.+)$/);
+      if (fromMatch) out.timeRange = { start: fromMatch[1].trim() };
+      else if (untilMatch) out.timeRange = { end: untilMatch[1].trim() };
+      else if (spanMatch) out.timeRange = { start: spanMatch[1].trim(), end: spanMatch[2].trim() };
+    }
+    return out;
+  });
+}
+
 export function buildFrontmatter(
   entityType: EntityType,
   source: Record<string, unknown>,
@@ -457,6 +553,12 @@ export function buildFrontmatter(
   // arrays of objects as raw JSON, strings render as a normal list.
   if (Array.isArray(output['connections'])) {
     output['connections'] = serializeTypedRelationships(output['connections'] as unknown[]);
+  }
+  if (Array.isArray(output['entityRefs'])) {
+    output['entityRefs'] = serializeEntityRefs(output['entityRefs'] as unknown[]);
+  }
+  if (Array.isArray(output['locationHistory'])) {
+    output['locationHistory'] = serializeLocationHistory(output['locationHistory'] as unknown[]);
   }
 
   if (originalFrontmatter) {

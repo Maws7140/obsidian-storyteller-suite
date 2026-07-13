@@ -24,6 +24,8 @@ import {
     parseSectionsFromMarkdown,
     parseFrontmatterFromContent,
     parseTypedRelationships,
+    parseEntityRefs,
+    parseLocationHistory,
     WIKI_LINK_ARRAY_FIELDS,
     WIKI_LINK_SCALAR_FIELDS,
 } from './yaml/EntitySections';
@@ -3949,6 +3951,16 @@ export default class StorytellerSuitePlugin extends Plugin {
             // Legacy object-form entries pass through unchanged.
             if (Array.isArray(data['connections'])) {
                 data['connections'] = parseTypedRelationships(data['connections'] as unknown[]);
+            }
+
+            // entityRefs and locationHistory use the same readable-string form;
+            // parsed objects keep plain names here — normalizeFrontmatterEntityReferences
+            // below resolves them to canonical ids exactly as before.
+            if (Array.isArray(data['entityRefs'])) {
+                data['entityRefs'] = parseEntityRefs(data['entityRefs'] as unknown[]);
+            }
+            if (Array.isArray(data['locationHistory'])) {
+                data['locationHistory'] = parseLocationHistory(data['locationHistory'] as unknown[]);
             }
 
             // Scene: beats is an array on the entity; convert the raw section text now.

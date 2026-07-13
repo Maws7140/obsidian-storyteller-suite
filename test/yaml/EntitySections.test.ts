@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildFrontmatter, parseTypedRelationships, isStampedEntityTypeCompatible, normalizeEntityType, parseSectionsFromMarkdown, toSafeFileName, parseFrontmatterFromContent } from '../../src/yaml/EntitySections';
+import { buildFrontmatter, parseTypedRelationships, parseEntityRefs, parseLocationHistory, isStampedEntityTypeCompatible, normalizeEntityType, parseSectionsFromMarkdown, toSafeFileName, parseFrontmatterFromContent } from '../../src/yaml/EntitySections';
 
 describe('EntitySections', () => {
   it('buildFrontmatter filters disallowed keys and multiline strings', () => {
@@ -477,6 +477,68 @@ status: active
     it('keeps target when the wiki link has an alias', () => {
       const parsed = parseTypedRelationships(['enemy: [[Archivist Noe|Noe]] — Network']);
       expect(parsed).toEqual([{ type: 'enemy', target: 'Archivist Noe', label: 'Network' }]);
+    });
+
+    it('serializes entityRefs as readable strings in frontmatter', () => {
+      const src = {
+        id: 'loc-1',
+        name: 'Beacon Market',
+        entityRefs: [
+          { entityId: '[[Mira Vey]]', entityType: 'character', relationship: 'associated' },
+          { entityId: '[[The Ninth Bell Rings]]', entityType: 'event' }
+        ]
+      } as any;
+      const fm = buildFrontmatter('location', src);
+      expect(fm.entityRefs).toEqual([
+        'character: [[Mira Vey]] — associated',
+        'event: [[The Ninth Bell Rings]]'
+      ]);
+    });
+
+    it('round-trips entityRef strings back to objects', () => {
+      const parsed = parseEntityRefs([
+        'character: [[Mira Vey]] — associated',
+        'event: [[The Ninth Bell Rings]]',
+        { entityId: 'legacy-id', entityType: 'item' }
+      ]);
+      expect(parsed).toEqual([
+        { entityType: 'character', entityId: 'Mira Vey', relationship: 'associated' },
+        { entityType: 'event', entityId: 'The Ninth Bell Rings' },
+        { entityId: 'legacy-id', entityType: 'item' }
+      ]);
+    });
+
+    it('serializes locationHistory with optional time ranges', () => {
+      const src = {
+        id: '1',
+        name: 'Mira',
+        locationHistory: [
+          { locationId: '[[Beacon Market]]', relationship: 'moved to' },
+          { locationId: 'Old Town', relationship: 'lived in', timeRange: { start: '1200', end: '1210' } },
+          { locationId: 'The Reef', relationship: 'exiled to', timeRange: { start: '1211' } }
+        ]
+      } as any;
+      const fm = buildFrontmatter('character', src);
+      expect(fm.locationHistory).toEqual([
+        'moved to: [[Beacon Market]]',
+        'lived in: [[Old Town]] (1200 – 1210)',
+        'exiled to: [[The Reef]] (from 1211)'
+      ]);
+    });
+
+    it('round-trips locationHistory strings back to objects', () => {
+      const parsed = parseLocationHistory([
+        'moved to: [[Beacon Market]]',
+        'lived in: [[Old Town]] (1200 – 1210)',
+        'exiled to: [[The Reef]] (from 1211)',
+        'returned before: [[Glass Harbor]] (until 1215)'
+      ]);
+      expect(parsed).toEqual([
+        { locationId: 'Beacon Market', relationship: 'moved to' },
+        { locationId: 'Old Town', relationship: 'lived in', timeRange: { start: '1200', end: '1210' } },
+        { locationId: 'The Reef', relationship: 'exiled to', timeRange: { start: '1211' } },
+        { locationId: 'Glass Harbor', relationship: 'returned before', timeRange: { end: '1215' } }
+      ]);
     });
   });
 
