@@ -705,7 +705,6 @@ export class NativeTimelineRenderer {
         this.roundedRect(ctx, rect.x, rect.y, rect.width, rect.height, 4); ctx.fill();
         ctx.strokeStyle = item === this.selected ? accent : this.css('--background-modifier-border', '#374151');
         ctx.lineWidth = item === this.selected ? 2 : 1; ctx.stroke();
-        ctx.fillStyle = accent; ctx.fillRect(rect.x, rect.y, 3, rect.height);
         ctx.fillStyle = this.css('--text-normal', '#e5e7eb');
         ctx.font = `600 11px ${this.css('--font-interface', 'sans-serif')}`;
         ctx.fillText(this.truncate(ctx, title, rect.width - 18), rect.x + 10, rect.y + 16);
