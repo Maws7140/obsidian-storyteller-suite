@@ -85,8 +85,20 @@ describe('TimelineAxis — Gregorian tick generation', () => {
     };
     const ticks = generateTicks(G, view);
     expect(ticks.every((t) => t.level === 'day')).toBe(true);
-    expect(ticks[0].label).toBe('1');
+    expect(ticks[0].label).toBe('Mar 1');
     expect(ticks.some((t) => t.label === '15')).toBe(true);
+  });
+
+  it('keeps month context when a day-level view starts mid-month and crosses a boundary', () => {
+    const view: AxisView = {
+      startDay: dayOf(2024, 3, 12),
+      endDay: dayOf(2024, 4, 8),
+      widthPx: 900,
+    };
+    const ticks = generateTicks(G, view);
+    expect(ticks[0].label).toBe('Mar 12');
+    expect(ticks.find(tick => tick.absoluteDay === dayOf(2024, 4, 1))?.label).toBe('Apr 1');
+    expect(ticks.find(tick => tick.absoluteDay === dayOf(2024, 3, 13))?.label).toBe('13');
   });
 
   it('uses hour ticks when zoomed inside a day', () => {
@@ -153,5 +165,13 @@ describe('TimelineAxis — custom-calendar ticks', () => {
     // Year 2 begins exactly 40 days after year 1.
     const y2 = ticks.find((t) => t.label === '2 AF');
     expect(y2?.absoluteDay).toBe(start + 40);
+  });
+
+  it('uses fantasy month names for day-level context', () => {
+    const start = toAbsolute(FANTASY, { year: 5, month: 0, day: 7 }).absoluteDay;
+    const view: AxisView = { startDay: start, endDay: start + 9, widthPx: 500 };
+    const ticks = generateTicks(FANTASY, view);
+    expect(ticks[0].label).toBe('Frost 7');
+    expect(ticks.find(tick => tick.label === 'Bloom 1')).toBeDefined();
   });
 });

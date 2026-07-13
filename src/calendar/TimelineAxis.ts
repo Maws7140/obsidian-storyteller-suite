@@ -156,7 +156,10 @@ export function generateTicks(
       for (let d = 1; d <= len; d++) {
         const day = toAbsolute(cal, { year: y, month: m, day: d }).absoluteDay;
         if (day > view.endDay) break;
-        push(day, String(d), 'day');
+        const firstVisibleTick = ticks.length === 0 && day >= view.startDay;
+        const monthContext = d === 1 || firstVisibleTick;
+        const monthLabel = months[m].abbr || months[m].name;
+        push(day, monthContext ? `${monthLabel} ${d}` : String(d), 'day');
       }
     }
   }
