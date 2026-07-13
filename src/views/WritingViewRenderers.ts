@@ -586,7 +586,12 @@ export class WritingViewRenderers {
     async renderPlotHoles(container: HTMLElement) {
         const scenes = await this.plugin.listScenes();
         const characters = await this.plugin.listCharacters();
-        const charNames = new Set(characters.map(c => c.name).filter(Boolean));
+        // Scenes may reference characters by display name or frontmatter id
+        const knownCharRefs = new Set<string>();
+        characters.forEach(c => {
+            if (c.name) knownCharRefs.add(c.name.trim().toLowerCase());
+            if (c.id) knownCharRefs.add(c.id.trim().toLowerCase());
+        });
 
         const issues: Array<{ severity: 'warning' | 'info'; title: string; detail: string }> = [];
 
@@ -617,7 +622,7 @@ export class WritingViewRenderers {
         scenes.forEach((sc: Scene) => {
             (sc.linkedCharacters || []).forEach((n: string) => {
                 const entry = `"${n}" in "${sc.name}"`;
-                if (!charNames.has(n) && !unknownRefs.includes(entry)) unknownRefs.push(entry);
+                if (typeof n === 'string' && !knownCharRefs.has(n.trim().toLowerCase()) && !unknownRefs.includes(entry)) unknownRefs.push(entry);
             });
         });
         if (unknownRefs.length > 0) {
