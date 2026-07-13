@@ -496,8 +496,6 @@ export class NativeTimelineRenderer {
         if (top > height || top + lane.height < AXIS_HEIGHT) return;
         ctx.fillStyle = this.css('--background-secondary-alt', '#18202d');
         ctx.fillRect(0, top, SIDEBAR_WIDTH, lane.height);
-        ctx.fillStyle = lane.color;
-        ctx.fillRect(0, top, 4, lane.height);
         ctx.fillStyle = this.css('--text-normal', '#e5e7eb');
         ctx.font = `600 12px ${this.css('--font-interface', 'sans-serif')}`;
         ctx.fillText(this.truncate(ctx, lane.label, SIDEBAR_WIDTH - 24), 13, top + 22);
@@ -532,8 +530,6 @@ export class NativeTimelineRenderer {
         if (top > height || top + lane.height < AXIS_HEIGHT) return;
         ctx.fillStyle = this.css('--background-secondary-alt', '#18202d');
         ctx.fillRect(0, top, SIDEBAR_WIDTH, lane.height);
-        ctx.fillStyle = lane.color;
-        ctx.fillRect(0, top, 4, lane.height);
         ctx.fillStyle = this.css('--text-normal', '#e5e7eb');
         ctx.font = `600 12px ${this.css('--font-interface', 'sans-serif')}`;
         ctx.fillText(this.truncate(ctx, lane.label, SIDEBAR_WIDTH - 24), 13, top + 22);
