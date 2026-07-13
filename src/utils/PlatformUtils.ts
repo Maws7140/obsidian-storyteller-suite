@@ -2,13 +2,32 @@ import { Platform } from 'obsidian';
 
 export type DashboardLayoutMode = 'phone' | 'tablet-portrait' | 'tablet-landscape' | 'desktop';
 
+export type InterfaceLayoutOverride = 'auto' | 'desktop' | 'tablet' | 'phone';
+
 /**
  * Utility class for platform detection and mobile-specific adaptations
  * Provides consistent methods for detecting mobile devices and adapting UI accordingly
  */
 export class PlatformUtils {
+    /** User-chosen layout override from plugin settings ('auto' = detect). */
+    private static layoutOverride: InterfaceLayoutOverride = 'auto';
+
+    /** Apply the interface-mode setting. Call on plugin load and when the setting changes. */
+    static setLayoutOverride(mode: InterfaceLayoutOverride | undefined): void {
+        this.layoutOverride = mode ?? 'auto';
+    }
+
     private static hasTouchViewportFallback(): boolean {
         if (typeof window === 'undefined' || typeof navigator === 'undefined') {
+            return false;
+        }
+
+        // The fallback exists because iPads can miss the Obsidian mobile app
+        // flags. Touch-screen desktops (Surface etc.) run the desktop app and
+        // must never be reclassified by it: Windows toggles `pointer: coarse`
+        // with device posture, which made the whole UI flip between desktop
+        // and tablet layouts.
+        if (Platform.isDesktopApp) {
             return false;
         }
 
@@ -27,6 +46,9 @@ export class PlatformUtils {
      * @returns true if running on iOS or Android
      */
     static isMobile(): boolean {
+        if (this.layoutOverride !== 'auto') {
+            return this.layoutOverride !== 'desktop';
+        }
         return Platform.isAndroidApp || Platform.isIosApp || this.hasTouchViewportFallback();
     }
 
@@ -136,6 +158,9 @@ export class PlatformUtils {
      * @returns true if screen appears to be tablet-sized
      */
     static isTablet(): boolean {
+        if (this.layoutOverride !== 'auto') {
+            return this.layoutOverride === 'tablet';
+        }
         if (!this.isMobile()) return false;
 
         // Use CSS pixels directly - more reliable across orientations

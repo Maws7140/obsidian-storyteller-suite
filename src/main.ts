@@ -390,6 +390,19 @@ const FRONTMATTER_LINK_ONLY_SCALAR_FIELDS = new Set([
     /** User-defined custom compile steps (JavaScript) */
     customCompileSteps?: import('./types').CustomCompileStepDef[];
 
+    /**
+     * Allow custom compile steps to execute their JavaScript.
+     * Off by default: step code lives in synced settings, so enabling it runs
+     * arbitrary JS from data that can travel between devices/imports.
+     */
+    enableCustomCompileJs?: boolean;
+
+    /**
+     * Interface layout override. 'auto' detects from the platform; the rest
+     * force a layout — for convertibles (Surface etc.) where detection flips.
+     */
+    interfaceMode?: import('./utils/PlatformUtils').InterfaceLayoutOverride;
+
     /** Whether to prompt when a new .md file appears in the scene folder */
     promptNewSceneFiles?: boolean;
 
@@ -497,6 +510,8 @@ const FRONTMATTER_LINK_ONLY_SCALAR_FIELDS = new Set([
     characterSheetTemplates: [],
     defaultCharacterSheetTemplateId: 'classic',
     customCompileSteps: [],
+    enableCustomCompileJs: false,
+    interfaceMode: 'auto',
     promptNewSceneFiles: true,
 }
 
@@ -1421,6 +1436,8 @@ export default class StorytellerSuitePlugin extends Plugin {
 	 */
 	async onload() {
 		await this.loadSettings();
+
+		PlatformUtils.setLayoutOverride(this.settings.interfaceMode);
 
 		// Initialize word count tracker
         this.wordTracker = new WordCountTracker(this);

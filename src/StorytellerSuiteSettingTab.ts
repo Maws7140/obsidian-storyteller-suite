@@ -10,6 +10,7 @@ import { setLocale, t, getAvailableLanguages, getLanguageName, isLanguageAvailab
 import { VIEW_TYPE_DASHBOARD } from './views/DashboardView';
 import { confirmWithModal } from './modals/ui/ConfirmModal';
 import type { TemplateEntityType } from './templates/TemplateTypes';
+import { PlatformUtils } from './utils/PlatformUtils';
 
 type TabId = 'stories' | 'dashboard' | 'folders' | 'timeline' | 'maps' | 'templates' | 'gallery' | 'help';
 
@@ -438,6 +439,41 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                             await view.onOpen();
                         }
                     }));
+                })
+            );
+
+        new Setting(container).setName('Interface').setHeading();
+
+        new Setting(container)
+            .setName('Interface layout')
+            .setDesc('Auto-detect chooses desktop, tablet, or phone layouts from the platform. Force a layout if detection gets it wrong — e.g. touch-screen laptops flipping into tablet mode. Existing dialogs pick up the change when reopened.')
+            .addDropdown(dropdown => dropdown
+                .addOption('auto', 'Auto-detect')
+                .addOption('desktop', 'Desktop')
+                .addOption('tablet', 'Tablet')
+                .addOption('phone', 'Phone')
+                .setValue(this.plugin.settings.interfaceMode ?? 'auto')
+                .onChange(async (value) => {
+                    const mode = value as import('./utils/PlatformUtils').InterfaceLayoutOverride;
+                    this.plugin.settings.interfaceMode = mode;
+                    PlatformUtils.setLayoutOverride(mode);
+                    await this.plugin.saveSettings();
+                })
+            );
+
+        new Setting(container).setName('Compile').setHeading();
+
+        new Setting(container)
+            .setName('Enable custom JavaScript compile steps')
+            .setDesc('Run the JavaScript code of your custom compile steps during compilation. Warning: this executes arbitrary JavaScript stored in plugin settings, which can sync between devices and travel with imported data. Only enable if you trust every custom step in this vault. When off, custom steps are skipped with a notice.')
+            .addToggle(toggle => toggle
+                .setValue(!!this.plugin.settings.enableCustomCompileJs)
+                .onChange(async (value) => {
+                    this.plugin.settings.enableCustomCompileJs = value;
+                    await this.plugin.saveSettings();
+                    if (value) {
+                        new Notice('Custom compile steps will now execute their JavaScript. Review your steps before compiling.');
+                    }
                 })
             );
 
