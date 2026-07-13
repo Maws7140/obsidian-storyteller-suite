@@ -8076,6 +8076,34 @@ body.mod-rtl .storyteller-group-members {
    CUSTOM COMPILE STEP MODAL
    ════════════════════════════════════════════════════════════ */
 
+/* Shared scroll containment for tall modals: cap the outer .modal wrapper
+   and make .modal-content the scrolling region. Applied via the
+   storyteller-modal-scroll class, and to all ResponsiveModal-based modals
+   on desktop (mobile-fullscreen has its own layout rules). */
+.modal.storyteller-modal-scroll,
+.modal.storyteller-responsive-modal:not(.mobile-fullscreen) {
+    max-height: 85vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.modal.storyteller-modal-scroll .modal-content,
+.modal.storyteller-responsive-modal:not(.mobile-fullscreen) .modal-content {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+}
+
+.modal.storyteller-custom-step-modal-host {
+    width: 680px;
+    max-width: 90vw;
+}
+
+.modal.storyteller-compile-workflow-modal-host {
+    width: 760px;
+    max-width: 90vw;
+}
+
 .storyteller-custom-step-modal {
     max-width: 680px;
 }
@@ -8199,6 +8227,11 @@ body.mod-rtl .storyteller-group-members {
     display: flex;
     justify-content: flex-end;
     gap: 0.5rem;
+    position: sticky;
+    bottom: 0;
+    background: var(--modal-background, var(--background-primary));
+    padding: 0.6rem 0;
+    margin-bottom: -0.5rem;
 }
 
 .storyteller-compile-workflow-modal {

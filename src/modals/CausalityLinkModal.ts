@@ -41,7 +41,7 @@ export class CausalityLinkModal extends Modal {
             description: ''
         };
 
-        this.modalEl.addClass('storyteller-causality-link-modal');
+        this.modalEl.addClass('storyteller-causality-link-modal', 'storyteller-modal-scroll');
     }
 
     async onOpen(): Promise<void> {

@@ -34,6 +34,7 @@ export class ConflictViewModal extends Modal {
     async onOpen(): Promise<void> {
         const { contentEl } = this;
         contentEl.empty();
+        this.modalEl.addClass('storyteller-modal-scroll');
         contentEl.addClass('storyteller-conflict-viewer');
 
         // Load locations for name resolution

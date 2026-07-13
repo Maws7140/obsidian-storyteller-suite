@@ -33,6 +33,7 @@ export class CompileWorkflowModal extends Modal {
     }
 
     onOpen(): void {
+        this.modalEl.addClass('storyteller-compile-workflow-modal-host', 'storyteller-modal-scroll');
         this.render();
     }
 

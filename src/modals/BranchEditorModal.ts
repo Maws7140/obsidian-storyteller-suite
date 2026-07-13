@@ -45,7 +45,7 @@ export class BranchEditorModal extends Modal {
 
     async onOpen(): Promise<void> {
         const { contentEl } = this;
-        this.modalEl.addClass('storyteller-branch-editor-modal');
+        this.modalEl.addClass('storyteller-branch-editor-modal', 'storyteller-modal-scroll');
         contentEl.empty();
 
         // Load current data from the file

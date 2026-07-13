@@ -35,7 +35,7 @@ export class TemplateGalleryModal extends Modal {
         this.plugin = plugin;
         this.onSelect = onSelect;
         this.templates = getAllTemplates();
-        this.modalEl.addClass('storyteller-template-gallery-modal');
+        this.modalEl.addClass('storyteller-template-gallery-modal', 'storyteller-modal-scroll');
     }
 
     onOpen(): void {

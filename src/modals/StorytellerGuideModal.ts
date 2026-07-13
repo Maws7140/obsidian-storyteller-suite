@@ -20,7 +20,7 @@ export class StorytellerGuideModal extends Modal {
     onOpen(): void {
         const { contentEl } = this;
         contentEl.empty();
-        this.modalEl.addClass('storyteller-guide-modal');
+        this.modalEl.addClass('storyteller-guide-modal', 'storyteller-modal-scroll');
 
         const version = this.plugin.manifest.version;
         const guide = this.mode === 'whats-new'

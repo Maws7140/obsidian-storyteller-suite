@@ -45,7 +45,7 @@ export class TimelineForkModal extends Modal {
             notes: ''
         };
 
-        this.modalEl.addClass('storyteller-timeline-fork-modal');
+        this.modalEl.addClass('storyteller-timeline-fork-modal', 'storyteller-modal-scroll');
     }
 
     async onOpen(): Promise<void> {

@@ -31,6 +31,7 @@ export class TrackManagerModal extends Modal {
     async onOpen(): Promise<void> {
         const { contentEl } = this;
         contentEl.empty();
+        this.modalEl.addClass('storyteller-modal-scroll');
         contentEl.addClass('storyteller-track-manager');
 
         // Load entities for filters (story-specific)

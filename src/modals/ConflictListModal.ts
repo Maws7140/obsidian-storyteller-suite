@@ -21,7 +21,7 @@ export class ConflictListModal extends Modal {
         this.plugin = plugin;
         this.conflicts = conflicts;
         this.onRefresh = onRefresh;
-        this.modalEl.addClass('storyteller-conflict-list-modal');
+        this.modalEl.addClass('storyteller-conflict-list-modal', 'storyteller-modal-scroll');
     }
 
     async onOpen(): Promise<void> {

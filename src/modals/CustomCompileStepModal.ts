@@ -52,6 +52,7 @@ export class CustomCompileStepModal extends Modal {
 
     onOpen(): void {
         const { contentEl } = this;
+        this.modalEl.addClass('storyteller-custom-step-modal-host', 'storyteller-modal-scroll');
         contentEl.addClass('storyteller-custom-step-modal');
 
         contentEl.createEl('h2', { text: this.def.id?.startsWith('step-') && !this.def.name ? 'New Custom Compile Step' : 'Edit Compile Step' });

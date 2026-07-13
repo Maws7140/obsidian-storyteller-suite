@@ -24,7 +24,7 @@ export class StoryTemplateDetailModal extends Modal {
         this.plugin = plugin;
         this.templateManager = templateManager;
         this.template = template;
-        this.modalEl.addClass('storyteller-template-detail-modal');
+        this.modalEl.addClass('storyteller-template-detail-modal', 'storyteller-modal-scroll');
     }
 
     onOpen(): void {

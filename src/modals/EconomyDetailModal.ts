@@ -11,7 +11,7 @@ export class EconomyDetailModal extends Modal {
         super(app);
         this.plugin = plugin;
         this.economy = economy;
-        this.modalEl.addClass('storyteller-economy-detail-modal');
+        this.modalEl.addClass('storyteller-economy-detail-modal', 'storyteller-modal-scroll');
     }
 
     async onOpen() {

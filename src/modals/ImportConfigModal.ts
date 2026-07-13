@@ -33,7 +33,7 @@ export class ImportConfigModal extends Modal {
         this.plugin = plugin;
         this.importManager = new ImportManager(plugin);
         this.entityExtractor = new EntityExtractor();
-        this.modalEl.addClass('storyteller-import-modal');
+        this.modalEl.addClass('storyteller-import-modal', 'storyteller-modal-scroll');
     }
 
     onOpen(): void {

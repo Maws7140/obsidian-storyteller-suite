@@ -32,6 +32,7 @@ export class TagTimelineModal extends Modal {
     async onOpen(): Promise<void> {
         const { contentEl } = this;
         contentEl.empty();
+        this.modalEl.addClass('storyteller-modal-scroll');
         contentEl.addClass('storyteller-tag-timeline-generator');
 
         // Load locations for name resolution

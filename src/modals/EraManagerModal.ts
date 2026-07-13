@@ -30,6 +30,7 @@ export class EraManagerModal extends Modal {
     async onOpen(): Promise<void> {
         const { contentEl } = this;
         contentEl.empty();
+        this.modalEl.addClass('storyteller-modal-scroll');
         contentEl.addClass('storyteller-era-manager');
 
         // Load events for auto-assignment

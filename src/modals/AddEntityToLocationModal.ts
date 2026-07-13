@@ -52,6 +52,7 @@ export class AddEntityToLocationModal extends Modal {
     async onOpen(): Promise<void> {
         const { contentEl } = this;
         contentEl.empty();
+        this.modalEl.addClass('storyteller-modal-scroll');
         contentEl.addClass('storyteller-add-entity-modal');
 
         contentEl.createEl('h2', { text: `Add ${this.entityType} to ${this.location.name}` });

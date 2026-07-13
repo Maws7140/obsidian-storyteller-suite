@@ -21,7 +21,7 @@ export class StoryTemplateGalleryModal extends Modal {
         super(app);
         this.plugin = plugin;
         this.templateManager = templateManager;
-        this.modalEl.addClass('storyteller-story-template-gallery-modal');
+        this.modalEl.addClass('storyteller-story-template-gallery-modal', 'storyteller-modal-scroll');
     }
 
     onOpen(): void {

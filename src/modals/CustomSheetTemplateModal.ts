@@ -17,7 +17,7 @@ export class CustomSheetTemplateModal extends Modal {
     onOpen() {
         const isEdit = !!this.existing;
         this.titleEl.setText(isEdit ? 'Edit Custom Template' : 'New Custom Template');
-        this.modalEl.addClass('sts-custom-sheet-tpl-modal');
+        this.modalEl.addClass('sts-custom-sheet-tpl-modal', 'storyteller-modal-scroll');
 
         const form = this.contentEl.createDiv('sts-cstpl-form');
 
