@@ -3288,7 +3288,7 @@ export class DashboardView extends ItemView {
         } else {
             const draftSelect = draftSelectorEl.createEl('select');
             drafts.forEach(draft => {
-                const label = draft.bookId ? `📖 ${draft.name}` : draft.name;
+                const label = draft.bookId ? `${draft.name} (book)` : draft.name;
                 const opt = draftSelect.createEl('option', { value: draft.id, text: label });
                 if (activeDraft && draft.id === activeDraft.id) {
                     opt.selected = true;
@@ -3309,7 +3309,8 @@ export class DashboardView extends ItemView {
             };
             
             // Sync button - discovers new scenes and removes deleted ones
-            const syncBtn = draftSelectorEl.createEl('button', { text: '🔄' });
+            const syncBtn = draftSelectorEl.createEl('button');
+            setIcon(syncBtn, 'refresh-cw');
             syncBtn.title = t('syncScenes');
             syncBtn.onclick = async () => {
                 if (activeDraft) {
@@ -3370,7 +3371,8 @@ export class DashboardView extends ItemView {
             const sceneOrderActions = sceneOrderHeader.createDiv('storyteller-scene-order-actions');
             
             // Reorder by chapter button
-            const reorderBtn = sceneOrderActions.createEl('button', { text: '📚' });
+            const reorderBtn = sceneOrderActions.createEl('button');
+            setIcon(reorderBtn, 'list-ordered');
             reorderBtn.title = t('reorderByChapter');
             reorderBtn.onclick = async () => {
                 await sceneManager.reorderByChapter(activeDraft);
@@ -3388,10 +3390,9 @@ export class DashboardView extends ItemView {
                 // Add auto-populate button if there are scenes available
                 const allScenes = await this.plugin.listScenes();
                 if (allScenes.length > 0) {
-                    const populateBtn = emptyEl.createEl('button', { 
-                        text: `🔄 Add ${allScenes.length} existing scene${allScenes.length > 1 ? 's' : ''}`,
-                        cls: 'mod-cta'
-                    });
+                    const populateBtn = emptyEl.createEl('button', { cls: 'mod-cta' });
+                    setIcon(populateBtn.createSpan(), 'refresh-cw');
+                    populateBtn.createSpan().setText(` Add ${allScenes.length} existing scene${allScenes.length > 1 ? 's' : ''}`);
                     populateBtn.onclick = async () => {
                         await sceneManager.autoPopulateDraft(activeDraft);
                         await this.renderCompileContent(container);
@@ -3448,28 +3449,32 @@ export class DashboardView extends ItemView {
                     // Movement buttons
                     const actionsEl = sceneEl.createDiv('storyteller-ordered-scene-actions');
                     
-                    const upBtn = actionsEl.createEl('button', { text: '↑' });
+                    const upBtn = actionsEl.createEl('button');
+                    setIcon(upBtn, 'arrow-up');
                     upBtn.title = t('moveUp');
                     upBtn.onclick = async () => {
                         await sceneManager.moveSceneUp(activeDraft, sceneId);
                         await this.renderCompileContent(container);
                     };
                     
-                    const downBtn = actionsEl.createEl('button', { text: '↓' });
+                    const downBtn = actionsEl.createEl('button');
+                    setIcon(downBtn, 'arrow-down');
                     downBtn.title = t('moveDown');
                     downBtn.onclick = async () => {
                         await sceneManager.moveSceneDown(activeDraft, sceneId);
                         await this.renderCompileContent(container);
                     };
                     
-                    const indentBtn = actionsEl.createEl('button', { text: '→' });
+                    const indentBtn = actionsEl.createEl('button');
+                    setIcon(indentBtn, 'arrow-right');
                     indentBtn.title = t('indent');
                     indentBtn.onclick = async () => {
                         await sceneManager.indentScene(activeDraft, sceneId);
                         await this.renderCompileContent(container);
                     };
                     
-                    const unindentBtn = actionsEl.createEl('button', { text: '←' });
+                    const unindentBtn = actionsEl.createEl('button');
+                    setIcon(unindentBtn, 'arrow-left');
                     unindentBtn.title = t('unindent');
                     unindentBtn.onclick = async () => {
                         await sceneManager.unindentScene(activeDraft, sceneId);
@@ -4681,7 +4686,7 @@ export class DashboardView extends ItemView {
             const pfpContainer = itemEl.createDiv('storyteller-list-item-pfp');
             if (book.coverImagePath) {
                 const imgEl = pfpContainer.createEl('img');
-                try { imgEl.src = this.getImageSrc(book.coverImagePath); imgEl.alt = book.name; } catch { pfpContainer.createSpan({ text: '📖' }); }
+                try { imgEl.src = this.getImageSrc(book.coverImagePath); imgEl.alt = book.name; } catch { const fb = pfpContainer.createSpan(); setIcon(fb, 'book'); }
             } else {
                 pfpContainer.createDiv({ cls: 'storyteller-pfp-placeholder', text: (book.bookNumber ?? '?').toString() });
             }
