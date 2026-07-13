@@ -249,6 +249,65 @@ export function getWhitelistKeys(entityType: EntityType): Set<string> {
  * CRITICAL: This function NEVER deletes fields that existed in originalFrontmatter.
  * Empty values are preserved if they existed in the original file.
  */
+/**
+ * Serialize typed relationships as human-readable strings for frontmatter:
+ * `type: [[Target]] — label` (label optional). Obsidian's Properties panel
+ * cannot display arrays of objects (it falls back to raw JSON), while a list
+ * of strings renders cleanly and the wiki link feeds Graph view.
+ */
+export function serializeTypedRelationships(value: unknown[]): unknown[] {
+  return value.map(entry => {
+    if (typeof entry === 'string') return entry;
+    if (entry && typeof entry === 'object' && !Array.isArray(entry)) {
+      const rel = entry as { type?: unknown; target?: unknown; label?: unknown };
+      const target = typeof rel.target === 'string' ? rel.target.trim() : '';
+      if (!target) return entry;
+      const type = typeof rel.type === 'string' && rel.type.trim() ? rel.type.trim() : 'neutral';
+      const label = typeof rel.label === 'string' && rel.label.trim() ? rel.label.trim() : '';
+      return label ? `${type}: [[${target}]] — ${label}` : `${type}: [[${target}]]`;
+    }
+    return entry;
+  });
+}
+
+const TYPED_RELATIONSHIP_PATTERN = /^\s*([^:[\]]+?)\s*:\s*(?:\[\[([^\]]+)\]\]|([^—]+?))\s*(?:—\s*(.*))?$/;
+
+/**
+ * Parse frontmatter connection entries back into TypedRelationship objects.
+ * Accepts the string form produced by serializeTypedRelationships and the
+ * legacy object form; anything unparseable becomes a neutral connection to
+ * the raw text so data is never dropped.
+ */
+export function parseTypedRelationships(value: unknown[]): Array<{ type: string; target: string; label?: string }> {
+  const out: Array<{ type: string; target: string; label?: string }> = [];
+  for (const entry of value) {
+    if (entry && typeof entry === 'object' && !Array.isArray(entry)) {
+      const rel = entry as { type?: unknown; target?: unknown; label?: unknown };
+      if (typeof rel.target === 'string' && rel.target.trim()) {
+        out.push({
+          type: typeof rel.type === 'string' && rel.type.trim() ? rel.type.trim() : 'neutral',
+          target: rel.target.trim(),
+          ...(typeof rel.label === 'string' && rel.label.trim() ? { label: rel.label.trim() } : {})
+        });
+      }
+      continue;
+    }
+    if (typeof entry !== 'string' || !entry.trim()) continue;
+    const match = entry.match(TYPED_RELATIONSHIP_PATTERN);
+    if (match) {
+      // Wiki-linked targets may carry an alias ([[Name|alias]]) — keep the name.
+      const rawTarget = (match[2] ?? match[3] ?? '').split('|')[0].trim();
+      if (rawTarget) {
+        const label = (match[4] ?? '').trim();
+        out.push({ type: match[1].trim(), target: rawTarget, ...(label ? { label } : {}) });
+        continue;
+      }
+    }
+    out.push({ type: 'neutral', target: entry.replace(/^\[\[|\]\]$/g, '').split('|')[0].trim() });
+  }
+  return out;
+}
+
 export function buildFrontmatter(
   entityType: EntityType,
   source: Record<string, unknown>,
@@ -271,9 +330,11 @@ export function buildFrontmatter(
 
   // Handle customFields specially
   const cfRaw = source.customFields;
+  let flattenedCustomFields = false;
   if (cfRaw && typeof cfRaw === 'object' && !Array.isArray(cfRaw)) {
     const cfObj = cfRaw as Record<string, unknown>;
     if (mode === 'flatten') {
+      flattenedCustomFields = true;
       const unpromoted: Record<string, unknown> = {};
       for (const [cfKey, cfVal] of Object.entries(cfObj)) {
         // Skip if top-level already has this key (avoid collisions)
@@ -359,6 +420,10 @@ export function buildFrontmatter(
       if (key === 'position') continue;
       if (key.startsWith('_')) continue; // e.g. _skipSync - never persist runtime flags
       if (omitOriginalKeys.has(key)) continue;
+      // When customFields was flattened, its entries live at top level (or in
+      // the freshly written container for unpromoted ones) — re-adding the
+      // original container would duplicate every field as JSON in Properties.
+      if (key === 'customFields' && flattenedCustomFields) continue;
       // If already in output, skip (new value takes precedence)
       if (key in output) continue;
       // CRITICAL: Preserve the original value, even if null/undefined/empty
@@ -386,6 +451,12 @@ export function buildFrontmatter(
         output[field] = `[[${value}]]`;
       }
     }
+  }
+
+  // Typed relationships become readable strings — the Properties panel shows
+  // arrays of objects as raw JSON, strings render as a normal list.
+  if (Array.isArray(output['connections'])) {
+    output['connections'] = serializeTypedRelationships(output['connections'] as unknown[]);
   }
 
   if (originalFrontmatter) {

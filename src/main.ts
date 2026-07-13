@@ -23,6 +23,7 @@ import {
     normalizeEntityType,
     parseSectionsFromMarkdown,
     parseFrontmatterFromContent,
+    parseTypedRelationships,
     WIKI_LINK_ARRAY_FIELDS,
     WIKI_LINK_SCALAR_FIELDS,
 } from './yaml/EntitySections';
@@ -3941,6 +3942,13 @@ export default class StorytellerSuitePlugin extends Plugin {
                 const existing = data[fieldName];
                 if (existing !== undefined && existing !== null && existing !== '') continue;
                 data[fieldName] = allSections[sectionName];
+            }
+
+            // Connections are stored as readable strings ("type: [[Target]] — label")
+            // so the Properties panel renders them; convert back to typed objects.
+            // Legacy object-form entries pass through unchanged.
+            if (Array.isArray(data['connections'])) {
+                data['connections'] = parseTypedRelationships(data['connections'] as unknown[]);
             }
 
             // Scene: beats is an array on the entity; convert the raw section text now.
