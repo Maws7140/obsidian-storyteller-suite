@@ -2394,7 +2394,11 @@ export interface StoryDraft {
     
     /** Draft number for ordering (1, 2, 3...) */
     draftNumber: number;
-    
+
+    /** When set, this draft mirrors a Book — its scene order is built from the
+     * book's chapters and scene sync stays scoped to those chapters. */
+    bookId?: string;
+
     /** Ordered list of scenes with nesting information */
     sceneOrder: IndentedSceneRef[];
     

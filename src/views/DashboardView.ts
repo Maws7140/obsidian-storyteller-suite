@@ -3288,7 +3288,8 @@ export class DashboardView extends ItemView {
         } else {
             const draftSelect = draftSelectorEl.createEl('select');
             drafts.forEach(draft => {
-                const opt = draftSelect.createEl('option', { value: draft.id, text: draft.name });
+                const label = draft.bookId ? `📖 ${draft.name}` : draft.name;
+                const opt = draftSelect.createEl('option', { value: draft.id, text: label });
                 if (activeDraft && draft.id === activeDraft.id) {
                     opt.selected = true;
                 }
@@ -4721,33 +4722,20 @@ export class DashboardView extends ItemView {
             setIcon(compileBtn, 'book-open');
             compileBtn.title = 'Compile this book into a draft';
             compileBtn.addEventListener('click', () => { void (async () => {
-                const sceneRefs: IndentedSceneRef[] = [];
-                for (const ch of bookChapters) {
-                    const chScenes = allScenes
-                        .filter(s => s.chapterId === ch.id)
-                        .sort((a, b) => (a.priority ?? 999) - (b.priority ?? 999));
-                    for (const sc of chScenes) {
-                        sceneRefs.push({ sceneId: sc.id ?? sc.name, indent: 0, includeInCompile: sc.includeInCompile ?? true });
-                    }
-                }
-                if (sceneRefs.length === 0) {
-                    new Notice(`No scenes found for "${book.name}". Add chapters and scenes first.`);
+                const activeStory = this.plugin.settings.stories.find(s => s.id === this.plugin.settings.activeStoryId);
+                if (!activeStory) {
+                    new Notice('Select an active story first.');
                     return;
                 }
-                const now = new Date().toISOString();
-                const draft: StoryDraft = {
-                    id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
-                    storyId: this.plugin.settings.activeStoryId ?? 'default',
-                    name: `${book.name} — Draft`,
-                    draftNumber: Date.now(),
-                    sceneOrder: sceneRefs,
-                    created: now,
-                    modified: now,
-                };
-                if (!this.plugin.settings.storyDrafts) this.plugin.settings.storyDrafts = [];
-                this.plugin.settings.storyDrafts.push(draft);
-                await this.plugin.saveSettings();
-                new Notice(`Draft created for "${book.name}" with ${sceneRefs.length} scenes. Switch to the Compile tab.`);
+                const { SceneOrderManager } = await import('../compile');
+                const sceneManager = new SceneOrderManager(this.plugin);
+                const draft = await sceneManager.createOrUpdateDraftFromBook(activeStory, book);
+                if (draft.sceneOrder.length === 0) {
+                    new Notice(`"${book.name}" has no scenes yet. Add chapters and scenes first.`);
+                    return;
+                }
+                new Notice(`"${book.name}" is ready to compile (${draft.sceneOrder.length} scene${draft.sceneOrder.length !== 1 ? 's' : ''}).`);
+                await this.setActiveTab('compile');
             })(); });
 
             this.addEditButton(actionsEl, () => {

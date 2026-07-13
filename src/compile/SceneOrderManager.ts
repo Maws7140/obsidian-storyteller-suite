@@ -5,7 +5,7 @@
 
 import { TFile } from 'obsidian';
 import type StorytellerSuitePlugin from '../main';
-import type { Scene, Story, StoryDraft, IndentedSceneRef, Chapter } from '../types';
+import type { Scene, Story, StoryDraft, IndentedSceneRef, Chapter, Book } from '../types';
 
 /**
  * Represents a scene with its ordering metadata
@@ -114,6 +114,83 @@ export class SceneOrderManager {
             this.plugin.settings.storyDrafts = [];
         }
         
+        this.plugin.settings.storyDrafts.push(newDraft);
+        this.plugin.settings.activeDraftId = newDraft.id;
+        await this.plugin.saveSettings();
+
+        return newDraft;
+    }
+
+    /**
+     * Build scene order from a book's chapters (sorted by chapter number,
+     * scenes by priority). Only scenes in chapters linked to the book.
+     */
+    async buildSceneOrderFromBook(book: Book): Promise<IndentedSceneRef[]> {
+        const order: IndentedSceneRef[] = [];
+        const chapters = (await this.plugin.listChapters())
+            .filter(c => c.bookId === book.id)
+            .sort((a, b) => (a.number || 0) - (b.number || 0));
+        const scenes = await this.plugin.listScenes();
+
+        for (const chapter of chapters) {
+            const chapterScenes = scenes
+                .filter(s => s.chapterId === chapter.id)
+                .sort((a, b) => (a.priority || 0) - (b.priority || 0));
+            for (const scene of chapterScenes) {
+                if (scene.id) {
+                    order.push({
+                        sceneId: scene.id,
+                        indent: 0,
+                        includeInCompile: scene.includeInCompile !== false
+                    });
+                }
+            }
+        }
+
+        return order;
+    }
+
+    /**
+     * Create or refresh the draft that mirrors a Book, and make it active.
+     * One draft per book (matched by bookId): re-running rebuilds the scene
+     * order from the book's current chapters while preserving per-scene
+     * include flags the user has set.
+     */
+    async createOrUpdateDraftFromBook(story: Story, book: Book): Promise<StoryDraft> {
+        const freshOrder = await this.buildSceneOrderFromBook(book);
+        const now = new Date().toISOString();
+
+        const existing = this.getDraftsForStory(story.id).find(d => d.bookId === book.id);
+        if (existing) {
+            const includeFlags = new Map(existing.sceneOrder.map(r => [r.sceneId, r.includeInCompile]));
+            existing.sceneOrder = freshOrder.map(ref => ({
+                ...ref,
+                includeInCompile: includeFlags.get(ref.sceneId) ?? ref.includeInCompile
+            }));
+            existing.name = book.name;
+            existing.modified = now;
+            this.plugin.settings.activeDraftId = existing.id;
+            await this.plugin.saveSettings();
+            return existing;
+        }
+
+        const existingDrafts = this.getDraftsForStory(story.id);
+        const maxDraftNumber = existingDrafts.reduce((max, d) => Math.max(max, d.draftNumber || 0), 0);
+        const newDraft: StoryDraft = {
+            id: this.generateId(),
+            storyId: story.id,
+            name: book.name,
+            draftNumber: maxDraftNumber + 1,
+            bookId: book.id,
+            sceneOrder: freshOrder,
+            workflow: this.plugin.settings.defaultCompileWorkflow,
+            created: now,
+            modified: now
+        };
+
+        if (!this.plugin.settings.storyDrafts) {
+            this.plugin.settings.storyDrafts = [];
+        }
         this.plugin.settings.storyDrafts.push(newDraft);
         this.plugin.settings.activeDraftId = newDraft.id;
         await this.plugin.saveSettings();
@@ -265,7 +342,18 @@ export class SceneOrderManager {
      * Returns scenes that were added or removed
      */
     async syncDraftWithScenes(draft: StoryDraft): Promise<SceneDiscoveryResult> {
-        const scenes = await this.plugin.listScenes();
+        let scenes = await this.plugin.listScenes();
+
+        // Book drafts stay scoped to the book's chapters
+        if (draft.bookId) {
+            const bookChapterIds = new Set(
+                (await this.plugin.listChapters())
+                    .filter(c => c.bookId === draft.bookId)
+                    .map(c => c.id)
+            );
+            scenes = scenes.filter(s => s.chapterId && bookChapterIds.has(s.chapterId));
+        }
+
         const existingIds = new Set(draft.sceneOrder.map(r => r.sceneId));
         const currentSceneIds = new Set<string>();
         
