@@ -15,6 +15,7 @@ import {
   fromAbsolute,
   normalYearLength,
   monthLength,
+  monthsInYear,
 } from './CalendarEngine';
 
 /** The visible slice of the axis the renderer is drawing. */
@@ -117,9 +118,10 @@ export function generateTicks(
 
   if (level === 'month') {
     for (let y = startYear; y <= endYear; y++) {
-      for (let m = 0; m < cal.months.length; m++) {
+      const months = monthsInYear(cal, y);
+      for (let m = 0; m < months.length; m++) {
         const day = toAbsolute(cal, { year: y, month: m, day: 1 }).absoluteDay;
-        push(day, cal.months[m].name, 'month');
+        push(day, months[m].name, 'month');
       }
     }
     return ticks;
@@ -148,7 +150,8 @@ export function generateTicks(
 
   // day level
   for (let y = startYear; y <= endYear; y++) {
-    for (let m = 0; m < cal.months.length; m++) {
+    const months = monthsInYear(cal, y);
+    for (let m = 0; m < months.length; m++) {
       const len = monthLength(cal, y, m);
       for (let d = 1; d <= len; d++) {
         const day = toAbsolute(cal, { year: y, month: m, day: d }).absoluteDay;

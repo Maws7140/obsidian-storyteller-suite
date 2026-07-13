@@ -34,6 +34,30 @@ export class CalendarRegistry {
     return this.listThemes().find(theme => theme.id === id) || OBSIDIAN_NATIVE_THEME;
   }
 
+  isBuiltInCalendar(id: string): boolean {
+    return [GREGORIAN_CALENDAR, ...PRESET_CALENDARS].some(calendar => calendar.id === id);
+  }
+
+  async saveCalendar(calendar: CalendarSystem): Promise<void> {
+    if (this.isBuiltInCalendar(calendar.id)) throw new Error('Built-in calendars cannot be overwritten. Duplicate it first.');
+    const values = [...(this.plugin.settings.calendarSystems || [])];
+    const saved = structuredCloneSafe(calendar);
+    const index = values.findIndex(value => value.id === saved.id);
+    if (index >= 0) values[index] = saved;
+    else values.push(saved);
+    this.plugin.settings.calendarSystems = values;
+    await this.plugin.saveSettings();
+  }
+
+  async deleteCalendar(id: string): Promise<void> {
+    if (this.isBuiltInCalendar(id)) throw new Error('Built-in calendars cannot be deleted.');
+    this.plugin.settings.calendarSystems = (this.plugin.settings.calendarSystems || [])
+      .filter(calendar => calendar.id !== id);
+    const story = this.plugin.getActiveStory();
+    if (story?.activeCalendarId === id) story.activeCalendarId = GREGORIAN_CALENDAR.id;
+    await this.plugin.saveSettings();
+  }
+
   async setActiveCalendar(id: string): Promise<void> {
     const story = this.requireStory();
     if (!this.listCalendars().some(calendar => calendar.id === id)) throw new Error('Calendar not found.');

@@ -7,6 +7,7 @@ import {
   daysInYear,
   normalYearLength,
   resolveCycle,
+  monthsInYear,
 } from '../../src/calendar/CalendarEngine';
 import { GREGORIAN_CALENDAR } from '../../src/calendar/builtins';
 import type { CalendarSystem, CalendarDate } from '../../src/calendar/types';
@@ -129,5 +130,45 @@ describe('CalendarEngine — custom fantasy calendar', () => {
     expect(resolveCycle(FANTASY, { year: 2, month: 1, day: 5 }, 'Season')?.entry.name).toBe('Spring');
     expect(resolveCycle(FANTASY, { year: 2, month: 3, day: 10 }, 'Season')?.entry.name).toBe('Autumn');
     expect(resolveCycle(FANTASY, { year: 2, month: 0, day: 1 }, 'Nope')).toBeNull();
+  });
+});
+
+describe('CalendarEngine — irregular calendar rules', () => {
+  const IRREGULAR: CalendarSystem = {
+    schemaVersion: CALENDAR_SCHEMA_VERSION,
+    id: 'test-irregular',
+    name: 'Irregular',
+    baseUnit: 'day',
+    unitsPerDay: 1,
+    epochAbsoluteDay: 0,
+    months: [{ name: 'First', days: 20 }, { name: 'Second', days: 20 }],
+    leapRule: { cycleYears: 5, leapYears: [2, 5], extraDays: 1, monthIndex: 1 },
+    intercalaryMonths: [
+      { name: 'Festival', days: 4, afterMonth: 0, cycleYears: 3, years: [3] },
+    ],
+    yearOverrides: [
+      { year: 7, months: [{ name: 'First', days: 18 }, { name: 'Long Night', days: 25 }] },
+    ],
+  };
+
+  it('supports leap patterns with multiple leap years in a cycle', () => {
+    expect(isLeapYear(IRREGULAR, 2)).toBe(true);
+    expect(isLeapYear(IRREGULAR, 5)).toBe(true);
+    expect(isLeapYear(IRREGULAR, 6)).toBe(false);
+    expect(daysInYear(IRREGULAR, 2)).toBe(41);
+  });
+
+  it('inserts recurring intercalary months into matching years', () => {
+    expect(monthsInYear(IRREGULAR, 3).map(month => month.name)).toEqual(['First', 'Festival', 'Second']);
+    expect(daysInYear(IRREGULAR, 3)).toBe(44);
+    const date = { year: 3, month: 1, day: 4 };
+    expect(fromAbsolute(IRREGULAR, toAbsolute(IRREGULAR, date))).toEqual({ ...date, unitOfDay: 0 });
+  });
+
+  it('uses explicit month layouts for exceptional years', () => {
+    expect(monthsInYear(IRREGULAR, 7).map(month => month.name)).toEqual(['First', 'Long Night']);
+    expect(daysInYear(IRREGULAR, 7)).toBe(44);
+    const date = { year: 7, month: 1, day: 25 };
+    expect(fromAbsolute(IRREGULAR, toAbsolute(IRREGULAR, date))).toEqual({ ...date, unitOfDay: 0 });
   });
 });

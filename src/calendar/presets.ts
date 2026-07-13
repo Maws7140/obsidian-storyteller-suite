@@ -88,7 +88,7 @@ const KO_NAMES: string[] = SEKKI.flatMap((sekki) =>
 export const JAPANESE_KO: CalendarSystem = {
   schemaVersion: CALENDAR_SCHEMA_VERSION,
   id: 'preset-japanese-ko',
-  name: 'Japanese (sekki & kō)',
+  name: 'Japanese seasonal template (sekki & kō)',
   description:
     'Twelve traditional month names with the 24 sekki and 72 kō microseasons as ' +
     'solar-year cycle overlays. A template — tune the offsets to your setting.',
@@ -120,9 +120,55 @@ export const JAPANESE_KO: CalendarSystem = {
     ],
   },
   cycles: [
-    { name: 'Sekki', entries: spread(SEKKI, YEAR_LEN) },
-    { name: 'Kō', entries: spread(KO_NAMES, YEAR_LEN) },
+    { name: 'Sekki', color: '#3b82f6', entries: spread(SEKKI, YEAR_LEN) },
+    { name: 'Kō', parentCycle: 'Sekki', color: '#14b8a6', entries: spread(KO_NAMES, YEAR_LEN) },
+  ],
+  calendarKind: 'solar',
+};
+
+/**
+ * Arithmetic Hijri calendar using the civil 30-year leap cycle. This is useful
+ * for planning and conversion, but intentionally does not claim to predict
+ * locally observed crescent sightings. Observed years can be corrected with
+ * CalendarSystem.yearOverrides.
+ */
+export const TABULAR_HIJRI: CalendarSystem = {
+  schemaVersion: CALENDAR_SCHEMA_VERSION,
+  id: 'preset-tabular-hijri',
+  name: 'Hijri (arithmetic)',
+  description:
+    'A rule-based Hijri calendar for planning. Local observed month starts may differ; use year overrides for a specific tradition or setting.',
+  calendarKind: 'lunar',
+  baseUnit: 'day',
+  unitsPerDay: 1,
+  epochAbsoluteDay: 227014,
+  epochLabel: 'AH',
+  months: [
+    { name: 'Muharram', days: 30 },
+    { name: 'Safar', days: 29 },
+    { name: 'Rabi al-Awwal', days: 30 },
+    { name: 'Rabi al-Thani', days: 29 },
+    { name: 'Jumada al-Awwal', days: 30 },
+    { name: 'Jumada al-Thani', days: 29 },
+    { name: 'Rajab', days: 30 },
+    { name: "Sha'ban", days: 29 },
+    { name: 'Ramadan', days: 30 },
+    { name: 'Shawwal', days: 29 },
+    { name: 'Dhu al-Qadah', days: 30 },
+    { name: 'Dhu al-Hijjah', days: 29 },
+  ],
+  week: { days: ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'] },
+  leapRule: {
+    cycleYears: 30,
+    leapYears: [2, 5, 7, 10, 13, 16, 18, 21, 24, 26, 29],
+    extraDays: 1,
+    monthIndex: 11,
+  },
+  holidays: [
+    { name: 'Ramadan', month: 8, day: 1, length: 30, color: '#14b8a6' },
+    { name: 'Eid al-Fitr', month: 9, day: 1, length: 3, color: '#f59e0b' },
+    { name: 'Eid al-Adha', month: 11, day: 10, length: 4, color: '#8b5cf6' },
   ],
 };
 
-export const PRESET_CALENDARS: CalendarSystem[] = [THIRTEEN_MOONS, JAPANESE_KO];
+export const PRESET_CALENDARS: CalendarSystem[] = [THIRTEEN_MOONS, JAPANESE_KO, TABULAR_HIJRI];

@@ -44,6 +44,10 @@ export interface CycleEntry {
 export interface CycleDef {
   name: string;
   entries: CycleEntry[];
+  /** Optional parent cycle name for nested layers (e.g. Kō inside Sekki). */
+  parentCycle?: string;
+  /** Optional display color used by timeline calendar bands. */
+  color?: string;
 }
 
 /**
@@ -53,7 +57,12 @@ export interface CycleDef {
  * be listed by increasing divisibility (…, 100, 400) — matching every real rule.
  */
 export interface LeapRule {
-  everyYears: number;
+  /** Simple periodic leap cadence. Mutually exclusive with cycleYears/leapYears. */
+  everyYears?: number;
+  /** Length of a repeating leap pattern, such as the 30-year tabular Hijri cycle. */
+  cycleYears?: number;
+  /** 1-based years within cycleYears that receive the extra days. */
+  leapYears?: number[];
   /** Extra days added in a leap year. */
   extraDays: number;
   /** 0-based month the extra days extend; defaults to the last month. */
@@ -74,6 +83,23 @@ export interface HolidayDef {
   /** Length in days (>= 1); multi-day holidays span forward. Defaults to 1. */
   length?: number;
   description?: string;
+  /** Optional display color used by timeline calendar bands. */
+  color?: string;
+}
+
+/** A month inserted only in selected years of a repeating cycle. */
+export interface IntercalaryMonthDef extends MonthDef {
+  /** Insert after this 0-based base month index (-1 inserts before the first month). */
+  afterMonth: number;
+  cycleYears: number;
+  /** 1-based years inside the cycle in which this month exists. */
+  years: number[];
+}
+
+/** Explicit month layout for one exceptional or observational year. */
+export interface CalendarYearOverride {
+  year: number;
+  months: MonthDef[];
 }
 
 export interface CalendarSystem {
@@ -97,6 +123,12 @@ export interface CalendarSystem {
   cycles?: CycleDef[];
   leapRule?: LeapRule;
   holidays?: HolidayDef[];
+  /** Optional recurring leap/intercalary months. */
+  intercalaryMonths?: IntercalaryMonthDef[];
+  /** Explicit year layouts for observational or historically irregular calendars. */
+  yearOverrides?: CalendarYearOverride[];
+  /** Descriptive construction family; conversion remains rule-driven, never preset-specific. */
+  calendarKind?: 'solar' | 'lunar' | 'lunisolar' | 'custom';
 }
 
 /** A moment expressed in a specific calendar. Years are astronomical. */

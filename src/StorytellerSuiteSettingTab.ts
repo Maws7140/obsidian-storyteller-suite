@@ -21,6 +21,7 @@ import { confirmWithModal } from './modals/ui/ConfirmModal';
 import type { TemplateEntityType } from './templates/TemplateTypes';
 import { CalendarRegistry } from './calendar/CalendarRegistry';
 import { encodeShareCode, makeCalendarDocument, makeThemeDocument } from './calendar/TimelineDocuments';
+import { CalendarManagerModal } from './modals/CalendarManagerModal';
 
 type TabId = 'stories' | 'dashboard' | 'folders' | 'timeline' | 'maps' | 'templates' | 'gallery' | 'help';
 
@@ -814,7 +815,10 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
             .addExtraButton(button => button.setIcon('copy').setTooltip('Copy calendar share code').onClick(() => { void (async () => {
                 await navigator.clipboard.writeText(encodeShareCode(makeCalendarDocument(calendarRegistry.getActiveCalendar())));
                 new Notice('Calendar share code copied');
-            })(); }));
+            })(); }))
+            .addExtraButton(button => button.setIcon('settings-2').setTooltip('Design and manage dating systems').onClick(() => {
+                new CalendarManagerModal(this.app, this.plugin, () => this.refreshSettingsView()).open();
+            }));
 
         new Setting(container)
             .setName('Timeline theme')

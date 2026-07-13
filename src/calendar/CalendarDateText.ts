@@ -11,7 +11,7 @@
  * format.
  */
 import type { CalendarSystem, CalendarDate } from './types';
-import { monthLength, toAbsolute, fromAbsolute } from './CalendarEngine';
+import { monthLength, monthsInYear, toAbsolute, fromAbsolute } from './CalendarEngine';
 
 export type DatePrecision = 'year' | 'month' | 'day' | 'time';
 
@@ -21,9 +21,9 @@ export interface ParsedCalendarDate {
 }
 
 /** Find a 0-based month index by (case-insensitive) name or abbreviation. */
-function monthIndexByName(cal: CalendarSystem, token: string): number {
+function monthIndexByName(cal: CalendarSystem, year: number, token: string): number {
   const t = token.trim().toLowerCase();
-  return cal.months.findIndex(
+  return monthsInYear(cal, year).findIndex(
     (m) => m.name.toLowerCase() === t || (m.abbr && m.abbr.toLowerCase() === t),
   );
 }
@@ -41,7 +41,7 @@ function escapeRe(s: string): string {
 
 /** Validate a candidate date against the calendar; return it or null. */
 function validate(cal: CalendarSystem, date: CalendarDate): CalendarDate | null {
-  if (date.month < 0 || date.month >= cal.months.length) return null;
+  if (date.month < 0 || date.month >= monthsInYear(cal, date.year).length) return null;
   if (date.day < 1 || date.day > monthLength(cal, date.year, date.month)) return null;
   return date;
 }
@@ -77,8 +77,8 @@ export function parseInCalendar(text: string, cal: CalendarSystem): ParsedCalend
 
   // Month name forms.
   const named =
-    raw.match(/^(\w[\w'’-]*)\s+(\d+)(?:,)?\s+(-?\d+)$/) || // Name day, year
-    raw.match(/^(\d+)\s+(\w[\w'’-]*)\s+(-?\d+)$/); // day Name year
+    raw.match(/^(.+?)\s+(\d+)(?:,)?\s+(-?\d+)$/) || // Name day, year
+    raw.match(/^(\d+)\s+(.+?)\s+(-?\d+)$/); // day Name year
   if (named) {
     // Normalise which capture is the name.
     let name: string, day: number, year: number;
@@ -91,7 +91,7 @@ export function parseInCalendar(text: string, cal: CalendarSystem): ParsedCalend
       day = parseInt(named[2], 10);
       year = parseInt(named[3], 10);
     }
-    const month = monthIndexByName(cal, name);
+    const month = monthIndexByName(cal, year, name);
     if (month < 0) return null;
     const date = validate(cal, { year, month, day });
     if (!date) return null;
@@ -99,11 +99,11 @@ export function parseInCalendar(text: string, cal: CalendarSystem): ParsedCalend
   }
 
   // Name year (month precision, e.g. "Frost 342").
-  const nameYear = raw.match(/^(\w[\w'’-]*)\s+(-?\d+)$/);
+  const nameYear = raw.match(/^(.+?)\s+(-?\d+)$/);
   if (nameYear) {
-    const month = monthIndexByName(cal, nameYear[1]);
-    if (month < 0) return null;
     const year = parseInt(nameYear[2], 10);
+    const month = monthIndexByName(cal, year, nameYear[1]);
+    if (month < 0) return null;
     const date = validate(cal, { year, month, day: 1 });
     if (!date) return null;
     return { date, precision: 'month' };
@@ -131,7 +131,7 @@ export function formatInCalendar(
   const era = cal.epochLabel ? ` ${cal.epochLabel}` : '';
   const yearStr = `${date.year}${era}`;
   if (precision === 'year') return yearStr;
-  const monthName = cal.months[date.month]?.name ?? `Month ${date.month + 1}`;
+  const monthName = monthsInYear(cal, date.year)[date.month]?.name ?? `Month ${date.month + 1}`;
   if (precision === 'month') return `${monthName} ${yearStr}`;
   const dayPart = `${monthName} ${date.day}, ${yearStr}`;
   if (precision === 'day') return dayPart;

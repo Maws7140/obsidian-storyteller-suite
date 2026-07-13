@@ -8,7 +8,8 @@ import { ConflictDetector } from './ConflictDetector';
 import { CalendarRegistry } from '../calendar/CalendarRegistry';
 import { GREGORIAN_CALENDAR } from '../calendar/builtins';
 import { parseToAbsoluteDay, formatAbsoluteDay } from '../calendar/CalendarDateText';
-import { fromAbsolute, normalYearLength, toAbsolute } from '../calendar/CalendarEngine';
+import { daysInYear, fromAbsolute, monthsInYear, normalYearLength, toAbsolute } from '../calendar/CalendarEngine';
+import type { CalendarSystem } from '../calendar/types';
 import { generateTicks } from '../calendar/TimelineAxis';
 
 export interface TimelineRendererOptions {
@@ -63,10 +64,21 @@ interface Lane {
     branchDepth?: number;
 }
 
+interface CalendarBand {
+    startDay: number;
+    endDay: number;
+    label: string;
+    group: string;
+    color: string;
+    row: number;
+    kind: 'cycle' | 'holiday';
+}
+
 const DAY_MS = 86_400_000;
 const YEAR_MS = 365.2425 * DAY_MS;
 const SIDEBAR_WIDTH = 174;
-const AXIS_HEIGHT = 42;
+const BASE_AXIS_HEIGHT = 42;
+const CALENDAR_BAND_HEIGHT = 16;
 const MAX_SPAN = 2_000_000 * YEAR_MS;
 
 export class NativeTimelineRenderer {
@@ -364,7 +376,8 @@ export class NativeTimelineRenderer {
         const rowHeight = this.rowHeight();
         const plotWidth = Math.max(1, (this.root?.clientWidth || 900) - SIDEBAR_WIDTH);
         const visualReservation = (this.viewEnd - this.viewStart) * (210 / plotWidth);
-        let top = AXIS_HEIGHT;
+        const axisHeight = this.axisHeight();
+        let top = axisHeight;
         this.lanes.forEach(lane => {
             lane.items.sort((a, b) => a.start - b.start || a.end - b.end);
             const rowEnds: number[] = [];
@@ -379,8 +392,8 @@ export class NativeTimelineRenderer {
             top += lane.height;
         });
         if (this.lanes.length === 1 && this.root) {
-            this.lanes[0].height = Math.max(this.lanes[0].height, this.root.clientHeight - AXIS_HEIGHT);
-            top = AXIS_HEIGHT + this.lanes[0].height;
+            this.lanes[0].height = Math.max(this.lanes[0].height, this.root.clientHeight - axisHeight);
+            top = axisHeight + this.lanes[0].height;
         }
         const maxScroll = Math.max(0, top - (this.root?.clientHeight || 0));
         this.scrollTop = Math.min(this.scrollTop, maxScroll);
@@ -446,6 +459,7 @@ export class NativeTimelineRenderer {
             return;
         }
         this.drawAxis(ctx, width, height);
+        this.drawHorizontalCalendarLayers(ctx, width);
         this.drawEras(ctx, width, height);
         this.visibleItems = [];
         this.lanes.forEach(lane => this.drawLane(ctx, lane, width, height));
@@ -455,8 +469,9 @@ export class NativeTimelineRenderer {
     }
 
     private drawAxis(ctx: CanvasRenderingContext2D, width: number, _height: number): void {
+        const axisHeight = this.axisHeight();
         ctx.fillStyle = this.css('--background-secondary', '#1f2937');
-        ctx.fillRect(0, 0, width, AXIS_HEIGHT);
+        ctx.fillRect(0, 0, width, axisHeight);
         ctx.fillStyle = this.css('--text-muted', '#9ca3af');
         ctx.font = `12px ${this.css('--font-interface', 'sans-serif')}`;
         const plotWidth = Math.max(1, width - SIDEBAR_WIDTH);
@@ -469,10 +484,10 @@ export class NativeTimelineRenderer {
             ctx.strokeStyle = this.css('--background-modifier-border', '#374151');
             ticks.forEach(tick => {
                 const x = SIDEBAR_WIDTH + tick.x;
-                ctx.beginPath(); ctx.moveTo(x, AXIS_HEIGHT); ctx.lineTo(x, this.root?.clientHeight || 0); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(x, axisHeight); ctx.lineTo(x, this.root?.clientHeight || 0); ctx.stroke();
                 ctx.fillText(tick.label, x + 5, 25);
             });
-            ctx.strokeRect(0, 0, width, AXIS_HEIGHT);
+            ctx.strokeRect(0, 0, width, axisHeight);
             return;
         }
         const desired = Math.max(2, Math.floor(plotWidth / 120));
@@ -483,10 +498,109 @@ export class NativeTimelineRenderer {
         ctx.lineWidth = 1;
         for (let time = first; time < this.viewEnd; time += step) {
             const x = this.timeToX(time, width);
-            ctx.beginPath(); ctx.moveTo(x, AXIS_HEIGHT); ctx.lineTo(x, this.root?.clientHeight || 0); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(x, axisHeight); ctx.lineTo(x, this.root?.clientHeight || 0); ctx.stroke();
             ctx.fillText(this.formatTick(time, step), x + 5, 25);
         }
-        ctx.strokeRect(0, 0, width, AXIS_HEIGHT);
+        ctx.strokeRect(0, 0, width, axisHeight);
+    }
+
+    private axisHeight(): number {
+        if (!this.options.ganttMode && this.options.timelineOrientation === 'vertical') return BASE_AXIS_HEIGHT;
+        const rows = this.calendarLayerRows();
+        return BASE_AXIS_HEIGHT + rows * CALENDAR_BAND_HEIGHT;
+    }
+
+    private calendarLayerRows(): number {
+        const calendar = this.calendarRegistry.getActiveCalendar();
+        const theme = this.calendarRegistry.getActiveTheme().axis;
+        const spanDays = (this.viewEnd - this.viewStart) / DAY_MS;
+        if (spanDays > normalYearLength(calendar) * 8) return 0;
+        const cycleRows = theme?.showCycles === false ? 0 : Math.min(2, calendar.cycles?.length || 0);
+        const holidayRows = theme?.showHolidays === false || !calendar.holidays?.length ? 0 : 1;
+        return cycleRows + holidayRows;
+    }
+
+    private calendarBands(calendar: CalendarSystem, absoluteStart: number, absoluteEnd: number): CalendarBand[] {
+        const rows = this.calendarLayerRows();
+        if (!rows) return [];
+        const theme = this.calendarRegistry.getActiveTheme().axis;
+        const cycles = theme?.showCycles === false ? [] : (calendar.cycles || []).slice(0, 2);
+        const includeHolidays = theme?.showHolidays !== false && !!calendar.holidays?.length;
+        const firstYear = fromAbsolute(calendar, { absoluteDay: absoluteStart }).year - 1;
+        const lastYear = fromAbsolute(calendar, { absoluteDay: absoluteEnd }).year + 1;
+        const bands: CalendarBand[] = [];
+        for (let year = firstYear; year <= lastYear && year < firstYear + 14; year++) {
+            const yearStart = toAbsolute(calendar, { year, month: 0, day: 1 }).absoluteDay;
+            const yearDays = daysInYear(calendar, year);
+            cycles.forEach((cycle, row) => {
+                const entries = [...cycle.entries].sort((a, b) => a.startDayOfYear - b.startDayOfYear);
+                entries.forEach((entry, index) => {
+                    const startDay = yearStart + Math.max(0, entry.startDayOfYear);
+                    const endDay = yearStart + Math.min(yearDays, entries[index + 1]?.startDayOfYear ?? yearDays);
+                    if (endDay <= absoluteStart || startDay >= absoluteEnd || endDay <= startDay) return;
+                    bands.push({
+                        startDay,
+                        endDay,
+                        label: entry.name,
+                        group: cycle.name,
+                        color: cycle.color || this.palette[row % this.palette.length],
+                        row,
+                        kind: 'cycle',
+                    });
+                });
+            });
+            if (includeHolidays) {
+                const yearMonths = monthsInYear(calendar, year);
+                for (const holiday of calendar.holidays || []) {
+                    const baseMonth = calendar.months[holiday.month];
+                    const month = baseMonth ? yearMonths.findIndex(candidate => candidate.name === baseMonth.name) : -1;
+                    if (month < 0 || holiday.day > yearMonths[month].days) continue;
+                    const startDay = toAbsolute(calendar, { year, month, day: holiday.day }).absoluteDay;
+                    const endDay = startDay + Math.max(1, holiday.length || 1);
+                    if (endDay <= absoluteStart || startDay >= absoluteEnd) continue;
+                    bands.push({
+                        startDay,
+                        endDay,
+                        label: holiday.name,
+                        group: 'Holidays',
+                        color: holiday.color || '#f59e0b',
+                        row: cycles.length,
+                        kind: 'holiday',
+                    });
+                }
+            }
+        }
+        return bands;
+    }
+
+    private drawHorizontalCalendarLayers(ctx: CanvasRenderingContext2D, width: number): void {
+        const calendar = this.calendarRegistry.getActiveCalendar();
+        const absoluteStart = this.viewStart / DAY_MS + this.unixEpochAbsoluteDay();
+        const absoluteEnd = this.viewEnd / DAY_MS + this.unixEpochAbsoluteDay();
+        const bands = this.calendarBands(calendar, absoluteStart, absoluteEnd);
+        if (!bands.length) return;
+        ctx.save();
+        ctx.font = `10px ${this.css('--font-interface', 'sans-serif')}`;
+        const groups = new Map<number, string>();
+        bands.forEach(band => {
+            groups.set(band.row, band.group);
+            const x1 = Math.max(SIDEBAR_WIDTH, this.timeToX((band.startDay - this.unixEpochAbsoluteDay()) * DAY_MS, width));
+            const x2 = Math.min(width, this.timeToX((band.endDay - this.unixEpochAbsoluteDay()) * DAY_MS, width));
+            const y = BASE_AXIS_HEIGHT + band.row * CALENDAR_BAND_HEIGHT;
+            if (x2 <= x1) return;
+            ctx.globalAlpha = band.kind === 'holiday' ? 0.34 : 0.22;
+            ctx.fillStyle = band.color;
+            ctx.fillRect(x1, y, x2 - x1, CALENDAR_BAND_HEIGHT - 1);
+            ctx.globalAlpha = 0.95;
+            ctx.fillStyle = this.css('--text-normal', '#e5e7eb');
+            if (x2 - x1 > 34) ctx.fillText(this.truncate(ctx, band.label, x2 - x1 - 8), x1 + 4, y + 11);
+        });
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = this.css('--background-secondary-alt', '#18202d');
+        ctx.fillRect(0, BASE_AXIS_HEIGHT, SIDEBAR_WIDTH, this.axisHeight() - BASE_AXIS_HEIGHT);
+        ctx.fillStyle = this.css('--text-muted', '#9ca3af');
+        groups.forEach((label, row) => ctx.fillText(this.truncate(ctx, label.toUpperCase(), SIDEBAR_WIDTH - 18), 9, BASE_AXIS_HEIGHT + row * CALENDAR_BAND_HEIGHT + 11));
+        ctx.restore();
     }
 
     private drawLane(ctx: CanvasRenderingContext2D, lane: Lane, width: number, height: number): void {
@@ -495,7 +609,7 @@ export class NativeTimelineRenderer {
             return;
         }
         const top = lane.top - this.scrollTop;
-        if (top > height || top + lane.height < AXIS_HEIGHT) return;
+        if (top > height || top + lane.height < this.axisHeight()) return;
         ctx.fillStyle = this.css('--background-secondary-alt', '#18202d');
         ctx.fillRect(0, top, SIDEBAR_WIDTH, lane.height);
         ctx.fillStyle = this.css('--text-normal', '#e5e7eb');
@@ -529,7 +643,7 @@ export class NativeTimelineRenderer {
 
     private drawChronologyLane(ctx: CanvasRenderingContext2D, lane: Lane, width: number, height: number): void {
         const top = lane.top - this.scrollTop;
-        if (top > height || top + lane.height < AXIS_HEIGHT) return;
+        if (top > height || top + lane.height < this.axisHeight()) return;
         ctx.fillStyle = this.css('--background-secondary-alt', '#18202d');
         ctx.fillRect(0, top, SIDEBAR_WIDTH, lane.height);
         ctx.fillStyle = this.css('--text-normal', '#e5e7eb');
@@ -581,6 +695,7 @@ export class NativeTimelineRenderer {
         const absoluteEnd = this.viewEnd / DAY_MS + this.unixEpochAbsoluteDay();
 
         this.drawVerticalEras(ctx, absoluteStart, absoluteEnd, top, bottom, width);
+        this.drawVerticalCalendarLayers(ctx, calendar, absoluteStart, absoluteEnd, top, bottom, width);
         this.drawVerticalCalendarPeriods(ctx, calendar, absoluteStart, absoluteEnd, axisX, top, bottom, width);
         ctx.strokeStyle = this.css('--background-modifier-border', '#374151');
         ctx.lineWidth = 2;
@@ -643,10 +758,11 @@ export class NativeTimelineRenderer {
         let month = useYears ? 0 : startDate.month;
         for (let count = 0; count < 80; count++) {
             const day = toAbsolute(calendar, { year, month, day: 1 }).absoluteDay;
-            const monthName = calendar.months[month]?.name || `Month ${month + 1}`;
+            const yearMonths = monthsInYear(calendar, year);
+            const monthName = yearMonths[month]?.name || `Month ${month + 1}`;
             periods.push({ day, label: useYears ? this.calendarYearLabel(calendar, year) : `${monthName} ${this.calendarYearLabel(calendar, year)}` });
             if (useYears) year++;
-            else if (++month >= calendar.months.length) { month = 0; year++; }
+            else if (++month >= yearMonths.length) { month = 0; year++; }
             if (day > absoluteEnd) break;
         }
         if (!periods.length) return;
@@ -668,6 +784,37 @@ export class NativeTimelineRenderer {
             ctx.fillText(this.truncate(ctx, period.label.toUpperCase(), labelWidth - 12), 12, Math.max(19, y + 2));
             ctx.restore();
         });
+    }
+
+    private drawVerticalCalendarLayers(
+        ctx: CanvasRenderingContext2D,
+        calendar: CalendarSystem,
+        absoluteStart: number,
+        absoluteEnd: number,
+        top: number,
+        bottom: number,
+        width: number,
+    ): void {
+        const span = absoluteEnd - absoluteStart;
+        const bands = this.calendarBands(calendar, absoluteStart, absoluteEnd);
+        if (!bands.length) return;
+        ctx.save();
+        ctx.font = `600 9px ${this.css('--font-interface', 'sans-serif')}`;
+        bands.forEach(band => {
+            const y1 = top + (Math.max(absoluteStart, band.startDay) - absoluteStart) / span * (bottom - top);
+            const y2 = top + (Math.min(absoluteEnd, band.endDay) - absoluteStart) / span * (bottom - top);
+            if (y2 <= y1) return;
+            ctx.globalAlpha = band.kind === 'holiday' ? 0.12 : band.row === 0 ? 0.055 : 0.035;
+            ctx.fillStyle = band.color;
+            ctx.fillRect(0, y1, width, Math.max(1, y2 - y1));
+            if (y2 - y1 >= 11 && band.row === 0) {
+                ctx.globalAlpha = 0.72;
+                ctx.fillStyle = band.color;
+                const label = this.truncate(ctx, band.label.toUpperCase(), 126);
+                ctx.fillText(label, Math.max(8, width - ctx.measureText(label).width - 10), y1 + 10);
+            }
+        });
+        ctx.restore();
     }
 
     private drawVerticalEras(ctx: CanvasRenderingContext2D, absoluteStart: number, absoluteEnd: number, top: number, bottom: number, width: number): void {
@@ -718,7 +865,7 @@ export class NativeTimelineRenderer {
     private verticalEventDate(time: number, calendar: ReturnType<CalendarRegistry['getActiveCalendar']>): string {
         const absoluteDay = time / DAY_MS + this.unixEpochAbsoluteDay();
         const date = fromAbsolute(calendar, { absoluteDay });
-        const month = calendar.months[date.month]?.name || `Month ${date.month + 1}`;
+        const month = monthsInYear(calendar, date.year)[date.month]?.name || `Month ${date.month + 1}`;
         let label = `${month} ${date.day}, ${this.calendarYearLabel(calendar, date.year)}`;
         if ((date.unitOfDay || 0) > 0 && calendar.unitsPerDay === 1440) {
             const units = Math.round(date.unitOfDay || 0);
@@ -796,7 +943,8 @@ export class NativeTimelineRenderer {
             const start = this.parseDate(era.startDate); const end = this.parseDate(era.endDate);
             if (!Number.isFinite(start) || !Number.isFinite(end)) return;
             const x1 = this.timeToX(start, width); const x2 = this.timeToX(end, width);
-            ctx.save(); ctx.globalAlpha = 0.1; ctx.fillStyle = era.color || '#8b5cf6'; ctx.fillRect(x1, AXIS_HEIGHT, x2 - x1, height - AXIS_HEIGHT); ctx.restore();
+            const axisHeight = this.axisHeight();
+            ctx.save(); ctx.globalAlpha = 0.1; ctx.fillStyle = era.color || '#8b5cf6'; ctx.fillRect(x1, axisHeight, x2 - x1, height - axisHeight); ctx.restore();
         });
     }
 
@@ -842,7 +990,7 @@ export class NativeTimelineRenderer {
 
     private drawNow(ctx: CanvasRenderingContext2D, width: number, height: number): void {
         const now = Date.now(); if (now < this.viewStart || now > this.viewEnd) return;
-        const x = this.timeToX(now, width); ctx.save(); ctx.strokeStyle = this.css('--color-red', '#ef4444'); ctx.setLineDash([4, 4]); ctx.beginPath(); ctx.moveTo(x, AXIS_HEIGHT); ctx.lineTo(x, height); ctx.stroke(); ctx.restore();
+        const x = this.timeToX(now, width); ctx.save(); ctx.strokeStyle = this.css('--color-red', '#ef4444'); ctx.setLineDash([4, 4]); ctx.beginPath(); ctx.moveTo(x, this.axisHeight()); ctx.lineTo(x, height); ctx.stroke(); ctx.restore();
     }
 
     private drawNowVertical(ctx: CanvasRenderingContext2D, axisX: number, top: number, bottom: number): void {
@@ -997,7 +1145,7 @@ export class NativeTimelineRenderer {
 
     private maxLaneScroll(): number {
         if (!this.root) return 0;
-        const total = this.lanes.reduce((sum, lane) => sum + lane.height, AXIS_HEIGHT);
+        const total = this.lanes.reduce((sum, lane) => sum + lane.height, this.axisHeight());
         return Math.max(0, total - this.root.clientHeight);
     }
 
@@ -1073,7 +1221,7 @@ export class NativeTimelineRenderer {
         return new Date(value).toISOString().replace('T', ' ').replace(/:00\.000Z$/, '');
     }
     private unixEpochAbsoluteDay(): number { return toAbsolute(GREGORIAN_CALENDAR, { year: 1970, month: 0, day: 1 }).absoluteDay; }
-    private ensureLaneVisible(id: string): void { const lane = this.lanes.find(value => value.id === id); if (lane) this.scrollTop = Math.max(0, lane.top - AXIS_HEIGHT); }
+    private ensureLaneVisible(id: string): void { const lane = this.lanes.find(value => value.id === id); if (lane) this.scrollTop = Math.max(0, lane.top - this.axisHeight()); }
     private colorFor(value: string): string { let hash = 0; for (let i = 0; i < value.length; i++) hash = ((hash << 5) - hash + value.charCodeAt(i)) | 0; return this.palette[Math.abs(hash) % this.palette.length]; }
     private css(name: string, fallback: string): string {
         const colors = this.calendarRegistry.getActiveTheme().colors;

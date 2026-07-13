@@ -26,6 +26,40 @@ function countMultiples(a: number, b: number, n: number): number {
   return floorDiv(b - 1, n) - floorDiv(a - 1, n);
 }
 
+function cyclePosition(year: number, cycleYears: number): number {
+  return ((year - 1) % cycleYears + cycleYears) % cycleYears + 1;
+}
+
+function matchesPattern(year: number, cycleYears?: number, years?: number[]): boolean {
+  return !!cycleYears && cycleYears > 0 && !!years?.includes(cyclePosition(year, cycleYears));
+}
+
+function countPatternYears(from: number, to: number, cycleYears: number, years: number[]): number {
+  if (to <= from || cycleYears <= 0) return 0;
+  return years.reduce((sum, position) => {
+    if (position < 1 || position > cycleYears) return sum;
+    const residue = position === cycleYears ? 0 : position;
+    return sum + floorDiv(to - 1 - residue, cycleYears) - floorDiv(from - 1 - residue, cycleYears);
+  }, 0);
+}
+
+/** Months present in a particular year after overrides and intercalation. */
+export function monthsInYear(cal: CalendarSystem, year: number) {
+  const override = cal.yearOverrides?.find(candidate => candidate.year === year);
+  if (override?.months?.length) return override.months;
+  const months = cal.months.map(month => ({ ...month }));
+  const additions = (cal.intercalaryMonths || [])
+    .filter(month => matchesPattern(year, month.cycleYears, month.years))
+    .sort((a, b) => a.afterMonth - b.afterMonth);
+  let inserted = 0;
+  additions.forEach(month => {
+    const index = Math.max(0, Math.min(months.length, month.afterMonth + 1 + inserted));
+    months.splice(index, 0, { name: month.name, abbr: month.abbr, days: month.days });
+    inserted++;
+  });
+  return months;
+}
+
 /** Sum of month lengths in a normal (non-leap) year. */
 export function normalYearLength(cal: CalendarSystem): number {
   let sum = 0;
@@ -44,6 +78,8 @@ function leapMonthIndex(cal: CalendarSystem): number {
 export function isLeapYear(cal: CalendarSystem, year: number): boolean {
   const rule = cal.leapRule;
   if (!rule) return false;
+  if (rule.cycleYears && rule.leapYears?.length) return matchesPattern(year, rule.cycleYears, rule.leapYears);
+  if (!rule.everyYears || rule.everyYears <= 0) return false;
   let leap = year % rule.everyYears === 0;
   for (const ex of rule.exceptions ?? []) {
     if (year % ex.everyYears === 0) leap = !ex.skip;
@@ -58,13 +94,15 @@ export function leapExtraDays(cal: CalendarSystem, year: number): number {
 
 /** Total days in `year`, including any leap days. */
 export function daysInYear(cal: CalendarSystem, year: number): number {
-  return normalYearLength(cal) + leapExtraDays(cal, year);
+  return monthsInYear(cal, year).reduce((sum, month) => sum + month.days, 0) + leapExtraDays(cal, year);
 }
 
 /** Length of `monthIndex` in `year`, including leap days if it is the leap month. */
 export function monthLength(cal: CalendarSystem, year: number, monthIndex: number): number {
-  const base = cal.months[monthIndex].days;
-  if (monthIndex === leapMonthIndex(cal)) return base + leapExtraDays(cal, year);
+  const months = monthsInYear(cal, year);
+  const base = months[monthIndex]?.days;
+  if (base == null) return 0;
+  if (monthIndex === Math.min(leapMonthIndex(cal), months.length - 1)) return base + leapExtraDays(cal, year);
   return base;
 }
 
@@ -79,11 +117,27 @@ export function daysBeforeMonth(cal: CalendarSystem, year: number, monthIndex: n
 function countLeapYears(cal: CalendarSystem, from: number, to: number): number {
   const rule = cal.leapRule;
   if (!rule) return 0;
+  if (rule.cycleYears && rule.leapYears?.length) return countPatternYears(from, to, rule.cycleYears, rule.leapYears);
+  if (!rule.everyYears || rule.everyYears <= 0) return 0;
   let count = countMultiples(from, to, rule.everyYears);
   for (const ex of rule.exceptions ?? []) {
     count += (ex.skip ? -1 : 1) * countMultiples(from, to, ex.everyYears);
   }
   return count;
+}
+
+function recurringIntercalaryDays(cal: CalendarSystem, from: number, to: number): number {
+  return (cal.intercalaryMonths || []).reduce((sum, month) =>
+    sum + countPatternYears(from, to, month.cycleYears, month.years) * month.days, 0);
+}
+
+function overrideDelta(cal: CalendarSystem, from: number, to: number): number {
+  return (cal.yearOverrides || []).reduce((sum, override) => {
+    if (override.year < from || override.year >= to) return sum;
+    const baseline = normalYearLength(cal) + recurringIntercalaryDays(cal, override.year, override.year + 1);
+    const explicit = override.months.reduce((total, month) => total + month.days, 0);
+    return sum + explicit - baseline;
+  }, 0);
 }
 
 /** Whole days spanned by astronomical years [from, to); negative if to < from. */
@@ -93,7 +147,10 @@ function daysBetweenYears(cal: CalendarSystem, from: number, to: number): number
   const hi = Math.max(from, to);
   const extraPerLeap = cal.leapRule?.extraDays ?? 0;
   const span =
-    normalYearLength(cal) * (hi - lo) + countLeapYears(cal, lo, hi) * extraPerLeap;
+    normalYearLength(cal) * (hi - lo) +
+    countLeapYears(cal, lo, hi) * extraPerLeap +
+    recurringIntercalaryDays(cal, lo, hi) +
+    overrideDelta(cal, lo, hi);
   return to < from ? -span : span;
 }
 
@@ -126,14 +183,18 @@ export function fromAbsolute(cal: CalendarSystem, abs: AbsoluteInstant): Calenda
   // Estimate the year, then correct by walking (cheap: at most a few steps).
   const avgLen =
     normalYearLength(cal) +
-    (cal.leapRule ? (cal.leapRule.extraDays) / cal.leapRule.everyYears : 0);
+    (cal.leapRule?.cycleYears && cal.leapRule.leapYears?.length
+      ? cal.leapRule.extraDays * cal.leapRule.leapYears.length / cal.leapRule.cycleYears
+      : cal.leapRule?.everyYears ? cal.leapRule.extraDays / cal.leapRule.everyYears : 0) +
+    (cal.intercalaryMonths || []).reduce((sum, month) => sum + month.days * month.years.length / month.cycleYears, 0);
   let year = 1 + Math.floor(dayCount / avgLen);
   while (daysBetweenYears(cal, 1, year) > dayCount) year--;
   while (daysBetweenYears(cal, 1, year + 1) <= dayCount) year++;
 
   let doy = dayCount - daysBetweenYears(cal, 1, year);
+  const months = monthsInYear(cal, year);
   let month = 0;
-  while (month < cal.months.length - 1 && doy >= monthLength(cal, year, month)) {
+  while (month < months.length - 1 && doy >= monthLength(cal, year, month)) {
     doy -= monthLength(cal, year, month);
     month++;
   }
