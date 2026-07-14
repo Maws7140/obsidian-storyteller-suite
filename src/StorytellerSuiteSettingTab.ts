@@ -38,6 +38,20 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
     constructor(app: App, plugin: StorytellerSuitePlugin) {
         super(app, plugin);
         this.plugin = plugin;
+
+        // Obsidian 1.13 moves settings content into a separate window. On some
+        // devices the move happens after the display() re-render loop below has
+        // exhausted its time budget, leaving the migrated container empty. Use
+        // Obsidian's window-migration hook so recovery runs in the target
+        // window after the move has completed.
+        const removeWindowMigrationListener = this.containerEl.onWindowMigrated(win => {
+            win.setTimeout(() => {
+                if (this.containerEl.isConnected && this.containerEl.childElementCount === 0) {
+                    this.display();
+                }
+            }, 0);
+        });
+        plugin.register(removeWindowMigrationListener);
     }
 
     private activeRenderToken = 0;
