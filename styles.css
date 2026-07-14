@@ -10274,6 +10274,9 @@ body.mod-rtl .storyteller-group-members {
     border-radius: 8px;
     border: 1px solid var(--sts-tl-border);
     box-shadow: var(--sts-tl-item-shadow);
+    /* vis-timeline's runtime-injected stock CSS sets color:#1a1a1a on .vis-item;
+       without this override non-milestone text is near-black on dark cards. */
+    color: var(--text-normal);
     z-index: 3;
     transition: none;
     animation: none;
@@ -10366,6 +10369,9 @@ body.mod-rtl .storyteller-group-members {
     min-width: 88px;
     border-width: 1px;
     background-image: none;
+    /* Override vis's stock pastel-blue item background so plain ranges don't
+       render light-on-light under the themed text color. */
+    background-color: var(--sts-tl-item-bg);
 }
 
 .storyteller-timeline-view .vis-item .vis-item-content,

@@ -770,6 +770,11 @@ export class TimelineRenderer {
             const useNativeMobileScroll = PlatformUtils.shouldUseSimplifiedUI();
              
             const timelineOptions: TimelineOptions & Record<string, unknown> = {
+                // vis-timeline defaults to auto-sizing to content and writes an
+                // inline height on its root that overrides the stylesheet's
+                // `.vis-timeline { height: 100% }` — pass height explicitly so
+                // the widget fills the container.
+                height: '100%',
                 stack: grouped ? true : this.options.stackEnabled,
                 stackSubgroups: true,
                 margin: { item: itemMargin, axis: 32 },
@@ -812,10 +817,13 @@ export class TimelineRenderer {
                     remove: false,
                     add: false
                 };
-                
-                // Add proper onMove callback for drag-and-drop
-                 
-                timelineOptions.onMove = (item: TimelineItem, callback: (item: TimelineItem | null) => void) => { void (async () => {
+            }
+
+            // Always attach the persistence callback: the toolbar toggles
+            // `editable` at runtime via setOptions, so if onMove is only bound
+            // when editMode was true at initial render, later-enabled drags
+            // mutate the in-memory dataset without ever saving.
+            timelineOptions.onMove = (item: TimelineItem, callback: (item: TimelineItem | null) => void) => { void (async () => {
                     const eventIndex = this.resolveEventIndexFromItemId(item.id);
                     if (eventIndex == null) {
                         callback(null); // Cancel move if event not found
@@ -847,7 +855,6 @@ export class TimelineRenderer {
                         callback(null); // Cancel move on error
                     }
                 })(); };
-            }
 
             // Create timeline with error handling (retry with safe options if advanced options fail)
             try {
@@ -959,12 +966,20 @@ export class TimelineRenderer {
                 }
             }
 
-            // Render narrative connector lines
+            // Render narrative connector lines. Drawing once at render time is
+            // not enough — layout hasn't settled yet and the lines go stale on
+            // zoom/pan — so redraw whenever vis reports a layout change.
             if (this.narrativeOrder) {
                 try {
                     this.renderNarrativeConnectors();
+                    this.timeline.on('changed', () => {
+                        if (!this.narrativeOrder) return;
+                        try {
+                            this.renderNarrativeConnectors();
+                        } catch { /* non-critical */ }
+                    });
                 } catch {
-                    
+
                     // Non-critical, continue without connectors
                 }
             }
@@ -1861,10 +1876,25 @@ export class TimelineRenderer {
         svg.setCssStyles({ zIndex: '1' });
         timelineContent.appendChild(svg);
 
+        // Resolve an event index to its rendered vis item element. vis items
+        // carry no data-id attribute, so DOM queries can't find them — go
+        // through the timeline's item set instead.
+        type VisItemDom = { dom?: { box?: HTMLElement; point?: HTMLElement; dot?: HTMLElement } };
+        const itemSet = (this.timeline as unknown as { itemSet?: { items?: Record<string, VisItemDom> } }).itemSet;
+        const resolveItemEl = (idx: number): HTMLElement | null => {
+            const itemIds = this.eventIndexToItemIds.get(idx) || [idx];
+            for (const id of itemIds) {
+                const item = itemSet?.items?.[String(id)];
+                const el = item?.dom?.box || item?.dom?.point || item?.dom?.dot;
+                if (el && el.isConnected) return el;
+            }
+            return null;
+        };
+
         // Draw connectors
         connectors.forEach(({ fromIdx, toIdx, type }) => {
-            const fromEl = this.container.querySelector(`[data-id="${fromIdx}"]`) as HTMLElement;
-            const toEl = this.container.querySelector(`[data-id="${toIdx}"]`) as HTMLElement;
+            const fromEl = resolveItemEl(fromIdx);
+            const toEl = resolveItemEl(toIdx);
 
             if (!fromEl || !toEl) return;
 

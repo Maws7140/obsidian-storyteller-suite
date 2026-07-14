@@ -555,6 +555,31 @@ export default class Arrow {
     }
 
     _getItemPos(item) {
+        // Prefer the item's real rendered position relative to the SVG overlay.
+        // The stacking math below desyncs when the panel is taller than its
+        // content with orientation 'bottom' (e.g. after forcing the timeline
+        // to fill the container), floating the arrows away from their bars.
+        const dom = item && item.dom && (item.dom.box || item.dom.point || item.dom.dot);
+        if (dom && dom.isConnected && this._svg && this._svg.isConnected) {
+            const itemRect = dom.getBoundingClientRect();
+            const svgRect = this._svg.getBoundingClientRect();
+            if (itemRect.width || itemRect.height) {
+                const left_x = itemRect.left - svgRect.left;
+                const top_y = itemRect.top - svgRect.top;
+                return {
+                    left: left_x,
+                    top: top_y,
+                    right: left_x + itemRect.width,
+                    bottom: top_y + itemRect.height,
+                    mid_x: left_x + itemRect.width / 2,
+                    mid_y: top_y + itemRect.height / 2,
+                    width: itemRect.width,
+                    height: itemRect.height
+                }
+            }
+        }
+
+        // Fallback for items vis has not rendered into the DOM.
         let left_x = item.left;
         let top_y;
         if (this._timeline.options.orientation.item == "top") {
