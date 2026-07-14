@@ -134,32 +134,35 @@ export function getWhatsNewGuide(version: string): StorytellerGuideDocument {
     return {
         title: `What is new in ${version}`,
         introHtml: `
-            <p>Fantasy and historical dates now work on the timeline the way you would actually write them. Padding a year with a leading zero is no longer required &mdash; though it still works if you prefer it.</p>
+            <p>This update is about the timeline behaving the way it always should have &mdash; filling the pane, saving your drags, and keeping its arrows attached &mdash; plus a new video walkthrough in the tutorial section.</p>
         `,
         sections: [
             {
                 title: 'New',
                 bodyHtml: `
                     <ul>
-                        <li><strong>Short years just work.</strong> Write a year either way &mdash; <code>342</code> or <code>0342</code> &mdash; and both place correctly in Timeline and Gantt mode. One, two, and three digit years are now read as years, and every date you already padded keeps working exactly as before.</li>
-                        <li><strong>Date ranges for Gantt bars.</strong> Give an event a span and it draws a bar instead of a single dot. Write it as <code>342 to 367</code>, and <code>through</code>, <code>until</code>, <code>..</code>, or an en-dash also work as separators. Full dates span too: <code>0342-03-01 to 0342-09-15</code>. BCE spans like <code>500 BCE to 400 BCE</code> are handled on both ends.</li>
+                        <li><strong>Video tutorial.</strong> A full video walkthrough of Storyteller Suite &mdash; stories, entities, the timeline, campaign play, and compiling &mdash; is coming to the tutorial section under <strong>Settings &rarr; Storyteller Suite &rarr; Help</strong>. You will find it right next to the getting started guide.</li>
                     </ul>
                 `
             },
             {
-                title: 'Fixes',
+                title: 'Timeline fixes',
                 bodyHtml: `
                     <ul>
-                        <li>A bare year such as <code>342</code> could be misread as a clock time (3:42) and quietly land at the present day instead of on your ancient timeline. Short years are now read as years first, so historical and fantasy events sit where they belong.</li>
+                        <li><strong>The timeline fills the pane.</strong> The widget no longer hugs its content and leaves the rest of the view empty &mdash; it stretches to the full height of the panel.</li>
+                        <li><strong>Edit mode actually saves.</strong> Dragging an event to reschedule it now writes the new date to the note even when edit mode was toggled on after the timeline opened. Before, the move could look successful and silently never persist.</li>
+                        <li><strong>Gantt dependency arrows stay attached.</strong> Arrows no longer float away from their bars when the panel is taller than its content.</li>
+                        <li><strong>Flashback and flash-forward connectors render.</strong> The dashed connector lines between an event and its frame event now draw correctly and follow the view as you zoom and pan.</li>
+                        <li><strong>Readable event cards.</strong> Event text uses your theme&rsquo;s text color and range bars use themed backgrounds, instead of the near-black-on-dark and pastel-blue defaults that came baked into the timeline library.</li>
                     </ul>
                 `
             },
             {
-                title: 'Also included',
+                title: 'Also fixed',
                 bodyHtml: `
                     <ul>
-                        <li>Recent fixes carry over: the Storyteller settings pane no longer shows up blank in Obsidian 1.13+&rsquo;s separate settings window, templates can link the entities they create to <strong>existing</strong> vault entities from the template editor&rsquo;s <strong>Links</strong> tab, and the gallery upload folder is chosen from a dropdown.</li>
-                        <li>Ongoing template, timeline, and map editor polish, plus internal code cleanup so Storyteller keeps its styles scoped to its own views.</li>
+                        <li>The settings pane has a second safety net against opening blank in Obsidian 1.13+&rsquo;s separate settings window &mdash; it now re-renders itself as soon as the window move completes.</li>
+                        <li>The plot hole detector no longer flags characters linked by their id (such as <code>char-mira-vey</code>) as missing when the character file exists.</li>
                     </ul>
                 `
             }

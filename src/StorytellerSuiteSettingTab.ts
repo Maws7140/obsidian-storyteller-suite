@@ -14,6 +14,10 @@ import { PlatformUtils } from './utils/PlatformUtils';
 
 type TabId = 'stories' | 'dashboard' | 'folders' | 'timeline' | 'maps' | 'templates' | 'gallery' | 'help';
 
+// Video walkthrough for the Help tab. Empty until the video is published —
+// the setting row shows a coming-soon state; paste the URL here to go live.
+const TUTORIAL_VIDEO_URL = '';
+
 interface TabDef { id: TabId; icon: string; label: string; }
 
 interface ReopenableView {
@@ -1289,6 +1293,23 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
             .addButton(button => button
                 .setButtonText('Open highlights')
                 .onClick(() => this.plugin.openWhatsNewGuide()));
+
+        if (TUTORIAL_VIDEO_URL) {
+            new Setting(container)
+                .setName('Video tutorial')
+                .setDesc('Watch a full walkthrough of Storyteller Suite — stories, entities, the timeline, campaign play, and compiling.')
+                .addButton(button => button
+                    .setButtonText('Watch video')
+                    .setCta()
+                    .onClick(() => window.open(TUTORIAL_VIDEO_URL, '_blank')));
+        } else {
+            new Setting(container)
+                .setName('Video tutorial')
+                .setDesc('A full video walkthrough is on its way — it will appear here when it is published.')
+                .addButton(button => button
+                    .setButtonText('Coming soon')
+                    .setDisabled(true));
+        }
 
         new Setting(container)
             .setName(t('showTutorialSection'))
