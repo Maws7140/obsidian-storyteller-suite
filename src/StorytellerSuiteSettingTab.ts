@@ -14,9 +14,8 @@ import { PlatformUtils } from './utils/PlatformUtils';
 
 type TabId = 'stories' | 'dashboard' | 'folders' | 'timeline' | 'maps' | 'templates' | 'gallery' | 'help';
 
-// Video walkthrough for the Help tab. Empty until the video is published —
-// the setting row shows a coming-soon state; paste the URL here to go live.
-const TUTORIAL_VIDEO_URL = '';
+// Video walkthrough for the Help tab. Empty shows a coming-soon state.
+const TUTORIAL_VIDEO_URL = 'https://www.youtube.com/watch?v=HL0i6bUpVn0';
 
 interface TabDef { id: TabId; icon: string; label: string; }
 
@@ -1345,7 +1344,16 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
             .addButton(button => button
                 .setButtonText(t('github'))
                 .setTooltip('View source code')
-                .onClick(() => window.open('https://github.com/SamW7140/obsidian-storyteller-suite', '_blank'))
+                .onClick(() => window.open('https://github.com/Maws7140/obsidian-storyteller-suite', '_blank'))
+            );
+
+        new Setting(container)
+            .setName('Contact')
+            .setDesc('Found a bug or have a feature request? Open an issue on GitHub.')
+            .addButton(button => button
+                .setButtonText('Open an issue')
+                .setTooltip('Report a bug or request a feature')
+                .onClick(() => window.open('https://github.com/Maws7140/obsidian-storyteller-suite/issues', '_blank'))
             );
     }
 

@@ -64,13 +64,6 @@ export class StorytellerGuideModal extends Modal {
         }
 
         new ButtonComponent(footerEl)
-            .setIcon('heart')
-            .setButtonText('Support on ko-fi')
-            .onClick(() => {
-                window.open('https://ko-fi.com/kingmaws', '_blank');
-            });
-
-        new ButtonComponent(footerEl)
             .setButtonText('Close')
             .onClick(() => this.close());
     }

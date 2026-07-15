@@ -134,14 +134,14 @@ export function getWhatsNewGuide(version: string): StorytellerGuideDocument {
     return {
         title: `What is new in ${version}`,
         introHtml: `
-            <p>This update is about the timeline behaving the way it always should have &mdash; filling the pane, saving your drags, and keeping its arrows attached &mdash; plus a new video walkthrough in the tutorial section.</p>
+            <p>This update is about the timeline behaving the way it always should have &mdash; filling the pane, saving your drags, and keeping its arrows attached &mdash; plus a new video walkthrough in the Help section of the plugin settings.</p>
         `,
         sections: [
             {
                 title: 'New',
                 bodyHtml: `
                     <ul>
-                        <li><strong>Video tutorial.</strong> A full video walkthrough of Storyteller Suite &mdash; stories, entities, the timeline, campaign play, and compiling &mdash; is coming to the tutorial section under <strong>Settings &rarr; Storyteller Suite &rarr; Help</strong>. You will find it right next to the getting started guide.</li>
+                        <li><strong>Video tutorial.</strong> A full video walkthrough of Storyteller Suite &mdash; stories, entities, the timeline, campaign play, and compiling &mdash; is now available under <strong>Settings &rarr; Storyteller Suite &rarr; Help</strong>, right next to the getting started guide. Help is also the new home for everything else: the tutorial, contact, and support links all live there now.</li>
                     </ul>
                 `
             },
