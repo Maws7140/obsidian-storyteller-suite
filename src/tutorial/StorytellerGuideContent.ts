@@ -166,6 +166,18 @@ export function getWhatsNewGuide(version: string): StorytellerGuideDocument {
                         <li>The plot hole detector no longer flags characters linked by their id (such as <code>char-mira-vey</code>) as missing when the character file exists.</li>
                     </ul>
                 `
+            },
+            {
+                title: 'Try the beta',
+                bodyHtml: `
+                    <p>A brand new timeline and a dating system are available in beta. You can try them today with BRAT (Beta Reviewers Auto-update Tool):</p>
+                    <ol>
+                        <li>Install and enable the <strong>BRAT</strong> plugin from the community plugin browser.</li>
+                        <li>In BRAT, choose <strong>Add beta plugin</strong> and enter <code>Maws7140/obsidian-storyteller-suite</code>.</li>
+                        <li>Pick the latest beta release when prompted.</li>
+                    </ol>
+                    <p>Beta builds are still changing, so back up your vault before switching. You can return to the stable release at any time by removing the beta plugin in BRAT and reinstalling from the community plugin browser.</p>
+                `
             }
         ]
     };
