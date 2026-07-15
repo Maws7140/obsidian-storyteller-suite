@@ -134,23 +134,25 @@ export function getWhatsNewGuide(version: string): StorytellerGuideDocument {
     return {
         title: `What is new in ${version}`,
         introHtml: `
-            <p>This update is about the timeline behaving the way it always should have &mdash; filling the pane, saving your drags, and keeping its arrows attached &mdash; plus a new video walkthrough in the Help section of the plugin settings.</p>
+            <p>This update ships a full video walkthrough, a round of timeline repairs, and a tidier Help section. It is also a good moment to catch up on two systems the walkthrough covers in depth: the timeline and campaign play.</p>
         `,
         sections: [
             {
                 title: 'New',
                 bodyHtml: `
                     <ul>
-                        <li><strong>Video tutorial.</strong> A full video walkthrough of Storyteller Suite &mdash; stories, entities, the timeline, campaign play, and compiling &mdash; is now available under <strong>Settings &rarr; Storyteller Suite &rarr; Help</strong>, right next to the getting started guide. Help is also the new home for everything else: the tutorial, contact, and support links all live there now.</li>
+                        <li><strong>Video tutorial.</strong> A full video walkthrough of Storyteller Suite is now available under <strong>Settings &rarr; Storyteller Suite &rarr; Help</strong>, right next to the getting started guide. It covers stories, entities, the timeline, campaign play, and compiling.</li>
+                        <li><strong>One Help section for everything.</strong> The tutorial, the guides, contact, and support links now all live together in the Help tab of the plugin settings.</li>
                     </ul>
                 `
             },
             {
-                title: 'Timeline fixes',
+                title: 'Timeline',
                 bodyHtml: `
+                    <p>The timeline got a full round of repairs this update. If you have not used it yet: it plans your events in Timeline or Gantt mode, with milestones, progress, dependency arrows, flashbacks, and grouping by character, location, or group. The video walkthrough shows it end to end.</p>
                     <ul>
-                        <li><strong>The timeline fills the pane.</strong> The widget no longer hugs its content and leaves the rest of the view empty &mdash; it stretches to the full height of the panel.</li>
-                        <li><strong>Edit mode actually saves.</strong> Dragging an event to reschedule it now writes the new date to the note even when edit mode was toggled on after the timeline opened. Before, the move could look successful and silently never persist.</li>
+                        <li><strong>The timeline fills the pane.</strong> The widget no longer hugs its content and leaves the rest of the view empty. It stretches to the full height of the panel.</li>
+                        <li><strong>Edit mode actually saves.</strong> Dragging an event to reschedule it now writes the new date to the note, even when edit mode was toggled on after the timeline opened. Before, the move could look successful and silently never persist.</li>
                         <li><strong>Gantt dependency arrows stay attached.</strong> Arrows no longer float away from their bars when the panel is taller than its content.</li>
                         <li><strong>Flashback and flash-forward connectors render.</strong> The dashed connector lines between an event and its frame event now draw correctly and follow the view as you zoom and pan.</li>
                         <li><strong>Readable event cards.</strong> Event text uses your theme&rsquo;s text color and range bars use themed backgrounds, instead of the near-black-on-dark and pastel-blue defaults that came baked into the timeline library.</li>
@@ -158,10 +160,23 @@ export function getWhatsNewGuide(version: string): StorytellerGuideDocument {
                 `
             },
             {
+                title: 'Campaign play and DnD mode',
+                bodyHtml: `
+                    <p>Storyteller Suite includes a full DnD style campaign mode, and the new video walks through a complete session. If it has flown under your radar, here is what it does:</p>
+                    <ul>
+                        <li><strong>Sessions.</strong> Track party members, inventory, HP, conditions, flags, revealed lore, and faction standing across play sessions.</li>
+                        <li><strong>Branches and encounters.</strong> Scenes can hold branch choices and encounter tables, gated by items, flags, lore, or faction requirements, and resolved with dice rolls against character stats.</li>
+                        <li><strong>Items with effects.</strong> Plot items can heal, apply conditions, travel the party to another scene, reveal lore, or shift faction standing when used.</li>
+                        <li><strong>Maps as boards.</strong> Image maps double as campaign boards for location inspection, item pickup, and scene travel.</li>
+                    </ul>
+                    <p>Open it with <code>Storyteller: Open campaign view</code> or from the dashboard.</p>
+                `
+            },
+            {
                 title: 'Also fixed',
                 bodyHtml: `
                     <ul>
-                        <li>The settings pane has a second safety net against opening blank in Obsidian 1.13+&rsquo;s separate settings window &mdash; it now re-renders itself as soon as the window move completes.</li>
+                        <li>The settings pane has a second safety net against opening blank in Obsidian 1.13+&rsquo;s separate settings window. It now re-renders itself as soon as the window move completes.</li>
                         <li>The plot hole detector no longer flags characters linked by their id (such as <code>char-mira-vey</code>) as missing when the character file exists.</li>
                     </ul>
                 `
