@@ -1296,7 +1296,7 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
         if (TUTORIAL_VIDEO_URL) {
             new Setting(container)
                 .setName('Video tutorial')
-                .setDesc('Watch a full walkthrough of Storyteller Suite: stories, entities, the timeline, campaign play, and compiling.')
+                .setDesc('Watch the video tutorial for Storyteller Suite.')
                 .addButton(button => button
                     .setButtonText('Watch video')
                     .setCta()
@@ -1304,7 +1304,7 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
         } else {
             new Setting(container)
                 .setName('Video tutorial')
-                .setDesc('A full video walkthrough is on its way. It will appear here when it is published.')
+                .setDesc('A video tutorial is on its way. It will appear here when it is published.')
                 .addButton(button => button
                     .setButtonText('Coming soon')
                     .setDisabled(true));
