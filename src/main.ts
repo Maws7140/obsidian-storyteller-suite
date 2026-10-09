@@ -35,6 +35,7 @@ import { stringifyYamlWithLogging, validateFrontmatterPreservation } from './uti
 import {
     CustomFieldDefinition,
     definedFieldSaveOptions,
+    removedFreeFormKeys,
     sanitizeCustomFieldDefinitions,
     sweepCustomFieldsOnRead,
 } from './modals/entity/CustomFieldDefinitions';
@@ -4431,13 +4432,29 @@ export default class StorytellerSuitePlugin extends Plugin {
         const mode = this.settings.customFieldsMode ?? 'flatten';
         const prepared = await this.serializeFrontmatterEntityReferences(src);
         const defined = definedFieldSaveOptions(this.getCustomFieldDefinitions(entityType), prepared.source);
-        const omitOriginalKeys = [...prepared.omitOriginalKeys, ...(extraOmitKeys ?? []), ...defined.omitKeys];
+        const freeFormRemoved = this.removedFreeFormKeysFor(entityType, originalFrontmatter, src.customFields);
+        const omitOriginalKeys = [...prepared.omitOriginalKeys, ...(extraOmitKeys ?? []), ...defined.omitKeys, ...freeFormRemoved];
         return buildFrontmatter(entityType, defined.source, preserve, {
             customFieldsMode: mode,
             originalFrontmatter,
             omitOriginalKeys,
             multilineKeys: defined.multilineKeys,
         });
+    }
+
+    /** Free-form keys the user deleted or renamed in the editor (see removedFreeFormKeys). */
+    private removedFreeFormKeysFor(
+        entityType: EntityType,
+        originalFrontmatter: Record<string, unknown> | undefined,
+        customFields: unknown
+    ): string[] {
+        return removedFreeFormKeys(
+            entityType,
+            originalFrontmatter,
+            customFields,
+            this.getCustomFieldDefinitions(entityType),
+            getFrontmatterSectionFields(this.settings.sectionFieldsInFrontmatter, entityType)
+        );
     }
 
     private buildFrontmatterForCharacter(src: Record<string, unknown>, originalFrontmatter?: Record<string, unknown>): Promise<Record<string, unknown>> {
@@ -6236,7 +6253,11 @@ export default class StorytellerSuitePlugin extends Plugin {
         const fm: Record<string, unknown> = buildFrontmatter('reference', definedRef.source, preserveRef, {
             customFieldsMode: mode,
             originalFrontmatter,
-            omitOriginalKeys: [...preparedRef.omitOriginalKeys, ...definedRef.omitKeys],
+            omitOriginalKeys: [
+                ...preparedRef.omitOriginalKeys,
+                ...definedRef.omitKeys,
+                ...this.removedFreeFormKeysFor('reference', originalFrontmatter, rest.customFields),
+            ],
             multilineKeys: definedRef.multilineKeys,
         });
 
@@ -6397,7 +6418,11 @@ export default class StorytellerSuitePlugin extends Plugin {
         const fm: Record<string, unknown> = buildFrontmatter('chapter', definedChapter.source, preserveChap, {
             customFieldsMode: mode,
             originalFrontmatter,
-            omitOriginalKeys: [...preparedChapter.omitOriginalKeys, ...definedChapter.omitKeys],
+            omitOriginalKeys: [
+                ...preparedChapter.omitOriginalKeys,
+                ...definedChapter.omitKeys,
+                ...this.removedFreeFormKeysFor('chapter', originalFrontmatter, chapterSrc.customFields),
+            ],
             multilineKeys: definedChapter.multilineKeys,
         });
 

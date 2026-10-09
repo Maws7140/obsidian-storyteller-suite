@@ -433,3 +433,32 @@ export function sweepCustomFieldsOnRead(
     src.customFields = deduped;
     return deduped;
 }
+
+/**
+ * Free-form keys that the note had when it was loaded and that the modal's
+ * customFields map no longer holds: a deleted row, or the old name of a
+ * renamed row. Pass them to buildFrontmatter as omitOriginalKeys, otherwise its
+ * original-frontmatter pass writes the old value back.
+ *
+ * "Loaded" uses the same sweep as the read path, so only keys the modal showed
+ * as free-form count. Returns [] when there is no customFields map, so a save
+ * that does not come from the editor removes nothing.
+ */
+export function removedFreeFormKeys(
+    entityType: EntityType,
+    originalFrontmatter: Record<string, unknown> | undefined,
+    customFields: unknown,
+    definitions: readonly CustomFieldDefinition[] = [],
+    sectionFrontmatterFields: readonly string[] = []
+): string[] {
+    if (!originalFrontmatter) return [];
+    if (!customFields || typeof customFields !== 'object' || Array.isArray(customFields)) return [];
+    const loaded = sweepCustomFieldsOnRead(
+        entityType,
+        { ...originalFrontmatter },
+        definitions,
+        sectionFrontmatterFields
+    );
+    const kept = new Set(Object.keys(customFields as Record<string, unknown>).map(key => key.trim().toLowerCase()));
+    return Object.keys(loaded).filter(key => !kept.has(key.trim().toLowerCase()));
+}
