@@ -12196,3 +12196,41 @@ body.mod-rtl .storyteller-group-members {
 .leaflet-container:not(.st-grid-enabled) .st-edit-location-area { display: none; }
 .leaflet-container:not(.st-grid-enabled) .st-grid-editor { display: none; }
 .leaflet-container:not(.st-grid-enabled) .st-grid-canvas { pointer-events: none !important; }
+
+/* wave5 campaign-ui */
+.storyteller-campaign-quick { display: flex; flex-direction: column; gap: 0.35rem; padding: 0.5rem; margin-bottom: 0.5rem; border: 1px solid var(--background-modifier-border); border-radius: 8px; background: color-mix(in srgb, var(--background-secondary) 60%, transparent); }
+.storyteller-campaign-quick-actors,
+.storyteller-campaign-quick-modes,
+.storyteller-campaign-quick-tags,
+.storyteller-campaign-quick-npc,
+.storyteller-campaign-quick-line,
+.storyteller-campaign-quick-roll { display: flex; flex-wrap: wrap; align-items: center; gap: 0.3rem; }
+.storyteller-campaign-quick-line .storyteller-campaign-quick-input { flex: 1; min-width: 120px; }
+.storyteller-campaign-quick-chip { display: inline-flex; align-items: center; gap: 0.25rem; padding: 0.1rem 0.45rem; border: 1px solid var(--background-modifier-border); border-radius: 999px; background: var(--background-primary); color: var(--text-normal); font-size: 0.72rem; cursor: pointer; }
+.storyteller-campaign-quick-chip.is-active { border-color: var(--interactive-accent); background: color-mix(in srgb, var(--interactive-accent) 18%, transparent); }
+.storyteller-campaign-quick-order { font-size: 0.65rem; font-weight: 700; color: var(--interactive-accent); }
+.storyteller-campaign-quick-mode { padding: 0.15rem 0.5rem; border-radius: 6px; font-family: var(--font-monospace); font-size: 0.72rem; }
+.storyteller-campaign-quick-mode.is-active { background: var(--interactive-accent); color: var(--text-on-accent); }
+.storyteller-campaign-quick-label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); }
+.storyteller-campaign-quick-preview { min-height: 1em; font-family: var(--font-monospace); font-size: 0.72rem; color: var(--text-muted); word-break: break-word; }
+.storyteller-campaign-quick-preview.is-error { font-family: inherit; font-style: italic; color: var(--text-faint); }
+.storyteller-campaign-scene-kind { max-width: 130px; }
+.storyteller-campaign-clock-row.is-clock .storyteller-campaign-clock-segments button.is-filled { border-color: var(--color-red); background: var(--color-red); }
+.storyteller-campaign-clock-row.is-track .storyteller-campaign-clock-segments button.is-filled { border-color: var(--interactive-accent); background: var(--interactive-accent); }
+.storyteller-campaign-clock-row.is-timer .storyteller-campaign-clock-segments button.is-filled { border-color: var(--color-orange); background: var(--color-orange); }
+.storyteller-campaign-clock-row.is-timer .storyteller-campaign-clock-value { color: var(--color-orange); font-weight: 600; }
+.storyteller-campaign-thread-state { margin-left: auto; padding: 0 4px; border: 1px solid var(--background-modifier-border); border-radius: 4px; font-size: 0.65rem; text-transform: uppercase; color: var(--text-muted); white-space: nowrap; }
+.storyteller-campaign-party-group { display: flex; flex-direction: column; gap: 0.3rem; margin-top: 0.6rem; padding-top: 0.45rem; border-top: 1px solid var(--background-modifier-border); }
+.storyteller-campaign-party-group-hdr { display: flex; align-items: center; gap: 0.3rem; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-faint); }
+.storyteller-campaign-party-group-hdr .storyteller-campaign-progress-actions { margin-left: auto; }
+.storyteller-campaign-resource-row,
+.storyteller-campaign-loot-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.3rem; font-size: 0.78rem; }
+.storyteller-campaign-resource-name,
+.storyteller-campaign-loot-name { min-width: 0; font-weight: 600; overflow-wrap: anywhere; }
+.storyteller-campaign-resource-value { color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.storyteller-campaign-resource-row .storyteller-campaign-input.is-small { width: 56px; }
+.storyteller-campaign-standing-tier,
+.storyteller-campaign-standing-text { font-size: 0.7rem; color: var(--text-muted); }
+.storyteller-campaign-standing-notes { padding-left: 0.2rem; font-size: 0.7rem; font-style: italic; color: var(--text-faint); }
+.storyteller-campaign-end-advancements { display: flex; flex-direction: column; gap: 0.25rem; margin-bottom: 0.5rem; }
+.storyteller-campaign-end-advancement { display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; }

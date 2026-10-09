@@ -19,13 +19,18 @@ import {
     setIcon,
     MarkdownRenderer,
     MarkdownPostProcessorContext,
+    Menu,
     normalizePath,
 } from 'obsidian';
 import StorytellerSuitePlugin from '../main';
 import { stripWikiLinkToString } from '../utils/WikiLinks';
 import {
+    CampaignClock,
     CampaignSession,
     CampaignGroupStanding,
+    CampaignThread,
+    CampaignThreadKind,
+    CampaignTrackerKind,
     CampaignItemEffect,
     Scene,
     SceneBranch,
@@ -58,11 +63,24 @@ import {
     addCampaignAdvancement,
     addCampaignClock,
     addCampaignInterlude,
+    addCampaignLoot,
     addCampaignThread,
+    applyCampaignPartyResources,
+    assignCampaignLoot,
     buildSessionTimelineEvent,
     cycleCampaignThread,
+    removeCampaignLoot,
+    setCampaignThreadState,
 } from '../utils/CampaignProgress';
-import { setTrackerValue, threadKindOf, threadLegacyStatus, trackerKindOf } from '../utils/CampaignModel';
+import {
+    CAMPAIGN_THREAD_STATES,
+    removePartyResource,
+    setTrackerValue,
+    threadKindOf,
+    threadLegacyStatus,
+    threadStateOf,
+    trackerKindOf,
+} from '../utils/CampaignModel';
 import { PromptModal } from '../modals/ui/PromptModal';
 import { EventModal } from '../modals/EventModal';
 import { LeafletRenderer } from '../leaflet/renderer';
@@ -83,8 +101,8 @@ import {
     type PartylogBridgeContext,
     type SceneKindChoice,
 } from '../campaign/PartylogSessionBridge';
-import { InterludeModal, SessionEndModal, SessionHeaderModal } from '../modals/PartylogSessionModals';
-import type { InterludeValues, SessionEndValues, SessionHeaderValues } from '../modals/PartylogSessionModals';
+import { AddProgressModal, InterludeModal, SessionEndModal, SessionHeaderModal } from '../modals/PartylogSessionModals';
+import type { InterludeValues, ProgressAddKind, ProgressAddValues, SessionEndValues, SessionHeaderValues } from '../modals/PartylogSessionModals';
 import {
     entryTags,
     extractTags,
@@ -188,6 +206,18 @@ function quickPlaceholder(mode: QuickMode): string {
         case 'note': return 'Note text';
     }
 }
+
+const TRACKER_GROUPS: ReadonlyArray<{ kind: CampaignTrackerKind; label: string }> = [
+    { kind: 'clock', label: 'Clocks' },
+    { kind: 'track', label: 'Tracks' },
+    { kind: 'timer', label: 'Timers' },
+];
+
+const THREAD_GROUPS: ReadonlyArray<{ kind: CampaignThreadKind; label: string }> = [
+    { kind: 'thread', label: 'Threads' },
+    { kind: 'goal', label: 'Goals' },
+    { kind: 'quest', label: 'Quests' },
+];
 
 /** Which sidebar sections a set of bridge summary lines touches. */
 function partsAffectedBy(summary: readonly string[]): SidebarPart[] {
@@ -1649,7 +1679,6 @@ export class CampaignView extends ItemView {
         const names = session.partyCharacterNames ?? [];
         if (names.length === 0) {
             body.createDiv({ cls: 'storyteller-campaign-empty-text', text: 'No party members.' });
-            return;
         }
 
         for (const name of names) {
@@ -1669,6 +1698,9 @@ export class CampaignView extends ItemView {
                 this.renderSetHpRow(row, name, session);
             }
         }
+
+        this.renderPartyResources(body, session);
+        this.renderLootStash(body, session);
     }
 
     private renderHpRow(row: HTMLElement, name: string, state: PartyMemberState, session: CampaignSession): void {
@@ -2402,6 +2434,15 @@ export class CampaignView extends ItemView {
                 cls: 'storyteller-campaign-standing-label',
                 text: this.describeGroupStanding(standing.value),
             });
+            if (standing.tier !== undefined) {
+                row.createSpan({ cls: 'storyteller-campaign-standing-tier', text: `Tier ${standing.tier}` });
+            }
+            if (standing.standing) {
+                row.createSpan({ cls: 'storyteller-campaign-standing-text', text: standing.standing });
+            }
+            if (standing.statusNotes?.length) {
+                body.createDiv({ cls: 'storyteller-campaign-standing-notes', text: standing.statusNotes.join('; ') });
+            }
         }
     }
 
@@ -2634,35 +2675,9 @@ export class CampaignView extends ItemView {
         hdr.createSpan({ text: ' Clocks and threads' });
 
         const actions = hdr.createDiv('storyteller-campaign-progress-actions');
-        const addClockBtn = actions.createEl('button', { attr: { 'aria-label': 'Add progress clock' } });
-        setIcon(addClockBtn, 'circle-gauge');
-        addClockBtn.addEventListener('click', () => {
-            new PromptModal(this.app, {
-                title: 'Add progress clock',
-                label: 'Clock name',
-                defaultValue: '',
-                validator: value => value.trim() ? null : 'Enter a clock name.',
-                onSubmit: value => {
-                    if (!addCampaignClock(session, value)) return;
-                    void this.autosave(`Added clock: *${value.trim()}*`).then(() => this.render());
-                },
-            }).open();
-        });
-
-        const addThreadBtn = actions.createEl('button', { attr: { 'aria-label': 'Add campaign thread' } });
-        setIcon(addThreadBtn, 'list-plus');
-        addThreadBtn.addEventListener('click', () => {
-            new PromptModal(this.app, {
-                title: 'Add campaign thread',
-                label: 'Thread name',
-                defaultValue: '',
-                validator: value => value.trim() ? null : 'Enter a thread name.',
-                onSubmit: value => {
-                    if (!addCampaignThread(session, value)) return;
-                    void this.autosave(`Opened thread: *${value.trim()}*`).then(() => this.render());
-                },
-            }).open();
-        });
+        const addBtn = actions.createEl('button', { attr: { 'aria-label': 'Add clock, track, timer, thread, goal or quest' } });
+        setIcon(addBtn, 'plus-circle');
+        addBtn.addEventListener('click', () => { this.openAddProgressModal('clock'); });
 
         const body = sec.createDiv('storyteller-campaign-sidebar-body');
         const clocks = session.clocks ?? [];
@@ -2671,52 +2686,251 @@ export class CampaignView extends ItemView {
             body.createDiv({ cls: 'storyteller-campaign-empty-text', text: 'No clocks or threads yet.' });
         }
 
-        for (const clock of clocks) {
-            const row = body.createDiv('storyteller-campaign-clock-row');
-            const info = row.createDiv('storyteller-campaign-clock-info');
-            const kind = trackerKindOf(clock);
-            info.createSpan({ cls: 'storyteller-campaign-clock-name', text: clock.name });
-            info.createSpan({ cls: 'storyteller-campaign-clock-kind', text: kind });
-            info.createSpan({
-                cls: 'storyteller-campaign-clock-value',
-                text: kind === 'timer' ? `${clock.current} left` : `${clock.current}/${clock.segments}`,
+        for (const group of TRACKER_GROUPS) {
+            const members = clocks.filter(clock => trackerKindOf(clock) === group.kind);
+            if (!members.length) continue;
+            body.createDiv({ cls: 'storyteller-campaign-sidebar-sub-hdr', text: group.label });
+            for (const clock of members) this.renderTrackerRow(body, session, clock);
+        }
+
+        for (const group of THREAD_GROUPS) {
+            const members = threads.filter(thread => threadKindOf(thread) === group.kind);
+            if (!members.length) continue;
+            body.createDiv({ cls: 'storyteller-campaign-sidebar-sub-hdr', text: group.label });
+            for (const thread of members) this.renderThreadRow(body, session, thread);
+        }
+    }
+
+    private renderTrackerRow(body: HTMLElement, session: CampaignSession, clock: CampaignClock): void {
+        const kind = trackerKindOf(clock);
+        const valueText = kind === 'timer' ? `${clock.current} left` : `${clock.current}/${clock.segments}`;
+        const row = body.createDiv(`storyteller-campaign-clock-row is-${kind}`);
+        const info = row.createDiv('storyteller-campaign-clock-info');
+        info.createSpan({ cls: 'storyteller-campaign-clock-name', text: clock.name });
+        info.createSpan({ cls: 'storyteller-campaign-clock-kind', text: kind });
+        info.createSpan({ cls: 'storyteller-campaign-clock-value', text: valueText });
+
+        const segments = row.createDiv('storyteller-campaign-clock-segments');
+        for (let index = 0; index < clock.segments; index += 1) {
+            const segment = segments.createEl('button', {
+                cls: index < clock.current ? 'is-filled' : '',
+                attr: { 'aria-label': `Set ${clock.name} to ${index + 1} of ${clock.segments}` },
             });
-            const segments = row.createDiv('storyteller-campaign-clock-segments');
-            for (let index = 0; index < clock.segments; index += 1) {
-                const segment = segments.createEl('button', {
-                    cls: index < clock.current ? 'is-filled' : '',
-                    attr: { 'aria-label': `Set ${clock.name} to ${index + 1} of ${clock.segments}` },
-                });
-                segment.addEventListener('click', () => {
-                    const nextValue = index + 1 === clock.current ? index : index + 1;
-                    setTrackerValue(clock, nextValue);
-                    void this.autosave(`Clock ${clock.name}: ${clock.current}/${clock.segments}`).then(() => this.render());
-                });
-            }
-            const remove = row.createEl('button', { cls: 'storyteller-campaign-progress-remove', attr: { 'aria-label': `Remove clock ${clock.name}` } });
-            setIcon(remove, 'x');
-            remove.addEventListener('click', () => {
-                session.clocks = clocks.filter(candidate => candidate.id !== clock.id);
-                void this.autosave(`Removed clock: *${clock.name}*`).then(() => this.render());
+            segment.addEventListener('click', () => {
+                const nextValue = index + 1 === clock.current ? index : index + 1;
+                setTrackerValue(clock, nextValue);
+                const text = kind === 'timer' ? `${clock.current} left` : `${clock.current}/${clock.segments}`;
+                void this.autosave(`${kind} ${clock.name}: ${text}`).then(() => this.refreshSidebarPart('progress'));
             });
         }
 
-        for (const thread of threads) {
-            const legacyStatus = threadLegacyStatus(thread);
-            const row = body.createDiv(`storyteller-campaign-thread-row is-${legacyStatus}`);
-            const toggle = row.createEl('button', { cls: 'storyteller-campaign-thread-toggle' });
-            setIcon(toggle.createSpan(), legacyStatus === 'resolved' ? 'circle-check' : legacyStatus === 'abandoned' ? 'circle-x' : 'circle');
-            toggle.createSpan({ text: thread.name });
-            toggle.addEventListener('click', () => {
-                const state = cycleCampaignThread(thread);
-                void this.autosave(`Thread ${thread.name}: ${state}`).then(() => this.render());
+        const remove = row.createEl('button', {
+            cls: 'storyteller-campaign-progress-remove',
+            attr: { 'aria-label': `Remove ${kind} ${clock.name}` },
+        });
+        setIcon(remove, 'x');
+        remove.addEventListener('click', () => {
+            session.clocks = (session.clocks ?? []).filter(candidate => candidate.id !== clock.id);
+            void this.autosave(`Removed ${kind}: *${clock.name}*`).then(() => this.refreshSidebarPart('progress'));
+        });
+    }
+
+    /** Click cycles the state for the kind; right-click opens a menu with every state, including Abandoned. */
+    private renderThreadRow(body: HTMLElement, session: CampaignSession, thread: CampaignThread): void {
+        const kind = threadKindOf(thread);
+        const legacyStatus = threadLegacyStatus(thread);
+        const row = body.createDiv(`storyteller-campaign-thread-row is-${legacyStatus}`);
+        const toggle = row.createEl('button', {
+            cls: 'storyteller-campaign-thread-toggle',
+            attr: { title: 'Click to cycle the state. Right-click to choose any state.' },
+        });
+        setIcon(toggle.createSpan(), legacyStatus === 'resolved' ? 'circle-check' : legacyStatus === 'abandoned' ? 'circle-x' : 'circle');
+        toggle.createSpan({ text: thread.name });
+        toggle.createSpan({ cls: 'storyteller-campaign-thread-state', text: threadStateOf(thread) });
+        toggle.addEventListener('click', () => {
+            const state = cycleCampaignThread(thread);
+            void this.autosave(`${kind} ${thread.name}: ${state}`).then(() => this.refreshSidebarPart('progress'));
+        });
+        toggle.addEventListener('contextmenu', (event) => {
+            event.preventDefault();
+            this.openThreadStateMenu(event, thread);
+        });
+
+        const remove = row.createEl('button', {
+            cls: 'storyteller-campaign-progress-remove',
+            attr: { 'aria-label': `Remove thread ${thread.name}` },
+        });
+        setIcon(remove, 'x');
+        remove.addEventListener('click', () => {
+            session.threads = (session.threads ?? []).filter(candidate => candidate.id !== thread.id);
+            void this.autosave(`Removed ${kind}: *${thread.name}*`).then(() => this.refreshSidebarPart('progress'));
+        });
+    }
+
+    private openThreadStateMenu(event: MouseEvent, thread: CampaignThread): void {
+        const kind = threadKindOf(thread);
+        const current = threadStateOf(thread).toLowerCase();
+        const states = Array.from(new Set([...CAMPAIGN_THREAD_STATES[kind], 'Abandoned']));
+        const menu = new Menu();
+        for (const state of states) {
+            menu.addItem(item => item
+                .setTitle(state)
+                .setChecked(state.toLowerCase() === current)
+                .onClick(() => {
+                    setCampaignThreadState(thread, state);
+                    void this.autosave(`${kind} ${thread.name}: ${state}`).then(() => this.refreshSidebarPart('progress'));
+                }));
+        }
+        menu.showAtMouseEvent(event);
+    }
+
+    private openAddProgressModal(initialKind: ProgressAddKind): void {
+        if (!this.session) return;
+        new AddProgressModal(this.app, {
+            initialKind,
+            onSubmit: values => { void this.applyAddProgress(values); },
+        }).open();
+    }
+
+    private async applyAddProgress(values: ProgressAddValues): Promise<void> {
+        const session = this.session;
+        if (!session) return;
+        if (values.kind === 'thread' || values.kind === 'goal' || values.kind === 'quest') {
+            if (!addCampaignThread(session, values.name, undefined, values.kind)) return;
+            await this.autosave(`Opened ${values.kind}: *${values.name}*`);
+        } else {
+            if (!addCampaignClock(session, values.name, values.size, undefined, values.kind)) return;
+            await this.autosave(`Added ${values.kind}: *${values.name}*`);
+        }
+        await this.refreshSidebarPart('progress');
+    }
+
+    /** Party resources: numeric values get +/- steps, text values are shown as they are. */
+    private renderPartyResources(body: HTMLElement, session: CampaignSession): void {
+        const group = body.createDiv('storyteller-campaign-party-group');
+        const head = group.createDiv('storyteller-campaign-party-group-hdr');
+        head.createSpan({ text: 'Resources' });
+        const addBtn = head.createDiv('storyteller-campaign-progress-actions').createEl('button', { attr: { 'aria-label': 'Add party resource' } });
+        setIcon(addBtn, 'plus');
+        addBtn.addEventListener('click', () => {
+            new PromptModal(this.app, {
+                title: 'Add party resource',
+                label: 'Resource and value',
+                defaultValue: '',
+                validator: value => value.trim() ? null : 'Enter a resource and its value.',
+                onSubmit: value => {
+                    if (!applyCampaignPartyResources(session, [value]).length) return;
+                    void this.autosave(`Party: ${value.trim()}`).then(() => this.refreshSidebarPart('party'));
+                },
+            }).open();
+        });
+
+        const entries = Object.entries(session.partyResources ?? {});
+        if (!entries.length) group.createDiv({ cls: 'storyteller-campaign-empty-text', text: 'No resources yet.' });
+        for (const [name, value] of entries) {
+            const row = group.createDiv('storyteller-campaign-resource-row');
+            row.createSpan({ cls: 'storyteller-campaign-resource-name', text: name });
+            if (typeof value === 'number') {
+                row.createSpan({ cls: 'storyteller-campaign-resource-value', text: String(value) });
+                const amount = row.createEl('input', {
+                    cls: 'storyteller-campaign-input is-small',
+                    attr: { type: 'number', min: '1', value: '1', 'aria-label': `Amount for ${name}` },
+                });
+                const change = (sign: 1 | -1) => {
+                    const step = Math.abs(Number.parseInt(amount.value, 10)) || 1;
+                    applyCampaignPartyResources(session, [`${name}${sign > 0 ? '+' : '-'}${step}`]);
+                    void this.autosave(`Party ${name} ${sign > 0 ? '+' : '-'}${step}`).then(() => this.refreshSidebarPart('party'));
+                };
+                row.createEl('button', { cls: 'storyteller-campaign-hp-btn', text: '-' }).addEventListener('click', () => change(-1));
+                row.createEl('button', { cls: 'storyteller-campaign-hp-btn', text: '+' }).addEventListener('click', () => change(1));
+            } else {
+                row.createSpan({ cls: 'storyteller-campaign-resource-value', text: value });
+            }
+            const remove = row.createEl('button', {
+                cls: 'storyteller-campaign-progress-remove',
+                attr: { 'aria-label': `Remove ${name}` },
             });
-            const remove = row.createEl('button', { cls: 'storyteller-campaign-progress-remove', attr: { 'aria-label': `Remove thread ${thread.name}` } });
             setIcon(remove, 'x');
             remove.addEventListener('click', () => {
-                session.threads = threads.filter(candidate => candidate.id !== thread.id);
-                void this.autosave(`Removed thread: *${thread.name}*`).then(() => this.render());
+                if (session.partyResources) removePartyResource(session.partyResources, name);
+                void this.autosave(`Party: removed *${name}*`).then(() => this.refreshSidebarPart('party'));
             });
+        }
+    }
+
+    /** Unassigned loot stash with a give-to-character action, plus each character's gear. */
+    private renderLootStash(body: HTMLElement, session: CampaignSession): void {
+        const group = body.createDiv('storyteller-campaign-party-group');
+        const head = group.createDiv('storyteller-campaign-party-group-hdr');
+        head.createSpan({ text: 'Loot stash' });
+        const addBtn = head.createDiv('storyteller-campaign-progress-actions').createEl('button', { attr: { 'aria-label': 'Add loot to the stash' } });
+        setIcon(addBtn, 'plus');
+        addBtn.addEventListener('click', () => {
+            new PromptModal(this.app, {
+                title: 'Add loot to the stash',
+                label: 'Item, optionally with xN',
+                defaultValue: '',
+                validator: value => value.trim() ? null : 'Enter an item name.',
+                onSubmit: value => {
+                    const match = /^(.*?)\s+x(\d+)$/i.exec(value.trim());
+                    const name = (match ? match[1] : value).trim();
+                    const quantity = match ? Number(match[2]) : 1;
+                    if (!addCampaignLoot(session, name, quantity)) return;
+                    void this.autosave(`Loot: +${quantity} ${name}`).then(() => this.refreshSidebarPart('party'));
+                },
+            }).open();
+        });
+
+        const owners = session.partyCharacterNames ?? [];
+        const stash = (session.loot ?? []).filter(item => !item.assignedTo?.trim());
+        if (!stash.length) group.createDiv({ cls: 'storyteller-campaign-empty-text', text: 'Nothing in the stash.' });
+        for (const item of stash) {
+            const row = group.createDiv('storyteller-campaign-loot-row');
+            const qty = item.qty ?? 1;
+            row.createSpan({ cls: 'storyteller-campaign-loot-name', text: qty > 1 ? `${item.name} x${qty}` : item.name });
+            if (owners.length) {
+                const select = row.createEl('select', {
+                    cls: 'storyteller-campaign-input is-small',
+                    attr: { 'aria-label': `Give ${item.name} to` },
+                });
+                for (const owner of owners) select.createEl('option', { value: owner, text: owner });
+                row.createEl('button', { cls: 'storyteller-campaign-hp-btn', text: 'Give' }).addEventListener('click', () => {
+                    if (!assignCampaignLoot(session, item.name, select.value, 1)) return;
+                    void this.autosave(`Loot: ${item.name} to ${select.value}`).then(() => this.refreshSidebarPart('party'));
+                });
+            }
+            const remove = row.createEl('button', {
+                cls: 'storyteller-campaign-progress-remove',
+                attr: { 'aria-label': `Remove ${item.name} from the stash` },
+            });
+            setIcon(remove, 'x');
+            remove.addEventListener('click', () => {
+                removeCampaignLoot(session, item.name);
+                void this.autosave(`Loot: removed *${item.name}*`).then(() => this.refreshSidebarPart('party'));
+            });
+        }
+
+        const gear = (session.loot ?? []).filter(item => item.assignedTo?.trim());
+        if (gear.length) {
+            group.createDiv({ cls: 'storyteller-campaign-sidebar-sub-hdr', text: 'Gear' });
+            for (const item of gear) {
+                const owner = item.assignedTo ?? '';
+                const qty = item.qty ?? 1;
+                const row = group.createDiv('storyteller-campaign-loot-row');
+                row.createSpan({
+                    cls: 'storyteller-campaign-loot-name',
+                    text: `${item.name}${qty > 1 ? ` x${qty}` : ''} (${owner})`,
+                });
+                const remove = row.createEl('button', {
+                    cls: 'storyteller-campaign-progress-remove',
+                    attr: { 'aria-label': `Remove ${item.name} from ${owner}` },
+                });
+                setIcon(remove, 'x');
+                remove.addEventListener('click', () => {
+                    removeCampaignLoot(session, item.name, undefined, owner);
+                    void this.autosave(`Loot: removed *${item.name}* from ${owner}`).then(() => this.refreshSidebarPart('party'));
+                });
+            }
         }
     }
 

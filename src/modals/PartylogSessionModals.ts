@@ -263,3 +263,64 @@ export class InterludeModal extends Modal {
             .addButton(button => button.setButtonText('Cancel').onClick(() => this.close()));
     }
 }
+
+export type ProgressAddKind = 'clock' | 'track' | 'timer' | 'thread' | 'goal' | 'quest';
+
+export interface ProgressAddValues {
+    name: string;
+    kind: ProgressAddKind;
+    /** Segments for clocks and tracks, starting count for timers. Ignored for threads, goals and quests. */
+    size: number;
+}
+
+const PROGRESS_KIND_OPTIONS: ReadonlyArray<{ value: ProgressAddKind; label: string }> = [
+    { value: 'clock', label: 'Clock' },
+    { value: 'track', label: 'Track' },
+    { value: 'timer', label: 'Timer' },
+    { value: 'thread', label: 'Thread' },
+    { value: 'goal', label: 'Goal' },
+    { value: 'quest', label: 'Quest' },
+];
+
+/** Adds a clock, track, timer, thread, goal or quest to the live session. */
+export class AddProgressModal extends Modal {
+    private readonly initialKind: ProgressAddKind;
+    private readonly onSubmitValues: (values: ProgressAddValues) => void;
+
+    constructor(app: App, options: { initialKind: ProgressAddKind; onSubmit: (values: ProgressAddValues) => void }) {
+        super(app);
+        this.initialKind = options.initialKind;
+        this.onSubmitValues = options.onSubmit;
+    }
+
+    onOpen(): void {
+        const { contentEl } = this;
+        contentEl.empty();
+        contentEl.createEl('h3', { text: 'Add progress' });
+
+        const draft: { name: string; kind: ProgressAddKind; size: number } = { name: '', kind: this.initialKind, size: 4 };
+        new Setting(contentEl).setName('Name').addText(text => {
+            text.setPlaceholder('Ritual').onChange(value => { draft.name = value; });
+        });
+        new Setting(contentEl).setName('Type').addDropdown(dropdown => {
+            for (const option of PROGRESS_KIND_OPTIONS) dropdown.addOption(option.value, option.label);
+            dropdown.setValue(draft.kind).onChange(value => { draft.kind = value as ProgressAddKind; });
+        });
+        new Setting(contentEl).setName('Size').setDesc('Segments for clocks and tracks, starting count for timers.').addDropdown(dropdown => {
+            for (let size = 2; size <= 24; size += 1) dropdown.addOption(String(size), String(size));
+            dropdown.setValue(String(draft.size)).onChange(value => { draft.size = Number.parseInt(value, 10); });
+        });
+
+        new Setting(contentEl)
+            .addButton(button => button.setButtonText('Add').setCta().onClick(() => {
+                const name = draft.name.trim();
+                if (!name) {
+                    new Notice('Enter a name.');
+                    return;
+                }
+                this.onSubmitValues({ name, kind: draft.kind, size: draft.size });
+                this.close();
+            }))
+            .addButton(button => button.setButtonText('Cancel').onClick(() => this.close()));
+    }
+}
