@@ -13,7 +13,7 @@ import { EventSuggestModal } from './EventSuggestModal';
 import { PlotItemSuggestModal } from './PlotItemSuggestModal';
 import { TemplatePickerModal } from './TemplatePickerModal';
 import { Template } from '../templates/TemplateTypes';
-import { EntityCustomFieldsEditor } from './entity/EntityCustomFieldsEditor';
+import { EntityCustomFieldsEditor, customFieldEditorOptions } from './entity/EntityCustomFieldsEditor';
 import { confirmWithModal } from './ui/ConfirmModal';
 
 export type GroupModalSubmitCallback = (group: Group) => Promise<void>;
@@ -71,7 +71,8 @@ export class GroupModal extends ResponsiveModal {
         }
         this.onSubmit = onSubmit;
         this.onDelete = onDelete;
-        this.customFieldsEditor = new EntityCustomFieldsEditor(this.app, 'faction', this.group.customFields);
+        this.customFieldsEditor = new EntityCustomFieldsEditor(this.app, 'faction', this.group.customFields,
+            customFieldEditorOptions(this.plugin, 'faction', () => this.group));
         this.modalEl.addClass('storyteller-group-modal');
     }
 

@@ -10,7 +10,7 @@ import type { Template, TemplateEntity, TemplateVariableValue } from '../templat
 import { LocationSuggestModal } from './LocationSuggestModal';
 import { MapHierarchyManager } from '../utils/MapHierarchyManager';
 import { addImageSelectionButtons } from '../utils/ImageSelectionHelper';
-import { EntityCustomFieldsEditor } from './entity/EntityCustomFieldsEditor';
+import { EntityCustomFieldsEditor, customFieldEditorOptions } from './entity/EntityCustomFieldsEditor';
 import { EntityGroupSelector } from './entity/EntityGroupSelector';
 
 export type MapModalSubmitCallback = (map: Map) => Promise<void>;
@@ -60,7 +60,8 @@ export class MapModal extends ResponsiveModal {
         if (map && map.filePath) initialMap.filePath = map.filePath;
 
         this.map = initialMap;
-        this.customFieldsEditor = new EntityCustomFieldsEditor(this.app, 'map', this.map.customFields);
+        this.customFieldsEditor = new EntityCustomFieldsEditor(this.app, 'map', this.map.customFields,
+            customFieldEditorOptions(this.plugin, 'map', () => this.map));
         this.groupSelector = new EntityGroupSelector({
             plugin: this.plugin,
             description: 'Organize this map with groups.',

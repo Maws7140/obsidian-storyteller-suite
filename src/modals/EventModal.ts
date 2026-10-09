@@ -11,7 +11,7 @@ import { t } from '../i18n/strings';
 import { GalleryImageSuggestModal } from './GalleryImageSuggestModal';
 import { addImageSelectionButtons } from '../utils/ImageSelectionHelper';
 import { PromptModal } from './ui/PromptModal';
-import { EntityCustomFieldsEditor } from './entity/EntityCustomFieldsEditor';
+import { EntityCustomFieldsEditor, customFieldEditorOptions } from './entity/EntityCustomFieldsEditor';
 import { EntityGroupSelector } from './entity/EntityGroupSelector';
 import { ResponsiveModal } from './ResponsiveModal';
 // Import the new suggesters
@@ -93,7 +93,8 @@ export class EventModal extends ResponsiveModal {
 
         this.event = initialEvent;
         this.originalGroupIds = [...(initialEvent.groups || [])];
-        this.customFieldsEditor = new EntityCustomFieldsEditor(this.app, 'event', this.event.customFields);
+        this.customFieldsEditor = new EntityCustomFieldsEditor(this.app, 'event', this.event.customFields,
+            customFieldEditorOptions(this.plugin, 'event', () => this.event));
         this.groupSelector = new EntityGroupSelector({
             plugin: this.plugin,
             description: t('assignEventToGroupsDesc'),

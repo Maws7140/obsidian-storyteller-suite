@@ -20,7 +20,7 @@ import { LocationSuggestModal } from './LocationSuggestModal';
 import { EventSuggestModal } from './EventSuggestModal';
 import { TemplatePickerModal } from './TemplatePickerModal';
 import type { Template, TemplateEntity, TemplateVariableValue } from '../templates/TemplateTypes';
-import { EntityCustomFieldsEditor } from './entity/EntityCustomFieldsEditor';
+import { EntityCustomFieldsEditor, customFieldEditorOptions } from './entity/EntityCustomFieldsEditor';
 import { EntityGroupSelector } from './entity/EntityGroupSelector';
 import { ResponsiveModal } from './ResponsiveModal';
 import { confirmWithModal } from './ui/ConfirmModal';
@@ -81,7 +81,8 @@ export class PlotItemModal extends ResponsiveModal {
         }));
 
         this.item = initialItem;
-        this.customFieldsEditor = new EntityCustomFieldsEditor(this.app, 'item', this.item.customFields);
+        this.customFieldsEditor = new EntityCustomFieldsEditor(this.app, 'item', this.item.customFields,
+            customFieldEditorOptions(this.plugin, 'item', () => this.item));
         this.groupSelector = new EntityGroupSelector({
             plugin: this.plugin,
             description: t('assignItemToGroupsDesc'),

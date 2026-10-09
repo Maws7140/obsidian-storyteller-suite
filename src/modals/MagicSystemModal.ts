@@ -7,7 +7,7 @@ import { TemplatePickerModal } from './TemplatePickerModal';
 import type { Template, TemplateEntity, TemplateVariableValue } from '../templates/TemplateTypes';
 import { t } from '../i18n/strings';
 import { parseSectionsFromMarkdown } from '../yaml/EntitySections';
-import { EntityCustomFieldsEditor } from './entity/EntityCustomFieldsEditor';
+import { EntityCustomFieldsEditor, customFieldEditorOptions } from './entity/EntityCustomFieldsEditor';
 
 export type MagicSystemModalSubmitCallback = (magicSystem: MagicSystem) => Promise<void>;
 export type MagicSystemModalDeleteCallback = (magicSystem: MagicSystem) => Promise<void>;
@@ -68,7 +68,8 @@ export class MagicSystemModal extends ResponsiveModal {
         if (!Array.isArray(this.magicSystem.linkedItems)) this.magicSystem.linkedItems = [];
         if (!Array.isArray(this.magicSystem.groups)) this.magicSystem.groups = [];
         if (!Array.isArray(this.magicSystem.connections)) this.magicSystem.connections = [];
-        this.customFieldsEditor = new EntityCustomFieldsEditor(this.app, 'magicSystem', this.magicSystem.customFields);
+        this.customFieldsEditor = new EntityCustomFieldsEditor(this.app, 'magicSystem', this.magicSystem.customFields,
+            customFieldEditorOptions(this.plugin, 'magicSystem', () => this.magicSystem));
 
         this.onSubmit = onSubmit;
         this.onDelete = onDelete;

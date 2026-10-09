@@ -4,7 +4,7 @@ import type StorytellerSuitePlugin from '../main';
 import { ResponsiveModal } from './ResponsiveModal';
 import { addImageSelectionButtons } from '../utils/ImageSelectionHelper';
 import { t } from '../i18n/strings';
-import { EntityCustomFieldsEditor } from './entity/EntityCustomFieldsEditor';
+import { EntityCustomFieldsEditor, customFieldEditorOptions } from './entity/EntityCustomFieldsEditor';
 import { EntityGroupSelector } from './entity/EntityGroupSelector';
 
 export type CompendiumEntryModalSubmitCallback = (entry: CompendiumEntry) => Promise<void>;
@@ -54,7 +54,8 @@ export class CompendiumEntryModal extends ResponsiveModal {
         if (!Array.isArray(this.entry.groups)) this.entry.groups = [];
         if (!Array.isArray(this.entry.connections)) this.entry.connections = [];
         if (!this.entry.customFields) this.entry.customFields = {};
-        this.customFieldsEditor = new EntityCustomFieldsEditor(this.app, 'compendiumEntry', this.entry.customFields);
+        this.customFieldsEditor = new EntityCustomFieldsEditor(this.app, 'compendiumEntry', this.entry.customFields,
+            customFieldEditorOptions(this.plugin, 'compendiumEntry', () => this.entry));
         this.groupSelector = new EntityGroupSelector({
             plugin: this.plugin,
             description: t('assignItemToGroupsDesc'),

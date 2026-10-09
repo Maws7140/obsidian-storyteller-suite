@@ -3,7 +3,7 @@ import type { Book } from '../types';
 import type StorytellerSuitePlugin from '../main';
 import { ResponsiveModal } from './ResponsiveModal';
 import { addImageSelectionButtons } from '../utils/ImageSelectionHelper';
-import { EntityCustomFieldsEditor } from './entity/EntityCustomFieldsEditor';
+import { EntityCustomFieldsEditor, customFieldEditorOptions } from './entity/EntityCustomFieldsEditor';
 import { confirmWithModal } from './ui/ConfirmModal';
 
 export type BookModalSubmitCallback = (book: Book) => Promise<void>;
@@ -34,7 +34,8 @@ export class BookModal extends ResponsiveModal {
             customFields: {},
         };
         if (!this.book.customFields) this.book.customFields = {};
-        this.customFieldsEditor = new EntityCustomFieldsEditor(this.app, 'book', this.book.customFields);
+        this.customFieldsEditor = new EntityCustomFieldsEditor(this.app, 'book', this.book.customFields,
+            customFieldEditorOptions(this.plugin, 'book', () => this.book));
         this.onSubmit = onSubmit;
         this.onDelete = onDelete;
         this.modalEl.addClass('storyteller-book-modal');

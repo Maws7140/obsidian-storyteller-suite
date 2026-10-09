@@ -7,7 +7,7 @@ import { TemplatePickerModal } from './TemplatePickerModal';
 import type { Template, TemplateEntity, TemplateVariableValue } from '../templates/TemplateTypes';
 import { t } from '../i18n/strings';
 import { parseSectionsFromMarkdown } from '../yaml/EntitySections';
-import { EntityCustomFieldsEditor } from './entity/EntityCustomFieldsEditor';
+import { EntityCustomFieldsEditor, customFieldEditorOptions } from './entity/EntityCustomFieldsEditor';
 
 export type EconomyModalSubmitCallback = (economy: Economy) => Promise<void>;
 export type EconomyModalDeleteCallback = (economy: Economy) => Promise<void>;
@@ -65,7 +65,8 @@ export class EconomyModal extends ResponsiveModal {
         if (!Array.isArray(this.economy.linkedEvents)) this.economy.linkedEvents = [];
         if (!Array.isArray(this.economy.groups)) this.economy.groups = [];
         if (!Array.isArray(this.economy.connections)) this.economy.connections = [];
-        this.customFieldsEditor = new EntityCustomFieldsEditor(this.app, 'economy', this.economy.customFields);
+        this.customFieldsEditor = new EntityCustomFieldsEditor(this.app, 'economy', this.economy.customFields,
+            customFieldEditorOptions(this.plugin, 'economy', () => this.economy));
 
         this.onSubmit = onSubmit;
         this.onDelete = onDelete;

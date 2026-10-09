@@ -14,7 +14,7 @@ import { GalleryImageSuggestModal } from './GalleryImageSuggestModal';
 import { ResponsiveModal } from './ResponsiveModal';
 import { TemplatePickerModal } from './TemplatePickerModal';
 import type { Template, TemplateEntity, TemplateVariableValue } from '../templates/TemplateTypes';
-import { EntityCustomFieldsEditor } from './entity/EntityCustomFieldsEditor';
+import { EntityCustomFieldsEditor, customFieldEditorOptions } from './entity/EntityCustomFieldsEditor';
 import { EntityGroupSelector } from './entity/EntityGroupSelector';
 import { confirmWithModal } from './ui/ConfirmModal';
 // Placeholder imports for suggesters -
@@ -61,7 +61,8 @@ export class LocationModal extends ResponsiveModal {
         // if (!initialLocation.subLocations) initialLocation.subLocations = [];
 
         this.location = initialLocation;
-        this.customFieldsEditor = new EntityCustomFieldsEditor(this.app, 'location', this.location.customFields);
+        this.customFieldsEditor = new EntityCustomFieldsEditor(this.app, 'location', this.location.customFields,
+            customFieldEditorOptions(this.plugin, 'location', () => this.location));
         this.groupSelector = new EntityGroupSelector({
             plugin: this.plugin,
             description: t('assignToGroupsDesc'),

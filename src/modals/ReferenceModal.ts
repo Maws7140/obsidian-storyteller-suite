@@ -7,7 +7,7 @@ import { addImageSelectionButtons } from '../utils/ImageSelectionHelper';
 import { parseSectionsFromMarkdown } from '../yaml/EntitySections';
 import { TemplatePickerModal } from './TemplatePickerModal';
 import type { Template, TemplateEntity, TemplateVariableValue } from '../templates/TemplateTypes';
-import { EntityCustomFieldsEditor } from './entity/EntityCustomFieldsEditor';
+import { EntityCustomFieldsEditor, customFieldEditorOptions } from './entity/EntityCustomFieldsEditor';
 import { ResponsiveModal } from './ResponsiveModal';
 import { confirmWithModal } from './ui/ConfirmModal';
 
@@ -37,7 +37,8 @@ export class ReferenceModal extends ResponsiveModal {
         this.refData = ref ? { ...ref } : { name: '', category: 'Misc', tags: [] };
         if (!this.refData.tags) this.refData.tags = [];
         const referenceFields = this.refData as ReferenceWithCustomFields;
-        this.customFieldsEditor = new EntityCustomFieldsEditor(this.app, 'reference', referenceFields.customFields || {});
+        this.customFieldsEditor = new EntityCustomFieldsEditor(this.app, 'reference', referenceFields.customFields || {},
+            customFieldEditorOptions(this.plugin, 'reference', () => this.refData));
         this.onSubmit = onSubmit;
         this.onDelete = onDelete;
         this.modalEl.addClass('storyteller-reference-modal');
