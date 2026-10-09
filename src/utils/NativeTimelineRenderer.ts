@@ -18,6 +18,7 @@ import { placeAlternatingTimelineCards } from './TimelineCardLayout';
 import { placeReadableAxisLabels } from './AxisLabelLayout';
 import { narrativeDirectionOf, narrativeSequenceOf, timelineDateForMode } from './NarrativeTimeline';
 import type { NarrativeDirection } from './NarrativeTimeline';
+import { TextMeasureCache } from './TextMeasureCache';
 
 export interface TimelineRendererOptions {
     ganttMode?: boolean;
@@ -185,6 +186,8 @@ const SLOT_RADIUS = 3;
 const SLOT_COLOR = '#0b0f16';
 /** How close a pointer must be to an axis marker to grab it. */
 const MARKER_GRAB_RADIUS = 11;
+/** Bound on the text caches so a long session cannot grow them without limit. */
+const TEXT_CACHE_LIMIT = 10_000;
 const MILESTONE_GOLD_EDGE = '#8a6410';
 
 export class NativeTimelineRenderer {
@@ -209,6 +212,14 @@ export class NativeTimelineRenderer {
     private ctx: CanvasRenderingContext2D | null = null;
     private resizeObserver: ResizeObserver | null = null;
     private frame = 0;
+    /** Memoized label widths and truncations. See TextMeasureCache. */
+    private readonly text = new TextMeasureCache(TEXT_CACHE_LIMIT);
+    /** Style lookups for the paint in progress; null outside a paint. */
+    private styleCache: { computed: Map<string, string>; values: Map<string, string> } | null = null;
+    /** Vertical card date labels by start time, for one calendar object. */
+    private dateLabels = new Map<number, string>();
+    private dateLabelCalendar: CalendarSystem | null = null;
+    private onFontsLoaded: (() => void) | null = null;
     /**
      * Size to lay out and draw against, while rendering somewhere that is not
      * the on-screen root. Null the rest of the time, which is every frame the
@@ -315,6 +326,8 @@ export class NativeTimelineRenderer {
         if (this.frame) (this.container.ownerDocument.defaultView || window).cancelAnimationFrame(this.frame);
         this.resizeObserver?.disconnect();
         this.resizeObserver = null;
+        if (this.onFontsLoaded) this.container.ownerDocument.fonts?.removeEventListener('loadingdone', this.onFontsLoaded);
+        this.onFontsLoaded = null;
         this.root?.remove();
         this.root = null;
         this.canvas = null;
@@ -520,6 +533,10 @@ export class NativeTimelineRenderer {
         this.bindEvents();
         this.resizeObserver = new ResizeObserver(() => this.redraw());
         this.resizeObserver.observe(this.root);
+        // A web font that arrives after a label was measured changes its width
+        // under the same font string, so the cached answers would be stale.
+        this.onFontsLoaded = () => { this.clearTextCaches(); this.scheduleDraw(); };
+        this.container.ownerDocument.fonts?.addEventListener('loadingdone', this.onFontsLoaded);
         this.resizeCanvas();
     }
 
@@ -537,6 +554,7 @@ export class NativeTimelineRenderer {
 
     private rebuild(fit: boolean): void {
         this.referenceDate = new Date();
+        this.clearTextCaches();
         const sourceEvents = this.collectEvents();
         // Conflict analysis is secondary to rendering and can be quadratic for
         // dense character histories. Keep large timelines interactive; users
@@ -758,7 +776,7 @@ export class NativeTimelineRenderer {
     private chipWidth(ctx: CanvasRenderingContext2D, item: NativeItem, minimum: number): number {
         ctx.font = `11px ${this.css('--font-interface', 'sans-serif')}`;
         const narrativeIconWidth = narrativeDirectionOf(item.event) ? 18 : 0;
-        return Math.max(minimum, Math.min(MAX_CHIP_WIDTH, ctx.measureText(this.itemLabel(item)).width + 34 + narrativeIconWidth));
+        return Math.max(minimum, Math.min(MAX_CHIP_WIDTH, this.text.measure(ctx, this.itemLabel(item)) + 34 + narrativeIconWidth));
     }
 
     /**
@@ -925,6 +943,19 @@ export class NativeTimelineRenderer {
 
     private draw(): void {
         if (!this.canvas || !this.ctx || !this.root) return;
+        // Computed styles cannot change while a frame is being painted, so each
+        // is read once per frame. Scoped to the paint, so a theme change between
+        // frames is never answered from an earlier frame's read.
+        this.styleCache = { computed: new Map(), values: new Map() };
+        try {
+            this.paintFrame();
+        } finally {
+            this.styleCache = null;
+        }
+    }
+
+    private paintFrame(): void {
+        if (!this.canvas || !this.ctx || !this.root) return;
         this.layoutRows();
         const ctx = this.ctx;
         const width = this.viewportWidth();
@@ -1045,22 +1076,29 @@ export class NativeTimelineRenderer {
             const chipX = placedX - cardWidth / 2;
             const tierOffset = tier * (cardHeight + 12);
             const chipY = above ? axisY - cardHeight - 34 - tierOffset : axisY + 34 + tierOffset;
-            item.rect = new DOMRect(chipX, chipY, cardWidth, cardHeight);
+            const rect = new DOMRect(chipX, chipY, cardWidth, cardHeight);
+            item.rect = rect;
             this.visibleItems.push(item);
-            // One rigid perpendicular leader. Both endpoints share the event's
-            // true X coordinate, so panning can only translate this segment;
-            // it can never acquire an elbow or diagonal stretch.
-            ctx.save();
-            ctx.strokeStyle = item.laneColor;
-            ctx.lineWidth = 1.5;
-            ctx.beginPath();
-            ctx.moveTo(desiredX, axisY);
-            ctx.lineTo(desiredX, above ? chipY + cardHeight : chipY);
-            ctx.stroke();
-            ctx.restore();
             if (this.slotsVisible() && this.isDraggable(item)) this.markerHits.push({ item, x: desiredX, y: axisY });
-            this.drawPointMarker(ctx, desiredX, axisY, item);
-            this.drawTimelineEventCard(ctx, item, calendar);
+            // A card stacked past the canvas edge still has its leader and axis
+            // marker on screen, so only the card itself is skipped there. The
+            // canvas would clip the card anyway; the rect above is kept for
+            // drag and arrows.
+            if (this.isOnCanvas(Math.min(rect.left, desiredX), Math.min(rect.top, axisY), Math.max(rect.right, desiredX), Math.max(rect.bottom, axisY), width, height)) {
+                // One rigid perpendicular leader. Both endpoints share the event's
+                // true X coordinate, so panning can only translate this segment;
+                // it can never acquire an elbow or diagonal stretch.
+                ctx.save();
+                ctx.strokeStyle = item.laneColor;
+                ctx.lineWidth = 1.5;
+                ctx.beginPath();
+                ctx.moveTo(desiredX, axisY);
+                ctx.lineTo(desiredX, above ? chipY + cardHeight : chipY);
+                ctx.stroke();
+                ctx.restore();
+                this.drawPointMarker(ctx, desiredX, axisY, item);
+            }
+            if (this.isOnCanvas(rect.left, rect.top, rect.right, rect.bottom, width, height)) this.drawTimelineEventCard(ctx, item, calendar);
         });
 
         this.drawHorizontalTimelineDropTarget(ctx, axisY, width, height);
@@ -1482,21 +1520,26 @@ export class NativeTimelineRenderer {
             const tierOffset = tier * (chipWidth + 12);
             const chipX = rightSide ? axisX + 28 + tierOffset : Math.max(4, axisX - 28 - chipWidth - tierOffset);
             const chipY = placedY - chipHeight / 2;
-            item.rect = new DOMRect(chipX, chipY, chipWidth, chipHeight);
+            const rect = new DOMRect(chipX, chipY, chipWidth, chipHeight);
+            item.rect = rect;
             this.visibleItems.push(item);
-            // One rigid perpendicular leader. Marker and card edge share the
-            // event's true Y coordinate, so scrolling cannot bend the line.
-            ctx.save();
-            ctx.strokeStyle = item.laneColor;
-            ctx.lineWidth = 1.5;
-            ctx.beginPath();
-            ctx.moveTo(axisX, desiredY);
-            ctx.lineTo(rightSide ? chipX : chipX + chipWidth, desiredY);
-            ctx.stroke();
-            ctx.restore();
             if (this.slotsVisible() && this.isDraggable(item)) this.markerHits.push({ item, x: axisX, y: desiredY });
-            this.drawPointMarker(ctx, axisX, desiredY, item);
-            this.drawTimelineEventCard(ctx, item, calendar);
+            // Same split as the horizontal layout: the leader and marker stay
+            // while the card is off the canvas, and only the card is skipped.
+            if (this.isOnCanvas(Math.min(rect.left, axisX), Math.min(rect.top, desiredY), Math.max(rect.right, axisX), Math.max(rect.bottom, desiredY), width, height)) {
+                // One rigid perpendicular leader. Marker and card edge share the
+                // event's true Y coordinate, so scrolling cannot bend the line.
+                ctx.save();
+                ctx.strokeStyle = item.laneColor;
+                ctx.lineWidth = 1.5;
+                ctx.beginPath();
+                ctx.moveTo(axisX, desiredY);
+                ctx.lineTo(rightSide ? chipX : chipX + chipWidth, desiredY);
+                ctx.stroke();
+                ctx.restore();
+                this.drawPointMarker(ctx, axisX, desiredY, item);
+            }
+            if (this.isOnCanvas(rect.left, rect.top, rect.right, rect.bottom, width, height)) this.drawTimelineEventCard(ctx, item, calendar);
         });
         this.drawVerticalDropTarget(ctx, axisX, width, timeToY);
         this.drawConnectors(ctx, width, height);
@@ -1593,6 +1636,15 @@ export class NativeTimelineRenderer {
         });
     }
 
+    /**
+     * Whether a box could put any pixel on the canvas. The pad covers strokes
+     * and the marker ring, which reach a few pixels past their geometry.
+     */
+    private isOnCanvas(left: number, top: number, right: number, bottom: number, width: number, height: number): boolean {
+        const pad = 16;
+        return right + pad > 0 && left - pad < width && bottom + pad > 0 && top - pad < height;
+    }
+
     /** Shared card renderer for horizontal and vertical timeline orientations. */
     private drawTimelineEventCard(ctx: CanvasRenderingContext2D, item: NativeItem, calendar: ReturnType<CalendarRegistry['getActiveCalendar']>): void {
         const rect = item.rect!;
@@ -1620,6 +1672,18 @@ export class NativeTimelineRenderer {
     }
 
     private verticalEventDate(time: number, calendar: ReturnType<CalendarRegistry['getActiveCalendar']>): string {
+        // Every card asks for its date on every frame, and turning a time into
+        // a calendar date walks the calendar's months, so the label is kept.
+        if (this.dateLabelCalendar !== calendar) { this.dateLabels.clear(); this.dateLabelCalendar = calendar; }
+        const cached = this.dateLabels.get(time);
+        if (cached !== undefined) return cached;
+        const label = this.computeEventDate(time, calendar);
+        if (this.dateLabels.size >= TEXT_CACHE_LIMIT) this.dateLabels.clear();
+        this.dateLabels.set(time, label);
+        return label;
+    }
+
+    private computeEventDate(time: number, calendar: ReturnType<CalendarRegistry['getActiveCalendar']>): string {
         const absoluteDay = time / DAY_MS + this.unixEpochAbsoluteDay();
         const date = fromAbsolute(calendar, { absoluteDay });
         const month = monthsInYear(calendar, date.year)[date.month]?.name || `Month ${date.month + 1}`;
@@ -2860,6 +2924,15 @@ export class NativeTimelineRenderer {
     private ensureLaneVisible(id: string): void { const lane = this.lanes.find(value => value.id === id); if (lane) this.scrollTop = Math.max(0, lane.top - this.axisHeight()); }
     private colorFor(value: string): string { let hash = 0; for (let i = 0; i < value.length; i++) hash = ((hash << 5) - hash + value.charCodeAt(i)) | 0; return this.palette[Math.abs(hash) % this.palette.length]; }
     private css(name: string, fallback: string): string {
+        const cache = this.styleCache;
+        const key = `${name}\u0000${fallback}`;
+        const cached = cache?.values.get(key);
+        if (cached !== undefined) return cached;
+        const value = this.resolveCss(name, fallback);
+        cache?.values.set(key, value);
+        return value;
+    }
+    private resolveCss(name: string, fallback: string): string {
         const colors = this.calendarRegistry.getActiveTheme().colors;
         const themeValue: Record<string, string | undefined> = {
             '--background-primary': colors?.background,
@@ -2871,9 +2944,23 @@ export class NativeTimelineRenderer {
             '--interactive-accent': colors?.accent,
             '--color-red': colors?.now,
         };
-        return themeValue[name] || getComputedStyle(this.container).getPropertyValue(name).trim() || fallback;
+        return themeValue[name] || this.computedStyleValue(name) || fallback;
     }
-    private truncate(ctx: CanvasRenderingContext2D, value: string, width: number): string { if (ctx.measureText(value).width <= width) return value; let text = value; while (text.length > 1 && ctx.measureText(`${text}…`).width > width) text = text.slice(0, -1); return `${text}…`; }
+    /**
+     * A custom property as the container computes it. Read once per paint: the
+     * same few names are asked for by every card, and the read forces a style
+     * recalculation each time it is made.
+     */
+    private computedStyleValue(name: string): string {
+        const cache = this.styleCache;
+        const cached = cache?.computed.get(name);
+        if (cached !== undefined) return cached;
+        const value = getComputedStyle(this.container).getPropertyValue(name).trim();
+        cache?.computed.set(name, value);
+        return value;
+    }
+    private truncate(ctx: CanvasRenderingContext2D, value: string, width: number): string { return this.text.truncate(ctx, value, width); }
+    private clearTextCaches(): void { this.text.clear(); this.dateLabels.clear(); }
     private lowerBound(items: NativeItem[], target: number): number { let low = 0, high = items.length; while (low < high) { const mid = (low + high) >>> 1; if (items[mid].start < target) low = mid + 1; else high = mid; } return low; }
 
     /**
