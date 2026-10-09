@@ -9,6 +9,7 @@ import StorytellerSuitePlugin from '../main';
 import { Location, StoryMap, MapBinding } from '../types';
 import { t } from '../i18n/strings';
 import { LeafletRenderer } from '../leaflet/renderer';
+import { buildMapExportFileName, uniqueExportPath } from '../leaflet/utils/MapImageExport';
 import { BlockParameters } from '../leaflet/types';
 import { LocationService, LocationLevel } from '../services/LocationService';
 import { LocationSuggestModal } from '../modals/LocationSuggestModal';
@@ -2056,6 +2057,35 @@ export class MapView extends ItemView {
     }
 
     /**
+     * Save the map as it is currently framed to StorytellerSuite/Exports.
+     * Only image maps have a single base image to draw; tile maps get a notice.
+     */
+    private async exportMapAsImage(): Promise<void> {
+        if (!this.currentMap || !this.leafletRenderer) {
+            new Notice('Open a map before exporting');
+            return;
+        }
+        try {
+            const blob = await this.leafletRenderer.renderViewAsPng();
+            if (!blob) {
+                new Notice('Map export is only supported for image maps');
+                return;
+            }
+            const folder = 'StorytellerSuite/Exports';
+            await this.plugin.ensureFolder(folder);
+            const path = uniqueExportPath(
+                folder,
+                buildMapExportFileName(this.currentMap.name, new Date()),
+                candidate => this.app.vault.getAbstractFileByPath(candidate) !== null
+            );
+            await this.app.vault.createBinary(path, await blob.arrayBuffer());
+            new Notice(`Map exported to ${path}`);
+        } catch (error) {
+            new Notice(`Map export failed: ${error instanceof Error ? error.message : String(error)}`);
+        }
+    }
+
+    /**
      * Show more options menu
      */
     private showMoreMenu(event: MouseEvent): void {
@@ -2076,9 +2106,7 @@ export class MapView extends ItemView {
             item
                 .setTitle('Export as image')
                 .setIcon('image')
-                .onClick(() => {
-                    new Notice('Map export coming soon');
-                });
+                .onClick(() => { void this.exportMapAsImage(); });
         });
 
         menu.addSeparator();

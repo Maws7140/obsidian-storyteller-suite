@@ -2,6 +2,7 @@ import { detachFromMaps } from '../services/MapMembershipService';
 import { confirmWithModal } from '../modals/ui/ConfirmModal';
 import { constrainImageViewport } from './utils/ImageViewport';
 import { persistedMapMarkers } from './utils/PersistedMapMarkers';
+import { imageMimeForPath, planImageExport } from './utils/MapImageExport';
 // Use global L object that's set in main.ts: (window as any).L = L
 // Leaflet base styles are maintained in styles.css so Obsidian can lint authored CSS.
 import * as L from 'leaflet';
@@ -65,6 +66,10 @@ export class LeafletRenderer extends Component {
     private imageBounds: L.LatLngBounds | null = null;
     private wheelHandler: ((e: WheelEvent) => void) | null = null;
     private hasRenderedTiles: boolean = false;
+    /** Vault path of the source image; set for image maps, null for tile maps. */
+    private baseImagePath: string | null = null;
+    /** Colour and label per marker, kept for image export. */
+    private markerExportMeta = new WeakMap<L.Marker, { color: string; label: string }>();
 
     constructor(
         private plugin: StorytellerSuitePlugin,
@@ -614,6 +619,7 @@ export class LeafletRenderer extends Component {
      * For map images, tiles are required - will generate if missing
      */
     private async initializeImageMapWithPath(imagePath: string): Promise<void> {
+        this.baseImagePath = imagePath;
         try {
             if (isSvgPath(imagePath)) {
                 const svgText = await this.plugin.app.vault.adapter.read(imagePath);
@@ -1251,6 +1257,10 @@ export class LeafletRenderer extends Component {
                 marker.remove();
             } catch (error) { new Notice(`Removal failed: ${String(error)}`); }
         })(); });
+        this.markerExportMeta.set(marker, {
+            color: markerDef.iconColor ?? '#3b82f6',
+            label: markerDef.entityName || (markerDef.link ? extractLinkPath(markerDef.link) : '') || markerDef.description || ''
+        });
         // Add tooltip
         if (markerDef.description) {
             marker.bindTooltip(markerDef.description);
@@ -2082,6 +2092,7 @@ export class LeafletRenderer extends Component {
         this.markers.clear();
         this.layers.clear();
         this.imageOverlay = null;
+        this.baseImagePath = null;
         this.isInitialized = false;
         this.initializationPromise = null;
         this.hasRenderedTiles = false;
@@ -2098,6 +2109,102 @@ export class LeafletRenderer extends Component {
      * Get the Leaflet map instance
      */
     getImageBounds(): L.LatLngBounds | null { return this.imageBounds; }
+
+    /**
+     * Draw what the viewer currently shows of an image map onto a PNG: the
+     * source image at its current placement, then the visible markers with
+     * their labels. Returns null for tile (real-world) maps, which have no
+     * single base image to draw.
+     */
+    async renderViewAsPng(): Promise<Blob | null> {
+        const map = this.map;
+        const bounds = this.imageBounds;
+        const imagePath = this.baseImagePath;
+        if (!map || !bounds || !imagePath) return null;
+        if (!imageMimeForPath(imagePath)) return null;
+
+        const size = map.getSize();
+        const scale = Math.min(2, Math.max(1, window.devicePixelRatio || 1));
+        const markers: { x: number; y: number; color: string; label?: string }[] = [];
+        for (const marker of this.markers.values()) {
+            // Markers removed by zoom limits or layer toggles have no element.
+            if (!marker.getElement()) continue;
+            const point = map.latLngToContainerPoint(marker.getLatLng());
+            const meta = this.markerExportMeta.get(marker);
+            markers.push({ x: point.x, y: point.y, color: meta?.color ?? '#3b82f6', label: meta?.label });
+        }
+
+        const plan = planImageExport({
+            viewWidth: size.x,
+            viewHeight: size.y,
+            scale,
+            imageNorthWest: map.latLngToContainerPoint(bounds.getNorthWest()),
+            imageSouthEast: map.latLngToContainerPoint(bounds.getSouthEast()),
+            markers
+        });
+        if (!plan) return null;
+
+        const canvas = this.containerEl.ownerDocument.createElement('canvas');
+        canvas.width = plan.width;
+        canvas.height = plan.height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return null;
+
+        const background = getComputedStyle(this.containerEl).backgroundColor;
+        if (background && !/rgba?\(\s*[\d.]+\s*,\s*[\d.]+\s*,\s*[\d.]+\s*,\s*0\s*\)/.test(background)) {
+            ctx.fillStyle = background;
+            ctx.fillRect(0, 0, plan.width, plan.height);
+        }
+
+        const image = await this.loadImageForExport(imagePath);
+        ctx.drawImage(image, plan.image.x, plan.image.y, plan.image.width, plan.image.height);
+
+        ctx.lineWidth = 2 * plan.scale;
+        ctx.font = `600 ${12 * plan.scale}px sans-serif`;
+        ctx.textBaseline = 'middle';
+        for (const marker of plan.markers) {
+            ctx.beginPath();
+            ctx.arc(marker.x, marker.y, marker.radius, 0, Math.PI * 2);
+            ctx.fillStyle = marker.color;
+            ctx.fill();
+            ctx.strokeStyle = '#ffffff';
+            ctx.stroke();
+            if (marker.label) {
+                ctx.textAlign = marker.label.align;
+                ctx.lineWidth = 3 * plan.scale;
+                ctx.strokeStyle = 'rgba(0, 0, 0, 0.7)';
+                ctx.strokeText(marker.label.text, marker.label.x, marker.label.y);
+                ctx.fillStyle = '#ffffff';
+                ctx.fillText(marker.label.text, marker.label.x, marker.label.y);
+                ctx.lineWidth = 2 * plan.scale;
+            }
+        }
+
+        return await new Promise<Blob | null>((resolve, reject) => {
+            try {
+                canvas.toBlob(blob => resolve(blob), 'image/png');
+            } catch (error) {
+                reject(error instanceof Error ? error : new Error(String(error)));
+            }
+        });
+    }
+
+    /** Read a vault image into a decoded element. Blob URLs are same-origin, so the canvas stays untainted. */
+    private async loadImageForExport(imagePath: string): Promise<HTMLImageElement> {
+        const mime = imageMimeForPath(imagePath) ?? 'application/octet-stream';
+        const data = await this.plugin.app.vault.adapter.readBinary(imagePath);
+        const url = URL.createObjectURL(new Blob([data], { type: mime }));
+        try {
+            return await new Promise<HTMLImageElement>((resolve, reject) => {
+                const img = new Image();
+                img.onload = () => resolve(img);
+                img.onerror = () => reject(new Error(`Could not decode image: ${imagePath}`));
+                img.src = url;
+            });
+        } finally {
+            URL.revokeObjectURL(url);
+        }
+    }
 
     getMap(): L.Map | null {
         return this.map;
