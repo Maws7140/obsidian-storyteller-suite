@@ -7887,11 +7887,21 @@ export default class StorytellerSuitePlugin extends Plugin {
         ], this.settings.activeStoryId);
     }
 
+    /** Timeline surfaces that hold a renderer outside the workspace leaves: embedded blocks and the timeline modal. */
+    private liveTimelineSurfaces = new Set<{ refreshTimeline(): void }>();
+
+    /** Put a surface on the refresh list. The returned function takes it off again. */
+    registerLiveTimeline(surface: { refreshTimeline(): void }): () => void {
+        this.liveTimelineSurfaces.add(surface);
+        return () => { this.liveTimelineSurfaces.delete(surface); };
+    }
+
     /** Redraw every open timeline, after data moved under it. */
     refreshTimelineViews(): void {
         this.app.workspace.getLeavesOfType(VIEW_TYPE_TIMELINE).forEach(leaf => {
             if (leaf.view instanceof TimelineView) void leaf.view.refresh();
         });
+        for (const surface of this.liveTimelineSurfaces) surface.refreshTimeline();
     }
 
     /**

@@ -22,6 +22,7 @@ export class TimelineModal extends Modal {
     private currentState: TimelineUIState;
     private controlsBuilder: TimelineControlsBuilder;
     private filterBuilder: TimelineFilterBuilder;
+    private unregisterLive: (() => void) | null = null;
 
     // UI state
     private defaultGanttDuration = 1;
@@ -71,6 +72,12 @@ export class TimelineModal extends Modal {
         // Initialize builders
         this.controlsBuilder = new TimelineControlsBuilder(plugin, this.currentState, controlCallbacks);
         this.filterBuilder = new TimelineFilterBuilder(plugin, this.currentState, filterCallbacks);
+        this.unregisterLive = plugin.registerLiveTimeline(this);
+    }
+
+    /** Called by the plugin when timeline data or the story's today has moved under this modal. */
+    refreshTimeline(): void {
+        if (this.renderer) void this.renderer.refresh();
     }
 
     async onOpen() {
@@ -262,6 +269,8 @@ export class TimelineModal extends Modal {
 
 
     onClose() {
+        this.unregisterLive?.();
+        this.unregisterLive = null;
         this.contentEl.empty();
         if (this.renderer) {
             this.renderer.destroy();
