@@ -159,6 +159,40 @@ export function sanitizeCustomFieldDefinitions(entityType: EntityType, raw: unkn
     return out;
 }
 
+export interface DefaultFieldNameCheck {
+    /** Names a new entity may start with, in the order given, without duplicates. */
+    accepted: string[];
+    /** Names the editor would refuse, with the reason to show the user. */
+    rejected: Array<{ name: string; problem: string }>;
+}
+
+/**
+ * Check the default custom field names for an entity type. A default that the
+ * editor would refuse must not seed a new entity, because the seeded row would
+ * block every Save until the user deleted it. The settings page uses the same
+ * check to tell the user which names were dropped.
+ */
+export function checkDefaultCustomFieldNames(
+    entityType: EntityType,
+    names: readonly string[],
+    definitions: readonly CustomFieldDefinition[] = [],
+    sectionFrontmatterFields: readonly string[] = []
+): DefaultFieldNameCheck {
+    const accepted: string[] = [];
+    const rejected: Array<{ name: string; problem: string }> = [];
+    const seen = new Set<string>();
+    const taken = definitions.map(definition => definition.key);
+    for (const raw of names) {
+        const name = raw.trim();
+        if (!name || seen.has(name)) continue;
+        seen.add(name);
+        const problem = validateCustomFieldKey(name, entityType, taken, sectionFrontmatterFields);
+        if (problem) rejected.push({ name, problem });
+        else accepted.push(name);
+    }
+    return { accepted, rejected };
+}
+
 /** Normalise a stored settings map (entity type -> definitions). */
 export function sanitizeCustomFieldDefinitionMap(raw: unknown): Record<string, CustomFieldDefinition[]> {
     const out: Record<string, CustomFieldDefinition[]> = {};

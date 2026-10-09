@@ -89,7 +89,7 @@ export class CharacterModal extends ResponsiveModal {
         if (this.isNew) {
             initialCharacter.customFields = seedDefaultCustomFields(
                 initialCharacter.customFields,
-                plugin.settings.defaultCustomFields?.['character']
+                plugin.getSeedableDefaultCustomFields('character')
             );
         }
         if (!initialCharacter.relationships) initialCharacter.relationships = [];

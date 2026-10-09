@@ -34,6 +34,7 @@ import {
 import { stringifyYamlWithLogging, validateFrontmatterPreservation } from './utils/YamlSerializer';
 import {
     CustomFieldDefinition,
+    checkDefaultCustomFieldNames,
     definedFieldSaveOptions,
     removedFreeFormKeys,
     sanitizeCustomFieldDefinitions,
@@ -693,6 +694,16 @@ export default class StorytellerSuitePlugin extends Plugin {
     /** Body-section fields this vault stores as frontmatter for an entity type. */
     getSectionFrontmatterFields(entityType: EntityType): string[] {
         return getFrontmatterSectionFields(this.settings.sectionFieldsInFrontmatter, entityType);
+    }
+
+    /** Default custom field names that are safe to seed into a new entity of this type. */
+    getSeedableDefaultCustomFields(entityType: EntityType): string[] {
+        return checkDefaultCustomFieldNames(
+            entityType,
+            this.settings.defaultCustomFields?.[entityType] ?? [],
+            this.getCustomFieldDefinitions(entityType),
+            this.getSectionFrontmatterFields(entityType)
+        ).accepted;
     }
 
     /**

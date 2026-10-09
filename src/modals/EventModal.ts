@@ -87,7 +87,7 @@ export class EventModal extends ResponsiveModal {
         if (this.isNew) {
             initialEvent.customFields = seedDefaultCustomFields(
                 initialEvent.customFields,
-                this.plugin.settings.defaultCustomFields?.event
+                this.plugin.getSeedableDefaultCustomFields('event')
             );
         }
 

@@ -67,7 +67,7 @@ export class PlotItemModal extends ResponsiveModal {
         if (this.isNew) {
             initialItem.customFields = seedDefaultCustomFields(
                 initialItem.customFields,
-                plugin.settings.defaultCustomFields?.['item']
+                plugin.getSeedableDefaultCustomFields('item')
             );
         }
         if (!Array.isArray(initialItem.groups)) initialItem.groups = []; // Ensure groups array is initialized
