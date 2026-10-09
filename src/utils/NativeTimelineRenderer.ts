@@ -191,6 +191,7 @@ const DAY_MS = 86_400_000;
 const YEAR_MS = 365.2425 * DAY_MS;
 const BASE_AXIS_HEIGHT = 42;
 const CALENDAR_BAND_HEIGHT = 16;
+const TAP_SLOP_PX = 10;
 // Strip along the foot of the axis header that carries era name pills. It sits
 // above the lanes, so a chip or milestone star can never cover an era label.
 const ERA_STRIP_HEIGHT = 20;
@@ -330,6 +331,12 @@ export class NativeTimelineRenderer {
     private markerHits: { item: NativeItem; x: number; y: number }[] = [];
     private activePointers = new Map<number, { x: number; y: number }>();
     private pinch: { distance: number; span: number; anchorTime: number } | null = null;
+    /**
+     * A press on a chip that may still turn out to be a tap. Touch and pen have
+     * no dblclick, so a tap on the already-selected chip opens it, and a tap on
+     * any chip shows its card. Null for mouse presses, which use hover and dblclick.
+     */
+    private tap: { pointerId: number; item: NativeItem; x: number; y: number; start: number; end: number; wasSelected: boolean } | null = null;
     private referenceDate = new Date();
     /** The story's "today" in epoch milliseconds, for the now marker and jump. */
     private nowMs(): number { return this.options.getReferenceDate().getTime(); }
@@ -699,7 +706,7 @@ export class NativeTimelineRenderer {
         this.canvas.addEventListener('pointercancel', event => { void this.onPointerUp(event); });
         this.canvas.addEventListener('dblclick', event => this.openAt(event.offsetX, event.offsetY));
         this.canvas.addEventListener('wheel', event => this.onWheel(event), { passive: false });
-        this.canvas.addEventListener('pointerleave', () => this.hideTooltip());
+        this.canvas.addEventListener('pointerleave', event => this.onPointerLeave(event));
         this.root.addEventListener('keydown', event => this.onKeyDown(event));
     }
 
@@ -2982,6 +2989,7 @@ export class NativeTimelineRenderer {
         if (!this.canvas) return;
         this.canvas.setPointerCapture(event.pointerId);
         this.activePointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+        this.tap = null;
         if (this.activePointers.size === 2) {
             // A pinch takes over from a chip drag already under way. The move was never
             // committed, so put the chip back where it started rather than leave it displaced.
@@ -3024,7 +3032,11 @@ export class NativeTimelineRenderer {
         if (control) { this.activateMarkerControl(control); return; }
         const item = this.hit(event.offsetX, event.offsetY);
         if (item) {
+            const wasSelected = this.selected === item;
             this.selected = item; this.options.onEventSelected?.(item.event);
+            if (event.pointerType !== 'mouse') {
+                this.tap = { pointerId: event.pointerId, item, x: event.offsetX, y: event.offsetY, start: item.start, end: item.end, wasSelected };
+            }
             // Selection and touch pan still work on a non-draggable item; only the write-back is refused.
             this.dragging = this.options.editMode && this.isDraggable(item)
                 ? { kind: 'move', x: event.clientX, y: event.clientY, start: item.start, end: item.end, item }
@@ -3035,7 +3047,14 @@ export class NativeTimelineRenderer {
             return;
         }
         this.selected = null; this.options.onEventSelected?.(null);
+        this.hideTooltip();
         this.dragging = { kind: 'pan', x: event.clientX, y: event.clientY, start: this.viewStart, end: this.viewEnd };
+    }
+
+    /** A touch lifts before the browser reports the pointer leaving, so only a mouse leaving hides the card. */
+    private onPointerLeave(event: PointerEvent): void {
+        if (event.pointerType === 'touch' || event.pointerType === 'pen') return;
+        this.hideTooltip();
     }
 
     /**
@@ -3271,6 +3290,19 @@ export class NativeTimelineRenderer {
 
     private async onPointerUp(event: PointerEvent): Promise<void> {
         this.activePointers.delete(event.pointerId);
+        const tap = this.tap; this.tap = null;
+        const isTap = tap !== null && tap.pointerId === event.pointerId && this.pinch === null && this.activePointers.size === 0
+            && Math.hypot(event.offsetX - tap.x, event.offsetY - tap.y) <= TAP_SLOP_PX;
+        if (isTap && tap) {
+            // A tap never moves the chip, even if a sub-slop move snapped it by a unit.
+            tap.item.start = tap.start; tap.item.end = tap.end;
+            this.dragging = null; this.dragGhost = null;
+            this.canvas?.releasePointerCapture(event.pointerId);
+            if (tap.wasSelected) { this.hideTooltip(); this.openItem(tap.item); }
+            else this.showTooltip(tap.item, tap.x, tap.y);
+            this.scheduleDraw();
+            return;
+        }
         if (this.pinch) {
             this.pinch = null;
             this.dragging = null;
@@ -3477,6 +3509,11 @@ export class NativeTimelineRenderer {
     }
 
     private onKeyDown(event: KeyboardEvent): void {
+        if (this.selected && event.key === 'Enter') {
+            event.preventDefault();
+            this.openItem(this.selected);
+            return;
+        }
         if (!this.selected || !this.options.editMode || !['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
         event.preventDefault();
         const item = this.selected;
@@ -3492,7 +3529,13 @@ export class NativeTimelineRenderer {
     }
 
     private openAt(x: number, y: number): void {
-        const item = this.hit(x, y); if (!item || item.event.tags?.includes('watched-note')) return;
+        const item = this.hit(x, y);
+        if (item) this.openItem(item);
+    }
+
+    /** Open the event behind a chip in the editor, the same way for mouse, touch and keyboard. */
+    private openItem(item: NativeItem): void {
+        if (item.event.tags?.includes('watched-note')) return;
         // A scene is not an event. Editing one here would hand EventModal a
         // synthetic object and saveEvent would write it out as a new event note,
         // so open the scene itself instead.
