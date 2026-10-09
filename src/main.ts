@@ -39,6 +39,7 @@ import {
     sweepCustomFieldsOnRead,
 } from './modals/entity/CustomFieldDefinitions';
 import { stripWikiLink } from './utils/WikiLinks';
+import { findSessionLogSection, readSessionLogBody } from './campaign/SessionLogSection';
 import { StoryScoped, scopeToStory, stampStory, mergeStoryScoped, backfillStoryIds } from './utils/StoryScope';
 import { TimelineEntityStore } from './services/TimelineEntityStore';
 import { serializeCausalityRef, parseCausalityRefs, causalityRefTarget } from './utils/CausalityRefs';
@@ -6772,11 +6773,7 @@ export default class StorytellerSuitePlugin extends Plugin {
         const file = this.app.vault.getAbstractFileByPath(normalizePath(filePath));
         if (!(file instanceof TFile)) return '';
         const content = await this.app.vault.cachedRead(file);
-        const { parseSectionsFromMarkdown } = await import('./yaml/EntitySections');
-        const bodyStart = content.indexOf('\n---', 3);
-        const body = bodyStart !== -1 ? content.slice(bodyStart + 4) : content;
-        const sections = parseSectionsFromMarkdown(body);
-        return sections['Session Log'] ?? '';
+        return readSessionLogBody(content);
     }
 
     /** Atomically appends log entries to the ## Session Log section of a session file. */
@@ -6796,18 +6793,9 @@ export default class StorytellerSuitePlugin extends Plugin {
                 return `${content.trimEnd()}\n\n${logHeader}\n${rendered}\n`;
             }
 
-            const afterHeader = content.indexOf('\n', idx);
-            const sectionStart = afterHeader !== -1 ? afterHeader + 1 : content.length;
-            let nextSection = content.length;
-            const sectionRegex = /^##\s+/gm;
-            sectionRegex.lastIndex = sectionStart;
-            let match: RegExpExecArray | null;
-            while ((match = sectionRegex.exec(content)) !== null) {
-                if (match.index > idx) {
-                    nextSection = match.index;
-                    break;
-                }
-            }
+            const section = findSessionLogSection(content) ?? { start: content.length, end: content.length };
+            const sectionStart = section.start;
+            const nextSection = section.end;
 
             const existingBody = content.slice(sectionStart, nextSection).replace(/\s+$/, '');
             const mergedBody = existingBody ? `${existingBody}\n${rendered}\n` : `${rendered}\n`;
@@ -6837,18 +6825,9 @@ export default class StorytellerSuitePlugin extends Plugin {
                 return `${content.trimEnd()}\n\n${logHeader}\n${body ? `${body}\n` : ''}`;
             }
 
-            const afterHeader = content.indexOf('\n', idx);
-            const sectionStart = afterHeader !== -1 ? afterHeader + 1 : content.length;
-            let nextSection = content.length;
-            const sectionRegex = /^##\s+/gm;
-            sectionRegex.lastIndex = sectionStart;
-            let match: RegExpExecArray | null;
-            while ((match = sectionRegex.exec(content)) !== null) {
-                if (match.index > idx) {
-                    nextSection = match.index;
-                    break;
-                }
-            }
+            const section = findSessionLogSection(content) ?? { start: content.length, end: content.length };
+            const sectionStart = section.start;
+            const nextSection = section.end;
 
             const existingBody = content.slice(sectionStart, nextSection).replace(/\s+$/, '');
             const updatedBody = update(existingBody).replace(/\s+$/, '');
