@@ -2782,7 +2782,7 @@ export class CampaignView extends ItemView {
         });
     }
 
-    /** Click cycles the state for the kind; right-click opens a menu with every state, including Abandoned. */
+    /** Click cycles the state for the kind; the "..." button and right-click open a menu with every state, including Abandoned. */
     private renderThreadRow(body: HTMLElement, session: CampaignSession, thread: CampaignThread): void {
         const kind = threadKindOf(thread);
         const legacyStatus = threadLegacyStatus(thread);
@@ -2802,6 +2802,13 @@ export class CampaignView extends ItemView {
             event.preventDefault();
             this.openThreadStateMenu(event, thread);
         });
+        // Touch has no right-click: this button opens the same menu on tap.
+        const stateMenu = row.createEl('button', {
+            cls: 'storyteller-campaign-thread-more',
+            text: '...',
+            attr: { 'aria-label': `Set state of ${thread.name}`, title: 'Set any state' },
+        });
+        stateMenu.addEventListener('click', (event) => this.openThreadStateMenu(event, thread));
 
         const remove = row.createEl('button', {
             cls: 'storyteller-campaign-progress-remove',
