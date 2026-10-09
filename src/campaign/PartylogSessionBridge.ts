@@ -710,6 +710,24 @@ export function advancementLinesForSession(session: CampaignSession, sessionNumb
     return lines;
 }
 
+/**
+ * Change lines (tags and notes) already written in the log's end block, without the advancement,
+ * hook and note lines that are regenerated from session fields. Saving the end block again keeps
+ * these, and only lines not already here are replayed into state.
+ */
+export function previousSessionEndChangeLines(log: string): string[] {
+    const lines = splitLines(log);
+    const range = sessionEndRange(lines);
+    if (!range) return [];
+    return lines.slice(range.start + 1, range.end)
+        .map(line => line.trim())
+        .filter(line => line.length > 0
+            && !line.startsWith('```')
+            && !/^(?:---|###|##)\s/.test(line)
+            && !/^\[Advance:/i.test(line)
+            && !/^\((?:hook|note):/i.test(line));
+}
+
 /** Appends an interlude block at the end of the log. Interludes are never replaced. */
 export function appendInterludeBlock(log: string, interlude: Interlude, style: FormatStyle = 'digital'): string {
     return appendBlock(log, formatInterlude(interlude, style));

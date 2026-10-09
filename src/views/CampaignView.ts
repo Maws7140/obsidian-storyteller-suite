@@ -89,6 +89,7 @@ import { mapToBlockParams } from '../leaflet/utils/MapBlockParams';
 import { locationPinKey, resolveBoardSelection } from '../utils/CampaignBoardSelection';
 import {
     advancementLinesForSession,
+    previousSessionEndChangeLines,
     appendBlock,
     appendInterludeBlock,
     applyPartylogTagsToSession,
@@ -3005,8 +3006,14 @@ export class CampaignView extends ItemView {
         await this.flushChain;
     }
 
+    /** Character ids and names for resolving older party records that store only ids. */
+    private characterRefs: Array<{ id: string; name: string }> = [];
+
     private partylogContext(): PartylogBridgeContext {
-        return { groups: this.plugin.getGroups().map(group => ({ id: group.id, name: group.name })) };
+        return {
+            groups: this.plugin.getGroups().map(group => ({ id: group.id, name: group.name })),
+            characters: this.characterRefs,
+        };
     }
 
     /** Re-renders one sidebar section in place. Falls back to a full render if it is not on screen. */
@@ -3178,18 +3185,24 @@ export class CampaignView extends ItemView {
             addCampaignAdvancement(session, entry.character, summary, { sessionNumber: number });
         }
 
-        const changeEntries = parseLogLines(values.changeLines);
+        // Change lines already in the end block stay there and are not replayed a second time.
+        const previous = session.filePath ? previousSessionEndChangeLines(await this.plugin.loadSessionLog(session.filePath)) : [];
+        const previousSet = new Set(previous);
+        const newChanges = values.changeLines.map(line => line.trim()).filter(line => line.length > 0 && !previousSet.has(line));
+        const changeEntries = parseLogLines(newChanges);
         const result = applyPartylogTagsToSession(session, changeEntries.flatMap(entryTags), this.partylogContext());
-        session.hook = values.hook || undefined;
-        session.endNotes = values.notes || undefined;
+        // The modal starts empty, so a blank hook or note keeps the one saved before.
+        session.hook = values.hook || session.hook;
+        session.endNotes = values.notes || session.endNotes;
         if (values.endSession) session.status = 'completed';
 
         // Every advancement of this session is written, so re-saving the block keeps earlier ones.
         const lines = [
             ...advancementLinesForSession(session, number),
-            ...values.changeLines,
-            ...(values.hook ? [`(hook: ${values.hook})`] : []),
-            ...(values.notes ? [`(note: ${values.notes})`] : []),
+            ...previous,
+            ...newChanges,
+            ...(session.hook ? [`(hook: ${session.hook})`] : []),
+            ...(session.endNotes ? [`(note: ${session.endNotes})`] : []),
         ];
         await this.autosave();
         const end = sessionEndFromLines(number, lines);
@@ -3225,6 +3238,8 @@ export class CampaignView extends ItemView {
 
     private renderQuickEntry(container: HTMLElement, session: CampaignSession): void {
         const wrap = container.createDiv('storyteller-campaign-quick');
+        // Warm the name cache early: tag replay uses it to resolve party records stored by id.
+        void this.loadTagNames();
         this.renderQuickEntryBody(wrap, session);
     }
 
@@ -3483,7 +3498,11 @@ export class CampaignView extends ItemView {
     private async loadTagNames(): Promise<TagNameCache> {
         if (this.tagNameCache) return this.tagNameCache;
         const cache: TagNameCache = { characters: [], locations: [], items: [] };
-        try { cache.characters = (await this.plugin.listCharacters()).map(item => item.name); } catch { /* no story */ }
+        try {
+            const characters = await this.plugin.listCharacters();
+            cache.characters = characters.map(item => item.name);
+            this.characterRefs = characters.map(item => ({ id: item.id || item.name, name: item.name }));
+        } catch { /* no story */ }
         try { cache.locations = (await this.plugin.listLocations()).map(item => item.name); } catch { /* no story */ }
         try { cache.items = (await this.plugin.listPlotItems()).map(item => item.name); } catch { /* no story */ }
         this.tagNameCache = cache;

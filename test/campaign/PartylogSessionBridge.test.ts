@@ -17,6 +17,7 @@ import {
     sessionEndFromLines,
     upsertSessionEndBlock,
     upsertSessionHeaderBlock,
+    previousSessionEndChangeLines,
 } from '../../src/campaign/PartylogSessionBridge';
 import { parsePartylogLog, parseTag, type Tag } from '../../src/campaign/partylog';
 import { FELLOWSHIP_SESSION_01 } from './fixtures/fellowship-sessions';
@@ -401,5 +402,21 @@ describe('end block regenerated from the session keeps every advancement of that
         expect(second.match(/\[Advance:Kael\|Rogue 6\]/g)).toHaveLength(1);
         expect(second).toContain('[Advance:Sable|Ranger 2]');
         expect(second).toContain('(hook: second hook)');
+    });
+});
+
+describe('previousSessionEndChangeLines', () => {
+    it('returns change lines from the end block without advance, hook or note lines', () => {
+        const log = [
+            '## Session 2', '', '### S1 *Moria*', '@(Gimli) Smash the door', '',
+            '### End of Session 2', '', '```',
+            '[Advance:Aragorn|Ranger 9]', '[Party:Gold-10]', '[Loot: Mithril Shirt|to:Frodo Baggins]',
+            '(hook: the Watcher stirs)', '(note: tense)', '```',
+        ].join('\n');
+        expect(previousSessionEndChangeLines(log)).toEqual(['[Party:Gold-10]', '[Loot: Mithril Shirt|to:Frodo Baggins]']);
+    });
+
+    it('returns nothing when the log has no end block', () => {
+        expect(previousSessionEndChangeLines('### S1 *Bree*\n@(Sam) Order ale')).toEqual([]);
     });
 });
