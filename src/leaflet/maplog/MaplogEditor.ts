@@ -41,6 +41,15 @@ function isTypingTarget(target: EventTarget | null): boolean {
     return target.closest('input, textarea, select, [contenteditable="true"]') !== null;
 }
 
+/** A double click made with a mouse, not synthesised from touch or pen taps. */
+function isMouseDoubleClick(event: MouseEvent | undefined): boolean {
+    if (!event) return false;
+    const capabilities = (event as MouseEvent & { sourceCapabilities?: { firesTouchEvents?: boolean } }).sourceCapabilities;
+    if (capabilities?.firesTouchEvents) return false;
+    const pointerType = (event as MouseEvent & { pointerType?: string }).pointerType;
+    return !pointerType || pointerType === 'mouse';
+}
+
 export class MaplogEditor {
     private tool: MaplogToolState | null = null;
     private points: L.LatLng[] = [];
@@ -62,6 +71,22 @@ export class MaplogEditor {
         if (!tool || (previous && isPlacedMark(previous.markId) !== isPlacedMark(tool.markId))) this.cancelDraft();
         this.attach(tool !== null);
         this.syncDoubleClickZoom();
+    }
+
+    /** Finish the line or area being drawn (the palette's Finish button). */
+    finish(): void {
+        void this.finishDraft();
+    }
+
+    /** Remove the last point of the line or area being drawn. */
+    undoPoint(): void {
+        this.points.pop();
+        this.updatePreview(null);
+    }
+
+    /** Drop the line or area being drawn and keep the tool armed. */
+    cancel(): void {
+        this.cancelDraft();
     }
 
     destroy(): void {
@@ -188,6 +213,11 @@ export class MaplogEditor {
         this.zoomWasEnabled = null;
     }
 
+    /** Bind to the current map again, for example after the view rendered a new one. */
+    rebind(): void {
+        if (this.tool) this.attach(true);
+    }
+
     private handleClick(event: L.LeafletMouseEvent): void {
         const tool = this.tool;
         if (!tool) return;
@@ -214,6 +244,12 @@ export class MaplogEditor {
     private handleDoubleClick(event: L.LeafletMouseEvent): void {
         if (!this.tool || isPlacedMark(this.tool.markId)) return;
         event.originalEvent?.preventDefault();
+        // Quick taps on a touchscreen or pen arrive as a double click and would end the line after
+        // two points. Only a mouse double click on the last point finishes; touch uses Finish.
+        if (!isMouseDoubleClick(event.originalEvent)) return;
+        const last = this.points[this.points.length - 1];
+        const map = this.bound;
+        if (last && map && map.latLngToContainerPoint(last).distanceTo(event.containerPoint) > 12) return;
         void this.finishDraft();
     }
 

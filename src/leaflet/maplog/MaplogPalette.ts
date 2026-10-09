@@ -24,6 +24,8 @@ export interface MaplogPaletteHost {
     chooseLocation(done: (location: { id?: string; name: string } | null) => void): void;
     /** The palette was closed with the close button. */
     onClose(): void;
+    /** Finish, undo the last point of, or cancel the line or area being drawn. */
+    drawing?: { finish(): void; undo(): void; cancel(): void };
 }
 
 const STAIR_MARKS = new Set(['stairs-up', 'stairs-down', 'spiral', 'slope', 'shaft', 'shaft-up']);
@@ -45,6 +47,10 @@ export class MaplogPalette {
         this.root.hide();
         L.DomEvent.disableClickPropagation(this.root);
         L.DomEvent.disableScrollPropagation(this.root);
+        // Leaflet ignores a click from a disabled element by walking up from the target, but the
+        // palette re-renders while handling a click, so the target is already detached and the map
+        // would take the click as a placement. Stopping it here keeps palette clicks off the map.
+        this.root.addEventListener('click', event => event.stopPropagation());
     }
 
     isOpen(): boolean {
@@ -154,9 +160,20 @@ export class MaplogPalette {
         if (!def) return;
         const options = this.root.createDiv({ cls: 'maplog-palette-options' });
         const kind = def.kind;
-        options.createDiv({ cls: 'maplog-palette-hint', text: kind === 'point' || kind === 'opening'
-            ? `${def.label}: click the map to place it. Esc stops placing.`
-            : `${def.label}: click to add points. Double-click or press Enter to finish. Backspace removes the last point. Esc cancels.` });
+        options.createDiv({ cls: 'maplog-palette-hint maplog-palette-armed', text: kind === 'point' || kind === 'opening'
+            ? `Placing ${def.label}: click or tap the map. Click the mark again or press Esc to stop.`
+            : `Drawing ${def.label}: click or tap to add points, then Finish (or double-click, or Enter).` });
+        if ((kind === 'line' || kind === 'area') && this.host.drawing) {
+            const drawing = this.host.drawing;
+            const row = options.createDiv({ cls: 'maplog-palette-draw-actions' });
+            const action = (label: string, run: () => void, cta = false): void => {
+                const button = row.createEl('button', { cls: cta ? 'mod-cta' : '', text: label, attr: { type: 'button' } });
+                button.addEventListener('click', run);
+            };
+            action('Finish', () => drawing.finish(), true);
+            action('Undo point', () => drawing.undo());
+            action('Cancel', () => drawing.cancel());
+        }
 
         for (const attr of maplogAttributesFor(def.id)) {
             new Setting(options).setName(attr.label).setDesc(attr.description).addToggle(toggle => toggle

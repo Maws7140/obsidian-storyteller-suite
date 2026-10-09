@@ -12482,3 +12482,18 @@ body.mod-rtl .storyteller-group-members {
         max-width: none;
     }
 }
+
+/* Maplog palette: armed status and drawing controls */
+.maplog-palette-armed {
+    padding: 6px 8px;
+    border-radius: 6px;
+    background: var(--background-modifier-hover);
+    color: var(--text-normal);
+}
+
+.maplog-palette-draw-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 6px 0 8px;
+}

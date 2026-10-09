@@ -85,6 +85,8 @@ export class MapView extends ItemView {
     private maplogPalette: MaplogPalette | null = null;
     private maplogEditor: MaplogEditor | null = null;
     private maplogSaveQueue: Promise<void> = Promise.resolve();
+    /** Maplog writes queued or running; while any are, the in-memory marks are newer than the note. */
+    private maplogWritesPending = 0;
     private placementMode: { type: 'location' | 'character' | 'event' | 'item' | 'culture' | 'economy' | 'magicsystem' | 'group' | 'scene' | 'reference' | null } = { type: null };
     private placementClickHandler: ((e: L.LeafletMouseEvent) => void) | null = null;
     private placementOverlay: HTMLElement | null = null;
@@ -667,9 +669,20 @@ export class MapView extends ItemView {
         }
         if (!this.maplogPalette) {
             this.maplogPalette = new MaplogPalette(this.mapContainer, {
-                onChange: tool => this.maplogEditor?.setTool(tool),
+                onChange: tool => {
+                    if (!this.maplogEditor) {
+                        if (tool) new Notice('The map is still loading. Pick the mark again in a moment.');
+                        return;
+                    }
+                    this.maplogEditor.setTool(tool);
+                },
                 chooseLocation: done => { new LocationSuggestModal(this.app, this.plugin, done).open(); },
                 onClose: () => undefined,
+                drawing: {
+                    finish: () => this.maplogEditor?.finish(),
+                    undo: () => this.maplogEditor?.undoPoint(),
+                    cancel: () => this.maplogEditor?.cancel(),
+                },
             });
         }
         this.refreshRoomStates();
@@ -698,11 +711,16 @@ export class MapView extends ItemView {
      * another, and the drawn layer is updated once the note is written.
      */
     private saveMaplog(next: MaplogData): Promise<void> {
+        const map = this.currentMap;
+        const file = map?.filePath ? this.app.vault.getAbstractFileByPath(map.filePath) : null;
+        if (!map || !(file instanceof TFile)) return Promise.reject(new Error('Save the map note before adding Maplog marks.'));
+        const clean = normalizeMaplogData(next);
+        // Update the view first: a second mark placed before this write finishes must build on
+        // this one, not on the note as it was, or the earlier mark would be overwritten.
+        this.currentMap = { ...map, maplogMarks: clean.marks, maplogLines: clean.lines, maplogAreas: clean.areas };
+        this.leafletRenderer?.getMaplogLayer()?.setData(clean);
+        this.maplogWritesPending++;
         const run = async (): Promise<void> => {
-            const map = this.currentMap;
-            const file = map?.filePath ? this.app.vault.getAbstractFileByPath(map.filePath) : null;
-            if (!map || !(file instanceof TFile)) throw new Error('Save the map note before adding Maplog marks.');
-            const clean = normalizeMaplogData(next);
             const patch = maplogFrontmatter(clean);
             // processFrontMatter keeps the rest of the note and writes in one operation.
             await this.app.fileManager.processFrontMatter(file, (fm: Record<string, unknown>) => {
@@ -712,10 +730,8 @@ export class MapView extends ItemView {
                     else fm[key] = value;
                 }
             });
-            this.currentMap = { ...map, maplogMarks: clean.marks, maplogLines: clean.lines, maplogAreas: clean.areas };
-            this.leafletRenderer?.getMaplogLayer()?.setData(clean);
         };
-        const queued = this.maplogSaveQueue.then(run, run);
+        const queued = this.maplogSaveQueue.then(run, run).finally(() => { this.maplogWritesPending--; });
         this.maplogSaveQueue = queued.catch(() => undefined);
         return queued;
     }
@@ -2208,7 +2224,12 @@ export class MapView extends ItemView {
         this.membershipRefreshBusy = true;
         try {
             const current = (await this.plugin.listMaps()).find(m => (m.id || m.name) === (this.currentMap!.id || this.currentMap!.name));
-            if (current) this.currentMap = current;
+            if (current) {
+                const previous = this.currentMap;
+                this.currentMap = this.maplogWritesPending > 0 && previous
+                    ? { ...current, maplogMarks: previous.maplogMarks, maplogLines: previous.maplogLines, maplogAreas: previous.maplogAreas }
+                    : current;
+            }
             await this.gridController?.refreshFromVault(current);
             await this.leafletRenderer.refreshEntities();
         } finally {
