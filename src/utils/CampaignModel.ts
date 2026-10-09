@@ -386,11 +386,16 @@ export const CAMPAIGN_SESSION_MULTILINE_KEYS: readonly string[] = ['recap', 'goa
  */
 export function buildCampaignSessionFrontmatter(
     source: Record<string, unknown>,
-    options?: { omitOriginalKeys?: Iterable<string> },
+    options?: {
+        omitOriginalKeys?: Iterable<string>;
+        /** Frontmatter already in the note. Keys outside the session whitelist (title, summary) are kept. */
+        originalFrontmatter?: Record<string, unknown>;
+    },
 ): Record<string, unknown> {
     return buildFrontmatter('campaignSession', source, undefined, {
         multilineKeys: CAMPAIGN_SESSION_MULTILINE_KEYS,
         omitOriginalKeys: options?.omitOriginalKeys,
+        originalFrontmatter: options?.originalFrontmatter,
     });
 }
 

@@ -6777,7 +6777,13 @@ export default class StorytellerSuitePlugin extends Plugin {
         const folderPath = this.getEntityFolder('campaignSession');
         const safeName = (session.name || 'Untitled Session').replace(/[\\/:"*?<>|]+/g, '');
         const fileName = `${safeName}.md`;
-        const filePath = normalizePath(`${folderPath}/${fileName}`);
+        // The note the session already points at wins, so a rename in Obsidian keeps the log in one file.
+        // The name-based path is used only until the note exists.
+        const linkedPath = session.filePath;
+        const linkedFile = linkedPath ? this.app.vault.getAbstractFileByPath(linkedPath) : null;
+        const filePath: string = linkedFile instanceof TFile && linkedPath
+            ? linkedPath
+            : normalizePath(`${folderPath}/${fileName}`);
 
         const now = new Date().toISOString();
         session.modified = now;
@@ -6785,12 +6791,18 @@ export default class StorytellerSuitePlugin extends Plugin {
         if (!session.id) session.id = `sess-${Date.now()}`;
 
         const preparedSession = await this.serializeFrontmatterEntityReferences(session as unknown as Record<string, unknown>);
+        const existingFile = this.app.vault.getAbstractFileByPath(filePath);
+        let originalFrontmatter: Record<string, unknown> | undefined;
+        if (existingFile instanceof TFile) {
+            const { parseFrontmatterFromContent } = await import('./yaml/EntitySections');
+            originalFrontmatter = parseFrontmatterFromContent(await this.app.vault.cachedRead(existingFile));
+        }
         const frontmatter = buildCampaignSessionFrontmatter(preparedSession.source, {
             omitOriginalKeys: preparedSession.omitOriginalKeys,
+            originalFrontmatter,
         });
         const fm = stringifyYaml(frontmatter);
 
-        const existingFile = this.app.vault.getAbstractFileByPath(filePath);
         if (existingFile instanceof TFile) {
             // Preserve existing log body
             await this.app.vault.process(existingFile, (content: string) => {

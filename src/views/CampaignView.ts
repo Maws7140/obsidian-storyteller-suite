@@ -283,6 +283,12 @@ export class CampaignView extends ItemView {
     /** Live section elements, so one part can be re-rendered in place. */
     private sidebarPartEls = new Map<SidebarPart, HTMLElement>();
     private quick: QuickEntryState = createQuickEntryState();
+    /** True from the first submit until its line is written, so repeat submits are ignored. */
+    private quickSubmitInFlight = false;
+    /** True while a branch choice is being applied. */
+    private choiceInFlight = false;
+    /** True while a scene change or Back is running. */
+    private navigationInFlight = false;
     /** NPC names typed into the quick entry bar for this view. */
     private quickNpcs: string[] = [];
     /** Last dice result from a branch roll, used to prefill the Roll entry. */
@@ -323,6 +329,8 @@ export class CampaignView extends ItemView {
     // â”€â”€ External API (called by main.ts) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     async loadSession(session: CampaignSession, startingScene?: Scene): Promise<void> {
+        // Edits still waiting on the debounce belong to the session being left: write them before it is replaced.
+        await this.flushAutosaveNow();
         this.session = { ...session };
         this.sceneHistory = [];
         this.tagNameCache = null;
@@ -1503,6 +1511,17 @@ export class CampaignView extends ItemView {
     // â”€â”€ Branch execution â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     private async executeChoice(branch: SceneBranch, outcome: 'success' | 'fail', rollTotal?: number): Promise<void> {
+        // A second tap on the card while the first is running would apply the outcome again.
+        if (this.choiceInFlight) return;
+        this.choiceInFlight = true;
+        try {
+            await this.applyChoice(branch, outcome, rollTotal);
+        } finally {
+            this.choiceInFlight = false;
+        }
+    }
+
+    private async applyChoice(branch: SceneBranch, outcome: 'success' | 'fail', rollTotal?: number): Promise<void> {
         if (!this.session) return;
 
         // Apply outcomes (inventory, flags, party membership)
@@ -1561,7 +1580,21 @@ export class CampaignView extends ItemView {
         ) ?? null;
     }
 
+    /**
+     * Jumps to a scene. Ignored while another scene change (or Back) is still running, so a double
+     * tap does not push history twice or write two scene headers.
+     */
     private async doNavigate(sceneName: string, pushHistory: boolean): Promise<void> {
+        if (this.navigationInFlight) return;
+        this.navigationInFlight = true;
+        try {
+            await this.enterScene(sceneName, pushHistory);
+        } finally {
+            this.navigationInFlight = false;
+        }
+    }
+
+    private async enterScene(sceneName: string, pushHistory: boolean): Promise<void> {
         if (!this.session) return;
         if (!this.allScenes.length) {
             try { this.allScenes = await this.plugin.listScenes(); } catch { return; }
@@ -1587,7 +1620,7 @@ export class CampaignView extends ItemView {
             const logLine = `*On-enter encounter*: **${hit.label}**${hit.target !== 'continue' ? ` -> *${hit.target}*` : ''}`;
             await this.autosave(logLine);
             if (hit.target && hit.target !== 'continue') {
-                await this.doNavigate(hit.target, true);
+                await this.enterScene(hit.target, true);
                 return;
             }
         }
@@ -1596,19 +1629,25 @@ export class CampaignView extends ItemView {
     }
 
     private async navigateBack(): Promise<void> {
+        if (this.navigationInFlight) return;
         if (!this.sceneHistory.length || !this.session) return;
-        const prev = this.sceneHistory.pop()!;
-        const scene = this.allScenes.find(s => s.name === prev);
-        if (!scene) return;
-        this.currentScene = scene;
-        await this.loadCurrentScene();
-        await this.loadSceneLocation();
-        await this.syncActiveCampaignBoardForScene();
-        this.session.currentSceneName = scene.name;
-        this.session.currentSceneId = scene.id;
-        await this.logSceneHeader(scene);
-        await this.autosave(`Back to *${scene.name}*`);
-        await this.render();
+        this.navigationInFlight = true;
+        try {
+            const prev = this.sceneHistory.pop()!;
+            const scene = this.allScenes.find(s => s.name === prev);
+            if (!scene) return;
+            this.currentScene = scene;
+            await this.loadCurrentScene();
+            await this.loadSceneLocation();
+            await this.syncActiveCampaignBoardForScene();
+            this.session.currentSceneName = scene.name;
+            this.session.currentSceneId = scene.id;
+            await this.logSceneHeader(scene);
+            await this.autosave(`Back to *${scene.name}*`);
+            await this.render();
+        } finally {
+            this.navigationInFlight = false;
+        }
     }
 
     private async loadCurrentScene(): Promise<void> {
@@ -1754,7 +1793,10 @@ export class CampaignView extends ItemView {
             const maxHp = parseInt(input.value);
             if (!maxHp) return;
             if (!session.partyState) session.partyState = [];
-            session.partyState.push({ characterId: '', characterName: name, currentHp: maxHp, maxHp });
+            // Replace the character's record rather than add one, so a double tap cannot leave two.
+            const idx = session.partyState.findIndex(s => s.characterName === name);
+            const record = { characterId: idx >= 0 ? session.partyState[idx].characterId : '', characterName: name, currentHp: maxHp, maxHp };
+            if (idx >= 0) session.partyState[idx] = record; else session.partyState.push(record);
             await this.autosave();
             await this.refreshSidebarPart('party');
         })(); });
@@ -2740,7 +2782,7 @@ export class CampaignView extends ItemView {
         });
     }
 
-    /** Click cycles the state for the kind; right-click opens a menu with every state, including Abandoned. */
+    /** Click cycles the state for the kind; the "..." button and right-click open a menu with every state, including Abandoned. */
     private renderThreadRow(body: HTMLElement, session: CampaignSession, thread: CampaignThread): void {
         const kind = threadKindOf(thread);
         const legacyStatus = threadLegacyStatus(thread);
@@ -2760,6 +2802,13 @@ export class CampaignView extends ItemView {
             event.preventDefault();
             this.openThreadStateMenu(event, thread);
         });
+        // Touch has no right-click: this button opens the same menu on tap.
+        const stateMenu = row.createEl('button', {
+            cls: 'storyteller-campaign-thread-more',
+            text: '...',
+            attr: { 'aria-label': `Set state of ${thread.name}`, title: 'Set any state' },
+        });
+        stateMenu.addEventListener('click', (event) => this.openThreadStateMenu(event, thread));
 
         const remove = row.createEl('button', {
             cls: 'storyteller-campaign-progress-remove',
@@ -3002,8 +3051,19 @@ export class CampaignView extends ItemView {
         await this.flushAutosaveNow();
         const filePath = this.session.filePath;
         if (!filePath) return;
-        this.flushChain = this.flushChain.then(() => this.plugin.updateSessionLog(filePath, update));
-        await this.flushChain;
+        // A failed link must not poison the chain for later writes, so each one starts after the last settles.
+        this.flushChain = this.flushChain.catch(() => undefined).then(() => this.plugin.updateSessionLog(filePath, update));
+        try {
+            await this.flushChain;
+        } catch (error) {
+            this.notifySaveFailure(error, 'Could not write to the session log');
+            throw error;
+        }
+    }
+
+    private notifySaveFailure(error: unknown, what: string): void {
+        const reason = error instanceof Error ? error.message : String(error);
+        new Notice(`${what}: ${reason}`);
     }
 
     /** Character ids and names for resolving older party records that store only ids. */
@@ -3064,12 +3124,12 @@ export class CampaignView extends ItemView {
         await this.autosave();
         if (!session.filePath) return;
 
-        let log = '';
-        try { log = await this.plugin.loadSessionLog(session.filePath); } catch { /* new note */ }
-        if (kind === 'next' && lastSceneContext(log) === scene.name) return;
-
-        const { line } = nextSceneHeaderLine(log, kind, scene.name, thread);
-        await this.writeSessionLog(body => appendBlock(body, line));
+        // The check and the header id are computed from the body being written, so no other write can land between them.
+        await this.writeSessionLog(body => {
+            if (kind === 'next' && lastSceneContext(body) === scene.name) return body;
+            const { line } = nextSceneHeaderLine(body, kind, scene.name, thread);
+            return appendBlock(body, line);
+        });
     }
 
     private renderSceneKindControl(toolbar: HTMLElement): void {
@@ -3460,6 +3520,7 @@ export class CampaignView extends ItemView {
 
     /** Writes the line to the log, replays its tags into the session and refreshes what they touched. */
     private async submitQuickEntry(): Promise<void> {
+        if (this.quickSubmitInFlight) return;
         const session = this.session;
         if (!session) return;
         const built = this.buildQuickLine();
@@ -3468,12 +3529,18 @@ export class CampaignView extends ItemView {
             return;
         }
         const line = built.line;
-        const result = applyPartylogTagsToSession(session, entryTags(parsePartylogLine(line)), this.partylogContext());
-        await this.autosave();
-        await this.writeSessionLog(body => appendLogLines(body, [line]));
+        // Take the line before the first await: a second submit then sees an empty draft and writes nothing.
         this.quick.draft = '';
-        if (result.changed) new Notice(result.summary.join('\n'));
-        await this.refreshSidebarParts(partsAffectedBy(result.summary));
+        this.quickSubmitInFlight = true;
+        try {
+            const result = applyPartylogTagsToSession(session, entryTags(parsePartylogLine(line)), this.partylogContext());
+            await this.autosave();
+            await this.writeSessionLog(body => appendLogLines(body, [line]));
+            if (result.changed) new Notice(result.summary.join('\n'));
+            await this.refreshSidebarParts(partsAffectedBy(result.summary));
+        } finally {
+            this.quickSubmitInFlight = false;
+        }
         this.focusQuickEntry();
     }
 
@@ -3588,11 +3655,13 @@ export class CampaignView extends ItemView {
             return;
         }
 
-        this.flushChain = this.flushChain.then(async () => {
-            if (!this.session) return;
-            await this.plugin.saveSession(this.session);
-            if (entries.length && this.session.filePath) {
-                await this.plugin.appendToSessionLogEntries(this.session.filePath, entries);
+        // Captured now, so the write goes to the session these entries were made in even if the view switches session first.
+        const session = this.session;
+        this.flushChain = this.flushChain.catch(() => undefined).then(async () => {
+            if (!session) return;
+            await this.plugin.saveSession(session);
+            if (entries.length && session.filePath) {
+                await this.plugin.appendToSessionLogEntries(session.filePath, entries);
             }
         });
 
@@ -3600,7 +3669,10 @@ export class CampaignView extends ItemView {
             await this.flushChain;
             resolve?.();
         } catch (error) {
-            
+            // Keep the entries (ahead of anything queued meanwhile) so the next flush retries them.
+            this.pendingSessionSave = this.pendingSessionSave || shouldSaveSession;
+            this.pendingLogEntries = [...entries, ...this.pendingLogEntries];
+            this.notifySaveFailure(error, 'Session not saved; the pending entries will retry on the next save');
             reject?.(error);
         }
     }
@@ -3611,7 +3683,7 @@ export class CampaignView extends ItemView {
             this.autosaveTimer = null;
         }
         await this.flushAutosaveQueue();
-        await this.flushChain;
+        await this.flushChain.catch(() => undefined);
     }
 
     private async autosave(logEntry?: string | string[]): Promise<void> {

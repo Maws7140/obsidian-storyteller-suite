@@ -10063,6 +10063,7 @@ body.mod-rtl .storyteller-group-members {
 .storyteller-campaign-progress-actions { display: flex; gap: 0.2rem; margin-left: auto; }
 .storyteller-campaign-progress-actions button,
 .storyteller-campaign-progress-remove,
+.storyteller-campaign-thread-more,
 .storyteller-campaign-thread-toggle,
 .storyteller-campaign-clock-segments button {
     border: 0;
@@ -10073,7 +10074,9 @@ body.mod-rtl .storyteller-group-members {
 .storyteller-campaign-progress-actions button,
 .storyteller-campaign-progress-remove { display: inline-flex; padding: 3px; border-radius: 4px; }
 .storyteller-campaign-progress-actions button:hover,
-.storyteller-campaign-progress-remove:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
+.storyteller-campaign-progress-remove:hover,
+.storyteller-campaign-thread-more:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
+.storyteller-campaign-thread-more { padding: 2px 6px; border-radius: 4px; font-size: 0.8rem; line-height: 1; letter-spacing: 0.05em; }
 .storyteller-campaign-clock-row,
 .storyteller-campaign-thread-row { display: flex; align-items: center; gap: 0.4rem; padding: 0.42rem 0.5rem; border: 1px solid var(--background-modifier-border); border-radius: 8px; }
 .storyteller-campaign-clock-info { display: flex; align-items: baseline; gap: 0.35rem; min-width: 0; }
