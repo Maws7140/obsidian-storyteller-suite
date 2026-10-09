@@ -9646,10 +9646,11 @@ export default class StorytellerSuitePlugin extends Plugin {
 					resources,
 				};
 				const fromFileRecord = fromFile as unknown as Record<string, unknown>;
+				// Typed fields the note no longer has are set to undefined, so Object.assign
+				// clears the value held in memory instead of leaving it in place.
 				for (const definition of this.getCustomFieldDefinitions('faction')) {
-					if (definition.key in fmr && !(definition.key in fromFileRecord)) {
-						fromFileRecord[definition.key] = fmr[definition.key];
-					}
+					if (definition.key in fromFileRecord) continue;
+					fromFileRecord[definition.key] = definition.key in fmr ? fmr[definition.key] : undefined;
 				}
 
 				const idx = this.settings.groups.findIndex(g => g.id === id);
