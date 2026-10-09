@@ -39,6 +39,9 @@ import { parseSectionsFromMarkdown } from '../yaml/EntitySections';
 
 type TemplateFieldOverrides = Map<string, Partial<Record<string, unknown>>>;
 
+/** Entity types whose vault notes are reused when a template entity has the same name. */
+type ReusableEntityType = 'character' | 'location' | 'event' | 'item';
+
 function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -111,6 +114,9 @@ export class TemplateApplicator {
 
             // Filter entities based on selection
             const filteredEntities = this.filterEntities(substitutedTemplate.entities, options.includeEntities);
+
+            // Refuse before creating anything if a renamed entity would overwrite an existing note
+            await this.assertRenamedEntitiesDoNotCollide(filteredEntities, options.fieldOverrides);
             
 
             // Phase 1: Create all groups first (they need IDs for other entities)
@@ -424,7 +430,7 @@ export class TemplateApplicator {
             const { fields, sections } = this.processTemplateEntity(templateGroup);
 
             const override = overrides?.get(templateId);
-            const finalName = (override?.name as string) || (fields.name as string) || '';
+            const { finalName } = this.resolveEntityNames(fields, override);
 
             // Reuse a group with the same name in this story instead of adding a duplicate
             const existingGroup = finalName
@@ -532,16 +538,31 @@ export class TemplateApplicator {
     }
 
     /**
-     * Reuse the vault note with this entity's name, if one exists, keeping its id.
+     * The name an entity will be saved under, and whether the user chose a different
+     * name in the apply modal. A user-chosen name never reuses an existing note.
      */
-    private async reuseExistingEntity<T extends { id?: string }>(
-        entityType: 'location' | 'event' | 'item',
-        templateId: string,
+    private resolveEntityNames(
+        fields: Record<string, unknown>,
+        override: Partial<Record<string, unknown>> | undefined
+    ): { templateName: string; finalName: string; renamed: boolean } {
+        const templateName = typeof fields.name === 'string' ? fields.name : '';
+        const overrideName = typeof override?.name === 'string' ? override.name : '';
+        return {
+            templateName,
+            finalName: overrideName || templateName,
+            renamed: overrideName !== '' && overrideName !== templateName
+        };
+    }
+
+    /**
+     * Read the vault note an entity with this name would be saved to, if it exists.
+     * Throws rather than returning null when the note exists but cannot be read, so
+     * that an existing note is never overwritten silently.
+     */
+    private async findExistingEntityNote<T>(
+        entityType: ReusableEntityType,
         name: string
     ): Promise<T | null> {
-        if (!name) {
-            return null;
-        }
         const fileName = `${name.replace(/[\\/:"*?<>|]+/g, '')}.md`;
         const filePath = normalizePath(`${this.plugin.getEntityFolder(entityType)}/${fileName}`);
         const existingFile = this.plugin.app.vault.getAbstractFileByPath(filePath);
@@ -550,15 +571,65 @@ export class TemplateApplicator {
         }
         const existing = await this.plugin.parseFile<T>(existingFile, { name: '' } as unknown as Partial<T>, entityType);
         if (!existing) {
+            throw new Error(`The note "${filePath}" already exists but could not be read. Fix or rename it, then apply the template again.`);
+        }
+        return existing;
+    }
+
+    /**
+     * Reuse the existing note for an entity whose name matches a note already in the vault.
+     * The note keeps its id. Returns null when a new entity should be created.
+     */
+    private async reuseExistingEntity<T extends { id?: string }>(
+        entityType: ReusableEntityType,
+        templateId: string,
+        finalName: string,
+        renamed: boolean
+    ): Promise<T | null> {
+        if (renamed || !finalName) {
+            return null;
+        }
+        const existing = await this.findExistingEntityNote<T>(entityType, finalName);
+        if (!existing) {
             return null;
         }
         if (!existing.id) {
             existing.id = this.generateId();
         }
         this.idMap.set(templateId, existing.id);
-        this.nameToIdMap.set(name, existing.id);
-        this.templateIdToNameMap.set(templateId, name);
+        this.nameToIdMap.set(finalName, existing.id);
+        this.templateIdToNameMap.set(templateId, finalName);
         return existing;
+    }
+
+    /**
+     * Stop before anything is created when a user-chosen name is already used by another note.
+     */
+    private async assertRenamedEntitiesDoNotCollide(
+        entities: Template['entities'],
+        overrides?: TemplateFieldOverrides
+    ): Promise<void> {
+        const checks: Array<[ReusableEntityType, string, TemplateEntity<unknown>[] | undefined]> = [
+            ['character', 'character', entities.characters],
+            ['location', 'location', entities.locations],
+            ['event', 'event', entities.events],
+            ['item', 'item', entities.items],
+        ];
+        for (const [entityType, label, templateEntities] of checks) {
+            for (const templateEntity of templateEntities ?? []) {
+                const { fields } = this.processTemplateEntity(templateEntity);
+                const { finalName, renamed } = this.resolveEntityNames(fields, overrides?.get(templateEntity.templateId));
+                if (!renamed || !finalName) {
+                    continue;
+                }
+                const existing = await this.findExistingEntityNote(entityType, finalName);
+                if (existing) {
+                    throw new Error(
+                        `Cannot use the name "${finalName}" for a ${label}: a note with that name already exists. Choose a different file name.`
+                    );
+                }
+            }
+        }
     }
 
     private async createCharacters(
@@ -573,26 +644,14 @@ export class TemplateApplicator {
             const override = overrides?.get(templateId);
             const { fields, sections } = this.processTemplateEntity(templateChar);
 
-            // If a vault file for this character name already exists, reuse it rather than
+            // If a vault note with this entity's name already exists, reuse it rather than
             // overwriting it. This prevents duplicate files and broken links when applying
             // a template to a vault that already has some of the same characters.
-            const entityName: string = (fields.name as string) || (override?.name as string) || '';
-            if (entityName) {
-                const safeFileName = `${entityName.replace(/[\\/:"*?<>|]+/g, '')}.md`;
-                const folderPath = this.plugin.getEntityFolder('character');
-                const filePath = normalizePath(`${folderPath}/${safeFileName}`);
-                const existingFile = this.plugin.app.vault.getAbstractFileByPath(filePath);
-                if (existingFile instanceof TFile) {
-                    const existing = await this.plugin.parseFile<Character>(existingFile, { name: '' }, 'character');
-                    if (existing) {
-                        const existingId = existing.id || this.generateId();
-                        this.idMap.set(templateId, existingId);
-                        this.nameToIdMap.set(entityName, existingId);
-                        this.templateIdToNameMap.set(templateId, entityName);
-                        characters.push(existing);
-                        continue;
-                    }
-                }
+            const { finalName, renamed } = this.resolveEntityNames(fields, override);
+            const existing = await this.reuseExistingEntity<Character>('character', templateId, finalName, renamed);
+            if (existing) {
+                characters.push(existing);
+                continue;
             }
 
             // Default arrays first so template fields can override them
@@ -668,9 +727,8 @@ export class TemplateApplicator {
             const override = overrides?.get(templateId);
             const { fields, sections } = this.processTemplateEntity(templateLoc);
 
-            const existing = await this.reuseExistingEntity<Location>(
-                'location', templateId, (override?.name as string) || (fields.name as string) || ''
-            );
+            const { finalName, renamed } = this.resolveEntityNames(fields, override);
+            const existing = await this.reuseExistingEntity<Location>('location', templateId, finalName, renamed);
             if (existing) {
                 locations.push(existing);
                 continue;
@@ -709,9 +767,8 @@ export class TemplateApplicator {
             const override = overrides?.get(templateId);
             const { fields, sections } = this.processTemplateEntity(templateEvt);
 
-            const existing = await this.reuseExistingEntity<Event>(
-                'event', templateId, (override?.name as string) || (fields.name as string) || ''
-            );
+            const { finalName, renamed } = this.resolveEntityNames(fields, override);
+            const existing = await this.reuseExistingEntity<Event>('event', templateId, finalName, renamed);
             if (existing) {
                 events.push(existing);
                 continue;
@@ -752,9 +809,8 @@ export class TemplateApplicator {
             const override = overrides?.get(templateId);
             const { fields, sections } = this.processTemplateEntity(templateItem);
 
-            const existing = await this.reuseExistingEntity<PlotItem>(
-                'item', templateId, (override?.name as string) || (fields.name as string) || ''
-            );
+            const { finalName, renamed } = this.resolveEntityNames(fields, override);
+            const existing = await this.reuseExistingEntity<PlotItem>('item', templateId, finalName, renamed);
             if (existing) {
                 items.push(existing);
                 continue;

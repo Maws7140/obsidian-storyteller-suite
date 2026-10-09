@@ -141,4 +141,44 @@ describe('TemplateApplicator reuses existing notes safely', () => {
 
     expect(second.idMap.get('LOC_1')).toBe(first.idMap.get('LOC_1'));
   });
+
+  it('does not reuse an existing note when the user chose a different file name', async () => {
+    const { plugin, saves, notes } = createFakePlugin([
+      { type: 'character', object: { id: 'existing-mayor', name: 'Will Whitfoot' } },
+    ]);
+    const applicator = new TemplateApplicator(plugin as never);
+    const template = createTemplate({ characters: [{ templateId: 'VILLAGE_MAYOR', name: 'Will Whitfoot' }] });
+
+    const result = await applicator.applyTemplate(template, {
+      ...options,
+      fieldOverrides: new Map([['VILLAGE_MAYOR', { name: 'Mayor Whitfoot (Shire)' }]]),
+    } as never);
+
+    expect(result.success).toBe(true);
+    expect(result.idMap.get('VILLAGE_MAYOR')).not.toBe('existing-mayor');
+    expect(saves.map(s => s.path)).toEqual(['SS/character/Mayor Whitfoot (Shire).md']);
+    expect(notes.get('SS/character/Will Whitfoot.md')?.object.id).toBe('existing-mayor');
+  });
+
+  it('stops before writing anything when the chosen file name is an existing note', async () => {
+    const { plugin, saves, notes, groups } = createFakePlugin([
+      { type: 'character', object: { id: 'tobias-id', name: 'Tobias Rushock', description: 'Keep me' } },
+    ]);
+    const applicator = new TemplateApplicator(plugin as never);
+    const template = createTemplate({
+      groups: [{ templateId: 'GROUP_1', name: 'Shire Council' }],
+      characters: [{ templateId: 'VILLAGE_MAYOR', name: 'Will Whitfoot' }],
+    });
+
+    const result = await applicator.applyTemplate(template, {
+      ...options,
+      fieldOverrides: new Map([['VILLAGE_MAYOR', { name: 'Tobias Rushock' }]]),
+    } as never);
+
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/Tobias Rushock/);
+    expect(saves).toEqual([]);
+    expect(groups).toEqual([]);
+    expect(notes.get('SS/character/Tobias Rushock.md')?.object).toMatchObject({ id: 'tobias-id', description: 'Keep me' });
+  });
 });
