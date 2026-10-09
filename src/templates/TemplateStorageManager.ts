@@ -684,10 +684,17 @@ export class TemplateStorageManager {
         let template = exportData.template;
 
         if (generateNewId) {
+            // Importing the same file again would add another copy of the same template
+            const existing = this.findExistingUserCopy(exportData.template);
+            if (existing) {
+                throw new Error(`"${existing.name}" is already in your library. Import skipped.`);
+            }
+
             // Generate new ID to avoid conflicts
             template = {
                 ...template,
                 id: `imported-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
+                parentTemplateId: exportData.template.id,
                 isBuiltIn: false,
                 isEditable: true,
                 created: new Date().toISOString(),
@@ -716,6 +723,19 @@ export class TemplateStorageManager {
      */
     getTemplateFolder(): string {
         return this.templateFolder;
+    }
+
+    /**
+     * Find a user template that is the same template as the given one: the same id, a copy
+     * made from it on import, or the same name and version.
+     */
+    findExistingUserCopy(source: Template): Template | undefined {
+        return this.getAllTemplates().find(t =>
+            !t.isBuiltIn &&
+            (t.id === source.id ||
+                t.parentTemplateId === source.id ||
+                (t.name === source.name && (t.version ?? '') === (source.version ?? '')))
+        );
     }
 
     /**
