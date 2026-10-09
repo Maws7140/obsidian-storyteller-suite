@@ -398,6 +398,17 @@ export function buildImportPlan(text: string, existing: ImportExistingData, opti
 					selected: true,
 					payload: { kind: 'character', character: { ...match, status: merged.value } },
 				});
+			} else if (isPc) {
+				// Nothing to write to the character: the row shows the match, and the gauges go to the session.
+				items.push({
+					id: `character:${key}`,
+					kind: 'character',
+					action: 'update',
+					name: match.name,
+					detail: 'Matches existing character. Gauges go to the session party state.',
+					selected: false,
+					payload: { kind: 'character', character: match },
+				});
 			}
 			return;
 		}

@@ -289,3 +289,38 @@ describe('helpers', () => {
 		expect(withSessionLogBody('---\n---\n', 'x')).toBe('---\n---\n\n## Session Log\n\nx\n');
 	});
 });
+
+describe('existing party members in a log that only changes HP', () => {
+	const hpOnly = '## Session 3\n\n### S1 *Shire road*\n=> [PC:Frodo Baggins|HP 30/38]\n';
+	const existing = emptyExisting({
+		characters: [{ id: 'char-frodo', name: 'Frodo Baggins', status: 'Hobbit' } as Character],
+	});
+
+	it('shows the existing PC as a match in the preview, not as a new character', () => {
+		const plan = buildImportPlan(hpOnly, existing, { createId });
+		expect(itemsOf(plan, 'character', 'create')).toHaveLength(0);
+		expect(plan.knownCharacterIds.get('frodo baggins')).toBe('char-frodo');
+		const row = itemsOf(plan, 'character', 'update')[0];
+		expect(row?.name).toBe('Frodo Baggins');
+		expect(row?.detail).toMatch(/matches existing character/i);
+	});
+
+	it('leaves the character status alone, and HP goes to the session party state', async () => {
+		const plan = buildImportPlan(hpOnly, existing, { createId });
+		const row = itemsOf(plan, 'character', 'update')[0];
+		expect(row.payload.kind === 'character' && row.payload.character.status).toBe('Hobbit');
+		expect(row.detail).not.toMatch(/HP/);
+		const ports: ImportPorts = {
+			saveCharacter: vi.fn(async () => undefined),
+			saveLocation: vi.fn(async () => undefined),
+			savePlotItem: vi.fn(async () => undefined),
+			createGroup: vi.fn(async (name: string) => ({ id: `group-${name}`, storyId: 'story-1', name, members: [] }) as Group),
+			saveGroup: vi.fn(async () => undefined),
+			saveSession: vi.fn(async () => undefined),
+			writeSessionLog: vi.fn(async () => undefined),
+		};
+		await applyImportPlan(plan, new Set(plan.items.map((item) => item.id)), ports);
+		const saved = vi.mocked(ports.saveSession).mock.calls[0][0];
+		expect(saved.partyState).toEqual([{ characterId: 'char-frodo', characterName: 'Frodo Baggins', currentHp: 30, maxHp: 38 }]);
+	});
+});
