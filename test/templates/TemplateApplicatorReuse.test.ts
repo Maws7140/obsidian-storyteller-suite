@@ -99,4 +99,46 @@ describe('TemplateApplicator reuses existing notes safely', () => {
     expect(groups).toHaveLength(2);
     expect(result.idMap.get('GROUP_1')).not.toBe('other-story-group');
   });
+
+  it('reuses existing characters, locations, events and items with the same name and keeps their ids', async () => {
+    const { plugin, saves } = createFakePlugin([
+      { type: 'character', object: { id: 'char-existing', name: 'Will Whitfoot' } },
+      { type: 'location', object: { id: 'loc-existing', name: 'Bywater' } },
+      { type: 'event', object: { id: 'evt-existing', name: 'Harvest Festival' } },
+      { type: 'item', object: { id: 'item-existing', name: 'Harvest Ledger' } },
+    ]);
+    const applicator = new TemplateApplicator(plugin as never);
+    const template = createTemplate({
+      characters: [{ templateId: 'MAYOR', name: 'Will Whitfoot' }],
+      locations: [{ templateId: 'LOC_1', name: 'Bywater' }],
+      events: [{ templateId: 'EVT_1', name: 'Harvest Festival' }],
+      items: [{ templateId: 'ITEM_1', name: 'Harvest Ledger' }],
+    });
+
+    const result = await applicator.applyTemplate(template, { ...options });
+
+    expect(result.success).toBe(true);
+    expect(result.idMap.get('MAYOR')).toBe('char-existing');
+    expect(result.idMap.get('LOC_1')).toBe('loc-existing');
+    expect(result.idMap.get('EVT_1')).toBe('evt-existing');
+    expect(result.idMap.get('ITEM_1')).toBe('item-existing');
+    expect(saves.length).toBeGreaterThan(0);
+    for (const save of saves) {
+      expect(save.id).toBe(save.path.includes('Will Whitfoot') ? 'char-existing'
+        : save.path.includes('Bywater') ? 'loc-existing'
+        : save.path.includes('Harvest Festival') ? 'evt-existing'
+        : 'item-existing');
+    }
+  });
+
+  it('a second apply of a location template keeps the location id', async () => {
+    const { plugin } = createFakePlugin([]);
+    const applicator = new TemplateApplicator(plugin as never);
+    const template = createTemplate({ locations: [{ templateId: 'LOC_1', name: 'Bywater' }] });
+
+    const first = await applicator.applyTemplate(template, { ...options });
+    const second = await applicator.applyTemplate(template, { ...options });
+
+    expect(second.idMap.get('LOC_1')).toBe(first.idMap.get('LOC_1'));
+  });
 });

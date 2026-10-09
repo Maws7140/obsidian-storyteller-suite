@@ -531,6 +531,36 @@ export class TemplateApplicator {
         return { fields, sections };
     }
 
+    /**
+     * Reuse the vault note with this entity's name, if one exists, keeping its id.
+     */
+    private async reuseExistingEntity<T extends { id?: string }>(
+        entityType: 'location' | 'event' | 'item',
+        templateId: string,
+        name: string
+    ): Promise<T | null> {
+        if (!name) {
+            return null;
+        }
+        const fileName = `${name.replace(/[\\/:"*?<>|]+/g, '')}.md`;
+        const filePath = normalizePath(`${this.plugin.getEntityFolder(entityType)}/${fileName}`);
+        const existingFile = this.plugin.app.vault.getAbstractFileByPath(filePath);
+        if (!(existingFile instanceof TFile)) {
+            return null;
+        }
+        const existing = await this.plugin.parseFile<T>(existingFile, { name: '' } as unknown as Partial<T>, entityType);
+        if (!existing) {
+            return null;
+        }
+        if (!existing.id) {
+            existing.id = this.generateId();
+        }
+        this.idMap.set(templateId, existing.id);
+        this.nameToIdMap.set(name, existing.id);
+        this.templateIdToNameMap.set(templateId, name);
+        return existing;
+    }
+
     private async createCharacters(
         templateChars: TemplateEntity<Character>[],
         storyId: string,
@@ -638,6 +668,14 @@ export class TemplateApplicator {
             const override = overrides?.get(templateId);
             const { fields, sections } = this.processTemplateEntity(templateLoc);
 
+            const existing = await this.reuseExistingEntity<Location>(
+                'location', templateId, (override?.name as string) || (fields.name as string) || ''
+            );
+            if (existing) {
+                locations.push(existing);
+                continue;
+            }
+
             const location: Location = {
                 groups: [],
                 connections: [],
@@ -670,6 +708,14 @@ export class TemplateApplicator {
             const { templateId } = templateEvt;
             const override = overrides?.get(templateId);
             const { fields, sections } = this.processTemplateEntity(templateEvt);
+
+            const existing = await this.reuseExistingEntity<Event>(
+                'event', templateId, (override?.name as string) || (fields.name as string) || ''
+            );
+            if (existing) {
+                events.push(existing);
+                continue;
+            }
 
             const event: Event = {
                 characters: [],
@@ -705,6 +751,14 @@ export class TemplateApplicator {
             const { templateId } = templateItem;
             const override = overrides?.get(templateId);
             const { fields, sections } = this.processTemplateEntity(templateItem);
+
+            const existing = await this.reuseExistingEntity<PlotItem>(
+                'item', templateId, (override?.name as string) || (fields.name as string) || ''
+            );
+            if (existing) {
+                items.push(existing);
+                continue;
+            }
 
             const item: PlotItem = {
                 isPlotCritical: false,
