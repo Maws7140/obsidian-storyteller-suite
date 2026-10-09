@@ -9,6 +9,7 @@ import {
 	LONELOG_NAME,
 	applyImportPlan,
 	buildImportPlan,
+	sessionLogBodyOf,
 	withSessionLogBody,
 } from '../campaign/PartylogImport';
 import type { ImportApplyResult, ImportExistingData, ImportPlan, ImportPlanItem, ImportPorts } from '../campaign/PartylogImport';
@@ -95,7 +96,15 @@ export class ImportPartylogModal extends ResponsiveModal {
 			this.plugin.listPlotItems().catch(() => [] as import('../types').PlotItem[]),
 			this.plugin.listSessions().catch(() => [] as CampaignSession[]),
 		]);
+		const sessionLogBodies: string[] = [];
+		for (const session of sessions) {
+			const file = session.filePath ? this.app.vault.getAbstractFileByPath(session.filePath) : null;
+			if (!(file instanceof TFile)) continue;
+			const body = sessionLogBodyOf(await this.app.vault.cachedRead(file));
+			if (body) sessionLogBodies.push(body);
+		}
 		return {
+			sessionLogBodies,
 			storyId: this.plugin.getActiveStory()?.id ?? '',
 			characters,
 			locations,
@@ -113,7 +122,7 @@ export class ImportPartylogModal extends ResponsiveModal {
 		}
 		const existing = await this.loadExisting();
 		this.plan = buildImportPlan(text, existing, { sourceName: this.sourceName });
-		this.selected = new Set(this.plan.items.map((item) => item.id));
+		this.selected = new Set(this.plan.items.filter((item) => item.selected).map((item) => item.id));
 		this.renderPlan();
 	}
 

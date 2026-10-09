@@ -40,6 +40,8 @@ export interface ImportExistingData {
 	groups: Group[];
 	items: PlotItem[];
 	sessionNames: string[];
+	/** Log bodies already stored in the story's session notes, from `sessionLogBodyOf`. */
+	sessionLogBodies?: string[];
 }
 
 export interface ImportPlanOptions {
@@ -206,6 +208,10 @@ function collectRecords(parsed: ParsedLog): { records: SessionRecord[]; state: P
 		last.interludes = [...last.interludes, ...pending];
 	}
 	return { records, state };
+}
+
+function normalizeLogBody(body: string): string {
+	return body.replace(/\r\n/g, '\n').trim();
 }
 
 function sessionName(record: SessionRecord, index: number, count: number, taken: Set<string>, sourceName?: string): string {
@@ -534,18 +540,22 @@ export function buildImportPlan(text: string, existing: ImportExistingData, opti
 	}
 
 	const takenNames = new Set(existing.sessionNames.map(keyOf));
+	const loggedBodies = new Set((existing.sessionLogBodies ?? []).map(normalizeLogBody).filter((body) => body.length > 0));
 	const count = records.length;
 	records.forEach((record, index) => {
 		const name = sessionName(record, index, count, takenNames, options.sourceName);
 		const plannedSession = buildSessionFields(record, record.stateAfter, name, existing.storyId, createId);
 		const lineCount = plannedSession.body ? plannedSession.body.split('\n').length : 0;
+		// A session whose log is already stored in the story was imported before: leave it unticked
+		const alreadyImported = normalizeLogBody(plannedSession.body).length > 0 && loggedBodies.has(normalizeLogBody(plannedSession.body));
 		items.push({
 			id: `session:${index}`,
 			kind: 'session',
 			action: 'create',
 			name,
-			detail: `${record.scenes.length} scene(s), ${lineCount} body line(s), ${plannedSession.partyMembers.length} party member(s) with HP`,
-			selected: true,
+			detail: `${record.scenes.length} scene(s), ${lineCount} body line(s), ${plannedSession.partyMembers.length} party member(s) with HP`
+				+ (alreadyImported ? '. Already imported: a session with this log is in the story' : ''),
+			selected: !alreadyImported,
 			payload: { kind: 'session', planned: plannedSession },
 		});
 	});
@@ -560,6 +570,16 @@ export function buildImportPlan(text: string, existing: ImportExistingData, opti
 		knownGroupIds,
 		warnings,
 	};
+}
+
+/** Reads the body stored under `## Session Log` in a session note. Returns undefined when there is no such section. */
+export function sessionLogBodyOf(content: string): string | undefined {
+	const heading = '## Session Log';
+	const index = content.indexOf(heading);
+	if (index < 0) return undefined;
+	const rest = content.slice(index + heading.length);
+	const next = rest.search(/\n##\s/);
+	return (next >= 0 ? rest.slice(0, next) : rest).trim();
 }
 
 /** Puts `body` under `## Session Log` in a session note, keeping any later sections. */
