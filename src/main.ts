@@ -21,7 +21,6 @@ import { parseEventDate, toMillis } from './utils/DateParsing';
 import {
     EntityType,
     buildFrontmatter,
-    getWhitelistKeys,
     isStampedEntityTypeCompatible,
     normalizeEntityType,
     parseSectionsFromMarkdown,
@@ -33,6 +32,11 @@ import {
     WIKI_LINK_SCALAR_FIELDS,
 } from './yaml/EntitySections';
 import { stringifyYamlWithLogging, validateFrontmatterPreservation } from './utils/YamlSerializer';
+import {
+    CustomFieldDefinition,
+    sanitizeCustomFieldDefinitions,
+    sweepCustomFieldsOnRead,
+} from './modals/entity/CustomFieldDefinitions';
 import { stripWikiLink } from './utils/WikiLinks';
 import { StoryScoped, scopeToStory, stampStory, mergeStoryScoped, backfillStoryIds } from './utils/StoryScope';
 import { TimelineEntityStore } from './services/TimelineEntityStore';
@@ -366,6 +370,8 @@ const FRONTMATTER_LINK_ONLY_SCALAR_FIELDS = new Set([
     hiddenDashboardTabs?: string[];
     /** Entity type → custom field names pre-added to every newly created entity */
     defaultCustomFields?: Record<string, string[]>;
+    /** Entity type → typed fields the entity modal asks for (see CustomFieldDefinitions.ts) */
+    customFieldDefinitions?: Record<string, CustomFieldDefinition[]>;
 
     /** Dashboard tab order - persisted array of tab IDs in user-defined order */
     dashboardTabOrder?: string[];
@@ -534,6 +540,7 @@ const FRONTMATTER_LINK_ONLY_SCALAR_FIELDS = new Set([
     enableSensoryProfiles: true,
     hiddenDashboardTabs: [],
     defaultCustomFields: {},
+    customFieldDefinitions: {},
     templateStorageFolder: 'StorytellerSuite/Templates',
     showBuiltInTemplates: true,
     showCommunityTemplates: false,
@@ -638,64 +645,52 @@ export default class StorytellerSuitePlugin extends Plugin {
         entity: T
     ): T {
         if (!entity) return entity;
-        const whitelist = getWhitelistKeys(entityType);
-        const reserved = new Set<string>([...whitelist, 'customFields', 'filePath', 'sections', 'id']);
-        // Preserve derived section fields so they are not swept into customFields
-        const derivedByType: Record<string, string[]> = {
-            character: ['description', 'backstory'],
-            location: ['description', 'history'],
-            event: ['description', 'outcome'],
-            item: ['description', 'history'],
-            reference: ['content'],
-            chapter: ['summary'],
-            scene: ['content'],
-            map: ['description'],
-            culture: ['description', 'values', 'religion', 'socialStructure', 'history', 'namingConventions', 'customs'],
-            economy: ['description', 'industries', 'taxation'],
-            magicSystem: ['description', 'rules', 'source', 'costs', 'limitations', 'training', 'history']
-        };
-        for (const k of (derivedByType[entityType] || [])) reserved.add(k);
-        const src: Record<string, unknown> = entity;
-        const currentCustom: Record<string, string> = { ...(entity.customFields || {}) };
-
-        // Sweep non-whitelisted scalar keys into customFields (including null/empty values)
-        // This makes manually-added empty fields visible and editable in the modal
-        for (const [key, value] of Object.entries(src)) {
-            if (reserved.has(key)) continue;
-
-            // Handle null/undefined values - convert to empty string for editing
-            if (value === null || value === undefined) {
-                const hasConflict = Object.keys(currentCustom).some(k => k.toLowerCase() === key.toLowerCase());
-                if (!hasConflict) {
-                    currentCustom[key] = ''; // Convert null to empty string for modal editing
-                    delete src[key];
-                }
-                continue;
-            }
-
-            // Handle string values (including empty strings)
-            if (typeof value === 'string' && !value.includes('\n')) {
-                // Only move if not conflicting (case-insensitive) with existing customFields
-                const hasConflict = Object.keys(currentCustom).some(k => k.toLowerCase() === key.toLowerCase());
-                if (!hasConflict) {
-                    currentCustom[key] = value;
-                    delete src[key];
-                }
-            }
-        }
-
-        // Deduplicate case-insensitively within customFields
-        const deduped: Record<string, string> = {};
-        const seen: Set<string> = new Set();
-        for (const [k, v] of Object.entries(currentCustom)) {
-            const lower = k.toLowerCase();
-            if (seen.has(lower)) continue; // keep first occurrence
-            seen.add(lower);
-            deduped[k] = v;
-        }
-
-        src.customFields = deduped;
+        // Sweep logic lives in CustomFieldDefinitions.ts so it can be tested
+        // directly. Defined fields are excluded so they stay top-level.
+        sweepCustomFieldsOnRead(
+            entityType,
+            entity,
+            this.getCustomFieldDefinitions(entityType)
+        );
         return entity;
+    }
+
+    /** Sanitised typed-field definitions for an entity type (invalid entries dropped). */
+    getCustomFieldDefinitions(entityType: EntityType): CustomFieldDefinition[] {
+        return sanitizeCustomFieldDefinitions(entityType, this.settings.customFieldDefinitions?.[entityType]);
+    }
+
+    /**
+     * Names of the entities a link or links field can point at, for the active
+     * story. Each list method already resolves the story folder.
+     */
+    async listCustomFieldTargetNames(target: string): Promise<string[]> {
+        const load = async (): Promise<Array<{ name?: string }>> => {
+            switch (target) {
+                case 'character': return this.listCharacters();
+                case 'location': return this.listLocations();
+                case 'event': return this.listEvents();
+                case 'item': return this.listPlotItems();
+                case 'culture': return this.listCultures();
+                case 'economy': return this.listEconomies();
+                case 'magicSystem': return this.listMagicSystems();
+                case 'compendiumEntry': return this.listCompendiumEntries();
+                case 'book': return this.listBooks();
+                case 'chapter': return this.listChapters();
+                case 'scene': return this.listScenes();
+                case 'map': return this.listMaps();
+                case 'reference': return this.listReferences();
+                default: return [];
+            }
+        };
+        try {
+            const names = (await load())
+                .map(entity => (typeof entity.name === 'string' ? entity.name.trim() : ''))
+                .filter(name => name.length > 0);
+            return Array.from(new Set(names)).sort((a, b) => a.localeCompare(b));
+        } catch {
+            return [];
+        }
     }
 
     /** Resolve all folders; if any error, return a summary message for the user. */
