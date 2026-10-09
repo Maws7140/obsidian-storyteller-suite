@@ -3002,8 +3002,19 @@ export class CampaignView extends ItemView {
         await this.flushAutosaveNow();
         const filePath = this.session.filePath;
         if (!filePath) return;
-        this.flushChain = this.flushChain.then(() => this.plugin.updateSessionLog(filePath, update));
-        await this.flushChain;
+        // A failed link must not poison the chain for later writes, so each one starts after the last settles.
+        this.flushChain = this.flushChain.catch(() => undefined).then(() => this.plugin.updateSessionLog(filePath, update));
+        try {
+            await this.flushChain;
+        } catch (error) {
+            this.notifySaveFailure(error, 'Could not write to the session log');
+            throw error;
+        }
+    }
+
+    private notifySaveFailure(error: unknown, what: string): void {
+        const reason = error instanceof Error ? error.message : String(error);
+        new Notice(`${what}: ${reason}`);
     }
 
     /** Character ids and names for resolving older party records that store only ids. */
@@ -3588,7 +3599,7 @@ export class CampaignView extends ItemView {
             return;
         }
 
-        this.flushChain = this.flushChain.then(async () => {
+        this.flushChain = this.flushChain.catch(() => undefined).then(async () => {
             if (!this.session) return;
             await this.plugin.saveSession(this.session);
             if (entries.length && this.session.filePath) {
@@ -3600,7 +3611,10 @@ export class CampaignView extends ItemView {
             await this.flushChain;
             resolve?.();
         } catch (error) {
-            
+            // Keep the entries (ahead of anything queued meanwhile) so the next flush retries them.
+            this.pendingSessionSave = this.pendingSessionSave || shouldSaveSession;
+            this.pendingLogEntries = [...entries, ...this.pendingLogEntries];
+            this.notifySaveFailure(error, 'Session not saved; the pending entries will retry on the next save');
             reject?.(error);
         }
     }
@@ -3611,7 +3625,7 @@ export class CampaignView extends ItemView {
             this.autosaveTimer = null;
         }
         await this.flushAutosaveQueue();
-        await this.flushChain;
+        await this.flushChain.catch(() => undefined);
     }
 
     private async autosave(logEntry?: string | string[]): Promise<void> {
