@@ -683,9 +683,7 @@ export class TimelineView extends ItemView {
         } else {
             let statusText = `${eventCount} event${eventCount !== 1 ? 's' : ''}`;
             if (dateRange) {
-                const startStr = dateRange.start.toLocaleDateString();
-                const endStr = dateRange.end.toLocaleDateString();
-                statusText += ` • ${startStr} — ${endStr}`;
+                statusText += ` • ${this.renderer.formatDateSpan(dateRange.start, dateRange.end)}`;
             }
             if (this.currentState.ganttMode) {
                 statusText += ` • ${t('ganttView')}`;

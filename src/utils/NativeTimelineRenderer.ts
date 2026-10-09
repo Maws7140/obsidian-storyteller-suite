@@ -412,6 +412,33 @@ export class NativeTimelineRenderer {
     }
 
     /**
+     * A moment on the axis, written the way the axis ticks write it: "Feb 1, 2020"
+     * for Gregorian, and the active calendar's own names otherwise. The footer
+     * and the hover card both go through here so they never disagree with the axis.
+     */
+    formatDisplayDate(time: number, yearOnly = false): string {
+        const calendar = this.calendarRegistry.getActiveCalendar();
+        const absoluteDay = time / DAY_MS + this.unixEpochAbsoluteDay();
+        if (calendar.id !== GREGORIAN_CALENDAR.id) {
+            if (yearOnly) return formatCalendarYear(calendar, fromAbsolute(calendar, { absoluteDay }).year);
+            return formatAbsoluteDay(absoluteDay, calendar, 'day');
+        }
+        if (yearOnly) return formatCalendarYear(GREGORIAN_CALENDAR, new Date(time).getUTCFullYear());
+        return new Date(time).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'UTC' });
+    }
+
+    /**
+     * The footer's date span. Past twenty years the day is noise, so the span
+     * is written in years instead.
+     */
+    formatDateSpan(start: Date, end: Date): string {
+        const yearOnly = end.getTime() - start.getTime() > 20 * YEAR_MS;
+        const from = this.formatDisplayDate(start.getTime(), yearOnly);
+        const to = this.formatDisplayDate(end.getTime(), yearOnly);
+        return from === to ? from : `${from} to ${to}`;
+    }
+
+    /**
      * @param scope 'view' captures what is on screen. 'full' redraws the whole
      *   story onto its own surface first, which is the one worth sharing: an
      *   export of the view is only ever whatever happened to be in the window
@@ -2298,6 +2325,21 @@ export class NativeTimelineRenderer {
         this.dragging = { kind: 'pan', x: event.clientX, y: event.clientY, start: this.viewStart, end: this.viewEnd };
     }
 
+    /**
+     * An event's own date text in the display form. Text that does not parse,
+     * such as a free-form narrated date, is shown as the author typed it.
+     */
+    private formatEventDateText(text: string): string {
+        return text.trim().split(/\s+(?:to|through|until)\s+/i).map(part => {
+            const trimmed = part.trim();
+            const clock = trimmed.match(/\s(\d{1,2}:\d{2}(?::\d{2})?)$/)?.[1];
+            const time = this.parseDate(trimmed);
+            if (!Number.isFinite(time)) return trimmed;
+            const day = this.formatDisplayDate(time);
+            return clock ? `${day} ${clock}` : day;
+        }).join(' to ');
+    }
+
     /** Conflicts recorded against this event, worst first. */
     private conflictsFor(event: Event): DetectedConflict[] {
         return this.conflictsByEvent.get(this.eventKey(event)) ?? [];
@@ -2325,7 +2367,7 @@ export class NativeTimelineRenderer {
         tooltip.createDiv({ cls: 'sts-native-timeline-tooltip-title', text: event.name || '(Untitled event)' });
 
         const when = event.dateTime?.trim();
-        if (when) tooltip.createDiv({ cls: 'sts-native-timeline-tooltip-meta', text: `Occurred: ${when}` });
+        if (when) tooltip.createDiv({ cls: 'sts-native-timeline-tooltip-meta', text: `Occurred: ${this.formatEventDateText(when)}` });
         const narrated = event.narrativeMarkers?.narrativeDate?.trim();
         if (narrated) {
             const sequence = event.narrativeSequence !== undefined ? ` (#${event.narrativeSequence})` : '';
