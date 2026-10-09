@@ -1311,13 +1311,15 @@ export class NativeTimelineRenderer {
         });
         // Paint order: every leader, then the cards, then the axis markers. A
         // leader to a lower tier runs through the cards of the tiers above it,
-        // so it has to be underneath them. Anything wholly off the canvas is
-        // skipped; the rect above is still kept for drag and arrows.
-        const leaderOnCanvas = (item: NativeItem, desiredX: number) => item.rect
-            ? this.isOnCanvas(Math.min(item.rect.left, desiredX), Math.min(item.rect.top, axisY), Math.max(item.rect.right, desiredX), Math.max(item.rect.bottom, axisY), width, height)
-            : false;
+        // so it has to be underneath them. A card stacked past the canvas edge
+        // keeps only its axis marker: drawing its leader as well turned a busy
+        // story into a wall of lines with nothing at the end of them. The rect
+        // above is still kept for drag and arrows.
+        const cardOnCanvas = (item: NativeItem) => !!item.rect
+            && this.isOnCanvas(item.rect.left, item.rect.top, item.rect.right, item.rect.bottom, width, height);
+        const leaderOnCanvas = (_item: NativeItem, desiredX: number) => desiredX >= -8 && desiredX <= width + 8;
         cards.forEach(({ item, desiredX, edgeY }) => {
-            if (!leaderOnCanvas(item, desiredX)) return;
+            if (!cardOnCanvas(item) || !leaderOnCanvas(item, desiredX)) return;
             // One rigid perpendicular leader. Both endpoints share the event's
             // true X coordinate, so panning can only translate this segment;
             // it can never acquire an elbow or diagonal stretch.
