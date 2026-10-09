@@ -1064,6 +1064,7 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                 .onChange(async (value) => {
                     this.plugin.settings.customTodayISO = value.trim() || undefined;
                     await this.plugin.saveSettings();
+                    this.plugin.refreshTimelineViews();
                 }))
             .addExtraButton(btn => btn
                 .setIcon('reset')
@@ -1071,6 +1072,7 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                 .onClick(async () => {
                     this.plugin.settings.customTodayISO = undefined;
                     await this.plugin.saveSettings();
+                    this.plugin.refreshTimelineViews();
                     this.refreshSettingsView();
                 }));
 

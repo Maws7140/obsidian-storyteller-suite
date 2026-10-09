@@ -35,6 +35,11 @@ export interface TimelineRendererOptions {
     /** Draw where characters were, as bands behind their lanes. */
     showPresence?: boolean;
     narrativeOrder?: boolean;
+    /**
+     * The story's notion of "today", used for relative dates and the now
+     * marker. Defaults to the system clock; the plugin passes its custom today.
+     */
+    getReferenceDate?: () => Date;
     onConflictsDetected?: (conflicts: DetectedConflict[]) => void;
     onEventSelected?: (event: Event | null) => void;
     /** Fired after each frame so a toolbar can mirror the visible range. */
@@ -238,6 +243,8 @@ export class NativeTimelineRenderer {
     private activePointers = new Map<number, { x: number; y: number }>();
     private pinch: { distance: number; span: number; anchorTime: number } | null = null;
     private referenceDate = new Date();
+    /** The story's "today" in epoch milliseconds, for the now marker and jump. */
+    private nowMs(): number { return this.options.getReferenceDate().getTime(); }
     private palette = ['#7c3aed', '#2563eb', '#059669', '#ca8a04', '#dc2626', '#ea580c', '#0ea5e9', '#22c55e', '#d946ef', '#f59e0b'];
 
     constructor(container: HTMLElement, plugin: StorytellerSuitePlugin, options: TimelineRendererOptions = {}) {
@@ -260,6 +267,7 @@ export class NativeTimelineRenderer {
             showEras: false,
             showPresence: false,
             narrativeOrder: false,
+            getReferenceDate: () => new Date(),
             ...options
         };
     }
@@ -387,7 +395,7 @@ export class NativeTimelineRenderer {
 
     moveToToday(): void {
         const span = this.viewEnd - this.viewStart;
-        const now = Date.now();
+        const now = this.nowMs();
         this.viewStart = now - span / 2;
         this.viewEnd = now + span / 2;
         this.scheduleDraw();
@@ -536,7 +544,7 @@ export class NativeTimelineRenderer {
     }
 
     private rebuild(fit: boolean): void {
-        this.referenceDate = new Date();
+        this.referenceDate = this.options.getReferenceDate();
         const sourceEvents = this.collectEvents();
         // Conflict analysis is secondary to rendering and can be quadratic for
         // dense character histories. Keep large timelines interactive; users
@@ -1153,7 +1161,7 @@ export class NativeTimelineRenderer {
     }
 
     private drawNowHorizontalTimeline(ctx: CanvasRenderingContext2D, axisY: number, width: number): void {
-        const now = Date.now();
+        const now = this.nowMs();
         if (now < this.viewStart || now > this.viewEnd) return;
         const x = this.horizontalTimelineTimeToX(now, width);
         ctx.save();
@@ -2252,12 +2260,12 @@ export class NativeTimelineRenderer {
     }
 
     private drawNow(ctx: CanvasRenderingContext2D, width: number, height: number): void {
-        const now = Date.now(); if (now < this.viewStart || now > this.viewEnd) return;
+        const now = this.nowMs(); if (now < this.viewStart || now > this.viewEnd) return;
         const x = this.timeToX(now, width); ctx.save(); ctx.strokeStyle = this.css('--color-red', '#ef4444'); ctx.setLineDash([4, 4]); ctx.beginPath(); ctx.moveTo(x, this.axisHeight()); ctx.lineTo(x, height); ctx.stroke(); ctx.restore();
     }
 
     private drawNowVertical(ctx: CanvasRenderingContext2D, axisX: number, top: number, bottom: number): void {
-        const now = Date.now();
+        const now = this.nowMs();
         if (now < this.viewStart || now > this.viewEnd) return;
         const y = top + (now - this.viewStart) / (this.viewEnd - this.viewStart) * (bottom - top);
         ctx.save(); ctx.strokeStyle = this.css('--color-red', '#ef4444'); ctx.setLineDash([4, 4]);
