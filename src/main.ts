@@ -5636,6 +5636,12 @@ export default class StorytellerSuitePlugin extends Plugin {
 	 * @param event The event data to save
 	 */
 	async saveEvent(event: Event): Promise<void> {
+		// Scenes and watched notes reach the timeline as event-shaped objects that carry their
+		// own file path. Writing one here would move that note into the Events folder.
+		if (event.tags?.includes('scene') || event.tags?.includes('watched-note')) {
+			new Notice('Scenes and watched notes cannot be saved as events. Edit them in their own note.');
+			return;
+		}
 		await this.ensureEventFolder();
 		const folderPath = this.getEntityFolder('event');
 

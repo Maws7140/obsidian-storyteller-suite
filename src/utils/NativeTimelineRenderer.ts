@@ -3001,7 +3001,8 @@ export class NativeTimelineRenderer {
         const item = this.hit(event.offsetX, event.offsetY);
         if (item) {
             this.selected = item; this.options.onEventSelected?.(item.event);
-            this.dragging = this.options.editMode
+            // Selection and touch pan still work on a non-draggable item; only the write-back is refused.
+            this.dragging = this.options.editMode && this.isDraggable(item)
                 ? { kind: 'move', x: event.clientX, y: event.clientY, start: item.start, end: item.end, item }
                 : event.pointerType === 'touch'
                     ? { kind: 'pan', x: event.clientX, y: event.clientY, start: this.viewStart, end: this.viewEnd }
