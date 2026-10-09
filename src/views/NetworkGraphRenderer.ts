@@ -587,7 +587,7 @@ export class NetworkGraphRenderer {
             },
             // Visual hierarchy: Hub nodes (degree > 10) - Major characters/locations
             {
-                selector: 'node[[degree > 10]]',
+                selector: 'node[degree > 10]',
                 style: {
                     'border-width': 5,
                     'border-color': '#FFD700',
@@ -598,7 +598,7 @@ export class NetworkGraphRenderer {
             },
             // Visual hierarchy: Highly connected nodes (degree 6-10) - Important entities
             {
-                selector: 'node[[degree > 5]][[degree <= 10]]',
+                selector: 'node[degree > 5][degree <= 10]',
                 style: {
                     'border-width': 4,
                     'z-index': 150,
@@ -608,7 +608,7 @@ export class NetworkGraphRenderer {
             },
             // Visual hierarchy: Moderately connected nodes (degree 3-5) - Regular entities
             {
-                selector: 'node[[degree > 2]][[degree <= 5]]',
+                selector: 'node[degree > 2][degree <= 5]',
                 style: {
                     'border-width': 3,
                     'z-index': 100,
@@ -617,7 +617,7 @@ export class NetworkGraphRenderer {
             },
             // Visual hierarchy: Less connected nodes (degree 1-2) - Minor entities
             {
-                selector: 'node[[degree > 0]][[degree <= 2]]',
+                selector: 'node[degree > 0][degree <= 2]',
                 style: {
                     'opacity': 0.8,
                     'border-width': 2,
@@ -626,7 +626,7 @@ export class NetworkGraphRenderer {
             },
             // Visual hierarchy: Isolated nodes (degree = 0) - Orphaned entities
             {
-                selector: 'node[[degree = 0]]',
+                selector: 'node[degree = 0]',
                 style: {
                     'opacity': 0.5,
                     'border-style': 'dashed',
