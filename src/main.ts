@@ -6798,6 +6798,42 @@ export default class StorytellerSuitePlugin extends Plugin {
         await this.appendToSessionLogEntries(filePath, [entry]);
     }
 
+    /**
+     * Rewrites the body of the ## Session Log section in place. `update` receives the current
+     * section text (without its heading) and returns the new text, which is written without any
+     * list bullet. Used for Partylog lines and for replacing session header and end blocks.
+     */
+    async updateSessionLog(filePath: string, update: (body: string) => string): Promise<void> {
+        const file = this.app.vault.getAbstractFileByPath(normalizePath(filePath));
+        if (!(file instanceof TFile)) return;
+
+        await this.app.vault.process(file, (content: string) => {
+            const logHeader = '## Session Log';
+            const idx = content.indexOf(logHeader);
+            if (idx === -1) {
+                const body = update('').replace(/\s+$/, '');
+                return `${content.trimEnd()}\n\n${logHeader}\n${body ? `${body}\n` : ''}`;
+            }
+
+            const afterHeader = content.indexOf('\n', idx);
+            const sectionStart = afterHeader !== -1 ? afterHeader + 1 : content.length;
+            let nextSection = content.length;
+            const sectionRegex = /^##\s+/gm;
+            sectionRegex.lastIndex = sectionStart;
+            let match: RegExpExecArray | null;
+            while ((match = sectionRegex.exec(content)) !== null) {
+                if (match.index > idx) {
+                    nextSection = match.index;
+                    break;
+                }
+            }
+
+            const existingBody = content.slice(sectionStart, nextSection).replace(/\s+$/, '');
+            const updatedBody = update(existingBody).replace(/\s+$/, '');
+            return content.slice(0, sectionStart) + (updatedBody ? `${updatedBody}\n` : '') + content.slice(nextSection);
+        });
+    }
+
     // ─── End Campaign Session CRUD ───────────────────────────────────────────
 
     async saveScene(scene: Scene): Promise<void> {
