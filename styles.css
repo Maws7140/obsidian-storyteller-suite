@@ -12526,3 +12526,13 @@ body.mod-rtl .storyteller-group-members {
     gap: 6px;
     margin: 6px 0 8px;
 }
+
+/* The overlay ignores pointer input, but its Cancel button must stay tappable. */
+.storyteller-placement-overlay .placement-cancel {
+    pointer-events: auto;
+    margin-left: 8px;
+    padding: 2px 12px;
+    border-radius: 12px;
+    font-size: 13px;
+    cursor: pointer;
+}

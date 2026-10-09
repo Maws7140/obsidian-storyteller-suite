@@ -71,6 +71,25 @@ export function outline(g: PlacementGrid, points: [number, number][]): Cell[] {
         }
     return out;
 }
+/**
+ * Map each saved location id to its parent's id. A parent can be stored by id or by name
+ * (child-location defaults and the location modal store the name), so both resolve to the id.
+ */
+export function parentIdsOf(
+    locations: { id?: string; name?: string; parentLocationId?: string }[],
+): Record<string, string | undefined> {
+    const ids = new Set(locations.map(l => l.id).filter((id): id is string => !!id));
+    const idByName = new Map<string, string>();
+    for (const l of locations) if (l.id && l.name && !idByName.has(l.name)) idByName.set(l.name, l.id);
+    return Object.fromEntries(
+        locations
+            .filter(l => l.id)
+            .map(l => {
+                const ref = l.parentLocationId;
+                return [l.id!, ref === undefined ? undefined : ids.has(ref) ? ref : (idByName.get(ref) ?? ref)];
+            }),
+    );
+}
 export function related(a: string, b: string, parents: Record<string, string | undefined>): boolean {
     const ancestor = (child: string, parent: string) => {
         const seen = new Set<string>();

@@ -20,6 +20,7 @@ import { PlotItemSuggestModal } from '../modals/PlotItemSuggestModal';
 import { openMapModal } from '../utils/MapModalHelper';
 import { MapHierarchyManager } from '../utils/MapHierarchyManager';
 import { VIEW_TYPE_CAMPAIGN } from './CampaignView';
+import { createPlacementOverlay } from '../leaflet/placementOverlay';
 import { MaplogPalette } from '../leaflet/maplog/MaplogPalette';
 import { MaplogEditor } from '../leaflet/maplog/MaplogEditor';
 import { MAPLOG_FRONTMATTER_KEYS, maplogFrontmatter, normalizeMaplogData, type MaplogData } from '../leaflet/maplog/model';
@@ -87,6 +88,7 @@ export class MapView extends ItemView {
     private maplogSaveQueue: Promise<void> = Promise.resolve();
     /** Maplog writes queued or running; while any are, the in-memory marks are newer than the note. */
     private maplogWritesPending = 0;
+    private mapRenderToken = 0;
     private placementMode: { type: 'location' | 'character' | 'event' | 'item' | 'culture' | 'economy' | 'magicsystem' | 'group' | 'scene' | 'reference' | null } = { type: null };
     private placementClickHandler: ((e: L.LeafletMouseEvent) => void) | null = null;
     private placementOverlay: HTMLElement | null = null;
@@ -714,10 +716,12 @@ export class MapView extends ItemView {
         const map = this.currentMap;
         const file = map?.filePath ? this.app.vault.getAbstractFileByPath(map.filePath) : null;
         if (!map || !(file instanceof TFile)) return Promise.reject(new Error('Save the map note before adding Maplog marks.'));
-        const clean = normalizeMaplogData(next);
+        // next is MaplogData ({ marks, lines, areas }), not the frontmatter shape normalizeMaplogData reads.
+        const clean = normalizeMaplogData({ maplogMarks: next.marks, maplogLines: next.lines, maplogAreas: next.areas });
         // Update the view first: a second mark placed before this write finishes must build on
         // this one, not on the note as it was, or the earlier mark would be overwritten.
-        this.currentMap = { ...map, maplogMarks: clean.marks, maplogLines: clean.lines, maplogAreas: clean.areas };
+        const optimistic = { ...map, maplogMarks: clean.marks, maplogLines: clean.lines, maplogAreas: clean.areas };
+        this.currentMap = optimistic;
         this.leafletRenderer?.getMaplogLayer()?.setData(clean);
         this.maplogWritesPending++;
         const run = async (): Promise<void> => {
@@ -733,7 +737,14 @@ export class MapView extends ItemView {
         };
         const queued = this.maplogSaveQueue.then(run, run).finally(() => { this.maplogWritesPending--; });
         this.maplogSaveQueue = queued.catch(() => undefined);
-        return queued;
+        return queued.catch((error: unknown) => {
+            // The note did not change, so drop the optimistic state, unless a later edit has already replaced it.
+            if (this.currentMap === optimistic) {
+                this.currentMap = map;
+                this.leafletRenderer?.getMaplogLayer()?.setData(normalizeMaplogData(map));
+            }
+            throw error;
+        });
     }
 
     /**
@@ -771,14 +782,20 @@ export class MapView extends ItemView {
 
         // Create instruction overlay
         if (this.mapContainer) {
-            this.placementOverlay = this.mapContainer.createDiv('storyteller-placement-overlay');
-            const instruction = this.placementOverlay.createDiv('storyteller-placement-instruction');
-
             const entityTypeText = entityType.charAt(0).toUpperCase() + entityType.slice(1);
-            const placementIcon = instruction.createDiv('placement-icon');
-            setIcon(placementIcon, 'map-pin');
-            instruction.createDiv({ text: `Click map to place ${entityTypeText}`, cls: 'placement-text' });
-            instruction.createDiv({ text: 'Press ESC to cancel', cls: 'placement-hint' });
+            this.placementOverlay = createPlacementOverlay(this.mapContainer, {
+                text: `Click map to place ${entityTypeText}`,
+                hint: 'Press ESC to cancel',
+                decorate: instruction => {
+                    const placementIcon = instruction.createDiv('placement-icon');
+                    setIcon(placementIcon, 'map-pin');
+                },
+                // Touch users have no Esc key, so the bar carries its own Cancel button.
+                onCancel: () => {
+                    this.disablePlacementMode();
+                    new Notice('Placement cancelled');
+                },
+            });
         }
 
         // Change cursor to crosshair
@@ -869,6 +886,13 @@ export class MapView extends ItemView {
                     await this.loadMap(mapId);
                 },
                 onDelete: async () => {
+                    // The map is going away: leave placement, grid, Maplog editor and palette with it.
+                    this.disablePlacementMode();
+                    this.gridController?.destroy();
+                    this.gridController = null;
+                    this.closeMaplogPalette();
+                    this.maplogEditor?.destroy();
+                    this.maplogEditor = null;
                     // Clear current map and refresh selector
                     this.currentMap = null;
                     await this.buildMapSelector();
@@ -1934,10 +1958,15 @@ export class MapView extends ItemView {
      */
     private async renderMap(): Promise<void> {
         if (!this.mapContainer || !this.currentMap) return;
+        // Each render gets a token. A render that is overtaken by a newer one (map switch while waiting)
+        // must not create a renderer that nothing will ever unload.
+        const token = ++this.mapRenderToken;
 
+        this.disablePlacementMode();
         this.gridController?.destroy();
         this.gridController = null;
         this.closeMaplogPalette();
+        this.removeDocumentMapListeners();
         // Clean up existing renderer before creating new one
         if (this.leafletRenderer) {
             try {
@@ -1954,6 +1983,7 @@ export class MapView extends ItemView {
         // CRITICAL FIX: Wait for container to have non-zero dimensions
         // Without this, Leaflet initializes with 0x0 size and tiles don't render
         await this.waitForContainerDimensions(this.mapContainer);
+        if (token !== this.mapRenderToken) return;
 
         // CRITICAL FIX: Parent container must have position:relative for absolute children
         // Without this, tiles will scatter across the viewport
@@ -2016,16 +2046,23 @@ export class MapView extends ItemView {
             } as unknown as import('obsidian').MarkdownPostProcessorContext;
 
             // Create renderer
-            this.leafletRenderer = new LeafletRenderer(
+            const renderer = new LeafletRenderer(
                 this.plugin,
                 leafletContainer,
                 params,
                 mockContext
             );
+            this.leafletRenderer = renderer;
 
             // Register as child component to trigger lifecycle (like code block processor)
-            mockContext.addChild(this.leafletRenderer);
-            await this.leafletRenderer.initialize();
+            mockContext.addChild(renderer);
+            await renderer.initialize();
+            if (token !== this.mapRenderToken) {
+                // A newer render started while this one was initialising; release this renderer.
+                if (this.leafletRenderer === renderer) this.leafletRenderer = null;
+                renderer.onunload();
+                return;
+            }
             const imageBounds = this.leafletRenderer.getImageBounds();
             const initializedMap = this.leafletRenderer.getMap();
             if (imageBounds && initializedMap) {
@@ -2057,6 +2094,7 @@ export class MapView extends ItemView {
             // Reference: https://github.com/Leaflet/Leaflet/discussions/8972
 
             // Leaflet alone owns wheel zoom; do not race it with delayed setView.
+            this.removeDocumentMapListeners();
             const wheelHandler = (ev: WheelEvent) => {
                 if (leafletContainer.contains(ev.target as Node)) {
                     ev.preventDefault();
@@ -2377,6 +2415,18 @@ export class MapView extends ItemView {
         }
     }
 
+    /** Remove the document-level wheel and touchmove handlers installed by the last render. */
+    private removeDocumentMapListeners(): void {
+        if (this._wheelHandler) {
+            activeDocument.removeEventListener('wheel', this._wheelHandler);
+            this._wheelHandler = null;
+        }
+        if (this._touchMoveHandler) {
+            activeDocument.removeEventListener('touchmove', this._touchMoveHandler);
+            this._touchMoveHandler = null;
+        }
+    }
+
     async onClose(): Promise<void> {
         this.gridController?.destroy();
         this.gridController = null;
@@ -2398,14 +2448,7 @@ export class MapView extends ItemView {
         }
 
         // Clean up activeDocument-level event handlers
-        if (this._wheelHandler) {
-            activeDocument.removeEventListener('wheel', this._wheelHandler);
-            this._wheelHandler = null;
-        }
-        if (this._touchMoveHandler) {
-            activeDocument.removeEventListener('touchmove', this._touchMoveHandler);
-            this._touchMoveHandler = null;
-        }
+        this.removeDocumentMapListeners();
 
         // Clean up resize observer
         if (this.resizeObserver) {

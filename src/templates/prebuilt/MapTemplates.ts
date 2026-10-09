@@ -47,14 +47,7 @@ An interactive real-world map using OpenStreetMap tiles. Zoom in and out, pan ar
 
 ## Map
 
-\`\`\`storyteller-map
-type: real
-lat: 40.7128
-long: -74.0060
-defaultZoom: 13
-minZoom: 1
-maxZoom: 18
-\`\`\`
+Open this map in the Map view to set its image or coordinates, zoom levels and markers.
 
 ## Usage Notes
 
@@ -108,18 +101,7 @@ A comprehensive map of the fantasy world. Use percentage-based coordinates to pl
 
 ## Map
 
-\`\`\`storyteller-map
-type: image
-image: [[your-world-map.png]]
-width: 1200
-height: 800
-defaultZoom: 2
-minZoom: 1
-maxZoom: 5
-marker: [50%, 30%, [[Capital City]], The grand capital of the realm]
-marker: [70%, 60%, [[Dark Forest]], Ancient and mysterious woods]
-marker: [20%, 40%, [[Port Town]], Busy harbor city]
-\`\`\`
+Open this map in the Map view to set its image or coordinates, zoom levels and markers.
 
 ## Usage Instructions
 
@@ -180,19 +162,7 @@ A detailed regional map showing cities, towns, roads, and geographical features 
 
 ## Map
 
-\`\`\`storyteller-map
-type: image
-image: [[region-map.png]]
-width: 1000
-height: 800
-defaultZoom: 3
-minZoom: 2
-maxZoom: 6
-marker: [50%, 20%, [[Royal Castle]], Seat of power]
-marker: [30%, 50%, [[Market Town]], Trading hub]
-marker: [70%, 70%, [[Border Fort]], Military outpost]
-marker: [50%, 80%, [[Sacred Grove]], Ancient religious site]
-\`\`\`
+Open this map in the Map view to set its image or coordinates, zoom levels and markers.
 
 ## Region Features
 
@@ -246,21 +216,7 @@ A detailed city map showing districts, major buildings, streets, and points of i
 
 ## Map
 
-\`\`\`storyteller-map
-type: image
-image: [[city-map.png]]
-width: 1200
-height: 1200
-defaultZoom: 4
-minZoom: 3
-maxZoom: 7
-marker: [50%, 30%, [[City Hall]], Government center]
-marker: [60%, 50%, [[Market District]], Shops and vendors]
-marker: [40%, 60%, [[Temple Quarter]], Religious district]
-marker: [30%, 40%, [[Noble District]], Wealthy residences]
-marker: [70%, 70%, [[Docks]], Harbor and warehouses]
-marker: [20%, 80%, [[Slums]], Poor quarter]
-\`\`\`
+Open this map in the Map view to set its image or coordinates, zoom levels and markers.
 
 ## City Features
 
@@ -316,22 +272,7 @@ An indoor map showing room layouts, corridors, doors, and important features. Pe
 
 ## Map
 
-\`\`\`storyteller-map
-type: image
-image: [[dungeon-map.png]]
-width: 800
-height: 800
-defaultZoom: 5
-minZoom: 4
-maxZoom: 8
-marker: [50%, 10%, [[Entrance Hall]], Main entry]
-marker: [30%, 30%, [[Guard Room]], Armed guards]
-marker: [70%, 30%, [[Armory]], Weapons and armor]
-marker: [50%, 50%, [[Throne Room]], Boss encounter]
-marker: [50%, 70%, [[Treasure Room]], Loot storage]
-marker: [30%, 90%, [[Prison]], Captives held here]
-marker: [70%, 90%, [[Secret Passage]], Hidden exit]
-\`\`\`
+Open this map in the Map view to set its image or coordinates, zoom levels and markers.
 
 ## Map Features
 
@@ -382,10 +323,7 @@ A blank map ready for customization.
 
 ## Map
 
-\`\`\`storyteller-map
-type: image
-image: [[your-map-image.png]]
-\`\`\`
+Open this map in the Map view to set its image or coordinates, zoom levels and markers.
 
 ## Instructions
 
