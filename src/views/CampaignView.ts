@@ -60,15 +60,128 @@ import {
     buildSessionTimelineEvent,
     cycleCampaignThread,
 } from '../utils/CampaignProgress';
-import { setTrackerValue, threadLegacyStatus, trackerKindOf } from '../utils/CampaignModel';
+import { setTrackerValue, threadKindOf, threadLegacyStatus, trackerKindOf } from '../utils/CampaignModel';
 import { PromptModal } from '../modals/ui/PromptModal';
 import { EventModal } from '../modals/EventModal';
 import { LeafletRenderer } from '../leaflet/renderer';
 import type { LeafletRendererOptions, LocationPinHighlight } from '../leaflet/types';
 import { mapToBlockParams } from '../leaflet/utils/MapBlockParams';
 import { locationPinKey, resolveBoardSelection } from '../utils/CampaignBoardSelection';
+import {
+    applyPartylogTagsToSession,
+    appendLogLines,
+    type PartylogBridgeContext,
+} from '../campaign/PartylogSessionBridge';
+import {
+    entryTags,
+    extractTags,
+    formatAction,
+    formatConsequence,
+    formatEntry,
+    formatEvent,
+    formatMeta,
+    formatRoll,
+    parsePartylogLine,
+} from '../campaign/partylog';
 
 export const VIEW_TYPE_CAMPAIGN = 'storyteller-campaign-view';
+
+/** Sidebar sections that can be re-rendered on their own after a Partylog entry. */
+type SidebarPart = 'party' | 'progress' | 'standings' | 'log';
+type QuickMode = 'action' | 'assist' | 'group' | 'world' | 'roll' | 'consequence' | 'note';
+type QuickNoteKind = 'note' | 'rule' | 'ooc' | 'safety';
+
+/** Quick entry bar state. Kept on the view so re-renders keep what was typed. */
+interface QuickEntryState {
+    mode: QuickMode;
+    /** Selected actors in the order they were picked. The first is the leader for assists. */
+    actors: string[];
+    noteKind: QuickNoteKind;
+    draft: string;
+    tagKind: string;
+    tagName: string;
+    rollExpression: string;
+    rollVs: string;
+    rollOutcome: string;
+}
+
+interface TagNameCache {
+    characters: string[];
+    locations: string[];
+    items: string[];
+}
+
+const TAG_DATALIST_ID = 'storyteller-campaign-tag-names';
+
+const QUICK_MODES: ReadonlyArray<{ mode: QuickMode; label: string; hint: string }> = [
+    { mode: 'action', label: '@ Action', hint: 'Action by the selected actor. Leave none selected for an unattributed action.' },
+    { mode: 'assist', label: '@ Assist', hint: 'Assist: select two actors, the leader first.' },
+    { mode: 'group', label: '@ Group', hint: 'Group action: select two or more actors.' },
+    { mode: 'world', label: '! World', hint: 'World event: the game world acts.' },
+    { mode: 'roll', label: 'd: Roll', hint: 'Roll and outcome, attributed to the selected actors.' },
+    { mode: 'consequence', label: '=> Result', hint: 'Consequence of the last action or roll.' },
+    { mode: 'note', label: '( ) Note', hint: 'Note, rule, out-of-character or safety entry.' },
+];
+
+const NOTE_KINDS: ReadonlyArray<{ value: QuickNoteKind; label: string }> = [
+    { value: 'note', label: 'Note' },
+    { value: 'rule', label: 'Rule' },
+    { value: 'ooc', label: 'OOC' },
+    { value: 'safety', label: 'Safety' },
+];
+
+const TAG_KINDS: ReadonlyArray<{ kind: string; label: string }> = [
+    { kind: 'N', label: 'N (NPC)' },
+    { kind: 'PC', label: 'PC' },
+    { kind: 'F', label: 'F (foe)' },
+    { kind: 'L', label: 'L (location)' },
+    { kind: 'Faction', label: 'Faction' },
+    { kind: 'Loot', label: 'Loot' },
+    { kind: 'Party', label: 'Party' },
+    { kind: 'Clock', label: 'Clock' },
+    { kind: 'Track', label: 'Track' },
+    { kind: 'Timer', label: 'Timer' },
+    { kind: 'Thread', label: 'Thread' },
+    { kind: 'Goal', label: 'Goal' },
+    { kind: 'Quest', label: 'Quest' },
+];
+
+function createQuickEntryState(): QuickEntryState {
+    return {
+        mode: 'action',
+        actors: [],
+        noteKind: 'note',
+        draft: '',
+        tagKind: 'N',
+        tagName: '',
+        rollExpression: '',
+        rollVs: '',
+        rollOutcome: '',
+    };
+}
+
+function quickPlaceholder(mode: QuickMode): string {
+    switch (mode) {
+        case 'action': return 'What does the character do?';
+        case 'assist': return 'What does the helper do?';
+        case 'group': return 'What do they do together?';
+        case 'world': return 'What does the world do?';
+        case 'roll': return 'Optional tags, for example [Clock:Alarm +1]';
+        case 'consequence': return 'What follows?';
+        case 'note': return 'Note text';
+    }
+}
+
+/** Which sidebar sections a set of bridge summary lines touches. */
+function partsAffectedBy(summary: readonly string[]): SidebarPart[] {
+    const parts: SidebarPart[] = ['log'];
+    for (const line of summary) {
+        if (/^Faction /.test(line)) parts.push('standings');
+        else if (/^(clock|track|timer|thread|goal|quest) /.test(line)) parts.push('progress');
+        else parts.push('party');
+    }
+    return parts;
+}
 
 type CampaignBoardLocation = {
     location: Location;
@@ -120,6 +233,14 @@ export class CampaignView extends ItemView {
     private pendingSessionSave = false;
     private pendingLogEntries: string[] = [];
     private readonly autosaveDebounceMs = 450;
+    /** Live section elements, so one part can be re-rendered in place. */
+    private sidebarPartEls = new Map<SidebarPart, HTMLElement>();
+    private quick: QuickEntryState = createQuickEntryState();
+    /** NPC names typed into the quick entry bar for this view. */
+    private quickNpcs: string[] = [];
+    /** Last dice result from a branch roll, used to prefill the Roll entry. */
+    private lastDiceResult: { expression: string; outcome: string } | null = null;
+    private tagNameCache: TagNameCache | null = null;
     private stripWikiLinkValue(value: string | null | undefined): string {
         return stripWikiLinkToString(value);
     }
@@ -149,6 +270,7 @@ export class CampaignView extends ItemView {
     async loadSession(session: CampaignSession, startingScene?: Scene): Promise<void> {
         this.session = { ...session };
         this.sceneHistory = [];
+        this.tagNameCache = null;
         this.selectedBoardLocationId = null;
         this.ensureActiveActor(this.session);
         this.partyCharacterStats.clear();
@@ -1299,7 +1421,12 @@ export class CampaignView extends ItemView {
         confirmBtn.addEventListener('click', () => {
             if (lastTotal === null) return;
             overlay.remove();
-            void this.executeChoice(branch, resolveBranch(branch, lastTotal), lastTotal);
+            const outcome = resolveBranch(branch, lastTotal);
+            this.lastDiceResult = {
+                expression: `${branch.dice ?? 'roll'}=${lastTotal}`,
+                outcome: outcome === 'success' ? 'Success' : 'Fail',
+            };
+            void this.executeChoice(branch, outcome, lastTotal);
         });
 
         const cancelBtn = btnRow.createEl('button', { cls: 'storyteller-campaign-btn', text: 'Cancel' });
@@ -1490,6 +1617,7 @@ export class CampaignView extends ItemView {
 
     private renderPartySidebar(sidebar: HTMLElement, session: CampaignSession): void {
         const sec = sidebar.createDiv('storyteller-campaign-sidebar-section');
+        this.sidebarPartEls.set('party', sec);
         const hdr = sec.createDiv('storyteller-campaign-sidebar-hdr');
         setIcon(hdr.createSpan(), 'users');
         hdr.createSpan({ text: ' Party' });
@@ -1515,7 +1643,7 @@ export class CampaignView extends ItemView {
                     for (const c of state.conditions) conds.createSpan({ cls: 'storyteller-dnd-condition', text: c });
                 }
             } else {
-                this.renderSetHpRow(row, name, session, body);
+                this.renderSetHpRow(row, name, session);
             }
         }
     }
@@ -1555,7 +1683,7 @@ export class CampaignView extends ItemView {
         plusBtn.addEventListener('click',  () => { void mutate(1); });
     }
 
-    private renderSetHpRow(row: HTMLElement, name: string, session: CampaignSession, body: HTMLElement): void {
+    private renderSetHpRow(row: HTMLElement, name: string, session: CampaignSession): void {
         const ctrl = row.createDiv('storyteller-campaign-hp-controls');
         const input = ctrl.createEl('input', {
             cls: 'storyteller-campaign-input is-small',
@@ -1568,8 +1696,7 @@ export class CampaignView extends ItemView {
             if (!session.partyState) session.partyState = [];
             session.partyState.push({ characterId: '', characterName: name, currentHp: maxHp, maxHp });
             await this.autosave();
-            body.empty();
-            this.renderPartySidebar(body.parentElement!.parentElement!, session);
+            await this.refreshSidebarPart('party');
         })(); });
     }
 
@@ -1716,13 +1843,15 @@ export class CampaignView extends ItemView {
 
     private async renderLogSidebar(sidebar: HTMLElement, session: CampaignSession): Promise<void> {
         const sec = sidebar.createDiv('storyteller-campaign-sidebar-section');
+        this.sidebarPartEls.set('log', sec);
         const hdr = sec.createDiv('storyteller-campaign-sidebar-hdr');
         setIcon(hdr.createSpan(), 'scroll');
         hdr.createSpan({ text: ' Session Log' });
         const body = sec.createDiv('storyteller-campaign-sidebar-body');
+        this.renderQuickEntry(body, session);
 
         if (!session.filePath) {
-            body.createDiv({ cls: 'storyteller-campaign-empty-text', text: 'Not yet saved.' });
+            body.createDiv({ cls: 'storyteller-campaign-empty-text', text: 'Not yet saved. The first entry creates the session note.' });
             return;
         }
 
@@ -2222,6 +2351,7 @@ export class CampaignView extends ItemView {
         });
 
         const sec = sidebar.createDiv('storyteller-campaign-sidebar-section');
+        this.sidebarPartEls.set('standings', sec);
         const hdr = sec.createDiv('storyteller-campaign-sidebar-hdr');
         setIcon(hdr.createSpan(), 'shield');
         hdr.createSpan({ text: ' Factions' });
@@ -2471,6 +2601,7 @@ export class CampaignView extends ItemView {
 
     private renderProgressSidebar(sidebar: HTMLElement, session: CampaignSession): void {
         const sec = sidebar.createDiv('storyteller-campaign-sidebar-section storyteller-campaign-progress');
+        this.sidebarPartEls.set('progress', sec);
         const hdr = sec.createDiv('storyteller-campaign-sidebar-hdr');
         setIcon(hdr.createSpan(), 'gauge');
         hdr.createSpan({ text: ' Clocks and threads' });
@@ -2611,6 +2742,365 @@ export class CampaignView extends ItemView {
             if (!setPartyOwner(plotItem, undefined, partyNameSet, this.normalizeName)) continue;
 
             await this.plugin.savePlotItem(plotItem);
+        }
+    }
+
+    // ── Partylog: session log writes and sidebar refresh ─────────────────────
+
+    /**
+     * Rewrites the ## Session Log body through the same queue as autosave, so raw Partylog writes
+     * never race a pending session save.
+     */
+    private async writeSessionLog(update: (body: string) => string): Promise<void> {
+        if (!this.session) return;
+        await this.flushAutosaveNow();
+        const filePath = this.session.filePath;
+        if (!filePath) return;
+        this.flushChain = this.flushChain.then(() => this.plugin.updateSessionLog(filePath, update));
+        await this.flushChain;
+    }
+
+    private partylogContext(): PartylogBridgeContext {
+        return { groups: this.plugin.getGroups().map(group => ({ id: group.id, name: group.name })) };
+    }
+
+    /** Re-renders one sidebar section in place. Falls back to a full render if it is not on screen. */
+    private async refreshSidebarPart(part: SidebarPart): Promise<void> {
+        const session = this.session;
+        const old = this.sidebarPartEls.get(part);
+        if (!session || !old?.parentElement) {
+            await this.render();
+            return;
+        }
+        const holder = activeDocument.createElement('div');
+        switch (part) {
+            case 'party':
+                this.renderPartySidebar(holder, session);
+                break;
+            case 'progress':
+                this.renderProgressSidebar(holder, session);
+                break;
+            case 'standings':
+                this.renderGroupStandingsSidebar(holder, session);
+                break;
+            case 'log':
+                await this.renderLogSidebar(holder, session);
+                break;
+        }
+        const fresh = holder.firstElementChild;
+        if (!(fresh instanceof HTMLElement)) return;
+        old.replaceWith(fresh);
+        this.sidebarPartEls.set(part, fresh);
+    }
+
+    private async refreshSidebarParts(parts: readonly SidebarPart[]): Promise<void> {
+        for (const part of Array.from(new Set(parts))) {
+            await this.refreshSidebarPart(part);
+        }
+    }
+
+    private focusQuickEntry(): void {
+        this.sidebarPartEls.get('log')?.querySelector<HTMLInputElement>('.storyteller-campaign-quick-input')?.focus();
+    }
+
+    // ── Partylog: quick entry bar ─────────────────────────────────────────────
+
+    private renderQuickEntry(container: HTMLElement, session: CampaignSession): void {
+        const wrap = container.createDiv('storyteller-campaign-quick');
+        this.renderQuickEntryBody(wrap, session);
+    }
+
+    /** Rebuilds the quick entry bar from `this.quick`. Typed text lives in that state, so rebuilds keep it. */
+    private renderQuickEntryBody(wrap: HTMLElement, session: CampaignSession): void {
+        wrap.empty();
+        const q = this.quick;
+        const rerender = () => this.renderQuickEntryBody(wrap, session);
+
+        // Actors: GM/World clears the selection, PCs and added NPCs toggle in order.
+        const actorRow = wrap.createDiv('storyteller-campaign-quick-actors');
+        const worldChip = actorRow.createEl('button', { cls: 'storyteller-campaign-quick-chip', text: 'World' });
+        if (q.actors.length === 0) worldChip.addClass('is-active');
+        worldChip.addEventListener('click', () => { q.actors = []; rerender(); });
+
+        for (const name of Array.from(new Set([...(session.partyCharacterNames ?? []), ...this.quickNpcs]))) {
+            const order = q.actors.indexOf(name);
+            const chip = actorRow.createEl('button', { cls: 'storyteller-campaign-quick-chip', text: name });
+            if (order >= 0) {
+                chip.addClass('is-active');
+                chip.createSpan({ cls: 'storyteller-campaign-quick-order', text: String(order + 1) });
+            }
+            chip.addEventListener('click', () => {
+                q.actors = order >= 0 ? q.actors.filter(actor => actor !== name) : [...q.actors, name];
+                rerender();
+            });
+        }
+
+        const npcRow = wrap.createDiv('storyteller-campaign-quick-npc');
+        const npcInput = npcRow.createEl('input', {
+            cls: 'storyteller-campaign-input is-small',
+            attr: { type: 'text', placeholder: 'Actor not in the party', 'aria-label': 'Add an actor not in the party' },
+        });
+        const addNpc = () => {
+            const name = npcInput.value.trim();
+            if (!name) return;
+            if (!this.quickNpcs.some(existing => this.normalizeName(existing) === this.normalizeName(name))) {
+                this.quickNpcs.push(name);
+            }
+            if (!q.actors.includes(name)) q.actors = [...q.actors, name];
+            rerender();
+        };
+        npcInput.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') { event.preventDefault(); addNpc(); }
+        });
+        npcRow.createEl('button', { cls: 'storyteller-campaign-quick-chip', text: 'Add actor' })
+            .addEventListener('click', addNpc);
+
+        // Entry modes
+        const modes = wrap.createDiv('storyteller-campaign-quick-modes');
+        for (const def of QUICK_MODES) {
+            const button = modes.createEl('button', {
+                cls: 'storyteller-campaign-quick-mode',
+                text: def.label,
+                attr: { title: def.hint, 'aria-pressed': String(q.mode === def.mode) },
+            });
+            if (q.mode === def.mode) button.addClass('is-active');
+            button.addEventListener('click', () => {
+                q.mode = def.mode;
+                if (def.mode === 'roll' && this.lastDiceResult) {
+                    if (!q.rollExpression) q.rollExpression = this.lastDiceResult.expression;
+                    if (!q.rollOutcome) q.rollOutcome = this.lastDiceResult.outcome;
+                }
+                rerender();
+            });
+        }
+
+        let updatePreview: () => void = () => undefined;
+
+        if (q.mode === 'note') {
+            const select = wrap.createEl('select', {
+                cls: 'storyteller-campaign-input is-small',
+                attr: { 'aria-label': 'Note type' },
+            });
+            for (const option of NOTE_KINDS) select.createEl('option', { value: option.value, text: option.label });
+            select.value = q.noteKind;
+            select.addEventListener('change', () => {
+                q.noteKind = select.value as QuickNoteKind;
+                updatePreview();
+            });
+        }
+
+        if (q.mode === 'roll') {
+            const rollRow = wrap.createDiv('storyteller-campaign-quick-roll');
+            const bindRollField = (placeholder: string, label: string, value: string, store: (next: string) => void) => {
+                const field = rollRow.createEl('input', {
+                    cls: 'storyteller-campaign-input is-small',
+                    attr: { type: 'text', placeholder, 'aria-label': label },
+                });
+                field.value = value;
+                field.addEventListener('input', () => { store(field.value); updatePreview(); });
+            };
+            bindRollField('d20+3=17', 'Roll expression', q.rollExpression, next => { q.rollExpression = next; });
+            bindRollField('DC 15 or AC 14', 'Target', q.rollVs, next => { q.rollVs = next; });
+            bindRollField('Success', 'Outcome', q.rollOutcome, next => { q.rollOutcome = next; });
+        }
+
+        // Main line and submit
+        const line = wrap.createDiv('storyteller-campaign-quick-line');
+        const input = line.createEl('input', {
+            cls: 'storyteller-campaign-input storyteller-campaign-quick-input',
+            attr: { type: 'text', placeholder: quickPlaceholder(q.mode), 'aria-label': 'Partylog entry' },
+        });
+        input.value = q.draft;
+        input.addEventListener('input', () => { q.draft = input.value; updatePreview(); });
+        input.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter' && !event.isComposing) {
+                event.preventDefault();
+                void this.submitQuickEntry();
+            } else if (event.key === 'Escape') {
+                event.preventDefault();
+                q.draft = '';
+                input.value = '';
+                updatePreview();
+            }
+        });
+        const submit = line.createEl('button', { cls: 'storyteller-campaign-btn is-primary', text: 'Add' });
+        submit.addEventListener('click', () => { void this.submitQuickEntry(); });
+
+        // Tag helper: inserts [Kind:Name] at the caret and suggests story names.
+        const tagRow = wrap.createDiv('storyteller-campaign-quick-tags');
+        tagRow.createSpan({ cls: 'storyteller-campaign-quick-label', text: 'Tag' });
+        const kindSelect = tagRow.createEl('select', {
+            cls: 'storyteller-campaign-input is-small',
+            attr: { 'aria-label': 'Tag type' },
+        });
+        for (const option of TAG_KINDS) kindSelect.createEl('option', { value: option.kind, text: option.label });
+        kindSelect.value = q.tagKind;
+        const nameInput = tagRow.createEl('input', {
+            cls: 'storyteller-campaign-input is-small',
+            attr: { type: 'text', placeholder: 'Name', list: TAG_DATALIST_ID, 'aria-label': 'Tag name' },
+        });
+        nameInput.value = q.tagName;
+        const datalist = tagRow.createEl('datalist', { attr: { id: TAG_DATALIST_ID } });
+        const fillSuggestions = () => {
+            void this.loadTagNames().then(cache => {
+                datalist.empty();
+                for (const name of Array.from(new Set(this.tagSuggestions(q.tagKind, session, cache)))) {
+                    datalist.createEl('option', { value: name });
+                }
+            });
+        };
+        kindSelect.addEventListener('change', () => { q.tagKind = kindSelect.value; fillSuggestions(); });
+        nameInput.addEventListener('input', () => { q.tagName = nameInput.value; });
+        const insertTag = () => {
+            q.tagName = nameInput.value;
+            this.insertQuickTag(input);
+            updatePreview();
+        };
+        nameInput.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') { event.preventDefault(); insertTag(); }
+        });
+        tagRow.createEl('button', { cls: 'storyteller-campaign-quick-chip', text: 'Insert' })
+            .addEventListener('click', insertTag);
+        fillSuggestions();
+
+        // Live preview of the exact line that will be written.
+        const preview = wrap.createDiv('storyteller-campaign-quick-preview');
+        updatePreview = () => {
+            const built = this.buildQuickLine();
+            preview.setText(built.line ?? built.error ?? '');
+            preview.toggleClass('is-error', !built.line);
+        };
+        updatePreview();
+    }
+
+    /** Builds the Partylog line for the current quick entry state, or the reason it cannot be built. */
+    private buildQuickLine(): { line?: string; error?: string } {
+        const q = this.quick;
+        const text = q.draft.trim();
+        const actors = [...q.actors];
+        switch (q.mode) {
+            case 'action':
+                if (!text) return { error: 'Write what the character does.' };
+                return {
+                    line: formatAction({
+                        mode: actors.length > 1 ? 'group' : actors.length === 1 ? 'solo' : 'implicit',
+                        actors,
+                        text,
+                    }),
+                };
+            case 'assist':
+                if (actors.length !== 2) return { error: 'Assist needs two actors: pick the leader first, then the helper.' };
+                if (!text) return { error: 'Write what the assist does.' };
+                return { line: formatAction({ mode: 'assist', actors, text }) };
+            case 'group':
+                if (actors.length < 2) return { error: 'A group action needs at least two actors.' };
+                if (!text) return { error: 'Write what the group does.' };
+                return { line: formatAction({ mode: 'group', actors, text }) };
+            case 'world':
+                if (!text) return { error: 'Write the world event.' };
+                return { line: formatEvent({ text }) };
+            case 'consequence':
+                if (!text) return { error: 'Write the consequence.' };
+                return { line: formatConsequence({ text }) };
+            case 'note':
+                if (!text) return { error: 'Write the note.' };
+                if (q.noteKind === 'ooc') return { line: formatEntry(parsePartylogLine(`[OOC: ${text}]`)) };
+                return { line: formatMeta({ type: q.noteKind, text }) };
+            case 'roll': {
+                const expression = q.rollExpression.trim();
+                if (!expression) return { error: 'Enter the roll, for example d20+3=17.' };
+                const target = q.rollVs.trim();
+                const outcome = q.rollOutcome.trim();
+                const mode = actors.length === 0 ? 'none' : actors.length === 1 ? 'solo' : 'group';
+                return {
+                    line: formatRoll({
+                        mode,
+                        actors,
+                        expression: target ? `${expression} vs ${target}` : expression,
+                        outcome: outcome || undefined,
+                        tags: extractTags(text).tags,
+                    }),
+                };
+            }
+        }
+    }
+
+    /** Writes the line to the log, replays its tags into the session and refreshes what they touched. */
+    private async submitQuickEntry(): Promise<void> {
+        const session = this.session;
+        if (!session) return;
+        const built = this.buildQuickLine();
+        if (!built.line) {
+            new Notice(built.error ?? 'Nothing to add yet.');
+            return;
+        }
+        const line = built.line;
+        const result = applyPartylogTagsToSession(session, entryTags(parsePartylogLine(line)), this.partylogContext());
+        await this.autosave();
+        await this.writeSessionLog(body => appendLogLines(body, [line]));
+        this.quick.draft = '';
+        if (result.changed) new Notice(result.summary.join('\n'));
+        await this.refreshSidebarParts(partsAffectedBy(result.summary));
+        this.focusQuickEntry();
+    }
+
+    private insertQuickTag(input: HTMLInputElement): void {
+        const q = this.quick;
+        const name = q.tagName.trim();
+        const tag = `[${q.tagKind}:${name}]`;
+        const value = input.value;
+        const start = input.selectionStart ?? value.length;
+        const end = input.selectionEnd ?? start;
+        const before = value.slice(0, start);
+        const spacer = before.length > 0 && !/\s$/.test(before) ? ' ' : '';
+        const head = `${before}${spacer}`;
+        input.value = `${head}${tag}${value.slice(end)}`;
+        q.draft = input.value;
+        // With no name the caret waits after the colon, ready to type.
+        const caret = name ? head.length + tag.length : head.length + q.tagKind.length + 2;
+        input.focus();
+        input.setSelectionRange(caret, caret);
+    }
+
+    private async loadTagNames(): Promise<TagNameCache> {
+        if (this.tagNameCache) return this.tagNameCache;
+        const cache: TagNameCache = { characters: [], locations: [], items: [] };
+        try { cache.characters = (await this.plugin.listCharacters()).map(item => item.name); } catch { /* no story */ }
+        try { cache.locations = (await this.plugin.listLocations()).map(item => item.name); } catch { /* no story */ }
+        try { cache.items = (await this.plugin.listPlotItems()).map(item => item.name); } catch { /* no story */ }
+        this.tagNameCache = cache;
+        return cache;
+    }
+
+    private tagSuggestions(kind: string, session: CampaignSession, cache: TagNameCache): string[] {
+        switch (kind) {
+            case 'N':
+            case 'F':
+                return cache.characters;
+            case 'PC':
+                return session.partyCharacterNames ?? [];
+            case 'L':
+                return cache.locations;
+            case 'Faction':
+                return this.plugin.getGroups().map(group => group.name);
+            case 'Loot':
+                return cache.items;
+            case 'Party':
+                return Object.keys(session.partyResources ?? {});
+            case 'Clock':
+            case 'Track':
+            case 'Timer':
+                return (session.clocks ?? []).map(clock => clock.name);
+            case 'Thread':
+            case 'Goal':
+            case 'Quest': {
+                const wanted = kind.toLowerCase();
+                return (session.threads ?? [])
+                    .filter(thread => threadKindOf(thread) === wanted)
+                    .map(thread => thread.name);
+            }
+            default:
+                return [];
         }
     }
 
