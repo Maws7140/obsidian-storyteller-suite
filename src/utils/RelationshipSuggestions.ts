@@ -223,6 +223,9 @@ export function suggestImpliedLinks(input: LinkSuggestionInput): LinkSuggestion[
             for (const name of familyNames(raw)) {
                 const other = resolve(name);
                 if (!other || other === owner) continue;
+                // A family field already implies a relationship for this pair, so the
+                // weaker co-presence and shared-group passes must not offer another kind.
+                linkedPairs.add(pairKey(owner, other));
 
                 let source: LinkSuggestionCharacter;
                 let target: LinkSuggestionCharacter;
