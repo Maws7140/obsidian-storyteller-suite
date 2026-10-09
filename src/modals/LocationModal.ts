@@ -18,6 +18,7 @@ import { EntityCustomFieldsEditor, customFieldEditorOptions } from './entity/Ent
 import { EntityGroupSelector } from './entity/EntityGroupSelector';
 import { confirmWithModal } from './ui/ConfirmModal';
 import { isModalFieldVisible } from './entity/ModalFieldVisibility';
+import { createCollapsibleModalSection } from './entity/CollapsibleModalSection';
 // Placeholder imports for suggesters -
 // import { CharacterSuggestModal } from './CharacterSuggestModal';
 // import { EventSuggestModal } from './EventSuggestModal';
@@ -95,6 +96,24 @@ export class LocationModal extends ResponsiveModal {
      */
     private shows(fieldKey: string): boolean {
         return isModalFieldVisible(this.plugin.settings.hiddenModalFields, 'location', fieldKey);
+    }
+
+    /**
+     * The "Your fields" section. Only exists when the vault defines typed fields
+     * for locations: the editor renders nothing otherwise, and the empty
+     * section is then removed.
+     */
+    private renderDefinedFieldsSection(contentEl: HTMLElement): void {
+        const body = createCollapsibleModalSection(contentEl, {
+            title: 'Your fields',
+            description: 'Typed fields you defined in settings for locations',
+            icon: 'list-checks',
+            open: true,
+        });
+        this.customFieldsEditor.renderDefinedFields(body);
+        // The editor adds its own heading; the section title already names it.
+        body.querySelectorAll(':scope > h3').forEach(heading => heading.remove());
+        if (!body.hasChildNodes()) body.parentElement?.remove();
     }
 
     onOpen() { void (async () => {
@@ -245,117 +264,6 @@ export class LocationModal extends ResponsiveModal {
                 .inputEl.addClass('storyteller-modal-input-large')
             );
 
-        if (this.shows('description')) {
-            new Setting(contentEl)
-                .setName(t('description'))
-                .setClass('storyteller-modal-setting-vertical')
-                .addTextArea(text => {
-                    text
-                        .setPlaceholder(t('locationDescriptionPh'))
-                        .setValue(this.location.description || '')
-                        .onChange(value => {
-                            this.location.description = value || undefined;
-                        });
-                    text.inputEl.rows = 4;
-                    text.inputEl.addClass('storyteller-modal-textarea');
-                });
-        }
-
-        if (this.shows('history')) {
-            new Setting(contentEl)
-                .setName(t('history'))
-                .setClass('storyteller-modal-setting-vertical')
-                .addTextArea(text => {
-                    text
-                        .setPlaceholder(t('locationHistoryPh'))
-                        .setValue(this.location.history || '')
-                        .onChange(value => {
-                            this.location.history = value || undefined;
-                        });
-                    text.inputEl.rows = 4;
-                    text.inputEl.addClass('storyteller-modal-textarea');
-                });
-        }
-
-        if (this.shows('locationType')) {
-            new Setting(contentEl)
-                .setName(t('type'))
-                .setDesc(t('locationTypeDesc'))
-                .addText(text => text
-                    .setValue(this.location.locationType || '')
-                    .onChange(value => { this.location.locationType = value || undefined; }));
-        }
-
-        // --- Hierarchical Location Type ---
-        if (this.shows('type')) {
-            new Setting(contentEl)
-                .setName('Hierarchy type')
-                .setDesc('Type in the location hierarchy (world, continent, city, building, etc.)')
-                .addDropdown(dropdown => {
-                    dropdown
-                        .addOption('', 'None')
-                        .addOption('world', 'World')
-                        .addOption('continent', 'Continent')
-                        .addOption('region', 'Region')
-                        .addOption('city', 'City')
-                        .addOption('district', 'District')
-                        .addOption('building', 'Building')
-                        .addOption('room', 'Room')
-                        .addOption('custom', 'Custom')
-                        .setValue(this.location.type || '')
-                        .onChange(value => {
-                            this.location.type = (value || undefined) as Location['type'];
-                        });
-                });
-        }
-
-        if (this.shows('region')) {
-            new Setting(contentEl)
-                .setName(t('region'))
-                .setDesc(t('locationRegionDesc'))
-                .addText(text => text
-                    .setValue(this.location.region || '')
-                    .onChange(value => { this.location.region = value || undefined; }));
-        }
-
-        if (this.shows('status')) {
-            new Setting(contentEl)
-                .setName(t('status'))
-                .setDesc(t('locationStatusDesc'))
-                .addText(text => text
-                    .setValue(this.location.status || '')
-                    .onChange(value => { this.location.status = value || undefined; }));
-        }
-
-        // --- Parent Location (Hierarchical) ---
-        const locationService = new LocationService(this.plugin);
-        if (this.shows('parentLocationId')) {
-            contentEl.createEl('h3', { text: 'Parent location' });
-            const parentLocationContainer = contentEl.createDiv('storyteller-location-picker-container');
-            new LocationPicker(
-                this.plugin,
-                parentLocationContainer,
-                this.location.parentLocationId,
-                (locationId: string) => { void (async () => {
-                    if (locationId) {
-                        // Check for circular reference
-                        if (await this.wouldCreateCircularReferenceById(locationId)) {
-                            new Notice('Cannot set parent to a descendant location (would create circular reference)');
-                            return;
-                        }
-                    }
-                    this.location.parentLocationId = locationId || undefined;
-                    // Also update legacy parentLocation for backward compatibility
-                    if (locationId) {
-                        const parent = await locationService.getLocation(locationId);
-                        this.location.parentLocationId = parent?.name;
-                    } else {
-                        this.location.parentLocationId = undefined;
-                    }
-                })(); }
-            );
-        }
-
         // --- Profile Image ---
         if (this.shows('profileImage')) {
             const profileImageSetting = new Setting(contentEl)
@@ -384,9 +292,231 @@ export class LocationModal extends ResponsiveModal {
             );
         }
 
+        if (this.shows('description')) {
+            new Setting(contentEl)
+                .setName(t('description'))
+                .setClass('storyteller-modal-setting-vertical')
+                .addTextArea(text => {
+                    text
+                        .setPlaceholder(t('locationDescriptionPh'))
+                        .setValue(this.location.description || '')
+                        .onChange(value => {
+                            this.location.description = value || undefined;
+                        });
+                    text.inputEl.rows = 4;
+                    text.inputEl.addClass('storyteller-modal-textarea');
+                });
+        }
+
+        // --- Hierarchical Location Type ---
+        if (this.shows('type')) {
+            new Setting(contentEl)
+                .setName('Hierarchy type')
+                .setDesc('Type in the location hierarchy (world, continent, city, building, etc.)')
+                .addDropdown(dropdown => {
+                    dropdown
+                        .addOption('', 'None')
+                        .addOption('world', 'World')
+                        .addOption('continent', 'Continent')
+                        .addOption('region', 'Region')
+                        .addOption('city', 'City')
+                        .addOption('district', 'District')
+                        .addOption('building', 'Building')
+                        .addOption('room', 'Room')
+                        .addOption('custom', 'Custom')
+                        .setValue(this.location.type || '')
+                        .onChange(value => {
+                            this.location.type = (value || undefined) as Location['type'];
+                        });
+                });
+        }
+
+        // Typed fields come straight after the core fields.
+        this.customFieldsEditor.setFields(this.location.customFields);
+        this.renderDefinedFieldsSection(contentEl);
+
+        const placeVisible = this.shows('locationType') || this.shows('region') || this.shows('status');
+        const placeBody = placeVisible
+            ? createCollapsibleModalSection(contentEl, {
+                title: 'Place details',
+                description: 'What kind of place this is, its region, and its current state',
+                icon: 'map-pin',
+                open: Boolean(this.location.locationType || this.location.region || this.location.status),
+            })
+            : null;
+
+        if (placeBody && this.shows('locationType')) {
+            new Setting(placeBody)
+                .setName(t('type'))
+                .setDesc(t('locationTypeDesc'))
+                .addText(text => text
+                    .setValue(this.location.locationType || '')
+                    .onChange(value => { this.location.locationType = value || undefined; }));
+        }
+
+        if (placeBody && this.shows('region')) {
+            new Setting(placeBody)
+                .setName(t('region'))
+                .setDesc(t('locationRegionDesc'))
+                .addText(text => text
+                    .setValue(this.location.region || '')
+                    .onChange(value => { this.location.region = value || undefined; }));
+        }
+
+        if (placeBody && this.shows('status')) {
+            new Setting(placeBody)
+                .setName(t('status'))
+                .setDesc(t('locationStatusDesc'))
+                .addText(text => text
+                    .setValue(this.location.status || '')
+                    .onChange(value => { this.location.status = value || undefined; }));
+        }
+
+        if (this.shows('history')) {
+            const historyBody = createCollapsibleModalSection(contentEl, {
+                title: 'History',
+                description: 'Origin and events that shaped this place',
+                icon: 'book-open',
+                open: Boolean(this.location.history),
+            });
+            new Setting(historyBody)
+                .setName(t('history'))
+                .setClass('storyteller-modal-setting-vertical')
+                .addTextArea(text => {
+                    text
+                        .setPlaceholder(t('locationHistoryPh'))
+                        .setValue(this.location.history || '')
+                        .onChange(value => {
+                            this.location.history = value || undefined;
+                        });
+                    text.inputEl.rows = 4;
+                    text.inputEl.addClass('storyteller-modal-textarea');
+                });
+        }
+
+        const hierVisible = this.shows('parentLocationId') || this.shows('childLocationIds') || this.shows('mapBindings');
+        const hierBody = hierVisible
+            ? createCollapsibleModalSection(contentEl, {
+                title: 'Hierarchy and maps',
+                description: 'Parent and child places, and where this place appears on maps',
+                icon: 'network',
+                open: Boolean(this.location.parentLocationId || this.location.childLocationIds?.length || this.location.mapBindings?.length),
+            })
+            : null;
+
+        // --- Parent Location (Hierarchical) ---
+        const locationService = new LocationService(this.plugin);
+        if (hierBody && this.shows('parentLocationId')) {
+            hierBody.createEl('h4', { text: 'Parent location' });
+            const parentLocationContainer = hierBody.createDiv('storyteller-location-picker-container');
+            new LocationPicker(
+                this.plugin,
+                parentLocationContainer,
+                this.location.parentLocationId,
+                (locationId: string) => { void (async () => {
+                    if (locationId) {
+                        // Check for circular reference
+                        if (await this.wouldCreateCircularReferenceById(locationId)) {
+                            new Notice('Cannot set parent to a descendant location (would create circular reference)');
+                            return;
+                        }
+                    }
+                    this.location.parentLocationId = locationId || undefined;
+                    // Also update legacy parentLocation for backward compatibility
+                    if (locationId) {
+                        const parent = await locationService.getLocation(locationId);
+                        this.location.parentLocationId = parent?.name;
+                    } else {
+                        this.location.parentLocationId = undefined;
+                    }
+                })(); }
+            );
+        }
+
+        if (hierBody && this.shows('childLocationIds')) {
+            // --- Child Locations ---
+            hierBody.createEl('h4', { text: 'Child locations' });
+            const childLocationsContainer = hierBody.createDiv('storyteller-child-locations');
+        
+            if (this.location.childLocationIds && this.location.childLocationIds.length > 0) {
+                const childrenList = childLocationsContainer.createEl('ul', { cls: 'storyteller-children-list' });
+                // Load all child locations in parallel
+                const childPromises = this.location.childLocationIds.map(childId => 
+                    locationService.getLocation(childId)
+                );
+                const children = await Promise.all(childPromises);
+            
+                for (const child of children) {
+                    if (child) {
+                        const li = childrenList.createEl('li');
+                        li.createSpan({ cls: 'child-name', text: child.name });
+                        li.addEventListener('click', () => {
+                            // Open child location modal
+                            new LocationModal(
+                                this.app,
+                                this.plugin,
+                                child,
+                                async (updated) => await this.plugin.saveLocation(updated)
+                            ).open();
+                        });
+                    }
+                }
+            } else {
+                childLocationsContainer.createDiv({ text: 'No child locations', cls: 'no-children' });
+            }
+        }
+
+        // --- Map Bindings ---
+        if (hierBody && this.shows('mapBindings')) {
+            hierBody.createEl('h4', { text: 'Map bindings' });
+            const mapBindingsContainer = hierBody.createDiv('storyteller-map-bindings');
+        
+            if (this.location.mapBindings && this.location.mapBindings.length > 0) {
+                const bindingsList = mapBindingsContainer.createEl('ul', { cls: 'storyteller-map-bindings-list' });
+                for (const binding of this.location.mapBindings) {
+                    const li = bindingsList.createEl('li');
+                    const mapName = getMapName(binding.mapId);
+                    li.createSpan({ cls: 'map-id', text: mapName });
+                    li.createSpan({ cls: 'map-coords', text: `[${binding.coordinates[0]}, ${binding.coordinates[1]}]` });
+                    const removeButton = li.createEl('button', { cls: 'remove-binding-btn', text: 'Remove' });
+                    removeButton.addEventListener('click', () => { void (async () => {
+                        await locationService.removeMapBinding(this.location.id || this.location.name, binding.mapId);
+                        this.location.mapBindings = this.location.mapBindings?.filter(b => b.mapId !== binding.mapId);
+                        this.refresh();
+                    })(); });
+                }
+            } else {
+                mapBindingsContainer.createDiv({ text: 'No map bindings', cls: 'no-bindings' });
+            }
+        
+            for (const map of maps.filter(m => m.placementGrid?.areas.some(a => a.locationId === this.location.id) && !this.location.mapBindings?.some(b => b.mapId === (m.id || m.name)))) {
+                const row = mapBindingsContainer.createDiv();
+                row.createSpan({ text: `${map.name} (grid area)` });
+                const remove = row.createEl('button', { text: 'Remove from map' });
+                remove.onclick = () => { void (async () => {
+                    try { await locationService.removeMapBinding(this.location.id || this.location.name, map.id || map.name); this.refresh(); }
+                    catch (error) { new Notice(`Removal failed: ${String(error)}`); }
+                })(); };
+            }
+            new Setting(hierBody)
+                .addButton(button => button
+                    .setButtonText('Add map binding')
+                    .setIcon('plus')
+                    .onClick(() => {
+                        new Notice('Add map binding functionality - select map and coordinates');
+                        // TODO: Implement map binding modal
+                    }));
+        }
+
         // --- Associated Images ---
         if (this.shows('images')) {
-            const imagesSetting = new Setting(contentEl)
+            const imagesBody = createCollapsibleModalSection(contentEl, {
+                title: 'Associated images',
+                description: 'Gallery pictures of this place',
+                icon: 'images',
+                open: Boolean(this.location.images?.length),
+            });
+            const imagesSetting = new Setting(imagesBody)
                 .setName(t('associatedImages'))
                 .setDesc(t('imageGallery'));
             // Store the list container element
@@ -450,52 +580,15 @@ export class LocationModal extends ResponsiveModal {
                 }));
         }
 
-        // --- Map Bindings ---
-        if (this.shows('mapBindings')) {
-            contentEl.createEl('h3', { text: 'Map bindings' });
-            const mapBindingsContainer = contentEl.createDiv('storyteller-map-bindings');
-        
-            if (this.location.mapBindings && this.location.mapBindings.length > 0) {
-                const bindingsList = mapBindingsContainer.createEl('ul', { cls: 'storyteller-map-bindings-list' });
-                for (const binding of this.location.mapBindings) {
-                    const li = bindingsList.createEl('li');
-                    const mapName = getMapName(binding.mapId);
-                    li.createSpan({ cls: 'map-id', text: mapName });
-                    li.createSpan({ cls: 'map-coords', text: `[${binding.coordinates[0]}, ${binding.coordinates[1]}]` });
-                    const removeButton = li.createEl('button', { cls: 'remove-binding-btn', text: 'Remove' });
-                    removeButton.addEventListener('click', () => { void (async () => {
-                        await locationService.removeMapBinding(this.location.id || this.location.name, binding.mapId);
-                        this.location.mapBindings = this.location.mapBindings?.filter(b => b.mapId !== binding.mapId);
-                        this.refresh();
-                    })(); });
-                }
-            } else {
-                mapBindingsContainer.createDiv({ text: 'No map bindings', cls: 'no-bindings' });
-            }
-        
-            for (const map of maps.filter(m => m.placementGrid?.areas.some(a => a.locationId === this.location.id) && !this.location.mapBindings?.some(b => b.mapId === (m.id || m.name)))) {
-                const row = mapBindingsContainer.createDiv();
-                row.createSpan({ text: `${map.name} (grid area)` });
-                const remove = row.createEl('button', { text: 'Remove from map' });
-                remove.onclick = () => { void (async () => {
-                    try { await locationService.removeMapBinding(this.location.id || this.location.name, map.id || map.name); this.refresh(); }
-                    catch (error) { new Notice(`Removal failed: ${String(error)}`); }
-                })(); };
-            }
-            new Setting(contentEl)
-                .addButton(button => button
-                    .setButtonText('Add map binding')
-                    .setIcon('plus')
-                    .onClick(() => {
-                        new Notice('Add map binding functionality - select map and coordinates');
-                        // TODO: Implement map binding modal
-                    }));
-        }
-
         if (this.shows('entityRefs')) {
             // --- Entities at Location ---
-            contentEl.createEl('h3', { text: 'Entities here' });
-            const entitiesContainer = contentEl.createDiv('storyteller-location-entities');
+            const whoBody = createCollapsibleModalSection(contentEl, {
+                title: 'Who is here',
+                description: 'Characters, events, and items placed at this location',
+                icon: 'users',
+                open: Boolean(this.location.entityRefs?.length),
+            });
+            const entitiesContainer = whoBody.createDiv('storyteller-location-entities');
         
             if (this.location.entityRefs && this.location.entityRefs.length > 0) {
                 const entitiesList = entitiesContainer.createEl('ul', { cls: 'storyteller-entities-list' });
@@ -543,7 +636,7 @@ export class LocationModal extends ResponsiveModal {
                 entitiesContainer.createDiv({ text: 'No entities at this location', cls: 'no-entities' });
             }
         
-            new Setting(contentEl)
+            new Setting(whoBody)
                 .addButton(button => button
                     .setButtonText('Add character')
                     .setIcon('user')
@@ -621,44 +714,24 @@ export class LocationModal extends ResponsiveModal {
                     }));
         }
 
-        if (this.shows('childLocationIds')) {
-            // --- Child Locations ---
-            contentEl.createEl('h3', { text: 'Child locations' });
-            const childLocationsContainer = contentEl.createDiv('storyteller-child-locations');
-        
-            if (this.location.childLocationIds && this.location.childLocationIds.length > 0) {
-                const childrenList = childLocationsContainer.createEl('ul', { cls: 'storyteller-children-list' });
-                // Load all child locations in parallel
-                const childPromises = this.location.childLocationIds.map(childId => 
-                    locationService.getLocation(childId)
-                );
-                const children = await Promise.all(childPromises);
-            
-                for (const child of children) {
-                    if (child) {
-                        const li = childrenList.createEl('li');
-                        li.createSpan({ cls: 'child-name', text: child.name });
-                        li.addEventListener('click', () => {
-                            // Open child location modal
-                            new LocationModal(
-                                this.app,
-                                this.plugin,
-                                child,
-                                async (updated) => await this.plugin.saveLocation(updated)
-                            ).open();
-                        });
-                    }
-                }
-            } else {
-                childLocationsContainer.createDiv({ text: 'No child locations', cls: 'no-children' });
-            }
-        }
+        const worldVisible = this.shows('cultures') || this.shows('balance') || this.shows('linkedEconomies') || this.shows('groups');
+        const worldBody = worldVisible
+            ? createCollapsibleModalSection(contentEl, {
+                title: 'World-building',
+                description: 'Cultures, finances, economies, and groups this place belongs to',
+                icon: 'globe',
+                open: Boolean(
+                    this.location.cultures?.length || this.location.balance || this.location.ledger?.length
+                    || this.location.linkedEconomies?.length || this.location.groups?.length
+                ),
+            })
+            : null;
 
-        if (this.shows('cultures')) {
+        if (worldBody && this.shows('cultures')) {
             // --- Cultures ---
-            contentEl.createEl('h3', { text: 'Cultures' });
+            worldBody.createEl('h4', { text: 'Cultures' });
             if (!Array.isArray(this.location.cultures)) this.location.cultures = [];
-            const locCultureChips = contentEl.createDiv('storyteller-linked-chips');
+            const locCultureChips = worldBody.createDiv('storyteller-linked-chips');
             const renderLocCultureChips = () => {
                 locCultureChips.empty();
                 for (const name of this.location.cultures!) {
@@ -674,7 +747,7 @@ export class LocationModal extends ResponsiveModal {
             };
             renderLocCultureChips();
             const allCulturesForLoc = await this.plugin.listCultures();
-            new Setting(contentEl)
+            new Setting(worldBody)
                 .setName('Add culture')
                 .addDropdown(dd => {
                     dd.addOption('', '— select culture —');
@@ -689,10 +762,10 @@ export class LocationModal extends ResponsiveModal {
                 });
         }
 
-        if (this.shows('balance')) {
+        if (worldBody && this.shows('balance')) {
             // --- Finances ---
-            contentEl.createEl('h3', { text: 'Finances' });
-            new Setting(contentEl)
+            worldBody.createEl('h4', { text: 'Finances' });
+            new Setting(worldBody)
                 .setName('Treasury / balance')
                 .setDesc('Economic wealth of this location (e.g. "5000gp 200sp"). Auto-computed from ledger blocks if present.')
                 .addText(text => text
@@ -700,18 +773,18 @@ export class LocationModal extends ResponsiveModal {
                     .onChange(val => { this.location.balance = val.trim() || undefined; })
                 );
             if (this.location.ledger && this.location.ledger.length > 0) {
-                contentEl.createDiv('storyteller-ledger-preview').createEl('p', {
+                worldBody.createDiv('storyteller-ledger-preview').createEl('p', {
                     cls: 'storyteller-ledger-note',
                     text: `${this.location.ledger.length} transaction(s) in note`
                 });
             }
         }
 
-        if (this.shows('linkedEconomies')) {
+        if (worldBody && this.shows('linkedEconomies')) {
             // --- Linked Economies ---
-            contentEl.createEl('h3', { text: 'Economies' });
+            worldBody.createEl('h4', { text: 'Economies' });
             if (!Array.isArray(this.location.linkedEconomies)) this.location.linkedEconomies = [];
-            const locEconChips = contentEl.createDiv('storyteller-linked-chips');
+            const locEconChips = worldBody.createDiv('storyteller-linked-chips');
             const renderLocEconChips = () => {
                 locEconChips.empty();
                 for (const name of (this.location.linkedEconomies ?? [])) {
@@ -727,7 +800,7 @@ export class LocationModal extends ResponsiveModal {
             };
             renderLocEconChips();
             const allEconomiesForLoc = await this.plugin.listEconomies();
-            new Setting(contentEl)
+            new Setting(worldBody)
                 .setName('Add economy')
                 .addDropdown(dd => {
                     dd.addOption('', '— select economy —');
@@ -741,6 +814,12 @@ export class LocationModal extends ResponsiveModal {
                         dd.setValue('');
                     });
                 });
+        }
+
+        // --- Groups ---
+        if (worldBody && this.shows('groups')) {
+            const groupSelectorContainer = worldBody.createDiv('storyteller-group-selector-container');
+            this.groupSelector.attach(groupSelectorContainer);
         }
 
         // --- Maps Section (Legacy) ---
@@ -786,16 +865,15 @@ export class LocationModal extends ResponsiveModal {
         //         }));
 
         // --- Custom Fields ---
-        this.customFieldsEditor.setFields(this.location.customFields);
-        this.customFieldsEditor.renderDefinedFields(contentEl);
         if (this.shows('customFields')) {
-            this.customFieldsEditor.renderFreeFormSection(contentEl);
-        }
-
-        // --- Groups ---
-        if (this.shows('groups')) {
-            const groupSelectorContainer = contentEl.createDiv('storyteller-group-selector-container');
-            this.groupSelector.attach(groupSelectorContainer);
+            const customFieldsBody = createCollapsibleModalSection(contentEl, {
+                title: 'Custom fields',
+                description: 'Additional properties specific to this project',
+                icon: 'list-plus',
+                open: Boolean(Object.keys(this.location.customFields || {}).length),
+            });
+            this.customFieldsEditor.renderFreeFormSection(customFieldsBody);
+            customFieldsBody.querySelectorAll(':scope > h3').forEach(heading => heading.remove());
         }
 
         if (!this.isNew && this.onDelete) {
