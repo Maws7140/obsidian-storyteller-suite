@@ -1,4 +1,4 @@
-import { App, Modal } from 'obsidian';
+import { App, Modal, Notice } from 'obsidian';
 import { TimelineEra } from '../types';
 import StorytellerSuitePlugin from '../main';
 import { EraModal } from './EraModal';
@@ -13,7 +13,7 @@ export class EraListModal extends ResponsiveModal {
     constructor(app: App, plugin: StorytellerSuitePlugin) {
         super(app);
         this.plugin = plugin;
-        this.eras = plugin.settings.timelineEras || [];
+        this.eras = plugin.getTimelineEras();
         this.modalEl.addClass('storyteller-era-list-modal');
     }
 
@@ -39,6 +39,12 @@ export class EraListModal extends ResponsiveModal {
             });
         });
 
+        headerContainer.createEl('button', {
+            text: 'Detect from event gaps'
+        }, btn => {
+            btn.addEventListener('click', () => { void this.detectErasFromEventGaps(); });
+        });
+
         // Era count
         headerContainer.createEl('span', {
             text: `${this.eras.length} era${this.eras.length !== 1 ? 's' : ''}`,
@@ -61,7 +67,7 @@ export class EraListModal extends ResponsiveModal {
 
         if (this.eras.length === 0) {
             this.listContainer.createEl('p', {
-                text: 'No eras created yet. Click "create new era" to get started.',
+                text: 'No eras created yet. Create one manually, or let Storyteller suggest editable eras from large gaps between events.',
                 cls: 'storyteller-empty-state'
             });
             return;
@@ -86,6 +92,13 @@ export class EraListModal extends ResponsiveModal {
             // Header row
             const headerRow = eraContent.createDiv('storyteller-era-header');
             headerRow.createEl('h3', { text: era.name });
+
+            if (era.abbreviation) {
+                headerRow.createEl('span', {
+                    text: era.abbreviation,
+                    cls: 'storyteller-era-type-badge'
+                });
+            }
 
             if (era.visible === false) {
                 headerRow.createEl('span', {
@@ -175,12 +188,30 @@ export class EraListModal extends ResponsiveModal {
                     const confirm = await this.confirmDelete(era.name);
                     if (confirm) {
                         await this.plugin.deleteTimelineEra(era.id);
-                        this.eras = this.plugin.settings.timelineEras || [];
+                        this.eras = this.plugin.getTimelineEras();
                         this.renderEraList();
                     }
                 })(); });
             });
         }
+    }
+
+    private async detectErasFromEventGaps(): Promise<void> {
+        if (this.eras.length) {
+            new Notice('Automatic era detection will not overwrite existing eras. Delete them first to rebuild eras from event gaps.');
+            return;
+        }
+
+        const suggestions = EraManager.inferErasFromEventGaps(await this.plugin.listEvents());
+        if (!suggestions.length) {
+            new Notice('No clear era boundaries found. Add at least four dated events with a noticeably larger gap between groups.');
+            return;
+        }
+
+        for (const era of suggestions) await this.plugin.createTimelineEra(era);
+        this.eras = this.plugin.getTimelineEras();
+        this.renderEraList();
+        new Notice(`Suggested ${suggestions.length} editable eras from event gaps.`);
     }
 
     private openEraModal(era: TimelineEra | null) {
@@ -197,12 +228,12 @@ export class EraListModal extends ResponsiveModal {
                     await this.plugin.createTimelineEra(updatedEra);
                 }
                 // Refresh the list
-                this.eras = this.plugin.settings.timelineEras || [];
+                this.eras = this.plugin.getTimelineEras();
                 this.renderEraList();
             },
             async (eraToDelete) => {
                 await this.plugin.deleteTimelineEra(eraToDelete.id);
-                this.eras = this.plugin.settings.timelineEras || [];
+                this.eras = this.plugin.getTimelineEras();
                 this.renderEraList();
             }
         );

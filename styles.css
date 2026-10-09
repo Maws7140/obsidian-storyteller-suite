@@ -2252,16 +2252,14 @@ If your plugin does not need CSS, delete this file.
     
     .horizontal-button-bar .mobile-button {
         max-width: 200px;
-    }
-}
+    }}
 
 @media (min-width: 1025px) {
     /* Desktop styles - keep existing behavior */
 
     .entity-grid {
         grid-template-columns: repeat(3, 1fr);
-    }
-}
+    }}
 
 /* =================================================================
    DASHBOARD MODAL RESPONSIVE FIXES (Mobile/Tablet)
@@ -2479,8 +2477,7 @@ If your plugin does not need CSS, delete this file.
     .storyteller-responsive-modal button {
         min-height: 36px;
         min-width: 36px;
-    }
-}
+    }}
 
 /* Support for hover-capable styluses (S Pen Air Actions) */
 @media (hover: hover) and (pointer: fine) {
@@ -2796,6 +2793,69 @@ If your plugin does not need CSS, delete this file.
     width: 100%;
 }
 
+/* Shared collapsible sections for configurable entity modals. */
+.storyteller-modal-section {
+    margin: var(--size-4-3) 0;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: var(--radius-m);
+    background: var(--background-secondary-alt);
+    overflow: clip;
+}
+
+.storyteller-modal-section-summary {
+    display: flex;
+    align-items: center;
+    gap: var(--size-4-2);
+    padding: var(--size-4-3) var(--size-4-4);
+    cursor: pointer;
+    user-select: none;
+    list-style: none;
+}
+
+.storyteller-modal-section-summary::-webkit-details-marker { display: none; }
+
+.storyteller-modal-section-summary::after {
+    content: '›';
+    margin-left: auto;
+    color: var(--text-muted);
+    font-size: 1.3em;
+    transform: rotate(90deg);
+    transition: transform 120ms ease;
+}
+
+.storyteller-modal-section[open] > .storyteller-modal-section-summary::after {
+    transform: rotate(-90deg);
+}
+
+.storyteller-modal-section-icon {
+    display: inline-flex;
+    color: var(--text-accent);
+}
+
+.storyteller-modal-section-copy {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+}
+
+.storyteller-modal-section-title { font-weight: var(--font-semibold); }
+.storyteller-modal-section-description {
+    color: var(--text-muted);
+    font-size: var(--font-ui-smaller);
+}
+
+.storyteller-modal-section-body {
+    padding: 0 var(--size-4-4) var(--size-4-2);
+    border-top: 1px solid var(--background-modifier-border);
+}
+
+.storyteller-setting-invalid input {
+    border-color: var(--text-error) !important;
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--text-error) 35%, transparent);
+}
+
+.storyteller-setting-invalid .setting-item-description { color: var(--text-error); }
+
 /* Custom Fields Styling (Apply to all relevant modals) */
 .storyteller-custom-fields-container .setting-item {
     padding: var(--size-4-1) 0;
@@ -3010,17 +3070,6 @@ If your plugin does not need CSS, delete this file.
     /* Styles for the text placeholder */
 }
 
-/* Row highlighting */
-.storyteller-timeline-modal .vis-group:hover,
-.storyteller-timeline-view .vis-group:hover {
-    background: rgba(var(--interactive-accent-rgb), 0.05);
-}
-
-.storyteller-timeline-modal .vis-label:hover,
-.storyteller-timeline-view .vis-label:hover {
-    background: var(--background-modifier-hover);
-}
-
 /* Conflict Badge in Toolbar */
 .storyteller-toolbar-btn.storyteller-conflict-badge {
     position: relative;
@@ -3048,18 +3097,6 @@ If your plugin does not need CSS, delete this file.
 .storyteller-badge-icon svg {
     width: 14px;
     height: 14px;
-}
-
-/* Modernize the horizontal axis */
-.vis-time-axis .vis-grid.vis-vertical {
-    border-left: 1px solid var(--background-modifier-border-focus);
-    opacity: 0.3;
-}
-
-.vis-time-axis .vis-text {
-    font-family: var(--font-interface-monospace);
-    font-size: 11px;
-    font-weight: 500;
 }
 
 /* Timeline Custom Scrollbar */
@@ -3121,7 +3158,7 @@ If your plugin does not need CSS, delete this file.
     font-size: var(--font-ui-smaller);
 }
 .storyteller-timeline-container {
-  /* Keep timeline geometry clipped to its frame; tooltip is handled by .vis-tooltip */
+  /* Keep timeline geometry clipped to its frame */
   overflow: hidden;
   position: relative;
   /* Fill available space in timeline view */
@@ -3144,40 +3181,6 @@ If your plugin does not need CSS, delete this file.
 
 .storyteller-timeline-modal .storyteller-timeline-details {
   flex: 0 0 auto;
-}
-
-/* Vis-timeline tooltip fixes - prevent cut-off */
-.vis-tooltip {
-  position: absolute;
-  z-index: 10000;
-  background: var(--background-primary);
-  border: 1px solid var(--background-modifier-border);
-  border-radius: 6px;
-  padding: 8px 12px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  max-width: 350px;
-  word-wrap: break-word;
-  white-space: normal;
-  color: var(--text-normal);
-  font-size: 13px;
-  line-height: 1.5;
-  pointer-events: none;
-}
-
-/* Keep timeline internals bounded; tooltip remains absolute/z-indexed */
-.vis-timeline {
-  overflow: hidden;
-}
-
-/* Make vis-timeline fill the container height in timeline view */
-.storyteller-timeline-view .vis-timeline {
-  height: 100%;
-}
-
-.storyteller-timeline-view .storyteller-timeline-container .vis-timeline {
-  height: 100%;
 }
 
 .storyteller-timeline-filter-toggle {
@@ -3791,8 +3794,7 @@ body.mod-rtl .storyteller-group-members {
   gap: 0.25rem 2rem;
 }
 @media (max-width: 560px) {
-  .storyteller-group-section { grid-template-columns: 1fr; }
-}
+  .storyteller-group-section { grid-template-columns: 1fr; }}
 
 /* Group avatar */
 .storyteller-group-pfp {
@@ -3976,8 +3978,7 @@ body.mod-rtl .storyteller-group-members {
     width: auto;
     flex: 1 1 auto;
     min-width: 0;
-  }
-}
+  }}
 
 /* Simplified mobile dashboard shell */
 .mobile-dashboard.storyteller-dashboard-simplified .storyteller-dashboard-header {
@@ -4230,8 +4231,7 @@ body.mod-rtl .storyteller-group-members {
 
   .mobile-dashboard.storyteller-dashboard-simplified .storyteller-tab-overflow-label {
     display: none;
-  }
-}
+  }}
 
 /* Tutorial section styles */
 .storyteller-tutorial-section {
@@ -4768,9 +4768,64 @@ body.mod-rtl .storyteller-group-members {
   resize: vertical;
   min-height: 80px;
   margin: 8px 0;
+  width: 100%;
+  font-family: var(--font-monospace);
 }
 .template-bulk-success { color: var(--color-green); margin: 4px 0; font-size: 0.9em; }
 .template-bulk-warning { color: var(--color-orange); margin: 4px 0; font-size: 0.9em; }
+
+.template-bulk-mode-row .setting-item {
+  border-top: none;
+  padding-top: 4px;
+}
+.template-bulk-preview:empty { display: none; }
+.template-bulk-preview h4 {
+  margin: 12px 0 6px;
+  font-size: 0.9em;
+  color: var(--text-muted);
+}
+.template-bulk-preview-table {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  overflow: hidden;
+  max-height: 240px;
+  overflow-y: auto;
+}
+.template-bulk-preview-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  align-items: baseline;
+  padding: 5px 8px;
+  font-size: 0.85em;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+.template-bulk-preview-row:last-child { border-bottom: none; }
+.template-bulk-preview-row.is-error { background: var(--background-modifier-error); }
+.template-bulk-preview-row.is-skipped { opacity: 0.55; }
+.template-bulk-preview-name {
+  font-family: var(--font-monospace);
+  color: var(--text-normal);
+  flex: 0 0 auto;
+}
+.template-bulk-preview-detail {
+  color: var(--text-muted);
+  flex: 1 1 auto;
+  min-width: 0;
+  word-break: break-word;
+}
+.template-bulk-preview-note {
+  color: var(--text-accent);
+  flex: 0 0 auto;
+  font-style: italic;
+}
+.template-bulk-preview-row.is-error .template-bulk-preview-note { color: var(--text-error); }
+.template-bulk-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
 
 /* Variables List */
 .template-variables-list {
@@ -7962,6 +8017,12 @@ body.mod-rtl .storyteller-group-members {
     margin: 0;
 }
 
+.storyteller-compile-custom-disabled-hint {
+    font-size: 0.825rem;
+    color: var(--color-yellow, var(--text-muted));
+    margin: 0 0 0.5em;
+}
+
 .storyteller-compile-custom-list {
     display: flex;
     flex-direction: column;
@@ -8635,8 +8696,7 @@ body.mod-rtl .storyteller-group-members {
 @media (max-width: 500px) {
     .storyteller-economy-detail-two-col {
         grid-template-columns: 1fr;
-    }
-}
+    }}
 
 /* Currencies */
 
@@ -8810,7 +8870,6 @@ body.mod-rtl .storyteller-group-members {
     border-radius: 4px;
     padding: 0.1rem 0.4rem;
 }
-
 
 
 /* ─── Compendium entry-type badges ─────────────────────────────────────────── */
@@ -9922,6 +9981,31 @@ body.mod-rtl .storyteller-group-members {
 
 /* ── Campaign play — sidebar ─────────────────────────────────────────────── */
 .storyteller-campaign-sidebar-hdr { display: flex; align-items: center; gap: 0.4rem; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); margin-bottom: 0.55rem; }
+.storyteller-campaign-progress-actions { display: flex; gap: 0.2rem; margin-left: auto; }
+.storyteller-campaign-progress-actions button,
+.storyteller-campaign-progress-remove,
+.storyteller-campaign-thread-toggle,
+.storyteller-campaign-clock-segments button {
+    border: 0;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+}
+.storyteller-campaign-progress-actions button,
+.storyteller-campaign-progress-remove { display: inline-flex; padding: 3px; border-radius: 4px; }
+.storyteller-campaign-progress-actions button:hover,
+.storyteller-campaign-progress-remove:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
+.storyteller-campaign-clock-row,
+.storyteller-campaign-thread-row { display: flex; align-items: center; gap: 0.4rem; padding: 0.42rem 0.5rem; border: 1px solid var(--background-modifier-border); border-radius: 8px; }
+.storyteller-campaign-clock-info { display: flex; align-items: baseline; gap: 0.35rem; min-width: 0; }
+.storyteller-campaign-clock-name { max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.78rem; font-weight: 600; }
+.storyteller-campaign-clock-value { color: var(--text-muted); font-size: 0.7rem; font-variant-numeric: tabular-nums; }
+.storyteller-campaign-clock-segments { display: flex; flex: 1; gap: 3px; }
+.storyteller-campaign-clock-segments button { flex: 1; min-width: 8px; height: 12px; padding: 0; border: 1px solid var(--background-modifier-border); border-radius: 3px; }
+.storyteller-campaign-clock-segments button.is-filled { border-color: var(--interactive-accent); background: var(--interactive-accent); }
+.storyteller-campaign-thread-toggle { display: flex; align-items: center; gap: 0.4rem; flex: 1; min-width: 0; padding: 0; text-align: left; color: var(--text-normal); font-size: 0.78rem; }
+.storyteller-campaign-thread-row.is-resolved .storyteller-campaign-thread-toggle { color: var(--color-green); text-decoration: line-through; }
+.storyteller-campaign-thread-row.is-abandoned .storyteller-campaign-thread-toggle { color: var(--text-faint); text-decoration: line-through; }
 .storyteller-campaign-sidebar-body { display: flex; flex-direction: column; gap: 0.4rem; }
 .storyteller-campaign-sidebar-sub-hdr { font-size: 0.7rem; text-transform: uppercase; color: var(--text-faint); margin-top: 0.5rem; margin-bottom: 0.25rem; }
 .storyteller-campaign-empty-text { color: var(--text-faint); font-style: italic; font-size: 0.8rem; }
@@ -10019,8 +10103,7 @@ body.mod-rtl .storyteller-group-members {
     }
     .storyteller-campaign-board-pin-label {
         max-width: 120px;
-    }
-}
+    }}
 .storyteller-branch-choice-target { font-size: 0.8rem; color: var(--text-muted); white-space: nowrap; }
 .storyteller-branch-choice-fail { font-size: 0.8rem; color: var(--color-red); white-space: nowrap; }
 .storyteller-branch-hidden-tag { font-size: 0.65rem; padding: 1px 5px; border-radius: 8px; background: var(--background-modifier-border); color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
@@ -10211,9 +10294,6 @@ body.mod-rtl .storyteller-group-members {
     --sts-tl-surface: var(--background-primary);
     --sts-tl-panel: var(--background-secondary);
     --sts-tl-border: var(--background-modifier-border);
-    --sts-tl-item-bg: var(--background-secondary);
-    --sts-tl-item-shadow: 0 1px 5px rgba(0, 0, 0, 0.18);
-    --sts-tl-item-shadow-focus: 0 0 0 2px rgba(var(--interactive-accent-rgb, 124, 77, 255), 0.35), 0 2px 8px rgba(0, 0, 0, 0.24);
 }
 
 .storyteller-timeline-view .storyteller-timeline-container,
@@ -10228,220 +10308,11 @@ body.mod-rtl .storyteller-group-members {
     min-height: 260px;
 }
 
-.storyteller-timeline-view .vis-timeline,
-.storyteller-timeline-modal .vis-timeline {
-    background: transparent;
-    border: none;
-    border-radius: 0;
-}
-
-.storyteller-timeline-view .vis-panel.vis-left,
-.storyteller-timeline-modal .vis-panel.vis-left,
-.storyteller-timeline-view .vis-panel.vis-top,
-.storyteller-timeline-modal .vis-panel.vis-top,
-.storyteller-timeline-view .vis-time-axis,
-.storyteller-timeline-modal .vis-time-axis {
-    background: var(--sts-tl-panel);
-}
-
-.storyteller-timeline-view .vis-labelset .vis-label,
-.storyteller-timeline-modal .vis-labelset .vis-label {
-    justify-content: flex-start;
-    padding-left: 8px;
-    padding-right: 8px;
-}
-
-.storyteller-timeline-view .vis-label .vis-inner,
-.storyteller-timeline-modal .vis-label .vis-inner {
-    width: 100%;
-}
-
 .storyteller-timeline-view .sts-group-chip,
 .storyteller-timeline-modal .sts-group-chip {
     width: 100%;
     max-width: none;
     justify-content: flex-start;
-}
-
-.storyteller-timeline-view .vis-foreground .vis-group,
-.storyteller-timeline-modal .vis-foreground .vis-group {
-    min-height: 38px;
-    border-bottom: 1px solid var(--sts-tl-border);
-}
-
-.storyteller-timeline-view .vis-item:not(.vis-line):not(.vis-dot),
-.storyteller-timeline-modal .vis-item:not(.vis-line):not(.vis-dot) {
-    border-radius: 8px;
-    border: 1px solid var(--sts-tl-border);
-    box-shadow: var(--sts-tl-item-shadow);
-    /* vis-timeline's runtime-injected stock CSS sets color:#1a1a1a on .vis-item;
-       without this override non-milestone text is near-black on dark cards. */
-    color: var(--text-normal);
-    z-index: 3;
-    transition: none;
-    animation: none;
-}
-
-/* No vertical "bobbing" on scroll/hover */
-.storyteller-timeline-view .vis-item:hover,
-.storyteller-timeline-modal .vis-item:hover,
-.storyteller-timeline-view .vis-item.vis-selected,
-.storyteller-timeline-modal .vis-item.vis-selected,
-.storyteller-timeline-view .vis-item.vis-box:hover .vis-item-content,
-.storyteller-timeline-modal .vis-item.vis-box:hover .vis-item-content,
-.storyteller-timeline-view .vis-item.vis-point:hover .vis-item-content,
-.storyteller-timeline-modal .vis-item.vis-point:hover .vis-item-content {
-    transition: none;
-    animation: none;
-}
-
-.storyteller-timeline-view .vis-item:hover,
-.storyteller-timeline-modal .vis-item:hover,
-.storyteller-timeline-view .vis-item:hover .vis-item-content,
-.storyteller-timeline-modal .vis-item:hover .vis-item-content {
-    box-shadow: var(--sts-tl-item-shadow);
-    border-color: var(--sts-tl-border);
-}
-
-.storyteller-timeline-view .vis-item.vis-selected,
-.storyteller-timeline-modal .vis-item.vis-selected {
-    box-shadow: var(--sts-tl-item-shadow-focus);
-    z-index: 6;
-}
-
-/* Keep stems independent from card styling so long stems do not get clipped/fade out. */
-.storyteller-timeline-view .vis-item.vis-line,
-.storyteller-timeline-modal .vis-item.vis-line {
-    background: transparent;
-    border: none;
-    border-left: 1px solid color-mix(in srgb, var(--text-muted) 65%, transparent);
-    border-radius: 0;
-    box-shadow: none;
-    z-index: 1;
-    pointer-events: none;
-}
-
-.storyteller-timeline-view .vis-item.vis-dot,
-.storyteller-timeline-modal .vis-item.vis-dot {
-    background: var(--background-primary);
-    border-radius: 50%;
-    border: 3px solid var(--interactive-accent);
-    box-shadow: none;
-    z-index: 4;
-    pointer-events: none;
-}
-
-.storyteller-timeline-view .vis-item[style*="--sts-group-color"].vis-line,
-.storyteller-timeline-modal .vis-item[style*="--sts-group-color"].vis-line {
-    border-left-color: var(--sts-group-color);
-}
-
-.storyteller-timeline-view .vis-item[style*="--sts-group-color"].vis-dot,
-.storyteller-timeline-modal .vis-item[style*="--sts-group-color"].vis-dot {
-    border-color: var(--sts-group-color);
-}
-
-.storyteller-timeline-view .vis-item.vis-box,
-.storyteller-timeline-modal .vis-item.vis-box,
-.storyteller-timeline-view .vis-item.vis-point,
-.storyteller-timeline-modal .vis-item.vis-point {
-    background: var(--sts-tl-item-bg);
-    border-color: var(--sts-tl-border);
-    box-shadow: var(--sts-tl-item-shadow);
-    overflow: hidden;
-}
-
-.storyteller-timeline-view .vis-item.vis-box .vis-item-content,
-.storyteller-timeline-modal .vis-item.vis-box .vis-item-content,
-.storyteller-timeline-view .vis-item.vis-point .vis-item-content,
-.storyteller-timeline-modal .vis-item.vis-point .vis-item-content {
-    background: transparent;
-    border: none;
-    border-radius: inherit;
-    box-shadow: none;
-}
-
-.storyteller-timeline-view .vis-item.vis-range,
-.storyteller-timeline-modal .vis-item.vis-range,
-.storyteller-timeline-view .vis-item.gantt-bar,
-.storyteller-timeline-modal .vis-item.gantt-bar {
-    min-height: 30px;
-    min-width: 88px;
-    border-width: 1px;
-    background-image: none;
-    /* Override vis's stock pastel-blue item background so plain ranges don't
-       render light-on-light under the themed text color. */
-    background-color: var(--sts-tl-item-bg);
-}
-
-.storyteller-timeline-view .vis-item .vis-item-content,
-.storyteller-timeline-modal .vis-item .vis-item-content {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.storyteller-timeline-view .vis-item.gantt-bar .vis-item-content,
-.storyteller-timeline-modal .vis-item.gantt-bar .vis-item-content {
-    position: relative;
-    width: 100%;
-    min-height: 100%;
-    padding-bottom: 6px;
-}
-
-.storyteller-timeline-view .vis-item.gantt-bar .timeline-item-label,
-.storyteller-timeline-modal .vis-item.gantt-bar .timeline-item-label {
-    display: inline-block;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.storyteller-timeline-view .vis-item.gantt-bar.has-progress .timeline-progress,
-.storyteller-timeline-modal .vis-item.gantt-bar.has-progress .timeline-progress {
-    position: absolute;
-    left: 0;
-    bottom: 1px;
-    height: 4px;
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--interactive-accent) 78%, white 12%);
-    box-shadow: 0 0 0 1px color-mix(in srgb, var(--interactive-accent) 28%, transparent);
-    pointer-events: none;
-}
-
-.storyteller-timeline-view .vis-item.gantt-bar.has-progress,
-.storyteller-timeline-modal .vis-item.gantt-bar.has-progress {
-    position: relative;
-}
-
-.storyteller-timeline-view .vis-item.gantt-bar.has-progress::after,
-.storyteller-timeline-modal .vis-item.gantt-bar.has-progress::after {
-    content: "";
-    position: absolute;
-    left: 0;
-    bottom: 1px;
-    height: 4px;
-    width: var(--sts-progress, 0%);
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--interactive-accent) 78%, white 12%);
-    box-shadow: 0 0 0 1px color-mix(in srgb, var(--interactive-accent) 28%, transparent);
-    pointer-events: none;
-}
-
-.storyteller-timeline-view .vis-item.gantt-bar[style*="--sts-group-color"] .vis-item-content::before,
-.storyteller-timeline-modal .vis-item.gantt-bar[style*="--sts-group-color"] .vis-item-content::before {
-    content: "";
-    display: inline-block;
-    width: 0.42rem;
-    height: 0.9rem;
-    border-radius: 2px;
-    background: var(--sts-group-color);
-    opacity: 0.58;
-    flex: 0 0 auto;
 }
 
 .storyteller-timeline-view .sts-timeline-dependency-layer,
@@ -10476,59 +10347,6 @@ body.mod-rtl .storyteller-group-members {
 .storyteller-timeline-view .sts-timeline-dependency-arrow--dotted,
 .storyteller-timeline-modal .sts-timeline-dependency-arrow--dotted {
     stroke-dasharray: 2, 4;
-}
-
-.storyteller-timeline-view .vis-item.timeline-milestone,
-.storyteller-timeline-modal .vis-item.timeline-milestone,
-.storyteller-timeline-view .vis-item.gantt-milestone,
-.storyteller-timeline-modal .vis-item.gantt-milestone {
-    background: rgba(234, 179, 8, 0.2);
-    border-color: rgba(234, 179, 8, 0.55);
-    color: var(--text-normal);
-}
-
-.storyteller-timeline-view .vis-item.timeline-milestone .vis-item-content,
-.storyteller-timeline-modal .vis-item.timeline-milestone .vis-item-content,
-.storyteller-timeline-view .vis-item.gantt-milestone .vis-item-content,
-.storyteller-timeline-modal .vis-item.gantt-milestone .vis-item-content {
-    background: transparent;
-    border: none;
-    box-shadow: none;
-    color: var(--text-normal);
-    font-weight: 700;
-    text-shadow: none;
-}
-
-/* Stronger status color language shared by timeline and gantt */
-.storyteller-timeline-view .vis-item.sts-status-upcoming,
-.storyteller-timeline-modal .vis-item.sts-status-upcoming {
-    background: linear-gradient(90deg, rgba(59, 130, 246, 0.16), rgba(59, 130, 246, 0.08));
-    border-left: 3px solid #3b82f6;
-}
-.storyteller-timeline-view .vis-item.sts-status-ongoing,
-.storyteller-timeline-modal .vis-item.sts-status-ongoing,
-.storyteller-timeline-view .vis-item.sts-status-in-progress,
-.storyteller-timeline-modal .vis-item.sts-status-in-progress,
-.storyteller-timeline-view .vis-item.sts-status-active,
-.storyteller-timeline-modal .vis-item.sts-status-active {
-    background: linear-gradient(90deg, rgba(245, 158, 11, 0.2), rgba(245, 158, 11, 0.1));
-    border-left: 3px solid #f59e0b;
-}
-.storyteller-timeline-view .vis-item.sts-status-completed,
-.storyteller-timeline-modal .vis-item.sts-status-completed,
-.storyteller-timeline-view .vis-item.sts-status-resolved,
-.storyteller-timeline-modal .vis-item.sts-status-resolved,
-.storyteller-timeline-view .vis-item.sts-status-done,
-.storyteller-timeline-modal .vis-item.sts-status-done {
-    background: linear-gradient(90deg, rgba(16, 185, 129, 0.18), rgba(16, 185, 129, 0.08));
-    border-left: 3px solid #10b981;
-}
-.storyteller-timeline-view .vis-item.sts-status-failed,
-.storyteller-timeline-modal .vis-item.sts-status-failed,
-.storyteller-timeline-view .vis-item.sts-status-cancelled,
-.storyteller-timeline-modal .vis-item.sts-status-cancelled {
-    background: linear-gradient(90deg, rgba(239, 68, 68, 0.18), rgba(239, 68, 68, 0.08));
-    border-left: 3px solid #ef4444;
 }
 
 .storyteller-timeline-view .storyteller-timeline-toolbar,
@@ -10651,103 +10469,6 @@ body.mod-rtl .storyteller-group-members {
     display: none;
 }
 
-/* Stem + card lock: preserve stems, prevent hover/scroll desync and flicker. */
-.storyteller-timeline-view .vis-item .vis-item-content,
-.storyteller-timeline-modal .vis-item .vis-item-content,
-.storyteller-timeline-view .vis-item.vis-line,
-.storyteller-timeline-modal .vis-item.vis-line,
-.storyteller-timeline-view .vis-item.vis-dot,
-.storyteller-timeline-modal .vis-item.vis-dot {
-    transition: none;
-    animation: none;
-}
-
-.storyteller-timeline-view .vis-item .vis-item-content,
-.storyteller-timeline-modal .vis-item .vis-item-content {
-    position: relative;
-    z-index: 3;
-}
-
-.storyteller-timeline-view .vis-item.timeline-milestone:hover,
-.storyteller-timeline-modal .vis-item.timeline-milestone:hover {
-    transition: none;
-}
-
-/* Group color fidelity: items should match the color of the group they are rendered under. */
-.storyteller-timeline-view .vis-item[style*="--sts-group-color"].vis-box,
-.storyteller-timeline-modal .vis-item[style*="--sts-group-color"].vis-box,
-.storyteller-timeline-view .vis-item[style*="--sts-group-color"].vis-point,
-.storyteller-timeline-modal .vis-item[style*="--sts-group-color"].vis-point {
-    background: var(--sts-group-bg, var(--sts-tl-item-bg));
-    border-color: var(--sts-group-color, var(--sts-tl-border));
-}
-
-.storyteller-timeline-view .vis-item[style*="--sts-group-color"].vis-range,
-.storyteller-timeline-modal .vis-item[style*="--sts-group-color"].vis-range,
-.storyteller-timeline-view .vis-item[style*="--sts-group-color"].gantt-bar,
-.storyteller-timeline-modal .vis-item[style*="--sts-group-color"].gantt-bar,
-.storyteller-timeline-view .vis-item[style*="--sts-group-color"].timeline-milestone,
-.storyteller-timeline-modal .vis-item[style*="--sts-group-color"].timeline-milestone {
-    background: var(--sts-group-bg, var(--sts-tl-item-bg));
-    border-color: var(--sts-group-color, var(--sts-tl-border));
-}
-
-.storyteller-timeline-view .vis-item[class*="sts-status-"][style*="--sts-group-color"],
-.storyteller-timeline-modal .vis-item[class*="sts-status-"][style*="--sts-group-color"] {
-    background: var(--sts-group-bg, var(--sts-tl-item-bg));
-    border-left: 3px solid var(--sts-group-color, var(--sts-tl-border));
-}
-
-/* Milestone + narrative marker combos: keep both signals visible and stable. */
-.storyteller-timeline-view .vis-item.timeline-has-narrative-flag,
-.storyteller-timeline-modal .vis-item.timeline-has-narrative-flag {
-    outline: 1px dashed rgba(148, 163, 184, 0.45);
-    outline-offset: -1px;
-}
-
-.storyteller-timeline-view .vis-item.timeline-milestone-flashback,
-.storyteller-timeline-modal .vis-item.timeline-milestone-flashback {
-    box-shadow: inset 0 2px 0 0 rgba(96, 165, 250, 0.85), var(--sts-tl-item-shadow);
-}
-
-.storyteller-timeline-view .vis-item.timeline-milestone-flashforward,
-.storyteller-timeline-modal .vis-item.timeline-milestone-flashforward {
-    box-shadow: inset 0 2px 0 0 rgba(245, 158, 11, 0.85), var(--sts-tl-item-shadow);
-}
-
-/* Timeline hover normalization: one consistent interaction model across all item types. */
-.storyteller-timeline-view .vis-item,
-.storyteller-timeline-modal .vis-item {
-    cursor: pointer;
-    transition: border-color 120ms ease, box-shadow 120ms ease, background-color 120ms ease;
-}
-
-.storyteller-timeline-view .vis-item .vis-item-content,
-.storyteller-timeline-modal .vis-item .vis-item-content {
-    transition: border-color 120ms ease, box-shadow 120ms ease, background-color 120ms ease;
-}
-
-.storyteller-timeline-view .vis-item:hover:not(.vis-selected),
-.storyteller-timeline-modal .vis-item:hover:not(.vis-selected) {
-    border-color: color-mix(in srgb, var(--interactive-accent) 58%, var(--sts-tl-border) 42%);
-    box-shadow: 0 0 0 1px rgba(var(--interactive-accent-rgb, 124, 77, 255), 0.28), var(--sts-tl-item-shadow);
-}
-
-.storyteller-timeline-view .vis-item.vis-range:hover:not(.vis-selected),
-.storyteller-timeline-modal .vis-item.vis-range:hover:not(.vis-selected),
-.storyteller-timeline-view .vis-item.gantt-bar:hover:not(.vis-selected),
-.storyteller-timeline-modal .vis-item.gantt-bar:hover:not(.vis-selected) {
-    box-shadow: 0 0 0 1px rgba(var(--interactive-accent-rgb, 124, 77, 255), 0.28), var(--sts-tl-item-shadow);
-}
-
-.storyteller-timeline-view .vis-item.timeline-milestone:hover:not(.vis-selected),
-.storyteller-timeline-modal .vis-item.timeline-milestone:hover:not(.vis-selected),
-.storyteller-timeline-view .vis-item.gantt-milestone:hover:not(.vis-selected),
-.storyteller-timeline-modal .vis-item.gantt-milestone:hover:not(.vis-selected) {
-    border-color: color-mix(in srgb, #f59e0b 70%, var(--interactive-accent) 30%);
-    box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.34), var(--sts-tl-item-shadow);
-}
-
 /* Mobile timeline view: stop clipping the desktop-height frame so the leaf can scroll naturally. */
 .storyteller-timeline-view--mobile {
     height: auto;
@@ -10760,12 +10481,6 @@ body.mod-rtl .storyteller-group-members {
 
 .storyteller-timeline-view--mobile .storyteller-timeline-container {
     flex: 0 0 auto;
-    min-height: 360px;
-}
-
-.storyteller-timeline-view--mobile .vis-timeline,
-.storyteller-timeline-view--mobile .storyteller-timeline-container .vis-timeline {
-    height: auto;
     min-height: 360px;
 }
 
@@ -10790,7 +10505,6 @@ body.mod-rtl .storyteller-group-members {
     min-width: 0;
     max-width: 100%;
 }
-
 
 
 .storyteller-guide-modal .modal-content {
@@ -11803,6 +11517,98 @@ body.mod-rtl .storyteller-group-members {
 .template-link-chip-remove:hover {
   color: var(--text-error);
 }
+.sts-native-timeline {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 240px;
+  overflow: hidden;
+  background: var(--background-primary);
+  color: var(--text-normal);
+  outline: none;
+  touch-action: none;
+  user-select: none;
+
+  /* Milestone stars are gold whatever lane they sit in, so they can be found
+     without first reading the legend. Override these to restyle them. */
+  --sts-timeline-milestone: #d9a520;
+  --sts-timeline-milestone-edge: #8a6410;
+
+  /* Empty date slots on the lane baseline while editing: the same dot an event
+     marker uses, hollow, so a date and the event that could fill it read as one
+     system. */
+  --sts-timeline-slot: #0b0f16;
+}
+
+.theme-light .sts-native-timeline {
+  --sts-timeline-slot: #9aa4b2;
+}
+
+.sts-native-timeline:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--interactive-accent);
+}
+
+.sts-native-timeline-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+}
+
+.sts-native-timeline.is-editing .sts-native-timeline-canvas,
+.is-editing .sts-native-timeline-canvas {
+  cursor: ew-resize;
+}
+
+/* Hover card for a timeline item. Canvas has no per-region title attribute, so
+   the detail the old renderer put in a tooltip is drawn in this element. */
+.sts-native-timeline-tooltip {
+  position: absolute;
+  z-index: 20;
+  max-width: 280px;
+  padding: 8px 10px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  background: var(--background-secondary);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  font-size: 12px;
+  line-height: 1.4;
+  pointer-events: none;
+}
+
+.sts-native-timeline-tooltip-title {
+  font-weight: 600;
+  color: var(--text-normal);
+}
+
+.sts-native-timeline-tooltip-meta {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.sts-native-timeline-tooltip-body {
+  margin-top: 4px;
+  color: var(--text-normal);
+}
+
+.sts-native-timeline-tooltip-conflicts {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+.sts-native-timeline-tooltip-conflict {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.sts-native-timeline-tooltip-conflict.is-error {
+  color: var(--color-red);
+}
+
+.sts-native-timeline-tooltip-conflict.is-warning {
+  color: var(--color-yellow);
+}
 
 /* Per-story folder overrides in the edit story modal. Indented and bounded so
    a 17-field list reads as a subsection rather than dominating the dialog. */
@@ -11817,3 +11623,505 @@ body.mod-rtl .storyteller-group-members {
     padding-top: 0.4rem;
     padding-bottom: 0.4rem;
 }
+
+/* ── Timeline toolbar, grouped ─────────────────────────────────────────────
+   The old row was twenty-three controls in a flat line, most icon-only, so
+   nothing said which control belonged with which. These rules give the row
+   bands: what you are looking at, how it is framed, how it is drawn, then
+   search and the rest pushed to the trailing edge. */
+
+.storyteller-timeline-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.75rem;
+  padding: 0.4rem 0.5rem;
+}
+
+.storyteller-toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  position: relative;
+}
+
+/* A hairline between bands, rather than a gap the eye has to measure. */
+.storyteller-toolbar-group + .storyteller-toolbar-group::before {
+  content: '';
+  align-self: stretch;
+  width: 1px;
+  margin-inline-end: 0.45rem;
+  background: var(--background-modifier-border);
+}
+
+.storyteller-toolbar-trailing {
+  margin-inline-start: auto;
+}
+
+.storyteller-toolbar-trailing::before {
+  display: none;
+}
+
+/* Labelled fields — the toolbar reads as words, not glyphs. */
+.storyteller-toolbar-field {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.storyteller-toolbar-field-label {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  white-space: nowrap;
+}
+
+.storyteller-toolbar-field select,
+.storyteller-toolbar-field .dropdown {
+  max-width: 11rem;
+}
+
+/* Top-level view switch plus the orientation switch owned by Timeline. */
+.storyteller-view-mode-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.storyteller-timeline-orientation-segment.is-hidden {
+  display: none;
+}
+
+.storyteller-segment {
+  display: inline-flex;
+  align-items: stretch;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  overflow: hidden;
+  background: var(--background-primary);
+}
+
+.storyteller-segment-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.25rem 0.55rem;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.storyteller-segment-btn + .storyteller-segment-btn {
+  border-inline-start: 1px solid var(--background-modifier-border);
+}
+
+.storyteller-segment-btn:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+/* The active segment takes the accent as a surface. */
+.storyteller-segment-btn.is-active {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
+
+.storyteller-segment-btn.is-active:hover {
+  background: var(--interactive-accent-hover);
+  color: var(--text-on-accent);
+}
+
+.storyteller-segment-icon {
+  display: inline-flex;
+  align-items: center;
+}
+
+.storyteller-segment-icon .svg-icon {
+  width: 0.9em;
+  height: 0.9em;
+}
+
+/* Buttons that carry a word and optionally a caret. */
+.storyteller-toolbar-btn-labelled {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.25rem 0.5rem;
+  background: transparent;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  color: var(--text-normal);
+  font-size: var(--font-ui-smaller);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.storyteller-toolbar-btn-labelled:hover {
+  background: var(--background-modifier-hover);
+}
+
+.storyteller-toolbar-btn-icon,
+.storyteller-toolbar-caret {
+  display: inline-flex;
+  align-items: center;
+}
+
+.storyteller-toolbar-btn-icon .svg-icon,
+.storyteller-toolbar-caret .svg-icon {
+  width: 0.85em;
+  height: 0.85em;
+}
+
+.storyteller-toolbar-caret {
+  color: var(--text-muted);
+}
+
+/* A toggle that stays put. The accent arrives as a surface, so the pressed
+   state is legible without the icon having to change identity. */
+.storyteller-toolbar-toggle.is-active,
+.storyteller-toolbar-toggle.is-active:hover {
+  background: var(--interactive-accent);
+  border-color: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
+
+.storyteller-toolbar-toggle.is-active .storyteller-toolbar-btn-icon {
+  color: var(--text-on-accent);
+}
+
+/* Count of enabled layers, so a menu button still reports its state. */
+.storyteller-toolbar-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.15em;
+  padding: 0 0.25em;
+  border-radius: var(--radius-s);
+  background: var(--background-modifier-border);
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  line-height: 1.35;
+}
+
+.storyteller-toolbar-badge.is-empty {
+  opacity: 0.55;
+}
+
+/* Zoom as one control: minus, what you are looking at, plus. */
+.storyteller-zoom-control {
+  display: inline-flex;
+  align-items: stretch;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  overflow: hidden;
+  background: var(--background-primary);
+}
+
+.storyteller-timeline-toolbar .storyteller-zoom-control .storyteller-toolbar-btn {
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+}
+
+.storyteller-zoom-readout {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  /* Wide enough that "3 decades" replacing "a day" does not shove the
+     buttons either side of it around while you are still zooming. */
+  min-width: 6.5rem;
+  justify-content: space-between;
+  padding: 0.25rem 0.45rem;
+  border: none;
+  border-inline: 1px solid var(--background-modifier-border);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-normal);
+  font-size: var(--font-ui-smaller);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.storyteller-zoom-readout:hover {
+  background: var(--background-modifier-hover);
+}
+
+/* The blanket 8px radius on every toolbar button rounds the inner members of
+   a joined control, which breaks the seam that makes it read as one thing.
+   Matched here at equal weight so the group keeps its shape. */
+.storyteller-timeline-view .storyteller-timeline-toolbar .storyteller-segment-btn,
+.storyteller-timeline-modal .storyteller-timeline-toolbar .storyteller-segment-btn,
+.storyteller-timeline-view .storyteller-timeline-toolbar .storyteller-zoom-readout,
+.storyteller-timeline-modal .storyteller-timeline-toolbar .storyteller-zoom-readout {
+  border-radius: 0;
+}
+
+/* Search grows into whatever room is left. */
+.storyteller-timeline-search-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  position: relative;
+  min-width: 9rem;
+  flex: 1 1 12rem;
+  max-width: 20rem;
+  padding: 0 0.4rem;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  background: var(--background-primary);
+}
+
+.storyteller-timeline-search-icon {
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.storyteller-timeline-search-icon .svg-icon {
+  width: 0.9em;
+  height: 0.9em;
+}
+
+.storyteller-timeline-search-wrap .storyteller-timeline-search-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  padding: 0.25rem 0;
+}
+
+.storyteller-timeline-search-wrap .storyteller-timeline-search-input:focus {
+  box-shadow: none;
+}
+
+/* Narrow panes: labels drop away before the controls do. */
+@container (max-width: 720px) {
+  .storyteller-toolbar-field-label,
+  .storyteller-segment-label {
+    display: none;
+  }
+}
+
+/* ── Timeline empty state ─────────────────────────────────────────────────
+   A blank canvas explains nothing. Say what the view is for. */
+
+.storyteller-timeline-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 2rem;
+  text-align: center;
+  pointer-events: none;
+}
+
+.storyteller-timeline-empty > * {
+  pointer-events: auto;
+}
+
+.storyteller-timeline-empty-icon {
+  display: inline-flex;
+  color: var(--text-faint);
+}
+
+.storyteller-timeline-empty-icon .svg-icon {
+  width: 2.5rem;
+  height: 2.5rem;
+}
+
+.storyteller-timeline-empty h3 {
+  margin: 0;
+  color: var(--text-normal);
+}
+
+.storyteller-timeline-empty-body {
+  margin: 0;
+  max-width: 34rem;
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  line-height: 1.5;
+}
+
+.storyteller-timeline-empty-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.35rem;
+}
+
+/* The toolbar responds to the pane, not the window: these views are often
+   docked in a narrow sidebar while the window itself is wide. */
+.storyteller-timeline-view {
+  container-type: inline-size;
+}
+
+/* A timeline embedded in a note through a ```timeline fenced block. Bordered
+   because it sits in running prose and needs an edge to read as a figure
+   rather than as the page continuing. */
+.sts-timeline-block {
+  width: 100%;
+  margin: 0.75em 0;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+/* Typos in a block's settings, listed above it. Loud on purpose: a filter that
+   silently did not apply is worse than an ugly warning. */
+.sts-timeline-block-errors {
+  margin: 0.75em 0 0.25em;
+  padding: 0.5em 0.75em;
+  border-radius: 6px;
+  background: var(--background-modifier-error);
+  color: var(--text-error);
+  font-size: var(--font-ui-smaller);
+}
+
+/* Branch list: one card per timeline fork. */
+.storyteller-fork-list {
+  max-height: 60vh;
+  overflow-y: auto;
+  margin: 1em 0;
+}
+
+.storyteller-fork-card {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  margin-bottom: 0.75em;
+  background: var(--background-secondary);
+}
+
+.storyteller-fork-content {
+  padding: 0.75em;
+}
+
+.storyteller-fork-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  flex-wrap: wrap;
+  margin-bottom: 0.5em;
+}
+
+.storyteller-fork-header h3 {
+  margin: 0;
+  font-size: 1em;
+}
+
+/* The colour this branch draws in on the timeline, so the card and the curve
+   can be matched up by eye. */
+.storyteller-fork-swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--interactive-accent);
+  flex: 0 0 auto;
+}
+
+.storyteller-fork-status-badge {
+  font-size: var(--font-ui-smaller);
+  padding: 0.1em 0.5em;
+  border-radius: 10px;
+  background: var(--background-modifier-border);
+  color: var(--text-muted);
+}
+
+/* Canon is settled and merged is finished, so they read as normal text.
+   Exploring is unfinished and abandoned is set aside, and both should say so
+   at a glance rather than only in the word. */
+.storyteller-fork-status-badge.is-canon {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
+
+.storyteller-fork-status-badge.is-abandoned {
+  opacity: 0.6;
+  text-decoration: line-through;
+}
+
+.storyteller-fork-meta,
+.storyteller-fork-description {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  margin-bottom: 0.2em;
+}
+
+.storyteller-fork-actions {
+  display: flex;
+  gap: 0.4em;
+  margin-top: 0.6em;
+  flex-wrap: wrap;
+}
+
+.storyteller-fork-action-btn {
+  font-size: var(--font-ui-smaller);
+}
+
+/* Dedicated map pane: let the workspace, not canvas minimums, own sizing. */
+.workspace-leaf-content[data-type="storyteller-map-view"] > .view-content.storyteller-map-view {
+    flex: 1 1 0;
+    width: 100%;
+    height: auto;
+    min-width: 0;
+    min-height: 0;
+    max-width: none;
+    padding: 0;
+    overflow: hidden;
+}
+.storyteller-map-view > .storyteller-map-container {
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 0;
+    width: 100%;
+    max-width: none;
+    max-height: none;
+}
+.storyteller-map-view > .storyteller-map-entity-bar {
+    min-width: 0;
+    overflow-x: auto;
+    flex-wrap: nowrap;
+}
+.storyteller-map-view > .storyteller-map-entity-bar > * {
+    flex-shrink: 0;
+}
+.storyteller-map-view > .storyteller-map-selector,
+.storyteller-map-view > .storyteller-map-toolbar,
+.storyteller-map-view > .storyteller-map-breadcrumb {
+    min-width: 0;
+    overflow-x: auto;
+}
+
+/* Logical grid overlay is screen-space; Leaflet retains map transforms. */
+.st-grid-canvas { position:absolute; inset:0; z-index:450; pointer-events:none; }
+/* Bottom action row owns grid controls; the attached editor opens into the map. */
+.storyteller-map-view > .storyteller-map-entity-bar { position:relative; z-index:1100; overflow:visible; flex-wrap:wrap; }
+.storyteller-map-entity-bar .entity-bar-quick-actions { flex-wrap:wrap; max-width:100%; }
+.storyteller-map-selector { position:relative; z-index:1100; flex-wrap:wrap; overflow:visible; }
+.storyteller-map-selector-dropdown { min-width:0; }
+.storyteller-map-selector-dropdown select { max-width:100%; }
+.st-grid-controls { display:flex; align-items:center; gap:4px; flex-wrap:wrap; min-width:0; }
+.st-grid-controls > label { display:flex; align-items:center; }
+.st-grid-editor { position:absolute; bottom:100%; left:0; right:0; z-index:850; box-sizing:border-box; background:var(--background-primary, #202329); color:var(--text-normal, #eee); padding:12px; border:1px solid var(--background-modifier-border); border-radius:0 0 8px 8px; box-shadow:0 6px 12px rgba(0,0,0,.2); display:flex; flex-wrap:wrap; gap:8px; max-height:40vh; overflow:auto; }
+.st-grid-editor > * { max-width:100%; min-width:0; }
+.st-grid-controls:not(.st-grid-enabled) .st-grid-mode-action,
+.st-grid-controls:not(.st-grid-enabled) .st-grid-editor { display:none; }
+.st-grid-editor[hidden] { display:none; }
+.st-grid-editor > div { flex-basis:100%; }
+.st-grid-editor input[type=number] { width:75px; }
+
+/* Grid off is native map interaction mode, not an invisible area editor. */
+.leaflet-container:not(.st-grid-enabled) .st-grid-mode-action,
+.leaflet-container:not(.st-grid-enabled) .st-edit-location-area { display: none; }
+.leaflet-container:not(.st-grid-enabled) .st-grid-editor { display: none; }
+.leaflet-container:not(.st-grid-enabled) .st-grid-canvas { pointer-events: none !important; }

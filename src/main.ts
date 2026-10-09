@@ -1,3 +1,5 @@
+import { detachFromMaps } from './services/MapMembershipService';
+import { initializeTimelineAfterLayout } from './utils/TimelineStartup';
  
  
 
@@ -17,6 +19,7 @@ import * as L from 'leaflet';
 import { Notice, Plugin, TFile, TFolder, normalizePath, stringifyYaml, WorkspaceLeaf, debounce } from 'obsidian';
 import { parseEventDate, toMillis } from './utils/DateParsing';
 import {
+    EntityType,
     buildFrontmatter,
     getWhitelistKeys,
     isStampedEntityTypeCompatible,
@@ -31,6 +34,10 @@ import {
 } from './yaml/EntitySections';
 import { stringifyYamlWithLogging, validateFrontmatterPreservation } from './utils/YamlSerializer';
 import { stripWikiLink } from './utils/WikiLinks';
+import { StoryScoped, scopeToStory, stampStory, mergeStoryScoped, backfillStoryIds } from './utils/StoryScope';
+import { TimelineEntityStore } from './services/TimelineEntityStore';
+import { serializeCausalityRef, parseCausalityRefs, causalityRefTarget } from './utils/CausalityRefs';
+import { canMigrateWithoutAsking } from './utils/TimelineMigrationPlan';
 import { setLocale, t } from './i18n/strings';
 import { FolderResolver, FolderResolverOptions, EntityFolderType, StoryFolderOverrides } from './folders/FolderResolver';
 import { PromptModal } from './modals/ui/PromptModal';
@@ -39,7 +46,7 @@ import { CharacterModal } from './modals/CharacterModal';
 import {
     Character, Location, Event, GalleryImage, GalleryData, Story, Group, GroupMemberDetails, GroupRelationship, PlotItem, Reference, Chapter, Scene,
     Culture, Economy, MagicSystem, CompendiumEntry, Book, EntityRef,
-    TimelineFork, CausalityLink, TimelineConflict, TimelineEra, TimelineTrack,
+    TimelineFork, TimelineGroupMode, CausalityLink, TimelineConflict, TimelineEra, TimelineTrack,
     PacingAnalysis, WritingSession, StoryAnalytics, LocationSensoryProfile,
     StoryMap
 } from './types';
@@ -87,7 +94,6 @@ import type { EntityFileName, TemplateVariableValues } from './modals/TemplateAp
 import { StoryTemplateGalleryModal } from './templates/modals/StoryTemplateGalleryModal';
 import { upgradeLegacyModalLayout } from './modals/utils/LegacyModalLayout';
 import { TrackManagerModal } from './modals/TrackManagerModal';
-import { ConflictViewModal } from './modals/ConflictViewModal';
 import { TagTimelineModal } from './modals/TagTimelineModal';
 import { ConflictDetector } from './utils/ConflictDetector';
 import { TimelineTrackManager } from './utils/TimelineTrackManager';
@@ -97,6 +103,7 @@ import { WordCountTracker } from './compile';
 import type { SessionStats } from './compile';
 import { createLedgerViewExtension, registerLedgerBlockProcessor } from './extensions/LedgerEditorExtension';
 import { createBranchViewExtension, registerBranchBlockProcessors } from './extensions/BranchBlockExtension';
+import { registerTimelineBlockProcessor } from './extensions/TimelineBlockExtension';
 import { CampaignSession } from './types';
 
 /** Runtime-only flags added to entity objects during save/sync to prevent recursion. Not persisted. */
@@ -187,7 +194,10 @@ const FRONTMATTER_OBJECT_REFERENCE_FIELDS: FrontmatterObjectReferenceFieldConfig
 
 const FRONTMATTER_LINK_ONLY_SCALAR_FIELDS = new Set([
     'location',
+    // currentOwner stays listed so a legacy note's scalar is unwrapped before
+    // parseFile hoists it into owners.
     'currentOwner',
+    'creator',
     'currentLocation',
     'povCharacter',
     'navigatesToScene',
@@ -206,6 +216,10 @@ const FRONTMATTER_LINK_ONLY_SCALAR_FIELDS = new Set([
  interface StorytellerSuiteSettings {
     stories: Story[]; // List of all stories
     activeStoryId: string; // Currently selected story
+    /** User-installed portable calendar systems. */
+    calendarSystems?: import('./calendar/types').CalendarSystem[];
+    /** User-installed portable timeline appearance themes. */
+    timelineThemes?: import('./calendar/TimelineDocuments').TimelineTheme[];
     galleryUploadFolder: string; // New setting for uploads
     galleryData: GalleryData; // Store gallery metadata here
     galleryWatchFolder?: string; // Folder to auto-scan for images
@@ -243,7 +257,7 @@ const FRONTMATTER_LINK_ONLY_SCALAR_FIELDS = new Set([
      /** Optional override for "today" used in timeline and relative parsing (ISO string yyyy-MM-dd or full ISO) */
      customTodayISO?: string;
      /** Timeline defaults */
-     defaultTimelineGroupMode?: 'none' | 'location' | 'group' | 'character';
+     defaultTimelineGroupMode?: TimelineGroupMode;
      defaultTimelineZoomPreset?: 'none' | 'decade' | 'century' | 'fit';
      defaultTimelineStack?: boolean;
      defaultTimelineDensity?: number; // 0..100
@@ -299,6 +313,21 @@ const FRONTMATTER_LINK_ONLY_SCALAR_FIELDS = new Set([
     timelineConflicts?: TimelineConflict[];
     timelineEras?: TimelineEra[];
     timelineTracks?: TimelineTrack[];
+    /**
+     * Whether eras, tracks and branches have been moved out of the arrays above
+     * and into vault notes. Set once by the migration; nothing reads both
+     * sources at the same time.
+     */
+    timelineEntitiesInNotes?: boolean;
+    /** The settings arrays as they stood before the migration, kept as the undo. */
+    timelineEntityBackup?: {
+        migratedAt: string;
+        eras: TimelineEra[];
+        tracks: TimelineTrack[];
+        forks: TimelineFork[];
+    };
+    /** The user closed the migration prompt without answering, so stop opening it. */
+    timelineMigrationDeferred?: boolean;
     enableAdvancedTimeline?: boolean;
     autoDetectConflicts?: boolean;
 
@@ -325,6 +354,9 @@ const FRONTMATTER_LINK_ONLY_SCALAR_FIELDS = new Set([
     compendiumFolderPath?: string;
     bookFolderPath?: string;
     sessionsFolderPath?: string;
+    eraFolderPath?: string;
+    trackFolderPath?: string;
+    branchFolderPath?: string;
 
     /** Sensory Profiles */
     enableSensoryProfiles?: boolean;
@@ -332,6 +364,8 @@ const FRONTMATTER_LINK_ONLY_SCALAR_FIELDS = new Set([
 
     /** Dashboard tab visibility - array of tab IDs to hide */
     hiddenDashboardTabs?: string[];
+    /** Entity type → custom field names pre-added to every newly created entity */
+    defaultCustomFields?: Record<string, string[]>;
 
     /** Dashboard tab order - persisted array of tab IDs in user-defined order */
     dashboardTabOrder?: string[];
@@ -409,7 +443,7 @@ const FRONTMATTER_LINK_ONLY_SCALAR_FIELDS = new Set([
 
     /**
      * Interface layout override. 'auto' detects from the platform; the rest
-     * force a layout — for convertibles (Surface etc.) where detection flips.
+     * force a layout for convertibles (Surface etc.) where detection flips.
      */
     interfaceMode?: import('./utils/PlatformUtils').InterfaceLayoutOverride;
 
@@ -453,10 +487,13 @@ const FRONTMATTER_LINK_ONLY_SCALAR_FIELDS = new Set([
     compendiumFolderPath: '',
     bookFolderPath: '',
     sessionsFolderPath: '',
+    eraFolderPath: '',
+    trackFolderPath: '',
+    branchFolderPath: '',
     enableOneStoryMode: false,
     oneStoryBaseFolder: 'StorytellerSuite',
     customTodayISO: undefined,
-    defaultTimelineGroupMode: 'none',
+    defaultTimelineGroupMode: 'location',
     defaultTimelineZoomPreset: 'none',
     defaultTimelineStack: true,
     defaultTimelineDensity: 50,
@@ -482,6 +519,8 @@ const FRONTMATTER_LINK_ONLY_SCALAR_FIELDS = new Set([
     timelineConflicts: [],
     timelineEras: [],
     timelineTracks: [],
+    timelineEntitiesInNotes: false,
+    timelineMigrationDeferred: false,
     enableAdvancedTimeline: false,
     autoDetectConflicts: true,
     analyticsEnabled: false,
@@ -494,6 +533,7 @@ const FRONTMATTER_LINK_ONLY_SCALAR_FIELDS = new Set([
     magicSystemFolderPath: '',
     enableSensoryProfiles: true,
     hiddenDashboardTabs: [],
+    defaultCustomFields: {},
     templateStorageFolder: 'StorytellerSuite/Templates',
     showBuiltInTemplates: true,
     showCommunityTemplates: false,
@@ -542,7 +582,23 @@ export default class StorytellerSuitePlugin extends Plugin {
         return true;
     }
     /** Build a resolver using current settings */
+    /**
+     * A resolver bound to one specific story rather than the active one.
+     *
+     * The migration files a settings row into the story that owns it, which is
+     * not necessarily the story that happens to be open.
+     */
+    public getFolderResolverForStory(storyId: string | undefined): FolderResolver {
+        return this.buildFolderResolver(() =>
+            storyId ? this.settings.stories.find(story => story.id === storyId) : this.getActiveStory()
+        );
+    }
+
     public getFolderResolver(): FolderResolver {
+        return this.buildFolderResolver(() => this.getActiveStory());
+    }
+
+    private buildFolderResolver(getStory: () => Story | undefined): FolderResolver {
         const options: FolderResolverOptions = {
             enableCustomEntityFolders: this.settings.enableCustomEntityFolders,
             storyRootFolderTemplate: this.settings.storyRootFolderTemplate,
@@ -562,10 +618,13 @@ export default class StorytellerSuitePlugin extends Plugin {
             compendiumFolderPath: this.settings.compendiumFolderPath,
             bookFolderPath: this.settings.bookFolderPath,
             sessionsFolderPath: this.settings.sessionsFolderPath,
+            eraFolderPath: this.settings.eraFolderPath,
+            trackFolderPath: this.settings.trackFolderPath,
+            branchFolderPath: this.settings.branchFolderPath,
             enableOneStoryMode: this.settings.enableOneStoryMode,
             oneStoryBaseFolder: this.settings.oneStoryBaseFolder,
         };
-        return new FolderResolver(options, () => this.getActiveStory());
+        return new FolderResolver(options, getStory);
     }
 
     /**
@@ -662,8 +721,11 @@ export default class StorytellerSuitePlugin extends Plugin {
     templateManager: TemplateStorageManager;
     templateNoteManager: TemplateNoteManager;
     trackManager: TimelineTrackManager;
+    /** Eras, tracks and branches as vault notes, with a synchronous read cache. */
+    timelineEntities: TimelineEntityStore = new TimelineEntityStore(this);
     eraManager: EraManager;
     private warnedMissingNameFiles: Set<string> = new Set();
+    private warnedMalformedFiles: Set<string> = new Set();
     private groupVaultSyncTimer: number | null = null;
     private deferredStartupMaintenanceTimer: number | null = null;
     private frontmatterReferenceIndexCache: Map<string, Promise<FrontmatterReferenceIndex>> = new Map();
@@ -762,6 +824,11 @@ export default class StorytellerSuitePlugin extends Plugin {
     getEntityFolder(type: EntityFolderType, context?: { bookName?: string }): string {
         const resolver = this.getFolderResolver();
         return resolver.getEntityFolder(type, context);
+    }
+
+    /** Non-throwing folder resolution, for readers that must survive having no active story. */
+    tryGetEntityFolder(type: EntityFolderType, context?: { bookName?: string }): { path?: string; error?: string } {
+        return this.getFolderResolver().tryGetEntityFolder(type, context);
     }
 
     /**
@@ -1022,7 +1089,10 @@ export default class StorytellerSuitePlugin extends Plugin {
                 }
             }
 
-            serialized[config.field] = resolvedValues;
+            // An array holding both an id and the name of the same entity
+            // resolves to the same display name twice — dedupe so notes don't
+            // accumulate double links ([[id]] + [[Name]]) on every save.
+            serialized[config.field] = Array.from(new Set(resolvedValues));
             if (config.mirrorField) {
                 delete serialized[config.mirrorField];
                 omitOriginalKeys.add(config.mirrorField);
@@ -1134,8 +1204,10 @@ export default class StorytellerSuitePlugin extends Plugin {
                 if (resolvedName) resolvedNames.push(resolvedName);
             }
 
-            data[config.field] = resolvedIds;
-            if (config.mirrorField) data[config.mirrorField] = resolvedNames;
+            // Same-entity duplicates (id form + name form in the source note)
+            // collapse to identical resolved values — dedupe on read as well.
+            data[config.field] = Array.from(new Set(resolvedIds));
+            if (config.mirrorField) data[config.mirrorField] = Array.from(new Set(resolvedNames));
         }
 
         for (const config of FRONTMATTER_OBJECT_REFERENCE_FIELDS) {
@@ -1257,6 +1329,16 @@ export default class StorytellerSuitePlugin extends Plugin {
 		if (this.settings.stories.find(s => s.id === storyId)) {
 			this.settings.activeStoryId = storyId;
 			await this.saveSettings();
+			// Eras, tracks and branches live in the story's folders, so the
+			// cache belongs to the story that was active when it was filled.
+			this.timelineEntities.invalidate();
+			await this.timelineEntities.refresh();
+			// An open timeline is still showing the story that was active a
+			// moment ago, and nothing on screen says so. Closing and reopening
+			// the view was the only way to catch up.
+			this.app.workspace.getLeavesOfType(VIEW_TYPE_TIMELINE).forEach(leaf => {
+				if (leaf.view instanceof TimelineView) void leaf.view.reloadForStory();
+			});
 		} else {
 			throw new Error('Story not found');
 		}
@@ -1526,8 +1608,21 @@ export default class StorytellerSuitePlugin extends Plugin {
 		this.trackManager = new TimelineTrackManager(this);
 		this.eraManager = new EraManager(this);
 
-		// Initialize default tracks if none exist
-		await this.trackManager.initializeDefaultTracks();
+		// Era, track and branch notes can be edited like any other note. The
+		// cache re-reads the one file that changed; it holds no unsaved state
+		// of its own, so a re-read can never clobber anything.
+		this.registerEvent(this.app.metadataCache.on('changed', (file) => { void (async () => {
+			if (await this.timelineEntities.syncFile(file)) this.refreshTimelineViews();
+		})(); }));
+		this.registerEvent(this.app.vault.on('delete', (file) => {
+			if (this.timelineEntities.forgetPath(file.path)) this.refreshTimelineViews();
+		}));
+		this.registerEvent(this.app.vault.on('rename', (file, oldPath) => { void (async () => {
+			this.timelineEntities.forgetPath(oldPath);
+			if (file instanceof TFile && await this.timelineEntities.syncFile(file)) this.refreshTimelineViews();
+		})(); }));
+
+		// Vault-dependent timeline work runs after layout readiness below.
 
 		// Apply mobile CSS classes to the activeDocument body
 		this.applyMobilePlatformClasses();
@@ -1613,6 +1708,10 @@ export default class StorytellerSuitePlugin extends Plugin {
 		// Register display widgets for ```branch and ```encounter fenced blocks
 		this.registerEditorExtension(createBranchViewExtension());
 		registerBranchBlockProcessors(this.app, this);
+
+		// Register the ```timeline fenced block, which puts a live timeline in
+		// any note the vault can render.
+		registerTimelineBlockProcessor(this);
 
 		this.registerMarkdownPostProcessor((el) => {
 			const headings = el.querySelectorAll('h2');
@@ -1736,8 +1835,24 @@ export default class StorytellerSuitePlugin extends Plugin {
 
 		// Perform story discovery and ensure one-story seeding after workspace is ready
 		this.app.workspace.onLayoutReady(async () => {
-			await this.discoverExistingStories();
-			await this.initializeOneStoryModeIfNeeded();
+            try {
+                await this.discoverExistingStories();
+                await this.initializeOneStoryModeIfNeeded();
+                await initializeTimelineAfterLayout({
+                    hasStory: () => Boolean(this.getActiveStory()),
+                    migrate: () => this.migrateTimelineEntitiesIfUnambiguous(),
+                    refresh: () => this.timelineEntities.refresh(),
+                    createDefaults: () => this.trackManager.initializeDefaultTracks(),
+                    refreshViews: () => this.refreshTimelineViews(),
+                    reportError: (error) => {
+                        console.error('Storyteller Suite: timeline startup failed', error);
+                        new Notice('Storyteller Suite loaded, but timeline initialization failed. See the developer console for details.', 10000);
+                    },
+                });
+            } catch (error) {
+                console.error('Storyteller Suite: story startup failed', error);
+                new Notice('Storyteller Suite loaded, but story discovery failed. See the developer console for details.', 10000);
+            }
 
 			// Set up mobile/tablet orientation and resize handlers
 			this.setupMobileOrientationHandlers();
@@ -2016,9 +2131,28 @@ export default class StorytellerSuitePlugin extends Plugin {
 			return;
 		}
 
+		// The detected root belongs to whichever story is active right now, but the
+		// folder settings it feeds are global. Writing the literal path would point
+		// every future story at this story's folders. When the root's last segment
+		// is the active story's name (or slug), swap it for the matching placeholder
+		// so the resolver re-derives the path per story instead.
+		const activeStory = this.getActiveStory();
+		const parentSegments = bestParent.split('/');
+		const leafSegment = parentSegments[parentSegments.length - 1];
+		let parentTemplate = bestParent;
+		if (activeStory && leafSegment) {
+			if (leafSegment === activeStory.name) {
+				parentSegments[parentSegments.length - 1] = '{storyName}';
+				parentTemplate = parentSegments.join('/');
+			} else if (leafSegment === this.slugifyFolderName(activeStory.name)) {
+				parentSegments[parentSegments.length - 1] = '{storySlug}';
+				parentTemplate = parentSegments.join('/');
+			}
+		}
+
 		const maybe = (sub: string): string | undefined => {
 			const child = this.app.vault.getFolderByPath(`${bestParent}/${sub}`);
-			return child ? `${bestParent}/${sub}` : undefined;
+			return child ? `${parentTemplate}/${sub}` : undefined;
 		};
 
 		// Populate settings if folders exist
@@ -2035,7 +2169,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		await this.saveSettings();
 
 		// Provide feedback
-		new Notice(`Storyteller: Auto-detected custom folders under "${bestParent}" (matches: ${bestScore}).`);
+		new Notice(`Storyteller: Auto-detected custom folders under "${parentTemplate}" (matches: ${bestScore}).`);
 	}
 
 	/** Refresh the dashboard view's active tab, if open */
@@ -2285,6 +2419,24 @@ export default class StorytellerSuitePlugin extends Plugin {
 				void this.activateView();
 			}
 		});
+
+        this.addCommand({
+            id: 'insert-timeline-block',
+            name: 'Insert timeline block',
+            // Editor command rather than a palette action on the view: the
+            // block is a thing you put in a note, and nobody would guess the
+            // fence's name and its settings from the timeline view.
+            editorCallback: (editor) => {
+                editor.replaceSelection([
+                    '```timeline',
+                    'group: character',
+                    'height: 380',
+                    'eras: true',
+                    '```',
+                    ''
+                ].join('\n'));
+            }
+        });
 
         this.addCommand({
             id: 'open-getting-started-guide',
@@ -2575,42 +2727,29 @@ export default class StorytellerSuitePlugin extends Plugin {
 			}
 		});
 
+		this.addCommand({
+			id: 'manage-custom-calendars',
+			name: 'Manage custom calendars',
+			callback: async () => {
+				const { CalendarManagerModal } = await import('./modals/CalendarManagerModal');
+				new CalendarManagerModal(this.app, this, () => this.refreshTimelineViews()).open();
+			}
+		});
+
 		// Timeline track management
 		this.addCommand({
 			id: 'manage-timeline-tracks',
 			name: 'Manage timeline tracks',
 			callback: () => {
-				const tracks = this.settings.timelineTracks || [];
+				const tracks = this.getTimelineTracks();
 				new TrackManagerModal(
 					this.app,
 					this,
 					tracks,
 					(updatedTracks) => { void (async () => {
-						this.settings.timelineTracks = updatedTracks;
-						await this.saveSettings();
+						await this.setTimelineTracks(updatedTracks);
 					})(); }
 				).open();
-			}
-		});
-
-		// Detect timeline conflicts
-		this.addCommand({
-			id: 'detect-timeline-conflicts',
-			name: 'Detect timeline conflicts',
-			callback: async () => {
-				const events = await this.listEvents();
-				const conflicts = ConflictDetector.detectAllConflicts(events);
-				new ConflictViewModal(this.app, this, conflicts).open();
-
-				// Show quick summary
-				const errorCount = conflicts.filter(c => c.severity === 'error').length;
-				const warningCount = conflicts.filter(c => c.severity === 'warning').length;
-
-				if (conflicts.length === 0) {
-					new Notice('✓ no timeline conflicts detected');
-				} else {
-					new Notice(`Found ${errorCount} error(s), ${warningCount} warning(s)`);
-				}
 			}
 		});
 
@@ -3075,7 +3214,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 						this,
 						null,
 						async (fork) => {
-							this.createTimelineFork(
+							await this.createTimelineFork(
 								fork.name,
 								fork.divergenceEvent,
 								fork.divergenceDate,
@@ -3092,14 +3231,25 @@ export default class StorytellerSuitePlugin extends Plugin {
 			id: 'view-timeline-forks',
 			name: 'View timeline forks',
 			callback: () => {
-				const forks = this.getTimelineForks();
-				if (forks.length === 0) {
-					new Notice('No timeline forks yet. Create your first fork!');
-					return;
-				}
-				new Notice(`${forks.length} timeline fork(s) found`);
-				// TODO: Create TimelineForkListModal for better visualization
+				if (!this.ensureActiveStoryOrGuide()) return;
+				void import('./modals/TimelineForkListModal').then(({ TimelineForkListModal }) => {
+					new TimelineForkListModal(this.app, this).open();
+				});
 			}
+		});
+
+		// Move eras, tracks and branches into notes
+		this.addCommand({
+			id: 'migrate-timeline-entities-to-notes',
+			name: 'Move timeline eras, tracks and branches into notes',
+			callback: () => this.openTimelineEntityMigration()
+		});
+
+		// Undo the notes migration
+		this.addCommand({
+			id: 'rollback-timeline-entities-migration',
+			name: 'Undo timeline notes migration',
+			callback: () => { void this.rollbackTimelineEntityMigration(); }
 		});
 
 		// ============================================================
@@ -3113,12 +3263,13 @@ export default class StorytellerSuitePlugin extends Plugin {
 			callback: async () => {
 				new Notice('Scanning timeline for conflicts...');
 
-				const events = await this.listEvents();
-				const detectedConflicts = ConflictDetector.detectAllConflicts(events);
+				const [events, characters, locations] = await Promise.all([
+					this.listEvents(), this.listCharacters(), this.listLocations(),
+				]);
+				const detectedConflicts = ConflictDetector.detectAllConflicts(events, characters, locations);
 				const conflicts = ConflictDetector.toStorageFormat(detectedConflicts);
 
-				this.settings.timelineConflicts = conflicts;
-				await this.saveSettings();
+				await this.setTimelineConflicts(conflicts);
 
 				new Notice(`Found ${conflicts.length} timeline conflict(s)`);
 
@@ -3131,12 +3282,13 @@ export default class StorytellerSuitePlugin extends Plugin {
 					async () => {
 						// Re-scan callback - re-run conflict detection
 						new Notice('Re-scanning timeline for conflicts...');
-						const events = await this.listEvents();
-						const detectedConflicts = ConflictDetector.detectAllConflicts(events);
+						const [events, characters, locations] = await Promise.all([
+							this.listEvents(), this.listCharacters(), this.listLocations(),
+						]);
+						const detectedConflicts = ConflictDetector.detectAllConflicts(events, characters, locations);
 						const newConflicts = ConflictDetector.toStorageFormat(detectedConflicts);
 
-						this.settings.timelineConflicts = newConflicts;
-						await this.saveSettings();
+						await this.setTimelineConflicts(newConflicts);
 						new Notice(`Found ${newConflicts.length} timeline conflict(s)`);
 					}
 				).open();
@@ -3148,7 +3300,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 			id: 'view-timeline-conflicts',
 			name: 'View timeline conflicts',
 			callback: async () => {
-				const conflicts = this.settings.timelineConflicts || [];
+				const conflicts = this.getTimelineConflicts();
 
 				if (conflicts.length === 0) {
 					new Notice('No conflicts detected. Run "detect timeline conflicts" to scan.');
@@ -3163,12 +3315,13 @@ export default class StorytellerSuitePlugin extends Plugin {
 					async () => {
 						// Re-scan callback - re-run conflict detection
 						new Notice('Re-scanning timeline for conflicts...');
-						const events = await this.listEvents();
-						const detectedConflicts = ConflictDetector.detectAllConflicts(events);
+						const [events, characters, locations] = await Promise.all([
+							this.listEvents(), this.listCharacters(), this.listLocations(),
+						]);
+						const detectedConflicts = ConflictDetector.detectAllConflicts(events, characters, locations);
 						const newConflicts = ConflictDetector.toStorageFormat(detectedConflicts);
 
-						this.settings.timelineConflicts = newConflicts;
-						await this.saveSettings();
+						await this.setTimelineConflicts(newConflicts);
 						new Notice(`Found ${newConflicts.length} timeline conflict(s)`);
 					}
 				).open();
@@ -3922,7 +4075,7 @@ export default class StorytellerSuitePlugin extends Plugin {
     async parseFile<T>(
         file: TFile,
         typeDefaults: Partial<T>,
-        entityType: 'character' | 'location' | 'event' | 'item' | 'reference' | 'chapter' | 'scene' | 'culture' | 'faction' | 'economy' | 'magicSystem' | 'map' | 'compendiumEntry' | 'book' | 'campaignSession'
+        entityType: EntityType
 	): Promise<T | null> {
 		try {
 			// External file moves/deletes can leave stale TFile handles briefly; skip safely.
@@ -3947,6 +4100,26 @@ export default class StorytellerSuitePlugin extends Plugin {
 			// Direct parsing captures empty values that the cache might miss
 			const frontmatter = { ...(cachedFrontmatter || {}), ...(directFrontmatter || {}) };
 
+			// Strip runtime-only flags that older builds leaked into notes —
+			// a persisted _skipSync loaded onto the entity would silently
+			// disable bidirectional sync for it on every future save.
+			for (const key of Object.keys(frontmatter)) {
+				if (key.startsWith('_')) delete frontmatter[key];
+			}
+
+			// A file with a frontmatter block that neither the cache nor the direct
+			// parser could read (duplicate keys, bad indentation…) would otherwise
+			// vanish from every list with no trace — tell the user once per file.
+			const frontmatterUnparsable = content.startsWith('---') && !cachedFrontmatter && directFrontmatter === undefined;
+			if (frontmatterUnparsable) {
+				if (!this.warnedMalformedFiles.has(file.path)) {
+					this.warnedMalformedFiles.add(file.path);
+					new Notice(`Storyteller Suite: "${file.name}" has malformed frontmatter (check for duplicate keys or bad indentation). The note is hidden from lists until it's fixed.`, 10000);
+				}
+			} else if (this.warnedMalformedFiles.has(file.path)) {
+				this.warnedMalformedFiles.delete(file.path);
+			}
+
             if (!isStampedEntityTypeCompatible(frontmatter['entityType'], entityType)) {
                 return null;
             }
@@ -3967,6 +4140,15 @@ export default class StorytellerSuitePlugin extends Plugin {
                 const existing = data[fieldName];
                 if (existing !== undefined && existing !== null && existing !== '') continue;
                 data[fieldName] = allSections[sectionName];
+            }
+
+            // An item written before owners existed carries a single currentOwner.
+            // Hoist it so the rest of the plugin only ever sees the plural form.
+            // The legacy key is left on the note until the next save rewrites it,
+            // so a read alone never mutates anything.
+            if (entityType === 'item' && data['owners'] === undefined) {
+                const legacyOwner = this.stripWikiLinkValue(data['currentOwner']);
+                if (legacyOwner) data['owners'] = [legacyOwner];
             }
 
             // Connections are stored as readable strings ("type: [[Target]] — label")
@@ -4062,8 +4244,13 @@ export default class StorytellerSuitePlugin extends Plugin {
 			if (!data['name']) {
 				// Only warn once per file to avoid console spam
 				if (!this.warnedMissingNameFiles.has(file.path)) {
-					
 					this.warnedMissingNameFiles.add(file.path);
+					// Only surface notes that are clearly meant to be entities
+					// (stamped with entityType or id) — not sheets or plain notes.
+					const looksLikeEntity = frontmatter['entityType'] !== undefined || frontmatter['id'] !== undefined;
+					if (!frontmatterUnparsable && looksLikeEntity) {
+						new Notice(`Storyteller Suite: "${file.name}" has no name in its frontmatter and is hidden from lists.`, 10000);
+					}
 				}
 				return null;
 			}
@@ -4122,15 +4309,19 @@ export default class StorytellerSuitePlugin extends Plugin {
     private async buildLinkedFrontmatter(
         entityType: 'character' | 'location' | 'event' | 'item' | 'culture' | 'economy' | 'magicSystem' | 'compendiumEntry' | 'book' | 'map',
         src: Record<string, unknown>,
-        originalFrontmatter?: Record<string, unknown>
+        originalFrontmatter?: Record<string, unknown>,
+        extraOmitKeys?: readonly string[]
     ): Promise<Record<string, unknown>> {
         const preserve = new Set<string>(Object.keys(src || {}));
         const mode = this.settings.customFieldsMode ?? 'flatten';
         const prepared = await this.serializeFrontmatterEntityReferences(src);
+        const omitOriginalKeys = extraOmitKeys?.length
+            ? [...prepared.omitOriginalKeys, ...extraOmitKeys]
+            : prepared.omitOriginalKeys;
         return buildFrontmatter(entityType, prepared.source, preserve, {
             customFieldsMode: mode,
             originalFrontmatter,
-            omitOriginalKeys: prepared.omitOriginalKeys,
+            omitOriginalKeys,
         });
     }
 
@@ -4147,7 +4338,11 @@ export default class StorytellerSuitePlugin extends Plugin {
     }
 
     private buildFrontmatterForItem(src: Record<string, unknown>, originalFrontmatter?: Record<string, unknown>): Promise<Record<string, unknown>> {
-        return this.buildLinkedFrontmatter('item', src, originalFrontmatter);
+        // parseFile has already hoisted any legacy currentOwner into owners, so
+        // dropping it here completes the migration. Without the omit, the
+        // original-frontmatter preservation pass would put the stale scalar back
+        // on every save and the note would carry two competing owner fields.
+        return this.buildLinkedFrontmatter('item', src, originalFrontmatter, ['currentOwner']);
     }
 
     private buildFrontmatterForCulture(src: Record<string, unknown>, originalFrontmatter?: Record<string, unknown>): Promise<Record<string, unknown>> {
@@ -4362,6 +4557,13 @@ export default class StorytellerSuitePlugin extends Plugin {
 	 * Delete a character file by moving it to trash
 	 * @param filePath Path to the character file to delete
 	 */
+    private async cleanupEntityMapMembership(file: TFile, type: string): Promise<void> {
+        const { parseFrontmatterFromContent } = await import('./yaml/EntitySections');
+        const fm = parseFrontmatterFromContent(await this.app.vault.read(file));
+        const id = String(fm?.id || fm?.['storyteller-id'] || file.basename);
+        await detachFromMaps(this, type, id, String(fm?.name || file.basename));
+    }
+
 	async deleteCharacter(filePath: string): Promise<void> {
 		const file = this.app.vault.getAbstractFileByPath(normalizePath(filePath));
 		if (file instanceof TFile) {
@@ -4391,7 +4593,8 @@ export default class StorytellerSuitePlugin extends Plugin {
 				}
 			}
 
-			await this.app.fileManager.trashFile(file);
+			await this.cleanupEntityMapMembership(file, 'character');
+            await this.app.fileManager.trashFile(file);
 			
 			new Notice(`Character file "${file.basename}" moved to trash.`);
 			this.app.metadataCache.trigger("dataview:refresh-views");
@@ -4621,7 +4824,8 @@ export default class StorytellerSuitePlugin extends Plugin {
 				}
 			}
 
-			await this.app.fileManager.trashFile(file);
+			await this.cleanupEntityMapMembership(file, 'location');
+            await this.app.fileManager.trashFile(file);
 			
 			new Notice(`Location file "${file.basename}" moved to trash.`);
 			this.app.metadataCache.trigger("dataview:refresh-views");
@@ -5173,6 +5377,13 @@ export default class StorytellerSuitePlugin extends Plugin {
 				}
 			}
 
+            // Removal from a location must also remove its direct map representations.
+            for (const map of await this.listMaps()) {
+                const mapId = map.id || map.name;
+                if (location?.mapBindings?.some(b => b.mapId === mapId) || map.placementGrid?.areas.some(a => a.locationId === locationId)) {
+                    await detachFromMaps(this, entityType, entityId, entityName, mapId);
+                }
+            }
 			new Notice(`Removed ${entityName} from ${location?.name || locationId}`);
 			this.app.metadataCache.trigger("dataview:refresh-views");
 			
@@ -5576,7 +5787,8 @@ export default class StorytellerSuitePlugin extends Plugin {
 				}
 			}
 
-			await this.app.fileManager.trashFile(file);
+			await this.cleanupEntityMapMembership(file, 'event');
+            await this.app.fileManager.trashFile(file);
 			
 			new Notice(`Event file "${file.basename}" moved to trash.`);
 			this.app.metadataCache.trigger("dataview:refresh-views");
@@ -5619,12 +5831,17 @@ export default class StorytellerSuitePlugin extends Plugin {
         const history = itemRecord.history as string | undefined;
         const culturalSignificance = itemRecord.culturalSignificance as string | undefined;
         const magicProperties = itemRecord.magicProperties as string | undefined;
+        const whereToFind = itemRecord.whereToFind as string | undefined;
         const rest: Record<string, unknown> = { ...itemRecord };
         delete rest.filePath;
         delete rest.description;
         delete rest.history;
         delete rest.culturalSignificance;
         delete rest.magicProperties;
+        delete rest.whereToFind;
+        // owners supersedes it; carrying both would let the stale scalar win the
+        // next time an older build read the note.
+        delete rest.currentOwner;
         if (rest.sections) delete rest.sections;
 
 		let finalFilePath = filePath;
@@ -5691,6 +5908,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 			History: history || '',
 			'Cultural Significance': culturalSignificance || '',
 			'Magic Properties': magicProperties || '',
+			'Where to Find': whereToFind || '',
 		};
 		const templateSections = getTemplateSections('item', providedSections);
 		const allSections: Record<string, string> = (existingFile && existingFile instanceof TFile)
@@ -5788,7 +6006,8 @@ export default class StorytellerSuitePlugin extends Plugin {
 				}
 			}
 
-			await this.app.fileManager.trashFile(file);
+			await this.cleanupEntityMapMembership(file, 'item');
+            await this.app.fileManager.trashFile(file);
 			
 			new Notice(`Item file "${file.basename}" moved to trash.`);
 			this.app.metadataCache.trigger("dataview:refresh-views");
@@ -5905,7 +6124,8 @@ export default class StorytellerSuitePlugin extends Plugin {
 	async deleteReference(filePath: string): Promise<void> {
 		const file = this.app.vault.getAbstractFileByPath(normalizePath(filePath));
 		if (file instanceof TFile) {
-			await this.app.fileManager.trashFile(file);
+			await this.cleanupEntityMapMembership(file, 'reference');
+            await this.app.fileManager.trashFile(file);
 			new Notice(`Reference file "${file.basename}" moved to trash.`);
 			this.app.metadataCache.trigger('dataview:refresh-views');
 		} else {
@@ -6687,6 +6907,7 @@ export default class StorytellerSuitePlugin extends Plugin {
                 }
             }
 
+            await this.cleanupEntityMapMembership(file, 'scene');
             await this.app.fileManager.trashFile(file);
             new Notice(`Scene file "${file.basename}" moved to trash.`);
             this.app.metadataCache.trigger('dataview:refresh-views');
@@ -6845,6 +7066,7 @@ export default class StorytellerSuitePlugin extends Plugin {
     async deleteCulture(filePath: string): Promise<void> {
         const file = this.app.vault.getAbstractFileByPath(normalizePath(filePath));
         if (file instanceof TFile) {
+            await this.cleanupEntityMapMembership(file, 'culture');
             await this.app.fileManager.trashFile(file);
             new Notice(`Culture file "${file.basename}" moved to trash.`);
             this.app.metadataCache.trigger('dataview:refresh-views');
@@ -6984,6 +7206,7 @@ export default class StorytellerSuitePlugin extends Plugin {
     async deleteEconomy(filePath: string): Promise<void> {
         const file = this.app.vault.getAbstractFileByPath(normalizePath(filePath));
         if (file instanceof TFile) {
+            await this.cleanupEntityMapMembership(file, 'economy');
             await this.app.fileManager.trashFile(file);
             new Notice(`Economy file "${file.basename}" moved to trash.`);
             this.app.metadataCache.trigger('dataview:refresh-views');
@@ -7120,6 +7343,7 @@ export default class StorytellerSuitePlugin extends Plugin {
     async deleteCompendiumEntry(filePath: string): Promise<void> {
         const file = this.app.vault.getAbstractFileByPath(normalizePath(filePath));
         if (file instanceof TFile) {
+            await this.cleanupEntityMapMembership(file, 'compendiumentry');
             await this.app.fileManager.trashFile(file);
             new Notice(`Compendium entry "${file.basename}" moved to trash.`);
             this.app.metadataCache.trigger('dataview:refresh-views');
@@ -7271,6 +7495,7 @@ export default class StorytellerSuitePlugin extends Plugin {
     async deleteMagicSystem(filePath: string): Promise<void> {
         const file = this.app.vault.getAbstractFileByPath(normalizePath(filePath));
         if (file instanceof TFile) {
+            await this.cleanupEntityMapMembership(file, 'magicsystem');
             await this.app.fileManager.trashFile(file);
             new Notice(`Magic System file "${file.basename}" moved to trash.`);
             this.app.metadataCache.trigger('dataview:refresh-views');
@@ -7284,6 +7509,249 @@ export default class StorytellerSuitePlugin extends Plugin {
     // ============================================================
 
     /**
+     * Eras, tracks, forks, conflicts and causality links each describe one
+     * story, but they live in a single flat array in data.json shared by every
+     * story in the vault. Entities are story-scoped through the folder
+     * resolver, so without this the two halves of the timeline disagree about
+     * which story you are looking at: switch stories and the previous story's
+     * eras stay painted across the view.
+     *
+     * Reads filter to the active story. Writes merge back over the other
+     * stories' entries, which is the part that matters: a caller hands back
+     * the list it was given, which holds only its own story's entries, and a
+     * plain assignment would delete every other story's.
+     *
+     * With no active story there is nothing to scope by, so reads return
+     * everything and writes replace everything, exactly as before scoping.
+     */
+    private scopeTimelineList<T extends StoryScoped>(list: T[] | undefined): T[] {
+        return scopeToStory(list, this.settings.activeStoryId);
+    }
+
+    /** Stamp an entry with the active story on the way in. */
+    private stampTimelineEntry<T extends StoryScoped>(entry: T): T {
+        return stampStory(entry, this.settings.activeStoryId);
+    }
+
+    /** Replace the active story's slice of a shared array, keeping the rest. */
+    private mergeTimelineList<T extends StoryScoped>(list: T[] | undefined, next: T[]): T[] {
+        return mergeStoryScoped(list, next, this.settings.activeStoryId);
+    }
+
+    /**
+     * Adopt pre-scoping entries into the active story, once.
+     *
+     * @returns whether anything changed
+     */
+    private backfillTimelineStoryIds(): boolean {
+        return backfillStoryIds([
+            this.settings.timelineForks,
+            this.settings.timelineEras,
+            this.settings.timelineTracks,
+            this.settings.timelineConflicts,
+            this.settings.causalityLinks
+        ], this.settings.activeStoryId);
+    }
+
+    /** Redraw every open timeline, after data moved under it. */
+    refreshTimelineViews(): void {
+        this.app.workspace.getLeavesOfType(VIEW_TYPE_TIMELINE).forEach(leaf => {
+            if (leaf.view instanceof TimelineView) void leaf.view.refresh();
+        });
+    }
+
+    /**
+     * Write branch membership onto the events themselves, once.
+     *
+     * A branch has always recorded which events are its own. Now the event
+     * records it too, which is the half that travels: hand someone an event
+     * note and it says which timeline it belongs to. Only the missing direction
+     * is filled in, so an event that already names the branch is left alone.
+     *
+     * Saves skip sync deliberately. Both sides are already correct here, and
+     * letting the reverse sync run would rewrite every branch note with the
+     * data it just supplied.
+     */
+    async backfillEventBranches(): Promise<number> {
+        const branches = this.getTimelineForks();
+        if (!branches.length) return 0;
+
+        const events = await this.listEvents();
+        const byKey = new Map<string, Event>();
+        for (const event of events) {
+            if (event.id) byKey.set(event.id, event);
+            if (event.name) byKey.set(event.name, event);
+        }
+
+        const touched = new Set<Event>();
+        for (const branch of branches) {
+            for (const key of branch.linkedEvents || []) {
+                const event = byKey.get(key);
+                if (!event) continue;
+                const existing = event.branches || [];
+                if (existing.includes(branch.name)) continue;
+                event.branches = [...existing, branch.name];
+                touched.add(event);
+            }
+        }
+
+        for (const event of touched) {
+            (event as WithSyncFlags<Event>)._skipSync = true;
+            await this.saveEvent(event);
+        }
+        return touched.size;
+    }
+
+    /**
+     * Open the migration chooser, or say why it will not open.
+     *
+     * The command palette and the Timeline settings tab both come through
+     * here, so the preconditions are explained the same way wherever the user
+     * happens to find it.
+     */
+    openTimelineEntityMigration(onDone?: () => void): void {
+        if (this.timelineEntities.migrated) {
+            new Notice('Timeline eras, tracks and branches are already stored as notes.');
+            return;
+        }
+        if (!this.hasUnmigratedTimelineEntities()) {
+            new Notice('There is no timeline data left in settings to move.');
+            return;
+        }
+        if (!this.settings.stories.length) {
+            new Notice('Create a story first: notes need a story folder to live in.');
+            return;
+        }
+        void import('./modals/TimelineMigrationModal').then(({ TimelineMigrationModal }) => {
+            const onDismiss = () => { void (async () => {
+                this.settings.timelineMigrationDeferred = true;
+                await this.saveSettings();
+            })(); };
+            new TimelineMigrationModal(this.app, this, (storyId) => { void (async () => {
+                // Answering the prompt clears an earlier dismissal, so undoing
+                // this migration later can set the flag again meaningfully.
+                this.settings.timelineMigrationDeferred = false;
+                const counts = await this.timelineEntities.migrateFromSettings(storyId);
+                await this.backfillEventBranches();
+                await this.migrateCausalityLinksToEvents();
+                const total = counts.eras + counts.tracks + counts.branches;
+                new Notice(counts.skipped
+                    ? `Moved ${total} into notes. ${counts.skipped} could not be filed and stay in the backup.`
+                    : `Moved ${total} eras, tracks and branches into notes.`, 8000);
+                this.refreshTimelineViews();
+                onDone?.();
+            })(); }, onDismiss).open();
+        });
+    }
+
+    /** Put the settings arrays back. The notes stay where they are. */
+    async rollbackTimelineEntityMigration(onDone?: () => void): Promise<void> {
+        if (!this.settings.timelineEntityBackup) {
+            new Notice('No timeline migration backup found.');
+            return;
+        }
+        await this.timelineEntities.rollbackMigration();
+        // Undoing is an answer, so stop offering to migrate. The command is
+        // still there for anyone who changes their mind.
+        this.settings.timelineMigrationDeferred = true;
+        await this.saveSettings();
+        new Notice('Timeline eras, tracks and branches are read from settings again. The notes were left in place.', 8000);
+        this.refreshTimelineViews();
+        onDone?.();
+    }
+
+    /** How many rows are still waiting in settings, for the settings tab to report. */
+    unmigratedTimelineCounts(): { eras: number; tracks: number; branches: number; total: number } {
+        const eras = this.settings.timelineEras?.length || 0;
+        const tracks = this.settings.timelineTracks?.length || 0;
+        const branches = this.settings.timelineForks?.length || 0;
+        return { eras, tracks, branches, total: eras + tracks + branches };
+    }
+
+    /** Whether any settings-era timeline data is still waiting to become notes. */
+    hasUnmigratedTimelineEntities(): boolean {
+        if (this.timelineEntities.migrated) return false;
+        return Boolean(
+            this.settings.timelineEras?.length ||
+            this.settings.timelineTracks?.length ||
+            this.settings.timelineForks?.length
+        );
+    }
+
+    /**
+     * Run the notes migration when the answer to "which story owns this?" is
+     * not a question.
+     *
+     * One story means every row belongs to it. More than one, and filing
+     * someone's eras into the wrong story would be worse than waiting: the
+     * command asks instead. No stories at all means there is nowhere to file
+     * anything, so the settings arrays stay exactly as they are.
+     */
+    async migrateTimelineEntitiesIfUnambiguous(): Promise<void> {
+        if (!this.hasUnmigratedTimelineEntities()) return;
+        // Someone who undid the migration, or closed the prompt, has answered.
+        // Without this a one-story vault migrates again on the next load and
+        // the undo never survives a restart.
+        if (this.settings.timelineMigrationDeferred) return;
+        const stories = this.settings.stories || [];
+        if (!canMigrateWithoutAsking(stories.length)) {
+            // More than one story means the migration needs an answer only the
+            // user has. Ask for it, once, in front of them. Burying it in
+            // settings would leave the data sitting there unnoticed forever.
+            if (stories.length && !this.settings.timelineMigrationDeferred) {
+                this.app.workspace.onLayoutReady(() => this.openTimelineEntityMigration());
+            }
+            return;
+        }
+        const counts = await this.timelineEntities.migrateFromSettings(stories[0].id);
+        await this.backfillEventBranches();
+        await this.migrateCausalityLinksToEvents();
+        const total = counts.eras + counts.tracks + counts.branches;
+        if (total > 0) {
+            new Notice(`Storyteller Suite: moved ${total} timeline eras, tracks and branches into notes.`, 8000);
+        }
+    }
+
+    /**
+     * Replace the active story's eras. Other stories' eras are preserved.
+     */
+    async setTimelineEras(eras: TimelineEra[]): Promise<void> {
+        if (this.timelineEntities.migrated) {
+            await this.timelineEntities.replaceAll('era', eras);
+            return;
+        }
+        this.settings.timelineEras = this.mergeTimelineList(this.settings.timelineEras, eras);
+        await this.saveSettings();
+    }
+
+    /**
+     * Replace the active story's tracks. Other stories' tracks are preserved.
+     */
+    async setTimelineTracks(tracks: TimelineTrack[]): Promise<void> {
+        if (this.timelineEntities.migrated) {
+            await this.timelineEntities.replaceAll('track', tracks);
+            return;
+        }
+        this.settings.timelineTracks = this.mergeTimelineList(this.settings.timelineTracks, tracks);
+        await this.saveSettings();
+    }
+
+    /** Conflicts detected against the active story. */
+    getTimelineConflicts(): TimelineConflict[] {
+        return this.scopeTimelineList(this.settings.timelineConflicts);
+    }
+
+    /**
+     * Replace the active story's conflicts. Detection runs over the active
+     * story's events only, so the result describes this story alone and must
+     * not be allowed to clear another story's recorded conflicts.
+     */
+    async setTimelineConflicts(conflicts: TimelineConflict[]): Promise<void> {
+        this.settings.timelineConflicts = this.mergeTimelineList(this.settings.timelineConflicts, conflicts);
+        await this.saveSettings();
+    }
+
+    /**
      * Create a new timeline fork (alternate timeline)
      * @param name - Name of the fork
      * @param divergenceEvent - Event where timeline diverges
@@ -7291,12 +7759,12 @@ export default class StorytellerSuitePlugin extends Plugin {
      * @param description - Description of how this timeline differs
      * @returns The created TimelineFork object
      */
-    createTimelineFork(
+    async createTimelineFork(
         name: string,
         divergenceEvent: string,
         divergenceDate: string,
         description: string
-    ): TimelineFork {
+    ): Promise<TimelineFork> {
         const fork: TimelineFork = {
             id: Date.now().toString(),
             name,
@@ -7305,7 +7773,7 @@ export default class StorytellerSuitePlugin extends Plugin {
             divergenceDate,
             description,
             status: 'exploring',
-            forkEvents: [],
+            linkedEvents: [],
             alteredCharacters: [],
             alteredLocations: [],
             color: this.generateRandomColor(),
@@ -7313,10 +7781,18 @@ export default class StorytellerSuitePlugin extends Plugin {
             notes: ''
         };
 
-        this.settings.timelineForks = this.settings.timelineForks || [];
-        this.settings.timelineForks.push(fork);
-        void this.saveSettings();
+        if (this.timelineEntities.migrated) {
+            await this.timelineEntities.save('branch', fork);
+        } else {
+            this.settings.timelineForks = this.settings.timelineForks || [];
+            this.settings.timelineForks.push(this.stampTimelineEntry(fork));
+            await this.saveSettings();
+        }
 
+        // Any open timeline has to be told, or the branch picker will not
+        // list the branch that was just made and forks look like they do
+        // nothing at all.
+        this.refreshTimelineViews();
         new Notice(`Timeline fork "${name}" created`);
         return fork;
     }
@@ -7326,7 +7802,9 @@ export default class StorytellerSuitePlugin extends Plugin {
      * @returns Array of all timeline forks
      */
     getTimelineForks(): TimelineFork[] {
-        return this.settings.timelineForks || [];
+        return this.timelineEntities.migrated
+            ? this.timelineEntities.getBranches()
+            : this.scopeTimelineList(this.settings.timelineForks);
     }
 
     /**
@@ -7335,7 +7813,7 @@ export default class StorytellerSuitePlugin extends Plugin {
      * @returns The timeline fork or undefined if not found
      */
     getTimelineFork(forkId: string): TimelineFork | undefined {
-        return this.settings.timelineForks?.find(f => f.id === forkId);
+        return this.getTimelineForks().find(f => f.id === forkId);
     }
 
     /**
@@ -7343,10 +7821,17 @@ export default class StorytellerSuitePlugin extends Plugin {
      * @param fork - Updated fork object
      */
     async updateTimelineFork(fork: TimelineFork): Promise<void> {
+        if (this.timelineEntities.migrated) {
+            await this.timelineEntities.save('branch', fork);
+            this.refreshTimelineViews();
+            new Notice(`Timeline fork "${fork.name}" updated`);
+            return;
+        }
         const index = this.settings.timelineForks?.findIndex(f => f.id === fork.id);
         if (index !== undefined && index >= 0) {
-            this.settings.timelineForks![index] = fork;
+            this.settings.timelineForks![index] = this.stampTimelineEntry(fork);
             await this.saveSettings();
+            this.refreshTimelineViews();
             new Notice(`Timeline fork "${fork.name}" updated`);
         } else {
             new Notice(`Error: Timeline fork not found`);
@@ -7359,13 +7844,15 @@ export default class StorytellerSuitePlugin extends Plugin {
      */
     async deleteTimelineFork(forkId: string): Promise<void> {
         const fork = this.getTimelineFork(forkId);
-        if (fork) {
+        if (!fork) { new Notice(`Error: Timeline fork not found`); return; }
+        if (this.timelineEntities.migrated) {
+            await this.timelineEntities.delete('branch', forkId);
+        } else {
             this.settings.timelineForks = this.settings.timelineForks?.filter(f => f.id !== forkId);
             await this.saveSettings();
-            new Notice(`Timeline fork "${fork.name}" deleted`);
-        } else {
-            new Notice(`Error: Timeline fork not found`);
         }
+        this.refreshTimelineViews();
+        new Notice(`Timeline fork "${fork.name}" deleted`);
     }
 
     /**
@@ -7380,13 +7867,14 @@ export default class StorytellerSuitePlugin extends Plugin {
             return;
         }
 
-        if (!fork.forkEvents) {
-            fork.forkEvents = [];
+        if (!fork.linkedEvents) {
+            fork.linkedEvents = [];
         }
 
-        if (!fork.forkEvents.includes(eventId)) {
-            fork.forkEvents.push(eventId);
+        if (!fork.linkedEvents.includes(eventId)) {
+            fork.linkedEvents.push(eventId);
             await this.updateTimelineFork(fork);
+            await this.setEventBranchMembership(eventId, fork.name, true);
         }
     }
 
@@ -7402,10 +7890,34 @@ export default class StorytellerSuitePlugin extends Plugin {
             return;
         }
 
-        if (fork.forkEvents) {
-            fork.forkEvents = fork.forkEvents.filter(id => id !== eventId);
+        if (fork.linkedEvents) {
+            fork.linkedEvents = fork.linkedEvents.filter(id => id !== eventId);
             await this.updateTimelineFork(fork);
+            await this.setEventBranchMembership(eventId, fork.name, false);
         }
+    }
+
+    /**
+     * Keep the event's own record of its branches in step with the branch's.
+     *
+     * The pair is bidirectional, but this path writes the branch directly, so
+     * without this the event note would quietly disagree with the branch note.
+     * Sync is skipped because both sides are being set here on purpose.
+     */
+    private async setEventBranchMembership(eventKey: string, branchName: string, member: boolean): Promise<void> {
+        const events = await this.listEvents();
+        const event = events.find(candidate => candidate.id === eventKey || candidate.name === eventKey);
+        if (!event) return;
+
+        const current = event.branches || [];
+        const next = member
+            ? (current.includes(branchName) ? current : [...current, branchName])
+            : current.filter(name => name !== branchName);
+        if (next.length === current.length && next.every((name, index) => name === current[index])) return;
+
+        event.branches = next;
+        (event as WithSyncFlags<Event>)._skipSync = true;
+        await this.saveEvent(event);
     }
 
     /**
@@ -7415,7 +7927,7 @@ export default class StorytellerSuitePlugin extends Plugin {
      */
     getForksForEvent(eventId: string): TimelineFork[] {
         const forks = this.getTimelineForks();
-        return forks.filter(fork => fork.forkEvents?.includes(eventId));
+        return forks.filter(fork => fork.linkedEvents?.includes(eventId));
     }
 
     /**
@@ -7447,9 +7959,13 @@ export default class StorytellerSuitePlugin extends Plugin {
      * @param era - Era object to create
      */
     async createTimelineEra(era: TimelineEra): Promise<void> {
-        this.settings.timelineEras = this.settings.timelineEras || [];
-        this.settings.timelineEras.push(era);
-        await this.saveSettings();
+        if (this.timelineEntities.migrated) {
+            await this.timelineEntities.save('era', era);
+        } else {
+            this.settings.timelineEras = this.settings.timelineEras || [];
+            this.settings.timelineEras.push(this.stampTimelineEntry(era));
+            await this.saveSettings();
+        }
         new Notice(`Era "${era.name}" created`);
     }
 
@@ -7458,7 +7974,9 @@ export default class StorytellerSuitePlugin extends Plugin {
      * @returns Array of all eras
      */
     getTimelineEras(): TimelineEra[] {
-        return this.settings.timelineEras || [];
+        return this.timelineEntities.migrated
+            ? this.timelineEntities.getEras()
+            : this.scopeTimelineList(this.settings.timelineEras);
     }
 
     /**
@@ -7467,7 +7985,7 @@ export default class StorytellerSuitePlugin extends Plugin {
      * @returns The era or undefined if not found
      */
     getTimelineEra(eraId: string): TimelineEra | undefined {
-        return this.settings.timelineEras?.find(e => e.id === eraId);
+        return this.getTimelineEras().find(e => e.id === eraId);
     }
 
     /**
@@ -7475,9 +7993,14 @@ export default class StorytellerSuitePlugin extends Plugin {
      * @param era - Updated era object
      */
     async updateTimelineEra(era: TimelineEra): Promise<void> {
+        if (this.timelineEntities.migrated) {
+            await this.timelineEntities.save('era', era);
+            new Notice(`Era "${era.name}" updated`);
+            return;
+        }
         const index = this.settings.timelineEras?.findIndex(e => e.id === era.id);
         if (index !== undefined && index >= 0) {
-            this.settings.timelineEras![index] = era;
+            this.settings.timelineEras![index] = this.stampTimelineEntry(era);
             await this.saveSettings();
             new Notice(`Era "${era.name}" updated`);
         } else {
@@ -7491,13 +8014,14 @@ export default class StorytellerSuitePlugin extends Plugin {
      */
     async deleteTimelineEra(eraId: string): Promise<void> {
         const era = this.getTimelineEra(eraId);
-        if (era) {
+        if (!era) { new Notice(`Error: Era not found`); return; }
+        if (this.timelineEntities.migrated) {
+            await this.timelineEntities.delete('era', eraId);
+        } else {
             this.settings.timelineEras = this.settings.timelineEras?.filter(e => e.id !== eraId);
             await this.saveSettings();
-            new Notice(`Era "${era.name}" deleted`);
-        } else {
-            new Notice(`Error: Era not found`);
         }
+        new Notice(`Era "${era.name}" deleted`);
     }
 
     // ============================================================
@@ -7509,9 +8033,13 @@ export default class StorytellerSuitePlugin extends Plugin {
      * @param track - Track object to create
      */
     async createTimelineTrack(track: TimelineTrack): Promise<void> {
-        this.settings.timelineTracks = this.settings.timelineTracks || [];
-        this.settings.timelineTracks.push(track);
-        await this.saveSettings();
+        if (this.timelineEntities.migrated) {
+            await this.timelineEntities.save('track', track);
+        } else {
+            this.settings.timelineTracks = this.settings.timelineTracks || [];
+            this.settings.timelineTracks.push(this.stampTimelineEntry(track));
+            await this.saveSettings();
+        }
         new Notice(`Track "${track.name}" created`);
     }
 
@@ -7520,7 +8048,9 @@ export default class StorytellerSuitePlugin extends Plugin {
      * @returns Array of all tracks
      */
     getTimelineTracks(): TimelineTrack[] {
-        return this.settings.timelineTracks || [];
+        return this.timelineEntities.migrated
+            ? this.timelineEntities.getTracks()
+            : this.scopeTimelineList(this.settings.timelineTracks);
     }
 
     /**
@@ -7529,7 +8059,7 @@ export default class StorytellerSuitePlugin extends Plugin {
      * @returns The track or undefined if not found
      */
     getTimelineTrack(trackId: string): TimelineTrack | undefined {
-        return this.settings.timelineTracks?.find(t => t.id === trackId);
+        return this.getTimelineTracks().find(t => t.id === trackId);
     }
 
     /**
@@ -7537,9 +8067,14 @@ export default class StorytellerSuitePlugin extends Plugin {
      * @param track - Updated track object
      */
     async updateTimelineTrack(track: TimelineTrack): Promise<void> {
+        if (this.timelineEntities.migrated) {
+            await this.timelineEntities.save('track', track);
+            new Notice(`Track "${track.name}" updated`);
+            return;
+        }
         const index = this.settings.timelineTracks?.findIndex(t => t.id === track.id);
         if (index !== undefined && index >= 0) {
-            this.settings.timelineTracks![index] = track;
+            this.settings.timelineTracks![index] = this.stampTimelineEntry(track);
             await this.saveSettings();
             new Notice(`Track "${track.name}" updated`);
         } else {
@@ -7553,13 +8088,14 @@ export default class StorytellerSuitePlugin extends Plugin {
      */
     async deleteTimelineTrack(trackId: string): Promise<void> {
         const track = this.getTimelineTrack(trackId);
-        if (track) {
+        if (!track) { new Notice(`Error: Track not found`); return; }
+        if (this.timelineEntities.migrated) {
+            await this.timelineEntities.delete('track', trackId);
+        } else {
             this.settings.timelineTracks = this.settings.timelineTracks?.filter(t => t.id !== trackId);
             await this.saveSettings();
-            new Notice(`Track "${track.name}" deleted`);
-        } else {
-            new Notice(`Error: Track not found`);
         }
+        new Notice(`Track "${track.name}" deleted`);
     }
 
     // ============================================================
@@ -7567,90 +8103,180 @@ export default class StorytellerSuitePlugin extends Plugin {
     // ============================================================
 
     /**
-     * Create a causality link between two events
-     * @param causeEvent - ID or name of the cause event
-     * @param effectEvent - ID or name of the effect event
-     * @param linkType - Type of causality (direct, indirect, conditional, catalyst)
-     * @param description - Description of the causal relationship
-     * @param strength - Strength of the link (weak, moderate, strong, absolute)
-     * @returns The created CausalityLink object
+     * Cause and effect between two events.
+     *
+     * These used to be rows in a third list naming both events, invisible from
+     * either event's note. They live on the events now, as `causes` on the
+     * cause and `causedBy` on the effect, kept in step by EntitySyncService.
+     *
+     * The CausalityLink shape survives as the currency the UI speaks; it is
+     * derived from the events rather than stored. Its id is the pair of event
+     * names, so the same link always has the same id no matter which end it
+     * was read from.
      */
-    createCausalityLink(
+    private causalityLinkId(causeEvent: string, effectEvent: string): string {
+        return `${causeEvent}=>${effectEvent}`;
+    }
+
+    private causalityLinksFromEvent(event: Event): CausalityLink[] {
+        const key = event.name;
+        const out: CausalityLink[] = [];
+        for (const ref of parseCausalityRefs(event.causes)) {
+            out.push({
+                id: this.causalityLinkId(key, ref.target),
+                causeEvent: key,
+                effectEvent: ref.target,
+                linkType: ref.linkType,
+                ...(ref.strength ? { strength: ref.strength } : {}),
+                ...(ref.description ? { description: ref.description } : {})
+            });
+        }
+        return out;
+    }
+
+    /**
+     * Record that one event caused another.
+     *
+     * Only the cause is written. The reverse side is the sync service's job,
+     * and writing both here would fight it.
+     */
+    async createCausalityLink(
         causeEvent: string,
         effectEvent: string,
         linkType: 'direct' | 'indirect' | 'conditional' | 'catalyst',
         description: string,
         strength?: 'weak' | 'moderate' | 'strong' | 'absolute'
-    ): CausalityLink {
-        const link: CausalityLink = {
-            id: `${causeEvent}-${effectEvent}-${Date.now()}`,
-            causeEvent,
-            effectEvent,
+    ): Promise<CausalityLink | null> {
+        const events = await this.listEvents();
+        const cause = events.find(event => event.id === causeEvent || event.name === causeEvent);
+        const effect = events.find(event => event.id === effectEvent || event.name === effectEvent);
+        if (!cause || !effect) {
+            new Notice('Error: both events must exist before they can be linked');
+            return null;
+        }
+
+        const ref = serializeCausalityRef({
+            target: effect.name,
+            linkType,
+            ...(strength ? { strength } : { strength: 'strong' as const }),
+            ...(description ? { description } : {})
+        });
+        const existing = cause.causes || [];
+        cause.causes = [...existing.filter(entry => causalityRefTarget(entry) !== effect.name), ref];
+        await this.saveEvent(cause);
+
+        new Notice(`Causality link created: ${cause.name} to ${effect.name}`);
+        return {
+            id: this.causalityLinkId(cause.name, effect.name),
+            causeEvent: cause.name,
+            effectEvent: effect.name,
             linkType,
             strength: strength || 'strong',
             description
         };
-
-        this.settings.causalityLinks = this.settings.causalityLinks || [];
-        this.settings.causalityLinks.push(link);
-        void this.saveSettings();
-
-        new Notice(`Causality link created: ${causeEvent} → ${effectEvent}`);
-        return link;
     }
 
-    /**
-     * Get all causality links
-     * @returns Array of all causality links
-     */
-    getCausalityLinks(): CausalityLink[] {
-        return this.settings.causalityLinks || [];
+    /** Every causal link in the active story, read off the events. */
+    async getCausalityLinks(): Promise<CausalityLink[]> {
+        const events = await this.listEvents();
+        return events.flatMap(event => this.causalityLinksFromEvent(event));
     }
 
-    /**
-     * Get causality links for a specific event
-     * @param eventId - ID or name of the event
-     * @returns Object containing causes and effects for the event
-     */
-    getCausalityLinksForEvent(eventId: string): { causes: CausalityLink[], effects: CausalityLink[] } {
-        const links = this.settings.causalityLinks || [];
-
+    /** What caused this event, and what it caused in turn. */
+    async getCausalityLinksForEvent(eventId: string): Promise<{ causes: CausalityLink[], effects: CausalityLink[] }> {
+        const links = await this.getCausalityLinks();
+        const events = await this.listEvents();
+        const event = events.find(candidate => candidate.id === eventId || candidate.name === eventId);
+        const key = event?.name || eventId;
         return {
-            causes: links.filter(l => l.effectEvent === eventId),
-            effects: links.filter(l => l.causeEvent === eventId)
+            causes: links.filter(link => link.effectEvent === key),
+            effects: links.filter(link => link.causeEvent === key)
         };
     }
 
-    /**
-     * Update a causality link
-     * @param link - Updated link object
-     */
+    /** Rewrite a link in place, keyed on the pair of events it joins. */
     async updateCausalityLink(link: CausalityLink): Promise<void> {
-        const index = this.settings.causalityLinks?.findIndex(l => l.id === link.id);
-        if (index !== undefined && index >= 0) {
-            this.settings.causalityLinks![index] = link;
-            await this.saveSettings();
-            new Notice(`Causality link updated`);
-        } else {
-            new Notice(`Error: Causality link not found`);
+        const events = await this.listEvents();
+        const cause = events.find(event => event.name === link.causeEvent || event.id === link.causeEvent);
+        if (!cause) {
+            new Notice('Error: causality link not found');
+            return;
         }
+        const ref = serializeCausalityRef({
+            target: link.effectEvent,
+            linkType: link.linkType,
+            ...(link.strength ? { strength: link.strength } : {}),
+            ...(link.description ? { description: link.description } : {})
+        });
+        cause.causes = [
+            ...(cause.causes || []).filter(entry => causalityRefTarget(entry) !== link.effectEvent),
+            ref
+        ];
+        await this.saveEvent(cause);
+        new Notice('Causality link updated');
+    }
+
+    /** Drop a link from the cause; sync removes it from the effect. */
+    async deleteCausalityLink(linkId: string): Promise<void> {
+        const links = await this.getCausalityLinks();
+        const link = links.find(candidate => candidate.id === linkId);
+        if (!link) {
+            new Notice('Error: causality link not found');
+            return;
+        }
+        const events = await this.listEvents();
+        const cause = events.find(event => event.name === link.causeEvent);
+        if (!cause) {
+            new Notice('Error: causality link not found');
+            return;
+        }
+        cause.causes = (cause.causes || []).filter(entry => causalityRefTarget(entry) !== link.effectEvent);
+        await this.saveEvent(cause);
+        new Notice('Causality link deleted');
     }
 
     /**
-     * Delete a causality link
-     * @param linkId - ID of the link to delete
+     * Move the old causality rows onto the events, once.
+     *
+     * Rows naming an event that no longer exists are left in settings rather
+     * than dropped, so nothing disappears without the user seeing it.
+     *
+     * @returns how many rows became links
      */
-    async deleteCausalityLink(linkId: string): Promise<void> {
-        const linksBefore = this.settings.causalityLinks?.length || 0;
-        this.settings.causalityLinks = this.settings.causalityLinks?.filter(l => l.id !== linkId);
-        const linksAfter = this.settings.causalityLinks?.length || 0;
+    async migrateCausalityLinksToEvents(): Promise<number> {
+        const links = this.settings.causalityLinks || [];
+        if (!links.length) return 0;
 
-        if (linksBefore > linksAfter) {
-            await this.saveSettings();
-            new Notice(`Causality link deleted`);
-        } else {
-            new Notice(`Error: Causality link not found`);
+        const events = await this.listEvents();
+        const find = (key: string) => events.find(event => event.id === key || event.name === key);
+
+        const touched = new Set<Event>();
+        const unmigrated: CausalityLink[] = [];
+        for (const link of links) {
+            const cause = find(link.causeEvent);
+            const effect = find(link.effectEvent);
+            if (!cause || !effect) { unmigrated.push(link); continue; }
+            const ref = serializeCausalityRef({
+                target: effect.name,
+                linkType: link.linkType,
+                ...(link.strength ? { strength: link.strength } : {}),
+                ...(link.description ? { description: link.description } : {})
+            });
+            const existing = cause.causes || [];
+            if (existing.some(entry => causalityRefTarget(entry) === effect.name)) continue;
+            cause.causes = [...existing, ref];
+            touched.add(cause);
         }
+
+        for (const event of touched) {
+            // Sync runs here on purpose: it writes the causedBy side onto the
+            // other event, which is the half the old rows never had.
+            await this.saveEvent(event);
+        }
+
+        this.settings.causalityLinks = unmigrated;
+        await this.saveSettings();
+        return touched.size;
     }
 
 
@@ -8276,6 +8902,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		if (!group) throw new Error('Group not found');
 		
 		const groupName = group.name;
+        await detachFromMaps(this, 'group', id, groupName);
 		// Remove group from settings
 		this.settings.groups = this.settings.groups.filter(g => g.id !== id);
 		// Remove group id from all member entities
@@ -9016,41 +9643,8 @@ export default class StorytellerSuitePlugin extends Plugin {
 
 		let settingsUpdated = false;
 
-        // First-run sanitization: if dev/test stories leaked in but the vault has no content, clear them
-        try {
-            if (!this.settings.sanitizedSeedData) {
-                const lowerNames = (this.settings.stories || []).map(s => (s.name || '').toLowerCase());
-                const hasSeedNames = lowerNames.some(n => n.includes('test') || /\bmy\s*story\s*1\b/i.test(n));
-                if ((this.settings.stories?.length || 0) > 0 && hasSeedNames) {
-                    // Determine if there are any entity markdown files under resolved folders
-                    const allMd = this.app.vault.getMarkdownFiles();
-                    const resolved = this.getFolderResolver().resolveAll();
-                    const prefixes: string[] = Object.values(resolved)
-                        .map(v => v.path)
-                        .filter((p): p is string => !!p)
-                        .map(p => normalizePath(p) + '/');
-                    const anyEntityFiles = allMd.some(f => prefixes.some(pref => f.path.startsWith(pref)));
-                    if (!anyEntityFiles) {
-                        // Clear leaked stories and reset active story
-                        this.settings.stories = [];
-                        this.settings.activeStoryId = '';
-                        this.settings.sanitizedSeedData = true;
-                        settingsUpdated = true;
-                    } else {
-                        // Mark checked to avoid repeated work
-                        this.settings.sanitizedSeedData = true;
-                        settingsUpdated = true;
-                    }
-                } else if (!this.settings.sanitizedSeedData) {
-                    // Mark sanitized flag to avoid re-check overhead if nothing to sanitize
-                    this.settings.sanitizedSeedData = true;
-                    settingsUpdated = true;
-                }
-            }
-        } catch {
-            // Best-effort sanitization; ignore errors
-            
-        }
+        // Never delete user story registrations based on names or startup file counts.
+        // The vault index can be incomplete during onload, and test campaigns are valid data.
 
 		// MIGRATION: If no stories exist but old folders/data exist, migrate
 		if ((!this.settings.stories || this.settings.stories.length === 0)) {
@@ -9148,6 +9742,21 @@ export default class StorytellerSuitePlugin extends Plugin {
         if (!('compendiumFolderPath' in this.settings)) { this.settings.compendiumFolderPath = DEFAULT_SETTINGS.compendiumFolderPath; settingsUpdated = true; }
         if (!('bookFolderPath' in this.settings)) { this.settings.bookFolderPath = DEFAULT_SETTINGS.bookFolderPath; settingsUpdated = true; }
         if (!('sessionsFolderPath' in this.settings)) { this.settings.sessionsFolderPath = DEFAULT_SETTINGS.sessionsFolderPath; settingsUpdated = true; }
+        if (!('eraFolderPath' in this.settings)) { this.settings.eraFolderPath = DEFAULT_SETTINGS.eraFolderPath; settingsUpdated = true; }
+        if (!('trackFolderPath' in this.settings)) { this.settings.trackFolderPath = DEFAULT_SETTINGS.trackFolderPath; settingsUpdated = true; }
+        if (!('branchFolderPath' in this.settings)) { this.settings.branchFolderPath = DEFAULT_SETTINGS.branchFolderPath; settingsUpdated = true; }
+
+        // A vault with no eras, tracks or branches in settings has nothing to
+        // migrate, so it can start on notes and never meet the migration at
+        // all. Only the vaults that actually hold old data get asked.
+        if (!this.settings.timelineEntitiesInNotes
+            && !this.settings.timelineEras?.length
+            && !this.settings.timelineTracks?.length
+            && !this.settings.timelineForks?.length) {
+            this.settings.timelineEntitiesInNotes = true;
+            settingsUpdated = true;
+        }
+
         if (!('compileWorkflows' in this.settings) || !Array.isArray(this.settings.compileWorkflows)) {
             this.settings.compileWorkflows = [];
             settingsUpdated = true;
@@ -9201,6 +9810,10 @@ export default class StorytellerSuitePlugin extends Plugin {
             }
         }
 
+        if (this.backfillTimelineStoryIds()) {
+            settingsUpdated = true;
+        }
+
 		if(settingsUpdated){
 			await this.saveSettings();
 		}
@@ -9213,6 +9826,17 @@ export default class StorytellerSuitePlugin extends Plugin {
 
     openWhatsNewGuide(): void {
         new StorytellerGuideModal(this.app, this, 'whats-new').open();
+    }
+
+    openSettingsHelpTab(): void {
+        const setting = (this.app as any).setting;
+        if (!setting) return;
+        setting.open();
+        const tab = setting.openTabById ? setting.openTabById(this.manifest.id) : null;
+        if (tab && 'activeTab' in tab) {
+            tab.activeTab = 'help';
+            tab.display();
+        }
     }
 
     private scheduleDeferredStartupMaintenance(delayMs = 1200): void {
@@ -9582,4 +10206,3 @@ export default class StorytellerSuitePlugin extends Plugin {
 
 // Ensure this is the very last line of the file
 export {};
-

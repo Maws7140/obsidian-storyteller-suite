@@ -3,6 +3,7 @@
  * These interfaces define the data structures used throughout the plugin
  */
 import type { App } from 'obsidian';
+import type { PlacementGrid } from './leaflet/grid/GridModel';
 
 /**
  * Relationship types for network graph visualization
@@ -141,11 +142,31 @@ export interface PlotItem {
     /** The origin, past events, and lore associated with the item (stored in markdown body) */
     history?: string;
 
-    /** Link to the Character who currently possesses the item */
+    /**
+     * Links to the Characters who currently possess the item. An item that
+     * exists in more than one copy can be held by several owners at once.
+     */
+    owners?: string[];
+
+    /**
+     * Legacy single owner. Superseded by `owners`, which a note's `currentOwner`
+     * is hoisted into on read. Still declared so old notes type-check while they
+     * wait to be rewritten; nothing should write it.
+     * @deprecated use `owners`
+     */
     currentOwner?: string;
 
     /** Links to Characters who previously owned the item */
     pastOwners?: string[];
+
+    /** Link to the Character who made the item */
+    creator?: string;
+
+    /** How many of this item exist. Left unset for one-of-a-kind items. */
+    quantity?: number;
+
+    /** Where copies of the item can be found or obtained (stored in markdown body) */
+    whereToFind?: string;
 
     /** Link to the Location where the item currently is */
     currentLocation?: string;
@@ -417,6 +438,18 @@ export interface Character {
     
     /** Names/links of events this character was involved in */
     events?: string[];
+
+    /**
+     * Events this character says happened, mirrored by Event.claimedBy.
+     *
+     * Distinct from `events`, which is who was there. A character can claim an
+     * event they were nowhere near, and that gap is the whole point: it is what
+     * lets a timeline hold a lie.
+     */
+    claims?: string[];
+
+    /** Events this character says did not happen, mirrored by Event.disputedBy */
+    disputes?: string[];
     
     /** User-defined custom fields for additional character data */
     customFields?: Record<string, string>;
@@ -432,6 +465,9 @@ export interface Character {
 
     /** Names of items currently owned by this character */
     ownedItems?: string[];
+
+    /** Names of items this character made (reverse link from PlotItem.creator) */
+    createdItems?: string[];
 
     /** IDs of cultures this character belongs to */
     cultures?: string[];
@@ -582,6 +618,21 @@ export interface CampaignGroupStanding {
     value: number;
 }
 
+/** A segmented progress clock tracked inside one campaign session. */
+export interface CampaignClock {
+    id: string;
+    name: string;
+    current: number;
+    segments: number;
+}
+
+/** A campaign objective, mystery, quest, or other thread tracked during play. */
+export interface CampaignThread {
+    id: string;
+    name: string;
+    status: 'active' | 'resolved' | 'abandoned';
+}
+
 /**
  * A campaign session — stored as a markdown file in the Sessions/ folder.
  * Frontmatter holds all structured data; ## Session Log section holds the narrative log.
@@ -608,6 +659,10 @@ export interface CampaignSession {
     collectedBoardItemKeys?: string[];
     /** Session-local faction standing changes. */
     groupStandings?: CampaignGroupStanding[];
+    /** Segmented countdowns and progress trackers used during play. */
+    clocks?: CampaignClock[];
+    /** Open and completed narrative or campaign objectives. */
+    threads?: CampaignThread[];
     status?: 'active' | 'paused' | 'completed';
     created?: string;
     modified?: string;
@@ -793,7 +848,13 @@ export interface Event {
     
     /** Current status of the event (e.g., "Upcoming", "Completed", "Ongoing") */
     status?: string;
-    
+
+    /**
+     * Custom colour for this event on the timeline, as a hex string.
+     * Overrides the lane colour, and the milestone gold, when set.
+     */
+    color?: string;
+
     /** Path to a representative image of the event within the vault */
     profileImagePath?: string;
     
@@ -853,11 +914,57 @@ export interface Event {
     /** Narrative sequence number for non-chronological ordering (0-based index) */
     narrativeSequence?: number;
 
+    /**
+     * How solid this event is.
+     *
+     * Not every event on a timeline is a fact. A rumour the party heard, a
+     * legend a culture tells about itself, and a death three people watched are
+     * all events, and drawing them identically claims a certainty the story
+     * does not have.
+     */
+    certainty?: 'established' | 'reported' | 'disputed' | 'legendary';
+
+    /** Where the account of this event comes from, in the writer's own words */
+    sources?: string[];
+
+    /** Characters who assert this happened, mirrored by Character.claims */
+    claimedBy?: string[];
+
+    /** Characters who deny this happened, mirrored by Character.disputes */
+    disputedBy?: string[];
+
+    /**
+     * Campaign session that produced this event, when it came out of play
+     * rather than out of planning.
+     */
+    sessionId?: string;
+
+    /** Readable name of the session, kept alongside the id the way chapters do */
+    sessionName?: string;
+
     /** ID of the map where this event is primarily displayed */
     mapId?: string;
 
     /** IDs of markers representing this event on various maps */
     markerIds?: string[];
+
+    /**
+     * Timeline branches this event belongs to, mirrored by Branch.linkedEvents.
+     *
+     * Branch membership used to be an array inside the branch claiming events
+     * from outside, which meant it could not travel with the note. Stated here,
+     * an event carries its own branch wherever it goes.
+     */
+    branches?: string[];
+
+    /**
+     * Events this one caused, and events that caused it. Stored as readable
+     * links ("direct/strong: [[Event]] - why") and mirrored on the other event,
+     * so cause and effect are visible from both notes instead of from a third
+     * list that named them both.
+     */
+    causes?: string[];
+    causedBy?: string[];
 }
 
 /**
@@ -1046,6 +1153,10 @@ export interface Story {
     created: string;
     /** Optional description of the story */
     description?: string;
+    /** Calendar used to parse and display this story's dates. */
+    activeCalendarId?: string;
+    /** Portable appearance theme used by this story's timeline. */
+    activeTimelineThemeId?: string;
     /**
      * Per-story folder layout. Any key left blank or absent inherits the
      * plugin-wide folder setting, so a story that has never been customized
@@ -1303,6 +1414,12 @@ export interface StoryMap {
         generationMethod?: 'gdal2tiles' | 'canvas' | 'none';
         originalDimensions?: { width: number; height: number };
     };
+
+    /** Entity keys (`type:id`) the user removed from this map; discovery skips them. */
+    removedMapEntities?: string[];
+
+    /** Placement grid whose painted areas give locations territory on this map. */
+    placementGrid?: PlacementGrid;
 }
 
 /**
@@ -1750,6 +1867,9 @@ export interface TimelineFork {
     /** Unique identifier */
     id: string;
 
+    /** Story this fork belongs to. Absent on entries written before scoping. */
+    storyId?: string;
+
     /** Display name of the fork */
     name: string;
 
@@ -1768,8 +1888,8 @@ export interface TimelineFork {
     /** Current status */
     status: 'exploring' | 'canon' | 'abandoned' | 'merged';
 
-    /** Events unique to this fork */
-    forkEvents?: string[];
+    /** Events unique to this branch, mirrored by Event.branches */
+    linkedEvents?: string[];
 
     /** Characters altered in this fork */
     alteredCharacters?: AlteredEntity[];
@@ -1785,6 +1905,9 @@ export interface TimelineFork {
 
     /** Additional notes */
     notes?: string;
+
+    /** Vault note backing this branch, once migrated out of settings */
+    filePath?: string;
 }
 
 /**
@@ -1793,6 +1916,9 @@ export interface TimelineFork {
 export interface CausalityLink {
     /** Unique identifier */
     id: string;
+
+    /** Story this link belongs to. Absent on entries written before scoping. */
+    storyId?: string;
 
     /** ID or name of the cause event */
     causeEvent: string;
@@ -1837,6 +1963,9 @@ export interface TimelineConflict {
     /** Unique identifier */
     id: string;
 
+    /** Story this conflict belongs to. Absent on entries written before scoping. */
+    storyId?: string;
+
     /** Type of conflict */
     type: 'location' | 'death' | 'age' | 'causality' | 'custom';
 
@@ -1870,8 +1999,14 @@ export interface TimelineEra {
     /** Unique identifier */
     id: string;
 
+    /** Story this era belongs to. Absent on entries written before scoping. */
+    storyId?: string;
+
     /** Display name of the era (e.g., "Act I: The Beginning", "Medieval Period") */
     name: string;
+
+    /** Optional compact label used when the full era name will not fit on the timeline. */
+    abbreviation?: string;
 
     /** Description of what defines this era */
     description?: string;
@@ -1891,7 +2026,10 @@ export interface TimelineEra {
     /** Parent era ID for nested hierarchies (e.g., Arc within Act) */
     parentEraId?: string;
 
-    /** Events that fall within this era (auto-populated based on dates) */
+    /**
+     * Legacy cached membership. Runtime membership is derived from startDate
+     * and endDate so events do not need repetitive era frontmatter.
+     */
     events?: string[];
 
     /** Tags for filtering and organization */
@@ -1902,6 +2040,9 @@ export interface TimelineEra {
 
     /** Whether this era is visible on the timeline */
     visible?: boolean;
+
+    /** Vault note backing this era, once migrated out of settings */
+    filePath?: string;
 }
 
 /**
@@ -1911,6 +2052,9 @@ export interface TimelineEra {
 export interface TimelineTrack {
     /** Unique identifier */
     id: string;
+
+    /** Story this track belongs to. Absent on entries written before scoping. */
+    storyId?: string;
 
     /** Display name of the track */
     name: string;
@@ -1948,6 +2092,9 @@ export interface TimelineTrack {
 
     /** Whether this track is currently visible */
     visible?: boolean;
+
+    /** Vault note backing this track, once migrated out of settings */
+    filePath?: string;
 }
 
 /**
@@ -2334,14 +2481,35 @@ export interface LocationSensoryProfile {
 }
 
 /**
+ * Which entity the timeline builds its lanes from.
+ *
+ * Every value here is something events already link to. That is the whole
+ * point: one dropdown re-forms the same events into a different story, which
+ * is the timeline honouring the circular linking the rest of the plugin does.
+ */
+export type TimelineGroupMode =
+    | 'none'
+    | 'location'
+    | 'group'
+    | 'character'
+    | 'track'
+    | 'item'
+    | 'culture'
+    | 'magicSystem';
+
+/**
  * Shared UI state for timeline components (View and Modal)
  * This interface unifies state management across different timeline implementations
  */
 export interface TimelineUIState {
     /** Whether Gantt chart view is enabled */
     ganttMode: boolean;
+    /** Chronology keeps the original lane view; Timeline owns both orientations. */
+    timelineLayout: 'chronology' | 'timeline';
+    /** Orientation inside the Timeline view; Chronology and Gantt are horizontal. */
+    timelineOrientation: 'horizontal' | 'vertical';
     /** Grouping mode for events */
-    groupMode: 'none' | 'location' | 'group' | 'character' | 'track';
+    groupMode: TimelineGroupMode;
     /** Active filters */
     filters: TimelineUIFilters;
     /** Whether event stacking is enabled */
@@ -2352,6 +2520,8 @@ export interface TimelineUIState {
     editMode: boolean;
     /** Whether era backgrounds are shown */
     showEras: boolean;
+    /** Whether character presence bands are drawn behind character lanes */
+    showPresence?: boolean;
     /** Current track ID being viewed */
     currentTrackId?: string;
     /** Current fork ID being viewed */

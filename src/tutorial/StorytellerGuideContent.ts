@@ -134,49 +134,51 @@ export function getWhatsNewGuide(version: string): StorytellerGuideDocument {
     return {
         title: `What is new in ${version}`,
         introHtml: `
-            <p>This update ships a video tutorial, a round of timeline repairs, and a tidier Help section.</p>
+            <p><strong>Storyteller Suite ${version}</strong> closes gaps and brings the timeline closer to my final vision.</p>
         `,
         sections: [
             {
-                title: 'New',
+                title: 'Native Timeline Engine & Custom Calendars',
                 bodyHtml: `
                     <ul>
-                        <li><strong>Video tutorial.</strong> A video tutorial for Storyteller Suite is now available under <strong>Settings &rarr; Storyteller Suite &rarr; Help</strong>, right next to the getting started guide.</li>
-                        <li><strong>One Help section for everything.</strong> The tutorial, the guides, contact, and support links now all live together in the Help tab of the plugin settings.</li>
+                        <li><strong>Native Canvas Engine.</strong> The timeline rendering engine has been rewritten onto a custom canvas renderer.</li>
+                        <li><strong>Custom Dating Systems.</strong> Open Settings → Storyteller Suite → Timeline → <em>Manage calendars</em>, or run <code>Storyteller: Manage custom calendars</code>, to create calendars with user-defined month lengths, years, and epoch rules.</li>
+                        <li><strong>Inline Note Embedding.</strong> Embed interactive timeline blocks inside any note using a fenced <code>timeline</code> code block.</li>
+                        <li><strong>Trackpad Pinch Zoom & Canvas Export.</strong> Pinch to zoom on laptop trackpads and export the entire timeline canvas.</li>
+                        <li><strong>Smart Gantt Bars.</strong> Short Gantt events automatically render as readable chips with shading for duration.</li>
                     </ul>
                 `
             },
             {
-                title: 'Timeline fixes',
+                title: 'Eras & Alternate Timelines',
                 bodyHtml: `
                     <ul>
-                        <li><strong>The timeline fills the pane.</strong> The widget no longer hugs its content and leaves the rest of the view empty. It stretches to the full height of the panel.</li>
-                        <li><strong>Edit mode actually saves.</strong> Dragging an event to reschedule it now writes the new date to the note, even when edit mode was toggled on after the timeline opened. Before, the move could look successful and silently never persist.</li>
-                        <li><strong>Gantt dependency arrows stay attached.</strong> Arrows no longer float away from their bars when the panel is taller than its content.</li>
-                        <li><strong>Flashback and flash-forward connectors render.</strong> The dashed connector lines between an event and its frame event now draw correctly and follow the view as you zoom and pan.</li>
-                        <li><strong>Readable event cards.</strong> Event text uses your theme&rsquo;s text color and range bars use themed backgrounds, instead of the near-black-on-dark and pastel-blue defaults that came baked into the timeline library.</li>
+                        <li><strong>Scoped Eras & Tracks.</strong> Eras and tracks are scoped to their parent story notes.</li>
+                        <li><strong>Era suggestions.</strong> In <em>Manage timeline eras & periods</em>, choose <em>Detect from event gaps</em> to have Storyteller fill editable era ranges from unusually large gaps between dated events. Existing eras are never overwritten.</li>
+                        <li><strong>Markdown frontmatter.</strong> Timeline notes accept <code>entityType: era</code>, <code>entityType: branch</code>, or <code>entityType: fork</code>. Era notes can include an optional <code>abbreviation</code>.</li>
+                        <li><strong>Branch History Inheritance.</strong> Alternate timeline branches inherit historical events up to their divergence point.</li>
                     </ul>
                 `
             },
             {
-                title: 'Also fixed',
+                title: 'Fixes & Stability',
                 bodyHtml: `
                     <ul>
-                        <li>The settings pane has a second safety net against opening blank in Obsidian 1.13+&rsquo;s separate settings window. It now re-renders itself as soon as the window move completes.</li>
-                        <li>The plot hole detector no longer flags characters linked by their id (such as <code>char-mira-vey</code>) as missing when the character file exists.</li>
+                        <li><strong>Story Switching.</strong> Changing active stories reloads open timeline views and resets tracks, branches, and filters.</li>
+                        <li><strong>Scroll & Arrow Fixes.</strong> Dependency arrows stay anchored while scrolling, and event markers align to calendar days.</li>
+                        <li><strong>Per-Project Custom Folders.</strong> Custom folder templates with <code>{storyName}</code>, <code>{storySlug}</code>, or <code>{storyId}</code> resolve per active story to prevent path collisions.</li>
+                        <li><strong>Modal Customization.</strong> Modal fields can be toggled on or off per entity type in settings, with default custom frontmatter fields.</li>
+                        <li><strong>Compile Step Scrolling.</strong> The compile tab layout scrolls to display all workflow steps.</li>
+                        <li><strong>Item Owners and Quantities.</strong> Plot items support multiple current owners and quantity tracking.</li>
+                        <li><strong>Template Variable Creation.</strong> Variable creation in templates is easier, with support for note-based templates and default template assignments.</li>
                     </ul>
                 `
             },
             {
-                title: 'Try the beta',
+                title: 'Development Status & Next Steps',
                 bodyHtml: `
-                    <p>A brand new timeline and a dating system are available in beta. You can try them today with BRAT (Beta Reviewers Auto-update Tool):</p>
-                    <ol>
-                        <li>Install and enable the <strong>BRAT</strong> plugin from the community plugin browser.</li>
-                        <li>In BRAT, choose <strong>Add beta plugin</strong> and enter <code>Maws7140/obsidian-storyteller-suite</code>.</li>
-                        <li>Pick the latest beta release when prompted.</li>
-                    </ol>
-                    <p>Beta builds are still changing, so back up your vault before switching. You can return to the stable release at any time by removing the beta plugin in BRAT and reinstalling from the community plugin browser.</p>
+                    <p>Apologies for the delay between updates due to recent life changes and work starting on a new plugin project.</p>
+                    <p>The next release will likely be the final beta update. It will include full project exporting, allowing you to export your entire story and vault data beyond timeline images.</p>
                 `
             }
         ]

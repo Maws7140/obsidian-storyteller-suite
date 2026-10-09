@@ -26,12 +26,24 @@ export const WIKI_LINK_ARRAY_FIELDS = new Set([
     'linkedMagicSystems',
     'linkedChapters',
     'linkedScenes',
+    'branches',
+    // Both sides of a claim hold entity names, so they link like every
+    // other name array. 'sources' deliberately does not: it is prose about
+    // where an account came from, not a pointer to a note.
+    'claims',
+    'disputes',
+    'claimedBy',
+    'disputedBy',
     'characters',
     'compendiumEntries',
     'compendiumSources',
     'setupScenes',
     'payoffScenes',
     'groups',
+    // Matches pastOwners, the other character-name array on an item. ownedItems
+    // and createdItems stay plain names — ownedItems always has, and wiki-linking
+    // it now would rewrite every existing character note on its next save.
+    'owners',
     'pastOwners',
     'dependencies',
     'territories',
@@ -57,6 +69,7 @@ export const WIKI_LINK_SCALAR_FIELDS = new Set([
     'campaignBoardMapId',
     'location',
     'currentOwner',
+    'creator',
     'currentLocation',
     'povCharacter',
     'navigatesToScene',
@@ -89,7 +102,10 @@ export type EntityType =
   | 'magicSystem'
   | 'compendiumEntry'
   | 'book'
-  | 'campaignSession';
+  | 'campaignSession'
+  | 'timelineEra'
+  | 'timelineTrack'
+  | 'timelineBranch';
 
 export function normalizeEntityType(value: unknown): EntityType | null {
   const raw = String(value ?? '').trim().toLowerCase();
@@ -109,6 +125,13 @@ export function normalizeEntityType(value: unknown): EntityType | null {
   if (raw === 'compendiumentry' || raw === 'compendium-entry' || raw === 'compendium_entry') return 'compendiumEntry';
   if (raw === 'book') return 'book';
   if (raw === 'campaignsession' || raw === 'campaign-session' || raw === 'campaign_session') return 'campaignSession';
+  if (raw === 'timelineera' || raw === 'timeline-era' || raw === 'timeline_era' || raw === 'era') return 'timelineEra';
+  if (raw === 'timelinetrack' || raw === 'timeline-track' || raw === 'timeline_track' || raw === 'track') return 'timelineTrack';
+  if (
+    raw === 'timelinebranch' || raw === 'timeline-branch' || raw === 'timeline_branch' ||
+    raw === 'timelinefork' || raw === 'timeline-fork' || raw === 'timeline_fork' ||
+    raw === 'branch' || raw === 'fork'
+  ) return 'timelineBranch';
   return null;
 }
 
@@ -124,7 +147,7 @@ export function isStampedEntityTypeCompatible(
 const FRONTMATTER_WHITELISTS: Record<EntityType, Set<string>> = {
   character: new Set([
     'id', 'entityType', 'name', 'traits', 'relationships', 'locations', 'events',
-    'currentLocationId', 'locationHistory', 'ownedItems', 'cultures', 'magicSystems',
+    'currentLocationId', 'locationHistory', 'ownedItems', 'createdItems', 'cultures', 'magicSystems',
     'status', 'affiliation', 'gender', 'race', 'age', 'occupation', 'birthDate', 'birthday', 'height', 'quirks',
     'groups', 'profileImagePath', 'customFields', 'connections',
     'balance', 'linkedEconomies', 'linkedChapters', 'linkedScenes', 'linkedItems', 'compendiumEntries',
@@ -132,7 +155,8 @@ const FRONTMATTER_WHITELISTS: Record<EntityType, Set<string>> = {
     'dndClass', 'dndSubclass', 'dndRace', 'dndLevel',
     'dndStr', 'dndDex', 'dndCon', 'dndInt', 'dndWis', 'dndCha',
     'dndMaxHp', 'dndCurrentHp', 'dndTempHp', 'dndAc', 'dndSpeed', 'dndProficiencyBonus',
-    'dndHitDice', 'dndConditions', 'dndSkillProficiencies', 'dndSavingThrowProficiencies'
+    'dndHitDice', 'dndConditions', 'dndSkillProficiencies', 'dndSavingThrowProficiencies',
+    'claims', 'disputes'
   ]),
   location: new Set([
     'id', 'entityType', 'name', 'locationType', 'type', 'region', 'status', 'parentLocation', 'parentLocationId',
@@ -144,13 +168,17 @@ const FRONTMATTER_WHITELISTS: Record<EntityType, Set<string>> = {
   ]),
   event: new Set([
     'id', 'entityType', 'name', 'dateTime', 'characters', 'location', 'items', 'cultures', 'magicSystems', 'status',
-    'groups', 'profileImagePath', 'images', 'customFields', 'connections',
+    'groups', 'profileImagePath', 'images', 'customFields', 'connections', 'color',
     'isMilestone', 'dependencies', 'progress', 'tags', 'narrativeMarkers', 'narrativeSequence',
-    'linkedChapters', 'linkedScenes', 'compendiumEntries',
-    'mapCoordinates', 'mapId', 'markerId', 'relatedMapIds', 'mapIcon', 'mapColor'
+    'linkedChapters', 'linkedScenes', 'compendiumEntries', 'branches', 'causes', 'causedBy',
+    'mapCoordinates', 'mapId', 'markerId', 'relatedMapIds', 'mapIcon', 'mapColor',
+    'certainty', 'sources', 'claimedBy', 'disputedBy', 'sessionId', 'sessionName'
   ]),
   item: new Set([
-    'id', 'entityType', 'name', 'isPlotCritical', 'currentOwner', 'pastOwners',
+    // currentOwner is deliberately absent — it is the legacy scalar that owners
+    // replaced, hoisted on read and omitted on write.
+    'id', 'entityType', 'name', 'isPlotCritical', 'owners', 'pastOwners',
+    'creator', 'quantity',
     'currentLocation', 'associatedEvents', 'magicSystems', 'groups', 'profileImagePath', 'customFields', 'connections',
     'linkedCharacters', 'linkedEconomies', 'linkedCultures', 'economicValue',
     'linkedChapters', 'linkedScenes', 'compendiumSources',
@@ -179,7 +207,7 @@ const FRONTMATTER_WHITELISTS: Record<EntityType, Set<string>> = {
   map: new Set([
     'id', 'entityType', 'name', 'description', 'scale', 'parentMapId', 'childMapIds', 'correspondingLocationId', 'backgroundImagePath', 'mapData',
     'width', 'height', 'defaultZoom', 'center', 'bounds', 'markers', 'layers',
-    'gridEnabled', 'gridSize', 'profileImagePath', 'linkedLocations', 'linkedCharacters', 'linkedEvents',
+    'removedMapEntities', 'placementGrid', 'gridEnabled', 'gridSize', 'profileImagePath', 'linkedLocations', 'linkedCharacters', 'linkedEvents',
     'linkedItems', 'linkedGroups', 'linkedCultures', 'linkedEconomies', 'linkedMagicSystems', 'linkedScenes', 'linkedReferences',
     'groups', 'customFields', 'created', 'modified',
     'type', 'image', 'lat', 'long', 'minZoom', 'maxZoom', 'tileServer', 'darkMode',
@@ -228,9 +256,23 @@ const FRONTMATTER_WHITELISTS: Record<EntityType, Set<string>> = {
   campaignSession: new Set([
     'id', 'entityType', 'name', 'storyId', 'currentSceneId', 'currentSceneName', 'activeMapId',
     'partyCharacterIds', 'partyCharacterNames', 'partyState',
-    'partyItems', 'flags', 'revealedCompendiumEntryIds', 'groupStandings',
+    'partyItems', 'flags', 'revealedCompendiumEntryIds', 'revealedCompendiumEntryNames',
+    'groupStandings', 'clocks', 'threads',
     'collectedBoardItemKeys',
     'status', 'created', 'modified'
+  ]),
+  timelineEra: new Set([
+    'id', 'entityType', 'name', 'abbreviation', 'storyId', 'startDate', 'endDate', 'color', 'type',
+    'parentEraId', 'tags', 'sortOrder', 'visible', 'customFields'
+  ]),
+  timelineTrack: new Set([
+    'id', 'entityType', 'name', 'storyId', 'type', 'entityId', 'color',
+    'filterCriteria', 'sortOrder', 'visible', 'customFields'
+  ]),
+  timelineBranch: new Set([
+    'id', 'entityType', 'name', 'storyId', 'parentTimelineId', 'divergenceEvent',
+    'divergenceDate', 'status', 'linkedEvents', 'alteredCharacters', 'alteredLocations',
+    'color', 'created', 'customFields'
   ]),
 };
 
@@ -465,6 +507,10 @@ export function buildFrontmatter(
   }
 
   for (const [key, value] of Object.entries(source || {})) {
+    // Runtime-only flags (e.g. _skipSync) must never reach the note: a
+    // persisted _skipSync is read back by parseFile and permanently disables
+    // bidirectional sync for that entity.
+    if (key.startsWith('_')) continue;
     const allowKey = whitelist.has(key) || (preserveKeys?.has(key) ?? false);
     if (!allowKey) continue;
     // In flatten mode, avoid writing the customFields container when we promoted its entries
@@ -652,6 +698,7 @@ export function toSafeFileName(filename: string): string {
  * @returns Parsed frontmatter object or undefined if no frontmatter found
  */
 export function parseFrontmatterFromContent(content: string): Record<string, unknown> | undefined {
+  content = content.replace(/^\uFEFF/, '');
   if (!content || !content.startsWith('---')) return undefined;
 
   const frontmatterEndIndex = content.indexOf('\n---', 3);

@@ -37,7 +37,8 @@ export const TEMPLATE_LINK_FIELDS: Partial<Record<TemplateEntityType, readonly T
     ],
     item: [
         { field: 'currentLocation', label: 'Current location', targetType: 'location', multiple: false, valueKind: 'name' },
-        { field: 'currentOwner', label: 'Current owner', targetType: 'character', multiple: false, valueKind: 'name' },
+        { field: 'owners', label: 'Current owners', targetType: 'character', multiple: true, valueKind: 'name' },
+        { field: 'creator', label: 'Creator', targetType: 'character', multiple: false, valueKind: 'name' },
         { field: 'groups', label: 'Groups', targetType: 'group', multiple: true, valueKind: 'id' }
     ],
     event: [

@@ -13,7 +13,7 @@ export class TrackListModal extends ResponsiveModal {
     constructor(app: App, plugin: StorytellerSuitePlugin) {
         super(app);
         this.plugin = plugin;
-        this.tracks = plugin.settings.timelineTracks || [];
+        this.tracks = plugin.getTimelineTracks();
         this.modalEl.addClass('storyteller-track-list-modal');
     }
 
@@ -196,7 +196,7 @@ export class TrackListModal extends ResponsiveModal {
                     const confirm = await this.confirmDelete(track.name);
                     if (confirm) {
                         await this.plugin.deleteTimelineTrack(track.id);
-                        this.tracks = this.plugin.settings.timelineTracks || [];
+                        this.tracks = this.plugin.getTimelineTracks();
                         this.renderTrackList();
                     }
                 })(); });
@@ -218,12 +218,12 @@ export class TrackListModal extends ResponsiveModal {
                     await this.plugin.createTimelineTrack(updatedTrack);
                 }
                 // Refresh the list
-                this.tracks = this.plugin.settings.timelineTracks || [];
+                this.tracks = this.plugin.getTimelineTracks();
                 this.renderTrackList();
             },
             async (trackToDelete) => {
                 await this.plugin.deleteTimelineTrack(trackToDelete.id);
-                this.tracks = this.plugin.settings.timelineTracks || [];
+                this.tracks = this.plugin.getTimelineTracks();
                 this.renderTrackList();
             }
         );

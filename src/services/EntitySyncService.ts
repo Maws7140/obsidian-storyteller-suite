@@ -16,10 +16,11 @@
  */
 
 import type StorytellerSuitePlugin from '../main';
-import type { Character, Location, Event, PlotItem, Scene, EntityRef, Culture, Economy, MagicSystem, TypedRelationship, Chapter, CompendiumEntry } from '../types';
+import { causalityRefTarget, invertCausalityRef } from '../utils/CausalityRefs';
+import type { Character, Location, Event, PlotItem, Scene, EntityRef, Culture, Economy, MagicSystem, TypedRelationship, Chapter, CompendiumEntry, TimelineFork } from '../types';
 
-type EntityType = 'character' | 'location' | 'event' | 'item' | 'scene' | 'culture' | 'economy' | 'magicsystem' | 'chapter' | 'compendiumentry';
-type SyncEntity = (Character | Location | Event | PlotItem | Scene | Culture | Economy | MagicSystem | Chapter | CompendiumEntry) & { _skipSync?: boolean };
+type EntityType = 'character' | 'location' | 'event' | 'item' | 'scene' | 'culture' | 'economy' | 'magicsystem' | 'chapter' | 'compendiumentry' | 'timelinebranch';
+type SyncEntity = (Character | Location | Event | PlotItem | Scene | Culture | Economy | MagicSystem | Chapter | CompendiumEntry | TimelineFork) & { _skipSync?: boolean };
 type SyncEntityExtended = SyncEntity & {
     entityRefs?: EntityRef[];
     parentLocationId?: string;
@@ -45,10 +46,23 @@ interface RelationshipMapping {
     bidirectional: boolean;
     /** Whether the target field is an array (for array handling) */
     isArray?: boolean;
+    /** Whether the SOURCE field is an array. Defaults to isArray — set false
+     *  for scalar sources with array targets (e.g. currentOwner ↔ ownedItems),
+     *  otherwise reverse sync array-wraps the scalar and corrupts the note. */
+    sourceIsArray?: boolean;
     /** Transform function to convert source value to target format */
     transform?: RelationshipTransform;
     /** Reverse transform for bidirectional relationships */
     reverseTransform?: RelationshipTransform;
+    /**
+     * Pull the target entity's name out of a composite stored value.
+     *
+     * Most fields store a bare name, so the value is the lookup key. Fields
+     * that carry the relationship's own detail alongside the name (causality,
+     * for one) need telling which part is the name, or every lookup misses and
+     * the reverse side silently never gets written.
+     */
+    resolveTargetKey?: (value: unknown) => string;
 }
 
 /**
@@ -134,15 +148,53 @@ export class EntitySyncService {
                 return character.name || character.id || '';
             }
         },
-        // Item ↔ Character (currentOwner ↔ ownedItems[])
+        // Event ↔ Characters (claimedBy[] ↔ claims[])
+        //
+        // Separate from characters/events on purpose. That pair says who was
+        // present; this one says who says so, and a character can claim an
+        // event they were nowhere near.
+        {
+            sourceType: 'event',
+            sourceField: 'claimedBy',
+            targetType: 'character',
+            targetField: 'claims',
+            bidirectional: true,
+            isArray: true,
+            transform: (characterName: string, event: Event) => event.name || event.id || '',
+            reverseTransform: (eventName: string, character: Character) => character.name || character.id || ''
+        },
+        // Event ↔ Characters (disputedBy[] ↔ disputes[])
+        {
+            sourceType: 'event',
+            sourceField: 'disputedBy',
+            targetType: 'character',
+            targetField: 'disputes',
+            bidirectional: true,
+            isArray: true,
+            transform: (characterName: string, event: Event) => event.name || event.id || '',
+            reverseTransform: (eventName: string, character: Character) => character.name || character.id || ''
+        },
+        // Item ↔ Character (owners[] ↔ ownedItems[])
         {
             sourceType: 'item',
-            sourceField: 'currentOwner',
+            sourceField: 'owners',
             targetType: 'character',
             targetField: 'ownedItems',
             bidirectional: true,
             isArray: true,
             transform: (ownerName: string, item: PlotItem) => item.name,
+            reverseTransform: (itemId: string, character: Character) => character.name
+        },
+        // Item ↔ Character (creator ↔ createdItems[])
+        {
+            sourceType: 'item',
+            sourceField: 'creator',
+            targetType: 'character',
+            targetField: 'createdItems',
+            bidirectional: true,
+            isArray: true,
+            sourceIsArray: false,
+            transform: (creatorName: string, item: PlotItem) => item.name,
             reverseTransform: (itemId: string, character: Character) => character.name
         },
         // Event ↔ Item (items[] ↔ associatedEvents[])
@@ -468,6 +520,46 @@ export class EntitySyncService {
             transform: (itemId: string, chapter: SyncEntity) => chapter.name,
             reverseTransform: (chapId: string, item: SyncEntity) => item.name
         },
+        // Event ↔ Event (causes[] ↔ causedBy[])
+        // A causal link is a relationship between two events, so it lives on
+        // the events. Type, strength and description belong to the link itself
+        // and survive being read from either end.
+        {
+            sourceType: 'event',
+            sourceField: 'causes',
+            targetType: 'event',
+            targetField: 'causedBy',
+            bidirectional: true,
+            isArray: true,
+            resolveTargetKey: causalityRefTarget,
+            transform: (value: unknown, event: SyncEntity) => invertCausalityRef(value, event.name),
+            reverseTransform: (value: unknown, event: SyncEntity) => invertCausalityRef(value, event.name)
+        },
+        {
+            sourceType: 'event',
+            sourceField: 'causedBy',
+            targetType: 'event',
+            targetField: 'causes',
+            bidirectional: true,
+            isArray: true,
+            resolveTargetKey: causalityRefTarget,
+            transform: (value: unknown, event: SyncEntity) => invertCausalityRef(value, event.name),
+            reverseTransform: (value: unknown, event: SyncEntity) => invertCausalityRef(value, event.name)
+        },
+        // Event ↔ Branch (branches[] ↔ linkedEvents[])
+        // Branch membership used to live only inside the branch, so an event
+        // note said nothing about which timeline it belonged to and the link
+        // could not travel with the note.
+        {
+            sourceType: 'event',
+            sourceField: 'branches',
+            targetType: 'timelinebranch',
+            targetField: 'linkedEvents',
+            bidirectional: true,
+            isArray: true,
+            transform: (branchId: string, event: SyncEntity) => event.name,
+            reverseTransform: (eventId: string, branch: SyncEntity) => branch.name
+        },
         // Scene ↔ Character (linkedCharacters[] ↔ linkedScenes[])
         {
             sourceType: 'scene',
@@ -590,7 +682,7 @@ export class EntitySyncService {
      * @param oldEntity The previous version of the entity (if available)
      */
     async syncEntity(
-        entityType: 'character' | 'location' | 'event' | 'item' | 'scene' | 'culture' | 'economy' | 'magicsystem' | 'chapter' | 'compendiumentry',
+        entityType: EntityType,
         newEntity: SyncEntity,
         oldEntity?: SyncEntity
     ): Promise<void> {
@@ -724,16 +816,21 @@ export class EntitySyncService {
         };
 
         const normalizedNew = normalizeValue(sourceValue);
-        const normalizedOld = normalizeValue(oldValue);
+        // A scalar field may carry an array in hand-edited or previously
+        // corrupted notes — treat every old element as a former target.
+        const normalizedOldValues = (Array.isArray(oldValue) ? oldValue : [oldValue])
+            .map(normalizeValue)
+            .filter(v => v !== null && v !== '');
 
         // Skip if value hasn't changed (handles whitespace differences)
-        if (normalizedNew === normalizedOld) {
+        if (normalizedOldValues.length === 1 && normalizedNew === normalizedOldValues[0]) {
             return;
         }
 
-        // Remove from old target if value changed
-        if (normalizedOld !== null && normalizedOld !== '') {
-            await this.removeFromTarget(mapping, normalizedOld, newEntity);
+        // Remove from old targets if value changed
+        for (const oldTargetValue of normalizedOldValues) {
+            if (oldTargetValue === normalizedNew) continue;
+            await this.removeFromTarget(mapping, oldTargetValue, newEntity);
         }
 
         // Add to new target if value is set
@@ -869,19 +966,28 @@ export class EntitySyncService {
                 const sourceEntity = await this.getEntity(mapping.sourceType, itemId as string);
                 if (sourceEntity && mapping.reverseTransform) {
                     const valueToSet = mapping.reverseTransform(itemId, newTarget);
-                    
-                    if (!Array.isArray((sourceEntity)[mapping.sourceField])) {
-                        if (mapping.isArray) {
-                            // Field should be an array but is undefined/null — initialize it
-                            (sourceEntity)[mapping.sourceField] = [];
-                        } else {
-                            // Scalar field — set directly
-                            if ((sourceEntity as unknown as Record<string, unknown>)[mapping.sourceField] !== valueToSet) {
-                                (sourceEntity as unknown as Record<string, unknown>)[mapping.sourceField] = valueToSet;
-                                await this.saveEntity(mapping.sourceType, sourceEntity);
-                            }
-                            continue;
+                    // mapping.isArray describes the TARGET field — the source
+                    // field's shape must be decided by sourceIsArray, or a
+                    // scalar like currentOwner gets array-wrapped in the note.
+                    const sourceShouldBeArray = mapping.sourceIsArray ?? mapping.isArray ?? false;
+
+                    if (!sourceShouldBeArray) {
+                        // Scalar source field — set directly. This also heals
+                        // values array-corrupted by the old code path.
+                        const current = (sourceEntity as unknown as Record<string, unknown>)[mapping.sourceField];
+                        const matches = typeof current === 'string' && typeof valueToSet === 'string'
+                            ? current.toLowerCase().trim() === valueToSet.toLowerCase().trim()
+                            : current === valueToSet;
+                        if (!matches) {
+                            (sourceEntity as unknown as Record<string, unknown>)[mapping.sourceField] = valueToSet;
+                            await this.saveEntity(mapping.sourceType, sourceEntity);
                         }
+                        continue;
+                    }
+
+                    if (!Array.isArray((sourceEntity)[mapping.sourceField])) {
+                        // Field should be an array but is undefined/null — initialize it
+                        (sourceEntity)[mapping.sourceField] = [];
                     }
                     // Add to array
                     const arr = (sourceEntity)[mapping.sourceField] as unknown[];
@@ -904,9 +1010,21 @@ export class EntitySyncService {
                 const sourceEntity = await this.getEntity(mapping.sourceType, itemId as string);
                 if (sourceEntity && mapping.reverseTransform) {
                     const valueToRemove = mapping.reverseTransform(itemId, newTarget);
-                    
+                    const sourceShouldBeArray = mapping.sourceIsArray ?? mapping.isArray ?? false;
+
                     const sourceValue = (sourceEntity as unknown as Record<string, unknown>)[mapping.sourceField];
-                    if (Array.isArray(sourceValue)) {
+                    if (!sourceShouldBeArray && Array.isArray(sourceValue)) {
+                        // Scalar field carrying an array (corrupted by the old
+                        // code path) — remove the match and collapse the shape.
+                        const remaining = (sourceValue as unknown[]).filter(x => !(
+                            typeof x === 'string' && typeof valueToRemove === 'string'
+                                ? x.toLowerCase().trim() === valueToRemove.toLowerCase().trim()
+                                : x === valueToRemove
+                        ));
+                        (sourceEntity as unknown as Record<string, unknown>)[mapping.sourceField] =
+                            remaining.length === 0 ? undefined : remaining[0];
+                        await this.saveEntity(mapping.sourceType, sourceEntity);
+                    } else if (Array.isArray(sourceValue)) {
                         // Remove from array
                         const arr = sourceValue as unknown[];
                         const index = arr.findIndex(x => {
@@ -1074,7 +1192,9 @@ export class EntitySyncService {
         try {
             // Extract target ID from TypedRelationship if needed
             let targetId = oldValue;
-            if (mapping.sourceField === 'relationships' && mapping.sourceType === 'character' && oldValue && typeof oldValue === 'object' && 'target' in oldValue) {
+            if (mapping.resolveTargetKey) {
+                targetId = mapping.resolveTargetKey(oldValue);
+            } else if (mapping.sourceField === 'relationships' && mapping.sourceType === 'character' && oldValue && typeof oldValue === 'object' && 'target' in oldValue) {
                 targetId = (oldValue as SyncEntityExtended).target;
             }
             
@@ -1278,7 +1398,9 @@ export class EntitySyncService {
         try {
             // Extract target ID from TypedRelationship if needed
             let targetId = newValue;
-            if (mapping.sourceField === 'relationships' && mapping.sourceType === 'character' && newValue && typeof newValue === 'object' && 'target' in newValue) {
+            if (mapping.resolveTargetKey) {
+                targetId = mapping.resolveTargetKey(newValue);
+            } else if (mapping.sourceField === 'relationships' && mapping.sourceType === 'character' && newValue && typeof newValue === 'object' && 'target' in newValue) {
                 targetId = (newValue as SyncEntityExtended).target;
             }
             
@@ -1337,8 +1459,14 @@ export class EntitySyncService {
                     // Special handling for character relationships which can contain TypedRelationship objects
                     const isRelationshipsField = mapping.targetField === 'relationships' && mapping.targetType === 'character';
                     
-                    // Check if already exists (case-insensitive for strings, or check TypedRelationship.target)
-                    const exists = typeof valueToAdd === 'string'
+                    // Two links to the same event differing only in wording are
+                    // the same link, so compare on the target rather than the
+                    // whole string.
+                    const keyed = mapping.resolveTargetKey;
+                    const exists = keyed && typeof valueToAdd === 'string'
+                        ? array.some((item: unknown) =>
+                            keyed(item).toLowerCase().trim() === keyed(valueToAdd).toLowerCase().trim())
+                        : typeof valueToAdd === 'string'
                         ? array.some((item: unknown) => {
                             if (typeof item === 'string') {
                                 return item.toLowerCase().trim() === valueToAdd.toLowerCase().trim();
@@ -1382,7 +1510,7 @@ export class EntitySyncService {
      * Handles case-insensitive matching and resolves by both ID and name
      */
     private async getEntity(
-        entityType: 'character' | 'location' | 'event' | 'item' | 'scene' | 'culture' | 'economy' | 'magicsystem' | 'chapter' | 'compendiumentry',
+        entityType: EntityType,
         idOrName: string
     ): Promise<SyncEntity | null> {
         if (!idOrName) return null;
@@ -1421,6 +1549,11 @@ export class EntitySyncService {
                 case 'compendiumentry':
                     entities = (await this.plugin.listCompendiumEntries());
                     break;
+                case 'timelinebranch':
+                    // Branches are already in memory: the store keeps them
+                    // synchronously for the renderer's draw loop.
+                    entities = this.plugin.getTimelineForks();
+                    break;
                 default:
                     return null;
             }
@@ -1447,7 +1580,7 @@ export class EntitySyncService {
      * Save an entity (delegates to plugin save methods)
      */
     private async saveEntity(
-        entityType: 'character' | 'location' | 'event' | 'item' | 'scene' | 'culture' | 'economy' | 'magicsystem' | 'chapter' | 'compendiumentry',
+        entityType: EntityType,
         entity: SyncEntity
     ): Promise<void> {
         try {
@@ -1484,6 +1617,9 @@ export class EntitySyncService {
                     break;
                 case 'compendiumentry':
                     await this.plugin.saveCompendiumEntry(entity as CompendiumEntry);
+                    break;
+                case 'timelinebranch':
+                    await this.plugin.updateTimelineFork(entity as TimelineFork);
                     break;
             }
         } catch {
@@ -1717,7 +1853,7 @@ export class EntitySyncService {
     }
 
     private async listEntitiesByType(
-        entityType: 'character' | 'location' | 'event' | 'item' | 'scene' | 'culture' | 'economy' | 'magicsystem' | 'chapter' | 'compendiumentry'
+        entityType: EntityType
     ): Promise<SyncEntity[]> {
         switch (entityType) {
             case 'character':
@@ -1740,13 +1876,15 @@ export class EntitySyncService {
                 return (await this.plugin.listChapters());
             case 'compendiumentry':
                 return (await this.plugin.listCompendiumEntries());
+            case 'timelinebranch':
+                return this.plugin.getTimelineForks();
             default:
                 return [];
         }
     }
 
     private async propagateSourceRename(
-        entityType: 'character' | 'location' | 'event' | 'item' | 'scene' | 'culture' | 'economy' | 'magicsystem' | 'chapter' | 'compendiumentry',
+        entityType: EntityType,
         newEntity: SyncEntity,
         oldEntity: SyncEntity
     ): Promise<void> {

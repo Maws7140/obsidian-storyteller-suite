@@ -1169,8 +1169,17 @@ export class TemplateApplicator {
 
         // Map item relationships
         for (const item of created.items) {
-            if (item.currentOwner) {
-                item.currentOwner = this.resolveToName(item.currentOwner) || item.currentOwner;
+            // Prebuilt templates still declare a single currentOwner; fold it in
+            // so a template applied today lands on the plural field.
+            const templateOwners = Array.isArray(item.owners)
+                ? item.owners
+                : (item.currentOwner ? [item.currentOwner] : []);
+            if (templateOwners.length > 0) {
+                item.owners = this.mapStringArray(templateOwners);
+            }
+            delete item.currentOwner;
+            if (item.creator) {
+                item.creator = this.resolveToName(item.creator) || item.creator;
             }
             item.pastOwners = this.mapStringArray(item.pastOwners);
             if (item.currentLocation) {

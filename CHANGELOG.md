@@ -1,5 +1,53 @@
 # Changelog
 
+## 2.0.0-beta.2
+
+### Added
+- **Inline timeline blocks**: embed a live timeline inside any note using a fenced `timeline` code block. The block renders inside the note itself with no separate view needed.
+- **Event provenance**: events now carry which story session created them, surfaced in the event detail panel.
+- **Track, era, and branch manager**: dedicated UI for creating and editing eras, tracks, and branches, scoped per-story so they do not bleed across stories.
+- **Branch causality fields**: events can declare which branch they belong to, and cause/effect relationships are recorded directly on the event rather than as separate link notes.
+- **History inheritance for branches**: a branch carries the full history of the timeline it forked from up to its divergence point, and the branch renderer shows exactly where it splits.
+- **Grouped track lanes**: the timeline can group by world-building entity — item, culture, or magic system — or show where each character was at each point in time.
+- **Trackpad pinch-to-zoom**: two-finger pinch zooms the timeline axis on trackpads in addition to the scroll-wheel zoom already available.
+- **Full-canvas export**: exporting the timeline captures the entire plot area, not just the current scroll window.
+- **Fork commands**: the fork a timeline and create a divergence point commands now open the timeline at the new branch immediately so you can see the result straight away.
+- **Gantt short-bar chip fallback**: a Gantt bar too narrow to show its own label renders as a readable chip anchored at the event's start, with the true span shaded inside it so the bar does not mislead about the event duration.
+
+### Fixed
+- Dependency arrows no longer drift horizontally as the user scrolls the timeline.
+- Events are now placed at the exact calendar day they are dated; plot lines stay inside the drawable area and no longer run past the axis edges.
+- Three separate code paths could silently write an empty timeline store to disk; all three are now guarded.
+- Dependency arrows no longer draw backwards through the bar they belong to.
+- The timeline toolbar no longer loses its right-hand controls after certain resize transitions.
+- Switching the active story now reloads all open timeline views, clearing the previous story's track, branch, and filter state so the new story does not appear empty.
+- Era epoch suffix (`CE`) no longer appears on every Gregorian event card and axis label. The suffix is shown only for user-defined calendars where the epoch is not universally understood; pre-epoch Gregorian years read as `BCE` instead of as a negative number.
+- Gantt bars that had no explicit end date rendered as unlabelled nubs at any zoom level wider than a few weeks; the chip fallback above resolves this.
+
+### Changed
+- Timeline migration prompt moved from plugin settings into a first-use dialog so it appears in context the first time the timeline is opened, rather than buried in a settings screen that many users do not visit.
+
+### Beta notes
+- Install through BRAT from the repository's `2.0.0-beta.2` prerelease.
+- This beta does not alter or migrate existing event notes.
+
+---
+
+## 2.0.0-beta.1
+
+### Added
+- Native high-performance Canvas timeline with viewport culling, calendar-native axes, track and entity lanes, eras, Gantt dependencies, narrative connectors, drag editing, and branch comparison for forked timelines.
+- Per-story dating systems with arbitrary month counts, leap rules, day or minute precision, cycle overlays, holidays, and bundled Gregorian, 13 Moons, and Japanese kō examples.
+- Portable `.storycal.json` calendar and `.storytl.json` appearance documents with validation and Unicode-safe share codes for Vault Hub distribution.
+- Timeline themes inherit from the active Obsidian theme by default and can selectively override semantic colors and layout roles.
+
+### Changed
+- Alternate timelines can be compared as visual branches that inherit main-history events through their divergence points.
+- Removed the vis-timeline and timeline-arrows runtime dependencies.
+
+### Beta notes
+- Install through BRAT from the repository's `2.0.0-beta.1` prerelease. This beta does not alter or migrate existing event notes.
+
 ## 1.8.19
 
 ### Added

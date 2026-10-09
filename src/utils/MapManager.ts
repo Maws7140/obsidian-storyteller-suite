@@ -58,7 +58,7 @@ export class MapManager {
      */
     async getMapById(id: string): Promise<Map | null> {
         const maps = await this.listMaps();
-        return maps.find(m => m.id === id) || null;
+        return maps.find(m => m.id === id) || maps.find(m => m.name === id) || null;
     }
 
     /**
@@ -134,6 +134,8 @@ export class MapManager {
         if (map.maxZoom !== undefined) lines.push(`maxZoom: ${map.maxZoom}`);
 
         // Grid (for dungeons/buildings)
+        if (map.removedMapEntities) lines.push(`removedMapEntities: ${JSON.stringify(map.removedMapEntities)}`);
+        if (map.placementGrid) lines.push(`placementGrid: ${JSON.stringify(map.placementGrid)}`);
         if (map.gridEnabled) {
             lines.push(`gridEnabled: true`);
             if (map.gridSize) lines.push(`gridSize: ${map.gridSize}`);

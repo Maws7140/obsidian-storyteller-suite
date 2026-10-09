@@ -165,6 +165,29 @@ You can also work in One Story Mode or point entity types at custom folders from
 
 Note: in One Story Mode, the dashboard intentionally hides the `New story` button because the vault is operating as a single-story setup.
 
+## Customising the entity modals
+
+The Character and Item modals ship with every field the plugin knows about, which
+is more than most projects want. **Settings → Modals** turns individual fields
+off: cultures, economies, inventory, D&D stats, physical attributes and the rest.
+Hiding a field only stops it being drawn; nothing already saved is deleted, so
+turning one back on brings its value with it.
+
+The same tab sets **default custom fields** per entity type. Name a field there
+and every newly created entity of that type starts with it ready to fill in.
+Existing entities are left alone.
+
+With **Custom fields mode** on its default of `flatten`, a custom field is written
+as an ordinary frontmatter property — a field named `intent` becomes `intent:` on
+the note, editable from Obsidian's Properties panel and queryable from Bases and
+Dataview.
+
+## Templates
+
+Templates can be built in the UI or written as plain markdown notes dropped into
+`StorytellerSuite/Templates/Notes`. See `TEMPLATES_GUIDE.md` for the note format,
+the frontmatter keys, and the bulk variable importer.
+
 ## Translations
 
 Storyteller Suite currently ships with:

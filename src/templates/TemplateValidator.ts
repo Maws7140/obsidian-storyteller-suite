@@ -164,7 +164,8 @@ export class TemplateValidator {
 
         // Validate item references
         this.validateReferences(entities.items, 'item', allIds, result, [
-            { field: 'currentOwner' },
+            { field: 'owners' },
+            { field: 'creator' },
             { field: 'pastOwners' },
             { field: 'currentLocation' },
             { field: 'associatedEvents' },

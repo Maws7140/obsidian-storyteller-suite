@@ -692,7 +692,7 @@ Born into House Stormhaven, Aldric ascended to the throne at age 30 after his fa
                 description: 'Ancient golden crown set with sapphires and diamonds. Worn by every king of Arendor since the kingdom\'s founding.',
                 history: 'Forged 300 years ago for the first king. Said to contain subtle enchantments of authority and wisdom.',
                 isPlotCritical: true,
-                currentOwner: 'CHAR_001',
+                owners: ['CHAR_001'],
                 pastOwners: [],
                 currentLocation: 'LOC_002',
                 associatedEvents: ['EVENT_001'],

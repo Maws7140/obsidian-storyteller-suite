@@ -1,5 +1,5 @@
 /**
- * CampaignView â€” DM-facing play mode for running scenes interactively.
+ * CampaignView — DM-facing play mode for running scenes interactively.
  *
  * Two states:
  *   - session-select: session cards + inline "New Session" form
@@ -52,6 +52,16 @@ import {
     applyBranchOutcomes,
 } from '../utils/DiceRoller';
 import { renderEncounterWidget } from '../extensions/BranchBlockExtension';
+import { getOwners, getPartyOwner, setPartyOwner } from '../utils/ItemOwnership';
+import {
+    addCampaignClock,
+    addCampaignThread,
+    advanceCampaignClock,
+    buildSessionTimelineEvent,
+    cycleCampaignThread,
+} from '../utils/CampaignProgress';
+import { PromptModal } from '../modals/ui/PromptModal';
+import { EventModal } from '../modals/EventModal';
 
 export const VIEW_TYPE_CAMPAIGN = 'storyteller-campaign-view';
 
@@ -279,7 +289,7 @@ export class CampaignView extends ItemView {
                         }
                     }
                 }
-            } catch { /* ignore â€” no characters loaded */ }
+            } catch { /* ignore — no characters loaded */ }
 
             const newSession: CampaignSession = {
                 name,
@@ -333,6 +343,14 @@ export class CampaignView extends ItemView {
         setIcon(graphBtn, 'git-fork');
         graphBtn.addEventListener('click', () => { void this.plugin.activateSceneGraphView(); });
 
+        const timelineBtn = toolbar.createEl('button', {
+            cls: 'storyteller-campaign-toolbar-btn',
+            attr: { 'aria-label': 'Record session event on timeline' },
+        });
+        setIcon(timelineBtn.createSpan(), 'calendar-plus');
+        timelineBtn.createSpan({ text: ' Timeline event' });
+        timelineBtn.addEventListener('click', () => this.openSessionTimelineEventModal(session));
+
         const endBtn = toolbar.createEl('button', { cls: 'storyteller-campaign-toolbar-btn mod-warning', text: 'End' });
         endBtn.addEventListener('click', () => { void (async () => {
             session.status = 'paused';
@@ -351,6 +369,7 @@ export class CampaignView extends ItemView {
         const sidebar = main.createDiv('storyteller-campaign-sidebar');
         this.renderPartySidebar(sidebar, session);
         await this.renderInventorySidebar(sidebar, session);
+        this.renderProgressSidebar(sidebar, session);
         await this.renderLoreSidebar(sidebar, session);
         this.renderGroupStandingsSidebar(sidebar, session);
         await this.renderLogSidebar(sidebar, session);
@@ -1196,7 +1215,7 @@ export class CampaignView extends ItemView {
         } else if (branch.failMode === 'scene') {
             target = this.resolveSceneName(branch.failSceneId, branch.fail);
         }
-        // 'continue' â€” no navigation
+        // 'continue' — no navigation
 
         const logEntries = [
             rollTotal != null
@@ -1465,8 +1484,13 @@ export class CampaignView extends ItemView {
                     ownerSelect.createEl('option', { value: partyName, text: partyName });
                 }
 
+                const partyNameSet = new Set(
+                    (session.partyCharacterNames ?? []).map(name => this.normalizeName(name))
+                );
                 const plotItem = getPlotItem(item);
-                ownerSelect.value = plotItem?.currentOwner ?? '';
+                ownerSelect.value = plotItem
+                    ? getPartyOwner(plotItem, partyNameSet, this.normalizeName) ?? ''
+                    : '';
                 if (!plotItem) {
                     ownerSelect.disabled = true;
                     ownerSelect.title = 'Create a matching plot item to track ownership.';
@@ -1475,8 +1499,8 @@ export class CampaignView extends ItemView {
                     const entry = getPlotItem(item);
                     if (!entry) return;
                     const nextOwner = ownerSelect.value.trim() || undefined;
-                    if ((entry.currentOwner ?? '') === (nextOwner ?? '')) return;
-                    entry.currentOwner = nextOwner;
+                    // Owners outside this party keep their copy either way.
+                    if (!setPartyOwner(entry, nextOwner, partyNameSet, this.normalizeName)) return;
                     await this.plugin.savePlotItem(entry);
                     await this.autosave(
                         nextOwner
@@ -1899,7 +1923,10 @@ export class CampaignView extends ItemView {
                 return resolved ? [resolved] : [];
             }
             case 'itemOwner': {
-                const owner = inParty(plotItem.currentOwner) ?? inParty(this.activeActorName) ?? partyNames[0];
+                const owned = getOwners(plotItem)
+                    .map(name => inParty(name))
+                    .find((name): name is string => Boolean(name));
+                const owner = owned ?? inParty(this.activeActorName) ?? partyNames[0];
                 return owner ? [owner] : [];
             }
             case 'activeActor':
@@ -2279,6 +2306,16 @@ export class CampaignView extends ItemView {
                 changed = true;
             }
 
+            if (this.session?.id && event.sessionId !== this.session.id) {
+                event.sessionId = this.session.id;
+                changed = true;
+            }
+
+            if (this.session?.name && event.sessionName !== this.session.name) {
+                event.sessionName = this.session.name;
+                changed = true;
+            }
+
             if (changed) {
                 await this.plugin.saveEvent(event);
             }
@@ -2288,6 +2325,107 @@ export class CampaignView extends ItemView {
             
             const fallback = eventName || eventId;
             return `Triggered event: *${fallback}* (sync failed)`;
+        }
+    }
+
+    private openSessionTimelineEventModal(session: CampaignSession): void {
+        const seed = buildSessionTimelineEvent(session, this.currentScene);
+        new EventModal(
+            this.app,
+            this.plugin,
+            null,
+            async event => {
+                await this.plugin.saveEvent(event);
+                await this.autosave(`Recorded timeline event: *${event.name}*`);
+            },
+            seed,
+        ).open();
+    }
+
+    private renderProgressSidebar(sidebar: HTMLElement, session: CampaignSession): void {
+        const sec = sidebar.createDiv('storyteller-campaign-sidebar-section storyteller-campaign-progress');
+        const hdr = sec.createDiv('storyteller-campaign-sidebar-hdr');
+        setIcon(hdr.createSpan(), 'gauge');
+        hdr.createSpan({ text: ' Clocks and threads' });
+
+        const actions = hdr.createDiv('storyteller-campaign-progress-actions');
+        const addClockBtn = actions.createEl('button', { attr: { 'aria-label': 'Add progress clock' } });
+        setIcon(addClockBtn, 'circle-gauge');
+        addClockBtn.addEventListener('click', () => {
+            new PromptModal(this.app, {
+                title: 'Add progress clock',
+                label: 'Clock name',
+                defaultValue: '',
+                validator: value => value.trim() ? null : 'Enter a clock name.',
+                onSubmit: value => {
+                    if (!addCampaignClock(session, value)) return;
+                    void this.autosave(`Added clock: *${value.trim()}*`).then(() => this.render());
+                },
+            }).open();
+        });
+
+        const addThreadBtn = actions.createEl('button', { attr: { 'aria-label': 'Add campaign thread' } });
+        setIcon(addThreadBtn, 'list-plus');
+        addThreadBtn.addEventListener('click', () => {
+            new PromptModal(this.app, {
+                title: 'Add campaign thread',
+                label: 'Thread name',
+                defaultValue: '',
+                validator: value => value.trim() ? null : 'Enter a thread name.',
+                onSubmit: value => {
+                    if (!addCampaignThread(session, value)) return;
+                    void this.autosave(`Opened thread: *${value.trim()}*`).then(() => this.render());
+                },
+            }).open();
+        });
+
+        const body = sec.createDiv('storyteller-campaign-sidebar-body');
+        const clocks = session.clocks ?? [];
+        const threads = session.threads ?? [];
+        if (!clocks.length && !threads.length) {
+            body.createDiv({ cls: 'storyteller-campaign-empty-text', text: 'No clocks or threads yet.' });
+        }
+
+        for (const clock of clocks) {
+            const row = body.createDiv('storyteller-campaign-clock-row');
+            const info = row.createDiv('storyteller-campaign-clock-info');
+            info.createSpan({ cls: 'storyteller-campaign-clock-name', text: clock.name });
+            info.createSpan({ cls: 'storyteller-campaign-clock-value', text: `${clock.current}/${clock.segments}` });
+            const segments = row.createDiv('storyteller-campaign-clock-segments');
+            for (let index = 0; index < clock.segments; index += 1) {
+                const segment = segments.createEl('button', {
+                    cls: index < clock.current ? 'is-filled' : '',
+                    attr: { 'aria-label': `Set ${clock.name} to ${index + 1} of ${clock.segments}` },
+                });
+                segment.addEventListener('click', () => {
+                    const nextValue = index + 1 === clock.current ? index : index + 1;
+                    advanceCampaignClock(session, clock.id, nextValue - clock.current);
+                    void this.autosave(`Clock ${clock.name}: ${clock.current}/${clock.segments}`).then(() => this.render());
+                });
+            }
+            const remove = row.createEl('button', { cls: 'storyteller-campaign-progress-remove', attr: { 'aria-label': `Remove clock ${clock.name}` } });
+            setIcon(remove, 'x');
+            remove.addEventListener('click', () => {
+                session.clocks = clocks.filter(candidate => candidate.id !== clock.id);
+                void this.autosave(`Removed clock: *${clock.name}*`).then(() => this.render());
+            });
+        }
+
+        for (const thread of threads) {
+            const row = body.createDiv(`storyteller-campaign-thread-row is-${thread.status}`);
+            const toggle = row.createEl('button', { cls: 'storyteller-campaign-thread-toggle' });
+            setIcon(toggle.createSpan(), thread.status === 'resolved' ? 'circle-check' : thread.status === 'abandoned' ? 'circle-x' : 'circle');
+            toggle.createSpan({ text: thread.name });
+            toggle.addEventListener('click', () => {
+                const status = cycleCampaignThread(thread);
+                void this.autosave(`Thread ${thread.name}: ${status}`).then(() => this.render());
+            });
+            const remove = row.createEl('button', { cls: 'storyteller-campaign-progress-remove', attr: { 'aria-label': `Remove thread ${thread.name}` } });
+            setIcon(remove, 'x');
+            remove.addEventListener('click', () => {
+                session.threads = threads.filter(candidate => candidate.id !== thread.id);
+                void this.autosave(`Removed thread: *${thread.name}*`).then(() => this.render());
+            });
         }
     }
 
@@ -2319,13 +2457,10 @@ export class CampaignView extends ItemView {
             const plotItem = findItem(itemName);
             if (!plotItem) continue;
 
-            const currentOwner = plotItem.currentOwner ? this.normalizeName(plotItem.currentOwner) : '';
-            if (currentOwner && partyNameSet.has(currentOwner)) continue;
+            // Already held by someone in the party — leave that assignment alone.
+            if (getPartyOwner(plotItem, partyNameSet, this.normalizeName)) continue;
+            if (!setPartyOwner(plotItem, defaultOwner, partyNameSet, this.normalizeName)) continue;
 
-            const nextOwner = defaultOwner;
-            if ((plotItem.currentOwner ?? '') === (nextOwner ?? '')) continue;
-
-            plotItem.currentOwner = nextOwner;
             await this.plugin.savePlotItem(plotItem);
         }
 
@@ -2337,10 +2472,11 @@ export class CampaignView extends ItemView {
         for (const itemName of uniquePreviousItems) {
             if (currentNameSet.has(this.normalizeName(itemName))) continue;
             const plotItem = findItem(itemName);
-            if (!plotItem || !plotItem.currentOwner) continue;
-            if (!partyNameSet.has(this.normalizeName(plotItem.currentOwner))) continue;
+            if (!plotItem) continue;
+            // The party dropped it; owners outside the party still hold theirs.
+            if (!getPartyOwner(plotItem, partyNameSet, this.normalizeName)) continue;
+            if (!setPartyOwner(plotItem, undefined, partyNameSet, this.normalizeName)) continue;
 
-            plotItem.currentOwner = undefined;
             await this.plugin.savePlotItem(plotItem);
         }
     }
@@ -2427,4 +2563,3 @@ export class CampaignView extends ItemView {
         await pending;
     }
 }
-

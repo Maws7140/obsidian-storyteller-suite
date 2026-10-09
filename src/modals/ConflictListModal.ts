@@ -64,8 +64,7 @@ export class ConflictListModal extends Modal {
             .setWarning()
             .onClick(async () => {
                 this.conflicts.forEach(c => c.dismissed = true);
-                this.plugin.settings.timelineConflicts = this.conflicts;
-                await this.plugin.saveSettings();
+                await this.plugin.setTimelineConflicts(this.conflicts);
                 new Notice('All conflicts dismissed');
                 this.renderConflicts(contentEl);
             })
@@ -200,8 +199,7 @@ export class ConflictListModal extends Modal {
             .setClass('mod-warning')
             .onClick(async () => {
                 conflict.dismissed = true;
-                this.plugin.settings.timelineConflicts = this.conflicts;
-                await this.plugin.saveSettings();
+                await this.plugin.setTimelineConflicts(this.conflicts);
                 new Notice('Conflict dismissed');
                 this.renderConflicts(this.contentEl);
             })

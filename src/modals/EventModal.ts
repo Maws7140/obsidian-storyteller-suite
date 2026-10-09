@@ -1,6 +1,10 @@
  
 import { App, Setting, Notice, ButtonComponent, parseYaml } from 'obsidian';
 import { Event } from '../types';
+
+/** Colours the picker opens on when the event has made no choice of its own. */
+const DEFAULT_EVENT_COLOR = '#7c3aed';
+const MILESTONE_GOLD = '#d9a520';
 import StorytellerSuitePlugin from '../main';
 import { parseSectionsFromMarkdown } from '../yaml/EntitySections';
 import { t } from '../i18n/strings';
@@ -18,10 +22,17 @@ import { TemplatePickerModal } from './TemplatePickerModal';
 import type { Template, TemplateEntity, TemplateVariableValue } from '../templates/TemplateTypes';
 // Remove placeholder import for multi-image
 // import { MultiGalleryImageSuggestModal } from './MultiGalleryImageSuggestModal';
-import { confirmWithModal } from './ui/ConfirmModal';
+import { parseTimelineDate } from '../utils/DateParsing';
+import { createCollapsibleModalSection } from './entity/CollapsibleModalSection';
+import { cloneEventDraft, changedMemberships } from './entity/EventDraft';
+import { isModalFieldVisible, seedDefaultCustomFields } from './entity/ModalFieldVisibility';
+import { setNarrativeDirection } from '../utils/NarrativeTimeline';
+import { CalendarRegistry } from '../calendar/CalendarRegistry';
+import { GREGORIAN_CALENDAR } from '../calendar/builtins';
+import { parseToAbsoluteDay } from '../calendar/CalendarDateText';
+import { isEventLinkedToFork } from '../utils/ForkVisibility';
 
 export type EventModalSubmitCallback = (event: Event) => Promise<void>;
-export type EventModalDeleteCallback = (event: Event) => Promise<void>;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -31,11 +42,11 @@ export class EventModal extends ResponsiveModal {
     event: Event;
     plugin: StorytellerSuitePlugin;
     onSubmit: EventModalSubmitCallback;
-    onDelete?: EventModalDeleteCallback;
     isNew: boolean;
     private forkSelectorContainer: HTMLElement | null = null;
     private readonly customFieldsEditor: EntityCustomFieldsEditor;
     private readonly groupSelector: EntityGroupSelector;
+    private readonly originalGroupIds: string[];
 
     // Elements to update dynamically
     charactersListEl: HTMLElement;
@@ -43,11 +54,26 @@ export class EventModal extends ResponsiveModal {
     locationSetting: Setting; // Store the setting itself
     selectLocationButton: ButtonComponent; // Store the select button
 
-    constructor(app: App, plugin: StorytellerSuitePlugin, event: Event | null, onSubmit: EventModalSubmitCallback, onDelete?: EventModalDeleteCallback) {
+    constructor(
+        app: App,
+        plugin: StorytellerSuitePlugin,
+        event: Event | null,
+        onSubmit: EventModalSubmitCallback,
+        newEventSeed?: Event,
+    ) {
         super(app);
         this.plugin = plugin;
         this.isNew = event === null;
-        const initialEvent = event ? { ...event } : { name: '', dateTime: '', description: '', outcome: '', status: undefined, profileImagePath: undefined, characters: [], location: undefined, images: [], customFields: {}, groups: [], isMilestone: false, dependencies: [], dependencyNames: [], progress: 0 };
+        const initialEvent = event
+            ? cloneEventDraft(event)
+            : newEventSeed
+                ? cloneEventDraft(newEventSeed)
+                : {
+                    name: '', dateTime: '', description: '', outcome: '',
+                    status: undefined, profileImagePath: undefined, location: undefined,
+                    characters: [], images: [], customFields: {}, groups: [],
+                    isMilestone: false, dependencies: [], dependencyNames: [], progress: 0,
+                };
         if (!initialEvent.customFields) initialEvent.customFields = {};
         // Ensure link arrays are initialized
         if (!initialEvent.characters) initialEvent.characters = [];
@@ -58,7 +84,15 @@ export class EventModal extends ResponsiveModal {
         if (initialEvent.isMilestone === undefined) initialEvent.isMilestone = false;
         if (initialEvent.progress === undefined) initialEvent.progress = 0;
 
+        if (this.isNew) {
+            initialEvent.customFields = seedDefaultCustomFields(
+                initialEvent.customFields,
+                this.plugin.settings.defaultCustomFields?.event
+            );
+        }
+
         this.event = initialEvent;
+        this.originalGroupIds = [...(initialEvent.groups || [])];
         this.customFieldsEditor = new EntityCustomFieldsEditor(this.app, 'event', this.event.customFields);
         this.groupSelector = new EntityGroupSelector({
             plugin: this.plugin,
@@ -67,20 +101,9 @@ export class EventModal extends ResponsiveModal {
             setSelectedGroupIds: groupIds => {
                 this.event.groups = groupIds;
             },
-            loadSelectedGroupIds: async () => {
-                const identifier = this.event.id || this.event.name;
-                const events = await this.plugin.listEvents();
-                return (events.find(evt => (evt.id || evt.name) === identifier)?.groups || this.event.groups || []);
-            },
-            persistAdd: async groupId => {
-                await this.plugin.addMemberToGroup(groupId, 'event', this.event.id || this.event.name);
-            },
-            persistRemove: async groupId => {
-                await this.plugin.removeMemberFromGroup(groupId, 'event', this.event.id || this.event.name);
-            }
+            loadSelectedGroupIds: async () => this.event.groups || [],
         });
         this.onSubmit = onSubmit;
-        this.onDelete = onDelete;
         this.modalEl.addClass('storyteller-event-modal');
     }
 
@@ -199,6 +222,11 @@ export class EventModal extends ResponsiveModal {
         }
 
         // --- Standard Fields (Name, DateTime, Description, etc.) ---
+        const isVisible = (field: string) => isModalFieldVisible(
+            this.plugin.settings.hiddenModalFields,
+            'event',
+            field
+        );
         new Setting(contentEl)
             .setName(t('name'))
             .setDesc(t('name'))
@@ -208,62 +236,100 @@ export class EventModal extends ResponsiveModal {
                 .onChange(value => { this.event.name = value; })
                 .inputEl.addClass('storyteller-modal-input-large'));
 
-        new Setting(contentEl)
-            .setName(t('dateTime'))
-            .setDesc(t('statusPlaceholderEvent'))
-            .addText(text => text
-                .setPlaceholder(t('enterDateTime'))
-                .setValue(this.event.dateTime || '')
-                .onChange(value => { this.event.dateTime = value || undefined; }));
+        if (isVisible('dateTime')) {
+            const dateSetting = new Setting(contentEl)
+                .setName('Date or range')
+                .setDesc('When the event actually occurred. Use the narrative section for when it is revealed.')
+                .addText(text => text
+                    .setPlaceholder(t('enterDateTime'))
+                    .setValue(this.event.dateTime || '')
+                    .onChange(value => {
+                        this.event.dateTime = value || undefined;
+                        this.updateDateValidation(dateSetting, value, false);
+                    }));
+            this.updateDateValidation(dateSetting, this.event.dateTime || '', false);
+        }
 
-        new Setting(contentEl)
-            .setName(t('description'))
-            .setClass('storyteller-modal-setting-vertical')
-            .addTextArea(text => {
-                text.setPlaceholder(t('eventDescriptionPh'))
-                    .setValue(this.event.description || '')
-                    .onChange(value => { this.event.description = value || undefined; });
-                text.inputEl.rows = 4;
-                text.inputEl.addClass('storyteller-modal-textarea');
-            });
+        if (isVisible('description')) {
+            new Setting(contentEl)
+                .setName(t('description'))
+                .setClass('storyteller-modal-setting-vertical')
+                .addTextArea(text => {
+                    text.setPlaceholder(t('eventDescriptionPh'))
+                        .setValue(this.event.description || '')
+                        .onChange(value => { this.event.description = value || undefined; });
+                    text.inputEl.rows = 4;
+                    text.inputEl.addClass('storyteller-modal-textarea');
+                });
+        }
 
-        new Setting(contentEl)
-            .setName(t('outcome'))
-            .setClass('storyteller-modal-setting-vertical')
-            .addTextArea(text => {
-                text.setPlaceholder(t('eventOutcomePh'))
-                    .setValue(this.event.outcome || '')
-                    .onChange(value => { this.event.outcome = value || undefined; });
-                text.inputEl.rows = 3;
-                text.inputEl.addClass('storyteller-modal-textarea');
-            });
+        if (isVisible('outcome')) {
+            new Setting(contentEl)
+                .setName(t('outcome'))
+                .setClass('storyteller-modal-setting-vertical')
+                .addTextArea(text => {
+                    text.setPlaceholder(t('eventOutcomePh'))
+                        .setValue(this.event.outcome || '')
+                        .onChange(value => { this.event.outcome = value || undefined; });
+                    text.inputEl.rows = 3;
+                    text.inputEl.addClass('storyteller-modal-textarea');
+                });
+        }
 
-        new Setting(contentEl)
-            .setName(t('status'))
-            .setDesc(t('statusPlaceholderEvent'))
-            .addText(text => text
-                .setValue(this.event.status || '')
-                .onChange(value => { this.event.status = value || undefined; }));
+        if (isVisible('status')) {
+            new Setting(contentEl)
+                .setName(t('status'))
+                .setDesc('A short project-specific state such as planned, occurred, or disputed')
+                .addText(text => text
+                    .setValue(this.event.status || '')
+                    .onChange(value => { this.event.status = value || undefined; }));
+        }
 
         // --- Gantt-style Fields ---
-        new Setting(contentEl)
+        const timelineSection = isVisible('timeline')
+            ? createCollapsibleModalSection(contentEl, {
+                title: 'Timeline options',
+                description: 'Milestone styling, progress, and prerequisite events',
+                icon: 'git-commit-horizontal',
+            })
+            : null;
+        if (timelineSection) new Setting(timelineSection)
             .setName('Milestone')
             .setDesc('Mark this event as a key story moment')
             .addToggle(toggle => toggle
                 .setValue(this.event.isMilestone || false)
                 .onChange(value => { this.event.isMilestone = value; }));
 
-        new Setting(contentEl)
+        // Left unset, the event takes its lane's colour, or the milestone gold.
+        // Clearing it has to be possible, hence the reset button: a colour
+        // picker alone has no way back to "no choice made".
+        if (timelineSection) {
+        const colorSetting = new Setting(timelineSection)
+            .setName('Timeline colour')
+            .setDesc('Overrides the lane colour, and the milestone gold, on the timeline')
+            .addColorPicker(picker => picker
+                // Opens on whatever the event would have drawn as anyway, so
+                // the picker starts from the current appearance.
+                .setValue(this.event.color || (this.event.isMilestone ? MILESTONE_GOLD : DEFAULT_EVENT_COLOR))
+                .onChange(value => { this.event.color = value; }));
+        colorSetting.addExtraButton(button => button
+            .setIcon('rotate-ccw')
+            .setTooltip('Use the default colour')
+            .onClick(() => {
+                this.event.color = undefined;
+                this.onOpen();
+            }));
+
+        new Setting(timelineSection)
             .setName('Progress')
             .setDesc('Completion percentage (0-100)')
             .addSlider(slider => slider
                 .setLimits(0, 100, 5)
                 .setValue(this.event.progress || 0)
-                .setDynamicTooltip()
                 .onChange(value => { this.event.progress = value; }));
 
         // Dependencies (stored as stable event IDs with resolved display names)
-        const dependenciesSetting = new Setting(contentEl)
+        const dependenciesSetting = new Setting(timelineSection)
             .setName('Dependencies')
             .setDesc('Events that must occur before this one');
         const dependenciesListEl = dependenciesSetting.controlEl.createDiv('storyteller-modal-list');
@@ -318,57 +384,105 @@ export class EventModal extends ResponsiveModal {
                     }
                 }).open();
             }));
+        }
 
         // --- Narrative Markers (for non-linear storytelling) ---
         if (!this.event.narrativeMarkers) {
             this.event.narrativeMarkers = {};
         }
 
-        new Setting(contentEl)
+        const hasNarrative = Boolean(
+            this.event.narrativeSequence !== undefined
+            || this.event.narrativeMarkers?.isFlashback
+            || this.event.narrativeMarkers?.isFlashforward
+            || this.event.narrativeMarkers?.narrativeDate
+            || this.event.narrativeMarkers?.targetEvent
+            || this.event.narrativeMarkers?.narrativeContext
+        );
+        const narrativeSection = isVisible('narrative')
+            ? createCollapsibleModalSection(contentEl, {
+                title: 'Narrative',
+                description: 'Control when and how this event is revealed',
+                icon: 'between-horizontal-start',
+                open: hasNarrative,
+            })
+            : null;
+        if (narrativeSection) {
+        let flashForwardToggle: { setValue(value: boolean): unknown } | undefined;
+        let flashbackToggle: { setValue(value: boolean): unknown } | undefined;
+        new Setting(narrativeSection)
             .setName('Flashback')
             .setDesc('Mark this event as a flashback (occurs earlier than narrated)')
-            .addToggle(toggle => toggle
+            .addToggle(toggle => {
+                flashbackToggle = toggle;
+                return toggle
                 .setValue(this.event.narrativeMarkers?.isFlashback || false)
                 .onChange(value => {
-                    if (!this.event.narrativeMarkers) this.event.narrativeMarkers = {};
-                    this.event.narrativeMarkers.isFlashback = value;
-                }));
+                    setNarrativeDirection(this.event, 'flashback', value);
+                    if (value) flashForwardToggle?.setValue(false);
+                });
+            });
 
-        new Setting(contentEl)
+        new Setting(narrativeSection)
             .setName('Flash-forward')
             .setDesc('Mark this event as a flash-forward (occurs later than narrated)')
-            .addToggle(toggle => toggle
+            .addToggle(toggle => {
+                flashForwardToggle = toggle;
+                return toggle
                 .setValue(this.event.narrativeMarkers?.isFlashforward || false)
                 .onChange(value => {
-                    if (!this.event.narrativeMarkers) this.event.narrativeMarkers = {};
-                    this.event.narrativeMarkers.isFlashforward = value;
-                }));
+                    setNarrativeDirection(this.event, 'flashforward', value);
+                    if (value) flashbackToggle?.setValue(false);
+                });
+            });
 
-        new Setting(contentEl)
+        new Setting(narrativeSection)
+            .setName('Narrative sequence')
+            .setDesc('Optional reading-order number used when several events share a narrative date')
+            .addText(text => {
+                text.inputEl.type = 'number';
+                text.inputEl.min = '0';
+                text.setValue(this.event.narrativeSequence !== undefined ? String(this.event.narrativeSequence) : '')
+                    .onChange(value => {
+                        const parsed = Number(value);
+                        this.event.narrativeSequence = value.trim() && Number.isFinite(parsed) ? parsed : undefined;
+                    });
+            });
+
+        const narrativeDateSetting = new Setting(narrativeSection)
             .setName('Narrative date')
-            .setDesc('When this event is narrated in the story (if different from chronological date)')
+            .setDesc('When this event is revealed or narrated; Narrative order positions it here')
             .addText(text => text
                 .setValue(this.event.narrativeMarkers?.narrativeDate || '')
                 .setPlaceholder('E.g., 2024-01-15')
                 .onChange(value => {
                     if (!this.event.narrativeMarkers) this.event.narrativeMarkers = {};
                     this.event.narrativeMarkers.narrativeDate = value || undefined;
+                    this.updateDateValidation(narrativeDateSetting, value, true);
                 }));
+        this.updateDateValidation(narrativeDateSetting, this.event.narrativeMarkers?.narrativeDate || '', true);
 
-        const targetEventSetting = new Setting(contentEl)
+        const targetEventSetting = new Setting(narrativeSection)
             .setName('Frame event')
             .setDesc('The event from which this flashback/flash-forward is told');
         const targetEventDisplay = targetEventSetting.controlEl.createSpan({
             text: this.event.narrativeMarkers?.targetEvent || 'None',
             cls: 'storyteller-modal-target-event'
         });
+        const targetRef = this.event.narrativeMarkers?.targetEvent;
+        if (targetRef) {
+            void this.plugin.listEvents().then(events => {
+                const target = events.find(candidate => candidate.id === targetRef || candidate.name === targetRef);
+                if (target) targetEventDisplay.setText(target.name);
+            });
+        }
         targetEventSetting.addButton(button => button
             .setButtonText('Select event')
             .onClick(() => {
                 new EventSuggestModal(this.app, this.plugin, (selectedEvent) => {
                     if (selectedEvent && selectedEvent.name) {
                         if (!this.event.narrativeMarkers) this.event.narrativeMarkers = {};
-                        this.event.narrativeMarkers.targetEvent = selectedEvent.name;
+                        this.event.narrativeMarkers.targetEvent = selectedEvent.id || selectedEvent.name;
                         targetEventDisplay.setText(selectedEvent.name);
                     }
                 }).open();
@@ -381,7 +495,7 @@ export class EventModal extends ResponsiveModal {
                     targetEventDisplay.setText('None');
                 }));
 
-        new Setting(contentEl)
+        new Setting(narrativeSection)
             .setName('Narrative context')
             .setDesc('Description of how this event is narrated or framed in the story')
             .addTextArea(text => {
@@ -394,8 +508,102 @@ export class EventModal extends ResponsiveModal {
                     });
                 text.inputEl.rows = 3;
             });
+        }
 
-        const profileImageSetting = new Setting(contentEl)
+        // --- Provenance: how solid this event is, and who says so ---
+        //
+        // A rumour, a legend and a death three people watched are all events.
+        // Drawing them identically claims a certainty the story does not have,
+        // so the timeline needs somewhere to read that from.
+        const provenanceSection = isVisible('provenance')
+            ? createCollapsibleModalSection(contentEl, {
+                title: 'Provenance',
+                description: 'Certainty, sources, claims, and disputes',
+                icon: 'scan-search',
+                open: Boolean(this.event.certainty || this.event.sources?.length || this.event.claimedBy?.length || this.event.disputedBy?.length),
+            })
+            : null;
+
+        if (provenanceSection) {
+        new Setting(provenanceSection)
+            .setName('Certainty')
+            .setDesc('How firmly this event is established. Anything less than established draws faded on the timeline.')
+            .addDropdown(dropdown => dropdown
+                .addOptions({
+                    established: 'Established',
+                    reported: 'Reported',
+                    disputed: 'Disputed',
+                    legendary: 'Legendary'
+                })
+                .setValue(this.event.certainty || 'established')
+                .onChange(value => {
+                    // Established is the absence of a claim rather than a claim
+                    // of its own, so it is stored as nothing at all. Otherwise
+                    // every event ever written gains a field on its next save.
+                    this.event.certainty = value === 'established' ? undefined : value as Event['certainty'];
+                }));
+
+        new Setting(provenanceSection)
+            .setName('Sources')
+            .setDesc('Where the account of this event comes from, one per line')
+            .addTextArea(text => {
+                text
+                    .setValue((this.event.sources || []).join('\n'))
+                    .setPlaceholder('E.g., the abbey chronicle')
+                    .onChange(value => {
+                        const lines = value.split('\n').map(line => line.trim()).filter(Boolean);
+                        this.event.sources = lines.length ? lines : undefined;
+                    });
+                text.inputEl.rows = 3;
+            });
+
+        const claimList = (label: string, description: string, read: () => string[], write: (names: string[]) => void) => {
+            const setting = new Setting(provenanceSection).setName(label).setDesc(description);
+            const display = setting.controlEl.createSpan({ text: read().join(', ') || 'None' });
+            setting.addButton(button => button
+                .setButtonText('Add character')
+                .onClick(() => {
+                    new CharacterSuggestModal(this.app, this.plugin, (character) => {
+                        if (!character?.name) return;
+                        const names = read();
+                        if (names.includes(character.name)) return;
+                        write([...names, character.name]);
+                        display.setText(read().join(', ') || 'None');
+                    }).open();
+                }))
+                .addButton(button => button
+                    .setButtonText('Clear')
+                    .onClick(() => {
+                        write([]);
+                        display.setText('None');
+                    }));
+        };
+
+        claimList(
+            'Claimed by',
+            'Characters who say this happened. Not the same as who was there.',
+            () => this.event.claimedBy || [],
+            names => { this.event.claimedBy = names.length ? names : undefined; }
+        );
+
+        claimList(
+            'Disputed by',
+            'Characters who say this did not happen',
+            () => this.event.disputedBy || [],
+            names => { this.event.disputedBy = names.length ? names : undefined; }
+        );
+        }
+
+        const mediaSection = isVisible('media')
+            ? createCollapsibleModalSection(contentEl, {
+                title: 'Media',
+                description: 'Cover image and associated gallery images',
+                icon: 'images',
+                open: Boolean(this.event.profileImagePath || this.event.images?.length),
+            })
+            : null;
+        if (mediaSection) {
+        const profileImageSetting = new Setting(mediaSection)
             .setName(t('image'))
             .setDesc('')
             .then(setting => {
@@ -419,12 +627,21 @@ export class EventModal extends ResponsiveModal {
                 descriptionEl: imagePathDesc
             }
         );
+        }
 
         // --- Links ---
-        contentEl.createEl('h3', { text: t('links') });
+        const relationshipsSection = isVisible('characters') || isVisible('location')
+            ? createCollapsibleModalSection(contentEl, {
+                title: 'People and place',
+                description: 'Who was involved and where it happened',
+                icon: 'map-pin',
+                open: Boolean(this.event.characters?.length || this.event.location),
+            })
+            : null;
 
         // --- Characters ---
-        const charactersSetting = new Setting(contentEl)
+        if (relationshipsSection && isVisible('characters')) {
+        const charactersSetting = new Setting(relationshipsSection)
             .setName(t('charactersInvolved'))
             .setDesc(t('characters'));
         // Store the list container element
@@ -453,10 +670,14 @@ export class EventModal extends ResponsiveModal {
                     }
                 }).open();
             }));
+        } else {
+            this.charactersListEl = contentEl.ownerDocument.createElement('div');
+        }
 
         // --- Location ---
         // Store the setting itself for later updates
-        this.locationSetting = new Setting(contentEl)
+        if (relationshipsSection && isVisible('location')) {
+        this.locationSetting = new Setting(relationshipsSection)
             .setName(t('location'))
             .setDesc(t('currentValue', this.event.location || t('none'))); // Initial description
 
@@ -488,9 +709,11 @@ export class EventModal extends ResponsiveModal {
 
         // Call this AFTER the button has been created and assigned
         this.updateLocationClearButton(); // Initial setup/update of buttons
+        }
 
         // --- Associated Images ---
-        const imagesSetting = new Setting(contentEl)
+        if (mediaSection) {
+        const imagesSetting = new Setting(mediaSection)
             .setName(t('associatedImages'))
             .setDesc(t('imageGallery'));
         // Store the list container element
@@ -550,10 +773,21 @@ export class EventModal extends ResponsiveModal {
                 };
                 fileInput.click();
             }));
+        } else {
+            this.imagesListEl = contentEl.ownerDocument.createElement('div');
+        }
 
         // --- Tags ---
-        contentEl.createEl('h3', { text: 'Tags' });
-        const tagsSetting = new Setting(contentEl)
+        const organizationSection = isVisible('organization')
+            ? createCollapsibleModalSection(contentEl, {
+                title: 'Organization',
+                description: 'Tags, groups, and timeline branches',
+                icon: 'tags',
+                open: Boolean(this.event.tags?.length || this.event.groups?.length || this.event.branches?.length),
+            })
+            : null;
+        if (organizationSection) {
+        const tagsSetting = new Setting(organizationSection)
             .setName('Event tags')
             .setDesc('Tags for categorization and filtering');
         const tagsListEl = tagsSetting.controlEl.createDiv('storyteller-modal-list');
@@ -603,88 +837,35 @@ export class EventModal extends ResponsiveModal {
                 }).open();
             }));
 
-        // --- Era Membership ---
-        contentEl.createEl('h3', { text: 'Timeline eras' });
-        const eras = this.plugin.settings.timelineEras || [];
-        if (eras.length > 0) {
-            contentEl.createEl('p', {
-                text: 'This event belongs to the following timeline eras based on its date:',
-                cls: 'storyteller-modal-description'
-            });
-
-            const eraBadgesContainer = contentEl.createDiv('storyteller-era-badges-container');
-
-            // Import EraManager to find eras for this event
-            void import('../utils/EraManager').then(({ EraManager }) => {
-                const eventEras = EraManager.findErasForEvent(this.event, eras);
-
-                if (eventEras.length === 0) {
-                    eraBadgesContainer.createEl('span', {
-                        text: 'None (event date does not fall within any era)',
-                        cls: 'storyteller-era-no-match'
-                    });
-                } else {
-                    for (const era of eventEras) {
-                        const badge = eraBadgesContainer.createDiv('storyteller-era-badge');
-                        if (era.color) {
-                            badge.setCssStyles({ borderLeftColor: era.color });
-                        }
-                        badge.createEl('strong', { text: era.name });
-                        badge.createEl('span', {
-                            text: ` (${era.startDate} ? ${era.endDate})`,
-                            cls: 'storyteller-era-badge-dates'
-                        });
-                    }
-                }
-            });
-        } else {
-            contentEl.createEl('p', {
-                text: 'No timeline eras have been created yet. Use the "manage timeline eras" command to create eras.',
-                cls: 'storyteller-modal-description storyteller-era-empty-state'
-            });
-        }
-
-        // --- Custom Fields ---
-        this.customFieldsEditor.setFields(this.event.customFields);
-        this.customFieldsEditor.renderSection(contentEl);
-
         // --- Groups ---
-        contentEl.createEl('h3', { text: t('groups') });
-        const groupSelectorContainer = contentEl.createDiv('storyteller-group-selector-container');
+        const groupSelectorContainer = organizationSection.createDiv('storyteller-group-selector-container');
         this.groupSelector.attach(groupSelectorContainer);
 
         // --- Timeline Forks ---
         const forks = this.plugin.getTimelineForks();
         if (forks.length > 0) {
-            contentEl.createEl('h3', { text: 'Timeline forks' });
-            contentEl.createEl('p', {
+            organizationSection.createEl('p', {
                 text: 'Assign this event to alternate timeline forks',
                 cls: 'storyteller-modal-description'
             });
-            this.forkSelectorContainer = contentEl.createDiv('storyteller-fork-selector-container');
+            this.forkSelectorContainer = organizationSection.createDiv('storyteller-fork-selector-container');
             this.renderForkSelector(this.forkSelectorContainer);
+        }
+        }
+
+        // --- Custom Fields ---
+        if (isVisible('customFields')) {
+            const customFieldsSection = createCollapsibleModalSection(contentEl, {
+                title: 'Custom fields',
+                description: 'Additional properties specific to this project',
+                icon: 'list-plus',
+                open: Boolean(Object.keys(this.event.customFields || {}).length),
+            });
+            this.customFieldsEditor.setFields(this.event.customFields);
+            this.customFieldsEditor.renderSection(customFieldsSection);
         }
 
         // --- Action Buttons ---
-        if (!this.isNew && this.onDelete) {
-            this.createFooterButton(footerEl, t('deleteEvent'), async () => {
-                if (await confirmWithModal(this.app, {
-                    title: t('confirm') || 'Confirm',
-                    body: t('confirmDeleteEvent', this.event.name),
-                    confirmText: t('delete') || 'Delete',
-                })) {
-                    if (this.onDelete) {
-                        try {
-                            await this.onDelete(this.event);
-                            this.close();
-                        } catch {
-                            
-                            new Notice(t('workspaceLeafCreateError'));
-                        }
-                    }
-                }
-            }, { warning: true });
-        }
         footerEl.createDiv({ cls: 'storyteller-modal-button-spacer' });
         this.createFooterButton(footerEl, t('cancel'), () => {
             this.close();
@@ -694,6 +875,9 @@ export class EventModal extends ResponsiveModal {
                 new Notice(t('eventNameRequired'));
                 return;
             }
+            if (isVisible('dateTime') && !this.validateDateForSave(this.event.dateTime, 'event date')) return;
+            if (isVisible('narrative') && !this.validateDateForSave(this.event.narrativeMarkers?.narrativeDate, 'narrative date')) return;
+            if (isVisible('narrative') && !this.validateNarrativeTiming()) return;
             this.event.description = this.event.description || '';
             this.event.outcome = this.event.outcome || '';
             try {
@@ -703,6 +887,7 @@ export class EventModal extends ResponsiveModal {
                 }
                 this.event.customFields = customFields;
                 await this.onSubmit(this.event);
+                await this.persistGroupMembershipChanges();
                 this.close();
             } catch {
                 
@@ -710,6 +895,88 @@ export class EventModal extends ResponsiveModal {
             }
         }, { cta: true });
     })(); }
+
+    private updateDateValidation(setting: Setting, value: string, optional: boolean): void {
+        const trimmed = value.trim();
+        setting.settingEl.toggleClass('storyteller-setting-invalid', Boolean(trimmed) && !this.isValidDate(trimmed));
+        if (!trimmed) {
+            setting.setDesc(optional ? 'Optional' : 'Undated events are saved but do not appear on the timeline.');
+            return;
+        }
+        const parsed = parseTimelineDate(trimmed);
+        setting.setDesc(this.isValidDate(trimmed)
+            ? (parsed.approximate ? 'Recognized as an approximate date.' : 'Recognized date.')
+            : `This date cannot be placed on the active timeline: ${parsed.error || 'unrecognized date'}`);
+    }
+
+    private isValidDate(value: string): boolean {
+        const calendar = new CalendarRegistry(this.plugin).getActiveCalendar();
+        const parts = value.split(/\s+(?:to|through|until)\s+/i).filter(Boolean);
+        if (calendar.id === GREGORIAN_CALENDAR.id) {
+            return parts.every(part => Boolean(parseTimelineDate(part).start));
+        }
+        return parts.every(part => Number.isFinite(parseToAbsoluteDay(part, calendar)));
+    }
+
+    private datePosition(value: string): number | undefined {
+        const first = value.split(/\s+(?:to|through|until)\s+/i)[0];
+        const calendar = new CalendarRegistry(this.plugin).getActiveCalendar();
+        if (calendar.id !== GREGORIAN_CALENDAR.id) {
+            const day = parseToAbsoluteDay(first, calendar);
+            return typeof day === 'number' && Number.isFinite(day) ? day : undefined;
+        }
+        const parsed = parseTimelineDate(first).start;
+        return parsed?.toMillis();
+    }
+
+    private validateDateForSave(value: string | undefined, label: string): boolean {
+        const trimmed = value?.trim();
+        if (!trimmed || this.isValidDate(trimmed)) return true;
+        new Notice(`Fix the ${label} before saving. Storyteller cannot place "${trimmed}" on the timeline.`);
+        return false;
+    }
+
+    private validateNarrativeTiming(): boolean {
+        const markers = this.event.narrativeMarkers;
+        const direction = markers?.isFlashback ? 'flashback' : markers?.isFlashforward ? 'flash-forward' : null;
+        if (!direction) return true;
+        if (!markers?.narrativeDate?.trim()) {
+            new Notice(`Add a narrative date so the ${direction} has a real position in Narrative order.`);
+            return false;
+        }
+        if (!this.event.dateTime?.trim()) {
+            new Notice(`Add the event's chronological date so Storyteller can determine the ${direction} direction.`);
+            return false;
+        }
+        const occurred = this.datePosition(this.event.dateTime);
+        const narrated = this.datePosition(markers.narrativeDate);
+        if (occurred === undefined || narrated === undefined) return true;
+        if (markers.isFlashback && occurred >= narrated) {
+            new Notice('A flashback must occur before its narrative date. Adjust one of the dates before saving.');
+            return false;
+        }
+        if (markers.isFlashforward && occurred <= narrated) {
+            new Notice('A flash-forward must occur after its narrative date. Adjust one of the dates before saving.');
+            return false;
+        }
+        return true;
+    }
+
+    /**
+     * Group membership is intentionally committed only after the Event note is
+     * saved and has a stable id. Cancel therefore has no external side effects.
+     */
+    private async persistGroupMembershipChanges(): Promise<void> {
+        const eventKey = this.event.id || this.event.name;
+        if (!eventKey) return;
+        const changes = changedMemberships(this.originalGroupIds, this.event.groups || []);
+        for (const groupId of changes.added) {
+            await this.plugin.addMemberToGroup(groupId, 'event', eventKey);
+        }
+        for (const groupId of changes.removed) {
+            await this.plugin.removeMemberFromGroup(groupId, 'event', eventKey);
+        }
+    }
 
     // Updated Helper to add/remove the location clear button dynamically
     updateLocationClearButton() {
@@ -775,15 +1042,18 @@ export class EventModal extends ResponsiveModal {
    renderForkSelector(container: HTMLElement) {
         container.empty();
         const allForks = this.plugin.getTimelineForks();
-        const eventIdentifier = this.event.id || this.event.name;
-
-        // Get forks that already contain this event
-        const selectedForkIds = new Set<string>();
-        allForks.forEach(fork => {
-            if (fork.forkEvents?.includes(eventIdentifier)) {
-                selectedForkIds.add(fork.id);
-            }
-        });
+        // Work only on the draft. saveEvent's Event <-> Branch sync commits the
+        // relationship after Save; Cancel leaves both notes untouched.
+        const eventIdentifiers = Array.from(new Set([this.event.id, this.event.name].filter((key): key is string => Boolean(key))));
+        const selectedBranchNames = new Set([
+            ...(this.event.branches || []),
+            ...allForks
+                .filter(fork => isEventLinkedToFork(eventIdentifiers, fork))
+                .map(fork => fork.name),
+        ]);
+        const selectedForkIds = new Set(
+            allForks.filter(fork => selectedBranchNames.has(fork.name)).map(fork => fork.id)
+        );
 
         new Setting(container)
             .setName('Timeline forks')
@@ -797,10 +1067,12 @@ export class EventModal extends ResponsiveModal {
                     }
                 });
                 dropdown.setValue('');
-                dropdown.onChange(async (forkId) => {
+                dropdown.onChange((forkId) => {
                     if (forkId) {
-                        await this.plugin.addEventToFork(forkId, eventIdentifier);
-                        selectedForkIds.add(forkId);
+                        const fork = allForks.find(candidate => candidate.id === forkId);
+                        if (!fork) return;
+                        selectedBranchNames.add(fork.name);
+                        this.event.branches = Array.from(selectedBranchNames);
                         this.renderForkSelector(container);
                     }
                 });
@@ -828,9 +1100,9 @@ export class EventModal extends ResponsiveModal {
                 removeBtn.setCssStyles({ cursor: 'pointer' });
                 removeBtn.setCssStyles({ marginLeft: '4px' });
                 removeBtn.setCssStyles({ fontWeight: 'bold' });
-                removeBtn.onclick = async () => {
-                    await this.plugin.removeEventFromFork(fork.id, eventIdentifier);
-                    selectedForkIds.delete(fork.id);
+                removeBtn.onclick = () => {
+                    selectedBranchNames.delete(fork.name);
+                    this.event.branches = Array.from(selectedBranchNames);
                     this.renderForkSelector(container);
                 };
             });

@@ -17,6 +17,7 @@ import { Character, Location, Event, PlotItem, GalleryImage, IndentedSceneRef, S
 import { NewStoryModal } from '../modals/NewStoryModal';
 import { GroupModal } from '../modals/GroupModal';
 import { PlatformUtils } from '../utils/PlatformUtils';
+import { getOwners } from '../utils/ItemOwnership';
 import type { DashboardLayoutMode } from '../utils/PlatformUtils';
 import {
     Template,
@@ -62,6 +63,8 @@ export class DashboardView extends ItemView {
     
     /** Current filter text applied to entity lists */
     currentFilter: string = '';
+    /** Items-tab "Plot Critical only" toggle — view-level so dashboard refreshes don't silently reset it */
+    private itemsPlotCriticalOnly = false;
     
     /** File input element reference for gallery image uploads */
     fileInput: HTMLInputElement | null = null;
@@ -242,12 +245,12 @@ export class DashboardView extends ItemView {
             { id: 'locations', label: t('locations'), renderFn: (c: HTMLElement) => this.renderLocationsContent(c) },
             { id: 'events', label: t('timeline'), renderFn: (c: HTMLElement) => this.renderEventsContent(c) },
             { id: 'items', label: t('items'), renderFn: (c: HTMLElement) => this.renderItemsContent(c) },
-            { id: 'maps', label: 'Maps', renderFn: (c: HTMLElement) => this.renderMapsContent(c) },
+            { id: 'maps', label: t('maps'), renderFn: (c: HTMLElement) => this.renderMapsContent(c) },
             { id: 'network', label: t('networkGraph'), renderFn: (c: HTMLElement) => this.renderNetworkContent(c) },
             { id: 'gallery', label: t('gallery'), renderFn: (c: HTMLElement) => this.renderGalleryContent(c) },
             { id: 'groups', label: t('groups'), renderFn: (c: HTMLElement) => this.renderGroupsContent(c) },
             { id: 'references', label: t('references'), renderFn: (c: HTMLElement) => this.renderReferencesContent(c) },
-            { id: 'writing', label: 'Writing', renderFn: (c: HTMLElement) => this.renderWritingContent(c) },
+            { id: 'writing', label: t('writing'), renderFn: (c: HTMLElement) => this.renderWritingContent(c) },
             { id: 'compile', label: t('compile'), renderFn: (c: HTMLElement) => this.renderCompileContent(c) },
             { id: 'cultures', label: t('cultures'), renderFn: (c: HTMLElement) => this.renderCulturesContent(c) },
             { id: 'economies', label: t('economies'), renderFn: (c: HTMLElement) => this.renderEconomiesContent(c) },
@@ -256,7 +259,7 @@ export class DashboardView extends ItemView {
             { id: 'books', label: 'Books', renderFn: (c: HTMLElement) => this.renderBooksContent(c) },
             { id: 'campaign', label: 'Campaign', renderFn: (c: HTMLElement) => this.renderCampaignContent(c) },
             { id: 'templates', label: t('templates'), renderFn: (c: HTMLElement) => this.renderTemplatesContent(c) },
-            { id: 'analytics', label: 'Analytics', renderFn: (c: HTMLElement) => this.renderAnalyticsContent(c) },
+            { id: 'analytics', label: t('analytics'), renderFn: (c: HTMLElement) => this.renderAnalyticsContent(c) },
         ];
 
         this.applyTabOrder();
@@ -430,6 +433,10 @@ export class DashboardView extends ItemView {
             getCurrentFilter: () => this.currentFilter,
             setCurrentFilter: (filter: string) => {
                 this.currentFilter = filter.toLowerCase();
+            },
+            getItemsPlotCriticalOnly: () => this.itemsPlotCriticalOnly,
+            setItemsPlotCriticalOnly: (value: boolean) => {
+                this.itemsPlotCriticalOnly = value;
             },
             isSimplifiedMobileDashboard: () => this.isSimplifiedMobileDashboard(),
             renderWritingGoalBanner: (c: HTMLElement) => this.renderWritingGoalBanner(c),
@@ -986,7 +993,14 @@ export class DashboardView extends ItemView {
             h.classList.toggle('active', !!isActive);
             h.setAttribute('aria-selected', isActive ? 'true' : 'false');
             h.setAttribute('tabindex', isActive ? '0' : '-1');
-            h.setCssStyles({ background: isActive ? 'var(--background-modifier-hover)' : 'transparent' });
+            // The .active class paints the accent background. Setting one
+            // inline here beat that rule, so the active tab drew the theme's
+            // hover colour while keeping the class's on-accent text colour,
+            // which is unreadable wherever those two are close. Clear it
+            // outright rather than skipping the write, so tabs styled by an
+            // older build recover on the next sync.
+            h.style.removeProperty('background');
+            h.style.removeProperty('background-color');
             h.setCssStyles({ outline: 'none' });
         });
     }
@@ -1267,7 +1281,6 @@ export class DashboardView extends ItemView {
     async renderItemsContent(container: HTMLElement) {
         await this.renderWithController('items', container, async () => {
         container.empty();
-        let showPlotCriticalOnly = false; // State for the filter toggle
 
         const controlsGroup = container.createDiv('storyteller-controls-group');
         new Setting(controlsGroup)
@@ -1276,18 +1289,19 @@ export class DashboardView extends ItemView {
                 .setPlaceholder(t('searchX', 'items'))
                 .onChange(async (value) => {
                     this.currentFilter = value.toLowerCase();
-                    await this.renderItemsList(container, showPlotCriticalOnly);
+                    await this.renderItemsList(container, this.itemsPlotCriticalOnly);
                 }));
 
-        // "Plot Critical Only" Toggle Button
+        // "Plot Critical Only" Toggle Button — state is view-level so a
+        // dashboard refresh mid-session doesn't silently reset the filter
         new Setting(controlsGroup)
             .setName(t('plotCritical'))
             .setDesc(t('filterX', 'bookmarked'))
             .addToggle(toggle => {
-                toggle.setValue(showPlotCriticalOnly)
+                toggle.setValue(this.itemsPlotCriticalOnly)
                     .onChange(async (value) => {
-                        showPlotCriticalOnly = value;
-                        await this.renderItemsList(container, showPlotCriticalOnly);
+                        this.itemsPlotCriticalOnly = value;
+                        await this.renderItemsList(container, value);
                     });
             });
 
@@ -1318,7 +1332,7 @@ export class DashboardView extends ItemView {
                 }
             });
 
-        await this.renderItemsList(container, showPlotCriticalOnly);
+        await this.renderItemsList(container, this.itemsPlotCriticalOnly);
         });
     }
 
@@ -1373,17 +1387,18 @@ export class DashboardView extends ItemView {
             }
 
             const extraInfoEl = infoEl.createDiv('storyteller-list-item-extra');
-            if (item.currentOwner) {
-                extraInfoEl.createSpan({ text: `Owner: ${item.currentOwner}` });
+            const ownerNames = getOwners(item);
+            if (ownerNames.length > 0) {
+                extraInfoEl.createSpan({ text: `Owner: ${ownerNames.join(', ')}` });
             }
              if (item.currentLocation) {
-                if(item.currentOwner) extraInfoEl.appendText(' • ');
+                if (ownerNames.length > 0) extraInfoEl.appendText(' • ');
                 // Resolve location ID to display name
                 const locationName = this.resolveLocationName(item.currentLocation, locations);
                 extraInfoEl.createSpan({ text: `Location: ${locationName}` });
             }
             if (item.economicValue) {
-                if (item.currentOwner || item.currentLocation) extraInfoEl.appendText(' • ');
+                if (ownerNames.length > 0 || item.currentLocation) extraInfoEl.appendText(' • ');
                 extraInfoEl.createSpan({ cls: 'storyteller-item-value-badge', text: item.economicValue });
             }
             const tagCount = (item.magicSystems?.length ?? 0) + (item.linkedCultures?.length ?? 0);
@@ -1391,7 +1406,7 @@ export class DashboardView extends ItemView {
                 const parts: string[] = [];
                 if (item.magicSystems?.length) parts.push(`${item.magicSystems.length} magic`);
                 if (item.linkedCultures?.length) parts.push(`${item.linkedCultures.length} culture${item.linkedCultures.length > 1 ? 's' : ''}`);
-                if (item.currentOwner || item.currentLocation || item.economicValue) extraInfoEl.appendText(' • ');
+                if (ownerNames.length > 0 || item.currentLocation || item.economicValue) extraInfoEl.appendText(' • ');
                 extraInfoEl.createSpan({ cls: 'storyteller-item-tags', text: parts.join(' · ') });
             }
 
@@ -2033,6 +2048,16 @@ export class DashboardView extends ItemView {
             const emptyMsg = listContainer.createEl('p', { text: t('noGroupsFound'), cls: 'storyteller-empty-state' });
             emptyMsg.setCssStyles({ color: 'var(--text-muted)' });
             emptyMsg.setCssStyles({ fontStyle: 'italic' });
+            // Groups exist but are filtered out by story — "No groups found"
+            // alone reads as data loss, so say where they went.
+            const hiddenByStory = this.plugin.settings.groups.length - this.plugin.getGroups().length;
+            if (hiddenByStory > 0) {
+                const hintMsg = listContainer.createEl('p', {
+                    text: `${hiddenByStory} group${hiddenByStory === 1 ? '' : 's'} belong${hiddenByStory === 1 ? 's' : ''} to other stories and ${hiddenByStory === 1 ? 'is' : 'are'} hidden. Switch stories, or fix the group's story id if it should appear here.`,
+                    cls: 'storyteller-empty-state'
+                });
+                hintMsg.setCssStyles({ color: 'var(--text-muted)', fontStyle: 'italic' });
+            }
             return;
         }
         const allCharacters = await this.plugin.listCharacters();
@@ -3735,7 +3760,7 @@ export class DashboardView extends ItemView {
                 extraInfoEl.createSpan({ cls: 'storyteller-meta-badge storyteller-loc-region-badge', text: location.region });
             }
             if (location.parentLocationId) {
-                extraInfoEl.createSpan({ cls: 'storyteller-meta-badge storyteller-loc-parent-badge', text: `↑ ${location.parentLocationId}` });
+                extraInfoEl.createSpan({ cls: 'storyteller-meta-badge storyteller-loc-parent-badge', text: `↑ ${this.resolveLocationName(location.parentLocationId, locations)}` });
             }
             if (location.status) {
                 const statusSlug = location.status.toLowerCase().replace(/\s+/g, '-');
@@ -4077,6 +4102,13 @@ export class DashboardView extends ItemView {
         setIcon(addIcon, 'plus');
         addBtn.createSpan({ text: ' Add Step' });
         addBtn.addEventListener('click', () => this.openCustomStepModal(null, container));
+
+        if (!this.plugin.settings.enableCustomCompileJs) {
+            section.createEl('p', {
+                text: 'Custom step JavaScript is currently disabled — steps will be skipped during compile. Enable it in Settings → Storyteller Suite → Dashboard → Compile.',
+                cls: 'storyteller-compile-custom-disabled-hint'
+            });
+        }
 
         const steps = this.plugin.settings.customCompileSteps ?? [];
         if (steps.length === 0) {

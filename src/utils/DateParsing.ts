@@ -409,3 +409,8 @@ export function getEventDateForTimeline(event: Event): string | undefined {
 }
 
 
+
+/** Parse a date on the timeline's UTC axis so every timeline consumer agrees on instants. */
+export function parseTimelineDate(input?: unknown): ParsedEventDate {
+  return parseEventDate(input, { timezone: 'utc' });
+}

@@ -9,6 +9,8 @@ export interface DashboardControllerContext {
     plugin: StorytellerSuitePlugin;
     getCurrentFilter(): string;
     setCurrentFilter(filter: string): void;
+    getItemsPlotCriticalOnly(): boolean;
+    setItemsPlotCriticalOnly(value: boolean): void;
     isSimplifiedMobileDashboard(): boolean;
     renderWritingGoalBanner(container: HTMLElement): void;
     getWritingViewMode(): DashboardWritingViewMode;

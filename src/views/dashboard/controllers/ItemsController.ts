@@ -1,5 +1,6 @@
 import { Notice, Setting } from 'obsidian';
 import { PlotItemModal } from '../../../modals/PlotItemModal';
+import { getOwners } from '../../../utils/ItemOwnership';
 import { t } from '../../../i18n/strings';
 import type { PlotItem } from '../../../types';
 import type { DashboardControllerContext, DashboardTabController } from './types';
@@ -8,7 +9,6 @@ export const itemsController: DashboardTabController = {
     id: 'items',
     async render(container, context) {
         container.empty();
-        let showPlotCriticalOnly = false;
 
         const controlsGroup = container.createDiv('storyteller-controls-group');
         new Setting(controlsGroup)
@@ -17,17 +17,17 @@ export const itemsController: DashboardTabController = {
                 .setPlaceholder(t('searchX', 'items'))
                 .onChange(async (value) => {
                     context.setCurrentFilter(value);
-                    await renderItemsList(container, context, showPlotCriticalOnly);
+                    await renderItemsList(container, context, context.getItemsPlotCriticalOnly());
                 }));
 
         new Setting(controlsGroup)
             .setName(t('plotCritical'))
             .setDesc(t('filterX', 'bookmarked'))
             .addToggle(toggle => {
-                toggle.setValue(showPlotCriticalOnly)
+                toggle.setValue(context.getItemsPlotCriticalOnly())
                     .onChange(async (value) => {
-                        showPlotCriticalOnly = value;
-                        await renderItemsList(container, context, showPlotCriticalOnly);
+                        context.setItemsPlotCriticalOnly(value);
+                        await renderItemsList(container, context, value);
                     });
             });
 
@@ -58,7 +58,7 @@ export const itemsController: DashboardTabController = {
                 }
             });
 
-        await renderItemsList(container, context, showPlotCriticalOnly);
+        await renderItemsList(container, context, context.getItemsPlotCriticalOnly());
     },
 };
 
@@ -103,13 +103,14 @@ async function renderItemsList(container: HTMLElement, context: DashboardControl
         if (item.description) infoEl.createEl('p', { text: item.description.substring(0, 80) + '...' });
 
         const extraInfoEl = infoEl.createDiv('storyteller-list-item-extra');
-        if (item.currentOwner) extraInfoEl.createSpan({ text: `Owner: ${item.currentOwner}` });
+        const ownerNames = getOwners(item);
+        if (ownerNames.length > 0) extraInfoEl.createSpan({ text: `Owner: ${ownerNames.join(', ')}` });
         if (item.currentLocation) {
-            if (item.currentOwner) extraInfoEl.appendText(' • ');
+            if (ownerNames.length > 0) extraInfoEl.appendText(' • ');
             extraInfoEl.createSpan({ text: `Location: ${context.resolveLocationName(item.currentLocation, locations)}` });
         }
         if (item.economicValue) {
-            if (item.currentOwner || item.currentLocation) extraInfoEl.appendText(' • ');
+            if (ownerNames.length > 0 || item.currentLocation) extraInfoEl.appendText(' • ');
             extraInfoEl.createSpan({ cls: 'storyteller-item-value-badge', text: item.economicValue });
         }
         const tagCount = (item.magicSystems?.length ?? 0) + (item.linkedCultures?.length ?? 0);
@@ -117,7 +118,7 @@ async function renderItemsList(container: HTMLElement, context: DashboardControl
             const parts: string[] = [];
             if (item.magicSystems?.length) parts.push(`${item.magicSystems.length} magic`);
             if (item.linkedCultures?.length) parts.push(`${item.linkedCultures.length} culture${item.linkedCultures.length > 1 ? 's' : ''}`);
-            if (item.currentOwner || item.currentLocation || item.economicValue) extraInfoEl.appendText(' • ');
+            if (ownerNames.length > 0 || item.currentLocation || item.economicValue) extraInfoEl.appendText(' • ');
             extraInfoEl.createSpan({ cls: 'storyteller-item-tags', text: parts.join(' · ') });
         }
 

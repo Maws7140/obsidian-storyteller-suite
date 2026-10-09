@@ -231,15 +231,13 @@ export class TileGenerator {
                     const srcW = tileSize / scale;
                     const srcH = tileSize / scale;
 
-                    // Calculate destination rectangle (handle edge tiles)
-                    const destW = Math.min(tileSize, scaledWidth - x * tileSize);
-                    const destH = Math.min(tileSize, scaledHeight - y * tileSize);
-
-                    // Draw scaled portion of image to canvas
+                    // Keep the same scale on edge tiles. Canvas clips source
+                    // overflow itself; shrinking the destination as well would
+                    // clip twice and leave blank strips at the bottom/right.
                     ctx.drawImage(
                         img,
-                        srcX, srcY, srcW, srcH,  // Source rectangle
-                        0, 0, destW, destH        // Destination rectangle
+                        srcX, srcY, srcW, srcH,
+                        0, 0, tileSize, tileSize
                     );
 
                     // Convert canvas to PNG blob

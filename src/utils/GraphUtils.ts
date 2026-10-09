@@ -1,6 +1,7 @@
 // Utilities for processing network graph data and relationships
 
 import { Character, Location, Event, PlotItem, Culture, Economy, MagicSystem, TypedRelationship, RelationshipType, GraphNode, GraphEdge } from '../types';
+import { getOwners } from './ItemOwnership';
 
 // Helper function to check if an edge already exists
 // Checks source, target, relationshipType, and label to ensure uniqueness
@@ -198,8 +199,8 @@ export function extractAllRelationships(
         }
 
         // Items -> owner (character)
-        if (type === 'item' && (entity).currentOwner) {
-            const targetId = resolveEntityId((entity).currentOwner, entityMap);
+        for (const ownerName of type === 'item' ? getOwners(entity) : []) {
+            const targetId = resolveEntityId(ownerName, entityMap);
             if (targetId && !edgeExists(edges, sourceId, targetId, 'neutral', 'owned by')) {
                 edges.push({
                     source: sourceId,

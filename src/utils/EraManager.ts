@@ -1,6 +1,12 @@
 import type { Event, TimelineEra } from '../types';
-import { parseEventDate } from './DateParsing';
+import { parseTimelineDate } from './DateParsing';
 import type StorytellerSuitePlugin from '../main';
+
+function eventBoundaryText(value: string, boundary: 'start' | 'end'): string {
+    const parts = value.split(/\s+(?:to|through|until|thru)\s+|\s*\.\.\s*|\s+[–—]\s+/i).map(part => part.trim()).filter(Boolean);
+    if (parts.length !== 2) return value;
+    return boundary === 'start' ? parts[0] : parts[1];
+}
 
 /**
  * Utility class for managing timeline eras
@@ -17,15 +23,16 @@ export class EraManager {
      * Get all eras from settings
      */
     async getEras(): Promise<TimelineEra[]> {
-        return this.plugin.settings.timelineEras || [];
+        return this.plugin.getTimelineEras();
     }
 
     /**
      * Save eras to settings
      */
     async saveEras(eras: TimelineEra[]): Promise<void> {
-        this.plugin.settings.timelineEras = eras;
-        await this.plugin.saveSettings();
+        // Scoped setter: this list holds the active story's eras only, so a
+        // plain assignment here would delete every other story's.
+        await this.plugin.setTimelineEras(eras);
     }
 
     /**
@@ -208,16 +215,16 @@ export class EraManager {
         startDate: string,
         endDate: string
     ): TimelineEra[] {
-        const start = parseEventDate(startDate);
-        const end = parseEventDate(endDate);
+        const start = parseTimelineDate(startDate);
+        const end = parseTimelineDate(endDate);
 
         if (!start.start || !end.start) {
             return [];
         }
 
         return eras.filter(era => {
-            const eraStart = parseEventDate(era.startDate);
-            const eraEnd = parseEventDate(era.endDate);
+            const eraStart = parseTimelineDate(era.startDate);
+            const eraEnd = parseTimelineDate(era.endDate);
 
             if (!eraStart.start || !eraEnd.start) {
                 return false;
@@ -232,8 +239,8 @@ export class EraManager {
      * Get all events that fall within an era's date range
      */
     static getEventsInEra(era: TimelineEra, allEvents: Event[]): Event[] {
-        const eraStart = parseEventDate(era.startDate);
-        const eraEnd = parseEventDate(era.endDate);
+        const eraStart = parseTimelineDate(era.startDate);
+        const eraEnd = parseTimelineDate(era.endDate);
 
         if (!eraStart.start || !eraEnd.start) {
             return [];
@@ -242,7 +249,7 @@ export class EraManager {
         return allEvents.filter(event => {
             if (!event.dateTime) return false;
 
-            const eventDate = parseEventDate(event.dateTime);
+            const eventDate = parseTimelineDate(event.dateTime);
             if (!eventDate.start) return false;
 
             // Check if event falls within era range
@@ -272,10 +279,10 @@ export class EraManager {
                 const era1 = eras[i];
                 const era2 = eras[j];
 
-                const era1Start = parseEventDate(era1.startDate);
-                const era1End = parseEventDate(era1.endDate);
-                const era2Start = parseEventDate(era2.startDate);
-                const era2End = parseEventDate(era2.endDate);
+                const era1Start = parseTimelineDate(era1.startDate);
+                const era1End = parseTimelineDate(era1.endDate);
+                const era2Start = parseTimelineDate(era2.startDate);
+                const era2End = parseTimelineDate(era2.endDate);
 
                 if (!era1Start.start || !era1End.start || !era2Start.start || !era2End.start) {
                     continue;
@@ -335,6 +342,83 @@ export class EraManager {
     }
 
     /**
+     * Suggest eras by finding unusually large empty stretches between events.
+     *
+     * A gap has to be at least four times the timeline's typical positive gap,
+     * and every resulting era must contain at least two dated events. This is
+     * deliberately relative rather than a fixed number of days: a campaign
+     * measured in hours and a history measured in decades should both work.
+     * The names are intentionally provisional because elapsed time can reveal
+     * a boundary, but it cannot know what a historian or author calls it.
+     */
+    static inferErasFromEventGaps(events: Event[]): TimelineEra[] {
+        const dated = events
+            .map(event => {
+                if (!event.dateTime) return null;
+                const parsed = parseTimelineDate(event.dateTime);
+                if (!parsed.start) return null;
+                return {
+                    event,
+                    start: parsed.start.toMillis(),
+                    end: (parsed.end || parsed.start).toMillis()
+                };
+            })
+            .filter((entry): entry is NonNullable<typeof entry> => entry !== null)
+            .sort((a, b) => a.start - b.start || a.end - b.end);
+
+        if (dated.length < 4) return [];
+
+        const gaps = dated.slice(0, -1).map((entry, index) => ({
+            index,
+            duration: dated[index + 1].start - entry.end
+        }));
+        const positiveGaps = gaps.map(gap => gap.duration).filter(duration => duration > 0).sort((a, b) => a - b);
+        if (positiveGaps.length < 3) return [];
+
+        const middle = Math.floor(positiveGaps.length / 2);
+        const median = positiveGaps.length % 2
+            ? positiveGaps[middle]
+            : (positiveGaps[middle - 1] + positiveGaps[middle]) / 2;
+        if (!(median > 0)) return [];
+
+        // Take the largest gaps first and skip any that would strand a single
+        // event as its own era, measured against the boundaries already kept.
+        const boundaryIndexes: number[] = [];
+        for (const gap of gaps.filter(gap => gap.duration >= median * 4).sort((a, b) => b.duration - a.duration)) {
+            const boundary = gap.index + 1;
+            const previous = Math.max(0, ...boundaryIndexes.filter(kept => kept < boundary));
+            const next = Math.min(dated.length, ...boundaryIndexes.filter(kept => kept > boundary));
+            if (boundary - previous >= 2 && next - boundary >= 2) boundaryIndexes.push(boundary);
+        }
+        if (!boundaryIndexes.length) return [];
+        boundaryIndexes.sort((a, b) => a - b);
+
+        const starts = [0, ...boundaryIndexes];
+        const ends = [...boundaryIndexes, dated.length];
+        const palette = ['#8b5cf6', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#ec4899'];
+
+        return starts.map((startIndex, index) => {
+            const endIndex = ends[index] - 1;
+            const first = dated[startIndex];
+            const last = dated[endIndex];
+            const startDate = eventBoundaryText(first.event.dateTime!, 'start');
+            const endDate = eventBoundaryText(last.event.dateTime!, 'end');
+            return {
+                id: `era-auto-${first.start}-${index + 1}`,
+                name: `Era ${index + 1}`,
+                abbreviation: `E${index + 1}`,
+                description: 'Automatically suggested from a large gap between dated events. Rename this era to match your story or history.',
+                startDate,
+                endDate,
+                color: palette[index % palette.length],
+                type: 'period',
+                sortOrder: index,
+                visible: true
+            };
+        });
+    }
+
+    /**
      * Sort eras by explicit sortOrder, then by start date. Does not filter, so
      * management UIs can list hidden eras alongside visible ones.
      */
@@ -348,8 +432,8 @@ export class EraManager {
             if (b.sortOrder !== undefined) return 1;
 
             // Then by start date
-            const aStart = parseEventDate(a.startDate);
-            const bStart = parseEventDate(b.startDate);
+            const aStart = parseTimelineDate(a.startDate);
+            const bStart = parseTimelineDate(b.startDate);
 
             if (!aStart.start || !bStart.start) return 0;
 
@@ -370,12 +454,12 @@ export class EraManager {
     static findErasForEvent(event: Event, eras: TimelineEra[]): TimelineEra[] {
         if (!event.dateTime) return [];
 
-        const eventDate = parseEventDate(event.dateTime);
+        const eventDate = parseTimelineDate(event.dateTime);
         if (!eventDate.start) return [];
 
         return eras.filter(era => {
-            const eraStart = parseEventDate(era.startDate);
-            const eraEnd = parseEventDate(era.endDate);
+            const eraStart = parseTimelineDate(era.startDate);
+            const eraEnd = parseTimelineDate(era.endDate);
 
             if (!eraStart.start || !eraEnd.start) return false;
 
@@ -439,8 +523,8 @@ export class EraManager {
             errors.push('End date is required');
         }
 
-        const startParsed = parseEventDate(era.startDate);
-        const endParsed = parseEventDate(era.endDate);
+        const startParsed = parseTimelineDate(era.startDate);
+        const endParsed = parseTimelineDate(era.endDate);
 
         if (startParsed.error) {
             errors.push(`Invalid start date: ${startParsed.error}`);
@@ -464,8 +548,8 @@ export class EraManager {
      * Get era duration in a human-readable format
      */
     static getEraDuration(era: TimelineEra): string {
-        const startParsed = parseEventDate(era.startDate);
-        const endParsed = parseEventDate(era.endDate);
+        const startParsed = parseTimelineDate(era.startDate);
+        const endParsed = parseTimelineDate(era.endDate);
 
         if (!startParsed.start || !endParsed.start) {
             return 'Unknown duration';

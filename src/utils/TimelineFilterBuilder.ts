@@ -4,7 +4,7 @@
 import { Setting } from 'obsidian';
 import { t } from '../i18n/strings';
 import StorytellerSuitePlugin from '../main';
-import { TimelineRenderer } from './TimelineRenderer';
+import { TimelineRenderer } from './NativeTimelineRenderer';
 import { TimelineUIState, Event, Location } from '../types';
 
 /**

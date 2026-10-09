@@ -1,6 +1,6 @@
 import { DateTime } from 'luxon';
-import type { Event, TimelineConflict, ConflictEntity } from '../types';
-import { parseEventDate } from './DateParsing';
+import type { Character, Event, Location, TimelineConflict, ConflictEntity } from '../types';
+import { parseTimelineDate } from './DateParsing';
 
 /**
  * Conflict types
@@ -32,11 +32,13 @@ export class ConflictDetector {
     /**
      * Detect all conflicts in a set of events
      */
-    static detectAllConflicts(events: Event[]): DetectedConflict[] {
+    static detectAllConflicts(events: Event[], characters: Character[] = [], locations: Location[] = []): DetectedConflict[] {
         const conflicts: DetectedConflict[] = [];
 
         // Detect character location conflicts
         conflicts.push(...this.detectCharacterLocationConflicts(events));
+
+        conflicts.push(...this.detectPresenceConflicts(events, characters, locations));
 
         // Detect death conflicts (character appearing after death)
         conflicts.push(...this.detectDeathConflicts(events));
@@ -46,6 +48,75 @@ export class ConflictDetector {
 
         // Detect temporal conflicts (overlapping milestone events)
         conflicts.push(...this.detectTemporalConflicts(events));
+
+        return conflicts;
+    }
+
+    /** Detect an event placing a character away from their recorded presence span. */
+    static detectPresenceConflicts(events: Event[], characters: Character[], locations: Location[] = []): DetectedConflict[] {
+        const conflicts: DetectedConflict[] = [];
+        const clean = (value: string): string => {
+            const trimmed = String(value ?? '').trim();
+            const wiki = trimmed.match(/^\[\[([^\]|#]+)(?:[|#][^\]]*)?\]\]$/);
+            return (wiki?.[1] ?? trimmed).trim().toLowerCase();
+        };
+        const locationNames = new Map<string, string>();
+        for (const location of locations) {
+            locationNames.set(clean(location.name), location.name);
+            if (location.id) locationNames.set(clean(location.id), location.name);
+        }
+        const locationName = (value: string): string => locationNames.get(clean(value)) ?? value;
+
+        for (const character of characters) {
+            const refs = new Set([clean(character.name), character.id ? clean(character.id) : ''].filter(Boolean));
+            const characterEvents = events.filter(event =>
+                Boolean(event.dateTime && event.location && event.characters?.some(ref => refs.has(clean(ref))))
+            );
+            if (!characterEvents.length) continue;
+
+            const stays = (character.locationHistory ?? [])
+                .map(entry => {
+                    const end = entry.timeRange?.end ? parseTimelineDate(entry.timeRange.end) : undefined;
+                    return {
+                        location: locationName(entry.locationId),
+                        start: parseTimelineDate(entry.timeRange?.start ?? '').start,
+                        end: end?.end ?? end?.start,
+                    };
+                })
+                .filter((stay): stay is { location: string; start: DateTime; end: DateTime | undefined } => Boolean(stay.start))
+                .sort((left, right) => left.start.toMillis() - right.start.toMillis());
+
+            stays.forEach((stay, index) => {
+                const spanEnd = stay.end ?? stays[index + 1]?.start;
+                for (const event of characterEvents) {
+                    if (clean(locationName(event.location!)) === clean(stay.location)) continue;
+                    const parsed = parseTimelineDate(event.dateTime!);
+                    if (!parsed.start) continue;
+                    const eventEnd = parsed.end ?? parsed.start;
+                    const overlaps = spanEnd
+                        ? parsed.start <= spanEnd && eventEnd >= stay.start
+                        : eventEnd >= stay.start;
+                    if (!overlaps) continue;
+
+                    const claimed = Boolean(event.claimedBy?.length || (event.certainty && event.certainty !== 'established'));
+                    const eventId = event.id || event.name.replace(/[^a-zA-Z0-9]/g, '');
+                    conflicts.push({
+                        id: `conflict-presence-${character.id || clean(character.name)}-${eventId}`,
+                        type: 'location',
+                        severity: claimed ? 'warning' : 'error',
+                        message: claimed
+                            ? `${character.name}'s claimed event conflicts with their recorded presence`
+                            : `${character.name}'s event conflicts with their recorded presence`,
+                        events: [event],
+                        character: character.name,
+                        details: {
+                            locations: [stay.location, event.location!],
+                            description: `${character.name} is recorded at ${stay.location}, but "${event.name}" places them at ${event.location}.`,
+                        },
+                    });
+                }
+            });
+        }
 
         return conflicts;
     }
@@ -70,8 +141,8 @@ export class ConflictDetector {
 
             // Sort by date
             const sortedEvents = characterEvents.sort((a, b) => {
-                const aDate = parseEventDate(a.dateTime!);
-                const bDate = parseEventDate(b.dateTime!);
+                const aDate = parseTimelineDate(a.dateTime!);
+                const bDate = parseTimelineDate(b.dateTime!);
                 if (!aDate.start || !bDate.start) return 0;
                 return aDate.start < bDate.start ? -1 : 1;
             });
@@ -133,7 +204,7 @@ export class ConflictDetector {
                           event.tags?.some(tag => tag.toLowerCase().includes('death'));
 
             if (isDeath) {
-                const parsed = parseEventDate(event.dateTime);
+                const parsed = parseTimelineDate(event.dateTime);
                 if (parsed.start) {
                     event.characters.forEach(char => {
                         const existing = characterDeaths.get(char);
@@ -153,7 +224,7 @@ export class ConflictDetector {
                 if (!evt.dateTime) return false;
                 if (evt === deathInfo.event) return false; // Skip the death event itself
 
-                const evtDate = parseEventDate(evt.dateTime);
+                const evtDate = parseTimelineDate(evt.dateTime);
                 return evtDate.start && evtDate.start > deathInfo.date;
             });
 
@@ -241,8 +312,8 @@ export class ConflictDetector {
                 const depLabel = depEvent?.name || getDependencyLabel(event, depRef);
                 if (!depEvent || !depEvent.dateTime || !event.dateTime) continue;
 
-                const eventDate = parseEventDate(event.dateTime);
-                const depDate = parseEventDate(depEvent.dateTime);
+                const eventDate = parseTimelineDate(event.dateTime);
+                const depDate = parseTimelineDate(depEvent.dateTime);
 
                 if (!eventDate.start || !depDate.start) continue;
 
@@ -295,8 +366,8 @@ export class ConflictDetector {
                 const m1 = milestones[i];
                 const m2 = milestones[j];
 
-                const date1 = parseEventDate(m1.dateTime!);
-                const date2 = parseEventDate(m2.dateTime!);
+                const date1 = parseTimelineDate(m1.dateTime!);
+                const date2 = parseTimelineDate(m2.dateTime!);
 
                 if (!date1.start || !date2.start) continue;
 
@@ -335,8 +406,8 @@ export class ConflictDetector {
     } | null {
         if (!event1.dateTime || !event2.dateTime) return null;
 
-        const date1 = parseEventDate(event1.dateTime);
-        const date2 = parseEventDate(event2.dateTime);
+        const date1 = parseTimelineDate(event1.dateTime);
+        const date2 = parseTimelineDate(event2.dateTime);
 
         if (!date1.start || !date2.start) return null;
 

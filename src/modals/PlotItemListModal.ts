@@ -6,6 +6,7 @@ import { PlotItem } from '../types';
 import StorytellerSuitePlugin from '../main';
 import { PlotItemModal } from './PlotItemModal';
 import { confirmWithModal } from './ui/ConfirmModal';
+import { getOwners } from '../utils/ItemOwnership';
 
 export class PlotItemListModal extends Modal {
     plugin: StorytellerSuitePlugin;
@@ -64,7 +65,7 @@ export class PlotItemListModal extends Modal {
         const filteredItems = this.items.filter(item =>
             item.name.toLowerCase().includes(filter) ||
             (item.description || '').toLowerCase().includes(filter) ||
-            (item.currentOwner || '').toLowerCase().includes(filter)
+            getOwners(item).some(owner => owner.toLowerCase().includes(filter))
         );
 
         if (filteredItems.length === 0) {
@@ -91,8 +92,9 @@ export class PlotItemListModal extends Modal {
                 infoEl.createEl('p', { text: displayText });
             }
 
-            if (item.currentOwner) {
-                infoEl.createEl('p', { text: t('ownerValue', item.currentOwner) });
+            const ownerNames = getOwners(item);
+            if (ownerNames.length > 0) {
+                infoEl.createEl('p', { text: t('ownerValue', ownerNames.join(', ')) });
             }
 
 

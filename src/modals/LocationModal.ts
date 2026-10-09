@@ -435,6 +435,7 @@ export class LocationModal extends ResponsiveModal {
                 const removeButton = li.createEl('button', { cls: 'remove-binding-btn', text: 'Remove' });
                 removeButton.addEventListener('click', () => { void (async () => {
                     await locationService.removeMapBinding(this.location.id || this.location.name, binding.mapId);
+                    this.location.mapBindings = this.location.mapBindings?.filter(b => b.mapId !== binding.mapId);
                     this.refresh();
                 })(); });
             }
@@ -442,6 +443,15 @@ export class LocationModal extends ResponsiveModal {
             mapBindingsContainer.createDiv({ text: 'No map bindings', cls: 'no-bindings' });
         }
         
+        for (const map of maps.filter(m => m.placementGrid?.areas.some(a => a.locationId === this.location.id) && !this.location.mapBindings?.some(b => b.mapId === (m.id || m.name)))) {
+            const row = mapBindingsContainer.createDiv();
+            row.createSpan({ text: `${map.name} (grid area)` });
+            const remove = row.createEl('button', { text: 'Remove from map' });
+            remove.onclick = () => { void (async () => {
+                try { await locationService.removeMapBinding(this.location.id || this.location.name, map.id || map.name); this.refresh(); }
+                catch (error) { new Notice(`Removal failed: ${String(error)}`); }
+            })(); };
+        }
         new Setting(contentEl)
             .addButton(button => button
                 .setButtonText('Add map binding')
@@ -461,7 +471,7 @@ export class LocationModal extends ResponsiveModal {
                 const li = entitiesList.createEl('li');
                 const entityName = getEntityName(entityRef.entityId, entityRef.entityType);
                 const supportedTypes = ['character', 'event', 'item'];
-                const isSupportedType = supportedTypes.includes(entityRef.entityType);
+                const isSupportedType = true;
                 
                 li.createSpan({ cls: 'entity-type', text: entityRef.entityType });
                 li.createSpan({ cls: 'entity-name', text: entityName });
@@ -473,11 +483,19 @@ export class LocationModal extends ResponsiveModal {
                     const removeButton = li.createEl('button', { cls: 'remove-entity-btn', text: 'Remove' });
                     removeButton.addEventListener('click', () => { void (async () => {
                         // Use comprehensive removal that also clears entity's location reference
+                        if (supportedTypes.includes(entityRef.entityType)) {
                         await this.plugin.removeEntityFromMap(
                             entityRef.entityId,
                             entityRef.entityType as 'character' | 'event' | 'item',
                             this.location.id || this.location.name
                         );
+                        } else {
+                            await locationService.removeEntityFromLocation(this.location.id || this.location.name, entityRef.entityId);
+                            const { detachFromMaps } = await import('../services/MapMembershipService');
+                            for (const map of maps) if (this.location.mapBindings?.some(b => b.mapId === (map.id || map.name)) || map.placementGrid?.areas.some(a => a.locationId === this.location.id)) {
+                                await detachFromMaps(this.plugin, entityRef.entityType, entityRef.entityId, entityRef.entityName, map.id || map.name);
+                            }
+                        }
                         // Reload location from plugin to get updated entityRefs
                         const updatedLocation = await locationService.getLocation(
                             this.location.id || this.location.name
