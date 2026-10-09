@@ -41,6 +41,13 @@ import {
     sweepCustomFieldsOnRead,
 } from './modals/entity/CustomFieldDefinitions';
 import { stripWikiLink } from './utils/WikiLinks';
+import {
+    GROUP_OWNED_FRONTMATTER_KEYS,
+    composeNote,
+    mergeOwnedFrontmatter,
+    replaceOwnedSections,
+    splitNoteContent,
+} from './utils/GroupNoteFile';
 import { findSessionLogSection, readSessionLogBody } from './campaign/SessionLogSection';
 import { StoryScoped, scopeToStory, stampStory, mergeStoryScoped, backfillStoryIds } from './utils/StoryScope';
 import { TimelineEntityStore } from './services/TimelineEntityStore';
@@ -9371,8 +9378,9 @@ export default class StorytellerSuitePlugin extends Plugin {
 				fm['custom-fields'] = group.customFields;
 			}
 			// Typed fields defined for groups live top-level, like other entities.
-			// Empty values are left out; the file is rewritten whole, so a cleared field disappears.
+			// Empty values are left out, and their keys are owned, so a cleared field is removed from the note.
 			const groupRecord = group as unknown as Record<string, unknown>;
+			const typedKeys = this.getCustomFieldDefinitions('faction').map(definition => definition.key);
 			for (const definition of this.getCustomFieldDefinitions('faction')) {
 				const value = groupRecord[definition.key];
 				if (value === undefined || value === null || value === '') continue;
@@ -9380,29 +9388,30 @@ export default class StorytellerSuitePlugin extends Plugin {
 				if (!(definition.key in fm)) fm[definition.key] = value;
 			}
 
-			// Serialize frontmatter
-
-			const fmStr = stringifyYaml(fm).trim();
-
-			// Build markdown body sections
-			const sections: string[] = [];
-			if (group.description) sections.push(`## Description\n\n${group.description}`);
-			if (group.history)     sections.push(`## History\n\n${group.history}`);
-			if (group.structure)   sections.push(`## Structure\n\n${group.structure}`);
-			if (group.goals)       sections.push(`## Goals\n\n${group.goals}`);
-			if (group.resources)   sections.push(`## Resources\n\n${group.resources}`);
-
-			const content = `---\n${fmStr}\n---\n\n${sections.join('\n\n')}\n`.trimEnd() + '\n';
-
+			// Only the frontmatter keys and body sections the plugin owns are replaced.
+			// Unknown keys and hand-written sections in the existing note are kept.
+			const sectionValues = [
+				{ heading: 'Description', value: group.description },
+				{ heading: 'History', value: group.history },
+				{ heading: 'Structure', value: group.structure },
+				{ heading: 'Goals', value: group.goals },
+				{ heading: 'Resources', value: group.resources },
+			];
 			const existing = this.app.vault.getAbstractFileByPath(filePath);
 			if (existing instanceof TFile) {
-				await this.app.vault.modify(existing, content);
+				const split = splitNoteContent(await this.app.vault.cachedRead(existing));
+				if (!split) {
+					// The frontmatter cannot be read. Overwriting it would destroy the user's text.
+					new Notice(t('failedToSave', t('group')));
+					return;
+				}
+				const merged = mergeOwnedFrontmatter(split.frontmatter, fm, [...GROUP_OWNED_FRONTMATTER_KEYS, ...typedKeys]);
+				await this.app.vault.modify(existing, composeNote(merged, replaceOwnedSections(split.body, sectionValues)));
 			} else {
-				await this.app.vault.create(filePath, content);
+				await this.app.vault.create(filePath, composeNote(fm, replaceOwnedSections('', sectionValues)));
 			}
 		} catch {
-			// intentional
-			
+			new Notice(t('failedToSave', t('group')));
 		}
 	}
 
