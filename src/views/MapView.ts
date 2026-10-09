@@ -19,6 +19,11 @@ import { EventSuggestModal } from '../modals/EventSuggestModal';
 import { PlotItemSuggestModal } from '../modals/PlotItemSuggestModal';
 import { openMapModal } from '../utils/MapModalHelper';
 import { MapHierarchyManager } from '../utils/MapHierarchyManager';
+import { VIEW_TYPE_CAMPAIGN } from './CampaignView';
+import { MaplogPalette } from '../leaflet/maplog/MaplogPalette';
+import { MaplogEditor } from '../leaflet/maplog/MaplogEditor';
+import { MAPLOG_FRONTMATTER_KEYS, maplogFrontmatter, normalizeMaplogData, type MaplogData } from '../leaflet/maplog/model';
+import { parseRoomStates } from '../leaflet/maplog/roomState';
 
 export const VIEW_TYPE_MAP = 'storyteller-map-view';
 
@@ -77,6 +82,9 @@ export class MapView extends ItemView {
     private currentZoom = 2;
     private locationLevelMode: LocationLevel = 'auto';
     private gridController: GridController | null = null;
+    private maplogPalette: MaplogPalette | null = null;
+    private maplogEditor: MaplogEditor | null = null;
+    private maplogSaveQueue: Promise<void> = Promise.resolve();
     private placementMode: { type: 'location' | 'character' | 'event' | 'item' | 'culture' | 'economy' | 'magicsystem' | 'group' | 'scene' | 'reference' | null } = { type: null };
     private placementClickHandler: ((e: L.LeafletMouseEvent) => void) | null = null;
     private placementOverlay: HTMLElement | null = null;
@@ -215,6 +223,19 @@ export class MapView extends ItemView {
 
         // Spacer
         this.toolbarEl.createDiv('storyteller-toolbar-spacer');
+
+        // Maplog palette (edit mode for marks, lines and areas)
+        if (this.currentMap) {
+            const maplogBtn = this.toolbarEl.createEl('button', {
+                cls: 'clickable-icon storyteller-toolbar-btn',
+                attr: {
+                    'aria-label': 'Maplog palette',
+                    'title': 'Maplog palette: walls, doors, stairs, traps, terrain'
+                }
+            });
+            setIcon(maplogBtn, 'pencil-ruler');
+            maplogBtn.onclick = () => this.toggleMaplogPalette();
+        }
 
         // Refresh button
         const refreshBtn = this.toolbarEl.createEl('button', {
@@ -637,6 +658,90 @@ export class MapView extends ItemView {
     /**
      * Enable placement mode for clicking on map to place entities
      */
+    /** Show or hide the Maplog palette beside the map. */
+    private toggleMaplogPalette(): void {
+        if (!this.currentMap || !this.mapContainer) return;
+        if (this.maplogPalette?.isOpen()) {
+            this.maplogPalette.close();
+            return;
+        }
+        if (!this.maplogPalette) {
+            this.maplogPalette = new MaplogPalette(this.mapContainer, {
+                onChange: tool => this.maplogEditor?.setTool(tool),
+                chooseLocation: done => { new LocationSuggestModal(this.app, this.plugin, done).open(); },
+                onClose: () => undefined,
+            });
+        }
+        this.refreshRoomStates();
+        this.maplogPalette.open();
+    }
+
+    /** Disarm and remove the Maplog palette. Used before the map is rendered again. */
+    private closeMaplogPalette(): void {
+        this.maplogEditor?.setTool(null);
+        this.maplogPalette?.destroy();
+        this.maplogPalette = null;
+    }
+
+    private createMaplogEditor(): MaplogEditor {
+        return new MaplogEditor({
+            app: this.app,
+            getMap: () => this.leafletRenderer?.getMap() ?? null,
+            getData: () => normalizeMaplogData(this.currentMap ?? {}),
+            save: next => this.saveMaplog(next),
+            onDisarm: () => this.maplogPalette?.clearSelection(),
+        });
+    }
+
+    /**
+     * Write the Maplog state to the map note's frontmatter. Saves run one after
+     * another, and the drawn layer is updated once the note is written.
+     */
+    private saveMaplog(next: MaplogData): Promise<void> {
+        const run = async (): Promise<void> => {
+            const map = this.currentMap;
+            const file = map?.filePath ? this.app.vault.getAbstractFileByPath(map.filePath) : null;
+            if (!map || !(file instanceof TFile)) throw new Error('Save the map note before adding Maplog marks.');
+            const clean = normalizeMaplogData(next);
+            const patch = maplogFrontmatter(clean);
+            // processFrontMatter keeps the rest of the note and writes in one operation.
+            await this.app.fileManager.processFrontMatter(file, (fm: Record<string, unknown>) => {
+                for (const key of MAPLOG_FRONTMATTER_KEYS) {
+                    const value = patch[key];
+                    if (value === undefined) Reflect.deleteProperty(fm, key);
+                    else fm[key] = value;
+                }
+            });
+            this.currentMap = { ...map, maplogMarks: clean.marks, maplogLines: clean.lines, maplogAreas: clean.areas };
+            this.leafletRenderer?.getMaplogLayer()?.setData(clean);
+        };
+        const queued = this.maplogSaveQueue.then(run, run);
+        this.maplogSaveQueue = queued.catch(() => undefined);
+        return queued;
+    }
+
+    /**
+     * Read the room states from the campaign session open in this workspace, so
+     * place-ID tooltips can show what the log says about each room.
+     */
+    private refreshRoomStates(): void {
+        const layer = this.leafletRenderer?.getMaplogLayer();
+        if (!layer) return;
+        let path: string | undefined;
+        for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE_CAMPAIGN)) {
+            const view = leaf.view as unknown as { getActiveSessionFilePath?: () => string | undefined };
+            path = view.getActiveSessionFilePath?.();
+            if (path) break;
+        }
+        if (!path) {
+            layer.setRoomStates(new Map());
+            return;
+        }
+        void this.plugin.loadSessionLog(path)
+            .then(log => layer.setRoomStates(parseRoomStates(log)))
+            .catch(() => layer.setRoomStates(new Map()));
+    }
+
     private async enablePlacementMode(
         entityType: 'location' | 'character' | 'event' | 'item' | 'culture' | 'economy' | 'magicsystem' | 'group' | 'scene' | 'reference',
         onPlaceCoordinates: (coordinates: [number, number]) => void
@@ -1816,6 +1921,7 @@ export class MapView extends ItemView {
 
         this.gridController?.destroy();
         this.gridController = null;
+        this.closeMaplogPalette();
         // Clean up existing renderer before creating new one
         if (this.leafletRenderer) {
             try {
@@ -1911,6 +2017,15 @@ export class MapView extends ItemView {
                 try { this.gridController = new GridController(this.plugin, initializedMap, this.currentMap, imageBounds, this.entityBarEl!.querySelector<HTMLElement>('.entity-bar-quick-actions')!); }
                 catch (error) { new Notice(`Grid unavailable: ${error instanceof Error ? error.message : String(error)}`); }
                 initializedMap.on('storyteller:area-saved', () => { void this.leafletRenderer?.refreshEntities(); });
+            }
+
+            // Maplog: right-click edits a placed item; the palette arms placement.
+            const maplogLayer = this.leafletRenderer.getMaplogLayer();
+            if (maplogLayer && initializedMap) {
+                this.maplogEditor?.destroy();
+                this.maplogEditor = this.createMaplogEditor();
+                maplogLayer.onItemContextMenu = (ref, event) => this.maplogEditor?.openItemMenu(ref, event);
+                this.refreshRoomStates();
             }
 
             // CRITICAL: Prevent Obsidian from intercepting events when using the map
@@ -2246,6 +2361,9 @@ export class MapView extends ItemView {
         this.gridController = null;
         // Clean up placement mode
         this.disablePlacementMode();
+        this.closeMaplogPalette();
+        this.maplogEditor?.destroy();
+        this.maplogEditor = null;
 
         // Clean up debounce timer for view state persistence
         if (this._persistViewStateTimeout) {

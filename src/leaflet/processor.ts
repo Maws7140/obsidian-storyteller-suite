@@ -4,6 +4,7 @@ import { LeafletRenderer } from './renderer';
 import type { BlockParameters } from './types';
 import type StorytellerSuitePlugin from '../main';
 import type { StoryMap } from '../types';
+import { normalizeMaplogData } from './maplog/model';
 
 type MapEntityConfig = StoryMap & {
     type?: BlockParameters['type'];
@@ -345,6 +346,7 @@ export class LeafletCodeBlockProcessor {
             height: mapEntity.height,
             bounds: mapEntity.bounds,
             id: mapEntity.id,
+            maplog: normalizeMaplogData(mapEntity),
             // Override with inline params
             ...inlineParams
         };

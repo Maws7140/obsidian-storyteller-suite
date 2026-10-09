@@ -211,7 +211,8 @@ const FRONTMATTER_WHITELISTS: Record<EntityType, Set<string>> = {
     'linkedItems', 'linkedGroups', 'linkedCultures', 'linkedEconomies', 'linkedMagicSystems', 'linkedScenes', 'linkedReferences',
     'groups', 'customFields', 'created', 'modified',
     'type', 'image', 'lat', 'long', 'minZoom', 'maxZoom', 'tileServer', 'darkMode',
-    'geojsonFiles', 'gpxFiles', 'tileSubdomains', 'tileAttribution', 'markerFiles', 'markerFolders', 'markerTags'
+    'geojsonFiles', 'gpxFiles', 'tileSubdomains', 'tileAttribution', 'markerFiles', 'markerFolders', 'markerTags',
+    'maplogMarks', 'maplogLines', 'maplogAreas'
   ]),
   culture: new Set([
     'id', 'entityType', 'name', 'profileImagePath', 'languages', 'techLevel', 'governmentType', 'status',

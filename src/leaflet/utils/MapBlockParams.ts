@@ -1,5 +1,6 @@
 import type { StoryMap } from '../../types';
 import type { BlockParameters } from '../types';
+import { normalizeMaplogData } from '../maplog/model';
 
 /**
  * Convert a StoryMap entity to the BlockParameters consumed by LeafletRenderer.
@@ -46,6 +47,9 @@ export function mapToBlockParams(map: StoryMap): BlockParameters {
     // GeoJSON / GPX overlay layers (vault file paths or wikilinks)
     if (map.geojsonFiles?.length) params.geojson = [...map.geojsonFiles];
     if (map.gpxFiles?.length) params.gpx = [...map.gpxFiles];
+
+    // Maplog marks, lines and areas, normalised so the renderer only sees valid records
+    params.maplog = normalizeMaplogData(map);
 
     // Note: Markers are handled differently in the renderer
     // They're loaded from the map entity's markers array

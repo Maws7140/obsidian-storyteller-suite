@@ -304,6 +304,11 @@ export class CampaignView extends ItemView {
 
     getViewType():    string { return VIEW_TYPE_CAMPAIGN; }
     getDisplayText(): string { return this.session ? `Campaign - ${this.session.name}` : 'Campaign'; }
+
+    /** Vault path of the session note being run, or undefined. Maplog reads its log for room state. */
+    getActiveSessionFilePath(): string | undefined {
+        return this.session?.filePath;
+    }
     getIcon():        string { return 'swords'; }
 
     async onOpen():  Promise<void> { await this.render(); }
