@@ -138,6 +138,8 @@ interface QuickEntryState {
     rollExpression: string;
     rollVs: string;
     rollOutcome: string;
+    /** The "Actor not in the party" name being typed. */
+    npcDraft: string;
 }
 
 interface TagNameCache {
@@ -192,6 +194,7 @@ function createQuickEntryState(): QuickEntryState {
         rollExpression: '',
         rollVs: '',
         rollOutcome: '',
+        npcDraft: '',
     };
 }
 
@@ -293,6 +296,8 @@ export class CampaignView extends ItemView {
     private navigationInFlight = false;
     /** NPC names typed into the quick entry bar for this view. */
     private quickNpcs: string[] = [];
+    /** Amounts typed into the party resource +/- boxes, by resource name. Kept so re-renders keep them. */
+    private partyAmountDrafts = new Map<string, string>();
     /** Last dice result from a branch roll, used to prefill the Roll entry. */
     private lastDiceResult: { expression: string; outcome: string } | null = null;
     private tagNameCache: TagNameCache | null = null;
@@ -2901,8 +2906,10 @@ export class CampaignView extends ItemView {
                 row.createSpan({ cls: 'storyteller-campaign-resource-value', text: String(value) });
                 const amount = row.createEl('input', {
                     cls: 'storyteller-campaign-input is-small',
-                    attr: { type: 'number', min: '1', value: '1', 'aria-label': `Amount for ${name}` },
+                    attr: { type: 'number', min: '1', 'aria-label': `Amount for ${name}` },
                 });
+                amount.value = this.partyAmountDrafts.get(name) ?? '1';
+                amount.addEventListener('input', () => { this.partyAmountDrafts.set(name, amount.value); });
                 const change = (sign: 1 | -1) => {
                     const step = Math.abs(Number.parseInt(amount.value, 10)) || 1;
                     applyCampaignPartyResources(session, [`${name}${sign > 0 ? '+' : '-'}${step}`]);
@@ -3346,6 +3353,8 @@ export class CampaignView extends ItemView {
             cls: 'storyteller-campaign-input is-small',
             attr: { type: 'text', placeholder: 'Actor not in the party', 'aria-label': 'Add an actor not in the party' },
         });
+        npcInput.value = q.npcDraft;
+        npcInput.addEventListener('input', () => { q.npcDraft = npcInput.value; });
         const addNpc = () => {
             const name = npcInput.value.trim();
             if (!name) return;
@@ -3353,6 +3362,7 @@ export class CampaignView extends ItemView {
                 this.quickNpcs.push(name);
             }
             if (!q.actors.includes(name)) q.actors = [...q.actors, name];
+            q.npcDraft = '';
             rerender();
         };
         npcInput.addEventListener('keydown', (event) => {
