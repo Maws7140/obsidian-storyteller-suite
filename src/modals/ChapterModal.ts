@@ -267,7 +267,9 @@ export class ChapterModal extends ResponsiveModal {
         }
 
         // Linked entities
-        contentEl.createEl('h3', { text: t('links') });
+        if (['linkedCharacters', 'linkedLocations', 'linkedEvents', 'linkedItems', 'linkedGroups'].some(k => this.shows(k))) {
+            contentEl.createEl('h3', { text: t('links') });
+        }
 
         if (this.shows('linkedCharacters')) {
             const charactersSetting = new Setting(contentEl)

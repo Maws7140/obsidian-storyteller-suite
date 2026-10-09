@@ -295,7 +295,9 @@ export class GroupModal extends ResponsiveModal {
 
         // === FACTION DETAILS === (only show if not collection type)
         if (this.group.groupType && this.group.groupType !== 'collection') {
-            contentEl.createEl('h3', { text: 'Faction details' });
+            if (['history', 'structure', 'goals', 'resources', 'strength', 'status', 'powerInfluence', 'identity'].some(k => this.shows(k))) {
+                contentEl.createEl('h3', { text: 'Faction details' });
+            }
 
             // History
             if (this.shows('history')) {
@@ -452,7 +454,9 @@ export class GroupModal extends ResponsiveModal {
             }
 
             // === RELATIONSHIPS ===
-            contentEl.createEl('h3', { text: 'Relationships' });
+            if (['groupRelationships', 'linkedCulture', 'parentGroup', 'subgroups'].some(k => this.shows(k))) {
+                contentEl.createEl('h3', { text: 'Relationships' });
+            }
 
             if (this.shows('groupRelationships')) {
                 // Group Relationships
@@ -753,7 +757,9 @@ export class GroupModal extends ResponsiveModal {
 
     renderMemberSelectors(container: HTMLElement) {
         container.empty();
-        container.createEl('h3', { text: t('members') });
+        if (['memberCharacters', 'memberLocations', 'memberEvents', 'memberItems'].some(k => this.shows(k))) {
+            container.createEl('h3', { text: t('members') });
+        }
 
         const isMember = (type: 'character' | 'location' | 'event' | 'item', id: string) =>
             this.group.members.some(m => m.type === type && m.id === id);

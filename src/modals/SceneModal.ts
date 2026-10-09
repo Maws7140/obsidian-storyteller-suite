@@ -404,7 +404,9 @@ export class SceneModal extends ResponsiveModal {
         }
 
         // Linked entities
-        contentEl.createEl('h3', { text: t('links') });
+        if (['linkedCharacters', 'linkedLocations', 'linkedEvents', 'linkedItems', 'linkedGroups'].some(k => this.shows(k))) {
+            contentEl.createEl('h3', { text: t('links') });
+        }
 
         if (this.shows('linkedCharacters')) {
             const charactersSetting = new Setting(contentEl)
@@ -488,7 +490,9 @@ export class SceneModal extends ResponsiveModal {
         }
 
         // Setup / Payoff scene links
-        contentEl.createEl('h3', { text: 'Setup & payoff' });
+        if (['setupScenes', 'payoffScenes'].some(k => this.shows(k))) {
+            contentEl.createEl('h3', { text: 'Setup & payoff' });
+        }
 
         if (this.shows('setupScenes')) {
             const setupSetting = new Setting(contentEl)

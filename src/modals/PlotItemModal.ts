@@ -289,7 +289,9 @@ export class PlotItemModal extends ResponsiveModal {
                 text.inputEl.rows = 4;
             });
 
-        contentEl.createEl('h3', { text: t('relationships') });
+        if (['owners', 'pastOwners', 'associatedEvents', 'associatedCharacters'].some(k => shows(k))) {
+            contentEl.createEl('h3', { text: t('relationships') });
+        }
         if (!Array.isArray(this.item.owners)) this.item.owners = [];
         if (this.item.owners.length > 0 && this.item.currentLocation) {
             contentEl.createEl('p', {
