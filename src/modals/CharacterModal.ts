@@ -128,10 +128,10 @@ export class CharacterModal extends ResponsiveModal {
                 return (characters.find(character => (character.id || character.name) === identifier)?.groups || this.character.groups || []);
             },
             persistAdd: async groupId => {
-                await this.plugin.addMemberToGroup(groupId, 'character', this.character.id || this.character.name);
+                await this.plugin.addMemberToGroup(groupId, 'character', this.ensureCharacterId());
             },
             persistRemove: async groupId => {
-                await this.plugin.removeMemberFromGroup(groupId, 'character', this.character.id || this.character.name);
+                await this.plugin.removeMemberFromGroup(groupId, 'character', this.ensureCharacterId());
             }
         });
         this.onSubmit = onSubmit;
@@ -1168,6 +1168,18 @@ export class CharacterModal extends ResponsiveModal {
         mkChips(body, 'Conditions', () => ch.dndConditions, v => { ch.dndConditions = v.length ? v : undefined; }, CONDITIONS);
         mkChips(body, 'Skill Proficiencies', () => ch.dndSkillProficiencies, v => { ch.dndSkillProficiencies = v.length ? v : undefined; }, SKILLS);
         mkChips(body, 'Saving Throw Proficiencies', () => ch.dndSavingThrowProficiencies, v => { ch.dndSavingThrowProficiencies = v.length ? v : undefined; }, SAVES);
+    }
+
+    /**
+     * Group membership is keyed by the character's id. A new character gets its
+     * id here, before the first group write, so the membership recorded now is
+     * the one a later removal (after the note is saved) looks for.
+     */
+    private ensureCharacterId(): string {
+        if (!this.character.id) {
+            this.character.id = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+        }
+        return this.character.id;
     }
 
     private refresh(): void {
