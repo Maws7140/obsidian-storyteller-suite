@@ -893,8 +893,7 @@ export class EventModal extends ResponsiveModal {
                 await this.persistGroupMembershipChanges();
                 this.close();
             } catch {
-                
-                new Notice(t('workspaceLeafRevealError'));
+                new Notice(t('failedToSave', t('event')));
             }
         }, { cta: true });
     })(); }
