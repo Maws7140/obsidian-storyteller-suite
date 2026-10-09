@@ -55,7 +55,9 @@ import {
 import { renderEncounterWidget } from '../extensions/BranchBlockExtension';
 import { getOwners, getPartyOwner, setPartyOwner } from '../utils/ItemOwnership';
 import {
+    addCampaignAdvancement,
     addCampaignClock,
+    addCampaignInterlude,
     addCampaignThread,
     buildSessionTimelineEvent,
     cycleCampaignThread,
@@ -69,13 +71,20 @@ import { mapToBlockParams } from '../leaflet/utils/MapBlockParams';
 import { locationPinKey, resolveBoardSelection } from '../utils/CampaignBoardSelection';
 import {
     appendBlock,
+    appendInterludeBlock,
     applyPartylogTagsToSession,
     appendLogLines,
     lastSceneContext,
     nextSceneHeaderLine,
+    parseLogLines,
+    sessionEndFromLines,
+    upsertSessionEndBlock,
+    upsertSessionHeaderBlock,
     type PartylogBridgeContext,
     type SceneKindChoice,
 } from '../campaign/PartylogSessionBridge';
+import { InterludeModal, SessionEndModal, SessionHeaderModal } from '../modals/PartylogSessionModals';
+import type { InterludeValues, SessionEndValues, SessionHeaderValues } from '../modals/PartylogSessionModals';
 import {
     entryTags,
     extractTags,
@@ -85,7 +94,11 @@ import {
     formatEvent,
     formatMeta,
     formatRoll,
+    formatTag,
     parsePartylogLine,
+    type AdvanceTag,
+    type Interlude,
+    type SessionHeader,
 } from '../campaign/partylog';
 
 export const VIEW_TYPE_CAMPAIGN = 'storyteller-campaign-view';
@@ -1857,6 +1870,10 @@ export class CampaignView extends ItemView {
         const hdr = sec.createDiv('storyteller-campaign-sidebar-hdr');
         setIcon(hdr.createSpan(), 'scroll');
         hdr.createSpan({ text: ' Session Log' });
+        const logActions = hdr.createDiv('storyteller-campaign-progress-actions');
+        this.addLogHeaderButton(logActions, 'file-text', 'Session header', () => { void this.openSessionHeaderModal(); });
+        this.addLogHeaderButton(logActions, 'flag', 'End of session', () => { this.openSessionEndModal(); });
+        this.addLogHeaderButton(logActions, 'hourglass', 'Interlude', () => { this.openInterludeModal(); });
         const body = sec.createDiv('storyteller-campaign-sidebar-body');
         this.renderQuickEntry(body, session);
 
@@ -2852,6 +2869,143 @@ export class CampaignView extends ItemView {
                 this.sceneKindChoice = select.value as SceneKindChoice;
             }
         });
+    }
+
+    private addLogHeaderButton(actions: HTMLElement, icon: string, label: string, onClick: () => void): void {
+        const button = actions.createEl('button', { attr: { 'aria-label': label, title: label } });
+        setIcon(button, icon);
+        button.addEventListener('click', onClick);
+    }
+
+    // ── Partylog: session header, end of session and interludes ──────────────
+
+    private async openSessionHeaderModal(): Promise<void> {
+        const session = this.session;
+        if (!session) return;
+        let suggested = session.sessionNumber;
+        if (suggested === undefined) {
+            try {
+                const sessions = await this.plugin.listSessions();
+                suggested = sessions.reduce((max, item) => Math.max(max, item.sessionNumber ?? 0), 0) + 1;
+            } catch {
+                suggested = 1;
+            }
+        }
+        new SessionHeaderModal(this.app, {
+            initial: {
+                number: session.sessionNumber ?? suggested,
+                date: session.date ?? new Date().toISOString().slice(0, 10),
+                duration: session.duration ?? '',
+                players: session.players?.length ? session.players : (session.partyCharacterNames ?? []).map(name => `Player (${name})`),
+                scribe: session.scribe ?? '',
+                absent: session.absent ?? [],
+                mood: session.mood ?? '',
+                recap: session.recap ?? '',
+                goals: session.goals ?? '',
+            },
+            onSubmit: values => { void this.applySessionHeader(values); },
+        }).open();
+    }
+
+    /** Writes the header fields to the session and replaces the header block at the top of the log. */
+    private async applySessionHeader(values: SessionHeaderValues): Promise<void> {
+        const session = this.session;
+        if (!session) return;
+        session.sessionNumber = values.number;
+        session.date = values.date || undefined;
+        session.duration = values.duration || undefined;
+        session.players = values.players;
+        session.scribe = values.scribe || undefined;
+        session.absent = values.absent;
+        session.mood = values.mood || undefined;
+        session.recap = values.recap || undefined;
+        session.goals = values.goals || undefined;
+        await this.autosave();
+
+        const header: SessionHeader = {
+            number: values.number,
+            date: values.date || undefined,
+            duration: values.duration || undefined,
+            players: values.players,
+            scribe: values.scribe || undefined,
+            absent: values.absent,
+            mood: values.mood || undefined,
+            threads: (session.threads ?? []).filter(thread => threadLegacyStatus(thread) === 'active').map(thread => thread.name),
+            recap: values.recap || undefined,
+            goals: values.goals || undefined,
+        };
+        await this.writeSessionLog(body => upsertSessionHeaderBlock(body, header));
+        await this.refreshSidebarParts(['log']);
+    }
+
+    private openSessionEndModal(): void {
+        const session = this.session;
+        if (!session) return;
+        new SessionEndModal(this.app, {
+            partyNames: session.partyCharacterNames ?? [],
+            onSubmit: values => { void this.applySessionEnd(values); },
+        }).open();
+    }
+
+    /**
+     * Records advancements on the session, replays the change tags into state, and writes the end
+     * block (advancements, changes, hook, notes). Saving again replaces the end block.
+     */
+    private async applySessionEnd(values: SessionEndValues): Promise<void> {
+        const session = this.session;
+        if (!session) return;
+        const number = session.sessionNumber;
+        const advancementLines: string[] = [];
+        for (const entry of values.advancements) {
+            const tag: AdvanceTag = {
+                kind: 'Advance',
+                reference: false,
+                fields: [],
+                name: entry.character,
+                detail: entry.detail || undefined,
+                gains: entry.gains,
+            };
+            advancementLines.push(formatTag(tag));
+            const summary = [entry.detail, ...entry.gains].filter(part => part.length > 0).join(', ') || 'Advanced';
+            addCampaignAdvancement(session, entry.character, summary, { sessionNumber: number });
+        }
+
+        const changeEntries = parseLogLines(values.changeLines);
+        const result = applyPartylogTagsToSession(session, changeEntries.flatMap(entryTags), this.partylogContext());
+        session.hook = values.hook || undefined;
+        session.endNotes = values.notes || undefined;
+        if (values.endSession) session.status = 'completed';
+
+        const lines = [
+            ...advancementLines,
+            ...values.changeLines,
+            ...(values.hook ? [`(hook: ${values.hook})`] : []),
+            ...(values.notes ? [`(note: ${values.notes})`] : []),
+        ];
+        await this.autosave();
+        const end = sessionEndFromLines(number, lines);
+        await this.writeSessionLog(body => upsertSessionEndBlock(body, end));
+        await this.refreshSidebarParts(partsAffectedBy(result.summary));
+    }
+
+    private openInterludeModal(): void {
+        if (!this.session) return;
+        new InterludeModal(this.app, {
+            onSubmit: values => { void this.applyInterlude(values); },
+        }).open();
+    }
+
+    /** Appends an interlude block, records it on the session and replays its change tags. */
+    private async applyInterlude(values: InterludeValues): Promise<void> {
+        const session = this.session;
+        if (!session) return;
+        const entries = parseLogLines([...values.summary.split('\n'), ...values.changeLines]);
+        const result = applyPartylogTagsToSession(session, entries.flatMap(entryTags), this.partylogContext());
+        addCampaignInterlude(session, values.title, values.summary || undefined, values.changeLines);
+        await this.autosave();
+        const interlude: Interlude = { title: values.title, entries };
+        await this.writeSessionLog(body => appendInterludeBlock(body, interlude));
+        await this.refreshSidebarParts(partsAffectedBy(result.summary));
     }
 
     private focusQuickEntry(): void {
