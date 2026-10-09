@@ -13,6 +13,8 @@ export class TimelineModal extends Modal {
     events: Event[];
     timelineContainer: HTMLElement;
     renderer: TimelineRenderer | null = null;
+    /** Bumped by each renderTimeline call, so a superseded render can tell it is stale. */
+    private renderGeneration = 0;
     legendEl?: HTMLElement;
     detailsEl?: HTMLElement;
 
@@ -193,6 +195,9 @@ export class TimelineModal extends Modal {
     // List UI removed
 
     private async renderTimeline() {
+        // A later render supersedes this one. Its renderer is destroyed below, and this
+        // generation check keeps a superseded render from reporting into the newer one.
+        const generation = ++this.renderGeneration;
         // Clear existing renderer if present
         if (this.renderer) {
             this.renderer.destroy();
@@ -227,15 +232,18 @@ export class TimelineModal extends Modal {
         });
 
         try {
-            await this.renderer.initialize();
+            const renderer = this.renderer;
+            await renderer.initialize();
+            if (generation !== this.renderGeneration) return;
 
             // Apply filters using shared utility
             if (this.filterBuilder.hasActiveFilters()) {
-                this.renderer.applyFilters(this.currentState.filters);
+                renderer.applyFilters(this.currentState.filters);
             }
             this.scheduleTimelineRedraw();
             this.updateSearchDropdown();
         } catch {
+            if (generation !== this.renderGeneration) return;
             
             this.timelineContainer.empty();
             const errorEl = this.timelineContainer.createDiv('storyteller-timeline-error');

@@ -17,7 +17,7 @@ import * as L from 'leaflet';
 // import 'leaflet.markercluster/dist/leaflet.markercluster';
 
 import { Notice, Plugin, TFile, TFolder, normalizePath, stringifyYaml, WorkspaceLeaf, debounce } from 'obsidian';
-import { parseEventDate, toMillis } from './utils/DateParsing';
+import { parseEventDate, parseReferenceDate, toMillis } from './utils/DateParsing';
 import {
     EntityType,
     buildFrontmatter,
@@ -818,19 +818,11 @@ export default class StorytellerSuitePlugin extends Plugin {
     getReferenceTodayDate(): Date {
         const iso = this.settings.customTodayISO;
         if (iso) {
-            // Handle BCE dates (negative years) in ISO format
-            const parsed = new Date(iso);
-            if (!isNaN(parsed.getTime())) {
-                // Validate that the parsed date matches the input for BCE dates
-                if (iso.startsWith('-') && parsed.getFullYear() >= 0) {
-                	// intentional
-                    
-                }
-                return parsed;
-            } else {
-            	// intentional
-                
-            }
+            // Read with the event date parser: `new Date` drops the sign of a BCE year ("-0044" became 2044)
+            // and cannot read "44 BCE" at all. Unreadable text falls back to the system clock, and the
+            // settings tab tells the user when they enter it.
+            const parsed = parseReferenceDate(iso);
+            if (parsed) return parsed;
         }
         return new Date();
     }
@@ -3373,7 +3365,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 				const [events, characters, locations] = await Promise.all([
 					this.listEvents(), this.listCharacters(), this.listLocations(),
 				]);
-				const detectedConflicts = ConflictDetector.detectAllConflicts(events, characters, locations);
+				const detectedConflicts = ConflictDetector.detectAllConflicts(events, characters, locations, this.getReferenceTodayDate());
 				const conflicts = ConflictDetector.toStorageFormat(detectedConflicts);
 
 				await this.setTimelineConflicts(conflicts);
@@ -3392,7 +3384,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 						const [events, characters, locations] = await Promise.all([
 							this.listEvents(), this.listCharacters(), this.listLocations(),
 						]);
-						const detectedConflicts = ConflictDetector.detectAllConflicts(events, characters, locations);
+						const detectedConflicts = ConflictDetector.detectAllConflicts(events, characters, locations, this.getReferenceTodayDate());
 						const newConflicts = ConflictDetector.toStorageFormat(detectedConflicts);
 
 						await this.setTimelineConflicts(newConflicts);
@@ -3425,7 +3417,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 						const [events, characters, locations] = await Promise.all([
 							this.listEvents(), this.listCharacters(), this.listLocations(),
 						]);
-						const detectedConflicts = ConflictDetector.detectAllConflicts(events, characters, locations);
+						const detectedConflicts = ConflictDetector.detectAllConflicts(events, characters, locations, this.getReferenceTodayDate());
 						const newConflicts = ConflictDetector.toStorageFormat(detectedConflicts);
 
 						await this.setTimelineConflicts(newConflicts);
@@ -5636,6 +5628,12 @@ export default class StorytellerSuitePlugin extends Plugin {
 	 * @param event The event data to save
 	 */
 	async saveEvent(event: Event): Promise<void> {
+		// Scenes and watched notes reach the timeline as event-shaped objects that carry their
+		// own file path. Writing one here would move that note into the Events folder.
+		if (event.tags?.includes('scene') || event.tags?.includes('watched-note')) {
+			new Notice('Scenes and watched notes cannot be saved as events. Edit them in their own note.');
+			return;
+		}
 		await this.ensureEventFolder();
 		const folderPath = this.getEntityFolder('event');
 

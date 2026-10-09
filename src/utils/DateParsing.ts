@@ -429,6 +429,18 @@ export function getEventDateForTimeline(event: Event): string | undefined {
 
 
 /** Parse a date on the timeline's UTC axis so every timeline consumer agrees on instants. */
-export function parseTimelineDate(input?: unknown): ParsedEventDate {
-  return parseEventDate(input, { timezone: 'utc' });
+export function parseTimelineDate(input?: unknown, referenceDate?: Date): ParsedEventDate {
+  return parseEventDate(input, { timezone: 'utc', referenceDate });
+}
+
+/**
+ * Read a day typed as a reference "today" (Settings > Custom today). It goes through the same
+ * parser as event dates, so "44 BCE", "-0044-03-15" and six-digit ISO all keep their year.
+ * Returns null when the text cannot be read, so the caller can say so rather than guess.
+ */
+export function parseReferenceDate(input: string): Date | null {
+  const parsed = parseEventDate(input, { timezone: 'utc' });
+  const millis = toMillis(parsed.start);
+  if (parsed.error || millis === undefined || !Number.isFinite(millis)) return null;
+  return new Date(millis);
 }

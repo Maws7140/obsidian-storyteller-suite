@@ -64,6 +64,8 @@ function restoreFilters(value: unknown): TimelineUIFilters {
 export class TimelineView extends ItemView {
     plugin: StorytellerSuitePlugin;
     private renderer: TimelineRenderer | null = null;
+    /** Bumped by each buildTimeline call, so a superseded build can tell it is stale. */
+    private timelineBuildGeneration = 0;
     private currentState: TimelineViewState;
 
     // Shared builders
@@ -458,6 +460,12 @@ export class TimelineView extends ItemView {
      */
     private async buildTimeline(): Promise<void> {
         if (!this.timelineContainer) return;
+        // A newer build supersedes this one. Destroying the renderer it replaces stops that
+        // renderer from mounting when its load finishes, and the generation check keeps a
+        // superseded build from touching the controls that now belong to the newer renderer.
+        const generation = ++this.timelineBuildGeneration;
+        this.renderer?.destroy();
+        this.renderer = null;
         this.timelineContainer.empty();
         this.timelineContainer.setCssStyles({ flexGrow: '1' });
 
@@ -484,17 +492,19 @@ export class TimelineView extends ItemView {
         });
 
         try {
-            await this.renderer.initialize();
+            const renderer = this.renderer;
+            await renderer.initialize();
+            if (generation !== this.timelineBuildGeneration) return;
             // Layers are not constructor options, so a fresh renderer starts
             // with both off no matter what the Show menu says.
-            if (this.showScenes) this.renderer.setShowScenes(true);
-            if (this.showWatchedNotes) this.renderer.setShowWatchedNotes(true);
-            this.renderer.applyFilters(this.currentState.filters);
+            if (this.showScenes) renderer.setShowScenes(true);
+            if (this.showWatchedNotes) renderer.setShowWatchedNotes(true);
+            renderer.applyFilters(this.currentState.filters);
             this.scheduleTimelineRedraw();
             this.updateSearchDropdown();
             this.renderEmptyState();
         } catch {
-            
+            if (generation !== this.timelineBuildGeneration) return;
             this.timelineContainer.empty();
             const errorEl = this.timelineContainer.createDiv('storyteller-timeline-error');
             errorEl.createEl('h3', { text: 'Timeline error' });

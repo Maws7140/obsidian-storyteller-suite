@@ -285,6 +285,8 @@ export class NativeTimelineRenderer {
     private canvas: HTMLCanvasElement | null = null;
     private ctx: CanvasRenderingContext2D | null = null;
     private resizeObserver: ResizeObserver | null = null;
+    /** Set by destroy(). An initialize or refresh still awaiting its data must not mount afterwards. */
+    private destroyed = false;
     private frame = 0;
     /** Memoized label widths and truncations. See TextMeasureCache. */
     private readonly text = new TextMeasureCache(TEXT_CACHE_LIMIT);
@@ -360,18 +362,26 @@ export class NativeTimelineRenderer {
 
     async initialize(): Promise<void> {
         this.events = await this.plugin.listEvents();
+        if (this.destroyed) return;
         this.locations = await this.plugin.listLocations();
+        if (this.destroyed) return;
         this.characters = await this.plugin.listCharacters();
+        if (this.destroyed) return;
         await this.loadOptionalSources();
+        if (this.destroyed) return;
         this.mount();
         this.rebuild(true);
     }
 
     async refresh(): Promise<void> {
         this.events = await this.plugin.listEvents();
+        if (this.destroyed) return;
         this.locations = await this.plugin.listLocations();
+        if (this.destroyed) return;
         this.characters = await this.plugin.listCharacters();
+        if (this.destroyed) return;
         await this.loadOptionalSources();
+        if (this.destroyed) return;
         this.rebuild(false);
     }
 
@@ -406,6 +416,12 @@ export class NativeTimelineRenderer {
     redraw(): void { this.resizeCanvas(); this.scheduleDraw(); }
 
     destroy(): void {
+        this.destroyed = true;
+        this.releaseMount();
+    }
+
+    /** Tear down what mount() created. Separate from destroy() so a remount does not mark the renderer dead. */
+    private releaseMount(): void {
         if (this.frame) (this.container.ownerDocument.defaultView || window).cancelAnimationFrame(this.frame);
         this.resizeObserver?.disconnect();
         this.resizeObserver = null;
@@ -655,7 +671,7 @@ export class NativeTimelineRenderer {
     }
 
     private mount(): void {
-        this.destroy();
+        this.releaseMount();
         this.container.empty();
         this.root = this.container.createDiv('sts-native-timeline');
         this.root.setAttribute('tabindex', '0');
@@ -696,7 +712,7 @@ export class NativeTimelineRenderer {
         // can still run the dedicated conflict tools against the full dataset.
         this.conflictsByEvent.clear();
         if (sourceEvents.length <= 10_000) {
-            const conflicts = ConflictDetector.detectAllConflicts(sourceEvents, this.characters, this.locations);
+            const conflicts = ConflictDetector.detectAllConflicts(sourceEvents, this.characters, this.locations, this.referenceDate);
             // Keep them indexed so an item can show its own severity and the
             // tooltip can list the messages, the way the vis renderer did.
             conflicts.forEach(conflict => {
@@ -2967,8 +2983,16 @@ export class NativeTimelineRenderer {
         this.canvas.setPointerCapture(event.pointerId);
         this.activePointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
         if (this.activePointers.size === 2) {
+            // A pinch takes over from a chip drag already under way. The move was never
+            // committed, so put the chip back where it started rather than leave it displaced.
+            const dragging = this.dragging;
+            if (dragging?.kind === 'move' && dragging.item) {
+                dragging.item.start = dragging.start; dragging.item.end = dragging.end;
+            }
+            this.dragGhost = null;
             this.beginPinch();
             this.dragging = null;
+            this.scheduleDraw();
             return;
         }
         // The scrollbar strip and "+K more" chips sit clear of every marker and
@@ -3001,7 +3025,8 @@ export class NativeTimelineRenderer {
         const item = this.hit(event.offsetX, event.offsetY);
         if (item) {
             this.selected = item; this.options.onEventSelected?.(item.event);
-            this.dragging = this.options.editMode
+            // Selection and touch pan still work on a non-draggable item; only the write-back is refused.
+            this.dragging = this.options.editMode && this.isDraggable(item)
                 ? { kind: 'move', x: event.clientX, y: event.clientY, start: item.start, end: item.end, item }
                 : event.pointerType === 'touch'
                     ? { kind: 'pan', x: event.clientX, y: event.clientY, start: this.viewStart, end: this.viewEnd }
@@ -3269,33 +3294,7 @@ export class NativeTimelineRenderer {
             dragging.item.start = ghost; dragging.item.end = ghost + duration;
         }
         if ((dragging.kind === 'move' || dragging.kind === 'marker') && dragging.item && dragging.item.start !== dragging.start) {
-            const item = dragging.item;
-            const narrativeMode = this.options.narrativeOrder === true;
-            const oldDate = narrativeMode ? item.event.narrativeMarkers?.narrativeDate : item.event.dateTime;
-            const duration = dragging.end - dragging.start;
-            const startText = this.formatEditDate(item.start);
-            const endText = duration > 0 ? this.formatEditDate(item.end) : '';
-            const nextDate = duration > 0 ? `${startText} to ${endText}` : startText;
-            if (narrativeMode) {
-                item.event.narrativeMarkers ??= {};
-                item.event.narrativeMarkers.narrativeDate = nextDate;
-            } else {
-                item.event.dateTime = nextDate;
-            }
-            // The old date goes in the notice because there is no undo: it is
-            // the only record of where the event came from.
-            try { await this.plugin.saveEvent(item.event); new Notice(`Moved “${item.event.name}” from ${oldDate || 'no date'} to ${nextDate}`); }
-            catch (error) {
-                if (narrativeMode) {
-                    item.event.narrativeMarkers ??= {};
-                    item.event.narrativeMarkers.narrativeDate = oldDate;
-                } else {
-                    item.event.dateTime = oldDate;
-                }
-                item.start = dragging.start; item.end = dragging.end;
-                new Notice(`Could not move event: ${error instanceof Error ? error.message : String(error)}`);
-            }
-            this.rebuild(false);
+            await this.commitMove(dragging.item, { start: dragging.start, end: dragging.end });
         }
     }
 
@@ -3434,13 +3433,62 @@ export class NativeTimelineRenderer {
         return Math.max(0, total - this.root.clientHeight);
     }
 
+    /**
+     * Write a moved item back to its event. Shared by pointer drags and the
+     * keyboard nudge, so both show the same Notice and refuse the same bad dates.
+     * `from` is where the item was before the move, for the revert and the notice.
+     */
+    private async commitMove(item: NativeItem, from: { start: number; end: number }): Promise<void> {
+        const narrativeMode = this.options.narrativeOrder === true;
+        const oldDate = narrativeMode ? item.event.narrativeMarkers?.narrativeDate : item.event.dateTime;
+        const duration = from.end - from.start;
+        const startText = this.formatEditDate(item.start);
+        const endText = duration > 0 ? this.formatEditDate(item.end) : '';
+        const nextDate = duration > 0 ? `${startText} to ${endText}` : startText;
+        // The text must read back to the instant it was written from, or the file would hold a
+        // different day than the one dropped. Refuse the write and put the chip back.
+        const readsBack = this.parseDate(startText) === item.start && (duration <= 0 || this.parseDate(endText) === item.end);
+        if (!readsBack) {
+            item.start = from.start; item.end = from.end;
+            this.scheduleDraw();
+            new Notice(`Could not move “${item.event.name}”: ${nextDate} would not read back as the same date. The event was not changed.`);
+            return;
+        }
+        if (narrativeMode) {
+            item.event.narrativeMarkers ??= {};
+            item.event.narrativeMarkers.narrativeDate = nextDate;
+        } else {
+            item.event.dateTime = nextDate;
+        }
+        // The old date goes in the notice because there is no undo: it is
+        // the only record of where the event came from.
+        try { await this.plugin.saveEvent(item.event); new Notice(`Moved “${item.event.name}” from ${oldDate || 'no date'} to ${nextDate}`); }
+        catch (error) {
+            if (narrativeMode) {
+                item.event.narrativeMarkers ??= {};
+                item.event.narrativeMarkers.narrativeDate = oldDate;
+            } else {
+                item.event.dateTime = oldDate;
+            }
+            item.start = from.start; item.end = from.end;
+            new Notice(`Could not move event: ${error instanceof Error ? error.message : String(error)}`);
+        }
+        this.rebuild(false);
+    }
+
     private onKeyDown(event: KeyboardEvent): void {
         if (!this.selected || !this.options.editMode || !['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
         event.preventDefault();
+        const item = this.selected;
+        // The same write-back rules as a pointer drag: an approximate, scene or watched-note item does not move.
+        if (!this.isDraggable(item)) return;
         // Step the start, then shift the end by the same amount so the event
         // keeps its duration even when the calendar's units are uneven.
-        const delta = this.step(this.selected.start, event.key === 'ArrowLeft' ? -1 : 1) - this.selected.start;
-        this.selected.start += delta; this.selected.end += delta; this.scheduleDraw();
+        const from = { start: item.start, end: item.end };
+        const delta = this.step(item.start, event.key === 'ArrowLeft' ? -1 : 1) - item.start;
+        if (delta === 0) return;
+        item.start += delta; item.end += delta; this.scheduleDraw();
+        void this.commitMove(item, from);
     }
 
     private openAt(x: number, y: number): void {
@@ -3662,7 +3710,13 @@ export class NativeTimelineRenderer {
     private formatEditDate(value: number): string {
         const calendar = this.calendarRegistry.getActiveCalendar();
         if (calendar.id !== GREGORIAN_CALENDAR.id) return formatAbsoluteDay(value / DAY_MS + this.unixEpochAbsoluteDay(), calendar, calendar.baseUnit === 'minute' ? 'time' : 'day');
-        return new Date(value).toISOString().replace('T', ' ').replace(/:00\.000Z$/, '');
+        const date = new Date(value);
+        if (date.getUTCFullYear() >= 0) return date.toISOString().replace('T', ' ').replace(/:00\.000Z$/, '');
+        // Years before zero are written as signed six-digit ISO years, which the parser reads back
+        // only without a clock. A midnight is therefore written bare; any other time fails the
+        // round-trip check in onPointerUp rather than being saved as the wrong day.
+        const iso = date.toISOString();
+        return value % DAY_MS === 0 ? iso.slice(0, iso.indexOf('T')) : iso.replace('T', ' ').replace(/\.000Z$/, '');
     }
     private unixEpochAbsoluteDay(): number { return toAbsolute(GREGORIAN_CALENDAR, { year: 1970, month: 0, day: 1 }).absoluteDay; }
     private ensureLaneVisible(id: string): void { const lane = this.lanes.find(value => value.id === id); if (lane) this.scrollTop = Math.max(0, lane.top - this.axisHeight()); }

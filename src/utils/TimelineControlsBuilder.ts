@@ -891,7 +891,7 @@ export class TimelineControlsBuilder {
         btn.addEventListener('click', () => { void (async () => {
             const eventsPromise = this.callbacks.getEvents();
             const events = Array.isArray(eventsPromise) ? eventsPromise : await eventsPromise;
-            const conflicts = ConflictDetector.detectAllConflicts(events);
+            const conflicts = ConflictDetector.detectAllConflicts(events, [], [], this.plugin.getReferenceTodayDate());
 
             new ConflictViewModal(this.plugin.app, this.plugin, conflicts).open();
 

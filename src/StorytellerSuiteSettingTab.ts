@@ -34,6 +34,7 @@ import { confirmWithModal } from './modals/ui/ConfirmModal';
 import type { TemplateEntityType } from './templates/TemplateTypes';
 import type { EntityType } from './yaml/EntitySections';
 import { CalendarRegistry } from './calendar/CalendarRegistry';
+import { parseReferenceDate } from './utils/DateParsing';
 import { encodeShareCode, makeCalendarDocument, makeThemeDocument } from './calendar/TimelineDocuments';
 import { CalendarManagerModal } from './modals/CalendarManagerModal';
 import { PlatformUtils } from './utils/PlatformUtils';
@@ -1324,8 +1325,13 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                 .setPlaceholder(t('customTodayPh'))
                 .setValue(this.plugin.settings.customTodayISO || '')
                 .onChange(async (value) => {
-                    this.plugin.settings.customTodayISO = value.trim() || undefined;
+                    const trimmed = value.trim();
+                    this.plugin.settings.customTodayISO = trimmed || undefined;
                     await this.plugin.saveSettings();
+                    // Say so when the value cannot be read, rather than silently using the system clock.
+                    if (trimmed && !parseReferenceDate(trimmed)) {
+                        new Notice(`Could not read "${trimmed}" as a date. Use a form such as 2026-03-15, 44 BCE or -0044-03-15. Today is the system date until this is fixed.`);
+                    }
                     this.plugin.refreshTimelineViews();
                 }))
             .addExtraButton(btn => btn
