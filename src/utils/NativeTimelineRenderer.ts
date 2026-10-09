@@ -8,6 +8,7 @@ import { ConflictDetector } from './ConflictDetector';
 import { CalendarRegistry } from '../calendar/CalendarRegistry';
 import { GREGORIAN_CALENDAR } from '../calendar/builtins';
 import { parseToAbsoluteDay, formatAbsoluteDay, formatCalendarYear } from '../calendar/CalendarDateText';
+import { sidebarWidthFor } from './TimelineSidebarWidth';
 import { daysInYear, fromAbsolute, monthsInYear, normalYearLength, toAbsolute } from '../calendar/CalendarEngine';
 import type { CalendarSystem } from '../calendar/types';
 import { chooseSnapResolution, generateTicks, snapDay, snapSlots, stepDay } from '../calendar/TimelineAxis';
@@ -183,7 +184,6 @@ interface CalendarBand {
 
 const DAY_MS = 86_400_000;
 const YEAR_MS = 365.2425 * DAY_MS;
-const SIDEBAR_WIDTH = 174;
 const BASE_AXIS_HEIGHT = 42;
 const CALENDAR_BAND_HEIGHT = 16;
 // Strip along the foot of the axis header that carries era name pills. It sits
@@ -973,7 +973,7 @@ export class NativeTimelineRenderer {
             // when the view is panned. Packing what happens to be on screen made
             // the row count, and so the lane's height, change as you scrolled,
             // which shifted every lane below it mid-scroll.
-            const pxToTime = (this.viewEnd - this.viewStart) / Math.max(1, width - SIDEBAR_WIDTH);
+            const pxToTime = (this.viewEnd - this.viewStart) / Math.max(1, width - this.sidebarWidth());
             lane.markerGroups = [];
             lane.overflow = [];
             // Two kinds of folding, applied in order. First, events that land on
@@ -1442,7 +1442,7 @@ export class NativeTimelineRenderer {
         ctx.fillRect(0, 0, width, axisHeight);
         ctx.fillStyle = this.css('--text-muted', '#9ca3af');
         ctx.font = `12px ${this.css('--font-interface', 'sans-serif')}`;
-        const plotWidth = Math.max(1, width - SIDEBAR_WIDTH);
+        const plotWidth = Math.max(1, width - this.sidebarWidth());
         const calendar = this.calendarRegistry.getActiveCalendar();
         // Every calendar, Gregorian included, takes its ticks from generateTicks.
         // Stepping fixed millisecond multiples from the Unix epoch put ticks on
@@ -1456,7 +1456,7 @@ export class NativeTimelineRenderer {
         // on every tick so the axis still reads correctly when labels thin out.
         let previousRight = Number.NEGATIVE_INFINITY;
         ticks.forEach((tick, index) => {
-            const x = SIDEBAR_WIDTH + tick.x;
+            const x = this.sidebarWidth() + tick.x;
             ctx.beginPath(); ctx.moveTo(x, axisHeight); ctx.lineTo(x, this.viewportHeight()); ctx.stroke();
             const label = this.axisTickLabel(calendar, tick, index);
             const labelLeft = x + 5;
@@ -1578,7 +1578,7 @@ export class NativeTimelineRenderer {
         const groups = new Map<number, string>();
         bands.forEach(band => {
             groups.set(band.row, band.group);
-            const x1 = Math.max(SIDEBAR_WIDTH, this.timeToX((band.startDay - this.unixEpochAbsoluteDay()) * DAY_MS, width));
+            const x1 = Math.max(this.sidebarWidth(width), this.timeToX((band.startDay - this.unixEpochAbsoluteDay()) * DAY_MS, width));
             const x2 = Math.min(width, this.timeToX((band.endDay - this.unixEpochAbsoluteDay()) * DAY_MS, width));
             const y = BASE_AXIS_HEIGHT + band.row * CALENDAR_BAND_HEIGHT;
             if (x2 <= x1) return;
@@ -1590,10 +1590,13 @@ export class NativeTimelineRenderer {
             if (x2 - x1 > 34) ctx.fillText(this.truncate(ctx, band.label, x2 - x1 - 8), x1 + 4, y + 11);
         });
         ctx.globalAlpha = 1;
-        ctx.fillStyle = this.css('--background-secondary-alt', '#18202d');
-        ctx.fillRect(0, BASE_AXIS_HEIGHT, SIDEBAR_WIDTH, this.axisHeight() - BASE_AXIS_HEIGHT);
-        ctx.fillStyle = this.css('--text-muted', '#9ca3af');
-        groups.forEach((label, row) => ctx.fillText(this.truncate(ctx, label.toUpperCase(), SIDEBAR_WIDTH - 18), 9, BASE_AXIS_HEIGHT + row * CALENDAR_BAND_HEIGHT + 11));
+        const sidebar = this.sidebarWidth(width);
+        if (sidebar > 0) {
+            ctx.fillStyle = this.css('--background-secondary-alt', '#18202d');
+            ctx.fillRect(0, BASE_AXIS_HEIGHT, sidebar, this.axisHeight() - BASE_AXIS_HEIGHT);
+            ctx.fillStyle = this.css('--text-muted', '#9ca3af');
+            groups.forEach((label, row) => ctx.fillText(this.truncate(ctx, label.toUpperCase(), sidebar - 18), 9, BASE_AXIS_HEIGHT + row * CALENDAR_BAND_HEIGHT + 11));
+        }
         ctx.restore();
     }
 
@@ -1604,6 +1607,8 @@ export class NativeTimelineRenderer {
      * lives in the swatch, where it still matches the lane's markers.
      */
     private drawLaneLabel(ctx: CanvasRenderingContext2D, lane: Lane, top: number): void {
+        // A collapsed column (one unnamed lane) has no room for a label at all.
+        if (this.sidebarWidth() <= 0) return;
         const x = 13;
         const y = top + 14;
         const size = 8;
@@ -1619,7 +1624,7 @@ export class NativeTimelineRenderer {
         ctx.font = `600 12px ${this.css('--font-interface', 'sans-serif')}`;
         ctx.fillStyle = this.css('--text-normal', '#e5e7eb');
         const textX = x + size + 7;
-        const shown = this.truncate(ctx, lane.label, SIDEBAR_WIDTH - textX - 11);
+        const shown = this.truncate(ctx, lane.label, this.sidebarWidth() - textX - 11);
         lane.labelClipped = shown !== lane.label;
         ctx.fillText(shown, textX, top + 22);
     }
@@ -1632,7 +1637,7 @@ export class NativeTimelineRenderer {
         const top = lane.top - this.scrollTop;
         if (top > height || top + lane.height < this.axisHeight()) return;
         ctx.fillStyle = this.css('--background-secondary-alt', '#18202d');
-        ctx.fillRect(0, top, SIDEBAR_WIDTH, lane.height);
+        ctx.fillRect(0, top, this.sidebarWidth(), lane.height);
         this.drawLaneLabel(ctx, lane, top);
         ctx.strokeStyle = this.css('--background-modifier-border', '#374151');
         ctx.beginPath(); ctx.moveTo(0, top + lane.height); ctx.lineTo(width, top + lane.height); ctx.stroke();
@@ -1643,7 +1648,7 @@ export class NativeTimelineRenderer {
         // to be clipped rather than pinned, or it would paint over the sidebar.
         ctx.save();
         ctx.beginPath();
-        ctx.rect(SIDEBAR_WIDTH, this.axisHeight(), Math.max(0, width - SIDEBAR_WIDTH), height);
+        ctx.rect(this.sidebarWidth(width), this.axisHeight(), Math.max(0, width - this.sidebarWidth(width)), height);
         ctx.clip();
         const startIndex = this.firstVisible(lane, leftTime);
         for (let i = startIndex; i < lane.items.length; i++) {
@@ -1666,7 +1671,7 @@ export class NativeTimelineRenderer {
         // otherwise paint over the axis header.
         const fillTop = Math.max(top, axisHeight);
         ctx.fillStyle = this.css('--background-secondary-alt', '#18202d');
-        ctx.fillRect(0, fillTop, SIDEBAR_WIDTH, top + lane.height - fillTop);
+        ctx.fillRect(0, fillTop, this.sidebarWidth(), top + lane.height - fillTop);
         // Once the lane's own label has scrolled under the axis, pin it to the top
         // of the sidebar for as long as the lane is still on screen. It slides up
         // with the lane's bottom edge so it never outlives its own lane.
@@ -1687,11 +1692,11 @@ export class NativeTimelineRenderer {
         // clipped too, or a lane scrolled under the axis would strike through it.
         ctx.save();
         ctx.beginPath();
-        ctx.rect(SIDEBAR_WIDTH, axisHeight, Math.max(0, width - SIDEBAR_WIDTH), height);
+        ctx.rect(this.sidebarWidth(), axisHeight, Math.max(0, width - this.sidebarWidth()), height);
         ctx.clip();
         ctx.strokeStyle = this.css('--background-modifier-border', '#374151');
         ctx.lineWidth = 1;
-        ctx.beginPath(); ctx.moveTo(SIDEBAR_WIDTH, baselineY); ctx.lineTo(width, baselineY); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(this.sidebarWidth(), baselineY); ctx.lineTo(width, baselineY); ctx.stroke();
         this.drawSlots(ctx, baselineY, width);
         const startIndex = this.firstVisible(lane, this.viewStart);
         // Layout first, then paint in three passes: every stem, then every
@@ -2487,7 +2492,7 @@ export class NativeTimelineRenderer {
         ctx.globalAlpha = 0.55;
         this.slotTimes.forEach(time => {
             const x = this.timeToX(time, width);
-            if (x < SIDEBAR_WIDTH || x > width) return;
+            if (x < this.sidebarWidth(width) || x > width) return;
             ctx.beginPath();
             ctx.arc(x, baselineY, SLOT_RADIUS, 0, Math.PI * 2);
             ctx.stroke();
@@ -2644,13 +2649,13 @@ export class NativeTimelineRenderer {
             .sort((a, b) => a.start - b.start);
         ctx.save();
         ctx.beginPath();
-        ctx.rect(SIDEBAR_WIDTH, stripTop, Math.max(0, width - SIDEBAR_WIDTH), ERA_STRIP_HEIGHT);
+        ctx.rect(this.sidebarWidth(), stripTop, Math.max(0, width - this.sidebarWidth()), ERA_STRIP_HEIGHT);
         ctx.clip();
         ctx.font = `600 10px ${this.css('--font-interface', 'sans-serif')}`;
         ctx.textBaseline = 'middle';
         let previousRight = -Infinity;
         eras.forEach(({ era, start, end }) => {
-            const left = Math.max(SIDEBAR_WIDTH + 4, this.timeToX(start, width) + 4);
+            const left = Math.max(this.sidebarWidth() + 4, this.timeToX(start, width) + 4);
             const right = Math.min(width - 4, this.timeToX(end, width) - 4);
             const available = right - left - 8;
             if (available < 24 || left < previousRight + 4) return;
@@ -2682,7 +2687,7 @@ export class NativeTimelineRenderer {
             // stopped at it, so it reads as continuing instead of as ending
             // exactly where the window happens to stop.
             const x2 = span.end === undefined ? width + 40 : this.timeToX(span.end, width);
-            if (x2 <= SIDEBAR_WIDTH || x1 >= width) return;
+            if (x2 <= this.sidebarWidth(width) || x1 >= width) return;
             const top = lane.top - this.scrollTop;
             if (top + lane.height < this.axisHeight() || top > height) return;
             ctx.globalAlpha = 0.13;
@@ -2764,9 +2769,9 @@ export class NativeTimelineRenderer {
         const horizontalTimeline = this.isHorizontalTimeline();
         ctx.beginPath();
         ctx.rect(
-            vertical || horizontalTimeline ? 0 : SIDEBAR_WIDTH,
+            vertical || horizontalTimeline ? 0 : this.sidebarWidth(width),
             vertical || horizontalTimeline ? 0 : this.axisHeight(),
-            vertical || horizontalTimeline ? width : Math.max(0, width - SIDEBAR_WIDTH),
+            vertical || horizontalTimeline ? width : Math.max(0, width - this.sidebarWidth(width)),
             height
         );
         ctx.clip();
@@ -3177,7 +3182,7 @@ export class NativeTimelineRenderer {
 
     /** The lane whose sidebar name sits under the pointer, if that name was cut short. */
     private clippedLaneLabelAt(x: number, y: number): Lane | null {
-        if (this.isTimelineLayout() || x >= SIDEBAR_WIDTH || y < this.axisHeight()) return null;
+        if (this.isTimelineLayout() || x >= this.sidebarWidth() || y < this.axisHeight()) return null;
         return this.lanes.find(lane => lane.labelClipped && y >= lane.top - this.scrollTop + 4 && y <= lane.top - this.scrollTop + 30) ?? null;
     }
 
@@ -3193,7 +3198,7 @@ export class NativeTimelineRenderer {
         const horizontalTimeline = this.isHorizontalTimeline();
         const plotSize = vertical
             ? Math.max(1, this.root.clientHeight - 52)
-            : Math.max(1, this.root.clientWidth - (horizontalTimeline ? 56 : SIDEBAR_WIDTH));
+            : Math.max(1, this.root.clientWidth - (horizontalTimeline ? 56 : this.sidebarWidth(this.root.clientWidth)));
         const pointerDelta = vertical ? event.clientY - this.dragging.y : event.clientX - this.dragging.x;
         // Two different conversions, because dragging.start/end mean two
         // different things. For a pan they are the view window, and the content
@@ -3316,7 +3321,7 @@ export class NativeTimelineRenderer {
     private wheelPointer(event: WheelEvent, vertical: boolean, horizontalTimeline: boolean): number {
         return vertical
             ? Math.max(0, event.offsetY - 28)
-            : Math.max(0, event.offsetX - (horizontalTimeline ? 28 : SIDEBAR_WIDTH));
+            : Math.max(0, event.offsetX - (horizontalTimeline ? 28 : this.sidebarWidth()));
     }
 
     /**
@@ -3333,7 +3338,7 @@ export class NativeTimelineRenderer {
         const horizontalTimeline = this.isHorizontalTimeline();
         const plotSize = vertical
             ? Math.max(1, this.root.clientHeight - 52)
-            : Math.max(1, this.root.clientWidth - (horizontalTimeline ? 56 : SIDEBAR_WIDTH));
+            : Math.max(1, this.root.clientWidth - (horizontalTimeline ? 56 : this.sidebarWidth(this.root.clientWidth)));
         const deltaY = this.wheelPixels(event.deltaY, event.deltaMode, plotSize);
         const deltaX = this.wheelPixels(event.deltaX, event.deltaMode, plotSize);
 
@@ -3347,7 +3352,7 @@ export class NativeTimelineRenderer {
             return;
         }
 
-        const overSidebar = !this.isTimelineLayout() && event.offsetX < SIDEBAR_WIDTH;
+        const overSidebar = !this.isTimelineLayout() && event.offsetX < this.sidebarWidth(this.root.clientWidth);
         // Lane scrolling means nothing in the vertical layout: the cards are
         // placed along the time axis and never read scrollTop, so a bare
         // trackpad scroll has to pan through time or the gesture looks dead.
@@ -3387,9 +3392,9 @@ export class NativeTimelineRenderer {
         const horizontalTimeline = this.isHorizontalTimeline();
         const center = vertical ? (points[0].y + points[1].y) / 2 : (points[0].x + points[1].x) / 2;
         const bounds = this.root.getBoundingClientRect();
-        const inset = horizontalTimeline ? 28 : SIDEBAR_WIDTH;
+        const inset = horizontalTimeline ? 28 : this.sidebarWidth(this.root.clientWidth);
         const local = vertical ? center - bounds.top - 28 : center - bounds.left - inset;
-        const size = vertical ? Math.max(1, this.root.clientHeight - 52) : Math.max(1, this.root.clientWidth - (horizontalTimeline ? 56 : SIDEBAR_WIDTH));
+        const size = vertical ? Math.max(1, this.root.clientHeight - 52) : Math.max(1, this.root.clientWidth - (horizontalTimeline ? 56 : this.sidebarWidth(this.root.clientWidth)));
         const ratio = Math.max(0, Math.min(1, local / size));
         this.pinch = { distance: Math.max(1, distance), span: this.viewEnd - this.viewStart, anchorTime: this.viewStart + ratio * (this.viewEnd - this.viewStart) };
     }
@@ -3404,9 +3409,9 @@ export class NativeTimelineRenderer {
         const horizontalTimeline = this.isHorizontalTimeline();
         const center = vertical ? (points[0].y + points[1].y) / 2 : (points[0].x + points[1].x) / 2;
         const bounds = this.root.getBoundingClientRect();
-        const inset = horizontalTimeline ? 28 : SIDEBAR_WIDTH;
+        const inset = horizontalTimeline ? 28 : this.sidebarWidth(this.root.clientWidth);
         const local = vertical ? center - bounds.top - 28 : center - bounds.left - inset;
-        const size = vertical ? Math.max(1, this.root.clientHeight - 52) : Math.max(1, this.root.clientWidth - (horizontalTimeline ? 56 : SIDEBAR_WIDTH));
+        const size = vertical ? Math.max(1, this.root.clientHeight - 52) : Math.max(1, this.root.clientWidth - (horizontalTimeline ? 56 : this.sidebarWidth(this.root.clientWidth)));
         const ratio = Math.max(0, Math.min(1, local / size));
         this.viewStart = this.pinch.anchorTime - span * ratio;
         this.viewEnd = this.viewStart + span;
@@ -3582,6 +3587,15 @@ export class NativeTimelineRenderer {
         return toMillis(parsed.start) ?? NaN;
     }
     private viewportWidth(): number { return this.exportSurface?.width ?? this.root?.clientWidth ?? 900; }
+
+    /**
+     * Lane-label column width for a pane of the given width. Hit testing passes
+     * the live pane width explicitly; drawing defaults to the viewport so an
+     * export gets the width it is actually rendered at.
+     */
+    private sidebarWidth(width: number = this.viewportWidth()): number {
+        return sidebarWidthFor(width, this.lanes.length === 1 && this.lanes[0].id === '__timeline__');
+    }
     private viewportHeight(): number { return this.exportSurface?.height ?? this.root?.clientHeight ?? 600; }
     private eventKey(event: Event): string { return String(event.id || event.name); }
 
@@ -3589,7 +3603,7 @@ export class NativeTimelineRenderer {
     private eventKeys(event: Event): string[] {
         return Array.from(new Set([event.id, event.name].filter((key): key is string => Boolean(key))));
     }
-    private timeToX(time: number, width: number): number { return SIDEBAR_WIDTH + (time - this.viewStart) / (this.viewEnd - this.viewStart) * Math.max(1, width - SIDEBAR_WIDTH); }
+    private timeToX(time: number, width: number): number { return this.sidebarWidth(width) + (time - this.viewStart) / (this.viewEnd - this.viewStart) * Math.max(1, width - this.sidebarWidth(width)); }
     private horizontalTimelineTimeToX(time: number, width: number): number { return 28 + (time - this.viewStart) / (this.viewEnd - this.viewStart) * Math.max(1, width - 56); }
     private rowHeight(): number { return Math.round(24 + (100 - this.options.density) * 0.16); }
 
@@ -3609,7 +3623,7 @@ export class NativeTimelineRenderer {
         const horizontalTimeline = this.isHorizontalTimeline();
         const size = !this.root ? 900
             : vertical ? Math.max(1, this.root.clientHeight - 52)
-            : Math.max(1, this.root.clientWidth - (horizontalTimeline ? 56 : SIDEBAR_WIDTH));
+            : Math.max(1, this.root.clientWidth - (horizontalTimeline ? 56 : this.sidebarWidth(this.root.clientWidth)));
         const epoch = this.unixEpochAbsoluteDay();
         return { startDay: this.viewStart / DAY_MS + epoch, endDay: this.viewEnd / DAY_MS + epoch, widthPx: size };
     }
