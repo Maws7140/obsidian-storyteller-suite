@@ -323,7 +323,7 @@ export class SceneModal extends ResponsiveModal {
                 title: 'Content and beats',
                 description: 'The scene prose, its beat sheet, and any branches',
                 icon: 'list-ordered',
-                open: Boolean(this.scene.content || this.scene.beats?.length),
+                open: true, // the scene prose is the main thing written here
             })
             : null;
 
