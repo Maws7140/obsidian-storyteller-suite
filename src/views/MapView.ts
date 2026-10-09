@@ -878,6 +878,13 @@ export class MapView extends ItemView {
                     await this.loadMap(mapId);
                 },
                 onDelete: async () => {
+                    // The map is going away: leave placement, grid, Maplog editor and palette with it.
+                    this.disablePlacementMode();
+                    this.gridController?.destroy();
+                    this.gridController = null;
+                    this.closeMaplogPalette();
+                    this.maplogEditor?.destroy();
+                    this.maplogEditor = null;
                     // Clear current map and refresh selector
                     this.currentMap = null;
                     await this.buildMapSelector();
@@ -1944,6 +1951,7 @@ export class MapView extends ItemView {
     private async renderMap(): Promise<void> {
         if (!this.mapContainer || !this.currentMap) return;
 
+        this.disablePlacementMode();
         this.gridController?.destroy();
         this.gridController = null;
         this.closeMaplogPalette();

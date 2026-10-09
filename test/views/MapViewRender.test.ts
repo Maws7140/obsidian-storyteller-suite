@@ -110,3 +110,41 @@ describe('MapView.renderMap document listeners', () => {
     });
 });
 
+describe('MapView.renderMap placement and palette state', () => {
+    it('leaves placement mode when another map is rendered', async () => {
+        const view = await freshView();
+        await view.renderMap();
+        await view.enablePlacementMode('location', () => undefined);
+        expect(view.placementMode.type).toBe('location');
+        expect(liveCount('keydown')).toBe(1);
+        await view.renderMap();
+        expect(view.placementMode.type).toBeNull();
+        expect(view.placementOverlay).toBeNull();
+        expect(liveCount('keydown')).toBe(0);
+        expect(view.mapContainer.style.cursor).toBe('');
+    });
+
+    it('destroys the grid, Maplog editor and palette when the map is deleted', async () => {
+        const view = await freshView();
+        await view.renderMap();
+        const grid = { destroy: vi.fn(), setPlacement: vi.fn() };
+        const editor = { destroy: vi.fn(), setTool: vi.fn() };
+        const palette = { destroy: vi.fn(), open: vi.fn() };
+        view.gridController = grid;
+        view.maplogEditor = editor;
+        view.maplogPalette = palette;
+        view.buildMapSelector = vi.fn(async () => undefined);
+        view.buildEntityBar = vi.fn();
+        view.updateFooterStatus = vi.fn();
+        view.showEditMapModal();
+        const options = openModal.mock.calls[0][3];
+        await options.onDelete();
+        expect(grid.destroy).toHaveBeenCalled();
+        expect(view.gridController).toBeNull();
+        expect(editor.destroy).toHaveBeenCalled();
+        expect(view.maplogEditor).toBeNull();
+        expect(palette.destroy).toHaveBeenCalled();
+        expect(view.maplogPalette).toBeNull();
+    });
+});
+
