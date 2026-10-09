@@ -118,6 +118,8 @@ import { createLedgerViewExtension, registerLedgerBlockProcessor } from './exten
 import { createBranchViewExtension, registerBranchBlockProcessors } from './extensions/BranchBlockExtension';
 import { registerTimelineBlockProcessor } from './extensions/TimelineBlockExtension';
 import { CampaignSession } from './types';
+import { LONELOG_NAME } from './campaign/PartylogImport';
+import { PARTYLOG_NAME } from './campaign/PartylogExport';
 import { buildCampaignSessionFrontmatter, normalizeCampaignSessionData } from './utils/CampaignModel';
 
 /** Runtime-only flags added to entity objects during save/sync to prevent recursion. Not persisted. */
@@ -2578,6 +2580,26 @@ export default class StorytellerSuitePlugin extends Plugin {
 						})();
 					}
 				}).open();
+			}
+		});
+
+		this.addCommand({
+			id: 'export-campaign-partylog',
+			name: `Export campaign as ${PARTYLOG_NAME}`,
+			callback: async () => {
+				if (!this.ensureActiveStoryOrGuide()) return;
+				const { ExportPartylogModal } = await import('./modals/ExportPartylogModal');
+				new ExportPartylogModal(this.app, this).open();
+			}
+		});
+
+		this.addCommand({
+			id: 'import-partylog-log',
+			name: `Import ${PARTYLOG_NAME} or ${LONELOG_NAME} log`,
+			callback: async () => {
+				if (!this.ensureActiveStoryOrGuide()) return;
+				const { ImportPartylogModal } = await import('./modals/ImportPartylogModal');
+				new ImportPartylogModal(this.app, this).open();
 			}
 		});
 
