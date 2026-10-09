@@ -16,6 +16,7 @@ import { isEventInFork, isEventLinkedToFork, isEventOnMain, orderForksByParent }
 import { chooseConnectorEnds } from './ConnectorGeometry';
 import { placeAlternatingTimelineCards } from './TimelineCardLayout';
 import { placeReadableAxisLabels } from './AxisLabelLayout';
+import { sameMarkerRuns } from './ChronologyMarkerGroups';
 import { narrativeDirectionOf, narrativeSequenceOf, timelineDateForMode } from './NarrativeTimeline';
 import type { NarrativeDirection } from './NarrativeTimeline';
 
@@ -87,6 +88,27 @@ interface NativeItem {
      * without a deliberate choice being overridden.
      */
     customColor?: string;
+    /** The axis marker this item shares with others, when there are several. */
+    marker?: MarkerGroup;
+    /** Folded into a "+N more" chip, so it has no chip or marker of its own. */
+    hiddenInMarker?: boolean;
+}
+
+/**
+ * Events that share one axis marker column in chronology at the current zoom.
+ *
+ * They all hang off the same point, so stacking them all in one column buries
+ * the lane. The first few are shown and the rest fold into a control chip.
+ */
+interface MarkerGroup {
+    /** Stable across rebuilds and zooms, so an expanded group stays expanded. */
+    key: string;
+    start: number;
+    members: NativeItem[];
+    expanded: boolean;
+    /** Row of the control chip, and its text, when the group is capped. */
+    controlRow?: number;
+    controlLabel?: string;
 }
 
 interface Lane {
@@ -98,6 +120,8 @@ interface Lane {
     items: NativeItem[];
     /** Running maximum of item ends, parallel to `items`. Non-decreasing. */
     maxEndPrefix?: number[];
+    /** Marker groups of two or more events, rebuilt by each layout pass. */
+    markerGroups?: MarkerGroup[];
     top: number;
     height: number;
     branchDepth?: number;
@@ -153,6 +177,11 @@ const MIN_CHRONOLOGY_CHIP_WIDTH = 92;
 const CHIP_GAP = 8;
 /** Distance from a chronology lane's top to its first row of chips. */
 const CHRONOLOGY_CHIP_TOP = 34;
+/**
+ * Events shown on one axis marker before the rest fold into a "+N more" chip.
+ * Enough to read what happened there without the column running off the lane.
+ */
+const CHRONOLOGY_MARKER_CAP = 5;
 /** A wheel notch in line mode is worth roughly this many pixels. */
 const WHEEL_LINE_HEIGHT = 16;
 /**
@@ -218,6 +247,10 @@ export class NativeTimelineRenderer {
     private lanes: Lane[] = [];
     private presence: PresenceSpan[] = [];
     private visibleItems: NativeItem[] = [];
+    /** Control chips drawn this frame, as click targets. */
+    private controlHits: { rect: DOMRect; group: MarkerGroup }[] = [];
+    /** Marker groups the user has opened past the cap. Keyed by MarkerGroup.key. */
+    private expandedMarkers = new Set<string>();
     private selected: NativeItem | null = null;
     private conflictsByEvent = new Map<string, DetectedConflict[]>();
     private tooltipEl: HTMLElement | null = null;
@@ -350,6 +383,9 @@ export class NativeTimelineRenderer {
         const center = (item.start + item.end) / 2;
         this.viewStart = center - span / 2;
         this.viewEnd = center + span / 2;
+        // A folded event would otherwise be selected with nothing on screen to
+        // show it, so open its marker the same way the control chip would.
+        if (item.hiddenInMarker && item.marker) this.expandedMarkers.add(item.marker.key);
         this.selected = item;
         this.options.onEventSelected?.(event);
         this.ensureLaneVisible(item.laneId);
@@ -362,7 +398,10 @@ export class NativeTimelineRenderer {
         if (!items.length) return;
         const min = Math.min(...items.map(item => item.start));
         const max = Math.max(...items.map(item => item.end));
-        const pad = Math.max((max - min) * 0.08, DAY_MS * 3);
+        // A story that fits in a day or two should not open onto a week of
+        // empty days. The margin grows with the story and reaches the three
+        // days it has always been at ten days, so longer stories are unchanged.
+        const pad = Math.max((max - min) * 0.08, Math.min(DAY_MS * 3, DAY_MS * 0.5 + (max - min) * 0.25));
         this.viewStart = min - pad;
         this.viewEnd = max + pad;
         this.scrollTop = 0;
@@ -833,14 +872,45 @@ export class NativeTimelineRenderer {
             // which shifted every lane below it mid-scroll.
             const pxToTime = (this.viewEnd - this.viewStart) / Math.max(1, width - SIDEBAR_WIDTH);
             const rowEnds: number[] = [];
-            lane.items.forEach(item => {
-                item.labelSuppressed = false;
-                const chipWidth = ctx ? this.chipWidth(ctx, item, minimum) : MAX_CHIP_WIDTH;
+            const place = (start: number, end: number, chipWidth: number): number => {
                 const reservation = (chipWidth + CHIP_GAP) * pxToTime;
                 let row = 0;
-                if (this.options.stackEnabled) while (row < rowEnds.length && rowEnds[row] > item.start) row++;
-                item.row = row;
-                rowEnds[row] = Math.max(item.end, item.start + reservation);
+                if (this.options.stackEnabled) while (row < rowEnds.length && rowEnds[row] > start) row++;
+                rowEnds[row] = Math.max(end, start + reservation);
+                return row;
+            };
+            lane.markerGroups = [];
+            // In chronology, events that land on the same marker column are
+            // packed as one run, so a cap can fold the tail of the run. Other
+            // layouts keep one run per item, which is the old behaviour.
+            const runs = chronology
+                ? sameMarkerRuns(lane.items, item => Math.round(this.timeToX(item.start, width)))
+                : lane.items.map(item => [item]);
+            runs.forEach(run => {
+                let group: MarkerGroup | undefined;
+                if (chronology && run.length > 1) {
+                    const key = `${lane.id}|${run[0].start}`;
+                    group = { key, start: run[0].start, members: run, expanded: this.expandedMarkers.has(key) };
+                    lane.markerGroups?.push(group);
+                }
+                // Stacking off already puts every chip on one row and lets the
+                // label suppression handle the overlap, so the cap only applies
+                // when chips stack.
+                const capped = !!group && this.options.stackEnabled && run.length > CHRONOLOGY_MARKER_CAP;
+                const shown = capped && !group?.expanded ? CHRONOLOGY_MARKER_CAP : run.length;
+                run.forEach((item, index) => {
+                    item.labelSuppressed = false;
+                    item.marker = group;
+                    item.hiddenInMarker = index >= shown;
+                    if (item.hiddenInMarker) { item.row = 0; return; }
+                    const chipWidth = ctx ? this.chipWidth(ctx, item, minimum) : MAX_CHIP_WIDTH;
+                    item.row = place(item.start, item.end, chipWidth);
+                });
+                if (group && capped) {
+                    const hidden = run.length - shown;
+                    group.controlLabel = group.expanded ? 'Show fewer' : `+${hidden} more on ${this.dayLabel(group.start)}`;
+                    group.controlRow = place(group.start, group.start, this.controlChipWidth(ctx, group.controlLabel));
+                }
             });
             lane.top = top;
             // Chronology mode hangs its chips below the axis baseline, so the
@@ -936,6 +1006,7 @@ export class NativeTimelineRenderer {
         // vertical branch returns early.
         this.visibleItems = [];
         this.markerHits = [];
+        this.controlHits = [];
         // A rect is a screen position, so it is only true for the frame that
         // computed it. Keeping last frame's meant an arrow end whose bar had
         // scrolled away stayed pinned to the viewport and drifted along with
@@ -1368,6 +1439,8 @@ export class NativeTimelineRenderer {
             const item = lane.items[i];
             if (item.start > this.viewEnd) break;
             if (item.end < this.viewStart) continue;
+            // Folded into a control chip: no chip, stem or marker of its own.
+            if (item.hiddenInMarker) continue;
             const pointX = this.timeToX(item.start, width);
             const endX = this.timeToX(item.end, width);
             const chipY = top + CHRONOLOGY_CHIP_TOP + item.row * rowHeight;
@@ -1420,8 +1493,114 @@ export class NativeTimelineRenderer {
             this.drawPointMarker(ctx, pointX, baselineY, item);
             this.drawItem(ctx, item, true, undefined, false);
         }
+        this.drawMarkerGroups(ctx, lane, top, width);
         this.drawDropTarget(ctx, lane, baselineY, width, height);
         ctx.restore();
+    }
+
+    /**
+     * Count badges and "+N more" chips for the marker columns in view.
+     *
+     * Drawn after the chips so the badge sits over the stems. A column that
+     * stands for one event gets no badge, since its bare marker already says so.
+     */
+    private drawMarkerGroups(ctx: CanvasRenderingContext2D, lane: Lane, top: number, width: number): void {
+        const groups = lane.markerGroups;
+        if (!groups?.length) return;
+        const baselineY = top + 18;
+        const rowHeight = this.rowHeight();
+        groups.forEach(group => {
+            if (group.start < this.viewStart || group.start > this.viewEnd) return;
+            const pointX = this.timeToX(group.start, width);
+            if (group.members.length > 1) this.drawCountBadge(ctx, pointX + 9, baselineY - 9, group.members.length);
+            if (group.controlRow === undefined || !group.controlLabel) return;
+
+            const chipX = pointX + 9;
+            const chipY = top + CHRONOLOGY_CHIP_TOP + group.controlRow * rowHeight;
+            const chipHeight = rowHeight - 7;
+            const chipWidth = this.controlChipWidth(ctx, group.controlLabel);
+            this.controlHits.push({ rect: new DOMRect(chipX, chipY, chipWidth, chipHeight), group });
+
+            // Same stem as a chip, so the control reads as the last entry in its column.
+            ctx.save();
+            ctx.strokeStyle = lane.color;
+            ctx.globalAlpha = 0.5;
+            ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.moveTo(pointX, baselineY); ctx.lineTo(pointX, chipY + chipHeight / 2); ctx.lineTo(chipX, chipY + chipHeight / 2); ctx.stroke();
+            ctx.restore();
+
+            // Dashed outline and muted text: this is a control, not an event,
+            // and it should not read as one more chip in the list.
+            ctx.save();
+            ctx.fillStyle = this.css('--background-secondary', '#1f2937');
+            this.roundedRect(ctx, chipX, chipY, chipWidth, chipHeight, 3); ctx.fill();
+            ctx.strokeStyle = lane.color;
+            ctx.lineWidth = 1;
+            ctx.setLineDash([3, 3]);
+            this.roundedRect(ctx, chipX, chipY, chipWidth, chipHeight, 3); ctx.stroke();
+            ctx.setLineDash([]);
+            ctx.fillStyle = this.css('--text-muted', '#9ca3af');
+            ctx.font = `11px ${this.css('--font-interface', 'sans-serif')}`;
+            ctx.fillText(this.truncate(ctx, group.controlLabel, chipWidth - 12), chipX + 6, chipY + chipHeight / 2 + 4);
+            ctx.restore();
+        });
+    }
+
+    /** How many events a marker column stands for, drawn on the axis. */
+    private drawCountBadge(ctx: CanvasRenderingContext2D, x: number, y: number, count: number): void {
+        const text = count > 99 ? '99+' : String(count);
+        ctx.save();
+        ctx.font = `600 9px ${this.css('--font-interface', 'sans-serif')}`;
+        const badgeWidth = Math.max(14, ctx.measureText(text).width + 8);
+        ctx.fillStyle = this.css('--interactive-accent', '#7c3aed');
+        this.roundedRect(ctx, x - badgeWidth / 2, y - 7, badgeWidth, 14, 7);
+        ctx.fill();
+        ctx.fillStyle = this.css('--text-on-accent', '#fff');
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(text, x, y + 0.5);
+        ctx.restore();
+    }
+
+    /** Width of a control chip. Layout and draw both read it from here. */
+    private controlChipWidth(ctx: CanvasRenderingContext2D | null, label: string): number {
+        if (!ctx) return MAX_CHIP_WIDTH;
+        ctx.font = `11px ${this.css('--font-interface', 'sans-serif')}`;
+        return Math.max(MIN_CHRONOLOGY_CHIP_WIDTH, Math.min(MAX_CHIP_WIDTH, ctx.measureText(label).width + 20));
+    }
+
+    /** The calendar day a marker sits on, written the way the axis writes its days. */
+    private dayLabel(time: number): string {
+        const calendar = this.calendarRegistry.getActiveCalendar();
+        const day = fromAbsolute(calendar, { absoluteDay: Math.floor(time / DAY_MS) + this.unixEpochAbsoluteDay() });
+        const month = monthsInYear(calendar, day.year)[day.month]?.name ?? `Month ${day.month + 1}`;
+        return `${month} ${day.day}, ${this.calendarYearLabel(calendar, day.year)}`;
+    }
+
+    /**
+     * What a click on a control chip does.
+     *
+     * A "+N more" chip first zooms to its day, since spreading events across
+     * the day is what the zoom can do. Once the view is already a day wide the
+     * events still share a marker, so the click opens the group instead. A
+     * "Show fewer" chip always folds the group back up.
+     */
+    private activateMarkerControl(group: MarkerGroup): void {
+        if (!group.expanded && this.viewEnd - this.viewStart > DAY_MS * 1.01) {
+            // A sliver of the previous day keeps a midnight marker off the
+            // sidebar edge, where it would be half hidden.
+            const day = Math.floor(group.start / DAY_MS) * DAY_MS - DAY_MS * 0.04;
+            this.setVisibleRange(new Date(day), new Date(day + DAY_MS));
+            return;
+        }
+        if (group.expanded) this.expandedMarkers.delete(group.key);
+        else this.expandedMarkers.add(group.key);
+        this.scheduleDraw();
+    }
+
+    private controlAt(x: number, y: number): MarkerGroup | null {
+        const hit = this.controlHits.find(entry => x >= entry.rect.x && x <= entry.rect.right && y >= entry.rect.y && y <= entry.rect.bottom);
+        return hit?.group ?? null;
     }
 
     private drawVerticalTimeline(ctx: CanvasRenderingContext2D, width: number, height: number): void {
@@ -2283,6 +2462,10 @@ export class NativeTimelineRenderer {
             this.scheduleDraw();
             return;
         }
+        // A control chip answers the click itself and does not start a pan, so
+        // a press on it cannot also drag the view away from the chip.
+        const control = this.controlAt(event.offsetX, event.offsetY);
+        if (control) { this.activateMarkerControl(control); return; }
         const item = this.hit(event.offsetX, event.offsetY);
         if (item) {
             this.selected = item; this.options.onEventSelected?.(item.event);
@@ -2411,7 +2594,8 @@ export class NativeTimelineRenderer {
         }
         const marker = this.slotsVisible() ? this.markerAt(event.offsetX, event.offsetY) : null;
         const vertical = this.isVerticalTimeline();
-        if (this.canvas) this.canvas.style.cursor = marker ? (vertical ? 'ns-resize' : 'ew-resize') : '';
+        const control = marker ? null : this.controlAt(event.offsetX, event.offsetY);
+        if (this.canvas) this.canvas.style.cursor = marker ? (vertical ? 'ns-resize' : 'ew-resize') : control ? 'pointer' : '';
         const item = marker ?? this.hit(event.offsetX, event.offsetY);
         if (item) this.showTooltip(item, event.offsetX, event.offsetY);
         else this.hideTooltip();
