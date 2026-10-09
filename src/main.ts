@@ -85,7 +85,14 @@ import { MagicSystemListModal } from './modals/MagicSystemListModal';
 import { CompendiumEntryModal } from './modals/CompendiumEntryModal';
 import { CompendiumListModal } from './modals/CompendiumListModal';
 import { PlatformUtils } from './utils/PlatformUtils';
-import { getTemplateSections, BODY_SECTION_FIELD_MAP } from './utils/EntityTemplates';
+import { getTemplateSections } from './utils/EntityTemplates';
+import {
+    applySectionFieldPlanToFrontmatter,
+    applySectionFieldPlanToSections,
+    fillFieldsFromBodySections,
+    getFrontmatterSectionFields,
+    planSectionFieldPlacement,
+} from './utils/SectionFieldPlacement';
 import { getSvgSourceInfoFromArrayBuffer, isSvgArrayBuffer } from './utils/SvgImageUtils';
 import type { CanvasData as StoryBoardCanvasData } from './utils/StoryBoardGenerator';
 // Removed: Codeblock maps no longer supported - use MapView instead
@@ -349,6 +356,13 @@ const FRONTMATTER_LINK_ONLY_SCALAR_FIELDS = new Set([
      */
     hiddenModalFields?: Record<string, string[]>;
 
+    /**
+     * Entity type -> body-section fields (e.g. "description") stored as a
+     * frontmatter property instead of a `## Heading` section. Empty means every
+     * field stays a section, as before. See utils/SectionFieldPlacement.ts.
+     */
+    sectionFieldsInFrontmatter?: Record<string, string[]>;
+
     /** World-Building */
     enableWorldBuilding?: boolean;
     cultureFolderPath?: string;
@@ -490,6 +504,7 @@ const FRONTMATTER_LINK_ONLY_SCALAR_FIELDS = new Set([
     sceneFolderPath: '',
     mapFolderPath: '',
     hiddenModalFields: {},
+    sectionFieldsInFrontmatter: {},
     groupFolderPath: '',
     compendiumFolderPath: '',
     bookFolderPath: '',
@@ -651,7 +666,8 @@ export default class StorytellerSuitePlugin extends Plugin {
         sweepCustomFieldsOnRead(
             entityType,
             entity,
-            this.getCustomFieldDefinitions(entityType)
+            this.getCustomFieldDefinitions(entityType),
+            getFrontmatterSectionFields(this.settings.sectionFieldsInFrontmatter, entityType)
         );
         return entity;
     }
@@ -4144,13 +4160,9 @@ export default class StorytellerSuitePlugin extends Plugin {
 
             // Map well-known body sections to entity fields per type.
             // Earlier entries in the map are canonical; later ones act as legacy fallbacks.
-            const sectionFieldMap = BODY_SECTION_FIELD_MAP[entityType] ?? {};
-            for (const [sectionName, fieldName] of Object.entries(sectionFieldMap)) {
-                if (!(sectionName in allSections)) continue;
-                const existing = data[fieldName];
-                if (existing !== undefined && existing !== null && existing !== '') continue;
-                data[fieldName] = allSections[sectionName];
-            }
+            // A field stored as a property keeps its property value, even when empty;
+            // the body section only fills fields that are missing (see SectionFieldPlacement.ts).
+            fillFieldsFromBodySections(entityType, this.settings.sectionFieldsInFrontmatter, data, frontmatter, allSections);
 
             // An item written before owners existed carries a single currentOwner.
             // Hoist it so the rest of the plugin only ever sees the plural form.
@@ -4458,6 +4470,15 @@ export default class StorytellerSuitePlugin extends Plugin {
 			}
 		}
 
+		// Body sections that move to or from frontmatter (see utils/SectionFieldPlacement.ts)
+		const sectionPlan = planSectionFieldPlacement({
+			entityType: 'character',
+			settings: this.settings.sectionFieldsInFrontmatter,
+			entity: charRecord,
+			originalFrontmatter,
+			existingSections,
+		});
+		applySectionFieldPlanToFrontmatter(sectionPlan, finalFrontmatter);
 		// Use custom serializer that preserves empty string values
 		const frontmatterString = Object.keys(finalFrontmatter).length > 0
 			? stringifyYamlWithLogging(finalFrontmatter, originalFrontmatter, `Character: ${character.name}`)
@@ -4498,6 +4519,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 			};
 		}
 
+		applySectionFieldPlanToSections(sectionPlan, allSections);
 		// Generate Markdown
 		let mdContent = `---\n${frontmatterString}---\n\n`;
 		mdContent += Object.entries(allSections)
@@ -4708,6 +4730,15 @@ export default class StorytellerSuitePlugin extends Plugin {
 			}
 		}
 
+		// Body sections that move to or from frontmatter (see utils/SectionFieldPlacement.ts)
+		const sectionPlan = planSectionFieldPlacement({
+			entityType: 'location',
+			settings: this.settings.sectionFieldsInFrontmatter,
+			entity: location as unknown as Record<string, unknown>,
+			originalFrontmatter,
+			existingSections,
+		});
+		applySectionFieldPlanToFrontmatter(sectionPlan, finalFrontmatter);
 		// Use custom serializer that preserves empty string values
 		const frontmatterString = Object.keys(finalFrontmatter).length > 0
 			? stringifyYamlWithLogging(finalFrontmatter, originalFrontmatter, `Location: ${location.name}`)
@@ -4737,6 +4768,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 			delete allSections.Gallery;
 		}
 
+		applySectionFieldPlanToSections(sectionPlan, allSections);
 		// Generate Markdown
 		let mdContent = `---\n${frontmatterString}---\n\n`;
 		mdContent += Object.entries(allSections)
@@ -4985,6 +5017,15 @@ export default class StorytellerSuitePlugin extends Plugin {
 		// Build frontmatter
 		const finalFrontmatter = await this.buildFrontmatterForMap(rest, originalFrontmatter);
 
+		// Body sections that move to or from frontmatter (see utils/SectionFieldPlacement.ts)
+		const sectionPlan = planSectionFieldPlacement({
+			entityType: 'map',
+			settings: this.settings.sectionFieldsInFrontmatter,
+			entity: map as unknown as Record<string, unknown>,
+			originalFrontmatter,
+			existingSections,
+		});
+		applySectionFieldPlanToFrontmatter(sectionPlan, finalFrontmatter);
 		// Use custom serializer
 		const frontmatterString = Object.keys(finalFrontmatter).length > 0
 			? stringifyYamlWithLogging(finalFrontmatter, originalFrontmatter, `Map: ${map.name}`)
@@ -5002,6 +5043,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 			? { ...defaultSections, ...templateOnlySections, ...existingSections, ...providedSections }
 			: { ...defaultSections, ...templateOnlySections, ...providedSections };
 
+		applySectionFieldPlanToSections(sectionPlan, allSections);
 		// Assemble final markdown
 		let content = '';
 		if (frontmatterString) {
@@ -5575,6 +5617,15 @@ export default class StorytellerSuitePlugin extends Plugin {
 			}
 		}
 
+		// Body sections that move to or from frontmatter (see utils/SectionFieldPlacement.ts)
+		const sectionPlan = planSectionFieldPlacement({
+			entityType: 'event',
+			settings: this.settings.sectionFieldsInFrontmatter,
+			entity: event as unknown as Record<string, unknown>,
+			originalFrontmatter,
+			existingSections,
+		});
+		applySectionFieldPlanToFrontmatter(sectionPlan, finalFrontmatter);
 		// Use custom serializer that preserves empty string values
 		const frontmatterString = Object.keys(finalFrontmatter).length > 0
 			? stringifyYamlWithLogging(finalFrontmatter, originalFrontmatter, `Event: ${event.name}`)
@@ -5604,6 +5655,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 			delete allSections.Gallery;
 		}
 
+		applySectionFieldPlanToSections(sectionPlan, allSections);
 		// Generate Markdown
 		let mdContent = `---\n${frontmatterString}---\n\n`;
 		mdContent += Object.entries(allSections)
@@ -5907,6 +5959,15 @@ export default class StorytellerSuitePlugin extends Plugin {
 			}
 		}
 
+		// Body sections that move to or from frontmatter (see utils/SectionFieldPlacement.ts)
+		const sectionPlan = planSectionFieldPlacement({
+			entityType: 'item',
+			settings: this.settings.sectionFieldsInFrontmatter,
+			entity: item as unknown as Record<string, unknown>,
+			originalFrontmatter,
+			existingSections,
+		});
+		applySectionFieldPlanToFrontmatter(sectionPlan, finalFrontmatter);
 		// Use custom serializer that preserves empty string values
 		const frontmatterString = Object.keys(finalFrontmatter).length > 0
 			? stringifyYamlWithLogging(finalFrontmatter, originalFrontmatter, `PlotItem: ${item.name}`)
@@ -5925,6 +5986,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 			? { ...templateSections, ...existingSections }
 			: templateSections;
 
+		applySectionFieldPlanToSections(sectionPlan, allSections);
 		// Generate Markdown
 		let mdContent = `---\n${frontmatterString}---\n\n`;
 		mdContent += Object.entries(allSections)
@@ -6087,6 +6149,15 @@ export default class StorytellerSuitePlugin extends Plugin {
 			}
 		}
 
+		// Body sections that move to or from frontmatter (see utils/SectionFieldPlacement.ts)
+		const sectionPlan = planSectionFieldPlacement({
+			entityType: 'reference',
+			settings: this.settings.sectionFieldsInFrontmatter,
+			entity: reference as unknown as Record<string, unknown>,
+			originalFrontmatter,
+			existingSections,
+		});
+		applySectionFieldPlanToFrontmatter(sectionPlan, fm);
 		// Use custom serializer that preserves empty string values
 		const frontmatterString = Object.keys(fm).length > 0
 			? stringifyYamlWithLogging(fm, originalFrontmatter, `Reference: ${reference.name}`)
@@ -6099,6 +6170,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 			? { ...templateSections, ...existingSections }
 			: templateSections;
 
+		applySectionFieldPlanToSections(sectionPlan, allSections);
 		let mdContent = `---\n${frontmatterString}---\n\n`;
 		mdContent += Object.entries(allSections)
 			.map(([key, val]) => `## ${key}\n${val || ''}`)
@@ -6235,6 +6307,15 @@ export default class StorytellerSuitePlugin extends Plugin {
 			}
 		}
 
+        // Body sections that move to or from frontmatter (see utils/SectionFieldPlacement.ts)
+        const sectionPlan = planSectionFieldPlacement({
+            entityType: 'chapter',
+            settings: this.settings.sectionFieldsInFrontmatter,
+            entity: chapter as unknown as Record<string, unknown>,
+            originalFrontmatter,
+            existingSections,
+        });
+        applySectionFieldPlanToFrontmatter(sectionPlan, fm);
 		// Use custom serializer that preserves empty string values
         const frontmatterString = Object.keys(fm).length > 0
 			? stringifyYamlWithLogging(fm, originalFrontmatter, `Chapter: ${chapter.name}`)
@@ -6251,6 +6332,7 @@ export default class StorytellerSuitePlugin extends Plugin {
             if (value !== undefined) allSections[key] = value;
         }
 
+        applySectionFieldPlanToSections(sectionPlan, allSections);
         let mdContent = `---\n${frontmatterString}---\n\n`;
         mdContent += Object.entries(allSections)
             .map(([key, val]) => `## ${key}\n${val || ''}`)
@@ -6496,6 +6578,15 @@ export default class StorytellerSuitePlugin extends Plugin {
         const bookSrc = { ...rest, linkedChapters } as Record<string, unknown>;
         const fm = await this.buildFrontmatterForBook(bookSrc, originalFrontmatter);
 
+        // Body sections that move to or from frontmatter (see utils/SectionFieldPlacement.ts)
+        const sectionPlan = planSectionFieldPlacement({
+            entityType: 'book',
+            settings: this.settings.sectionFieldsInFrontmatter,
+            entity: book as unknown as Record<string, unknown>,
+            originalFrontmatter,
+            existingSections,
+        });
+        applySectionFieldPlanToFrontmatter(sectionPlan, fm);
         const frontmatterString = Object.keys(fm).length > 0
             ? stringifyYamlWithLogging(fm, originalFrontmatter, `Book: ${book.name}`)
             : '';
@@ -6506,6 +6597,7 @@ export default class StorytellerSuitePlugin extends Plugin {
             ? { ...templateSections, ...existingSections }
             : templateSections;
 
+        applySectionFieldPlanToSections(sectionPlan, allSections);
         let mdContent = `---\n${frontmatterString}---\n\n`;
         mdContent += Object.entries(allSections)
             .map(([key, val]) => `## ${key}\n${val || ''}`)
@@ -6774,6 +6866,15 @@ export default class StorytellerSuitePlugin extends Plugin {
 			}
 		}
 
+        // Body sections that move to or from frontmatter (see utils/SectionFieldPlacement.ts)
+        const sectionPlan = planSectionFieldPlacement({
+            entityType: 'scene',
+            settings: this.settings.sectionFieldsInFrontmatter,
+            entity: scene as unknown as Record<string, unknown>,
+            originalFrontmatter,
+            existingSections,
+        });
+        applySectionFieldPlanToFrontmatter(sectionPlan, fm);
 		// Use custom serializer that preserves empty string values
         const frontmatterString = Object.keys(fm).length > 0
 			? stringifyYamlWithLogging(fm, originalFrontmatter, `Scene: ${scene.name}`)
@@ -6792,6 +6893,7 @@ export default class StorytellerSuitePlugin extends Plugin {
             if (value !== undefined) allSections[key] = value;
         }
 
+        applySectionFieldPlanToSections(sectionPlan, allSections);
         let mdContent = `---\n${frontmatterString}---\n\n`;
         mdContent += Object.entries(allSections)
             .map(([key, val]) => `## ${key}\n${val || ''}`)
@@ -7005,6 +7107,15 @@ export default class StorytellerSuitePlugin extends Plugin {
             }
         }
 
+        // Body sections that move to or from frontmatter (see utils/SectionFieldPlacement.ts)
+        const sectionPlan = planSectionFieldPlacement({
+            entityType: 'culture',
+            settings: this.settings.sectionFieldsInFrontmatter,
+            entity: culture as unknown as Record<string, unknown>,
+            originalFrontmatter,
+            existingSections,
+        });
+        applySectionFieldPlanToFrontmatter(sectionPlan, finalFrontmatter);
         const frontmatterString = Object.keys(finalFrontmatter).length > 0
             ? stringifyYamlWithLogging(finalFrontmatter, originalFrontmatter, `Culture: ${culture.name}`)
             : '';
@@ -7030,6 +7141,7 @@ export default class StorytellerSuitePlugin extends Plugin {
             allSections = templateSections;
         }
 
+        applySectionFieldPlanToSections(sectionPlan, allSections);
         let mdContent = `---\n${frontmatterString}---\n\n`;
         mdContent += Object.entries(allSections)
             .map(([key, content]) => `## ${key}\n${content || ''}`)
@@ -7154,6 +7266,15 @@ export default class StorytellerSuitePlugin extends Plugin {
             }
         }
 
+        // Body sections that move to or from frontmatter (see utils/SectionFieldPlacement.ts)
+        const sectionPlan = planSectionFieldPlacement({
+            entityType: 'economy',
+            settings: this.settings.sectionFieldsInFrontmatter,
+            entity: economy as unknown as Record<string, unknown>,
+            originalFrontmatter,
+            existingSections,
+        });
+        applySectionFieldPlanToFrontmatter(sectionPlan, finalFrontmatter);
         const frontmatterString = Object.keys(finalFrontmatter).length > 0
             ? stringifyYamlWithLogging(finalFrontmatter, originalFrontmatter, `Economy: ${economy.name}`)
             : '';
@@ -7175,6 +7296,7 @@ export default class StorytellerSuitePlugin extends Plugin {
             allSections = templateSections;
         }
 
+        applySectionFieldPlanToSections(sectionPlan, allSections);
         let mdContent = `---\n${frontmatterString}---\n\n`;
         mdContent += Object.entries(allSections)
             .map(([key, content]) => `## ${key}\n${content || ''}`)
@@ -7289,6 +7411,15 @@ export default class StorytellerSuitePlugin extends Plugin {
 
         const finalFrontmatter = await this.buildFrontmatterForCompendiumEntry(rest, originalFrontmatter);
 
+        // Body sections that move to or from frontmatter (see utils/SectionFieldPlacement.ts)
+        const sectionPlan = planSectionFieldPlacement({
+            entityType: 'compendiumEntry',
+            settings: this.settings.sectionFieldsInFrontmatter,
+            entity: entry as unknown as Record<string, unknown>,
+            originalFrontmatter,
+            existingSections,
+        });
+        applySectionFieldPlanToFrontmatter(sectionPlan, finalFrontmatter);
         const frontmatterString = Object.keys(finalFrontmatter).length > 0
             ? stringifyYamlWithLogging(finalFrontmatter, originalFrontmatter, `CompendiumEntry: ${entry.name}`)
             : '';
@@ -7313,6 +7444,7 @@ export default class StorytellerSuitePlugin extends Plugin {
             allSections = templateSections;
         }
 
+        applySectionFieldPlanToSections(sectionPlan, allSections);
         let mdContent = `---\n${frontmatterString}---\n\n`;
         mdContent += Object.entries(allSections)
             .map(([key, content]) => `## ${key}\n${content || ''}`)
@@ -7439,6 +7571,15 @@ export default class StorytellerSuitePlugin extends Plugin {
             }
         }
 
+        // Body sections that move to or from frontmatter (see utils/SectionFieldPlacement.ts)
+        const sectionPlan = planSectionFieldPlacement({
+            entityType: 'magicSystem',
+            settings: this.settings.sectionFieldsInFrontmatter,
+            entity: magicSystem as unknown as Record<string, unknown>,
+            originalFrontmatter,
+            existingSections,
+        });
+        applySectionFieldPlanToFrontmatter(sectionPlan, finalFrontmatter);
         const frontmatterString = Object.keys(finalFrontmatter).length > 0
             ? stringifyYamlWithLogging(finalFrontmatter, originalFrontmatter, `MagicSystem: ${magicSystem.name}`)
             : '';
@@ -7461,6 +7602,7 @@ export default class StorytellerSuitePlugin extends Plugin {
             if (value !== undefined) allSections[key] = value;
         }
 
+        applySectionFieldPlanToSections(sectionPlan, allSections);
         let mdContent = `---\n${frontmatterString}---\n\n`;
         mdContent += Object.entries(allSections)
             .map(([key, content]) => `## ${key}\n${content || ''}`)

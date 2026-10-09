@@ -14,6 +14,7 @@ import { EditStoryModal } from './modals/EditStoryModal';
 import type { StoryFolderOverrides } from './folders/FolderResolver';
 import type { TimelineGroupMode } from './types';
 import { MODAL_FIELD_SETS, isModalFieldVisible, setModalFieldHidden } from './modals/entity/ModalFieldVisibility';
+import { getConfigurableSectionFields, getFrontmatterSectionFields } from './utils/SectionFieldPlacement';
 import {
     CUSTOM_FIELD_LINK_TARGETS,
     CUSTOM_FIELD_TYPE_LABELS,
@@ -49,6 +50,16 @@ const MODAL_CUSTOMIZABLE_ENTITY_TYPES = [
     'character', 'event', 'item', 'location', 'faction', 'culture', 'economy', 'magicSystem',
     'compendiumEntry', 'reference', 'scene', 'chapter', 'book', 'map',
 ] as const;
+
+/**
+ * Entity types whose body-section fields can be stored as frontmatter. Each
+ * one's save path honours sectionFieldsInFrontmatter (main.ts saveX methods).
+ * Faction (Group) and timeline types write through other paths and are left out.
+ */
+const SECTION_FIELD_ENTITY_TYPES: ReadonlyArray<EntityType> = [
+    'character', 'location', 'map', 'event', 'item', 'reference', 'chapter', 'book', 'scene',
+    'culture', 'economy', 'compendiumEntry', 'magicSystem',
+];
 
 /** Entity types whose modals lay out the "Default custom fields" list on creation. */
 const DEFAULT_CUSTOM_FIELD_ENTITY_TYPES: readonly string[] = ['character', 'event', 'item'];
@@ -651,6 +662,41 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
 
     }
 
+    /**
+     * One toggle per body-section field of a type. On: the field is stored as a
+     * frontmatter property (Bases and Properties can query it). Off: a body section.
+     */
+    private renderSectionFieldToggles(container: HTMLElement, entityType: EntityType): void {
+        const fields = getConfigurableSectionFields(entityType);
+        if (fields.length === 0) return;
+        container.createEl('p', {
+            cls: 'setting-item-description',
+            text: 'Some text fields can be stored as a property instead of a "## Heading" section in the note body. ' +
+                'Notes already saved keep working either way: a property is read first and the section is used when the property is missing. ' +
+                'Turning a switch on moves the text into the property on the next save, and turning it off moves it back into the section on the next save.',
+        });
+        const configured = getFrontmatterSectionFields(this.plugin.settings.sectionFieldsInFrontmatter, entityType);
+        for (const { field, sectionName } of fields) {
+            new Setting(container)
+                .setName(`Store ${sectionName} as a property instead of a note section`)
+                .addToggle(toggle => toggle
+                    .setValue(configured.includes(field))
+                    .setTooltip(configured.includes(field) ? 'Stored as a property' : 'Stored as a section')
+                    .onChange(async (value) => {
+                        const current = getFrontmatterSectionFields(this.plugin.settings.sectionFieldsInFrontmatter, entityType);
+                        const next = value
+                            ? [...current.filter(name => name !== field), field]
+                            : current.filter(name => name !== field);
+                        const map = { ...(this.plugin.settings.sectionFieldsInFrontmatter ?? {}) };
+                        if (next.length > 0) map[entityType] = next;
+                        else delete map[entityType];
+                        this.plugin.settings.sectionFieldsInFrontmatter = map;
+                        await this.plugin.saveSettings();
+                    })
+                );
+        }
+    }
+
     // ─── Tab: Modals ──────────────────────────────────────────────────────────
     private renderModalsTab(container: HTMLElement): void {
         container.createEl('p', {
@@ -691,6 +737,10 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                             await this.plugin.saveSettings();
                         })
                     );
+            }
+
+            if (SECTION_FIELD_ENTITY_TYPES.includes(entityType)) {
+                this.renderSectionFieldToggles(container, entityType);
             }
 
             if (DEFAULT_CUSTOM_FIELD_ENTITY_TYPES.includes(entityType)) {
