@@ -473,6 +473,7 @@ export class TimelineView extends ItemView {
             showEras: this.currentState.showEras,
             showPresence: this.currentState.showPresence,
             narrativeOrder: this.currentState.narrativeOrder,
+            getReferenceDate: () => this.plugin.getReferenceTodayDate(),
             defaultGanttDuration: this.plugin.settings.ganttDefaultDuration ?? 1,
             showProgressBars: this.plugin.settings.ganttShowProgressBars ?? true,
             dependencyArrowStyle: this.plugin.settings.ganttArrowStyle ?? 'solid',

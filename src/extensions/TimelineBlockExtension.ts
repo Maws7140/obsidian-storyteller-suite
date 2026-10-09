@@ -43,7 +43,8 @@ class TimelineBlockChild extends MarkdownRenderChild {
             // An embedded timeline is a picture of a story, not a place to edit
             // one. Dragging an event here would rewrite a note the reader may
             // not even know they have open.
-            editMode: false
+            editMode: false,
+            getReferenceDate: () => this.plugin.getReferenceTodayDate()
         });
         this.renderer = renderer;
         void (async () => {
