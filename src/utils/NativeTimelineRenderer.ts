@@ -2967,8 +2967,16 @@ export class NativeTimelineRenderer {
         this.canvas.setPointerCapture(event.pointerId);
         this.activePointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
         if (this.activePointers.size === 2) {
+            // A pinch takes over from a chip drag already under way. The move was never
+            // committed, so put the chip back where it started rather than leave it displaced.
+            const dragging = this.dragging;
+            if (dragging?.kind === 'move' && dragging.item) {
+                dragging.item.start = dragging.start; dragging.item.end = dragging.end;
+            }
+            this.dragGhost = null;
             this.beginPinch();
             this.dragging = null;
+            this.scheduleDraw();
             return;
         }
         // The scrollbar strip and "+K more" chips sit clear of every marker and
