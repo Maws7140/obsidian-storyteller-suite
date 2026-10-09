@@ -33,16 +33,17 @@ describe('campaign progress', () => {
         expect(addCampaignClock(current, '  ', 4, 'clock-1')).toBeNull();
         expect(addCampaignThread(current, '  ', 'thread-1')).toBeNull();
         expect(addCampaignClock(current, 'Short', 1, 'clock-2')?.segments).toBe(2);
-        expect(addCampaignClock(current, 'Long', 50, 'clock-3')?.segments).toBe(12);
+        expect(addCampaignClock(current, 'Long', 50, 'clock-3')?.segments).toBe(24);
+        expect(addCampaignClock(current, 'Wide', 24, 'clock-4')?.segments).toBe(24);
     });
 
     it('cycles thread state without losing the thread', () => {
         const current = session();
         const thread = addCampaignThread(current, 'Find the second beacon', 'thread-1');
-        expect(thread?.status).toBe('active');
-        expect(thread && cycleCampaignThread(thread)).toBe('resolved');
-        expect(thread && cycleCampaignThread(thread)).toBe('abandoned');
-        expect(thread && cycleCampaignThread(thread)).toBe('active');
+        expect(thread).toMatchObject({ state: 'Open', status: 'active', kind: 'thread' });
+        expect(thread && cycleCampaignThread(thread)).toBe('Closed');
+        expect(thread?.status).toBe('resolved');
+        expect(thread && cycleCampaignThread(thread)).toBe('Open');
         expect(current.threads).toHaveLength(1);
     });
 

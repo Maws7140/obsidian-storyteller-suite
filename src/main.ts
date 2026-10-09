@@ -118,6 +118,7 @@ import { createLedgerViewExtension, registerLedgerBlockProcessor } from './exten
 import { createBranchViewExtension, registerBranchBlockProcessors } from './extensions/BranchBlockExtension';
 import { registerTimelineBlockProcessor } from './extensions/TimelineBlockExtension';
 import { CampaignSession } from './types';
+import { buildCampaignSessionFrontmatter, normalizeCampaignSessionData } from './utils/CampaignModel';
 
 /** Runtime-only flags added to entity objects during save/sync to prevent recursion. Not persisted. */
 type WithSyncFlags<T> = T & {
@@ -6696,7 +6697,7 @@ export default class StorytellerSuitePlugin extends Plugin {
         if (!session.id) session.id = `sess-${Date.now()}`;
 
         const preparedSession = await this.serializeFrontmatterEntityReferences(session as unknown as Record<string, unknown>);
-        const frontmatter = buildFrontmatter('campaignSession', preparedSession.source, undefined, {
+        const frontmatter = buildCampaignSessionFrontmatter(preparedSession.source, {
             omitOriginalKeys: preparedSession.omitOriginalKeys,
         });
         const fm = stringifyYaml(frontmatter);
@@ -6727,7 +6728,7 @@ export default class StorytellerSuitePlugin extends Plugin {
         const sessions: CampaignSession[] = [];
         for (const file of files) {
             const data = await this.parseFile<CampaignSession>(file, { name: '', storyId: '' }, 'campaignSession');
-            if (data) sessions.push(data);
+            if (data) sessions.push(normalizeCampaignSessionData(data));
         }
         return sessions.sort((a, b) => (b.modified ?? '').localeCompare(a.modified ?? ''));
     }

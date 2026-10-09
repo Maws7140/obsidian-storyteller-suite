@@ -10069,6 +10069,7 @@ body.mod-rtl .storyteller-group-members {
 .storyteller-campaign-thread-row { display: flex; align-items: center; gap: 0.4rem; padding: 0.42rem 0.5rem; border: 1px solid var(--background-modifier-border); border-radius: 8px; }
 .storyteller-campaign-clock-info { display: flex; align-items: baseline; gap: 0.35rem; min-width: 0; }
 .storyteller-campaign-clock-name { max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.78rem; font-weight: 600; }
+.storyteller-campaign-clock-kind { font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-muted); border: 1px solid var(--background-modifier-border); border-radius: 4px; padding: 0 4px; }
 .storyteller-campaign-clock-value { color: var(--text-muted); font-size: 0.7rem; font-variant-numeric: tabular-nums; }
 .storyteller-campaign-clock-segments { display: flex; flex: 1; gap: 3px; }
 .storyteller-campaign-clock-segments button { flex: 1; min-width: 8px; height: 12px; padding: 0; border: 1px solid var(--background-modifier-border); border-radius: 3px; }

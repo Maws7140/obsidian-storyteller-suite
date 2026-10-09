@@ -57,10 +57,10 @@ import { getOwners, getPartyOwner, setPartyOwner } from '../utils/ItemOwnership'
 import {
     addCampaignClock,
     addCampaignThread,
-    advanceCampaignClock,
     buildSessionTimelineEvent,
     cycleCampaignThread,
 } from '../utils/CampaignProgress';
+import { setTrackerValue, threadLegacyStatus, trackerKindOf } from '../utils/CampaignModel';
 import { PromptModal } from '../modals/ui/PromptModal';
 import { EventModal } from '../modals/EventModal';
 import { LeafletRenderer } from '../leaflet/renderer';
@@ -2516,8 +2516,13 @@ export class CampaignView extends ItemView {
         for (const clock of clocks) {
             const row = body.createDiv('storyteller-campaign-clock-row');
             const info = row.createDiv('storyteller-campaign-clock-info');
+            const kind = trackerKindOf(clock);
             info.createSpan({ cls: 'storyteller-campaign-clock-name', text: clock.name });
-            info.createSpan({ cls: 'storyteller-campaign-clock-value', text: `${clock.current}/${clock.segments}` });
+            info.createSpan({ cls: 'storyteller-campaign-clock-kind', text: kind });
+            info.createSpan({
+                cls: 'storyteller-campaign-clock-value',
+                text: kind === 'timer' ? `${clock.current} left` : `${clock.current}/${clock.segments}`,
+            });
             const segments = row.createDiv('storyteller-campaign-clock-segments');
             for (let index = 0; index < clock.segments; index += 1) {
                 const segment = segments.createEl('button', {
@@ -2526,7 +2531,7 @@ export class CampaignView extends ItemView {
                 });
                 segment.addEventListener('click', () => {
                     const nextValue = index + 1 === clock.current ? index : index + 1;
-                    advanceCampaignClock(session, clock.id, nextValue - clock.current);
+                    setTrackerValue(clock, nextValue);
                     void this.autosave(`Clock ${clock.name}: ${clock.current}/${clock.segments}`).then(() => this.render());
                 });
             }
@@ -2539,13 +2544,14 @@ export class CampaignView extends ItemView {
         }
 
         for (const thread of threads) {
-            const row = body.createDiv(`storyteller-campaign-thread-row is-${thread.status}`);
+            const legacyStatus = threadLegacyStatus(thread);
+            const row = body.createDiv(`storyteller-campaign-thread-row is-${legacyStatus}`);
             const toggle = row.createEl('button', { cls: 'storyteller-campaign-thread-toggle' });
-            setIcon(toggle.createSpan(), thread.status === 'resolved' ? 'circle-check' : thread.status === 'abandoned' ? 'circle-x' : 'circle');
+            setIcon(toggle.createSpan(), legacyStatus === 'resolved' ? 'circle-check' : legacyStatus === 'abandoned' ? 'circle-x' : 'circle');
             toggle.createSpan({ text: thread.name });
             toggle.addEventListener('click', () => {
-                const status = cycleCampaignThread(thread);
-                void this.autosave(`Thread ${thread.name}: ${status}`).then(() => this.render());
+                const state = cycleCampaignThread(thread);
+                void this.autosave(`Thread ${thread.name}: ${state}`).then(() => this.render());
             });
             const remove = row.createEl('button', { cls: 'storyteller-campaign-progress-remove', attr: { 'aria-label': `Remove thread ${thread.name}` } });
             setIcon(remove, 'x');
