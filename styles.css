@@ -12234,3 +12234,23 @@ body.mod-rtl .storyteller-group-members {
 .storyteller-campaign-standing-notes { padding-left: 0.2rem; font-size: 0.7rem; font-style: italic; color: var(--text-faint); }
 .storyteller-campaign-end-advancements { display: flex; flex-direction: column; gap: 0.25rem; margin-bottom: 0.5rem; }
 .storyteller-campaign-end-advancement { display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; }
+
+/* Lorelog dashboard and quick capture */
+.storyteller-lore-dashboard { padding: 0 16px 24px; overflow-x: hidden; }
+.storyteller-lore-dashboard h3 { margin-top: 1.2rem; }
+.storyteller-lore-muted { color: var(--text-muted); font-size: 0.8rem; }
+.storyteller-lore-toolbar { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.6rem 0; }
+.storyteller-lore-counts { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); gap: 0.4rem; }
+.storyteller-lore-stat { padding: 0.4rem 0.5rem; border: 1px solid var(--background-modifier-border); border-radius: 6px; }
+.storyteller-lore-stat-value { font-size: 1.2rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.storyteller-lore-stat-label { font-size: 0.7rem; color: var(--text-muted); }
+.storyteller-lore-section ul { padding-left: 1.1rem; margin: 0.3rem 0; }
+.storyteller-lore-section li { overflow-wrap: anywhere; margin-bottom: 0.2rem; }
+.storyteller-lore-line-link,
+.storyteller-lore-entity-link { cursor: pointer; }
+.storyteller-lore-badge { font-size: 0.65rem; text-transform: uppercase; color: var(--text-faint); border: 1px solid var(--background-modifier-border); border-radius: 4px; padding: 0 4px; margin-left: 0.3rem; }
+.storyteller-lore-ripples { display: flex; flex-direction: column; gap: 0.35rem; margin-bottom: 0.5rem; }
+.storyteller-lore-ripple-row { display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: center; }
+.storyteller-lore-ripple-row input[type="text"] { flex: 1 1 120px; min-width: 0; }
+.storyteller-lore-sync-item { margin-bottom: 0.6rem; }
+.storyteller-lore-sync-item ul { padding-left: 1.4rem; font-size: 0.85rem; }
