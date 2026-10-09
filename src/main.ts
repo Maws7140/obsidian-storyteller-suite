@@ -94,6 +94,7 @@ import type { EntityFileName, TemplateVariableValues } from './modals/TemplateAp
 import { StoryTemplateGalleryModal } from './templates/modals/StoryTemplateGalleryModal';
 import { upgradeLegacyModalLayout } from './modals/utils/LegacyModalLayout';
 import { TrackManagerModal } from './modals/TrackManagerModal';
+import { ImportExistingNotesModal } from './modals/ImportExistingNotesModal';
 import { TagTimelineModal } from './modals/TagTimelineModal';
 import { ConflictDetector } from './utils/ConflictDetector';
 import { TimelineTrackManager } from './utils/TimelineTrackManager';
@@ -841,6 +842,12 @@ export default class StorytellerSuitePlugin extends Plugin {
 
     private invalidateFrontmatterReferenceIndexes(): void {
         this.frontmatterReferenceIndexCache.clear();
+    }
+
+    /** After a bulk change to entity notes (e.g. importing existing notes): drop cached indexes and tell views. */
+    refreshEntitiesAfterBulkChange(): void {
+        this.invalidateFrontmatterReferenceIndexes();
+        this.app.workspace.trigger('storyteller:entities-changed');
     }
 
     private stripWikiLinkValue(value: unknown): string | undefined {
@@ -2443,6 +2450,14 @@ export default class StorytellerSuitePlugin extends Plugin {
             name: 'Open getting started guide',
             callback: () => {
                 this.openGettingStartedGuide();
+            }
+        });
+
+        this.addCommand({
+            id: 'import-existing-notes',
+            name: 'Import existing notes as entities',
+            callback: () => {
+                new ImportExistingNotesModal(this.app, this).open();
             }
         });
 
