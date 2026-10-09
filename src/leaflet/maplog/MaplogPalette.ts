@@ -120,8 +120,13 @@ export class MaplogPalette {
         });
         button.appendChild(svgElement(button.ownerDocument, maplogSvg(def.id, { size: 26 })));
         button.addEventListener('click', () => {
-            if (this.tool?.markId === def.id) this.tool = null;
-            else this.select(def);
+            if (this.tool?.markId === def.id) {
+                // Clicking the armed mark again disarms it.
+                this.tool = null;
+                this.host.onChange(null);
+            } else {
+                this.select(def);
+            }
             this.render();
         });
     }
