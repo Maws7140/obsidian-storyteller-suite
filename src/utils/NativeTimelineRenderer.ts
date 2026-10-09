@@ -11,7 +11,7 @@ import { parseToAbsoluteDay, formatAbsoluteDay, formatCalendarYear } from '../ca
 import { daysInYear, fromAbsolute, monthsInYear, normalYearLength, toAbsolute } from '../calendar/CalendarEngine';
 import type { CalendarSystem } from '../calendar/types';
 import { chooseSnapResolution, generateTicks, snapDay, snapSlots, stepDay } from '../calendar/TimelineAxis';
-import type { AxisView, SnapResolution } from '../calendar/TimelineAxis';
+import type { AxisTick, AxisView, SnapResolution } from '../calendar/TimelineAxis';
 import { isEventInFork, isEventLinkedToFork, isEventOnMain, orderForksByParent } from './ForkVisibility';
 import { chooseConnectorEnds } from './ConnectorGeometry';
 import { placeAlternatingTimelineCards } from './TimelineCardLayout';
@@ -1170,33 +1170,48 @@ export class NativeTimelineRenderer {
         ctx.fillStyle = this.css('--text-muted', '#9ca3af');
         ctx.font = `12px ${this.css('--font-interface', 'sans-serif')}`;
         const plotWidth = Math.max(1, width - SIDEBAR_WIDTH);
-        const span = this.viewEnd - this.viewStart;
         const calendar = this.calendarRegistry.getActiveCalendar();
-        if (calendar.id !== GREGORIAN_CALENDAR.id) {
-            const startDay = this.viewStart / DAY_MS + this.unixEpochAbsoluteDay();
-            const endDay = this.viewEnd / DAY_MS + this.unixEpochAbsoluteDay();
-            const ticks = generateTicks(calendar, { startDay, endDay, widthPx: plotWidth }, Math.max(2, Math.floor(plotWidth / 120)));
-            ctx.strokeStyle = this.css('--background-modifier-border', '#374151');
-            ticks.forEach(tick => {
-                const x = SIDEBAR_WIDTH + tick.x;
-                ctx.beginPath(); ctx.moveTo(x, axisHeight); ctx.lineTo(x, this.viewportHeight()); ctx.stroke();
-                ctx.fillText(tick.label, x + 5, 25);
-            });
-            ctx.strokeRect(0, 0, width, axisHeight);
-            return;
-        }
-        const desired = Math.max(2, Math.floor(plotWidth / 120));
-        const rawStep = span / desired;
-        const step = this.niceTimeStep(rawStep);
-        const first = Math.ceil(this.viewStart / step) * step;
+        // Every calendar, Gregorian included, takes its ticks from generateTicks.
+        // Stepping fixed millisecond multiples from the Unix epoch put ticks on
+        // Dec 31 and drifted them off the calendar (labels read "2020 2024 2029").
+        const startDay = this.viewStart / DAY_MS + this.unixEpochAbsoluteDay();
+        const endDay = this.viewEnd / DAY_MS + this.unixEpochAbsoluteDay();
+        const ticks = generateTicks(calendar, { startDay, endDay, widthPx: plotWidth }, Math.max(2, Math.floor(plotWidth / 120)));
         ctx.strokeStyle = this.css('--background-modifier-border', '#374151');
         ctx.lineWidth = 1;
-        for (let time = first; time < this.viewEnd; time += step) {
-            const x = this.timeToX(time, width);
+        // Labels are dropped rather than drawn over each other. Gridlines stay
+        // on every tick so the axis still reads correctly when labels thin out.
+        let previousRight = Number.NEGATIVE_INFINITY;
+        ticks.forEach((tick, index) => {
+            const x = SIDEBAR_WIDTH + tick.x;
             ctx.beginPath(); ctx.moveTo(x, axisHeight); ctx.lineTo(x, this.viewportHeight()); ctx.stroke();
-            ctx.fillText(this.formatTick(time, step), x + 5, 25);
-        }
+            const label = this.axisTickLabel(calendar, tick, index);
+            const labelLeft = x + 5;
+            const labelWidth = ctx.measureText(label).width;
+            if (labelLeft < previousRight + 10) return;
+            ctx.fillText(label, labelLeft, 25);
+            previousRight = labelLeft + labelWidth;
+        });
         ctx.strokeRect(0, 0, width, axisHeight);
+    }
+
+    /**
+     * Label for one chronology tick. Month and day ticks carry their year, and
+     * the first tick in view always names its month, so a bare "January" or "15"
+     * cannot be read against the wrong year. Matches the horizontal timeline.
+     */
+    private axisTickLabel(calendar: CalendarSystem, tick: AxisTick, index: number): string {
+        const tickDate = fromAbsolute(calendar, { absoluteDay: tick.absoluteDay });
+        const year = this.calendarYearLabel(calendar, tickDate.year);
+        let label = tick.label;
+        if (tick.level === 'month' && !label.includes(year)) label = `${label} ${year}`;
+        else if (tick.level === 'day' && index === 0 && !label.includes(year)) label = `${label}, ${year}`;
+        else if ((tick.level === 'hour' || tick.level === 'minute') && index === 0) {
+            const monthDef = monthsInYear(calendar, tickDate.year)[tickDate.month];
+            const month = monthDef?.abbr || monthDef?.name || '';
+            label = `${month} ${tickDate.day}, ${year} ${label}`.trim();
+        }
+        return label;
     }
 
     private axisHeight(): number {
@@ -2897,8 +2912,6 @@ export class NativeTimelineRenderer {
         }
         return low;
     }
-    private niceTimeStep(raw: number): number { const units = [60_000, 5 * 60_000, 15 * 60_000, 3_600_000, 6 * 3_600_000, DAY_MS, 7 * DAY_MS, 30 * DAY_MS, 90 * DAY_MS, YEAR_MS, 5 * YEAR_MS, 10 * YEAR_MS, 100 * YEAR_MS, 1000 * YEAR_MS]; return units.find(unit => unit >= raw) || Math.ceil(raw / (1000 * YEAR_MS)) * 1000 * YEAR_MS; }
-    private formatTick(value: number, step: number): string { const date = new Date(value); if (step >= YEAR_MS) return String(date.getUTCFullYear()); if (step >= DAY_MS) return date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: step < 30 * DAY_MS ? 'numeric' : undefined, timeZone: 'UTC' }); return date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }); }
     private searchScore(event: Event, query: string): number { const name = event.name.toLowerCase(); const all = [event.name, event.description, event.location, event.status, ...(event.characters || []), ...(event.groups || []), ...(event.tags || [])].filter(Boolean).join(' ').toLowerCase(); if (!all.includes(query)) return -1; if (name === query) return 1000; if (name.startsWith(query)) return 800; if (name.includes(query)) return 500; return 100; }
     /**
      * Dependency arrow from one item to another.
