@@ -580,6 +580,8 @@ export interface ImportPorts {
 	saveLocation(location: Location): Promise<void>;
 	savePlotItem(item: PlotItem): Promise<void>;
 	createGroup(name: string): Promise<Group>;
+	/** Finds a group of the active story by name, so a retry reuses a faction that was already created. */
+	findGroupByName?(name: string): Promise<Group | undefined>;
 	saveGroup(group: Group): Promise<void>;
 	saveSession(session: CampaignSession): Promise<void>;
 	writeSessionLog(session: CampaignSession, body: string): Promise<void>;
@@ -590,6 +592,8 @@ export interface ImportApplyResult {
 	updated: number;
 	sessions: number;
 	errors: string[];
+	/** Ids of the plan items that were saved. A caller can drop these before retrying the rest. */
+	succeeded: string[];
 }
 
 function errorText(error: unknown): string {
@@ -626,7 +630,7 @@ function sessionForSave(planned: PlannedSession, characterIds: Map<string, strin
  * reported and the rest still run. Nothing is deleted.
  */
 export async function applyImportPlan(plan: ImportPlan, selectedIds: ReadonlySet<string>, ports: ImportPorts): Promise<ImportApplyResult> {
-	const result: ImportApplyResult = { created: 0, updated: 0, sessions: 0, errors: [] };
+	const result: ImportApplyResult = { created: 0, updated: 0, sessions: 0, errors: [], succeeded: [] };
 	const characterIds = new Map(plan.knownCharacterIds);
 	const groupIds = new Map(plan.knownGroupIds);
 	const selected = plan.items.filter((item) => selectedIds.has(item.id));
@@ -651,6 +655,13 @@ export async function applyImportPlan(plan: ImportPlan, selectedIds: ReadonlySet
 						await ports.saveGroup(payload.group);
 						groupIds.set(keyOf(payload.name), payload.group.id);
 					} else {
+						// A faction created by an earlier run (double click or retry) is reused, not created again
+						const existingId = groupIds.get(keyOf(payload.name))
+							?? (await ports.findGroupByName?.(payload.name))?.id;
+						if (existingId) {
+							groupIds.set(keyOf(payload.name), existingId);
+							break;
+						}
 						const created = await ports.createGroup(payload.name);
 						if (payload.status) await ports.saveGroup({ ...created, status: payload.status });
 						groupIds.set(keyOf(payload.name), created.id);
@@ -662,6 +673,7 @@ export async function applyImportPlan(plan: ImportPlan, selectedIds: ReadonlySet
 			}
 			if (item.action === 'create') result.created++;
 			else result.updated++;
+			result.succeeded.push(item.id);
 		} catch (error) {
 			result.errors.push(`${item.name}: ${errorText(error)}`);
 		}
@@ -674,6 +686,7 @@ export async function applyImportPlan(plan: ImportPlan, selectedIds: ReadonlySet
 			await ports.saveSession(session);
 			await ports.writeSessionLog(session, item.payload.planned.body);
 			result.sessions++;
+			result.succeeded.push(item.id);
 		} catch (error) {
 			result.errors.push(`${item.name}: ${errorText(error)}`);
 		}
