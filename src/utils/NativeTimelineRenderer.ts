@@ -2578,7 +2578,16 @@ export class NativeTimelineRenderer {
         const where = event.location ? this.resolveLocationName(event.location) : '';
         if (where) tooltip.createDiv({ cls: 'sts-native-timeline-tooltip-meta', text: `@ ${where}` });
 
-        if (this.lanes.length > 1 && item.laneLabel) {
+        const people = (event.characters || []).map(value => this.resolveCharacterName(value));
+        if (people.length) {
+            const shown = people.slice(0, 3).join(', ');
+            const more = people.length > 3 ? ` and ${people.length - 3} more` : '';
+            tooltip.createDiv({ cls: 'sts-native-timeline-tooltip-meta', text: `With: ${shown}${more}` });
+        }
+
+        // Grouped by location, the lane is the same place as the line above, so
+        // repeating it only adds noise. Other groupings keep the lane line.
+        if (this.lanes.length > 1 && item.laneLabel && item.laneLabel !== where) {
             tooltip.createDiv({ cls: 'sts-native-timeline-tooltip-meta', text: item.laneLabel });
         }
 

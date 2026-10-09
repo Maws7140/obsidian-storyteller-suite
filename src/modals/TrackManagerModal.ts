@@ -301,7 +301,7 @@ export class TrackManagerModal extends Modal {
 
         // Milestones only
         new Setting(containerEl)
-            .setName(t('milestonesOnly') || 'Milestones Only')
+            .setName(t('milestonesOnly') || 'Milestones only')
             .addToggle(toggle => {
                 toggle
                     .setValue(track.filterCriteria?.milestonesOnly || false)
