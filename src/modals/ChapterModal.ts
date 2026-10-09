@@ -15,6 +15,8 @@ import { EntityCustomFieldsEditor, customFieldEditorOptions } from './entity/Ent
 import { ResponsiveModal } from './ResponsiveModal';
 import { confirmWithModal } from './ui/ConfirmModal';
 import { isModalFieldVisible } from './entity/ModalFieldVisibility';
+import { createCollapsibleModalSection } from './entity/CollapsibleModalSection';
+import { sanitizeCustomFieldDefinitions } from './entity/CustomFieldDefinitions';
 
 export type ChapterModalSubmitCallback = (ch: Chapter) => Promise<void>;
 export type ChapterModalDeleteCallback = (ch: Chapter) => Promise<void>;
@@ -55,6 +57,11 @@ export class ChapterModal extends ResponsiveModal {
      */
     private shows(fieldKey: string): boolean {
         return isModalFieldVisible(this.plugin.settings.hiddenModalFields, 'chapter', fieldKey);
+    }
+
+    /** Whether the vault defines any typed fields for chapters. */
+    private hasDefinedFields(): boolean {
+        return sanitizeCustomFieldDefinitions('chapter', this.plugin.getCustomFieldDefinitions('chapter')).length > 0;
     }
 
     onOpen(): void { void (async () => {
@@ -163,6 +170,7 @@ export class ChapterModal extends ResponsiveModal {
                 );
         }
 
+        // --- Core fields: flat at the top, always shown unless hidden in settings ---
         new Setting(contentEl)
             .setName(t('name'))
             .addText(text => text
@@ -185,65 +193,7 @@ export class ChapterModal extends ResponsiveModal {
                 );
         }
 
-        if (this.shows('tags')) {
-            new Setting(contentEl)
-                .setName(t('tags') || 'Tags')
-                .addText(text => text
-                    .setPlaceholder(t('tagsPh'))
-                    .setValue((this.chapter.tags || []).join(', '))
-                    .onChange(v => {
-                        const arr = v.split(',').map(s => s.trim()).filter(Boolean);
-                        this.chapter.tags = arr.length ? arr : undefined;
-                    })
-                );
-        }
-
-        if (this.shows('profileImage')) {
-            let imageDescEl: HTMLElement | null = null;
-            const profileImageSetting = new Setting(contentEl)
-                .setName(t('profileImage'))
-                .then(s => {
-                    imageDescEl = s.descEl.createEl('small', { text: t('currentValue', this.chapter.profileImagePath || t('none')) });
-                    s.descEl.addClass('storyteller-modal-setting-vertical');
-                });
-        
-            // Add image selection buttons (Gallery, Upload, Vault, Clear)
-            addImageSelectionButtons(
-                profileImageSetting,
-                this.app,
-                this.plugin,
-                {
-                    currentPath: this.chapter.profileImagePath,
-                    onSelect: (path) => {
-                        this.chapter.profileImagePath = path;
-                    },
-                    descriptionEl: imageDescEl || undefined
-                }
-            );
-        }
-
-        if (this.shows('summary')) {
-            new Setting(contentEl)
-                .setName(t('summary') || 'Summary')
-                .setClass('storyteller-modal-setting-vertical')
-                .addTextArea((ta: TextAreaComponent) => {
-                    ta.setPlaceholder(t('briefChapterSummaryPh'))
-                      .setValue(this.chapter.summary || '')
-                      .onChange(v => this.chapter.summary = v);
-                    ta.inputEl.rows = 10;
-                });
-        }
-
-        // Custom fields (add only)
-        this.customFieldsEditor.setFields((this.chapter as ChapterWithCustomFields).customFields || {});
-        this.customFieldsEditor.renderDefinedFields(contentEl);
-        if (this.shows('customFields')) {
-            this.customFieldsEditor.renderFreeFormSection(contentEl);
-        }
-
-        // Book assignment
         if (this.shows('bookId')) {
-            contentEl.createEl('h3', { text: 'Book' });
             const books = await this.plugin.listBooks();
             new Setting(contentEl)
                 .setName('Assign to book')
@@ -267,13 +217,47 @@ export class ChapterModal extends ResponsiveModal {
                 });
         }
 
-        // Linked entities
-        if (['linkedCharacters', 'linkedLocations', 'linkedEvents', 'linkedItems', 'linkedGroups'].some(k => this.shows(k))) {
-            contentEl.createEl('h3', { text: t('links') });
+        if (this.shows('summary')) {
+            new Setting(contentEl)
+                .setName(t('summary') || 'Summary')
+                .setClass('storyteller-modal-setting-vertical')
+                .addTextArea((ta: TextAreaComponent) => {
+                    ta.setPlaceholder(t('briefChapterSummaryPh'))
+                      .setValue(this.chapter.summary || '')
+                      .onChange(v => this.chapter.summary = v);
+                    ta.inputEl.rows = 10;
+                });
         }
 
-        if (this.shows('linkedCharacters')) {
-            const charactersSetting = new Setting(contentEl)
+        // --- Your fields: typed definitions, open whenever any exist ---
+        this.customFieldsEditor.setFields((this.chapter as ChapterWithCustomFields).customFields || {});
+        const definedSection = this.hasDefinedFields()
+            ? createCollapsibleModalSection(contentEl, {
+                title: 'Your fields',
+                description: 'Typed fields defined for chapters in settings',
+                icon: 'list-checks',
+                open: true,
+            })
+            : null;
+        if (definedSection) this.customFieldsEditor.renderDefinedFields(definedSection);
+
+        // --- Links ---
+        const showsLinks = ['linkedCharacters', 'linkedLocations', 'linkedEvents', 'linkedItems', 'linkedGroups'].some(k => this.shows(k));
+        const linksSection = showsLinks
+            ? createCollapsibleModalSection(contentEl, {
+                title: t('links'),
+                description: 'Characters, places, events, items and groups in this chapter',
+                icon: 'link',
+                open: Boolean(
+                    this.chapter.linkedCharacters?.length || this.chapter.linkedLocations?.length
+                    || this.chapter.linkedEvents?.length || this.chapter.linkedItems?.length
+                    || this.chapter.linkedGroups?.length
+                ),
+            })
+            : null;
+
+        if (linksSection && this.shows('linkedCharacters')) {
+            const charactersSetting = new Setting(linksSection)
                 .setName(t('characters'));
             const charactersListEl = charactersSetting.controlEl.createDiv('storyteller-modal-linked-entities');
             this.renderLinkedEntities(charactersListEl, this.chapter.linkedCharacters, 'characters');
@@ -286,8 +270,8 @@ export class ChapterModal extends ResponsiveModal {
             }));
         }
 
-        if (this.shows('linkedLocations')) {
-            const locationsSetting = new Setting(contentEl)
+        if (linksSection && this.shows('linkedLocations')) {
+            const locationsSetting = new Setting(linksSection)
                 .setName(t('locations'));
             const locationsListEl = locationsSetting.controlEl.createDiv('storyteller-modal-linked-entities');
             this.renderLinkedEntities(locationsListEl, this.chapter.linkedLocations, 'locations');
@@ -301,8 +285,8 @@ export class ChapterModal extends ResponsiveModal {
             }));
         }
 
-        if (this.shows('linkedEvents')) {
-            const eventsSetting = new Setting(contentEl)
+        if (linksSection && this.shows('linkedEvents')) {
+            const eventsSetting = new Setting(linksSection)
                 .setName(t('events'));
             const eventsListEl = eventsSetting.controlEl.createDiv('storyteller-modal-linked-entities');
             this.renderLinkedEntities(eventsListEl, this.chapter.linkedEvents, 'events');
@@ -315,8 +299,8 @@ export class ChapterModal extends ResponsiveModal {
             }));
         }
 
-        if (this.shows('linkedItems')) {
-            const itemsSetting = new Setting(contentEl)
+        if (linksSection && this.shows('linkedItems')) {
+            const itemsSetting = new Setting(linksSection)
                 .setName(t('items'));
             const itemsListEl = itemsSetting.controlEl.createDiv('storyteller-modal-linked-entities');
             this.renderLinkedEntities(itemsListEl, this.chapter.linkedItems, 'items');
@@ -330,8 +314,8 @@ export class ChapterModal extends ResponsiveModal {
             }));
         }
 
-        if (this.shows('linkedGroups')) {
-            const groupsSetting = new Setting(contentEl)
+        if (linksSection && this.shows('linkedGroups')) {
+            const groupsSetting = new Setting(linksSection)
                 .setName(t('groups'));
             const groupsListEl = groupsSetting.controlEl.createDiv('storyteller-modal-linked-entities');
             this.renderLinkedEntities(groupsListEl, this.chapter.linkedGroups, 'groups');
@@ -342,6 +326,64 @@ export class ChapterModal extends ResponsiveModal {
                     this.renderLinkedEntities(groupsListEl, this.chapter.linkedGroups, 'groups');
                 }).open();
             }));
+        }
+
+        // --- Image and tags ---
+        const mediaSection = this.shows('profileImage') || this.shows('tags')
+            ? createCollapsibleModalSection(contentEl, {
+                title: 'Image and tags',
+                description: 'Cover image and tags for filtering',
+                icon: 'image',
+                open: Boolean(this.chapter.profileImagePath || this.chapter.tags?.length),
+            })
+            : null;
+
+        if (mediaSection && this.shows('tags')) {
+            new Setting(mediaSection)
+                .setName(t('tags') || 'Tags')
+                .addText(text => text
+                    .setPlaceholder(t('tagsPh'))
+                    .setValue((this.chapter.tags || []).join(', '))
+                    .onChange(v => {
+                        const arr = v.split(',').map(s => s.trim()).filter(Boolean);
+                        this.chapter.tags = arr.length ? arr : undefined;
+                    })
+                );
+        }
+
+        if (mediaSection && this.shows('profileImage')) {
+            let imageDescEl: HTMLElement | null = null;
+            const profileImageSetting = new Setting(mediaSection)
+                .setName(t('profileImage'))
+                .then(s => {
+                    imageDescEl = s.descEl.createEl('small', { text: t('currentValue', this.chapter.profileImagePath || t('none')) });
+                    s.descEl.addClass('storyteller-modal-setting-vertical');
+                });
+
+            // Add image selection buttons (Gallery, Upload, Vault, Clear)
+            addImageSelectionButtons(
+                profileImageSetting,
+                this.app,
+                this.plugin,
+                {
+                    currentPath: this.chapter.profileImagePath,
+                    onSelect: (path) => {
+                        this.chapter.profileImagePath = path;
+                    },
+                    descriptionEl: imageDescEl || undefined
+                }
+            );
+        }
+
+        // --- Free-form custom fields ---
+        if (this.shows('customFields')) {
+            const customFieldsSection = createCollapsibleModalSection(contentEl, {
+                title: 'Custom fields',
+                description: 'Additional properties specific to this project',
+                icon: 'list-plus',
+                open: Boolean(Object.keys((this.chapter as ChapterWithCustomFields).customFields || {}).length),
+            });
+            this.customFieldsEditor.renderFreeFormSection(customFieldsSection);
         }
 
         // Buttons
