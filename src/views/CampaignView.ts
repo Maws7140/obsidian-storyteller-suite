@@ -287,6 +287,8 @@ export class CampaignView extends ItemView {
     private quickSubmitInFlight = false;
     /** True while a branch choice is being applied. */
     private choiceInFlight = false;
+    /** True while a party item is being used, so a repeat tap does not apply it again. */
+    private itemUseInFlight = false;
     /** True while a scene change or Back is running. */
     private navigationInFlight = false;
     /** NPC names typed into the quick entry bar for this view. */
@@ -1978,7 +1980,18 @@ export class CampaignView extends ItemView {
 
     // â”€â”€ Item use â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-    private async useItem(itemName: string, session: CampaignSession, _onRebuild: () => void): Promise<void> {
+    private async useItem(itemName: string, session: CampaignSession, onRebuild: () => void): Promise<void> {
+        // A second tap while the first use is running would apply the item again.
+        if (this.itemUseInFlight) return;
+        this.itemUseInFlight = true;
+        try {
+            await this.applyItemUse(itemName, session, onRebuild);
+        } finally {
+            this.itemUseInFlight = false;
+        }
+    }
+
+    private async applyItemUse(itemName: string, session: CampaignSession, _onRebuild: () => void): Promise<void> {
         let allItems: PlotItem[] = [];
         try {
             allItems = await this.plugin.listPlotItems();
