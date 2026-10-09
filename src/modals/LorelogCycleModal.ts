@@ -5,7 +5,7 @@
  * Lorelog by Roberto Bisceglie (Loreseed Workshop), a sibling of Lonelog.
  * Licensed under CC BY-SA 4.0: https://creativecommons.org/licenses/by-sa/4.0/
  */
-import { Notice, Setting } from 'obsidian';
+import { ButtonComponent, Notice, Setting } from 'obsidian';
 import type StorytellerSuitePlugin from '../main';
 import { LORELOG_NAME, appendCycleToWorldLog, listLoreEntities } from '../lore/WorldLog';
 import type { LoreEntityRef } from '../lore/WorldLog';
@@ -126,6 +126,9 @@ export class LorelogCycleModal extends ResponsiveModal {
 	};
 	private rippleList?: HTMLElement;
 	private datalistEl?: HTMLDataListElement;
+	/** True while a cycle is being written, so a second click cannot write the same cycle again. */
+	private saving = false;
+	private addButton?: ButtonComponent;
 
 	constructor(plugin: StorytellerSuitePlugin) {
 		super(plugin.app);
@@ -238,10 +241,14 @@ export class LorelogCycleModal extends ResponsiveModal {
 				area.setValue(this.form.followUpLines.join('\n')).onChange((v) => { this.form.followUpLines = lines(v); });
 			});
 
-		new Setting(contentEl).addButton((button) => button
-			.setButtonText('Add cycle')
-			.setCta()
-			.onClick(() => { void this.save(); }));
+		new Setting(contentEl).addButton((button) => {
+			this.addButton = button;
+			button
+				.setButtonText('Add cycle')
+				.setCta()
+				.setDisabled(this.saving)
+				.onClick(() => { void this.save(); });
+		});
 	}
 
 	private entityNamesFor(type: string): string[] {
@@ -288,16 +295,21 @@ export class LorelogCycleModal extends ResponsiveModal {
 
 	private async save(): Promise<void> {
 		const form = this.form;
+		if (this.saving) return;
 		if (!cycleFromForm(form, 'C0')) {
 			new Notice('Add a question, a fact, a friction or a ripple first.');
 			return;
 		}
+		this.saving = true;
+		this.addButton?.setDisabled(true);
 		try {
 			const id = await appendCycleToWorldLog(this.plugin, (cycleId) => cycleFromForm(form, cycleId) ?? emptyLorelogCycle({ id: cycleId }));
 			new Notice(`Added ${id} to the world log.`);
 			this.close();
 		} catch {
 			new Notice(`Could not write to the ${LORELOG_NAME} world log.`);
+			this.saving = false;
+			this.addButton?.setDisabled(false);
 		}
 	}
 }

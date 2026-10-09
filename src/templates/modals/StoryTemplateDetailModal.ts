@@ -234,23 +234,7 @@ export class StoryTemplateDetailModal extends Modal {
     private renderFooter(container: HTMLElement): void {
         const footer = container.createDiv('storyteller-template-footer');
 
-        // Application mode selector
-        const modeSection = footer.createDiv('storyteller-mode-section');
-        modeSection.createEl('label', { text: 'Application mode:' });
-
-        const modeRadios = modeSection.createDiv('storyteller-radio-group');
-
-        const mergeRadio = modeRadios.createEl('label');
-        const mergeInput = mergeRadio.createEl('input', { type: 'radio', value: 'merge' });
-        mergeInput.setAttribute('name', 'applyMode');
-        mergeInput.checked = true;
-        mergeRadio.createSpan().setText(' Merge with existing story');
-
-        const replaceRadio = modeRadios.createEl('label');
-        const replaceInput = replaceRadio.createEl('input', { type: 'radio', value: 'replace' });
-        replaceInput.setAttribute('name', 'applyMode');
-        replaceRadio.createSpan().setText(' Replace current story');
-
+        // Templates are always merged into the active story. Replacing a story is not supported.
         // Actions
         const actions = footer.createDiv('storyteller-template-actions');
 
@@ -299,13 +283,8 @@ export class StoryTemplateDetailModal extends Modal {
             });
     }
 
-    private getApplyMode(): 'merge' | 'replace' {
-        const modeInput = this.contentEl.querySelector('input[name="applyMode"]:checked') as HTMLInputElement | null;
-        return (modeInput?.value || 'merge') as 'merge' | 'replace';
-    }
-
     private async applyTemplate(): Promise<void> {
-        await this.runApplication(this.template, this.getApplyMode());
+        await this.runApplication(this.template);
     }
 
     /**
@@ -342,7 +321,6 @@ export class StoryTemplateDetailModal extends Modal {
             return;
         }
 
-        const mode = this.getApplyMode();
         this.close();
 
         new TemplateApplicationModal(
@@ -350,7 +328,7 @@ export class StoryTemplateDetailModal extends Modal {
             this.plugin,
             this.template,
             (variableValues, entityFileNames, linkSelections, includeEntities) => {
-                void this.applyCustomized(mode, variableValues, entityFileNames, linkSelections, includeEntities);
+                void this.applyCustomized(variableValues, entityFileNames, linkSelections, includeEntities);
             },
             () => {
                 // Cancelled: return to the detail view
@@ -366,14 +344,13 @@ export class StoryTemplateDetailModal extends Modal {
     }
 
     private async applyCustomized(
-        mode: 'merge' | 'replace',
         variableValues: Record<string, TemplateVariableValue>,
         entityFileNames: EntityFileName[],
         linkSelections?: ExistingEntityLinkSelections,
         includeEntities?: TemplateEntitySelection
     ): Promise<void> {
         const customized = createCustomizedTemplateCopy(this.template, variableValues);
-        await this.runApplication(customized, mode, {
+        await this.runApplication(customized, {
             variableValues,
             existingEntityLinkSelections: linkSelections,
             includeEntities,
@@ -383,7 +360,6 @@ export class StoryTemplateDetailModal extends Modal {
 
     private async runApplication(
         template: Template,
-        mode: 'merge' | 'replace',
         extraOptions: Pick<
             TemplateApplicationOptions,
             'variableValues' | 'existingEntityLinkSelections' | 'includeEntities' | 'fieldOverrides'
@@ -396,12 +372,6 @@ export class StoryTemplateDetailModal extends Modal {
             return;
         }
 
-        // Confirm if replacing
-        if (mode === 'replace') {
-            const confirmed = await this.confirmReplace();
-            if (!confirmed) return;
-        }
-
         this.close();
 
         // Show progress notice
@@ -412,8 +382,8 @@ export class StoryTemplateDetailModal extends Modal {
             const applicator = new TemplateApplicator(this.plugin);
             const options: TemplateApplicationOptions = {
                 storyId: activeStoryId,
-                mode,
-                mergeRelationships: mode === 'merge',
+                mode: 'merge',
+                mergeRelationships: true,
                 ...extraOptions
             };
 
@@ -439,39 +409,6 @@ export class StoryTemplateDetailModal extends Modal {
             const message = error instanceof Error ? error.message : String(error);
             new Notice(`Error applying template: ${message}`, 8000);
         }
-    }
-
-    private async confirmReplace(): Promise<boolean> {
-        return new Promise((resolve) => {
-            const confirmModal = new Modal(this.app);
-            confirmModal.contentEl.createEl('h2', { text: '⚠️ replace story?' });
-            confirmModal.contentEl.createEl('p', {
-                text: 'This will delete all existing entities in the current story and replace them with the template. This action cannot be undone!'
-            });
-            confirmModal.contentEl.createEl('p', {
-                text: 'Are you sure you want to proceed?',
-                cls: 'mod-warning'
-            });
-
-            const buttonContainer = confirmModal.contentEl.createDiv('modal-button-container');
-
-            new ButtonComponent(buttonContainer)
-                .setButtonText('Cancel')
-                .onClick(() => {
-                    confirmModal.close();
-                    resolve(false);
-                });
-
-            new ButtonComponent(buttonContainer)
-                .setButtonText('Replace story')
-                .setWarning()
-                .onClick(() => {
-                    confirmModal.close();
-                    resolve(true);
-                });
-
-            confirmModal.open();
-        });
     }
 
     onClose(): void {

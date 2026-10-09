@@ -684,10 +684,17 @@ export class TemplateStorageManager {
         let template = exportData.template;
 
         if (generateNewId) {
+            // Importing the same file again would add another copy of the same template
+            const existing = this.findExistingUserCopy(exportData.template);
+            if (existing) {
+                throw new Error(`"${existing.name}" is already in your library. Import skipped.`);
+            }
+
             // Generate new ID to avoid conflicts
             template = {
                 ...template,
                 id: `imported-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
+                parentTemplateId: exportData.template.id,
                 isBuiltIn: false,
                 isEditable: true,
                 created: new Date().toISOString(),
@@ -719,23 +726,63 @@ export class TemplateStorageManager {
     }
 
     /**
+     * Find a user template that is the same template as the given one: the same id, a copy
+     * made from it on import, or the same name and version.
+     */
+    findExistingUserCopy(source: Template): Template | undefined {
+        return this.getAllTemplates().find(t =>
+            !t.isBuiltIn &&
+            (t.id === source.id ||
+                t.parentTemplateId === source.id ||
+                (t.name === source.name && (t.version ?? '') === (source.version ?? '')))
+        );
+    }
+
+    /**
      * Increment template usage count
      */
     async incrementUsageCount(templateId: string): Promise<void> {
-        const template = this.getTemplate(templateId);
-        if (!template) return;
+        const cached = this.getTemplate(templateId);
+        if (!cached) return;
 
-        // Update usage count and last used
-        template.usageCount = (template.usageCount || 0) + 1;
-        template.lastUsed = new Date().toISOString();
-
-        // Save if it's a user template
-        if (!template.isBuiltIn) {
-            await this.saveTemplate(template);
+        if (cached.isBuiltIn) {
+            // Built-in templates are never persisted; keep usage in memory only.
+            cached.usageCount = (cached.usageCount || 0) + 1;
+            cached.lastUsed = new Date().toISOString();
+            return;
         }
 
-        // Update cache
-        this.userTemplates.set(templateId, template);
+        // The cached object may carry unsaved edits (for example, from an editor that was cancelled),
+        // so usage is recorded on a fresh copy of the persisted template. Only usage fields change.
+        const persisted = await this.readPersistedUserTemplate(templateId);
+        if (!persisted) {
+            cached.usageCount = (cached.usageCount || 0) + 1;
+            cached.lastUsed = new Date().toISOString();
+            return;
+        }
+
+        await this.saveTemplate({
+            ...persisted,
+            usageCount: (persisted.usageCount || 0) + 1,
+            lastUsed: new Date().toISOString(),
+        });
+    }
+
+    /**
+     * Read the template as currently stored in the vault, bypassing the in-memory cache.
+     */
+    private async readPersistedUserTemplate(templateId: string): Promise<Template | null> {
+        for (const candidatePath of this.getTemplateCandidatePaths(templateId)) {
+            const file = this.app.vault.getAbstractFileByPath(candidatePath);
+            if (file instanceof TFile) {
+                try {
+                    return JSON.parse(await this.app.vault.read(file)) as Template;
+                } catch {
+                    return null;
+                }
+            }
+        }
+        return null;
     }
 
     /**

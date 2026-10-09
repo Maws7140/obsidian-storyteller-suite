@@ -5,7 +5,7 @@
  * Lorelog by Roberto Bisceglie (Loreseed Workshop), a sibling of Lonelog.
  * Licensed under CC BY-SA 4.0: https://creativecommons.org/licenses/by-sa/4.0/
  */
-import { Notice, Setting } from 'obsidian';
+import { ButtonComponent, Notice, Setting } from 'obsidian';
 import type StorytellerSuitePlugin from '../main';
 import { LORELOG_NAME, createLoreEntity, saveLoreEntityDescription } from '../lore/WorldLog';
 import type { LoreEntityRef } from '../lore/WorldLog';
@@ -25,6 +25,9 @@ export class LorelogSyncModal extends ResponsiveModal {
 	private refs: LoreEntityRef[];
 	private selected = new Set<string>();
 	private onApplied: () => void;
+	/** True while the selected changes are being written, so a second click cannot repeat them. */
+	private applying = false;
+	private applyButton?: ButtonComponent;
 
 	constructor(plugin: StorytellerSuitePlugin, plan: LorelogSyncPlan, refs: LoreEntityRef[], onApplied: () => void) {
 		super(plugin.app);
@@ -68,10 +71,14 @@ export class LorelogSyncModal extends ResponsiveModal {
 		}
 
 		new Setting(contentEl)
-			.addButton((button) => button
-				.setButtonText('Apply selected')
-				.setCta()
-				.onClick(() => { void this.apply(); }))
+			.addButton((button) => {
+				this.applyButton = button;
+				button
+					.setButtonText('Apply selected')
+					.setCta()
+					.setDisabled(this.applying)
+					.onClick(() => { void this.apply(); });
+			})
 			.addButton((button) => button
 				.setButtonText('Cancel')
 				.onClick(() => this.close()));
@@ -93,6 +100,9 @@ export class LorelogSyncModal extends ResponsiveModal {
 	}
 
 	private async apply(): Promise<void> {
+		if (this.applying) return;
+		this.applying = true;
+		this.applyButton?.setDisabled(true);
 		let written = 0;
 		let failed = 0;
 		for (const item of this.plan.updates) {

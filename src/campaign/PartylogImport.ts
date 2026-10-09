@@ -40,6 +40,8 @@ export interface ImportExistingData {
 	groups: Group[];
 	items: PlotItem[];
 	sessionNames: string[];
+	/** Log bodies already stored in the story's session notes, from `sessionLogBodyOf`. */
+	sessionLogBodies?: string[];
 }
 
 export interface ImportPlanOptions {
@@ -105,10 +107,14 @@ function describeParts(entity: EntityState): string[] {
 	return parts.map((part) => part.trim()).filter((part) => part.length > 0);
 }
 
-/** Adds the parts that a status string does not already list. Returns undefined when nothing is new. */
+/**
+ * Adds the parts that a status string does not already list. Parts are separated by `;` in a status,
+ * and a part may itself contain commas (for example `Allies: Rohan, Gondor`), so whole parts are compared.
+ * Returns undefined when nothing is new.
+ */
 export function mergeStatus(existing: string | undefined, parts: string[]): { value: string; added: string[] } | undefined {
-	const tokens = (existing ?? '').split(/\s*[;,]\s*/).map((token) => token.trim().toLowerCase()).filter((token) => token.length > 0);
-	const added = parts.filter((part) => !tokens.includes(part.toLowerCase()));
+	const listed = (existing ?? '').split(';').map((part) => part.trim().toLowerCase()).filter((part) => part.length > 0);
+	const added = parts.filter((part) => !listed.includes(part.trim().toLowerCase()));
 	if (added.length === 0) return undefined;
 	const base = (existing ?? '').trim();
 	return { value: [base, ...added].filter((part) => part.length > 0).join('; '), added };
@@ -202,6 +208,10 @@ function collectRecords(parsed: ParsedLog): { records: SessionRecord[]; state: P
 		last.interludes = [...last.interludes, ...pending];
 	}
 	return { records, state };
+}
+
+function normalizeLogBody(body: string): string {
+	return body.replace(/\r\n/g, '\n').trim();
 }
 
 function sessionName(record: SessionRecord, index: number, count: number, taken: Set<string>, sourceName?: string): string {
@@ -530,18 +540,22 @@ export function buildImportPlan(text: string, existing: ImportExistingData, opti
 	}
 
 	const takenNames = new Set(existing.sessionNames.map(keyOf));
+	const loggedBodies = new Set((existing.sessionLogBodies ?? []).map(normalizeLogBody).filter((body) => body.length > 0));
 	const count = records.length;
 	records.forEach((record, index) => {
 		const name = sessionName(record, index, count, takenNames, options.sourceName);
 		const plannedSession = buildSessionFields(record, record.stateAfter, name, existing.storyId, createId);
 		const lineCount = plannedSession.body ? plannedSession.body.split('\n').length : 0;
+		// A session whose log is already stored in the story was imported before: leave it unticked
+		const alreadyImported = normalizeLogBody(plannedSession.body).length > 0 && loggedBodies.has(normalizeLogBody(plannedSession.body));
 		items.push({
 			id: `session:${index}`,
 			kind: 'session',
 			action: 'create',
 			name,
-			detail: `${record.scenes.length} scene(s), ${lineCount} body line(s), ${plannedSession.partyMembers.length} party member(s) with HP`,
-			selected: true,
+			detail: `${record.scenes.length} scene(s), ${lineCount} body line(s), ${plannedSession.partyMembers.length} party member(s) with HP`
+				+ (alreadyImported ? '. Already imported: a session with this log is in the story' : ''),
+			selected: !alreadyImported,
 			payload: { kind: 'session', planned: plannedSession },
 		});
 	});
@@ -556,6 +570,16 @@ export function buildImportPlan(text: string, existing: ImportExistingData, opti
 		knownGroupIds,
 		warnings,
 	};
+}
+
+/** Reads the body stored under `## Session Log` in a session note. Returns undefined when there is no such section. */
+export function sessionLogBodyOf(content: string): string | undefined {
+	const heading = '## Session Log';
+	const index = content.indexOf(heading);
+	if (index < 0) return undefined;
+	const rest = content.slice(index + heading.length);
+	const next = rest.search(/\n##\s/);
+	return (next >= 0 ? rest.slice(0, next) : rest).trim();
 }
 
 /** Puts `body` under `## Session Log` in a session note, keeping any later sections. */
@@ -576,6 +600,8 @@ export interface ImportPorts {
 	saveLocation(location: Location): Promise<void>;
 	savePlotItem(item: PlotItem): Promise<void>;
 	createGroup(name: string): Promise<Group>;
+	/** Finds a group of the active story by name, so a retry reuses a faction that was already created. */
+	findGroupByName?(name: string): Promise<Group | undefined>;
 	saveGroup(group: Group): Promise<void>;
 	saveSession(session: CampaignSession): Promise<void>;
 	writeSessionLog(session: CampaignSession, body: string): Promise<void>;
@@ -586,6 +612,8 @@ export interface ImportApplyResult {
 	updated: number;
 	sessions: number;
 	errors: string[];
+	/** Ids of the plan items that were saved. A caller can drop these before retrying the rest. */
+	succeeded: string[];
 }
 
 function errorText(error: unknown): string {
@@ -622,7 +650,7 @@ function sessionForSave(planned: PlannedSession, characterIds: Map<string, strin
  * reported and the rest still run. Nothing is deleted.
  */
 export async function applyImportPlan(plan: ImportPlan, selectedIds: ReadonlySet<string>, ports: ImportPorts): Promise<ImportApplyResult> {
-	const result: ImportApplyResult = { created: 0, updated: 0, sessions: 0, errors: [] };
+	const result: ImportApplyResult = { created: 0, updated: 0, sessions: 0, errors: [], succeeded: [] };
 	const characterIds = new Map(plan.knownCharacterIds);
 	const groupIds = new Map(plan.knownGroupIds);
 	const selected = plan.items.filter((item) => selectedIds.has(item.id));
@@ -647,6 +675,13 @@ export async function applyImportPlan(plan: ImportPlan, selectedIds: ReadonlySet
 						await ports.saveGroup(payload.group);
 						groupIds.set(keyOf(payload.name), payload.group.id);
 					} else {
+						// A faction created by an earlier run (double click or retry) is reused, not created again
+						const existingId = groupIds.get(keyOf(payload.name))
+							?? (await ports.findGroupByName?.(payload.name))?.id;
+						if (existingId) {
+							groupIds.set(keyOf(payload.name), existingId);
+							break;
+						}
 						const created = await ports.createGroup(payload.name);
 						if (payload.status) await ports.saveGroup({ ...created, status: payload.status });
 						groupIds.set(keyOf(payload.name), created.id);
@@ -658,6 +693,7 @@ export async function applyImportPlan(plan: ImportPlan, selectedIds: ReadonlySet
 			}
 			if (item.action === 'create') result.created++;
 			else result.updated++;
+			result.succeeded.push(item.id);
 		} catch (error) {
 			result.errors.push(`${item.name}: ${errorText(error)}`);
 		}
@@ -670,6 +706,7 @@ export async function applyImportPlan(plan: ImportPlan, selectedIds: ReadonlySet
 			await ports.saveSession(session);
 			await ports.writeSessionLog(session, item.payload.planned.body);
 			result.sessions++;
+			result.succeeded.push(item.id);
 		} catch (error) {
 			result.errors.push(`${item.name}: ${errorText(error)}`);
 		}

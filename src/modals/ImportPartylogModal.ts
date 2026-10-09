@@ -3,15 +3,16 @@
  * pick a vault note, preview the planned entities and sessions, untick anything unwanted, then
  * apply. Nothing is deleted, and a failed item does not stop the others.
  */
-import { App, FuzzySuggestModal, Notice, Setting, TFile } from 'obsidian';
+import { App, ButtonComponent, FuzzySuggestModal, Notice, Setting, TFile } from 'obsidian';
 import type StorytellerSuitePlugin from '../main';
 import {
 	LONELOG_NAME,
 	applyImportPlan,
 	buildImportPlan,
+	sessionLogBodyOf,
 	withSessionLogBody,
 } from '../campaign/PartylogImport';
-import type { ImportExistingData, ImportPlan, ImportPlanItem, ImportPorts } from '../campaign/PartylogImport';
+import type { ImportApplyResult, ImportExistingData, ImportPlan, ImportPlanItem, ImportPorts } from '../campaign/PartylogImport';
 import type { CampaignSession } from '../types';
 import { ResponsiveModal } from './ResponsiveModal';
 import { PARTYLOG_NAME } from '../campaign/PartylogExport';
@@ -51,6 +52,8 @@ export class ImportPartylogModal extends ResponsiveModal {
 	private sourceName?: string;
 	private plan?: ImportPlan;
 	private selected = new Set<string>();
+	private applying = false;
+	private importButton?: ButtonComponent;
 
 	constructor(app: App, plugin: StorytellerSuitePlugin) {
 		super(app);
@@ -93,7 +96,15 @@ export class ImportPartylogModal extends ResponsiveModal {
 			this.plugin.listPlotItems().catch(() => [] as import('../types').PlotItem[]),
 			this.plugin.listSessions().catch(() => [] as CampaignSession[]),
 		]);
+		const sessionLogBodies: string[] = [];
+		for (const session of sessions) {
+			const file = session.filePath ? this.app.vault.getAbstractFileByPath(session.filePath) : null;
+			if (!(file instanceof TFile)) continue;
+			const body = sessionLogBodyOf(await this.app.vault.cachedRead(file));
+			if (body) sessionLogBodies.push(body);
+		}
 		return {
+			sessionLogBodies,
 			storyId: this.plugin.getActiveStory()?.id ?? '',
 			characters,
 			locations,
@@ -111,7 +122,7 @@ export class ImportPartylogModal extends ResponsiveModal {
 		}
 		const existing = await this.loadExisting();
 		this.plan = buildImportPlan(text, existing, { sourceName: this.sourceName });
-		this.selected = new Set(this.plan.items.map((item) => item.id));
+		this.selected = new Set(this.plan.items.filter((item) => item.selected).map((item) => item.id));
 		this.renderPlan();
 	}
 
@@ -138,10 +149,14 @@ export class ImportPartylogModal extends ResponsiveModal {
 						else this.selected.delete(item.id);
 					}));
 		}
-		new Setting(container).addButton((button) => button
-			.setButtonText('Import selected')
-			.setCta()
-			.onClick(() => { void this.apply(); }));
+		new Setting(container).addButton((button) => {
+			this.importButton = button;
+			button
+				.setButtonText('Import selected')
+				.setCta()
+				.setDisabled(this.applying)
+				.onClick(() => { void this.apply(); });
+		});
 	}
 
 	private ports(): ImportPorts {
@@ -151,6 +166,10 @@ export class ImportPartylogModal extends ResponsiveModal {
 			saveLocation: (location) => plugin.saveLocation(location),
 			savePlotItem: (item) => plugin.savePlotItem(item),
 			createGroup: (name) => plugin.createGroup(name),
+			findGroupByName: async (name) => {
+				const key = name.trim().toLowerCase();
+				return plugin.getGroups().find((group) => group.name.trim().toLowerCase() === key);
+			},
 			saveGroup: (group) => plugin.saveGroupFull(group),
 			saveSession: (session) => plugin.saveSession(session),
 			writeSessionLog: async (session, body) => {
@@ -163,14 +182,25 @@ export class ImportPartylogModal extends ResponsiveModal {
 
 	private async apply(): Promise<void> {
 		const plan = this.plan;
-		if (!plan) return;
-		const result = await applyImportPlan(plan, this.selected, this.ports());
+		// A second click while the first run is still writing would create everything twice
+		if (!plan || this.applying) return;
+		this.applying = true;
+		this.importButton?.setDisabled(true);
+		let result: ImportApplyResult;
+		try {
+			result = await applyImportPlan(plan, this.selected, this.ports());
+		} finally {
+			this.applying = false;
+		}
 		new Notice(`Imported: ${result.created} created, ${result.updated} updated, ${result.sessions} session(s).${result.errors.length ? ` ${result.errors.length} failed.` : ''}`);
 		for (const error of result.errors) console.error(`Partylog import: ${error}`);
 		if (result.errors.length === 0) {
 			this.close();
 			return;
 		}
+		// Items that were saved are unticked, so a retry only repeats the ones that failed
+		for (const id of result.succeeded) this.selected.delete(id);
+		this.renderPlan();
 		const errorList = this.previewEl?.createDiv('storyteller-partylog-import-errors');
 		errorList?.createEl('h4', { text: 'Some items failed' });
 		for (const error of result.errors) errorList?.createEl('p', { text: error });
