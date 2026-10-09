@@ -53,6 +53,7 @@ function isMouseDoubleClick(event: MouseEvent | undefined): boolean {
 export class MaplogEditor {
     private tool: MaplogToolState | null = null;
     private points: L.LatLng[] = [];
+    private finishing = false;
     private preview: L.Polyline | null = null;
     private bound: L.Map | null = null;
     private zoomWasEnabled: boolean | null = null;
@@ -159,11 +160,14 @@ export class MaplogEditor {
         await this.commit(removeMaplogItem(this.host.getData(), ref));
     }
 
-    private async commit(next: MaplogData): Promise<void> {
+    /** Resolves true when the save committed, false (after a Notice) when it failed. */
+    private async commit(next: MaplogData): Promise<boolean> {
         try {
             await this.host.save(next);
+            return true;
         } catch (error) {
             new Notice(`Maplog could not save: ${error instanceof Error ? error.message : String(error)}`);
+            return false;
         }
     }
 
@@ -282,6 +286,17 @@ export class MaplogEditor {
     }
 
     private async finishDraft(): Promise<void> {
+        // Points stay until the save commits, so a second Finish during the save must not commit them again.
+        if (this.finishing) return;
+        this.finishing = true;
+        try {
+            await this.commitDraft();
+        } finally {
+            this.finishing = false;
+        }
+    }
+
+    private async commitDraft(): Promise<void> {
         const tool = this.tool;
         if (!tool || this.points.length === 0) return;
         const latlngs: MaplogLatLng[] = this.points.map(p => [p.lat, p.lng]);
@@ -292,8 +307,8 @@ export class MaplogEditor {
                 new Notice(area);
                 return;
             }
-            this.cancelDraft();
-            await this.commit({ ...data, areas: [...data.areas, area] });
+            // Keep the points until the save commits so a failed save can be retried.
+            if (await this.commit({ ...data, areas: [...data.areas, area] })) this.cancelDraft();
             return;
         }
         const line = createMaplogLine(tool, latlngs, data);
@@ -301,8 +316,8 @@ export class MaplogEditor {
             new Notice(line);
             return;
         }
-        this.cancelDraft();
-        await this.commit({ ...data, lines: [...data.lines, line] });
+        // Keep the points until the save commits so a failed save can be retried.
+        if (await this.commit({ ...data, lines: [...data.lines, line] })) this.cancelDraft();
     }
 
     private cancelDraft(): void {
