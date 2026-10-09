@@ -32,6 +32,11 @@ function harness(processFrontMatter: FrontMatterWriter) {
 
 // Maplog data as the editor passes it to save(): { marks, lines, areas }.
 const markOf = (x: number) => ({ ...emptyMaplogData(), marks: [{ id: `door-${x}`, mark: 'door', latlng: [1, x] as [number, number] }] } as any);
+// A full Maplog state holding one door per number, as the editor passes it after several placements.
+const marksOf = (...xs: number[]) => ({
+    ...emptyMaplogData(),
+    marks: xs.map(x => ({ id: `door-${x}`, mark: 'door', latlng: [1, x] as [number, number] })),
+} as any);
 const tick = () => new Promise(r => setTimeout(r, 0));
 
 describe('MapView.saveMaplog', () => {
@@ -66,5 +71,28 @@ describe('MapView.saveMaplog', () => {
         await expect(failing).rejects.toThrow('locked');
         await ok;
         expect(view.currentMap.maplogMarks.map((m: any) => m.id)).toEqual(['door-2']);
+    });
+
+    it('a write queued behind a rejected one does not write the rejected mark', async () => {
+        let reject!: (e: Error) => void;
+        const written: Record<string, unknown>[] = [];
+        let call = 0;
+        const { view, layer } = harness(async (_f, fn) => {
+            if (++call === 1) await new Promise<void>((_, r) => { reject = r; });
+            const fm = {};
+            fn(fm);
+            written.push(fm);
+        });
+        // Write A (door-1) is in flight; the editor builds B on top of it (door-1 and door-2).
+        const failing = view.saveMaplog(marksOf(1));
+        await tick();
+        const later = view.saveMaplog(marksOf(1, 2));
+        reject(new Error('locked'));
+        await expect(failing).rejects.toThrow('locked');
+        await later;
+        expect(written).toHaveLength(1);
+        expect(written[0].maplogMarks).toEqual([{ id: 'door-2', mark: 'door', latlng: [1, 2] }]);
+        expect(view.currentMap.maplogMarks.map((m: any) => m.id)).toEqual(['door-2']);
+        expect(layer.setData.mock.lastCall![0].marks.map((m: any) => m.id)).toEqual(['door-2']);
     });
 });
