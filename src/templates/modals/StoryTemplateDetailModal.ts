@@ -5,9 +5,17 @@
 
 import { App, Modal, ButtonComponent, Notice } from 'obsidian';
 import type StorytellerSuitePlugin from '../../main';
-import { Template, TemplateApplicationOptions } from '../TemplateTypes';
+import {
+    ExistingEntityLinkSelections,
+    Template,
+    TemplateApplicationOptions,
+    TemplateVariableValue
+} from '../TemplateTypes';
 import { TemplateStorageManager } from '../TemplateStorageManager';
 import { TemplateApplicator } from '../TemplateApplicator';
+import { createCustomizedTemplateCopy } from '../TemplateCustomization';
+import { TemplateEditorModal } from '../../modals/TemplateEditorModal';
+import { TemplateApplicationModal } from '../../modals/TemplateApplicationModal';
 
 export class StoryTemplateDetailModal extends Modal {
     plugin: StorytellerSuitePlugin;
@@ -252,7 +260,7 @@ export class StoryTemplateDetailModal extends Modal {
             new ButtonComponent(actions)
                 .setButtonText('Edit template')
                 .onClick(() => {
-                    new Notice('Template editor coming soon!');
+                    this.openEditor();
                 });
         }
 
@@ -276,7 +284,7 @@ export class StoryTemplateDetailModal extends Modal {
         new ButtonComponent(actions)
             .setButtonText('Customize before applying')
             .onClick(() => {
-                new Notice('Template customization coming soon!');
+                this.openCustomizeModal();
             });
 
         new ButtonComponent(actions)
@@ -287,17 +295,94 @@ export class StoryTemplateDetailModal extends Modal {
             });
     }
 
+    private getApplyMode(): 'merge' | 'replace' {
+        const modeInput = this.contentEl.querySelector('input[name="applyMode"]:checked') as HTMLInputElement | null;
+        return (modeInput?.value || 'merge') as 'merge' | 'replace';
+    }
+
     private async applyTemplate(): Promise<void> {
+        await this.runApplication(this.template, this.getApplyMode());
+    }
+
+    /**
+     * Open the template editor on a copy of this template. The copy keeps the
+     * stored template untouched if the editor is dismissed without saving.
+     */
+    private openEditor(): void {
+        const draft = structuredClone(this.template);
+        this.close();
+        new TemplateEditorModal(
+            this.app,
+            this.plugin,
+            draft,
+            (saved) => {
+                // The editor persists the template itself before calling back
+                const latest = this.templateManager.getTemplate(saved.id) ?? saved;
+                new StoryTemplateDetailModal(
+                    this.app,
+                    this.plugin,
+                    this.templateManager,
+                    latest
+                ).open();
+            }
+        ).open();
+    }
+
+    /**
+     * Open the application modal so the user can review variable values and
+     * entity links, then apply a customized copy of the template.
+     */
+    private openCustomizeModal(): void {
+        if (!this.plugin.settings.activeStoryId) {
+            new Notice('Please select or create a story first');
+            return;
+        }
+
+        const mode = this.getApplyMode();
+        this.close();
+
+        new TemplateApplicationModal(
+            this.app,
+            this.plugin,
+            this.template,
+            (variableValues, _entityFileNames, linkSelections) => {
+                void this.applyCustomized(mode, variableValues, linkSelections);
+            },
+            () => {
+                // Cancelled: return to the detail view
+                new StoryTemplateDetailModal(
+                    this.app,
+                    this.plugin,
+                    this.templateManager,
+                    this.template
+                ).open();
+            }
+        ).open();
+    }
+
+    private async applyCustomized(
+        mode: 'merge' | 'replace',
+        variableValues: Record<string, TemplateVariableValue>,
+        linkSelections?: ExistingEntityLinkSelections
+    ): Promise<void> {
+        const customized = createCustomizedTemplateCopy(this.template, variableValues);
+        await this.runApplication(customized, mode, {
+            variableValues,
+            existingEntityLinkSelections: linkSelections
+        });
+    }
+
+    private async runApplication(
+        template: Template,
+        mode: 'merge' | 'replace',
+        extraOptions: Pick<TemplateApplicationOptions, 'variableValues' | 'existingEntityLinkSelections'> = {}
+    ): Promise<void> {
         // Get active story
         const activeStoryId = this.plugin.settings.activeStoryId;
         if (!activeStoryId) {
             new Notice('Please select or create a story first');
             return;
         }
-
-        // Get application mode
-        const modeInput = this.contentEl.querySelector('input[name="applyMode"]:checked') as HTMLInputElement;
-        const mode = (modeInput?.value || 'merge') as 'merge' | 'replace';
 
         // Confirm if replacing
         if (mode === 'replace') {
@@ -316,16 +401,17 @@ export class StoryTemplateDetailModal extends Modal {
             const options: TemplateApplicationOptions = {
                 storyId: activeStoryId,
                 mode,
-                mergeRelationships: mode === 'merge'
+                mergeRelationships: mode === 'merge',
+                ...extraOptions
             };
 
-            const result = await applicator.applyTemplate(this.template, options);
+            const result = await applicator.applyTemplate(template, options);
 
             notice.hide();
 
             if (result.success) {
                 new Notice(
-                    `Template "${this.template.name}" applied successfully! ` +
+                    `Template "${template.name}" applied successfully! ` +
                     `Created ${result.created.characters.length} characters, ` +
                     `${result.created.locations.length} locations, and more.`,
                     8000
@@ -340,7 +426,6 @@ export class StoryTemplateDetailModal extends Modal {
             notice.hide();
             const message = error instanceof Error ? error.message : String(error);
             new Notice(`Error applying template: ${message}`, 8000);
-            
         }
     }
 

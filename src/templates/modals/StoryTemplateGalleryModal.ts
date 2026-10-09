@@ -9,6 +9,7 @@ import { Template, TemplateFilter, TemplateGenre, TemplateCategory } from '../Te
 import { TemplateStorageManager } from '../TemplateStorageManager';
 import { StoryTemplateDetailModal } from './StoryTemplateDetailModal';
 import { TemplateEditorModal } from '../../modals/TemplateEditorModal';
+import { parseTemplateImportContent } from '../TemplateImportParser';
 
 export class StoryTemplateGalleryModal extends Modal {
     plugin: StorytellerSuitePlugin;
@@ -274,8 +275,7 @@ export class StoryTemplateGalleryModal extends Modal {
         new ButtonComponent(footer)
             .setButtonText('Import template')
             .onClick(() => {
-                // TODO: Implement template import
-                new Notice('Template import coming soon!');
+                this.handleImportTemplate();
             });
 
         new ButtonComponent(footer)
@@ -294,6 +294,51 @@ export class StoryTemplateGalleryModal extends Modal {
                     })(); }
                 ).open();
             });
+    }
+
+    private handleImportTemplate(): void {
+        const input = activeDocument.createElement('input');
+        input.type = 'file';
+        input.accept = '.json,.storyteller-template.json,application/json';
+        input.addEventListener('change', () => {
+            const file = input.files?.[0];
+            if (!file) {
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = () => {
+                const result = reader.result;
+                void this.importTemplateContent(typeof result === 'string' ? result : '');
+            };
+            reader.onerror = () => {
+                new Notice('Failed to read template file');
+            };
+            reader.readAsText(file);
+        });
+        input.click();
+    }
+
+    private async importTemplateContent(content: string): Promise<void> {
+        const parsed = parseTemplateImportContent(content);
+        if (!parsed.ok) {
+            new Notice(`Could not import template: ${parsed.error}`, 8000);
+            return;
+        }
+
+        try {
+            if (parsed.kind === 'package') {
+                const imported = await this.templateManager.importSharedTemplatePackage(parsed.sharedPackage);
+                new Notice(`Imported ${imported.length} template${imported.length !== 1 ? 's' : ''}`);
+            } else {
+                const imported = await this.templateManager.importTemplate(parsed.data, true);
+                new Notice(`Template "${imported.name}" imported`);
+            }
+            this.onOpen();
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            new Notice(`Failed to import template: ${message}`, 8000);
+        }
     }
 
     private getGenreIconName(genre: TemplateGenre): string {
