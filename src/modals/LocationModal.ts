@@ -768,7 +768,7 @@ export class LocationModal extends ResponsiveModal {
                 .setDesc('Economic wealth of this location (e.g. "5000gp 200sp"). Auto-computed from ledger blocks if present.')
                 .addText(text => text
                     .setValue(this.location.balance || '')
-                    .onChange(val => { this.location.balance = val.trim() || undefined; })
+                    .onChange(val => { this.location.balance = val.trim() || undefined; this.location.balanceAuto = false; })
                 );
             if (this.location.ledger && this.location.ledger.length > 0) {
                 worldBody.createDiv('storyteller-ledger-preview').createEl('p', {

@@ -570,6 +570,9 @@ export interface Character {
     /** Current wealth/balance as a formatted string (e.g. "50gp 25sp") */
     balance?: string;
 
+    /** Runtime only: true when `balance` was derived from ledger blocks and not typed by the user (see isLedgerDerivedBalance) */
+    balanceAuto?: boolean;
+
     /** Ledger entries parsed from ```ledger fenced blocks in the markdown body (not stored in frontmatter) */
     ledger?: import('./utils/LedgerParser').LedgerEntry[];
 
@@ -926,6 +929,8 @@ export interface Location {
 
     /** Economic wealth/treasury of this location (e.g. "5000gp") */
     balance?: string;
+    /** Runtime only: balance derived from ledger blocks, not typed by the user (see isLedgerDerivedBalance) */
+    balanceAuto?: boolean;
 
     /** Ledger entries parsed from ```ledger fenced blocks in the markdown body (not stored in frontmatter) */
     ledger?: import('./utils/LedgerParser').LedgerEntry[];
@@ -1716,6 +1721,8 @@ export interface Culture {
 
     /** Collective economic wealth/treasury (e.g. "2000gp") */
     balance?: string;
+    /** Runtime only: balance derived from ledger blocks, not typed by the user (see isLedgerDerivedBalance) */
+    balanceAuto?: boolean;
 
     /** Ledger entries parsed from ```ledger fenced blocks in the markdown body (not stored in frontmatter) */
     ledger?: import('./utils/LedgerParser').LedgerEntry[];

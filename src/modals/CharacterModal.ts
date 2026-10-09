@@ -555,7 +555,7 @@ export class CharacterModal extends ResponsiveModal {
             .setDesc('Current wealth (e.g. "50gp 25sp"). Auto-computed from ledger blocks if present in the note.')
             .addText(text => text
                 .setValue(this.character.balance || '')
-                .onChange(val => { this.character.balance = val.trim() || undefined; })
+                .onChange(val => { this.character.balance = val.trim() || undefined; this.character.balanceAuto = false; })
             );
         if (this.character.ledger && this.character.ledger.length > 0) {
             const ledgerEl = worldBody.createDiv('storyteller-ledger-preview');

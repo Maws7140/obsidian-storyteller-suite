@@ -591,7 +591,7 @@ export class CultureModal extends ResponsiveModal {
                     .setDesc('Economic wealth of this culture (e.g. "10000gp"). Auto-computed from ledger blocks if present.')
                     .addText(text => text
                         .setValue(this.culture.balance || '')
-                        .onChange(val => { this.culture.balance = val.trim() || undefined; })
+                        .onChange(val => { this.culture.balance = val.trim() || undefined; this.culture.balanceAuto = false; })
                     );
                 if (this.culture.ledger && this.culture.ledger.length > 0) {
                     finances.createDiv('storyteller-ledger-preview').createEl('p', {
