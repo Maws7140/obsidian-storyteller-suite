@@ -6772,6 +6772,38 @@ export default class StorytellerSuitePlugin extends Plugin {
         }
         book.filePath = finalFilePath;
         this.app.metadataCache.trigger('dataview:refresh-views');
+
+        if (!(book as WithSyncFlags<Book>)._skipSync) {
+            await this._syncBookChapterMembership(book);
+        }
+    }
+
+    /**
+     * Make each chapter's bookId agree with the book's linkedChapters. Chapters
+     * added to the book take its id when they are unassigned; chapters removed
+     * from it lose the id. A chapter that already belongs to another book is left alone.
+     */
+    private async _syncBookChapterMembership(book: Book): Promise<void> {
+        const linked = new Set(Array.isArray(book.linkedChapters) ? book.linkedChapters : []);
+        const chapters = await this.listChapters();
+        for (const ch of chapters) {
+            if (!ch.filePath) continue;
+            const isMember = linked.has(ch.name);
+            const belongsHere = ch.bookId === book.id;
+            let next: Chapter | null = null;
+            if (isMember && !ch.bookId) {
+                next = { ...ch, bookId: book.id, bookName: book.name };
+            } else if (!isMember && belongsHere) {
+                next = { ...ch, bookId: undefined, bookName: undefined };
+            }
+            if (!next) continue;
+            (next as WithSyncFlags<Chapter>)._skipSync = true;
+            try {
+                await this.saveChapter(next);
+            } catch (e) {
+                new Notice(`Could not update the book link on chapter "${ch.name}": ${e instanceof Error ? e.message : String(e)}`);
+            }
+        }
     }
 
     async listBooks(): Promise<Book[]> {
