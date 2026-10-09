@@ -3,6 +3,13 @@ import { confirmWithModal } from '../modals/ui/ConfirmModal';
 import { constrainImageViewport } from './utils/ImageViewport';
 import { persistedMapMarkers } from './utils/PersistedMapMarkers';
 import { imageMimeForPath, planImageExport } from './utils/MapImageExport';
+import {
+    describeOverlayProperties,
+    parseGeoJsonText,
+    parseGpxRoot,
+    toOverlayPathList,
+    type OverlayPopupInfo,
+} from './utils/OverlayParsing';
 // Use global L object that's set in main.ts: (window as any).L = L
 // Leaflet base styles are maintained in styles.css so Obsidian can lint authored CSS.
 import * as L from 'leaflet';
@@ -1681,8 +1688,104 @@ export class LeafletRenderer extends Component {
      * Add layers (GeoJSON, GPX, etc.)
      */
     private async addLayers(): Promise<void> {
-        // TODO: Implement GeoJSON and GPX layer support
-        // This will be added in Phase 4
+        if (!this.map) return;
+
+        const geojsonRefs = toOverlayPathList(this.params.geojson);
+        const gpxRefs = toOverlayPathList(this.params.gpx);
+        if (geojsonRefs.length === 0 && gpxRefs.length === 0) return;
+
+        const failures: string[] = [];
+        const loaders: Array<{ kind: 'geojson' | 'gpx'; ref: string; load: (file: TFile) => Promise<L.Layer> }> = [
+            ...geojsonRefs.map(ref => ({ kind: 'geojson' as const, ref, load: (file: TFile) => this.loadGeoJsonLayer(file) })),
+            ...gpxRefs.map(ref => ({ kind: 'gpx' as const, ref, load: (file: TFile) => this.loadGpxLayer(file) })),
+        ];
+
+        for (const { kind, ref, load } of loaders) {
+            try {
+                const file = this.plugin.app.metadataCache.getFirstLinkpathDest(extractLinkPath(ref), this.ctx.sourcePath);
+                if (!file) throw new Error('file not found in vault');
+                const layer = await load(file);
+                const group = L.layerGroup([layer]).addTo(this.map);
+                this.layers.set(`${kind}:${file.path}`, group);
+            } catch (error) {
+                const message = error instanceof Error ? error.message : String(error);
+                console.warn(`[Storyteller Suite] Failed to load ${kind.toUpperCase()} overlay "${ref}": ${message}`);
+                failures.push(ref);
+            }
+        }
+
+        if (failures.length > 0) {
+            new Notice(`Some map overlays failed to load: ${failures.join(', ')}. See the console for details.`);
+        }
+    }
+
+    /** Read a GeoJSON file and build a Leaflet layer. Coordinates are used as-is (x, y for image maps). */
+    private async loadGeoJsonLayer(file: TFile): Promise<L.Layer> {
+        const data = parseGeoJsonText(await this.plugin.app.vault.read(file));
+        const color = this.params.geojsonColor || '#3388ff';
+
+        return L.geoJSON(data as Parameters<typeof L.geoJSON>[0], {
+            style: () => ({ color, weight: 2, fillColor: color, fillOpacity: 0.2 }),
+            pointToLayer: (_feature, latlng) => L.circleMarker(latlng, {
+                radius: 6, color, fillColor: color, fillOpacity: 0.8,
+            }),
+            onEachFeature: (feature, layer) => {
+                const info = describeOverlayProperties(feature.properties);
+                if (info) layer.bindPopup(this.buildOverlayPopup(info));
+            },
+        });
+    }
+
+    /** Read a GPX file and build a Leaflet layer of tracks, routes and waypoints. */
+    private async loadGpxLayer(file: TFile): Promise<L.Layer> {
+        const text = await this.plugin.app.vault.read(file);
+        const doc = new DOMParser().parseFromString(text, 'application/xml');
+        if (doc.querySelector('parsererror')) throw new Error('invalid XML');
+        const data = parseGpxRoot(doc.documentElement);
+        const color = this.params.gpxColor || '#e8590c';
+        const layers: L.Layer[] = [];
+
+        for (const track of data.tracks) {
+            if (track.points.length === 0) continue;
+            const line = L.polyline(track.points.map(p => L.latLng(p.lat, p.lng)), { color, weight: 3 });
+            if (track.name) line.bindPopup(this.buildOverlayPopup({ name: track.name }));
+            layers.push(line);
+        }
+
+        for (const route of data.routes) {
+            if (route.points.length === 0) continue;
+            const line = L.polyline(route.points.map(p => L.latLng(p.lat, p.lng)), { color, weight: 3, dashArray: '6 4' });
+            if (route.name) line.bindPopup(this.buildOverlayPopup({ name: route.name }));
+            layers.push(line);
+        }
+
+        for (const wpt of data.waypoints) {
+            const marker = L.circleMarker(L.latLng(wpt.lat, wpt.lng), {
+                radius: 5, color, fillColor: color, fillOpacity: 1,
+            });
+            const info: OverlayPopupInfo = { name: wpt.name, description: wpt.description };
+            if (info.name || info.description) marker.bindPopup(this.buildOverlayPopup(info));
+            layers.push(marker);
+        }
+
+        return L.layerGroup(layers);
+    }
+
+    /** Popup content built with textContent, so file-provided text is never parsed as HTML. */
+    private buildOverlayPopup(info: OverlayPopupInfo): HTMLElement {
+        const el = activeDocument.createElement('div');
+        el.className = 'storyteller-overlay-popup';
+        if (info.name) {
+            const title = activeDocument.createElement('strong');
+            title.textContent = info.name;
+            el.appendChild(title);
+        }
+        if (info.description) {
+            const body = activeDocument.createElement('div');
+            body.textContent = info.description;
+            el.appendChild(body);
+        }
+        return el;
     }
 
     /**
@@ -2083,6 +2186,9 @@ export class LeafletRenderer extends Component {
             this.intersectionObserver.disconnect();
             this.intersectionObserver = null;
         }
+
+        // Remove overlay layers (GeoJSON/GPX) before the map is torn down
+        this.layers.forEach(layer => layer.remove());
 
         if (this.map) {
             this.map.remove();
