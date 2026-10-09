@@ -145,6 +145,9 @@ const YEAR_MS = 365.2425 * DAY_MS;
 const SIDEBAR_WIDTH = 174;
 const BASE_AXIS_HEIGHT = 42;
 const CALENDAR_BAND_HEIGHT = 16;
+// Strip along the foot of the axis header that carries era name pills. It sits
+// above the lanes, so a chip or milestone star can never cover an era label.
+const ERA_STRIP_HEIGHT = 20;
 const MAX_SPAN = 2_000_000 * YEAR_MS;
 const MAX_CHIP_WIDTH = 210;
 const MIN_CHIP_WIDTH = 88;
@@ -955,10 +958,14 @@ export class NativeTimelineRenderer {
         this.drawAxis(ctx, width, height);
         this.drawHorizontalCalendarLayers(ctx, width);
         this.drawEras(ctx, width, height);
+        this.drawEraLabelStrip(ctx, width);
         this.drawPresence(ctx, width, height);
+        // Gantt arrows go under the bars: they are drawn before the lanes so
+        // pill backgrounds sit on top of any line passing behind them.
+        if (this.options.ganttMode) this.drawConnectors(ctx, width, height);
         this.lanes.forEach(lane => this.drawLane(ctx, lane, width, height));
         this.drawForkBranches(ctx, width, height);
-        this.drawConnectors(ctx, width, height);
+        if (!this.options.ganttMode) this.drawConnectors(ctx, width, height);
         this.drawNow(ctx, width, height);
     }
 
@@ -1202,7 +1209,18 @@ export class NativeTimelineRenderer {
     private axisHeight(): number {
         if (this.isVerticalTimeline()) return BASE_AXIS_HEIGHT;
         const rows = this.calendarLayerRows();
-        return BASE_AXIS_HEIGHT + rows * CALENDAR_BAND_HEIGHT;
+        return BASE_AXIS_HEIGHT + rows * CALENDAR_BAND_HEIGHT + this.eraStripHeight();
+    }
+
+    /**
+     * The era strip is reserved whenever eras are shown, not only while one
+     * is on screen. Its height changing as the view moves would shove every
+     * lane up and down under the reader.
+     */
+    private eraStripHeight(): number {
+        if (this.isVerticalTimeline() || this.isHorizontalTimeline()) return 0;
+        if (!this.options.showEras) return 0;
+        return this.plugin.getTimelineEras().some(era => era.visible !== false) ? ERA_STRIP_HEIGHT : 0;
     }
 
     private calendarLayerRows(): number {
@@ -1991,22 +2009,59 @@ export class NativeTimelineRenderer {
             if (!Number.isFinite(start) || !Number.isFinite(end)) return;
             const x1 = this.timeToX(start, width); const x2 = this.timeToX(end, width);
             const axisHeight = this.axisHeight();
-            const left = Math.max(SIDEBAR_WIDTH + 4, x1 + 4);
-            const right = Math.min(width - 4, x2 - 4);
             ctx.save();
             this.clipPlot(ctx, width, height);
             ctx.globalAlpha = 0.1;
             ctx.fillStyle = era.color || '#8b5cf6';
             ctx.fillRect(x1, axisHeight, x2 - x1, height - axisHeight);
-            if (right > left) {
-                ctx.globalAlpha = 0.85;
-                ctx.font = `600 10px ${this.css('--font-interface', 'sans-serif')}`;
-                ctx.fillStyle = era.color || this.css('--text-accent', '#a78bfa');
-                const label = (era.abbreviation || era.name).toUpperCase();
-                ctx.fillText(this.truncate(ctx, label, right - left), left, axisHeight + 13);
-            }
             ctx.restore();
         });
+    }
+
+    /**
+     * Era names as pills in the strip at the foot of the axis header.
+     *
+     * They used to be drawn at the top of the plot, where the first lane's
+     * chips and milestone stars covered them, and in the era colour, which is
+     * often too faint to read on the band. Here the text takes the theme's
+     * normal colour on a light tint of the era colour, so it reads in both
+     * themes. Pills that would overlap an earlier one are left out rather than
+     * printed on top of it.
+     */
+    private drawEraLabelStrip(ctx: CanvasRenderingContext2D, width: number): void {
+        if (!this.eraStripHeight()) return;
+        const stripTop = this.axisHeight() - ERA_STRIP_HEIGHT;
+        const pillTop = stripTop + 2;
+        const pillHeight = ERA_STRIP_HEIGHT - 4;
+        const eras = this.plugin.getTimelineEras()
+            .filter(era => era.visible !== false)
+            .map(era => ({ era, start: this.parseDate(era.startDate), end: this.parseDate(era.endDate) }))
+            .filter(entry => Number.isFinite(entry.start) && Number.isFinite(entry.end) && entry.end >= this.viewStart && entry.start <= this.viewEnd)
+            .sort((a, b) => a.start - b.start);
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(SIDEBAR_WIDTH, stripTop, Math.max(0, width - SIDEBAR_WIDTH), ERA_STRIP_HEIGHT);
+        ctx.clip();
+        ctx.font = `600 10px ${this.css('--font-interface', 'sans-serif')}`;
+        ctx.textBaseline = 'middle';
+        let previousRight = -Infinity;
+        eras.forEach(({ era, start, end }) => {
+            const left = Math.max(SIDEBAR_WIDTH + 4, this.timeToX(start, width) + 4);
+            const right = Math.min(width - 4, this.timeToX(end, width) - 4);
+            const available = right - left - 8;
+            if (available < 24 || left < previousRight + 4) return;
+            const label = this.truncate(ctx, (era.abbreviation || era.name).toUpperCase(), available);
+            const pillWidth = ctx.measureText(label).width + 8;
+            ctx.globalAlpha = 0.3;
+            ctx.fillStyle = era.color || '#8b5cf6';
+            this.roundedRect(ctx, left, pillTop, pillWidth, pillHeight, 4);
+            ctx.fill();
+            ctx.globalAlpha = 1;
+            ctx.fillStyle = this.css('--text-normal', '#e5e7eb');
+            ctx.fillText(label, left + 4, pillTop + pillHeight / 2);
+            previousRight = left + pillWidth;
+        });
+        ctx.restore();
     }
 
     private drawPresence(ctx: CanvasRenderingContext2D, width: number, height: number): void {
@@ -2128,7 +2183,7 @@ export class NativeTimelineRenderer {
         ctx.lineWidth = 2;
         if (this.options.dependencyArrowStyle === 'dashed') ctx.setLineDash([8, 5]);
         if (this.options.dependencyArrowStyle === 'dotted') ctx.setLineDash([2, 4]);
-        const endsOf = (target: NativeItem, ref: string): { from: DOMRect; to: DOMRect } | null => {
+        const endsOf = (target: NativeItem, ref: string): { from: DOMRect; to: DOMRect; source: NativeItem } | null => {
             const targetEntry = (byKey.get(this.eventKey(target.event)) || []).find(entry => entry.item === target);
             if (!targetEntry) return null;
             const sources = byKey.get(ref) || [];
@@ -2139,16 +2194,34 @@ export class NativeTimelineRenderer {
             if (!source) return null;
             return {
                 from: this.itemRect(source.item, source.lane, width),
-                to: this.itemRect(target, targetEntry.lane, width)
+                to: this.itemRect(target, targetEntry.lane, width),
+                source: source.item
             };
         };
         if (this.options.ganttMode && this.options.showDependencies) {
+            const dependencies: { from: DOMRect; to: DOMRect; source: NativeItem; target: NativeItem }[] = [];
             this.lanes.forEach(lane => lane.items.forEach(target => (target.event.dependencies || []).forEach(ref => {
                 const ends = endsOf(target, ref);
-                if (ends) this.connector(ctx, ends.from, ends.to);
+                if (ends) dependencies.push({ from: ends.from, to: ends.to, source: ends.source, target });
             })));
+            // Faded arrows go first and the ones touching the hovered or
+            // selected event last, so the traced path is never under a faded line.
+            for (const focused of [false, true]) {
+                dependencies.forEach(dep => {
+                    if (this.touchesFocus(dep.source, dep.target) !== focused) return;
+                    // Coloured by the event the arrow leaves, so a chain reads as
+                    // one colour per source lane instead of one purple for all.
+                    ctx.strokeStyle = dep.source.laneColor;
+                    ctx.globalAlpha = focused ? 1 : 0.45;
+                    ctx.lineWidth = focused ? 2.5 : 1.5;
+                    this.connector(ctx, dep.from, dep.to);
+                });
+            }
         }
         if (this.options.narrativeOrder) {
+            ctx.strokeStyle = this.css('--interactive-accent', '#8b5cf6');
+            ctx.lineWidth = 2;
+            ctx.globalAlpha = 1;
             this.lanes.forEach(lane => lane.items.forEach(target => {
                 const ref = target.event.narrativeMarkers?.targetEvent;
                 const ends = ref ? endsOf(target, ref) : null;
@@ -2156,6 +2229,12 @@ export class NativeTimelineRenderer {
             }));
         }
         ctx.restore();
+    }
+
+    /** True when either end of an arrow is the event under the pointer or the selected one. */
+    private touchesFocus(a: NativeItem, b: NativeItem): boolean {
+        return [this.hovered, this.selected].some(focus => !!focus
+            && [a, b].some(item => this.eventKey(item.event) === this.eventKey(focus.event)));
     }
 
     /**
@@ -2387,6 +2466,7 @@ export class NativeTimelineRenderer {
         if (this.hovered !== item) {
             this.hovered = item;
             this.buildTooltip(item);
+            this.redrawForFocus();
         }
         tooltip.show();
         // Flip to the other side of the cursor when the card would run past the
@@ -2400,8 +2480,18 @@ export class NativeTimelineRenderer {
     }
 
     private hideTooltip(): void {
+        const wasHovering = !!this.hovered;
         this.hovered = null;
         this.tooltipEl?.hide();
+        if (wasHovering) this.redrawForFocus();
+    }
+
+    /**
+     * Hover only changes which arrows are emphasised, so it repaints only
+     * where those arrows are drawn. Other modes would repaint for nothing.
+     */
+    private redrawForFocus(): void {
+        if (this.options.ganttMode && this.options.showDependencies) this.scheduleDraw();
     }
 
     private onHoverMove(event: PointerEvent): void {
