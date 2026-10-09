@@ -3,14 +3,18 @@
 
 import cytoscape, { Core, NodeSingular, EdgeSingular, LayoutOptions } from 'cytoscape';
 import StorytellerSuitePlugin from '../main';
-import { GraphFilters, GraphNode, GraphEdge, Character, Location, Event, PlotItem, Culture, Economy, MagicSystem } from '../types';
+import { GraphFilters, GraphNode, GraphEdge, Character, Location, Event, PlotItem, Culture, Economy, MagicSystem, Group, RelationshipType } from '../types';
 
 type NodeEntityData = Character | Location | Event | PlotItem | Culture | Economy | MagicSystem;
 import { 
     extractAllRelationships, 
     buildBidirectionalEdges,
-    filterRedundantReciprocalEdges
+    filterRedundantReciprocalEdges,
+    withImpliedInverseEdges,
+    buildCytoscapeElements,
+    getRelationshipColor
 } from '../utils/GraphUtils';
+import { RELATIONSHIP_KINDS } from '../utils/RelationshipKinds';
 import { TFile } from 'obsidian';
 
 export class NetworkGraphRenderer {
@@ -19,7 +23,7 @@ export class NetworkGraphRenderer {
     private cy: Core | null = null;
     private canvasEl: HTMLElement | null = null;
     private currentFilters: GraphFilters = {
-        entityTypes: ['character', 'location', 'event', 'item', 'culture', 'economy', 'magicsystem']
+        entityTypes: ['character', 'location', 'event', 'item', 'culture', 'economy', 'magicsystem', 'group']
     };
     private infoPanelEl: HTMLElement | null = null; // Fixed info panel instead of tooltip
     private pinnedNodes: Set<string> = new Set();
@@ -122,6 +126,8 @@ export class NetworkGraphRenderer {
         const cultures = await this.plugin.listCultures();
         const economies = await this.plugin.listEconomies();
         const magicSystems = await this.plugin.listMagicSystems();
+        const showGroups = !this.currentFilters.entityTypes || this.currentFilters.entityTypes.includes('group');
+        const groups: Group[] = showGroups ? this.plugin.getGroups() : [];
 
         // Apply filters
         const filteredData = this.applyFiltersToEntities(
@@ -184,6 +190,13 @@ export class NetworkGraphRenderer {
                 type: 'magicsystem' as const,
                 data: m,
                 imageUrl: m.profileImagePath ? this.getImageSrc(m.profileImagePath) : undefined
+            })),
+            ...groups.map(g => ({
+                id: g.id || g.name,
+                label: g.name,
+                type: 'group' as const,
+                data: g,
+                imageUrl: g.profileImagePath ? this.getImageSrc(g.profileImagePath) : undefined
             }))
         ];
 
@@ -195,7 +208,8 @@ export class NetworkGraphRenderer {
             filteredData.items,
             filteredData.cultures,
             filteredData.economies,
-            filteredData.magicSystems
+            filteredData.magicSystems,
+            groups
         );
 
         // Build bidirectional edges for certain relationship types
@@ -210,10 +224,13 @@ export class NetworkGraphRenderer {
         // Filter out redundant reciprocal edges (e.g., "owns"/"owned by", "involved"/"involved")
         edges = filterRedundantReciprocalEdges(edges, entityMap);
 
+        // Draw the inverse of stored parent/child relationships (dotted, marked implied)
+        edges = withImpliedInverseEdges(edges);
+
         // Final deduplication pass to ensure no duplicates
         const edgeMap = new Map<string, GraphEdge>();
         edges.forEach(edge => {
-            const edgeKey = `${edge.source}-${edge.target}-${edge.relationshipType}-${edge.label || ''}`;
+            const edgeKey = `${edge.source}|${edge.target}|${edge.relationshipType}|${edge.label || ''}|${edge.ended ? 'ended' : ''}|${edge.implied ? 'implied' : ''}`;
             if (!edgeMap.has(edgeKey)) {
                 edgeMap.set(edgeKey, edge);
             }
@@ -323,36 +340,8 @@ export class NetworkGraphRenderer {
             return;
         }
 
-        // Calculate node degrees for dynamic sizing and visual hierarchy
-        const nodeDegrees = new Map<string, number>();
-        nodes.forEach(node => nodeDegrees.set(node.id, 0));
-        edges.forEach(edge => {
-            nodeDegrees.set(edge.source, (nodeDegrees.get(edge.source) || 0) + 1);
-            nodeDegrees.set(edge.target, (nodeDegrees.get(edge.target) || 0) + 1);
-        });
-
-        // Convert to cytoscape format with degree data
-        const elements = [
-            ...nodes.map(node => ({
-                data: {
-                    id: node.id,
-                    label: node.label,
-                    type: node.type,
-                    entityData: node.data,
-                    imageUrl: node.imageUrl,
-                    degree: nodeDegrees.get(node.id) || 0
-                }
-            })),
-            ...edges.map(edge => ({
-                data: {
-                    id: `${edge.source}-${edge.target}-${edge.relationshipType}-${edge.label || ''}`,
-                    source: edge.source,
-                    target: edge.target,
-                    relationshipType: edge.relationshipType,
-                    label: edge.label
-                }
-            }))
-        ];
+        // Degrees, R-Map flags and ids are computed in one place for initial render and refresh
+        const elements = buildCytoscapeElements(nodes, edges);
 
         // Initialize cytoscape
         this.cy = cytoscape({
@@ -474,7 +463,11 @@ export class NetworkGraphRenderer {
                 style: {
                     'label': (node: NodeSingular) => {
                         const label = node.data('label') as string;
-                        return label && label.length > 15 ? label.substring(0, 15) + '...' : label;
+                        const name = label && label.length > 15 ? label.substring(0, 15) + '...' : label;
+                        // R-Map minimum notation: age and gender under the name; the dead get a cross
+                        const subtitle = node.data('subtitle') as string | undefined;
+                        const deceased = node.data('deceased') === true;
+                        return (deceased ? '\u271D ' : '') + name + (subtitle ? `\n${subtitle}` : '');
                     },
                     'text-valign': 'center', // Center labels on nodes for better readability
                     'text-halign': 'center',
@@ -574,6 +567,24 @@ export class NetworkGraphRenderer {
                     'background-color': '#332288' // Tol muted palette - indigo
                 }
             },
+            // Group nodes (factions, guilds) - round triangle, distinct from characters
+            {
+                selector: 'node[type="group"]',
+                style: {
+                    'shape': 'round-triangle',
+                    'background-color': '#D55E00', // Tol muted palette - vermilion
+                    'text-valign': 'center'
+                }
+            },
+            // Dead characters stay on the map, faded and dashed, with their links as history
+            {
+                selector: 'node[?deceased]',
+                style: {
+                    'opacity': 0.5,
+                    'border-style': 'dashed',
+                    'background-color': '#6b6b6b'
+                }
+            },
             // Visual hierarchy: Hub nodes (degree > 10) - Major characters/locations
             {
                 selector: 'node[[degree > 10]]',
@@ -651,56 +662,47 @@ export class NetworkGraphRenderer {
                     'transition-timing-function': 'ease-out'
                 }
             },
-            // Relationship type colors
+            // Mutual relationships are one plain line; one-way ones keep the arrow
             {
-                selector: 'edge[relationshipType="ally"]',
+                selector: 'edge[direction = "mutual"]',
                 style: {
-                    'line-color': '#4ade80',
-                    'target-arrow-color': '#4ade80'
+                    'target-arrow-shape': 'none'
                 }
             },
+            // Ended (severed) relationships: dashed and faded, label kept
             {
-                selector: 'edge[relationshipType="enemy"]',
+                selector: 'edge[?ended]',
                 style: {
-                    'line-color': '#ef4444',
-                    'target-arrow-color': '#ef4444'
+                    'line-style': 'dashed',
+                    'opacity': 0.6
                 }
             },
+            // Implied inverses (e.g. child implied by a stored parent): dotted
             {
-                selector: 'edge[relationshipType="family"]',
+                selector: 'edge[?implied]',
                 style: {
-                    'line-color': '#3b82f6',
-                    'target-arrow-color': '#3b82f6'
+                    'line-style': 'dotted'
                 }
             },
+            // Group membership: thin, so factions read as context rather than as relationships
             {
-                selector: 'edge[relationshipType="rival"]',
+                selector: 'edge[label = "member of"]',
                 style: {
-                    'line-color': '#f97316',
-                    'target-arrow-color': '#f97316'
+                    'width': 1,
+                    'target-arrow-shape': 'none',
+                    'line-style': 'solid'
                 }
             },
-            {
-                selector: 'edge[relationshipType="romantic"]',
-                style: {
-                    'line-color': '#ec4899',
-                    'target-arrow-color': '#ec4899'
-                }
-            },
-            {
-                selector: 'edge[relationshipType="mentor"]',
-                style: {
-                    'line-color': '#a855f7',
-                    'target-arrow-color': '#a855f7'
-                }
-            },
-            {
-                selector: 'edge[relationshipType="acquaintance"]',
-                style: {
-                    'line-color': '#94a3b8',
-                    'target-arrow-color': '#94a3b8'
-                }
-            },
+            // Relationship kind colours, one per kind (neutral and custom keep the default line)
+            ...RELATIONSHIP_KINDS
+                .filter(kind => kind !== 'neutral' && kind !== 'custom')
+                .map(kind => ({
+                    selector: `edge[relationshipType="${kind}"]`,
+                    style: {
+                        'line-color': getRelationshipColor(kind),
+                        'target-arrow-color': getRelationshipColor(kind)
+                    }
+                })),
             // Hover/selection states
             {
                 selector: 'node:selected',
@@ -973,7 +975,8 @@ export class NetworkGraphRenderer {
             'item': '🎁',
             'culture': '🎭',
             'economy': '💰',
-            'magicsystem': '✨'
+            'magicsystem': '✨',
+            'group': '⚑'
         };
         const icon = typeIcons[type] || '●';
         
@@ -1080,7 +1083,8 @@ export class NetworkGraphRenderer {
                 { key: 'item', icon: '🎁', label: 'Items', color: '#88CCEE' },
                 { key: 'culture', icon: '🎭', label: 'Cultures', color: '#AA4499' },
                 { key: 'economy', icon: '💰', label: 'Economies', color: '#117733' },
-                { key: 'magicsystem', icon: '✨', label: 'Magic', color: '#332288' }
+                { key: 'magicsystem', icon: '✨', label: 'Magic', color: '#332288' },
+                { key: 'group', icon: '⚑', label: 'Groups', color: '#D55E00' }
             ];
             
             typeInfo.forEach(({ key, icon, label, color }) => {
@@ -1108,18 +1112,8 @@ export class NetworkGraphRenderer {
                         <div style="font-size: 11px; font-weight: 600; color: var(--text-normal); margin-bottom: 4px;">Top Relationships</div>
                 `;
                 
-                const relColors: Record<string, string> = {
-                    'ally': '#4ade80',
-                    'enemy': '#ef4444',
-                    'family': '#3b82f6',
-                    'rival': '#f97316',
-                    'romantic': '#ec4899',
-                    'mentor': '#a855f7',
-                    'acquaintance': '#94a3b8'
-                };
-                
                 topRelationships.forEach(([relType, count]) => {
-                    const color = relColors[relType] || 'var(--text-muted)';
+                    const color = relType === 'unknown' ? 'var(--text-muted)' : getRelationshipColor(relType as RelationshipType);
                     const percent = (count / degree) * 100;
                     content += `
                         <div style="margin-bottom: 3px;">
@@ -1259,6 +1253,10 @@ export class NetworkGraphRenderer {
                             <span style="font-size: 11px; color: var(--text-muted); margin-left: 4px;">⚡ Events</span>
                         </div>
                         <div style="display: flex; align-items: center; gap: 8px;">
+                            <div style="width: 20px; height: 20px; background: #D55E00; border: 2px solid var(--background-modifier-border); clip-path: polygon(50% 0%, 100% 100%, 0% 100%);"></div>
+                            <span style="font-size: 11px; color: var(--text-muted);">⚑ Groups</span>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 8px;">
                             <div style="width: 20px; height: 20px; background: #88CCEE; border: 2px solid var(--background-modifier-border); clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);"></div>
                             <span style="font-size: 11px; color: var(--text-muted);">🎁 Items</span>
                         </div>
@@ -1319,6 +1317,14 @@ export class NetworkGraphRenderer {
                         <div style="display: flex; align-items: center; gap: 8px;">
                             <div style="width: 24px; height: 3px; background: #f97316; border-radius: 2px;"></div>
                             <span style="font-size: 11px; color: var(--text-muted);">Rival</span>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <div style="width: 24px; height: 3px; background: var(--text-muted); border-radius: 2px;"></div>
+                            <span style="font-size: 11px; color: var(--text-muted);">Arrow: one way (from the owner). Plain line: mutual</span>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <div style="width: 24px; height: 0; border-top: 2px dashed var(--text-muted);"></div>
+                            <span style="font-size: 11px; color: var(--text-muted);">Dashed: ended. Dotted: implied inverse</span>
                         </div>
                     </div>
                 </div>
@@ -1650,36 +1656,7 @@ export class NetworkGraphRenderer {
 
         const { nodes, edges } = await this.buildGraphData();
 
-        // Calculate node degrees for dynamic sizing
-        const nodeDegrees = new Map<string, number>();
-        nodes.forEach(node => nodeDegrees.set(node.id, 0));
-        edges.forEach(edge => {
-            nodeDegrees.set(edge.source, (nodeDegrees.get(edge.source) || 0) + 1);
-            nodeDegrees.set(edge.target, (nodeDegrees.get(edge.target) || 0) + 1);
-        });
-
-        // Convert to cytoscape format with degree data
-        const elements = [
-            ...nodes.map(node => ({
-                data: {
-                    id: node.id,
-                    label: node.label,
-                    type: node.type,
-                    entityData: node.data,
-                    imageUrl: node.imageUrl,
-                    degree: nodeDegrees.get(node.id) || 0
-                }
-            })),
-            ...edges.map(edge => ({
-                data: {
-                    id: `${edge.source}-${edge.target}-${edge.relationshipType}-${edge.label || ''}`,
-                    source: edge.source,
-                    target: edge.target,
-                    relationshipType: edge.relationshipType,
-                    label: edge.label
-                }
-            }))
-        ];
+        const elements = buildCytoscapeElements(nodes, edges);
 
         // Store positions of pinned nodes
         const pinnedPositions = new Map<string, { x: number; y: number }>();

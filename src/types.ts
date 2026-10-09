@@ -6,18 +6,54 @@ import type { App } from 'obsidian';
 import type { PlacementGrid } from './leaflet/grid/GridModel';
 
 /**
- * Relationship types for network graph visualization
+ * Relationship kinds for the network graph (R-Map style).
+ *
+ * Reading rule: a relationship is stored on the note of the owner and reads
+ * "<owner> <kind> <target>". `loves -> [[Arwen]]` on Aragorn's note means
+ * "Aragorn loves Arwen"; `parent: [[Mira]]` on Tom's note means "Tom is Mira's
+ * parent", which renders the implied `child` edge from Mira back to Tom.
+ * See RelationshipKinds.ts for categories and defaults.
+ *
+ * Old values (ally, enemy, family, rival, romantic, mentor, acquaintance,
+ * neutral, custom) remain valid and unchanged.
  */
-export type RelationshipType = 
-    | 'ally' 
-    | 'enemy' 
-    | 'family' 
-    | 'rival' 
-    | 'romantic' 
-    | 'mentor' 
-    | 'acquaintance' 
-    | 'neutral' 
+export type RelationshipType =
+    // Family
+    | 'family'
+    | 'parent'
+    | 'child'
+    | 'sibling'
+    | 'spouse'
+    // Feelings
+    | 'romantic'
+    | 'loves'
+    | 'desires'
+    | 'wants'
+    | 'hates'
+    | 'fears'
+    // Obligation
+    | 'ally'
+    | 'mentor'
+    | 'owes'
+    | 'employs'
+    | 'serves'
+    | 'loyal-to'
+    // Conflict
+    | 'enemy'
+    | 'rival'
+    | 'betrayed'
+    // Other
+    | 'acquaintance'
+    | 'secret'
+    | 'neutral'
     | 'custom';
+
+/**
+ * How a relationship is drawn.
+ * - 'to': one-way, an arrow from the owner to the target ("loves")
+ * - 'mutual': a plain line, both sides hold it ("sibling", "rival")
+ */
+export type RelationshipDirection = 'to' | 'mutual';
 
 /**
  * Typed relationship for network graph connections
@@ -26,10 +62,17 @@ export type RelationshipType =
 export interface TypedRelationship {
     /** Target entity name or ID */
     target: string;
-    /** Type of relationship for color-coding */
+    /** Kind of relationship (drives colour and grouping) */
     type: RelationshipType;
     /** Optional descriptive label */
     label?: string;
+    /**
+     * Arrow ('to') or plain line ('mutual'). Omitted means inferred from the
+     * kind: symmetric kinds are mutual, the rest are one-way.
+     */
+    direction?: RelationshipDirection;
+    /** True when the relationship has been severed. Kept on the map as history. */
+    ended?: boolean;
 }
 
 /**
@@ -43,8 +86,11 @@ export interface GraphFilters {
     /** Filter events before this date */
     timelineEnd?: string;
     /** Filter by entity types to show */
-    entityTypes?: ('character' | 'location' | 'event' | 'item' | 'culture' | 'economy' | 'magicsystem')[];
+    entityTypes?: GraphEntityType[];
 }
+
+/** Entity kinds that can appear as nodes in the network graph */
+export type GraphEntityType = 'character' | 'location' | 'event' | 'item' | 'culture' | 'economy' | 'magicsystem' | 'group';
 
 /**
  * Node in the network graph
@@ -55,9 +101,9 @@ export interface GraphNode {
     /** Display label */
     label: string;
     /** Entity type for styling */
-    type: 'character' | 'location' | 'event' | 'item' | 'culture' | 'economy' | 'magicsystem';
+    type: GraphEntityType;
     /** Full entity data */
-    data: Character | Location | Event | PlotItem | Culture | Economy | MagicSystem;
+    data: Character | Location | Event | PlotItem | Culture | Economy | MagicSystem | Group;
     /** Optional image URL for node background */
     imageUrl?: string;
 }
@@ -74,6 +120,12 @@ export interface GraphEdge {
     relationshipType: RelationshipType;
     /** Optional label */
     label?: string;
+    /** Arrow or plain line. Undefined for legacy and structural edges. */
+    direction?: RelationshipDirection;
+    /** Severed relationship: drawn dashed, kept as history */
+    ended?: boolean;
+    /** Inverse edge implied by a stored relationship (e.g. child implied by parent) */
+    implied?: boolean;
 }
 
 /**

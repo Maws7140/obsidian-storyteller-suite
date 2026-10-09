@@ -1,21 +1,36 @@
 // Utilities for processing network graph data and relationships
 
-import { Character, Location, Event, PlotItem, Culture, Economy, MagicSystem, TypedRelationship, RelationshipType, GraphNode, GraphEdge } from '../types';
+import { Character, Location, Event, PlotItem, Culture, Economy, MagicSystem, Group, TypedRelationship, RelationshipType, RelationshipDirection, GraphNode, GraphEdge } from '../types';
 import { getOwners } from './ItemOwnership';
+import { inverseKindOf, resolveDirection } from './RelationshipKinds';
+
+/** Label of the structural edge drawn from a character to each group it belongs to */
+export const GROUP_MEMBERSHIP_LABEL = 'member of';
 
 // Helper function to check if an edge already exists
-// Checks source, target, relationshipType, and label to ensure uniqueness
-function edgeExists(edges: GraphEdge[], source: string, target: string, relationshipType: RelationshipType, label?: string): boolean {
-    return edges.some(e => 
-        e.source === source && 
-        e.target === target && 
-        e.relationshipType === relationshipType && 
-        e.label === label
+// Checks source, target, relationshipType, label and the R-Map flags, so that an
+// ended relationship and a live one with the same words are both kept.
+function edgeExists(
+    edges: GraphEdge[],
+    source: string,
+    target: string,
+    relationshipType: RelationshipType,
+    label?: string,
+    variant: { ended?: boolean; direction?: RelationshipDirection } = {}
+): boolean {
+    return edges.some(e =>
+        e.source === source &&
+        e.target === target &&
+        e.relationshipType === relationshipType &&
+        e.label === label &&
+        Boolean(e.ended) === Boolean(variant.ended) &&
+        e.direction === variant.direction
     );
 }
 
 // Extract all relationships from a collection of entities
-// Handles both old string[] format and new TypedRelationship[] format
+// Handles both old string[] format and new TypedRelationship[] format.
+// Groups are optional: when passed, they become nodes and membership edges are drawn.
 export function extractAllRelationships(
     characters: Character[],
     locations: Location[],
@@ -23,7 +38,8 @@ export function extractAllRelationships(
     items: PlotItem[],
     cultures: Culture[] = [],
     economies: Economy[] = [],
-    magicSystems: MagicSystem[] = []
+    magicSystems: MagicSystem[] = [],
+    groups: Group[] = []
 ): GraphEdge[] {
     const edges: GraphEdge[] = [];
     const entityMap = new Map<string, GraphNode>();
@@ -71,6 +87,34 @@ export function extractAllRelationships(
         type: 'magicsystem',
         data: m
     }));
+    groups.forEach(g => entityMap.set(g.id || g.name, {
+        id: g.id || g.name,
+        label: g.name,
+        type: 'group',
+        data: g
+    }));
+
+    // Group membership: a character's groups list, and a group's character members.
+    // Both sources are merged and de-duplicated into one "member of" edge per pair.
+    characters.forEach(c => {
+        const sourceId = c.id || c.name;
+        for (const groupRef of Array.isArray(c.groups) ? c.groups : []) {
+            const targetId = resolveEntityId(groupRef, entityMap);
+            if (targetId && entityMap.get(targetId)?.type === 'group' && !edgeExists(edges, sourceId, targetId, 'neutral', GROUP_MEMBERSHIP_LABEL, { direction: 'to' })) {
+                edges.push({ source: sourceId, target: targetId, relationshipType: 'neutral', label: GROUP_MEMBERSHIP_LABEL, direction: 'to' });
+            }
+        }
+    });
+    groups.forEach(g => {
+        const groupId = g.id || g.name;
+        for (const member of Array.isArray(g.members) ? g.members : []) {
+            if (member.type !== 'character') continue;
+            const sourceId = resolveEntityId(member.id || member.name || '', entityMap);
+            if (sourceId && entityMap.get(sourceId)?.type === 'character' && !edgeExists(edges, sourceId, groupId, 'neutral', GROUP_MEMBERSHIP_LABEL, { direction: 'to' })) {
+                edges.push({ source: sourceId, target: groupId, relationshipType: 'neutral', label: GROUP_MEMBERSHIP_LABEL, direction: 'to' });
+            }
+        }
+    });
 
     // Extract edges from each entity type
     const allEntities = [
@@ -90,14 +134,21 @@ export function extractAllRelationships(
         if (entity.connections && Array.isArray(entity.connections)) {
             entity.connections.forEach(conn => {
                 const targetId = resolveEntityId(conn.target, entityMap);
-                if (targetId && !edgeExists(edges, sourceId, targetId, conn.type, conn.label)) {
-                    edges.push({
-                        source: sourceId,
-                        target: targetId,
-                        relationshipType: conn.type,
-                        label: conn.label
-                    });
-                }
+                if (!targetId) return;
+                const direction = resolveDirection(conn);
+                const ended = conn.ended === true;
+                const variant = { ended, direction };
+                if (edgeExists(edges, sourceId, targetId, conn.type, conn.label, variant)) return;
+                // A mutual line is one line: skip it when the other side already drew the same one
+                if (direction === 'mutual' && edgeExists(edges, targetId, sourceId, conn.type, conn.label, variant)) return;
+                edges.push({
+                    source: sourceId,
+                    target: targetId,
+                    relationshipType: conn.type,
+                    label: conn.label,
+                    direction,
+                    ...(ended ? { ended: true } : {})
+                });
             });
         }
 
@@ -572,13 +623,28 @@ export function resolveEntityById(
 // Get color for relationship type (Obsidian theme-aware)
 export function getRelationshipColor(type: RelationshipType): string {
     const colors: Record<RelationshipType, string> = {
-        'ally': '#4ade80',       // green
-        'enemy': '#ef4444',      // red
         'family': '#3b82f6',     // blue
-        'rival': '#f97316',      // orange
+        'parent': '#3b82f6',     // blue (family)
+        'child': '#60a5fa',      // lighter blue (family)
+        'sibling': '#38bdf8',    // sky (family)
+        'spouse': '#f472b6',     // light pink (family)
         'romantic': '#ec4899',   // pink
+        'loves': '#db2777',      // deep pink
+        'desires': '#e11d48',    // rose
+        'wants': '#fb923c',      // light orange
+        'hates': '#b91c1c',      // dark red
+        'fears': '#6d28d9',      // violet
+        'ally': '#4ade80',       // green
         'mentor': '#a855f7',     // purple
+        'owes': '#ca8a04',       // dark gold
+        'employs': '#84cc16',    // lime
+        'serves': '#14b8a6',     // teal
+        'loyal-to': '#22c55e',   // emerald
+        'enemy': '#ef4444',      // red
+        'rival': '#f97316',      // orange
+        'betrayed': '#9f1239',   // crimson
         'acquaintance': '#94a3b8', // gray
+        'secret': '#475569',     // dark slate
         'neutral': '#64748b',    // slate
         'custom': '#eab308'      // yellow
     };
@@ -586,7 +652,7 @@ export function getRelationshipColor(type: RelationshipType): string {
 }
 
 // Get shape for entity type
-export function getEntityShape(type: 'character' | 'location' | 'event' | 'item' | 'culture' | 'economy' | 'magicsystem'): string {
+export function getEntityShape(type: GraphNode['type']): string {
     const shapes: Record<string, string> = {
         'character': 'ellipse',
         'location': 'round-rectangle',
@@ -594,9 +660,122 @@ export function getEntityShape(type: 'character' | 'location' | 'event' | 'item'
         'item': 'round-hexagon',
         'culture': 'tag',
         'economy': 'pentagon',
-        'magicsystem': 'star'
+        'magicsystem': 'star',
+        'group': 'round-triangle'
     };
     return shapes[type] || 'ellipse';
+}
+
+// ── R-Map helpers ───────────────────────────────────────────────────────────
+
+/** Status values that mean a character has died. Matched on the leading word. */
+const DECEASED_STATUS_PATTERN = /^(dead|deceased|killed|slain|died)\b/i;
+
+/** True when a character's status marks them as dead (kept on the map, crossed out). */
+export function isDeceasedStatus(status: string | undefined | null): boolean {
+    return typeof status === 'string' && DECEASED_STATUS_PATTERN.test(status.trim());
+}
+
+/**
+ * R-Map minimum notation under a character's name: age and gender, when present.
+ * Returns '' when neither is set, e.g. "34 · female".
+ */
+export function characterSubtitle(character: { age?: unknown; gender?: unknown }): string {
+    const parts = [character.age, character.gender]
+        .map(value => (typeof value === 'string' || typeof value === 'number') ? String(value).trim() : '')
+        .filter(Boolean);
+    return parts.join(' · ');
+}
+
+/**
+ * Stable element id for an edge. Ended and implied edges get their own ids, so an
+ * ended relationship never collides with a live one that has the same words.
+ */
+export function graphEdgeId(edge: GraphEdge): string {
+    const flags = `${edge.ended ? '#ended' : ''}${edge.implied ? '#implied' : ''}`;
+    return `${edge.source}-${edge.target}-${edge.relationshipType}-${edge.label || ''}${flags}`;
+}
+
+/**
+ * Add the inverse of each stored parent/child relationship, unless the other side
+ * already states it. A parent stored on A ("A's parent is B") is drawn as a
+ * dotted child edge from B back to A. Implied edges are marked `implied` so the
+ * renderer can draw them differently from what the note actually says.
+ */
+export function withImpliedInverseEdges(edges: GraphEdge[]): GraphEdge[] {
+    const out = [...edges];
+    for (const edge of edges) {
+        const inverse = inverseKindOf(edge.relationshipType);
+        if (!inverse || edge.implied) continue;
+        const exists = out.some(e =>
+            e.source === edge.target &&
+            e.target === edge.source &&
+            e.relationshipType === inverse &&
+            Boolean(e.ended) === Boolean(edge.ended)
+        );
+        if (exists) continue;
+        out.push({
+            source: edge.target,
+            target: edge.source,
+            relationshipType: inverse,
+            label: edge.label,
+            direction: 'to',
+            ...(edge.ended ? { ended: true } : {}),
+            implied: true
+        });
+    }
+    return out;
+}
+
+/** Shape of a Cytoscape element as the renderer consumes it. */
+export interface CytoscapeElement {
+    data: Record<string, unknown>;
+}
+
+/**
+ * Build Cytoscape elements from extracted nodes and edges. Shared by the initial
+ * render and refresh so both carry the same data (degree, R-Map flags, ids).
+ */
+export function buildCytoscapeElements(nodes: GraphNode[], edges: GraphEdge[]): CytoscapeElement[] {
+    const degrees = new Map<string, number>();
+    nodes.forEach(node => degrees.set(node.id, 0));
+    edges.forEach(edge => {
+        degrees.set(edge.source, (degrees.get(edge.source) || 0) + 1);
+        degrees.set(edge.target, (degrees.get(edge.target) || 0) + 1);
+    });
+
+    const nodeElements: CytoscapeElement[] = nodes.map(node => {
+        const isCharacter = node.type === 'character';
+        const character = isCharacter ? (node.data as Character) : null;
+        return {
+            data: {
+                id: node.id,
+                label: node.label,
+                type: node.type,
+                entityData: node.data,
+                imageUrl: node.imageUrl,
+                degree: degrees.get(node.id) || 0,
+                deceased: character ? isDeceasedStatus(character.status) : false,
+                subtitle: character ? characterSubtitle(character) : ''
+            }
+        };
+    });
+
+    const edgeElements: CytoscapeElement[] = edges.map(edge => ({
+        data: {
+            id: graphEdgeId(edge),
+            source: edge.source,
+            target: edge.target,
+            relationshipType: edge.relationshipType,
+            label: edge.label,
+            // Structural edges (owns, located at, ...) carry no direction and keep their arrows
+            direction: edge.direction,
+            ended: edge.ended === true,
+            implied: edge.implied === true
+        }
+    }));
+
+    return [...nodeElements, ...edgeElements];
 }
 
 // Migrate legacy string relationships to typed format

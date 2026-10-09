@@ -15,6 +15,7 @@ import { getTrackedItemOwner, isSameName } from '../utils/ItemOwnership';
 import { EntityCustomFieldsEditor, customFieldEditorOptions } from './entity/EntityCustomFieldsEditor';
 import { EntityGroupSelector } from './entity/EntityGroupSelector';
 import { buildEntityNameIndex, getRelationshipTargetRef, resolveEntityRefName } from '../utils/EntityRefUtils';
+import { resolveDirection } from '../utils/RelationshipKinds';
 import { isModalFieldVisible, seedDefaultCustomFields } from './entity/ModalFieldVisibility';
 import { createCollapsibleModalSection } from './entity/CollapsibleModalSection';
 import { confirmWithModal } from './ui/ConfirmModal';
@@ -841,7 +842,9 @@ export class CharacterModal extends ResponsiveModal {
             const targetRef = getRelationshipTargetRef(conn);
             const targetName = resolveEntityRefName(targetRef, this.entityNameIndex);
             const infoSpan = item.createSpan();
-            infoSpan.setText(`${targetName} (${t(conn.type || 'custom')})`);
+            const arrow = resolveDirection(conn) === 'mutual' ? ' ↔ ' : ' → ';
+            const endedNote = conn.ended ? `, ${t('relationshipEndedMarker')}` : '';
+            infoSpan.setText(`${targetName}${arrow}(${t(conn.type || 'custom')}${endedNote})`);
             if (conn.label) {
                 infoSpan.appendText(` - ${conn.label}`);
             }

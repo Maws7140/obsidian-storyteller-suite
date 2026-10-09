@@ -5,7 +5,8 @@ import { ItemView, WorkspaceLeaf, setIcon, Menu } from 'obsidian';
 import StorytellerSuitePlugin from '../main';
 import { t } from '../i18n/strings';
 import { NetworkGraphRenderer } from './NetworkGraphRenderer';
-import { GraphFilters } from '../types';
+import { GraphEntityType, GraphFilters } from '../types';
+import { LinkSuggestionsModal } from '../modals/LinkSuggestionsModal';
 
 export const VIEW_TYPE_NETWORK_GRAPH = 'storyteller-network-graph-view';
 
@@ -31,7 +32,7 @@ export class NetworkGraphView extends ItemView {
     plugin: StorytellerSuitePlugin;
     private graphRenderer: NetworkGraphRenderer | null = null;
     private currentFilters: GraphFilters = {
-        entityTypes: ['character', 'location', 'event', 'item', 'culture', 'economy', 'magicsystem']
+        entityTypes: ['character', 'location', 'event', 'item', 'culture', 'economy', 'magicsystem', 'group']
     };
     
     // UI Elements
@@ -128,6 +129,19 @@ export class NetworkGraphView extends ItemView {
         setIcon(exportIcon, 'download');
         exportBtn.addEventListener('click', () => this.showExportMenu(exportBtn));
 
+        // Suggest implied links (shared groups, family fields, co-presence)
+        const suggestBtn = this.toolbarEl.createEl('button', {
+            cls: 'clickable-icon storyteller-toolbar-btn',
+            attr: {
+                'aria-label': t('suggestLinks'),
+                'title': t('suggestLinks')
+            }
+        });
+        setIcon(suggestBtn, 'link');
+        suggestBtn.addEventListener('click', () => {
+            new LinkSuggestionsModal(this.app, this.plugin, () => { void this.refresh(); }).open();
+        });
+
         // Refresh button
         const refreshBtn = this.toolbarEl.createEl('button', {
             cls: 'clickable-icon storyteller-toolbar-btn',
@@ -186,7 +200,7 @@ export class NetworkGraphView extends ItemView {
         this.entityFilterEl.empty();
 
         const entityTypes: Array<{
-            type: 'character' | 'location' | 'event' | 'item' | 'culture' | 'economy' | 'magicsystem';
+            type: GraphEntityType;
             icon: string;
             label: string;
         }> = [
@@ -196,7 +210,8 @@ export class NetworkGraphView extends ItemView {
             { type: 'item', icon: 'package', label: t('items') },
             { type: 'culture', icon: 'landmark', label: t('cultures') || 'Cultures' },
             { type: 'economy', icon: 'coins', label: t('economies') || 'Economies' },
-            { type: 'magicsystem', icon: 'sparkles', label: t('magicSystems') || 'Magic' }
+            { type: 'magicsystem', icon: 'sparkles', label: t('magicSystems') || 'Magic' },
+            { type: 'group', icon: 'users', label: t('groups') || 'Groups' }
         ];
 
         entityTypes.forEach(({ type, icon, label }) => {
@@ -393,18 +408,18 @@ export class NetworkGraphView extends ItemView {
     /**
      * Get currently active entity types from filter buttons
      */
-    private getActiveEntityTypes(): ('character' | 'location' | 'event' | 'item' | 'culture' | 'economy' | 'magicsystem')[] {
-        if (!this.entityFilterEl) return ['character', 'location', 'event', 'item', 'culture', 'economy', 'magicsystem'];
+    private getActiveEntityTypes(): GraphEntityType[] {
+        if (!this.entityFilterEl) return ['character', 'location', 'event', 'item', 'culture', 'economy', 'magicsystem', 'group'];
         
         const activeButtons = this.entityFilterEl.querySelectorAll('.storyteller-entity-filter-btn.is-active');
-        const types: ('character' | 'location' | 'event' | 'item' | 'culture' | 'economy' | 'magicsystem')[] = [];
+        const types: GraphEntityType[] = [];
         
         activeButtons.forEach(btn => {
-            const type = btn.getAttribute('data-entity-type') as 'character' | 'location' | 'event' | 'item' | 'culture' | 'economy' | 'magicsystem';
+            const type = btn.getAttribute('data-entity-type') as GraphEntityType;
             if (type) types.push(type);
         });
         
-        return types.length > 0 ? types : ['character', 'location', 'event', 'item', 'culture', 'economy', 'magicsystem'];
+        return types.length > 0 ? types : ['character', 'location', 'event', 'item', 'culture', 'economy', 'magicsystem', 'group'];
     }
 
     /**
