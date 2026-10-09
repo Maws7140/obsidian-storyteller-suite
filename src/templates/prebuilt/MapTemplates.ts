@@ -106,16 +106,14 @@ Open this map in the Map view to set its image or coordinates, zoom levels and m
 ## Usage Instructions
 
 1. Upload your world map image to your vault
-2. Replace "your-world-map.png" with your image filename
-3. Add markers using percentage coordinates [x%, y%, [[Location]], description]
-4. Percentage coordinates are relative to image dimensions (0% to 100%)
+2. Open the map with Edit map in the Map view and set the image to your file name
+3. In the Map view, click Add location and then click the map where the place is to put its marker
+4. Use the Maplog palette to mark doors, roads, walls and areas on the map
+5. Turn on the Grid button to show square cells for measuring distances
 
-## Sample Markers
+## Placing Markers
 
-\`\`\`
-marker: [50%, 50%, [[Location]], Description]
-marker: [25%, 75%, [[Another Place]], More details]
-\`\`\``
+Markers stay on the same spot of the image as you zoom in and out, so click the map where each place belongs and link the marker to its location note.`
             }
         ]
     }
@@ -327,10 +325,10 @@ Open this map in the Map view to set its image or coordinates, zoom levels and m
 
 ## Instructions
 
-1. Choose map type: \`image\` or \`real\`
-2. For image maps: Set image, width, height, zoom levels
-3. For real maps: Set lat, long, zoom levels
-4. Add markers using the format: \`marker: [x%, y%, [[Location]], Description]\``
+1. In Edit map, choose the map type: an image map for your own picture, or a real-world map that uses OpenStreetMap tiles
+2. For an image map, set the image file, width, height and zoom levels. For a real-world map, set the latitude, longitude and zoom levels
+3. In the Map view, use an Add button such as Add location, then click the map to place a marker
+4. Use the Maplog palette to draw doors, walls, roads and areas, and the Grid button for square cells`
             }
         ]
     }
