@@ -522,25 +522,46 @@ export class TimelineView extends ItemView {
      */
     private renderEmptyState(): void {
         this.timelineContainer?.querySelector('.storyteller-timeline-empty')?.remove();
-        if (!this.timelineContainer || !this.renderer || this.renderer.getEventCount() > 0) return;
+        if (!this.timelineContainer || !this.renderer) return;
+        const tally = this.renderer.getEventTally();
+        if (tally.dated > 0) return;
 
-        const filtered = this.hasActiveFilters();
         const empty = this.timelineContainer.createDiv('storyteller-timeline-empty');
         const icon = empty.createDiv('storyteller-timeline-empty-icon');
-        setIcon(icon, filtered ? 'filter-x' : 'clock');
 
-        empty.createEl('h3', {
-            text: filtered ? 'Nothing matches these filters' : 'Nothing on this timeline yet'
-        });
-        empty.createEl('p', {
-            cls: 'storyteller-timeline-empty-body',
-            text: filtered
-                ? 'Every event was filtered out. Clear the filters to see the whole story again.'
-                : 'Events that have a date appear here in order, so you can see how your story unfolds and drag things around to change when they happen.'
-        });
-
-        const actions = empty.createDiv('storyteller-timeline-empty-actions');
-        if (filtered) {
+        // Three different blanks need three different messages: no events at
+        // all, events that are waiting on a date, and events that filters hide.
+        if (tally.undated.length > 0) {
+            const count = tally.undated.length;
+            setIcon(icon, 'calendar-plus');
+            empty.createEl('h3', {
+                text: `${count} ${count === 1 ? 'event needs' : 'events need'} a date`
+            });
+            empty.createEl('p', {
+                cls: 'storyteller-timeline-empty-body',
+                text: 'Events appear on the timeline once they have a date. Start by giving the first one a date, and the rest can follow the same way.'
+            });
+            const actions = empty.createDiv('storyteller-timeline-empty-actions');
+            const [first] = tally.undated;
+            const dateBtn = actions.createEl('button', { cls: 'mod-cta', text: 'Set a date on the first event' });
+            dateBtn.addEventListener('click', () => { void (async () => {
+                const { EventModal } = await import('../modals/EventModal');
+                new EventModal(this.app, this.plugin, first, async updated => {
+                    await this.plugin.saveEvent(updated);
+                    await this.refresh();
+                }).open();
+            })(); });
+        } else if (tally.hiddenByFilters > 0) {
+            const count = tally.hiddenByFilters;
+            setIcon(icon, 'filter-x');
+            empty.createEl('h3', {
+                text: `Filters are hiding ${count} ${count === 1 ? 'event' : 'events'}`
+            });
+            empty.createEl('p', {
+                cls: 'storyteller-timeline-empty-body',
+                text: 'Every event was filtered out. Clear the filters to see the whole story again.'
+            });
+            const actions = empty.createDiv('storyteller-timeline-empty-actions');
             const clearBtn = actions.createEl('button', { cls: 'mod-cta', text: 'Clear filters' });
             clearBtn.addEventListener('click', () => { void (async () => {
                 this.currentState.filters = {};
@@ -548,6 +569,13 @@ export class TimelineView extends ItemView {
                 await this.refresh();
             })(); });
         } else {
+            setIcon(icon, 'clock');
+            empty.createEl('h3', { text: 'Nothing on this timeline yet' });
+            empty.createEl('p', {
+                cls: 'storyteller-timeline-empty-body',
+                text: 'Events that have a date appear here in order, so you can see how your story unfolds and drag things around to change when they happen.'
+            });
+            const actions = empty.createDiv('storyteller-timeline-empty-actions');
             const createBtn = actions.createEl('button', { cls: 'mod-cta', text: 'Create an event' });
             createBtn.addEventListener('click', () => { void (async () => {
                 const { EventModal } = await import('../modals/EventModal');
@@ -557,16 +585,6 @@ export class TimelineView extends ItemView {
                 }).open();
             })(); });
         }
-    }
-
-    /** Whether anything is currently narrowing what the timeline shows. */
-    private hasActiveFilters(): boolean {
-        const filters = this.currentState.filters as Record<string, unknown>;
-        const narrowing = Object.entries(filters).some(([, value]) => {
-            if (Array.isArray(value)) return value.length > 0;
-            return value !== undefined && value !== null && value !== '' && value !== false;
-        });
-        return narrowing || Boolean(this.currentState.currentTrackId);
     }
 
     private scheduleTimelineRedraw(): void {
@@ -687,18 +705,24 @@ export class TimelineView extends ItemView {
      */
     private updateFooterStatus(): void {
         if (!this.footerStatusEl || !this.renderer) return;
-        
-        const eventCount = this.renderer.getEventCount();
+
+        const tally = this.renderer.getEventTally();
         const dateRange = this.renderer.getDateRange();
-        
-        if (eventCount === 0) {
+        const plural = (n: number) => `${n} event${n !== 1 ? 's' : ''}`;
+
+        if (tally.total === 0) {
             this.footerStatusEl.setText(t('noEventsFound'));
+        } else if (tally.dated === 0 && tally.undated.length === 0) {
+            this.footerStatusEl.setText(`0 events shown, ${tally.hiddenByFilters} hidden by filters`);
+        } else if (tally.dated === 0) {
+            this.footerStatusEl.setText(`${plural(tally.undated.length)}, none dated`);
         } else {
-            let statusText = `${eventCount} event${eventCount !== 1 ? 's' : ''}`;
+            let statusText = plural(tally.dated);
+            if (tally.undated.length > 0) statusText += `, ${tally.undated.length} undated`;
             if (dateRange) {
                 const startStr = formatFooterDate(dateRange.start);
                 const endStr = formatFooterDate(dateRange.end);
-                statusText += ` • ${startStr} — ${endStr}`;
+                statusText += ` • ${startStr} to ${endStr}`;
             }
             if (this.currentState.ganttMode) {
                 statusText += ` • ${t('ganttView')}`;
