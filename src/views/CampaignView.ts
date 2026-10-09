@@ -285,6 +285,10 @@ export class CampaignView extends ItemView {
     private quick: QuickEntryState = createQuickEntryState();
     /** True from the first submit until its line is written, so repeat submits are ignored. */
     private quickSubmitInFlight = false;
+    /** True while a branch choice is being applied. */
+    private choiceInFlight = false;
+    /** True while a scene change or Back is running. */
+    private navigationInFlight = false;
     /** NPC names typed into the quick entry bar for this view. */
     private quickNpcs: string[] = [];
     /** Last dice result from a branch roll, used to prefill the Roll entry. */
@@ -1505,6 +1509,17 @@ export class CampaignView extends ItemView {
     // â”€â”€ Branch execution â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     private async executeChoice(branch: SceneBranch, outcome: 'success' | 'fail', rollTotal?: number): Promise<void> {
+        // A second tap on the card while the first is running would apply the outcome again.
+        if (this.choiceInFlight) return;
+        this.choiceInFlight = true;
+        try {
+            await this.applyChoice(branch, outcome, rollTotal);
+        } finally {
+            this.choiceInFlight = false;
+        }
+    }
+
+    private async applyChoice(branch: SceneBranch, outcome: 'success' | 'fail', rollTotal?: number): Promise<void> {
         if (!this.session) return;
 
         // Apply outcomes (inventory, flags, party membership)
@@ -1563,7 +1578,21 @@ export class CampaignView extends ItemView {
         ) ?? null;
     }
 
+    /**
+     * Jumps to a scene. Ignored while another scene change (or Back) is still running, so a double
+     * tap does not push history twice or write two scene headers.
+     */
     private async doNavigate(sceneName: string, pushHistory: boolean): Promise<void> {
+        if (this.navigationInFlight) return;
+        this.navigationInFlight = true;
+        try {
+            await this.enterScene(sceneName, pushHistory);
+        } finally {
+            this.navigationInFlight = false;
+        }
+    }
+
+    private async enterScene(sceneName: string, pushHistory: boolean): Promise<void> {
         if (!this.session) return;
         if (!this.allScenes.length) {
             try { this.allScenes = await this.plugin.listScenes(); } catch { return; }
@@ -1589,7 +1618,7 @@ export class CampaignView extends ItemView {
             const logLine = `*On-enter encounter*: **${hit.label}**${hit.target !== 'continue' ? ` -> *${hit.target}*` : ''}`;
             await this.autosave(logLine);
             if (hit.target && hit.target !== 'continue') {
-                await this.doNavigate(hit.target, true);
+                await this.enterScene(hit.target, true);
                 return;
             }
         }
@@ -1598,19 +1627,25 @@ export class CampaignView extends ItemView {
     }
 
     private async navigateBack(): Promise<void> {
+        if (this.navigationInFlight) return;
         if (!this.sceneHistory.length || !this.session) return;
-        const prev = this.sceneHistory.pop()!;
-        const scene = this.allScenes.find(s => s.name === prev);
-        if (!scene) return;
-        this.currentScene = scene;
-        await this.loadCurrentScene();
-        await this.loadSceneLocation();
-        await this.syncActiveCampaignBoardForScene();
-        this.session.currentSceneName = scene.name;
-        this.session.currentSceneId = scene.id;
-        await this.logSceneHeader(scene);
-        await this.autosave(`Back to *${scene.name}*`);
-        await this.render();
+        this.navigationInFlight = true;
+        try {
+            const prev = this.sceneHistory.pop()!;
+            const scene = this.allScenes.find(s => s.name === prev);
+            if (!scene) return;
+            this.currentScene = scene;
+            await this.loadCurrentScene();
+            await this.loadSceneLocation();
+            await this.syncActiveCampaignBoardForScene();
+            this.session.currentSceneName = scene.name;
+            this.session.currentSceneId = scene.id;
+            await this.logSceneHeader(scene);
+            await this.autosave(`Back to *${scene.name}*`);
+            await this.render();
+        } finally {
+            this.navigationInFlight = false;
+        }
     }
 
     private async loadCurrentScene(): Promise<void> {
@@ -3077,12 +3112,12 @@ export class CampaignView extends ItemView {
         await this.autosave();
         if (!session.filePath) return;
 
-        let log = '';
-        try { log = await this.plugin.loadSessionLog(session.filePath); } catch { /* new note */ }
-        if (kind === 'next' && lastSceneContext(log) === scene.name) return;
-
-        const { line } = nextSceneHeaderLine(log, kind, scene.name, thread);
-        await this.writeSessionLog(body => appendBlock(body, line));
+        // The check and the header id are computed from the body being written, so no other write can land between them.
+        await this.writeSessionLog(body => {
+            if (kind === 'next' && lastSceneContext(body) === scene.name) return body;
+            const { line } = nextSceneHeaderLine(body, kind, scene.name, thread);
+            return appendBlock(body, line);
+        });
     }
 
     private renderSceneKindControl(toolbar: HTMLElement): void {
