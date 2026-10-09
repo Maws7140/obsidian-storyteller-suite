@@ -1,6 +1,7 @@
 import type { LatLngExpression, LatLngBoundsExpression, CRS, Layer } from 'leaflet';
 import type { TFile, CachedMetadata } from 'obsidian';
 import type { Location } from '../types';
+import type { MaplogData } from './maplog/model';
 
 /**
  * YAML Parameters from code block
@@ -44,6 +45,9 @@ export interface BlockParameters {
     geojsonColor?: string;                // GeoJSON default color
     gpx?: string | string[];              // GPX file paths
     gpxColor?: string;                    // GPX default color
+
+    // Maplog marks, lines and areas (normalised by mapToBlockParams)
+    maplog?: MaplogData;
 
     // Overlays
     overlay?: Array<[string, [number, number], [number, number]]>; // Image overlays

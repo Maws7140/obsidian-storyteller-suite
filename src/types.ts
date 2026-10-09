@@ -4,6 +4,7 @@
  */
 import type { App } from 'obsidian';
 import type { PlacementGrid } from './leaflet/grid/GridModel';
+import type { MaplogAreaRecord, MaplogLineRecord, MaplogMarkRecord } from './leaflet/maplog/model';
 
 /**
  * Relationship kinds for the network graph (R-Map style).
@@ -1449,6 +1450,15 @@ export interface StoryMap {
     
     /** GPX file paths to load as tracks/waypoints */
     gpxFiles?: string[];
+
+    /** Maplog points and openings placed on the map (walls, doors, stairs, traps, sites). See leaflet/maplog/model.ts */
+    maplogMarks?: MaplogMarkRecord[];
+
+    /** Maplog lines drawn on the map: walls, ledges, roads, rivers. */
+    maplogLines?: MaplogLineRecord[];
+
+    /** Maplog areas drawn on the map: terrain and water. */
+    maplogAreas?: MaplogAreaRecord[];
     
     /** Custom tile server URL template (e.g., https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png) */
     tileServer?: string;
