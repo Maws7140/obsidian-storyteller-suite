@@ -329,6 +329,8 @@ export class CampaignView extends ItemView {
     // â”€â”€ External API (called by main.ts) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     async loadSession(session: CampaignSession, startingScene?: Scene): Promise<void> {
+        // Edits still waiting on the debounce belong to the session being left: write them before it is replaced.
+        await this.flushAutosaveNow();
         this.session = { ...session };
         this.sceneHistory = [];
         this.tagNameCache = null;
@@ -3643,11 +3645,13 @@ export class CampaignView extends ItemView {
             return;
         }
 
+        // Captured now, so the write goes to the session these entries were made in even if the view switches session first.
+        const session = this.session;
         this.flushChain = this.flushChain.catch(() => undefined).then(async () => {
-            if (!this.session) return;
-            await this.plugin.saveSession(this.session);
-            if (entries.length && this.session.filePath) {
-                await this.plugin.appendToSessionLogEntries(this.session.filePath, entries);
+            if (!session) return;
+            await this.plugin.saveSession(session);
+            if (entries.length && session.filePath) {
+                await this.plugin.appendToSessionLogEntries(session.filePath, entries);
             }
         });
 
