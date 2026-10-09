@@ -138,6 +138,8 @@ interface QuickEntryState {
     rollExpression: string;
     rollVs: string;
     rollOutcome: string;
+    /** The "Actor not in the party" name being typed. */
+    npcDraft: string;
 }
 
 interface TagNameCache {
@@ -192,6 +194,7 @@ function createQuickEntryState(): QuickEntryState {
         rollExpression: '',
         rollVs: '',
         rollOutcome: '',
+        npcDraft: '',
     };
 }
 
@@ -287,10 +290,14 @@ export class CampaignView extends ItemView {
     private quickSubmitInFlight = false;
     /** True while a branch choice is being applied. */
     private choiceInFlight = false;
+    /** True while a party item is being used, so a repeat tap does not apply it again. */
+    private itemUseInFlight = false;
     /** True while a scene change or Back is running. */
     private navigationInFlight = false;
     /** NPC names typed into the quick entry bar for this view. */
     private quickNpcs: string[] = [];
+    /** Amounts typed into the party resource +/- boxes, by resource name. Kept so re-renders keep them. */
+    private partyAmountDrafts = new Map<string, string>();
     /** Last dice result from a branch roll, used to prefill the Roll entry. */
     private lastDiceResult: { expression: string; outcome: string } | null = null;
     private tagNameCache: TagNameCache | null = null;
@@ -1978,7 +1985,18 @@ export class CampaignView extends ItemView {
 
     // â”€â”€ Item use â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-    private async useItem(itemName: string, session: CampaignSession, _onRebuild: () => void): Promise<void> {
+    private async useItem(itemName: string, session: CampaignSession, onRebuild: () => void): Promise<void> {
+        // A second tap while the first use is running would apply the item again.
+        if (this.itemUseInFlight) return;
+        this.itemUseInFlight = true;
+        try {
+            await this.applyItemUse(itemName, session, onRebuild);
+        } finally {
+            this.itemUseInFlight = false;
+        }
+    }
+
+    private async applyItemUse(itemName: string, session: CampaignSession, _onRebuild: () => void): Promise<void> {
         let allItems: PlotItem[] = [];
         try {
             allItems = await this.plugin.listPlotItems();
@@ -2888,8 +2906,10 @@ export class CampaignView extends ItemView {
                 row.createSpan({ cls: 'storyteller-campaign-resource-value', text: String(value) });
                 const amount = row.createEl('input', {
                     cls: 'storyteller-campaign-input is-small',
-                    attr: { type: 'number', min: '1', value: '1', 'aria-label': `Amount for ${name}` },
+                    attr: { type: 'number', min: '1', 'aria-label': `Amount for ${name}` },
                 });
+                amount.value = this.partyAmountDrafts.get(name) ?? '1';
+                amount.addEventListener('input', () => { this.partyAmountDrafts.set(name, amount.value); });
                 const change = (sign: 1 | -1) => {
                     const step = Math.abs(Number.parseInt(amount.value, 10)) || 1;
                     applyCampaignPartyResources(session, [`${name}${sign > 0 ? '+' : '-'}${step}`]);
@@ -3333,6 +3353,8 @@ export class CampaignView extends ItemView {
             cls: 'storyteller-campaign-input is-small',
             attr: { type: 'text', placeholder: 'Actor not in the party', 'aria-label': 'Add an actor not in the party' },
         });
+        npcInput.value = q.npcDraft;
+        npcInput.addEventListener('input', () => { q.npcDraft = npcInput.value; });
         const addNpc = () => {
             const name = npcInput.value.trim();
             if (!name) return;
@@ -3340,6 +3362,7 @@ export class CampaignView extends ItemView {
                 this.quickNpcs.push(name);
             }
             if (!q.actors.includes(name)) q.actors = [...q.actors, name];
+            q.npcDraft = '';
             rerender();
         };
         npcInput.addEventListener('keydown', (event) => {

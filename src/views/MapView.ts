@@ -58,6 +58,38 @@ interface MapViewState extends Record<string, unknown> {
  * - Map Container: Flex-grow to fill remaining space with Leaflet map
  * - Status Footer: Map info (type, scale, marker count)
  */
+/** What one Maplog save changed: the state before it and the state it asked for. */
+interface MaplogChange {
+    before: MaplogData;
+    after: MaplogData;
+}
+
+/**
+ * Undo one save's changes to a Maplog list. Items the save added are removed and items it
+ * changed or removed get their old version back. An item that a later save changed again is
+ * left alone, so that later edit is kept.
+ */
+function undoListChange<T extends { id: string }>(current: T[], before: T[], after: T[]): T[] {
+    const same = (a: T, b: T | undefined): boolean => b !== undefined && JSON.stringify(a) === JSON.stringify(b);
+    const beforeById = new Map(before.map(item => [item.id, item]));
+    const afterById = new Map(after.map(item => [item.id, item]));
+    const currentIds = new Set(current.map(item => item.id));
+    const result: T[] = [];
+    for (const item of current) {
+        const written = afterById.get(item.id);
+        if (!written || !same(item, written)) {
+            result.push(item);
+            continue;
+        }
+        const previous = beforeById.get(item.id);
+        if (previous) result.push(previous);
+    }
+    for (const [id, item] of beforeById) {
+        if (!afterById.has(id) && !currentIds.has(id)) result.push(item);
+    }
+    return result;
+}
+
 export class MapView extends ItemView {
     plugin: StorytellerSuitePlugin;
     private currentMap: StoryMap | null = null;
@@ -721,30 +753,56 @@ export class MapView extends ItemView {
         // Update the view first: a second mark placed before this write finishes must build on
         // this one, not on the note as it was, or the earlier mark would be overwritten.
         const optimistic = { ...map, maplogMarks: clean.marks, maplogLines: clean.lines, maplogAreas: clean.areas };
+        const change: MaplogChange = { before: normalizeMaplogData(map), after: clean };
         this.currentMap = optimistic;
         this.leafletRenderer?.getMaplogLayer()?.setData(clean);
         this.maplogWritesPending++;
         const run = async (): Promise<void> => {
-            const patch = maplogFrontmatter(clean);
-            // processFrontMatter keeps the rest of the note and writes in one operation.
-            await this.app.fileManager.processFrontMatter(file, (fm: Record<string, unknown>) => {
-                for (const key of MAPLOG_FRONTMATTER_KEYS) {
-                    const value = patch[key];
-                    if (value === undefined) Reflect.deleteProperty(fm, key);
-                    else fm[key] = value;
-                }
-            });
+            // Write the state as it is now, not as it was when this save was made: a later save may
+            // already be in memory, and an earlier save may have been rolled back while this one waited.
+            const latest = this.currentMap?.filePath === map.filePath ? normalizeMaplogData(this.currentMap) : clean;
+            const patch = maplogFrontmatter(latest);
+            try {
+                // processFrontMatter keeps the rest of the note and writes in one operation.
+                await this.app.fileManager.processFrontMatter(file, (fm: Record<string, unknown>) => {
+                    for (const key of MAPLOG_FRONTMATTER_KEYS) {
+                        const value = patch[key];
+                        if (value === undefined) Reflect.deleteProperty(fm, key);
+                        else fm[key] = value;
+                    }
+                });
+            } catch (error) {
+                // Undo this write before the next queued run starts, so that run does not write it.
+                this.rollbackMaplogWrite(map, optimistic, change);
+                throw error;
+            }
         };
         const queued = this.maplogSaveQueue.then(run, run).finally(() => { this.maplogWritesPending--; });
         this.maplogSaveQueue = queued.catch(() => undefined);
-        return queued.catch((error: unknown) => {
-            // The note did not change, so drop the optimistic state, unless a later edit has already replaced it.
-            if (this.currentMap === optimistic) {
-                this.currentMap = map;
-                this.leafletRenderer?.getMaplogLayer()?.setData(normalizeMaplogData(map));
-            }
-            throw error;
-        });
+        return queued;
+    }
+
+    /**
+     * Take back one rejected write from the in-memory state. Only that write's own changes are
+     * undone: a later save that was built on top of it keeps its edits.
+     */
+    private rollbackMaplogWrite(map: StoryMap, optimistic: StoryMap, change: MaplogChange): void {
+        // Nothing has changed since the write, so the state from before it is restored as it was.
+        if (this.currentMap === optimistic) {
+            this.currentMap = map;
+            this.leafletRenderer?.getMaplogLayer()?.setData(normalizeMaplogData(map));
+            return;
+        }
+        // The open map has changed since the write, so its drawn state is not this note's.
+        if (!this.currentMap || this.currentMap.filePath !== map.filePath) return;
+        const current = normalizeMaplogData(this.currentMap);
+        const restored: MaplogData = {
+            marks: undoListChange(current.marks, change.before.marks, change.after.marks),
+            lines: undoListChange(current.lines, change.before.lines, change.after.lines),
+            areas: undoListChange(current.areas, change.before.areas, change.after.areas),
+        };
+        this.currentMap = { ...this.currentMap, maplogMarks: restored.marks, maplogLines: restored.lines, maplogAreas: restored.areas };
+        this.leafletRenderer?.getMaplogLayer()?.setData(restored);
     }
 
     /**
