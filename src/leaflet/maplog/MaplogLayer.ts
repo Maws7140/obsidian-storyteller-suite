@@ -30,6 +30,7 @@ import {
     type PixelSegment,
 } from './geometry';
 import { describeRoomState, roomStateForPlace, type MaplogRoomState } from './roomState';
+import { svgElement } from './dom';
 
 export interface MaplogLayerOptions {
     /** Hide editing: no right-click menus on placed items. */
@@ -54,12 +55,6 @@ let layerCount = 0;
 
 function escapeHtml(value: string): string {
     return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
-
-/** An SVG element built from our own generated markup, owned by the given document. */
-function svgElement(doc: Document, markup: string): Element {
-    const parsed = new DOMParser().parseFromString(markup, 'image/svg+xml');
-    return doc.importNode(parsed.documentElement, true);
 }
 
 function readInk(container: HTMLElement): string {
