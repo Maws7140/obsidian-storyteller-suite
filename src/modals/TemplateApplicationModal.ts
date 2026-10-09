@@ -75,6 +75,8 @@ export class TemplateApplicationModal extends ResponsiveModal {
     private variableValues: TemplateVariableValues = {};
     private entityFileNames: EntityFileName[] = [];
     private previewNames: Map<string, string> = new Map(); // templateId -> preview name
+    /** Entities whose file name the user typed; their names are not reset from the template preview. */
+    private userEditedFileNames: Set<string> = new Set(); // templateId
     private linkSelections: ExistingEntityLinkSelections = {};
     private excludedTemplateIds: Set<string> = new Set();
     private didApply = false;
@@ -687,9 +689,8 @@ export class TemplateApplicationModal extends ResponsiveModal {
             const entityTypeLabel = this.getEntityTypeLabel(entityInfo.entityType);
             const previewName = this.previewNames.get(entityInfo.templateId) || 'Unnamed';
             
-            // If file name hasn't been manually set, update it from preview
-            const originalName = this.previewNames.get(entityInfo.templateId + '_original');
-            if (!originalName || entityInfo.fileName === originalName || entityInfo.fileName === 'Unnamed') {
+            // Follow the template preview until the user has typed a file name for this entity
+            if (!this.userEditedFileNames.has(entityInfo.templateId) || entityInfo.fileName === 'Unnamed') {
                 entityInfo.fileName = previewName;
             }
 
@@ -702,8 +703,12 @@ export class TemplateApplicationModal extends ResponsiveModal {
                     .setValue(entityInfo.fileName)
                     .onChange(value => {
                         entityInfo.fileName = value || previewName;
-                        // Mark as manually changed
-                        this.previewNames.set(entityInfo.templateId + '_original', value || previewName);
+                        if (value) {
+                            this.userEditedFileNames.add(entityInfo.templateId);
+                        } else {
+                            // Clearing the input hands the name back to the template preview
+                            this.userEditedFileNames.delete(entityInfo.templateId);
+                        }
                     })
                 );
         });
