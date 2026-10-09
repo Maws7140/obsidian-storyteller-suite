@@ -21,6 +21,11 @@ import { parseEventDate, toMillis } from '../utils/DateParsing';
  */
 class TimelineBlockChild extends MarkdownRenderChild {
     private renderer: TimelineRenderer | null = null;
+    private unregisterLive: (() => void) | null = null;
+    /** True once the first load has finished, so a refresh cannot race the initial build. */
+    private ready = false;
+    /** A refresh arrived before the first load finished; run it once the load is done. */
+    private stale = false;
 
     constructor(
         containerEl: HTMLElement,
@@ -47,8 +52,12 @@ class TimelineBlockChild extends MarkdownRenderChild {
             getReferenceDate: () => this.plugin.getReferenceTodayDate()
         });
         this.renderer = renderer;
+        this.unregisterLive = this.plugin.registerLiveTimeline(this);
         void (async () => {
             await renderer.initialize();
+            if (this.renderer !== renderer) return;
+            this.ready = true;
+            if (this.stale) { this.stale = false; void renderer.refresh(); }
             renderer.applyFilters(this.config.filters);
             const start = this.config.from ? toMillis(parseEventDate(this.config.from).start) : null;
             const end = this.config.to ? toMillis(parseEventDate(this.config.to).start) : null;
@@ -58,7 +67,17 @@ class TimelineBlockChild extends MarkdownRenderChild {
         })();
     }
 
+    /** Called by the plugin when timeline data or the story's today has moved. */
+    refreshTimeline(): void {
+        if (!this.renderer) return;
+        if (!this.ready) { this.stale = true; return; }
+        void this.renderer.refresh();
+    }
+
     onunload(): void {
+        this.unregisterLive?.();
+        this.unregisterLive = null;
+        this.ready = false;
         this.renderer?.destroy();
         this.renderer = null;
     }
