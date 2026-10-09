@@ -103,7 +103,9 @@ export function isLinkTargetType(value: unknown): value is EntityType {
 export function validateCustomFieldKey(
     rawKey: string,
     entityType: EntityType,
-    taken: readonly string[] = []
+    taken: readonly string[] = [],
+    /** Body-section fields stored as frontmatter for this vault (see SectionFieldPlacement.ts). */
+    sectionFrontmatterFields: readonly string[] = []
 ): string | null {
     const key = rawKey.trim();
     if (!key) return 'Enter a property name.';
@@ -115,6 +117,7 @@ export function validateCustomFieldKey(
     const builtIn = new Set<string>([
         ...Array.from(getWhitelistKeys(entityType)),
         ...(DERIVED_SECTION_FIELDS[entityType] ?? []),
+        ...sectionFrontmatterFields,
         ...WIKI_LINK_ARRAY_FIELDS,
         ...WIKI_LINK_SCALAR_FIELDS,
         'customFields', 'filePath', 'sections', 'connections', 'entityRefs', 'locationHistory',

@@ -3,10 +3,12 @@ import { t } from '../../i18n/strings';
 import { EntityType, getWhitelistKeys } from '../../yaml/EntitySections';
 import {
     CustomFieldDefinition,
+    DERIVED_SECTION_FIELDS,
     commitDefinedFieldValues,
     displayValueForDefinition,
     isLinkFieldType,
     sanitizeCustomFieldDefinitions,
+    validateCustomFieldKey,
 } from './CustomFieldDefinitions';
 
 type CustomFieldDraft = {
@@ -26,12 +28,15 @@ export interface CustomFieldEditorOptions {
     getEntity?: () => object | undefined;
     /** Entity names offered by link and links pickers, for the active story. */
     listTargetNames?: (target: string) => Promise<string[]>;
+    /** Body-section fields the vault stores as frontmatter. Free-form rows may not reuse them. */
+    sectionFields?: readonly string[];
 }
 
 /** The plugin members the editor needs. Structural, so tests can stub it. */
 export interface CustomFieldPluginAccess {
     getCustomFieldDefinitions(entityType: EntityType): CustomFieldDefinition[];
     listCustomFieldTargetNames(target: string): Promise<string[]>;
+    getSectionFrontmatterFields?(entityType: EntityType): string[];
 }
 
 /** Options for an entity modal, built from the plugin's settings and lists. */
@@ -44,6 +49,7 @@ export function customFieldEditorOptions(
         definitions: plugin.getCustomFieldDefinitions(entityType),
         getEntity,
         listTargetNames: target => plugin.listCustomFieldTargetNames(target),
+        sectionFields: plugin.getSectionFrontmatterFields?.(entityType),
     };
 }
 
@@ -198,6 +204,14 @@ export class EntityCustomFieldsEditor {
 
             if (reserved.has(trimmedKey)) {
                 new Notice(t('thatNameIsReserved'));
+                return null;
+            }
+
+            // Same rules as typed fields: a free-form row may not claim a body
+            // section (it would overwrite that section on save) or a built-in key.
+            const problem = validateCustomFieldKey(trimmedKey, this.entityType, [], this.options.sectionFields ?? []);
+            if (problem) {
+                new Notice(problem);
                 return null;
             }
 
@@ -447,6 +461,8 @@ export class EntityCustomFieldsEditor {
         return new Set([
             ...getWhitelistKeys(this.entityType),
             ...this.definitions.map(definition => definition.key),
+            ...(DERIVED_SECTION_FIELDS[this.entityType] ?? []),
+            ...(this.options.sectionFields ?? []),
             'customFields',
             'filePath',
             'id',

@@ -690,6 +690,11 @@ export default class StorytellerSuitePlugin extends Plugin {
         return sanitizeCustomFieldDefinitions(entityType, this.settings.customFieldDefinitions?.[entityType]);
     }
 
+    /** Body-section fields this vault stores as frontmatter for an entity type. */
+    getSectionFrontmatterFields(entityType: EntityType): string[] {
+        return getFrontmatterSectionFields(this.settings.sectionFieldsInFrontmatter, entityType);
+    }
+
     /**
      * Names of the entities a link or links field can point at, for the active
      * story. Each list method already resolves the story folder.
