@@ -12536,3 +12536,52 @@ body.mod-rtl .storyteller-group-members {
     font-size: 13px;
     cursor: pointer;
 }
+
+/* ---- Group chips (EntityGroupSelector) ---- */
+.selected-groups {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 6px 0;
+}
+.group-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 4px 2px 10px;
+    border-radius: 999px;
+    background: var(--background-modifier-border);
+    color: var(--text-normal);
+    font-size: 0.82em;
+}
+.remove-group-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 24px;
+    min-height: 24px;
+    padding: 0;
+    border: none;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 1em;
+    line-height: 1;
+    cursor: pointer;
+}
+.remove-group-btn:hover,
+.remove-group-btn:focus-visible {
+    color: var(--text-error);
+    background: var(--background-modifier-hover);
+}
+.remove-group-btn:focus-visible {
+    outline: 2px solid var(--interactive-accent);
+    outline-offset: 1px;
+}
+/* Touch screens get a target close to the 44px guideline. */
+@media (pointer: coarse) {
+    .remove-group-btn {
+        min-width: 44px;
+        min-height: 44px;
+    }
+}
