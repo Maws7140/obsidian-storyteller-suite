@@ -88,6 +88,29 @@ describe('suggestImpliedLinks', () => {
         ]);
     });
 
+    it('reads a typed top-level "parents" array of wikilinks, not only customFields', () => {
+        const mira = { ...person('Mira'), parents: ['[[Arathorn]]'] } as unknown as LinkSuggestionCharacter;
+        const arathorn = person('Arathorn');
+        const suggestions = suggestImpliedLinks({ characters: [mira, arathorn] });
+        expect(suggestions).toEqual([expect.objectContaining({
+            reason: 'family-field',
+            source: 'Arathorn',
+            kind: 'parent',
+            target: 'Mira',
+            direction: 'to',
+        })]);
+    });
+
+    it('reads top-level family strings and arrays with several names', () => {
+        const aragorn = { ...person('Aragorn'), children: ['[[Eldarion]]', 'Arwen Undomiel'], spouse: '[[Arwen]]' } as unknown as LinkSuggestionCharacter;
+        const suggestions = suggestImpliedLinks({ characters: [aragorn, person('Eldarion'), person('Arwen Undomiel'), person('Arwen')] });
+        expect(suggestions.map(s => [s.source, s.kind, s.target, s.direction])).toEqual([
+            ['Aragorn', 'parent', 'Eldarion', 'to'],
+            ['Aragorn', 'parent', 'Arwen Undomiel', 'to'],
+            ['Aragorn', 'spouse', 'Arwen', 'mutual'],
+        ]);
+    });
+
     it('suggests a child from a "children" field, with the owner as parent', () => {
         const tom = person('Tom', { customFields: { children: '[[Mira]]' } });
         const suggestions = suggestImpliedLinks({ characters: [tom, person('Mira')] });

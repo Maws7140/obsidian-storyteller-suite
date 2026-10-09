@@ -88,6 +88,7 @@ import type { LeafletRendererOptions, LocationPinHighlight } from '../leaflet/ty
 import { mapToBlockParams } from '../leaflet/utils/MapBlockParams';
 import { locationPinKey, resolveBoardSelection } from '../utils/CampaignBoardSelection';
 import {
+    advancementLinesForSession,
     appendBlock,
     appendInterludeBlock,
     applyPartylogTagsToSession,
@@ -112,9 +113,7 @@ import {
     formatEvent,
     formatMeta,
     formatRoll,
-    formatTag,
     parsePartylogLine,
-    type AdvanceTag,
     type Interlude,
     type SessionHeader,
 } from '../campaign/partylog';
@@ -3174,17 +3173,7 @@ export class CampaignView extends ItemView {
         const session = this.session;
         if (!session) return;
         const number = session.sessionNumber;
-        const advancementLines: string[] = [];
         for (const entry of values.advancements) {
-            const tag: AdvanceTag = {
-                kind: 'Advance',
-                reference: false,
-                fields: [],
-                name: entry.character,
-                detail: entry.detail || undefined,
-                gains: entry.gains,
-            };
-            advancementLines.push(formatTag(tag));
             const summary = [entry.detail, ...entry.gains].filter(part => part.length > 0).join(', ') || 'Advanced';
             addCampaignAdvancement(session, entry.character, summary, { sessionNumber: number });
         }
@@ -3195,8 +3184,9 @@ export class CampaignView extends ItemView {
         session.endNotes = values.notes || undefined;
         if (values.endSession) session.status = 'completed';
 
+        // Every advancement of this session is written, so re-saving the block keeps earlier ones.
         const lines = [
-            ...advancementLines,
+            ...advancementLinesForSession(session, number),
             ...values.changeLines,
             ...(values.hook ? [`(hook: ${values.hook})`] : []),
             ...(values.notes ? [`(note: ${values.notes})`] : []),

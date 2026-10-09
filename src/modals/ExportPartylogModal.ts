@@ -7,7 +7,7 @@ import type StorytellerSuitePlugin from '../main';
 import { PARTYLOG_NAME, buildPartylogExport, uniqueExportPath } from '../campaign/PartylogExport';
 import type { PartylogExportSession } from '../campaign/PartylogExport';
 import type { FormatStyle } from '../campaign/partylog';
-import type { CampaignSession } from '../types';
+import type { CampaignSession, Character } from '../types';
 import { ResponsiveModal } from './ResponsiveModal';
 
 export const PARTYLOG_EXPORT_FOLDER = 'StorytellerSuite/Exports';
@@ -101,7 +101,12 @@ export class ExportPartylogModal extends ResponsiveModal {
 				const logBody = session.filePath ? await this.plugin.loadSessionLog(session.filePath).catch(() => '') : '';
 				entries.push({ session, logBody });
 			}
-			const result = buildPartylogExport({ title: storyName, sessions: entries, style: this.style });
+			const characters = await this.plugin.listCharacters().catch((): Character[] => []);
+			const context = {
+				groups: this.plugin.getGroups().map((group) => ({ id: group.id, name: group.name })),
+				characters: characters.filter((character) => !!character.id).map((character) => ({ id: character.id as string, name: character.name })),
+			};
+			const result = buildPartylogExport({ title: storyName, sessions: entries, style: this.style, context });
 			const base = this.chosenScope === WHOLE_STORY ? `Partylog ${storyName}` : `Partylog ${storyName} ${chosen[0].name}`;
 			await this.plugin.ensureFolder(PARTYLOG_EXPORT_FOLDER);
 			const path = uniqueExportPath(PARTYLOG_EXPORT_FOLDER, base, (candidate) => this.app.vault.getAbstractFileByPath(candidate) !== null);

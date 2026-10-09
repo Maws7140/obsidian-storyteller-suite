@@ -83,6 +83,28 @@ function normaliseName(ref: string): string {
     return ref.replace(/^\[\[|\]\]$/g, '').split('|')[0].replace(/\s+/g, ' ').trim().toLowerCase();
 }
 
+/**
+ * Names held by a family value: a string list, or an array of wiki links or names (typed
+ * fields such as `parents: ["[[Arathorn]]"]`). Anything else names nobody.
+ */
+function familyNames(raw: unknown): string[] {
+    if (typeof raw === 'string') return splitNameList(raw);
+    if (Array.isArray(raw)) return raw.flatMap(item => (typeof item === 'string' ? splitNameList(item) : []));
+    return [];
+}
+
+/**
+ * Field/value pairs on a character that may describe family: its custom fields, then its
+ * top-level properties (typed defined fields live there).
+ */
+function familyFieldsOf(owner: LinkSuggestionCharacter): Array<[string, unknown]> {
+    const fields: Array<[string, unknown]> = Object.entries(owner.customFields ?? {});
+    for (const [field, value] of Object.entries(owner as unknown as Record<string, unknown>)) {
+        if (field !== 'customFields') fields.push([field, value]);
+    }
+    return fields;
+}
+
 /** Split a free-text list of names ("Tom, Anne and [[Bob]]") into clean names. */
 export function splitNameList(raw: string): string[] {
     return raw
@@ -193,12 +215,12 @@ export function suggestImpliedLinks(input: LinkSuggestionInput): LinkSuggestion[
         });
     };
 
-    // 1. Family-sounding custom fields
+    // 1. Family-sounding fields: custom fields and typed top-level properties
     for (const owner of input.characters) {
-        for (const [field, raw] of Object.entries(owner.customFields ?? {})) {
+        for (const [field, raw] of familyFieldsOf(owner)) {
             const rule = FAMILY_FIELD_RULES[field.trim().toLowerCase()];
-            if (!rule || typeof raw !== 'string') continue;
-            for (const name of splitNameList(raw)) {
+            if (!rule) continue;
+            for (const name of familyNames(raw)) {
                 const other = resolve(name);
                 if (!other || other === owner) continue;
 
