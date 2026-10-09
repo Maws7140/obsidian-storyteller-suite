@@ -5191,10 +5191,11 @@ export class DashboardView extends ItemView {
      * Handle editing a template
      */
     private handleEditTemplate(template: Template, container: HTMLElement): void {
+        // The editor writes into the object it receives; give it a copy so Cancel leaves the cache untouched.
         new TemplateEditorModal(
             this.app,
             this.plugin,
-            template,
+            structuredClone(template),
             (updatedTemplate) => { void (async () => {
                 await this.renderTemplatesContent(container);
             })(); }
