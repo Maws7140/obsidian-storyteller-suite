@@ -419,7 +419,8 @@ export class NetworkGraphView extends ItemView {
             if (type) types.push(type);
         });
         
-        return types.length > 0 ? types : ['character', 'location', 'event', 'item', 'culture', 'economy', 'magicsystem', 'group'];
+        // No active type means nothing is shown; the renderer draws an empty graph.
+        return types;
     }
 
     /**

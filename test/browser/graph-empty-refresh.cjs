@@ -78,6 +78,26 @@ const esbuild = require(path + 'node_modules/esbuild');
     assert.equal(back.afterEmpty, 0, 'refresh to an empty set clears the graph');
     assert.equal(back.emptyStateShown, true, 'empty-state message returns when nothing is left to draw');
 
+    // With every entity type switched off the renderer draws nothing
+    const allOff = await p.evaluate(async () => {
+        const chars = [{ id: 'c1', name: 'Aria', connections: [] }, { id: 'c2', name: 'Bran', connections: [] }];
+        const plugin = {
+            listCharacters: async () => chars.map(c => ({ ...c })),
+            listLocations: async () => [], listEvents: async () => [], listPlotItems: async () => [],
+            listCultures: async () => [], listEconomies: async () => [], listMagicSystems: async () => [],
+            getGroups: () => [], app: { vault: { getAbstractFileByPath: () => null } }
+        };
+        const host = document.getElementById('host'); host.replaceChildren();
+        const r = new NG.NetworkGraphRenderer(host, plugin);
+        await r.initializeCytoscape();
+        const shown = r.getNodeCount();
+        await r.applyFilters({ entityTypes: [] });
+        return { shown, afterAllOff: r.getNodeCount(), emptyStateShown: !!host.querySelector('.storyteller-network-empty-state') };
+    });
+    assert.equal(allOff.shown, 2, 'both characters are shown with no filter');
+    assert.equal(allOff.afterAllOff, 0, 'no entity types selected draws an empty graph');
+    assert.equal(allOff.emptyStateShown, true, 'empty graph shows the empty-state message');
+
     assert.deepEqual(errors, [], 'no page errors');
     console.log('PASS: graph opened empty draws after refresh');
     await br.close();
