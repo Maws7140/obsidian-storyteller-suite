@@ -3153,6 +3153,15 @@ If your plugin does not need CSS, delete this file.
   flex-shrink: 0;
 }
 
+/* Status text reads like Obsidian's status copy: smaller and muted, with
+   figures that keep their width as the count and dates change. */
+.storyteller-timeline-view .storyteller-timeline-status {
+  padding: 4px 2px;
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
 .storyteller-timeline-date {
     color: var(--text-faint);
     font-size: var(--font-ui-smaller);

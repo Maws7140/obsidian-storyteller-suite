@@ -20,19 +20,6 @@ const MANAGE_OPTION = '__manage__';
 // Re-export TimelineUIState as TimelineViewState for backward compatibility
 export type TimelineViewState = TimelineUIState;
 
-/**
- * A footer date. `toLocaleDateString` drops the sign of a negative year, so
- * -3000 read as "1/1/3000". Years are astronomical (year -N is N+1 BCE, as in
- * formatCalendarYear), and the era is named explicitly. Placement is on UTC,
- * so the BCE branch reads UTC fields to avoid shifting the day in the west.
- */
-function formatFooterDate(date: Date): string {
-    const year = date.getUTCFullYear();
-    if (year > 0) return date.toLocaleDateString();
-    const month = date.toLocaleDateString(undefined, { month: 'long', timeZone: 'UTC' });
-    return `${month} ${date.getUTCDate()}, ${1 - year} BCE`;
-}
-
 function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -720,9 +707,7 @@ export class TimelineView extends ItemView {
             let statusText = plural(tally.dated);
             if (tally.undated.length > 0) statusText += `, ${tally.undated.length} undated`;
             if (dateRange) {
-                const startStr = formatFooterDate(dateRange.start);
-                const endStr = formatFooterDate(dateRange.end);
-                statusText += ` • ${startStr} to ${endStr}`;
+                statusText += ` • ${this.renderer.formatDateSpan(dateRange.start, dateRange.end)}`;
             }
             if (this.currentState.ganttMode) {
                 statusText += ` • ${t('ganttView')}`;
