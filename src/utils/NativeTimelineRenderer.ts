@@ -712,7 +712,7 @@ export class NativeTimelineRenderer {
         // can still run the dedicated conflict tools against the full dataset.
         this.conflictsByEvent.clear();
         if (sourceEvents.length <= 10_000) {
-            const conflicts = ConflictDetector.detectAllConflicts(sourceEvents, this.characters, this.locations);
+            const conflicts = ConflictDetector.detectAllConflicts(sourceEvents, this.characters, this.locations, this.referenceDate);
             // Keep them indexed so an item can show its own severity and the
             // tooltip can list the messages, the way the vis renderer did.
             conflicts.forEach(conflict => {

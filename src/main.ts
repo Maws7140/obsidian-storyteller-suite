@@ -3365,7 +3365,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 				const [events, characters, locations] = await Promise.all([
 					this.listEvents(), this.listCharacters(), this.listLocations(),
 				]);
-				const detectedConflicts = ConflictDetector.detectAllConflicts(events, characters, locations);
+				const detectedConflicts = ConflictDetector.detectAllConflicts(events, characters, locations, this.getReferenceTodayDate());
 				const conflicts = ConflictDetector.toStorageFormat(detectedConflicts);
 
 				await this.setTimelineConflicts(conflicts);
@@ -3384,7 +3384,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 						const [events, characters, locations] = await Promise.all([
 							this.listEvents(), this.listCharacters(), this.listLocations(),
 						]);
-						const detectedConflicts = ConflictDetector.detectAllConflicts(events, characters, locations);
+						const detectedConflicts = ConflictDetector.detectAllConflicts(events, characters, locations, this.getReferenceTodayDate());
 						const newConflicts = ConflictDetector.toStorageFormat(detectedConflicts);
 
 						await this.setTimelineConflicts(newConflicts);
@@ -3417,7 +3417,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 						const [events, characters, locations] = await Promise.all([
 							this.listEvents(), this.listCharacters(), this.listLocations(),
 						]);
-						const detectedConflicts = ConflictDetector.detectAllConflicts(events, characters, locations);
+						const detectedConflicts = ConflictDetector.detectAllConflicts(events, characters, locations, this.getReferenceTodayDate());
 						const newConflicts = ConflictDetector.toStorageFormat(detectedConflicts);
 
 						await this.setTimelineConflicts(newConflicts);

@@ -39,13 +39,13 @@ function toSpan(date: ParsedEventDate): EventSpan | undefined {
  * dominant cost of conflict detection because the same strings were re-parsed for every pair of
  * events. Keyed by the raw string, so each distinct date is parsed once per pass.
  */
-function createDateCache() {
+function createDateCache(referenceDate?: Date) {
     const parsed = new Map<string, ParsedEventDate>();
     const spans = new Map<string, EventSpan | undefined>();
     const parse = (raw: string): ParsedEventDate => {
         let result = parsed.get(raw);
         if (!result) {
-            result = parseTimelineDate(raw);
+            result = parseTimelineDate(raw, referenceDate);
             parsed.set(raw, result);
         }
         return result;
@@ -87,28 +87,28 @@ export class ConflictDetector {
     /**
      * Detect all conflicts in a set of events
      */
-    static detectAllConflicts(events: Event[], characters: Character[] = [], locations: Location[] = []): DetectedConflict[] {
+    static detectAllConflicts(events: Event[], characters: Character[] = [], locations: Location[] = [], referenceDate?: Date): DetectedConflict[] {
         const conflicts: DetectedConflict[] = [];
 
         // Detect character location conflicts
-        conflicts.push(...this.detectCharacterLocationConflicts(events));
+        conflicts.push(...this.detectCharacterLocationConflicts(events, referenceDate));
 
-        conflicts.push(...this.detectPresenceConflicts(events, characters, locations));
+        conflicts.push(...this.detectPresenceConflicts(events, characters, locations, referenceDate));
 
         // Detect death conflicts (character appearing after death)
-        conflicts.push(...this.detectDeathConflicts(events));
+        conflicts.push(...this.detectDeathConflicts(events, referenceDate));
 
         // Detect dependency conflicts
-        conflicts.push(...this.detectDependencyConflicts(events));
+        conflicts.push(...this.detectDependencyConflicts(events, referenceDate));
 
         // Detect temporal conflicts (overlapping milestone events)
-        conflicts.push(...this.detectTemporalConflicts(events));
+        conflicts.push(...this.detectTemporalConflicts(events, referenceDate));
 
         return conflicts;
     }
 
     /** Detect an event placing a character away from their recorded presence span. */
-    static detectPresenceConflicts(events: Event[], characters: Character[], locations: Location[] = []): DetectedConflict[] {
+    static detectPresenceConflicts(events: Event[], characters: Character[], locations: Location[] = [], referenceDate?: Date): DetectedConflict[] {
         const conflicts: DetectedConflict[] = [];
         const clean = (value: string): string => {
             const trimmed = String(value ?? '').trim();
@@ -121,7 +121,7 @@ export class ConflictDetector {
             if (location.id) locationNames.set(clean(location.id), location.name);
         }
         const locationName = (value: string): string => locationNames.get(clean(value)) ?? value;
-        const { parse } = createDateCache();
+        const { parse } = createDateCache(referenceDate);
 
         for (const character of characters) {
             const refs = new Set([clean(character.name), character.id ? clean(character.id) : ''].filter(Boolean));
@@ -180,7 +180,7 @@ export class ConflictDetector {
     /**
      * Detect when a character is in multiple locations at the same time
      */
-    static detectCharacterLocationConflicts(events: Event[]): DetectedConflict[] {
+    static detectCharacterLocationConflicts(events: Event[], referenceDate?: Date): DetectedConflict[] {
         const conflicts: DetectedConflict[] = [];
 
         // Get all characters mentioned in events
@@ -189,7 +189,7 @@ export class ConflictDetector {
             event.characters?.forEach(char => characters.add(char));
         });
 
-        const { parse, span } = createDateCache();
+        const { parse, span } = createDateCache(referenceDate);
 
         // Check each character
         for (const character of characters) {
@@ -261,9 +261,9 @@ export class ConflictDetector {
      * Detect characters appearing alive after death events
      * Looks for events tagged with death-related keywords and checks if character appears in later events
      */
-    static detectDeathConflicts(events: Event[]): DetectedConflict[] {
+    static detectDeathConflicts(events: Event[], referenceDate?: Date): DetectedConflict[] {
         const conflicts: DetectedConflict[] = [];
-        const { parse } = createDateCache();
+        const { parse } = createDateCache(referenceDate);
 
         // Find characters who have death events
         const characterDeaths = new Map<string, { event: Event; date: DateTime }>();
@@ -326,9 +326,9 @@ export class ConflictDetector {
     /**
      * Detect dependency conflicts (circular dependencies, missing dependencies, etc.)
      */
-    static detectDependencyConflicts(events: Event[]): DetectedConflict[] {
+    static detectDependencyConflicts(events: Event[], referenceDate?: Date): DetectedConflict[] {
         const conflicts: DetectedConflict[] = [];
-        const { parse } = createDateCache();
+        const { parse } = createDateCache(referenceDate);
         const eventMap = new Map<string, Event>();
         const eventNameMap = new Map<string, Event>();
         const eventLowerNameMap = new Map<string, Event>();
@@ -432,10 +432,10 @@ export class ConflictDetector {
     /**
      * Detect temporal conflicts (e.g., overlapping milestones)
      */
-    static detectTemporalConflicts(events: Event[]): DetectedConflict[] {
+    static detectTemporalConflicts(events: Event[], referenceDate?: Date): DetectedConflict[] {
         const conflicts: DetectedConflict[] = [];
         const milestones = events.filter(e => e.isMilestone && e.dateTime);
-        const { parse } = createDateCache();
+        const { parse } = createDateCache(referenceDate);
 
         // Check for milestones that occur at exactly the same time
         for (let i = 0; i < milestones.length; i++) {
