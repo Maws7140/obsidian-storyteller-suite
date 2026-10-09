@@ -46,6 +46,10 @@ export class CharacterModal extends ResponsiveModal {
     private readonly customFieldsEditor: EntityCustomFieldsEditor;
     private readonly groupSelector: EntityGroupSelector;
     private entityNameIndex: Map<string, string> | null = null;
+    /** Bumped by every onOpen; a render that finds it moved on stops after its await. */
+    private renderSeq = 0;
+    /** The default template is applied once per modal, not again on each re-render. */
+    private defaultTemplateHandled = false;
 
     /**
      * Whether a field is turned on for this vault. A hidden field is simply not
@@ -124,10 +128,10 @@ export class CharacterModal extends ResponsiveModal {
                 return (characters.find(character => (character.id || character.name) === identifier)?.groups || this.character.groups || []);
             },
             persistAdd: async groupId => {
-                await this.plugin.addMemberToGroup(groupId, 'character', this.character.id || this.character.name);
+                await this.plugin.addMemberToGroup(groupId, 'character', this.ensureCharacterId());
             },
             persistRemove: async groupId => {
-                await this.plugin.removeMemberFromGroup(groupId, 'character', this.character.id || this.character.name);
+                await this.plugin.removeMemberFromGroup(groupId, 'character', this.ensureCharacterId());
             }
         });
         this.onSubmit = onSubmit;
@@ -137,6 +141,10 @@ export class CharacterModal extends ResponsiveModal {
 
     onOpen() { void (async () => {
         super.onOpen(); // Call the parent's mobile optimizations
+        // Applying a template re-renders while this render may still be awaiting.
+        // Only the newest render draws, so a stale one cannot add a second footer.
+        const renderSeq = ++this.renderSeq;
+        const isCurrent = () => renderSeq === this.renderSeq;
 
         const rootEl = this.contentEl;
         rootEl.empty();
@@ -158,7 +166,8 @@ export class CharacterModal extends ResponsiveModal {
         // Auto-apply default template for new characters
         if (this.isNew && !this.character.name) {
             const defaultTemplateId = this.plugin.settings.defaultTemplates?.['character'];
-            if (defaultTemplateId) {
+            if (defaultTemplateId && !this.defaultTemplateHandled) {
+                this.defaultTemplateHandled = true;
                 const defaultTemplate = this.plugin.templateManager?.getTemplate(defaultTemplateId);
                 if (defaultTemplate) {
                     // If template has variables or multiple entities, use TemplateApplicationModal
@@ -201,6 +210,8 @@ export class CharacterModal extends ResponsiveModal {
                 }
             }
         }
+
+        if (!isCurrent()) return;
 
         // --- Template Selector (for new characters) ---
         if (this.isNew) {
@@ -483,6 +494,7 @@ export class CharacterModal extends ResponsiveModal {
                 locationService.getLocation(entry.locationId)
             );
             const locations = await Promise.all(locationPromises);
+            if (!isCurrent()) return;
             
             for (let i = 0; i < this.character.locationHistory.length; i++) {
                 const entry = this.character.locationHistory[i];
@@ -532,6 +544,7 @@ export class CharacterModal extends ResponsiveModal {
         };
         renderCultureChips();
         const allCulturesForChar = await this.plugin.listCultures();
+        if (!isCurrent()) return;
         new Setting(worldBody)
             .setName('Add culture')
             .addDropdown(dd => {
@@ -555,7 +568,7 @@ export class CharacterModal extends ResponsiveModal {
             .setDesc('Current wealth (e.g. "50gp 25sp"). Auto-computed from ledger blocks if present in the note.')
             .addText(text => text
                 .setValue(this.character.balance || '')
-                .onChange(val => { this.character.balance = val.trim() || undefined; })
+                .onChange(val => { this.character.balance = val.trim() || undefined; this.character.balanceAuto = false; })
             );
         if (this.character.ledger && this.character.ledger.length > 0) {
             const ledgerEl = worldBody.createDiv('storyteller-ledger-preview');
@@ -568,7 +581,9 @@ export class CharacterModal extends ResponsiveModal {
         const normalizeInventoryName = (value: string): string => value.trim().toLowerCase();
 
         const allCharactersForInventory = await this.plugin.listCharacters().catch(() => [] as Character[]);
+        if (!isCurrent()) return;
         const allPlotItems = await this.plugin.listPlotItems().catch(() => [] as PlotItem[]);
+        if (!isCurrent()) return;
         const sortedPlotItems = [...allPlotItems].sort((a, b) => a.name.localeCompare(b.name));
         const itemByName = new Map(sortedPlotItems.map(item => [normalizeInventoryName(item.name), item] as const));
 
@@ -645,6 +660,7 @@ export class CharacterModal extends ResponsiveModal {
         };
         renderCharEconChips();
         const allEconomies = await this.plugin.listEconomies();
+        if (!isCurrent()) return;
         new Setting(worldBody)
             .setName('Add economy')
             .addDropdown(dd => {
@@ -691,6 +707,7 @@ export class CharacterModal extends ResponsiveModal {
         // id → name index so the list shows display names instead of raw ids.
         try {
             this.entityNameIndex = await buildEntityNameIndex(this.plugin);
+            if (!isCurrent()) return;
         } catch {
             this.entityNameIndex = null;
         }
@@ -1151,6 +1168,18 @@ export class CharacterModal extends ResponsiveModal {
         mkChips(body, 'Conditions', () => ch.dndConditions, v => { ch.dndConditions = v.length ? v : undefined; }, CONDITIONS);
         mkChips(body, 'Skill Proficiencies', () => ch.dndSkillProficiencies, v => { ch.dndSkillProficiencies = v.length ? v : undefined; }, SKILLS);
         mkChips(body, 'Saving Throw Proficiencies', () => ch.dndSavingThrowProficiencies, v => { ch.dndSavingThrowProficiencies = v.length ? v : undefined; }, SAVES);
+    }
+
+    /**
+     * Group membership is keyed by the character's id. A new character gets its
+     * id here, before the first group write, so the membership recorded now is
+     * the one a later removal (after the note is saved) looks for.
+     */
+    private ensureCharacterId(): string {
+        if (!this.character.id) {
+            this.character.id = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+        }
+        return this.character.id;
     }
 
     private refresh(): void {

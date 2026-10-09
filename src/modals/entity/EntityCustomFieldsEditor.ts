@@ -88,6 +88,8 @@ export class EntityCustomFieldsEditor {
     private definedDrafts: Record<string, unknown> = {};
     private readonly targetNames = new Map<string, string[]>();
     private readonly pendingTargets = new Set<string>();
+    /** Per link field key: re-applies its target-dependent text once the note list loads. */
+    private readonly linkPickerRefreshers = new Map<string, () => void>();
 
     constructor(
         private readonly app: App,
@@ -252,8 +254,19 @@ export class EntityCustomFieldsEditor {
                 .catch(() => this.targetNames.set(target, []))
                 .finally(() => {
                     this.pendingTargets.delete(target);
-                    this.renderDefined();
+                    this.refreshLinkPickers(target);
                 });
+        }
+    }
+
+    /**
+     * Update only the link pickers that use this target. Rebuilding every defined
+     * field here would recreate the text inputs and drop focus while the user types.
+     */
+    private refreshLinkPickers(target: string): void {
+        for (const definition of this.definitions) {
+            if (!isLinkFieldType(definition.type) || definition.target !== target) continue;
+            this.linkPickerRefreshers.get(definition.key)?.();
         }
     }
 
@@ -264,6 +277,7 @@ export class EntityCustomFieldsEditor {
         }
 
         this.definedEl.empty();
+        this.linkPickerRefreshers.clear();
         for (const definition of this.definitions) {
             this.renderDefinedField(this.definedEl, definition);
         }
@@ -359,9 +373,11 @@ export class EntityCustomFieldsEditor {
                 break;
             case 'link':
                 this.renderLinkPicker(setting, definition, typeof draft === 'string' ? draft : '');
+                this.linkPickerRefreshers.set(key, () => this.refreshLinkPicker(setting, definition));
                 break;
             case 'links':
                 this.renderLinksPicker(parent, setting, definition, Array.isArray(draft) ? draft as string[] : []);
+                this.linkPickerRefreshers.set(key, () => this.refreshLinkPicker(setting, definition));
                 break;
         }
     }
@@ -437,6 +453,12 @@ export class EntityCustomFieldsEditor {
 
     private namesFor(definition: CustomFieldDefinition): string[] {
         return definition.target ? (this.targetNames.get(definition.target) ?? []) : [];
+    }
+
+    /** The text that depends on the loaded note list: the description, when no notes match. */
+    private refreshLinkPicker(setting: Setting, definition: CustomFieldDefinition): void {
+        setting.setDesc(definition.label ? definition.key : '');
+        this.noteIfNoTargets(setting, definition);
     }
 
     private noteIfNoTargets(setting: Setting, definition: CustomFieldDefinition): void {

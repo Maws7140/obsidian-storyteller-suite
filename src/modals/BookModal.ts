@@ -243,14 +243,9 @@ export class BookModal extends ResponsiveModal {
                     dd.onChange(v => {
                         if (!v) return;
                         if (!Array.isArray(this.book.linkedChapters)) this.book.linkedChapters = [];
+                        // The chapter's bookId is written when the book is saved (saveBook)
                         if (!this.book.linkedChapters.includes(v)) {
                             this.book.linkedChapters.push(v);
-                            // Update chapter's bookId/bookName
-                            const ch = allChapters.find(c => c.name === v);
-                            if (ch) {
-                                ch.bookId = this.book.id;
-                                ch.bookName = this.book.name;
-                            }
                         }
                         renderChapterChips();
                         dd.setValue('');

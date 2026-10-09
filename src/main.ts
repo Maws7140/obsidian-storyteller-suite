@@ -124,6 +124,7 @@ import { LocationMigration } from './utils/LocationMigration';
 import { WordCountTracker } from './compile';
 import type { SessionStats } from './compile';
 import { createLedgerViewExtension, registerLedgerBlockProcessor } from './extensions/LedgerEditorExtension';
+import { isLedgerDerivedBalance } from './utils/LedgerParser';
 import { createBranchViewExtension, registerBranchBlockProcessors } from './extensions/BranchBlockExtension';
 import { registerTimelineBlockProcessor } from './extensions/TimelineBlockExtension';
 import { CampaignSession } from './types';
@@ -4339,9 +4340,13 @@ export default class StorytellerSuitePlugin extends Plugin {
                 const entries = extractLedgerEntries(content);
                 if (entries.length > 0) {
                     data['ledger'] = entries;
-                    // Recompute balance from ledger if no manual balance is set
-                    if (!data['balance']) {
-                        data['balance'] = formatBalance(computeBalance(entries));
+                    // Derive the balance from the ledger unless the note holds a different
+                    // balance, which is a manual value. Derived balances are flagged so saving
+                    // does not freeze them into frontmatter (see isLedgerDerivedBalance).
+                    const derived = formatBalance(computeBalance(entries));
+                    if (!data['balance'] || data['balance'] === derived) {
+                        data['balance'] = derived;
+                        data['balanceAuto'] = true;
                     }
                 }
             }
@@ -4454,12 +4459,12 @@ export default class StorytellerSuitePlugin extends Plugin {
         );
     }
 
-    private buildFrontmatterForCharacter(src: Record<string, unknown>, originalFrontmatter?: Record<string, unknown>): Promise<Record<string, unknown>> {
-        return this.buildLinkedFrontmatter('character', src, originalFrontmatter);
+    private buildFrontmatterForCharacter(src: Record<string, unknown>, originalFrontmatter?: Record<string, unknown>, extraOmitKeys?: readonly string[]): Promise<Record<string, unknown>> {
+        return this.buildLinkedFrontmatter('character', src, originalFrontmatter, extraOmitKeys);
     }
 
-    private buildFrontmatterForLocation(src: Record<string, unknown>, originalFrontmatter?: Record<string, unknown>): Promise<Record<string, unknown>> {
-        return this.buildLinkedFrontmatter('location', src, originalFrontmatter);
+    private buildFrontmatterForLocation(src: Record<string, unknown>, originalFrontmatter?: Record<string, unknown>, extraOmitKeys?: readonly string[]): Promise<Record<string, unknown>> {
+        return this.buildLinkedFrontmatter('location', src, originalFrontmatter, extraOmitKeys);
     }
 
     private buildFrontmatterForEvent(src: Record<string, unknown>, originalFrontmatter?: Record<string, unknown>): Promise<Record<string, unknown>> {
@@ -4474,8 +4479,8 @@ export default class StorytellerSuitePlugin extends Plugin {
         return this.buildLinkedFrontmatter('item', src, originalFrontmatter, ['currentOwner']);
     }
 
-    private buildFrontmatterForCulture(src: Record<string, unknown>, originalFrontmatter?: Record<string, unknown>): Promise<Record<string, unknown>> {
-        return this.buildLinkedFrontmatter('culture', src, originalFrontmatter);
+    private buildFrontmatterForCulture(src: Record<string, unknown>, originalFrontmatter?: Record<string, unknown>, extraOmitKeys?: readonly string[]): Promise<Record<string, unknown>> {
+        return this.buildLinkedFrontmatter('culture', src, originalFrontmatter, extraOmitKeys);
     }
 
 
@@ -4520,6 +4525,8 @@ export default class StorytellerSuitePlugin extends Plugin {
         delete rest.backstory;
         delete rest.description;
         delete rest.ledger;
+        const derivedBalance = isLedgerDerivedBalance(character);
+        if (derivedBalance) delete rest.balance;
         if (rest.sections) delete rest.sections;
 
 		// Handle renaming if filePath is present and name changed
@@ -4566,7 +4573,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		}
 
 		// Build frontmatter strictly from whitelist, preserving original frontmatter
-		const finalFrontmatter = await this.buildFrontmatterForCharacter(rest, originalFrontmatter);
+		const finalFrontmatter = await this.buildFrontmatterForCharacter(rest, originalFrontmatter, derivedBalance ? ['balance'] : undefined);
 
 		// Validate that we're not losing any fields before serialization
 		if (originalFrontmatter) {
@@ -4782,6 +4789,8 @@ export default class StorytellerSuitePlugin extends Plugin {
         delete rest.history;
         delete rest.description;
         delete rest.ledger;
+        const derivedBalance = isLedgerDerivedBalance(location);
+        if (derivedBalance) delete rest.balance;
         if (rest.sections) delete rest.sections;
 
 		// Handle renaming if filePath is present and name changed
@@ -4827,7 +4836,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		}
 
 		// Build frontmatter strictly from whitelist, preserving original frontmatter
-		const finalFrontmatter = await this.buildFrontmatterForLocation(rest, originalFrontmatter);
+		const finalFrontmatter = await this.buildFrontmatterForLocation(rest, originalFrontmatter, derivedBalance ? ['balance'] : undefined);
 
 		// Validate that we're not losing any fields before serialization
 		if (originalFrontmatter) {
@@ -6745,6 +6754,38 @@ export default class StorytellerSuitePlugin extends Plugin {
         }
         book.filePath = finalFilePath;
         this.app.metadataCache.trigger('dataview:refresh-views');
+
+        if (!(book as WithSyncFlags<Book>)._skipSync) {
+            await this._syncBookChapterMembership(book);
+        }
+    }
+
+    /**
+     * Make each chapter's bookId agree with the book's linkedChapters. Chapters
+     * added to the book take its id when they are unassigned; chapters removed
+     * from it lose the id. A chapter that already belongs to another book is left alone.
+     */
+    private async _syncBookChapterMembership(book: Book): Promise<void> {
+        const linked = new Set(Array.isArray(book.linkedChapters) ? book.linkedChapters : []);
+        const chapters = await this.listChapters();
+        for (const ch of chapters) {
+            if (!ch.filePath) continue;
+            const isMember = linked.has(ch.name);
+            const belongsHere = ch.bookId === book.id;
+            let next: Chapter | null = null;
+            if (isMember && !ch.bookId) {
+                next = { ...ch, bookId: book.id, bookName: book.name };
+            } else if (!isMember && belongsHere) {
+                next = { ...ch, bookId: undefined, bookName: undefined };
+            }
+            if (!next) continue;
+            (next as WithSyncFlags<Chapter>)._skipSync = true;
+            try {
+                await this.saveChapter(next);
+            } catch (e) {
+                new Notice(`Could not update the book link on chapter "${ch.name}": ${e instanceof Error ? e.message : String(e)}`);
+            }
+        }
     }
 
     async listBooks(): Promise<Book[]> {
@@ -7219,6 +7260,8 @@ export default class StorytellerSuitePlugin extends Plugin {
         delete rest.namingConventions;
         delete rest.customs;
         delete rest.ledger;
+        const derivedBalance = isLedgerDerivedBalance(culture);
+        if (derivedBalance) delete rest.balance;
         if (rest.sections) delete rest.sections;
 
         let finalFilePath = filePath;
@@ -7257,7 +7300,7 @@ export default class StorytellerSuitePlugin extends Plugin {
             }
         }
 
-        const finalFrontmatter = await this.buildFrontmatterForCulture(rest, originalFrontmatter);
+        const finalFrontmatter = await this.buildFrontmatterForCulture(rest, originalFrontmatter, derivedBalance ? ['balance'] : undefined);
 
         if (originalFrontmatter) {
             const validation = validateFrontmatterPreservation(finalFrontmatter, originalFrontmatter);
@@ -9595,10 +9638,11 @@ export default class StorytellerSuitePlugin extends Plugin {
 					resources,
 				};
 				const fromFileRecord = fromFile as unknown as Record<string, unknown>;
+				// Typed fields the note no longer has are set to undefined, so Object.assign
+				// clears the value held in memory instead of leaving it in place.
 				for (const definition of this.getCustomFieldDefinitions('faction')) {
-					if (definition.key in fmr && !(definition.key in fromFileRecord)) {
-						fromFileRecord[definition.key] = fmr[definition.key];
-					}
+					if (definition.key in fromFileRecord) continue;
+					fromFileRecord[definition.key] = definition.key in fmr ? fmr[definition.key] : undefined;
 				}
 
 				const idx = this.settings.groups.findIndex(g => g.id === id);
