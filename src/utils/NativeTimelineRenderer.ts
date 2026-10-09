@@ -285,6 +285,8 @@ export class NativeTimelineRenderer {
     private canvas: HTMLCanvasElement | null = null;
     private ctx: CanvasRenderingContext2D | null = null;
     private resizeObserver: ResizeObserver | null = null;
+    /** Set by destroy(). An initialize or refresh still awaiting its data must not mount afterwards. */
+    private destroyed = false;
     private frame = 0;
     /** Memoized label widths and truncations. See TextMeasureCache. */
     private readonly text = new TextMeasureCache(TEXT_CACHE_LIMIT);
@@ -360,18 +362,26 @@ export class NativeTimelineRenderer {
 
     async initialize(): Promise<void> {
         this.events = await this.plugin.listEvents();
+        if (this.destroyed) return;
         this.locations = await this.plugin.listLocations();
+        if (this.destroyed) return;
         this.characters = await this.plugin.listCharacters();
+        if (this.destroyed) return;
         await this.loadOptionalSources();
+        if (this.destroyed) return;
         this.mount();
         this.rebuild(true);
     }
 
     async refresh(): Promise<void> {
         this.events = await this.plugin.listEvents();
+        if (this.destroyed) return;
         this.locations = await this.plugin.listLocations();
+        if (this.destroyed) return;
         this.characters = await this.plugin.listCharacters();
+        if (this.destroyed) return;
         await this.loadOptionalSources();
+        if (this.destroyed) return;
         this.rebuild(false);
     }
 
@@ -406,6 +416,12 @@ export class NativeTimelineRenderer {
     redraw(): void { this.resizeCanvas(); this.scheduleDraw(); }
 
     destroy(): void {
+        this.destroyed = true;
+        this.releaseMount();
+    }
+
+    /** Tear down what mount() created. Separate from destroy() so a remount does not mark the renderer dead. */
+    private releaseMount(): void {
         if (this.frame) (this.container.ownerDocument.defaultView || window).cancelAnimationFrame(this.frame);
         this.resizeObserver?.disconnect();
         this.resizeObserver = null;
@@ -655,7 +671,7 @@ export class NativeTimelineRenderer {
     }
 
     private mount(): void {
-        this.destroy();
+        this.releaseMount();
         this.container.empty();
         this.root = this.container.createDiv('sts-native-timeline');
         this.root.setAttribute('tabindex', '0');
