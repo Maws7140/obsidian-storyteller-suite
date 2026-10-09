@@ -1947,6 +1947,7 @@ export class MapView extends ItemView {
         this.gridController?.destroy();
         this.gridController = null;
         this.closeMaplogPalette();
+        this.removeDocumentMapListeners();
         // Clean up existing renderer before creating new one
         if (this.leafletRenderer) {
             try {
@@ -2066,6 +2067,7 @@ export class MapView extends ItemView {
             // Reference: https://github.com/Leaflet/Leaflet/discussions/8972
 
             // Leaflet alone owns wheel zoom; do not race it with delayed setView.
+            this.removeDocumentMapListeners();
             const wheelHandler = (ev: WheelEvent) => {
                 if (leafletContainer.contains(ev.target as Node)) {
                     ev.preventDefault();
@@ -2386,6 +2388,18 @@ export class MapView extends ItemView {
         }
     }
 
+    /** Remove the document-level wheel and touchmove handlers installed by the last render. */
+    private removeDocumentMapListeners(): void {
+        if (this._wheelHandler) {
+            activeDocument.removeEventListener('wheel', this._wheelHandler);
+            this._wheelHandler = null;
+        }
+        if (this._touchMoveHandler) {
+            activeDocument.removeEventListener('touchmove', this._touchMoveHandler);
+            this._touchMoveHandler = null;
+        }
+    }
+
     async onClose(): Promise<void> {
         this.gridController?.destroy();
         this.gridController = null;
@@ -2407,14 +2421,7 @@ export class MapView extends ItemView {
         }
 
         // Clean up activeDocument-level event handlers
-        if (this._wheelHandler) {
-            activeDocument.removeEventListener('wheel', this._wheelHandler);
-            this._wheelHandler = null;
-        }
-        if (this._touchMoveHandler) {
-            activeDocument.removeEventListener('touchmove', this._touchMoveHandler);
-            this._touchMoveHandler = null;
-        }
+        this.removeDocumentMapListeners();
 
         // Clean up resize observer
         if (this.resizeObserver) {
