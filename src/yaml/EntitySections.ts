@@ -258,6 +258,9 @@ const FRONTMATTER_WHITELISTS: Record<EntityType, Set<string>> = {
     'partyCharacterIds', 'partyCharacterNames', 'partyState',
     'partyItems', 'flags', 'revealedCompendiumEntryIds', 'revealedCompendiumEntryNames',
     'groupStandings', 'clocks', 'threads',
+    'partyResources', 'loot', 'advancements', 'interludes',
+    'sessionNumber', 'date', 'duration', 'players', 'scribe', 'absent',
+    'recap', 'goals', 'mood', 'hook', 'endNotes',
     'collectedBoardItemKeys',
     'status', 'created', 'modified'
   ]),

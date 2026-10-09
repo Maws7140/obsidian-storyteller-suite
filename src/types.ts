@@ -612,25 +612,83 @@ export interface PartyMemberState {
     conditions?: string[];
 }
 
+export type CampaignGroupRelationshipType = 'allied' | 'friendly' | 'neutral' | 'rival' | 'hostile' | 'at-war';
+
 export interface CampaignGroupStanding {
     groupId?: string;
     groupName?: string;
     value: number;
+    /** Relative power of the faction in the fiction (Partylog `tier:`). */
+    tier?: number;
+    /** Free-text standing with the party (Partylog `standing:`), e.g. "neutral", "suspicious". */
+    standing?: string;
+    /** Free-text status notes (Partylog `+owes us a debt`). */
+    statusNotes?: string[];
+    /**
+     * Legacy/structured relationship from the group editor. Kept so existing data keeps
+     * working; `standing` is the free-text form. See `standingForRelationshipType` in
+     * src/utils/CampaignModel.ts for the mapping between the two.
+     */
+    relationshipType?: CampaignGroupRelationshipType;
 }
 
-/** A segmented progress clock tracked inside one campaign session. */
+/** Progress tracker kinds: clocks and tracks fill up, timers count down to zero. */
+export type CampaignTrackerKind = 'clock' | 'track' | 'timer';
+
+/**
+ * A segmented progress tracker inside one campaign session.
+ * - clock / track: `current` fills from 0 up to `segments`.
+ * - timer: `current` is the remaining count; `segments` is the start value.
+ * `kind` is optional so notes written before trackers had kinds keep loading as clocks.
+ */
 export interface CampaignClock {
     id: string;
     name: string;
     current: number;
     segments: number;
+    kind?: CampaignTrackerKind;
 }
+
+/** Thread-like records: plot threads, party goals and quests. */
+export type CampaignThreadKind = 'thread' | 'goal' | 'quest';
+
+/** Legacy thread status, still written so older plugin builds read the same notes. */
+export type CampaignThreadStatus = 'active' | 'resolved' | 'abandoned';
 
 /** A campaign objective, mystery, quest, or other thread tracked during play. */
 export interface CampaignThread {
     id: string;
     name: string;
-    status: 'active' | 'resolved' | 'abandoned';
+    /** Legacy status. Read on load and migrated to `state` when `state` is missing. */
+    status?: CampaignThreadStatus;
+    /** Record kind (Partylog `[Thread:]`, `[Goal:]`, `[Quest:]`). Defaults to 'thread'. */
+    kind?: CampaignThreadKind;
+    /** Free-text state, e.g. "Open", "Active", "Main". Takes precedence over `status`. */
+    state?: string;
+}
+
+/** One line of the shared party stash (Partylog `[Loot:]`). */
+export interface CampaignLootItem {
+    name: string;
+    /** Quantity; absent means 1. */
+    qty?: number;
+    /** Character name the item was assigned to; absent means unassigned in the stash. */
+    assignedTo?: string;
+}
+
+/** A character advancement recorded for the session (Partylog `[Advance:]`). */
+export interface CampaignAdvancement {
+    character: string;
+    summary: string;
+    sessionNumber?: number;
+    at?: string;
+}
+
+/** Off-camera time between sessions (Partylog §5.5 Interlude). */
+export interface CampaignInterlude {
+    title: string;
+    summary?: string;
+    changes?: string[];
 }
 
 /**
@@ -648,7 +706,11 @@ export interface CampaignSession {
     partyCharacterIds?: string[];
     partyCharacterNames?: string[];
     partyState?: PartyMemberState[];
-    /** Named items currently in the party's shared inventory. */
+    /**
+     * Named items currently in the party's shared inventory. This is the flat list used by
+     * item requirements and effects. `loot` is the Partylog stash with quantities and
+     * assignments; the two are not synchronised automatically.
+     */
     partyItems?: string[];
     /** Boolean flags set during play (e.g. "bribed-barkeep", "found-the-sword"). */
     flags?: string[];
@@ -661,8 +723,31 @@ export interface CampaignSession {
     groupStandings?: CampaignGroupStanding[];
     /** Segmented countdowns and progress trackers used during play. */
     clocks?: CampaignClock[];
-    /** Open and completed narrative or campaign objectives. */
+    /** Open and completed narrative or campaign objectives, goals and quests. */
     threads?: CampaignThread[];
+    /** Group-level resources and states, e.g. { Gold: 150, Rations: 10, Wagon: 'intact' }. */
+    partyResources?: Record<string, number | string>;
+    /** Unclaimed or assigned loot in the party stash. */
+    loot?: CampaignLootItem[];
+    /** Characters who advanced during this session. */
+    advancements?: CampaignAdvancement[];
+    /** Session header metadata (Partylog §5.2). */
+    sessionNumber?: number;
+    date?: string;
+    duration?: string;
+    /** "Player (PC)" pairs or player names. */
+    players?: string[];
+    scribe?: string;
+    absent?: string[];
+    recap?: string;
+    goals?: string;
+    mood?: string;
+    /** Hook for the next session (Partylog §5.4 `(hook: ...)`). */
+    hook?: string;
+    /** Debrief notes (Partylog §5.4 `(note: ...)`). */
+    endNotes?: string;
+    /** Off-camera interludes recorded since the previous session (Partylog §5.5). */
+    interludes?: CampaignInterlude[];
     status?: 'active' | 'paused' | 'completed';
     created?: string;
     modified?: string;
