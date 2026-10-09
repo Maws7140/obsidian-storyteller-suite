@@ -10,6 +10,7 @@ import { Menu, Notice, TFile, setIcon } from 'obsidian';
 import type StorytellerSuitePlugin from '../main';
 import type { Location, MapBinding, EntityRef, Character, Event, PlotItem, StoryMap, Scene, Culture, Economy, MagicSystem, Reference } from '../types';
 import { LocationService } from '../services/LocationService';
+import { buildChildLocationDefaults, findChildLocationMaps, locationRef, noChildMapMessage } from '../utils/MapChildNavigation';
 import { MapHierarchyManager } from '../utils/MapHierarchyManager';
 import { stripWikiLinkToString } from '../utils/WikiLinks';
 import { confirmWithModal } from '../modals/ui/ConfirmModal';
@@ -1512,7 +1513,7 @@ export class MapEntityRenderer {
             item.setTitle('Create child location')
                 .setIcon('map-pin')
                 .onClick(() => {
-                    new Notice('Create child location functionality coming soon');
+                    void this.showCreateChildLocationModal(location);
                 });
         });
 
@@ -1521,7 +1522,7 @@ export class MapEntityRenderer {
                 item.setTitle('Zoom to child map')
                     .setIcon('zoom-in')
                     .onClick(() => {
-                        new Notice('Zoom to child map functionality coming soon');
+                        void this.zoomToChildMap(location, e.originalEvent);
                     });
             });
         }
@@ -1782,6 +1783,61 @@ export class MapEntityRenderer {
             new Notice(`Location "${updatedData.name}" updated.`);
             await this.refreshOpenMapView();
         }).open();
+    }
+
+    private async showCreateChildLocationModal(parent: Location): Promise<void> {
+        const { LocationModal } = await import('../modals/LocationModal');
+        const modal = new LocationModal(this.plugin.app, this.plugin, null, async (childLocation: Location) => {
+            await this.locationService.createChildLocation(locationRef(parent), childLocation);
+            new Notice(`Location "${childLocation.name}" created under ${parent.name}.`);
+            await this.refreshOpenMapView();
+        });
+        Object.assign(modal.location, buildChildLocationDefaults(parent));
+        modal.open();
+    }
+
+    private async zoomToChildMap(location: Location, evt: MouseEvent): Promise<void> {
+        const locations = await this.plugin.listLocations();
+        const maps = await this.plugin.listMaps();
+        const childMaps = findChildLocationMaps(location, locations, maps);
+
+        if (childMaps.length === 0) {
+            new Notice(noChildMapMessage(location.name));
+            return;
+        }
+        if (childMaps.length === 1) {
+            await this.openMapInView(childMaps[0]);
+            return;
+        }
+
+        const menu = new Menu();
+        for (const childMap of childMaps) {
+            menu.addItem(item => item.setTitle(childMap.name)
+                .setIcon('map')
+                .onClick(() => {
+                    void this.openMapInView(childMap);
+                }));
+        }
+        menu.showAtMouseEvent(evt);
+    }
+
+    /**
+     * Load a map into the open Storyteller map view, or open one if none is visible.
+     */
+    private async openMapInView(map: StoryMap): Promise<void> {
+        const workspace = this.plugin.app.workspace;
+        const mapId = map.id || map.name;
+        const leaf = workspace.getLeavesOfType('storyteller-map-view')[0];
+
+        if (leaf && hasLoadMap(leaf.view)) {
+            await leaf.view.loadMap(mapId);
+            await workspace.revealLeaf(leaf);
+            return;
+        }
+
+        const newLeaf = workspace.getLeaf(true);
+        await newLeaf.setViewState({ type: 'storyteller-map-view', active: true, state: { mapId } });
+        await workspace.revealLeaf(newLeaf);
     }
 
     private async refreshOpenMapView(): Promise<void> {
