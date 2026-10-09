@@ -69,6 +69,7 @@ import { AnalyticsDashboardView, VIEW_TYPE_ANALYTICS } from './views/AnalyticsDa
 import { MapView, VIEW_TYPE_MAP } from './views/MapView';
 import { WritingPanelView, VIEW_TYPE_WRITING_PANEL } from './views/WritingPanelView';
 import { CampaignView, VIEW_TYPE_CAMPAIGN } from './views/CampaignView';
+import { LoreDashboardView, VIEW_TYPE_LORE_DASHBOARD } from './views/LoreDashboardView';
 import { SceneGraphView, VIEW_TYPE_SCENE_GRAPH } from './views/SceneGraphView';
 import { StorytellerGuideModal } from './modals/StorytellerGuideModal';
 // DEPRECATED: Map functionality has been deprecated
@@ -121,6 +122,7 @@ import { registerTimelineBlockProcessor } from './extensions/TimelineBlockExtens
 import { CampaignSession } from './types';
 import { LONELOG_NAME } from './campaign/PartylogImport';
 import { PARTYLOG_NAME } from './campaign/PartylogExport';
+import { LORELOG_NAME } from './lore/WorldLog';
 import { buildCampaignSessionFrontmatter, normalizeCampaignSessionData } from './utils/CampaignModel';
 
 /** Runtime-only flags added to entity objects during save/sync to prevent recursion. Not persisted. */
@@ -1699,6 +1701,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		// Register campaign play view and scene graph view
 		this.registerView(VIEW_TYPE_CAMPAIGN, (leaf) => new CampaignView(leaf, this));
 		this.registerView(VIEW_TYPE_SCENE_GRAPH, (leaf) => new SceneGraphView(leaf, this));
+		this.registerView(VIEW_TYPE_LORE_DASHBOARD, (leaf) => new LoreDashboardView(leaf, this));
 
 		// DEPRECATED: Map functionality has been deprecated
 		// Register the map editor view for full-screen map editing
@@ -2601,6 +2604,54 @@ export default class StorytellerSuitePlugin extends Plugin {
 				if (!this.ensureActiveStoryOrGuide()) return;
 				const { ImportPartylogModal } = await import('./modals/ImportPartylogModal');
 				new ImportPartylogModal(this.app, this).open();
+			}
+		});
+
+		// --- Lorelog (worldbuilding decision log) ---
+		this.addCommand({
+			id: 'lorelog-new-world-log',
+			name: 'New world log',
+			callback: async () => {
+				if (!this.ensureActiveStoryOrGuide()) return;
+				const { createWorldLog, findWorldLogFile, openWorldLogAtLine } = await import('./lore/WorldLog');
+				const existed = findWorldLogFile(this) !== undefined;
+				const file = await createWorldLog(this);
+				if (existed) new Notice('This story already has a world log.');
+				await openWorldLogAtLine(this, file, 1);
+			}
+		});
+
+		this.addCommand({
+			id: 'lorelog-add-build-session',
+			name: 'Add build session',
+			callback: async () => {
+				if (!this.ensureActiveStoryOrGuide()) return;
+				const { addBuildSession } = await import('./lore/WorldLog');
+				try {
+					const number = await addBuildSession(this);
+					new Notice(`Added build ${number} to the world log.`);
+				} catch {
+					new Notice('Could not add a build session to the world log.');
+				}
+			}
+		});
+
+		this.addCommand({
+			id: 'lorelog-add-cycle',
+			name: `${LORELOG_NAME}: add cycle`,
+			callback: async () => {
+				if (!this.ensureActiveStoryOrGuide()) return;
+				const { LorelogCycleModal } = await import('./modals/LorelogCycleModal');
+				new LorelogCycleModal(this).open();
+			}
+		});
+
+		this.addCommand({
+			id: 'lorelog-open-dashboard',
+			name: `Open ${LORELOG_NAME} dashboard`,
+			callback: () => {
+				if (!this.ensureActiveStoryOrGuide()) return;
+				void this.activateLoreDashboard();
 			}
 		});
 
@@ -3686,6 +3737,18 @@ export default class StorytellerSuitePlugin extends Plugin {
 	}
 
     /** Activate or focus the Campaign view, optionally pre-loading a session. */
+    /** Opens (or reveals) the Lorelog dashboard in a tab. */
+    async activateLoreDashboard(): Promise<void> {
+        const { workspace } = this.app;
+        let leaf: WorkspaceLeaf | null = workspace.getLeavesOfType(VIEW_TYPE_LORE_DASHBOARD)[0] ?? null;
+        if (!leaf) {
+            leaf = workspace.getLeaf('tab');
+            if (leaf) await leaf.setViewState({ type: VIEW_TYPE_LORE_DASHBOARD, active: true });
+        }
+        if (!leaf) return;
+        void workspace.revealLeaf(leaf);
+    }
+
     async activateCampaignView(session?: CampaignSession, startingScene?: import('./types').Scene): Promise<void> {
         const { workspace } = this.app;
         let leaf: WorkspaceLeaf | null = null;
