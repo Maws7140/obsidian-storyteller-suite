@@ -270,8 +270,7 @@ export class CultureModal extends ResponsiveModal {
             })
             : null;
         if (yourFields) {
-            this.customFieldsEditor.renderDefinedFields(yourFields);
-            yourFields.querySelector(':scope > h3')?.remove();
+            this.customFieldsEditor.renderDefinedFields(yourFields, { heading: false });
         }
 
         const society = (this.shows('governmentType') || this.shows('socialStructure') || this.shows('values') || this.shows('population') || this.shows('techLevel'))
@@ -610,8 +609,7 @@ export class CultureModal extends ResponsiveModal {
                 icon: 'list-plus',
                 open: Boolean(Object.keys(this.culture.customFields || {}).length),
             });
-            this.customFieldsEditor.renderFreeFormSection(customFieldsSection);
-            customFieldsSection.querySelector(':scope > h3')?.remove();
+            this.customFieldsEditor.renderFreeFormSection(customFieldsSection, { heading: false });
         }
 
         if (!this.isNew && this.onDelete) {

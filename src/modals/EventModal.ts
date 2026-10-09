@@ -865,7 +865,7 @@ export class EventModal extends ResponsiveModal {
                 icon: 'list-plus',
                 open: Boolean(Object.keys(this.event.customFields || {}).length),
             });
-            this.customFieldsEditor.renderFreeFormSection(customFieldsSection);
+            this.customFieldsEditor.renderFreeFormSection(customFieldsSection, { heading: false });
         }
 
         // --- Action Buttons ---

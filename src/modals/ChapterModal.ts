@@ -239,7 +239,7 @@ export class ChapterModal extends ResponsiveModal {
                 open: true,
             })
             : null;
-        if (definedSection) this.customFieldsEditor.renderDefinedFields(definedSection);
+        if (definedSection) this.customFieldsEditor.renderDefinedFields(definedSection, { heading: false });
 
         // --- Links ---
         const showsLinks = ['linkedCharacters', 'linkedLocations', 'linkedEvents', 'linkedItems', 'linkedGroups'].some(k => this.shows(k));
@@ -383,7 +383,7 @@ export class ChapterModal extends ResponsiveModal {
                 icon: 'list-plus',
                 open: Boolean(Object.keys((this.chapter as ChapterWithCustomFields).customFields || {}).length),
             });
-            this.customFieldsEditor.renderFreeFormSection(customFieldsSection);
+            this.customFieldsEditor.renderFreeFormSection(customFieldsSection, { heading: false });
         }
 
         // Buttons

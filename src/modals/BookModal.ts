@@ -156,7 +156,7 @@ export class BookModal extends ResponsiveModal {
                 open: true,
             })
             : null;
-        if (definedSection) this.customFieldsEditor.renderDefinedFields(definedSection);
+        if (definedSection) this.customFieldsEditor.renderDefinedFields(definedSection, { heading: false });
 
         // --- Genre and synopsis ---
         const storySection = this.shows('genre') || this.shows('synopsis')
@@ -266,7 +266,7 @@ export class BookModal extends ResponsiveModal {
                 icon: 'list-plus',
                 open: Boolean(Object.keys(this.book.customFields || {}).length),
             });
-            this.customFieldsEditor.renderFreeFormSection(customFieldsSection);
+            this.customFieldsEditor.renderFreeFormSection(customFieldsSection, { heading: false });
         }
 
         if (!this.isNew && this.onDelete) {

@@ -219,8 +219,7 @@ export class ReferenceModal extends ResponsiveModal {
             })
             : null;
         if (yourFields) {
-            this.customFieldsEditor.renderDefinedFields(yourFields);
-            yourFields.querySelector(':scope > h3')?.remove();
+            this.customFieldsEditor.renderDefinedFields(yourFields, { heading: false });
         }
 
         const tags = this.shows('tags')
@@ -254,8 +253,7 @@ export class ReferenceModal extends ResponsiveModal {
                 icon: 'list-plus',
                 open: Boolean(Object.keys((this.refData as ReferenceWithCustomFields).customFields || {}).length),
             });
-            this.customFieldsEditor.renderFreeFormSection(customFieldsSection);
-            customFieldsSection.querySelector(':scope > h3')?.remove();
+            this.customFieldsEditor.renderFreeFormSection(customFieldsSection, { heading: false });
         }
 
         if (!this.isNew && this.onDelete) {

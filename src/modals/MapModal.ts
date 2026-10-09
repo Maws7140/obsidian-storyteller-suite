@@ -317,7 +317,7 @@ export class MapModal extends ResponsiveModal {
                 open: true,
             })
             : null;
-        if (definedSection) this.customFieldsEditor.renderDefinedFields(definedSection);
+        if (definedSection) this.customFieldsEditor.renderDefinedFields(definedSection, { heading: false });
 
         // --- Image map settings (image maps only) ---
         const imageMapSection = this.shows('imageMapSettings') && this.map.type === 'image'
@@ -539,7 +539,7 @@ export class MapModal extends ResponsiveModal {
                 icon: 'list-plus',
                 open: Boolean(Object.keys(this.map.customFields || {}).length),
             });
-            this.customFieldsEditor.renderFreeFormSection(customFieldsSection);
+            this.customFieldsEditor.renderFreeFormSection(customFieldsSection, { heading: false });
         }
 
         if (!this.isNew && this.onDelete) {

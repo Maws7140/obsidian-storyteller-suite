@@ -131,17 +131,25 @@ export class EntityCustomFieldsEditor {
      * The typed fields for this entity type. Renders nothing when the vault has
      * no definitions for the type, so an unconfigured modal looks as it did.
      */
-    renderDefinedFields(parent: HTMLElement): void {
+    renderDefinedFields(parent: HTMLElement, options: { heading?: boolean } = {}): void {
         if (this.definitions.length === 0) return;
-        parent.createEl('h3', { text: 'Defined fields' });
+        if (options.heading !== false) parent.createEl('h3', { text: 'Defined fields' });
         this.definedEl = parent.createDiv('storyteller-defined-fields-container');
         this.ensureTargetNames();
         this.renderDefined();
     }
 
-    /** The free-form name and value rows, with an add button. */
-    renderFreeFormSection(parent: HTMLElement): void {
-        parent.createEl('h3', { text: t('customFields') });
+    /** Whether the vault defines any typed fields for this entity type. */
+    hasDefinedFields(): boolean {
+        return this.definitions.length > 0;
+    }
+
+    /**
+     * The free-form name and value rows, with an add button. Pass
+     * `heading: false` when the caller's collapsible section already names it.
+     */
+    renderFreeFormSection(parent: HTMLElement, options: { heading?: boolean } = {}): void {
+        if (options.heading !== false) parent.createEl('h3', { text: t('customFields') });
         this.containerEl = parent.createDiv('storyteller-custom-fields-container');
         this.renderRows();
 

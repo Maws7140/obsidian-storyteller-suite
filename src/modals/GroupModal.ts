@@ -99,9 +99,7 @@ export class GroupModal extends ResponsiveModal {
             icon: 'list-checks',
             open: true,
         });
-        this.customFieldsEditor.renderDefinedFields(body);
-        // The editor adds its own heading; the section title already names it.
-        body.querySelectorAll(':scope > h3').forEach(heading => heading.remove());
+        this.customFieldsEditor.renderDefinedFields(body, { heading: false });
         if (!body.hasChildNodes()) body.parentElement?.remove();
     }
 
@@ -576,8 +574,7 @@ export class GroupModal extends ResponsiveModal {
                 icon: 'list-plus',
                 open: Boolean(Object.keys(this.group.customFields || {}).length),
             });
-            this.customFieldsEditor.renderFreeFormSection(customFieldsBody);
-            customFieldsBody.querySelectorAll(':scope > h3').forEach(heading => heading.remove());
+            this.customFieldsEditor.renderFreeFormSection(customFieldsBody, { heading: false });
         }
 
         if (!this.isNew && this.onDelete) {

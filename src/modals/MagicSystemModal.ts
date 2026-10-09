@@ -290,8 +290,7 @@ export class MagicSystemModal extends ResponsiveModal {
             })
             : null;
         if (yourFields) {
-            this.customFieldsEditor.renderDefinedFields(yourFields);
-            yourFields.querySelector(':scope > h3')?.remove();
+            this.customFieldsEditor.renderDefinedFields(yourFields, { heading: false });
         }
 
         const howItWorks = (this.shows('rules') || this.shows('source') || this.shows('costs') || this.shows('limitations'))
@@ -452,8 +451,7 @@ export class MagicSystemModal extends ResponsiveModal {
                 icon: 'list-plus',
                 open: Boolean(Object.keys(this.magicSystem.customFields || {}).length),
             });
-            this.customFieldsEditor.renderFreeFormSection(customFieldsSection);
-            customFieldsSection.querySelector(':scope > h3')?.remove();
+            this.customFieldsEditor.renderFreeFormSection(customFieldsSection, { heading: false });
         }
 
         if (!this.isNew && this.onDelete) {

@@ -171,8 +171,7 @@ export class CompendiumEntryModal extends ResponsiveModal {
             })
             : null;
         if (yourFields) {
-            this.customFieldsEditor.renderDefinedFields(yourFields);
-            yourFields.querySelector(':scope > h3')?.remove();
+            this.customFieldsEditor.renderDefinedFields(yourFields, { heading: false });
         }
 
         const fieldNotes = (this.shows('behavior') || this.shows('properties') || this.shows('dimorphism') || this.shows('huntingNotes') || this.shows('rarity') || this.shows('dangerRating'))
@@ -533,8 +532,7 @@ export class CompendiumEntryModal extends ResponsiveModal {
                 icon: 'list-plus',
                 open: Boolean(Object.keys(this.entry.customFields || {}).length),
             });
-            this.customFieldsEditor.renderFreeFormSection(customFieldsSection);
-            customFieldsSection.querySelector(':scope > h3')?.remove();
+            this.customFieldsEditor.renderFreeFormSection(customFieldsSection, { heading: false });
         }
 
         if (!this.isNew && this.onDelete) {
