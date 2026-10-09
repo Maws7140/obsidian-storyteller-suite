@@ -296,6 +296,75 @@ describe('DateParsing', () => {
       // BCE 1 should become year 0
       expect(r.start?.year).toBe(0);
     });
+
+    it('keeps the minus sign on ISO-style negative years', () => {
+      const r = parseEventDate('-3000-01-01', { timezone: 'utc' });
+      expect(r.error).toBeUndefined();
+      expect(r.start?.year).toBe(-3000);
+      expect(r.start?.month).toBe(1);
+      expect(r.start?.day).toBe(1);
+      expect(r.start?.hour).toBe(0);
+      expect(r.isBCE).toBe(true);
+      expect(r.precision).toBe('day');
+    });
+
+    it('places a short negative ISO year at the correct negative year', () => {
+      const r = parseEventDate('-0044-03-15', { timezone: 'utc' });
+      expect(r.start?.year).toBe(-44);
+      expect(r.start?.month).toBe(3);
+      expect(r.start?.day).toBe(15);
+      expect(r.start?.hour).toBe(0);
+    });
+
+    it('treats a negative ISO year as astronomical (-43 is 44 BCE)', () => {
+      const r = parseEventDate('-0043-01-01', { timezone: 'utc' });
+      expect(r.start?.year).toBe(-43);
+      expect(r.originalYear).toBe(44);
+    });
+
+    it('parses negative ISO years with year-only and year-month precision', () => {
+      expect(parseEventDate('-3000', { timezone: 'utc' }).start?.year).toBe(-3000);
+      expect(parseEventDate('-3000', { timezone: 'utc' }).precision).toBe('year');
+      const ym = parseEventDate('-3000-06', { timezone: 'utc' });
+      expect(ym.start?.year).toBe(-3000);
+      expect(ym.start?.month).toBe(6);
+      expect(ym.precision).toBe('month');
+    });
+
+    it('keeps the minus sign on both endpoints of a negative ISO range', () => {
+      const r = parseEventDate('-3000-01-01 to -2990-01-01', { timezone: 'utc' });
+      expect(r.start?.year).toBe(-3000);
+      expect(r.end?.year).toBe(-2990);
+      expect(r.isBCE).toBe(true);
+    });
+
+    it('still places BCE forms at the same negative year as before', () => {
+      // "3000 BCE" maps to year -2999 under the BCE convention (BCE 1 = year 0).
+      expect(parseEventDate('3000 BCE', { timezone: 'utc' }).start?.year).toBe(-2999);
+      expect(parseEventDate('44 BC', { timezone: 'utc' }).start?.year).toBe(-43);
+      expect(parseEventDate('44 BC', { timezone: 'utc' }).originalYear).toBe(44);
+    });
+
+    it('does not let a negative date be read as a positive year', () => {
+      expect(parseEventDate('-3000-01-01', { timezone: 'utc' }).start?.year).not.toBe(3000);
+      expect(parseEventDate('-0044-03-15', { timezone: 'utc' }).start?.year).not.toBe(44);
+    });
+  });
+
+  describe('positive year ranges are unaffected by negative-year handling', () => {
+    it('parses a zero-padded positive range', () => {
+      const r = parseEventDate('0342 to 0367', { timezone: 'utc' });
+      expect(r.start?.year).toBe(342);
+      expect(r.end?.year).toBe(367);
+      expect(r.isBCE).toBeUndefined();
+    });
+
+    it('parses a positive ISO date unchanged', () => {
+      const r = parseEventDate('0342-03-01', { timezone: 'utc' });
+      expect(r.start?.year).toBe(342);
+      expect(r.start?.month).toBe(3);
+      expect(r.start?.day).toBe(1);
+    });
   });
 
   describe('BCE date display', () => {
