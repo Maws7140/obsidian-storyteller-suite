@@ -293,7 +293,7 @@ export class PlotItemModal extends ResponsiveModal {
             contentEl.createEl('h3', { text: t('relationships') });
         }
         if (!Array.isArray(this.item.owners)) this.item.owners = [];
-        if (this.item.owners.length > 0 && this.item.currentLocation) {
+        if (shows('owners') && this.item.owners.length > 0 && this.item.currentLocation) {
             contentEl.createEl('p', {
                 cls: 'storyteller-modal-hint storyteller-item-owner-location-warning',
                 text: `This item has ${this.item.owners.length === 1 ? 'an owner' : 'owners'} ` +
