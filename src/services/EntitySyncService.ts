@@ -1191,7 +1191,7 @@ export class EntitySyncService {
         
         try {
             // Extract target ID from TypedRelationship if needed
-            let targetId = oldValue;
+            let targetId: unknown = oldValue;
             if (mapping.resolveTargetKey) {
                 targetId = mapping.resolveTargetKey(oldValue);
             } else if (mapping.sourceField === 'relationships' && mapping.sourceType === 'character' && oldValue && typeof oldValue === 'object' && 'target' in oldValue) {
@@ -1397,7 +1397,7 @@ export class EntitySyncService {
         
         try {
             // Extract target ID from TypedRelationship if needed
-            let targetId = newValue;
+            let targetId: unknown = newValue;
             if (mapping.resolveTargetKey) {
                 targetId = mapping.resolveTargetKey(newValue);
             } else if (mapping.sourceField === 'relationships' && mapping.sourceType === 'character' && newValue && typeof newValue === 'object' && 'target' in newValue) {
