@@ -144,6 +144,8 @@ const SYNONYM_RULES: Array<{ field: string; sources: string[]; types?: Adoptable
     { field: 'owners', sources: ['owner', 'ownedby'], types: ['item'] },
     { field: 'creator', sources: ['createdby', 'author'], types: ['item'] },
     { field: 'tags', sources: ['tag', 'keywords'] },
+    // Only a target when the type stores description as a property (see getMappableFields).
+    { field: 'description', sources: ['desc', 'summary'] },
 ];
 
 function normalizeKey(key: string): string {
@@ -214,10 +216,21 @@ export function collectFrontmatterKeys(notes: Array<{ frontmatter: Record<string
     return [...stats.values()].sort((a, b) => b.count - a.count || a.key.localeCompare(b.key));
 }
 
-/** Built-in fields of a type that a source key may be mapped to. Body sections are excluded. */
-export function getMappableFields(type: AdoptableEntityType | EntityType): MappableField[] {
-    const bodyFields = new Set(Object.values(BODY_SECTION_FIELD_MAP[type] ?? {}));
-    return [...getWhitelistKeys(type)]
+/**
+ * Built-in fields of a type that a source key may be mapped to. Body sections are
+ * excluded, except the ones the user stores as frontmatter (`frontmatterSectionFields`),
+ * which are plain properties and so are ordinary rename targets.
+ */
+export function getMappableFields(
+    type: AdoptableEntityType | EntityType,
+    frontmatterSectionFields: readonly string[] = []
+): MappableField[] {
+    const stored = new Set(frontmatterSectionFields);
+    const bodyFields = new Set(
+        Object.values(BODY_SECTION_FIELD_MAP[type] ?? {}).filter(field => !stored.has(field))
+    );
+    const fields = new Set<string>([...getWhitelistKeys(type), ...frontmatterSectionFields]);
+    return [...fields]
         .filter(field => !NON_MAPPABLE_FIELDS.has(field) && !bodyFields.has(field))
         .map(field => ({ field, label: humanizeFieldName(field), isArray: isArrayField(field) }))
         .sort((a, b) => a.label.localeCompare(b.label));
@@ -240,8 +253,12 @@ export function decodeMappingAction(value: string): MappingAction {
  * first so a synonym cannot steal a field the note already names directly.
  * Anything without an obvious match stays "keep".
  */
-export function suggestMappings(keys: string[], type: AdoptableEntityType | EntityType): Record<string, MappingAction> {
-    const mappable = getMappableFields(type);
+export function suggestMappings(
+    keys: string[],
+    type: AdoptableEntityType | EntityType,
+    frontmatterSectionFields: readonly string[] = []
+): Record<string, MappingAction> {
+    const mappable = getMappableFields(type, frontmatterSectionFields);
     const byNormalized = new Map<string, string>();
     for (const { field } of mappable) byNormalized.set(normalizeKey(field), field);
 

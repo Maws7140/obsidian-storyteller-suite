@@ -388,12 +388,15 @@ export function definedFieldSaveOptions(
 export function sweepCustomFieldsOnRead(
     entityType: EntityType,
     src: Record<string, unknown>,
-    definitions: readonly CustomFieldDefinition[] = []
+    definitions: readonly CustomFieldDefinition[] = [],
+    /** Body-section fields the user stores as frontmatter (see SectionFieldPlacement.ts). */
+    sectionFrontmatterFields: readonly string[] = []
 ): Record<string, string> {
     const reserved = new Set<string>([
         ...Array.from(getWhitelistKeys(entityType)),
         'customFields', 'filePath', 'sections', 'id',
         ...(DERIVED_SECTION_FIELDS[entityType] ?? []),
+        ...sectionFrontmatterFields,
         ...definitions.map(definition => definition.key),
     ]);
     const existing = src.customFields;

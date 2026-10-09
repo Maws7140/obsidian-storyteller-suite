@@ -308,4 +308,45 @@ describe('NoteAdoption', () => {
             expect(summary[1]).toEqual({ from: 'image', to: 'profileImagePath', count: 1 });
         });
     });
+
+    describe('description stored as a property', () => {
+        it('does not offer description as a target while the type keeps it in a section', () => {
+            const fields = getMappableFields('character').map(f => f.field);
+            expect(fields).not.toContain('description');
+            expect(suggestMappings(['desc', 'summary'], 'character')).toEqual({
+                desc: { kind: 'keep' },
+                summary: { kind: 'keep' },
+            });
+        });
+
+        it('offers description, and suggests desc, summary and description for it, once it is a property', () => {
+            const fields = getMappableFields('character', ['description']).map(f => f.field);
+            expect(fields).toContain('description');
+            expect(suggestMappings(['desc'], 'character', ['description'])).toEqual({
+                desc: { kind: 'map', target: 'description' },
+            });
+            expect(suggestMappings(['Summary'], 'character', ['description'])).toEqual({
+                Summary: { kind: 'map', target: 'description' },
+            });
+            expect(suggestMappings(['description'], 'character', ['description'])).toEqual({
+                description: { kind: 'keep' },
+            });
+        });
+
+        it('renames a property into description without losing the value', () => {
+            const result = computeNotePatch(
+                { name: 'Mara', desc: 'Keeper of the light.\nAlways watching.' },
+                'Mara',
+                'character',
+                { desc: { kind: 'map', target: 'description' } }
+            );
+            expect(result.renames).toEqual([{ from: 'desc', to: 'description' }]);
+            expect(result.next.description).toBe('Keeper of the light.\nAlways watching.');
+            expect(result.next).not.toHaveProperty('desc');
+        });
+
+        it('keeps other body-section fields out of the targets', () => {
+            expect(getMappableFields('character', ['description']).map(f => f.field)).not.toContain('backstory');
+        });
+    });
 });

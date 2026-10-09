@@ -10,6 +10,7 @@
 import { App, Modal, Notice, Setting, TFile, normalizePath } from 'obsidian';
 import type StorytellerSuitePlugin from '../main';
 import { FolderSuggestModal } from './FolderSuggestModal';
+import { getFrontmatterSectionFields } from '../utils/SectionFieldPlacement';
 import {
     ADOPTABLE_ENTITY_TYPES,
     ADOPTABLE_TYPE_LABELS,
@@ -213,13 +214,18 @@ export class ImportExistingNotesModal extends Modal {
 
     // ---- Step 2: property mapping --------------------------------------
 
+    /** Body-section fields this type stores as properties, offered as mapping targets. */
+    private sectionFrontmatterFields(): string[] {
+        return getFrontmatterSectionFields(this.plugin.settings.sectionFieldsInFrontmatter, this.targetType);
+    }
+
     private ensureMappings(): void {
         const scope = `${this.sourceFolder}|${this.includeSubfolders}|${this.targetType}`;
         if (scope === this.mappingsScope) return;
         this.mappingsScope = scope;
         const notes = this.sourceNotes.map(file => ({ frontmatter: this.frontmatterOf(file) ?? {} }));
         this.keyStats = collectFrontmatterKeys(notes);
-        this.mappings = suggestMappings(this.keyStats.map(stat => stat.key), this.targetType);
+        this.mappings = suggestMappings(this.keyStats.map(stat => stat.key), this.targetType, this.sectionFrontmatterFields());
     }
 
     private renderMapping(): void {
@@ -240,7 +246,7 @@ export class ImportExistingNotesModal extends Modal {
             });
         }
 
-        const fields = getMappableFields(this.targetType);
+        const fields = getMappableFields(this.targetType, this.sectionFrontmatterFields());
         for (const stat of this.keyStats) {
             const setting = new Setting(this.contentEl)
                 .setName(stat.key)
