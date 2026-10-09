@@ -1031,7 +1031,10 @@ export class NativeTimelineRenderer {
                 chip.items.forEach(item => { item.overflowInto = chip; });
                 return [chip];
             });
-            const rowsUsed = lane.items.reduce((most, item) => Math.max(most, item.row + 1), 0);
+            const itemRows = lane.items.reduce((most, item) => item.hiddenInMarker ? most : Math.max(most, item.row + 1), 0);
+            // A same-day control chip takes a row of its own, so the lane has to
+            // count it or the chip hangs over the lane below.
+            const rowsUsed = (lane.markerGroups ?? []).reduce((most, group) => group.controlRow === undefined || !group.controlLabel ? most : Math.max(most, group.controlRow + 1), itemRows);
             lane.top = top;
             // Chronology mode hangs its chips below the axis baseline, so the
             // lane has to reserve that offset on top of the rows themselves or
@@ -1744,6 +1747,10 @@ export class NativeTimelineRenderer {
             }
         });
         ctx.globalAlpha = 1;
+        // Fold chips hang off stems too, and those stems cross the rows above
+        // them, so they go down with the others before any chip is painted.
+        this.drawMarkerGroups(ctx, lane, top, width, 'stems');
+        this.visibleOverflow(lane).forEach(chip => this.drawOverflowChip(ctx, lane, chip, top, baselineY, width, 'stems'));
         laid.filter(entry => !entry.collides).forEach(({ item }) => this.drawItem(ctx, item, true, undefined, false));
         laid.forEach(({ item, pointX, collides }) => {
             this.drawPointMarker(ctx, pointX, baselineY, item);
@@ -1751,13 +1758,8 @@ export class NativeTimelineRenderer {
             const narrativeDirection = narrativeDirectionOf(item.event);
             if (narrativeDirection) this.drawNarrativeIcon(ctx, narrativeDirection, pointX + 9, baselineY - 9, 10);
         });
-        this.drawMarkerGroups(ctx, lane, top, width);
-        for (const chip of lane.overflow ?? []) {
-            const first = chip.items[0];
-            const last = chip.items.reduce((latest, item) => Math.max(latest, item.end), first.end);
-            if (first.start > this.viewEnd || last < this.viewStart) continue;
-            this.drawOverflowChip(ctx, lane, chip, top, baselineY, width);
-        }
+        this.drawMarkerGroups(ctx, lane, top, width, 'chips');
+        this.visibleOverflow(lane).forEach(chip => this.drawOverflowChip(ctx, lane, chip, top, baselineY, width, 'chips'));
         this.drawDropTarget(ctx, lane, baselineY, width, height);
         ctx.restore();
     }
@@ -1768,7 +1770,15 @@ export class NativeTimelineRenderer {
      * Drawn after the chips so the badge sits over the stems. A column that
      * stands for one event gets no badge, since its bare marker already says so.
      */
-    private drawMarkerGroups(ctx: CanvasRenderingContext2D, lane: Lane, top: number, width: number): void {
+    private visibleOverflow(lane: Lane): OverflowChip[] {
+        return (lane.overflow ?? []).filter(chip => {
+            const first = chip.items[0];
+            const last = chip.items.reduce((latest, item) => Math.max(latest, item.end), first.end);
+            return first.start <= this.viewEnd && last >= this.viewStart;
+        });
+    }
+
+    private drawMarkerGroups(ctx: CanvasRenderingContext2D, lane: Lane, top: number, width: number, pass: 'stems' | 'chips'): void {
         const groups = lane.markerGroups;
         if (!groups?.length) return;
         const baselineY = top + 18;
@@ -1776,22 +1786,25 @@ export class NativeTimelineRenderer {
         groups.forEach(group => {
             if (group.start < this.viewStart || group.start > this.viewEnd) return;
             const pointX = this.timeToX(group.start, width);
-            if (group.members.length > 1) this.drawCountBadge(ctx, pointX + 9, baselineY - 9, group.members.length);
+            if (pass === 'chips' && group.members.length > 1) this.drawCountBadge(ctx, pointX + 9, baselineY - 9, group.members.length);
             if (group.controlRow === undefined || !group.controlLabel) return;
 
             const chipX = pointX + 9;
             const chipY = top + CHRONOLOGY_CHIP_TOP + group.controlRow * rowHeight;
             const chipHeight = rowHeight - 7;
             const chipWidth = this.controlChipWidth(ctx, group.controlLabel);
-            this.controlHits.push({ rect: new DOMRect(chipX, chipY, chipWidth, chipHeight), group });
 
-            // Same stem as a chip, so the control reads as the last entry in its column.
-            ctx.save();
-            ctx.strokeStyle = lane.color;
-            ctx.globalAlpha = 0.5;
-            ctx.lineWidth = 1;
-            ctx.beginPath(); ctx.moveTo(pointX, baselineY); ctx.lineTo(pointX, chipY + chipHeight / 2); ctx.lineTo(chipX, chipY + chipHeight / 2); ctx.stroke();
-            ctx.restore();
+            if (pass === 'stems') {
+                // Same stem as a chip, so the control reads as the last entry in its column.
+                ctx.save();
+                ctx.strokeStyle = lane.color;
+                ctx.globalAlpha = 0.5;
+                ctx.lineWidth = 1;
+                ctx.beginPath(); ctx.moveTo(pointX, baselineY); ctx.lineTo(pointX, chipY + chipHeight / 2); ctx.lineTo(chipX, chipY + chipHeight / 2); ctx.stroke();
+                ctx.restore();
+                return;
+            }
+            this.controlHits.push({ rect: new DOMRect(chipX, chipY, chipWidth, chipHeight), group });
 
             // Dashed outline and muted text: this is a control, not an event,
             // and it should not read as one more chip in the list.
@@ -1873,21 +1886,25 @@ export class NativeTimelineRenderer {
      * Drawn as a chip of the same card shape, with a stem down to the first of
      * the folded events' markers. Clicking it zooms to the folded events.
      */
-    private drawOverflowChip(ctx: CanvasRenderingContext2D, lane: Lane, chip: OverflowChip, top: number, baselineY: number, width: number): void {
+    private drawOverflowChip(ctx: CanvasRenderingContext2D, lane: Lane, chip: OverflowChip, top: number, baselineY: number, width: number, pass: 'stems' | 'chips'): void {
         const rowHeight = this.rowHeight();
         const chipHeight = rowHeight - 7;
         const pointX = this.timeToX(chip.items[0].start, width);
         const chipX = pointX + 9;
         const chipY = top + CHRONOLOGY_CHIP_TOP + chip.row * rowHeight;
+        if (pass === 'stems') {
+            ctx.save();
+            ctx.strokeStyle = lane.color;
+            ctx.globalAlpha = 0.8;
+            ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.moveTo(pointX, baselineY); ctx.lineTo(pointX, chipY + chipHeight / 2); ctx.lineTo(chipX, chipY + chipHeight / 2); ctx.stroke();
+            ctx.restore();
+            return;
+        }
         chip.rect = new DOMRect(chipX, chipY, OVERFLOW_CHIP_WIDTH, chipHeight);
         this.visibleClusters.push(chip);
 
         ctx.save();
-        ctx.strokeStyle = lane.color;
-        ctx.globalAlpha = 0.8;
-        ctx.lineWidth = 1;
-        ctx.beginPath(); ctx.moveTo(pointX, baselineY); ctx.lineTo(pointX, chipY + chipHeight / 2); ctx.lineTo(chipX, chipY + chipHeight / 2); ctx.stroke();
-        ctx.globalAlpha = 1;
         ctx.fillStyle = this.css('--background-secondary', '#1f2937');
         this.roundedRect(ctx, chipX, chipY, OVERFLOW_CHIP_WIDTH, chipHeight, 3);
         ctx.fill();
