@@ -16,6 +16,7 @@ import { getTrackedItemOwner } from '../utils/ItemOwnership';
 import type { StoryMap } from '../types';
 import { ResponsiveModal } from './ResponsiveModal';
 import { confirmWithModal } from './ui/ConfirmModal';
+import { isModalFieldVisible } from './entity/ModalFieldVisibility';
 
 export type SceneModalSubmitCallback = (sc: Scene) => Promise<void>;
 export type SceneModalDeleteCallback = (sc: Scene) => Promise<void>;
@@ -40,6 +41,15 @@ export class SceneModal extends ResponsiveModal {
         this.onSubmit = onSubmit;
         this.onDelete = onDelete;
         this.modalEl.addClass('storyteller-scene-modal');
+    }
+
+    /**
+     * Whether a field is turned on for this vault. A hidden field is simply not
+     * rendered; its stored value rides along untouched on the object that gets
+     * submitted, so turning one off never discards data.
+     */
+    private shows(fieldKey: string): boolean {
+        return isModalFieldVisible(this.plugin.settings.hiddenModalFields, 'scene', fieldKey);
     }
 
     onOpen(): void { void (async () => {
@@ -150,330 +160,372 @@ export class SceneModal extends ResponsiveModal {
                 .onChange(v => this.scene.name = v)
             );
 
-        // Chapter selector
-        const chapterSetting = new Setting(contentEl)
-            .setName(t('chapter'))
-            .setDesc(this.scene.chapterName || t('none'));
-        chapterSetting.addDropdown(async dd => {
-                dd.addOption('', 'Unassigned');
-                const chapters = await this.plugin.listChapters();
-                chapters.forEach(ch => { dd.addOption(ch.id || ch.name, ch.number != null ? `${ch.number}. ${ch.name}` : ch.name); });
-                dd.setValue(this.scene.chapterId || '');
-                dd.onChange((val) => {
-                    if (!val) { this.scene.chapterId = undefined; this.scene.chapterName = undefined; }
-                    else {
-                        const picked = chapters.find(c => (c.id && c.id === val) || (!c.id && c.name === val));
-                        this.scene.chapterId = picked?.id;
-                        this.scene.chapterName = picked?.name;
-                    }
-                    chapterSetting.descEl.setText(this.scene.chapterName || t('none'));
-                });
-            });
-
-        new Setting(contentEl)
-            .setName('Date')
-            .setDesc('Optional date to show this scene on the timeline (same format as events)')
-            .addText(text => text
-                .setPlaceholder('E.g. 2024-01-15 or year 3, day 12')
-                .setValue(this.scene.date || '')
-                .onChange(v => { this.scene.date = v.trim() || undefined; })
-            );
-
-        const campaignBoardSetting = new Setting(contentEl)
-            .setName('Campaign board map')
-            .setDesc('Optional image map override for campaign mode. Leave empty to use the scene location map.');
-        campaignBoardSetting.addDropdown(async dd => {
-            dd.addOption('', 'Auto-detect from scene location');
-            const maps = await this.plugin.listMaps().catch(() => [] as StoryMap[]);
-            const imageMaps = maps
-                .filter(map => (map.type ?? 'image') === 'image')
-                .sort((a, b) => a.name.localeCompare(b.name));
-            const updateCampaignBoardDesc = (value: string) => {
-                const selected = imageMaps.find(map => (map.id || map.name) === value);
-                campaignBoardSetting.descEl.setText(
-                    selected
-                        ? `Campaign mode will open "${selected.name}" for this scene.`
-                        : 'Optional image map override for Campaign mode. Leave empty to use the scene location map.'
-                );
-            };
-            for (const map of imageMaps) {
-                const mapId = map.id || map.name;
-                dd.addOption(mapId, map.name);
-            }
-            dd.setValue(this.scene.campaignBoardMapId || '');
-            updateCampaignBoardDesc(this.scene.campaignBoardMapId || '');
-            dd.onChange(value => {
-                this.scene.campaignBoardMapId = value || undefined;
-                updateCampaignBoardDesc(value);
-            });
-        });
-
-        new Setting(contentEl)
-            .setName(t('status'))
-            .addDropdown(dd => dd
-                .addOptions({ Draft: 'Draft', Outline: 'Outline', WIP: 'WIP', Revised: 'Revised', Final: 'Final' })
-                .setValue(this.scene.status || 'Draft')
-                .onChange(v => this.scene.status = v)
-            );
-
-        new Setting(contentEl)
-            .setName(t('priorityInChapter'))
-            .addText(text => text
-                .setPlaceholder(t('priorityEg'))
-                .setValue(this.scene.priority != null ? String(this.scene.priority) : '')
-                .onChange(v => {
-                    const n = parseInt(v, 10);
-                    this.scene.priority = Number.isFinite(n) ? n : undefined;
-                })
-            );
-
-        // POV character
-        const povSetting = new Setting(contentEl)
-            .setName('Pov character')
-            .setDesc(this.scene.povCharacter || 'None');
-        let setPovButton: ButtonComponent | null = null;
-        let clearPovButton: ButtonComponent | null = null;
-        const updatePovSetting = () => {
-            povSetting.descEl.setText(this.scene.povCharacter || 'None');
-            setPovButton?.setButtonText(this.scene.povCharacter ? 'Change' : 'Set POV');
-            clearPovButton?.setDisabled(!this.scene.povCharacter);
-        };
-        povSetting
-            .addButton(btn => {
-                setPovButton = btn;
-                btn.onClick(() => {
-                    new CharacterSuggestModal(this.app, this.plugin, (ch) => {
-                        this.scene.povCharacter = ch.name;
-                        updatePovSetting();
-                    }).open();
-                });
-            })
-            .addButton(btn => {
-                clearPovButton = btn;
-                btn
-                    .setIcon('cross')
-                    .setTooltip('Clear pov')
-                    .onClick(() => {
-                        this.scene.povCharacter = undefined;
-                        updatePovSetting();
+        if (this.shows('chapterId')) {
+            // Chapter selector
+            const chapterSetting = new Setting(contentEl)
+                .setName(t('chapter'))
+                .setDesc(this.scene.chapterName || t('none'));
+            chapterSetting.addDropdown(async dd => {
+                    dd.addOption('', 'Unassigned');
+                    const chapters = await this.plugin.listChapters();
+                    chapters.forEach(ch => { dd.addOption(ch.id || ch.name, ch.number != null ? `${ch.number}. ${ch.name}` : ch.name); });
+                    dd.setValue(this.scene.chapterId || '');
+                    dd.onChange((val) => {
+                        if (!val) { this.scene.chapterId = undefined; this.scene.chapterName = undefined; }
+                        else {
+                            const picked = chapters.find(c => (c.id && c.id === val) || (!c.id && c.name === val));
+                            this.scene.chapterId = picked?.id;
+                            this.scene.chapterName = picked?.name;
+                        }
+                        chapterSetting.descEl.setText(this.scene.chapterName || t('none'));
                     });
+                });
+        }
+
+        if (this.shows('date')) {
+            new Setting(contentEl)
+                .setName('Date')
+                .setDesc('Optional date to show this scene on the timeline (same format as events)')
+                .addText(text => text
+                    .setPlaceholder('E.g. 2024-01-15 or year 3, day 12')
+                    .setValue(this.scene.date || '')
+                    .onChange(v => { this.scene.date = v.trim() || undefined; })
+                );
+        }
+
+        if (this.shows('campaignBoardMapId')) {
+            const campaignBoardSetting = new Setting(contentEl)
+                .setName('Campaign board map')
+                .setDesc('Optional image map override for campaign mode. Leave empty to use the scene location map.');
+            campaignBoardSetting.addDropdown(async dd => {
+                dd.addOption('', 'Auto-detect from scene location');
+                const maps = await this.plugin.listMaps().catch(() => [] as StoryMap[]);
+                const imageMaps = maps
+                    .filter(map => (map.type ?? 'image') === 'image')
+                    .sort((a, b) => a.name.localeCompare(b.name));
+                const updateCampaignBoardDesc = (value: string) => {
+                    const selected = imageMaps.find(map => (map.id || map.name) === value);
+                    campaignBoardSetting.descEl.setText(
+                        selected
+                            ? `Campaign mode will open "${selected.name}" for this scene.`
+                            : 'Optional image map override for Campaign mode. Leave empty to use the scene location map.'
+                    );
+                };
+                for (const map of imageMaps) {
+                    const mapId = map.id || map.name;
+                    dd.addOption(mapId, map.name);
+                }
+                dd.setValue(this.scene.campaignBoardMapId || '');
+                updateCampaignBoardDesc(this.scene.campaignBoardMapId || '');
+                dd.onChange(value => {
+                    this.scene.campaignBoardMapId = value || undefined;
+                    updateCampaignBoardDesc(value);
+                });
             });
-        updatePovSetting();
+        }
 
-        // Emotion
-        new Setting(contentEl)
-            .setName('Emotional tone')
-            .addDropdown(dd => dd
-                .addOptions({
-                    '': '— none —',
-                    tense: 'Tense',
-                    joyful: 'Joyful',
-                    sorrowful: 'Sorrowful',
-                    mysterious: 'Mysterious',
-                    hopeful: 'Hopeful',
-                    fearful: 'Fearful',
-                    angry: 'Angry',
-                    romantic: 'Romantic',
-                    melancholic: 'Melancholic',
-                    neutral: 'Neutral',
+        if (this.shows('status')) {
+            new Setting(contentEl)
+                .setName(t('status'))
+                .addDropdown(dd => dd
+                    .addOptions({ Draft: 'Draft', Outline: 'Outline', WIP: 'WIP', Revised: 'Revised', Final: 'Final' })
+                    .setValue(this.scene.status || 'Draft')
+                    .onChange(v => this.scene.status = v)
+                );
+        }
+
+        if (this.shows('priority')) {
+            new Setting(contentEl)
+                .setName(t('priorityInChapter'))
+                .addText(text => text
+                    .setPlaceholder(t('priorityEg'))
+                    .setValue(this.scene.priority != null ? String(this.scene.priority) : '')
+                    .onChange(v => {
+                        const n = parseInt(v, 10);
+                        this.scene.priority = Number.isFinite(n) ? n : undefined;
+                    })
+                );
+        }
+
+        if (this.shows('povCharacter')) {
+            // POV character
+            const povSetting = new Setting(contentEl)
+                .setName('Pov character')
+                .setDesc(this.scene.povCharacter || 'None');
+            let setPovButton: ButtonComponent | null = null;
+            let clearPovButton: ButtonComponent | null = null;
+            const updatePovSetting = () => {
+                povSetting.descEl.setText(this.scene.povCharacter || 'None');
+                setPovButton?.setButtonText(this.scene.povCharacter ? 'Change' : 'Set POV');
+                clearPovButton?.setDisabled(!this.scene.povCharacter);
+            };
+            povSetting
+                .addButton(btn => {
+                    setPovButton = btn;
+                    btn.onClick(() => {
+                        new CharacterSuggestModal(this.app, this.plugin, (ch) => {
+                            this.scene.povCharacter = ch.name;
+                            updatePovSetting();
+                        }).open();
+                    });
                 })
-                .setValue(this.scene.emotion || '')
-                .onChange(v => { this.scene.emotion = (v || undefined) as Scene['emotion']; })
-            );
+                .addButton(btn => {
+                    clearPovButton = btn;
+                    btn
+                        .setIcon('cross')
+                        .setTooltip('Clear pov')
+                        .onClick(() => {
+                            this.scene.povCharacter = undefined;
+                            updatePovSetting();
+                        });
+                });
+            updatePovSetting();
+        }
 
-        // Intensity
-        new Setting(contentEl)
-            .setName(`Intensity: ${this.scene.intensity ?? 0}`)
-            .setDesc('Narrative intensity — calm (−10) to climactic (+10)')
-            .addSlider(sl => sl
-                .setLimits(-10, 10, 1)
-                .setValue(this.scene.intensity ?? 0)
-                .setDynamicTooltip()
-                .onChange(v => {
-                    this.scene.intensity = v;
-                    sl.sliderEl.closest('.setting-item')?.querySelector('.setting-item-name')!
-                        .setText(`Intensity: ${v}`);
-                })
-            );
+        if (this.shows('emotion')) {
+            // Emotion
+            new Setting(contentEl)
+                .setName('Emotional tone')
+                .addDropdown(dd => dd
+                    .addOptions({
+                        '': '— none —',
+                        tense: 'Tense',
+                        joyful: 'Joyful',
+                        sorrowful: 'Sorrowful',
+                        mysterious: 'Mysterious',
+                        hopeful: 'Hopeful',
+                        fearful: 'Fearful',
+                        angry: 'Angry',
+                        romantic: 'Romantic',
+                        melancholic: 'Melancholic',
+                        neutral: 'Neutral',
+                    })
+                    .setValue(this.scene.emotion || '')
+                    .onChange(v => { this.scene.emotion = (v || undefined) as Scene['emotion']; })
+                );
+        }
 
-        // Synopsis
-        new Setting(contentEl)
-            .setName('Synopsis')
-            .setClass('storyteller-modal-setting-vertical')
-            .addTextArea(ta => {
-                ta.setPlaceholder('One-line summary of this scene…')
-                  .setValue(this.scene.synopsis || '')
-                  .onChange(v => { this.scene.synopsis = v.trim() || undefined; });
-                ta.inputEl.rows = 3;
-            });
+        if (this.shows('intensity')) {
+            // Intensity
+            new Setting(contentEl)
+                .setName(`Intensity: ${this.scene.intensity ?? 0}`)
+                .setDesc('Narrative intensity — calm (−10) to climactic (+10)')
+                .addSlider(sl => sl
+                    .setLimits(-10, 10, 1)
+                    .setValue(this.scene.intensity ?? 0)
+                    .setDynamicTooltip()
+                    .onChange(v => {
+                        this.scene.intensity = v;
+                        sl.sliderEl.closest('.setting-item')?.querySelector('.setting-item-name')!
+                            .setText(`Intensity: ${v}`);
+                    })
+                );
+        }
 
-        new Setting(contentEl)
-            .setName(t('tags') || 'Tags')
-            .addText(text => text
-                .setPlaceholder(t('tagsPh'))
-                .setValue((this.scene.tags || []).join(', '))
-                .onChange(v => {
-                    const arr = v.split(',').map(s => s.trim()).filter(Boolean);
-                    this.scene.tags = arr.length ? arr : undefined;
-                })
-            );
+        if (this.shows('synopsis')) {
+            // Synopsis
+            new Setting(contentEl)
+                .setName('Synopsis')
+                .setClass('storyteller-modal-setting-vertical')
+                .addTextArea(ta => {
+                    ta.setPlaceholder('One-line summary of this scene…')
+                      .setValue(this.scene.synopsis || '')
+                      .onChange(v => { this.scene.synopsis = v.trim() || undefined; });
+                    ta.inputEl.rows = 3;
+                });
+        }
+
+        if (this.shows('tags')) {
+            new Setting(contentEl)
+                .setName(t('tags') || 'Tags')
+                .addText(text => text
+                    .setPlaceholder(t('tagsPh'))
+                    .setValue((this.scene.tags || []).join(', '))
+                    .onChange(v => {
+                        const arr = v.split(',').map(s => s.trim()).filter(Boolean);
+                        this.scene.tags = arr.length ? arr : undefined;
+                    })
+                );
+        }
 
         // Image block
-        let imageDescEl: HTMLElement | null = null;
-        const profileImageSetting = new Setting(contentEl)
-            .setName(t('profileImage'))
-            .then(s => {
-                imageDescEl = s.descEl.createEl('small', { text: t('currentValue', this.scene.profileImagePath || t('none')) });
-                s.descEl.addClass('storyteller-modal-setting-vertical');
-            });
+        if (this.shows('profileImage')) {
+            let imageDescEl: HTMLElement | null = null;
+            const profileImageSetting = new Setting(contentEl)
+                .setName(t('profileImage'))
+                .then(s => {
+                    imageDescEl = s.descEl.createEl('small', { text: t('currentValue', this.scene.profileImagePath || t('none')) });
+                    s.descEl.addClass('storyteller-modal-setting-vertical');
+                });
         
-        // Add image selection buttons (Gallery, Upload, Vault, Clear)
-        addImageSelectionButtons(
-            profileImageSetting,
-            this.app,
-            this.plugin,
-            {
-                currentPath: this.scene.profileImagePath,
-                onSelect: (path) => {
-                    this.scene.profileImagePath = path;
-                },
-                descriptionEl: imageDescEl || undefined
-            }
-        );
+            // Add image selection buttons (Gallery, Upload, Vault, Clear)
+            addImageSelectionButtons(
+                profileImageSetting,
+                this.app,
+                this.plugin,
+                {
+                    currentPath: this.scene.profileImagePath,
+                    onSelect: (path) => {
+                        this.scene.profileImagePath = path;
+                    },
+                    descriptionEl: imageDescEl || undefined
+                }
+            );
+        }
 
         // Content
-        new Setting(contentEl)
-            .setName(t('content') || 'Content')
-            .setClass('storyteller-modal-setting-vertical')
-            .addTextArea((ta: TextAreaComponent) => {
-                ta.setPlaceholder(t('writeScenePh'))
-                  .setValue(this.scene.content || '')
-                  .onChange(v => this.scene.content = v);
-                ta.inputEl.rows = 10;
-            });
+        if (this.shows('content')) {
+            new Setting(contentEl)
+                .setName(t('content') || 'Content')
+                .setClass('storyteller-modal-setting-vertical')
+                .addTextArea((ta: TextAreaComponent) => {
+                    ta.setPlaceholder(t('writeScenePh'))
+                      .setValue(this.scene.content || '')
+                      .onChange(v => this.scene.content = v);
+                    ta.inputEl.rows = 10;
+                });
+        }
 
         // Beat sheet
-        new Setting(contentEl)
-            .setName(t('beatSheetOneLine'))
-            .setClass('storyteller-modal-setting-vertical')
-            .addTextArea((ta: TextAreaComponent) => {
-                const value = (this.scene.beats || []).join('\n');
-                ta.setPlaceholder(t('beatSheetPh'))
-                  .setValue(value)
-                  .onChange(v => {
-                      const lines = v.split('\n').map(s => s.trim()).filter(Boolean);
-                      this.scene.beats = lines.length ? lines : undefined;
-                  });
-                ta.inputEl.rows = 6;
-            });
+        if (this.shows('beats')) {
+            new Setting(contentEl)
+                .setName(t('beatSheetOneLine'))
+                .setClass('storyteller-modal-setting-vertical')
+                .addTextArea((ta: TextAreaComponent) => {
+                    const value = (this.scene.beats || []).join('\n');
+                    ta.setPlaceholder(t('beatSheetPh'))
+                      .setValue(value)
+                      .onChange(v => {
+                          const lines = v.split('\n').map(s => s.trim()).filter(Boolean);
+                          this.scene.beats = lines.length ? lines : undefined;
+                      });
+                    ta.inputEl.rows = 6;
+                });
+        }
 
         // Linked entities
         contentEl.createEl('h3', { text: t('links') });
 
-        const charactersSetting = new Setting(contentEl)
-            .setName(t('characters'));
-        const charactersListEl = charactersSetting.controlEl.createDiv('storyteller-modal-linked-entities');
-        this.renderLinkedEntities(charactersListEl, this.scene.linkedCharacters, 'characters');
-        charactersSetting.addButton(btn => btn.setButtonText(t('add')).onClick(() => {
-            new CharacterSuggestModal(this.app, this.plugin, (ch) => {
-                if (!Array.isArray(this.scene.linkedCharacters)) this.scene.linkedCharacters = [];
-                if (!this.scene.linkedCharacters.includes(ch.name)) this.scene.linkedCharacters.push(ch.name);
-                this.renderLinkedEntities(charactersListEl, this.scene.linkedCharacters, 'characters');
-            }).open();
-        }));
+        if (this.shows('linkedCharacters')) {
+            const charactersSetting = new Setting(contentEl)
+                .setName(t('characters'));
+            const charactersListEl = charactersSetting.controlEl.createDiv('storyteller-modal-linked-entities');
+            this.renderLinkedEntities(charactersListEl, this.scene.linkedCharacters, 'characters');
+            charactersSetting.addButton(btn => btn.setButtonText(t('add')).onClick(() => {
+                new CharacterSuggestModal(this.app, this.plugin, (ch) => {
+                    if (!Array.isArray(this.scene.linkedCharacters)) this.scene.linkedCharacters = [];
+                    if (!this.scene.linkedCharacters.includes(ch.name)) this.scene.linkedCharacters.push(ch.name);
+                    this.renderLinkedEntities(charactersListEl, this.scene.linkedCharacters, 'characters');
+                }).open();
+            }));
+        }
 
-        const locationsSetting = new Setting(contentEl)
-            .setName(t('locations'));
-        const locationsListEl = locationsSetting.controlEl.createDiv('storyteller-modal-linked-entities');
-        this.renderLinkedEntities(locationsListEl, this.scene.linkedLocations, 'locations');
-        locationsSetting.addButton(btn => btn.setButtonText(t('add')).onClick(() => {
-            new LocationSuggestModal(this.app, this.plugin, (loc) => {
-                if (!loc) return;
-                if (!Array.isArray(this.scene.linkedLocations)) this.scene.linkedLocations = [];
-                if (!this.scene.linkedLocations.includes(loc.name)) this.scene.linkedLocations.push(loc.name);
-                this.renderLinkedEntities(locationsListEl, this.scene.linkedLocations, 'locations');
-            }).open();
-        }));
+        if (this.shows('linkedLocations')) {
+            const locationsSetting = new Setting(contentEl)
+                .setName(t('locations'));
+            const locationsListEl = locationsSetting.controlEl.createDiv('storyteller-modal-linked-entities');
+            this.renderLinkedEntities(locationsListEl, this.scene.linkedLocations, 'locations');
+            locationsSetting.addButton(btn => btn.setButtonText(t('add')).onClick(() => {
+                new LocationSuggestModal(this.app, this.plugin, (loc) => {
+                    if (!loc) return;
+                    if (!Array.isArray(this.scene.linkedLocations)) this.scene.linkedLocations = [];
+                    if (!this.scene.linkedLocations.includes(loc.name)) this.scene.linkedLocations.push(loc.name);
+                    this.renderLinkedEntities(locationsListEl, this.scene.linkedLocations, 'locations');
+                }).open();
+            }));
+        }
 
-        const eventsSetting = new Setting(contentEl)
-            .setName(t('events'));
-        const eventsListEl = eventsSetting.controlEl.createDiv('storyteller-modal-linked-entities');
-        this.renderLinkedEntities(eventsListEl, this.scene.linkedEvents, 'events');
-        eventsSetting.addButton(btn => btn.setButtonText(t('add')).onClick(() => {
-            new EventSuggestModal(this.app, this.plugin, (evt) => {
-                if (!Array.isArray(this.scene.linkedEvents)) this.scene.linkedEvents = [];
-                if (!this.scene.linkedEvents.includes(evt.name)) this.scene.linkedEvents.push(evt.name);
-                this.renderLinkedEntities(eventsListEl, this.scene.linkedEvents, 'events');
-            }).open();
-        }));
+        if (this.shows('linkedEvents')) {
+            const eventsSetting = new Setting(contentEl)
+                .setName(t('events'));
+            const eventsListEl = eventsSetting.controlEl.createDiv('storyteller-modal-linked-entities');
+            this.renderLinkedEntities(eventsListEl, this.scene.linkedEvents, 'events');
+            eventsSetting.addButton(btn => btn.setButtonText(t('add')).onClick(() => {
+                new EventSuggestModal(this.app, this.plugin, (evt) => {
+                    if (!Array.isArray(this.scene.linkedEvents)) this.scene.linkedEvents = [];
+                    if (!this.scene.linkedEvents.includes(evt.name)) this.scene.linkedEvents.push(evt.name);
+                    this.renderLinkedEntities(eventsListEl, this.scene.linkedEvents, 'events');
+                }).open();
+            }));
+        }
 
-        const itemsSetting = new Setting(contentEl)
-            .setName(t('items'));
-        const itemsListEl = itemsSetting.controlEl.createDiv('storyteller-modal-linked-entities');
-        this.renderLinkedEntities(itemsListEl, this.scene.linkedItems, 'items');
-        itemsSetting.addButton(btn => btn.setButtonText(t('add')).onClick(async () => {
-            const { PlotItemSuggestModal } = await import('./PlotItemSuggestModal');
-            new PlotItemSuggestModal(this.app, this.plugin, (item) => { void (async () => {
-                const characters = await this.plugin.listCharacters().catch(() => []);
-                const trackedOwner = getTrackedItemOwner(item, characters);
-                if (trackedOwner) {
-                    new Notice(
-                        `${item.name} is currently in ${trackedOwner}'s inventory. ` +
-                        `You can still link it to this scene, but ownership remains tracked on the character.`,
-                        7000
-                    );
-                }
-                if (!Array.isArray(this.scene.linkedItems)) this.scene.linkedItems = [];
-                if (!this.scene.linkedItems.includes(item.name)) this.scene.linkedItems.push(item.name);
-                this.renderLinkedEntities(itemsListEl, this.scene.linkedItems, 'items');
-            })(); }).open();
-        }));
+        if (this.shows('linkedItems')) {
+            const itemsSetting = new Setting(contentEl)
+                .setName(t('items'));
+            const itemsListEl = itemsSetting.controlEl.createDiv('storyteller-modal-linked-entities');
+            this.renderLinkedEntities(itemsListEl, this.scene.linkedItems, 'items');
+            itemsSetting.addButton(btn => btn.setButtonText(t('add')).onClick(async () => {
+                const { PlotItemSuggestModal } = await import('./PlotItemSuggestModal');
+                new PlotItemSuggestModal(this.app, this.plugin, (item) => { void (async () => {
+                    const characters = await this.plugin.listCharacters().catch(() => []);
+                    const trackedOwner = getTrackedItemOwner(item, characters);
+                    if (trackedOwner) {
+                        new Notice(
+                            `${item.name} is currently in ${trackedOwner}'s inventory. ` +
+                            `You can still link it to this scene, but ownership remains tracked on the character.`,
+                            7000
+                        );
+                    }
+                    if (!Array.isArray(this.scene.linkedItems)) this.scene.linkedItems = [];
+                    if (!this.scene.linkedItems.includes(item.name)) this.scene.linkedItems.push(item.name);
+                    this.renderLinkedEntities(itemsListEl, this.scene.linkedItems, 'items');
+                })(); }).open();
+            }));
+        }
 
-        const groupsSetting = new Setting(contentEl)
-            .setName(t('groups'));
-        const groupsListEl = groupsSetting.controlEl.createDiv('storyteller-modal-linked-entities');
-        this.renderLinkedEntities(groupsListEl, this.scene.linkedGroups, 'groups');
-        groupsSetting.addButton(btn => btn.setButtonText(t('add')).onClick(() => {
-            new GroupSuggestModal(this.app, this.plugin, (g) => {
-                if (!Array.isArray(this.scene.linkedGroups)) this.scene.linkedGroups = [];
-                if (!this.scene.linkedGroups.includes(g.id)) this.scene.linkedGroups.push(g.id);
-                this.renderLinkedEntities(groupsListEl, this.scene.linkedGroups, 'groups');
-            }).open();
-        }));
+        if (this.shows('linkedGroups')) {
+            const groupsSetting = new Setting(contentEl)
+                .setName(t('groups'));
+            const groupsListEl = groupsSetting.controlEl.createDiv('storyteller-modal-linked-entities');
+            this.renderLinkedEntities(groupsListEl, this.scene.linkedGroups, 'groups');
+            groupsSetting.addButton(btn => btn.setButtonText(t('add')).onClick(() => {
+                new GroupSuggestModal(this.app, this.plugin, (g) => {
+                    if (!Array.isArray(this.scene.linkedGroups)) this.scene.linkedGroups = [];
+                    if (!this.scene.linkedGroups.includes(g.id)) this.scene.linkedGroups.push(g.id);
+                    this.renderLinkedEntities(groupsListEl, this.scene.linkedGroups, 'groups');
+                }).open();
+            }));
+        }
 
         // Setup / Payoff scene links
         contentEl.createEl('h3', { text: 'Setup & payoff' });
 
-        const setupSetting = new Setting(contentEl)
-            .setName('Sets up scenes')
-            .setDesc('This scene plants seeds paid off by these scenes');
-        const setupListEl = setupSetting.controlEl.createDiv('storyteller-modal-linked-entities');
-        this.renderLinkedEntities(setupListEl, this.scene.setupScenes, 'setupScenes');
-        setupSetting.addButton(btn => btn.setButtonText('Add').onClick(() => {
-            new SceneSuggestModal(this.app, this.plugin, (sc) => {
-                if (!Array.isArray(this.scene.setupScenes)) this.scene.setupScenes = [];
-                if (!this.scene.setupScenes.includes(sc.name)) this.scene.setupScenes.push(sc.name);
-                this.renderLinkedEntities(setupListEl, this.scene.setupScenes, 'setupScenes');
-            }).open();
-        }));
+        if (this.shows('setupScenes')) {
+            const setupSetting = new Setting(contentEl)
+                .setName('Sets up scenes')
+                .setDesc('This scene plants seeds paid off by these scenes');
+            const setupListEl = setupSetting.controlEl.createDiv('storyteller-modal-linked-entities');
+            this.renderLinkedEntities(setupListEl, this.scene.setupScenes, 'setupScenes');
+            setupSetting.addButton(btn => btn.setButtonText('Add').onClick(() => {
+                new SceneSuggestModal(this.app, this.plugin, (sc) => {
+                    if (!Array.isArray(this.scene.setupScenes)) this.scene.setupScenes = [];
+                    if (!this.scene.setupScenes.includes(sc.name)) this.scene.setupScenes.push(sc.name);
+                    this.renderLinkedEntities(setupListEl, this.scene.setupScenes, 'setupScenes');
+                }).open();
+            }));
+        }
 
-        const payoffSetting = new Setting(contentEl)
-            .setName('Paid off by scenes')
-            .setDesc('These scenes resolve what this scene foreshadows');
-        const payoffListEl = payoffSetting.controlEl.createDiv('storyteller-modal-linked-entities');
-        this.renderLinkedEntities(payoffListEl, this.scene.payoffScenes, 'payoffScenes');
-        payoffSetting.addButton(btn => btn.setButtonText('Add').onClick(() => {
-            new SceneSuggestModal(this.app, this.plugin, (sc) => {
-                if (!Array.isArray(this.scene.payoffScenes)) this.scene.payoffScenes = [];
-                if (!this.scene.payoffScenes.includes(sc.name)) this.scene.payoffScenes.push(sc.name);
-                this.renderLinkedEntities(payoffListEl, this.scene.payoffScenes, 'payoffScenes');
-            }).open();
-        }));
+        if (this.shows('payoffScenes')) {
+            const payoffSetting = new Setting(contentEl)
+                .setName('Paid off by scenes')
+                .setDesc('These scenes resolve what this scene foreshadows');
+            const payoffListEl = payoffSetting.controlEl.createDiv('storyteller-modal-linked-entities');
+            this.renderLinkedEntities(payoffListEl, this.scene.payoffScenes, 'payoffScenes');
+            payoffSetting.addButton(btn => btn.setButtonText('Add').onClick(() => {
+                new SceneSuggestModal(this.app, this.plugin, (sc) => {
+                    if (!Array.isArray(this.scene.payoffScenes)) this.scene.payoffScenes = [];
+                    if (!this.scene.payoffScenes.includes(sc.name)) this.scene.payoffScenes.push(sc.name);
+                    this.renderLinkedEntities(payoffListEl, this.scene.payoffScenes, 'payoffScenes');
+                }).open();
+            }));
+        }
 
-        // --- Branches section (only shown for existing scenes that have a file) ---
-        if (!this.isNew && this.scene.filePath) {
-            const branchesContainer = contentEl.createDiv('storyteller-branches-section-host');
-            this.renderBranchesSection(branchesContainer);
+        if (this.shows('branches')) {
+            // --- Branches section (only shown for existing scenes that have a file) ---
+            if (!this.isNew && this.scene.filePath) {
+                const branchesContainer = contentEl.createDiv('storyteller-branches-section-host');
+                this.renderBranchesSection(branchesContainer);
+            }
         }
 
         if (!this.isNew && this.onDelete) {

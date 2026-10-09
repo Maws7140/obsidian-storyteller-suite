@@ -8,6 +8,7 @@ import type { Template, TemplateEntity, TemplateVariableValue } from '../templat
 import { t } from '../i18n/strings';
 import { parseSectionsFromMarkdown } from '../yaml/EntitySections';
 import { EntityCustomFieldsEditor } from './entity/EntityCustomFieldsEditor';
+import { isModalFieldVisible } from './entity/ModalFieldVisibility';
 
 export type MagicSystemModalSubmitCallback = (magicSystem: MagicSystem) => Promise<void>;
 export type MagicSystemModalDeleteCallback = (magicSystem: MagicSystem) => Promise<void>;
@@ -73,6 +74,15 @@ export class MagicSystemModal extends ResponsiveModal {
         this.onSubmit = onSubmit;
         this.onDelete = onDelete;
         this.modalEl.addClass('storyteller-magic-system-modal');
+    }
+
+    /**
+     * Whether a field is turned on for this vault. A hidden field is simply not
+     * rendered; its stored value rides along untouched on the object that gets
+     * submitted, so turning one off never discards data.
+     */
+    private shows(fieldKey: string): boolean {
+        return isModalFieldVisible(this.plugin.settings.hiddenModalFields, 'magicSystem', fieldKey);
     }
 
     onOpen(): void { void (async () => {
@@ -188,183 +198,209 @@ export class MagicSystemModal extends ResponsiveModal {
             });
 
         // Profile Image
-        const profileImageSetting = new Setting(contentEl)
-            .setName(t('representativeImage'))
-            .setDesc('');
-        const imagePathDesc = profileImageSetting.descEl.createEl('small', {
-            text: t('currentValue', this.magicSystem.profileImagePath || t('none'))
-        });
-        addImageSelectionButtons(
-            profileImageSetting,
-            this.app,
-            this.plugin,
-            {
-                currentPath: this.magicSystem.profileImagePath,
-                onSelect: (path) => {
-                    this.magicSystem.profileImagePath = path;
-                    imagePathDesc.setText(t('currentValue', this.magicSystem.profileImagePath || t('none')));
-                },
-                descriptionEl: imagePathDesc
-            }
-        );
+        if (this.shows('profileImage')) {
+            const profileImageSetting = new Setting(contentEl)
+                .setName(t('representativeImage'))
+                .setDesc('');
+            const imagePathDesc = profileImageSetting.descEl.createEl('small', {
+                text: t('currentValue', this.magicSystem.profileImagePath || t('none'))
+            });
+            addImageSelectionButtons(
+                profileImageSetting,
+                this.app,
+                this.plugin,
+                {
+                    currentPath: this.magicSystem.profileImagePath,
+                    onSelect: (path) => {
+                        this.magicSystem.profileImagePath = path;
+                        imagePathDesc.setText(t('currentValue', this.magicSystem.profileImagePath || t('none')));
+                    },
+                    descriptionEl: imagePathDesc
+                }
+            );
+        }
 
         // System Type
-        new Setting(contentEl)
-            .setName(t('systemType'))
-            .setDesc(t('systemTypeDesc'))
-            .addDropdown(dropdown => dropdown
-                .addOptions({
-                    'arcane': t('arcane'),
-                    'divine': t('divine'),
-                    'natural': t('natural'),
-                    'psionic': t('psionic'),
-                    'blood': t('bloodMagic'),
-                    'elemental': t('elemental'),
-                    'necromancy': t('necromancy'),
-                    'alchemy': t('alchemy'),
-                    'rune': t('runeMagic'),
-                    'custom': t('custom')
-                })
-                .setValue(this.magicSystem.systemType || 'arcane')
-                .onChange(value => this.magicSystem.systemType = value)
-            );
+        if (this.shows('systemType')) {
+            new Setting(contentEl)
+                .setName(t('systemType'))
+                .setDesc(t('systemTypeDesc'))
+                .addDropdown(dropdown => dropdown
+                    .addOptions({
+                        'arcane': t('arcane'),
+                        'divine': t('divine'),
+                        'natural': t('natural'),
+                        'psionic': t('psionic'),
+                        'blood': t('bloodMagic'),
+                        'elemental': t('elemental'),
+                        'necromancy': t('necromancy'),
+                        'alchemy': t('alchemy'),
+                        'rune': t('runeMagic'),
+                        'custom': t('custom')
+                    })
+                    .setValue(this.magicSystem.systemType || 'arcane')
+                    .onChange(value => this.magicSystem.systemType = value)
+                );
+        }
 
         // Rarity
-        new Setting(contentEl)
-            .setName(t('rarity'))
-            .setDesc(t('rarityDesc'))
-            .addDropdown(dropdown => dropdown
-                .addOptions({
-                    'ubiquitous': t('ubiquitous'),
-                    'common': t('common'),
-                    'uncommon': t('uncommon'),
-                    'rare': t('rare'),
-                    'legendary': t('legendary'),
-                    'custom': t('custom')
-                })
-                .setValue(this.magicSystem.rarity || 'common')
-                .onChange(value => this.magicSystem.rarity = value)
-            );
+        if (this.shows('rarity')) {
+            new Setting(contentEl)
+                .setName(t('rarity'))
+                .setDesc(t('rarityDesc'))
+                .addDropdown(dropdown => dropdown
+                    .addOptions({
+                        'ubiquitous': t('ubiquitous'),
+                        'common': t('common'),
+                        'uncommon': t('uncommon'),
+                        'rare': t('rare'),
+                        'legendary': t('legendary'),
+                        'custom': t('custom')
+                    })
+                    .setValue(this.magicSystem.rarity || 'common')
+                    .onChange(value => this.magicSystem.rarity = value)
+                );
+        }
 
         // Power Level
-        new Setting(contentEl)
-            .setName(t('powerLevel'))
-            .setDesc(t('powerLevelDesc'))
-            .addDropdown(dropdown => dropdown
-                .addOptions({
-                    'low': t('low'),
-                    'moderate': t('moderate'),
-                    'high': t('high'),
-                    'godlike': t('godlike'),
-                    'custom': t('custom')
-                })
-                .setValue(this.magicSystem.powerLevel || 'moderate')
-                .onChange(value => this.magicSystem.powerLevel = value)
-            );
+        if (this.shows('powerLevel')) {
+            new Setting(contentEl)
+                .setName(t('powerLevel'))
+                .setDesc(t('powerLevelDesc'))
+                .addDropdown(dropdown => dropdown
+                    .addOptions({
+                        'low': t('low'),
+                        'moderate': t('moderate'),
+                        'high': t('high'),
+                        'godlike': t('godlike'),
+                        'custom': t('custom')
+                    })
+                    .setValue(this.magicSystem.powerLevel || 'moderate')
+                    .onChange(value => this.magicSystem.powerLevel = value)
+                );
+        }
 
         // Status
-        new Setting(contentEl)
-            .setName(t('status'))
-            .setDesc(t('magicSystemStatusDesc'))
-            .addDropdown(dropdown => dropdown
-                .addOptions({
-                    'active': t('active'),
-                    'forbidden': t('forbidden'),
-                    'lost': t('lostKnowledge'),
-                    'declining': t('declining'),
-                    'resurgent': t('resurgent'),
-                    'custom': t('custom')
-                })
-                .setValue(this.magicSystem.status || 'active')
-                .onChange(value => this.magicSystem.status = value)
-            );
+        if (this.shows('status')) {
+            new Setting(contentEl)
+                .setName(t('status'))
+                .setDesc(t('magicSystemStatusDesc'))
+                .addDropdown(dropdown => dropdown
+                    .addOptions({
+                        'active': t('active'),
+                        'forbidden': t('forbidden'),
+                        'lost': t('lostKnowledge'),
+                        'declining': t('declining'),
+                        'resurgent': t('resurgent'),
+                        'custom': t('custom')
+                    })
+                    .setValue(this.magicSystem.status || 'active')
+                    .onChange(value => this.magicSystem.status = value)
+                );
+        }
 
         // Description (Markdown Section)
-        new Setting(contentEl)
-            .setName(t('description'))
-            .setDesc(t('magicSystemDescriptionDesc'))
-            .setClass('storyteller-modal-setting-vertical')
-            .addTextArea(text => {
-                text.setValue(this.magicSystem.description || '')
-                    .onChange(value => this.magicSystem.description = value);
-                text.inputEl.rows = 4;
-                text.inputEl.setCssStyles({ width: '100%' });
-            });
+        if (this.shows('description')) {
+            new Setting(contentEl)
+                .setName(t('description'))
+                .setDesc(t('magicSystemDescriptionDesc'))
+                .setClass('storyteller-modal-setting-vertical')
+                .addTextArea(text => {
+                    text.setValue(this.magicSystem.description || '')
+                        .onChange(value => this.magicSystem.description = value);
+                    text.inputEl.rows = 4;
+                    text.inputEl.setCssStyles({ width: '100%' });
+                });
+        }
 
         // Rules (Markdown Section)
-        new Setting(contentEl)
-            .setName(t('rulesMechanics'))
-            .setDesc(t('rulesMechanicsDesc'))
-            .setClass('storyteller-modal-setting-vertical')
-            .addTextArea(text => {
-                text.setValue(this.magicSystem.rules || '')
-                    .onChange(value => this.magicSystem.rules = value);
-                text.inputEl.rows = 4;
-                text.inputEl.setCssStyles({ width: '100%' });
-            });
+        if (this.shows('rules')) {
+            new Setting(contentEl)
+                .setName(t('rulesMechanics'))
+                .setDesc(t('rulesMechanicsDesc'))
+                .setClass('storyteller-modal-setting-vertical')
+                .addTextArea(text => {
+                    text.setValue(this.magicSystem.rules || '')
+                        .onChange(value => this.magicSystem.rules = value);
+                    text.inputEl.rows = 4;
+                    text.inputEl.setCssStyles({ width: '100%' });
+                });
+        }
 
         // Source (Markdown Section)
-        new Setting(contentEl)
-            .setName(t('source'))
-            .setDesc(t('sourceDesc'))
-            .setClass('storyteller-modal-setting-vertical')
-            .addTextArea(text => {
-                text.setValue(this.magicSystem.source || '')
-                    .onChange(value => this.magicSystem.source = value);
-                text.inputEl.rows = 3;
-                text.inputEl.setCssStyles({ width: '100%' });
-            });
+        if (this.shows('source')) {
+            new Setting(contentEl)
+                .setName(t('source'))
+                .setDesc(t('sourceDesc'))
+                .setClass('storyteller-modal-setting-vertical')
+                .addTextArea(text => {
+                    text.setValue(this.magicSystem.source || '')
+                        .onChange(value => this.magicSystem.source = value);
+                    text.inputEl.rows = 3;
+                    text.inputEl.setCssStyles({ width: '100%' });
+                });
+        }
 
         // Costs (Markdown Section)
-        new Setting(contentEl)
-            .setName(t('costsConsequences'))
-            .setDesc(t('costsConsequencesDesc'))
-            .setClass('storyteller-modal-setting-vertical')
-            .addTextArea(text => {
-                text.setValue(this.magicSystem.costs || '')
-                    .onChange(value => this.magicSystem.costs = value);
-                text.inputEl.rows = 3;
-                text.inputEl.setCssStyles({ width: '100%' });
-            });
+        if (this.shows('costs')) {
+            new Setting(contentEl)
+                .setName(t('costsConsequences'))
+                .setDesc(t('costsConsequencesDesc'))
+                .setClass('storyteller-modal-setting-vertical')
+                .addTextArea(text => {
+                    text.setValue(this.magicSystem.costs || '')
+                        .onChange(value => this.magicSystem.costs = value);
+                    text.inputEl.rows = 3;
+                    text.inputEl.setCssStyles({ width: '100%' });
+                });
+        }
 
         // Limitations (Markdown Section)
-        new Setting(contentEl)
-            .setName(t('limitations'))
-            .setDesc(t('limitationsDesc'))
-            .setClass('storyteller-modal-setting-vertical')
-            .addTextArea(text => {
-                text.setValue(this.magicSystem.limitations || '')
-                    .onChange(value => this.magicSystem.limitations = value);
-                text.inputEl.rows = 3;
-                text.inputEl.setCssStyles({ width: '100%' });
-            });
+        if (this.shows('limitations')) {
+            new Setting(contentEl)
+                .setName(t('limitations'))
+                .setDesc(t('limitationsDesc'))
+                .setClass('storyteller-modal-setting-vertical')
+                .addTextArea(text => {
+                    text.setValue(this.magicSystem.limitations || '')
+                        .onChange(value => this.magicSystem.limitations = value);
+                    text.inputEl.rows = 3;
+                    text.inputEl.setCssStyles({ width: '100%' });
+                });
+        }
 
         // Training (Markdown Section)
-        new Setting(contentEl)
-            .setName(t('trainingLearning'))
-            .setDesc(t('trainingLearningDesc'))
-            .setClass('storyteller-modal-setting-vertical')
-            .addTextArea(text => {
-                text.setValue(this.magicSystem.training || '')
-                    .onChange(value => this.magicSystem.training = value);
-                text.inputEl.rows = 3;
-                text.inputEl.setCssStyles({ width: '100%' });
-            });
+        if (this.shows('training')) {
+            new Setting(contentEl)
+                .setName(t('trainingLearning'))
+                .setDesc(t('trainingLearningDesc'))
+                .setClass('storyteller-modal-setting-vertical')
+                .addTextArea(text => {
+                    text.setValue(this.magicSystem.training || '')
+                        .onChange(value => this.magicSystem.training = value);
+                    text.inputEl.rows = 3;
+                    text.inputEl.setCssStyles({ width: '100%' });
+                });
+        }
 
         // History (Markdown Section)
-        new Setting(contentEl)
-            .setName(t('history'))
-            .setDesc(t('magicSystemHistoryDesc'))
-            .setClass('storyteller-modal-setting-vertical')
-            .addTextArea(text => {
-                text.setValue(this.magicSystem.history || '')
-                    .onChange(value => this.magicSystem.history = value);
-                text.inputEl.rows = 3;
-                text.inputEl.setCssStyles({ width: '100%' });
-            });
+        if (this.shows('history')) {
+            new Setting(contentEl)
+                .setName(t('history'))
+                .setDesc(t('magicSystemHistoryDesc'))
+                .setClass('storyteller-modal-setting-vertical')
+                .addTextArea(text => {
+                    text.setValue(this.magicSystem.history || '')
+                        .onChange(value => this.magicSystem.history = value);
+                    text.inputEl.rows = 3;
+                    text.inputEl.setCssStyles({ width: '100%' });
+                });
+        }
 
         this.customFieldsEditor.setFields(this.magicSystem.customFields);
-        this.customFieldsEditor.renderSection(contentEl);
+        if (this.shows('customFields')) {
+            this.customFieldsEditor.renderSection(contentEl);
+        }
 
         if (!this.isNew && this.onDelete) {
             this.createFooterButton(footerEl, t('delete'), async () => {

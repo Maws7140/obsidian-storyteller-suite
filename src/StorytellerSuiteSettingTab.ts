@@ -34,13 +34,30 @@ const TUTORIAL_VIDEO_URL = 'https://www.youtube.com/watch?v=HL0i6bUpVn0';
 
 interface TabDef { id: TabId; icon: string; label: string; }
 
-/** Entity types whose modals honour the section toggles. */
-const MODAL_CUSTOMIZABLE_ENTITY_TYPES = ['character', 'event', 'item'] as const;
+/** Entity types whose modals honour the field toggles. */
+const MODAL_CUSTOMIZABLE_ENTITY_TYPES = [
+    'character', 'event', 'item', 'location', 'faction', 'culture', 'economy', 'magicSystem',
+    'compendiumEntry', 'reference', 'scene', 'chapter', 'book', 'map',
+] as const;
+
+/** Entity types whose modals lay out the "Default custom fields" list on creation. */
+const DEFAULT_CUSTOM_FIELD_ENTITY_TYPES: readonly string[] = ['character', 'event', 'item'];
 
 const MODAL_ENTITY_LABELS: Record<(typeof MODAL_CUSTOMIZABLE_ENTITY_TYPES)[number], string> = {
     character: 'Character',
     event: 'Event',
     item: 'Item',
+    location: 'Location',
+    faction: 'Group',
+    culture: 'Culture',
+    economy: 'Economy',
+    magicSystem: 'Magic system',
+    compendiumEntry: 'Compendium entry',
+    reference: 'Reference',
+    scene: 'Scene',
+    chapter: 'Chapter',
+    book: 'Book',
+    map: 'Map',
 };
 
 interface ReopenableView {
@@ -649,33 +666,35 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                     );
             }
 
-            const defaults = this.plugin.settings.defaultCustomFields?.[entityType] ?? [];
-            const defaultsSetting = new Setting(container)
-                .setName('Default custom fields')
-                .setDesc('One field name per line, for example intent or parents. Every new ' +
-                    MODAL_ENTITY_LABELS[entityType].toLowerCase() +
-                    ' starts with these fields ready to fill in. Existing entities are left alone.')
-                .addTextArea(text => {
-                    text.setPlaceholder('One field name per line')
-                        .setValue(defaults.join('\n'))
-                        .onChange(async (value) => {
-                            const names = value
-                                .split('\n')
-                                .map(name => name.trim())
-                                .filter((name, i, all) => name.length > 0 && all.indexOf(name) === i);
-                            const map = { ...(this.plugin.settings.defaultCustomFields ?? {}) };
-                            if (names.length > 0) map[entityType] = names;
-                            else delete map[entityType];
-                            this.plugin.settings.defaultCustomFields = map;
-                            await this.plugin.saveSettings();
-                        });
-                    text.inputEl.rows = 4;
-                });
-            this.addInfoToggle(defaultsSetting,
-                'Custom fields are written as ordinary frontmatter properties when "Custom fields mode" is set to flatten, ' +
-                'which is the default. A field named intent becomes an intent: property on the note, editable from ' +
-                'Obsidian\'s own Properties panel and queryable from Bases and Dataview.'
-            );
+            if (DEFAULT_CUSTOM_FIELD_ENTITY_TYPES.includes(entityType)) {
+                const defaults = this.plugin.settings.defaultCustomFields?.[entityType] ?? [];
+                const defaultsSetting = new Setting(container)
+                    .setName('Default custom fields')
+                    .setDesc('One field name per line, for example intent or parents. Every new ' +
+                        MODAL_ENTITY_LABELS[entityType].toLowerCase() +
+                        ' starts with these fields ready to fill in. Existing entities are left alone.')
+                    .addTextArea(text => {
+                        text.setPlaceholder('One field name per line')
+                            .setValue(defaults.join('\n'))
+                            .onChange(async (value) => {
+                                const names = value
+                                    .split('\n')
+                                    .map(name => name.trim())
+                                    .filter((name, i, all) => name.length > 0 && all.indexOf(name) === i);
+                                const map = { ...(this.plugin.settings.defaultCustomFields ?? {}) };
+                                if (names.length > 0) map[entityType] = names;
+                                else delete map[entityType];
+                                this.plugin.settings.defaultCustomFields = map;
+                                await this.plugin.saveSettings();
+                            });
+                        text.inputEl.rows = 4;
+                    });
+                this.addInfoToggle(defaultsSetting,
+                    'Custom fields are written as ordinary frontmatter properties when "Custom fields mode" is set to flatten, ' +
+                    'which is the default. A field named intent becomes an intent: property on the note, editable from ' +
+                    'Obsidian\'s own Properties panel and queryable from Bases and Dataview.'
+                );
+            }
         }
     }
 

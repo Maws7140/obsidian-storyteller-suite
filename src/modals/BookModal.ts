@@ -5,6 +5,7 @@ import { ResponsiveModal } from './ResponsiveModal';
 import { addImageSelectionButtons } from '../utils/ImageSelectionHelper';
 import { EntityCustomFieldsEditor } from './entity/EntityCustomFieldsEditor';
 import { confirmWithModal } from './ui/ConfirmModal';
+import { isModalFieldVisible } from './entity/ModalFieldVisibility';
 
 export type BookModalSubmitCallback = (book: Book) => Promise<void>;
 export type BookModalDeleteCallback = (book: Book) => Promise<void>;
@@ -40,6 +41,15 @@ export class BookModal extends ResponsiveModal {
         this.modalEl.addClass('storyteller-book-modal');
     }
 
+    /**
+     * Whether a field is turned on for this vault. A hidden field is simply not
+     * rendered; its stored value rides along untouched on the object that gets
+     * submitted, so turning one off never discards data.
+     */
+    private shows(fieldKey: string): boolean {
+        return isModalFieldVisible(this.plugin.settings.hiddenModalFields, 'book', fieldKey);
+    }
+
     onOpen(): void { void (async () => {
         super.onOpen();
         const { contentEl, footerEl } = this.createStructuredModalLayout();
@@ -55,146 +65,164 @@ export class BookModal extends ResponsiveModal {
             );
 
         // Series
-        new Setting(contentEl)
-            .setName('Series')
-            .setDesc('Series or saga this book belongs to')
-            .addText(t => t
-                .setPlaceholder('E.g. The ironveil chronicles')
-                .setValue(this.book.series || '')
-                .onChange(v => { this.book.series = v || undefined; })
-            );
+        if (this.shows('series')) {
+            new Setting(contentEl)
+                .setName('Series')
+                .setDesc('Series or saga this book belongs to')
+                .addText(t => t
+                    .setPlaceholder('E.g. The ironveil chronicles')
+                    .setValue(this.book.series || '')
+                    .onChange(v => { this.book.series = v || undefined; })
+                );
+        }
 
         // Book number
-        new Setting(contentEl)
-            .setName('Book number')
-            .setDesc('Position in the series (1, 2, 3…)')
-            .addText(t => {
-                t.setPlaceholder('1')
-                 .setValue(this.book.bookNumber != null ? String(this.book.bookNumber) : '')
-                 .onChange(v => {
-                     const n = parseInt(v, 10);
-                     this.book.bookNumber = Number.isFinite(n) ? n : undefined;
-                 });
-                t.inputEl.type = 'number';
-            });
+        if (this.shows('bookNumber')) {
+            new Setting(contentEl)
+                .setName('Book number')
+                .setDesc('Position in the series (1, 2, 3…)')
+                .addText(t => {
+                    t.setPlaceholder('1')
+                     .setValue(this.book.bookNumber != null ? String(this.book.bookNumber) : '')
+                     .onChange(v => {
+                         const n = parseInt(v, 10);
+                         this.book.bookNumber = Number.isFinite(n) ? n : undefined;
+                     });
+                    t.inputEl.type = 'number';
+                });
+        }
 
         // Genre
-        new Setting(contentEl)
-            .setName('Genre')
-            .addText(t => t
-                .setPlaceholder('E.g. Dark fantasy')
-                .setValue(this.book.genre || '')
-                .onChange(v => { this.book.genre = v || undefined; })
-            );
+        if (this.shows('genre')) {
+            new Setting(contentEl)
+                .setName('Genre')
+                .addText(t => t
+                    .setPlaceholder('E.g. Dark fantasy')
+                    .setValue(this.book.genre || '')
+                    .onChange(v => { this.book.genre = v || undefined; })
+                );
+        }
 
         // Status
-        new Setting(contentEl)
-            .setName('Status')
-            .addDropdown((dd: DropdownComponent) => {
-                dd.addOption('Planning', 'Planning');
-                dd.addOption('Writing', 'Writing');
-                dd.addOption('Revising', 'Revising');
-                dd.addOption('Complete', 'Complete');
-                dd.setValue(this.book.status ?? 'Planning');
-                dd.onChange(v => { this.book.status = v as Book['status']; });
-            });
+        if (this.shows('status')) {
+            new Setting(contentEl)
+                .setName('Status')
+                .addDropdown((dd: DropdownComponent) => {
+                    dd.addOption('Planning', 'Planning');
+                    dd.addOption('Writing', 'Writing');
+                    dd.addOption('Revising', 'Revising');
+                    dd.addOption('Complete', 'Complete');
+                    dd.setValue(this.book.status ?? 'Planning');
+                    dd.onChange(v => { this.book.status = v as Book['status']; });
+                });
+        }
 
         // Cover image
-        let imageDescEl: HTMLElement | null = null;
-        const coverSetting = new Setting(contentEl)
-            .setName('Cover image')
-            .then(s => {
-                imageDescEl = s.descEl.createEl('small', {
-                    text: this.book.coverImagePath ? `Current: ${this.book.coverImagePath}` : 'None set'
+        if (this.shows('coverImagePath')) {
+            let imageDescEl: HTMLElement | null = null;
+            const coverSetting = new Setting(contentEl)
+                .setName('Cover image')
+                .then(s => {
+                    imageDescEl = s.descEl.createEl('small', {
+                        text: this.book.coverImagePath ? `Current: ${this.book.coverImagePath}` : 'None set'
+                    });
+                    s.descEl.addClass('storyteller-modal-setting-vertical');
                 });
-                s.descEl.addClass('storyteller-modal-setting-vertical');
+            addImageSelectionButtons(coverSetting, this.app, this.plugin, {
+                currentPath: this.book.coverImagePath,
+                onSelect: (path) => { this.book.coverImagePath = path; },
+                descriptionEl: imageDescEl || undefined,
             });
-        addImageSelectionButtons(coverSetting, this.app, this.plugin, {
-            currentPath: this.book.coverImagePath,
-            onSelect: (path) => { this.book.coverImagePath = path; },
-            descriptionEl: imageDescEl || undefined,
-        });
+        }
 
         // Description
-        new Setting(contentEl)
-            .setName('Description')
-            .setClass('storyteller-modal-setting-vertical')
-            .addTextArea((ta: TextAreaComponent) => {
-                ta.setPlaceholder('Overview of the book…')
-                  .setValue(this.book.description || '')
-                  .onChange(v => { this.book.description = v || undefined; });
-                ta.inputEl.rows = 4;
-            });
+        if (this.shows('description')) {
+            new Setting(contentEl)
+                .setName('Description')
+                .setClass('storyteller-modal-setting-vertical')
+                .addTextArea((ta: TextAreaComponent) => {
+                    ta.setPlaceholder('Overview of the book…')
+                      .setValue(this.book.description || '')
+                      .onChange(v => { this.book.description = v || undefined; });
+                    ta.inputEl.rows = 4;
+                });
+        }
 
         // Synopsis
-        new Setting(contentEl)
-            .setName('Synopsis')
-            .setClass('storyteller-modal-setting-vertical')
-            .addTextArea((ta: TextAreaComponent) => {
-                ta.setPlaceholder('Short back-cover synopsis…')
-                  .setValue(this.book.synopsis || '')
-                  .onChange(v => { this.book.synopsis = v || undefined; });
-                ta.inputEl.rows = 3;
-            });
+        if (this.shows('synopsis')) {
+            new Setting(contentEl)
+                .setName('Synopsis')
+                .setClass('storyteller-modal-setting-vertical')
+                .addTextArea((ta: TextAreaComponent) => {
+                    ta.setPlaceholder('Short back-cover synopsis…')
+                      .setValue(this.book.synopsis || '')
+                      .onChange(v => { this.book.synopsis = v || undefined; });
+                    ta.inputEl.rows = 3;
+                });
+        }
 
         // Chapters section
-        contentEl.createEl('h3', { text: 'Chapters' });
-        const allChapters = await this.plugin.listChapters();
-        // Only show chapters unassigned or already in this book
-        const availableChapters = allChapters.filter(
-            c => !c.bookId || c.bookId === this.book.id
-        );
+        if (this.shows('linkedChapters')) {
+            contentEl.createEl('h3', { text: 'Chapters' });
+            const allChapters = await this.plugin.listChapters();
+            // Only show chapters unassigned or already in this book
+            const availableChapters = allChapters.filter(
+                c => !c.bookId || c.bookId === this.book.id
+            );
 
-        const chaptersListEl = contentEl.createDiv('storyteller-modal-linked-entities');
-        const renderChapterChips = () => {
-            chaptersListEl.empty();
-            const linked = this.book.linkedChapters ?? [];
-            if (linked.length === 0) {
-                chaptersListEl.createEl('span', { text: 'None', cls: 'storyteller-modal-list-empty' });
-                return;
-            }
-            linked.forEach((name, idx) => {
-                const chip = chaptersListEl.createDiv('storyteller-modal-list-item');
-                chip.createSpan({ text: name });
-                new ButtonComponent(chip)
-                    .setClass('storyteller-modal-list-remove')
-                    .setTooltip(`Remove ${name}`)
-                    .setIcon('cross')
-                    .onClick(() => {
-                        (this.book.linkedChapters ?? []).splice(idx, 1);
-                        renderChapterChips();
-                    });
-            });
-        };
-        renderChapterChips();
-
-        new Setting(contentEl)
-            .setName('Add chapter')
-            .addDropdown((dd: DropdownComponent) => {
-                dd.addOption('', '— select chapter —');
-                for (const ch of availableChapters) {
-                    const alreadyLinked = (this.book.linkedChapters ?? []).includes(ch.name);
-                    if (!alreadyLinked) dd.addOption(ch.name, ch.number ? `Ch.${ch.number} — ${ch.name}` : ch.name);
+            const chaptersListEl = contentEl.createDiv('storyteller-modal-linked-entities');
+            const renderChapterChips = () => {
+                chaptersListEl.empty();
+                const linked = this.book.linkedChapters ?? [];
+                if (linked.length === 0) {
+                    chaptersListEl.createEl('span', { text: 'None', cls: 'storyteller-modal-list-empty' });
+                    return;
                 }
-                dd.onChange(v => {
-                    if (!v) return;
-                    if (!Array.isArray(this.book.linkedChapters)) this.book.linkedChapters = [];
-                    if (!this.book.linkedChapters.includes(v)) {
-                        this.book.linkedChapters.push(v);
-                        // Update chapter's bookId/bookName
-                        const ch = allChapters.find(c => c.name === v);
-                        if (ch) {
-                            ch.bookId = this.book.id;
-                            ch.bookName = this.book.name;
-                        }
-                    }
-                    renderChapterChips();
-                    dd.setValue('');
+                linked.forEach((name, idx) => {
+                    const chip = chaptersListEl.createDiv('storyteller-modal-list-item');
+                    chip.createSpan({ text: name });
+                    new ButtonComponent(chip)
+                        .setClass('storyteller-modal-list-remove')
+                        .setTooltip(`Remove ${name}`)
+                        .setIcon('cross')
+                        .onClick(() => {
+                            (this.book.linkedChapters ?? []).splice(idx, 1);
+                            renderChapterChips();
+                        });
                 });
-            });
+            };
+            renderChapterChips();
+
+            new Setting(contentEl)
+                .setName('Add chapter')
+                .addDropdown((dd: DropdownComponent) => {
+                    dd.addOption('', '— select chapter —');
+                    for (const ch of availableChapters) {
+                        const alreadyLinked = (this.book.linkedChapters ?? []).includes(ch.name);
+                        if (!alreadyLinked) dd.addOption(ch.name, ch.number ? `Ch.${ch.number} — ${ch.name}` : ch.name);
+                    }
+                    dd.onChange(v => {
+                        if (!v) return;
+                        if (!Array.isArray(this.book.linkedChapters)) this.book.linkedChapters = [];
+                        if (!this.book.linkedChapters.includes(v)) {
+                            this.book.linkedChapters.push(v);
+                            // Update chapter's bookId/bookName
+                            const ch = allChapters.find(c => c.name === v);
+                            if (ch) {
+                                ch.bookId = this.book.id;
+                                ch.bookName = this.book.name;
+                            }
+                        }
+                        renderChapterChips();
+                        dd.setValue('');
+                    });
+                });
+        }
 
         this.customFieldsEditor.setFields(this.book.customFields);
-        this.customFieldsEditor.renderSection(contentEl);
+        if (this.shows('customFields')) {
+            this.customFieldsEditor.renderSection(contentEl);
+        }
 
         if (!this.isNew && this.onDelete) {
             this.createFooterButton(footerEl, 'Delete', async () => {
