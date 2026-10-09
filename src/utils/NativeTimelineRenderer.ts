@@ -16,6 +16,8 @@ import { isEventInFork, isEventLinkedToFork, isEventOnMain, orderForksByParent }
 import { chooseConnectorEnds } from './ConnectorGeometry';
 import { placeAlternatingTimelineCards } from './TimelineCardLayout';
 import { placeReadableAxisLabels } from './AxisLabelLayout';
+import { packChronologyRows } from './ChronologyRowPacking';
+import type { ChronologySpan } from './ChronologyRowPacking';
 import { narrativeDirectionOf, narrativeSequenceOf, timelineDateForMode } from './NarrativeTimeline';
 import type { NarrativeDirection } from './NarrativeTimeline';
 
@@ -80,6 +82,8 @@ interface NativeItem {
     labelSuppressed?: boolean;
     /** Date was written loosely, so the chip is outlined rather than solid. */
     approximate?: boolean;
+    /** Set when this event's chip is folded into a "+K more" chip rather than drawn itself. */
+    overflowInto?: OverflowChip;
     /**
      * Colour the user actually chose, from the event itself or from an
      * explicitly coloured track, group or fork. Undefined when the colour in
@@ -89,6 +93,14 @@ interface NativeItem {
     customColor?: string;
 }
 
+/** A "+K more" chip standing in for the events a capped chronology lane could not fit. */
+interface OverflowChip {
+    row: number;
+    items: NativeItem[];
+    /** Where the chip sits, set on the frame it is drawn. */
+    rect?: DOMRect;
+}
+
 interface Lane {
     id: string;
     label: string;
@@ -96,6 +108,8 @@ interface Lane {
     /** True when `color` was chosen by the user, not taken from the palette. */
     explicitColor?: boolean;
     items: NativeItem[];
+    /** Chronology only: the "+K more" chips this lane folded its overflow into. */
+    overflow?: OverflowChip[];
     /** Running maximum of item ends, parallel to `items`. Non-decreasing. */
     maxEndPrefix?: number[];
     top: number;
@@ -153,6 +167,18 @@ const MIN_CHRONOLOGY_CHIP_WIDTH = 92;
 const CHIP_GAP = 8;
 /** Distance from a chronology lane's top to its first row of chips. */
 const CHRONOLOGY_CHIP_TOP = 34;
+/**
+ * Height a chronology lane may fill before it folds overflow into "+K more"
+ * chips. Six rows at the default density. Kept in pixels so the row cap moves
+ * with the density setting and the lanes keep the same height.
+ */
+const CHRONOLOGY_ROW_BUDGET = 6 * 32;
+/** Width of a "+K more" chip, sized so the label fits and the chip reserves little time. */
+const OVERFLOW_CHIP_WIDTH = 72;
+/** Lane scroll indicator on the plot's right edge. */
+const SCROLLBAR_WIDTH = 6;
+const SCROLLBAR_INSET = 4;
+const SCROLLBAR_MIN_THUMB = 28;
 /** A wheel notch in line mode is worth roughly this many pixels. */
 const WHEEL_LINE_HEIGHT = 16;
 /**
@@ -225,7 +251,9 @@ export class NativeTimelineRenderer {
     private viewStart = Date.now() - YEAR_MS;
     private viewEnd = Date.now() + YEAR_MS;
     private scrollTop = 0;
-    private dragging: { kind: 'pan' | 'move' | 'marker'; x: number; y: number; start: number; end: number; item?: NativeItem } | null = null;
+    private dragging: { kind: 'pan' | 'move' | 'marker' | 'scroll'; x: number; y: number; start: number; end: number; item?: NativeItem } | null = null;
+    /** "+K more" chips drawn this frame, as click targets. */
+    private visibleClusters: OverflowChip[] = [];
     /**
      * Where a marker drag would land. Held apart from the item so the lane does
      * not repack under the cursor mid-drag — the item only moves on release.
@@ -832,22 +860,32 @@ export class NativeTimelineRenderer {
             // the row count, and so the lane's height, change as you scrolled,
             // which shifted every lane below it mid-scroll.
             const pxToTime = (this.viewEnd - this.viewStart) / Math.max(1, width - SIDEBAR_WIDTH);
-            const rowEnds: number[] = [];
-            lane.items.forEach(item => {
+            const spans: ChronologySpan[] = lane.items.map(item => {
                 item.labelSuppressed = false;
+                item.overflowInto = undefined;
                 const chipWidth = ctx ? this.chipWidth(ctx, item, minimum) : MAX_CHIP_WIDTH;
-                const reservation = (chipWidth + CHIP_GAP) * pxToTime;
-                let row = 0;
-                if (this.options.stackEnabled) while (row < rowEnds.length && rowEnds[row] > item.start) row++;
-                item.row = row;
-                rowEnds[row] = Math.max(item.end, item.start + reservation);
+                return { start: item.start, end: item.end, reservation: (chipWidth + CHIP_GAP) * pxToTime };
             });
+            // Without stacking every chip shares row 0 and collisions are handled
+            // at draw time. Gantt and the timeline layouts never cap, so they
+            // keep plain packing.
+            const cap = chronology && this.options.stackEnabled ? this.chronologyRowCap() : Number.POSITIVE_INFINITY;
+            const packing = this.options.stackEnabled
+                ? packChronologyRows(spans, cap, (OVERFLOW_CHIP_WIDTH + CHIP_GAP) * pxToTime)
+                : null;
+            lane.items.forEach((item, index) => { item.row = packing ? packing.rows[index] : 0; });
+            lane.overflow = (packing?.clusters ?? []).map(cluster => {
+                const chip: OverflowChip = { row: cluster.row, items: cluster.members.map(index => lane.items[index]) };
+                chip.items.forEach(item => { item.overflowInto = chip; });
+                return chip;
+            });
+            const rowsUsed = lane.items.reduce((most, item) => Math.max(most, item.row + 1), 0);
             lane.top = top;
             // Chronology mode hangs its chips below the axis baseline, so the
             // lane has to reserve that offset on top of the rows themselves or
             // a tall stack runs past the bottom of its own lane.
             const chipOffset = chronology ? CHRONOLOGY_CHIP_TOP : 0;
-            lane.height = Math.max(rowHeight + 12, chipOffset + rowEnds.length * rowHeight + 12);
+            lane.height = Math.max(rowHeight + 12, chipOffset + rowsUsed * rowHeight + 12);
             top += lane.height;
         });
         if (this.lanes.length === 1 && this.root) {
@@ -935,6 +973,7 @@ export class NativeTimelineRenderer {
         // Reset before the orientation split: both layouts fill these, and the
         // vertical branch returns early.
         this.visibleItems = [];
+        this.visibleClusters = [];
         this.markerHits = [];
         // A rect is a screen position, so it is only true for the frame that
         // computed it. Keeping last frame's meant an arrow end whose bar had
@@ -960,6 +999,46 @@ export class NativeTimelineRenderer {
         this.drawForkBranches(ctx, width, height);
         this.drawConnectors(ctx, width, height);
         this.drawNow(ctx, width, height);
+        this.drawLaneScrollbar(ctx, width);
+    }
+
+    /**
+     * Where the lane scroll position sits, as a strip on the plot's right edge.
+     *
+     * Null when nothing overflows, when the layout does not scroll lanes, or
+     * when an export is being drawn, since an exported frame has no scroll
+     * position worth showing.
+     */
+    private laneScrollbar(width: number): { x: number; top: number; length: number; thumbTop: number; thumbLength: number; travel: number; range: number } | null {
+        if (this.exportSurface || this.isTimelineLayout()) return null;
+        const height = this.viewportHeight();
+        const axisHeight = this.axisHeight();
+        const lanesTotal = this.lanes.reduce((sum, lane) => sum + lane.height, 0);
+        const range = lanesTotal + axisHeight - height;
+        if (range <= 0 || lanesTotal <= 0) return null;
+        const top = axisHeight + 4;
+        const length = Math.max(1, height - axisHeight - 8);
+        // The thumb is the share of the lanes on screen, so a long story reads as
+        // a short thumb. The floor keeps it grabbable.
+        const thumbLength = Math.min(length, Math.max(SCROLLBAR_MIN_THUMB, length * (height - axisHeight) / lanesTotal));
+        const travel = length - thumbLength;
+        const thumbTop = top + (Math.max(0, Math.min(range, this.scrollTop)) / range) * travel;
+        return { x: width - SCROLLBAR_INSET - SCROLLBAR_WIDTH, top, length, thumbTop, thumbLength, travel, range };
+    }
+
+    private drawLaneScrollbar(ctx: CanvasRenderingContext2D, width: number): void {
+        const bar = this.laneScrollbar(width);
+        if (!bar) return;
+        ctx.save();
+        ctx.globalAlpha = 0.35;
+        ctx.fillStyle = this.css('--background-modifier-border', '#374151');
+        this.roundedRect(ctx, bar.x, bar.top, SCROLLBAR_WIDTH, bar.length, 3);
+        ctx.fill();
+        ctx.globalAlpha = 0.7;
+        ctx.fillStyle = this.css('--text-muted', '#9ca3af');
+        this.roundedRect(ctx, bar.x, bar.thumbTop, SCROLLBAR_WIDTH, bar.thumbLength, 3);
+        ctx.fill();
+        ctx.restore();
     }
 
     /**
@@ -1338,30 +1417,42 @@ export class NativeTimelineRenderer {
 
     private drawChronologyLane(ctx: CanvasRenderingContext2D, lane: Lane, width: number, height: number): void {
         const top = lane.top - this.scrollTop;
-        if (top > height || top + lane.height < this.axisHeight()) return;
+        const axisHeight = this.axisHeight();
+        if (top > height || top + lane.height < axisHeight) return;
+        // The sidebar fill stops at the axis. A lane scrolled up under it would
+        // otherwise paint over the axis header.
+        const fillTop = Math.max(top, axisHeight);
         ctx.fillStyle = this.css('--background-secondary-alt', '#18202d');
-        ctx.fillRect(0, top, SIDEBAR_WIDTH, lane.height);
+        ctx.fillRect(0, fillTop, SIDEBAR_WIDTH, top + lane.height - fillTop);
         // The lane name takes the lane's colour, so a row in the sidebar can be
         // matched to its markers out on the timeline without counting rows.
         ctx.fillStyle = lane.color;
         ctx.font = `600 12px ${this.css('--font-interface', 'sans-serif')}`;
-        ctx.fillText(this.truncate(ctx, lane.label, SIDEBAR_WIDTH - 24), 13, top + 22);
+        // Once the lane's own label has scrolled under the axis, pin it to the top
+        // of the sidebar for as long as the lane is still on screen. It slides up
+        // with the lane's bottom edge so it never outlives its own lane.
+        if (top + 22 >= axisHeight + 12) {
+            ctx.fillText(this.truncate(ctx, lane.label, SIDEBAR_WIDTH - 24), 13, top + 22);
+        } else {
+            const pinnedY = Math.min(axisHeight + 22, top + lane.height - 8);
+            if (pinnedY >= axisHeight + 10) ctx.fillText(this.truncate(ctx, lane.label, SIDEBAR_WIDTH - 24), 13, pinnedY);
+        }
 
         const baselineY = top + 18;
-        ctx.strokeStyle = this.css('--background-modifier-border', '#374151');
-        ctx.lineWidth = 1;
-        ctx.beginPath(); ctx.moveTo(SIDEBAR_WIDTH, baselineY); ctx.lineTo(width, baselineY); ctx.stroke();
-
         const rowHeight = this.rowHeight();
         // Right edge of the last chip drawn on each row, so a chip that would
         // land on top of its neighbour can stand down.
         const rowRightEdges: number[] = [];
         // Chips sit at their true position, so ones leaving the view are clipped
-        // to the plot area rather than pinned to its edge.
+        // to the plot area rather than pinned to its edge. The baseline is
+        // clipped too, or a lane scrolled under the axis would strike through it.
         ctx.save();
         ctx.beginPath();
-        ctx.rect(SIDEBAR_WIDTH, this.axisHeight(), Math.max(0, width - SIDEBAR_WIDTH), height);
+        ctx.rect(SIDEBAR_WIDTH, axisHeight, Math.max(0, width - SIDEBAR_WIDTH), height);
         ctx.clip();
+        ctx.strokeStyle = this.css('--background-modifier-border', '#374151');
+        ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(SIDEBAR_WIDTH, baselineY); ctx.lineTo(width, baselineY); ctx.stroke();
         this.drawSlots(ctx, baselineY, width);
         const startIndex = this.firstVisible(lane, this.viewStart);
         for (let i = startIndex; i < lane.items.length; i++) {
@@ -1379,11 +1470,13 @@ export class NativeTimelineRenderer {
             // a row it fits in, so nothing needs to stand down. Only the
             // deliberately single-row case can still collide, and there the
             // later chip drops to its axis marker rather than printing over its
-            // neighbour.
+            // neighbour. An event folded into a "+K more" chip also drops to its
+            // marker: its chip is the cluster's, not its own.
             const rowRight = rowRightEdges[item.row];
-            const collides = !this.options.stackEnabled
-                && rowRight !== undefined
-                && chipX < rowRight + CHIP_GAP;
+            const collides = item.overflowInto !== undefined
+                || (!this.options.stackEnabled
+                    && rowRight !== undefined
+                    && chipX < rowRight + CHIP_GAP);
             item.labelSuppressed = collides;
 
             // Hit target follows what was drawn. A suppressed item answers to
@@ -1420,8 +1513,71 @@ export class NativeTimelineRenderer {
             this.drawPointMarker(ctx, pointX, baselineY, item);
             this.drawItem(ctx, item, true, undefined, false);
         }
+        for (const chip of lane.overflow ?? []) {
+            const first = chip.items[0];
+            const last = chip.items.reduce((latest, item) => Math.max(latest, item.end), first.end);
+            if (first.start > this.viewEnd || last < this.viewStart) continue;
+            this.drawOverflowChip(ctx, lane, chip, top, baselineY, width);
+        }
         this.drawDropTarget(ctx, lane, baselineY, width, height);
         ctx.restore();
+    }
+
+    /**
+     * The "+K more" chip that stands in for the events folded out of a lane.
+     *
+     * Drawn as a chip of the same card shape, with a stem down to the first of
+     * the folded events' markers. Clicking it zooms to the folded events.
+     */
+    private drawOverflowChip(ctx: CanvasRenderingContext2D, lane: Lane, chip: OverflowChip, top: number, baselineY: number, width: number): void {
+        const rowHeight = this.rowHeight();
+        const chipHeight = rowHeight - 7;
+        const pointX = this.timeToX(chip.items[0].start, width);
+        const chipX = pointX + 9;
+        const chipY = top + CHRONOLOGY_CHIP_TOP + chip.row * rowHeight;
+        chip.rect = new DOMRect(chipX, chipY, OVERFLOW_CHIP_WIDTH, chipHeight);
+        this.visibleClusters.push(chip);
+
+        ctx.save();
+        ctx.strokeStyle = lane.color;
+        ctx.globalAlpha = 0.8;
+        ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(pointX, baselineY); ctx.lineTo(pointX, chipY + chipHeight / 2); ctx.lineTo(chipX, chipY + chipHeight / 2); ctx.stroke();
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = this.css('--background-secondary', '#1f2937');
+        this.roundedRect(ctx, chipX, chipY, OVERFLOW_CHIP_WIDTH, chipHeight, 3);
+        ctx.fill();
+        ctx.strokeStyle = this.css('--background-modifier-border', '#374151');
+        ctx.lineWidth = 1;
+        ctx.stroke();
+        ctx.fillStyle = this.css('--text-normal', '#e5e7eb');
+        ctx.font = `11px ${this.css('--font-interface', 'sans-serif')}`;
+        ctx.fillText(this.truncate(ctx, `+${chip.items.length} more`, OVERFLOW_CHIP_WIDTH - 12), chipX + 6, chipY + chipHeight / 2 + 4);
+        ctx.restore();
+    }
+
+    /** The "+K more" chip under a pointer, if one was drawn this frame. */
+    private overflowChipAt(x: number, y: number): OverflowChip | null {
+        return this.visibleClusters.find(chip => chip.rect && x >= chip.rect.x && x <= chip.rect.right && y >= chip.rect.y && y <= chip.rect.bottom) ?? null;
+    }
+
+    /**
+     * Zoom to the events a "+K more" chip folded, so their chips get room.
+     *
+     * Each click cuts the view to at most half its span and, when the folded
+     * events are spread out, to a little wider than they cover. The cut is
+     * relative to the current view rather than fixed, because events that share
+     * a day have no spread to zoom into, and a fixed floor would jump straight
+     * to the calendar's finest unit.
+     */
+    private zoomToOverflowChip(chip: OverflowChip): void {
+        const first = chip.items[0].start;
+        const last = chip.items.reduce((latest, item) => Math.max(latest, item.end), first);
+        const current = this.viewEnd - this.viewStart;
+        const wanted = Math.max((last - first) * 1.3, current / 4);
+        const span = Math.max(this.minimumSpan(), Math.min(wanted, current / 2));
+        const center = (first + last) / 2;
+        this.setVisibleRange(new Date(center - span / 2), new Date(center + span / 2));
     }
 
     private drawVerticalTimeline(ctx: CanvasRenderingContext2D, width: number, height: number): void {
@@ -2273,6 +2429,19 @@ export class NativeTimelineRenderer {
             this.dragging = null;
             return;
         }
+        // The scrollbar strip and "+K more" chips sit clear of every marker and
+        // event chip, so testing them first takes nothing from either.
+        const bar = this.laneScrollbar(this.viewportWidth());
+        if (bar && event.offsetX >= bar.x - SCROLLBAR_INSET && event.offsetY >= this.axisHeight()) {
+            this.dragging = { kind: 'scroll', x: event.clientX, y: event.clientY, start: this.scrollTop, end: 0 };
+            return;
+        }
+        const folded = this.overflowChipAt(event.offsetX, event.offsetY);
+        if (folded) {
+            this.dragging = null;
+            this.zoomToOverflowChip(folded);
+            return;
+        }
         // Markers are tested before chips: they sit on the baseline well above
         // the first chip row, so the two never contend for the same pointer.
         const marker = this.slotsVisible() ? this.markerAt(event.offsetX, event.offsetY) : null;
@@ -2445,6 +2614,13 @@ export class NativeTimelineRenderer {
             if (!this.isTimelineLayout()) {
                 this.scrollTop = Math.max(0, Math.min(this.maxLaneScroll(), this.scrollTop - (event.clientY - this.dragging.y)));
                 this.dragging.y = event.clientY;
+            }
+        } else if (this.dragging.kind === 'scroll') {
+            // The thumb follows the pointer, so each pixel of thumb travel moves
+            // the lanes by range / travel pixels.
+            const bar = this.laneScrollbar(this.viewportWidth());
+            if (bar && bar.travel > 0) {
+                this.scrollTop = Math.max(0, Math.min(bar.range, this.dragging.start + (event.clientY - this.dragging.y) * bar.range / bar.travel));
             }
         } else if (this.dragging.kind === 'marker') {
             // Ghost only. Moving the item here would repack the rows beneath
@@ -2817,6 +2993,15 @@ export class NativeTimelineRenderer {
     private timeToX(time: number, width: number): number { return SIDEBAR_WIDTH + (time - this.viewStart) / (this.viewEnd - this.viewStart) * Math.max(1, width - SIDEBAR_WIDTH); }
     private horizontalTimelineTimeToX(time: number, width: number): number { return 28 + (time - this.viewStart) / (this.viewEnd - this.viewStart) * Math.max(1, width - 56); }
     private rowHeight(): number { return Math.round(24 + (100 - this.options.density) * 0.16); }
+
+    /**
+     * Rows a chronology lane may use, the last of which is kept for "+K more"
+     * chips. The budget is a height, so denser or sparser rows give a
+     * different count and the lanes stay about the same size.
+     */
+    private chronologyRowCap(): number {
+        return Math.max(4, Math.round(CHRONOLOGY_ROW_BUDGET / this.rowHeight()));
+    }
     private minimumSpan(): number { return this.calendarRegistry.getActiveCalendar().baseUnit === 'minute' ? 60_000 : DAY_MS; }
 
     /** The visible window expressed in the shared absolute-day space. */
