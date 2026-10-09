@@ -1072,7 +1072,7 @@ export class NativeTimelineRenderer {
             cardWidth
         );
 
-        placements.forEach(({ value: item, position: desiredX, placedPosition: placedX, above, tier }) => {
+        const cards = placements.map(({ value: item, position: desiredX, placedPosition: placedX, above, tier }) => {
             const chipX = placedX - cardWidth / 2;
             const tierOffset = tier * (cardHeight + 12);
             const chipY = above ? axisY - cardHeight - 34 - tierOffset : axisY + 34 + tierOffset;
@@ -1080,26 +1080,34 @@ export class NativeTimelineRenderer {
             item.rect = rect;
             this.visibleItems.push(item);
             if (this.slotsVisible() && this.isDraggable(item)) this.markerHits.push({ item, x: desiredX, y: axisY });
-            // A card stacked past the canvas edge still has its leader and axis
-            // marker on screen, so only the card itself is skipped there. The
-            // canvas would clip the card anyway; the rect above is kept for
-            // drag and arrows.
-            if (this.isOnCanvas(Math.min(rect.left, desiredX), Math.min(rect.top, axisY), Math.max(rect.right, desiredX), Math.max(rect.bottom, axisY), width, height)) {
-                // One rigid perpendicular leader. Both endpoints share the event's
-                // true X coordinate, so panning can only translate this segment;
-                // it can never acquire an elbow or diagonal stretch.
-                ctx.save();
-                ctx.strokeStyle = item.laneColor;
-                ctx.lineWidth = 1.5;
-                ctx.beginPath();
-                ctx.moveTo(desiredX, axisY);
-                ctx.lineTo(desiredX, above ? chipY + cardHeight : chipY);
-                ctx.stroke();
-                ctx.restore();
-                this.drawPointMarker(ctx, desiredX, axisY, item);
-            }
-            if (this.isOnCanvas(rect.left, rect.top, rect.right, rect.bottom, width, height)) this.drawTimelineEventCard(ctx, item, calendar);
+            return { item, desiredX, edgeY: above ? chipY + cardHeight : chipY };
         });
+        // Paint order: every leader, then the cards, then the axis markers. A
+        // leader to a lower tier runs through the cards of the tiers above it,
+        // so it has to be underneath them. Anything wholly off the canvas is
+        // skipped; the rect above is still kept for drag and arrows.
+        const leaderOnCanvas = (item: NativeItem, desiredX: number) => item.rect
+            ? this.isOnCanvas(Math.min(item.rect.left, desiredX), Math.min(item.rect.top, axisY), Math.max(item.rect.right, desiredX), Math.max(item.rect.bottom, axisY), width, height)
+            : false;
+        cards.forEach(({ item, desiredX, edgeY }) => {
+            if (!leaderOnCanvas(item, desiredX)) return;
+            // One rigid perpendicular leader. Both endpoints share the event's
+            // true X coordinate, so panning can only translate this segment;
+            // it can never acquire an elbow or diagonal stretch.
+            ctx.save();
+            ctx.strokeStyle = item.laneColor;
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.moveTo(desiredX, axisY);
+            ctx.lineTo(desiredX, edgeY);
+            ctx.stroke();
+            ctx.restore();
+        });
+        cards.forEach(({ item }) => {
+            const rect = item.rect;
+            if (rect && this.isOnCanvas(rect.left, rect.top, rect.right, rect.bottom, width, height)) this.drawTimelineEventCard(ctx, item, calendar);
+        });
+        cards.forEach(({ item, desiredX }) => { if (leaderOnCanvas(item, desiredX)) this.drawPointMarker(ctx, desiredX, axisY, item); });
 
         this.drawHorizontalTimelineDropTarget(ctx, axisY, width, height);
         this.drawConnectors(ctx, width, height);
@@ -1417,6 +1425,10 @@ export class NativeTimelineRenderer {
         ctx.clip();
         this.drawSlots(ctx, baselineY, width);
         const startIndex = this.firstVisible(lane, this.viewStart);
+        // Layout first, then paint in three passes: every stem, then every
+        // chip, then the axis markers. Painting each stem just before its own
+        // chip let a later stem run through an earlier chip's label.
+        const laid: { item: NativeItem; pointX: number; endX: number; chipX: number; chipY: number; chipHeight: number; collides: boolean }[] = [];
         for (let i = startIndex; i < lane.items.length; i++) {
             const item = lane.items[i];
             if (item.start > this.viewEnd) break;
@@ -1451,28 +1463,30 @@ export class NativeTimelineRenderer {
             // where the pointer expects it.
             if (this.slotsVisible() && this.isDraggable(item)) this.markerHits.push({ item, x: pointX, y: baselineY });
 
-            if (collides) {
-                this.drawPointMarker(ctx, pointX, baselineY, item);
-                const narrativeDirection = narrativeDirectionOf(item.event);
-                if (narrativeDirection) this.drawNarrativeIcon(ctx, narrativeDirection, pointX + 9, baselineY - 9, 10);
-                continue;
-            }
-            rowRightEdges[item.row] = chipX + chipWidth;
+            laid.push({ item, pointX, endX, chipX, chipY, chipHeight, collides });
+            if (!collides) rowRightEdges[item.row] = chipX + chipWidth;
+        }
 
+        // Stem: down from the axis marker, then across to the chip. The elbow
+        // is what will carry branch lines once forks hang off it.
+        laid.filter(entry => !entry.collides).forEach(({ item, pointX, endX, chipX, chipY, chipHeight }) => {
             ctx.strokeStyle = item.laneColor;
             ctx.globalAlpha = item.inherited ? 0.45 : 0.8;
             ctx.lineWidth = 1;
-            // Stem: down from the axis marker, then across to the chip. The
-            // elbow is what will carry branch lines once forks hang off it.
             ctx.beginPath(); ctx.moveTo(pointX, baselineY); ctx.lineTo(pointX, chipY + chipHeight / 2); ctx.lineTo(chipX, chipY + chipHeight / 2); ctx.stroke();
             if (endX - pointX > 3) {
                 ctx.beginPath(); ctx.moveTo(pointX, baselineY); ctx.lineTo(endX, baselineY); ctx.stroke();
                 ctx.beginPath(); ctx.moveTo(endX, baselineY - 4); ctx.lineTo(endX, baselineY + 4); ctx.stroke();
             }
-            ctx.globalAlpha = 1;
+        });
+        ctx.globalAlpha = 1;
+        laid.filter(entry => !entry.collides).forEach(({ item }) => this.drawItem(ctx, item, true, undefined, false));
+        laid.forEach(({ item, pointX, collides }) => {
             this.drawPointMarker(ctx, pointX, baselineY, item);
-            this.drawItem(ctx, item, true, undefined, false);
-        }
+            if (!collides) return;
+            const narrativeDirection = narrativeDirectionOf(item.event);
+            if (narrativeDirection) this.drawNarrativeIcon(ctx, narrativeDirection, pointX + 9, baselineY - 9, 10);
+        });
         this.drawDropTarget(ctx, lane, baselineY, width, height);
         ctx.restore();
     }
@@ -1528,7 +1542,7 @@ export class NativeTimelineRenderer {
         const tierCounts = new Map<boolean, number>();
         placements.forEach(placement => tierCounts.set(placement.above, Math.max(tierCounts.get(placement.above) || 0, placement.tier + 1)));
 
-        placements.forEach(({ value: item, position: desiredY, placedPosition: placedY, above: rightSide, tier }) => {
+        const cards = placements.map(({ value: item, position: desiredY, placedPosition: placedY, above: rightSide, tier }) => {
             const availableWidth = Math.max(88, rightSide ? width - axisX - 38 : axisX - 38);
             const tierCount = tierCounts.get(rightSide) || 1;
             const chipWidth = Math.max(88, Math.min(240, (availableWidth - (tierCount - 1) * 12) / tierCount));
@@ -1539,23 +1553,31 @@ export class NativeTimelineRenderer {
             item.rect = rect;
             this.visibleItems.push(item);
             if (this.slotsVisible() && this.isDraggable(item)) this.markerHits.push({ item, x: axisX, y: desiredY });
-            // Same split as the horizontal layout: the leader and marker stay
-            // while the card is off the canvas, and only the card is skipped.
-            if (this.isOnCanvas(Math.min(rect.left, axisX), Math.min(rect.top, desiredY), Math.max(rect.right, axisX), Math.max(rect.bottom, desiredY), width, height)) {
-                // One rigid perpendicular leader. Marker and card edge share the
-                // event's true Y coordinate, so scrolling cannot bend the line.
-                ctx.save();
-                ctx.strokeStyle = item.laneColor;
-                ctx.lineWidth = 1.5;
-                ctx.beginPath();
-                ctx.moveTo(axisX, desiredY);
-                ctx.lineTo(rightSide ? chipX : chipX + chipWidth, desiredY);
-                ctx.stroke();
-                ctx.restore();
-                this.drawPointMarker(ctx, axisX, desiredY, item);
-            }
-            if (this.isOnCanvas(rect.left, rect.top, rect.right, rect.bottom, width, height)) this.drawTimelineEventCard(ctx, item, calendar);
+            return { item, desiredY, edgeX: rightSide ? chipX : chipX + chipWidth };
         });
+        // Paint order: every leader, then the cards, then the axis markers. See
+        // the horizontal timeline for why a leader must sit under other cards.
+        const leaderOnCanvas = (item: NativeItem, desiredY: number) => item.rect
+            ? this.isOnCanvas(Math.min(item.rect.left, axisX), Math.min(item.rect.top, desiredY), Math.max(item.rect.right, axisX), Math.max(item.rect.bottom, desiredY), width, height)
+            : false;
+        cards.forEach(({ item, desiredY, edgeX }) => {
+            if (!leaderOnCanvas(item, desiredY)) return;
+            // Marker and card edge share the event's true Y coordinate, so
+            // scrolling cannot bend the line.
+            ctx.save();
+            ctx.strokeStyle = item.laneColor;
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.moveTo(axisX, desiredY);
+            ctx.lineTo(edgeX, desiredY);
+            ctx.stroke();
+            ctx.restore();
+        });
+        cards.forEach(({ item }) => {
+            const rect = item.rect;
+            if (rect && this.isOnCanvas(rect.left, rect.top, rect.right, rect.bottom, width, height)) this.drawTimelineEventCard(ctx, item, calendar);
+        });
+        cards.forEach(({ item, desiredY }) => { if (leaderOnCanvas(item, desiredY)) this.drawPointMarker(ctx, axisX, desiredY, item); });
         this.drawVerticalDropTarget(ctx, axisX, width, timeToY);
         this.drawConnectors(ctx, width, height);
         this.drawNowVertical(ctx, axisX, top, bottom);
@@ -1669,6 +1691,12 @@ export class NativeTimelineRenderer {
         const dateLabel = this.verticalEventDate(item.start, calendar);
         const meta = this.lanes.length > 1 ? item.laneLabel : (item.event.status || (item.event.isMilestone ? 'Milestone' : 'Event'));
         ctx.save();
+        // Opaque backing in the plot colour, so a leader or connector beneath
+        // the card cannot show through it. The card fill below is translucent
+        // for uncertain events, and over empty canvas this looks the same.
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = this.css('--background-primary', '#111827');
+        this.roundedRect(ctx, rect.x, rect.y, rect.width, rect.height, 4); ctx.fill();
         ctx.globalAlpha = item.inherited ? 0.45 : this.certaintyAlpha(item.event);
         ctx.fillStyle = this.css('--background-secondary', '#1f2937');
         this.roundedRect(ctx, rect.x, rect.y, rect.width, rect.height, 4); ctx.fill();
@@ -1726,6 +1754,13 @@ export class NativeTimelineRenderer {
         const accent = item.customColor
             || (item === this.selected ? this.css('--interactive-accent', '#8b5cf6') : item.laneColor);
         if (isPoint) {
+            // Opaque backing in the plot colour under the translucent fill, so
+            // a stem behind the chip cannot show through its label.
+            ctx.globalAlpha = 1;
+            ctx.fillStyle = this.css('--background-primary', '#111827');
+            this.roundedRect(ctx, rect.x, rect.y, rect.width, rect.height, 3);
+            ctx.fill();
+            ctx.globalAlpha = item.inherited ? 0.45 : this.certaintyAlpha(item.event);
             ctx.fillStyle = this.css('--background-secondary', '#1f2937');
             this.roundedRect(ctx, rect.x, rect.y, rect.width, rect.height, 3);
             ctx.fill();
