@@ -707,7 +707,8 @@ export class LocationService {
                     const child = await this.getLocation(childId);
                     if (!child) {
                         errors.push(`Location "${location.name}" references non-existent child: ${childId}`);
-                    } else if (child.parentLocationId !== (location.id || location.name)) {
+                    } else if (child.parentLocationId !== (location.id || location.name) && child.parentLocationId !== location.name) {
+                        // The parent may be referenced by id or by name (both are written by the location modal).
                         errors.push(`Location "${child.name}" parentLocationId does not match parent "${location.name}"`);
                     }
                 }

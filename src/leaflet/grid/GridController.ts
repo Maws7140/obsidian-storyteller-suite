@@ -16,6 +16,7 @@ import {
     outline,
     overlaps,
     commitArea,
+    parentIdsOf,
     resizeGrid,
     validateGrid,
 } from './GridModel';
@@ -187,7 +188,7 @@ export class GridController {
         return b;
     }
     private parents() {
-        return Object.fromEntries(this.locations.filter(l => l.id).map(l => [l.id!, l.parentLocationId]));
+        return parentIdsOf(this.locations);
     }
     private noteName(name: string) {
         return name.replace(/[\\/:"*?<>|]+/g, '').toLowerCase();
