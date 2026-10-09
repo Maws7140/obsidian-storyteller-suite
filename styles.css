@@ -11912,23 +11912,27 @@ body.mod-rtl .storyteller-group-members {
 }
 
 /* ── Timeline empty state ─────────────────────────────────────────────────
-   A blank canvas explains nothing. Say what the view is for. */
+   A blank canvas explains nothing. Say what the view is for. The message is
+   an opaque card centred over the canvas: gridlines, the today line and the
+   axis labels are drawn beneath it and must not run through the text. */
 
 .storyteller-timeline-empty {
   position: absolute;
-  inset: 0;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  box-sizing: border-box;
+  width: min(420px, calc(100% - 2rem));
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
   gap: 0.5rem;
-  padding: 2rem;
+  padding: 1.5rem 1.75rem;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-l, 8px);
+  box-shadow: var(--shadow-s);
   text-align: center;
-  pointer-events: none;
-}
-
-.storyteller-timeline-empty > * {
-  pointer-events: auto;
 }
 
 .storyteller-timeline-empty-icon {
