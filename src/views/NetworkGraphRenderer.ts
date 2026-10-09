@@ -334,12 +334,6 @@ export class NetworkGraphRenderer {
         // Remove loading state
         loadingEl.remove();
 
-        // Check for empty state
-        if (nodes.length === 0) {
-            this.renderEmptyState();
-            return;
-        }
-
         // Degrees, R-Map flags and ids are computed in one place for initial render and refresh
         const elements = buildCytoscapeElements(nodes, edges);
 
@@ -356,6 +350,12 @@ export class NetworkGraphRenderer {
 
         if (!this.allowWheelZoom) {
             this.cy.userZoomingEnabled(false);
+        }
+
+        // The instance always exists so that refresh() can draw nodes added later;
+        // the empty-state message sits over it while there is nothing to draw.
+        if (nodes.length === 0) {
+            this.renderEmptyState();
         }
 
         // Apply initial zoom adjustment after layout completes
@@ -1461,10 +1461,11 @@ export class NetworkGraphRenderer {
         }
     }
 
-    // Render empty state message
+    // Render empty state message over the (empty) canvas
     private renderEmptyState(): void {
         if (!this.canvasEl) return;
-        
+
+        this.clearEmptyState();
         const emptyState = this.canvasEl.createDiv('storyteller-network-empty-state');
         this.setParsedHtml(emptyState, `
             <div style="text-align: center; padding: 3rem;">
@@ -1476,6 +1477,10 @@ export class NetworkGraphRenderer {
                 </div>
             </div>
         `);
+    }
+
+    private clearEmptyState(): void {
+        this.canvasEl?.querySelectorAll(':scope > .storyteller-network-empty-state').forEach(el => el.remove());
     }
 
     // Search and highlight nodes
@@ -1670,6 +1675,11 @@ export class NetworkGraphRenderer {
         // Update graph
         this.cy.elements().remove();
         this.cy.add(elements);
+        if (nodes.length === 0) {
+            this.renderEmptyState();
+        } else {
+            this.clearEmptyState();
+        }
 
         // Restore pinned nodes
         this.pinnedNodes.forEach(nodeId => {

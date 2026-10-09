@@ -4437,6 +4437,17 @@ body.mod-rtl .storyteller-group-members {
   margin: 0 auto;
 }
 
+.storyteller-network-canvas > .storyteller-network-empty-state {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  max-width: none;
+  pointer-events: none;
+}
+
 .storyteller-empty-state.storyteller-empty-state {
   position: absolute;
   top: 50%;
