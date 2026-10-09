@@ -2793,6 +2793,69 @@ If your plugin does not need CSS, delete this file.
     width: 100%;
 }
 
+/* Shared collapsible sections for configurable entity modals. */
+.storyteller-modal-section {
+    margin: var(--size-4-3) 0;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: var(--radius-m);
+    background: var(--background-secondary-alt);
+    overflow: clip;
+}
+
+.storyteller-modal-section-summary {
+    display: flex;
+    align-items: center;
+    gap: var(--size-4-2);
+    padding: var(--size-4-3) var(--size-4-4);
+    cursor: pointer;
+    user-select: none;
+    list-style: none;
+}
+
+.storyteller-modal-section-summary::-webkit-details-marker { display: none; }
+
+.storyteller-modal-section-summary::after {
+    content: '›';
+    margin-left: auto;
+    color: var(--text-muted);
+    font-size: 1.3em;
+    transform: rotate(90deg);
+    transition: transform 120ms ease;
+}
+
+.storyteller-modal-section[open] > .storyteller-modal-section-summary::after {
+    transform: rotate(-90deg);
+}
+
+.storyteller-modal-section-icon {
+    display: inline-flex;
+    color: var(--text-accent);
+}
+
+.storyteller-modal-section-copy {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+}
+
+.storyteller-modal-section-title { font-weight: var(--font-semibold); }
+.storyteller-modal-section-description {
+    color: var(--text-muted);
+    font-size: var(--font-ui-smaller);
+}
+
+.storyteller-modal-section-body {
+    padding: 0 var(--size-4-4) var(--size-4-2);
+    border-top: 1px solid var(--background-modifier-border);
+}
+
+.storyteller-setting-invalid input {
+    border-color: var(--text-error) !important;
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--text-error) 35%, transparent);
+}
+
+.storyteller-setting-invalid .setting-item-description { color: var(--text-error); }
+
 /* Custom Fields Styling (Apply to all relevant modals) */
 .storyteller-custom-fields-container .setting-item {
     padding: var(--size-4-1) 0;
@@ -9918,6 +9981,31 @@ body.mod-rtl .storyteller-group-members {
 
 /* ── Campaign play — sidebar ─────────────────────────────────────────────── */
 .storyteller-campaign-sidebar-hdr { display: flex; align-items: center; gap: 0.4rem; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); margin-bottom: 0.55rem; }
+.storyteller-campaign-progress-actions { display: flex; gap: 0.2rem; margin-left: auto; }
+.storyteller-campaign-progress-actions button,
+.storyteller-campaign-progress-remove,
+.storyteller-campaign-thread-toggle,
+.storyteller-campaign-clock-segments button {
+    border: 0;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+}
+.storyteller-campaign-progress-actions button,
+.storyteller-campaign-progress-remove { display: inline-flex; padding: 3px; border-radius: 4px; }
+.storyteller-campaign-progress-actions button:hover,
+.storyteller-campaign-progress-remove:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
+.storyteller-campaign-clock-row,
+.storyteller-campaign-thread-row { display: flex; align-items: center; gap: 0.4rem; padding: 0.42rem 0.5rem; border: 1px solid var(--background-modifier-border); border-radius: 8px; }
+.storyteller-campaign-clock-info { display: flex; align-items: baseline; gap: 0.35rem; min-width: 0; }
+.storyteller-campaign-clock-name { max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.78rem; font-weight: 600; }
+.storyteller-campaign-clock-value { color: var(--text-muted); font-size: 0.7rem; font-variant-numeric: tabular-nums; }
+.storyteller-campaign-clock-segments { display: flex; flex: 1; gap: 3px; }
+.storyteller-campaign-clock-segments button { flex: 1; min-width: 8px; height: 12px; padding: 0; border: 1px solid var(--background-modifier-border); border-radius: 3px; }
+.storyteller-campaign-clock-segments button.is-filled { border-color: var(--interactive-accent); background: var(--interactive-accent); }
+.storyteller-campaign-thread-toggle { display: flex; align-items: center; gap: 0.4rem; flex: 1; min-width: 0; padding: 0; text-align: left; color: var(--text-normal); font-size: 0.78rem; }
+.storyteller-campaign-thread-row.is-resolved .storyteller-campaign-thread-toggle { color: var(--color-green); text-decoration: line-through; }
+.storyteller-campaign-thread-row.is-abandoned .storyteller-campaign-thread-toggle { color: var(--text-faint); text-decoration: line-through; }
 .storyteller-campaign-sidebar-body { display: flex; flex-direction: column; gap: 0.4rem; }
 .storyteller-campaign-sidebar-sub-hdr { font-size: 0.7rem; text-transform: uppercase; color: var(--text-faint); margin-top: 0.5rem; margin-bottom: 0.25rem; }
 .storyteller-campaign-empty-text { color: var(--text-faint); font-style: italic; font-size: 0.8rem; }
@@ -11592,8 +11680,17 @@ body.mod-rtl .storyteller-group-members {
   max-width: 11rem;
 }
 
-/* Segmented view switch. Chronology, vertical and gantt are mutually
-   exclusive, so they read as one control with one selection. */
+/* Top-level view switch plus the orientation switch owned by Timeline. */
+.storyteller-view-mode-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.storyteller-timeline-orientation-segment.is-hidden {
+  display: none;
+}
+
 .storyteller-segment {
   display: inline-flex;
   align-items: stretch;
@@ -11970,3 +12067,61 @@ body.mod-rtl .storyteller-group-members {
 .storyteller-fork-action-btn {
   font-size: var(--font-ui-smaller);
 }
+
+/* Dedicated map pane: let the workspace, not canvas minimums, own sizing. */
+.workspace-leaf-content[data-type="storyteller-map-view"] > .view-content.storyteller-map-view {
+    flex: 1 1 0;
+    width: 100%;
+    height: auto;
+    min-width: 0;
+    min-height: 0;
+    max-width: none;
+    padding: 0;
+    overflow: hidden;
+}
+.storyteller-map-view > .storyteller-map-container {
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 0;
+    width: 100%;
+    max-width: none;
+    max-height: none;
+}
+.storyteller-map-view > .storyteller-map-entity-bar {
+    min-width: 0;
+    overflow-x: auto;
+    flex-wrap: nowrap;
+}
+.storyteller-map-view > .storyteller-map-entity-bar > * {
+    flex-shrink: 0;
+}
+.storyteller-map-view > .storyteller-map-selector,
+.storyteller-map-view > .storyteller-map-toolbar,
+.storyteller-map-view > .storyteller-map-breadcrumb {
+    min-width: 0;
+    overflow-x: auto;
+}
+
+/* Logical grid overlay is screen-space; Leaflet retains map transforms. */
+.st-grid-canvas { position:absolute; inset:0; z-index:450; pointer-events:none; }
+/* Bottom action row owns grid controls; the attached editor opens into the map. */
+.storyteller-map-view > .storyteller-map-entity-bar { position:relative; z-index:1100; overflow:visible; flex-wrap:wrap; }
+.storyteller-map-entity-bar .entity-bar-quick-actions { flex-wrap:wrap; max-width:100%; }
+.storyteller-map-selector { position:relative; z-index:1100; flex-wrap:wrap; overflow:visible; }
+.storyteller-map-selector-dropdown { min-width:0; }
+.storyteller-map-selector-dropdown select { max-width:100%; }
+.st-grid-controls { display:flex; align-items:center; gap:4px; flex-wrap:wrap; min-width:0; }
+.st-grid-controls > label { display:flex; align-items:center; }
+.st-grid-editor { position:absolute; bottom:100%; left:0; right:0; z-index:850; box-sizing:border-box; background:var(--background-primary, #202329); color:var(--text-normal, #eee); padding:12px; border:1px solid var(--background-modifier-border); border-radius:0 0 8px 8px; box-shadow:0 6px 12px rgba(0,0,0,.2); display:flex; flex-wrap:wrap; gap:8px; max-height:40vh; overflow:auto; }
+.st-grid-editor > * { max-width:100%; min-width:0; }
+.st-grid-controls:not(.st-grid-enabled) .st-grid-mode-action,
+.st-grid-controls:not(.st-grid-enabled) .st-grid-editor { display:none; }
+.st-grid-editor[hidden] { display:none; }
+.st-grid-editor > div { flex-basis:100%; }
+.st-grid-editor input[type=number] { width:75px; }
+
+/* Grid off is native map interaction mode, not an invisible area editor. */
+.leaflet-container:not(.st-grid-enabled) .st-grid-mode-action,
+.leaflet-container:not(.st-grid-enabled) .st-edit-location-area { display: none; }
+.leaflet-container:not(.st-grid-enabled) .st-grid-editor { display: none; }
+.leaflet-container:not(.st-grid-enabled) .st-grid-canvas { pointer-events: none !important; }

@@ -61,10 +61,32 @@ export const ITEM_MODAL_FIELDS: ModalFieldDef[] = [
     { key: 'campaignUse', label: 'Campaign use', group: 'Advanced' },
 ];
 
+/**
+ * Event modal sections that may be hidden. Name is the only required field and
+ * therefore is deliberately absent. The larger specialist areas are section
+ * switches rather than dozens of individual toggles: that keeps the Settings
+ * page understandable while the modal itself owns the field layout.
+ */
+export const EVENT_MODAL_FIELDS: ModalFieldDef[] = [
+    { key: 'dateTime', label: 'Date or range', group: 'Core' },
+    { key: 'status', label: 'Status', group: 'Core' },
+    { key: 'description', label: 'Description', group: 'Core' },
+    { key: 'outcome', label: 'Outcome', group: 'Core' },
+    { key: 'characters', label: 'Characters involved', group: 'Core' },
+    { key: 'location', label: 'Location', group: 'Core' },
+    { key: 'narrative', label: 'Narrative (flashbacks and flash-forwards)', group: 'Sections' },
+    { key: 'timeline', label: 'Timeline options', group: 'Sections' },
+    { key: 'provenance', label: 'Provenance', group: 'Sections' },
+    { key: 'media', label: 'Media', group: 'Sections' },
+    { key: 'organization', label: 'Organization (tags, groups, branches)', group: 'Sections' },
+    { key: 'customFields', label: 'Custom fields', group: 'Sections' },
+];
+
 /** Entity modals that support hiding fields. */
 export const MODAL_FIELD_SETS: Record<string, ModalFieldDef[]> = {
     character: CHARACTER_MODAL_FIELDS,
     item: ITEM_MODAL_FIELDS,
+    event: EVENT_MODAL_FIELDS,
 };
 
 /**

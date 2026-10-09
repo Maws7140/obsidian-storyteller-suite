@@ -464,6 +464,7 @@ export class TimelineView extends ItemView {
         // Initialize timeline renderer
         this.renderer = new TimelineRenderer(this.timelineContainer, this.plugin, {
             ganttMode: this.currentState.ganttMode,
+            timelineLayout: this.currentState.timelineLayout,
             timelineOrientation: this.currentState.timelineOrientation,
             groupMode: this.currentState.groupMode,
             stackEnabled: this.currentState.stackEnabled,
@@ -843,6 +844,7 @@ export class TimelineView extends ItemView {
 
         return {
             ganttMode: this.currentState.ganttMode,
+            timelineLayout: this.currentState.timelineLayout,
             timelineOrientation: this.currentState.timelineOrientation,
             groupMode: this.currentState.groupMode,
             stackEnabled: this.currentState.stackEnabled,
@@ -898,6 +900,7 @@ export class TimelineView extends ItemView {
             const filters = restoreFilters(state.filters);
             const restored: TimelineViewState = {
                 ganttMode: state.ganttMode === true,
+                timelineLayout: state.timelineLayout === 'timeline' ? 'timeline' : 'chronology',
                 timelineOrientation: state.timelineOrientation === 'vertical' ? 'vertical' : 'horizontal',
                 groupMode: isGroupMode(state.groupMode) ? state.groupMode : (this.plugin.settings.defaultTimelineGroupMode || 'location'),
                 stackEnabled: typeof state.stackEnabled === 'boolean' ? state.stackEnabled : true,

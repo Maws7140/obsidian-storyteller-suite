@@ -3,6 +3,7 @@
  * These interfaces define the data structures used throughout the plugin
  */
 import type { App } from 'obsidian';
+import type { PlacementGrid } from './leaflet/grid/GridModel';
 
 /**
  * Relationship types for network graph visualization
@@ -617,6 +618,21 @@ export interface CampaignGroupStanding {
     value: number;
 }
 
+/** A segmented progress clock tracked inside one campaign session. */
+export interface CampaignClock {
+    id: string;
+    name: string;
+    current: number;
+    segments: number;
+}
+
+/** A campaign objective, mystery, quest, or other thread tracked during play. */
+export interface CampaignThread {
+    id: string;
+    name: string;
+    status: 'active' | 'resolved' | 'abandoned';
+}
+
 /**
  * A campaign session — stored as a markdown file in the Sessions/ folder.
  * Frontmatter holds all structured data; ## Session Log section holds the narrative log.
@@ -643,6 +659,10 @@ export interface CampaignSession {
     collectedBoardItemKeys?: string[];
     /** Session-local faction standing changes. */
     groupStandings?: CampaignGroupStanding[];
+    /** Segmented countdowns and progress trackers used during play. */
+    clocks?: CampaignClock[];
+    /** Open and completed narrative or campaign objectives. */
+    threads?: CampaignThread[];
     status?: 'active' | 'paused' | 'completed';
     created?: string;
     modified?: string;
@@ -1394,6 +1414,12 @@ export interface StoryMap {
         generationMethod?: 'gdal2tiles' | 'canvas' | 'none';
         originalDimensions?: { width: number; height: number };
     };
+
+    /** Entity keys (`type:id`) the user removed from this map; discovery skips them. */
+    removedMapEntities?: string[];
+
+    /** Placement grid whose painted areas give locations territory on this map. */
+    placementGrid?: PlacementGrid;
 }
 
 /**
@@ -1979,6 +2005,9 @@ export interface TimelineEra {
     /** Display name of the era (e.g., "Act I: The Beginning", "Medieval Period") */
     name: string;
 
+    /** Optional compact label used when the full era name will not fit on the timeline. */
+    abbreviation?: string;
+
     /** Description of what defines this era */
     description?: string;
 
@@ -1997,7 +2026,10 @@ export interface TimelineEra {
     /** Parent era ID for nested hierarchies (e.g., Arc within Act) */
     parentEraId?: string;
 
-    /** Events that fall within this era (auto-populated based on dates) */
+    /**
+     * Legacy cached membership. Runtime membership is derived from startDate
+     * and endDate so events do not need repetitive era frontmatter.
+     */
     events?: string[];
 
     /** Tags for filtering and organization */
@@ -2472,7 +2504,9 @@ export type TimelineGroupMode =
 export interface TimelineUIState {
     /** Whether Gantt chart view is enabled */
     ganttMode: boolean;
-    /** Chronology orientation; Gantt always renders horizontally. */
+    /** Chronology keeps the original lane view; Timeline owns both orientations. */
+    timelineLayout: 'chronology' | 'timeline';
+    /** Orientation inside the Timeline view; Chronology and Gantt are horizontal. */
     timelineOrientation: 'horizontal' | 'vertical';
     /** Grouping mode for events */
     groupMode: TimelineGroupMode;

@@ -12,11 +12,16 @@ import { daysInYear, fromAbsolute, monthsInYear, normalYearLength, toAbsolute } 
 import type { CalendarSystem } from '../calendar/types';
 import { chooseSnapResolution, generateTicks, snapDay, snapSlots, stepDay } from '../calendar/TimelineAxis';
 import type { AxisView, SnapResolution } from '../calendar/TimelineAxis';
-import { isEventInFork, isEventOnMain, orderForksByParent } from './ForkVisibility';
+import { isEventInFork, isEventLinkedToFork, isEventOnMain, orderForksByParent } from './ForkVisibility';
 import { chooseConnectorEnds } from './ConnectorGeometry';
+import { placeAlternatingTimelineCards } from './TimelineCardLayout';
+import { placeReadableAxisLabels } from './AxisLabelLayout';
+import { narrativeDirectionOf, narrativeSequenceOf, timelineDateForMode } from './NarrativeTimeline';
+import type { NarrativeDirection } from './NarrativeTimeline';
 
 export interface TimelineRendererOptions {
     ganttMode?: boolean;
+    timelineLayout?: 'chronology' | 'timeline';
     timelineOrientation?: 'horizontal' | 'vertical';
     groupMode?: TimelineGroupMode;
     showDependencies?: boolean;
@@ -242,6 +247,7 @@ export class NativeTimelineRenderer {
         this.calendarRegistry = new CalendarRegistry(plugin);
         this.options = {
             ganttMode: false,
+            timelineLayout: 'chronology',
             timelineOrientation: 'horizontal',
             groupMode: 'none',
             showDependencies: true,
@@ -277,7 +283,12 @@ export class NativeTimelineRenderer {
 
     applyFilters(filters: Partial<TimelineFilters>): void { this.filters = { ...this.filters, ...filters }; this.rebuild(false); }
     setGanttMode(value: boolean): void { this.options.ganttMode = value; this.rebuild(false); }
+    setTimelineLayout(value: 'chronology' | 'timeline'): void { this.options.timelineLayout = value; this.rebuild(false); }
     setTimelineOrientation(value: 'horizontal' | 'vertical'): void { this.options.timelineOrientation = value; this.rebuild(false); }
+    private isTimelineLayout(): boolean { return !this.options.ganttMode && this.options.timelineLayout === 'timeline'; }
+    private isHorizontalTimeline(): boolean { return this.isTimelineLayout() && this.options.timelineOrientation === 'horizontal'; }
+    private isVerticalTimeline(): boolean { return this.isTimelineLayout() && this.options.timelineOrientation === 'vertical'; }
+    private isChronology(): boolean { return !this.options.ganttMode && this.options.timelineLayout === 'chronology'; }
     setGroupMode(value: TimelineRendererOptions['groupMode']): void {
         this.options.groupMode = value || 'none';
         // Items, cultures and magic systems are not held unless a lane mode
@@ -313,7 +324,10 @@ export class NativeTimelineRenderer {
     }
 
     getVisibleEvents(): Event[] {
-        return this.events.filter(event => this.shouldInclude(event) && this.matchesFork(event)).sort((a, b) => this.eventStart(a) - this.eventStart(b));
+        return this.events
+            .filter(event => this.shouldInclude(event) && this.matchesFork(event))
+            .sort((a, b) => this.placementStart(a) - this.placementStart(b)
+                || narrativeSequenceOf(a) - narrativeSequenceOf(b));
     }
 
     searchVisibleEvents(query: string, limit = 12): Event[] {
@@ -392,7 +406,7 @@ export class NativeTimelineRenderer {
     getDateRange(): { start: Date; end: Date } | null {
         const events = this.getVisibleEvents();
         if (!events.length) return null;
-        const starts = events.map(event => this.eventStart(event)).filter(Number.isFinite);
+        const starts = events.map(event => this.placementStart(event)).filter(Number.isFinite);
         if (!starts.length) return null;
         return { start: new Date(Math.min(...starts)), end: new Date(Math.max(...starts)) };
     }
@@ -426,7 +440,8 @@ export class NativeTimelineRenderer {
     private renderFullRange(): HTMLCanvasElement | null {
         const range = this.getDateRange();
         if (!range || !this.ctx) return null;
-        const vertical = !this.options.ganttMode && this.options.timelineOrientation === 'vertical';
+        const vertical = this.isVerticalTimeline();
+        const horizontalTimeline = this.isHorizontalTimeline();
         const saved = {
             canvas: this.canvas, ctx: this.ctx, surface: this.exportSurface,
             start: this.viewStart, end: this.viewEnd, scrollTop: this.scrollTop,
@@ -453,7 +468,9 @@ export class NativeTimelineRenderer {
             const content = this.lanes.reduce((total, lane) => total + lane.height, this.axisHeight());
             const height = Math.ceil(vertical
                 ? Math.max(EXPORT_MIN_HEIGHT, this.lanes.reduce((count, lane) => count + lane.items.length, 0) * 44 + 120)
-                : Math.max(EXPORT_MIN_HEIGHT, content + 16));
+                : horizontalTimeline
+                    ? EXPORT_MIN_HEIGHT
+                    : Math.max(EXPORT_MIN_HEIGHT, content + 16));
 
             const surface = this.container.ownerDocument.createElement('canvas');
             surface.width = Math.round(width * EXPORT_SCALE);
@@ -526,7 +543,7 @@ export class NativeTimelineRenderer {
         // can still run the dedicated conflict tools against the full dataset.
         this.conflictsByEvent.clear();
         if (sourceEvents.length <= 10_000) {
-            const conflicts = ConflictDetector.detectAllConflicts(sourceEvents);
+            const conflicts = ConflictDetector.detectAllConflicts(sourceEvents, this.characters, this.locations);
             // Keep them indexed so an item can show its own severity and the
             // tooltip can list the messages, the way the vis renderer did.
             conflicts.forEach(conflict => {
@@ -561,7 +578,7 @@ export class NativeTimelineRenderer {
         // property. They carry no characters, locations, or groups, so there is
         // nothing for the entity filters to match and they always pass.
         if (this.showWatchedNotes) this.watchedNotes.forEach(note => result.push({ name: note.name, dateTime: note.date, filePath: note.filePath, tags: ['watched-note'] }));
-        return result.filter(event => Number.isFinite(this.eventStart(event)));
+        return result.filter(event => Number.isFinite(this.placementStart(event)));
     }
 
     private sceneToEvent(scene: Scene): TimelineEvent {
@@ -603,8 +620,7 @@ export class NativeTimelineRenderer {
     private buildForkLanes(events: Event[]): Lane[] {
         const forks = this.plugin.getTimelineForks();
         const byId = new Map(forks.map(fork => [fork.id, fork]));
-        const mainIds = new Set(forks.flatMap(fork => fork.linkedEvents || []));
-        const main = events.filter(event => !mainIds.has(this.eventKey(event)));
+        const main = events.filter(event => isEventOnMain(this.eventKeys(event), forks));
         const lanes: Lane[] = [{ id: '__main__', label: 'Main timeline', color: this.css('--interactive-accent', '#7c3aed'), items: [], top: 0, height: 0, branchDepth: 0 }];
         main.forEach((event, index) => lanes[0].items.push(this.makeItem(event, index, lanes[0], 0)));
         const depthOf = (fork: TimelineFork, seen = new Set<string>()): number => {
@@ -620,9 +636,9 @@ export class NativeTimelineRenderer {
             // Same rule as the single-branch view: the trunk up to the
             // divergence is inherited, and an unreadable divergence date keeps
             // the trunk rather than silently emptying the branch.
-            main.filter(event => isEventInFork(this.eventKey(event), this.eventStart(event), fork, divergence, forks))
+            main.filter(event => isEventInFork(this.eventKeys(event), this.eventStart(event), fork, divergence, forks))
                 .forEach((event, index) => lane.items.push({ ...this.makeItem(event, index, lane, 0), forkId: fork.id, inherited: true }));
-            events.filter(event => (fork.linkedEvents || []).includes(this.eventKey(event))).forEach((event, index) => lane.items.push({ ...this.makeItem(event, index, lane, 0), forkId: fork.id }));
+            events.filter(event => isEventLinkedToFork(this.eventKeys(event), fork)).forEach((event, index) => lane.items.push({ ...this.makeItem(event, index, lane, 0), forkId: fork.id }));
             lanes.push(lane);
         });
         return lanes;
@@ -670,7 +686,7 @@ export class NativeTimelineRenderer {
     }
 
     private makeItem(event: Event, eventIndex: number, lane: Pick<Lane, 'id' | 'label' | 'color' | 'explicitColor'>, duplicateIndex: number): NativeItem {
-        const rangeParts = event.dateTime?.split(/\s+(?:to|through|until)\s+/i) || [];
+        const rangeParts = timelineDateForMode(event, this.options.narrativeOrder === true)?.split(/\s+(?:to|through|until)\s+/i) || [];
         const start = rangeParts[0] ? this.parseDate(rangeParts[0]) : NaN;
         const explicitEnd = rangeParts[1] ? this.parseDate(rangeParts[1]) : NaN;
         const end = Number.isFinite(explicitEnd) ? explicitEnd : (this.options.ganttMode && !event.isMilestone ? start + this.options.defaultGanttDuration * DAY_MS : start);
@@ -694,7 +710,7 @@ export class NativeTimelineRenderer {
         const forkId = this.filters.forkId;
         if (!forkId || forkId === '__compare__') return false;
         const fork = this.plugin.getTimelineFork(forkId);
-        return Boolean(fork) && !fork?.linkedEvents?.includes(this.eventKey(event));
+        return fork ? !isEventLinkedToFork(this.eventKeys(event), fork) : false;
     }
 
     /**
@@ -726,9 +742,10 @@ export class NativeTimelineRenderer {
      * spring"). Drawn with a dashed outline so a guess does not read as a fact.
      */
     private isApproximate(event: Event): boolean {
-        if (!event.dateTime) return false;
-        const first = event.dateTime.split(/\s+(?:to|through|until)\s+/i)[0];
-        return !!parseEventDate(first, { referenceDate: this.referenceDate }).approximate;
+        const date = timelineDateForMode(event, this.options.narrativeOrder === true);
+        if (!date) return false;
+        const first = date.split(/\s+(?:to|through|until)\s+/i)[0];
+        return !!parseEventDate(first, { referenceDate: this.referenceDate, timezone: 'utc' }).approximate;
     }
 
     /**
@@ -740,15 +757,16 @@ export class NativeTimelineRenderer {
      */
     private chipWidth(ctx: CanvasRenderingContext2D, item: NativeItem, minimum: number): number {
         ctx.font = `11px ${this.css('--font-interface', 'sans-serif')}`;
-        return Math.max(minimum, Math.min(MAX_CHIP_WIDTH, ctx.measureText(this.itemLabel(item)).width + 34));
+        const narrativeIconWidth = narrativeDirectionOf(item.event) ? 18 : 0;
+        return Math.max(minimum, Math.min(MAX_CHIP_WIDTH, ctx.measureText(this.itemLabel(item)).width + 34 + narrativeIconWidth));
     }
 
     /**
      * The text drawn on an item's chip.
      *
-     * Prefixes carry the same signals the vis renderer put in the label: a
-     * conflict marker, the narrative sequence number when reading in narrative
-     * order, and flashback or flashforward flags.
+     * Prefixes carry the textual signals the vis renderer put in the label: a
+     * conflict marker and the narrative sequence number when reading in
+     * narrative order. Flashback/flash-forward use visual badges instead.
      */
     private itemLabel(item: NativeItem): string {
         const event = item.event;
@@ -759,8 +777,6 @@ export class NativeTimelineRenderer {
         if (this.options.narrativeOrder && event.narrativeSequence !== undefined) {
             parts.push(`[${event.narrativeSequence}]`);
         }
-        if (event.narrativeMarkers?.isFlashback) parts.push('FB');
-        if (event.narrativeMarkers?.isFlashforward) parts.push('FF');
         parts.push(event.name || '(Untitled event)');
         return parts.join(' ');
     }
@@ -790,11 +806,13 @@ export class NativeTimelineRenderer {
         const width = this.viewportWidth();
         const ctx = this.ctx;
         const axisHeight = this.axisHeight();
-        const chronology = !this.options.ganttMode;
+        const chronology = this.isChronology();
         const minimum = chronology ? MIN_CHRONOLOGY_CHIP_WIDTH : MIN_CHIP_WIDTH;
         let top = axisHeight;
         this.lanes.forEach(lane => {
-            lane.items.sort((a, b) => a.start - b.start || a.end - b.end);
+            lane.items.sort((a, b) => a.start - b.start
+                || narrativeSequenceOf(a.event) - narrativeSequenceOf(b.event)
+                || a.end - b.end);
 
             // Running maximum of every end seen so far. Monotonic, so the draw
             // pass can binary search it for the first item that could still
@@ -926,8 +944,12 @@ export class NativeTimelineRenderer {
             for (const item of lane.items) item.rect = undefined;
         }
         this.slotTimes = this.computeSlotTimes();
-        if (!this.options.ganttMode && this.options.timelineOrientation === 'vertical') {
+        if (this.isVerticalTimeline()) {
             this.drawVerticalTimeline(ctx, width, height);
+            return;
+        }
+        if (this.isHorizontalTimeline()) {
+            this.drawHorizontalTimeline(ctx, width, height);
             return;
         }
         this.drawAxis(ctx, width, height);
@@ -938,6 +960,207 @@ export class NativeTimelineRenderer {
         this.drawForkBranches(ctx, width, height);
         this.drawConnectors(ctx, width, height);
         this.drawNow(ctx, width, height);
+    }
+
+    /**
+     * The horizontal counterpart of the vertical timeline: one chronological
+     * spine, with cards alternating above and below it. Grouping still colours
+     * and labels cards, but it does not split one chronology into lane rows.
+     */
+    private drawHorizontalTimeline(ctx: CanvasRenderingContext2D, width: number, height: number): void {
+        const left = 28;
+        const right = Math.max(left + 1, width - 28);
+        const axisY = Math.round(height / 2);
+        const calendar = this.calendarRegistry.getActiveCalendar();
+        const absoluteStart = this.viewStart / DAY_MS + this.unixEpochAbsoluteDay();
+        const absoluteEnd = this.viewEnd / DAY_MS + this.unixEpochAbsoluteDay();
+
+        this.drawHorizontalTimelineEras(ctx, left, right, height);
+        this.drawHorizontalTimelineCalendarLayers(ctx, calendar, absoluteStart, absoluteEnd, left, right, height);
+
+        ctx.save();
+        ctx.strokeStyle = this.css('--background-modifier-border', '#374151');
+        ctx.fillStyle = this.css('--background-modifier-border', '#374151');
+        ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(left, axisY); ctx.lineTo(right - 8, axisY); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(right, axisY); ctx.lineTo(right - 10, axisY - 5); ctx.lineTo(right - 10, axisY + 5); ctx.closePath(); ctx.fill();
+
+        const ticks = generateTicks(
+            calendar,
+            { startDay: absoluteStart, endDay: absoluteEnd, widthPx: right - left },
+            Math.max(3, Math.floor((right - left) / 120))
+        );
+        ctx.font = `11px ${this.css('--font-interface', 'sans-serif')}`;
+        const labelCandidates = ticks.map((tick, index) => {
+            const x = left + tick.x;
+            const tickDate = fromAbsolute(calendar, { absoluteDay: tick.absoluteDay });
+            const year = this.calendarYearLabel(calendar, tickDate.year);
+            // Preserve calendar context without stamping a long year suffix on
+            // every daily/hourly tick. generateTicks guarantees the first day
+            // label carries its month; the first time label gets the full date.
+            let label = tick.label;
+            if (tick.level === 'month' && !label.includes(year)) label = `${label} ${year}`;
+            else if (tick.level === 'day' && index === 0 && !label.includes(year)) label = `${label}, ${year}`;
+            else if ((tick.level === 'hour' || tick.level === 'minute') && index === 0) {
+                const monthDef = monthsInYear(calendar, tickDate.year)[tickDate.month];
+                const month = monthDef?.abbr || monthDef?.name || '';
+                label = `${month} ${tickDate.day}, ${year} ${label}`.trim();
+            }
+            const displayLabel = this.truncate(ctx, label, 132);
+            return { value: { tick, label: displayLabel }, x, width: ctx.measureText(displayLabel).width };
+        });
+        const readableLabels = new Map(
+            placeReadableAxisLabels(labelCandidates, 4, width - 4, 10)
+                .map(positioned => [positioned.value.tick, positioned] as const)
+        );
+        ticks.forEach(tick => {
+            const x = left + tick.x;
+            ctx.strokeStyle = this.css('--background-modifier-border', '#374151');
+            ctx.beginPath(); ctx.moveTo(x, axisY - 5); ctx.lineTo(x, axisY + 5); ctx.stroke();
+            const positioned = readableLabels.get(tick);
+            if (!positioned) return;
+            ctx.fillStyle = this.css('--text-muted', '#9ca3af');
+            ctx.fillText(positioned.value.label, positioned.left, axisY + 20);
+        });
+        ctx.restore();
+
+        this.drawHorizontalTimelineSlots(ctx, left, right, axisY);
+
+        const items = this.lanes
+            .flatMap(lane => lane.items)
+            .filter(item => item.end >= this.viewStart && item.start <= this.viewEnd)
+            .sort((a, b) => a.start - b.start
+                || narrativeSequenceOf(a.event) - narrativeSequenceOf(b.event)
+                || a.end - b.end);
+        const cardWidth = Math.max(120, Math.min(210, (right - left) * 0.24));
+        const cardHeight = 42;
+        const placements = placeAlternatingTimelineCards(
+            items.map(item => ({ value: item, position: this.horizontalTimelineTimeToX(item.start, width) })),
+            left,
+            right,
+            cardWidth
+        );
+
+        placements.forEach(({ value: item, position: desiredX, placedPosition: placedX, above, tier }) => {
+            const chipX = placedX - cardWidth / 2;
+            const tierOffset = tier * (cardHeight + 12);
+            const chipY = above ? axisY - cardHeight - 34 - tierOffset : axisY + 34 + tierOffset;
+            item.rect = new DOMRect(chipX, chipY, cardWidth, cardHeight);
+            this.visibleItems.push(item);
+            // One rigid perpendicular leader. Both endpoints share the event's
+            // true X coordinate, so panning can only translate this segment;
+            // it can never acquire an elbow or diagonal stretch.
+            ctx.save();
+            ctx.strokeStyle = item.laneColor;
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.moveTo(desiredX, axisY);
+            ctx.lineTo(desiredX, above ? chipY + cardHeight : chipY);
+            ctx.stroke();
+            ctx.restore();
+            if (this.slotsVisible() && this.isDraggable(item)) this.markerHits.push({ item, x: desiredX, y: axisY });
+            this.drawPointMarker(ctx, desiredX, axisY, item);
+            this.drawTimelineEventCard(ctx, item, calendar);
+        });
+
+        this.drawHorizontalTimelineDropTarget(ctx, axisY, width, height);
+        this.drawConnectors(ctx, width, height);
+        this.drawNowHorizontalTimeline(ctx, axisY, width);
+    }
+
+    private drawHorizontalTimelineEras(ctx: CanvasRenderingContext2D, left: number, right: number, height: number): void {
+        if (!this.options.showEras) return;
+        this.plugin.getTimelineEras().filter(era => era.visible !== false).forEach(era => {
+            const start = this.parseDate(era.startDate);
+            const end = this.parseDate(era.endDate);
+            if (!Number.isFinite(start) || !Number.isFinite(end) || end < this.viewStart || start > this.viewEnd) return;
+            const x1 = Math.max(left, this.horizontalTimelineTimeToX(start, this.viewportWidth()));
+            const x2 = Math.min(right, this.horizontalTimelineTimeToX(end, this.viewportWidth()));
+            ctx.save();
+            ctx.globalAlpha = 0.09;
+            ctx.fillStyle = era.color || '#8b5cf6';
+            ctx.fillRect(x1, 0, Math.max(2, x2 - x1), height);
+            ctx.globalAlpha = 0.85;
+            ctx.font = `600 10px ${this.css('--font-interface', 'sans-serif')}`;
+            ctx.fillStyle = era.color || this.css('--text-accent', '#a78bfa');
+            const label = (era.abbreviation || era.name).toUpperCase();
+            ctx.fillText(this.truncate(ctx, label, Math.max(0, x2 - x1 - 12)), x1 + 6, 16);
+            ctx.restore();
+        });
+    }
+
+    private drawHorizontalTimelineCalendarLayers(
+        ctx: CanvasRenderingContext2D,
+        calendar: CalendarSystem,
+        absoluteStart: number,
+        absoluteEnd: number,
+        left: number,
+        right: number,
+        height: number
+    ): void {
+        const bands = this.calendarBands(calendar, absoluteStart, absoluteEnd);
+        if (!bands.length) return;
+        ctx.save();
+        bands.forEach(band => {
+            const start = (band.startDay - this.unixEpochAbsoluteDay()) * DAY_MS;
+            const end = (band.endDay - this.unixEpochAbsoluteDay()) * DAY_MS;
+            const x1 = Math.max(left, this.horizontalTimelineTimeToX(start, this.viewportWidth()));
+            const x2 = Math.min(right, this.horizontalTimelineTimeToX(end, this.viewportWidth()));
+            if (x2 <= x1) return;
+            ctx.globalAlpha = band.kind === 'holiday' ? 0.08 : 0.035;
+            ctx.fillStyle = band.color;
+            ctx.fillRect(x1, 0, x2 - x1, height);
+        });
+        ctx.restore();
+    }
+
+    private drawHorizontalTimelineSlots(ctx: CanvasRenderingContext2D, left: number, right: number, axisY: number): void {
+        if (!this.slotTimes.length) return;
+        ctx.save();
+        ctx.strokeStyle = this.css('--sts-timeline-slot', SLOT_COLOR);
+        ctx.globalAlpha = 0.55;
+        this.slotTimes.forEach(time => {
+            const x = this.horizontalTimelineTimeToX(time, this.viewportWidth());
+            if (x < left || x > right) return;
+            ctx.beginPath(); ctx.arc(x, axisY, SLOT_RADIUS, 0, Math.PI * 2); ctx.stroke();
+        });
+        ctx.restore();
+    }
+
+    private drawHorizontalTimelineDropTarget(ctx: CanvasRenderingContext2D, axisY: number, width: number, height: number): void {
+        const dragging = this.dragging;
+        if (!dragging || dragging.kind !== 'marker' || this.dragGhost === null) return;
+        const x = this.horizontalTimelineTimeToX(this.dragGhost, width);
+        const accent = this.css('--interactive-accent', '#7c3aed');
+        const label = this.formatEditDate(this.dragGhost);
+        ctx.save();
+        ctx.strokeStyle = accent;
+        ctx.globalAlpha = 0.35;
+        ctx.setLineDash([3, 4]);
+        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, height); ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = accent;
+        ctx.beginPath(); ctx.arc(x, axisY, SLOT_RADIUS + 2.5, 0, Math.PI * 2); ctx.fill();
+        ctx.font = `600 11px ${this.css('--font-interface', 'sans-serif')}`;
+        const textWidth = ctx.measureText(label).width;
+        const boxX = Math.max(4, Math.min(width - textWidth - 12, x + 9));
+        ctx.fillStyle = this.css('--background-secondary', '#1f2937');
+        ctx.fillRect(boxX, axisY + 4, textWidth + 8, 16);
+        ctx.fillStyle = this.css('--text-normal', '#e5e7eb');
+        ctx.fillText(label, boxX + 4, axisY + 16);
+        ctx.restore();
+    }
+
+    private drawNowHorizontalTimeline(ctx: CanvasRenderingContext2D, axisY: number, width: number): void {
+        const now = Date.now();
+        if (now < this.viewStart || now > this.viewEnd) return;
+        const x = this.horizontalTimelineTimeToX(now, width);
+        ctx.save();
+        ctx.strokeStyle = this.css('--color-red', '#ef4444');
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath(); ctx.moveTo(x, axisY - 18); ctx.lineTo(x, axisY + 18); ctx.stroke();
+        ctx.restore();
     }
 
     private drawAxis(ctx: CanvasRenderingContext2D, width: number, _height: number): void {
@@ -977,7 +1200,7 @@ export class NativeTimelineRenderer {
     }
 
     private axisHeight(): number {
-        if (!this.options.ganttMode && this.options.timelineOrientation === 'vertical') return BASE_AXIS_HEIGHT;
+        if (this.isVerticalTimeline()) return BASE_AXIS_HEIGHT;
         const rows = this.calendarLayerRows();
         return BASE_AXIS_HEIGHT + rows * CALENDAR_BAND_HEIGHT;
     }
@@ -1177,6 +1400,8 @@ export class NativeTimelineRenderer {
 
             if (collides) {
                 this.drawPointMarker(ctx, pointX, baselineY, item);
+                const narrativeDirection = narrativeDirectionOf(item.event);
+                if (narrativeDirection) this.drawNarrativeIcon(ctx, narrativeDirection, pointX + 9, baselineY - 9, 10);
                 continue;
             }
             rowRightEdges[item.row] = chipX + chipWidth;
@@ -1231,41 +1456,47 @@ export class NativeTimelineRenderer {
 
         // Intersection, not containment: an event that began before the window
         // but runs into it is still on screen and must not be dropped.
-        const items = this.lanes.flatMap(lane => lane.items).filter(item => item.end >= this.viewStart && item.start <= this.viewEnd).sort((a, b) => a.start - b.start);
+        const items = this.lanes.flatMap(lane => lane.items)
+            .filter(item => item.end >= this.viewStart && item.start <= this.viewEnd)
+            .sort((a, b) => a.start - b.start || narrativeSequenceOf(a.event) - narrativeSequenceOf(b.event));
         this.visibleItems = [];
-        const placements = items.map((item, index) => {
-            const desiredY = top + (item.start - this.viewStart) / (this.viewEnd - this.viewStart) * (bottom - top);
-            return { item, desiredY, placedY: desiredY, rightSide: !alternateSides || index % 2 === 0 };
-        });
-        [true, false].forEach(rightSide => {
-            const side = placements.filter(placement => placement.rightSide === rightSide);
-            if (!side.length) return;
-            const gap = Math.max(40, Math.min(58, (bottom - top) / Math.max(1, side.length - 1)));
-            side.forEach((placement, index) => {
-                placement.placedY = index === 0 ? Math.max(top, placement.desiredY) : Math.max(placement.desiredY, side[index - 1].placedY + gap);
-            });
-            if (side[side.length - 1].placedY > bottom) {
-                side[side.length - 1].placedY = bottom;
-                for (let i = side.length - 2; i >= 0; i--) side[i].placedY = Math.min(side[i].placedY, side[i + 1].placedY - gap);
-            }
-        });
+        const chipHeight = 42;
+        const placements = placeAlternatingTimelineCards(
+            items.map(item => ({
+                value: item,
+                position: top + (item.start - this.viewStart) / (this.viewEnd - this.viewStart) * (bottom - top)
+            })),
+            top,
+            bottom,
+            chipHeight,
+            8,
+            alternateSides
+        );
+        const tierCounts = new Map<boolean, number>();
+        placements.forEach(placement => tierCounts.set(placement.above, Math.max(tierCounts.get(placement.above) || 0, placement.tier + 1)));
 
-        placements.forEach(({ item, desiredY, placedY, rightSide }) => {
-            const availableWidth = rightSide ? width - axisX - 38 : axisX - 38;
-            const chipWidth = Math.max(130, Math.min(260, availableWidth));
-            const chipHeight = 42;
-            const chipX = rightSide ? axisX + 28 : Math.max(4, axisX - 28 - chipWidth);
+        placements.forEach(({ value: item, position: desiredY, placedPosition: placedY, above: rightSide, tier }) => {
+            const availableWidth = Math.max(88, rightSide ? width - axisX - 38 : axisX - 38);
+            const tierCount = tierCounts.get(rightSide) || 1;
+            const chipWidth = Math.max(88, Math.min(240, (availableWidth - (tierCount - 1) * 12) / tierCount));
+            const tierOffset = tier * (chipWidth + 12);
+            const chipX = rightSide ? axisX + 28 + tierOffset : Math.max(4, axisX - 28 - chipWidth - tierOffset);
             const chipY = placedY - chipHeight / 2;
             item.rect = new DOMRect(chipX, chipY, chipWidth, chipHeight);
             this.visibleItems.push(item);
+            // One rigid perpendicular leader. Marker and card edge share the
+            // event's true Y coordinate, so scrolling cannot bend the line.
+            ctx.save();
             ctx.strokeStyle = item.laneColor;
             ctx.lineWidth = 1.5;
-            ctx.beginPath(); ctx.moveTo(axisX, desiredY); ctx.lineTo(rightSide ? chipX : chipX + chipWidth, placedY); ctx.stroke();
-            // The marker sits at desiredY, the event's true instant, not at
-            // placedY where collision avoidance pushed its card.
+            ctx.beginPath();
+            ctx.moveTo(axisX, desiredY);
+            ctx.lineTo(rightSide ? chipX : chipX + chipWidth, desiredY);
+            ctx.stroke();
+            ctx.restore();
             if (this.slotsVisible() && this.isDraggable(item)) this.markerHits.push({ item, x: axisX, y: desiredY });
             this.drawPointMarker(ctx, axisX, desiredY, item);
-            this.drawVerticalEventCard(ctx, item, calendar);
+            this.drawTimelineEventCard(ctx, item, calendar);
         });
         this.drawVerticalDropTarget(ctx, axisX, width, timeToY);
         this.drawConnectors(ctx, width, height);
@@ -1356,17 +1587,18 @@ export class NativeTimelineRenderer {
             ctx.globalAlpha = 0.85;
             ctx.fillStyle = era.color || this.css('--text-accent', '#a78bfa');
             ctx.font = `600 10px ${this.css('--font-interface', 'sans-serif')}`;
-            const label = era.name.toUpperCase();
+            const label = (era.abbreviation || era.name).toUpperCase();
             ctx.fillText(this.truncate(ctx, label, 150), Math.max(8, width - Math.min(160, ctx.measureText(label).width + 10)), Math.min(bottom - 5, y1 + 14));
             ctx.restore();
         });
     }
 
-    private drawVerticalEventCard(ctx: CanvasRenderingContext2D, item: NativeItem, calendar: ReturnType<CalendarRegistry['getActiveCalendar']>): void {
+    /** Shared card renderer for horizontal and vertical timeline orientations. */
+    private drawTimelineEventCard(ctx: CanvasRenderingContext2D, item: NativeItem, calendar: ReturnType<CalendarRegistry['getActiveCalendar']>): void {
         const rect = item.rect!;
         const accent = item === this.selected ? this.css('--interactive-accent', '#8b5cf6') : item.laneColor;
-        const markers = `${item.event.narrativeMarkers?.isFlashback ? 'FB ' : ''}${item.event.narrativeMarkers?.isFlashforward ? 'FF ' : ''}`;
-        const title = `${markers}${item.event.name}`;
+        const title = item.event.name || '(Untitled event)';
+        const narrativeDirection = narrativeDirectionOf(item.event);
         const dateLabel = this.verticalEventDate(item.start, calendar);
         const meta = this.lanes.length > 1 ? item.laneLabel : (item.event.status || (item.event.isMilestone ? 'Milestone' : 'Event'));
         ctx.save();
@@ -1377,7 +1609,9 @@ export class NativeTimelineRenderer {
         ctx.lineWidth = item === this.selected ? 2 : 1; ctx.stroke();
         ctx.fillStyle = this.css('--text-normal', '#e5e7eb');
         ctx.font = `600 11px ${this.css('--font-interface', 'sans-serif')}`;
-        ctx.fillText(this.truncate(ctx, title, rect.width - 18), rect.x + 10, rect.y + 16);
+        const titleX = narrativeDirection ? rect.x + 29 : rect.x + 10;
+        if (narrativeDirection) this.drawNarrativeIcon(ctx, narrativeDirection, rect.x + 14, rect.y + 12, 12);
+        ctx.fillText(this.truncate(ctx, title, rect.width - (titleX - rect.x) - 8), titleX, rect.y + 16);
         ctx.fillStyle = this.css('--text-muted', '#9ca3af');
         ctx.font = `10px ${this.css('--font-interface', 'sans-serif')}`;
         const detail = `${dateLabel}  ·  ${meta}`;
@@ -1468,8 +1702,16 @@ export class NativeTimelineRenderer {
         }
         ctx.globalAlpha = 1;
         const markerInset = isPoint && withMarker;
-        const labelX = markerInset ? rect.x + 22 : rect.x + 6;
-        const available = markerInset ? Math.max(0, rect.width - 28) : Math.max(0, rect.width - 12);
+        const narrativeDirection = narrativeDirectionOf(item.event);
+        const narrativeInset = narrativeDirection ? 18 : 0;
+        const baseLabelX = markerInset ? rect.x + 22 : rect.x + 6;
+        const labelX = baseLabelX + narrativeInset;
+        const available = markerInset
+            ? Math.max(0, rect.width - 28 - narrativeInset)
+            : Math.max(0, rect.width - 12 - narrativeInset);
+        if (narrativeDirection) {
+            this.drawNarrativeIcon(ctx, narrativeDirection, baseLabelX + 6, rect.y + rect.height / 2, 11);
+        }
         if (available > 18) {
             const severity = this.conflictSeverity(item.event);
             ctx.fillStyle = severity === 'error'
@@ -1503,6 +1745,49 @@ export class NativeTimelineRenderer {
             else ctx.lineTo(px, py);
         }
         ctx.closePath();
+    }
+
+    /** Draw a compact rewind/fast-forward badge directly onto the canvas. */
+    private drawNarrativeIcon(
+        ctx: CanvasRenderingContext2D,
+        direction: NarrativeDirection,
+        x: number,
+        y: number,
+        size: number,
+    ): void {
+        const backward = direction === 'flashback';
+        const radius = size / 2;
+        const triangleWidth = size * 0.3;
+        const triangleHeight = size * 0.46;
+        const centerGap = size * 0.03;
+        const color = backward
+            ? this.css('--color-purple', '#a78bfa')
+            : this.css('--color-orange', '#f59e0b');
+
+        ctx.save();
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(x, y, radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = this.css('--background-primary', '#111827');
+
+        for (const offset of [-1, 1]) {
+            const centerX = x + offset * (triangleWidth / 2 + centerGap);
+            ctx.beginPath();
+            if (backward) {
+                ctx.moveTo(centerX + triangleWidth / 2, y - triangleHeight / 2);
+                ctx.lineTo(centerX - triangleWidth / 2, y);
+                ctx.lineTo(centerX + triangleWidth / 2, y + triangleHeight / 2);
+            } else {
+                ctx.moveTo(centerX - triangleWidth / 2, y - triangleHeight / 2);
+                ctx.lineTo(centerX + triangleWidth / 2, y);
+                ctx.lineTo(centerX - triangleWidth / 2, y + triangleHeight / 2);
+            }
+            ctx.closePath();
+            ctx.fill();
+        }
+        ctx.restore();
     }
 
     /**
@@ -1706,7 +1991,21 @@ export class NativeTimelineRenderer {
             if (!Number.isFinite(start) || !Number.isFinite(end)) return;
             const x1 = this.timeToX(start, width); const x2 = this.timeToX(end, width);
             const axisHeight = this.axisHeight();
-            ctx.save(); ctx.globalAlpha = 0.1; ctx.fillStyle = era.color || '#8b5cf6'; ctx.fillRect(x1, axisHeight, x2 - x1, height - axisHeight); ctx.restore();
+            const left = Math.max(SIDEBAR_WIDTH + 4, x1 + 4);
+            const right = Math.min(width - 4, x2 - 4);
+            ctx.save();
+            this.clipPlot(ctx, width, height);
+            ctx.globalAlpha = 0.1;
+            ctx.fillStyle = era.color || '#8b5cf6';
+            ctx.fillRect(x1, axisHeight, x2 - x1, height - axisHeight);
+            if (right > left) {
+                ctx.globalAlpha = 0.85;
+                ctx.font = `600 10px ${this.css('--font-interface', 'sans-serif')}`;
+                ctx.fillStyle = era.color || this.css('--text-accent', '#a78bfa');
+                const label = (era.abbreviation || era.name).toUpperCase();
+                ctx.fillText(this.truncate(ctx, label, right - left), left, axisHeight + 13);
+            }
+            ctx.restore();
         });
     }
 
@@ -1755,8 +2054,12 @@ export class NativeTimelineRenderer {
      */
     private itemRect(item: NativeItem, lane: Lane, width: number): DOMRect {
         if (item.rect) return item.rect;
+        if (this.isHorizontalTimeline()) {
+            const x = this.horizontalTimelineTimeToX(item.start, width);
+            return new DOMRect(x, this.viewportHeight() / 2, 1, 1);
+        }
         const rowHeight = this.rowHeight();
-        const chronology = !this.options.ganttMode;
+        const chronology = this.isChronology();
         const top = lane.top - this.scrollTop;
         if (chronology) {
             const chipWidth = this.ctx ? this.chipWidth(this.ctx, item, MIN_CHRONOLOGY_CHIP_WIDTH) : MAX_CHIP_WIDTH;
@@ -1798,12 +2101,13 @@ export class NativeTimelineRenderer {
      * floating over the chrome rather than as part of the timeline.
      */
     private clipPlot(ctx: CanvasRenderingContext2D, width: number, height: number): void {
-        const vertical = !this.options.ganttMode && this.options.timelineOrientation === 'vertical';
+        const vertical = this.isVerticalTimeline();
+        const horizontalTimeline = this.isHorizontalTimeline();
         ctx.beginPath();
         ctx.rect(
-            vertical ? 0 : SIDEBAR_WIDTH,
-            this.axisHeight(),
-            vertical ? width : Math.max(0, width - SIDEBAR_WIDTH),
+            vertical || horizontalTimeline ? 0 : SIDEBAR_WIDTH,
+            vertical || horizontalTimeline ? 0 : this.axisHeight(),
+            vertical || horizontalTimeline ? width : Math.max(0, width - SIDEBAR_WIDTH),
             height
         );
         ctx.clip();
@@ -2021,7 +2325,20 @@ export class NativeTimelineRenderer {
         tooltip.createDiv({ cls: 'sts-native-timeline-tooltip-title', text: event.name || '(Untitled event)' });
 
         const when = event.dateTime?.trim();
-        if (when) tooltip.createDiv({ cls: 'sts-native-timeline-tooltip-meta', text: when });
+        if (when) tooltip.createDiv({ cls: 'sts-native-timeline-tooltip-meta', text: `Occurred: ${when}` });
+        const narrated = event.narrativeMarkers?.narrativeDate?.trim();
+        if (narrated) {
+            const sequence = event.narrativeSequence !== undefined ? ` (#${event.narrativeSequence})` : '';
+            tooltip.createDiv({ cls: 'sts-native-timeline-tooltip-meta', text: `Narrated: ${narrated}${sequence}` });
+        }
+        const narrativeDirection = narrativeDirectionOf(event);
+        if (narrativeDirection) {
+            const label = narrativeDirection === 'flashback' ? 'Flashback' : 'Flash-forward';
+            tooltip.createDiv({ cls: 'sts-native-timeline-tooltip-meta', text: `Narrative direction: ${label}` });
+        }
+        if (event.narrativeMarkers?.narrativeContext) {
+            tooltip.createDiv({ cls: 'sts-native-timeline-tooltip-meta', text: event.narrativeMarkers.narrativeContext });
+        }
 
         const where = event.location ? this.resolveLocationName(event.location) : '';
         if (where) tooltip.createDiv({ cls: 'sts-native-timeline-tooltip-meta', text: `@ ${where}` });
@@ -2093,7 +2410,7 @@ export class NativeTimelineRenderer {
             return;
         }
         const marker = this.slotsVisible() ? this.markerAt(event.offsetX, event.offsetY) : null;
-        const vertical = !this.options.ganttMode && this.options.timelineOrientation === 'vertical';
+        const vertical = this.isVerticalTimeline();
         if (this.canvas) this.canvas.style.cursor = marker ? (vertical ? 'ns-resize' : 'ew-resize') : '';
         const item = marker ?? this.hit(event.offsetX, event.offsetY);
         if (item) this.showTooltip(item, event.offsetX, event.offsetY);
@@ -2108,8 +2425,11 @@ export class NativeTimelineRenderer {
             return;
         }
         if (!this.dragging || !this.root) return;
-        const vertical = !this.options.ganttMode && this.options.timelineOrientation === 'vertical';
-        const plotSize = vertical ? Math.max(1, this.root.clientHeight - 52) : Math.max(1, this.root.clientWidth - SIDEBAR_WIDTH);
+        const vertical = this.isVerticalTimeline();
+        const horizontalTimeline = this.isHorizontalTimeline();
+        const plotSize = vertical
+            ? Math.max(1, this.root.clientHeight - 52)
+            : Math.max(1, this.root.clientWidth - (horizontalTimeline ? 56 : SIDEBAR_WIDTH));
         const pointerDelta = vertical ? event.clientY - this.dragging.y : event.clientX - this.dragging.x;
         // Two different conversions, because dragging.start/end mean two
         // different things. For a pan they are the view window, and the content
@@ -2122,7 +2442,7 @@ export class NativeTimelineRenderer {
             : pointerDelta / plotSize * (this.viewEnd - this.viewStart);
         if (this.dragging.kind === 'pan') {
             this.viewStart = this.dragging.start + deltaTime; this.viewEnd = this.dragging.end + deltaTime;
-            if (!vertical) {
+            if (!this.isTimelineLayout()) {
                 this.scrollTop = Math.max(0, Math.min(this.maxLaneScroll(), this.scrollTop - (event.clientY - this.dragging.y)));
                 this.dragging.y = event.clientY;
             }
@@ -2164,15 +2484,31 @@ export class NativeTimelineRenderer {
         }
         if ((dragging.kind === 'move' || dragging.kind === 'marker') && dragging.item && dragging.item.start !== dragging.start) {
             const item = dragging.item;
-            const oldDate = item.event.dateTime;
+            const narrativeMode = this.options.narrativeOrder === true;
+            const oldDate = narrativeMode ? item.event.narrativeMarkers?.narrativeDate : item.event.dateTime;
             const duration = dragging.end - dragging.start;
             const startText = this.formatEditDate(item.start);
             const endText = duration > 0 ? this.formatEditDate(item.end) : '';
-            item.event.dateTime = duration > 0 ? `${startText} to ${endText}` : startText;
+            const nextDate = duration > 0 ? `${startText} to ${endText}` : startText;
+            if (narrativeMode) {
+                item.event.narrativeMarkers ??= {};
+                item.event.narrativeMarkers.narrativeDate = nextDate;
+            } else {
+                item.event.dateTime = nextDate;
+            }
             // The old date goes in the notice because there is no undo: it is
             // the only record of where the event came from.
-            try { await this.plugin.saveEvent(item.event); new Notice(`Moved “${item.event.name}” from ${oldDate || 'no date'} to ${item.event.dateTime}`); }
-            catch (error) { item.event.dateTime = oldDate; item.start = dragging.start; item.end = dragging.end; new Notice(`Could not move event: ${error instanceof Error ? error.message : String(error)}`); }
+            try { await this.plugin.saveEvent(item.event); new Notice(`Moved “${item.event.name}” from ${oldDate || 'no date'} to ${nextDate}`); }
+            catch (error) {
+                if (narrativeMode) {
+                    item.event.narrativeMarkers ??= {};
+                    item.event.narrativeMarkers.narrativeDate = oldDate;
+                } else {
+                    item.event.dateTime = oldDate;
+                }
+                item.start = dragging.start; item.end = dragging.end;
+                new Notice(`Could not move event: ${error instanceof Error ? error.message : String(error)}`);
+            }
             this.rebuild(false);
         }
     }
@@ -2206,10 +2542,10 @@ export class NativeTimelineRenderer {
     }
 
     /** Where along the time axis the pointer sits, in plot pixels. */
-    private wheelPointer(event: WheelEvent, vertical: boolean): number {
+    private wheelPointer(event: WheelEvent, vertical: boolean, horizontalTimeline: boolean): number {
         return vertical
             ? Math.max(0, event.offsetY - 28)
-            : Math.max(0, event.offsetX - SIDEBAR_WIDTH);
+            : Math.max(0, event.offsetX - (horizontalTimeline ? 28 : SIDEBAR_WIDTH));
     }
 
     /**
@@ -2222,10 +2558,11 @@ export class NativeTimelineRenderer {
     private onWheel(event: WheelEvent): void {
         if (!this.root) return;
         event.preventDefault();
-        const vertical = !this.options.ganttMode && this.options.timelineOrientation === 'vertical';
+        const vertical = this.isVerticalTimeline();
+        const horizontalTimeline = this.isHorizontalTimeline();
         const plotSize = vertical
             ? Math.max(1, this.root.clientHeight - 52)
-            : Math.max(1, this.root.clientWidth - SIDEBAR_WIDTH);
+            : Math.max(1, this.root.clientWidth - (horizontalTimeline ? 56 : SIDEBAR_WIDTH));
         const deltaY = this.wheelPixels(event.deltaY, event.deltaMode, plotSize);
         const deltaX = this.wheelPixels(event.deltaX, event.deltaMode, plotSize);
 
@@ -2234,16 +2571,16 @@ export class NativeTimelineRenderer {
         // serves ctrl+wheel on a mouse, which means the same thing.
         if (event.ctrlKey) {
             const pixels = Math.max(-PINCH_MAX_PIXELS, Math.min(PINCH_MAX_PIXELS, deltaY * PINCH_WHEEL_GAIN));
-            this.zoomAt(pixels, this.wheelPointer(event, vertical), plotSize);
+            this.zoomAt(pixels, this.wheelPointer(event, vertical, horizontalTimeline), plotSize);
             this.scheduleDraw();
             return;
         }
 
-        const overSidebar = !vertical && event.offsetX < SIDEBAR_WIDTH;
+        const overSidebar = !this.isTimelineLayout() && event.offsetX < SIDEBAR_WIDTH;
         // Lane scrolling means nothing in the vertical layout: the cards are
         // placed along the time axis and never read scrollTop, so a bare
         // trackpad scroll has to pan through time or the gesture looks dead.
-        const canScrollLanes = !vertical && this.maxLaneScroll() > 0;
+        const canScrollLanes = !this.isTimelineLayout() && this.maxLaneScroll() > 0;
         if (canScrollLanes && (event.altKey || overSidebar)) {
             this.scrollTop = Math.max(0, Math.min(this.maxLaneScroll(), this.scrollTop + deltaY));
             this.scheduleDraw();
@@ -2261,7 +2598,7 @@ export class NativeTimelineRenderer {
         // apps but wrong here: this lives in a scrollable note pane, where a
         // bare wheel is expected to move the content, not rescale it.
         if (event.shiftKey) {
-            this.zoomAt(deltaY, this.wheelPointer(event, vertical), plotSize);
+            this.zoomAt(deltaY, this.wheelPointer(event, vertical, horizontalTimeline), plotSize);
         } else if (canScrollLanes) {
             this.scrollTop = Math.max(0, Math.min(this.maxLaneScroll(), this.scrollTop + deltaY));
         } else {
@@ -2275,11 +2612,13 @@ export class NativeTimelineRenderer {
         const points = Array.from(this.activePointers.values());
         if (points.length < 2) return;
         const distance = Math.hypot(points[1].x - points[0].x, points[1].y - points[0].y);
-        const vertical = !this.options.ganttMode && this.options.timelineOrientation === 'vertical';
+        const vertical = this.isVerticalTimeline();
+        const horizontalTimeline = this.isHorizontalTimeline();
         const center = vertical ? (points[0].y + points[1].y) / 2 : (points[0].x + points[1].x) / 2;
         const bounds = this.root.getBoundingClientRect();
-        const local = vertical ? center - bounds.top - 28 : center - bounds.left - SIDEBAR_WIDTH;
-        const size = vertical ? Math.max(1, this.root.clientHeight - 52) : Math.max(1, this.root.clientWidth - SIDEBAR_WIDTH);
+        const inset = horizontalTimeline ? 28 : SIDEBAR_WIDTH;
+        const local = vertical ? center - bounds.top - 28 : center - bounds.left - inset;
+        const size = vertical ? Math.max(1, this.root.clientHeight - 52) : Math.max(1, this.root.clientWidth - (horizontalTimeline ? 56 : SIDEBAR_WIDTH));
         const ratio = Math.max(0, Math.min(1, local / size));
         this.pinch = { distance: Math.max(1, distance), span: this.viewEnd - this.viewStart, anchorTime: this.viewStart + ratio * (this.viewEnd - this.viewStart) };
     }
@@ -2290,11 +2629,13 @@ export class NativeTimelineRenderer {
         if (points.length < 2) return;
         const distance = Math.max(1, Math.hypot(points[1].x - points[0].x, points[1].y - points[0].y));
         const span = Math.max(this.minimumSpan(), Math.min(MAX_SPAN, this.pinch.span * this.pinch.distance / distance));
-        const vertical = !this.options.ganttMode && this.options.timelineOrientation === 'vertical';
+        const vertical = this.isVerticalTimeline();
+        const horizontalTimeline = this.isHorizontalTimeline();
         const center = vertical ? (points[0].y + points[1].y) / 2 : (points[0].x + points[1].x) / 2;
         const bounds = this.root.getBoundingClientRect();
-        const local = vertical ? center - bounds.top - 28 : center - bounds.left - SIDEBAR_WIDTH;
-        const size = vertical ? Math.max(1, this.root.clientHeight - 52) : Math.max(1, this.root.clientWidth - SIDEBAR_WIDTH);
+        const inset = horizontalTimeline ? 28 : SIDEBAR_WIDTH;
+        const local = vertical ? center - bounds.top - 28 : center - bounds.left - inset;
+        const size = vertical ? Math.max(1, this.root.clientHeight - 52) : Math.max(1, this.root.clientWidth - (horizontalTimeline ? 56 : SIDEBAR_WIDTH));
         const ratio = Math.max(0, Math.min(1, local / size));
         this.viewStart = this.pinch.anchorTime - span * ratio;
         this.viewEnd = this.viewStart + span;
@@ -2388,15 +2729,15 @@ export class NativeTimelineRenderer {
      * of everything but events as soon as a fork is selected.
      */
     private matchesFork(event: Event): boolean {
-        const key = this.eventKey(event);
+        const keys = this.eventKeys(event);
         const forkId = this.filters.forkId;
-        if (forkId === undefined) return isEventOnMain(key, this.plugin.getTimelineForks());
+        if (forkId === undefined) return isEventOnMain(keys, this.plugin.getTimelineForks());
         if (forkId === '__compare__') return true;
 
         const fork = this.plugin.getTimelineFork(forkId);
         if (!fork) return false;
         return isEventInFork(
-            key,
+            keys,
             this.eventStart(event),
             fork,
             this.parseDate(fork.divergenceDate),
@@ -2440,6 +2781,11 @@ export class NativeTimelineRenderer {
     }
 
     private eventStart(event: Event): number { return event.dateTime ? this.parseDate(event.dateTime.split(/\s+(?:to|through|until)\s+/i)[0]) : Number.POSITIVE_INFINITY; }
+
+    private placementStart(event: Event): number {
+        const date = timelineDateForMode(event, this.options.narrativeOrder === true);
+        return date ? this.parseDate(date.split(/\s+(?:to|through|until)\s+/i)[0]) : Number.POSITIVE_INFINITY;
+    }
     /**
      * A date as a position on this axis.
      *
@@ -2463,16 +2809,23 @@ export class NativeTimelineRenderer {
     private viewportWidth(): number { return this.exportSurface?.width ?? this.root?.clientWidth ?? 900; }
     private viewportHeight(): number { return this.exportSurface?.height ?? this.root?.clientHeight ?? 600; }
     private eventKey(event: Event): string { return String(event.id || event.name); }
+
+    /** Every identifier older and newer branch records may use for this Event. */
+    private eventKeys(event: Event): string[] {
+        return Array.from(new Set([event.id, event.name].filter((key): key is string => Boolean(key))));
+    }
     private timeToX(time: number, width: number): number { return SIDEBAR_WIDTH + (time - this.viewStart) / (this.viewEnd - this.viewStart) * Math.max(1, width - SIDEBAR_WIDTH); }
+    private horizontalTimelineTimeToX(time: number, width: number): number { return 28 + (time - this.viewStart) / (this.viewEnd - this.viewStart) * Math.max(1, width - 56); }
     private rowHeight(): number { return Math.round(24 + (100 - this.options.density) * 0.16); }
     private minimumSpan(): number { return this.calendarRegistry.getActiveCalendar().baseUnit === 'minute' ? 60_000 : DAY_MS; }
 
     /** The visible window expressed in the shared absolute-day space. */
     private axisView(): AxisView {
-        const vertical = !this.options.ganttMode && this.options.timelineOrientation === 'vertical';
+        const vertical = this.isVerticalTimeline();
+        const horizontalTimeline = this.isHorizontalTimeline();
         const size = !this.root ? 900
             : vertical ? Math.max(1, this.root.clientHeight - 52)
-            : Math.max(1, this.root.clientWidth - SIDEBAR_WIDTH);
+            : Math.max(1, this.root.clientWidth - (horizontalTimeline ? 56 : SIDEBAR_WIDTH));
         const epoch = this.unixEpochAbsoluteDay();
         return { startDay: this.viewStart / DAY_MS + epoch, endDay: this.viewEnd / DAY_MS + epoch, widthPx: size };
     }

@@ -1,3 +1,5 @@
+import { restoreMapMembership } from '../services/MapMembershipService';
+import { GridController } from '../leaflet/grid/GridController';
 // Map View - Full workspace view for interactive map visualization
 // Provides a dedicated panel for viewing and interacting with story maps
 
@@ -73,6 +75,7 @@ export class MapView extends ItemView {
     private hasRegisteredWorkspaceResizeListener = false;
     private currentZoom = 2;
     private locationLevelMode: LocationLevel = 'auto';
+    private gridController: GridController | null = null;
     private placementMode: { type: 'location' | 'character' | 'event' | 'item' | 'culture' | 'economy' | 'magicsystem' | 'group' | 'scene' | 'reference' | null } = { type: null };
     private placementClickHandler: ((e: L.LeafletMouseEvent) => void) | null = null;
     private placementOverlay: HTMLElement | null = null;
@@ -100,14 +103,23 @@ export class MapView extends ItemView {
     }
 
     async onOpen(): Promise<void> {
-        const container = this.containerEl.children[1] as HTMLElement;
+        let mapRefreshTimer: number | null = null;
+        const queueMapRefresh = () => {
+            if (mapRefreshTimer !== null) window.clearTimeout(mapRefreshTimer);
+            mapRefreshTimer = window.setTimeout(() => { void this.refreshMapMembership().catch(error => new Notice(`Map refresh failed: ${String(error)}`)); }, 200);
+        };
+        this.registerEvent(this.app.metadataCache.on('changed', queueMapRefresh));
+        this.registerEvent(this.app.vault.on('delete', queueMapRefresh));
+        this.registerEvent(this.app.vault.on('rename', queueMapRefresh));
+        this.register(() => { if (mapRefreshTimer !== null) window.clearTimeout(mapRefreshTimer); });
+        const container = this.contentEl;
         container.empty();
         container.addClass('storyteller-map-view');
         
         // Ensure container has proper base styles
         container.setCssStyles({ display: 'flex' });
         container.setCssStyles({ flexDirection: 'column' });
-        container.setCssStyles({ height: '100%' });
+        container.setCssStyles({ flex: '1 1 0', height: 'auto', minHeight: '0', minWidth: '0' });
         container.setCssStyles({ overflow: 'hidden' });
 
         // Create main sections with flex layout
@@ -122,7 +134,7 @@ export class MapView extends ItemView {
         this.mapContainer.setCssStyles({ flex: '1' });
         this.mapContainer.setCssStyles({ position: 'relative' });
         this.mapContainer.setCssStyles({ overflow: 'hidden' });
-        this.mapContainer.setCssStyles({ minHeight: '200px' });
+        this.mapContainer.setCssStyles({ minHeight: '0', minWidth: '0' });
 
         // Build each section
         await this.buildToolbar();
@@ -263,6 +275,7 @@ export class MapView extends ItemView {
                 }
             });
         }
+
 
         // Set current map if exists
         if (this.currentMap) {
@@ -537,6 +550,7 @@ export class MapView extends ItemView {
 
         // Quick actions
         const quickActions = this.entityBarEl.createDiv('entity-bar-quick-actions');
+        this.gridController?.mountToolbar(quickActions);
         
         // Edit map button
         const editMapBtn = quickActions.createEl('button', {
@@ -622,14 +636,16 @@ export class MapView extends ItemView {
     /**
      * Enable placement mode for clicking on map to place entities
      */
-    private enablePlacementMode(
+    private async enablePlacementMode(
         entityType: 'location' | 'character' | 'event' | 'item' | 'culture' | 'economy' | 'magicsystem' | 'group' | 'scene' | 'reference',
         onPlaceCoordinates: (coordinates: [number, number]) => void
-    ): void {
+    ): Promise<void> {
+        if (this.gridController && !await this.gridController.endEditing()) return;
         // Disable any existing placement mode first
         this.disablePlacementMode();
 
         this.placementMode.type = entityType;
+        this.gridController?.setPlacement(true);
 
         // Create instruction overlay
         if (this.mapContainer) {
@@ -658,7 +674,8 @@ export class MapView extends ItemView {
 
         // Add click handler to map
         this.placementClickHandler = (e: L.LeafletMouseEvent) => {
-            const coordinates: [number, number] = [e.latlng.lat, e.latlng.lng];
+            const raw: [number, number] = [e.latlng.lat, e.latlng.lng];
+            const coordinates = this.gridController?.snapPoint(raw) ?? raw;
 
             // Disable placement mode
             this.disablePlacementMode();
@@ -709,6 +726,7 @@ export class MapView extends ItemView {
 
         // Reset placement mode
         this.placementMode.type = null;
+        this.gridController?.setPlacement(false);
     }
 
     /**
@@ -784,6 +802,14 @@ export class MapView extends ItemView {
     /**
      * Show modal to add a character to the map
      */
+    private async ensureLocationMapBinding(service: LocationService, id: string, mapId: string, coordinates: [number, number]): Promise<void> {
+        const location = await service.getLocation(id);
+        if (location?.mapBindings?.some(b => b.mapId === mapId)) return;
+        // Area-only locations are rendered through the native marker adapter.
+        if (this.currentMap?.placementGrid?.areas.some(a => a.locationId === location?.id && a.cells.length)) return;
+        await service.addMapBinding(id, mapId, coordinates);
+    }
+
     private showAddCharacterModal(): void {
         if (!this.currentMap) return;
 
@@ -814,7 +840,7 @@ export class MapView extends ItemView {
                 try {
                     if (characterLocation) {
                         // Character has existing location - place it at coordinates
-                        await locationService.addMapBinding(
+                        await this.ensureLocationMapBinding(locationService,
                             characterLocation.id || characterLocation.name,
                             mapId,
                             coordinates
@@ -905,7 +931,7 @@ export class MapView extends ItemView {
                                     targetLocation = result;
                                     isNewLocation = false;
                                     // Add map binding for existing location at the clicked coordinates
-                                    await locationService.addMapBinding(
+                                    await this.ensureLocationMapBinding(locationService,
                                         result.id || result.name,
                                         mapId,
                                         coordinates
@@ -954,6 +980,7 @@ export class MapView extends ItemView {
                         }
                     }
 
+                    this.gridController?.refreshEntities();
                     // Refresh entities on the map
                     if (this.leafletRenderer) {
                         await this.leafletRenderer.refreshEntities();
@@ -1003,7 +1030,7 @@ export class MapView extends ItemView {
                 try {
                     // If event has a location, bind that location to the map at these coordinates
                     if (eventLocation) {
-                        await locationService.addMapBinding(
+                        await this.ensureLocationMapBinding(locationService,
                             eventLocation.id || eventLocation.name,
                             mapId,
                             coordinates
@@ -1094,7 +1121,7 @@ export class MapView extends ItemView {
                                     targetLocation = result;
                                     isNewLocation = false;
                                     // Add map binding for existing location at the clicked coordinates
-                                    await locationService.addMapBinding(
+                                    await this.ensureLocationMapBinding(locationService,
                                         result.id || result.name,
                                         mapId,
                                         coordinates
@@ -1143,6 +1170,7 @@ export class MapView extends ItemView {
                         }
                     }
 
+                    this.gridController?.refreshEntities();
                     // Refresh entities on the map (preserves zoom/pan state)
                     if (this.leafletRenderer) {
                         await this.leafletRenderer.refreshEntities();
@@ -1192,7 +1220,7 @@ export class MapView extends ItemView {
                 try {
                     // If item has a location, bind that location to the map at these coordinates
                     if (itemLocation) {
-                        await locationService.addMapBinding(
+                        await this.ensureLocationMapBinding(locationService,
                             itemLocation.id || itemLocation.name,
                             mapId,
                             coordinates
@@ -1283,7 +1311,7 @@ export class MapView extends ItemView {
                                     targetLocation = result;
                                     isNewLocation = false;
                                     // Add map binding for existing location at the clicked coordinates
-                                    await locationService.addMapBinding(
+                                    await this.ensureLocationMapBinding(locationService,
                                         result.id || result.name,
                                         mapId,
                                         coordinates
@@ -1332,6 +1360,7 @@ export class MapView extends ItemView {
                         }
                     }
 
+                    this.gridController?.refreshEntities();
                     // Refresh entities on the map (preserves zoom/pan state)
                     if (this.leafletRenderer) {
                         await this.leafletRenderer.refreshEntities();
@@ -1453,7 +1482,7 @@ export class MapView extends ItemView {
                             // This prevents updating coordinates and moving existing pins
                             const hasBinding = targetLocation.mapBindings?.some((b: MapBinding) => b.mapId === mapId);
                             if (!hasBinding) {
-                                await locationService.addMapBinding(
+                                await this.ensureLocationMapBinding(locationService,
                                     targetLocation.id || targetLocation.name,
                                     mapId,
                                     coordinates
@@ -1500,7 +1529,7 @@ export class MapView extends ItemView {
                                 targetLocation = result;
                                 isNewLocation = false;
                                 // Add map binding for existing location
-                                await locationService.addMapBinding(
+                                await this.ensureLocationMapBinding(locationService,
                                     result.id || result.name,
                                     mapId,
                                     coordinates
@@ -1558,6 +1587,7 @@ export class MapView extends ItemView {
                     // CRITICAL FIX: Also update the entity's frontmatter with map coordinates
                     // This allows EntityMarkerDiscovery to find and render the entity directly on the map
                     await this.updateEntityMapBinding(selectedEntity, entityType, mapId, coordinates);
+                    this.gridController?.refreshEntities();
 
                     if (isNewLocation) {
                         new Notice(`${entityTypeName} "${selectedEntity.name}" added to new location on map`);
@@ -1587,12 +1617,17 @@ export class MapView extends ItemView {
      */
     private async updateEntityMapBinding(
         entity: NamedEntity,
-        entityType: 'culture' | 'economy' | 'magicsystem' | 'group' | 'scene' | 'reference',
+        entityType: 'character' | 'event' | 'item' | 'culture' | 'economy' | 'magicsystem' | 'group' | 'scene' | 'reference',
         mapId: string,
         coordinates: [number, number]
     ): Promise<void> {
+        await restoreMapMembership(this.plugin, mapId, entityType, entity.id || entity.name);
         // Get the entity's file path
-        const filePath = entity.filePath;
+        const groupFile = entityType === 'group' ? this.app.vault.getMarkdownFiles().find(file => {
+            const fm = this.app.metadataCache.getFileCache(file)?.frontmatter;
+            return fm?.['storyteller-type'] === 'group' && fm?.['storyteller-id'] === entity.id;
+        }) : undefined;
+        const filePath = entity.filePath || groupFile?.path;
         if (!filePath) {
             
             return;
@@ -1607,19 +1642,8 @@ export class MapView extends ItemView {
         try {
             // Update the entity's frontmatter with map coordinates
             await this.app.fileManager.processFrontMatter(file, (frontmatter: Record<string, unknown>) => {
-                // Set mapId if not already set, or add to relatedMapIds
-                if (!frontmatter['mapId']) {
-                    frontmatter['mapId'] = mapId;
-                } else if (frontmatter['mapId'] !== mapId) {
-                    // Add to relatedMapIds if different from primary mapId
-                    if (!Array.isArray(frontmatter['relatedMapIds'])) {
-                        frontmatter['relatedMapIds'] = [];
-                    }
-                    const relatedMapIds = frontmatter['relatedMapIds'] as string[];
-                    if (!relatedMapIds.includes(mapId)) {
-                        relatedMapIds.push(mapId);
-                    }
-                }
+                // Coordinates belong to one map, never reuse them through relatedMapIds.
+                frontmatter['mapId'] = mapId;
 
                 // Set map coordinates
                 frontmatter['mapCoordinates'] = coordinates;
@@ -1747,6 +1771,7 @@ export class MapView extends ItemView {
      * Load a specific map by ID or name
      */
     async loadMap(mapIdOrName: string): Promise<void> {
+        if (this.gridController && !await this.gridController.canLeave()) return;
         try {
             // Try to find map by ID first, then by name
             const maps = await this.plugin.listMaps();
@@ -1758,15 +1783,6 @@ export class MapView extends ItemView {
             }
 
             const resolvedMapId = map.id || map.name;
-
-            // Automatically sync map/location hierarchy whenever a map is loaded
-            // This keeps parent/child relationships bidirectionally consistent
-            try {
-                await this.hierarchyManager.syncMapLocationHierarchy(resolvedMapId);
-            } catch {
-            	// intentional
-                
-            }
 
             this.currentMap = map;
 
@@ -1797,6 +1813,8 @@ export class MapView extends ItemView {
     private async renderMap(): Promise<void> {
         if (!this.mapContainer || !this.currentMap) return;
 
+        this.gridController?.destroy();
+        this.gridController = null;
         // Clean up existing renderer before creating new one
         if (this.leafletRenderer) {
             try {
@@ -1835,8 +1853,8 @@ export class MapView extends ItemView {
         leafletContainer.setCssStyles({ left: '0' });
         leafletContainer.setCssStyles({ width: `${containerWidth}px` });
         leafletContainer.setCssStyles({ height: `${containerHeight}px` });
-        leafletContainer.setCssStyles({ minHeight: '400px' });
-        leafletContainer.setCssStyles({ minWidth: '400px' });
+        leafletContainer.setCssStyles({ minHeight: '0' });
+        leafletContainer.setCssStyles({ minWidth: '0' });
 
         // Use transparent background for image maps, grey for real-world maps
         const isImageMap = this.currentMap.type === 'image' || this.currentMap.image;
@@ -1874,14 +1892,6 @@ export class MapView extends ItemView {
                 getSectionInfo: () => null
             } as unknown as import('obsidian').MarkdownPostProcessorContext;
 
-            // Ensure container has explicit dimensions like code block processor
-            const containerRect = leafletContainer.getBoundingClientRect();
-            if (containerRect.height === 0 || containerRect.width === 0) {
-                // Set explicit minimum dimensions if flex layout hasn't computed yet
-                leafletContainer.setCssStyles({ minHeight: '500px' });
-                leafletContainer.setCssStyles({ minWidth: '100%' });
-            }
-
             // Create renderer
             this.leafletRenderer = new LeafletRenderer(
                 this.plugin,
@@ -1892,6 +1902,15 @@ export class MapView extends ItemView {
 
             // Register as child component to trigger lifecycle (like code block processor)
             mockContext.addChild(this.leafletRenderer);
+            await this.leafletRenderer.initialize();
+            const imageBounds = this.leafletRenderer.getImageBounds();
+            const initializedMap = this.leafletRenderer.getMap();
+            if (imageBounds && initializedMap) {
+                this.buildEntityBar();
+                try { this.gridController = new GridController(this.plugin, initializedMap, this.currentMap, imageBounds, this.entityBarEl!.querySelector<HTMLElement>('.entity-bar-quick-actions')!); }
+                catch (error) { new Notice(`Grid unavailable: ${error instanceof Error ? error.message : String(error)}`); }
+                initializedMap.on('storyteller:area-saved', () => { void this.leafletRenderer?.refreshEntities(); });
+            }
 
             // CRITICAL: Prevent Obsidian from intercepting events when using the map
             // 
@@ -1905,53 +1924,15 @@ export class MapView extends ItemView {
             // 
             // Reference: https://github.com/Leaflet/Leaflet/discussions/8972
 
-            // Wheel events for scroll zoom
-            // Custom zoom handler that zooms from center (not mouse position)
-            // Must be at activeDocument level to work with Leaflet 1.8+ event handling
-            let wheelTimeout: number | null = null;
-            let wheelDelta = 0;
-
+            // Leaflet alone owns wheel zoom; do not race it with delayed setView.
             const wheelHandler = (ev: WheelEvent) => {
-                const targetNode = ev.target as Node;
-                const isEventOnMap = ev.target === leafletContainer || leafletContainer.contains(targetNode);
-                if (isEventOnMap) {
-                    // Prevent default scroll and Obsidian handling
+                if (leafletContainer.contains(ev.target as Node)) {
                     ev.preventDefault();
                     ev.stopPropagation();
-
-                    // Accumulate wheel delta for smooth zooming
-                    wheelDelta += ev.deltaY;
-
-                    // Debounce wheel events
-                    if (wheelTimeout) {
-                        window.clearTimeout(wheelTimeout);
-                    }
-
-                    wheelTimeout = window.setTimeout(() => {
-                        const map = this.leafletRenderer?.getMap();
-                        if (!map) return;
-
-                        // Calculate zoom change (negative deltaY = zoom in, positive = zoom out)
-                        const zoomChange = -wheelDelta / 80;  // 80 pixels per zoom level
-                        const currentZoom = map.getZoom();
-                        const currentCenter = map.getCenter();
-
-                        // Calculate new zoom level and clamp to min/max
-                        const minZoom = map.getMinZoom();
-                        const maxZoom = map.getMaxZoom();
-                        let newZoom = currentZoom + (zoomChange * 0.25);  // 0.25 for fine control
-                        newZoom = Math.max(minZoom, Math.min(maxZoom, newZoom));
-
-                        // Zoom to new level, keeping the same center (prevents panning!)
-                        map.setView(currentCenter, newZoom, { animate: false });
-
-                        // Reset accumulator
-                        wheelDelta = 0;
-                    }, 40);  // 40ms debounce
                 }
             };
             activeDocument.addEventListener('wheel', wheelHandler, { passive: false });
-            
+
             // Touch events for mobile panning
             const touchMoveHandler = (ev: TouchEvent) => {
                 const targetNode = ev.target as Node;
@@ -2034,7 +2015,8 @@ export class MapView extends ItemView {
     private mapToBlockParams(map: StoryMap): BlockParameters {
         const params: BlockParameters = {
             type: map.type || 'image',
-            id: map.id
+            id: map.id || map.name,
+            persistedMarkers: map.markers ?? []
         };
 
         // Image-based map parameters
@@ -2121,6 +2103,23 @@ export class MapView extends ItemView {
     /**
      * Refresh the current map
      */
+    private membershipRefreshBusy = false;
+    private membershipRefreshPending = false;
+    private async refreshMapMembership(): Promise<void> {
+        if (this.membershipRefreshBusy) { this.membershipRefreshPending = true; return; }
+        if (!this.currentMap || !this.leafletRenderer) return;
+        this.membershipRefreshBusy = true;
+        try {
+            const current = (await this.plugin.listMaps()).find(m => (m.id || m.name) === (this.currentMap!.id || this.currentMap!.name));
+            if (current) this.currentMap = current;
+            await this.gridController?.refreshFromVault(current);
+            await this.leafletRenderer.refreshEntities();
+        } finally {
+            this.membershipRefreshBusy = false;
+            if (this.membershipRefreshPending) { this.membershipRefreshPending = false; void this.refreshMapMembership(); }
+        }
+    }
+
     async refresh(): Promise<void> {
         if (this.currentMap) {
             const mapId = this.currentMap.id || this.currentMap.name;
@@ -2261,6 +2260,8 @@ export class MapView extends ItemView {
     }
 
     async onClose(): Promise<void> {
+        this.gridController?.destroy();
+        this.gridController = null;
         // Clean up placement mode
         this.disablePlacementMode();
 

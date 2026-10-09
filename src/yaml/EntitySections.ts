@@ -127,7 +127,11 @@ export function normalizeEntityType(value: unknown): EntityType | null {
   if (raw === 'campaignsession' || raw === 'campaign-session' || raw === 'campaign_session') return 'campaignSession';
   if (raw === 'timelineera' || raw === 'timeline-era' || raw === 'timeline_era' || raw === 'era') return 'timelineEra';
   if (raw === 'timelinetrack' || raw === 'timeline-track' || raw === 'timeline_track' || raw === 'track') return 'timelineTrack';
-  if (raw === 'timelinebranch' || raw === 'timeline-branch' || raw === 'timeline_branch' || raw === 'branch') return 'timelineBranch';
+  if (
+    raw === 'timelinebranch' || raw === 'timeline-branch' || raw === 'timeline_branch' ||
+    raw === 'timelinefork' || raw === 'timeline-fork' || raw === 'timeline_fork' ||
+    raw === 'branch' || raw === 'fork'
+  ) return 'timelineBranch';
   return null;
 }
 
@@ -203,7 +207,7 @@ const FRONTMATTER_WHITELISTS: Record<EntityType, Set<string>> = {
   map: new Set([
     'id', 'entityType', 'name', 'description', 'scale', 'parentMapId', 'childMapIds', 'correspondingLocationId', 'backgroundImagePath', 'mapData',
     'width', 'height', 'defaultZoom', 'center', 'bounds', 'markers', 'layers',
-    'gridEnabled', 'gridSize', 'profileImagePath', 'linkedLocations', 'linkedCharacters', 'linkedEvents',
+    'removedMapEntities', 'placementGrid', 'gridEnabled', 'gridSize', 'profileImagePath', 'linkedLocations', 'linkedCharacters', 'linkedEvents',
     'linkedItems', 'linkedGroups', 'linkedCultures', 'linkedEconomies', 'linkedMagicSystems', 'linkedScenes', 'linkedReferences',
     'groups', 'customFields', 'created', 'modified',
     'type', 'image', 'lat', 'long', 'minZoom', 'maxZoom', 'tileServer', 'darkMode',
@@ -252,12 +256,13 @@ const FRONTMATTER_WHITELISTS: Record<EntityType, Set<string>> = {
   campaignSession: new Set([
     'id', 'entityType', 'name', 'storyId', 'currentSceneId', 'currentSceneName', 'activeMapId',
     'partyCharacterIds', 'partyCharacterNames', 'partyState',
-    'partyItems', 'flags', 'revealedCompendiumEntryIds', 'groupStandings',
+    'partyItems', 'flags', 'revealedCompendiumEntryIds', 'revealedCompendiumEntryNames',
+    'groupStandings', 'clocks', 'threads',
     'collectedBoardItemKeys',
     'status', 'created', 'modified'
   ]),
   timelineEra: new Set([
-    'id', 'entityType', 'name', 'storyId', 'startDate', 'endDate', 'color', 'type',
+    'id', 'entityType', 'name', 'abbreviation', 'storyId', 'startDate', 'endDate', 'color', 'type',
     'parentEraId', 'tags', 'sortOrder', 'visible', 'customFields'
   ]),
   timelineTrack: new Set([
@@ -693,6 +698,7 @@ export function toSafeFileName(filename: string): string {
  * @returns Parsed frontmatter object or undefined if no frontmatter found
  */
 export function parseFrontmatterFromContent(content: string): Record<string, unknown> | undefined {
+  content = content.replace(/^\uFEFF/, '');
   if (!content || !content.startsWith('---')) return undefined;
 
   const frontmatterEndIndex = content.indexOf('\n---', 3);

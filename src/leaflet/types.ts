@@ -33,6 +33,7 @@ export interface BlockParameters {
     draw?: boolean;          // Enable drawing controls
 
     // Markers
+    persistedMarkers?: import('../types').MapMarker[];
     marker?: string | string[];           // Marker definitions
     markerFile?: string | string[];       // Files to load markers from
     markerTag?: string | string[];        // Tags to filter markers

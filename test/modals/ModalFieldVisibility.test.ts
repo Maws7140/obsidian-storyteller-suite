@@ -4,6 +4,7 @@ import {
     setModalFieldHidden,
     seedDefaultCustomFields,
     CHARACTER_MODAL_FIELDS,
+    EVENT_MODAL_FIELDS,
     ITEM_MODAL_FIELDS,
     MODAL_FIELD_SETS,
 } from '../../src/modals/entity/ModalFieldVisibility';
@@ -119,6 +120,7 @@ describe('field definitions', () => {
     it('name is not hideable, since saving requires it', () => {
         expect(CHARACTER_MODAL_FIELDS.some(f => f.key === 'name')).toBe(false);
         expect(ITEM_MODAL_FIELDS.some(f => f.key === 'name')).toBe(false);
+        expect(EVENT_MODAL_FIELDS.some(f => f.key === 'name')).toBe(false);
     });
 
     it('keys are unique', () => {

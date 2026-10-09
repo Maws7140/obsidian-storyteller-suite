@@ -10,6 +10,19 @@ export interface ForkLike {
     linkedEvents?: string[];
 }
 
+/** An Event may be referenced by its stable ID or its display name. */
+export type EventKey = string | readonly string[];
+
+function eventKeys(value: EventKey): readonly string[] {
+    return typeof value === 'string' ? [value] : value;
+}
+
+/** Whether a fork claims any valid identifier for an Event. */
+export function isEventLinkedToFork(eventKey: EventKey, fork: ForkLike): boolean {
+    const linked = fork.linkedEvents || [];
+    return eventKeys(eventKey).some(key => linked.includes(key));
+}
+
 /** The parts of a TimelineFork that decide lane order. */
 export interface ForkParentLike {
     id: string;
@@ -55,8 +68,8 @@ export function orderForksByParent<T extends ForkParentLike>(forks: T[]): T[] {
 const ROOT = '__main__';
 
 /** An event is on the main timeline when no fork has claimed it. */
-export function isEventOnMain(eventKey: string, forks: ForkLike[]): boolean {
-    return !forks.some(fork => fork.linkedEvents?.includes(eventKey));
+export function isEventOnMain(eventKey: EventKey, forks: ForkLike[]): boolean {
+    return !forks.some(fork => isEventLinkedToFork(eventKey, fork));
 }
 
 /**
@@ -74,13 +87,13 @@ export function isEventOnMain(eventKey: string, forks: ForkLike[]): boolean {
  *   not.
  */
 export function isEventInFork(
-    eventKey: string,
+    eventKey: EventKey,
     eventStart: number,
     fork: ForkLike,
     divergence: number,
     allForks: ForkLike[]
 ): boolean {
-    if (fork.linkedEvents?.includes(eventKey)) return true;
+    if (isEventLinkedToFork(eventKey, fork)) return true;
     // Another branch's exclusive event never bleeds into this one.
     if (!isEventOnMain(eventKey, allForks)) return false;
     if (!Number.isFinite(divergence)) return true;

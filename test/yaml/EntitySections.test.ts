@@ -69,13 +69,45 @@ describe('EntitySections', () => {
     expect(normalizeEntityType('magic-system')).toBe('magicSystem');
     expect(normalizeEntityType('compendium_entry')).toBe('compendiumEntry');
     expect(normalizeEntityType('campaignSession')).toBe('campaignSession');
+    expect(normalizeEntityType('era')).toBe('timelineEra');
+    expect(normalizeEntityType('branch')).toBe('timelineBranch');
+    expect(normalizeEntityType('fork')).toBe('timelineBranch');
+    expect(normalizeEntityType('timelineFork')).toBe('timelineBranch');
     expect(normalizeEntityType('unknown')).toBeNull();
+  });
+
+  it('keeps timeline era abbreviations in frontmatter', () => {
+    const fm = buildFrontmatter('timelineEra', {
+      id: 'era-1',
+      name: 'American Civil War',
+      abbreviation: 'ACW',
+      startDate: '1861-04-12',
+      endDate: '1865-05-26',
+    });
+    expect(fm).toMatchObject({
+      entityType: 'timelineEra',
+      abbreviation: 'ACW',
+    });
   });
 
   it('treats missing stamps as compatible and mismatched stamps as incompatible', () => {
     expect(isStampedEntityTypeCompatible(undefined, 'book')).toBe(true);
     expect(isStampedEntityTypeCompatible('book', 'book')).toBe(true);
     expect(isStampedEntityTypeCompatible('character', 'book')).toBe(false);
+  });
+
+  it('keeps campaign clocks, threads, and revealed lore mirrors in session frontmatter', () => {
+    const fm = buildFrontmatter('campaignSession', {
+      name: 'Session one',
+      storyId: 'story-1',
+      clocks: [{ id: 'clock-1', name: 'Alarm', current: 2, segments: 4 }],
+      threads: [{ id: 'thread-1', name: 'Find the key', status: 'active' }],
+      revealedCompendiumEntryIds: ['lore-1'],
+      revealedCompendiumEntryNames: ['The old bell'],
+    });
+    expect(fm.clocks).toEqual([{ id: 'clock-1', name: 'Alarm', current: 2, segments: 4 }]);
+    expect(fm.threads).toEqual([{ id: 'thread-1', name: 'Find the key', status: 'active' }]);
+    expect(fm.revealedCompendiumEntryNames).toEqual(['The old bell']);
   });
 
   describe('Empty Field Preservation', () => {

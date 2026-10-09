@@ -1,3 +1,5 @@
+import { detachFromMaps, restoreMapMembership } from './MapMembershipService';
+import { cellAt } from '../leaflet/grid/GridModel';
 /**
  * LocationService - Manages location hierarchy, map bindings, and entity relationships
  * Provides methods for navigating and manipulating the location tree structure
@@ -265,6 +267,7 @@ export class LocationService {
             location.mapBindings.push(binding);
         }
 
+        await restoreMapMembership(this.plugin, mapId, 'location', location.id || location.name);
         await this.plugin.saveLocation(location);
     }
 
@@ -273,9 +276,9 @@ export class LocationService {
      */
     async removeMapBinding(locationId: string, mapId: string): Promise<void> {
         const location = await this.getLocation(locationId);
-        if (!location || !location.mapBindings) return;
-
-        location.mapBindings = location.mapBindings.filter(b => b.mapId !== mapId);
+        if (!location) return;
+        await detachFromMaps(this.plugin, 'location', location.id || location.name, location.name, mapId);
+        location.mapBindings = (location.mapBindings ?? []).filter(b => b.mapId !== mapId);
         await this.plugin.saveLocation(location);
     }
 
@@ -294,9 +297,16 @@ export class LocationService {
     ): Promise<Location[]> {
         const allLocations = await this.plugin.listLocations();
 
+        const map = (await this.plugin.listMaps?.() ?? []).find(m => (m.id || m.name) === mapId);
+        if (map?.placementGrid) {
+            const cell = cellAt(map.placementGrid, coordinates[1], coordinates[0]);
+            const ids = new Set(map.placementGrid.areas.filter(a => cell && a.cells.includes(cell)).map(a => a.locationId));
+            if (ids.size) return allLocations.filter(l => l.id && ids.has(l.id));
+        }
+
         // Filter locations that have bindings on this map
         const locationsOnMap = allLocations.filter(loc =>
-            loc.mapBindings?.some(binding => binding.mapId === mapId)
+            !map?.removedMapEntities?.includes(`location:${loc.id || loc.name}`) && loc.mapBindings?.some(binding => binding.mapId === mapId)
         );
 
         if (locationsOnMap.length === 0) {
@@ -337,9 +347,17 @@ export class LocationService {
     ): Promise<Location | null> {
         const allLocations = await this.plugin.listLocations();
 
+        const map = (await this.plugin.listMaps?.() ?? []).find(m => (m.id || m.name) === mapId);
+        if (map?.placementGrid) {
+            const cell = cellAt(map.placementGrid, coordinates[1], coordinates[0]);
+            const ids = new Set(map.placementGrid.areas.filter(a => cell && a.cells.includes(cell)).map(a => a.locationId));
+            const matches = allLocations.filter(l => l.id && ids.has(l.id));
+            if (matches.length) return matches.length === 1 ? matches[0] : null;
+        }
+
         // Filter locations that have bindings on this map
         const locationsOnMap = allLocations.filter(loc =>
-            loc.mapBindings?.some(binding => binding.mapId === mapId)
+            !map?.removedMapEntities?.includes(`location:${loc.id || loc.name}`) && loc.mapBindings?.some(binding => binding.mapId === mapId)
         );
 
         if (locationsOnMap.length === 0) {

@@ -25,8 +25,13 @@ export interface TimelineControlCallbacks {
     getEvents: () => Event[] | Promise<Event[]>;
 }
 
-/** The three mutually exclusive timeline views. */
-export type TimelineViewMode = 'chronology' | 'vertical' | 'gantt';
+/** The three top-level views. Horizontal/vertical are orientations of Timeline. */
+export type TimelineViewMode = 'chronology' | 'timeline' | 'gantt';
+
+/** Resolve the top-level view without confusing Timeline orientation for a view. */
+export function timelineViewMode(state: Pick<TimelineUIState, 'ganttMode' | 'timelineLayout'>): TimelineViewMode {
+    return state.ganttMode ? 'gantt' : state.timelineLayout;
+}
 
 /**
  * Display toggles the view owns rather than the shared UI state, passed in so
@@ -108,6 +113,7 @@ export class TimelineControlsBuilder {
     static createDefaultState(plugin: StorytellerSuitePlugin): TimelineUIState {
         return {
             ganttMode: false,
+            timelineLayout: 'chronology',
             timelineOrientation: 'horizontal',
             groupMode: (plugin.settings.defaultTimelineGroupMode || 'location'),
             filters: {},
@@ -161,7 +167,7 @@ export class TimelineControlsBuilder {
         return btn;
     }
 
-    /** Toggle horizontal/vertical chronology. Gantt remains horizontal. */
+    /** Toggle horizontal/vertical inside the Timeline view. */
     createOrientationToggle(container: HTMLElement): HTMLButtonElement {
         const btn = container.createEl('button', {
             cls: `clickable-icon storyteller-toolbar-btn storyteller-orientation-toggle${this.state.timelineOrientation === 'vertical' ? ' is-active' : ''}`,
@@ -174,12 +180,13 @@ export class TimelineControlsBuilder {
             const vertical = this.state.timelineOrientation === 'vertical';
             setIcon(btn, vertical ? 'move-horizontal' : 'move-vertical');
             btn.toggleClass('is-active', vertical);
-            btn.disabled = this.state.ganttMode;
-            btn.setAttribute('aria-disabled', String(this.state.ganttMode));
+            const disabled = this.state.ganttMode || this.state.timelineLayout !== 'timeline';
+            btn.disabled = disabled;
+            btn.setAttribute('aria-disabled', String(disabled));
         };
         sync();
         btn.addEventListener('click', () => {
-            if (this.state.ganttMode) return;
+            if (this.state.ganttMode || this.state.timelineLayout !== 'timeline') return;
             this.state.timelineOrientation = this.state.timelineOrientation === 'horizontal' ? 'vertical' : 'horizontal';
             sync();
             this.callbacks.getRenderer()?.setTimelineOrientation(this.state.timelineOrientation);
@@ -428,27 +435,23 @@ export class TimelineControlsBuilder {
     }
 
     /**
-     * The three views, as one segmented control.
-     *
-     * Chronology, vertical and gantt are mutually exclusive: orientation is
-     * silently ignored while gantt is on, so the old pair of independent
-     * toggles let you pick a combination that did not exist. One control that
-     * names each view removes that, and says in words what the icons did not.
+     * Chronology remains the original grouped lane view. Timeline is a separate
+     * view with horizontal and vertical orientations; Gantt remains its own
+     * duration view. Orientation is deliberately nested under Timeline.
      */
     createViewModeSegment(container: HTMLElement): HTMLElement {
-        const group = container.createDiv('storyteller-segment');
+        const wrapper = container.createDiv('storyteller-view-mode-controls');
+        const group = wrapper.createDiv('storyteller-segment');
         group.setAttribute('role', 'radiogroup');
         group.setAttribute('aria-label', 'Timeline view');
 
         const modes: { id: TimelineViewMode; label: string; icon: string; hint: string }[] = [
-            { id: 'chronology', label: 'Chronology', icon: 'move-horizontal', hint: 'Events along a horizontal time axis' },
-            { id: 'vertical', label: 'Vertical', icon: 'move-vertical', hint: 'Events down a vertical time axis' },
+            { id: 'chronology', label: 'Chronology', icon: 'list-tree', hint: 'Original grouped chronological lanes' },
+            { id: 'timeline', label: 'Timeline', icon: 'git-branch', hint: 'Card timeline with horizontal or vertical orientation' },
             { id: 'gantt', label: 'Gantt', icon: 'align-left', hint: 'Durations as bars, with dependencies' }
         ];
 
-        const current = (): TimelineViewMode => this.state.ganttMode
-            ? 'gantt'
-            : this.state.timelineOrientation === 'vertical' ? 'vertical' : 'chronology';
+        const current = (): TimelineViewMode => timelineViewMode(this.state);
 
         const buttons = modes.map(mode => {
             const btn = group.createEl('button', {
@@ -462,6 +465,29 @@ export class TimelineControlsBuilder {
             return { mode, btn };
         });
 
+        const orientation = wrapper.createDiv('storyteller-segment storyteller-timeline-orientation-segment');
+        orientation.setAttribute('role', 'radiogroup');
+        orientation.setAttribute('aria-label', 'Timeline orientation');
+        const orientationButtons = (['horizontal', 'vertical'] as const).map(value => {
+            const label = value === 'horizontal' ? 'Horizontal' : 'Vertical';
+            const btn = orientation.createEl('button', {
+                cls: 'storyteller-segment-btn',
+                attr: { role: 'radio', title: `${label} timeline`, 'aria-label': label }
+            });
+            const icon = btn.createSpan('storyteller-segment-icon');
+            setIcon(icon, value === 'horizontal' ? 'move-horizontal' : 'move-vertical');
+            btn.createSpan({ cls: 'storyteller-segment-label', text: label });
+            btn.addEventListener('click', () => {
+                if (this.state.ganttMode || this.state.timelineLayout !== 'timeline') return;
+                if (this.state.timelineOrientation === value) return;
+                this.state.timelineOrientation = value;
+                this.callbacks.getRenderer()?.setTimelineOrientation(value);
+                sync();
+                this.callbacks.onStateChange();
+            });
+            return { value, btn };
+        });
+
         const sync = () => {
             const active = current();
             buttons.forEach(({ mode, btn }) => {
@@ -469,21 +495,29 @@ export class TimelineControlsBuilder {
                 btn.toggleClass('is-active', on);
                 btn.setAttribute('aria-checked', String(on));
             });
+            const timelineActive = active === 'timeline';
+            orientation.toggleClass('is-hidden', !timelineActive);
+            orientationButtons.forEach(({ value, btn }) => {
+                const on = timelineActive && this.state.timelineOrientation === value;
+                btn.toggleClass('is-active', on);
+                btn.setAttribute('aria-checked', String(on));
+                btn.disabled = !timelineActive;
+            });
         };
         sync();
-        return group;
+        return wrapper;
     }
 
     private setViewMode(mode: TimelineViewMode, sync: () => void): void {
         const gantt = mode === 'gantt';
-        const orientation = mode === 'vertical' ? 'vertical' : 'horizontal';
-        const changed = gantt !== this.state.ganttMode || orientation !== this.state.timelineOrientation;
+        const layout = mode === 'timeline' ? 'timeline' : 'chronology';
+        const changed = gantt !== this.state.ganttMode || layout !== this.state.timelineLayout;
         if (!changed) return;
         this.state.ganttMode = gantt;
-        this.state.timelineOrientation = orientation;
+        this.state.timelineLayout = layout;
         sync();
         const renderer = this.callbacks.getRenderer();
-        renderer?.setTimelineOrientation(orientation);
+        renderer?.setTimelineLayout(layout);
         renderer?.setGanttMode(gantt);
         this.callbacks.onStateChange();
     }

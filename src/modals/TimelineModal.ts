@@ -80,8 +80,7 @@ export class TimelineModal extends Modal {
         const toolbarContainer = contentEl.createDiv('storyteller-timeline-toolbar');
 
         // Create toolbar controls using shared builder
-        this.controlsBuilder.createGanttToggle(toolbarContainer);
-        this.controlsBuilder.createOrientationToggle(toolbarContainer);
+        this.controlsBuilder.createViewModeSegment(toolbarContainer);
         this.controlsBuilder.createZoomInButton(toolbarContainer);
         this.controlsBuilder.createZoomOutButton(toolbarContainer);
         this.controlsBuilder.createGroupingDropdown(toolbarContainer);
@@ -211,6 +210,7 @@ export class TimelineModal extends Modal {
         // Initialize new renderer with current settings from shared state
         this.renderer = new TimelineRenderer(this.timelineContainer, this.plugin, {
             ganttMode: this.currentState.ganttMode,
+            timelineLayout: this.currentState.timelineLayout,
             timelineOrientation: this.currentState.timelineOrientation,
             groupMode: this.currentState.groupMode,
             stackEnabled: this.currentState.stackEnabled,

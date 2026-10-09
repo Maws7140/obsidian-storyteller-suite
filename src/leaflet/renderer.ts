@@ -1,3 +1,7 @@
+import { detachFromMaps } from '../services/MapMembershipService';
+import { confirmWithModal } from '../modals/ui/ConfirmModal';
+import { constrainImageViewport } from './utils/ImageViewport';
+import { persistedMapMarkers } from './utils/PersistedMapMarkers';
 // Use global L object that's set in main.ts: (window as any).L = L
 // Leaflet base styles are maintained in styles.css so Obsidian can lint authored CSS.
 import * as L from 'leaflet';
@@ -384,6 +388,7 @@ export class LeafletRenderer extends Component {
 
         // Step 1: Invalidate the map size to recalculate dimensions
         this.map.invalidateSize({ animate: false });
+        if (this.isInitialized) this.updateImageViewport();
 
         // Step 2: Force all tile layers to update and be visible
         this.map.eachLayer((layer: L.Layer) => {
@@ -510,6 +515,7 @@ export class LeafletRenderer extends Component {
                 this.containerEl.setCssStyles({ width: `${rect.width}px` });
                 this.containerEl.setCssStyles({ height: `${rect.height}px` });
                 this.map.invalidateSize({ animate: false });
+                if (this.isInitialized) this.updateImageViewport();
                 
                 const newSize = this.map.getSize();
                 if (newSize.x > 0 && newSize.y > 0) {
@@ -527,6 +533,7 @@ export class LeafletRenderer extends Component {
                     this.containerEl.setCssStyles({ width: `${parentRect.width}px` });
                     this.containerEl.setCssStyles({ height: `${parentRect.height}px` });
                     this.map.invalidateSize({ animate: false });
+                    if (this.isInitialized) this.updateImageViewport();
                     
                     const newSize = this.map.getSize();
                     if (newSize.x > 0 && newSize.y > 0) {
@@ -546,6 +553,7 @@ export class LeafletRenderer extends Component {
         this.containerEl.setCssStyles({ width: '800px' });
         this.containerEl.setCssStyles({ height: '600px' });
         this.map.invalidateSize({ animate: false });
+        if (this.isInitialized) this.updateImageViewport();
     }
 
     /**
@@ -701,12 +709,10 @@ export class LeafletRenderer extends Component {
         await new Promise(resolve => window.requestAnimationFrame(resolve));
         this.map.invalidateSize({ animate: false });
 
+        this.updateImageViewport();
         const restoredSavedState = this.restoreSavedViewState();
         if (!restoredSavedState) {
-            this.map.fitBounds(bounds, {
-                padding: [20, 20],
-                animate: false
-            });
+            this.fitToImage();
         }
 
         const overlayPane = this.map.getPane('overlayPane');
@@ -774,29 +780,14 @@ export class LeafletRenderer extends Component {
         // The transformation maps pixel coordinates to the tileSize-based system Leaflet expects
         const tileSize = tileInfo.tileSize;
         
-        // Create custom CRS for the tiled image
-        // The scale at each zoom level should be: 2^(zoom - maxZoom) * tileSize
-        // This means at maxZoom, scale = tileSize, which gives us 1:1 pixel mapping
+        // TileGenerator uses 2^(zoom - maxZoom), not 2^zoom / tileSize.
+        // Keep map coordinates in source-image pixels so pins and bounds align.
+        const nativeScale = Math.pow(2, tileInfo.maxZoom);
         const customCRS = L.extend({}, L.CRS.Simple, {
-            // The transformation: we need to flip Y axis (images have Y=0 at top)
-            // and scale coordinates to match tile coordinates
-            transformation: new L.Transformation(1 / tileSize, 0, -1 / tileSize, tileInfo.height / tileSize),
-            
-            // Scale function - at zoom Z, scale is 2^(Z - maxZoom)
-            // This matches how tiles were generated
-            scale: function(zoom: number): number {
-                return Math.pow(2, zoom);
-            },
-            
-            zoom: function(scale: number): number {
-                return Math.log(scale) / Math.LN2;
-            }
+            transformation: new L.Transformation(
+                1 / nativeScale, 0, -1 / nativeScale, tileInfo.height / nativeScale
+            )
         });
-
-        
-        
-        
-        
 
         // Create map with custom CRS
         this.map = L.map(this.containerEl, {
@@ -808,7 +799,7 @@ export class LeafletRenderer extends Component {
             zoomControl: true,
             crs: customCRS,
             minZoom: tileInfo.minZoom,
-            maxZoom: tileInfo.maxZoom
+            maxZoom: tileInfo.maxZoom + 3
         });
 
         // Define bounds in pixel coordinates
@@ -825,8 +816,10 @@ export class LeafletRenderer extends Component {
             tileInfo.imageHash,
             basePath,
             {
-                minZoom: tileInfo.minZoom,
-                maxZoom: tileInfo.maxZoom,
+                minZoom: -Infinity,
+                maxZoom: Infinity,
+                minNativeZoom: tileInfo.minZoom,
+                maxNativeZoom: tileInfo.maxZoom,
                 tileSize: tileInfo.tileSize,
                 noWrap: true,
                 bounds: this.imageBounds,
@@ -881,18 +874,11 @@ export class LeafletRenderer extends Component {
         this.map.invalidateSize({ animate: false });
 
         // Try to restore saved view state BEFORE default positioning to avoid visible jump
+        this.updateImageViewport();
         const restoredSavedState = this.restoreSavedViewState();
 
         if (!restoredSavedState) {
-            // No saved state - use default positioning
-            // Calculate center point
-            const centerLat = tileInfo.height / 2;
-            const centerLng = tileInfo.width / 2;
-
-            // Set initial view - start at middle zoom level to ensure tiles load
-            const initialZoom = Math.floor((tileInfo.minZoom + tileInfo.maxZoom) / 2);
-
-            this.map.setView([centerLat, centerLng], initialZoom, { animate: false });
+            this.fitToImage();
         }
 
         // CRITICAL FIX: Force tile pane to be explicitly visible
@@ -1028,6 +1014,7 @@ export class LeafletRenderer extends Component {
                 window.setTimeout(() => {
                     if (this.map) {
                         this.map.invalidateSize({ animate: false });
+                        if (this.isInitialized) this.updateImageViewport();
                     }
                 }, 50);
             }
@@ -1040,14 +1027,12 @@ export class LeafletRenderer extends Component {
         this.map.invalidateSize({ animate: false });
 
         // Try to restore saved view state BEFORE default positioning to avoid visible jump
+        this.updateImageViewport();
         const restoredSavedState = this.restoreSavedViewState();
 
         if (!restoredSavedState) {
-            // No saved state - use default fitBounds
-            this.map.fitBounds(bounds, {
-                padding: [20, 20],
-                animate: false
-            });
+            // No saved state - fill the viewer without surrounding canvas.
+            this.fitToImage();
         }
 
         // Force image overlay to be visible
@@ -1147,6 +1132,7 @@ export class LeafletRenderer extends Component {
         this.map.whenReady(() => {
             if (this.map) {
                 this.map.invalidateSize({ animate: false });
+                if (this.isInitialized) this.updateImageViewport();
 
                 // Force tile layers to update after invalidateSize
                 this.map.eachLayer((layer: L.Layer) => {
@@ -1185,7 +1171,9 @@ export class LeafletRenderer extends Component {
     private async addMarkers(): Promise<void> {
         if (!this.map) return;
 
-        const markerDefinitions: MarkerDefinition[] = [];
+        const liveLocations = await this.plugin.listLocations();
+        const locationIds = new Set(liveLocations.map(l => l.id || l.name));
+        const markerDefinitions: MarkerDefinition[] = persistedMapMarkers((this.params.persistedMarkers ?? []).filter(m => !m.linkedLocationId || locationIds.has(m.linkedLocationId)));
 
         // Parse explicit marker strings from parameters
         if (this.params.marker) {
@@ -1210,13 +1198,16 @@ export class LeafletRenderer extends Component {
         // Use EntityMarkerDiscovery for comprehensive entity discovery
         const discovery = new EntityMarkerDiscovery(this.plugin.app, this.plugin);
         const discoveredMarkers = await discovery.discoverMarkers(
-            this.params.id, // mapId
+            this.params.mapId || this.params.id, // mapId
             markerDefinitions, // explicit markers
             this.params.markerTag ? (Array.isArray(this.params.markerTag) ? this.params.markerTag : [this.params.markerTag]) : undefined
         );
 
         // Add each marker to the map
         for (const markerDef of discoveredMarkers) {
+            // Native MapEntityRenderer owns entity icons, stacking, hover and popups.
+            // Keep this layer for authored/manual pins only; never cover native nodes.
+            if (markerDef.entityId && (this.params.mapId || this.params.id)) continue;
             this.addMarker(markerDef);
         }
     }
@@ -1243,6 +1234,23 @@ export class LeafletRenderer extends Component {
             });
         }
 
+        marker.on('contextmenu', () => { void (async () => {
+            const mapId = this.params.mapId || this.params.id;
+            if (!mapId || !await confirmWithModal(this.plugin.app, { title: 'Remove map node?', body: 'Remove this pin from this map only; keep the underlying note.' })) return;
+            try {
+                if (markerDef.entityId && markerDef.entityType) await detachFromMaps(this.plugin, markerDef.entityType, markerDef.entityId, markerDef.entityName, mapId);
+                else {
+                    const record = (await this.plugin.listMaps()).find(m => (m.id || m.name) === mapId);
+                    const file = record?.filePath ? this.plugin.app.vault.getAbstractFileByPath(record.filePath) : null;
+                    if (file instanceof TFile) {
+                        await this.plugin.app.fileManager.processFrontMatter(file, fm => {
+                            if (Array.isArray(fm.markers)) fm.markers = fm.markers.filter((m: { id: string }) => m.id !== markerDef.id);
+                        });
+                    }
+                }
+                marker.remove();
+            } catch (error) { new Notice(`Removal failed: ${String(error)}`); }
+        })(); });
         // Add tooltip
         if (markerDef.description) {
             marker.bindTooltip(markerDef.description);
@@ -1743,6 +1751,7 @@ export class LeafletRenderer extends Component {
             window.requestAnimationFrame(() => {
                 if (this.map) {
                     this.map.invalidateSize({ animate: false });
+                    if (this.isInitialized) this.updateImageViewport();
 
                     // CRITICAL FIX: Force tile layers to update after invalidateSize
                     // Without this, tiles can disappear when container resizes
@@ -1783,6 +1792,7 @@ export class LeafletRenderer extends Component {
 
             // Step 1: Invalidate the map size to recalculate dimensions
             this.map.invalidateSize({ animate: false });
+            if (this.isInitialized) this.updateImageViewport();
 
             // Step 2: Force all tile layers to update and be visible
             this.map.eachLayer((layer: L.Layer) => {
@@ -1828,39 +1838,25 @@ export class LeafletRenderer extends Component {
             this.map.fire('moveend');
             this.map.fire('zoomend');
 
-            // Step 5: Trigger a view update to force tile recalculation
-            // Use a tiny zoom change (invisible to user) to trigger full update cycle
-            const currentZoom = this.map.getZoom();
-            const currentCenter = this.map.getCenter();
-            
-            window.setTimeout(() => {
-                if (this.map && this.map.getZoom() === currentZoom) {
-                    // Only do micro-zoom if zoom hasn't changed (user didn't zoom manually)
-                    this.map.setView(currentCenter, currentZoom + 0.0001, { animate: false });
-                    
-                    window.setTimeout(() => {
-                        if (this.map) {
-                            // Return to original zoom
-                            this.map.setView(currentCenter, currentZoom, { animate: false });
-                        }
-                    }, 50);
-                }
-            }, 100);
         });
     }
 
     /**
-     * Fit the map view to show the entire image
-     * Useful for resetting the view or after resize
+     * Reset image maps (including tiled maps) to a centered, viewer-filling view.
+     * Aspect-ratio differences are cropped, never stretched or letterboxed.
      */
     fitToImage(): void {
-        if (!this.map || !this.imageOverlay) return;
-        
-        const bounds = this.imageOverlay.getBounds();
-        if (bounds.isValid()) {
-            // For image maps, just fit without extra padding
-            this.map.fitBounds(bounds);
+        if (!this.map || !this.imageBounds) return;
+        const zoom = constrainImageViewport(this.map, this.imageBounds);
+        if (zoom !== null) {
+            this.map.setView(this.imageBounds.getCenter(), zoom, { animate: false });
         }
+    }
+
+    /** Recompute limits on resize; Leaflet clamps zoom and center without a reset. */
+    private updateImageViewport(): void {
+        if (!this.map || !this.imageBounds) return;
+        constrainImageViewport(this.map, this.imageBounds);
     }
 
     /**
@@ -1871,6 +1867,11 @@ export class LeafletRenderer extends Component {
         if (!this.mapEntityRenderer || !this.params.mapId) return;
 
         const mapId = this.params.mapId;
+        for (const marker of this.markers.values()) marker.remove();
+        this.markers.clear();
+        const record = (await this.plugin.listMaps()).find(m => (m.id || m.name) === mapId);
+        this.params.persistedMarkers = record?.markers ?? [];
+        await this.addMarkers();
         // Refresh both locations and entities to ensure markers appear at correct positions
         await this.mapEntityRenderer.renderLocationsForMap(mapId);
         await this.mapEntityRenderer.renderEntitiesForMap(mapId);
@@ -1898,7 +1899,8 @@ export class LeafletRenderer extends Component {
         if (!mapId) return false;
 
         const savedState = this.plugin.getMapViewState(mapId);
-        if (!savedState) {
+        if (!savedState || !Number.isFinite(savedState.zoom) ||
+            !Number.isFinite(savedState.center?.lat) || !Number.isFinite(savedState.center?.lng)) {
             
             return false;
         }
@@ -2095,6 +2097,8 @@ export class LeafletRenderer extends Component {
     /**
      * Get the Leaflet map instance
      */
+    getImageBounds(): L.LatLngBounds | null { return this.imageBounds; }
+
     getMap(): L.Map | null {
         return this.map;
     }
@@ -2131,6 +2135,10 @@ export class LeafletRenderer extends Component {
      * Reset zoom to default level
      */
     resetZoom(): void {
+        if (this.imageBounds) {
+            this.fitToImage();
+            return;
+        }
         if (this.map && this.params.defaultZoom !== undefined) {
             // Quick animation for reset (not instant, but fast)
             this.map.setZoom(this.params.defaultZoom, {

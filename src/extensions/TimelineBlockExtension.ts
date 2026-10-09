@@ -34,6 +34,7 @@ class TimelineBlockChild extends MarkdownRenderChild {
         const renderer = new TimelineRenderer(this.containerEl, this.plugin, {
             groupMode: this.config.groupMode,
             ganttMode: this.config.ganttMode,
+            timelineLayout: this.config.orientation === 'vertical' ? 'timeline' : 'chronology',
             timelineOrientation: this.config.orientation,
             showEras: this.config.showEras,
             showPresence: this.config.showPresence,

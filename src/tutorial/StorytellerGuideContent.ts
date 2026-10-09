@@ -142,7 +142,7 @@ export function getWhatsNewGuide(version: string): StorytellerGuideDocument {
                 bodyHtml: `
                     <ul>
                         <li><strong>Native Canvas Engine.</strong> The timeline rendering engine has been rewritten onto a custom canvas renderer.</li>
-                        <li><strong>Custom Dating Systems.</strong> Create custom calendars with user-defined month lengths, years, and epoch rules via settings.</li>
+                        <li><strong>Custom Dating Systems.</strong> Open Settings → Storyteller Suite → Timeline → <em>Manage calendars</em>, or run <code>Storyteller: Manage custom calendars</code>, to create calendars with user-defined month lengths, years, and epoch rules.</li>
                         <li><strong>Inline Note Embedding.</strong> Embed interactive timeline blocks inside any note using a fenced <code>timeline</code> code block.</li>
                         <li><strong>Trackpad Pinch Zoom & Canvas Export.</strong> Pinch to zoom on laptop trackpads and export the entire timeline canvas.</li>
                         <li><strong>Smart Gantt Bars.</strong> Short Gantt events automatically render as readable chips with shading for duration.</li>
@@ -154,6 +154,8 @@ export function getWhatsNewGuide(version: string): StorytellerGuideDocument {
                 bodyHtml: `
                     <ul>
                         <li><strong>Scoped Eras & Tracks.</strong> Eras and tracks are scoped to their parent story notes.</li>
+                        <li><strong>Era suggestions.</strong> In <em>Manage timeline eras & periods</em>, choose <em>Detect from event gaps</em> to have Storyteller fill editable era ranges from unusually large gaps between dated events. Existing eras are never overwritten.</li>
+                        <li><strong>Markdown frontmatter.</strong> Timeline notes accept <code>entityType: era</code>, <code>entityType: branch</code>, or <code>entityType: fork</code>. Era notes can include an optional <code>abbreviation</code>.</li>
                         <li><strong>Branch History Inheritance.</strong> Alternate timeline branches inherit historical events up to their divergence point.</li>
                     </ul>
                 `

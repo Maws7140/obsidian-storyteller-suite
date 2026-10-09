@@ -35,10 +35,11 @@ const TUTORIAL_VIDEO_URL = 'https://www.youtube.com/watch?v=HL0i6bUpVn0';
 interface TabDef { id: TabId; icon: string; label: string; }
 
 /** Entity types whose modals honour the section toggles. */
-const MODAL_CUSTOMIZABLE_ENTITY_TYPES = ['character', 'item'] as const;
+const MODAL_CUSTOMIZABLE_ENTITY_TYPES = ['character', 'event', 'item'] as const;
 
 const MODAL_ENTITY_LABELS: Record<(typeof MODAL_CUSTOMIZABLE_ENTITY_TYPES)[number], string> = {
     character: 'Character',
+    event: 'Event',
     item: 'Item',
 };
 
@@ -979,7 +980,7 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
 
         new Setting(container)
             .setName('Dating system')
-            .setDesc('Calendar used to parse and display dates for the active story.')
+            .setDesc('Calendar used to parse and display dates for the active story. Use manage calendars to create or edit one.')
             .addDropdown(dropdown => {
                 calendarRegistry.listCalendars().forEach(calendar => dropdown.addOption(calendar.id, calendar.name));
                 dropdown.setValue(activeCalendar.id).onChange(async id => {
@@ -987,13 +988,16 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                     new Notice(`Dating system changed to ${calendarRegistry.getActiveCalendar().name}`);
                 });
             })
+            .addButton(button => button
+                .setButtonText('Manage calendars')
+                .setTooltip('Create, edit, duplicate, or delete dating systems')
+                .onClick(() => {
+                    new CalendarManagerModal(this.app, this.plugin, () => this.refreshSettingsView()).open();
+                }))
             .addExtraButton(button => button.setIcon('copy').setTooltip('Copy calendar share code').onClick(() => { void (async () => {
                 await navigator.clipboard.writeText(encodeShareCode(makeCalendarDocument(calendarRegistry.getActiveCalendar())));
                 new Notice('Calendar share code copied');
-            })(); }))
-            .addExtraButton(button => button.setIcon('settings-2').setTooltip('Design and manage dating systems').onClick(() => {
-                new CalendarManagerModal(this.app, this.plugin, () => this.refreshSettingsView()).open();
-            }));
+            })(); }));
 
         new Setting(container)
             .setName('Timeline theme')

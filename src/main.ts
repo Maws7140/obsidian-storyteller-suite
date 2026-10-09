@@ -1,3 +1,5 @@
+import { detachFromMaps } from './services/MapMembershipService';
+import { initializeTimelineAfterLayout } from './utils/TimelineStartup';
  
  
 
@@ -92,7 +94,6 @@ import type { EntityFileName, TemplateVariableValues } from './modals/TemplateAp
 import { StoryTemplateGalleryModal } from './templates/modals/StoryTemplateGalleryModal';
 import { upgradeLegacyModalLayout } from './modals/utils/LegacyModalLayout';
 import { TrackManagerModal } from './modals/TrackManagerModal';
-import { ConflictViewModal } from './modals/ConflictViewModal';
 import { TagTimelineModal } from './modals/TagTimelineModal';
 import { ConflictDetector } from './utils/ConflictDetector';
 import { TimelineTrackManager } from './utils/TimelineTrackManager';
@@ -1606,8 +1607,6 @@ export default class StorytellerSuitePlugin extends Plugin {
 		// Initialize timeline managers
 		this.trackManager = new TimelineTrackManager(this);
 		this.eraManager = new EraManager(this);
-		await this.migrateTimelineEntitiesIfUnambiguous();
-		await this.timelineEntities.refresh();
 
 		// Era, track and branch notes can be edited like any other note. The
 		// cache re-reads the one file that changed; it holds no unsaved state
@@ -1623,8 +1622,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 			if (file instanceof TFile && await this.timelineEntities.syncFile(file)) this.refreshTimelineViews();
 		})(); }));
 
-		// Initialize default tracks if none exist
-		await this.trackManager.initializeDefaultTracks();
+		// Vault-dependent timeline work runs after layout readiness below.
 
 		// Apply mobile CSS classes to the activeDocument body
 		this.applyMobilePlatformClasses();
@@ -1837,8 +1835,24 @@ export default class StorytellerSuitePlugin extends Plugin {
 
 		// Perform story discovery and ensure one-story seeding after workspace is ready
 		this.app.workspace.onLayoutReady(async () => {
-			await this.discoverExistingStories();
-			await this.initializeOneStoryModeIfNeeded();
+            try {
+                await this.discoverExistingStories();
+                await this.initializeOneStoryModeIfNeeded();
+                await initializeTimelineAfterLayout({
+                    hasStory: () => Boolean(this.getActiveStory()),
+                    migrate: () => this.migrateTimelineEntitiesIfUnambiguous(),
+                    refresh: () => this.timelineEntities.refresh(),
+                    createDefaults: () => this.trackManager.initializeDefaultTracks(),
+                    refreshViews: () => this.refreshTimelineViews(),
+                    reportError: (error) => {
+                        console.error('Storyteller Suite: timeline startup failed', error);
+                        new Notice('Storyteller Suite loaded, but timeline initialization failed. See the developer console for details.', 10000);
+                    },
+                });
+            } catch (error) {
+                console.error('Storyteller Suite: story startup failed', error);
+                new Notice('Storyteller Suite loaded, but story discovery failed. See the developer console for details.', 10000);
+            }
 
 			// Set up mobile/tablet orientation and resize handlers
 			this.setupMobileOrientationHandlers();
@@ -2713,6 +2727,15 @@ export default class StorytellerSuitePlugin extends Plugin {
 			}
 		});
 
+		this.addCommand({
+			id: 'manage-custom-calendars',
+			name: 'Manage custom calendars',
+			callback: async () => {
+				const { CalendarManagerModal } = await import('./modals/CalendarManagerModal');
+				new CalendarManagerModal(this.app, this, () => this.refreshTimelineViews()).open();
+			}
+		});
+
 		// Timeline track management
 		this.addCommand({
 			id: 'manage-timeline-tracks',
@@ -2727,27 +2750,6 @@ export default class StorytellerSuitePlugin extends Plugin {
 						await this.setTimelineTracks(updatedTracks);
 					})(); }
 				).open();
-			}
-		});
-
-		// Detect timeline conflicts
-		this.addCommand({
-			id: 'detect-timeline-conflicts',
-			name: 'Detect timeline conflicts',
-			callback: async () => {
-				const events = await this.listEvents();
-				const conflicts = ConflictDetector.detectAllConflicts(events);
-				new ConflictViewModal(this.app, this, conflicts).open();
-
-				// Show quick summary
-				const errorCount = conflicts.filter(c => c.severity === 'error').length;
-				const warningCount = conflicts.filter(c => c.severity === 'warning').length;
-
-				if (conflicts.length === 0) {
-					new Notice('✓ no timeline conflicts detected');
-				} else {
-					new Notice(`Found ${errorCount} error(s), ${warningCount} warning(s)`);
-				}
 			}
 		});
 
@@ -3261,8 +3263,10 @@ export default class StorytellerSuitePlugin extends Plugin {
 			callback: async () => {
 				new Notice('Scanning timeline for conflicts...');
 
-				const events = await this.listEvents();
-				const detectedConflicts = ConflictDetector.detectAllConflicts(events);
+				const [events, characters, locations] = await Promise.all([
+					this.listEvents(), this.listCharacters(), this.listLocations(),
+				]);
+				const detectedConflicts = ConflictDetector.detectAllConflicts(events, characters, locations);
 				const conflicts = ConflictDetector.toStorageFormat(detectedConflicts);
 
 				await this.setTimelineConflicts(conflicts);
@@ -3278,8 +3282,10 @@ export default class StorytellerSuitePlugin extends Plugin {
 					async () => {
 						// Re-scan callback - re-run conflict detection
 						new Notice('Re-scanning timeline for conflicts...');
-						const events = await this.listEvents();
-						const detectedConflicts = ConflictDetector.detectAllConflicts(events);
+						const [events, characters, locations] = await Promise.all([
+							this.listEvents(), this.listCharacters(), this.listLocations(),
+						]);
+						const detectedConflicts = ConflictDetector.detectAllConflicts(events, characters, locations);
 						const newConflicts = ConflictDetector.toStorageFormat(detectedConflicts);
 
 						await this.setTimelineConflicts(newConflicts);
@@ -3309,8 +3315,10 @@ export default class StorytellerSuitePlugin extends Plugin {
 					async () => {
 						// Re-scan callback - re-run conflict detection
 						new Notice('Re-scanning timeline for conflicts...');
-						const events = await this.listEvents();
-						const detectedConflicts = ConflictDetector.detectAllConflicts(events);
+						const [events, characters, locations] = await Promise.all([
+							this.listEvents(), this.listCharacters(), this.listLocations(),
+						]);
+						const detectedConflicts = ConflictDetector.detectAllConflicts(events, characters, locations);
 						const newConflicts = ConflictDetector.toStorageFormat(detectedConflicts);
 
 						await this.setTimelineConflicts(newConflicts);
@@ -4549,6 +4557,13 @@ export default class StorytellerSuitePlugin extends Plugin {
 	 * Delete a character file by moving it to trash
 	 * @param filePath Path to the character file to delete
 	 */
+    private async cleanupEntityMapMembership(file: TFile, type: string): Promise<void> {
+        const { parseFrontmatterFromContent } = await import('./yaml/EntitySections');
+        const fm = parseFrontmatterFromContent(await this.app.vault.read(file));
+        const id = String(fm?.id || fm?.['storyteller-id'] || file.basename);
+        await detachFromMaps(this, type, id, String(fm?.name || file.basename));
+    }
+
 	async deleteCharacter(filePath: string): Promise<void> {
 		const file = this.app.vault.getAbstractFileByPath(normalizePath(filePath));
 		if (file instanceof TFile) {
@@ -4578,7 +4593,8 @@ export default class StorytellerSuitePlugin extends Plugin {
 				}
 			}
 
-			await this.app.fileManager.trashFile(file);
+			await this.cleanupEntityMapMembership(file, 'character');
+            await this.app.fileManager.trashFile(file);
 			
 			new Notice(`Character file "${file.basename}" moved to trash.`);
 			this.app.metadataCache.trigger("dataview:refresh-views");
@@ -4808,7 +4824,8 @@ export default class StorytellerSuitePlugin extends Plugin {
 				}
 			}
 
-			await this.app.fileManager.trashFile(file);
+			await this.cleanupEntityMapMembership(file, 'location');
+            await this.app.fileManager.trashFile(file);
 			
 			new Notice(`Location file "${file.basename}" moved to trash.`);
 			this.app.metadataCache.trigger("dataview:refresh-views");
@@ -5360,6 +5377,13 @@ export default class StorytellerSuitePlugin extends Plugin {
 				}
 			}
 
+            // Removal from a location must also remove its direct map representations.
+            for (const map of await this.listMaps()) {
+                const mapId = map.id || map.name;
+                if (location?.mapBindings?.some(b => b.mapId === mapId) || map.placementGrid?.areas.some(a => a.locationId === locationId)) {
+                    await detachFromMaps(this, entityType, entityId, entityName, mapId);
+                }
+            }
 			new Notice(`Removed ${entityName} from ${location?.name || locationId}`);
 			this.app.metadataCache.trigger("dataview:refresh-views");
 			
@@ -5763,7 +5787,8 @@ export default class StorytellerSuitePlugin extends Plugin {
 				}
 			}
 
-			await this.app.fileManager.trashFile(file);
+			await this.cleanupEntityMapMembership(file, 'event');
+            await this.app.fileManager.trashFile(file);
 			
 			new Notice(`Event file "${file.basename}" moved to trash.`);
 			this.app.metadataCache.trigger("dataview:refresh-views");
@@ -5981,7 +6006,8 @@ export default class StorytellerSuitePlugin extends Plugin {
 				}
 			}
 
-			await this.app.fileManager.trashFile(file);
+			await this.cleanupEntityMapMembership(file, 'item');
+            await this.app.fileManager.trashFile(file);
 			
 			new Notice(`Item file "${file.basename}" moved to trash.`);
 			this.app.metadataCache.trigger("dataview:refresh-views");
@@ -6098,7 +6124,8 @@ export default class StorytellerSuitePlugin extends Plugin {
 	async deleteReference(filePath: string): Promise<void> {
 		const file = this.app.vault.getAbstractFileByPath(normalizePath(filePath));
 		if (file instanceof TFile) {
-			await this.app.fileManager.trashFile(file);
+			await this.cleanupEntityMapMembership(file, 'reference');
+            await this.app.fileManager.trashFile(file);
 			new Notice(`Reference file "${file.basename}" moved to trash.`);
 			this.app.metadataCache.trigger('dataview:refresh-views');
 		} else {
@@ -6880,6 +6907,7 @@ export default class StorytellerSuitePlugin extends Plugin {
                 }
             }
 
+            await this.cleanupEntityMapMembership(file, 'scene');
             await this.app.fileManager.trashFile(file);
             new Notice(`Scene file "${file.basename}" moved to trash.`);
             this.app.metadataCache.trigger('dataview:refresh-views');
@@ -7038,6 +7066,7 @@ export default class StorytellerSuitePlugin extends Plugin {
     async deleteCulture(filePath: string): Promise<void> {
         const file = this.app.vault.getAbstractFileByPath(normalizePath(filePath));
         if (file instanceof TFile) {
+            await this.cleanupEntityMapMembership(file, 'culture');
             await this.app.fileManager.trashFile(file);
             new Notice(`Culture file "${file.basename}" moved to trash.`);
             this.app.metadataCache.trigger('dataview:refresh-views');
@@ -7177,6 +7206,7 @@ export default class StorytellerSuitePlugin extends Plugin {
     async deleteEconomy(filePath: string): Promise<void> {
         const file = this.app.vault.getAbstractFileByPath(normalizePath(filePath));
         if (file instanceof TFile) {
+            await this.cleanupEntityMapMembership(file, 'economy');
             await this.app.fileManager.trashFile(file);
             new Notice(`Economy file "${file.basename}" moved to trash.`);
             this.app.metadataCache.trigger('dataview:refresh-views');
@@ -7313,6 +7343,7 @@ export default class StorytellerSuitePlugin extends Plugin {
     async deleteCompendiumEntry(filePath: string): Promise<void> {
         const file = this.app.vault.getAbstractFileByPath(normalizePath(filePath));
         if (file instanceof TFile) {
+            await this.cleanupEntityMapMembership(file, 'compendiumentry');
             await this.app.fileManager.trashFile(file);
             new Notice(`Compendium entry "${file.basename}" moved to trash.`);
             this.app.metadataCache.trigger('dataview:refresh-views');
@@ -7464,6 +7495,7 @@ export default class StorytellerSuitePlugin extends Plugin {
     async deleteMagicSystem(filePath: string): Promise<void> {
         const file = this.app.vault.getAbstractFileByPath(normalizePath(filePath));
         if (file instanceof TFile) {
+            await this.cleanupEntityMapMembership(file, 'magicsystem');
             await this.app.fileManager.trashFile(file);
             new Notice(`Magic System file "${file.basename}" moved to trash.`);
             this.app.metadataCache.trigger('dataview:refresh-views');
@@ -8870,6 +8902,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		if (!group) throw new Error('Group not found');
 		
 		const groupName = group.name;
+        await detachFromMaps(this, 'group', id, groupName);
 		// Remove group from settings
 		this.settings.groups = this.settings.groups.filter(g => g.id !== id);
 		// Remove group id from all member entities
@@ -9610,41 +9643,8 @@ export default class StorytellerSuitePlugin extends Plugin {
 
 		let settingsUpdated = false;
 
-        // First-run sanitization: if dev/test stories leaked in but the vault has no content, clear them
-        try {
-            if (!this.settings.sanitizedSeedData) {
-                const lowerNames = (this.settings.stories || []).map(s => (s.name || '').toLowerCase());
-                const hasSeedNames = lowerNames.some(n => n.includes('test') || /\bmy\s*story\s*1\b/i.test(n));
-                if ((this.settings.stories?.length || 0) > 0 && hasSeedNames) {
-                    // Determine if there are any entity markdown files under resolved folders
-                    const allMd = this.app.vault.getMarkdownFiles();
-                    const resolved = this.getFolderResolver().resolveAll();
-                    const prefixes: string[] = Object.values(resolved)
-                        .map(v => v.path)
-                        .filter((p): p is string => !!p)
-                        .map(p => normalizePath(p) + '/');
-                    const anyEntityFiles = allMd.some(f => prefixes.some(pref => f.path.startsWith(pref)));
-                    if (!anyEntityFiles) {
-                        // Clear leaked stories and reset active story
-                        this.settings.stories = [];
-                        this.settings.activeStoryId = '';
-                        this.settings.sanitizedSeedData = true;
-                        settingsUpdated = true;
-                    } else {
-                        // Mark checked to avoid repeated work
-                        this.settings.sanitizedSeedData = true;
-                        settingsUpdated = true;
-                    }
-                } else if (!this.settings.sanitizedSeedData) {
-                    // Mark sanitized flag to avoid re-check overhead if nothing to sanitize
-                    this.settings.sanitizedSeedData = true;
-                    settingsUpdated = true;
-                }
-            }
-        } catch {
-            // Best-effort sanitization; ignore errors
-            
-        }
+        // Never delete user story registrations based on names or startup file counts.
+        // The vault index can be incomplete during onload, and test campaigns are valid data.
 
 		// MIGRATION: If no stories exist but old folders/data exist, migrate
 		if ((!this.settings.stories || this.settings.stories.length === 0)) {
@@ -10206,4 +10206,3 @@ export default class StorytellerSuitePlugin extends Plugin {
 
 // Ensure this is the very last line of the file
 export {};
-

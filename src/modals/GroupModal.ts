@@ -807,7 +807,12 @@ export class GroupModal extends ResponsiveModal {
                 nameLink.onclick = async (e) => {
                     e.preventDefault();
                     const { EventModal } = await import('./EventModal');
-                    new EventModal(this.app, this.plugin, evt, async () => {}).open();
+                    new EventModal(this.app, this.plugin, evt, async updated => {
+                        await this.plugin.saveEvent(updated);
+                        const index = this.allEvents.findIndex(event => (event.id || event.name) === (updated.id || updated.name));
+                        if (index >= 0) this.allEvents[index] = updated;
+                        this.renderMemberSelectors(container);
+                    }).open();
                 };
                 const removeBtn = tag.createSpan({ text: ' ×', cls: 'remove-group-btn' });
                 removeBtn.onclick = async () => {

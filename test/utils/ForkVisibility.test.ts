@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { isEventInFork, isEventOnMain, orderForksByParent, ForkLike } from '../../src/utils/ForkVisibility';
+import { isEventInFork, isEventLinkedToFork, isEventOnMain, orderForksByParent, ForkLike } from '../../src/utils/ForkVisibility';
+import type { EventKey } from '../../src/utils/ForkVisibility';
 
 const DAY = 24 * 60 * 60 * 1000;
 const DIVERGENCE = 100 * DAY;
@@ -8,7 +9,7 @@ const rebellion: ForkLike = { id: 'f1', linkedEvents: ['The king lives'] };
 const invasion: ForkLike = { id: 'f2', linkedEvents: ['The fleet arrives'] };
 const forks = [rebellion, invasion];
 
-const inFork = (key: string, start: number, fork = rebellion, divergence = DIVERGENCE) =>
+const inFork = (key: EventKey, start: number, fork = rebellion, divergence = DIVERGENCE) =>
     isEventInFork(key, start, fork, divergence, forks);
 
 describe('isEventOnMain', () => {
@@ -23,11 +24,20 @@ describe('isEventOnMain', () => {
     it('keeps everything when there are no forks', () => {
         expect(isEventOnMain('The king lives', [])).toBe(true);
     });
+
+    it('recognizes a fork name reference when the event also has an ID', () => {
+        expect(isEventLinkedToFork(['event-123', 'The king lives'], rebellion)).toBe(true);
+        expect(isEventOnMain(['event-123', 'The king lives'], forks)).toBe(false);
+    });
 });
 
 describe('isEventInFork', () => {
     it('includes the fork own events regardless of date', () => {
         expect(inFork('The king lives', DIVERGENCE + 500 * DAY)).toBe(true);
+    });
+
+    it('matches fork membership through either the event ID or name', () => {
+        expect(inFork(['event-123', 'The king lives'], DIVERGENCE + 500 * DAY)).toBe(true);
     });
 
     it('inherits shared history from before the divergence', () => {

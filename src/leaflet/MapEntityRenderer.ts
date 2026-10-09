@@ -1,3 +1,5 @@
+import { locationBindingOnMap, containEntityInArea } from './grid/AreaNodeBridge';
+import { detachFromMaps } from '../services/MapMembershipService';
 /**
  * MapEntityRenderer - Renders locations and entities on Leaflet maps
  * Handles location markers, entity markers, popups, and context menus
@@ -103,13 +105,16 @@ export class MapEntityRenderer {
      * Load and render all locations bound to this map
      */
     async renderLocationsForMap(mapId: string): Promise<void> {
+        const mapRecord = (await this.plugin.listMaps()).find(m => (m.id || m.name) === mapId);
+        const removed = new Set(mapRecord?.removedMapEntities ?? []);
         const locations = await this.plugin.listLocations();
         const locationsLayer = this.markerLayers.get('locations')!;
         locationsLayer.clearLayers();
         this.locationMarkers.clear();
 
         for (const location of locations) {
-            const binding = location.mapBindings?.find(b => b.mapId === mapId);
+            if (removed.has(`location:${location.id || location.name}`)) continue;
+            const binding = mapRecord ? locationBindingOnMap(location, mapRecord) : location.mapBindings?.find(b => b.mapId === mapId);
             if (!binding) continue;
 
             // Check zoom range if specified
@@ -127,20 +132,22 @@ export class MapEntityRenderer {
         }
 
         // Update visibility on zoom change
-        this.map.on('zoomend', () => {
-            void this.updateMarkerVisibility(mapId);
-        });
+        this.map.off('zoomend', this.handleVisibilityZoom);
+        this.map.on('zoomend', this.handleVisibilityZoom);
     }
 
     /**
      * Update marker visibility based on zoom level
      */
+    private handleVisibilityZoom = () => { void this.updateMarkerVisibility(this.mapId); };
+
     private async updateMarkerVisibility(mapId: string): Promise<void> {
+        const mapRecord = (await this.plugin.listMaps()).find(m => (m.id || m.name) === mapId);
         const locations = await this.plugin.listLocations();
         const currentZoom = this.map.getZoom();
 
         for (const location of locations) {
-            const binding = location.mapBindings?.find(b => b.mapId === mapId);
+            const binding = mapRecord ? locationBindingOnMap(location, mapRecord) : location.mapBindings?.find(b => b.mapId === mapId);
             if (!binding) continue;
 
             const marker = this.locationMarkers.get(location.id || location.name);
@@ -457,6 +464,8 @@ export class MapEntityRenderer {
      * Render entities on the map based on their locations
      */
     async renderEntitiesForMap(mapId: string): Promise<void> {
+        const mapRecord = (await this.plugin.listMaps()).find(m => (m.id || m.name) === mapId);
+        const removed = new Set(mapRecord?.removedMapEntities ?? []);
         const locations = await this.plugin.listLocations();
         const charactersLayer = this.markerLayers.get('characters')!;
         const eventsLayer = this.markerLayers.get('events')!;
@@ -482,9 +491,12 @@ export class MapEntityRenderer {
         // Group entities by coordinate to detect stacking
         const entityGroups: Map<string, { entityRef: EntityRef; coordinates: [number, number]; location: Location | null }[]> = new Map();
 
+        // Keep the original location-owned nodes and hover cards authoritative.
+        const entitiesWithCoordinates = await this.discoverEntitiesWithMapCoordinates(mapId);
+        const locationOwned = new Set<string>();
         // First, collect entities linked to locations
         for (const location of locations) {
-            const binding = location.mapBindings?.find(b => b.mapId === mapId);
+            const binding = mapRecord ? locationBindingOnMap(location, mapRecord) : location.mapBindings?.find(b => b.mapId === mapId);
             if (!binding) continue;
             const effectiveRefs = await this.getEffectiveLocationEntityRefs(location);
             if (effectiveRefs.length === 0) continue;
@@ -492,6 +504,8 @@ export class MapEntityRenderer {
             const coordKey = `${binding.coordinates[0].toFixed(4)},${binding.coordinates[1].toFixed(4)}`;
             
             for (const entityRef of effectiveRefs) {
+                if (removed.has(`${normalizeMapEntityType(entityRef.entityType)}:${entityRef.entityId}`)) continue;
+                locationOwned.add(`${normalizeMapEntityType(entityRef.entityType)}:${entityRef.entityId}`);
                 entityRef.entityType = normalizeMapEntityType(entityRef.entityType) as EntityRef['entityType'];
                 if (!entityGroups.has(coordKey)) {
                     entityGroups.set(coordKey, []);
@@ -506,8 +520,9 @@ export class MapEntityRenderer {
 
         // Also discover entities placed directly on the map (with mapCoordinates and matching mapId)
         // This includes entities that may not be linked to a location
-        const entitiesWithCoordinates = await this.discoverEntitiesWithMapCoordinates(mapId);
         for (const { entityRef, coordinates } of entitiesWithCoordinates) {
+            if (locationOwned.has(`${normalizeMapEntityType(entityRef.entityType)}:${entityRef.entityId}`)) continue;
+            if (removed.has(`${normalizeMapEntityType(entityRef.entityType)}:${entityRef.entityId}`)) continue;
             entityRef.entityType = normalizeMapEntityType(entityRef.entityType) as EntityRef['entityType'];
             const coordKey = `${coordinates[0].toFixed(4)},${coordinates[1].toFixed(4)}`;
             
@@ -548,6 +563,12 @@ export class MapEntityRenderer {
                 );
                 
                 if (marker) {
+                    if (location?.id && mapRecord) {
+                        const point = marker.getLatLng();
+                        const paddingPoint = this.offsetCoordinatesByPixels([point.lat, point.lng], [24, 24]);
+                        const inset = Math.max(Math.abs(paddingPoint[0] - point.lat), Math.abs(paddingPoint[1] - point.lng));
+                        marker.setLatLng(containEntityInArea(mapRecord, location.id, [point.lat, point.lng], inset));
+                    }
                     switch (normalizeMapEntityType(entityRef.entityType)) {
                         case 'character':
                             charactersLayer.addLayer(marker);
@@ -594,33 +615,32 @@ export class MapEntityRenderer {
         const app = this.plugin.app;
 
         // Query all entity types that might have mapCoordinates
-        const [scenes, cultures, economies, magicSystems, references, groups] = await Promise.all([
+        const [scenes, cultures, economies, magicSystems, references, groups, characters, events, items] = await Promise.all([
             this.plugin.listScenes().catch(() => [] as Scene[]),
             this.plugin.listCultures().catch(() => [] as Culture[]),
             this.plugin.listEconomies().catch(() => [] as Economy[]),
             this.plugin.listMagicSystems().catch(() => [] as MagicSystem[]),
             this.plugin.listReferences().catch(() => [] as Reference[]),
-            Promise.resolve(this.plugin.getGroups())
+            Promise.resolve(this.plugin.getGroups()),
+            this.plugin.listCharacters(), this.plugin.listEvents(), this.plugin.listPlotItems()
         ]);
 
         const allEntities = [
+            ...characters.map(e => ({ entity: e, type: 'character' as const, file: e.filePath })),
+            ...events.map(e => ({ entity: e, type: 'event' as const, file: e.filePath })),
+            ...items.map(e => ({ entity: e, type: 'item' as const, file: e.filePath })),
             ...scenes.map(e => ({ entity: e, type: 'scene' as const, file: e.filePath })),
             ...cultures.map(e => ({ entity: e, type: 'culture' as const, file: e.filePath })),
             ...economies.map(e => ({ entity: e, type: 'economy' as const, file: e.filePath })),
             ...magicSystems.map(e => ({ entity: e, type: 'magicsystem' as const, file: e.filePath })),
             ...references.map(e => ({ entity: e, type: 'reference' as const, file: e.filePath })),
-            ...groups.map(e => ({ entity: e, type: 'group' as const, file: undefined }))
+            ...groups.map(e => ({ entity: e, type: 'group' as const, file: app.vault.getMarkdownFiles().find(f => {
+                const fm = app.metadataCache.getFileCache(f)?.frontmatter;
+                return fm?.['storyteller-type'] === 'group' && fm?.['storyteller-id'] === e.id;
+            })?.path }))
         ];
 
         for (const { entity, type, file } of allEntities) {
-            // For groups, check if they have any entities linked to locations on this map
-            // For other entities, check their frontmatter
-            if (type === 'group') {
-                // Groups don't have file paths, skip direct placement for now
-                // They can still appear via location.entityRefs
-                continue;
-            }
-
             if (!file) continue;
             const fileObj = app.vault.getAbstractFileByPath(file);
             if (!(fileObj instanceof TFile)) continue;
@@ -630,8 +650,7 @@ export class MapEntityRenderer {
             const fm = isRecord(frontmatter) ? frontmatter : {};
 
             // Check if this entity is linked to this map
-            const isLinkedToMap = fm.mapId === mapId ||
-                (Array.isArray(fm.relatedMapIds) && fm.relatedMapIds.some(relatedMapId => relatedMapId === mapId));
+            const isLinkedToMap = fm.mapId === mapId;
 
             if (!isLinkedToMap) continue;
 
@@ -670,6 +689,17 @@ export class MapEntityRenderer {
 
         // Build popup with location info and entities
         const popupContent = await this.buildLocationPopup(location);
+        const mapRecord = (await this.plugin.listMaps()).find(m => (m.id || m.name) === this.mapId);
+        const area = mapRecord?.placementGrid?.areas.find(a => a.locationId === location.id);
+        const tooltip = document.createElement('div');
+        tooltip.createEl('strong', { text: area?.label || location.name });
+        if (location.locationType || location.type) tooltip.createDiv({ text: location.locationType || location.type });
+        if (area?.cells.length) tooltip.createDiv({ text: `${area.cells.length} area cells` });
+        marker.bindTooltip(tooltip, { direction: 'top', className: 'storyteller-map-tooltip' });
+        if (mapRecord?.placementGrid || mapRecord?.image || mapRecord?.backgroundImagePath) {
+            const editArea = popupContent.createEl('button', { text: 'Edit location area', cls: 'st-edit-location-area' });
+            editArea.onclick = () => { this.map.closePopup(); this.map.fire('storyteller:edit-area', { locationId: location.id || location.name }); };
+        }
         marker.bindPopup(popupContent, {
             maxWidth: 300,
             className: 'storyteller-map-popup'
@@ -1451,6 +1481,16 @@ export class MapEntityRenderer {
      */
     private showLocationContextMenu(e: L.LeafletMouseEvent, location: Location): void {
         const menu = new Menu();
+        if (this.map.getContainer().classList.contains('st-grid-enabled')) menu.addItem(item => item.setTitle('Edit location area').setIcon('grid').onClick(() => {
+            this.map.fire('storyteller:edit-area', { locationId: location.id || location.name });
+        }));
+
+        menu.addItem(item => item.setTitle('Remove from this map').setIcon('trash').onClick(async () => {
+            if (!await confirmWithModal(this.plugin.app, { title: 'Remove location from map?', body: 'Remove its pin and grid territory from this map only. Keep the location note.' })) return;
+            try { await this.locationService.removeMapBinding(location.id || location.name, this.mapId); }
+            catch (error) { new Notice(`Removal failed: ${String(error)}`); }
+        }));
+
 
         menu.addItem(item => {
             item.setTitle('Open location note')
@@ -1690,79 +1730,11 @@ export class MapEntityRenderer {
 
         menu.addSeparator();
 
-        // Only show remove option for supported entity types
-        if (isSupportedType) {
-            menu.addItem(item => {
-                item.setTitle('Remove from map')
-                    .setIcon('trash-2')
-                    .onClick(async () => {
-                        // Confirmation
-                        const locationName = location?.name || 'this map';
-                        const confirmed = await confirmWithModal(this.plugin.app, {
-                            title: 'Remove from map',
-                            body:
-                                `Remove "${entity.name}" from "${locationName}"?` + '\n\n' +
-                                `This will remove the marker from this map and clear the ${entityRef.entityType}'s location reference.` + '\n\n' +
-                                `The ${entityRef.entityType} itself will not be deleted.`,
-                            confirmText: 'Remove'
-                        });
-
-                        if (confirmed) {
-                            try {
-                                // If entity is at a location, use removeEntityFromMap
-                                if (location && locationId) {
-                                    // Only character, event, and item are supported by removeEntityFromMap
-                                    if (['character', 'event', 'item'].includes(entityRef.entityType)) {
-                                        await this.plugin.removeEntityFromMap(
-                                            entityId,
-                                            entityRef.entityType as 'character' | 'event' | 'item',
-                                            locationId
-                                        );
-                                    } else {
-                                        // For other entity types, remove from location's entityRefs manually
-                                        const locationService = new LocationService(this.plugin);
-                                        const loc = await locationService.getLocation(locationId);
-                                        if (loc && loc.entityRefs) {
-                                            loc.entityRefs = loc.entityRefs.filter(
-                                                ref => !(ref.entityId === entityId && ref.entityType === entityRef.entityType)
-                                            );
-                                            await this.plugin.saveLocation(loc);
-                                        }
-                                    }
-                                } else {
-                                    // Entity is placed directly on map (no location)
-                                    // Clear mapCoordinates and mapId from frontmatter
-                                    if (entity.filePath) {
-                                        const file = this.plugin.app.vault.getAbstractFileByPath(entity.filePath);
-                                        if (file instanceof TFile) {
-                                            await this.plugin.app.fileManager.processFrontMatter(file, (frontmatter) => {
-                                                const frontmatterRecord = frontmatter as unknown as Record<string, unknown>;
-                                                delete frontmatterRecord.mapCoordinates;
-                                                // Only clear mapId if it matches current map
-                                                // relatedMapIds will be handled separately if needed
-                                                const mapView = this.plugin.app.workspace.getLeavesOfType('storyteller-map-view')[0];
-                                                const currentMapId = getMapViewMapId(mapView?.view);
-                                                if (frontmatterRecord.mapId === currentMapId) {
-                                                    delete frontmatterRecord.mapId;
-                                                }
-                                            });
-                                        }
-                                    }
-                                }
-
-                                // Refresh the map to remove the marker
-                                const mapView = this.plugin.app.workspace.getLeavesOfType('storyteller-map-view')[0];
-                                if (hasRefreshEntities(mapView?.view)) {
-                                    await mapView.view.refreshEntities();
-                                }
-                            } catch (error) {
-                                
-                                new Notice(`Error: ${error}`);
-                            }
-                        }
-                    });
-            });
-        }
+        menu.addItem(item => item.setTitle('Remove from this map').setIcon('trash').onClick(async () => {
+            if (!await confirmWithModal(this.plugin.app, { title: 'Remove map node?', body: 'Remove this representation from this map only. The entity note and story relationships are preserved.' })) return;
+            try { await detachFromMaps(this.plugin, normalizeMapEntityType(entityRef.entityType), entityRef.entityId, entity.name, this.mapId); }
+            catch (error) { new Notice(`Removal failed: ${String(error)}`); }
+        }));
 
         menu.showAtMouseEvent(e.originalEvent);
     }
