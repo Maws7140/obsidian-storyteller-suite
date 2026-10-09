@@ -107,8 +107,6 @@ import {
 } from './utils/SectionFieldPlacement';
 import { getSvgSourceInfoFromArrayBuffer, isSvgArrayBuffer } from './utils/SvgImageUtils';
 import type { CanvasData as StoryBoardCanvasData } from './utils/StoryBoardGenerator';
-// Removed: Codeblock maps no longer supported - use MapView instead
-// import { LeafletCodeBlockProcessor } from './leaflet/processor';
 import { TemplateStorageManager } from './templates/TemplateStorageManager';
 import { TemplateNoteManager } from './templates/TemplateNoteManager';
 import { SaveNoteAsTemplateCommand } from './commands/SaveNoteAsTemplateCommand';
@@ -764,8 +762,6 @@ export default class StorytellerSuitePlugin extends Plugin {
     }
 	settings: StorytellerSuiteSettings;
     private folderResolver: FolderResolver | null = null;
-    // Removed: Codeblock maps no longer supported
-    // private leafletProcessor: LeafletCodeBlockProcessor;
     templateManager: TemplateStorageManager;
     templateNoteManager: TemplateNoteManager;
     trackManager: TimelineTrackManager;
@@ -1673,11 +1669,6 @@ export default class StorytellerSuitePlugin extends Plugin {
 		// Apply mobile CSS classes to the activeDocument body
 		this.applyMobilePlatformClasses();
 
-		// Removed: Codeblock maps no longer supported - use MapView instead
-		// Initialize and register Leaflet code block processor
-		// this.leafletProcessor = new LeafletCodeBlockProcessor(this);
-		// this.leafletProcessor.register();
-
 		// Register the main dashboard view with Obsidian's workspace
 		this.registerView(
 			VIEW_TYPE_DASHBOARD,
@@ -2442,15 +2433,6 @@ export default class StorytellerSuitePlugin extends Plugin {
 			
 		}
 
-		// Removed: Codeblock maps no longer supported
-		// Cleanup all active maps
-		// try {
-		// 	if (this.leafletProcessor) {
-		// 		this.leafletProcessor.cleanup();
-		// 	}
-		// } catch (error) {
-		// 	
-		// }
 	}
 
 	/**
@@ -10498,11 +10480,6 @@ export default class StorytellerSuitePlugin extends Plugin {
 
 		// Create handler for orientation changes and window resize
 		const handleOrientationChange = () => {
-			// Removed: Codeblock maps no longer supported
-			// Invalidate all Leaflet map sizes to force recalculation
-			// if (this.leafletProcessor) {
-			// 	this.leafletProcessor.invalidateAllMapSizes();
-			// }
 
 			// Trigger a layout recalculation for open views
 			this.app.workspace.getLeavesOfType(VIEW_TYPE_TIMELINE).forEach(leaf => {
