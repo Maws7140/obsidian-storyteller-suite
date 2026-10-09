@@ -316,7 +316,7 @@ describe('clearing and saving defined fields', () => {
 });
 
 describe('EntityCustomFieldsEditor without rendering', () => {
-    it('getFields commits defined values from its own state when no section was rendered', () => {
+    it('getFields leaves untouched defined values as stored when no section was rendered', () => {
         const defs: CustomFieldDefinition[] = [
             { key: 'aliases', type: 'list' },
             { key: 'intent', type: 'textarea' },
@@ -338,9 +338,10 @@ describe('EntityCustomFieldsEditor without rendering', () => {
 
         const fields = editor.getFields();
         expect(fields).toEqual({ notes: 'free' });
+        // Untouched drafts are not re-normalised, so stored values stay as they are.
         expect(entity).toMatchObject({
-            aliases: ['Ash', 'Ember'],
-            intent: 'Line one\nLine two',
+            aliases: ['Ash', 'ash', 'Ember'],
+            intent: 'Line one\nLine two  ',
             parents: ['[[Ann]]'],
             age: 42,
         });

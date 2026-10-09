@@ -328,10 +328,22 @@ export function displayValueForDefinition(definition: CustomFieldDefinition, sto
 }
 
 /**
+ * Whether a draft is still the display form of the value already stored on the
+ * entity. Such a draft was not edited, so committing it would only lose detail
+ * (commas inside list items, link aliases).
+ */
+function isUntouchedDraft(definition: CustomFieldDefinition, entity: Record<string, unknown>, draft: unknown): boolean {
+    const stored = entity[definition.key];
+    if (stored === undefined) return false;
+    return JSON.stringify(draft) === JSON.stringify(displayValueForDefinition(definition, stored));
+}
+
+/**
  * Write the normalised drafts of each definition onto the entity. Empty values
  * are written as their empty form (see emptyStoredValue). The save path then
  * turns that form into an omitted key (definedFieldSaveOptions), so clearing a
  * field removes it from the note instead of keeping the old value.
+ * A draft the user did not change leaves the stored value untouched.
  */
 export function commitDefinedFieldValues(
     entity: Record<string, unknown>,
@@ -339,7 +351,9 @@ export function commitDefinedFieldValues(
     drafts: Record<string, unknown>
 ): void {
     for (const definition of definitions) {
-        const value = normalizeDefinedValue(definition, drafts[definition.key]);
+        const draft = drafts[definition.key];
+        if (isUntouchedDraft(definition, entity, draft)) continue;
+        const value = normalizeDefinedValue(definition, draft);
         entity[definition.key] = value === undefined ? emptyStoredValue(definition.type) : value;
     }
 }
