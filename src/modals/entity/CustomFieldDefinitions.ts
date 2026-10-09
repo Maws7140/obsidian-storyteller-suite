@@ -113,6 +113,26 @@ export function validateCustomFieldKey(
     if (key.length > MAX_KEY_LENGTH) return `Keep property names under ${MAX_KEY_LENGTH} characters.`;
     if (key.startsWith('_')) return 'Property names cannot start with an underscore.';
 
+    const clash = builtInKeyProblem(key, entityType, sectionFrontmatterFields);
+    if (clash) return clash;
+    const lower = key.toLowerCase();
+    if (taken.some(name => name.trim().toLowerCase() === lower)) {
+        return `"${key}" is already defined for this entity type.`;
+    }
+    return null;
+}
+
+/**
+ * Only the clash check: a name the plugin already uses for this entity type (built-in
+ * property, body section field, link field). Free-form custom fields use this alone, so
+ * existing notes with unusual property names can still be saved.
+ */
+export function builtInKeyProblem(
+    rawKey: string,
+    entityType: EntityType,
+    sectionFrontmatterFields: readonly string[] = []
+): string | null {
+    const key = rawKey.trim();
     const lower = key.toLowerCase();
     const builtIn = new Set<string>([
         ...Array.from(getWhitelistKeys(entityType)),
@@ -124,9 +144,6 @@ export function validateCustomFieldKey(
     ]);
     for (const name of builtIn) {
         if (name.toLowerCase() === lower) return `"${key}" is a built-in property for this entity type.`;
-    }
-    if (taken.some(name => name.trim().toLowerCase() === lower)) {
-        return `"${key}" is already defined for this entity type.`;
     }
     return null;
 }

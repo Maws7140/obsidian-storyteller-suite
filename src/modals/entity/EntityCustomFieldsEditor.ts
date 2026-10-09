@@ -8,7 +8,7 @@ import {
     displayValueForDefinition,
     isLinkFieldType,
     sanitizeCustomFieldDefinitions,
-    validateCustomFieldKey,
+    builtInKeyProblem,
 } from './CustomFieldDefinitions';
 
 type CustomFieldDraft = {
@@ -209,7 +209,7 @@ export class EntityCustomFieldsEditor {
 
             // Same rules as typed fields: a free-form row may not claim a body
             // section (it would overwrite that section on save) or a built-in key.
-            const problem = validateCustomFieldKey(trimmedKey, this.entityType, [], this.options.sectionFields ?? []);
+            const problem = builtInKeyProblem(trimmedKey, this.entityType, this.options.sectionFields ?? []);
             if (problem) {
                 new Notice(problem);
                 return null;

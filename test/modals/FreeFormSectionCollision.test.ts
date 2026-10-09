@@ -41,3 +41,12 @@ describe('free-form rows named like body section fields', () => {
     expect(editor.getFields()).toEqual({ Mood: 'happy' });
   });
 });
+
+describe('free-form names keep their old freedom', () => {
+    it('allows underscores, colons-free long names that typed fields reject', async () => {
+        const { builtInKeyProblem } = await import('../../src/modals/entity/CustomFieldDefinitions');
+        expect(builtInKeyProblem('_internal', 'character')).toBeNull();
+        expect(builtInKeyProblem('x'.repeat(80), 'character')).toBeNull();
+        expect(builtInKeyProblem('description', 'character')).not.toBeNull();
+    });
+});
