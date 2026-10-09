@@ -424,6 +424,20 @@ export class TemplateApplicator {
             const { fields, sections } = this.processTemplateEntity(templateGroup);
 
             const override = overrides?.get(templateId);
+            const finalName = (override?.name as string) || (fields.name as string) || '';
+
+            // Reuse a group with the same name in this story instead of adding a duplicate
+            const existingGroup = finalName
+                ? this.plugin.settings.groups.find(g => g.storyId === storyId && g.name === finalName)
+                : undefined;
+            if (existingGroup) {
+                this.idMap.set(templateId, existingGroup.id);
+                this.groupIdMap.set(templateId, existingGroup.id);
+                this.nameToIdMap.set(existingGroup.name, existingGroup.id);
+                groups.push(existingGroup);
+                continue;
+            }
+
             const group: Group = {
                 ...fields,
                 ...override,
