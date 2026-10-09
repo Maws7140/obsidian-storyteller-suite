@@ -2049,6 +2049,10 @@ export class MapView extends ItemView {
             // Grid parameters would go here if needed
         }
 
+        // GeoJSON / GPX overlay layers (vault file paths or wikilinks)
+        if (map.geojsonFiles?.length) params.geojson = [...map.geojsonFiles];
+        if (map.gpxFiles?.length) params.gpx = [...map.gpxFiles];
+
         // Note: Markers are handled differently in the renderer
         // They're loaded from the map entity's markers array
 
