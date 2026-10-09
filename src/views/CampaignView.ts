@@ -1793,7 +1793,10 @@ export class CampaignView extends ItemView {
             const maxHp = parseInt(input.value);
             if (!maxHp) return;
             if (!session.partyState) session.partyState = [];
-            session.partyState.push({ characterId: '', characterName: name, currentHp: maxHp, maxHp });
+            // Replace the character's record rather than add one, so a double tap cannot leave two.
+            const idx = session.partyState.findIndex(s => s.characterName === name);
+            const record = { characterId: idx >= 0 ? session.partyState[idx].characterId : '', characterName: name, currentHp: maxHp, maxHp };
+            if (idx >= 0) session.partyState[idx] = record; else session.partyState.push(record);
             await this.autosave();
             await this.refreshSidebarPart('party');
         })(); });
