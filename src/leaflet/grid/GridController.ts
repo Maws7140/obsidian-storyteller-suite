@@ -133,6 +133,9 @@ export class GridController {
         this.canvas.addEventListener('pointermove', this.move);
         this.canvas.addEventListener('pointerup', this.up);
         this.canvas.addEventListener('pointercancel', this.cancelStroke);
+        // A paint stroke ends with a browser click on the canvas. Keep it from reaching the map so armed tools
+        // (Maplog marks, entity placement) do not also act on the end of the stroke.
+        this.canvas.addEventListener('click', e => e.stopPropagation());
         host.ownerDocument.addEventListener('keydown', this.key);
         host.ownerDocument.addEventListener('keyup', this.keyUp);
         map.on('move zoom resize', this.draw);
