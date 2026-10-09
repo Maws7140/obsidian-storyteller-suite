@@ -103,7 +103,9 @@ export function isLinkTargetType(value: unknown): value is EntityType {
 export function validateCustomFieldKey(
     rawKey: string,
     entityType: EntityType,
-    taken: readonly string[] = []
+    taken: readonly string[] = [],
+    /** Body-section fields stored as frontmatter for this vault (see SectionFieldPlacement.ts). */
+    sectionFrontmatterFields: readonly string[] = []
 ): string | null {
     const key = rawKey.trim();
     if (!key) return 'Enter a property name.';
@@ -115,6 +117,7 @@ export function validateCustomFieldKey(
     const builtIn = new Set<string>([
         ...Array.from(getWhitelistKeys(entityType)),
         ...(DERIVED_SECTION_FIELDS[entityType] ?? []),
+        ...sectionFrontmatterFields,
         ...WIKI_LINK_ARRAY_FIELDS,
         ...WIKI_LINK_SCALAR_FIELDS,
         'customFields', 'filePath', 'sections', 'connections', 'entityRefs', 'locationHistory',
@@ -154,6 +157,40 @@ export function sanitizeCustomFieldDefinitions(entityType: EntityType, raw: unkn
         out.push(definition);
     }
     return out;
+}
+
+export interface DefaultFieldNameCheck {
+    /** Names a new entity may start with, in the order given, without duplicates. */
+    accepted: string[];
+    /** Names the editor would refuse, with the reason to show the user. */
+    rejected: Array<{ name: string; problem: string }>;
+}
+
+/**
+ * Check the default custom field names for an entity type. A default that the
+ * editor would refuse must not seed a new entity, because the seeded row would
+ * block every Save until the user deleted it. The settings page uses the same
+ * check to tell the user which names were dropped.
+ */
+export function checkDefaultCustomFieldNames(
+    entityType: EntityType,
+    names: readonly string[],
+    definitions: readonly CustomFieldDefinition[] = [],
+    sectionFrontmatterFields: readonly string[] = []
+): DefaultFieldNameCheck {
+    const accepted: string[] = [];
+    const rejected: Array<{ name: string; problem: string }> = [];
+    const seen = new Set<string>();
+    const taken = definitions.map(definition => definition.key);
+    for (const raw of names) {
+        const name = raw.trim();
+        if (!name || seen.has(name)) continue;
+        seen.add(name);
+        const problem = validateCustomFieldKey(name, entityType, taken, sectionFrontmatterFields);
+        if (problem) rejected.push({ name, problem });
+        else accepted.push(name);
+    }
+    return { accepted, rejected };
 }
 
 /** Normalise a stored settings map (entity type -> definitions). */
@@ -328,10 +365,22 @@ export function displayValueForDefinition(definition: CustomFieldDefinition, sto
 }
 
 /**
+ * Whether a draft is still the display form of the value already stored on the
+ * entity. Such a draft was not edited, so committing it would only lose detail
+ * (commas inside list items, link aliases).
+ */
+function isUntouchedDraft(definition: CustomFieldDefinition, entity: Record<string, unknown>, draft: unknown): boolean {
+    const stored = entity[definition.key];
+    if (stored === undefined) return false;
+    return JSON.stringify(draft) === JSON.stringify(displayValueForDefinition(definition, stored));
+}
+
+/**
  * Write the normalised drafts of each definition onto the entity. Empty values
  * are written as their empty form (see emptyStoredValue). The save path then
  * turns that form into an omitted key (definedFieldSaveOptions), so clearing a
  * field removes it from the note instead of keeping the old value.
+ * A draft the user did not change leaves the stored value untouched.
  */
 export function commitDefinedFieldValues(
     entity: Record<string, unknown>,
@@ -339,7 +388,9 @@ export function commitDefinedFieldValues(
     drafts: Record<string, unknown>
 ): void {
     for (const definition of definitions) {
-        const value = normalizeDefinedValue(definition, drafts[definition.key]);
+        const draft = drafts[definition.key];
+        if (isUntouchedDraft(definition, entity, draft)) continue;
+        const value = normalizeDefinedValue(definition, draft);
         entity[definition.key] = value === undefined ? emptyStoredValue(definition.type) : value;
     }
 }
@@ -432,4 +483,33 @@ export function sweepCustomFieldsOnRead(
     }
     src.customFields = deduped;
     return deduped;
+}
+
+/**
+ * Free-form keys that the note had when it was loaded and that the modal's
+ * customFields map no longer holds: a deleted row, or the old name of a
+ * renamed row. Pass them to buildFrontmatter as omitOriginalKeys, otherwise its
+ * original-frontmatter pass writes the old value back.
+ *
+ * "Loaded" uses the same sweep as the read path, so only keys the modal showed
+ * as free-form count. Returns [] when there is no customFields map, so a save
+ * that does not come from the editor removes nothing.
+ */
+export function removedFreeFormKeys(
+    entityType: EntityType,
+    originalFrontmatter: Record<string, unknown> | undefined,
+    customFields: unknown,
+    definitions: readonly CustomFieldDefinition[] = [],
+    sectionFrontmatterFields: readonly string[] = []
+): string[] {
+    if (!originalFrontmatter) return [];
+    if (!customFields || typeof customFields !== 'object' || Array.isArray(customFields)) return [];
+    const loaded = sweepCustomFieldsOnRead(
+        entityType,
+        { ...originalFrontmatter },
+        definitions,
+        sectionFrontmatterFields
+    );
+    const kept = new Set(Object.keys(customFields as Record<string, unknown>).map(key => key.trim().toLowerCase()));
+    return Object.keys(loaded).filter(key => !kept.has(key.trim().toLowerCase()));
 }

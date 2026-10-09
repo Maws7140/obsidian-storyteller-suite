@@ -20,6 +20,7 @@ import { connectionForEditing, replaceConnectionAt } from '../utils/ConnectionEd
 import { isModalFieldVisible, seedDefaultCustomFields } from './entity/ModalFieldVisibility';
 import { createCollapsibleModalSection } from './entity/CollapsibleModalSection';
 import { confirmWithModal } from './ui/ConfirmModal';
+import { singleFlight } from '../utils/SingleFlight';
 // Placeholder imports for suggesters - these would need to be created
 // import { CharacterSuggestModal } from './CharacterSuggestModal';
 // import { LocationSuggestModal } from './LocationSuggestModal';
@@ -90,7 +91,7 @@ export class CharacterModal extends ResponsiveModal {
         if (this.isNew) {
             initialCharacter.customFields = seedDefaultCustomFields(
                 initialCharacter.customFields,
-                plugin.settings.defaultCustomFields?.['character']
+                plugin.getSeedableDefaultCustomFields('character')
             );
         }
         if (!initialCharacter.relationships) initialCharacter.relationships = [];
@@ -804,7 +805,8 @@ export class CharacterModal extends ResponsiveModal {
             cls: 'storyteller-modal-btn mod-cta',
             attr: { type: 'button' }
         });
-        saveBtn.addEventListener('click', () => { void (async () => {
+        // A busy button ignores repeat clicks, so Create cannot run twice.
+        const submitCharacter = singleFlight(async () => {
                 if (!this.character.name?.trim()) {
                     new Notice(t('characterNameRequired'));
                     return;
@@ -823,7 +825,8 @@ export class CharacterModal extends ResponsiveModal {
                     
                     new Notice(t('failedToSave', t('character')));
                 }
-            })(); });
+            }, busy => { saveBtn.disabled = busy; });
+        saveBtn.addEventListener('click', submitCharacter);
     })(); }
 
     // Helper to render connections list

@@ -21,6 +21,7 @@ import {
     CUSTOM_FIELD_TYPES,
     CustomFieldDefinition,
     CustomFieldType,
+    checkDefaultCustomFieldNames,
     isLinkFieldType,
     validateCustomFieldKey,
 } from './modals/entity/CustomFieldDefinitions';
@@ -764,10 +765,16 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                         text.setPlaceholder('One field name per line')
                             .setValue(defaults.join('\n'))
                             .onChange(async (value) => {
-                                const names = value
-                                    .split('\n')
-                                    .map(name => name.trim())
-                                    .filter((name, i, all) => name.length > 0 && all.indexOf(name) === i);
+                                const check = checkDefaultCustomFieldNames(
+                                    entityType,
+                                    value.split('\n'),
+                                    this.plugin.getCustomFieldDefinitions(entityType),
+                                    this.plugin.getSectionFrontmatterFields(entityType)
+                                );
+                                for (const refused of check.rejected) {
+                                    new Notice(`Default field "${refused.name}" was not saved. ${refused.problem}`);
+                                }
+                                const names = check.accepted;
                                 const map = { ...(this.plugin.settings.defaultCustomFields ?? {}) };
                                 if (names.length > 0) map[entityType] = names;
                                 else delete map[entityType];
