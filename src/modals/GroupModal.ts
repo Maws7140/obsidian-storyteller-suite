@@ -505,9 +505,13 @@ export class GroupModal extends ResponsiveModal {
                     });
             }
 
-            if (this.shows('customFields')) {
-                this.customFieldsEditor.renderSection(contentEl);
-            }
+        }
+
+        // Defined fields always render, for collection groups too. Only the
+        // free-form rows follow the Custom fields switch.
+        this.customFieldsEditor.renderDefinedFields(contentEl);
+        if (this.shows('customFields')) {
+            this.customFieldsEditor.renderFreeFormSection(contentEl);
         }
 
         if (!this.isNew && this.onDelete) {

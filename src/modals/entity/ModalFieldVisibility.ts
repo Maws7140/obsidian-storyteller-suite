@@ -15,7 +15,12 @@ export interface ModalFieldDef {
     label: string;
     /** Optional grouping for the settings list. */
     group?: string;
+    /** Optional explanation shown under the label in settings. */
+    description?: string;
 }
+
+/** Settings help for the free-form switch. Defined fields are not affected by it. */
+const FREE_FORM_DESCRIPTION = 'Name and value rows you add by hand. Defined fields always show, whatever this is set to.';
 
 /**
  * Character modal fields that may be hidden. Name is deliberately absent: it is
@@ -36,7 +41,7 @@ export const CHARACTER_MODAL_FIELDS: ModalFieldDef[] = [
     { key: 'economies', label: 'Economies', group: 'World-building' },
     { key: 'groups', label: 'Groups', group: 'World-building' },
     { key: 'connections', label: 'Connections', group: 'World-building' },
-    { key: 'customFields', label: 'Custom fields', group: 'Advanced' },
+    { key: 'customFields', label: 'Free-form custom fields', group: 'Advanced', description: FREE_FORM_DESCRIPTION },
     { key: 'dndStats', label: 'D&D stats', group: 'Advanced' },
 ];
 
@@ -57,7 +62,7 @@ export const ITEM_MODAL_FIELDS: ModalFieldDef[] = [
     { key: 'associatedEvents', label: 'Associated events', group: 'World-building' },
     { key: 'associatedCharacters', label: 'Associated characters', group: 'World-building' },
     { key: 'groups', label: 'Groups', group: 'World-building' },
-    { key: 'customFields', label: 'Custom fields', group: 'Advanced' },
+    { key: 'customFields', label: 'Free-form custom fields', group: 'Advanced', description: FREE_FORM_DESCRIPTION },
     { key: 'campaignUse', label: 'Campaign use', group: 'Advanced' },
 ];
 
@@ -79,7 +84,7 @@ export const EVENT_MODAL_FIELDS: ModalFieldDef[] = [
     { key: 'provenance', label: 'Provenance', group: 'Sections' },
     { key: 'media', label: 'Media', group: 'Sections' },
     { key: 'organization', label: 'Organization (tags, groups, branches)', group: 'Sections' },
-    { key: 'customFields', label: 'Custom fields', group: 'Sections' },
+    { key: 'customFields', label: 'Free-form custom fields', group: 'Sections', description: FREE_FORM_DESCRIPTION },
 ];
 
 /**
@@ -102,7 +107,7 @@ export const LOCATION_MODAL_FIELDS: ModalFieldDef[] = [
     { key: 'balance', label: 'Finances (treasury and ledger note)', group: 'World-building' },
     { key: 'linkedEconomies', label: 'Economies', group: 'World-building' },
     { key: 'groups', label: 'Groups', group: 'World-building' },
-    { key: 'customFields', label: 'Custom fields', group: 'Advanced' },
+    { key: 'customFields', label: 'Free-form custom fields', group: 'Advanced', description: FREE_FORM_DESCRIPTION },
 ];
 
 /**
@@ -132,7 +137,7 @@ export const GROUP_MODAL_FIELDS: ModalFieldDef[] = [
     { key: 'linkedCulture', label: 'Linked culture', group: 'Relationships' },
     { key: 'parentGroup', label: 'Parent group', group: 'Relationships' },
     { key: 'subgroups', label: 'Subgroups', group: 'Relationships' },
-    { key: 'customFields', label: 'Custom fields', group: 'Advanced' },
+    { key: 'customFields', label: 'Free-form custom fields', group: 'Advanced', description: FREE_FORM_DESCRIPTION },
 ];
 
 /**
@@ -157,7 +162,7 @@ export const CULTURE_MODAL_FIELDS: ModalFieldDef[] = [
     { key: 'linkedLocations', label: 'Locations', group: 'World-building' },
     { key: 'balance', label: 'Collective wealth', group: 'World-building' },
     { key: 'linkedEconomies', label: 'Economies', group: 'World-building' },
-    { key: 'customFields', label: 'Custom fields', group: 'Advanced' },
+    { key: 'customFields', label: 'Free-form custom fields', group: 'Advanced', description: FREE_FORM_DESCRIPTION },
 ];
 
 /**
@@ -173,7 +178,7 @@ export const ECONOMY_MODAL_FIELDS: ModalFieldDef[] = [
     { key: 'linkedCharacters', label: 'Characters', group: 'World-building' },
     { key: 'linkedLocations', label: 'Locations', group: 'World-building' },
     { key: 'linkedCultures', label: 'Cultures', group: 'World-building' },
-    { key: 'customFields', label: 'Custom fields', group: 'Advanced' },
+    { key: 'customFields', label: 'Free-form custom fields', group: 'Advanced', description: FREE_FORM_DESCRIPTION },
 ];
 
 /**
@@ -192,7 +197,7 @@ export const MAGIC_SYSTEM_MODAL_FIELDS: ModalFieldDef[] = [
     { key: 'limitations', label: 'Limitations', group: 'Writing' },
     { key: 'training', label: 'Training and learning', group: 'Writing' },
     { key: 'history', label: 'History', group: 'Writing' },
-    { key: 'customFields', label: 'Custom fields', group: 'Advanced' },
+    { key: 'customFields', label: 'Free-form custom fields', group: 'Advanced', description: FREE_FORM_DESCRIPTION },
 ];
 
 /**
@@ -217,7 +222,7 @@ export const COMPENDIUM_ENTRY_MODAL_FIELDS: ModalFieldDef[] = [
     { key: 'linkedCultures', label: 'Cultures', group: 'Links' },
     { key: 'linkedEvents', label: 'Events', group: 'Links' },
     { key: 'groups', label: 'Groups', group: 'Links' },
-    { key: 'customFields', label: 'Custom fields', group: 'Advanced' },
+    { key: 'customFields', label: 'Free-form custom fields', group: 'Advanced', description: FREE_FORM_DESCRIPTION },
 ];
 
 /**
@@ -229,7 +234,7 @@ export const REFERENCE_MODAL_FIELDS: ModalFieldDef[] = [
     { key: 'tags', label: 'Tags', group: 'Basics' },
     { key: 'profileImage', label: 'Profile image', group: 'Basics' },
     { key: 'content', label: 'Content', group: 'Basics' },
-    { key: 'customFields', label: 'Custom fields', group: 'Advanced' },
+    { key: 'customFields', label: 'Free-form custom fields', group: 'Advanced', description: FREE_FORM_DESCRIPTION },
 ];
 
 /**
@@ -273,7 +278,7 @@ export const CHAPTER_MODAL_FIELDS: ModalFieldDef[] = [
     { key: 'linkedEvents', label: 'Events', group: 'Links' },
     { key: 'linkedItems', label: 'Items', group: 'Links' },
     { key: 'linkedGroups', label: 'Groups', group: 'Links' },
-    { key: 'customFields', label: 'Custom fields', group: 'Advanced' },
+    { key: 'customFields', label: 'Free-form custom fields', group: 'Advanced', description: FREE_FORM_DESCRIPTION },
 ];
 
 /**
@@ -288,7 +293,7 @@ export const BOOK_MODAL_FIELDS: ModalFieldDef[] = [
     { key: 'description', label: 'Description', group: 'Basics' },
     { key: 'synopsis', label: 'Synopsis', group: 'Basics' },
     { key: 'linkedChapters', label: 'Chapters', group: 'Structure' },
-    { key: 'customFields', label: 'Custom fields', group: 'Advanced' },
+    { key: 'customFields', label: 'Free-form custom fields', group: 'Advanced', description: FREE_FORM_DESCRIPTION },
 ];
 
 /**
@@ -304,7 +309,7 @@ export const MAP_MODAL_FIELDS: ModalFieldDef[] = [
     { key: 'realWorldSettings', label: 'Real-world map settings (coordinates, tiles, dark mode)', group: 'Configuration' },
     { key: 'zoomLimits', label: 'Zoom limits (min and max)', group: 'Configuration' },
     { key: 'groups', label: 'Groups', group: 'Links' },
-    { key: 'customFields', label: 'Custom fields', group: 'Advanced' },
+    { key: 'customFields', label: 'Free-form custom fields', group: 'Advanced', description: FREE_FORM_DESCRIPTION },
 ];
 
 /** Entity modals that support hiding fields. */

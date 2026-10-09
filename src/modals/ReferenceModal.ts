@@ -222,8 +222,9 @@ export class ReferenceModal extends ResponsiveModal {
 
         // Custom fields (add only)
         this.customFieldsEditor.setFields((this.refData as ReferenceWithCustomFields).customFields || {});
+        this.customFieldsEditor.renderDefinedFields(contentEl);
         if (this.shows('customFields')) {
-            this.customFieldsEditor.renderSection(contentEl);
+            this.customFieldsEditor.renderFreeFormSection(contentEl);
         }
 
         if (!this.isNew && this.onDelete) {

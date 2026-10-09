@@ -855,6 +855,9 @@ export class EventModal extends ResponsiveModal {
         }
 
         // --- Custom Fields ---
+        // Defined fields always render. Only the free-form rows follow the switch.
+        this.customFieldsEditor.setFields(this.event.customFields);
+        this.customFieldsEditor.renderDefinedFields(contentEl);
         if (isVisible('customFields')) {
             const customFieldsSection = createCollapsibleModalSection(contentEl, {
                 title: 'Custom fields',
@@ -862,8 +865,7 @@ export class EventModal extends ResponsiveModal {
                 icon: 'list-plus',
                 open: Boolean(Object.keys(this.event.customFields || {}).length),
             });
-            this.customFieldsEditor.setFields(this.event.customFields);
-            this.customFieldsEditor.renderSection(customFieldsSection);
+            this.customFieldsEditor.renderFreeFormSection(customFieldsSection);
         }
 
         // --- Action Buttons ---

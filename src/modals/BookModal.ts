@@ -221,8 +221,9 @@ export class BookModal extends ResponsiveModal {
         }
 
         this.customFieldsEditor.setFields(this.book.customFields);
+        this.customFieldsEditor.renderDefinedFields(contentEl);
         if (this.shows('customFields')) {
-            this.customFieldsEditor.renderSection(contentEl);
+            this.customFieldsEditor.renderFreeFormSection(contentEl);
         }
 
         if (!this.isNew && this.onDelete) {

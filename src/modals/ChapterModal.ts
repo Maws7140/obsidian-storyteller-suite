@@ -236,8 +236,9 @@ export class ChapterModal extends ResponsiveModal {
 
         // Custom fields (add only)
         this.customFieldsEditor.setFields((this.chapter as ChapterWithCustomFields).customFields || {});
+        this.customFieldsEditor.renderDefinedFields(contentEl);
         if (this.shows('customFields')) {
-            this.customFieldsEditor.renderSection(contentEl);
+            this.customFieldsEditor.renderFreeFormSection(contentEl);
         }
 
         // Book assignment

@@ -36,7 +36,7 @@ export interface CustomFieldDefinition {
 
 export const CUSTOM_FIELD_TYPE_LABELS: Record<CustomFieldType, string> = {
     text: 'Text',
-    textarea: 'Long text (one line in frontmatter)',
+    textarea: 'Long text (keeps line breaks)',
     number: 'Number',
     list: 'List of text',
     link: 'Link to one entity',
@@ -187,6 +187,22 @@ export function normalizeTextInput(raw: unknown): string | undefined {
     return text ? text : undefined;
 }
 
+/**
+ * Multi-line text for a textarea field. Line breaks are kept (they are written
+ * as a YAML block scalar, see definedFieldSaveOptions). Trailing spaces on each
+ * line and leading or trailing blank lines are dropped.
+ */
+export function normalizeTextareaInput(raw: unknown): string | undefined {
+    if (raw === null || raw === undefined) return undefined;
+    const text = toText(raw)
+        .replace(/\r\n?/g, '\n')
+        .split('\n')
+        .map(line => line.replace(/[ \t]+$/, ''))
+        .join('\n')
+        .trim();
+    return text ? text : undefined;
+}
+
 /** Empty input is undefined (not written). Non-numeric input is also undefined. */
 export function normalizeNumberInput(raw: unknown): number | undefined {
     if (typeof raw === 'number') return Number.isFinite(raw) ? raw : undefined;
@@ -251,8 +267,9 @@ export function normalizeLinksInput(raw: unknown): string[] {
 export function normalizeDefinedValue(definition: CustomFieldDefinition, raw: unknown): unknown {
     switch (definition.type) {
         case 'text':
-        case 'textarea':
             return normalizeTextInput(raw);
+        case 'textarea':
+            return normalizeTextareaInput(raw);
         case 'number':
             return normalizeNumberInput(raw);
         case 'list': {
@@ -312,8 +329,9 @@ export function displayValueForDefinition(definition: CustomFieldDefinition, sto
 
 /**
  * Write the normalised drafts of each definition onto the entity. Empty values
- * are written as their empty form (see emptyStoredValue) rather than deleted,
- * because a note's existing frontmatter is restored key by key on save.
+ * are written as their empty form (see emptyStoredValue). The save path then
+ * turns that form into an omitted key (definedFieldSaveOptions), so clearing a
+ * field removes it from the note instead of keeping the old value.
  */
 export function commitDefinedFieldValues(
     entity: Record<string, unknown>,
@@ -324,6 +342,39 @@ export function commitDefinedFieldValues(
         const value = normalizeDefinedValue(definition, drafts[definition.key]);
         entity[definition.key] = value === undefined ? emptyStoredValue(definition.type) : value;
     }
+}
+
+/** Whether a stored value is the empty form a cleared defined field commits. */
+function isEmptyStoredValue(value: unknown): boolean {
+    return value === '' || value === null || (Array.isArray(value) && value.length === 0);
+}
+
+/**
+ * What the save path hands to buildFrontmatter for defined fields.
+ * - `source`: a copy of the entity without the cleared defined keys.
+ * - `omitKeys`: cleared keys. buildFrontmatter drops them even when the note
+ *   already had them, so clearing a field removes its property on disk.
+ * - `multilineKeys`: textarea keys, which keep their line breaks.
+ * A key that is absent from the entity is left alone, so a save path that does
+ * not carry a defined field never removes its value.
+ */
+export function definedFieldSaveOptions(
+    definitions: readonly CustomFieldDefinition[],
+    entity: Record<string, unknown>
+): { source: Record<string, unknown>; omitKeys: string[]; multilineKeys: string[] } {
+    const source: Record<string, unknown> = { ...entity };
+    const omitKeys: string[] = [];
+    const multilineKeys: string[] = [];
+    for (const definition of definitions) {
+        const key = definition.key;
+        if (definition.type === 'textarea') multilineKeys.push(key);
+        if (!(key in source)) continue;
+        if (isEmptyStoredValue(source[key])) {
+            delete source[key];
+            omitKeys.push(key);
+        }
+    }
+    return { source, omitKeys, multilineKeys };
 }
 
 // ─── Read path ──────────────────────────────────────────────────────────────

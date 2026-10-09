@@ -787,8 +787,9 @@ export class LocationModal extends ResponsiveModal {
 
         // --- Custom Fields ---
         this.customFieldsEditor.setFields(this.location.customFields);
+        this.customFieldsEditor.renderDefinedFields(contentEl);
         if (this.shows('customFields')) {
-            this.customFieldsEditor.renderSection(contentEl);
+            this.customFieldsEditor.renderFreeFormSection(contentEl);
         }
 
         // --- Groups ---
