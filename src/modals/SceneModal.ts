@@ -17,6 +17,7 @@ import type { StoryMap } from '../types';
 import { ResponsiveModal } from './ResponsiveModal';
 import { confirmWithModal } from './ui/ConfirmModal';
 import { isModalFieldVisible } from './entity/ModalFieldVisibility';
+import { createCollapsibleModalSection } from './entity/CollapsibleModalSection';
 
 export type SceneModalSubmitCallback = (sc: Scene) => Promise<void>;
 export type SceneModalDeleteCallback = (sc: Scene) => Promise<void>;
@@ -152,6 +153,7 @@ export class SceneModal extends ResponsiveModal {
                 );
         }
 
+        // --- Core fields: flat at the top, always shown unless hidden in settings ---
         new Setting(contentEl)
             .setName(t('name'))
             .addText(text => text
@@ -182,6 +184,16 @@ export class SceneModal extends ResponsiveModal {
                 });
         }
 
+        if (this.shows('status')) {
+            new Setting(contentEl)
+                .setName(t('status'))
+                .addDropdown(dd => dd
+                    .addOptions({ Draft: 'Draft', Outline: 'Outline', WIP: 'WIP', Revised: 'Revised', Final: 'Final' })
+                    .setValue(this.scene.status || 'Draft')
+                    .onChange(v => this.scene.status = v)
+                );
+        }
+
         if (this.shows('date')) {
             new Setting(contentEl)
                 .setName('Date')
@@ -193,63 +205,32 @@ export class SceneModal extends ResponsiveModal {
                 );
         }
 
-        if (this.shows('campaignBoardMapId')) {
-            const campaignBoardSetting = new Setting(contentEl)
-                .setName('Campaign board map')
-                .setDesc('Optional image map override for campaign mode. Leave empty to use the scene location map.');
-            campaignBoardSetting.addDropdown(async dd => {
-                dd.addOption('', 'Auto-detect from scene location');
-                const maps = await this.plugin.listMaps().catch(() => [] as StoryMap[]);
-                const imageMaps = maps
-                    .filter(map => (map.type ?? 'image') === 'image')
-                    .sort((a, b) => a.name.localeCompare(b.name));
-                const updateCampaignBoardDesc = (value: string) => {
-                    const selected = imageMaps.find(map => (map.id || map.name) === value);
-                    campaignBoardSetting.descEl.setText(
-                        selected
-                            ? `Campaign mode will open "${selected.name}" for this scene.`
-                            : 'Optional image map override for Campaign mode. Leave empty to use the scene location map.'
-                    );
-                };
-                for (const map of imageMaps) {
-                    const mapId = map.id || map.name;
-                    dd.addOption(mapId, map.name);
-                }
-                dd.setValue(this.scene.campaignBoardMapId || '');
-                updateCampaignBoardDesc(this.scene.campaignBoardMapId || '');
-                dd.onChange(value => {
-                    this.scene.campaignBoardMapId = value || undefined;
-                    updateCampaignBoardDesc(value);
+        if (this.shows('synopsis')) {
+            // Synopsis
+            new Setting(contentEl)
+                .setName('Synopsis')
+                .setClass('storyteller-modal-setting-vertical')
+                .addTextArea(ta => {
+                    ta.setPlaceholder('One-line summary of this scene…')
+                      .setValue(this.scene.synopsis || '')
+                      .onChange(v => { this.scene.synopsis = v.trim() || undefined; });
+                    ta.inputEl.rows = 3;
                 });
-            });
         }
 
-        if (this.shows('status')) {
-            new Setting(contentEl)
-                .setName(t('status'))
-                .addDropdown(dd => dd
-                    .addOptions({ Draft: 'Draft', Outline: 'Outline', WIP: 'WIP', Revised: 'Revised', Final: 'Final' })
-                    .setValue(this.scene.status || 'Draft')
-                    .onChange(v => this.scene.status = v)
-                );
-        }
+        // --- Point of view and mood ---
+        const povSection = ['povCharacter', 'emotion', 'intensity', 'priority'].some(k => this.shows(k))
+            ? createCollapsibleModalSection(contentEl, {
+                title: 'Point of view and mood',
+                description: 'Whose eyes the scene is told through, and how charged it feels',
+                icon: 'eye',
+                open: Boolean(this.scene.povCharacter || this.scene.emotion || this.scene.intensity != null || this.scene.priority != null),
+            })
+            : null;
 
-        if (this.shows('priority')) {
-            new Setting(contentEl)
-                .setName(t('priorityInChapter'))
-                .addText(text => text
-                    .setPlaceholder(t('priorityEg'))
-                    .setValue(this.scene.priority != null ? String(this.scene.priority) : '')
-                    .onChange(v => {
-                        const n = parseInt(v, 10);
-                        this.scene.priority = Number.isFinite(n) ? n : undefined;
-                    })
-                );
-        }
-
-        if (this.shows('povCharacter')) {
+        if (povSection && this.shows('povCharacter')) {
             // POV character
-            const povSetting = new Setting(contentEl)
+            const povSetting = new Setting(povSection)
                 .setName('Pov character')
                 .setDesc(this.scene.povCharacter || 'None');
             let setPovButton: ButtonComponent | null = null;
@@ -282,9 +263,9 @@ export class SceneModal extends ResponsiveModal {
             updatePovSetting();
         }
 
-        if (this.shows('emotion')) {
+        if (povSection && this.shows('emotion')) {
             // Emotion
-            new Setting(contentEl)
+            new Setting(povSection)
                 .setName('Emotional tone')
                 .addDropdown(dd => dd
                     .addOptions({
@@ -305,9 +286,9 @@ export class SceneModal extends ResponsiveModal {
                 );
         }
 
-        if (this.shows('intensity')) {
+        if (povSection && this.shows('intensity')) {
             // Intensity
-            new Setting(contentEl)
+            new Setting(povSection)
                 .setName(`Intensity: ${this.scene.intensity ?? 0}`)
                 .setDesc('Narrative intensity — calm (−10) to climactic (+10)')
                 .addSlider(sl => sl
@@ -322,60 +303,33 @@ export class SceneModal extends ResponsiveModal {
                 );
         }
 
-        if (this.shows('synopsis')) {
-            // Synopsis
-            new Setting(contentEl)
-                .setName('Synopsis')
-                .setClass('storyteller-modal-setting-vertical')
-                .addTextArea(ta => {
-                    ta.setPlaceholder('One-line summary of this scene…')
-                      .setValue(this.scene.synopsis || '')
-                      .onChange(v => { this.scene.synopsis = v.trim() || undefined; });
-                    ta.inputEl.rows = 3;
-                });
-        }
-
-        if (this.shows('tags')) {
-            new Setting(contentEl)
-                .setName(t('tags') || 'Tags')
+        if (povSection && this.shows('priority')) {
+            new Setting(povSection)
+                .setName(t('priorityInChapter'))
                 .addText(text => text
-                    .setPlaceholder(t('tagsPh'))
-                    .setValue((this.scene.tags || []).join(', '))
+                    .setPlaceholder(t('priorityEg'))
+                    .setValue(this.scene.priority != null ? String(this.scene.priority) : '')
                     .onChange(v => {
-                        const arr = v.split(',').map(s => s.trim()).filter(Boolean);
-                        this.scene.tags = arr.length ? arr : undefined;
+                        const n = parseInt(v, 10);
+                        this.scene.priority = Number.isFinite(n) ? n : undefined;
                     })
                 );
         }
 
-        // Image block
-        if (this.shows('profileImage')) {
-            let imageDescEl: HTMLElement | null = null;
-            const profileImageSetting = new Setting(contentEl)
-                .setName(t('profileImage'))
-                .then(s => {
-                    imageDescEl = s.descEl.createEl('small', { text: t('currentValue', this.scene.profileImagePath || t('none')) });
-                    s.descEl.addClass('storyteller-modal-setting-vertical');
-                });
-        
-            // Add image selection buttons (Gallery, Upload, Vault, Clear)
-            addImageSelectionButtons(
-                profileImageSetting,
-                this.app,
-                this.plugin,
-                {
-                    currentPath: this.scene.profileImagePath,
-                    onSelect: (path) => {
-                        this.scene.profileImagePath = path;
-                    },
-                    descriptionEl: imageDescEl || undefined
-                }
-            );
-        }
+        // --- Content and beats (branches ride along for existing scenes) ---
+        const showsBranches = this.shows('branches') && !this.isNew && Boolean(this.scene.filePath);
+        const contentSection = this.shows('content') || this.shows('beats') || showsBranches
+            ? createCollapsibleModalSection(contentEl, {
+                title: 'Content and beats',
+                description: 'The scene prose, its beat sheet, and any branches',
+                icon: 'list-ordered',
+                open: Boolean(this.scene.content || this.scene.beats?.length),
+            })
+            : null;
 
         // Content
-        if (this.shows('content')) {
-            new Setting(contentEl)
+        if (contentSection && this.shows('content')) {
+            new Setting(contentSection)
                 .setName(t('content') || 'Content')
                 .setClass('storyteller-modal-setting-vertical')
                 .addTextArea((ta: TextAreaComponent) => {
@@ -387,8 +341,8 @@ export class SceneModal extends ResponsiveModal {
         }
 
         // Beat sheet
-        if (this.shows('beats')) {
-            new Setting(contentEl)
+        if (contentSection && this.shows('beats')) {
+            new Setting(contentSection)
                 .setName(t('beatSheetOneLine'))
                 .setClass('storyteller-modal-setting-vertical')
                 .addTextArea((ta: TextAreaComponent) => {
@@ -403,13 +357,29 @@ export class SceneModal extends ResponsiveModal {
                 });
         }
 
-        // Linked entities
-        if (['linkedCharacters', 'linkedLocations', 'linkedEvents', 'linkedItems', 'linkedGroups'].some(k => this.shows(k))) {
-            contentEl.createEl('h3', { text: t('links') });
+        // Branches section (only shown for existing scenes that have a file)
+        if (contentSection && showsBranches) {
+            const branchesContainer = contentSection.createDiv('storyteller-branches-section-host');
+            this.renderBranchesSection(branchesContainer);
         }
 
-        if (this.shows('linkedCharacters')) {
-            const charactersSetting = new Setting(contentEl)
+        // --- Linked entities ---
+        const showsLinks = ['linkedCharacters', 'linkedLocations', 'linkedEvents', 'linkedItems', 'linkedGroups'].some(k => this.shows(k));
+        const linksSection = showsLinks
+            ? createCollapsibleModalSection(contentEl, {
+                title: t('links'),
+                description: 'Characters, places, events, items and groups this scene involves',
+                icon: 'link',
+                open: Boolean(
+                    this.scene.linkedCharacters?.length || this.scene.linkedLocations?.length
+                    || this.scene.linkedEvents?.length || this.scene.linkedItems?.length
+                    || this.scene.linkedGroups?.length
+                ),
+            })
+            : null;
+
+        if (linksSection && this.shows('linkedCharacters')) {
+            const charactersSetting = new Setting(linksSection)
                 .setName(t('characters'));
             const charactersListEl = charactersSetting.controlEl.createDiv('storyteller-modal-linked-entities');
             this.renderLinkedEntities(charactersListEl, this.scene.linkedCharacters, 'characters');
@@ -422,8 +392,8 @@ export class SceneModal extends ResponsiveModal {
             }));
         }
 
-        if (this.shows('linkedLocations')) {
-            const locationsSetting = new Setting(contentEl)
+        if (linksSection && this.shows('linkedLocations')) {
+            const locationsSetting = new Setting(linksSection)
                 .setName(t('locations'));
             const locationsListEl = locationsSetting.controlEl.createDiv('storyteller-modal-linked-entities');
             this.renderLinkedEntities(locationsListEl, this.scene.linkedLocations, 'locations');
@@ -437,8 +407,8 @@ export class SceneModal extends ResponsiveModal {
             }));
         }
 
-        if (this.shows('linkedEvents')) {
-            const eventsSetting = new Setting(contentEl)
+        if (linksSection && this.shows('linkedEvents')) {
+            const eventsSetting = new Setting(linksSection)
                 .setName(t('events'));
             const eventsListEl = eventsSetting.controlEl.createDiv('storyteller-modal-linked-entities');
             this.renderLinkedEntities(eventsListEl, this.scene.linkedEvents, 'events');
@@ -451,8 +421,8 @@ export class SceneModal extends ResponsiveModal {
             }));
         }
 
-        if (this.shows('linkedItems')) {
-            const itemsSetting = new Setting(contentEl)
+        if (linksSection && this.shows('linkedItems')) {
+            const itemsSetting = new Setting(linksSection)
                 .setName(t('items'));
             const itemsListEl = itemsSetting.controlEl.createDiv('storyteller-modal-linked-entities');
             this.renderLinkedEntities(itemsListEl, this.scene.linkedItems, 'items');
@@ -475,8 +445,8 @@ export class SceneModal extends ResponsiveModal {
             }));
         }
 
-        if (this.shows('linkedGroups')) {
-            const groupsSetting = new Setting(contentEl)
+        if (linksSection && this.shows('linkedGroups')) {
+            const groupsSetting = new Setting(linksSection)
                 .setName(t('groups'));
             const groupsListEl = groupsSetting.controlEl.createDiv('storyteller-modal-linked-entities');
             this.renderLinkedEntities(groupsListEl, this.scene.linkedGroups, 'groups');
@@ -489,13 +459,18 @@ export class SceneModal extends ResponsiveModal {
             }));
         }
 
-        // Setup / Payoff scene links
-        if (['setupScenes', 'payoffScenes'].some(k => this.shows(k))) {
-            contentEl.createEl('h3', { text: 'Setup & payoff' });
-        }
+        // --- Setup and payoff scene links ---
+        const setupSection = ['setupScenes', 'payoffScenes'].some(k => this.shows(k))
+            ? createCollapsibleModalSection(contentEl, {
+                title: 'Setup and payoff',
+                description: 'Scenes this one plants seeds for, and scenes that pay its seeds off',
+                icon: 'git-merge',
+                open: Boolean(this.scene.setupScenes?.length || this.scene.payoffScenes?.length),
+            })
+            : null;
 
-        if (this.shows('setupScenes')) {
-            const setupSetting = new Setting(contentEl)
+        if (setupSection && this.shows('setupScenes')) {
+            const setupSetting = new Setting(setupSection)
                 .setName('Sets up scenes')
                 .setDesc('This scene plants seeds paid off by these scenes');
             const setupListEl = setupSetting.controlEl.createDiv('storyteller-modal-linked-entities');
@@ -509,8 +484,8 @@ export class SceneModal extends ResponsiveModal {
             }));
         }
 
-        if (this.shows('payoffScenes')) {
-            const payoffSetting = new Setting(contentEl)
+        if (setupSection && this.shows('payoffScenes')) {
+            const payoffSetting = new Setting(setupSection)
                 .setName('Paid off by scenes')
                 .setDesc('These scenes resolve what this scene foreshadows');
             const payoffListEl = payoffSetting.controlEl.createDiv('storyteller-modal-linked-entities');
@@ -524,12 +499,93 @@ export class SceneModal extends ResponsiveModal {
             }));
         }
 
-        if (this.shows('branches')) {
-            // --- Branches section (only shown for existing scenes that have a file) ---
-            if (!this.isNew && this.scene.filePath) {
-                const branchesContainer = contentEl.createDiv('storyteller-branches-section-host');
-                this.renderBranchesSection(branchesContainer);
-            }
+        // --- Campaign ---
+        const campaignSection = this.shows('campaignBoardMapId')
+            ? createCollapsibleModalSection(contentEl, {
+                title: 'Campaign',
+                description: 'Which map Campaign mode opens for this scene',
+                icon: 'clapperboard',
+                open: Boolean(this.scene.campaignBoardMapId),
+            })
+            : null;
+
+        if (campaignSection) {
+            const campaignBoardSetting = new Setting(campaignSection)
+                .setName('Campaign board map')
+                .setDesc('Optional image map override for campaign mode. Leave empty to use the scene location map.');
+            campaignBoardSetting.addDropdown(async dd => {
+                dd.addOption('', 'Auto-detect from scene location');
+                const maps = await this.plugin.listMaps().catch(() => [] as StoryMap[]);
+                const imageMaps = maps
+                    .filter(map => (map.type ?? 'image') === 'image')
+                    .sort((a, b) => a.name.localeCompare(b.name));
+                const updateCampaignBoardDesc = (value: string) => {
+                    const selected = imageMaps.find(map => (map.id || map.name) === value);
+                    campaignBoardSetting.descEl.setText(
+                        selected
+                            ? `Campaign mode will open "${selected.name}" for this scene.`
+                            : 'Optional image map override for Campaign mode. Leave empty to use the scene location map.'
+                    );
+                };
+                for (const map of imageMaps) {
+                    const mapId = map.id || map.name;
+                    dd.addOption(mapId, map.name);
+                }
+                dd.setValue(this.scene.campaignBoardMapId || '');
+                updateCampaignBoardDesc(this.scene.campaignBoardMapId || '');
+                dd.onChange(value => {
+                    this.scene.campaignBoardMapId = value || undefined;
+                    updateCampaignBoardDesc(value);
+                });
+            });
+        }
+
+        // --- Media and tags ---
+        const mediaSection = this.shows('profileImage') || this.shows('tags')
+            ? createCollapsibleModalSection(contentEl, {
+                title: 'Media and tags',
+                description: 'Cover image and tags for filtering',
+                icon: 'image',
+                open: Boolean(this.scene.profileImagePath || this.scene.tags?.length),
+            })
+            : null;
+
+        // Image block
+        if (mediaSection && this.shows('profileImage')) {
+            let imageDescEl: HTMLElement | null = null;
+            const profileImageSetting = new Setting(mediaSection)
+                .setName(t('profileImage'))
+                .then(s => {
+                    imageDescEl = s.descEl.createEl('small', { text: t('currentValue', this.scene.profileImagePath || t('none')) });
+                    s.descEl.addClass('storyteller-modal-setting-vertical');
+                });
+
+            // Add image selection buttons (Gallery, Upload, Vault, Clear)
+            addImageSelectionButtons(
+                profileImageSetting,
+                this.app,
+                this.plugin,
+                {
+                    currentPath: this.scene.profileImagePath,
+                    onSelect: (path) => {
+                        this.scene.profileImagePath = path;
+                    },
+                    descriptionEl: imageDescEl || undefined
+                }
+            );
+        }
+
+        if (mediaSection && this.shows('tags')) {
+            new Setting(mediaSection)
+                .setName(t('tags') || 'Tags')
+                .addText(text => text
+                    .setPlaceholder(t('tagsPh'))
+                    .setValue((this.scene.tags || []).join(', '))
+                    .onChange(v => {
+                        const arr = v.split(',').map(s => s.trim()).filter(Boolean);
+                        this.scene.tags = arr.length ? arr : undefined;
+                    })
+                );
         }
 
         if (!this.isNew && this.onDelete) {
