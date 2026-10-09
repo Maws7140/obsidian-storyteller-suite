@@ -11,6 +11,8 @@ import { EntityCustomFieldsEditor, customFieldEditorOptions } from './entity/Ent
 import { ResponsiveModal } from './ResponsiveModal';
 import { confirmWithModal } from './ui/ConfirmModal';
 import { isModalFieldVisible } from './entity/ModalFieldVisibility';
+import { createCollapsibleModalSection } from './entity/CollapsibleModalSection';
+import { sanitizeCustomFieldDefinitions } from './entity/CustomFieldDefinitions';
 
 export type ReferenceModalSubmitCallback = (ref: Reference) => Promise<void>;
 export type ReferenceModalDeleteCallback = (ref: Reference) => Promise<void>;
@@ -170,20 +172,6 @@ export class ReferenceModal extends ResponsiveModal {
                 );
         }
 
-        if (this.shows('tags')) {
-            new Setting(contentEl)
-                .setName(t('tags') || 'Tags')
-                .setDesc(t('traitsPlaceholder'))
-                .addText(text => text
-                    .setPlaceholder(t('tagsPh'))
-                    .setValue((this.refData.tags || []).join(', '))
-                    .onChange(v => {
-                        const arr = v.split(',').map(s => s.trim()).filter(Boolean);
-                        this.refData.tags = arr.length ? arr : undefined;
-                    })
-                );
-        }
-
         if (this.shows('profileImage')) {
             let imageDescEl: HTMLElement | null = null;
             const profileImageSetting = new Setting(contentEl)
@@ -220,11 +208,54 @@ export class ReferenceModal extends ResponsiveModal {
                 });
         }
 
-        // Custom fields (add only)
         this.customFieldsEditor.setFields((this.refData as ReferenceWithCustomFields).customFields || {});
-        this.customFieldsEditor.renderDefinedFields(contentEl);
+        const definedFieldCount = sanitizeCustomFieldDefinitions('reference', this.plugin.getCustomFieldDefinitions('reference')).length;
+        const yourFields = definedFieldCount > 0
+            ? createCollapsibleModalSection(contentEl, {
+                title: 'Your fields',
+                description: 'Fields you defined for references in settings',
+                icon: 'list-checks',
+                open: true,
+            })
+            : null;
+        if (yourFields) {
+            this.customFieldsEditor.renderDefinedFields(yourFields);
+            yourFields.querySelector(':scope > h3')?.remove();
+        }
+
+        const tags = this.shows('tags')
+            ? createCollapsibleModalSection(contentEl, {
+                title: 'Tags',
+                description: 'Keywords for finding this reference again',
+                icon: 'tags',
+                open: Boolean(this.refData.tags?.length),
+            })
+            : null;
+        if (tags) {
+            if (this.shows('tags')) {
+                new Setting(tags)
+                    .setName(t('tags') || 'Tags')
+                    .setDesc(t('traitsPlaceholder'))
+                    .addText(text => text
+                        .setPlaceholder(t('tagsPh'))
+                        .setValue((this.refData.tags || []).join(', '))
+                        .onChange(v => {
+                            const arr = v.split(',').map(s => s.trim()).filter(Boolean);
+                            this.refData.tags = arr.length ? arr : undefined;
+                        })
+                    );
+            }
+        }
+
         if (this.shows('customFields')) {
-            this.customFieldsEditor.renderFreeFormSection(contentEl);
+            const customFieldsSection = createCollapsibleModalSection(contentEl, {
+                title: 'Custom fields',
+                description: 'Free-form name and value pairs',
+                icon: 'list-plus',
+                open: Boolean(Object.keys((this.refData as ReferenceWithCustomFields).customFields || {}).length),
+            });
+            this.customFieldsEditor.renderFreeFormSection(customFieldsSection);
+            customFieldsSection.querySelector(':scope > h3')?.remove();
         }
 
         if (!this.isNew && this.onDelete) {

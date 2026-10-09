@@ -9,6 +9,8 @@ import { t } from '../i18n/strings';
 import { parseSectionsFromMarkdown } from '../yaml/EntitySections';
 import { EntityCustomFieldsEditor, customFieldEditorOptions } from './entity/EntityCustomFieldsEditor';
 import { isModalFieldVisible } from './entity/ModalFieldVisibility';
+import { createCollapsibleModalSection } from './entity/CollapsibleModalSection';
+import { sanitizeCustomFieldDefinitions } from './entity/CustomFieldDefinitions';
 
 export type EconomyModalSubmitCallback = (economy: Economy) => Promise<void>;
 export type EconomyModalDeleteCallback = (economy: Economy) => Promise<void>;
@@ -272,146 +274,196 @@ export class EconomyModal extends ResponsiveModal {
                 });
         }
 
-        // Industries (Markdown Section)
-        if (this.shows('industries')) {
-            new Setting(contentEl)
-                .setName(t('industries'))
-                .setDesc(t('industriesDesc'))
-                .setClass('storyteller-modal-setting-vertical')
-                .addTextArea(text => {
-                    text.setValue(this.economy.industries || '')
-                        .onChange(value => this.economy.industries = value);
-                    text.inputEl.rows = 4;
-                    text.inputEl.setCssStyles({ width: '100%' });
-                });
-        }
-
-        // Taxation (Markdown Section)
-        if (this.shows('taxation')) {
-            new Setting(contentEl)
-                .setName(t('taxation'))
-                .setDesc(t('taxationDesc'))
-                .setClass('storyteller-modal-setting-vertical')
-                .addTextArea(text => {
-                    text.setValue(this.economy.taxation || '')
-                        .onChange(value => this.economy.taxation = value);
-                    text.inputEl.rows = 3;
-                    text.inputEl.setCssStyles({ width: '100%' });
-                });
-        }
-
-        if (this.shows('linkedCharacters')) {
-            // --- Linked Characters ---
-            contentEl.createEl('h3', { text: 'Characters' });
-            if (!Array.isArray(this.economy.linkedCharacters)) this.economy.linkedCharacters = [];
-            const econCharChips = contentEl.createDiv('storyteller-linked-chips');
-            const renderEconCharChips = () => {
-                econCharChips.empty();
-                for (const name of (this.economy.linkedCharacters ?? [])) {
-                    const chip = econCharChips.createSpan({ cls: 'storyteller-linked-chip' });
-                    chip.createSpan({ text: name });
-                    const rm = chip.createEl('button', { cls: 'storyteller-chip-remove', attr: { 'aria-label': 'Remove' } });
-                    setIcon(rm, 'x');
-                    rm.addEventListener('click', () => {
-                        this.economy.linkedCharacters = this.economy.linkedCharacters!.filter(n => n !== name);
-                        renderEconCharChips();
-                    });
-                }
-            };
-            renderEconCharChips();
-            const allCharacters = await this.plugin.listCharacters();
-            new Setting(contentEl)
-                .setName('Add character')
-                .addDropdown(dd => {
-                    dd.addOption('', '— select character —');
-                    allCharacters.forEach(c => { dd.addOption(c.name, c.name); });
-                    dd.onChange(val => {
-                        if (val && !(this.economy.linkedCharacters ?? []).includes(val)) {
-                            if (!Array.isArray(this.economy.linkedCharacters)) this.economy.linkedCharacters = [];
-                            this.economy.linkedCharacters.push(val);
-                            renderEconCharChips();
-                        }
-                        dd.setValue('');
-                    });
-                });
-        }
-
-        if (this.shows('linkedLocations')) {
-            // --- Linked Locations ---
-            contentEl.createEl('h3', { text: 'Locations' });
-            if (!Array.isArray(this.economy.linkedLocations)) this.economy.linkedLocations = [];
-            const econLocChips = contentEl.createDiv('storyteller-linked-chips');
-            const renderEconLocChips = () => {
-                econLocChips.empty();
-                for (const name of (this.economy.linkedLocations ?? [])) {
-                    const chip = econLocChips.createSpan({ cls: 'storyteller-linked-chip' });
-                    chip.createSpan({ text: name });
-                    const rm = chip.createEl('button', { cls: 'storyteller-chip-remove', attr: { 'aria-label': 'Remove' } });
-                    setIcon(rm, 'x');
-                    rm.addEventListener('click', () => {
-                        this.economy.linkedLocations = this.economy.linkedLocations!.filter(n => n !== name);
-                        renderEconLocChips();
-                    });
-                }
-            };
-            renderEconLocChips();
-            const allLocations = await this.plugin.listLocations();
-            new Setting(contentEl)
-                .setName('Add location')
-                .addDropdown(dd => {
-                    dd.addOption('', '— select location —');
-                    allLocations.forEach(l => { dd.addOption(l.name, l.name); });
-                    dd.onChange(val => {
-                        if (val && !(this.economy.linkedLocations ?? []).includes(val)) {
-                            if (!Array.isArray(this.economy.linkedLocations)) this.economy.linkedLocations = [];
-                            this.economy.linkedLocations.push(val);
-                            renderEconLocChips();
-                        }
-                        dd.setValue('');
-                    });
-                });
-        }
-
-        if (this.shows('linkedCultures')) {
-            // --- Linked Cultures ---
-            contentEl.createEl('h3', { text: 'Cultures' });
-            if (!Array.isArray(this.economy.linkedCultures)) this.economy.linkedCultures = [];
-            const econCultChips = contentEl.createDiv('storyteller-linked-chips');
-            const renderEconCultChips = () => {
-                econCultChips.empty();
-                for (const name of (this.economy.linkedCultures ?? [])) {
-                    const chip = econCultChips.createSpan({ cls: 'storyteller-linked-chip' });
-                    chip.createSpan({ text: name });
-                    const rm = chip.createEl('button', { cls: 'storyteller-chip-remove', attr: { 'aria-label': 'Remove' } });
-                    setIcon(rm, 'x');
-                    rm.addEventListener('click', () => {
-                        this.economy.linkedCultures = this.economy.linkedCultures!.filter(n => n !== name);
-                        renderEconCultChips();
-                    });
-                }
-            };
-            renderEconCultChips();
-            const allCultures = await this.plugin.listCultures();
-            new Setting(contentEl)
-                .setName('Add culture')
-                .addDropdown(dd => {
-                    dd.addOption('', '— select culture —');
-                    allCultures.forEach(c => { dd.addOption(c.name, c.name); });
-                    dd.onChange(val => {
-                        if (val && !(this.economy.linkedCultures ?? []).includes(val)) {
-                            if (!Array.isArray(this.economy.linkedCultures)) this.economy.linkedCultures = [];
-                            this.economy.linkedCultures.push(val);
-                            renderEconCultChips();
-                        }
-                        dd.setValue('');
-                    });
-                });
-        }
-
         this.customFieldsEditor.setFields(this.economy.customFields);
-        this.customFieldsEditor.renderDefinedFields(contentEl);
+        const definedFieldCount = sanitizeCustomFieldDefinitions('economy', this.plugin.getCustomFieldDefinitions('economy')).length;
+        const yourFields = definedFieldCount > 0
+            ? createCollapsibleModalSection(contentEl, {
+                title: 'Your fields',
+                description: 'Fields you defined for economies in settings',
+                icon: 'list-checks',
+                open: true,
+            })
+            : null;
+        if (yourFields) {
+            this.customFieldsEditor.renderDefinedFields(yourFields);
+            yourFields.querySelector(':scope > h3')?.remove();
+        }
+
+        const production = this.shows('industries')
+            ? createCollapsibleModalSection(contentEl, {
+                title: 'Production',
+                description: 'What this economy makes and trades',
+                icon: 'hammer',
+                open: Boolean(this.economy.industries),
+            })
+            : null;
+        if (production) {
+            // Industries (Markdown Section)
+            if (this.shows('industries')) {
+                new Setting(production)
+                    .setName(t('industries'))
+                    .setDesc(t('industriesDesc'))
+                    .setClass('storyteller-modal-setting-vertical')
+                    .addTextArea(text => {
+                        text.setValue(this.economy.industries || '')
+                            .onChange(value => this.economy.industries = value);
+                        text.inputEl.rows = 4;
+                        text.inputEl.setCssStyles({ width: '100%' });
+                    });
+            }
+        }
+
+        const taxation = this.shows('taxation')
+            ? createCollapsibleModalSection(contentEl, {
+                title: 'Taxation',
+                description: 'How this economy raises revenue',
+                icon: 'receipt',
+                open: Boolean(this.economy.taxation),
+            })
+            : null;
+        if (taxation) {
+            // Taxation (Markdown Section)
+            if (this.shows('taxation')) {
+                new Setting(taxation)
+                    .setName(t('taxation'))
+                    .setDesc(t('taxationDesc'))
+                    .setClass('storyteller-modal-setting-vertical')
+                    .addTextArea(text => {
+                        text.setValue(this.economy.taxation || '')
+                            .onChange(value => this.economy.taxation = value);
+                        text.inputEl.rows = 3;
+                        text.inputEl.setCssStyles({ width: '100%' });
+                    });
+            }
+        }
+
+        const connections = (this.shows('linkedCharacters') || this.shows('linkedLocations') || this.shows('linkedCultures'))
+            ? createCollapsibleModalSection(contentEl, {
+                title: 'Connections',
+                description: 'Linked characters, locations, and cultures',
+                icon: 'link',
+                open: Boolean(this.economy.linkedCharacters?.length || this.economy.linkedLocations?.length || this.economy.linkedCultures?.length),
+            })
+            : null;
+        if (connections) {
+            if (this.shows('linkedCharacters')) {
+                // --- Linked Characters ---
+                connections.createEl('h3', { text: 'Characters' });
+                if (!Array.isArray(this.economy.linkedCharacters)) this.economy.linkedCharacters = [];
+                const econCharChips = connections.createDiv('storyteller-linked-chips');
+                const renderEconCharChips = () => {
+                    econCharChips.empty();
+                    for (const name of (this.economy.linkedCharacters ?? [])) {
+                        const chip = econCharChips.createSpan({ cls: 'storyteller-linked-chip' });
+                        chip.createSpan({ text: name });
+                        const rm = chip.createEl('button', { cls: 'storyteller-chip-remove', attr: { 'aria-label': 'Remove' } });
+                        setIcon(rm, 'x');
+                        rm.addEventListener('click', () => {
+                            this.economy.linkedCharacters = this.economy.linkedCharacters!.filter(n => n !== name);
+                            renderEconCharChips();
+                        });
+                    }
+                };
+                renderEconCharChips();
+                const allCharacters = await this.plugin.listCharacters();
+                new Setting(connections)
+                    .setName('Add character')
+                    .addDropdown(dd => {
+                        dd.addOption('', '— select character —');
+                        allCharacters.forEach(c => { dd.addOption(c.name, c.name); });
+                        dd.onChange(val => {
+                            if (val && !(this.economy.linkedCharacters ?? []).includes(val)) {
+                                if (!Array.isArray(this.economy.linkedCharacters)) this.economy.linkedCharacters = [];
+                                this.economy.linkedCharacters.push(val);
+                                renderEconCharChips();
+                            }
+                            dd.setValue('');
+                        });
+                    });
+            }
+
+            if (this.shows('linkedLocations')) {
+                // --- Linked Locations ---
+                connections.createEl('h3', { text: 'Locations' });
+                if (!Array.isArray(this.economy.linkedLocations)) this.economy.linkedLocations = [];
+                const econLocChips = connections.createDiv('storyteller-linked-chips');
+                const renderEconLocChips = () => {
+                    econLocChips.empty();
+                    for (const name of (this.economy.linkedLocations ?? [])) {
+                        const chip = econLocChips.createSpan({ cls: 'storyteller-linked-chip' });
+                        chip.createSpan({ text: name });
+                        const rm = chip.createEl('button', { cls: 'storyteller-chip-remove', attr: { 'aria-label': 'Remove' } });
+                        setIcon(rm, 'x');
+                        rm.addEventListener('click', () => {
+                            this.economy.linkedLocations = this.economy.linkedLocations!.filter(n => n !== name);
+                            renderEconLocChips();
+                        });
+                    }
+                };
+                renderEconLocChips();
+                const allLocations = await this.plugin.listLocations();
+                new Setting(connections)
+                    .setName('Add location')
+                    .addDropdown(dd => {
+                        dd.addOption('', '— select location —');
+                        allLocations.forEach(l => { dd.addOption(l.name, l.name); });
+                        dd.onChange(val => {
+                            if (val && !(this.economy.linkedLocations ?? []).includes(val)) {
+                                if (!Array.isArray(this.economy.linkedLocations)) this.economy.linkedLocations = [];
+                                this.economy.linkedLocations.push(val);
+                                renderEconLocChips();
+                            }
+                            dd.setValue('');
+                        });
+                    });
+            }
+
+            if (this.shows('linkedCultures')) {
+                // --- Linked Cultures ---
+                connections.createEl('h3', { text: 'Cultures' });
+                if (!Array.isArray(this.economy.linkedCultures)) this.economy.linkedCultures = [];
+                const econCultChips = connections.createDiv('storyteller-linked-chips');
+                const renderEconCultChips = () => {
+                    econCultChips.empty();
+                    for (const name of (this.economy.linkedCultures ?? [])) {
+                        const chip = econCultChips.createSpan({ cls: 'storyteller-linked-chip' });
+                        chip.createSpan({ text: name });
+                        const rm = chip.createEl('button', { cls: 'storyteller-chip-remove', attr: { 'aria-label': 'Remove' } });
+                        setIcon(rm, 'x');
+                        rm.addEventListener('click', () => {
+                            this.economy.linkedCultures = this.economy.linkedCultures!.filter(n => n !== name);
+                            renderEconCultChips();
+                        });
+                    }
+                };
+                renderEconCultChips();
+                const allCultures = await this.plugin.listCultures();
+                new Setting(connections)
+                    .setName('Add culture')
+                    .addDropdown(dd => {
+                        dd.addOption('', '— select culture —');
+                        allCultures.forEach(c => { dd.addOption(c.name, c.name); });
+                        dd.onChange(val => {
+                            if (val && !(this.economy.linkedCultures ?? []).includes(val)) {
+                                if (!Array.isArray(this.economy.linkedCultures)) this.economy.linkedCultures = [];
+                                this.economy.linkedCultures.push(val);
+                                renderEconCultChips();
+                            }
+                            dd.setValue('');
+                        });
+                    });
+            }
+        }
+
         if (this.shows('customFields')) {
-            this.customFieldsEditor.renderFreeFormSection(contentEl);
+            const customFieldsSection = createCollapsibleModalSection(contentEl, {
+                title: 'Custom fields',
+                description: 'Free-form name and value pairs',
+                icon: 'list-plus',
+                open: Boolean(Object.keys(this.economy.customFields || {}).length),
+            });
+            this.customFieldsEditor.renderFreeFormSection(customFieldsSection);
+            customFieldsSection.querySelector(':scope > h3')?.remove();
         }
 
         if (!this.isNew && this.onDelete) {
