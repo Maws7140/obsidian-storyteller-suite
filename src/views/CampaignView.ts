@@ -68,9 +68,13 @@ import type { LeafletRendererOptions, LocationPinHighlight } from '../leaflet/ty
 import { mapToBlockParams } from '../leaflet/utils/MapBlockParams';
 import { locationPinKey, resolveBoardSelection } from '../utils/CampaignBoardSelection';
 import {
+    appendBlock,
     applyPartylogTagsToSession,
     appendLogLines,
+    lastSceneContext,
+    nextSceneHeaderLine,
     type PartylogBridgeContext,
+    type SceneKindChoice,
 } from '../campaign/PartylogSessionBridge';
 import {
     entryTags,
@@ -241,6 +245,9 @@ export class CampaignView extends ItemView {
     /** Last dice result from a branch roll, used to prefill the Roll entry. */
     private lastDiceResult: { expression: string; outcome: string } | null = null;
     private tagNameCache: TagNameCache | null = null;
+    /** Kind of the next scene header written to the log. Resets to 'next' after one header. */
+    private sceneKindChoice: SceneKindChoice = 'next';
+    private sceneKindThread: 1 | 2 = 1;
     private stripWikiLinkValue(value: string | null | undefined): string {
         return stripWikiLinkToString(value);
     }
@@ -463,6 +470,7 @@ export class CampaignView extends ItemView {
             cls: 'storyteller-campaign-scene-name',
             text: this.currentScene?.name ?? 'No scene',
         });
+        this.renderSceneKindControl(toolbar);
         this.renderActorSelector(toolbar, session);
         toolbar.createDiv({ cls: 'storyteller-campaign-toolbar-spacer' });
 
@@ -1522,6 +1530,7 @@ export class CampaignView extends ItemView {
 
         this.session.currentSceneName = scene.name;
         this.session.currentSceneId   = scene.id;
+        await this.logSceneHeader(scene);
         await this.autosave(`Entered *${scene.name}*`);
 
         // On-enter encounter auto-roll
@@ -1549,6 +1558,7 @@ export class CampaignView extends ItemView {
         await this.syncActiveCampaignBoardForScene();
         this.session.currentSceneName = scene.name;
         this.session.currentSceneId = scene.id;
+        await this.logSceneHeader(scene);
         await this.autosave(`Back to *${scene.name}*`);
         await this.render();
     }
@@ -2797,6 +2807,51 @@ export class CampaignView extends ItemView {
         for (const part of Array.from(new Set(parts))) {
             await this.refreshSidebarPart(part);
         }
+    }
+
+    /**
+     * Appends `### S<n> *scene*` when the scene changes, using the library's id rules. Reopening a
+     * session at the scene it already ends with adds nothing.
+     */
+    private async logSceneHeader(scene: Scene): Promise<void> {
+        const session = this.session;
+        if (!session) return;
+        const kind = this.sceneKindChoice;
+        const thread = this.sceneKindThread;
+        this.sceneKindChoice = 'next';
+        await this.autosave();
+        if (!session.filePath) return;
+
+        let log = '';
+        try { log = await this.plugin.loadSessionLog(session.filePath); } catch { /* new note */ }
+        if (kind === 'next' && lastSceneContext(log) === scene.name) return;
+
+        const { line } = nextSceneHeaderLine(log, kind, scene.name, thread);
+        await this.writeSessionLog(body => appendBlock(body, line));
+    }
+
+    private renderSceneKindControl(toolbar: HTMLElement): void {
+        const select = toolbar.createEl('select', {
+            cls: 'storyteller-campaign-input is-small storyteller-campaign-scene-kind',
+            attr: { 'aria-label': 'Kind of the next scene header', title: 'Kind of the next scene header in the log' },
+        });
+        const options: ReadonlyArray<[string, string]> = [
+            ['next', 'Next scene'],
+            ['flashback', 'Flashback'],
+            ['split-1', 'Split thread 1'],
+            ['split-2', 'Split thread 2'],
+            ['montage', 'Montage'],
+        ];
+        for (const [value, label] of options) select.createEl('option', { value, text: label });
+        select.value = this.sceneKindChoice === 'split' ? `split-${this.sceneKindThread}` : this.sceneKindChoice;
+        select.addEventListener('change', () => {
+            if (select.value.startsWith('split-')) {
+                this.sceneKindChoice = 'split';
+                this.sceneKindThread = select.value === 'split-2' ? 2 : 1;
+            } else {
+                this.sceneKindChoice = select.value as SceneKindChoice;
+            }
+        });
     }
 
     private focusQuickEntry(): void {

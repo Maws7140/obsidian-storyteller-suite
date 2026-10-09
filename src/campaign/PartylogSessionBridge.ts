@@ -653,7 +653,12 @@ export function upsertSessionEndBlock(log: string, end: SessionEnd, style: Forma
 
 /** Appends an interlude block at the end of the log. Interludes are never replaced. */
 export function appendInterludeBlock(log: string, interlude: Interlude, style: FormatStyle = 'digital'): string {
-    return joinBlocks([log, formatInterlude(interlude, style)]);
+    return appendBlock(log, formatInterlude(interlude, style));
+}
+
+/** Appends a block (scene header, interlude, ...) at the end of the log, separated by a blank line. */
+export function appendBlock(log: string, block: string): string {
+    return joinBlocks([log, block]);
 }
 
 /** Appends plain Partylog lines (no list bullet) to the end of the log. */
