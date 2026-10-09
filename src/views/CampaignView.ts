@@ -19,13 +19,18 @@ import {
     setIcon,
     MarkdownRenderer,
     MarkdownPostProcessorContext,
+    Menu,
     normalizePath,
 } from 'obsidian';
 import StorytellerSuitePlugin from '../main';
 import { stripWikiLinkToString } from '../utils/WikiLinks';
 import {
+    CampaignClock,
     CampaignSession,
     CampaignGroupStanding,
+    CampaignThread,
+    CampaignThreadKind,
+    CampaignTrackerKind,
     CampaignItemEffect,
     Scene,
     SceneBranch,
@@ -55,20 +60,175 @@ import {
 import { renderEncounterWidget } from '../extensions/BranchBlockExtension';
 import { getOwners, getPartyOwner, setPartyOwner } from '../utils/ItemOwnership';
 import {
+    addCampaignAdvancement,
     addCampaignClock,
+    addCampaignInterlude,
+    addCampaignLoot,
     addCampaignThread,
+    applyCampaignPartyResources,
+    assignCampaignLoot,
     buildSessionTimelineEvent,
     cycleCampaignThread,
+    removeCampaignLoot,
+    setCampaignThreadState,
 } from '../utils/CampaignProgress';
-import { setTrackerValue, threadLegacyStatus, trackerKindOf } from '../utils/CampaignModel';
+import {
+    CAMPAIGN_THREAD_STATES,
+    removePartyResource,
+    setTrackerValue,
+    threadKindOf,
+    threadLegacyStatus,
+    threadStateOf,
+    trackerKindOf,
+} from '../utils/CampaignModel';
 import { PromptModal } from '../modals/ui/PromptModal';
 import { EventModal } from '../modals/EventModal';
 import { LeafletRenderer } from '../leaflet/renderer';
 import type { LeafletRendererOptions, LocationPinHighlight } from '../leaflet/types';
 import { mapToBlockParams } from '../leaflet/utils/MapBlockParams';
 import { locationPinKey, resolveBoardSelection } from '../utils/CampaignBoardSelection';
+import {
+    appendBlock,
+    appendInterludeBlock,
+    applyPartylogTagsToSession,
+    appendLogLines,
+    lastSceneContext,
+    nextSceneHeaderLine,
+    parseLogLines,
+    sessionEndFromLines,
+    upsertSessionEndBlock,
+    upsertSessionHeaderBlock,
+    type PartylogBridgeContext,
+    type SceneKindChoice,
+} from '../campaign/PartylogSessionBridge';
+import { AddProgressModal, InterludeModal, SessionEndModal, SessionHeaderModal } from '../modals/PartylogSessionModals';
+import type { InterludeValues, ProgressAddKind, ProgressAddValues, SessionEndValues, SessionHeaderValues } from '../modals/PartylogSessionModals';
+import {
+    entryTags,
+    extractTags,
+    formatAction,
+    formatConsequence,
+    formatEntry,
+    formatEvent,
+    formatMeta,
+    formatRoll,
+    formatTag,
+    parsePartylogLine,
+    type AdvanceTag,
+    type Interlude,
+    type SessionHeader,
+} from '../campaign/partylog';
 
 export const VIEW_TYPE_CAMPAIGN = 'storyteller-campaign-view';
+
+/** Sidebar sections that can be re-rendered on their own after a Partylog entry. */
+type SidebarPart = 'party' | 'progress' | 'standings' | 'log';
+type QuickMode = 'action' | 'assist' | 'group' | 'world' | 'roll' | 'consequence' | 'note';
+type QuickNoteKind = 'note' | 'rule' | 'ooc' | 'safety';
+
+/** Quick entry bar state. Kept on the view so re-renders keep what was typed. */
+interface QuickEntryState {
+    mode: QuickMode;
+    /** Selected actors in the order they were picked. The first is the leader for assists. */
+    actors: string[];
+    noteKind: QuickNoteKind;
+    draft: string;
+    tagKind: string;
+    tagName: string;
+    rollExpression: string;
+    rollVs: string;
+    rollOutcome: string;
+}
+
+interface TagNameCache {
+    characters: string[];
+    locations: string[];
+    items: string[];
+}
+
+const TAG_DATALIST_ID = 'storyteller-campaign-tag-names';
+
+const QUICK_MODES: ReadonlyArray<{ mode: QuickMode; label: string; hint: string }> = [
+    { mode: 'action', label: '@ Action', hint: 'Action by the selected actor. Leave none selected for an unattributed action.' },
+    { mode: 'assist', label: '@ Assist', hint: 'Assist: select two actors, the leader first.' },
+    { mode: 'group', label: '@ Group', hint: 'Group action: select two or more actors.' },
+    { mode: 'world', label: '! World', hint: 'World event: the game world acts.' },
+    { mode: 'roll', label: 'd: Roll', hint: 'Roll and outcome, attributed to the selected actors.' },
+    { mode: 'consequence', label: '=> Result', hint: 'Consequence of the last action or roll.' },
+    { mode: 'note', label: '( ) Note', hint: 'Note, rule, out-of-character or safety entry.' },
+];
+
+const NOTE_KINDS: ReadonlyArray<{ value: QuickNoteKind; label: string }> = [
+    { value: 'note', label: 'Note' },
+    { value: 'rule', label: 'Rule' },
+    { value: 'ooc', label: 'OOC' },
+    { value: 'safety', label: 'Safety' },
+];
+
+const TAG_KINDS: ReadonlyArray<{ kind: string; label: string }> = [
+    { kind: 'N', label: 'N (NPC)' },
+    { kind: 'PC', label: 'PC' },
+    { kind: 'F', label: 'F (foe)' },
+    { kind: 'L', label: 'L (location)' },
+    { kind: 'Faction', label: 'Faction' },
+    { kind: 'Loot', label: 'Loot' },
+    { kind: 'Party', label: 'Party' },
+    { kind: 'Clock', label: 'Clock' },
+    { kind: 'Track', label: 'Track' },
+    { kind: 'Timer', label: 'Timer' },
+    { kind: 'Thread', label: 'Thread' },
+    { kind: 'Goal', label: 'Goal' },
+    { kind: 'Quest', label: 'Quest' },
+];
+
+function createQuickEntryState(): QuickEntryState {
+    return {
+        mode: 'action',
+        actors: [],
+        noteKind: 'note',
+        draft: '',
+        tagKind: 'N',
+        tagName: '',
+        rollExpression: '',
+        rollVs: '',
+        rollOutcome: '',
+    };
+}
+
+function quickPlaceholder(mode: QuickMode): string {
+    switch (mode) {
+        case 'action': return 'What does the character do?';
+        case 'assist': return 'What does the helper do?';
+        case 'group': return 'What do they do together?';
+        case 'world': return 'What does the world do?';
+        case 'roll': return 'Optional tags, for example [Clock:Alarm +1]';
+        case 'consequence': return 'What follows?';
+        case 'note': return 'Note text';
+    }
+}
+
+const TRACKER_GROUPS: ReadonlyArray<{ kind: CampaignTrackerKind; label: string }> = [
+    { kind: 'clock', label: 'Clocks' },
+    { kind: 'track', label: 'Tracks' },
+    { kind: 'timer', label: 'Timers' },
+];
+
+const THREAD_GROUPS: ReadonlyArray<{ kind: CampaignThreadKind; label: string }> = [
+    { kind: 'thread', label: 'Threads' },
+    { kind: 'goal', label: 'Goals' },
+    { kind: 'quest', label: 'Quests' },
+];
+
+/** Which sidebar sections a set of bridge summary lines touches. */
+function partsAffectedBy(summary: readonly string[]): SidebarPart[] {
+    const parts: SidebarPart[] = ['log'];
+    for (const line of summary) {
+        if (/^Faction /.test(line)) parts.push('standings');
+        else if (/^(clock|track|timer|thread|goal|quest) /.test(line)) parts.push('progress');
+        else parts.push('party');
+    }
+    return parts;
+}
 
 type CampaignBoardLocation = {
     location: Location;
@@ -120,6 +280,17 @@ export class CampaignView extends ItemView {
     private pendingSessionSave = false;
     private pendingLogEntries: string[] = [];
     private readonly autosaveDebounceMs = 450;
+    /** Live section elements, so one part can be re-rendered in place. */
+    private sidebarPartEls = new Map<SidebarPart, HTMLElement>();
+    private quick: QuickEntryState = createQuickEntryState();
+    /** NPC names typed into the quick entry bar for this view. */
+    private quickNpcs: string[] = [];
+    /** Last dice result from a branch roll, used to prefill the Roll entry. */
+    private lastDiceResult: { expression: string; outcome: string } | null = null;
+    private tagNameCache: TagNameCache | null = null;
+    /** Kind of the next scene header written to the log. Resets to 'next' after one header. */
+    private sceneKindChoice: SceneKindChoice = 'next';
+    private sceneKindThread: 1 | 2 = 1;
     private stripWikiLinkValue(value: string | null | undefined): string {
         return stripWikiLinkToString(value);
     }
@@ -149,6 +320,7 @@ export class CampaignView extends ItemView {
     async loadSession(session: CampaignSession, startingScene?: Scene): Promise<void> {
         this.session = { ...session };
         this.sceneHistory = [];
+        this.tagNameCache = null;
         this.selectedBoardLocationId = null;
         this.ensureActiveActor(this.session);
         this.partyCharacterStats.clear();
@@ -341,6 +513,7 @@ export class CampaignView extends ItemView {
             cls: 'storyteller-campaign-scene-name',
             text: this.currentScene?.name ?? 'No scene',
         });
+        this.renderSceneKindControl(toolbar);
         this.renderActorSelector(toolbar, session);
         toolbar.createDiv({ cls: 'storyteller-campaign-toolbar-spacer' });
 
@@ -1299,7 +1472,12 @@ export class CampaignView extends ItemView {
         confirmBtn.addEventListener('click', () => {
             if (lastTotal === null) return;
             overlay.remove();
-            void this.executeChoice(branch, resolveBranch(branch, lastTotal), lastTotal);
+            const outcome = resolveBranch(branch, lastTotal);
+            this.lastDiceResult = {
+                expression: `${branch.dice ?? 'roll'}=${lastTotal}`,
+                outcome: outcome === 'success' ? 'Success' : 'Fail',
+            };
+            void this.executeChoice(branch, outcome, lastTotal);
         });
 
         const cancelBtn = btnRow.createEl('button', { cls: 'storyteller-campaign-btn', text: 'Cancel' });
@@ -1395,6 +1573,7 @@ export class CampaignView extends ItemView {
 
         this.session.currentSceneName = scene.name;
         this.session.currentSceneId   = scene.id;
+        await this.logSceneHeader(scene);
         await this.autosave(`Entered *${scene.name}*`);
 
         // On-enter encounter auto-roll
@@ -1422,6 +1601,7 @@ export class CampaignView extends ItemView {
         await this.syncActiveCampaignBoardForScene();
         this.session.currentSceneName = scene.name;
         this.session.currentSceneId = scene.id;
+        await this.logSceneHeader(scene);
         await this.autosave(`Back to *${scene.name}*`);
         await this.render();
     }
@@ -1490,6 +1670,7 @@ export class CampaignView extends ItemView {
 
     private renderPartySidebar(sidebar: HTMLElement, session: CampaignSession): void {
         const sec = sidebar.createDiv('storyteller-campaign-sidebar-section');
+        this.sidebarPartEls.set('party', sec);
         const hdr = sec.createDiv('storyteller-campaign-sidebar-hdr');
         setIcon(hdr.createSpan(), 'users');
         hdr.createSpan({ text: ' Party' });
@@ -1498,7 +1679,6 @@ export class CampaignView extends ItemView {
         const names = session.partyCharacterNames ?? [];
         if (names.length === 0) {
             body.createDiv({ cls: 'storyteller-campaign-empty-text', text: 'No party members.' });
-            return;
         }
 
         for (const name of names) {
@@ -1515,9 +1695,12 @@ export class CampaignView extends ItemView {
                     for (const c of state.conditions) conds.createSpan({ cls: 'storyteller-dnd-condition', text: c });
                 }
             } else {
-                this.renderSetHpRow(row, name, session, body);
+                this.renderSetHpRow(row, name, session);
             }
         }
+
+        this.renderPartyResources(body, session);
+        this.renderLootStash(body, session);
     }
 
     private renderHpRow(row: HTMLElement, name: string, state: PartyMemberState, session: CampaignSession): void {
@@ -1555,7 +1738,7 @@ export class CampaignView extends ItemView {
         plusBtn.addEventListener('click',  () => { void mutate(1); });
     }
 
-    private renderSetHpRow(row: HTMLElement, name: string, session: CampaignSession, body: HTMLElement): void {
+    private renderSetHpRow(row: HTMLElement, name: string, session: CampaignSession): void {
         const ctrl = row.createDiv('storyteller-campaign-hp-controls');
         const input = ctrl.createEl('input', {
             cls: 'storyteller-campaign-input is-small',
@@ -1568,8 +1751,7 @@ export class CampaignView extends ItemView {
             if (!session.partyState) session.partyState = [];
             session.partyState.push({ characterId: '', characterName: name, currentHp: maxHp, maxHp });
             await this.autosave();
-            body.empty();
-            this.renderPartySidebar(body.parentElement!.parentElement!, session);
+            await this.refreshSidebarPart('party');
         })(); });
     }
 
@@ -1716,13 +1898,19 @@ export class CampaignView extends ItemView {
 
     private async renderLogSidebar(sidebar: HTMLElement, session: CampaignSession): Promise<void> {
         const sec = sidebar.createDiv('storyteller-campaign-sidebar-section');
+        this.sidebarPartEls.set('log', sec);
         const hdr = sec.createDiv('storyteller-campaign-sidebar-hdr');
         setIcon(hdr.createSpan(), 'scroll');
         hdr.createSpan({ text: ' Session Log' });
+        const logActions = hdr.createDiv('storyteller-campaign-progress-actions');
+        this.addLogHeaderButton(logActions, 'file-text', 'Session header', () => { void this.openSessionHeaderModal(); });
+        this.addLogHeaderButton(logActions, 'flag', 'End of session', () => { this.openSessionEndModal(); });
+        this.addLogHeaderButton(logActions, 'hourglass', 'Interlude', () => { this.openInterludeModal(); });
         const body = sec.createDiv('storyteller-campaign-sidebar-body');
+        this.renderQuickEntry(body, session);
 
         if (!session.filePath) {
-            body.createDiv({ cls: 'storyteller-campaign-empty-text', text: 'Not yet saved.' });
+            body.createDiv({ cls: 'storyteller-campaign-empty-text', text: 'Not yet saved. The first entry creates the session note.' });
             return;
         }
 
@@ -2222,6 +2410,7 @@ export class CampaignView extends ItemView {
         });
 
         const sec = sidebar.createDiv('storyteller-campaign-sidebar-section');
+        this.sidebarPartEls.set('standings', sec);
         const hdr = sec.createDiv('storyteller-campaign-sidebar-hdr');
         setIcon(hdr.createSpan(), 'shield');
         hdr.createSpan({ text: ' Factions' });
@@ -2245,6 +2434,15 @@ export class CampaignView extends ItemView {
                 cls: 'storyteller-campaign-standing-label',
                 text: this.describeGroupStanding(standing.value),
             });
+            if (standing.tier !== undefined) {
+                row.createSpan({ cls: 'storyteller-campaign-standing-tier', text: `Tier ${standing.tier}` });
+            }
+            if (standing.standing) {
+                row.createSpan({ cls: 'storyteller-campaign-standing-text', text: standing.standing });
+            }
+            if (standing.statusNotes?.length) {
+                body.createDiv({ cls: 'storyteller-campaign-standing-notes', text: standing.statusNotes.join('; ') });
+            }
         }
     }
 
@@ -2471,40 +2669,15 @@ export class CampaignView extends ItemView {
 
     private renderProgressSidebar(sidebar: HTMLElement, session: CampaignSession): void {
         const sec = sidebar.createDiv('storyteller-campaign-sidebar-section storyteller-campaign-progress');
+        this.sidebarPartEls.set('progress', sec);
         const hdr = sec.createDiv('storyteller-campaign-sidebar-hdr');
         setIcon(hdr.createSpan(), 'gauge');
         hdr.createSpan({ text: ' Clocks and threads' });
 
         const actions = hdr.createDiv('storyteller-campaign-progress-actions');
-        const addClockBtn = actions.createEl('button', { attr: { 'aria-label': 'Add progress clock' } });
-        setIcon(addClockBtn, 'circle-gauge');
-        addClockBtn.addEventListener('click', () => {
-            new PromptModal(this.app, {
-                title: 'Add progress clock',
-                label: 'Clock name',
-                defaultValue: '',
-                validator: value => value.trim() ? null : 'Enter a clock name.',
-                onSubmit: value => {
-                    if (!addCampaignClock(session, value)) return;
-                    void this.autosave(`Added clock: *${value.trim()}*`).then(() => this.render());
-                },
-            }).open();
-        });
-
-        const addThreadBtn = actions.createEl('button', { attr: { 'aria-label': 'Add campaign thread' } });
-        setIcon(addThreadBtn, 'list-plus');
-        addThreadBtn.addEventListener('click', () => {
-            new PromptModal(this.app, {
-                title: 'Add campaign thread',
-                label: 'Thread name',
-                defaultValue: '',
-                validator: value => value.trim() ? null : 'Enter a thread name.',
-                onSubmit: value => {
-                    if (!addCampaignThread(session, value)) return;
-                    void this.autosave(`Opened thread: *${value.trim()}*`).then(() => this.render());
-                },
-            }).open();
-        });
+        const addBtn = actions.createEl('button', { attr: { 'aria-label': 'Add clock, track, timer, thread, goal or quest' } });
+        setIcon(addBtn, 'plus-circle');
+        addBtn.addEventListener('click', () => { this.openAddProgressModal('clock'); });
 
         const body = sec.createDiv('storyteller-campaign-sidebar-body');
         const clocks = session.clocks ?? [];
@@ -2513,52 +2686,251 @@ export class CampaignView extends ItemView {
             body.createDiv({ cls: 'storyteller-campaign-empty-text', text: 'No clocks or threads yet.' });
         }
 
-        for (const clock of clocks) {
-            const row = body.createDiv('storyteller-campaign-clock-row');
-            const info = row.createDiv('storyteller-campaign-clock-info');
-            const kind = trackerKindOf(clock);
-            info.createSpan({ cls: 'storyteller-campaign-clock-name', text: clock.name });
-            info.createSpan({ cls: 'storyteller-campaign-clock-kind', text: kind });
-            info.createSpan({
-                cls: 'storyteller-campaign-clock-value',
-                text: kind === 'timer' ? `${clock.current} left` : `${clock.current}/${clock.segments}`,
+        for (const group of TRACKER_GROUPS) {
+            const members = clocks.filter(clock => trackerKindOf(clock) === group.kind);
+            if (!members.length) continue;
+            body.createDiv({ cls: 'storyteller-campaign-sidebar-sub-hdr', text: group.label });
+            for (const clock of members) this.renderTrackerRow(body, session, clock);
+        }
+
+        for (const group of THREAD_GROUPS) {
+            const members = threads.filter(thread => threadKindOf(thread) === group.kind);
+            if (!members.length) continue;
+            body.createDiv({ cls: 'storyteller-campaign-sidebar-sub-hdr', text: group.label });
+            for (const thread of members) this.renderThreadRow(body, session, thread);
+        }
+    }
+
+    private renderTrackerRow(body: HTMLElement, session: CampaignSession, clock: CampaignClock): void {
+        const kind = trackerKindOf(clock);
+        const valueText = kind === 'timer' ? `${clock.current} left` : `${clock.current}/${clock.segments}`;
+        const row = body.createDiv(`storyteller-campaign-clock-row is-${kind}`);
+        const info = row.createDiv('storyteller-campaign-clock-info');
+        info.createSpan({ cls: 'storyteller-campaign-clock-name', text: clock.name });
+        info.createSpan({ cls: 'storyteller-campaign-clock-kind', text: kind });
+        info.createSpan({ cls: 'storyteller-campaign-clock-value', text: valueText });
+
+        const segments = row.createDiv('storyteller-campaign-clock-segments');
+        for (let index = 0; index < clock.segments; index += 1) {
+            const segment = segments.createEl('button', {
+                cls: index < clock.current ? 'is-filled' : '',
+                attr: { 'aria-label': `Set ${clock.name} to ${index + 1} of ${clock.segments}` },
             });
-            const segments = row.createDiv('storyteller-campaign-clock-segments');
-            for (let index = 0; index < clock.segments; index += 1) {
-                const segment = segments.createEl('button', {
-                    cls: index < clock.current ? 'is-filled' : '',
-                    attr: { 'aria-label': `Set ${clock.name} to ${index + 1} of ${clock.segments}` },
-                });
-                segment.addEventListener('click', () => {
-                    const nextValue = index + 1 === clock.current ? index : index + 1;
-                    setTrackerValue(clock, nextValue);
-                    void this.autosave(`Clock ${clock.name}: ${clock.current}/${clock.segments}`).then(() => this.render());
-                });
-            }
-            const remove = row.createEl('button', { cls: 'storyteller-campaign-progress-remove', attr: { 'aria-label': `Remove clock ${clock.name}` } });
-            setIcon(remove, 'x');
-            remove.addEventListener('click', () => {
-                session.clocks = clocks.filter(candidate => candidate.id !== clock.id);
-                void this.autosave(`Removed clock: *${clock.name}*`).then(() => this.render());
+            segment.addEventListener('click', () => {
+                const nextValue = index + 1 === clock.current ? index : index + 1;
+                setTrackerValue(clock, nextValue);
+                const text = kind === 'timer' ? `${clock.current} left` : `${clock.current}/${clock.segments}`;
+                void this.autosave(`${kind} ${clock.name}: ${text}`).then(() => this.refreshSidebarPart('progress'));
             });
         }
 
-        for (const thread of threads) {
-            const legacyStatus = threadLegacyStatus(thread);
-            const row = body.createDiv(`storyteller-campaign-thread-row is-${legacyStatus}`);
-            const toggle = row.createEl('button', { cls: 'storyteller-campaign-thread-toggle' });
-            setIcon(toggle.createSpan(), legacyStatus === 'resolved' ? 'circle-check' : legacyStatus === 'abandoned' ? 'circle-x' : 'circle');
-            toggle.createSpan({ text: thread.name });
-            toggle.addEventListener('click', () => {
-                const state = cycleCampaignThread(thread);
-                void this.autosave(`Thread ${thread.name}: ${state}`).then(() => this.render());
+        const remove = row.createEl('button', {
+            cls: 'storyteller-campaign-progress-remove',
+            attr: { 'aria-label': `Remove ${kind} ${clock.name}` },
+        });
+        setIcon(remove, 'x');
+        remove.addEventListener('click', () => {
+            session.clocks = (session.clocks ?? []).filter(candidate => candidate.id !== clock.id);
+            void this.autosave(`Removed ${kind}: *${clock.name}*`).then(() => this.refreshSidebarPart('progress'));
+        });
+    }
+
+    /** Click cycles the state for the kind; right-click opens a menu with every state, including Abandoned. */
+    private renderThreadRow(body: HTMLElement, session: CampaignSession, thread: CampaignThread): void {
+        const kind = threadKindOf(thread);
+        const legacyStatus = threadLegacyStatus(thread);
+        const row = body.createDiv(`storyteller-campaign-thread-row is-${legacyStatus}`);
+        const toggle = row.createEl('button', {
+            cls: 'storyteller-campaign-thread-toggle',
+            attr: { title: 'Click to cycle the state. Right-click to choose any state.' },
+        });
+        setIcon(toggle.createSpan(), legacyStatus === 'resolved' ? 'circle-check' : legacyStatus === 'abandoned' ? 'circle-x' : 'circle');
+        toggle.createSpan({ text: thread.name });
+        toggle.createSpan({ cls: 'storyteller-campaign-thread-state', text: threadStateOf(thread) });
+        toggle.addEventListener('click', () => {
+            const state = cycleCampaignThread(thread);
+            void this.autosave(`${kind} ${thread.name}: ${state}`).then(() => this.refreshSidebarPart('progress'));
+        });
+        toggle.addEventListener('contextmenu', (event) => {
+            event.preventDefault();
+            this.openThreadStateMenu(event, thread);
+        });
+
+        const remove = row.createEl('button', {
+            cls: 'storyteller-campaign-progress-remove',
+            attr: { 'aria-label': `Remove thread ${thread.name}` },
+        });
+        setIcon(remove, 'x');
+        remove.addEventListener('click', () => {
+            session.threads = (session.threads ?? []).filter(candidate => candidate.id !== thread.id);
+            void this.autosave(`Removed ${kind}: *${thread.name}*`).then(() => this.refreshSidebarPart('progress'));
+        });
+    }
+
+    private openThreadStateMenu(event: MouseEvent, thread: CampaignThread): void {
+        const kind = threadKindOf(thread);
+        const current = threadStateOf(thread).toLowerCase();
+        const states = Array.from(new Set([...CAMPAIGN_THREAD_STATES[kind], 'Abandoned']));
+        const menu = new Menu();
+        for (const state of states) {
+            menu.addItem(item => item
+                .setTitle(state)
+                .setChecked(state.toLowerCase() === current)
+                .onClick(() => {
+                    setCampaignThreadState(thread, state);
+                    void this.autosave(`${kind} ${thread.name}: ${state}`).then(() => this.refreshSidebarPart('progress'));
+                }));
+        }
+        menu.showAtMouseEvent(event);
+    }
+
+    private openAddProgressModal(initialKind: ProgressAddKind): void {
+        if (!this.session) return;
+        new AddProgressModal(this.app, {
+            initialKind,
+            onSubmit: values => { void this.applyAddProgress(values); },
+        }).open();
+    }
+
+    private async applyAddProgress(values: ProgressAddValues): Promise<void> {
+        const session = this.session;
+        if (!session) return;
+        if (values.kind === 'thread' || values.kind === 'goal' || values.kind === 'quest') {
+            if (!addCampaignThread(session, values.name, undefined, values.kind)) return;
+            await this.autosave(`Opened ${values.kind}: *${values.name}*`);
+        } else {
+            if (!addCampaignClock(session, values.name, values.size, undefined, values.kind)) return;
+            await this.autosave(`Added ${values.kind}: *${values.name}*`);
+        }
+        await this.refreshSidebarPart('progress');
+    }
+
+    /** Party resources: numeric values get +/- steps, text values are shown as they are. */
+    private renderPartyResources(body: HTMLElement, session: CampaignSession): void {
+        const group = body.createDiv('storyteller-campaign-party-group');
+        const head = group.createDiv('storyteller-campaign-party-group-hdr');
+        head.createSpan({ text: 'Resources' });
+        const addBtn = head.createDiv('storyteller-campaign-progress-actions').createEl('button', { attr: { 'aria-label': 'Add party resource' } });
+        setIcon(addBtn, 'plus');
+        addBtn.addEventListener('click', () => {
+            new PromptModal(this.app, {
+                title: 'Add party resource',
+                label: 'Resource and value',
+                defaultValue: '',
+                validator: value => value.trim() ? null : 'Enter a resource and its value.',
+                onSubmit: value => {
+                    if (!applyCampaignPartyResources(session, [value]).length) return;
+                    void this.autosave(`Party: ${value.trim()}`).then(() => this.refreshSidebarPart('party'));
+                },
+            }).open();
+        });
+
+        const entries = Object.entries(session.partyResources ?? {});
+        if (!entries.length) group.createDiv({ cls: 'storyteller-campaign-empty-text', text: 'No resources yet.' });
+        for (const [name, value] of entries) {
+            const row = group.createDiv('storyteller-campaign-resource-row');
+            row.createSpan({ cls: 'storyteller-campaign-resource-name', text: name });
+            if (typeof value === 'number') {
+                row.createSpan({ cls: 'storyteller-campaign-resource-value', text: String(value) });
+                const amount = row.createEl('input', {
+                    cls: 'storyteller-campaign-input is-small',
+                    attr: { type: 'number', min: '1', value: '1', 'aria-label': `Amount for ${name}` },
+                });
+                const change = (sign: 1 | -1) => {
+                    const step = Math.abs(Number.parseInt(amount.value, 10)) || 1;
+                    applyCampaignPartyResources(session, [`${name}${sign > 0 ? '+' : '-'}${step}`]);
+                    void this.autosave(`Party ${name} ${sign > 0 ? '+' : '-'}${step}`).then(() => this.refreshSidebarPart('party'));
+                };
+                row.createEl('button', { cls: 'storyteller-campaign-hp-btn', text: '-' }).addEventListener('click', () => change(-1));
+                row.createEl('button', { cls: 'storyteller-campaign-hp-btn', text: '+' }).addEventListener('click', () => change(1));
+            } else {
+                row.createSpan({ cls: 'storyteller-campaign-resource-value', text: value });
+            }
+            const remove = row.createEl('button', {
+                cls: 'storyteller-campaign-progress-remove',
+                attr: { 'aria-label': `Remove ${name}` },
             });
-            const remove = row.createEl('button', { cls: 'storyteller-campaign-progress-remove', attr: { 'aria-label': `Remove thread ${thread.name}` } });
             setIcon(remove, 'x');
             remove.addEventListener('click', () => {
-                session.threads = threads.filter(candidate => candidate.id !== thread.id);
-                void this.autosave(`Removed thread: *${thread.name}*`).then(() => this.render());
+                if (session.partyResources) removePartyResource(session.partyResources, name);
+                void this.autosave(`Party: removed *${name}*`).then(() => this.refreshSidebarPart('party'));
             });
+        }
+    }
+
+    /** Unassigned loot stash with a give-to-character action, plus each character's gear. */
+    private renderLootStash(body: HTMLElement, session: CampaignSession): void {
+        const group = body.createDiv('storyteller-campaign-party-group');
+        const head = group.createDiv('storyteller-campaign-party-group-hdr');
+        head.createSpan({ text: 'Loot stash' });
+        const addBtn = head.createDiv('storyteller-campaign-progress-actions').createEl('button', { attr: { 'aria-label': 'Add loot to the stash' } });
+        setIcon(addBtn, 'plus');
+        addBtn.addEventListener('click', () => {
+            new PromptModal(this.app, {
+                title: 'Add loot to the stash',
+                label: 'Item, optionally with xN',
+                defaultValue: '',
+                validator: value => value.trim() ? null : 'Enter an item name.',
+                onSubmit: value => {
+                    const match = /^(.*?)\s+x(\d+)$/i.exec(value.trim());
+                    const name = (match ? match[1] : value).trim();
+                    const quantity = match ? Number(match[2]) : 1;
+                    if (!addCampaignLoot(session, name, quantity)) return;
+                    void this.autosave(`Loot: +${quantity} ${name}`).then(() => this.refreshSidebarPart('party'));
+                },
+            }).open();
+        });
+
+        const owners = session.partyCharacterNames ?? [];
+        const stash = (session.loot ?? []).filter(item => !item.assignedTo?.trim());
+        if (!stash.length) group.createDiv({ cls: 'storyteller-campaign-empty-text', text: 'Nothing in the stash.' });
+        for (const item of stash) {
+            const row = group.createDiv('storyteller-campaign-loot-row');
+            const qty = item.qty ?? 1;
+            row.createSpan({ cls: 'storyteller-campaign-loot-name', text: qty > 1 ? `${item.name} x${qty}` : item.name });
+            if (owners.length) {
+                const select = row.createEl('select', {
+                    cls: 'storyteller-campaign-input is-small',
+                    attr: { 'aria-label': `Give ${item.name} to` },
+                });
+                for (const owner of owners) select.createEl('option', { value: owner, text: owner });
+                row.createEl('button', { cls: 'storyteller-campaign-hp-btn', text: 'Give' }).addEventListener('click', () => {
+                    if (!assignCampaignLoot(session, item.name, select.value, 1)) return;
+                    void this.autosave(`Loot: ${item.name} to ${select.value}`).then(() => this.refreshSidebarPart('party'));
+                });
+            }
+            const remove = row.createEl('button', {
+                cls: 'storyteller-campaign-progress-remove',
+                attr: { 'aria-label': `Remove ${item.name} from the stash` },
+            });
+            setIcon(remove, 'x');
+            remove.addEventListener('click', () => {
+                removeCampaignLoot(session, item.name);
+                void this.autosave(`Loot: removed *${item.name}*`).then(() => this.refreshSidebarPart('party'));
+            });
+        }
+
+        const gear = (session.loot ?? []).filter(item => item.assignedTo?.trim());
+        if (gear.length) {
+            group.createDiv({ cls: 'storyteller-campaign-sidebar-sub-hdr', text: 'Gear' });
+            for (const item of gear) {
+                const owner = item.assignedTo ?? '';
+                const qty = item.qty ?? 1;
+                const row = group.createDiv('storyteller-campaign-loot-row');
+                row.createSpan({
+                    cls: 'storyteller-campaign-loot-name',
+                    text: `${item.name}${qty > 1 ? ` x${qty}` : ''} (${owner})`,
+                });
+                const remove = row.createEl('button', {
+                    cls: 'storyteller-campaign-progress-remove',
+                    attr: { 'aria-label': `Remove ${item.name} from ${owner}` },
+                });
+                setIcon(remove, 'x');
+                remove.addEventListener('click', () => {
+                    removeCampaignLoot(session, item.name, undefined, owner);
+                    void this.autosave(`Loot: removed *${item.name}* from ${owner}`).then(() => this.refreshSidebarPart('party'));
+                });
+            }
         }
     }
 
@@ -2611,6 +2983,547 @@ export class CampaignView extends ItemView {
             if (!setPartyOwner(plotItem, undefined, partyNameSet, this.normalizeName)) continue;
 
             await this.plugin.savePlotItem(plotItem);
+        }
+    }
+
+    // ── Partylog: session log writes and sidebar refresh ─────────────────────
+
+    /**
+     * Rewrites the ## Session Log body through the same queue as autosave, so raw Partylog writes
+     * never race a pending session save.
+     */
+    private async writeSessionLog(update: (body: string) => string): Promise<void> {
+        if (!this.session) return;
+        await this.flushAutosaveNow();
+        const filePath = this.session.filePath;
+        if (!filePath) return;
+        this.flushChain = this.flushChain.then(() => this.plugin.updateSessionLog(filePath, update));
+        await this.flushChain;
+    }
+
+    private partylogContext(): PartylogBridgeContext {
+        return { groups: this.plugin.getGroups().map(group => ({ id: group.id, name: group.name })) };
+    }
+
+    /** Re-renders one sidebar section in place. Falls back to a full render if it is not on screen. */
+    private async refreshSidebarPart(part: SidebarPart): Promise<void> {
+        const session = this.session;
+        const old = this.sidebarPartEls.get(part);
+        if (!session || !old?.parentElement) {
+            await this.render();
+            return;
+        }
+        const holder = activeDocument.createElement('div');
+        switch (part) {
+            case 'party':
+                this.renderPartySidebar(holder, session);
+                break;
+            case 'progress':
+                this.renderProgressSidebar(holder, session);
+                break;
+            case 'standings':
+                this.renderGroupStandingsSidebar(holder, session);
+                break;
+            case 'log':
+                await this.renderLogSidebar(holder, session);
+                break;
+        }
+        const fresh = holder.firstElementChild;
+        if (!(fresh instanceof HTMLElement)) return;
+        old.replaceWith(fresh);
+        this.sidebarPartEls.set(part, fresh);
+    }
+
+    private async refreshSidebarParts(parts: readonly SidebarPart[]): Promise<void> {
+        for (const part of Array.from(new Set(parts))) {
+            await this.refreshSidebarPart(part);
+        }
+    }
+
+    /**
+     * Appends `### S<n> *scene*` when the scene changes, using the library's id rules. Reopening a
+     * session at the scene it already ends with adds nothing.
+     */
+    private async logSceneHeader(scene: Scene): Promise<void> {
+        const session = this.session;
+        if (!session) return;
+        const kind = this.sceneKindChoice;
+        const thread = this.sceneKindThread;
+        this.sceneKindChoice = 'next';
+        await this.autosave();
+        if (!session.filePath) return;
+
+        let log = '';
+        try { log = await this.plugin.loadSessionLog(session.filePath); } catch { /* new note */ }
+        if (kind === 'next' && lastSceneContext(log) === scene.name) return;
+
+        const { line } = nextSceneHeaderLine(log, kind, scene.name, thread);
+        await this.writeSessionLog(body => appendBlock(body, line));
+    }
+
+    private renderSceneKindControl(toolbar: HTMLElement): void {
+        const select = toolbar.createEl('select', {
+            cls: 'storyteller-campaign-input is-small storyteller-campaign-scene-kind',
+            attr: { 'aria-label': 'Kind of the next scene header', title: 'Kind of the next scene header in the log' },
+        });
+        const options: ReadonlyArray<[string, string]> = [
+            ['next', 'Next scene'],
+            ['flashback', 'Flashback'],
+            ['split-1', 'Split thread 1'],
+            ['split-2', 'Split thread 2'],
+            ['montage', 'Montage'],
+        ];
+        for (const [value, label] of options) select.createEl('option', { value, text: label });
+        select.value = this.sceneKindChoice === 'split' ? `split-${this.sceneKindThread}` : this.sceneKindChoice;
+        select.addEventListener('change', () => {
+            if (select.value.startsWith('split-')) {
+                this.sceneKindChoice = 'split';
+                this.sceneKindThread = select.value === 'split-2' ? 2 : 1;
+            } else {
+                this.sceneKindChoice = select.value as SceneKindChoice;
+            }
+        });
+    }
+
+    private addLogHeaderButton(actions: HTMLElement, icon: string, label: string, onClick: () => void): void {
+        const button = actions.createEl('button', { attr: { 'aria-label': label, title: label } });
+        setIcon(button, icon);
+        button.addEventListener('click', onClick);
+    }
+
+    // ── Partylog: session header, end of session and interludes ──────────────
+
+    private async openSessionHeaderModal(): Promise<void> {
+        const session = this.session;
+        if (!session) return;
+        let suggested = session.sessionNumber;
+        if (suggested === undefined) {
+            try {
+                const sessions = await this.plugin.listSessions();
+                suggested = sessions.reduce((max, item) => Math.max(max, item.sessionNumber ?? 0), 0) + 1;
+            } catch {
+                suggested = 1;
+            }
+        }
+        new SessionHeaderModal(this.app, {
+            initial: {
+                number: session.sessionNumber ?? suggested,
+                date: session.date ?? new Date().toISOString().slice(0, 10),
+                duration: session.duration ?? '',
+                players: session.players?.length ? session.players : (session.partyCharacterNames ?? []).map(name => `Player (${name})`),
+                scribe: session.scribe ?? '',
+                absent: session.absent ?? [],
+                mood: session.mood ?? '',
+                recap: session.recap ?? '',
+                goals: session.goals ?? '',
+            },
+            onSubmit: values => { void this.applySessionHeader(values); },
+        }).open();
+    }
+
+    /** Writes the header fields to the session and replaces the header block at the top of the log. */
+    private async applySessionHeader(values: SessionHeaderValues): Promise<void> {
+        const session = this.session;
+        if (!session) return;
+        session.sessionNumber = values.number;
+        session.date = values.date || undefined;
+        session.duration = values.duration || undefined;
+        session.players = values.players;
+        session.scribe = values.scribe || undefined;
+        session.absent = values.absent;
+        session.mood = values.mood || undefined;
+        session.recap = values.recap || undefined;
+        session.goals = values.goals || undefined;
+        await this.autosave();
+
+        const header: SessionHeader = {
+            number: values.number,
+            date: values.date || undefined,
+            duration: values.duration || undefined,
+            players: values.players,
+            scribe: values.scribe || undefined,
+            absent: values.absent,
+            mood: values.mood || undefined,
+            threads: (session.threads ?? []).filter(thread => threadLegacyStatus(thread) === 'active').map(thread => thread.name),
+            recap: values.recap || undefined,
+            goals: values.goals || undefined,
+        };
+        await this.writeSessionLog(body => upsertSessionHeaderBlock(body, header));
+        await this.refreshSidebarParts(['log']);
+    }
+
+    private openSessionEndModal(): void {
+        const session = this.session;
+        if (!session) return;
+        new SessionEndModal(this.app, {
+            partyNames: session.partyCharacterNames ?? [],
+            onSubmit: values => { void this.applySessionEnd(values); },
+        }).open();
+    }
+
+    /**
+     * Records advancements on the session, replays the change tags into state, and writes the end
+     * block (advancements, changes, hook, notes). Saving again replaces the end block.
+     */
+    private async applySessionEnd(values: SessionEndValues): Promise<void> {
+        const session = this.session;
+        if (!session) return;
+        const number = session.sessionNumber;
+        const advancementLines: string[] = [];
+        for (const entry of values.advancements) {
+            const tag: AdvanceTag = {
+                kind: 'Advance',
+                reference: false,
+                fields: [],
+                name: entry.character,
+                detail: entry.detail || undefined,
+                gains: entry.gains,
+            };
+            advancementLines.push(formatTag(tag));
+            const summary = [entry.detail, ...entry.gains].filter(part => part.length > 0).join(', ') || 'Advanced';
+            addCampaignAdvancement(session, entry.character, summary, { sessionNumber: number });
+        }
+
+        const changeEntries = parseLogLines(values.changeLines);
+        const result = applyPartylogTagsToSession(session, changeEntries.flatMap(entryTags), this.partylogContext());
+        session.hook = values.hook || undefined;
+        session.endNotes = values.notes || undefined;
+        if (values.endSession) session.status = 'completed';
+
+        const lines = [
+            ...advancementLines,
+            ...values.changeLines,
+            ...(values.hook ? [`(hook: ${values.hook})`] : []),
+            ...(values.notes ? [`(note: ${values.notes})`] : []),
+        ];
+        await this.autosave();
+        const end = sessionEndFromLines(number, lines);
+        await this.writeSessionLog(body => upsertSessionEndBlock(body, end));
+        await this.refreshSidebarParts(partsAffectedBy(result.summary));
+    }
+
+    private openInterludeModal(): void {
+        if (!this.session) return;
+        new InterludeModal(this.app, {
+            onSubmit: values => { void this.applyInterlude(values); },
+        }).open();
+    }
+
+    /** Appends an interlude block, records it on the session and replays its change tags. */
+    private async applyInterlude(values: InterludeValues): Promise<void> {
+        const session = this.session;
+        if (!session) return;
+        const entries = parseLogLines([...values.summary.split('\n'), ...values.changeLines]);
+        const result = applyPartylogTagsToSession(session, entries.flatMap(entryTags), this.partylogContext());
+        addCampaignInterlude(session, values.title, values.summary || undefined, values.changeLines);
+        await this.autosave();
+        const interlude: Interlude = { title: values.title, entries };
+        await this.writeSessionLog(body => appendInterludeBlock(body, interlude));
+        await this.refreshSidebarParts(partsAffectedBy(result.summary));
+    }
+
+    private focusQuickEntry(): void {
+        this.sidebarPartEls.get('log')?.querySelector<HTMLInputElement>('.storyteller-campaign-quick-input')?.focus();
+    }
+
+    // ── Partylog: quick entry bar ─────────────────────────────────────────────
+
+    private renderQuickEntry(container: HTMLElement, session: CampaignSession): void {
+        const wrap = container.createDiv('storyteller-campaign-quick');
+        this.renderQuickEntryBody(wrap, session);
+    }
+
+    /** Rebuilds the quick entry bar from `this.quick`. Typed text lives in that state, so rebuilds keep it. */
+    private renderQuickEntryBody(wrap: HTMLElement, session: CampaignSession): void {
+        wrap.empty();
+        const q = this.quick;
+        const rerender = () => this.renderQuickEntryBody(wrap, session);
+
+        // Actors: GM/World clears the selection, PCs and added NPCs toggle in order.
+        const actorRow = wrap.createDiv('storyteller-campaign-quick-actors');
+        const worldChip = actorRow.createEl('button', { cls: 'storyteller-campaign-quick-chip', text: 'World' });
+        if (q.actors.length === 0) worldChip.addClass('is-active');
+        worldChip.addEventListener('click', () => { q.actors = []; rerender(); });
+
+        for (const name of Array.from(new Set([...(session.partyCharacterNames ?? []), ...this.quickNpcs]))) {
+            const order = q.actors.indexOf(name);
+            const chip = actorRow.createEl('button', { cls: 'storyteller-campaign-quick-chip', text: name });
+            if (order >= 0) {
+                chip.addClass('is-active');
+                chip.createSpan({ cls: 'storyteller-campaign-quick-order', text: String(order + 1) });
+            }
+            chip.addEventListener('click', () => {
+                q.actors = order >= 0 ? q.actors.filter(actor => actor !== name) : [...q.actors, name];
+                rerender();
+            });
+        }
+
+        const npcRow = wrap.createDiv('storyteller-campaign-quick-npc');
+        const npcInput = npcRow.createEl('input', {
+            cls: 'storyteller-campaign-input is-small',
+            attr: { type: 'text', placeholder: 'Actor not in the party', 'aria-label': 'Add an actor not in the party' },
+        });
+        const addNpc = () => {
+            const name = npcInput.value.trim();
+            if (!name) return;
+            if (!this.quickNpcs.some(existing => this.normalizeName(existing) === this.normalizeName(name))) {
+                this.quickNpcs.push(name);
+            }
+            if (!q.actors.includes(name)) q.actors = [...q.actors, name];
+            rerender();
+        };
+        npcInput.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') { event.preventDefault(); addNpc(); }
+        });
+        npcRow.createEl('button', { cls: 'storyteller-campaign-quick-chip', text: 'Add actor' })
+            .addEventListener('click', addNpc);
+
+        // Entry modes
+        const modes = wrap.createDiv('storyteller-campaign-quick-modes');
+        for (const def of QUICK_MODES) {
+            const button = modes.createEl('button', {
+                cls: 'storyteller-campaign-quick-mode',
+                text: def.label,
+                attr: { title: def.hint, 'aria-pressed': String(q.mode === def.mode) },
+            });
+            if (q.mode === def.mode) button.addClass('is-active');
+            button.addEventListener('click', () => {
+                q.mode = def.mode;
+                if (def.mode === 'roll' && this.lastDiceResult) {
+                    if (!q.rollExpression) q.rollExpression = this.lastDiceResult.expression;
+                    if (!q.rollOutcome) q.rollOutcome = this.lastDiceResult.outcome;
+                }
+                rerender();
+            });
+        }
+
+        let updatePreview: () => void = () => undefined;
+
+        if (q.mode === 'note') {
+            const select = wrap.createEl('select', {
+                cls: 'storyteller-campaign-input is-small',
+                attr: { 'aria-label': 'Note type' },
+            });
+            for (const option of NOTE_KINDS) select.createEl('option', { value: option.value, text: option.label });
+            select.value = q.noteKind;
+            select.addEventListener('change', () => {
+                q.noteKind = select.value as QuickNoteKind;
+                updatePreview();
+            });
+        }
+
+        if (q.mode === 'roll') {
+            const rollRow = wrap.createDiv('storyteller-campaign-quick-roll');
+            const bindRollField = (placeholder: string, label: string, value: string, store: (next: string) => void) => {
+                const field = rollRow.createEl('input', {
+                    cls: 'storyteller-campaign-input is-small',
+                    attr: { type: 'text', placeholder, 'aria-label': label },
+                });
+                field.value = value;
+                field.addEventListener('input', () => { store(field.value); updatePreview(); });
+            };
+            bindRollField('d20+3=17', 'Roll expression', q.rollExpression, next => { q.rollExpression = next; });
+            bindRollField('DC 15 or AC 14', 'Target', q.rollVs, next => { q.rollVs = next; });
+            bindRollField('Success', 'Outcome', q.rollOutcome, next => { q.rollOutcome = next; });
+        }
+
+        // Main line and submit
+        const line = wrap.createDiv('storyteller-campaign-quick-line');
+        const input = line.createEl('input', {
+            cls: 'storyteller-campaign-input storyteller-campaign-quick-input',
+            attr: { type: 'text', placeholder: quickPlaceholder(q.mode), 'aria-label': 'Partylog entry' },
+        });
+        input.value = q.draft;
+        input.addEventListener('input', () => { q.draft = input.value; updatePreview(); });
+        input.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter' && !event.isComposing) {
+                event.preventDefault();
+                void this.submitQuickEntry();
+            } else if (event.key === 'Escape') {
+                event.preventDefault();
+                q.draft = '';
+                input.value = '';
+                updatePreview();
+            }
+        });
+        const submit = line.createEl('button', { cls: 'storyteller-campaign-btn is-primary', text: 'Add' });
+        submit.addEventListener('click', () => { void this.submitQuickEntry(); });
+
+        // Tag helper: inserts [Kind:Name] at the caret and suggests story names.
+        const tagRow = wrap.createDiv('storyteller-campaign-quick-tags');
+        tagRow.createSpan({ cls: 'storyteller-campaign-quick-label', text: 'Tag' });
+        const kindSelect = tagRow.createEl('select', {
+            cls: 'storyteller-campaign-input is-small',
+            attr: { 'aria-label': 'Tag type' },
+        });
+        for (const option of TAG_KINDS) kindSelect.createEl('option', { value: option.kind, text: option.label });
+        kindSelect.value = q.tagKind;
+        const nameInput = tagRow.createEl('input', {
+            cls: 'storyteller-campaign-input is-small',
+            attr: { type: 'text', placeholder: 'Name', list: TAG_DATALIST_ID, 'aria-label': 'Tag name' },
+        });
+        nameInput.value = q.tagName;
+        const datalist = tagRow.createEl('datalist', { attr: { id: TAG_DATALIST_ID } });
+        const fillSuggestions = () => {
+            void this.loadTagNames().then(cache => {
+                datalist.empty();
+                for (const name of Array.from(new Set(this.tagSuggestions(q.tagKind, session, cache)))) {
+                    datalist.createEl('option', { value: name });
+                }
+            });
+        };
+        kindSelect.addEventListener('change', () => { q.tagKind = kindSelect.value; fillSuggestions(); });
+        nameInput.addEventListener('input', () => { q.tagName = nameInput.value; });
+        const insertTag = () => {
+            q.tagName = nameInput.value;
+            this.insertQuickTag(input);
+            updatePreview();
+        };
+        nameInput.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') { event.preventDefault(); insertTag(); }
+        });
+        tagRow.createEl('button', { cls: 'storyteller-campaign-quick-chip', text: 'Insert' })
+            .addEventListener('click', insertTag);
+        fillSuggestions();
+
+        // Live preview of the exact line that will be written.
+        const preview = wrap.createDiv('storyteller-campaign-quick-preview');
+        updatePreview = () => {
+            const built = this.buildQuickLine();
+            preview.setText(built.line ?? built.error ?? '');
+            preview.toggleClass('is-error', !built.line);
+        };
+        updatePreview();
+    }
+
+    /** Builds the Partylog line for the current quick entry state, or the reason it cannot be built. */
+    private buildQuickLine(): { line?: string; error?: string } {
+        const q = this.quick;
+        const text = q.draft.trim();
+        const actors = [...q.actors];
+        switch (q.mode) {
+            case 'action':
+                if (!text) return { error: 'Write what the character does.' };
+                return {
+                    line: formatAction({
+                        mode: actors.length > 1 ? 'group' : actors.length === 1 ? 'solo' : 'implicit',
+                        actors,
+                        text,
+                    }),
+                };
+            case 'assist':
+                if (actors.length !== 2) return { error: 'Assist needs two actors: pick the leader first, then the helper.' };
+                if (!text) return { error: 'Write what the assist does.' };
+                return { line: formatAction({ mode: 'assist', actors, text }) };
+            case 'group':
+                if (actors.length < 2) return { error: 'A group action needs at least two actors.' };
+                if (!text) return { error: 'Write what the group does.' };
+                return { line: formatAction({ mode: 'group', actors, text }) };
+            case 'world':
+                if (!text) return { error: 'Write the world event.' };
+                return { line: formatEvent({ text }) };
+            case 'consequence':
+                if (!text) return { error: 'Write the consequence.' };
+                return { line: formatConsequence({ text }) };
+            case 'note':
+                if (!text) return { error: 'Write the note.' };
+                if (q.noteKind === 'ooc') return { line: formatEntry(parsePartylogLine(`[OOC: ${text}]`)) };
+                return { line: formatMeta({ type: q.noteKind, text }) };
+            case 'roll': {
+                const expression = q.rollExpression.trim();
+                if (!expression) return { error: 'Enter the roll, for example d20+3=17.' };
+                const target = q.rollVs.trim();
+                const outcome = q.rollOutcome.trim();
+                const mode = actors.length === 0 ? 'none' : actors.length === 1 ? 'solo' : 'group';
+                return {
+                    line: formatRoll({
+                        mode,
+                        actors,
+                        expression: target ? `${expression} vs ${target}` : expression,
+                        outcome: outcome || undefined,
+                        tags: extractTags(text).tags,
+                    }),
+                };
+            }
+        }
+    }
+
+    /** Writes the line to the log, replays its tags into the session and refreshes what they touched. */
+    private async submitQuickEntry(): Promise<void> {
+        const session = this.session;
+        if (!session) return;
+        const built = this.buildQuickLine();
+        if (!built.line) {
+            new Notice(built.error ?? 'Nothing to add yet.');
+            return;
+        }
+        const line = built.line;
+        const result = applyPartylogTagsToSession(session, entryTags(parsePartylogLine(line)), this.partylogContext());
+        await this.autosave();
+        await this.writeSessionLog(body => appendLogLines(body, [line]));
+        this.quick.draft = '';
+        if (result.changed) new Notice(result.summary.join('\n'));
+        await this.refreshSidebarParts(partsAffectedBy(result.summary));
+        this.focusQuickEntry();
+    }
+
+    private insertQuickTag(input: HTMLInputElement): void {
+        const q = this.quick;
+        const name = q.tagName.trim();
+        const tag = `[${q.tagKind}:${name}]`;
+        const value = input.value;
+        const start = input.selectionStart ?? value.length;
+        const end = input.selectionEnd ?? start;
+        const before = value.slice(0, start);
+        const spacer = before.length > 0 && !/\s$/.test(before) ? ' ' : '';
+        const head = `${before}${spacer}`;
+        input.value = `${head}${tag}${value.slice(end)}`;
+        q.draft = input.value;
+        // With no name the caret waits after the colon, ready to type.
+        const caret = name ? head.length + tag.length : head.length + q.tagKind.length + 2;
+        input.focus();
+        input.setSelectionRange(caret, caret);
+    }
+
+    private async loadTagNames(): Promise<TagNameCache> {
+        if (this.tagNameCache) return this.tagNameCache;
+        const cache: TagNameCache = { characters: [], locations: [], items: [] };
+        try { cache.characters = (await this.plugin.listCharacters()).map(item => item.name); } catch { /* no story */ }
+        try { cache.locations = (await this.plugin.listLocations()).map(item => item.name); } catch { /* no story */ }
+        try { cache.items = (await this.plugin.listPlotItems()).map(item => item.name); } catch { /* no story */ }
+        this.tagNameCache = cache;
+        return cache;
+    }
+
+    private tagSuggestions(kind: string, session: CampaignSession, cache: TagNameCache): string[] {
+        switch (kind) {
+            case 'N':
+            case 'F':
+                return cache.characters;
+            case 'PC':
+                return session.partyCharacterNames ?? [];
+            case 'L':
+                return cache.locations;
+            case 'Faction':
+                return this.plugin.getGroups().map(group => group.name);
+            case 'Loot':
+                return cache.items;
+            case 'Party':
+                return Object.keys(session.partyResources ?? {});
+            case 'Clock':
+            case 'Track':
+            case 'Timer':
+                return (session.clocks ?? []).map(clock => clock.name);
+            case 'Thread':
+            case 'Goal':
+            case 'Quest': {
+                const wanted = kind.toLowerCase();
+                return (session.threads ?? [])
+                    .filter(thread => threadKindOf(thread) === wanted)
+                    .map(thread => thread.name);
+            }
+            default:
+                return [];
         }
     }
 
