@@ -148,3 +148,21 @@ describe('MapView.renderMap placement and palette state', () => {
     });
 });
 
+describe('MapView.renderMap overlapping loads', () => {
+    it('does not leave a second renderer alive when an older render finishes its wait late', async () => {
+        const view = await freshView();
+        let releaseFirst!: () => void;
+        const gate = new Promise<void>(r => { releaseFirst = r; });
+        view.waitForContainerDimensions = vi.fn()
+            .mockImplementationOnce(() => gate)
+            .mockImplementation(async () => undefined);
+        const first = view.renderMap();
+        const second = view.renderMap();
+        await second;
+        releaseFirst();
+        await first;
+        const alive = live.renderers.filter(r => !r.unloaded);
+        expect(alive).toHaveLength(1);
+        expect(view.leafletRenderer).toBe(alive[0]);
+    });
+});

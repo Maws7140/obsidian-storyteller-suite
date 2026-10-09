@@ -87,6 +87,7 @@ export class MapView extends ItemView {
     private maplogSaveQueue: Promise<void> = Promise.resolve();
     /** Maplog writes queued or running; while any are, the in-memory marks are newer than the note. */
     private maplogWritesPending = 0;
+    private mapRenderToken = 0;
     private placementMode: { type: 'location' | 'character' | 'event' | 'item' | 'culture' | 'economy' | 'magicsystem' | 'group' | 'scene' | 'reference' | null } = { type: null };
     private placementClickHandler: ((e: L.LeafletMouseEvent) => void) | null = null;
     private placementOverlay: HTMLElement | null = null;
@@ -1950,6 +1951,9 @@ export class MapView extends ItemView {
      */
     private async renderMap(): Promise<void> {
         if (!this.mapContainer || !this.currentMap) return;
+        // Each render gets a token. A render that is overtaken by a newer one (map switch while waiting)
+        // must not create a renderer that nothing will ever unload.
+        const token = ++this.mapRenderToken;
 
         this.disablePlacementMode();
         this.gridController?.destroy();
@@ -1972,6 +1976,7 @@ export class MapView extends ItemView {
         // CRITICAL FIX: Wait for container to have non-zero dimensions
         // Without this, Leaflet initializes with 0x0 size and tiles don't render
         await this.waitForContainerDimensions(this.mapContainer);
+        if (token !== this.mapRenderToken) return;
 
         // CRITICAL FIX: Parent container must have position:relative for absolute children
         // Without this, tiles will scatter across the viewport
@@ -2034,16 +2039,23 @@ export class MapView extends ItemView {
             } as unknown as import('obsidian').MarkdownPostProcessorContext;
 
             // Create renderer
-            this.leafletRenderer = new LeafletRenderer(
+            const renderer = new LeafletRenderer(
                 this.plugin,
                 leafletContainer,
                 params,
                 mockContext
             );
+            this.leafletRenderer = renderer;
 
             // Register as child component to trigger lifecycle (like code block processor)
-            mockContext.addChild(this.leafletRenderer);
-            await this.leafletRenderer.initialize();
+            mockContext.addChild(renderer);
+            await renderer.initialize();
+            if (token !== this.mapRenderToken) {
+                // A newer render started while this one was initialising; release this renderer.
+                if (this.leafletRenderer === renderer) this.leafletRenderer = null;
+                renderer.onunload();
+                return;
+            }
             const imageBounds = this.leafletRenderer.getImageBounds();
             const initializedMap = this.leafletRenderer.getMap();
             if (imageBounds && initializedMap) {
