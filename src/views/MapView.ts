@@ -714,7 +714,8 @@ export class MapView extends ItemView {
         const map = this.currentMap;
         const file = map?.filePath ? this.app.vault.getAbstractFileByPath(map.filePath) : null;
         if (!map || !(file instanceof TFile)) return Promise.reject(new Error('Save the map note before adding Maplog marks.'));
-        const clean = normalizeMaplogData(next);
+        // next is MaplogData ({ marks, lines, areas }), not the frontmatter shape normalizeMaplogData reads.
+        const clean = normalizeMaplogData({ maplogMarks: next.marks, maplogLines: next.lines, maplogAreas: next.areas });
         // Update the view first: a second mark placed before this write finishes must build on
         // this one, not on the note as it was, or the earlier mark would be overwritten.
         this.currentMap = { ...map, maplogMarks: clean.marks, maplogLines: clean.lines, maplogAreas: clean.areas };
