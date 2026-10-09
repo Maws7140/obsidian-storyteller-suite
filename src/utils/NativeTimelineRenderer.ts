@@ -189,6 +189,9 @@ const MARKER_GRAB_RADIUS = 11;
 /** Bound on the text caches so a long session cannot grow them without limit. */
 const TEXT_CACHE_LIMIT = 10_000;
 const MILESTONE_GOLD_EDGE = '#8a6410';
+/** Leg length of the conflict corner wedge, and the label space it reserves. */
+const CONFLICT_BADGE_SIZE = 7;
+const CONFLICT_BADGE_INSET = 6;
 
 export class NativeTimelineRenderer {
     private readonly app: App;
@@ -782,16 +785,13 @@ export class NativeTimelineRenderer {
     /**
      * The text drawn on an item's chip.
      *
-     * Prefixes carry the textual signals the vis renderer put in the label: a
-     * conflict marker and the narrative sequence number when reading in
-     * narrative order. Flashback/flash-forward use visual badges instead.
+     * The narrative sequence number is a prefix when reading in narrative order.
+     * Conflicts get a corner badge instead of a prefix, and flashback and
+     * flash-forward use visual badges too.
      */
     private itemLabel(item: NativeItem): string {
         const event = item.event;
-        const severity = this.conflictSeverity(event);
         const parts: string[] = [];
-        if (severity === 'error') parts.push('!!');
-        else if (severity === 'warning') parts.push('!');
         if (this.options.narrativeOrder && event.narrativeSequence !== undefined) {
             parts.push(`[${event.narrativeSequence}]`);
         }
@@ -1711,6 +1711,7 @@ export class NativeTimelineRenderer {
         ctx.font = `10px ${this.css('--font-interface', 'sans-serif')}`;
         const detail = `${dateLabel}  ·  ${meta}`;
         ctx.fillText(this.truncate(ctx, detail, rect.width - 18), rect.x + 10, rect.y + 32);
+        this.drawConflictBadge(ctx, rect, this.conflictSeverity(item.event));
         ctx.restore();
     }
 
@@ -1826,17 +1827,37 @@ export class NativeTimelineRenderer {
         if (narrativeDirection) {
             this.drawNarrativeIcon(ctx, narrativeDirection, baseLabelX + 6, rect.y + rect.height / 2, 11);
         }
-        if (available > 18) {
-            const severity = this.conflictSeverity(item.event);
-            ctx.fillStyle = severity === 'error'
-                ? this.css('--color-red', '#ef4444')
-                : severity === 'warning'
-                    ? this.css('--color-yellow', '#eab308')
-                    : isPoint ? this.css('--text-normal', '#e5e7eb') : this.css('--text-on-accent', '#fff');
+        const severity = this.conflictSeverity(item.event);
+        // Keep the label clear of the corner badge, which sits over the top
+        // few pixels at the right edge.
+        const labelAvailable = severity ? available - CONFLICT_BADGE_INSET : available;
+        if (labelAvailable > 18) {
+            ctx.fillStyle = isPoint ? this.css('--text-normal', '#e5e7eb') : this.css('--text-on-accent', '#fff');
             ctx.font = `11px ${this.css('--font-interface', 'sans-serif')}`;
-            ctx.fillText(this.truncate(ctx, labelOverride || this.itemLabel(item), available), labelX, rect.y + rect.height / 2 + 4);
+            ctx.fillText(this.truncate(ctx, labelOverride || this.itemLabel(item), labelAvailable), labelX, rect.y + rect.height / 2 + 4);
         }
+        this.drawConflictBadge(ctx, rect, severity);
         ctx.restore();
+    }
+
+    /**
+     * Corner wedge that marks an event with detected conflicts.
+     *
+     * Titles keep their normal colour so a dense view does not turn red. The
+     * wedge is what the eye finds, and the tooltip says what the conflict is.
+     */
+    private drawConflictBadge(ctx: CanvasRenderingContext2D, rect: DOMRect, severity: 'error' | 'warning' | null): void {
+        if (!severity) return;
+        const right = rect.x + rect.width;
+        ctx.fillStyle = severity === 'error'
+            ? this.css('--text-error', '#ef4444')
+            : this.css('--text-warning', '#eab308');
+        ctx.beginPath();
+        ctx.moveTo(right - CONFLICT_BADGE_SIZE, rect.y);
+        ctx.lineTo(right, rect.y);
+        ctx.lineTo(right, rect.y + CONFLICT_BADGE_SIZE);
+        ctx.closePath();
+        ctx.fill();
     }
 
     /**
