@@ -77,6 +77,7 @@ describe('ledger-derived balance follows the ledger', () => {
     expect(first.balance).toBe('10pp');
     await plugin.saveCharacter(first);
     expect(state.content).not.toMatch(/^balance:/m);
+    expect(state.content).not.toMatch(/balanceAuto/);
 
     state.content = state.content.replace('+100gp | Found gold', '+100gp | Found gold\n+50gp | Sold rope');
     const second = await load(plugin, file);

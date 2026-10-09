@@ -4527,6 +4527,8 @@ export default class StorytellerSuitePlugin extends Plugin {
         delete rest.ledger;
         const derivedBalance = isLedgerDerivedBalance(character);
         if (derivedBalance) delete rest.balance;
+        // Runtime-only flag (see isLedgerDerivedBalance); never written to the note.
+        delete (rest as Record<string, unknown>).balanceAuto;
         if (rest.sections) delete rest.sections;
 
 		// Handle renaming if filePath is present and name changed
@@ -4791,6 +4793,8 @@ export default class StorytellerSuitePlugin extends Plugin {
         delete rest.ledger;
         const derivedBalance = isLedgerDerivedBalance(location);
         if (derivedBalance) delete rest.balance;
+        // Runtime-only flag (see isLedgerDerivedBalance); never written to the note.
+        delete (rest as Record<string, unknown>).balanceAuto;
         if (rest.sections) delete rest.sections;
 
 		// Handle renaming if filePath is present and name changed
@@ -7262,6 +7266,8 @@ export default class StorytellerSuitePlugin extends Plugin {
         delete rest.ledger;
         const derivedBalance = isLedgerDerivedBalance(culture);
         if (derivedBalance) delete rest.balance;
+        // Runtime-only flag (see isLedgerDerivedBalance); never written to the note.
+        delete (rest as Record<string, unknown>).balanceAuto;
         if (rest.sections) delete rest.sections;
 
         let finalFilePath = filePath;
