@@ -3277,6 +3277,15 @@ export class NativeTimelineRenderer {
             const startText = this.formatEditDate(item.start);
             const endText = duration > 0 ? this.formatEditDate(item.end) : '';
             const nextDate = duration > 0 ? `${startText} to ${endText}` : startText;
+            // The text must read back to the instant it was written from, or the file would hold a
+            // different day than the one dropped. Refuse the write and put the chip back.
+            const readsBack = this.parseDate(startText) === item.start && (duration <= 0 || this.parseDate(endText) === item.end);
+            if (!readsBack) {
+                item.start = dragging.start; item.end = dragging.end;
+                this.scheduleDraw();
+                new Notice(`Could not move “${item.event.name}”: ${nextDate} would not read back as the same date. The event was not changed.`);
+                return;
+            }
             if (narrativeMode) {
                 item.event.narrativeMarkers ??= {};
                 item.event.narrativeMarkers.narrativeDate = nextDate;
@@ -3663,7 +3672,13 @@ export class NativeTimelineRenderer {
     private formatEditDate(value: number): string {
         const calendar = this.calendarRegistry.getActiveCalendar();
         if (calendar.id !== GREGORIAN_CALENDAR.id) return formatAbsoluteDay(value / DAY_MS + this.unixEpochAbsoluteDay(), calendar, calendar.baseUnit === 'minute' ? 'time' : 'day');
-        return new Date(value).toISOString().replace('T', ' ').replace(/:00\.000Z$/, '');
+        const date = new Date(value);
+        if (date.getUTCFullYear() >= 0) return date.toISOString().replace('T', ' ').replace(/:00\.000Z$/, '');
+        // Years before zero are written as signed six-digit ISO years, which the parser reads back
+        // only without a clock. A midnight is therefore written bare; any other time fails the
+        // round-trip check in onPointerUp rather than being saved as the wrong day.
+        const iso = date.toISOString();
+        return value % DAY_MS === 0 ? iso.slice(0, iso.indexOf('T')) : iso.replace('T', ' ').replace(/\.000Z$/, '');
     }
     private unixEpochAbsoluteDay(): number { return toAbsolute(GREGORIAN_CALENDAR, { year: 1970, month: 0, day: 1 }).absoluteDay; }
     private ensureLaneVisible(id: string): void { const lane = this.lanes.find(value => value.id === id); if (lane) this.scrollTop = Math.max(0, lane.top - this.axisHeight()); }
