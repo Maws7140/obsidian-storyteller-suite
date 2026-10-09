@@ -5,7 +5,7 @@ import {
   generateTicks,
   type AxisView,
 } from '../../src/calendar/TimelineAxis';
-import { toAbsolute } from '../../src/calendar/CalendarEngine';
+import { fromAbsolute, toAbsolute } from '../../src/calendar/CalendarEngine';
 import { GREGORIAN_CALENDAR } from '../../src/calendar/builtins';
 import type { CalendarSystem } from '../../src/calendar/types';
 import { CALENDAR_SCHEMA_VERSION } from '../../src/calendar/types';
@@ -181,3 +181,37 @@ describe('TimelineAxis — custom-calendar ticks', () => {
   });
 });
 
+
+describe('TimelineAxis — Gregorian chronology labels', () => {
+  const dayOf = (y: number, m: number, d: number) =>
+    toAbsolute(G, { year: y, month: m - 1, day: d }).absoluteDay;
+
+  // Regression: the chronology axis used to step fixed millisecond multiples
+  // from the Unix epoch, so a 2020-2030 view was labelled 2020, 2024, 2029.
+  it('labels a 2020-2030 view on real Jan 1 boundaries with even steps', () => {
+    const view: AxisView = {
+      startDay: dayOf(2020, 1, 1),
+      endDay: dayOf(2030, 12, 31),
+      widthPx: 1000,
+    };
+    const ticks = generateTicks(G, view, 8);
+    const labels = ticks.map((t) => t.label);
+    expect(labels).toEqual(['2020', '2022', '2024', '2026', '2028', '2030']);
+    for (const tick of ticks) {
+      const date = fromAbsolute(G, { absoluteDay: tick.absoluteDay });
+      expect(date.month).toBe(0);
+      expect(date.day).toBe(1);
+    }
+    expect(new Set(labels).size).toBe(labels.length);
+  });
+
+  it('never repeats a label across a year-level window', () => {
+    const view: AxisView = {
+      startDay: dayOf(2019, 6, 1),
+      endDay: dayOf(2026, 6, 1),
+      widthPx: 700,
+    };
+    const labels = generateTicks(G, view, 6).map((t) => t.label);
+    expect(new Set(labels).size).toBe(labels.length);
+  });
+});
