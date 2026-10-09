@@ -6785,12 +6785,18 @@ export default class StorytellerSuitePlugin extends Plugin {
         if (!session.id) session.id = `sess-${Date.now()}`;
 
         const preparedSession = await this.serializeFrontmatterEntityReferences(session as unknown as Record<string, unknown>);
+        const existingFile = this.app.vault.getAbstractFileByPath(filePath);
+        let originalFrontmatter: Record<string, unknown> | undefined;
+        if (existingFile instanceof TFile) {
+            const { parseFrontmatterFromContent } = await import('./yaml/EntitySections');
+            originalFrontmatter = parseFrontmatterFromContent(await this.app.vault.cachedRead(existingFile));
+        }
         const frontmatter = buildCampaignSessionFrontmatter(preparedSession.source, {
             omitOriginalKeys: preparedSession.omitOriginalKeys,
+            originalFrontmatter,
         });
         const fm = stringifyYaml(frontmatter);
 
-        const existingFile = this.app.vault.getAbstractFileByPath(filePath);
         if (existingFile instanceof TFile) {
             // Preserve existing log body
             await this.app.vault.process(existingFile, (content: string) => {
