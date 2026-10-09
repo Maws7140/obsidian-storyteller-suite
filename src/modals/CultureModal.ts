@@ -9,6 +9,8 @@ import { t } from '../i18n/strings';
 import { parseSectionsFromMarkdown } from '../yaml/EntitySections';
 import { EntityCustomFieldsEditor, customFieldEditorOptions } from './entity/EntityCustomFieldsEditor';
 import { isModalFieldVisible } from './entity/ModalFieldVisibility';
+import { createCollapsibleModalSection } from './entity/CollapsibleModalSection';
+import { sanitizeCustomFieldDefinitions } from './entity/CustomFieldDefinitions';
 
 export type CultureModalSubmitCallback = (culture: Culture) => Promise<void>;
 export type CultureModalDeleteCallback = (culture: Culture) => Promise<void>;
@@ -224,51 +226,6 @@ export class CultureModal extends ResponsiveModal {
             );
         }
 
-        // Technology Level
-        if (this.shows('techLevel')) {
-            new Setting(contentEl)
-                .setName(t('techLevel'))
-                .setDesc(t('techLevelDesc'))
-                .addDropdown(dropdown => dropdown
-                    .addOptions({
-                        'stone-age': t('stoneAge'),
-                        'bronze-age': t('bronzeAge'),
-                        'iron-age': t('ironAge'),
-                        'medieval': t('medieval'),
-                        'renaissance': t('renaissance'),
-                        'industrial': t('industrial'),
-                        'modern': t('modern'),
-                        'futuristic': t('futuristic'),
-                        'custom': t('custom')
-                    })
-                    .setValue(this.culture.techLevel || 'medieval')
-                    .onChange(value => this.culture.techLevel = value)
-                );
-        }
-
-        // Government Type
-        if (this.shows('governmentType')) {
-            new Setting(contentEl)
-                .setName(t('governmentType'))
-                .setDesc(t('governmentTypeDesc'))
-                .addDropdown(dropdown => dropdown
-                    .addOptions({
-                        'monarchy': t('monarchy'),
-                        'democracy': t('democracy'),
-                        'republic': t('republic'),
-                        'theocracy': t('theocracy'),
-                        'tribal': t('tribal'),
-                        'empire': t('empire'),
-                        'feudal': t('feudal'),
-                        'oligarchy': t('oligarchy'),
-                        'anarchy': t('anarchy'),
-                        'custom': t('custom')
-                    })
-                    .setValue(this.culture.governmentType || 'monarchy')
-                    .onChange(value => this.culture.governmentType = value)
-                );
-        }
-
         // Status
         if (this.shows('status')) {
             new Setting(contentEl)
@@ -288,33 +245,6 @@ export class CultureModal extends ResponsiveModal {
                 );
         }
 
-        // Languages (comma-separated)
-        if (this.shows('languages')) {
-            new Setting(contentEl)
-                .setName(t('languages'))
-                .setDesc(t('languagesDesc'))
-                .addText(text => text
-                    .setValue(this.culture.languages?.join(', ') || '')
-                    .onChange(value => {
-                        this.culture.languages = value
-                            .split(',')
-                            .map(s => s.trim())
-                            .filter(s => s);
-                    })
-                );
-        }
-
-        // Population
-        if (this.shows('population')) {
-            new Setting(contentEl)
-                .setName(t('population'))
-                .setDesc(t('populationDesc'))
-                .addText(text => text
-                    .setValue(this.culture.population || '')
-                    .onChange(value => this.culture.population = value)
-                );
-        }
-
         // Description (Markdown Section)
         if (this.shows('description')) {
             new Setting(contentEl)
@@ -329,218 +259,359 @@ export class CultureModal extends ResponsiveModal {
                 });
         }
 
-        // Values & Beliefs (Markdown Section)
-        if (this.shows('values')) {
-            new Setting(contentEl)
-                .setName(t('valuesBeliefs'))
-                .setDesc(t('valuesBeliefsDesc'))
-                .setClass('storyteller-modal-setting-vertical')
-                .addTextArea(text => {
-                    text.setValue(this.culture.values || '')
-                        .onChange(value => this.culture.values = value);
-                    text.inputEl.rows = 4;
-                    text.inputEl.setCssStyles({ width: '100%' });
-                });
+        this.customFieldsEditor.setFields(this.culture.customFields);
+        const definedFieldCount = sanitizeCustomFieldDefinitions('culture', this.plugin.getCustomFieldDefinitions('culture')).length;
+        const yourFields = definedFieldCount > 0
+            ? createCollapsibleModalSection(contentEl, {
+                title: 'Your fields',
+                description: 'Fields you defined for cultures in settings',
+                icon: 'list-checks',
+                open: true,
+            })
+            : null;
+        if (yourFields) {
+            this.customFieldsEditor.renderDefinedFields(yourFields);
+            yourFields.querySelector(':scope > h3')?.remove();
         }
 
-        // Religion (Markdown Section)
-        if (this.shows('religion')) {
-            new Setting(contentEl)
-                .setName(t('religion'))
-                .setDesc(t('religionDesc'))
-                .setClass('storyteller-modal-setting-vertical')
-                .addTextArea(text => {
-                    text.setValue(this.culture.religion || '')
-                        .onChange(value => this.culture.religion = value);
-                    text.inputEl.rows = 4;
-                    text.inputEl.setCssStyles({ width: '100%' });
-                });
-        }
+        const society = (this.shows('governmentType') || this.shows('socialStructure') || this.shows('values') || this.shows('population') || this.shows('techLevel'))
+            ? createCollapsibleModalSection(contentEl, {
+                title: 'Society',
+                description: 'Government, social structure, values, population, and technology',
+                icon: 'landmark',
+                open: Boolean((this.culture.governmentType && this.culture.governmentType !== 'monarchy') || this.culture.socialStructure || this.culture.values || this.culture.population || (this.culture.techLevel && this.culture.techLevel !== 'medieval')),
+            })
+            : null;
+        if (society) {
+            // Government Type
+            if (this.shows('governmentType')) {
+                new Setting(society)
+                    .setName(t('governmentType'))
+                    .setDesc(t('governmentTypeDesc'))
+                    .addDropdown(dropdown => dropdown
+                        .addOptions({
+                            'monarchy': t('monarchy'),
+                            'democracy': t('democracy'),
+                            'republic': t('republic'),
+                            'theocracy': t('theocracy'),
+                            'tribal': t('tribal'),
+                            'empire': t('empire'),
+                            'feudal': t('feudal'),
+                            'oligarchy': t('oligarchy'),
+                            'anarchy': t('anarchy'),
+                            'custom': t('custom')
+                        })
+                        .setValue(this.culture.governmentType || 'monarchy')
+                        .onChange(value => this.culture.governmentType = value)
+                    );
+            }
 
-        // Social Structure (Markdown Section)
-        if (this.shows('socialStructure')) {
-            new Setting(contentEl)
-                .setName(t('socialStructure'))
-                .setDesc(t('socialStructureDesc'))
-                .setClass('storyteller-modal-setting-vertical')
-                .addTextArea(text => {
-                    text.setValue(this.culture.socialStructure || '')
-                        .onChange(value => this.culture.socialStructure = value);
-                    text.inputEl.rows = 4;
-                    text.inputEl.setCssStyles({ width: '100%' });
-                });
-        }
-
-        // History (Markdown Section)
-        if (this.shows('history')) {
-            new Setting(contentEl)
-                .setName(t('history'))
-                .setDesc(t('cultureHistoryDesc'))
-                .setClass('storyteller-modal-setting-vertical')
-                .addTextArea(text => {
-                    text.setValue(this.culture.history || '')
-                        .onChange(value => this.culture.history = value);
-                    text.inputEl.rows = 4;
-                    text.inputEl.setCssStyles({ width: '100%' });
-                });
-        }
-
-        // Naming Conventions (Markdown Section)
-        if (this.shows('namingConventions')) {
-            new Setting(contentEl)
-                .setName(t('namingConventions'))
-                .setDesc(t('namingConventionsDesc'))
-                .setClass('storyteller-modal-setting-vertical')
-                .addTextArea(text => {
-                    text.setValue(this.culture.namingConventions || '')
-                        .onChange(value => this.culture.namingConventions = value);
-                    text.inputEl.rows = 3;
-                    text.inputEl.setCssStyles({ width: '100%' });
-                });
-        }
-
-        // Customs (Markdown Section)
-        if (this.shows('customs')) {
-            new Setting(contentEl)
-                .setName(t('customsTraditions'))
-                .setDesc(t('customsTraditionsDesc'))
-                .setClass('storyteller-modal-setting-vertical')
-                .addTextArea(text => {
-                    text.setValue(this.culture.customs || '')
-                        .onChange(value => this.culture.customs = value);
-                    text.inputEl.rows = 4;
-                    text.inputEl.setCssStyles({ width: '100%' });
-                });
-        }
-
-        if (this.shows('linkedCharacters')) {
-            // --- Linked Characters ---
-            contentEl.createEl('h3', { text: 'Characters' });
-            const charChips = contentEl.createDiv('storyteller-linked-chips');
-            const renderCharChips = () => {
-                charChips.empty();
-                for (const name of (this.culture.linkedCharacters ?? [])) {
-                    const chip = charChips.createSpan({ cls: 'storyteller-linked-chip' });
-                    chip.createSpan({ text: name });
-                    const rm = chip.createEl('button', { cls: 'storyteller-chip-remove', attr: { 'aria-label': 'Remove' } });
-                    setIcon(rm, 'x');
-                    rm.addEventListener('click', () => {
-                        this.culture.linkedCharacters = this.culture.linkedCharacters!.filter(n => n !== name);
-                        renderCharChips();
+            // Social Structure (Markdown Section)
+            if (this.shows('socialStructure')) {
+                new Setting(society)
+                    .setName(t('socialStructure'))
+                    .setDesc(t('socialStructureDesc'))
+                    .setClass('storyteller-modal-setting-vertical')
+                    .addTextArea(text => {
+                        text.setValue(this.culture.socialStructure || '')
+                            .onChange(value => this.culture.socialStructure = value);
+                        text.inputEl.rows = 4;
+                        text.inputEl.setCssStyles({ width: '100%' });
                     });
-                }
-            };
-            renderCharChips();
-            const allCharacters = await this.plugin.listCharacters();
-            new Setting(contentEl)
-                .setName('Add character')
-                .addDropdown(dd => {
-                    dd.addOption('', '— select character —');
-                    allCharacters.forEach(c => { dd.addOption(c.name, c.name); });
-                    dd.onChange(val => {
-                        if (val && !(this.culture.linkedCharacters ?? []).includes(val)) {
-                            if (!this.culture.linkedCharacters) this.culture.linkedCharacters = [];
-                            this.culture.linkedCharacters.push(val);
-                            renderCharChips();
-                        }
-                        dd.setValue('');
-                    });
-                });
-        }
+            }
 
-        if (this.shows('linkedLocations')) {
-            // --- Linked Locations ---
-            contentEl.createEl('h3', { text: 'Locations' });
-            const locChips = contentEl.createDiv('storyteller-linked-chips');
-            const renderLocChips = () => {
-                locChips.empty();
-                for (const name of (this.culture.linkedLocations ?? [])) {
-                    const chip = locChips.createSpan({ cls: 'storyteller-linked-chip' });
-                    chip.createSpan({ text: name });
-                    const rm = chip.createEl('button', { cls: 'storyteller-chip-remove', attr: { 'aria-label': 'Remove' } });
-                    setIcon(rm, 'x');
-                    rm.addEventListener('click', () => {
-                        this.culture.linkedLocations = this.culture.linkedLocations!.filter(n => n !== name);
-                        renderLocChips();
+            // Values & Beliefs (Markdown Section)
+            if (this.shows('values')) {
+                new Setting(society)
+                    .setName(t('valuesBeliefs'))
+                    .setDesc(t('valuesBeliefsDesc'))
+                    .setClass('storyteller-modal-setting-vertical')
+                    .addTextArea(text => {
+                        text.setValue(this.culture.values || '')
+                            .onChange(value => this.culture.values = value);
+                        text.inputEl.rows = 4;
+                        text.inputEl.setCssStyles({ width: '100%' });
                     });
-                }
-            };
-            renderLocChips();
-            const allLocations = await this.plugin.listLocations();
-            new Setting(contentEl)
-                .setName('Add location')
-                .addDropdown(dd => {
-                    dd.addOption('', '— select location —');
-                    allLocations.forEach(l => { dd.addOption(l.name, l.name); });
-                    dd.onChange(val => {
-                        if (val && !(this.culture.linkedLocations ?? []).includes(val)) {
-                            if (!this.culture.linkedLocations) this.culture.linkedLocations = [];
-                            this.culture.linkedLocations.push(val);
-                            renderLocChips();
-                        }
-                        dd.setValue('');
-                    });
-                });
-        }
+            }
 
-        if (this.shows('balance')) {
-            // --- Finances ---
-            contentEl.createEl('h3', { text: 'Finances' });
-            new Setting(contentEl)
-                .setName('Collective wealth')
-                .setDesc('Economic wealth of this culture (e.g. "10000gp"). Auto-computed from ledger blocks if present.')
-                .addText(text => text
-                    .setValue(this.culture.balance || '')
-                    .onChange(val => { this.culture.balance = val.trim() || undefined; })
-                );
-            if (this.culture.ledger && this.culture.ledger.length > 0) {
-                contentEl.createDiv('storyteller-ledger-preview').createEl('p', {
-                    cls: 'storyteller-ledger-note',
-                    text: `${this.culture.ledger.length} transaction(s) in note`
-                });
+            // Population
+            if (this.shows('population')) {
+                new Setting(society)
+                    .setName(t('population'))
+                    .setDesc(t('populationDesc'))
+                    .addText(text => text
+                        .setValue(this.culture.population || '')
+                        .onChange(value => this.culture.population = value)
+                    );
+            }
+
+            // Technology Level
+            if (this.shows('techLevel')) {
+                new Setting(society)
+                    .setName(t('techLevel'))
+                    .setDesc(t('techLevelDesc'))
+                    .addDropdown(dropdown => dropdown
+                        .addOptions({
+                            'stone-age': t('stoneAge'),
+                            'bronze-age': t('bronzeAge'),
+                            'iron-age': t('ironAge'),
+                            'medieval': t('medieval'),
+                            'renaissance': t('renaissance'),
+                            'industrial': t('industrial'),
+                            'modern': t('modern'),
+                            'futuristic': t('futuristic'),
+                            'custom': t('custom')
+                        })
+                        .setValue(this.culture.techLevel || 'medieval')
+                        .onChange(value => this.culture.techLevel = value)
+                    );
             }
         }
 
-        if (this.shows('linkedEconomies')) {
-            // --- Linked Economies ---
-            contentEl.createEl('h3', { text: 'Economies' });
-            if (!this.culture.linkedEconomies) this.culture.linkedEconomies = [];
-            const cultEconChips = contentEl.createDiv('storyteller-linked-chips');
-            const renderCultEconChips = () => {
-                cultEconChips.empty();
-                for (const name of (this.culture.linkedEconomies ?? [])) {
-                    const chip = cultEconChips.createSpan({ cls: 'storyteller-linked-chip' });
-                    chip.createSpan({ text: name });
-                    const rm = chip.createEl('button', { cls: 'storyteller-chip-remove', attr: { 'aria-label': 'Remove' } });
-                    setIcon(rm, 'x');
-                    rm.addEventListener('click', () => {
-                        this.culture.linkedEconomies = this.culture.linkedEconomies!.filter(n => n !== name);
-                        renderCultEconChips();
+        const belief = (this.shows('languages') || this.shows('religion') || this.shows('namingConventions') || this.shows('customs'))
+            ? createCollapsibleModalSection(contentEl, {
+                title: 'Belief and language',
+                description: 'Languages, religion, naming, and customs',
+                icon: 'book-open',
+                open: Boolean(this.culture.languages?.length || this.culture.religion || this.culture.namingConventions || this.culture.customs),
+            })
+            : null;
+        if (belief) {
+            // Languages (comma-separated)
+            if (this.shows('languages')) {
+                new Setting(belief)
+                    .setName(t('languages'))
+                    .setDesc(t('languagesDesc'))
+                    .addText(text => text
+                        .setValue(this.culture.languages?.join(', ') || '')
+                        .onChange(value => {
+                            this.culture.languages = value
+                                .split(',')
+                                .map(s => s.trim())
+                                .filter(s => s);
+                        })
+                    );
+            }
+
+            // Religion (Markdown Section)
+            if (this.shows('religion')) {
+                new Setting(belief)
+                    .setName(t('religion'))
+                    .setDesc(t('religionDesc'))
+                    .setClass('storyteller-modal-setting-vertical')
+                    .addTextArea(text => {
+                        text.setValue(this.culture.religion || '')
+                            .onChange(value => this.culture.religion = value);
+                        text.inputEl.rows = 4;
+                        text.inputEl.setCssStyles({ width: '100%' });
                     });
-                }
-            };
-            renderCultEconChips();
-            const allEconomiesForCult = await this.plugin.listEconomies();
-            new Setting(contentEl)
-                .setName('Add economy')
-                .addDropdown(dd => {
-                    dd.addOption('', '— select economy —');
-                    allEconomiesForCult.forEach(e => { dd.addOption(e.name, e.name); });
-                    dd.onChange(val => {
-                        if (val && !(this.culture.linkedEconomies ?? []).includes(val)) {
-                            if (!this.culture.linkedEconomies) this.culture.linkedEconomies = [];
-                            this.culture.linkedEconomies.push(val);
-                            renderCultEconChips();
-                        }
-                        dd.setValue('');
+            }
+
+            // Naming Conventions (Markdown Section)
+            if (this.shows('namingConventions')) {
+                new Setting(belief)
+                    .setName(t('namingConventions'))
+                    .setDesc(t('namingConventionsDesc'))
+                    .setClass('storyteller-modal-setting-vertical')
+                    .addTextArea(text => {
+                        text.setValue(this.culture.namingConventions || '')
+                            .onChange(value => this.culture.namingConventions = value);
+                        text.inputEl.rows = 3;
+                        text.inputEl.setCssStyles({ width: '100%' });
                     });
-                });
+            }
+
+            // Customs (Markdown Section)
+            if (this.shows('customs')) {
+                new Setting(belief)
+                    .setName(t('customsTraditions'))
+                    .setDesc(t('customsTraditionsDesc'))
+                    .setClass('storyteller-modal-setting-vertical')
+                    .addTextArea(text => {
+                        text.setValue(this.culture.customs || '')
+                            .onChange(value => this.culture.customs = value);
+                        text.inputEl.rows = 4;
+                        text.inputEl.setCssStyles({ width: '100%' });
+                    });
+            }
         }
 
-        this.customFieldsEditor.setFields(this.culture.customFields);
-        this.customFieldsEditor.renderDefinedFields(contentEl);
+        const history = this.shows('history')
+            ? createCollapsibleModalSection(contentEl, {
+                title: 'History',
+                description: 'How this culture came to be',
+                icon: 'scroll-text',
+                open: Boolean(this.culture.history),
+            })
+            : null;
+        if (history) {
+            // History (Markdown Section)
+            if (this.shows('history')) {
+                new Setting(history)
+                    .setName(t('history'))
+                    .setDesc(t('cultureHistoryDesc'))
+                    .setClass('storyteller-modal-setting-vertical')
+                    .addTextArea(text => {
+                        text.setValue(this.culture.history || '')
+                            .onChange(value => this.culture.history = value);
+                        text.inputEl.rows = 4;
+                        text.inputEl.setCssStyles({ width: '100%' });
+                    });
+            }
+        }
+
+        const connections = (this.shows('linkedCharacters') || this.shows('linkedLocations') || this.shows('linkedEconomies'))
+            ? createCollapsibleModalSection(contentEl, {
+                title: 'Connections',
+                description: 'Linked characters, locations, and economies',
+                icon: 'link',
+                open: Boolean(this.culture.linkedCharacters?.length || this.culture.linkedLocations?.length || this.culture.linkedEconomies?.length),
+            })
+            : null;
+        if (connections) {
+            if (this.shows('linkedCharacters')) {
+                // --- Linked Characters ---
+                connections.createEl('h3', { text: 'Characters' });
+                const charChips = connections.createDiv('storyteller-linked-chips');
+                const renderCharChips = () => {
+                    charChips.empty();
+                    for (const name of (this.culture.linkedCharacters ?? [])) {
+                        const chip = charChips.createSpan({ cls: 'storyteller-linked-chip' });
+                        chip.createSpan({ text: name });
+                        const rm = chip.createEl('button', { cls: 'storyteller-chip-remove', attr: { 'aria-label': 'Remove' } });
+                        setIcon(rm, 'x');
+                        rm.addEventListener('click', () => {
+                            this.culture.linkedCharacters = this.culture.linkedCharacters!.filter(n => n !== name);
+                            renderCharChips();
+                        });
+                    }
+                };
+                renderCharChips();
+                const allCharacters = await this.plugin.listCharacters();
+                new Setting(connections)
+                    .setName('Add character')
+                    .addDropdown(dd => {
+                        dd.addOption('', '— select character —');
+                        allCharacters.forEach(c => { dd.addOption(c.name, c.name); });
+                        dd.onChange(val => {
+                            if (val && !(this.culture.linkedCharacters ?? []).includes(val)) {
+                                if (!this.culture.linkedCharacters) this.culture.linkedCharacters = [];
+                                this.culture.linkedCharacters.push(val);
+                                renderCharChips();
+                            }
+                            dd.setValue('');
+                        });
+                    });
+            }
+
+            if (this.shows('linkedLocations')) {
+                // --- Linked Locations ---
+                connections.createEl('h3', { text: 'Locations' });
+                const locChips = connections.createDiv('storyteller-linked-chips');
+                const renderLocChips = () => {
+                    locChips.empty();
+                    for (const name of (this.culture.linkedLocations ?? [])) {
+                        const chip = locChips.createSpan({ cls: 'storyteller-linked-chip' });
+                        chip.createSpan({ text: name });
+                        const rm = chip.createEl('button', { cls: 'storyteller-chip-remove', attr: { 'aria-label': 'Remove' } });
+                        setIcon(rm, 'x');
+                        rm.addEventListener('click', () => {
+                            this.culture.linkedLocations = this.culture.linkedLocations!.filter(n => n !== name);
+                            renderLocChips();
+                        });
+                    }
+                };
+                renderLocChips();
+                const allLocations = await this.plugin.listLocations();
+                new Setting(connections)
+                    .setName('Add location')
+                    .addDropdown(dd => {
+                        dd.addOption('', '— select location —');
+                        allLocations.forEach(l => { dd.addOption(l.name, l.name); });
+                        dd.onChange(val => {
+                            if (val && !(this.culture.linkedLocations ?? []).includes(val)) {
+                                if (!this.culture.linkedLocations) this.culture.linkedLocations = [];
+                                this.culture.linkedLocations.push(val);
+                                renderLocChips();
+                            }
+                            dd.setValue('');
+                        });
+                    });
+            }
+
+            if (this.shows('linkedEconomies')) {
+                // --- Linked Economies ---
+                connections.createEl('h3', { text: 'Economies' });
+                if (!this.culture.linkedEconomies) this.culture.linkedEconomies = [];
+                const cultEconChips = connections.createDiv('storyteller-linked-chips');
+                const renderCultEconChips = () => {
+                    cultEconChips.empty();
+                    for (const name of (this.culture.linkedEconomies ?? [])) {
+                        const chip = cultEconChips.createSpan({ cls: 'storyteller-linked-chip' });
+                        chip.createSpan({ text: name });
+                        const rm = chip.createEl('button', { cls: 'storyteller-chip-remove', attr: { 'aria-label': 'Remove' } });
+                        setIcon(rm, 'x');
+                        rm.addEventListener('click', () => {
+                            this.culture.linkedEconomies = this.culture.linkedEconomies!.filter(n => n !== name);
+                            renderCultEconChips();
+                        });
+                    }
+                };
+                renderCultEconChips();
+                const allEconomiesForCult = await this.plugin.listEconomies();
+                new Setting(connections)
+                    .setName('Add economy')
+                    .addDropdown(dd => {
+                        dd.addOption('', '— select economy —');
+                        allEconomiesForCult.forEach(e => { dd.addOption(e.name, e.name); });
+                        dd.onChange(val => {
+                            if (val && !(this.culture.linkedEconomies ?? []).includes(val)) {
+                                if (!this.culture.linkedEconomies) this.culture.linkedEconomies = [];
+                                this.culture.linkedEconomies.push(val);
+                                renderCultEconChips();
+                            }
+                            dd.setValue('');
+                        });
+                    });
+            }
+        }
+
+        const finances = this.shows('balance')
+            ? createCollapsibleModalSection(contentEl, {
+                title: 'Finances',
+                description: 'Collective wealth and ledger notes',
+                icon: 'coins',
+                open: Boolean(this.culture.balance || this.culture.ledger?.length),
+            })
+            : null;
+        if (finances) {
+            if (this.shows('balance')) {
+                // --- Finances ---
+                new Setting(finances)
+                    .setName('Collective wealth')
+                    .setDesc('Economic wealth of this culture (e.g. "10000gp"). Auto-computed from ledger blocks if present.')
+                    .addText(text => text
+                        .setValue(this.culture.balance || '')
+                        .onChange(val => { this.culture.balance = val.trim() || undefined; })
+                    );
+                if (this.culture.ledger && this.culture.ledger.length > 0) {
+                    finances.createDiv('storyteller-ledger-preview').createEl('p', {
+                        cls: 'storyteller-ledger-note',
+                        text: `${this.culture.ledger.length} transaction(s) in note`
+                    });
+                }
+            }
+        }
+
         if (this.shows('customFields')) {
-            this.customFieldsEditor.renderFreeFormSection(contentEl);
+            const customFieldsSection = createCollapsibleModalSection(contentEl, {
+                title: 'Custom fields',
+                description: 'Free-form name and value pairs',
+                icon: 'list-plus',
+                open: Boolean(Object.keys(this.culture.customFields || {}).length),
+            });
+            this.customFieldsEditor.renderFreeFormSection(customFieldsSection);
+            customFieldsSection.querySelector(':scope > h3')?.remove();
         }
 
         if (!this.isNew && this.onDelete) {
