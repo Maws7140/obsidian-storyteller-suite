@@ -6777,7 +6777,13 @@ export default class StorytellerSuitePlugin extends Plugin {
         const folderPath = this.getEntityFolder('campaignSession');
         const safeName = (session.name || 'Untitled Session').replace(/[\\/:"*?<>|]+/g, '');
         const fileName = `${safeName}.md`;
-        const filePath = normalizePath(`${folderPath}/${fileName}`);
+        // The note the session already points at wins, so a rename in Obsidian keeps the log in one file.
+        // The name-based path is used only until the note exists.
+        const linkedPath = session.filePath;
+        const linkedFile = linkedPath ? this.app.vault.getAbstractFileByPath(linkedPath) : null;
+        const filePath: string = linkedFile instanceof TFile && linkedPath
+            ? linkedPath
+            : normalizePath(`${folderPath}/${fileName}`);
 
         const now = new Date().toISOString();
         session.modified = now;
