@@ -16,6 +16,7 @@ import { Template } from '../templates/TemplateTypes';
 import { EntityCustomFieldsEditor, customFieldEditorOptions } from './entity/EntityCustomFieldsEditor';
 import { confirmWithModal } from './ui/ConfirmModal';
 import { isModalFieldVisible } from './entity/ModalFieldVisibility';
+import { createCollapsibleModalSection } from './entity/CollapsibleModalSection';
 
 export type GroupModalSubmitCallback = (group: Group) => Promise<void>;
 export type GroupModalDeleteCallback = (groupId: string) => Promise<void>;
@@ -84,6 +85,24 @@ export class GroupModal extends ResponsiveModal {
      */
     private shows(fieldKey: string): boolean {
         return isModalFieldVisible(this.plugin.settings.hiddenModalFields, 'faction', fieldKey);
+    }
+
+    /**
+     * The "Your fields" section. Only exists when the vault defines typed fields
+     * for groups: the editor renders nothing otherwise, and the empty section is
+     * then removed.
+     */
+    private renderDefinedFieldsSection(contentEl: HTMLElement): void {
+        const body = createCollapsibleModalSection(contentEl, {
+            title: 'Your fields',
+            description: 'Typed fields you defined in settings for groups',
+            icon: 'list-checks',
+            open: true,
+        });
+        this.customFieldsEditor.renderDefinedFields(body);
+        // The editor adds its own heading; the section title already names it.
+        body.querySelectorAll(':scope > h3').forEach(heading => heading.remove());
+        if (!body.hasChildNodes()) body.parentElement?.remove();
     }
 
     onOpen() { void (async () => {
@@ -196,9 +215,6 @@ export class GroupModal extends ResponsiveModal {
         // Load all entities for dropdowns
         await this.loadAllEntities();
 
-        // === BASIC INFORMATION ===
-        contentEl.createEl('h3', { text: 'Basic information' });
-
         // Name
         new Setting(contentEl)
             .setName(t('name'))
@@ -207,6 +223,31 @@ export class GroupModal extends ResponsiveModal {
                 .setValue(this.group.name)
                 .onChange(value => { this.group.name = value; })
             );
+
+        // Profile Image
+        if (this.shows('profileImage')) {
+            let imagePathDesc: HTMLElement | null = null;
+            const profileImageSetting = new Setting(contentEl)
+                .setName(t('profileImage'))
+                .then(s => {
+                    imagePathDesc = s.descEl.createEl('small', { text: `Current: ${this.group.profileImagePath || 'None'}` });
+                    s.descEl.addClass('storyteller-modal-setting-vertical');
+                });
+        
+            // Add image selection buttons (Gallery, Upload, Vault, Clear)
+            addImageSelectionButtons(
+                profileImageSetting,
+                this.app,
+                this.plugin,
+                {
+                    currentPath: this.group.profileImagePath,
+                    onSelect: (path) => {
+                        this.group.profileImagePath = path;
+                    },
+                    descriptionEl: imagePathDesc || undefined
+                }
+            );
+        }
 
         // Description
         if (this.shows('description')) {
@@ -241,9 +282,22 @@ export class GroupModal extends ResponsiveModal {
                 })
             );
 
+        // Defined fields always render, for collection groups too.
+        this.renderDefinedFieldsSection(contentEl);
+
+        const colorTagsVisible = this.shows('color') || this.shows('tags');
+        const colorTagsBody = colorTagsVisible
+            ? createCollapsibleModalSection(contentEl, {
+                title: 'Color and tags',
+                description: 'The group color and the tags used to find it',
+                icon: 'tags',
+                open: Boolean(this.group.color || this.group.tags?.length),
+            })
+            : null;
+
         // Color
-        if (this.shows('color')) {
-            new Setting(contentEl)
+        if (colorTagsBody && this.shows('color')) {
+            new Setting(colorTagsBody)
                 .setName(t('color'))
                 .addText(text => text
                     .setPlaceholder(t('colorPlaceholder'))
@@ -253,8 +307,8 @@ export class GroupModal extends ResponsiveModal {
         }
 
         // Tags
-        if (this.shows('tags')) {
-            new Setting(contentEl)
+        if (colorTagsBody && this.shows('tags')) {
+            new Setting(colorTagsBody)
                 .setName(t('tags') || 'Tags')
                 .setDesc('Comma-separated tags')
                 .addText(text => text
@@ -264,44 +318,33 @@ export class GroupModal extends ResponsiveModal {
                 );
         }
 
-        // Profile Image
-        if (this.shows('profileImage')) {
-            let imagePathDesc: HTMLElement | null = null;
-            const profileImageSetting = new Setting(contentEl)
-                .setName(t('profileImage'))
-                .then(s => {
-                    imagePathDesc = s.descEl.createEl('small', { text: `Current: ${this.group.profileImagePath || 'None'}` });
-                    s.descEl.addClass('storyteller-modal-setting-vertical');
-                });
-        
-            // Add image selection buttons (Gallery, Upload, Vault, Clear)
-            addImageSelectionButtons(
-                profileImageSetting,
-                this.app,
-                this.plugin,
-                {
-                    currentPath: this.group.profileImagePath,
-                    onSelect: (path) => {
-                        this.group.profileImagePath = path;
-                    },
-                    descriptionEl: imagePathDesc || undefined
-                }
-            );
-        }
-
         // === MEMBERS ===
-        const membersSectionEl = contentEl.createDiv('storyteller-group-members-section');
-        this.renderMemberSelectors(membersSectionEl);
+        const membersVisible = ['memberCharacters', 'memberLocations', 'memberEvents', 'memberItems'].some(k => this.shows(k));
+        const membersBody = membersVisible
+            ? createCollapsibleModalSection(contentEl, {
+                title: 'Members',
+                description: 'Characters, locations, events, and items in this group',
+                icon: 'users',
+                open: this.group.members.length > 0,
+            })
+            : null;
+        if (membersBody) this.renderMemberSelectors(membersBody.createDiv('storyteller-group-members-section'));
 
         // === FACTION DETAILS === (only show if not collection type)
         if (this.group.groupType && this.group.groupType !== 'collection') {
-            if (['history', 'structure', 'goals', 'resources', 'strength', 'status', 'powerInfluence', 'identity'].some(k => this.shows(k))) {
-                contentEl.createEl('h3', { text: 'Faction details' });
-            }
+            const factionVisible = ['history', 'structure', 'goals', 'resources', 'strength', 'status'].some(k => this.shows(k));
+            const factionBody = factionVisible
+                ? createCollapsibleModalSection(contentEl, {
+                    title: 'Faction details',
+                    description: 'Origin, structure, goals, resources, and strength',
+                    icon: 'scroll-text',
+                    open: Boolean(this.group.history || this.group.structure || this.group.goals || this.group.resources || this.group.strength || this.group.status),
+                })
+                : null;
 
             // History
-            if (this.shows('history')) {
-                new Setting(contentEl)
+            if (factionBody && this.shows('history')) {
+                new Setting(factionBody)
                     .setName('History')
                     .setDesc('Origin and historical background')
                     .addTextArea(text => {
@@ -312,8 +355,8 @@ export class GroupModal extends ResponsiveModal {
             }
 
             // Structure
-            if (this.shows('structure')) {
-                new Setting(contentEl)
+            if (factionBody && this.shows('structure')) {
+                new Setting(factionBody)
                     .setName('Structure')
                     .setDesc('Organizational hierarchy and leadership')
                     .addTextArea(text => {
@@ -324,8 +367,8 @@ export class GroupModal extends ResponsiveModal {
             }
 
             // Goals
-            if (this.shows('goals')) {
-                new Setting(contentEl)
+            if (factionBody && this.shows('goals')) {
+                new Setting(factionBody)
                     .setName('Goals')
                     .setDesc('Objectives and motivations')
                     .addTextArea(text => {
@@ -336,8 +379,8 @@ export class GroupModal extends ResponsiveModal {
             }
 
             // Resources
-            if (this.shows('resources')) {
-                new Setting(contentEl)
+            if (factionBody && this.shows('resources')) {
+                new Setting(factionBody)
                     .setName('Resources')
                     .setDesc('Available assets and capabilities')
                     .addTextArea(text => {
@@ -348,8 +391,8 @@ export class GroupModal extends ResponsiveModal {
             }
 
             // Strength
-            if (this.shows('strength')) {
-                new Setting(contentEl)
+            if (factionBody && this.shows('strength')) {
+                new Setting(factionBody)
                     .setName('Strength')
                     .setDesc('Overall power level or description')
                     .addText(text => text
@@ -359,8 +402,8 @@ export class GroupModal extends ResponsiveModal {
             }
 
             // Status
-            if (this.shows('status')) {
-                new Setting(contentEl)
+            if (factionBody && this.shows('status')) {
+                new Setting(factionBody)
                     .setName('Status')
                     .setDesc('Current state (active, dormant, disbanded, etc.)')
                     .addText(text => text
@@ -370,11 +413,15 @@ export class GroupModal extends ResponsiveModal {
             }
 
             if (this.shows('powerInfluence')) {
-                // === POWER & INFLUENCE ===
-                contentEl.createEl('h3', { text: 'Power & influence' });
+                const powerBody = createCollapsibleModalSection(contentEl, {
+                    title: 'Power and influence',
+                    description: 'Military, economic, and political strength on a 0 to 100 scale',
+                    icon: 'swords',
+                    open: this.group.militaryPower !== undefined || this.group.economicPower !== undefined || this.group.politicalInfluence !== undefined,
+                });
 
                 // Military Power
-                new Setting(contentEl)
+                new Setting(powerBody)
                     .setName('Military power')
                     .setDesc('Military strength (0-100)')
                     .addSlider(slider => slider
@@ -385,7 +432,7 @@ export class GroupModal extends ResponsiveModal {
                     );
 
                 // Economic Power
-                new Setting(contentEl)
+                new Setting(powerBody)
                     .setName('Economic power')
                     .setDesc('Economic influence (0-100)')
                     .addSlider(slider => slider
@@ -396,7 +443,7 @@ export class GroupModal extends ResponsiveModal {
                     );
 
                 // Political Influence
-                new Setting(contentEl)
+                new Setting(powerBody)
                     .setName('Political influence')
                     .setDesc('Political power (0-100)')
                     .addSlider(slider => slider
@@ -408,11 +455,15 @@ export class GroupModal extends ResponsiveModal {
             }
 
             if (this.shows('identity')) {
-                // === IDENTITY & SYMBOLS ===
-                contentEl.createEl('h3', { text: 'Identity & symbols' });
+                const identityBody = createCollapsibleModalSection(contentEl, {
+                    title: 'Identity and symbols',
+                    description: 'Colors, emblem, motto, and territories',
+                    icon: 'sparkles',
+                    open: Boolean(this.group.colors?.length || this.group.emblem || this.group.motto || this.group.territories?.length),
+                });
 
                 // Colors
-                new Setting(contentEl)
+                new Setting(identityBody)
                     .setName('Colors')
                     .setDesc('Faction colors (comma-separated)')
                     .addText(text => text
@@ -423,7 +474,7 @@ export class GroupModal extends ResponsiveModal {
                     );
 
                 // Emblem
-                new Setting(contentEl)
+                new Setting(identityBody)
                     .setName('Emblem')
                     .setDesc('Symbol or emblem description')
                     .addText(text => text
@@ -432,7 +483,7 @@ export class GroupModal extends ResponsiveModal {
                     );
 
                 // Motto
-                new Setting(contentEl)
+                new Setting(identityBody)
                     .setName('Motto')
                     .setDesc('Slogan or motto')
                     .addText(text => text
@@ -441,7 +492,7 @@ export class GroupModal extends ResponsiveModal {
                     );
 
                 // Territories
-                new Setting(contentEl)
+                new Setting(identityBody)
                     .setName('Territories')
                     .setDesc('Controlled territories (comma-separated)')
                     .addTextArea(text => {
@@ -454,22 +505,28 @@ export class GroupModal extends ResponsiveModal {
             }
 
             // === RELATIONSHIPS ===
-            if (['groupRelationships', 'linkedCulture', 'parentGroup', 'subgroups'].some(k => this.shows(k))) {
-                contentEl.createEl('h3', { text: 'Relationships' });
-            }
+            const relationshipsVisible = ['groupRelationships', 'linkedCulture', 'parentGroup', 'subgroups'].some(k => this.shows(k));
+            const relationshipsBody = relationshipsVisible
+                ? createCollapsibleModalSection(contentEl, {
+                    title: 'Relationships',
+                    description: 'Inter-group ties, the culture, parent group, and subgroups',
+                    icon: 'link',
+                    open: Boolean(this.group.groupRelationships?.length || this.group.linkedCulture || this.group.parentGroup || this.group.subgroups?.length),
+                })
+                : null;
 
-            if (this.shows('groupRelationships')) {
+            if (relationshipsBody && this.shows('groupRelationships')) {
                 // Group Relationships
                 if (!this.group.groupRelationships) {
                     this.group.groupRelationships = [];
                 }
-                const relationshipEditorEl = contentEl.createDiv('storyteller-group-relationship-editor');
+                const relationshipEditorEl = relationshipsBody.createDiv('storyteller-group-relationship-editor');
                 this.renderGroupRelationshipEditor(relationshipEditorEl);
             }
 
             // Linked Culture
-            if (this.shows('linkedCulture')) {
-                new Setting(contentEl)
+            if (relationshipsBody && this.shows('linkedCulture')) {
+                new Setting(relationshipsBody)
                     .setName('Linked culture')
                     .setDesc('Associated culture')
                     .addDropdown(dropdown => {
@@ -481,8 +538,8 @@ export class GroupModal extends ResponsiveModal {
             }
 
             // Parent Group
-            if (this.shows('parentGroup')) {
-                new Setting(contentEl)
+            if (relationshipsBody && this.shows('parentGroup')) {
+                new Setting(relationshipsBody)
                     .setName('Parent group')
                     .setDesc('Larger organization this group belongs to')
                     .addDropdown(dropdown => {
@@ -496,8 +553,8 @@ export class GroupModal extends ResponsiveModal {
             }
 
             // Subgroups
-            if (this.shows('subgroups')) {
-                new Setting(contentEl)
+            if (relationshipsBody && this.shows('subgroups')) {
+                new Setting(relationshipsBody)
                     .setName('Subgroups')
                     .setDesc('Smaller groups within this organization (comma-separated)')
                     .addTextArea(text => {
@@ -511,11 +568,16 @@ export class GroupModal extends ResponsiveModal {
 
         }
 
-        // Defined fields always render, for collection groups too. Only the
-        // free-form rows follow the Custom fields switch.
-        this.customFieldsEditor.renderDefinedFields(contentEl);
+        // Only the free-form rows follow the Custom fields switch.
         if (this.shows('customFields')) {
-            this.customFieldsEditor.renderFreeFormSection(contentEl);
+            const customFieldsBody = createCollapsibleModalSection(contentEl, {
+                title: 'Custom fields',
+                description: 'Additional properties specific to this project',
+                icon: 'list-plus',
+                open: Boolean(Object.keys(this.group.customFields || {}).length),
+            });
+            this.customFieldsEditor.renderFreeFormSection(customFieldsBody);
+            customFieldsBody.querySelectorAll(':scope > h3').forEach(heading => heading.remove());
         }
 
         if (!this.isNew && this.onDelete) {
@@ -761,9 +823,6 @@ export class GroupModal extends ResponsiveModal {
 
     renderMemberSelectors(container: HTMLElement) {
         container.empty();
-        if (['memberCharacters', 'memberLocations', 'memberEvents', 'memberItems'].some(k => this.shows(k))) {
-            container.createEl('h3', { text: t('members') });
-        }
 
         const isMember = (type: 'character' | 'location' | 'event' | 'item', id: string) =>
             this.group.members.some(m => m.type === type && m.id === id);
