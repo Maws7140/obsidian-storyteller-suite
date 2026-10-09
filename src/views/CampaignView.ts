@@ -18,6 +18,7 @@ import {
     Notice,
     setIcon,
     MarkdownRenderer,
+    MarkdownPostProcessorContext,
     normalizePath,
 } from 'obsidian';
 import StorytellerSuitePlugin from '../main';
@@ -62,6 +63,10 @@ import {
 } from '../utils/CampaignProgress';
 import { PromptModal } from '../modals/ui/PromptModal';
 import { EventModal } from '../modals/EventModal';
+import { LeafletRenderer } from '../leaflet/renderer';
+import type { LeafletRendererOptions, LocationPinHighlight } from '../leaflet/types';
+import { mapToBlockParams } from '../leaflet/utils/MapBlockParams';
+import { locationPinKey, resolveBoardSelection } from '../utils/CampaignBoardSelection';
 
 export const VIEW_TYPE_CAMPAIGN = 'storyteller-campaign-view';
 
@@ -98,6 +103,11 @@ export class CampaignView extends ItemView {
     private locationData: Location | null = null;
     private selectedBoardLocationId: string | null = null;
     private pendingBoardFocusLocationId: string | null = null;
+    /** Live Leaflet board map; destroyed before every re-render and on close. */
+    private boardRenderer: LeafletRenderer | null = null;
+    /** Bumped whenever the board is torn down, so a stale async mount can detect it. */
+    private boardRenderToken = 0;
+    private boardLocations: CampaignBoardLocation[] = [];
     private activeActorName: string | null = null;
     private partyCharacterStats = new Map<string, Character>();
     private allCharactersById = new Map<string, Character>();
@@ -127,6 +137,7 @@ export class CampaignView extends ItemView {
 
     async onOpen():  Promise<void> { await this.render(); }
     async onClose(): Promise<void> {
+        this.destroyCampaignBoardRenderer();
         if (this.session) {
             await this.autosave('Session closed.');
             await this.flushAutosaveNow();
@@ -153,6 +164,7 @@ export class CampaignView extends ItemView {
     }
 
     async render(): Promise<void> {
+        this.destroyCampaignBoardRenderer();
         const root = this.containerEl.children[1] as HTMLElement;
         root.empty();
         root.className = 'storyteller-campaign-view';
@@ -508,9 +520,11 @@ export class CampaignView extends ItemView {
     private async renderCampaignBoard(panel: HTMLElement): Promise<void> {
         if (!this.session || !this.currentScene) return;
 
+        const token = this.boardRenderToken;
         const maps = await this.plugin.listMaps().catch(() => [] as StoryMap[]);
         const boardMap = await this.resolveCampaignBoardMap(maps);
         if (!boardMap) return;
+        if (token !== this.boardRenderToken) return;
 
         const mapId = boardMap.id || boardMap.name;
         const boardEl = panel.createDiv('storyteller-campaign-board');
@@ -574,6 +588,134 @@ export class CampaignView extends ItemView {
             return;
         }
 
+        const locations = await this.collectBoardLocations(boardMap);
+        if (token !== this.boardRenderToken) return;
+        this.boardLocations = locations;
+
+        const mountedLeaflet = await this.renderLeafletCampaignBoard(boardEl, boardMap, imageUrl, locations, token);
+        if (!mountedLeaflet) {
+            await this.renderStaticCampaignBoard(boardEl, boardMap, imageUrl, locations);
+        }
+    }
+
+    /**
+     * Mount the real map stack (LeafletRenderer, the same one MapView uses) for the board.
+     * Returns false when the board should use the static image instead.
+     */
+    private async renderLeafletCampaignBoard(
+        boardEl: HTMLElement,
+        boardMap: StoryMap,
+        imageUrl: string,
+        locations: CampaignBoardLocation[],
+        token: number,
+    ): Promise<boolean> {
+        if (boardMap.type === 'real' || /^https?:\/\//i.test(imageUrl)) return false;
+
+        const selectedLocationKey = this.ensureBoardLocationSelection(locations);
+        const mapId = boardMap.id || boardMap.name;
+        const params = mapToBlockParams(boardMap);
+        params.id = mapId;
+        params.mapId = mapId;
+
+        const mapEl = boardEl.createDiv('storyteller-campaign-board-map');
+        const options: LeafletRendererOptions = {
+            readOnly: true,
+            persistViewState: false,
+            onLocationSelect: (location) => { void this.selectBoardLocationFromPin(location); },
+            pinHighlight: this.getBoardPinHighlight(selectedLocationKey),
+            gridSize: boardMap.gridEnabled && (boardMap.gridSize ?? 0) > 0 ? boardMap.gridSize : undefined,
+        };
+        const context = {
+            sourcePath: boardMap.filePath || '',
+            addChild: () => undefined,
+            getSectionInfo: () => null,
+        } as unknown as MarkdownPostProcessorContext;
+
+        const renderer = new LeafletRenderer(this.plugin, mapEl, params, context, options);
+        try {
+            await renderer.initialize();
+            if (!renderer.getMap() || !renderer.getImageBounds()) {
+                throw new Error('Board map has no image bounds.');
+            }
+        } catch {
+            // Leaflet could not start (missing or unreadable image): the caller shows the static board.
+            renderer.unload();
+            mapEl.remove();
+            return false;
+        }
+
+        if (token !== this.boardRenderToken) {
+            // The view re-rendered or closed while the map was starting.
+            renderer.unload();
+            mapEl.remove();
+            return true;
+        }
+        this.boardRenderer = renderer;
+
+        const caption = boardEl.createDiv('storyteller-campaign-board-caption');
+        caption.setText(
+            locations.length > 0
+                ? 'Click a mapped location to inspect it, jump scenes, or pull items straight into the party inventory.'
+                : 'No locations are bound to this board yet.'
+        );
+
+        const selectedLocation = locations.find(entry => this.getLocationKey(entry.location) === selectedLocationKey);
+        if (selectedLocation) {
+            await this.renderBoardLocationInspector(boardEl, selectedLocation);
+        }
+        return true;
+    }
+
+    /**
+     * Pin click on the Leaflet board: move the selection and swap only the inspector,
+     * so the map keeps its pan and zoom.
+     */
+    private async selectBoardLocationFromPin(location: Location): Promise<void> {
+        const key = this.getLocationKey(location);
+        if (this.selectedBoardLocationId === key) {
+            this.focusBoardLocationInspector(key);
+            return;
+        }
+        this.selectedBoardLocationId = key;
+        this.boardRenderer?.setPinHighlight(this.getBoardPinHighlight(key));
+
+        const boardEl = this.containerEl.querySelector<HTMLElement>('.storyteller-campaign-board');
+        const entry = this.boardLocations.find(candidate => this.getLocationKey(candidate.location) === key);
+        if (!boardEl || !entry) return;
+
+        const previous = boardEl.querySelector<HTMLElement>(':scope > .storyteller-campaign-board-inspector');
+        const inspector = await this.renderBoardLocationInspector(boardEl, entry);
+        if (this.selectedBoardLocationId !== key) {
+            // Another pin was chosen while this inspector was loading.
+            inspector.remove();
+            return;
+        }
+        previous?.replaceWith(inspector);
+        this.focusBoardLocationInspector(key, inspector);
+    }
+
+    private getBoardPinHighlight(selectedKey: string | null): LocationPinHighlight {
+        return {
+            currentKey: this.locationData ? this.getLocationKey(this.locationData) : null,
+            selectedKey,
+        };
+    }
+
+    /** Tear down the embedded board map. Called before every re-render and on close. */
+    private destroyCampaignBoardRenderer(): void {
+        this.boardRenderToken++;
+        this.boardRenderer?.unload();
+        this.boardRenderer = null;
+        this.boardLocations = [];
+    }
+
+    /** Static image board, used when the map cannot run in Leaflet. */
+    private async renderStaticCampaignBoard(
+        boardEl: HTMLElement,
+        boardMap: StoryMap,
+        imageUrl: string,
+        locations: CampaignBoardLocation[],
+    ): Promise<void> {
         const dimensions = await this.getCampaignBoardDimensions(boardMap, imageUrl);
         if (!dimensions) {
             boardEl.createDiv({
@@ -583,7 +725,6 @@ export class CampaignView extends ItemView {
             return;
         }
 
-        const locations = await this.collectBoardLocations(boardMap);
         const selectedLocationKey = this.ensureBoardLocationSelection(locations);
 
         const frame = boardEl.createDiv('storyteller-campaign-board-frame');
@@ -727,7 +868,7 @@ export class CampaignView extends ItemView {
     }
 
     private getLocationKey(location: Pick<Location, 'id' | 'name'>): string {
-        return location.id || this.normalizeName(location.name);
+        return locationPinKey(location);
     }
 
     private getBoardItemCollectionKey(location: Pick<Location, 'id' | 'name'>, itemName: string): string {
@@ -765,25 +906,11 @@ export class CampaignView extends ItemView {
     }
 
     private ensureBoardLocationSelection(locations: CampaignBoardLocation[]): string | null {
-        if (locations.length === 0) {
-            this.selectedBoardLocationId = null;
-            return null;
-        }
-
-        if (this.selectedBoardLocationId) {
-            const existing = locations.find(entry => this.getLocationKey(entry.location) === this.selectedBoardLocationId);
-            if (existing) return this.selectedBoardLocationId;
-        }
-
-        const currentLocation = this.locationData
-            ? locations.find(entry => this.getLocationKey(entry.location) === this.getLocationKey(this.locationData!))
-            : null;
-        if (currentLocation) {
-            this.selectedBoardLocationId = this.getLocationKey(currentLocation.location);
-            return this.selectedBoardLocationId;
-        }
-
-        this.selectedBoardLocationId = this.getLocationKey(locations[0].location);
+        this.selectedBoardLocationId = resolveBoardSelection(
+            locations.map(entry => this.getLocationKey(entry.location)),
+            this.selectedBoardLocationId,
+            this.locationData ? this.getLocationKey(this.locationData) : null,
+        );
         return this.selectedBoardLocationId;
     }
 

@@ -13,9 +13,9 @@ import {
 // Use global L object that's set in main.ts: (window as any).L = L
 // Leaflet base styles are maintained in styles.css so Obsidian can lint authored CSS.
 import * as L from 'leaflet';
-import { Component, MarkdownPostProcessorContext, Notice, TFile } from 'obsidian';
+import { Component, EventRef, MarkdownPostProcessorContext, Notice, TFile } from 'obsidian';
 import type StorytellerSuitePlugin from '../main';
-import type { BlockParameters, MarkerDefinition, TileMetadata } from './types';
+import type { BlockParameters, LeafletRendererOptions, LocationPinHighlight, MarkerDefinition, TileMetadata } from './types';
 import { extractLinkPath, parseMarkerString } from './utils/parser';
 import { RasterCoords } from './utils/RasterCoords';
 import { EntityMarkerDiscovery } from './EntityMarkerDiscovery';
@@ -77,12 +77,15 @@ export class LeafletRenderer extends Component {
     private baseImagePath: string | null = null;
     /** Colour and label per marker, kept for image export. */
     private markerExportMeta = new WeakMap<L.Marker, { color: string; label: string }>();
+    private gridLayer: L.LayerGroup | null = null;
+    private workspaceResizeRef: EventRef | null = null;
 
     constructor(
         private plugin: StorytellerSuitePlugin,
         container: HTMLElement,
         private params: BlockParameters,
-        private ctx: MarkdownPostProcessorContext
+        private ctx: MarkdownPostProcessorContext,
+        private options: LeafletRendererOptions = {}
     ) {
         super();
         this.containerEl = container;
@@ -136,12 +139,13 @@ export class LeafletRenderer extends Component {
 
         // Add layers (GeoJSON, GPX, overlays)
         await this.addLayers();
+        this.addBoardGrid();
 
         // Initialize MapEntityRenderer for location and entity rendering
         if (this.map) {
             const mapId = this.params.mapId || this.params.id;
             if (mapId) {
-                this.mapEntityRenderer = new MapEntityRenderer(this.map, this.plugin, mapId);
+                this.mapEntityRenderer = new MapEntityRenderer(this.map, this.plugin, mapId, this.options);
                 // Render locations and entities bound to this map
                 await this.mapEntityRenderer.renderLocationsForMap(mapId);
                 await this.mapEntityRenderer.renderPortalMarkers(mapId);
@@ -263,12 +267,14 @@ export class LeafletRenderer extends Component {
 
         // CRITICAL FIX: Also listen to Obsidian workspace resize events
         // This catches sidebar open/close events that ResizeObserver might miss
-        this.registerEvent(this.plugin.app.workspace.on('resize', () => {
+        // Kept so onunload can remove it; onunload does not run Component cleanup.
+        this.workspaceResizeRef = this.plugin.app.workspace.on('resize', () => {
             // Delay slightly to let Obsidian finish its layout update
             window.setTimeout(() => {
                 handleResize();
             }, 100);
-        }));
+        });
+        this.registerEvent(this.workspaceResizeRef);
     }
 
     /**
@@ -1247,7 +1253,7 @@ export class LeafletRenderer extends Component {
             });
         }
 
-        marker.on('contextmenu', () => { void (async () => {
+        if (!this.options.readOnly) marker.on('contextmenu', () => { void (async () => {
             const mapId = this.params.mapId || this.params.id;
             if (!mapId || !await confirmWithModal(this.plugin.app, { title: 'Remove map node?', body: 'Remove this pin from this map only; keep the underlying note.' })) return;
             try {
@@ -1995,6 +2001,7 @@ export class LeafletRenderer extends Component {
      * Used to determine whether to skip default positioning during initialization
      */
     private hasSavedViewState(): boolean {
+        if (this.options.persistViewState === false) return false;
         const mapId = this.params.mapId || this.params.id;
         if (!mapId) return false;
         return !!this.plugin.getMapViewState(mapId);
@@ -2006,7 +2013,7 @@ export class LeafletRenderer extends Component {
      * @returns true if a saved state was restored, false otherwise
      */
     private restoreSavedViewState(): boolean {
-        if (!this.map) return false;
+        if (!this.map || this.options.persistViewState === false) return false;
 
         const mapId = this.params.mapId || this.params.id;
         if (!mapId) return false;
@@ -2035,6 +2042,28 @@ export class LeafletRenderer extends Component {
         }
     }
 
+    /** Update which location pins carry the current-scene and selected styles. */
+    setPinHighlight(highlight: LocationPinHighlight | undefined): void {
+        this.options.pinHighlight = highlight;
+        this.mapEntityRenderer?.refreshPinHighlight();
+    }
+
+    /** Overlay a grid across the image, spaced in image pixels. */
+    private addBoardGrid(): void {
+        const gridSize = this.options.gridSize ?? 0;
+        if (!this.map || !this.imageBounds || !(gridSize > 0)) return;
+        const north = this.imageBounds.getNorth();
+        const east = this.imageBounds.getEast();
+        // Cap the line count so a small grid on a large image stays cheap to draw.
+        const maxLinesPerAxis = 200;
+        const step = Math.max(gridSize, Math.ceil(Math.max(north, east) / maxLinesPerAxis / gridSize) * gridSize);
+        const lineStyle = { color: '#ffffff', weight: 1, opacity: 0.2, interactive: false };
+        const lines: L.Polyline[] = [];
+        for (let x = 0; x <= east; x += step) lines.push(L.polyline([[0, x], [north, x]], lineStyle));
+        for (let y = 0; y <= north; y += step) lines.push(L.polyline([[y, 0], [y, east]], lineStyle));
+        this.gridLayer = L.layerGroup(lines).addTo(this.map);
+    }
+
     /**
      * Get the map ID for this renderer
      */
@@ -2047,7 +2076,7 @@ export class LeafletRenderer extends Component {
      * Debounced to avoid too many saves during continuous movement
      */
     private setupPositionSaving(): void {
-        if (!this.map) return;
+        if (!this.map || this.options.persistViewState === false) return;
 
         const mapId = this.getMapId();
         if (!mapId) return;
@@ -2189,6 +2218,13 @@ export class LeafletRenderer extends Component {
 
         // Remove overlay layers (GeoJSON/GPX) before the map is torn down
         this.layers.forEach(layer => layer.remove());
+        this.gridLayer?.remove();
+        this.gridLayer = null;
+
+        if (this.workspaceResizeRef) {
+            this.plugin.app.workspace.offref(this.workspaceResizeRef);
+            this.workspaceResizeRef = null;
+        }
 
         if (this.map) {
             this.map.remove();

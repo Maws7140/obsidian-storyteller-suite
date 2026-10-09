@@ -9837,6 +9837,76 @@ body.mod-rtl .storyteller-group-members {
     background-size: var(--storyteller-board-grid-x, 10%) var(--storyteller-board-grid-y, 10%);
     opacity: 0.9;
 }
+/* Embedded Leaflet map for the campaign board. Leaflet core CSS is not bundled,
+   so these mirror the MapView rules, scoped to this container. */
+.storyteller-campaign-board-map {
+    position: relative;
+    width: 100%;
+    height: 360px;
+    min-height: 280px;
+    max-height: 60vh;
+    overflow: hidden;
+    border-radius: 14px;
+    border: 1px solid color-mix(in srgb, var(--background-modifier-border) 82%, transparent);
+    background: rgba(8, 10, 13, 0.82);
+    touch-action: none;
+}
+.storyteller-campaign-board-map .leaflet-pane,
+.storyteller-campaign-board-map .leaflet-tile,
+.storyteller-campaign-board-map .leaflet-marker-icon,
+.storyteller-campaign-board-map .leaflet-marker-shadow,
+.storyteller-campaign-board-map .leaflet-tile-container,
+.storyteller-campaign-board-map .leaflet-pane > svg,
+.storyteller-campaign-board-map .leaflet-pane > canvas,
+.storyteller-campaign-board-map .leaflet-zoom-box,
+.storyteller-campaign-board-map .leaflet-image-layer,
+.storyteller-campaign-board-map .leaflet-layer {
+    position: absolute;
+    left: 0;
+    top: 0;
+}
+.storyteller-campaign-board-map .leaflet-tile-container,
+.storyteller-campaign-board-map .leaflet-image-layer {
+    pointer-events: none;
+}
+.storyteller-campaign-board-map img {
+    max-width: none;
+    max-height: none;
+    padding: 0;
+    margin: 0;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    object-fit: unset;
+}
+.storyteller-campaign-board-map .leaflet-control-container {
+    position: absolute;
+}
+.storyteller-campaign-board-map .leaflet-control {
+    position: relative;
+    z-index: 800;
+    pointer-events: auto;
+}
+.storyteller-campaign-board-map .leaflet-control-zoom a {
+    background: var(--background-primary);
+    color: var(--text-normal);
+    border-color: var(--background-modifier-border);
+}
+.storyteller-campaign-board-map .leaflet-control-zoom a:hover {
+    background: var(--background-secondary);
+}
+.storyteller-campaign-board-map .storyteller-marker-wrapper {
+    transition: transform 0.15s ease, filter 0.15s ease;
+}
+.storyteller-campaign-board-map .storyteller-location-marker.is-current .storyteller-marker-wrapper,
+.storyteller-campaign-board-map .storyteller-custom-marker.is-current .storyteller-marker-wrapper {
+    filter: drop-shadow(0 0 4px var(--color-green));
+}
+.storyteller-campaign-board-map .storyteller-location-marker.is-selected .storyteller-marker-wrapper,
+.storyteller-campaign-board-map .storyteller-custom-marker.is-selected .storyteller-marker-wrapper {
+    transform: scale(1.25);
+    filter: drop-shadow(0 0 6px var(--interactive-accent));
+}
 .storyteller-campaign-board-pin {
     position: absolute;
     transform: translate(-50%, -50%);

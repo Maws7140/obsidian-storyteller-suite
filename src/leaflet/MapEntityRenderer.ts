@@ -8,11 +8,13 @@ import { detachFromMaps } from '../services/MapMembershipService';
 import * as L from 'leaflet';
 import { Menu, Notice, TFile, setIcon } from 'obsidian';
 import type StorytellerSuitePlugin from '../main';
+import type { LeafletRendererOptions } from './types';
 import type { Location, MapBinding, EntityRef, Character, Event, PlotItem, StoryMap, Scene, Culture, Economy, MagicSystem, Reference } from '../types';
 import { LocationService } from '../services/LocationService';
 import { buildChildLocationDefaults, findChildLocationMaps, noChildMapMessage } from '../utils/MapChildNavigation';
 import { MapHierarchyManager } from '../utils/MapHierarchyManager';
 import { stripWikiLinkToString } from '../utils/WikiLinks';
+import { locationPinKey } from '../utils/CampaignBoardSelection';
 import { confirmWithModal } from '../modals/ui/ConfirmModal';
 
 interface MapViewWithLoadMap {
@@ -75,17 +77,20 @@ export class MapEntityRenderer {
     private locationMarkers: Map<string, L.Marker> = new Map();
     private entityMarkers: Map<string, L.Marker> = new Map();
     private portalMarkers: Map<string, L.Marker> = new Map();
+    private locationRecords = new Map<string, Location>();
     private mapId: string;
+    private options: LeafletRendererOptions;
     private isMovingMarker: boolean = false;
 
     private readonly normalizeName = (value: string): string => this.stripWikiLinkValue(value).trim().toLowerCase();
 
-    constructor(map: L.Map, plugin: StorytellerSuitePlugin, mapId: string) {
+    constructor(map: L.Map, plugin: StorytellerSuitePlugin, mapId: string, options: LeafletRendererOptions = {}) {
         this.map = map;
         this.plugin = plugin;
         this.locationService = new LocationService(plugin);
         this.hierarchyManager = new MapHierarchyManager(plugin.app, plugin);
         this.mapId = mapId;
+        this.options = options;
 
         this.initializeLayers();
     }
@@ -112,6 +117,7 @@ export class MapEntityRenderer {
         const locationsLayer = this.markerLayers.get('locations')!;
         locationsLayer.clearLayers();
         this.locationMarkers.clear();
+        this.locationRecords.clear();
 
         for (const location of locations) {
             if (removed.has(`location:${location.id || location.name}`)) continue;
@@ -130,6 +136,7 @@ export class MapEntityRenderer {
             const marker = await this.createLocationMarker(location, binding);
             locationsLayer.addLayer(marker);
             this.locationMarkers.set(location.id || location.name, marker);
+            this.locationRecords.set(location.id || location.name, location);
         }
 
         // Update visibility on zoom change
@@ -240,8 +247,8 @@ export class MapEntityRenderer {
             className: 'storyteller-map-popup storyteller-portal-popup'
         });
 
-        // Click handler - navigate to child map
-        marker.on('click', (e) => { void (async () => {
+        // Click handler - navigate to child map (not on read-only embeds)
+        if (!this.options.readOnly) marker.on('click', (e) => { void (async () => {
             // Don't navigate if user is holding modifier key
             if (!e.originalEvent.ctrlKey && !e.originalEvent.metaKey) {
                 // Open child map in MapView
@@ -255,7 +262,7 @@ export class MapEntityRenderer {
         })(); });
 
         // Context menu
-        marker.on('contextmenu', (e) => {
+        if (!this.options.readOnly) marker.on('contextmenu', (e) => {
             const menu = new Menu();
 
             menu.addItem((item) =>
@@ -375,19 +382,21 @@ export class MapEntityRenderer {
         typeInfo.createSpan({ text: childMap.type || 'image', cls: 'info-value' });
 
         const actions = container.createDiv('popup-actions');
-        const button = actions.createEl('button', { cls: 'popup-btn popup-btn-primary' });
-        setIcon(button, 'arrow-down');
-        button.appendText(' Zoom to Map');
+        if (!this.options.readOnly) {
+            const button = actions.createEl('button', { cls: 'popup-btn popup-btn-primary' });
+            setIcon(button, 'arrow-down');
+            button.appendText(' Zoom to Map');
 
-        // Add click handler to button
-        button.addEventListener('click', () => { void (async () => {
-                const mapView = this.plugin.app.workspace.getLeavesOfType('storyteller-map-view')[0];
-                if (hasLoadMap(mapView?.view)) {
-                    const mapId = childMap.id || childMap.name;
-                    await mapView.view.loadMap(mapId);
-                    new Notice(`Navigated to ${childMap.name}`);
-                }
-            })(); });
+            // Add click handler to button
+            button.addEventListener('click', () => { void (async () => {
+                    const mapView = this.plugin.app.workspace.getLeavesOfType('storyteller-map-view')[0];
+                    if (hasLoadMap(mapView?.view)) {
+                        const mapId = childMap.id || childMap.name;
+                        await mapView.view.loadMap(mapId);
+                        new Notice(`Navigated to ${childMap.name}`);
+                    }
+                })(); });
+        }
 
         return container;
     }
@@ -684,12 +693,10 @@ export class MapEntityRenderer {
     ): Promise<L.Marker> {
         const effectiveRefs = await this.getEffectiveLocationEntityRefs(location);
         const marker = L.marker(binding.coordinates, {
-            icon: this.getLocationMarkerIcon(binding, effectiveRefs.length),
+            icon: this.getLocationMarkerIcon(binding, effectiveRefs.length, this.pinStateClasses(location)),
             title: location.name
         });
 
-        // Build popup with location info and entities
-        const popupContent = await this.buildLocationPopup(location);
         const mapRecord = (await this.plugin.listMaps()).find(m => (m.id || m.name) === this.mapId);
         const area = mapRecord?.placementGrid?.areas.find(a => a.locationId === location.id);
         const tooltip = document.createElement('div');
@@ -697,20 +704,29 @@ export class MapEntityRenderer {
         if (location.locationType || location.type) tooltip.createDiv({ text: location.locationType || location.type });
         if (area?.cells.length) tooltip.createDiv({ text: `${area.cells.length} area cells` });
         marker.bindTooltip(tooltip, { direction: 'top', className: 'storyteller-map-tooltip' });
-        if (mapRecord?.placementGrid || mapRecord?.image || mapRecord?.backgroundImagePath) {
-            const editArea = popupContent.createEl('button', { text: 'Edit location area', cls: 'st-edit-location-area' });
-            editArea.onclick = () => { this.map.closePopup(); this.map.fire('storyteller:edit-area', { locationId: location.id || location.name }); };
+
+        if (this.options.onLocationSelect) {
+            // Embedded boards select the pin instead of opening the popup.
+            const onLocationSelect = this.options.onLocationSelect;
+            marker.on('click', () => onLocationSelect(location));
+        } else {
+            // Build popup with location info and entities
+            const popupContent = await this.buildLocationPopup(location);
+            if (!this.options.readOnly && (mapRecord?.placementGrid || mapRecord?.image || mapRecord?.backgroundImagePath)) {
+                const editArea = popupContent.createEl('button', { text: 'Edit location area', cls: 'st-edit-location-area' });
+                editArea.onclick = () => { this.map.closePopup(); this.map.fire('storyteller:edit-area', { locationId: location.id || location.name }); };
+            }
+            marker.bindPopup(popupContent, {
+                maxWidth: 300,
+                className: 'storyteller-map-popup'
+            });
         }
-        marker.bindPopup(popupContent, {
-            maxWidth: 300,
-            className: 'storyteller-map-popup'
-        });
 
         // Click opens the popup (Leaflet default behaviour).
         // Navigation is handled by the "Open Note" button inside the popup.
 
         // Context menu for quick actions
-        marker.on('contextmenu', (e) => {
+        if (!this.options.readOnly) marker.on('contextmenu', (e) => {
             this.showLocationContextMenu(e, location);
         });
 
@@ -827,7 +843,7 @@ export class MapEntityRenderer {
         // Navigation is handled by the action button inside the popup.
 
         // Context menu for entity marker
-        marker.on('contextmenu', (e) => {
+        if (!this.options.readOnly) marker.on('contextmenu', (e) => {
             if (entity) {
                 this.showEntityContextMenu(e, entity, entityRef, location);
             }
@@ -839,16 +855,40 @@ export class MapEntityRenderer {
     /**
      * Get location marker icon
      */
-    private getLocationMarkerIcon(binding: MapBinding, entityCount: number): L.Icon | L.DivIcon {
+    /** Classes for a location pin under the current highlight: scene location and inspector selection. */
+    private pinStateClasses(location: Location): string[] {
+        const highlight = this.options.pinHighlight;
+        if (!highlight) return [];
+        const key = locationPinKey(location);
+        const classes: string[] = [];
+        if (highlight.currentKey === key) classes.push('is-current');
+        if (highlight.selectedKey === key) classes.push('is-selected');
+        return classes;
+    }
+
+    /** Re-apply highlight classes to pins already on the map, without rebuilding them. */
+    refreshPinHighlight(): void {
+        for (const [key, marker] of this.locationMarkers) {
+            const location = this.locationRecords.get(key);
+            const element = marker.getElement();
+            if (!location || !element) continue;
+            const classes = this.pinStateClasses(location);
+            element.classList.toggle('is-current', classes.includes('is-current'));
+            element.classList.toggle('is-selected', classes.includes('is-selected'));
+        }
+    }
+
+    private getLocationMarkerIcon(binding: MapBinding, entityCount: number, stateClasses: string[] = []): L.Icon | L.DivIcon {
         const entityBadge = entityCount > 0 
             ? `<span class="storyteller-entity-count-badge">${entityCount}</span>` 
             : '';
+        const stateSuffix = stateClasses.map(name => ` ${name}`).join('');
 
         if (binding.markerIcon) {
             // Custom icon specified
             return L.divIcon({
                 html: `<div class="storyteller-marker-wrapper">${binding.markerIcon}${entityBadge}</div>`,
-                className: 'storyteller-custom-marker',
+                className: `storyteller-custom-marker${stateSuffix}`,
                 iconSize: [32, 32],
                 iconAnchor: [16, 32]
             });
@@ -868,7 +908,7 @@ export class MapEntityRenderer {
 
         return L.divIcon({
             html: iconHtml,
-            className: `storyteller-location-marker${entityCount > 0 ? ' has-entities' : ''}`,
+            className: `storyteller-location-marker${entityCount > 0 ? ' has-entities' : ''}${stateSuffix}`,
             iconSize: [32, 32],
             iconAnchor: [16, 32],
             popupAnchor: [0, -32]
@@ -1171,8 +1211,6 @@ export class MapEntityRenderer {
         // Action buttons
         const actions = container.createDiv('popup-actions');
         const openButton = actions.createEl('button', { cls: 'popup-btn', text: 'Open note' });
-        const addEntityButton = actions.createEl('button', { cls: 'popup-btn', text: 'Add entity' });
-        const editButton = actions.createEl('button', { cls: 'popup-btn', text: 'Edit location' });
 
         // Button handlers
         openButton.addEventListener('click', () => {
@@ -1181,13 +1219,18 @@ export class MapEntityRenderer {
             }
         });
 
-        addEntityButton.addEventListener('click', (event) => {
-            this.showAddEntityTypeMenu(location, event.currentTarget as HTMLElement);
-        });
+        if (!this.options.readOnly) {
+            const addEntityButton = actions.createEl('button', { cls: 'popup-btn', text: 'Add entity' });
+            const editButton = actions.createEl('button', { cls: 'popup-btn', text: 'Edit location' });
 
-        editButton.addEventListener('click', () => {
-            void this.showEditLocationModal(location);
-        });
+            addEntityButton.addEventListener('click', (event) => {
+                this.showAddEntityTypeMenu(location, event.currentTarget as HTMLElement);
+            });
+
+            editButton.addEventListener('click', () => {
+                void this.showEditLocationModal(location);
+            });
+        }
 
         return container;
     }
