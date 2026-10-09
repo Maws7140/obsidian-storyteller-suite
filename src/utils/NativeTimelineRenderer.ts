@@ -14,7 +14,7 @@ import { chooseSnapResolution, generateTicks, snapDay, snapSlots, stepDay } from
 import type { AxisTick, AxisView, SnapResolution } from '../calendar/TimelineAxis';
 import { isEventInFork, isEventLinkedToFork, isEventOnMain, orderForksByParent } from './ForkVisibility';
 import { chooseConnectorEnds } from './ConnectorGeometry';
-import { placeAlternatingTimelineCards } from './TimelineCardLayout';
+import { maxVerticalCardTiers, placeAlternatingTimelineCards, verticalCardWidth } from './TimelineCardLayout';
 import { placeReadableAxisLabels } from './AxisLabelLayout';
 import { sameMarkerRuns } from './ChronologyMarkerGroups';
 import { packChronologyRows } from './ChronologyRowPacking';
@@ -237,6 +237,12 @@ const PINCH_MAX_PIXELS = 60;
  */
 const EXPORT_WIDTH = 2400;
 const EXPORT_VERTICAL_WIDTH = 1000;
+/**
+ * Left-hand strip kept clear of vertical cards for the year labels (up to 150 px
+ * wide plus margin). Labels are drawn first, so a card in this strip would hide
+ * the year rather than sit beside it.
+ */
+const VERTICAL_LABEL_GUTTER = 160;
 const EXPORT_MIN_HEIGHT = 600;
 const EXPORT_SCALE = 2;
 /** Milestone gold, overridable through --sts-timeline-milestone. */
@@ -1989,21 +1995,39 @@ export class NativeTimelineRenderer {
             8,
             alternateSides
         );
+        const sideWidth = (rightSide: boolean) => Math.max(0, rightSide ? width - axisX - 38 : axisX - 38 - (alternateSides ? VERTICAL_LABEL_GUTTER : 0));
+        // Only cards inside each side's readable column count set the column
+        // width; overflow cards take no room because they draw as markers.
         const tierCounts = new Map<boolean, number>();
-        placements.forEach(placement => tierCounts.set(placement.above, Math.max(tierCounts.get(placement.above) || 0, placement.tier + 1)));
+        placements.forEach(placement => {
+            if (placement.tier >= maxVerticalCardTiers(sideWidth(placement.above))) return;
+            tierCounts.set(placement.above, Math.max(tierCounts.get(placement.above) || 0, placement.tier + 1));
+        });
 
-        const cards = placements.map(({ value: item, position: desiredY, placedPosition: placedY, above: rightSide, tier }) => {
-            const availableWidth = Math.max(88, rightSide ? width - axisX - 38 : axisX - 38);
+        // Too many cards for the vertical space at this zoom: those events stay
+        // as markers on the axis (still selectable) instead of squeezing cards
+        // below a readable width. They are painted with the other markers.
+        const markerOnly: Array<{ item: NativeItem; desiredY: number }> = [];
+        const cards = placements.flatMap(({ value: item, position: desiredY, placedPosition: placedY, above: rightSide, tier }) => {
+            if (tier >= maxVerticalCardTiers(sideWidth(rightSide))) {
+                if (this.slotsVisible() && this.isDraggable(item)) this.markerHits.push({ item, x: axisX, y: desiredY });
+                item.rect = new DOMRect(axisX - 6, desiredY - 6, 12, 12);
+                this.visibleItems.push(item);
+                markerOnly.push({ item, desiredY });
+                return [];
+            }
             const tierCount = tierCounts.get(rightSide) || 1;
-            const chipWidth = Math.max(88, Math.min(240, (availableWidth - (tierCount - 1) * 12) / tierCount));
+            const chipWidth = verticalCardWidth(sideWidth(rightSide), tierCount);
             const tierOffset = tier * (chipWidth + 12);
-            const chipX = rightSide ? axisX + 28 + tierOffset : Math.max(4, axisX - 28 - chipWidth - tierOffset);
+            // Clamp to the canvas so a card never clips at either edge. Only X
+            // moves; the leader still meets the card at the event's true Y.
+            const chipX = Math.min(Math.max(4, rightSide ? axisX + 28 + tierOffset : axisX - 28 - chipWidth - tierOffset), width - 4 - chipWidth);
             const chipY = placedY - chipHeight / 2;
             const rect = new DOMRect(chipX, chipY, chipWidth, chipHeight);
             item.rect = rect;
             this.visibleItems.push(item);
             if (this.slotsVisible() && this.isDraggable(item)) this.markerHits.push({ item, x: axisX, y: desiredY });
-            return { item, desiredY, edgeX: rightSide ? chipX : chipX + chipWidth };
+            return [{ item, desiredY, edgeX: rightSide ? chipX : chipX + chipWidth }];
         });
         // Paint order: every leader, then the cards, then the axis markers. See
         // the horizontal timeline for why a leader must sit under other cards.
@@ -2028,6 +2052,7 @@ export class NativeTimelineRenderer {
             if (rect && this.isOnCanvas(rect.left, rect.top, rect.right, rect.bottom, width, height)) this.drawTimelineEventCard(ctx, item, calendar);
         });
         cards.forEach(({ item, desiredY }) => { if (leaderOnCanvas(item, desiredY)) this.drawPointMarker(ctx, axisX, desiredY, item); });
+        markerOnly.forEach(({ item, desiredY }) => { if (desiredY >= -8 && desiredY <= height + 8) this.drawPointMarker(ctx, axisX, desiredY, item); });
         this.drawVerticalDropTarget(ctx, axisX, width, timeToY);
         this.drawConnectors(ctx, width, height);
         this.drawNowVertical(ctx, axisX, top, bottom);
@@ -2040,7 +2065,10 @@ export class NativeTimelineRenderer {
         const periods: Array<{ day: number; label: string }> = [];
         let year = startDate.year;
         let month = useYears ? 0 : startDate.month;
-        for (let count = 0; count < 80; count++) {
+        // The loop ends at the window edge. The guard only bounds a pathological
+        // span. A fixed count stopped the years after 80 entries, so a long
+        // zoomed-out view lost every label past the first 80 years.
+        for (let count = 0; count < 10000; count++) {
             const day = toAbsolute(calendar, { year, month, day: 1 }).absoluteDay;
             const yearMonths = monthsInYear(calendar, year);
             const monthName = yearMonths[month]?.name || `Month ${month + 1}`;
@@ -2052,8 +2080,14 @@ export class NativeTimelineRenderer {
         if (!periods.length) return;
         const current = periods[0];
         current.day = absoluteStart;
+        // Labels are 22 px tall. When zoomed out, many periods land a few pixels
+        // apart and each box painted over the last, leaving only one year visible.
+        // Thin them so every drawn label has room, rather than hiding them all.
+        let previousY = -Infinity;
         periods.filter(period => period.day >= absoluteStart && period.day < absoluteEnd).forEach((period, index) => {
             const y = top + (period.day - absoluteStart) / spanDays * (bottom - top);
+            if (index > 0 && y - previousY < 26) return;
+            previousY = y;
             ctx.save();
             ctx.strokeStyle = this.css('--background-modifier-border-hover', '#4b5563');
             ctx.globalAlpha = index === 0 ? 0.9 : 0.55;
@@ -2062,10 +2096,13 @@ export class NativeTimelineRenderer {
             ctx.globalAlpha = 1;
             ctx.fillStyle = this.css('--background-primary', '#111827');
             const labelWidth = Math.min(150, Math.max(86, axisX - 18));
+            ctx.font = `600 11px ${this.css('--font-interface', 'sans-serif')}`;
+            const text = this.truncate(ctx, period.label.toUpperCase(), labelWidth - 12);
+            // Draw the label or nothing: a box with no text reads as a broken card.
+            if (!text) { ctx.restore(); return; }
             this.roundedRect(ctx, 6, Math.max(4, y - 13), labelWidth, 22, 3); ctx.fill();
             ctx.fillStyle = this.css('--text-accent', '#a78bfa');
-            ctx.font = `600 11px ${this.css('--font-interface', 'sans-serif')}`;
-            ctx.fillText(this.truncate(ctx, period.label.toUpperCase(), labelWidth - 12), 12, Math.max(19, y + 2));
+            ctx.fillText(text, 12, Math.max(19, y + 2));
             ctx.restore();
         });
     }
