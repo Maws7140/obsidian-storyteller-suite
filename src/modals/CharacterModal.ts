@@ -46,6 +46,10 @@ export class CharacterModal extends ResponsiveModal {
     private readonly customFieldsEditor: EntityCustomFieldsEditor;
     private readonly groupSelector: EntityGroupSelector;
     private entityNameIndex: Map<string, string> | null = null;
+    /** Bumped by every onOpen; a render that finds it moved on stops after its await. */
+    private renderSeq = 0;
+    /** The default template is applied once per modal, not again on each re-render. */
+    private defaultTemplateHandled = false;
 
     /**
      * Whether a field is turned on for this vault. A hidden field is simply not
@@ -137,6 +141,10 @@ export class CharacterModal extends ResponsiveModal {
 
     onOpen() { void (async () => {
         super.onOpen(); // Call the parent's mobile optimizations
+        // Applying a template re-renders while this render may still be awaiting.
+        // Only the newest render draws, so a stale one cannot add a second footer.
+        const renderSeq = ++this.renderSeq;
+        const isCurrent = () => renderSeq === this.renderSeq;
 
         const rootEl = this.contentEl;
         rootEl.empty();
@@ -158,7 +166,8 @@ export class CharacterModal extends ResponsiveModal {
         // Auto-apply default template for new characters
         if (this.isNew && !this.character.name) {
             const defaultTemplateId = this.plugin.settings.defaultTemplates?.['character'];
-            if (defaultTemplateId) {
+            if (defaultTemplateId && !this.defaultTemplateHandled) {
+                this.defaultTemplateHandled = true;
                 const defaultTemplate = this.plugin.templateManager?.getTemplate(defaultTemplateId);
                 if (defaultTemplate) {
                     // If template has variables or multiple entities, use TemplateApplicationModal
@@ -201,6 +210,8 @@ export class CharacterModal extends ResponsiveModal {
                 }
             }
         }
+
+        if (!isCurrent()) return;
 
         // --- Template Selector (for new characters) ---
         if (this.isNew) {
@@ -483,6 +494,7 @@ export class CharacterModal extends ResponsiveModal {
                 locationService.getLocation(entry.locationId)
             );
             const locations = await Promise.all(locationPromises);
+            if (!isCurrent()) return;
             
             for (let i = 0; i < this.character.locationHistory.length; i++) {
                 const entry = this.character.locationHistory[i];
@@ -532,6 +544,7 @@ export class CharacterModal extends ResponsiveModal {
         };
         renderCultureChips();
         const allCulturesForChar = await this.plugin.listCultures();
+        if (!isCurrent()) return;
         new Setting(worldBody)
             .setName('Add culture')
             .addDropdown(dd => {
@@ -568,7 +581,9 @@ export class CharacterModal extends ResponsiveModal {
         const normalizeInventoryName = (value: string): string => value.trim().toLowerCase();
 
         const allCharactersForInventory = await this.plugin.listCharacters().catch(() => [] as Character[]);
+        if (!isCurrent()) return;
         const allPlotItems = await this.plugin.listPlotItems().catch(() => [] as PlotItem[]);
+        if (!isCurrent()) return;
         const sortedPlotItems = [...allPlotItems].sort((a, b) => a.name.localeCompare(b.name));
         const itemByName = new Map(sortedPlotItems.map(item => [normalizeInventoryName(item.name), item] as const));
 
@@ -645,6 +660,7 @@ export class CharacterModal extends ResponsiveModal {
         };
         renderCharEconChips();
         const allEconomies = await this.plugin.listEconomies();
+        if (!isCurrent()) return;
         new Setting(worldBody)
             .setName('Add economy')
             .addDropdown(dd => {
@@ -691,6 +707,7 @@ export class CharacterModal extends ResponsiveModal {
         // id → name index so the list shows display names instead of raw ids.
         try {
             this.entityNameIndex = await buildEntityNameIndex(this.plugin);
+            if (!isCurrent()) return;
         } catch {
             this.entityNameIndex = null;
         }
