@@ -8,16 +8,21 @@ import { ConflictDetector } from './ConflictDetector';
 import { CalendarRegistry } from '../calendar/CalendarRegistry';
 import { GREGORIAN_CALENDAR } from '../calendar/builtins';
 import { parseToAbsoluteDay, formatAbsoluteDay, formatCalendarYear } from '../calendar/CalendarDateText';
+import { sidebarWidthFor } from './TimelineSidebarWidth';
 import { daysInYear, fromAbsolute, monthsInYear, normalYearLength, toAbsolute } from '../calendar/CalendarEngine';
 import type { CalendarSystem } from '../calendar/types';
 import { chooseSnapResolution, generateTicks, snapDay, snapSlots, stepDay } from '../calendar/TimelineAxis';
-import type { AxisView, SnapResolution } from '../calendar/TimelineAxis';
+import type { AxisTick, AxisView, SnapResolution } from '../calendar/TimelineAxis';
 import { isEventInFork, isEventLinkedToFork, isEventOnMain, orderForksByParent } from './ForkVisibility';
 import { chooseConnectorEnds } from './ConnectorGeometry';
-import { placeAlternatingTimelineCards } from './TimelineCardLayout';
+import { maxVerticalCardTiers, placeAlternatingTimelineCards, verticalCardWidth } from './TimelineCardLayout';
 import { placeReadableAxisLabels } from './AxisLabelLayout';
+import { sameMarkerRuns } from './ChronologyMarkerGroups';
+import { packChronologyRows } from './ChronologyRowPacking';
+import type { ChronologySpan } from './ChronologyRowPacking';
 import { narrativeDirectionOf, narrativeSequenceOf, timelineDateForMode } from './NarrativeTimeline';
 import type { NarrativeDirection } from './NarrativeTimeline';
+import { TextMeasureCache } from './TextMeasureCache';
 
 export interface TimelineRendererOptions {
     ganttMode?: boolean;
@@ -85,6 +90,8 @@ interface NativeItem {
     labelSuppressed?: boolean;
     /** Date was written loosely, so the chip is outlined rather than solid. */
     approximate?: boolean;
+    /** Set when this event's chip is folded into a "+K more" chip rather than drawn itself. */
+    overflowInto?: OverflowChip;
     /**
      * Colour the user actually chose, from the event itself or from an
      * explicitly coloured track, group or fork. Undefined when the colour in
@@ -92,6 +99,35 @@ interface NativeItem {
      * without a deliberate choice being overridden.
      */
     customColor?: string;
+    /** The axis marker this item shares with others, when there are several. */
+    marker?: MarkerGroup;
+    /** Folded into a "+N more" chip, so it has no chip or marker of its own. */
+    hiddenInMarker?: boolean;
+}
+
+/**
+ * Events that share one axis marker column in chronology at the current zoom.
+ *
+ * They all hang off the same point, so stacking them all in one column buries
+ * the lane. The first few are shown and the rest fold into a control chip.
+ */
+interface MarkerGroup {
+    /** Stable across rebuilds and zooms, so an expanded group stays expanded. */
+    key: string;
+    start: number;
+    members: NativeItem[];
+    expanded: boolean;
+    /** Row of the control chip, and its text, when the group is capped. */
+    controlRow?: number;
+    controlLabel?: string;
+}
+
+/** A "+K more" chip standing in for the events a capped chronology lane could not fit. */
+interface OverflowChip {
+    row: number;
+    items: NativeItem[];
+    /** Where the chip sits, set on the frame it is drawn. */
+    rect?: DOMRect;
 }
 
 interface Lane {
@@ -100,9 +136,15 @@ interface Lane {
     color: string;
     /** True when `color` was chosen by the user, not taken from the palette. */
     explicitColor?: boolean;
+    /** Set while drawing when the sidebar name was cut short, so hovering it can show the full name. */
+    labelClipped?: boolean;
     items: NativeItem[];
+    /** Chronology only: the "+K more" chips this lane folded its overflow into. */
+    overflow?: OverflowChip[];
     /** Running maximum of item ends, parallel to `items`. Non-decreasing. */
     maxEndPrefix?: number[];
+    /** Marker groups of two or more events, rebuilt by each layout pass. */
+    markerGroups?: MarkerGroup[];
     top: number;
     height: number;
     branchDepth?: number;
@@ -147,9 +189,11 @@ interface CalendarBand {
 
 const DAY_MS = 86_400_000;
 const YEAR_MS = 365.2425 * DAY_MS;
-const SIDEBAR_WIDTH = 174;
 const BASE_AXIS_HEIGHT = 42;
 const CALENDAR_BAND_HEIGHT = 16;
+// Strip along the foot of the axis header that carries era name pills. It sits
+// above the lanes, so a chip or milestone star can never cover an era label.
+const ERA_STRIP_HEIGHT = 20;
 const MAX_SPAN = 2_000_000 * YEAR_MS;
 const MAX_CHIP_WIDTH = 210;
 const MIN_CHIP_WIDTH = 88;
@@ -158,6 +202,23 @@ const MIN_CHRONOLOGY_CHIP_WIDTH = 92;
 const CHIP_GAP = 8;
 /** Distance from a chronology lane's top to its first row of chips. */
 const CHRONOLOGY_CHIP_TOP = 34;
+/**
+ * Events shown on one axis marker before the rest fold into a "+N more" chip.
+ * Enough to read what happened there without the column running off the lane.
+ */
+const CHRONOLOGY_MARKER_CAP = 5;
+/**
+ * Height a chronology lane may fill before it folds overflow into "+K more"
+ * chips. Six rows at the default density. Kept in pixels so the row cap moves
+ * with the density setting and the lanes keep the same height.
+ */
+const CHRONOLOGY_ROW_BUDGET = 6 * 32;
+/** Width of a "+K more" chip, sized so the label fits and the chip reserves little time. */
+const OVERFLOW_CHIP_WIDTH = 72;
+/** Lane scroll indicator on the plot's right edge. */
+const SCROLLBAR_WIDTH = 6;
+const SCROLLBAR_INSET = 4;
+const SCROLLBAR_MIN_THUMB = 28;
 /** A wheel notch in line mode is worth roughly this many pixels. */
 const WHEEL_LINE_HEIGHT = 16;
 /**
@@ -181,6 +242,12 @@ const PINCH_MAX_PIXELS = 60;
  */
 const EXPORT_WIDTH = 2400;
 const EXPORT_VERTICAL_WIDTH = 1000;
+/**
+ * Left-hand strip kept clear of vertical cards for the year labels (up to 150 px
+ * wide plus margin). Labels are drawn first, so a card in this strip would hide
+ * the year rather than sit beside it.
+ */
+const VERTICAL_LABEL_GUTTER = 160;
 const EXPORT_MIN_HEIGHT = 600;
 const EXPORT_SCALE = 2;
 /** Milestone gold, overridable through --sts-timeline-milestone. */
@@ -190,7 +257,12 @@ const SLOT_RADIUS = 3;
 const SLOT_COLOR = '#0b0f16';
 /** How close a pointer must be to an axis marker to grab it. */
 const MARKER_GRAB_RADIUS = 11;
+/** Bound on the text caches so a long session cannot grow them without limit. */
+const TEXT_CACHE_LIMIT = 10_000;
 const MILESTONE_GOLD_EDGE = '#8a6410';
+/** Leg length of the conflict corner wedge, and the label space it reserves. */
+const CONFLICT_BADGE_SIZE = 7;
+const CONFLICT_BADGE_INSET = 6;
 
 export class NativeTimelineRenderer {
     private readonly app: App;
@@ -214,6 +286,14 @@ export class NativeTimelineRenderer {
     private ctx: CanvasRenderingContext2D | null = null;
     private resizeObserver: ResizeObserver | null = null;
     private frame = 0;
+    /** Memoized label widths and truncations. See TextMeasureCache. */
+    private readonly text = new TextMeasureCache(TEXT_CACHE_LIMIT);
+    /** Style lookups for the paint in progress; null outside a paint. */
+    private styleCache: { computed: Map<string, string>; values: Map<string, string> } | null = null;
+    /** Vertical card date labels by start time, for one calendar object. */
+    private dateLabels = new Map<number, string>();
+    private dateLabelCalendar: CalendarSystem | null = null;
+    private onFontsLoaded: (() => void) | null = null;
     /**
      * Size to lay out and draw against, while rendering somewhere that is not
      * the on-screen root. Null the rest of the time, which is every frame the
@@ -223,6 +303,10 @@ export class NativeTimelineRenderer {
     private lanes: Lane[] = [];
     private presence: PresenceSpan[] = [];
     private visibleItems: NativeItem[] = [];
+    /** Control chips drawn this frame, as click targets. */
+    private controlHits: { rect: DOMRect; group: MarkerGroup }[] = [];
+    /** Marker groups the user has opened past the cap. Keyed by MarkerGroup.key. */
+    private expandedMarkers = new Set<string>();
     private selected: NativeItem | null = null;
     private conflictsByEvent = new Map<string, DetectedConflict[]>();
     private tooltipEl: HTMLElement | null = null;
@@ -230,7 +314,9 @@ export class NativeTimelineRenderer {
     private viewStart = Date.now() - YEAR_MS;
     private viewEnd = Date.now() + YEAR_MS;
     private scrollTop = 0;
-    private dragging: { kind: 'pan' | 'move' | 'marker'; x: number; y: number; start: number; end: number; item?: NativeItem } | null = null;
+    private dragging: { kind: 'pan' | 'move' | 'marker' | 'scroll'; x: number; y: number; start: number; end: number; item?: NativeItem } | null = null;
+    /** "+K more" chips drawn this frame, as click targets. */
+    private visibleClusters: OverflowChip[] = [];
     /**
      * Where a marker drag would land. Held apart from the item so the lane does
      * not repack under the cursor mid-drag — the item only moves on release.
@@ -323,6 +409,8 @@ export class NativeTimelineRenderer {
         if (this.frame) (this.container.ownerDocument.defaultView || window).cancelAnimationFrame(this.frame);
         this.resizeObserver?.disconnect();
         this.resizeObserver = null;
+        if (this.onFontsLoaded) this.container.ownerDocument.fonts?.removeEventListener('loadingdone', this.onFontsLoaded);
+        this.onFontsLoaded = null;
         this.root?.remove();
         this.root = null;
         this.canvas = null;
@@ -358,6 +446,9 @@ export class NativeTimelineRenderer {
         const center = (item.start + item.end) / 2;
         this.viewStart = center - span / 2;
         this.viewEnd = center + span / 2;
+        // A folded event would otherwise be selected with nothing on screen to
+        // show it, so open its marker the same way the control chip would.
+        if (item.hiddenInMarker && item.marker) this.expandedMarkers.add(item.marker.key);
         this.selected = item;
         this.options.onEventSelected?.(event);
         this.ensureLaneVisible(item.laneId);
@@ -370,7 +461,10 @@ export class NativeTimelineRenderer {
         if (!items.length) return;
         const min = Math.min(...items.map(item => item.start));
         const max = Math.max(...items.map(item => item.end));
-        const pad = Math.max((max - min) * 0.08, DAY_MS * 3);
+        // A story that fits in a day or two should not open onto a week of
+        // empty days. The margin grows with the story and reaches the three
+        // days it has always been at ten days, so longer stories are unchanged.
+        const pad = Math.max((max - min) * 0.08, Math.min(DAY_MS * 3, DAY_MS * 0.5 + (max - min) * 0.25));
         this.viewStart = min - pad;
         this.viewEnd = max + pad;
         this.scrollTop = 0;
@@ -411,12 +505,58 @@ export class NativeTimelineRenderer {
     getVisibleRange(): { start: Date; end: Date } { return { start: new Date(this.viewStart), end: new Date(this.viewEnd) }; }
     getEventCount(): number { return this.events.filter(event => this.shouldInclude(event) && this.matchesFork(event)).length; }
 
+    /**
+     * What the canvas is holding back. getEventCount only sees dated events, so
+     * an empty canvas could mean no events, undated events, or filters hiding
+     * them. The empty state and footer need to say which.
+     */
+    getEventTally(): { total: number; dated: number; undated: Event[]; hiddenByFilters: number } {
+        const inFork = this.events.filter(event => this.matchesFork(event));
+        const passing = inFork.filter(event => this.passesFilters(event));
+        return {
+            total: inFork.length,
+            dated: passing.filter(event => Boolean(event.dateTime)).length,
+            undated: passing.filter(event => !event.dateTime),
+            hiddenByFilters: inFork.length - passing.length
+        };
+    }
+
     getDateRange(): { start: Date; end: Date } | null {
         const events = this.getVisibleEvents();
         if (!events.length) return null;
         const starts = events.map(event => this.placementStart(event)).filter(Number.isFinite);
         if (!starts.length) return null;
         return { start: new Date(Math.min(...starts)), end: new Date(Math.max(...starts)) };
+    }
+
+    /**
+     * A moment on the axis, written the way the axis ticks write it: "Feb 1, 2020"
+     * for Gregorian, and the active calendar's own names otherwise. The footer
+     * and the hover card both go through here so they never disagree with the axis.
+     */
+    formatDisplayDate(time: number, yearOnly = false): string {
+        const calendar = this.calendarRegistry.getActiveCalendar();
+        const absoluteDay = time / DAY_MS + this.unixEpochAbsoluteDay();
+        if (calendar.id !== GREGORIAN_CALENDAR.id) {
+            if (yearOnly) return formatCalendarYear(calendar, fromAbsolute(calendar, { absoluteDay }).year);
+            return formatAbsoluteDay(absoluteDay, calendar, 'day');
+        }
+        if (yearOnly) return formatCalendarYear(GREGORIAN_CALENDAR, new Date(time).getUTCFullYear());
+        // Intl drops the sign of a year at or before zero, so name the era
+        // there or 3001 BCE reads as 3001 AD.
+        const beforeCommonEra = new Date(time).getUTCFullYear() <= 0;
+        return new Date(time).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'UTC', ...(beforeCommonEra ? { era: 'short' } : {}) });
+    }
+
+    /**
+     * The footer's date span. Past twenty years the day is noise, so the span
+     * is written in years instead.
+     */
+    formatDateSpan(start: Date, end: Date): string {
+        const yearOnly = end.getTime() - start.getTime() > 20 * YEAR_MS;
+        const from = this.formatDisplayDate(start.getTime(), yearOnly);
+        const to = this.formatDisplayDate(end.getTime(), yearOnly);
+        return from === to ? from : `${from} to ${to}`;
     }
 
     /**
@@ -528,6 +668,10 @@ export class NativeTimelineRenderer {
         this.bindEvents();
         this.resizeObserver = new ResizeObserver(() => this.redraw());
         this.resizeObserver.observe(this.root);
+        // A web font that arrives after a label was measured changes its width
+        // under the same font string, so the cached answers would be stale.
+        this.onFontsLoaded = () => { this.clearTextCaches(); this.scheduleDraw(); };
+        this.container.ownerDocument.fonts?.addEventListener('loadingdone', this.onFontsLoaded);
         this.resizeCanvas();
     }
 
@@ -545,6 +689,7 @@ export class NativeTimelineRenderer {
 
     private rebuild(fit: boolean): void {
         this.referenceDate = this.options.getReferenceDate();
+        this.clearTextCaches();
         const sourceEvents = this.collectEvents();
         // Conflict analysis is secondary to rendering and can be quadratic for
         // dense character histories. Keep large timelines interactive; users
@@ -766,22 +911,19 @@ export class NativeTimelineRenderer {
     private chipWidth(ctx: CanvasRenderingContext2D, item: NativeItem, minimum: number): number {
         ctx.font = `11px ${this.css('--font-interface', 'sans-serif')}`;
         const narrativeIconWidth = narrativeDirectionOf(item.event) ? 18 : 0;
-        return Math.max(minimum, Math.min(MAX_CHIP_WIDTH, ctx.measureText(this.itemLabel(item)).width + 34 + narrativeIconWidth));
+        return Math.max(minimum, Math.min(MAX_CHIP_WIDTH, this.text.measure(ctx, this.itemLabel(item)) + 34 + narrativeIconWidth));
     }
 
     /**
      * The text drawn on an item's chip.
      *
-     * Prefixes carry the textual signals the vis renderer put in the label: a
-     * conflict marker and the narrative sequence number when reading in
-     * narrative order. Flashback/flash-forward use visual badges instead.
+     * The narrative sequence number is a prefix when reading in narrative order.
+     * Conflicts get a corner badge instead of a prefix, and flashback and
+     * flash-forward use visual badges too.
      */
     private itemLabel(item: NativeItem): string {
         const event = item.event;
-        const severity = this.conflictSeverity(event);
         const parts: string[] = [];
-        if (severity === 'error') parts.push('!!');
-        else if (severity === 'warning') parts.push('!');
         if (this.options.narrativeOrder && event.narrativeSequence !== undefined) {
             parts.push(`[${event.narrativeSequence}]`);
         }
@@ -839,23 +981,80 @@ export class NativeTimelineRenderer {
             // when the view is panned. Packing what happens to be on screen made
             // the row count, and so the lane's height, change as you scrolled,
             // which shifted every lane below it mid-scroll.
-            const pxToTime = (this.viewEnd - this.viewStart) / Math.max(1, width - SIDEBAR_WIDTH);
-            const rowEnds: number[] = [];
-            lane.items.forEach(item => {
-                item.labelSuppressed = false;
-                const chipWidth = ctx ? this.chipWidth(ctx, item, minimum) : MAX_CHIP_WIDTH;
-                const reservation = (chipWidth + CHIP_GAP) * pxToTime;
-                let row = 0;
-                if (this.options.stackEnabled) while (row < rowEnds.length && rowEnds[row] > item.start) row++;
-                item.row = row;
-                rowEnds[row] = Math.max(item.end, item.start + reservation);
+            const pxToTime = (this.viewEnd - this.viewStart) / Math.max(1, width - this.sidebarWidth());
+            lane.markerGroups = [];
+            lane.overflow = [];
+            // Two kinds of folding, applied in order. First, events that land on
+            // the same marker column in chronology are one run, and a long run
+            // keeps its first few chips and folds the rest into a "+N more on
+            // <day>" control. Then whatever is still shown is packed into rows
+            // under the lane's row cap, and chips that would need a row past the
+            // cap fold into a "+K more" chip on the last row. Other layouts keep
+            // one run per item and plain packing.
+            const runs = chronology
+                ? sameMarkerRuns(lane.items, item => Math.round(this.timeToX(item.start, width)))
+                : lane.items.map(item => [item]);
+            const spans: ChronologySpan[] = [];
+            const owners: Array<{ item?: NativeItem; group?: MarkerGroup }> = [];
+            runs.forEach(run => {
+                let group: MarkerGroup | undefined;
+                if (chronology && run.length > 1) {
+                    const key = `${lane.id}|${run[0].start}`;
+                    group = { key, start: run[0].start, members: run, expanded: this.expandedMarkers.has(key) };
+                    lane.markerGroups?.push(group);
+                }
+                // Stacking off already puts every chip on one row and lets the
+                // label suppression handle the overlap, so the cap only applies
+                // when chips stack.
+                const capped = !!group && this.options.stackEnabled && run.length > CHRONOLOGY_MARKER_CAP;
+                const shown = capped && !group?.expanded ? CHRONOLOGY_MARKER_CAP : run.length;
+                run.forEach((item, index) => {
+                    item.labelSuppressed = false;
+                    item.overflowInto = undefined;
+                    item.marker = group;
+                    item.hiddenInMarker = index >= shown;
+                    item.row = 0;
+                    if (item.hiddenInMarker) return;
+                    const chipWidth = ctx ? this.chipWidth(ctx, item, minimum) : MAX_CHIP_WIDTH;
+                    spans.push({ start: item.start, end: item.end, reservation: (chipWidth + CHIP_GAP) * pxToTime });
+                    owners.push({ item });
+                });
+                if (group && capped) {
+                    const hidden = run.length - shown;
+                    group.controlLabel = group.expanded ? 'Show fewer' : `+${hidden} more on ${this.dayLabel(group.start)}`;
+                    const controlWidth = this.controlChipWidth(ctx, group.controlLabel);
+                    spans.push({ start: group.start, end: group.start, reservation: (controlWidth + CHIP_GAP) * pxToTime });
+                    owners.push({ group });
+                }
             });
+            const cap = chronology && this.options.stackEnabled ? this.chronologyRowCap() : Number.POSITIVE_INFINITY;
+            const packing = this.options.stackEnabled
+                ? packChronologyRows(spans, cap, (OVERFLOW_CHIP_WIDTH + CHIP_GAP) * pxToTime)
+                : null;
+            owners.forEach((owner, index) => {
+                const row = packing ? packing.rows[index] : 0;
+                if (owner.item) owner.item.row = row;
+                if (owner.group) owner.group.controlRow = row;
+            });
+            lane.overflow = (packing?.clusters ?? []).flatMap(cluster => {
+                // A same-day control chip never folds into a "+K more" chip; it
+                // keeps its row, so only real events are counted here.
+                const items = cluster.members.map(index => owners[index].item).filter((item): item is NativeItem => !!item);
+                if (!items.length) return [];
+                const chip: OverflowChip = { row: cluster.row, items };
+                chip.items.forEach(item => { item.overflowInto = chip; });
+                return [chip];
+            });
+            const itemRows = lane.items.reduce((most, item) => item.hiddenInMarker ? most : Math.max(most, item.row + 1), 0);
+            // A same-day control chip takes a row of its own, so the lane has to
+            // count it or the chip hangs over the lane below.
+            const rowsUsed = (lane.markerGroups ?? []).reduce((most, group) => group.controlRow === undefined || !group.controlLabel ? most : Math.max(most, group.controlRow + 1), itemRows);
             lane.top = top;
             // Chronology mode hangs its chips below the axis baseline, so the
             // lane has to reserve that offset on top of the rows themselves or
             // a tall stack runs past the bottom of its own lane.
             const chipOffset = chronology ? CHRONOLOGY_CHIP_TOP : 0;
-            lane.height = Math.max(rowHeight + 12, chipOffset + rowEnds.length * rowHeight + 12);
+            lane.height = Math.max(rowHeight + 12, chipOffset + rowsUsed * rowHeight + 12);
             top += lane.height;
         });
         if (this.lanes.length === 1 && this.root) {
@@ -933,6 +1132,19 @@ export class NativeTimelineRenderer {
 
     private draw(): void {
         if (!this.canvas || !this.ctx || !this.root) return;
+        // Computed styles cannot change while a frame is being painted, so each
+        // is read once per frame. Scoped to the paint, so a theme change between
+        // frames is never answered from an earlier frame's read.
+        this.styleCache = { computed: new Map(), values: new Map() };
+        try {
+            this.paintFrame();
+        } finally {
+            this.styleCache = null;
+        }
+    }
+
+    private paintFrame(): void {
+        if (!this.canvas || !this.ctx || !this.root) return;
         this.layoutRows();
         const ctx = this.ctx;
         const width = this.viewportWidth();
@@ -943,7 +1155,9 @@ export class NativeTimelineRenderer {
         // Reset before the orientation split: both layouts fill these, and the
         // vertical branch returns early.
         this.visibleItems = [];
+        this.visibleClusters = [];
         this.markerHits = [];
+        this.controlHits = [];
         // A rect is a screen position, so it is only true for the frame that
         // computed it. Keeping last frame's meant an arrow end whose bar had
         // scrolled away stayed pinned to the viewport and drifted along with
@@ -963,11 +1177,55 @@ export class NativeTimelineRenderer {
         this.drawAxis(ctx, width, height);
         this.drawHorizontalCalendarLayers(ctx, width);
         this.drawEras(ctx, width, height);
+        this.drawEraLabelStrip(ctx, width);
         this.drawPresence(ctx, width, height);
+        // Gantt arrows go under the bars: they are drawn before the lanes so
+        // pill backgrounds sit on top of any line passing behind them.
+        if (this.options.ganttMode) this.drawConnectors(ctx, width, height);
         this.lanes.forEach(lane => this.drawLane(ctx, lane, width, height));
         this.drawForkBranches(ctx, width, height);
-        this.drawConnectors(ctx, width, height);
+        if (!this.options.ganttMode) this.drawConnectors(ctx, width, height);
         this.drawNow(ctx, width, height);
+        this.drawLaneScrollbar(ctx, width);
+    }
+
+    /**
+     * Where the lane scroll position sits, as a strip on the plot's right edge.
+     *
+     * Null when nothing overflows, when the layout does not scroll lanes, or
+     * when an export is being drawn, since an exported frame has no scroll
+     * position worth showing.
+     */
+    private laneScrollbar(width: number): { x: number; top: number; length: number; thumbTop: number; thumbLength: number; travel: number; range: number } | null {
+        if (this.exportSurface || this.isTimelineLayout()) return null;
+        const height = this.viewportHeight();
+        const axisHeight = this.axisHeight();
+        const lanesTotal = this.lanes.reduce((sum, lane) => sum + lane.height, 0);
+        const range = lanesTotal + axisHeight - height;
+        if (range <= 0 || lanesTotal <= 0) return null;
+        const top = axisHeight + 4;
+        const length = Math.max(1, height - axisHeight - 8);
+        // The thumb is the share of the lanes on screen, so a long story reads as
+        // a short thumb. The floor keeps it grabbable.
+        const thumbLength = Math.min(length, Math.max(SCROLLBAR_MIN_THUMB, length * (height - axisHeight) / lanesTotal));
+        const travel = length - thumbLength;
+        const thumbTop = top + (Math.max(0, Math.min(range, this.scrollTop)) / range) * travel;
+        return { x: width - SCROLLBAR_INSET - SCROLLBAR_WIDTH, top, length, thumbTop, thumbLength, travel, range };
+    }
+
+    private drawLaneScrollbar(ctx: CanvasRenderingContext2D, width: number): void {
+        const bar = this.laneScrollbar(width);
+        if (!bar) return;
+        ctx.save();
+        ctx.globalAlpha = 0.35;
+        ctx.fillStyle = this.css('--background-modifier-border', '#374151');
+        this.roundedRect(ctx, bar.x, bar.top, SCROLLBAR_WIDTH, bar.length, 3);
+        ctx.fill();
+        ctx.globalAlpha = 0.7;
+        ctx.fillStyle = this.css('--text-muted', '#9ca3af');
+        this.roundedRect(ctx, bar.x, bar.thumbTop, SCROLLBAR_WIDTH, bar.thumbLength, 3);
+        ctx.fill();
+        ctx.restore();
     }
 
     /**
@@ -1049,12 +1307,27 @@ export class NativeTimelineRenderer {
             cardWidth
         );
 
-        placements.forEach(({ value: item, position: desiredX, placedPosition: placedX, above, tier }) => {
+        const cards = placements.map(({ value: item, position: desiredX, placedPosition: placedX, above, tier }) => {
             const chipX = placedX - cardWidth / 2;
             const tierOffset = tier * (cardHeight + 12);
             const chipY = above ? axisY - cardHeight - 34 - tierOffset : axisY + 34 + tierOffset;
-            item.rect = new DOMRect(chipX, chipY, cardWidth, cardHeight);
+            const rect = new DOMRect(chipX, chipY, cardWidth, cardHeight);
+            item.rect = rect;
             this.visibleItems.push(item);
+            if (this.slotsVisible() && this.isDraggable(item)) this.markerHits.push({ item, x: desiredX, y: axisY });
+            return { item, desiredX, edgeY: above ? chipY + cardHeight : chipY };
+        });
+        // Paint order: every leader, then the cards, then the axis markers. A
+        // leader to a lower tier runs through the cards of the tiers above it,
+        // so it has to be underneath them. A card stacked past the canvas edge
+        // keeps only its axis marker: drawing its leader as well turned a busy
+        // story into a wall of lines with nothing at the end of them. The rect
+        // above is still kept for drag and arrows.
+        const cardOnCanvas = (item: NativeItem) => !!item.rect
+            && this.isOnCanvas(item.rect.left, item.rect.top, item.rect.right, item.rect.bottom, width, height);
+        const leaderOnCanvas = (_item: NativeItem, desiredX: number) => desiredX >= -8 && desiredX <= width + 8;
+        cards.forEach(({ item, desiredX, edgeY }) => {
+            if (!cardOnCanvas(item) || !leaderOnCanvas(item, desiredX)) return;
             // One rigid perpendicular leader. Both endpoints share the event's
             // true X coordinate, so panning can only translate this segment;
             // it can never acquire an elbow or diagonal stretch.
@@ -1063,13 +1336,15 @@ export class NativeTimelineRenderer {
             ctx.lineWidth = 1.5;
             ctx.beginPath();
             ctx.moveTo(desiredX, axisY);
-            ctx.lineTo(desiredX, above ? chipY + cardHeight : chipY);
+            ctx.lineTo(desiredX, edgeY);
             ctx.stroke();
             ctx.restore();
-            if (this.slotsVisible() && this.isDraggable(item)) this.markerHits.push({ item, x: desiredX, y: axisY });
-            this.drawPointMarker(ctx, desiredX, axisY, item);
-            this.drawTimelineEventCard(ctx, item, calendar);
         });
+        cards.forEach(({ item }) => {
+            const rect = item.rect;
+            if (rect && this.isOnCanvas(rect.left, rect.top, rect.right, rect.bottom, width, height)) this.drawTimelineEventCard(ctx, item, calendar);
+        });
+        cards.forEach(({ item, desiredX }) => { if (leaderOnCanvas(item, desiredX)) this.drawPointMarker(ctx, desiredX, axisY, item); });
 
         this.drawHorizontalTimelineDropTarget(ctx, axisY, width, height);
         this.drawConnectors(ctx, width, height);
@@ -1177,40 +1452,66 @@ export class NativeTimelineRenderer {
         ctx.fillRect(0, 0, width, axisHeight);
         ctx.fillStyle = this.css('--text-muted', '#9ca3af');
         ctx.font = `12px ${this.css('--font-interface', 'sans-serif')}`;
-        const plotWidth = Math.max(1, width - SIDEBAR_WIDTH);
-        const span = this.viewEnd - this.viewStart;
+        const plotWidth = Math.max(1, width - this.sidebarWidth());
         const calendar = this.calendarRegistry.getActiveCalendar();
-        if (calendar.id !== GREGORIAN_CALENDAR.id) {
-            const startDay = this.viewStart / DAY_MS + this.unixEpochAbsoluteDay();
-            const endDay = this.viewEnd / DAY_MS + this.unixEpochAbsoluteDay();
-            const ticks = generateTicks(calendar, { startDay, endDay, widthPx: plotWidth }, Math.max(2, Math.floor(plotWidth / 120)));
-            ctx.strokeStyle = this.css('--background-modifier-border', '#374151');
-            ticks.forEach(tick => {
-                const x = SIDEBAR_WIDTH + tick.x;
-                ctx.beginPath(); ctx.moveTo(x, axisHeight); ctx.lineTo(x, this.viewportHeight()); ctx.stroke();
-                ctx.fillText(tick.label, x + 5, 25);
-            });
-            ctx.strokeRect(0, 0, width, axisHeight);
-            return;
-        }
-        const desired = Math.max(2, Math.floor(plotWidth / 120));
-        const rawStep = span / desired;
-        const step = this.niceTimeStep(rawStep);
-        const first = Math.ceil(this.viewStart / step) * step;
+        // Every calendar, Gregorian included, takes its ticks from generateTicks.
+        // Stepping fixed millisecond multiples from the Unix epoch put ticks on
+        // Dec 31 and drifted them off the calendar (labels read "2020 2024 2029").
+        const startDay = this.viewStart / DAY_MS + this.unixEpochAbsoluteDay();
+        const endDay = this.viewEnd / DAY_MS + this.unixEpochAbsoluteDay();
+        const ticks = generateTicks(calendar, { startDay, endDay, widthPx: plotWidth }, Math.max(2, Math.floor(plotWidth / 120)));
         ctx.strokeStyle = this.css('--background-modifier-border', '#374151');
         ctx.lineWidth = 1;
-        for (let time = first; time < this.viewEnd; time += step) {
-            const x = this.timeToX(time, width);
+        // Labels are dropped rather than drawn over each other. Gridlines stay
+        // on every tick so the axis still reads correctly when labels thin out.
+        let previousRight = Number.NEGATIVE_INFINITY;
+        ticks.forEach((tick, index) => {
+            const x = this.sidebarWidth() + tick.x;
             ctx.beginPath(); ctx.moveTo(x, axisHeight); ctx.lineTo(x, this.viewportHeight()); ctx.stroke();
-            ctx.fillText(this.formatTick(time, step), x + 5, 25);
-        }
+            const label = this.axisTickLabel(calendar, tick, index);
+            const labelLeft = x + 5;
+            const labelWidth = ctx.measureText(label).width;
+            if (labelLeft < previousRight + 10) return;
+            ctx.fillText(label, labelLeft, 25);
+            previousRight = labelLeft + labelWidth;
+        });
         ctx.strokeRect(0, 0, width, axisHeight);
+    }
+
+    /**
+     * Label for one chronology tick. Month and day ticks carry their year, and
+     * the first tick in view always names its month, so a bare "January" or "15"
+     * cannot be read against the wrong year. Matches the horizontal timeline.
+     */
+    private axisTickLabel(calendar: CalendarSystem, tick: AxisTick, index: number): string {
+        const tickDate = fromAbsolute(calendar, { absoluteDay: tick.absoluteDay });
+        const year = this.calendarYearLabel(calendar, tickDate.year);
+        let label = tick.label;
+        if (tick.level === 'month' && !label.includes(year)) label = `${label} ${year}`;
+        else if (tick.level === 'day' && index === 0 && !label.includes(year)) label = `${label}, ${year}`;
+        else if ((tick.level === 'hour' || tick.level === 'minute') && index === 0) {
+            const monthDef = monthsInYear(calendar, tickDate.year)[tickDate.month];
+            const month = monthDef?.abbr || monthDef?.name || '';
+            label = `${month} ${tickDate.day}, ${year} ${label}`.trim();
+        }
+        return label;
     }
 
     private axisHeight(): number {
         if (this.isVerticalTimeline()) return BASE_AXIS_HEIGHT;
         const rows = this.calendarLayerRows();
-        return BASE_AXIS_HEIGHT + rows * CALENDAR_BAND_HEIGHT;
+        return BASE_AXIS_HEIGHT + rows * CALENDAR_BAND_HEIGHT + this.eraStripHeight();
+    }
+
+    /**
+     * The era strip is reserved whenever eras are shown, not only while one
+     * is on screen. Its height changing as the view moves would shove every
+     * lane up and down under the reader.
+     */
+    private eraStripHeight(): number {
+        if (this.isVerticalTimeline() || this.isHorizontalTimeline()) return 0;
+        if (!this.options.showEras) return 0;
+        return this.plugin.getTimelineEras().some(era => era.visible !== false) ? ERA_STRIP_HEIGHT : 0;
     }
 
     private calendarLayerRows(): number {
@@ -1287,7 +1588,7 @@ export class NativeTimelineRenderer {
         const groups = new Map<number, string>();
         bands.forEach(band => {
             groups.set(band.row, band.group);
-            const x1 = Math.max(SIDEBAR_WIDTH, this.timeToX((band.startDay - this.unixEpochAbsoluteDay()) * DAY_MS, width));
+            const x1 = Math.max(this.sidebarWidth(width), this.timeToX((band.startDay - this.unixEpochAbsoluteDay()) * DAY_MS, width));
             const x2 = Math.min(width, this.timeToX((band.endDay - this.unixEpochAbsoluteDay()) * DAY_MS, width));
             const y = BASE_AXIS_HEIGHT + band.row * CALENDAR_BAND_HEIGHT;
             if (x2 <= x1) return;
@@ -1299,11 +1600,43 @@ export class NativeTimelineRenderer {
             if (x2 - x1 > 34) ctx.fillText(this.truncate(ctx, band.label, x2 - x1 - 8), x1 + 4, y + 11);
         });
         ctx.globalAlpha = 1;
-        ctx.fillStyle = this.css('--background-secondary-alt', '#18202d');
-        ctx.fillRect(0, BASE_AXIS_HEIGHT, SIDEBAR_WIDTH, this.axisHeight() - BASE_AXIS_HEIGHT);
-        ctx.fillStyle = this.css('--text-muted', '#9ca3af');
-        groups.forEach((label, row) => ctx.fillText(this.truncate(ctx, label.toUpperCase(), SIDEBAR_WIDTH - 18), 9, BASE_AXIS_HEIGHT + row * CALENDAR_BAND_HEIGHT + 11));
+        const sidebar = this.sidebarWidth(width);
+        if (sidebar > 0) {
+            ctx.fillStyle = this.css('--background-secondary-alt', '#18202d');
+            ctx.fillRect(0, BASE_AXIS_HEIGHT, sidebar, this.axisHeight() - BASE_AXIS_HEIGHT);
+            ctx.fillStyle = this.css('--text-muted', '#9ca3af');
+            groups.forEach((label, row) => ctx.fillText(this.truncate(ctx, label.toUpperCase(), sidebar - 18), 9, BASE_AXIS_HEIGHT + row * CALENDAR_BAND_HEIGHT + 11));
+        }
         ctx.restore();
+    }
+
+    /**
+     * Sidebar name for a lane: a swatch in the lane's colour, then the name in
+     * the theme's normal text colour. Coloured text fell well short of the
+     * contrast needed to read on the sidebar background, so the colour now
+     * lives in the swatch, where it still matches the lane's markers.
+     */
+    private drawLaneLabel(ctx: CanvasRenderingContext2D, lane: Lane, top: number): void {
+        // A collapsed column (one unnamed lane) has no room for a label at all.
+        if (this.sidebarWidth() <= 0) return;
+        const x = 13;
+        const y = top + 14;
+        const size = 8;
+        ctx.fillStyle = lane.color;
+        ctx.beginPath();
+        ctx.moveTo(x + 2, y);
+        ctx.arcTo(x + size, y, x + size, y + size, 2);
+        ctx.arcTo(x + size, y + size, x, y + size, 2);
+        ctx.arcTo(x, y + size, x, y, 2);
+        ctx.arcTo(x, y, x + size, y, 2);
+        ctx.closePath();
+        ctx.fill();
+        ctx.font = `600 12px ${this.css('--font-interface', 'sans-serif')}`;
+        ctx.fillStyle = this.css('--text-normal', '#e5e7eb');
+        const textX = x + size + 7;
+        const shown = this.truncate(ctx, lane.label, this.sidebarWidth() - textX - 11);
+        lane.labelClipped = shown !== lane.label;
+        ctx.fillText(shown, textX, top + 22);
     }
 
     private drawLane(ctx: CanvasRenderingContext2D, lane: Lane, width: number, height: number): void {
@@ -1314,12 +1647,8 @@ export class NativeTimelineRenderer {
         const top = lane.top - this.scrollTop;
         if (top > height || top + lane.height < this.axisHeight()) return;
         ctx.fillStyle = this.css('--background-secondary-alt', '#18202d');
-        ctx.fillRect(0, top, SIDEBAR_WIDTH, lane.height);
-        // The lane name takes the lane's colour, so a row in the sidebar can be
-        // matched to its markers out on the timeline without counting rows.
-        ctx.fillStyle = lane.color;
-        ctx.font = `600 12px ${this.css('--font-interface', 'sans-serif')}`;
-        ctx.fillText(this.truncate(ctx, lane.label, SIDEBAR_WIDTH - 24), 13, top + 22);
+        ctx.fillRect(0, top, this.sidebarWidth(), lane.height);
+        this.drawLaneLabel(ctx, lane, top);
         ctx.strokeStyle = this.css('--background-modifier-border', '#374151');
         ctx.beginPath(); ctx.moveTo(0, top + lane.height); ctx.lineTo(width, top + lane.height); ctx.stroke();
         const rowHeight = this.rowHeight();
@@ -1329,7 +1658,7 @@ export class NativeTimelineRenderer {
         // to be clipped rather than pinned, or it would paint over the sidebar.
         ctx.save();
         ctx.beginPath();
-        ctx.rect(SIDEBAR_WIDTH, this.axisHeight(), Math.max(0, width - SIDEBAR_WIDTH), height);
+        ctx.rect(this.sidebarWidth(width), this.axisHeight(), Math.max(0, width - this.sidebarWidth(width)), height);
         ctx.clip();
         const startIndex = this.firstVisible(lane, leftTime);
         for (let i = startIndex; i < lane.items.length; i++) {
@@ -1346,36 +1675,50 @@ export class NativeTimelineRenderer {
 
     private drawChronologyLane(ctx: CanvasRenderingContext2D, lane: Lane, width: number, height: number): void {
         const top = lane.top - this.scrollTop;
-        if (top > height || top + lane.height < this.axisHeight()) return;
+        const axisHeight = this.axisHeight();
+        if (top > height || top + lane.height < axisHeight) return;
+        // The sidebar fill stops at the axis. A lane scrolled up under it would
+        // otherwise paint over the axis header.
+        const fillTop = Math.max(top, axisHeight);
         ctx.fillStyle = this.css('--background-secondary-alt', '#18202d');
-        ctx.fillRect(0, top, SIDEBAR_WIDTH, lane.height);
-        // The lane name takes the lane's colour, so a row in the sidebar can be
-        // matched to its markers out on the timeline without counting rows.
-        ctx.fillStyle = lane.color;
-        ctx.font = `600 12px ${this.css('--font-interface', 'sans-serif')}`;
-        ctx.fillText(this.truncate(ctx, lane.label, SIDEBAR_WIDTH - 24), 13, top + 22);
+        ctx.fillRect(0, fillTop, this.sidebarWidth(), top + lane.height - fillTop);
+        // Once the lane's own label has scrolled under the axis, pin it to the top
+        // of the sidebar for as long as the lane is still on screen. It slides up
+        // with the lane's bottom edge so it never outlives its own lane.
+        if (top + 22 >= axisHeight + 12) {
+            this.drawLaneLabel(ctx, lane, top);
+        } else {
+            const pinnedY = Math.min(axisHeight + 22, top + lane.height - 8);
+            if (pinnedY >= axisHeight + 10) this.drawLaneLabel(ctx, lane, pinnedY - 22);
+        }
 
         const baselineY = top + 18;
-        ctx.strokeStyle = this.css('--background-modifier-border', '#374151');
-        ctx.lineWidth = 1;
-        ctx.beginPath(); ctx.moveTo(SIDEBAR_WIDTH, baselineY); ctx.lineTo(width, baselineY); ctx.stroke();
-
         const rowHeight = this.rowHeight();
         // Right edge of the last chip drawn on each row, so a chip that would
         // land on top of its neighbour can stand down.
         const rowRightEdges: number[] = [];
         // Chips sit at their true position, so ones leaving the view are clipped
-        // to the plot area rather than pinned to its edge.
+        // to the plot area rather than pinned to its edge. The baseline is
+        // clipped too, or a lane scrolled under the axis would strike through it.
         ctx.save();
         ctx.beginPath();
-        ctx.rect(SIDEBAR_WIDTH, this.axisHeight(), Math.max(0, width - SIDEBAR_WIDTH), height);
+        ctx.rect(this.sidebarWidth(), axisHeight, Math.max(0, width - this.sidebarWidth()), height);
         ctx.clip();
+        ctx.strokeStyle = this.css('--background-modifier-border', '#374151');
+        ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(this.sidebarWidth(), baselineY); ctx.lineTo(width, baselineY); ctx.stroke();
         this.drawSlots(ctx, baselineY, width);
         const startIndex = this.firstVisible(lane, this.viewStart);
+        // Layout first, then paint in three passes: every stem, then every
+        // chip, then the axis markers. Painting each stem just before its own
+        // chip let a later stem run through an earlier chip's label.
+        const laid: { item: NativeItem; pointX: number; endX: number; chipX: number; chipY: number; chipHeight: number; collides: boolean }[] = [];
         for (let i = startIndex; i < lane.items.length; i++) {
             const item = lane.items[i];
             if (item.start > this.viewEnd) break;
             if (item.end < this.viewStart) continue;
+            // Folded into a control chip: no chip, stem or marker of its own.
+            if (item.hiddenInMarker) continue;
             const pointX = this.timeToX(item.start, width);
             const endX = this.timeToX(item.end, width);
             const chipY = top + CHRONOLOGY_CHIP_TOP + item.row * rowHeight;
@@ -1387,11 +1730,13 @@ export class NativeTimelineRenderer {
             // a row it fits in, so nothing needs to stand down. Only the
             // deliberately single-row case can still collide, and there the
             // later chip drops to its axis marker rather than printing over its
-            // neighbour.
+            // neighbour. An event folded into a "+K more" chip also drops to its
+            // marker: its chip is the cluster's, not its own.
             const rowRight = rowRightEdges[item.row];
-            const collides = !this.options.stackEnabled
-                && rowRight !== undefined
-                && chipX < rowRight + CHIP_GAP;
+            const collides = item.overflowInto !== undefined
+                || (!this.options.stackEnabled
+                    && rowRight !== undefined
+                    && chipX < rowRight + CHIP_GAP);
             item.labelSuppressed = collides;
 
             // Hit target follows what was drawn. A suppressed item answers to
@@ -1406,30 +1751,215 @@ export class NativeTimelineRenderer {
             // where the pointer expects it.
             if (this.slotsVisible() && this.isDraggable(item)) this.markerHits.push({ item, x: pointX, y: baselineY });
 
-            if (collides) {
-                this.drawPointMarker(ctx, pointX, baselineY, item);
-                const narrativeDirection = narrativeDirectionOf(item.event);
-                if (narrativeDirection) this.drawNarrativeIcon(ctx, narrativeDirection, pointX + 9, baselineY - 9, 10);
-                continue;
-            }
-            rowRightEdges[item.row] = chipX + chipWidth;
+            laid.push({ item, pointX, endX, chipX, chipY, chipHeight, collides });
+            if (!collides) rowRightEdges[item.row] = chipX + chipWidth;
+        }
 
+        // Stem: down from the axis marker, then across to the chip. The elbow
+        // is what will carry branch lines once forks hang off it.
+        laid.filter(entry => !entry.collides).forEach(({ item, pointX, endX, chipX, chipY, chipHeight }) => {
             ctx.strokeStyle = item.laneColor;
             ctx.globalAlpha = item.inherited ? 0.45 : 0.8;
             ctx.lineWidth = 1;
-            // Stem: down from the axis marker, then across to the chip. The
-            // elbow is what will carry branch lines once forks hang off it.
             ctx.beginPath(); ctx.moveTo(pointX, baselineY); ctx.lineTo(pointX, chipY + chipHeight / 2); ctx.lineTo(chipX, chipY + chipHeight / 2); ctx.stroke();
             if (endX - pointX > 3) {
                 ctx.beginPath(); ctx.moveTo(pointX, baselineY); ctx.lineTo(endX, baselineY); ctx.stroke();
                 ctx.beginPath(); ctx.moveTo(endX, baselineY - 4); ctx.lineTo(endX, baselineY + 4); ctx.stroke();
             }
-            ctx.globalAlpha = 1;
+        });
+        ctx.globalAlpha = 1;
+        // Fold chips hang off stems too, and those stems cross the rows above
+        // them, so they go down with the others before any chip is painted.
+        this.drawMarkerGroups(ctx, lane, top, width, 'stems');
+        this.visibleOverflow(lane).forEach(chip => this.drawOverflowChip(ctx, lane, chip, top, baselineY, width, 'stems'));
+        laid.filter(entry => !entry.collides).forEach(({ item }) => this.drawItem(ctx, item, true, undefined, false));
+        laid.forEach(({ item, pointX, collides }) => {
             this.drawPointMarker(ctx, pointX, baselineY, item);
-            this.drawItem(ctx, item, true, undefined, false);
-        }
+            if (!collides) return;
+            const narrativeDirection = narrativeDirectionOf(item.event);
+            if (narrativeDirection) this.drawNarrativeIcon(ctx, narrativeDirection, pointX + 9, baselineY - 9, 10);
+        });
+        this.drawMarkerGroups(ctx, lane, top, width, 'chips');
+        this.visibleOverflow(lane).forEach(chip => this.drawOverflowChip(ctx, lane, chip, top, baselineY, width, 'chips'));
         this.drawDropTarget(ctx, lane, baselineY, width, height);
         ctx.restore();
+    }
+
+    /**
+     * Count badges and "+N more" chips for the marker columns in view.
+     *
+     * Drawn after the chips so the badge sits over the stems. A column that
+     * stands for one event gets no badge, since its bare marker already says so.
+     */
+    private visibleOverflow(lane: Lane): OverflowChip[] {
+        return (lane.overflow ?? []).filter(chip => {
+            const first = chip.items[0];
+            const last = chip.items.reduce((latest, item) => Math.max(latest, item.end), first.end);
+            return first.start <= this.viewEnd && last >= this.viewStart;
+        });
+    }
+
+    private drawMarkerGroups(ctx: CanvasRenderingContext2D, lane: Lane, top: number, width: number, pass: 'stems' | 'chips'): void {
+        const groups = lane.markerGroups;
+        if (!groups?.length) return;
+        const baselineY = top + 18;
+        const rowHeight = this.rowHeight();
+        groups.forEach(group => {
+            if (group.start < this.viewStart || group.start > this.viewEnd) return;
+            const pointX = this.timeToX(group.start, width);
+            if (pass === 'chips' && group.members.length > 1) this.drawCountBadge(ctx, pointX + 9, baselineY - 9, group.members.length);
+            if (group.controlRow === undefined || !group.controlLabel) return;
+
+            const chipX = pointX + 9;
+            const chipY = top + CHRONOLOGY_CHIP_TOP + group.controlRow * rowHeight;
+            const chipHeight = rowHeight - 7;
+            const chipWidth = this.controlChipWidth(ctx, group.controlLabel);
+
+            if (pass === 'stems') {
+                // Same stem as a chip, so the control reads as the last entry in its column.
+                ctx.save();
+                ctx.strokeStyle = lane.color;
+                ctx.globalAlpha = 0.5;
+                ctx.lineWidth = 1;
+                ctx.beginPath(); ctx.moveTo(pointX, baselineY); ctx.lineTo(pointX, chipY + chipHeight / 2); ctx.lineTo(chipX, chipY + chipHeight / 2); ctx.stroke();
+                ctx.restore();
+                return;
+            }
+            this.controlHits.push({ rect: new DOMRect(chipX, chipY, chipWidth, chipHeight), group });
+
+            // Dashed outline and muted text: this is a control, not an event,
+            // and it should not read as one more chip in the list.
+            ctx.save();
+            ctx.fillStyle = this.css('--background-secondary', '#1f2937');
+            this.roundedRect(ctx, chipX, chipY, chipWidth, chipHeight, 3); ctx.fill();
+            ctx.strokeStyle = lane.color;
+            ctx.lineWidth = 1;
+            ctx.setLineDash([3, 3]);
+            this.roundedRect(ctx, chipX, chipY, chipWidth, chipHeight, 3); ctx.stroke();
+            ctx.setLineDash([]);
+            ctx.fillStyle = this.css('--text-muted', '#9ca3af');
+            ctx.font = `11px ${this.css('--font-interface', 'sans-serif')}`;
+            ctx.fillText(this.truncate(ctx, group.controlLabel, chipWidth - 12), chipX + 6, chipY + chipHeight / 2 + 4);
+            ctx.restore();
+        });
+    }
+
+    /** How many events a marker column stands for, drawn on the axis. */
+    private drawCountBadge(ctx: CanvasRenderingContext2D, x: number, y: number, count: number): void {
+        const text = count > 99 ? '99+' : String(count);
+        ctx.save();
+        ctx.font = `600 9px ${this.css('--font-interface', 'sans-serif')}`;
+        const badgeWidth = Math.max(14, ctx.measureText(text).width + 8);
+        ctx.fillStyle = this.css('--interactive-accent', '#7c3aed');
+        this.roundedRect(ctx, x - badgeWidth / 2, y - 7, badgeWidth, 14, 7);
+        ctx.fill();
+        ctx.fillStyle = this.css('--text-on-accent', '#fff');
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(text, x, y + 0.5);
+        ctx.restore();
+    }
+
+    /** Width of a control chip. Layout and draw both read it from here. */
+    private controlChipWidth(ctx: CanvasRenderingContext2D | null, label: string): number {
+        if (!ctx) return MAX_CHIP_WIDTH;
+        ctx.font = `11px ${this.css('--font-interface', 'sans-serif')}`;
+        return Math.max(MIN_CHRONOLOGY_CHIP_WIDTH, Math.min(MAX_CHIP_WIDTH, ctx.measureText(label).width + 20));
+    }
+
+    /** The calendar day a marker sits on, written the way the axis writes its days. */
+    private dayLabel(time: number): string {
+        const calendar = this.calendarRegistry.getActiveCalendar();
+        const day = fromAbsolute(calendar, { absoluteDay: Math.floor(time / DAY_MS) + this.unixEpochAbsoluteDay() });
+        const month = monthsInYear(calendar, day.year)[day.month]?.name ?? `Month ${day.month + 1}`;
+        return `${month} ${day.day}, ${this.calendarYearLabel(calendar, day.year)}`;
+    }
+
+    /**
+     * What a click on a control chip does.
+     *
+     * A "+N more" chip first zooms to its day, since spreading events across
+     * the day is what the zoom can do. Once the view is already a day wide the
+     * events still share a marker, so the click opens the group instead. A
+     * "Show fewer" chip always folds the group back up.
+     */
+    private activateMarkerControl(group: MarkerGroup): void {
+        if (!group.expanded && this.viewEnd - this.viewStart > DAY_MS * 1.01) {
+            // A sliver of the previous day keeps a midnight marker off the
+            // sidebar edge, where it would be half hidden.
+            const day = Math.floor(group.start / DAY_MS) * DAY_MS - DAY_MS * 0.04;
+            this.setVisibleRange(new Date(day), new Date(day + DAY_MS));
+            return;
+        }
+        if (group.expanded) this.expandedMarkers.delete(group.key);
+        else this.expandedMarkers.add(group.key);
+        this.scheduleDraw();
+    }
+
+    private controlAt(x: number, y: number): MarkerGroup | null {
+        const hit = this.controlHits.find(entry => x >= entry.rect.x && x <= entry.rect.right && y >= entry.rect.y && y <= entry.rect.bottom);
+        return hit?.group ?? null;
+    }
+
+    /**
+     * The "+K more" chip that stands in for the events folded out of a lane.
+     *
+     * Drawn as a chip of the same card shape, with a stem down to the first of
+     * the folded events' markers. Clicking it zooms to the folded events.
+     */
+    private drawOverflowChip(ctx: CanvasRenderingContext2D, lane: Lane, chip: OverflowChip, top: number, baselineY: number, width: number, pass: 'stems' | 'chips'): void {
+        const rowHeight = this.rowHeight();
+        const chipHeight = rowHeight - 7;
+        const pointX = this.timeToX(chip.items[0].start, width);
+        const chipX = pointX + 9;
+        const chipY = top + CHRONOLOGY_CHIP_TOP + chip.row * rowHeight;
+        if (pass === 'stems') {
+            ctx.save();
+            ctx.strokeStyle = lane.color;
+            ctx.globalAlpha = 0.8;
+            ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.moveTo(pointX, baselineY); ctx.lineTo(pointX, chipY + chipHeight / 2); ctx.lineTo(chipX, chipY + chipHeight / 2); ctx.stroke();
+            ctx.restore();
+            return;
+        }
+        chip.rect = new DOMRect(chipX, chipY, OVERFLOW_CHIP_WIDTH, chipHeight);
+        this.visibleClusters.push(chip);
+
+        ctx.save();
+        ctx.fillStyle = this.css('--background-secondary', '#1f2937');
+        this.roundedRect(ctx, chipX, chipY, OVERFLOW_CHIP_WIDTH, chipHeight, 3);
+        ctx.fill();
+        ctx.strokeStyle = this.css('--background-modifier-border', '#374151');
+        ctx.lineWidth = 1;
+        ctx.stroke();
+        ctx.fillStyle = this.css('--text-normal', '#e5e7eb');
+        ctx.font = `11px ${this.css('--font-interface', 'sans-serif')}`;
+        ctx.fillText(this.truncate(ctx, `+${chip.items.length} more`, OVERFLOW_CHIP_WIDTH - 12), chipX + 6, chipY + chipHeight / 2 + 4);
+        ctx.restore();
+    }
+
+    /** The "+K more" chip under a pointer, if one was drawn this frame. */
+    private overflowChipAt(x: number, y: number): OverflowChip | null {
+        return this.visibleClusters.find(chip => chip.rect && x >= chip.rect.x && x <= chip.rect.right && y >= chip.rect.y && y <= chip.rect.bottom) ?? null;
+    }
+
+    /**
+     * Zoom to the events a "+K more" chip folded, so their chips get room.
+     *
+     * Each click cuts the view to at most half its span and, when the folded
+     * events are spread out, to a little wider than they cover. The cut is
+     * relative to the current view rather than fixed, because events that share
+     * a day have no spread to zoom into, and a fixed floor would jump straight
+     * to the calendar's finest unit.
+     */
+    private zoomToOverflowChip(chip: OverflowChip): void {
+        const first = chip.items[0].start;
+        const last = chip.items.reduce((latest, item) => Math.max(latest, item.end), first);
+        const current = this.viewEnd - this.viewStart;
+        const wanted = Math.max((last - first) * 1.3, current / 4);
+        const span = Math.max(this.minimumSpan(), Math.min(wanted, current / 2));
+        const center = (first + last) / 2;
+        this.setVisibleRange(new Date(center - span / 2), new Date(center + span / 2));
     }
 
     private drawVerticalTimeline(ctx: CanvasRenderingContext2D, width: number, height: number): void {
@@ -1480,32 +2010,64 @@ export class NativeTimelineRenderer {
             8,
             alternateSides
         );
+        const sideWidth = (rightSide: boolean) => Math.max(0, rightSide ? width - axisX - 38 : axisX - 38 - (alternateSides ? VERTICAL_LABEL_GUTTER : 0));
+        // Only cards inside each side's readable column count set the column
+        // width; overflow cards take no room because they draw as markers.
         const tierCounts = new Map<boolean, number>();
-        placements.forEach(placement => tierCounts.set(placement.above, Math.max(tierCounts.get(placement.above) || 0, placement.tier + 1)));
+        placements.forEach(placement => {
+            if (placement.tier >= maxVerticalCardTiers(sideWidth(placement.above))) return;
+            tierCounts.set(placement.above, Math.max(tierCounts.get(placement.above) || 0, placement.tier + 1));
+        });
 
-        placements.forEach(({ value: item, position: desiredY, placedPosition: placedY, above: rightSide, tier }) => {
-            const availableWidth = Math.max(88, rightSide ? width - axisX - 38 : axisX - 38);
+        // Too many cards for the vertical space at this zoom: those events stay
+        // as markers on the axis (still selectable) instead of squeezing cards
+        // below a readable width. They are painted with the other markers.
+        const markerOnly: Array<{ item: NativeItem; desiredY: number }> = [];
+        const cards = placements.flatMap(({ value: item, position: desiredY, placedPosition: placedY, above: rightSide, tier }) => {
+            if (tier >= maxVerticalCardTiers(sideWidth(rightSide))) {
+                if (this.slotsVisible() && this.isDraggable(item)) this.markerHits.push({ item, x: axisX, y: desiredY });
+                item.rect = new DOMRect(axisX - 6, desiredY - 6, 12, 12);
+                this.visibleItems.push(item);
+                markerOnly.push({ item, desiredY });
+                return [];
+            }
             const tierCount = tierCounts.get(rightSide) || 1;
-            const chipWidth = Math.max(88, Math.min(240, (availableWidth - (tierCount - 1) * 12) / tierCount));
+            const chipWidth = verticalCardWidth(sideWidth(rightSide), tierCount);
             const tierOffset = tier * (chipWidth + 12);
-            const chipX = rightSide ? axisX + 28 + tierOffset : Math.max(4, axisX - 28 - chipWidth - tierOffset);
+            // Clamp to the canvas so a card never clips at either edge. Only X
+            // moves; the leader still meets the card at the event's true Y.
+            const chipX = Math.min(Math.max(4, rightSide ? axisX + 28 + tierOffset : axisX - 28 - chipWidth - tierOffset), width - 4 - chipWidth);
             const chipY = placedY - chipHeight / 2;
-            item.rect = new DOMRect(chipX, chipY, chipWidth, chipHeight);
+            const rect = new DOMRect(chipX, chipY, chipWidth, chipHeight);
+            item.rect = rect;
             this.visibleItems.push(item);
-            // One rigid perpendicular leader. Marker and card edge share the
-            // event's true Y coordinate, so scrolling cannot bend the line.
+            if (this.slotsVisible() && this.isDraggable(item)) this.markerHits.push({ item, x: axisX, y: desiredY });
+            return [{ item, desiredY, edgeX: rightSide ? chipX : chipX + chipWidth }];
+        });
+        // Paint order: every leader, then the cards, then the axis markers. See
+        // the horizontal timeline for why a leader must sit under other cards.
+        const leaderOnCanvas = (item: NativeItem, desiredY: number) => item.rect
+            ? this.isOnCanvas(Math.min(item.rect.left, axisX), Math.min(item.rect.top, desiredY), Math.max(item.rect.right, axisX), Math.max(item.rect.bottom, desiredY), width, height)
+            : false;
+        cards.forEach(({ item, desiredY, edgeX }) => {
+            if (!leaderOnCanvas(item, desiredY)) return;
+            // Marker and card edge share the event's true Y coordinate, so
+            // scrolling cannot bend the line.
             ctx.save();
             ctx.strokeStyle = item.laneColor;
             ctx.lineWidth = 1.5;
             ctx.beginPath();
             ctx.moveTo(axisX, desiredY);
-            ctx.lineTo(rightSide ? chipX : chipX + chipWidth, desiredY);
+            ctx.lineTo(edgeX, desiredY);
             ctx.stroke();
             ctx.restore();
-            if (this.slotsVisible() && this.isDraggable(item)) this.markerHits.push({ item, x: axisX, y: desiredY });
-            this.drawPointMarker(ctx, axisX, desiredY, item);
-            this.drawTimelineEventCard(ctx, item, calendar);
         });
+        cards.forEach(({ item }) => {
+            const rect = item.rect;
+            if (rect && this.isOnCanvas(rect.left, rect.top, rect.right, rect.bottom, width, height)) this.drawTimelineEventCard(ctx, item, calendar);
+        });
+        cards.forEach(({ item, desiredY }) => { if (leaderOnCanvas(item, desiredY)) this.drawPointMarker(ctx, axisX, desiredY, item); });
+        markerOnly.forEach(({ item, desiredY }) => { if (desiredY >= -8 && desiredY <= height + 8) this.drawPointMarker(ctx, axisX, desiredY, item); });
         this.drawVerticalDropTarget(ctx, axisX, width, timeToY);
         this.drawConnectors(ctx, width, height);
         this.drawNowVertical(ctx, axisX, top, bottom);
@@ -1518,7 +2080,10 @@ export class NativeTimelineRenderer {
         const periods: Array<{ day: number; label: string }> = [];
         let year = startDate.year;
         let month = useYears ? 0 : startDate.month;
-        for (let count = 0; count < 80; count++) {
+        // The loop ends at the window edge. The guard only bounds a pathological
+        // span. A fixed count stopped the years after 80 entries, so a long
+        // zoomed-out view lost every label past the first 80 years.
+        for (let count = 0; count < 10000; count++) {
             const day = toAbsolute(calendar, { year, month, day: 1 }).absoluteDay;
             const yearMonths = monthsInYear(calendar, year);
             const monthName = yearMonths[month]?.name || `Month ${month + 1}`;
@@ -1530,8 +2095,14 @@ export class NativeTimelineRenderer {
         if (!periods.length) return;
         const current = periods[0];
         current.day = absoluteStart;
+        // Labels are 22 px tall. When zoomed out, many periods land a few pixels
+        // apart and each box painted over the last, leaving only one year visible.
+        // Thin them so every drawn label has room, rather than hiding them all.
+        let previousY = -Infinity;
         periods.filter(period => period.day >= absoluteStart && period.day < absoluteEnd).forEach((period, index) => {
             const y = top + (period.day - absoluteStart) / spanDays * (bottom - top);
+            if (index > 0 && y - previousY < 26) return;
+            previousY = y;
             ctx.save();
             ctx.strokeStyle = this.css('--background-modifier-border-hover', '#4b5563');
             ctx.globalAlpha = index === 0 ? 0.9 : 0.55;
@@ -1540,10 +2111,13 @@ export class NativeTimelineRenderer {
             ctx.globalAlpha = 1;
             ctx.fillStyle = this.css('--background-primary', '#111827');
             const labelWidth = Math.min(150, Math.max(86, axisX - 18));
+            ctx.font = `600 11px ${this.css('--font-interface', 'sans-serif')}`;
+            const text = this.truncate(ctx, period.label.toUpperCase(), labelWidth - 12);
+            // Draw the label or nothing: a box with no text reads as a broken card.
+            if (!text) { ctx.restore(); return; }
             this.roundedRect(ctx, 6, Math.max(4, y - 13), labelWidth, 22, 3); ctx.fill();
             ctx.fillStyle = this.css('--text-accent', '#a78bfa');
-            ctx.font = `600 11px ${this.css('--font-interface', 'sans-serif')}`;
-            ctx.fillText(this.truncate(ctx, period.label.toUpperCase(), labelWidth - 12), 12, Math.max(19, y + 2));
+            ctx.fillText(text, 12, Math.max(19, y + 2));
             ctx.restore();
         });
     }
@@ -1601,6 +2175,15 @@ export class NativeTimelineRenderer {
         });
     }
 
+    /**
+     * Whether a box could put any pixel on the canvas. The pad covers strokes
+     * and the marker ring, which reach a few pixels past their geometry.
+     */
+    private isOnCanvas(left: number, top: number, right: number, bottom: number, width: number, height: number): boolean {
+        const pad = 16;
+        return right + pad > 0 && left - pad < width && bottom + pad > 0 && top - pad < height;
+    }
+
     /** Shared card renderer for horizontal and vertical timeline orientations. */
     private drawTimelineEventCard(ctx: CanvasRenderingContext2D, item: NativeItem, calendar: ReturnType<CalendarRegistry['getActiveCalendar']>): void {
         const rect = item.rect!;
@@ -1610,6 +2193,12 @@ export class NativeTimelineRenderer {
         const dateLabel = this.verticalEventDate(item.start, calendar);
         const meta = this.lanes.length > 1 ? item.laneLabel : (item.event.status || (item.event.isMilestone ? 'Milestone' : 'Event'));
         ctx.save();
+        // Opaque backing in the plot colour, so a leader or connector beneath
+        // the card cannot show through it. The card fill below is translucent
+        // for uncertain events, and over empty canvas this looks the same.
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = this.css('--background-primary', '#111827');
+        this.roundedRect(ctx, rect.x, rect.y, rect.width, rect.height, 4); ctx.fill();
         ctx.globalAlpha = item.inherited ? 0.45 : this.certaintyAlpha(item.event);
         ctx.fillStyle = this.css('--background-secondary', '#1f2937');
         this.roundedRect(ctx, rect.x, rect.y, rect.width, rect.height, 4); ctx.fill();
@@ -1624,10 +2213,23 @@ export class NativeTimelineRenderer {
         ctx.font = `10px ${this.css('--font-interface', 'sans-serif')}`;
         const detail = `${dateLabel}  ·  ${meta}`;
         ctx.fillText(this.truncate(ctx, detail, rect.width - 18), rect.x + 10, rect.y + 32);
+        this.drawConflictBadge(ctx, rect, this.conflictSeverity(item.event));
         ctx.restore();
     }
 
     private verticalEventDate(time: number, calendar: ReturnType<CalendarRegistry['getActiveCalendar']>): string {
+        // Every card asks for its date on every frame, and turning a time into
+        // a calendar date walks the calendar's months, so the label is kept.
+        if (this.dateLabelCalendar !== calendar) { this.dateLabels.clear(); this.dateLabelCalendar = calendar; }
+        const cached = this.dateLabels.get(time);
+        if (cached !== undefined) return cached;
+        const label = this.computeEventDate(time, calendar);
+        if (this.dateLabels.size >= TEXT_CACHE_LIMIT) this.dateLabels.clear();
+        this.dateLabels.set(time, label);
+        return label;
+    }
+
+    private computeEventDate(time: number, calendar: ReturnType<CalendarRegistry['getActiveCalendar']>): string {
         const absoluteDay = time / DAY_MS + this.unixEpochAbsoluteDay();
         const date = fromAbsolute(calendar, { absoluteDay });
         const month = monthsInYear(calendar, date.year)[date.month]?.name || `Month ${date.month + 1}`;
@@ -1655,6 +2257,13 @@ export class NativeTimelineRenderer {
         const accent = item.customColor
             || (item === this.selected ? this.css('--interactive-accent', '#8b5cf6') : item.laneColor);
         if (isPoint) {
+            // Opaque backing in the plot colour under the translucent fill, so
+            // a stem behind the chip cannot show through its label.
+            ctx.globalAlpha = 1;
+            ctx.fillStyle = this.css('--background-primary', '#111827');
+            this.roundedRect(ctx, rect.x, rect.y, rect.width, rect.height, 3);
+            ctx.fill();
+            ctx.globalAlpha = item.inherited ? 0.45 : this.certaintyAlpha(item.event);
             ctx.fillStyle = this.css('--background-secondary', '#1f2937');
             this.roundedRect(ctx, rect.x, rect.y, rect.width, rect.height, 3);
             ctx.fill();
@@ -1720,17 +2329,37 @@ export class NativeTimelineRenderer {
         if (narrativeDirection) {
             this.drawNarrativeIcon(ctx, narrativeDirection, baseLabelX + 6, rect.y + rect.height / 2, 11);
         }
-        if (available > 18) {
-            const severity = this.conflictSeverity(item.event);
-            ctx.fillStyle = severity === 'error'
-                ? this.css('--color-red', '#ef4444')
-                : severity === 'warning'
-                    ? this.css('--color-yellow', '#eab308')
-                    : isPoint ? this.css('--text-normal', '#e5e7eb') : this.css('--text-on-accent', '#fff');
+        const severity = this.conflictSeverity(item.event);
+        // Keep the label clear of the corner badge, which sits over the top
+        // few pixels at the right edge.
+        const labelAvailable = severity ? available - CONFLICT_BADGE_INSET : available;
+        if (labelAvailable > 18) {
+            ctx.fillStyle = isPoint ? this.css('--text-normal', '#e5e7eb') : this.css('--text-on-accent', '#fff');
             ctx.font = `11px ${this.css('--font-interface', 'sans-serif')}`;
-            ctx.fillText(this.truncate(ctx, labelOverride || this.itemLabel(item), available), labelX, rect.y + rect.height / 2 + 4);
+            ctx.fillText(this.truncate(ctx, labelOverride || this.itemLabel(item), labelAvailable), labelX, rect.y + rect.height / 2 + 4);
         }
+        this.drawConflictBadge(ctx, rect, severity);
         ctx.restore();
+    }
+
+    /**
+     * Corner wedge that marks an event with detected conflicts.
+     *
+     * Titles keep their normal colour so a dense view does not turn red. The
+     * wedge is what the eye finds, and the tooltip says what the conflict is.
+     */
+    private drawConflictBadge(ctx: CanvasRenderingContext2D, rect: DOMRect, severity: 'error' | 'warning' | null): void {
+        if (!severity) return;
+        const right = rect.x + rect.width;
+        ctx.fillStyle = severity === 'error'
+            ? this.css('--text-error', '#ef4444')
+            : this.css('--text-warning', '#eab308');
+        ctx.beginPath();
+        ctx.moveTo(right - CONFLICT_BADGE_SIZE, rect.y);
+        ctx.lineTo(right, rect.y);
+        ctx.lineTo(right, rect.y + CONFLICT_BADGE_SIZE);
+        ctx.closePath();
+        ctx.fill();
     }
 
     /**
@@ -1873,7 +2502,7 @@ export class NativeTimelineRenderer {
         ctx.globalAlpha = 0.55;
         this.slotTimes.forEach(time => {
             const x = this.timeToX(time, width);
-            if (x < SIDEBAR_WIDTH || x > width) return;
+            if (x < this.sidebarWidth(width) || x > width) return;
             ctx.beginPath();
             ctx.arc(x, baselineY, SLOT_RADIUS, 0, Math.PI * 2);
             ctx.stroke();
@@ -1999,22 +2628,59 @@ export class NativeTimelineRenderer {
             if (!Number.isFinite(start) || !Number.isFinite(end)) return;
             const x1 = this.timeToX(start, width); const x2 = this.timeToX(end, width);
             const axisHeight = this.axisHeight();
-            const left = Math.max(SIDEBAR_WIDTH + 4, x1 + 4);
-            const right = Math.min(width - 4, x2 - 4);
             ctx.save();
             this.clipPlot(ctx, width, height);
             ctx.globalAlpha = 0.1;
             ctx.fillStyle = era.color || '#8b5cf6';
             ctx.fillRect(x1, axisHeight, x2 - x1, height - axisHeight);
-            if (right > left) {
-                ctx.globalAlpha = 0.85;
-                ctx.font = `600 10px ${this.css('--font-interface', 'sans-serif')}`;
-                ctx.fillStyle = era.color || this.css('--text-accent', '#a78bfa');
-                const label = (era.abbreviation || era.name).toUpperCase();
-                ctx.fillText(this.truncate(ctx, label, right - left), left, axisHeight + 13);
-            }
             ctx.restore();
         });
+    }
+
+    /**
+     * Era names as pills in the strip at the foot of the axis header.
+     *
+     * They used to be drawn at the top of the plot, where the first lane's
+     * chips and milestone stars covered them, and in the era colour, which is
+     * often too faint to read on the band. Here the text takes the theme's
+     * normal colour on a light tint of the era colour, so it reads in both
+     * themes. Pills that would overlap an earlier one are left out rather than
+     * printed on top of it.
+     */
+    private drawEraLabelStrip(ctx: CanvasRenderingContext2D, width: number): void {
+        if (!this.eraStripHeight()) return;
+        const stripTop = this.axisHeight() - ERA_STRIP_HEIGHT;
+        const pillTop = stripTop + 2;
+        const pillHeight = ERA_STRIP_HEIGHT - 4;
+        const eras = this.plugin.getTimelineEras()
+            .filter(era => era.visible !== false)
+            .map(era => ({ era, start: this.parseDate(era.startDate), end: this.parseDate(era.endDate) }))
+            .filter(entry => Number.isFinite(entry.start) && Number.isFinite(entry.end) && entry.end >= this.viewStart && entry.start <= this.viewEnd)
+            .sort((a, b) => a.start - b.start);
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(this.sidebarWidth(), stripTop, Math.max(0, width - this.sidebarWidth()), ERA_STRIP_HEIGHT);
+        ctx.clip();
+        ctx.font = `600 10px ${this.css('--font-interface', 'sans-serif')}`;
+        ctx.textBaseline = 'middle';
+        let previousRight = -Infinity;
+        eras.forEach(({ era, start, end }) => {
+            const left = Math.max(this.sidebarWidth() + 4, this.timeToX(start, width) + 4);
+            const right = Math.min(width - 4, this.timeToX(end, width) - 4);
+            const available = right - left - 8;
+            if (available < 24 || left < previousRight + 4) return;
+            const label = this.truncate(ctx, (era.abbreviation || era.name).toUpperCase(), available);
+            const pillWidth = ctx.measureText(label).width + 8;
+            ctx.globalAlpha = 0.3;
+            ctx.fillStyle = era.color || '#8b5cf6';
+            this.roundedRect(ctx, left, pillTop, pillWidth, pillHeight, 4);
+            ctx.fill();
+            ctx.globalAlpha = 1;
+            ctx.fillStyle = this.css('--text-normal', '#e5e7eb');
+            ctx.fillText(label, left + 4, pillTop + pillHeight / 2);
+            previousRight = left + pillWidth;
+        });
+        ctx.restore();
     }
 
     private drawPresence(ctx: CanvasRenderingContext2D, width: number, height: number): void {
@@ -2031,7 +2697,7 @@ export class NativeTimelineRenderer {
             // stopped at it, so it reads as continuing instead of as ending
             // exactly where the window happens to stop.
             const x2 = span.end === undefined ? width + 40 : this.timeToX(span.end, width);
-            if (x2 <= SIDEBAR_WIDTH || x1 >= width) return;
+            if (x2 <= this.sidebarWidth(width) || x1 >= width) return;
             const top = lane.top - this.scrollTop;
             if (top + lane.height < this.axisHeight() || top > height) return;
             ctx.globalAlpha = 0.13;
@@ -2113,9 +2779,9 @@ export class NativeTimelineRenderer {
         const horizontalTimeline = this.isHorizontalTimeline();
         ctx.beginPath();
         ctx.rect(
-            vertical || horizontalTimeline ? 0 : SIDEBAR_WIDTH,
+            vertical || horizontalTimeline ? 0 : this.sidebarWidth(width),
             vertical || horizontalTimeline ? 0 : this.axisHeight(),
-            vertical || horizontalTimeline ? width : Math.max(0, width - SIDEBAR_WIDTH),
+            vertical || horizontalTimeline ? width : Math.max(0, width - this.sidebarWidth(width)),
             height
         );
         ctx.clip();
@@ -2136,7 +2802,7 @@ export class NativeTimelineRenderer {
         ctx.lineWidth = 2;
         if (this.options.dependencyArrowStyle === 'dashed') ctx.setLineDash([8, 5]);
         if (this.options.dependencyArrowStyle === 'dotted') ctx.setLineDash([2, 4]);
-        const endsOf = (target: NativeItem, ref: string): { from: DOMRect; to: DOMRect } | null => {
+        const endsOf = (target: NativeItem, ref: string): { from: DOMRect; to: DOMRect; source: NativeItem } | null => {
             const targetEntry = (byKey.get(this.eventKey(target.event)) || []).find(entry => entry.item === target);
             if (!targetEntry) return null;
             const sources = byKey.get(ref) || [];
@@ -2147,16 +2813,34 @@ export class NativeTimelineRenderer {
             if (!source) return null;
             return {
                 from: this.itemRect(source.item, source.lane, width),
-                to: this.itemRect(target, targetEntry.lane, width)
+                to: this.itemRect(target, targetEntry.lane, width),
+                source: source.item
             };
         };
         if (this.options.ganttMode && this.options.showDependencies) {
+            const dependencies: { from: DOMRect; to: DOMRect; source: NativeItem; target: NativeItem }[] = [];
             this.lanes.forEach(lane => lane.items.forEach(target => (target.event.dependencies || []).forEach(ref => {
                 const ends = endsOf(target, ref);
-                if (ends) this.connector(ctx, ends.from, ends.to);
+                if (ends) dependencies.push({ from: ends.from, to: ends.to, source: ends.source, target });
             })));
+            // Faded arrows go first and the ones touching the hovered or
+            // selected event last, so the traced path is never under a faded line.
+            for (const focused of [false, true]) {
+                dependencies.forEach(dep => {
+                    if (this.touchesFocus(dep.source, dep.target) !== focused) return;
+                    // Coloured by the event the arrow leaves, so a chain reads as
+                    // one colour per source lane instead of one purple for all.
+                    ctx.strokeStyle = dep.source.laneColor;
+                    ctx.globalAlpha = focused ? 1 : 0.45;
+                    ctx.lineWidth = focused ? 2.5 : 1.5;
+                    this.connector(ctx, dep.from, dep.to);
+                });
+            }
         }
         if (this.options.narrativeOrder) {
+            ctx.strokeStyle = this.css('--interactive-accent', '#8b5cf6');
+            ctx.lineWidth = 2;
+            ctx.globalAlpha = 1;
             this.lanes.forEach(lane => lane.items.forEach(target => {
                 const ref = target.event.narrativeMarkers?.targetEvent;
                 const ends = ref ? endsOf(target, ref) : null;
@@ -2164,6 +2848,12 @@ export class NativeTimelineRenderer {
             }));
         }
         ctx.restore();
+    }
+
+    /** True when either end of an arrow is the event under the pointer or the selected one. */
+    private touchesFocus(a: NativeItem, b: NativeItem): boolean {
+        return [this.hovered, this.selected].some(focus => !!focus
+            && [a, b].some(item => this.eventKey(item.event) === this.eventKey(focus.event)));
     }
 
     /**
@@ -2281,6 +2971,19 @@ export class NativeTimelineRenderer {
             this.dragging = null;
             return;
         }
+        // The scrollbar strip and "+K more" chips sit clear of every marker and
+        // event chip, so testing them first takes nothing from either.
+        const bar = this.laneScrollbar(this.viewportWidth());
+        if (bar && event.offsetX >= bar.x - SCROLLBAR_INSET && event.offsetY >= this.axisHeight()) {
+            this.dragging = { kind: 'scroll', x: event.clientX, y: event.clientY, start: this.scrollTop, end: 0 };
+            return;
+        }
+        const folded = this.overflowChipAt(event.offsetX, event.offsetY);
+        if (folded) {
+            this.dragging = null;
+            this.zoomToOverflowChip(folded);
+            return;
+        }
         // Markers are tested before chips: they sit on the baseline well above
         // the first chip row, so the two never contend for the same pointer.
         const marker = this.slotsVisible() ? this.markerAt(event.offsetX, event.offsetY) : null;
@@ -2291,6 +2994,10 @@ export class NativeTimelineRenderer {
             this.scheduleDraw();
             return;
         }
+        // A control chip answers the click itself and does not start a pan, so
+        // a press on it cannot also drag the view away from the chip.
+        const control = this.controlAt(event.offsetX, event.offsetY);
+        if (control) { this.activateMarkerControl(control); return; }
         const item = this.hit(event.offsetX, event.offsetY);
         if (item) {
             this.selected = item; this.options.onEventSelected?.(item.event);
@@ -2304,6 +3011,21 @@ export class NativeTimelineRenderer {
         }
         this.selected = null; this.options.onEventSelected?.(null);
         this.dragging = { kind: 'pan', x: event.clientX, y: event.clientY, start: this.viewStart, end: this.viewEnd };
+    }
+
+    /**
+     * An event's own date text in the display form. Text that does not parse,
+     * such as a free-form narrated date, is shown as the author typed it.
+     */
+    private formatEventDateText(text: string): string {
+        return text.trim().split(/\s+(?:to|through|until)\s+/i).map(part => {
+            const trimmed = part.trim();
+            const clock = trimmed.match(/\s(\d{1,2}:\d{2}(?::\d{2})?)$/)?.[1];
+            const time = this.parseDate(trimmed);
+            if (!Number.isFinite(time)) return trimmed;
+            const day = this.formatDisplayDate(time);
+            return clock ? `${day} ${clock}` : day;
+        }).join(' to ');
     }
 
     /** Conflicts recorded against this event, worst first. */
@@ -2333,7 +3055,7 @@ export class NativeTimelineRenderer {
         tooltip.createDiv({ cls: 'sts-native-timeline-tooltip-title', text: event.name || '(Untitled event)' });
 
         const when = event.dateTime?.trim();
-        if (when) tooltip.createDiv({ cls: 'sts-native-timeline-tooltip-meta', text: `Occurred: ${when}` });
+        if (when) tooltip.createDiv({ cls: 'sts-native-timeline-tooltip-meta', text: `Occurred: ${this.formatEventDateText(when)}` });
         const narrated = event.narrativeMarkers?.narrativeDate?.trim();
         if (narrated) {
             const sequence = event.narrativeSequence !== undefined ? ` (#${event.narrativeSequence})` : '';
@@ -2351,7 +3073,16 @@ export class NativeTimelineRenderer {
         const where = event.location ? this.resolveLocationName(event.location) : '';
         if (where) tooltip.createDiv({ cls: 'sts-native-timeline-tooltip-meta', text: `@ ${where}` });
 
-        if (this.lanes.length > 1 && item.laneLabel) {
+        const people = (event.characters || []).map(value => this.resolveCharacterName(value));
+        if (people.length) {
+            const shown = people.slice(0, 3).join(', ');
+            const more = people.length > 3 ? ` and ${people.length - 3} more` : '';
+            tooltip.createDiv({ cls: 'sts-native-timeline-tooltip-meta', text: `With: ${shown}${more}` });
+        }
+
+        // Grouped by location, the lane is the same place as the line above, so
+        // repeating it only adds noise. Other groupings keep the lane line.
+        if (this.lanes.length > 1 && item.laneLabel && item.laneLabel !== where) {
             tooltip.createDiv({ cls: 'sts-native-timeline-tooltip-meta', text: item.laneLabel });
         }
 
@@ -2395,8 +3126,27 @@ export class NativeTimelineRenderer {
         if (this.hovered !== item) {
             this.hovered = item;
             this.buildTooltip(item);
+            this.redrawForFocus();
         }
         tooltip.show();
+        this.placeTooltip(x, y);
+    }
+
+    /** Full name of a lane whose sidebar label was truncated, shown in the same floating card. */
+    private showLaneTooltip(lane: Lane, x: number, y: number): void {
+        const tooltip = this.tooltipEl;
+        if (!tooltip || !this.root) return;
+        this.hovered = null;
+        tooltip.empty();
+        tooltip.createDiv({ cls: 'sts-native-timeline-tooltip-title', text: lane.label });
+        tooltip.show();
+        this.placeTooltip(x, y);
+    }
+
+    private placeTooltip(x: number, y: number): void {
+        const tooltip = this.tooltipEl;
+        const root = this.root;
+        if (!tooltip || !root) return;
         // Flip to the other side of the cursor when the card would run past the
         // edge, so it never gets clipped by the timeline's own overflow.
         const width = tooltip.offsetWidth;
@@ -2408,8 +3158,18 @@ export class NativeTimelineRenderer {
     }
 
     private hideTooltip(): void {
+        const wasHovering = !!this.hovered;
         this.hovered = null;
         this.tooltipEl?.hide();
+        if (wasHovering) this.redrawForFocus();
+    }
+
+    /**
+     * Hover only changes which arrows are emphasised, so it repaints only
+     * where those arrows are drawn. Other modes would repaint for nothing.
+     */
+    private redrawForFocus(): void {
+        if (this.options.ganttMode && this.options.showDependencies) this.scheduleDraw();
     }
 
     private onHoverMove(event: PointerEvent): void {
@@ -2419,10 +3179,21 @@ export class NativeTimelineRenderer {
         }
         const marker = this.slotsVisible() ? this.markerAt(event.offsetX, event.offsetY) : null;
         const vertical = this.isVerticalTimeline();
-        if (this.canvas) this.canvas.style.cursor = marker ? (vertical ? 'ns-resize' : 'ew-resize') : '';
+        const control = marker ? null : this.controlAt(event.offsetX, event.offsetY);
+        if (this.canvas) this.canvas.style.cursor = marker ? (vertical ? 'ns-resize' : 'ew-resize') : control ? 'pointer' : '';
         const item = marker ?? this.hit(event.offsetX, event.offsetY);
         if (item) this.showTooltip(item, event.offsetX, event.offsetY);
-        else this.hideTooltip();
+        else {
+            const lane = this.clippedLaneLabelAt(event.offsetX, event.offsetY);
+            if (lane) this.showLaneTooltip(lane, event.offsetX, event.offsetY);
+            else this.hideTooltip();
+        }
+    }
+
+    /** The lane whose sidebar name sits under the pointer, if that name was cut short. */
+    private clippedLaneLabelAt(x: number, y: number): Lane | null {
+        if (this.isTimelineLayout() || x >= this.sidebarWidth() || y < this.axisHeight()) return null;
+        return this.lanes.find(lane => lane.labelClipped && y >= lane.top - this.scrollTop + 4 && y <= lane.top - this.scrollTop + 30) ?? null;
     }
 
     private onPointerMove(event: PointerEvent): void {
@@ -2437,7 +3208,7 @@ export class NativeTimelineRenderer {
         const horizontalTimeline = this.isHorizontalTimeline();
         const plotSize = vertical
             ? Math.max(1, this.root.clientHeight - 52)
-            : Math.max(1, this.root.clientWidth - (horizontalTimeline ? 56 : SIDEBAR_WIDTH));
+            : Math.max(1, this.root.clientWidth - (horizontalTimeline ? 56 : this.sidebarWidth(this.root.clientWidth)));
         const pointerDelta = vertical ? event.clientY - this.dragging.y : event.clientX - this.dragging.x;
         // Two different conversions, because dragging.start/end mean two
         // different things. For a pan they are the view window, and the content
@@ -2453,6 +3224,13 @@ export class NativeTimelineRenderer {
             if (!this.isTimelineLayout()) {
                 this.scrollTop = Math.max(0, Math.min(this.maxLaneScroll(), this.scrollTop - (event.clientY - this.dragging.y)));
                 this.dragging.y = event.clientY;
+            }
+        } else if (this.dragging.kind === 'scroll') {
+            // The thumb follows the pointer, so each pixel of thumb travel moves
+            // the lanes by range / travel pixels.
+            const bar = this.laneScrollbar(this.viewportWidth());
+            if (bar && bar.travel > 0) {
+                this.scrollTop = Math.max(0, Math.min(bar.range, this.dragging.start + (event.clientY - this.dragging.y) * bar.range / bar.travel));
             }
         } else if (this.dragging.kind === 'marker') {
             // Ghost only. Moving the item here would repack the rows beneath
@@ -2553,7 +3331,7 @@ export class NativeTimelineRenderer {
     private wheelPointer(event: WheelEvent, vertical: boolean, horizontalTimeline: boolean): number {
         return vertical
             ? Math.max(0, event.offsetY - 28)
-            : Math.max(0, event.offsetX - (horizontalTimeline ? 28 : SIDEBAR_WIDTH));
+            : Math.max(0, event.offsetX - (horizontalTimeline ? 28 : this.sidebarWidth()));
     }
 
     /**
@@ -2570,7 +3348,7 @@ export class NativeTimelineRenderer {
         const horizontalTimeline = this.isHorizontalTimeline();
         const plotSize = vertical
             ? Math.max(1, this.root.clientHeight - 52)
-            : Math.max(1, this.root.clientWidth - (horizontalTimeline ? 56 : SIDEBAR_WIDTH));
+            : Math.max(1, this.root.clientWidth - (horizontalTimeline ? 56 : this.sidebarWidth(this.root.clientWidth)));
         const deltaY = this.wheelPixels(event.deltaY, event.deltaMode, plotSize);
         const deltaX = this.wheelPixels(event.deltaX, event.deltaMode, plotSize);
 
@@ -2584,7 +3362,7 @@ export class NativeTimelineRenderer {
             return;
         }
 
-        const overSidebar = !this.isTimelineLayout() && event.offsetX < SIDEBAR_WIDTH;
+        const overSidebar = !this.isTimelineLayout() && event.offsetX < this.sidebarWidth(this.root.clientWidth);
         // Lane scrolling means nothing in the vertical layout: the cards are
         // placed along the time axis and never read scrollTop, so a bare
         // trackpad scroll has to pan through time or the gesture looks dead.
@@ -2624,9 +3402,9 @@ export class NativeTimelineRenderer {
         const horizontalTimeline = this.isHorizontalTimeline();
         const center = vertical ? (points[0].y + points[1].y) / 2 : (points[0].x + points[1].x) / 2;
         const bounds = this.root.getBoundingClientRect();
-        const inset = horizontalTimeline ? 28 : SIDEBAR_WIDTH;
+        const inset = horizontalTimeline ? 28 : this.sidebarWidth(this.root.clientWidth);
         const local = vertical ? center - bounds.top - 28 : center - bounds.left - inset;
-        const size = vertical ? Math.max(1, this.root.clientHeight - 52) : Math.max(1, this.root.clientWidth - (horizontalTimeline ? 56 : SIDEBAR_WIDTH));
+        const size = vertical ? Math.max(1, this.root.clientHeight - 52) : Math.max(1, this.root.clientWidth - (horizontalTimeline ? 56 : this.sidebarWidth(this.root.clientWidth)));
         const ratio = Math.max(0, Math.min(1, local / size));
         this.pinch = { distance: Math.max(1, distance), span: this.viewEnd - this.viewStart, anchorTime: this.viewStart + ratio * (this.viewEnd - this.viewStart) };
     }
@@ -2641,9 +3419,9 @@ export class NativeTimelineRenderer {
         const horizontalTimeline = this.isHorizontalTimeline();
         const center = vertical ? (points[0].y + points[1].y) / 2 : (points[0].x + points[1].x) / 2;
         const bounds = this.root.getBoundingClientRect();
-        const inset = horizontalTimeline ? 28 : SIDEBAR_WIDTH;
+        const inset = horizontalTimeline ? 28 : this.sidebarWidth(this.root.clientWidth);
         const local = vertical ? center - bounds.top - 28 : center - bounds.left - inset;
-        const size = vertical ? Math.max(1, this.root.clientHeight - 52) : Math.max(1, this.root.clientWidth - (horizontalTimeline ? 56 : SIDEBAR_WIDTH));
+        const size = vertical ? Math.max(1, this.root.clientHeight - 52) : Math.max(1, this.root.clientWidth - (horizontalTimeline ? 56 : this.sidebarWidth(this.root.clientWidth)));
         const ratio = Math.max(0, Math.min(1, local / size));
         this.viewStart = this.pinch.anchorTime - span * ratio;
         this.viewEnd = this.viewStart + span;
@@ -2683,7 +3461,11 @@ export class NativeTimelineRenderer {
     }
 
     private shouldInclude(event: Event): boolean {
-        if (!event.dateTime) return false;
+        return Boolean(event.dateTime) && this.passesFilters(event);
+    }
+
+    /** The filter checks alone, so an undated event can still be counted as filtered out or not. */
+    private passesFilters(event: Event): boolean {
         if (this.filters.milestonesOnly && !event.isMilestone) return false;
         if (this.filters.characters?.size && !event.characters?.some(value => this.filters.characters!.has(value))) return false;
         if (this.filters.locations?.size && !this.eventLocations(event).some(value => this.filters.locations!.has(value))) return false;
@@ -2815,6 +3597,15 @@ export class NativeTimelineRenderer {
         return toMillis(parsed.start) ?? NaN;
     }
     private viewportWidth(): number { return this.exportSurface?.width ?? this.root?.clientWidth ?? 900; }
+
+    /**
+     * Lane-label column width for a pane of the given width. Hit testing passes
+     * the live pane width explicitly; drawing defaults to the viewport so an
+     * export gets the width it is actually rendered at.
+     */
+    private sidebarWidth(width: number = this.viewportWidth()): number {
+        return sidebarWidthFor(width, this.lanes.length === 1 && this.lanes[0].id === '__timeline__');
+    }
     private viewportHeight(): number { return this.exportSurface?.height ?? this.root?.clientHeight ?? 600; }
     private eventKey(event: Event): string { return String(event.id || event.name); }
 
@@ -2822,9 +3613,18 @@ export class NativeTimelineRenderer {
     private eventKeys(event: Event): string[] {
         return Array.from(new Set([event.id, event.name].filter((key): key is string => Boolean(key))));
     }
-    private timeToX(time: number, width: number): number { return SIDEBAR_WIDTH + (time - this.viewStart) / (this.viewEnd - this.viewStart) * Math.max(1, width - SIDEBAR_WIDTH); }
+    private timeToX(time: number, width: number): number { return this.sidebarWidth(width) + (time - this.viewStart) / (this.viewEnd - this.viewStart) * Math.max(1, width - this.sidebarWidth(width)); }
     private horizontalTimelineTimeToX(time: number, width: number): number { return 28 + (time - this.viewStart) / (this.viewEnd - this.viewStart) * Math.max(1, width - 56); }
     private rowHeight(): number { return Math.round(24 + (100 - this.options.density) * 0.16); }
+
+    /**
+     * Rows a chronology lane may use, the last of which is kept for "+K more"
+     * chips. The budget is a height, so denser or sparser rows give a
+     * different count and the lanes stay about the same size.
+     */
+    private chronologyRowCap(): number {
+        return Math.max(4, Math.round(CHRONOLOGY_ROW_BUDGET / this.rowHeight()));
+    }
     private minimumSpan(): number { return this.calendarRegistry.getActiveCalendar().baseUnit === 'minute' ? 60_000 : DAY_MS; }
 
     /** The visible window expressed in the shared absolute-day space. */
@@ -2833,7 +3633,7 @@ export class NativeTimelineRenderer {
         const horizontalTimeline = this.isHorizontalTimeline();
         const size = !this.root ? 900
             : vertical ? Math.max(1, this.root.clientHeight - 52)
-            : Math.max(1, this.root.clientWidth - (horizontalTimeline ? 56 : SIDEBAR_WIDTH));
+            : Math.max(1, this.root.clientWidth - (horizontalTimeline ? 56 : this.sidebarWidth(this.root.clientWidth)));
         const epoch = this.unixEpochAbsoluteDay();
         return { startDay: this.viewStart / DAY_MS + epoch, endDay: this.viewEnd / DAY_MS + epoch, widthPx: size };
     }
@@ -2868,6 +3668,15 @@ export class NativeTimelineRenderer {
     private ensureLaneVisible(id: string): void { const lane = this.lanes.find(value => value.id === id); if (lane) this.scrollTop = Math.max(0, lane.top - this.axisHeight()); }
     private colorFor(value: string): string { let hash = 0; for (let i = 0; i < value.length; i++) hash = ((hash << 5) - hash + value.charCodeAt(i)) | 0; return this.palette[Math.abs(hash) % this.palette.length]; }
     private css(name: string, fallback: string): string {
+        const cache = this.styleCache;
+        const key = `${name}\u0000${fallback}`;
+        const cached = cache?.values.get(key);
+        if (cached !== undefined) return cached;
+        const value = this.resolveCss(name, fallback);
+        cache?.values.set(key, value);
+        return value;
+    }
+    private resolveCss(name: string, fallback: string): string {
         const colors = this.calendarRegistry.getActiveTheme().colors;
         const themeValue: Record<string, string | undefined> = {
             '--background-primary': colors?.background,
@@ -2879,9 +3688,23 @@ export class NativeTimelineRenderer {
             '--interactive-accent': colors?.accent,
             '--color-red': colors?.now,
         };
-        return themeValue[name] || getComputedStyle(this.container).getPropertyValue(name).trim() || fallback;
+        return themeValue[name] || this.computedStyleValue(name) || fallback;
     }
-    private truncate(ctx: CanvasRenderingContext2D, value: string, width: number): string { if (ctx.measureText(value).width <= width) return value; let text = value; while (text.length > 1 && ctx.measureText(`${text}…`).width > width) text = text.slice(0, -1); return `${text}…`; }
+    /**
+     * A custom property as the container computes it. Read once per paint: the
+     * same few names are asked for by every card, and the read forces a style
+     * recalculation each time it is made.
+     */
+    private computedStyleValue(name: string): string {
+        const cache = this.styleCache;
+        const cached = cache?.computed.get(name);
+        if (cached !== undefined) return cached;
+        const value = getComputedStyle(this.container).getPropertyValue(name).trim();
+        cache?.computed.set(name, value);
+        return value;
+    }
+    private truncate(ctx: CanvasRenderingContext2D, value: string, width: number): string { return this.text.truncate(ctx, value, width); }
+    private clearTextCaches(): void { this.text.clear(); this.dateLabels.clear(); }
     private lowerBound(items: NativeItem[], target: number): number { let low = 0, high = items.length; while (low < high) { const mid = (low + high) >>> 1; if (items[mid].start < target) low = mid + 1; else high = mid; } return low; }
 
     /**
@@ -2905,8 +3728,6 @@ export class NativeTimelineRenderer {
         }
         return low;
     }
-    private niceTimeStep(raw: number): number { const units = [60_000, 5 * 60_000, 15 * 60_000, 3_600_000, 6 * 3_600_000, DAY_MS, 7 * DAY_MS, 30 * DAY_MS, 90 * DAY_MS, YEAR_MS, 5 * YEAR_MS, 10 * YEAR_MS, 100 * YEAR_MS, 1000 * YEAR_MS]; return units.find(unit => unit >= raw) || Math.ceil(raw / (1000 * YEAR_MS)) * 1000 * YEAR_MS; }
-    private formatTick(value: number, step: number): string { const date = new Date(value); if (step >= YEAR_MS) return String(date.getUTCFullYear()); if (step >= DAY_MS) return date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: step < 30 * DAY_MS ? 'numeric' : undefined, timeZone: 'UTC' }); return date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }); }
     private searchScore(event: Event, query: string): number { const name = event.name.toLowerCase(); const all = [event.name, event.description, event.location, event.status, ...(event.characters || []), ...(event.groups || []), ...(event.tags || [])].filter(Boolean).join(' ').toLowerCase(); if (!all.includes(query)) return -1; if (name === query) return 1000; if (name.startsWith(query)) return 800; if (name.includes(query)) return 500; return 100; }
     /**
      * Dependency arrow from one item to another.

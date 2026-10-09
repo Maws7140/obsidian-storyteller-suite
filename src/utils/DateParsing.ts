@@ -25,6 +25,7 @@ export interface ParsedEventDate {
 const APPROX_RE = /(circa|around|about|approx|~|approx\.)/i;
 const BCE_RE = /\b(\d+)\s*(BC|bce|BCE|B\.C\.|B\.C|B\.C\.E\.|b\.c\.|b\.c\.e\.|bc|b\.c\.e)\b/i;
 const CE_RE = /\b(\d+)\s*(CE|ce|A\.D\.|AD|ad|a\.d\.)\b/i;
+const NEG_ISO_RE = /^-(\d{1,6})(?:-(\d{1,2}))?(?:-(\d{1,2}))?$/;
 
 function inferPrecisionFromChrono(result: chrono.ParsedResult): ParsedPrecision {
   const start = result.start;
@@ -138,7 +139,24 @@ function splitRange(text: string): [string, string] | null {
   const approximate = APPROX_RE.test(text);
   const zone = getLuxonZone(opts.timezone);
 
-  // 0) CE date detection
+  // 0a) Negative ISO years ("-3000-01-01", "-0044-03-15"). Luxon's ISO parser
+  // rejects a leading minus, and chrono silently drops it, which is how a year
+  // of -3000 used to land at 3000 AD. Build the date from parts so the sign
+  // survives. Years are astronomical (matching formatCalendarYear), so -43 is
+  // 44 BCE, and the same BCE flags as the "44 BC" form are set.
+  const negIso = text.match(NEG_ISO_RE);
+  if (negIso) {
+    const year = -parseInt(negIso[1], 10);
+    const month = negIso[2] != null ? parseInt(negIso[2], 10) : 1;
+    const day = negIso[3] != null ? parseInt(negIso[3], 10) : 1;
+    const dt = DateTime.fromObject({ year, month, day }, { zone });
+    if (dt.isValid) {
+      const precision: ParsedPrecision = negIso[3] != null ? 'day' : negIso[2] != null ? 'month' : 'year';
+      return { start: dt, precision, approximate, isBCE: true, originalYear: 1 - year };
+    }
+  }
+
+  // 0b) CE date detection
   const ceMatch = text.match(CE_RE);
 
   if (ceMatch) {
