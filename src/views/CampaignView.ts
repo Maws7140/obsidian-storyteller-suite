@@ -283,6 +283,8 @@ export class CampaignView extends ItemView {
     /** Live section elements, so one part can be re-rendered in place. */
     private sidebarPartEls = new Map<SidebarPart, HTMLElement>();
     private quick: QuickEntryState = createQuickEntryState();
+    /** True from the first submit until its line is written, so repeat submits are ignored. */
+    private quickSubmitInFlight = false;
     /** NPC names typed into the quick entry bar for this view. */
     private quickNpcs: string[] = [];
     /** Last dice result from a branch roll, used to prefill the Roll entry. */
@@ -3471,6 +3473,7 @@ export class CampaignView extends ItemView {
 
     /** Writes the line to the log, replays its tags into the session and refreshes what they touched. */
     private async submitQuickEntry(): Promise<void> {
+        if (this.quickSubmitInFlight) return;
         const session = this.session;
         if (!session) return;
         const built = this.buildQuickLine();
@@ -3479,12 +3482,18 @@ export class CampaignView extends ItemView {
             return;
         }
         const line = built.line;
-        const result = applyPartylogTagsToSession(session, entryTags(parsePartylogLine(line)), this.partylogContext());
-        await this.autosave();
-        await this.writeSessionLog(body => appendLogLines(body, [line]));
+        // Take the line before the first await: a second submit then sees an empty draft and writes nothing.
         this.quick.draft = '';
-        if (result.changed) new Notice(result.summary.join('\n'));
-        await this.refreshSidebarParts(partsAffectedBy(result.summary));
+        this.quickSubmitInFlight = true;
+        try {
+            const result = applyPartylogTagsToSession(session, entryTags(parsePartylogLine(line)), this.partylogContext());
+            await this.autosave();
+            await this.writeSessionLog(body => appendLogLines(body, [line]));
+            if (result.changed) new Notice(result.summary.join('\n'));
+            await this.refreshSidebarParts(partsAffectedBy(result.summary));
+        } finally {
+            this.quickSubmitInFlight = false;
+        }
         this.focusQuickEntry();
     }
 
