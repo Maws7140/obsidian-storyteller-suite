@@ -1304,6 +1304,21 @@
     white-space: nowrap;
 }
 
+.storyteller-modal-list-edit {
+    margin-left: 8px;
+    color: var(--text-muted);
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    padding: 2px;
+    border-radius: var(--radius-xs);
+}
+
+.storyteller-modal-list-edit:hover {
+    background: var(--background-modifier-hover);
+    color: var(--text-normal);
+}
+
 .storyteller-modal-list-remove {
     margin-left: 8px;
     color: var(--text-muted);
@@ -4435,6 +4450,17 @@ body.mod-rtl .storyteller-group-members {
   text-align: center;
   max-width: 500px;
   margin: 0 auto;
+}
+
+.storyteller-network-canvas > .storyteller-network-empty-state {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  max-width: none;
+  pointer-events: none;
 }
 
 .storyteller-empty-state.storyteller-empty-state {

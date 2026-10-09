@@ -16,6 +16,7 @@ import { EntityCustomFieldsEditor, customFieldEditorOptions } from './entity/Ent
 import { EntityGroupSelector } from './entity/EntityGroupSelector';
 import { buildEntityNameIndex, getRelationshipTargetRef, resolveEntityRefName } from '../utils/EntityRefUtils';
 import { resolveDirection } from '../utils/RelationshipKinds';
+import { connectionForEditing, replaceConnectionAt } from '../utils/ConnectionEdits';
 import { isModalFieldVisible, seedDefaultCustomFields } from './entity/ModalFieldVisibility';
 import { createCollapsibleModalSection } from './entity/CollapsibleModalSection';
 import { confirmWithModal } from './ui/ConfirmModal';
@@ -848,6 +849,26 @@ export class CharacterModal extends ResponsiveModal {
             if (conn.label) {
                 infoSpan.appendText(` - ${conn.label}`);
             }
+
+            new ButtonComponent(item)
+                .setClass('storyteller-modal-list-edit')
+                .setTooltip(t('editRelationship'))
+                .setIcon('pencil')
+                .onClick(async () => {
+                    const current = this.character.connections?.[index];
+                    if (!current) return;
+                    const { RelationshipEditorModal } = await import('./RelationshipEditorModal');
+                    new RelationshipEditorModal(
+                        this.app,
+                        this.plugin,
+                        connectionForEditing(current, ref => resolveEntityRefName(ref, this.entityNameIndex)),
+                        'any',
+                        (relationship) => {
+                            this.character.connections = replaceConnectionAt(this.character.connections ?? [], index, relationship);
+                            this.renderConnectionsList(container);
+                        }
+                    ).open();
+                });
 
             new ButtonComponent(item)
                 .setClass('storyteller-modal-list-remove')

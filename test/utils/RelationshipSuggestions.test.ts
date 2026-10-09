@@ -219,3 +219,23 @@ describe('suggestion keys and accepting', () => {
         expect(splitNameList('Tom / Anne & Bob')).toEqual(['Tom', 'Anne', 'Bob']);
     });
 });
+
+describe('suggestImpliedLinks pair overlap', () => {
+    it('does not offer acquaintance for a pair already suggested through a family field', () => {
+        const aria = person('Aria', { customFields: { sibling: 'Bran' } } as Partial<LinkSuggestionCharacter>);
+        const bran = person('Bran');
+        const occasions = [1, 2, 3].map(i => ({ id: `event:${i}`, participants: ['Aria', 'Bran'] }));
+
+        const suggestions = suggestImpliedLinks({ characters: [aria, bran], occasions });
+        expect(suggestions.map(s => [s.reason, s.kind])).toEqual([['family-field', 'sibling']]);
+    });
+
+    it('does not offer a shared-group acquaintance for a pair already suggested through a family field', () => {
+        const aria = person('Aria', { groups: ['grp-guild'], customFields: { parent: 'Bran' } } as Partial<LinkSuggestionCharacter>);
+        const bran = person('Bran', { groups: ['grp-guild'] });
+        const groups = [{ id: 'grp-guild', name: 'Ninth Bell Guild', members: [] }] as Array<Pick<Group, 'id' | 'name' | 'members'>>;
+
+        const suggestions = suggestImpliedLinks({ characters: [aria, bran], groups });
+        expect(suggestions.map(s => s.reason)).toEqual(['family-field']);
+    });
+});

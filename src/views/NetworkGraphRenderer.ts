@@ -334,12 +334,6 @@ export class NetworkGraphRenderer {
         // Remove loading state
         loadingEl.remove();
 
-        // Check for empty state
-        if (nodes.length === 0) {
-            this.renderEmptyState();
-            return;
-        }
-
         // Degrees, R-Map flags and ids are computed in one place for initial render and refresh
         const elements = buildCytoscapeElements(nodes, edges);
 
@@ -356,6 +350,12 @@ export class NetworkGraphRenderer {
 
         if (!this.allowWheelZoom) {
             this.cy.userZoomingEnabled(false);
+        }
+
+        // The instance always exists so that refresh() can draw nodes added later;
+        // the empty-state message sits over it while there is nothing to draw.
+        if (nodes.length === 0) {
+            this.renderEmptyState();
         }
 
         // Apply initial zoom adjustment after layout completes
@@ -587,7 +587,7 @@ export class NetworkGraphRenderer {
             },
             // Visual hierarchy: Hub nodes (degree > 10) - Major characters/locations
             {
-                selector: 'node[[degree > 10]]',
+                selector: 'node[degree > 10]',
                 style: {
                     'border-width': 5,
                     'border-color': '#FFD700',
@@ -598,7 +598,7 @@ export class NetworkGraphRenderer {
             },
             // Visual hierarchy: Highly connected nodes (degree 6-10) - Important entities
             {
-                selector: 'node[[degree > 5]][[degree <= 10]]',
+                selector: 'node[degree > 5][degree <= 10]',
                 style: {
                     'border-width': 4,
                     'z-index': 150,
@@ -608,7 +608,7 @@ export class NetworkGraphRenderer {
             },
             // Visual hierarchy: Moderately connected nodes (degree 3-5) - Regular entities
             {
-                selector: 'node[[degree > 2]][[degree <= 5]]',
+                selector: 'node[degree > 2][degree <= 5]',
                 style: {
                     'border-width': 3,
                     'z-index': 100,
@@ -617,7 +617,7 @@ export class NetworkGraphRenderer {
             },
             // Visual hierarchy: Less connected nodes (degree 1-2) - Minor entities
             {
-                selector: 'node[[degree > 0]][[degree <= 2]]',
+                selector: 'node[degree > 0][degree <= 2]',
                 style: {
                     'opacity': 0.8,
                     'border-width': 2,
@@ -626,7 +626,7 @@ export class NetworkGraphRenderer {
             },
             // Visual hierarchy: Isolated nodes (degree = 0) - Orphaned entities
             {
-                selector: 'node[[degree = 0]]',
+                selector: 'node[degree = 0]',
                 style: {
                     'opacity': 0.5,
                     'border-style': 'dashed',
@@ -1461,10 +1461,11 @@ export class NetworkGraphRenderer {
         }
     }
 
-    // Render empty state message
+    // Render empty state message over the (empty) canvas
     private renderEmptyState(): void {
         if (!this.canvasEl) return;
-        
+
+        this.clearEmptyState();
         const emptyState = this.canvasEl.createDiv('storyteller-network-empty-state');
         this.setParsedHtml(emptyState, `
             <div style="text-align: center; padding: 3rem;">
@@ -1476,6 +1477,10 @@ export class NetworkGraphRenderer {
                 </div>
             </div>
         `);
+    }
+
+    private clearEmptyState(): void {
+        this.canvasEl?.querySelectorAll(':scope > .storyteller-network-empty-state').forEach(el => el.remove());
     }
 
     // Search and highlight nodes
@@ -1670,6 +1675,11 @@ export class NetworkGraphRenderer {
         // Update graph
         this.cy.elements().remove();
         this.cy.add(elements);
+        if (nodes.length === 0) {
+            this.renderEmptyState();
+        } else {
+            this.clearEmptyState();
+        }
 
         // Restore pinned nodes
         this.pinnedNodes.forEach(nodeId => {
