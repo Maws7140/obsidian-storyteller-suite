@@ -21,6 +21,8 @@ import { RasterCoords } from './utils/RasterCoords';
 import { EntityMarkerDiscovery } from './EntityMarkerDiscovery';
 import { MapEntityRenderer } from './MapEntityRenderer';
 import { ObsidianTileLayer } from './ObsidianTileLayer';
+import { MaplogLayer } from './maplog/MaplogLayer';
+import { emptyMaplogData } from './maplog/model';
 import {
     chooseSvgRenderMode,
     createNormalizedSvgElement,
@@ -78,6 +80,7 @@ export class LeafletRenderer extends Component {
     /** Colour and label per marker, kept for image export. */
     private markerExportMeta = new WeakMap<L.Marker, { color: string; label: string }>();
     private gridLayer: L.LayerGroup | null = null;
+    private maplogLayer: MaplogLayer | null = null;
     private workspaceResizeRef: EventRef | null = null;
 
     constructor(
@@ -140,6 +143,7 @@ export class LeafletRenderer extends Component {
         // Add layers (GeoJSON, GPX, overlays)
         await this.addLayers();
         this.addBoardGrid();
+        this.addMaplog();
 
         // Initialize MapEntityRenderer for location and entity rendering
         if (this.map) {
@@ -2064,6 +2068,18 @@ export class LeafletRenderer extends Component {
         this.gridLayer = L.layerGroup(lines).addTo(this.map);
     }
 
+    /** Maplog marks, lines and areas from the map note, read-only when the renderer is. */
+    private addMaplog(): void {
+        if (!this.map) return;
+        this.maplogLayer = new MaplogLayer(this.map, { readOnly: this.options.readOnly });
+        this.maplogLayer.setData(this.params.maplog ?? emptyMaplogData());
+    }
+
+    /** The Maplog layer, so the map view can edit and redraw it. Null before initialisation. */
+    getMaplogLayer(): MaplogLayer | null {
+        return this.maplogLayer;
+    }
+
     /**
      * Get the map ID for this renderer
      */
@@ -2220,6 +2236,8 @@ export class LeafletRenderer extends Component {
         this.layers.forEach(layer => layer.remove());
         this.gridLayer?.remove();
         this.gridLayer = null;
+        this.maplogLayer?.destroy();
+        this.maplogLayer = null;
 
         if (this.workspaceResizeRef) {
             this.plugin.app.workspace.offref(this.workspaceResizeRef);

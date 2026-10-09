@@ -12234,3 +12234,209 @@ body.mod-rtl .storyteller-group-members {
 .storyteller-campaign-standing-notes { padding-left: 0.2rem; font-size: 0.7rem; font-style: italic; color: var(--text-faint); }
 .storyteller-campaign-end-advancements { display: flex; flex-direction: column; gap: 0.25rem; margin-bottom: 0.5rem; }
 .storyteller-campaign-end-advancement { display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; }
+
+/* Maplog: marks, lines, areas, legend and palette (src/leaflet/maplog) */
+.maplog-pattern-host {
+    position: absolute;
+    width: 0;
+    height: 0;
+    overflow: hidden;
+}
+
+.maplog-mark-icon-wrap {
+    background: none;
+    border: none;
+}
+
+.maplog-mark {
+    position: relative;
+    width: 28px;
+    height: 28px;
+    line-height: 0;
+}
+
+.maplog-mark > svg {
+    display: block;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: var(--background-primary);
+    opacity: 0.92;
+}
+
+.maplog-mark-label {
+    position: absolute;
+    left: 32px;
+    top: 50%;
+    transform: translateY(-50%);
+    white-space: nowrap;
+    font-size: 11px;
+    line-height: normal;
+    color: var(--text-normal);
+    background: var(--background-primary);
+    padding: 0 4px;
+    border-radius: 3px;
+}
+
+.maplog-mark-label .maplog-level,
+.maplog-mark-label .maplog-destination {
+    color: var(--text-muted);
+}
+
+.maplog-letter {
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 14px;
+    width: 14px;
+    height: 14px;
+    text-align: center;
+}
+
+.maplog-legend-wrap {
+    position: absolute;
+    right: 10px;
+    bottom: 10px;
+    z-index: 800;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 6px;
+}
+
+.maplog-legend {
+    width: 230px;
+    max-height: 50vh;
+    overflow: auto;
+    padding: 8px 10px;
+    border-radius: 6px;
+    border: 1px solid var(--background-modifier-border);
+    background: var(--background-primary);
+    color: var(--text-normal);
+    box-shadow: var(--shadow-s);
+    font-size: 12px;
+}
+
+.maplog-legend-title {
+    font-weight: 600;
+    margin-bottom: 4px;
+}
+
+.maplog-legend-family {
+    margin-top: 6px;
+    font-size: 11px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.maplog-legend-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 1px 0;
+}
+
+.maplog-legend-icon svg {
+    display: block;
+    width: 20px;
+    height: 20px;
+    color: var(--text-normal);
+}
+
+.maplog-legend-empty,
+.maplog-legend-credit {
+    color: var(--text-muted);
+    font-size: 11px;
+}
+
+.maplog-legend-credit {
+    margin-top: 8px;
+}
+
+.maplog-palette {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    bottom: 8px;
+    z-index: 900;
+    width: 290px;
+    max-width: calc(100% - 16px);
+    overflow: auto;
+    padding: 10px;
+    border-radius: 8px;
+    border: 1px solid var(--background-modifier-border);
+    background: var(--background-primary);
+    color: var(--text-normal);
+    box-shadow: var(--shadow-l);
+    font-size: 12px;
+}
+
+.maplog-palette-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 6px;
+}
+
+.maplog-palette-title {
+    font-weight: 600;
+    font-size: 13px;
+}
+
+.maplog-palette-family {
+    margin: 8px 0 4px;
+    font-size: 11px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.maplog-palette-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(40px, 1fr));
+    gap: 4px;
+}
+
+.maplog-palette-mark {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 40px;
+    padding: 0;
+}
+
+.maplog-palette-mark.is-active {
+    box-shadow: 0 0 0 2px var(--interactive-accent);
+}
+
+.maplog-palette-mark svg {
+    width: 26px;
+    height: 26px;
+    color: var(--text-normal);
+}
+
+.maplog-palette-options {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--background-modifier-border);
+}
+
+.maplog-palette-options .setting-item {
+    border: none;
+    padding: 4px 0;
+}
+
+.maplog-palette-hint {
+    margin-top: 6px;
+    color: var(--text-muted);
+    font-size: 11px;
+}
+
+@media (max-width: 600px) {
+    .maplog-palette {
+        left: 8px;
+        width: auto;
+        max-width: none;
+    }
+}
