@@ -11,6 +11,7 @@ import {
     TemplateApplicationResult,
     TemplateEntity,
     TemplateEntitySelection,
+    TemplateEntityType,
     TemplateExistingEntityLink,
     TemplateVariableValue
 } from './TemplateTypes';
@@ -246,7 +247,8 @@ export class TemplateApplicator {
             this.applyExistingEntityLinks(
                 template,
                 result.created,
-                options.existingEntityLinkSelections
+                options.existingEntityLinkSelections,
+                options.includeEntities
             );
 
             // Phase 4: Save all entities with mapped relationships
@@ -1061,7 +1063,8 @@ export class TemplateApplicator {
     private applyExistingEntityLinks(
         template: Template,
         created: TemplateApplicationResult['created'],
-        selections: TemplateApplicationOptions['existingEntityLinkSelections']
+        selections: TemplateApplicationOptions['existingEntityLinkSelections'],
+        includeEntities?: TemplateEntitySelection
     ): void {
         const links = template.existingEntityLinks;
         if (!links || links.length === 0 || !selections) {
@@ -1071,6 +1074,9 @@ export class TemplateApplicator {
         for (const link of links) {
             const selection = selections[link.id];
             if (selection === undefined) continue;
+
+            // A link whose source entity was excluded has nothing to attach to
+            if (this.isExcludedBySelection(link.sourceType, link.sourceTemplateId, includeEntities)) continue;
 
             const values = (Array.isArray(selection) ? selection : [selection])
                 .map(value => (typeof value === 'string' ? value.trim() : ''))
@@ -1082,6 +1088,17 @@ export class TemplateApplicator {
 
             this.writeLinkValues(sourceEntity, link, values);
         }
+    }
+
+    /** True when an include selection is given and leaves this template entity out */
+    private isExcludedBySelection(
+        entityType: TemplateEntityType,
+        templateId: string,
+        selection?: TemplateEntitySelection
+    ): boolean {
+        if (!selection) return false;
+        const kept = selection[getTemplateEntityPluralKey(entityType) as keyof TemplateEntitySelection];
+        return Array.isArray(kept) && !kept.includes(templateId);
     }
 
     /**
