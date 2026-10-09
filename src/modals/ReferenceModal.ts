@@ -10,6 +10,7 @@ import type { Template, TemplateEntity, TemplateVariableValue } from '../templat
 import { EntityCustomFieldsEditor, customFieldEditorOptions } from './entity/EntityCustomFieldsEditor';
 import { ResponsiveModal } from './ResponsiveModal';
 import { confirmWithModal } from './ui/ConfirmModal';
+import { isModalFieldVisible } from './entity/ModalFieldVisibility';
 
 export type ReferenceModalSubmitCallback = (ref: Reference) => Promise<void>;
 export type ReferenceModalDeleteCallback = (ref: Reference) => Promise<void>;
@@ -42,6 +43,15 @@ export class ReferenceModal extends ResponsiveModal {
         this.onSubmit = onSubmit;
         this.onDelete = onDelete;
         this.modalEl.addClass('storyteller-reference-modal');
+    }
+
+    /**
+     * Whether a field is turned on for this vault. A hidden field is simply not
+     * rendered; its stored value rides along untouched on the object that gets
+     * submitted, so turning one off never discards data.
+     */
+    private shows(fieldKey: string): boolean {
+        return isModalFieldVisible(this.plugin.settings.hiddenModalFields, 'reference', fieldKey);
     }
 
     onOpen(): void { void (async () => {
@@ -150,61 +160,71 @@ export class ReferenceModal extends ResponsiveModal {
                 .onChange(v => this.refData.name = v)
             );
 
-        new Setting(contentEl)
-            .setName(t('category') || 'Category')
-            .addText(text => text
-                .setPlaceholder(t('categoryPh'))
-                .setValue(this.refData.category || '')
-                .onChange(v => this.refData.category = v || undefined)
-            );
+        if (this.shows('category')) {
+            new Setting(contentEl)
+                .setName(t('category') || 'Category')
+                .addText(text => text
+                    .setPlaceholder(t('categoryPh'))
+                    .setValue(this.refData.category || '')
+                    .onChange(v => this.refData.category = v || undefined)
+                );
+        }
 
-        new Setting(contentEl)
-            .setName(t('tags') || 'Tags')
-            .setDesc(t('traitsPlaceholder'))
-            .addText(text => text
-                .setPlaceholder(t('tagsPh'))
-                .setValue((this.refData.tags || []).join(', '))
-                .onChange(v => {
-                    const arr = v.split(',').map(s => s.trim()).filter(Boolean);
-                    this.refData.tags = arr.length ? arr : undefined;
-                })
-            );
+        if (this.shows('tags')) {
+            new Setting(contentEl)
+                .setName(t('tags') || 'Tags')
+                .setDesc(t('traitsPlaceholder'))
+                .addText(text => text
+                    .setPlaceholder(t('tagsPh'))
+                    .setValue((this.refData.tags || []).join(', '))
+                    .onChange(v => {
+                        const arr = v.split(',').map(s => s.trim()).filter(Boolean);
+                        this.refData.tags = arr.length ? arr : undefined;
+                    })
+                );
+        }
 
-        let imageDescEl: HTMLElement | null = null;
-        const profileImageSetting = new Setting(contentEl)
-            .setName(t('profileImage'))
-            .then(s => {
-                imageDescEl = s.descEl.createEl('small', { text: t('currentValue', this.refData.profileImagePath || t('none')) });
-                s.descEl.addClass('storyteller-modal-setting-vertical');
-            });
+        if (this.shows('profileImage')) {
+            let imageDescEl: HTMLElement | null = null;
+            const profileImageSetting = new Setting(contentEl)
+                .setName(t('profileImage'))
+                .then(s => {
+                    imageDescEl = s.descEl.createEl('small', { text: t('currentValue', this.refData.profileImagePath || t('none')) });
+                    s.descEl.addClass('storyteller-modal-setting-vertical');
+                });
         
-        // Add image selection buttons (Gallery, Upload, Vault, Clear)
-        addImageSelectionButtons(
-            profileImageSetting,
-            this.app,
-            this.plugin,
-            {
-                currentPath: this.refData.profileImagePath,
-                onSelect: (path) => {
-                    this.refData.profileImagePath = path;
-                },
-                descriptionEl: imageDescEl || undefined
-            }
-        );
+            // Add image selection buttons (Gallery, Upload, Vault, Clear)
+            addImageSelectionButtons(
+                profileImageSetting,
+                this.app,
+                this.plugin,
+                {
+                    currentPath: this.refData.profileImagePath,
+                    onSelect: (path) => {
+                        this.refData.profileImagePath = path;
+                    },
+                    descriptionEl: imageDescEl || undefined
+                }
+            );
+        }
 
-        new Setting(contentEl)
-            .setName(t('content') || 'Content')
-            .setClass('storyteller-modal-setting-vertical')
-            .addTextArea((ta: TextAreaComponent) => {
-                ta.setPlaceholder(t('content'))
-                  .setValue(this.refData.content || '')
-                  .onChange(v => this.refData.content = v || undefined);
-                ta.inputEl.rows = 12;
-            });
+        if (this.shows('content')) {
+            new Setting(contentEl)
+                .setName(t('content') || 'Content')
+                .setClass('storyteller-modal-setting-vertical')
+                .addTextArea((ta: TextAreaComponent) => {
+                    ta.setPlaceholder(t('content'))
+                      .setValue(this.refData.content || '')
+                      .onChange(v => this.refData.content = v || undefined);
+                    ta.inputEl.rows = 12;
+                });
+        }
 
         // Custom fields (add only)
         this.customFieldsEditor.setFields((this.refData as ReferenceWithCustomFields).customFields || {});
-        this.customFieldsEditor.renderSection(contentEl);
+        if (this.shows('customFields')) {
+            this.customFieldsEditor.renderSection(contentEl);
+        }
 
         if (!this.isNew && this.onDelete) {
             this.createFooterButton(footerEl, t('delete'), async () => {

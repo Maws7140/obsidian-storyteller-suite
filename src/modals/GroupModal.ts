@@ -15,6 +15,7 @@ import { TemplatePickerModal } from './TemplatePickerModal';
 import { Template } from '../templates/TemplateTypes';
 import { EntityCustomFieldsEditor, customFieldEditorOptions } from './entity/EntityCustomFieldsEditor';
 import { confirmWithModal } from './ui/ConfirmModal';
+import { isModalFieldVisible } from './entity/ModalFieldVisibility';
 
 export type GroupModalSubmitCallback = (group: Group) => Promise<void>;
 export type GroupModalDeleteCallback = (groupId: string) => Promise<void>;
@@ -74,6 +75,15 @@ export class GroupModal extends ResponsiveModal {
         this.customFieldsEditor = new EntityCustomFieldsEditor(this.app, 'faction', this.group.customFields,
             customFieldEditorOptions(this.plugin, 'faction', () => this.group));
         this.modalEl.addClass('storyteller-group-modal');
+    }
+
+    /**
+     * Whether a field is turned on for this vault. A hidden field is simply not
+     * rendered; its stored value rides along untouched on the object that gets
+     * submitted, so turning one off never discards data.
+     */
+    private shows(fieldKey: string): boolean {
+        return isModalFieldVisible(this.plugin.settings.hiddenModalFields, 'faction', fieldKey);
     }
 
     onOpen() { void (async () => {
@@ -199,14 +209,16 @@ export class GroupModal extends ResponsiveModal {
             );
 
         // Description
-        new Setting(contentEl)
-            .setName(t('description'))
-            .addTextArea(text => {
-                text.setPlaceholder(t('describeGroupPh'))
-                    .setValue(this.group.description || '')
-                    .onChange(value => { this.group.description = value; });
-                text.inputEl.rows = 4;
-            });
+        if (this.shows('description')) {
+            new Setting(contentEl)
+                .setName(t('description'))
+                .addTextArea(text => {
+                    text.setPlaceholder(t('describeGroupPh'))
+                        .setValue(this.group.description || '')
+                        .onChange(value => { this.group.description = value; });
+                    text.inputEl.rows = 4;
+                });
+        }
 
         // Group Type
         new Setting(contentEl)
@@ -230,46 +242,52 @@ export class GroupModal extends ResponsiveModal {
             );
 
         // Color
-        new Setting(contentEl)
-            .setName(t('color'))
-            .addText(text => text
-                .setPlaceholder(t('colorPlaceholder'))
-                .setValue(this.group.color || '')
-                .onChange(value => { this.group.color = value; })
-            );
+        if (this.shows('color')) {
+            new Setting(contentEl)
+                .setName(t('color'))
+                .addText(text => text
+                    .setPlaceholder(t('colorPlaceholder'))
+                    .setValue(this.group.color || '')
+                    .onChange(value => { this.group.color = value; })
+                );
+        }
 
         // Tags
-        new Setting(contentEl)
-            .setName(t('tags') || 'Tags')
-            .setDesc('Comma-separated tags')
-            .addText(text => text
-                .setPlaceholder(t('tagsPh'))
-                .setValue((this.group.tags || []).join(', '))
-                .onChange(value => { this.group.tags = value.split(',').map(t => t.trim()).filter(Boolean); })
-            );
+        if (this.shows('tags')) {
+            new Setting(contentEl)
+                .setName(t('tags') || 'Tags')
+                .setDesc('Comma-separated tags')
+                .addText(text => text
+                    .setPlaceholder(t('tagsPh'))
+                    .setValue((this.group.tags || []).join(', '))
+                    .onChange(value => { this.group.tags = value.split(',').map(t => t.trim()).filter(Boolean); })
+                );
+        }
 
         // Profile Image
-        let imagePathDesc: HTMLElement | null = null;
-        const profileImageSetting = new Setting(contentEl)
-            .setName(t('profileImage'))
-            .then(s => {
-                imagePathDesc = s.descEl.createEl('small', { text: `Current: ${this.group.profileImagePath || 'None'}` });
-                s.descEl.addClass('storyteller-modal-setting-vertical');
-            });
+        if (this.shows('profileImage')) {
+            let imagePathDesc: HTMLElement | null = null;
+            const profileImageSetting = new Setting(contentEl)
+                .setName(t('profileImage'))
+                .then(s => {
+                    imagePathDesc = s.descEl.createEl('small', { text: `Current: ${this.group.profileImagePath || 'None'}` });
+                    s.descEl.addClass('storyteller-modal-setting-vertical');
+                });
         
-        // Add image selection buttons (Gallery, Upload, Vault, Clear)
-        addImageSelectionButtons(
-            profileImageSetting,
-            this.app,
-            this.plugin,
-            {
-                currentPath: this.group.profileImagePath,
-                onSelect: (path) => {
-                    this.group.profileImagePath = path;
-                },
-                descriptionEl: imagePathDesc || undefined
-            }
-        );
+            // Add image selection buttons (Gallery, Upload, Vault, Clear)
+            addImageSelectionButtons(
+                profileImageSetting,
+                this.app,
+                this.plugin,
+                {
+                    currentPath: this.group.profileImagePath,
+                    onSelect: (path) => {
+                        this.group.profileImagePath = path;
+                    },
+                    descriptionEl: imagePathDesc || undefined
+                }
+            );
+        }
 
         // === MEMBERS ===
         const membersSectionEl = contentEl.createDiv('storyteller-group-members-section');
@@ -280,190 +298,216 @@ export class GroupModal extends ResponsiveModal {
             contentEl.createEl('h3', { text: 'Faction details' });
 
             // History
-            new Setting(contentEl)
-                .setName('History')
-                .setDesc('Origin and historical background')
-                .addTextArea(text => {
-                    text.setValue(this.group.history || '')
-                        .onChange(value => { this.group.history = value; });
-                    text.inputEl.rows = 4;
-                });
+            if (this.shows('history')) {
+                new Setting(contentEl)
+                    .setName('History')
+                    .setDesc('Origin and historical background')
+                    .addTextArea(text => {
+                        text.setValue(this.group.history || '')
+                            .onChange(value => { this.group.history = value; });
+                        text.inputEl.rows = 4;
+                    });
+            }
 
             // Structure
-            new Setting(contentEl)
-                .setName('Structure')
-                .setDesc('Organizational hierarchy and leadership')
-                .addTextArea(text => {
-                    text.setValue(this.group.structure || '')
-                        .onChange(value => { this.group.structure = value; });
-                    text.inputEl.rows = 4;
-                });
+            if (this.shows('structure')) {
+                new Setting(contentEl)
+                    .setName('Structure')
+                    .setDesc('Organizational hierarchy and leadership')
+                    .addTextArea(text => {
+                        text.setValue(this.group.structure || '')
+                            .onChange(value => { this.group.structure = value; });
+                        text.inputEl.rows = 4;
+                    });
+            }
 
             // Goals
-            new Setting(contentEl)
-                .setName('Goals')
-                .setDesc('Objectives and motivations')
-                .addTextArea(text => {
-                    text.setValue(this.group.goals || '')
-                        .onChange(value => { this.group.goals = value; });
-                    text.inputEl.rows = 4;
-                });
+            if (this.shows('goals')) {
+                new Setting(contentEl)
+                    .setName('Goals')
+                    .setDesc('Objectives and motivations')
+                    .addTextArea(text => {
+                        text.setValue(this.group.goals || '')
+                            .onChange(value => { this.group.goals = value; });
+                        text.inputEl.rows = 4;
+                    });
+            }
 
             // Resources
-            new Setting(contentEl)
-                .setName('Resources')
-                .setDesc('Available assets and capabilities')
-                .addTextArea(text => {
-                    text.setValue(this.group.resources || '')
-                        .onChange(value => { this.group.resources = value; });
-                    text.inputEl.rows = 4;
-                });
+            if (this.shows('resources')) {
+                new Setting(contentEl)
+                    .setName('Resources')
+                    .setDesc('Available assets and capabilities')
+                    .addTextArea(text => {
+                        text.setValue(this.group.resources || '')
+                            .onChange(value => { this.group.resources = value; });
+                        text.inputEl.rows = 4;
+                    });
+            }
 
             // Strength
-            new Setting(contentEl)
-                .setName('Strength')
-                .setDesc('Overall power level or description')
-                .addText(text => text
-                    .setValue(this.group.strength || '')
-                    .onChange(value => { this.group.strength = value; })
-                );
+            if (this.shows('strength')) {
+                new Setting(contentEl)
+                    .setName('Strength')
+                    .setDesc('Overall power level or description')
+                    .addText(text => text
+                        .setValue(this.group.strength || '')
+                        .onChange(value => { this.group.strength = value; })
+                    );
+            }
 
             // Status
-            new Setting(contentEl)
-                .setName('Status')
-                .setDesc('Current state (active, dormant, disbanded, etc.)')
-                .addText(text => text
-                    .setValue(this.group.status || '')
-                    .onChange(value => { this.group.status = value; })
-                );
+            if (this.shows('status')) {
+                new Setting(contentEl)
+                    .setName('Status')
+                    .setDesc('Current state (active, dormant, disbanded, etc.)')
+                    .addText(text => text
+                        .setValue(this.group.status || '')
+                        .onChange(value => { this.group.status = value; })
+                    );
+            }
 
-            // === POWER & INFLUENCE ===
-            contentEl.createEl('h3', { text: 'Power & influence' });
+            if (this.shows('powerInfluence')) {
+                // === POWER & INFLUENCE ===
+                contentEl.createEl('h3', { text: 'Power & influence' });
 
-            // Military Power
-            new Setting(contentEl)
-                .setName('Military power')
-                .setDesc('Military strength (0-100)')
-                .addSlider(slider => slider
-                    .setLimits(0, 100, 1)
-                    .setValue(this.group.militaryPower || 50)
-                    .setDynamicTooltip()
-                    .onChange(value => { this.group.militaryPower = value; })
-                );
+                // Military Power
+                new Setting(contentEl)
+                    .setName('Military power')
+                    .setDesc('Military strength (0-100)')
+                    .addSlider(slider => slider
+                        .setLimits(0, 100, 1)
+                        .setValue(this.group.militaryPower || 50)
+                        .setDynamicTooltip()
+                        .onChange(value => { this.group.militaryPower = value; })
+                    );
 
-            // Economic Power
-            new Setting(contentEl)
-                .setName('Economic power')
-                .setDesc('Economic influence (0-100)')
-                .addSlider(slider => slider
-                    .setLimits(0, 100, 1)
-                    .setValue(this.group.economicPower || 50)
-                    .setDynamicTooltip()
-                    .onChange(value => { this.group.economicPower = value; })
-                );
+                // Economic Power
+                new Setting(contentEl)
+                    .setName('Economic power')
+                    .setDesc('Economic influence (0-100)')
+                    .addSlider(slider => slider
+                        .setLimits(0, 100, 1)
+                        .setValue(this.group.economicPower || 50)
+                        .setDynamicTooltip()
+                        .onChange(value => { this.group.economicPower = value; })
+                    );
 
-            // Political Influence
-            new Setting(contentEl)
-                .setName('Political influence')
-                .setDesc('Political power (0-100)')
-                .addSlider(slider => slider
-                    .setLimits(0, 100, 1)
-                    .setValue(this.group.politicalInfluence || 50)
-                    .setDynamicTooltip()
-                    .onChange(value => { this.group.politicalInfluence = value; })
-                );
+                // Political Influence
+                new Setting(contentEl)
+                    .setName('Political influence')
+                    .setDesc('Political power (0-100)')
+                    .addSlider(slider => slider
+                        .setLimits(0, 100, 1)
+                        .setValue(this.group.politicalInfluence || 50)
+                        .setDynamicTooltip()
+                        .onChange(value => { this.group.politicalInfluence = value; })
+                    );
+            }
 
-            // === IDENTITY & SYMBOLS ===
-            contentEl.createEl('h3', { text: 'Identity & symbols' });
+            if (this.shows('identity')) {
+                // === IDENTITY & SYMBOLS ===
+                contentEl.createEl('h3', { text: 'Identity & symbols' });
 
-            // Colors
-            new Setting(contentEl)
-                .setName('Colors')
-                .setDesc('Faction colors (comma-separated)')
-                .addText(text => text
-                    .setValue((this.group.colors || []).join(', '))
-                    .onChange(value => {
-                        this.group.colors = value.split(',').map(c => c.trim()).filter(Boolean);
-                    })
-                );
-
-            // Emblem
-            new Setting(contentEl)
-                .setName('Emblem')
-                .setDesc('Symbol or emblem description')
-                .addText(text => text
-                    .setValue(this.group.emblem || '')
-                    .onChange(value => { this.group.emblem = value; })
-                );
-
-            // Motto
-            new Setting(contentEl)
-                .setName('Motto')
-                .setDesc('Slogan or motto')
-                .addText(text => text
-                    .setValue(this.group.motto || '')
-                    .onChange(value => { this.group.motto = value; })
-                );
-
-            // Territories
-            new Setting(contentEl)
-                .setName('Territories')
-                .setDesc('Controlled territories (comma-separated)')
-                .addTextArea(text => {
-                    text.setValue((this.group.territories || []).join(', '))
+                // Colors
+                new Setting(contentEl)
+                    .setName('Colors')
+                    .setDesc('Faction colors (comma-separated)')
+                    .addText(text => text
+                        .setValue((this.group.colors || []).join(', '))
                         .onChange(value => {
-                            this.group.territories = value.split(',').map(t => t.trim()).filter(Boolean);
-                        });
-                    text.inputEl.rows = 3;
-                });
+                            this.group.colors = value.split(',').map(c => c.trim()).filter(Boolean);
+                        })
+                    );
+
+                // Emblem
+                new Setting(contentEl)
+                    .setName('Emblem')
+                    .setDesc('Symbol or emblem description')
+                    .addText(text => text
+                        .setValue(this.group.emblem || '')
+                        .onChange(value => { this.group.emblem = value; })
+                    );
+
+                // Motto
+                new Setting(contentEl)
+                    .setName('Motto')
+                    .setDesc('Slogan or motto')
+                    .addText(text => text
+                        .setValue(this.group.motto || '')
+                        .onChange(value => { this.group.motto = value; })
+                    );
+
+                // Territories
+                new Setting(contentEl)
+                    .setName('Territories')
+                    .setDesc('Controlled territories (comma-separated)')
+                    .addTextArea(text => {
+                        text.setValue((this.group.territories || []).join(', '))
+                            .onChange(value => {
+                                this.group.territories = value.split(',').map(t => t.trim()).filter(Boolean);
+                            });
+                        text.inputEl.rows = 3;
+                    });
+            }
 
             // === RELATIONSHIPS ===
             contentEl.createEl('h3', { text: 'Relationships' });
 
-            // Group Relationships
-            if (!this.group.groupRelationships) {
-                this.group.groupRelationships = [];
+            if (this.shows('groupRelationships')) {
+                // Group Relationships
+                if (!this.group.groupRelationships) {
+                    this.group.groupRelationships = [];
+                }
+                const relationshipEditorEl = contentEl.createDiv('storyteller-group-relationship-editor');
+                this.renderGroupRelationshipEditor(relationshipEditorEl);
             }
-            const relationshipEditorEl = contentEl.createDiv('storyteller-group-relationship-editor');
-            this.renderGroupRelationshipEditor(relationshipEditorEl);
 
             // Linked Culture
-            new Setting(contentEl)
-                .setName('Linked culture')
-                .setDesc('Associated culture')
-                .addDropdown(dropdown => {
-                    dropdown.addOption('', 'None');
-                    this.allCultures.forEach(c => { dropdown.addOption(c.name, c.name); });
-                    dropdown.setValue(this.group.linkedCulture || '')
-                        .onChange(value => { this.group.linkedCulture = value || undefined; });
-                });
+            if (this.shows('linkedCulture')) {
+                new Setting(contentEl)
+                    .setName('Linked culture')
+                    .setDesc('Associated culture')
+                    .addDropdown(dropdown => {
+                        dropdown.addOption('', 'None');
+                        this.allCultures.forEach(c => { dropdown.addOption(c.name, c.name); });
+                        dropdown.setValue(this.group.linkedCulture || '')
+                            .onChange(value => { this.group.linkedCulture = value || undefined; });
+                    });
+            }
 
             // Parent Group
-            new Setting(contentEl)
-                .setName('Parent group')
-                .setDesc('Larger organization this group belongs to')
-                .addDropdown(dropdown => {
-                    dropdown.addOption('', 'None');
-                    this.allGroups
-                        .filter(g => g.id !== this.group.id)
-                        .forEach(g => { dropdown.addOption(g.name, g.name); });
-                    dropdown.setValue(this.group.parentGroup || '')
-                        .onChange(value => { this.group.parentGroup = value || undefined; });
-                });
+            if (this.shows('parentGroup')) {
+                new Setting(contentEl)
+                    .setName('Parent group')
+                    .setDesc('Larger organization this group belongs to')
+                    .addDropdown(dropdown => {
+                        dropdown.addOption('', 'None');
+                        this.allGroups
+                            .filter(g => g.id !== this.group.id)
+                            .forEach(g => { dropdown.addOption(g.name, g.name); });
+                        dropdown.setValue(this.group.parentGroup || '')
+                            .onChange(value => { this.group.parentGroup = value || undefined; });
+                    });
+            }
 
             // Subgroups
-            new Setting(contentEl)
-                .setName('Subgroups')
-                .setDesc('Smaller groups within this organization (comma-separated)')
-                .addTextArea(text => {
-                    text.setValue((this.group.subgroups || []).join(', '))
-                        .onChange(value => {
-                            this.group.subgroups = value.split(',').map(s => s.trim()).filter(Boolean);
-                        });
-                    text.inputEl.rows = 2;
-                });
+            if (this.shows('subgroups')) {
+                new Setting(contentEl)
+                    .setName('Subgroups')
+                    .setDesc('Smaller groups within this organization (comma-separated)')
+                    .addTextArea(text => {
+                        text.setValue((this.group.subgroups || []).join(', '))
+                            .onChange(value => {
+                                this.group.subgroups = value.split(',').map(s => s.trim()).filter(Boolean);
+                            });
+                        text.inputEl.rows = 2;
+                    });
+            }
 
-            this.customFieldsEditor.renderSection(contentEl);
+            if (this.shows('customFields')) {
+                this.customFieldsEditor.renderSection(contentEl);
+            }
         }
 
         if (!this.isNew && this.onDelete) {
@@ -714,172 +758,180 @@ export class GroupModal extends ResponsiveModal {
         const isMember = (type: 'character' | 'location' | 'event' | 'item', id: string) =>
             this.group.members.some(m => m.type === type && m.id === id);
 
-        // --- Characters Multi-Select ---
-        const charSetting = new Setting(container)
-            .setName(t('characters'));
-        const charTagContainer = charSetting.controlEl.createDiv('group-tag-list');
-        this.group.members.filter(m => m.type === 'character').forEach(member => {
-            const char = this.allCharacters.find(c => (c.id || c.name) === member.id);
-            if (char) {
-                const tag = charTagContainer.createSpan({ cls: 'group-tag' });
-                const nameLink = tag.createEl('a', { text: char.name, cls: 'group-member-link' });
-                nameLink.onclick = async (e) => {
-                    e.preventDefault();
-                    const { CharacterModal } = await import('./CharacterModal');
-                    new CharacterModal(this.app, this.plugin, char, async () => {}).open();
-                };
-                const removeBtn = tag.createSpan({ text: ' ×', cls: 'remove-group-btn' });
-                removeBtn.onclick = async () => {
-                    this.group.members = this.group.members.filter(m => !(m.type === 'character' && m.id === member.id));
-                    if (!this.isNew && this.group.id) {
-                        await this.plugin.removeMemberFromGroup(this.group.id, 'character', member.id);
-                    }
-                    this.renderMemberSelectors(container);
-                };
-            }
-        });
-        charSetting.addButton(btn => {
-            btn.setButtonText(t('add'))
-                .setCta()
-                .onClick(() => {
-                    new CharacterSuggestModal(this.app, this.plugin, (selectedChar) => { void (async () => {
-                        if (selectedChar && !isMember('character', selectedChar.id || selectedChar.name)) {
-                            this.group.members.push({ type: 'character', id: selectedChar.id || selectedChar.name, name: selectedChar.name });
-                            // Only update in settings if group already exists (not new)
-                            if (!this.isNew && this.group.id) {
-                                await this.plugin.addMemberToGroup(this.group.id, 'character', selectedChar.id || selectedChar.name);
-                            }
-                            this.renderMemberSelectors(container);
-                        }
-                    })(); }).open();
-                });
-        });
-
-        // --- Locations Multi-Select ---
-        const locSetting = new Setting(container)
-            .setName(t('locations'));
-        const locTagContainer = locSetting.controlEl.createDiv('group-tag-list');
-        this.group.members.filter(m => m.type === 'location').forEach(member => {
-            const loc = this.allLocations.find(l => (l.id || l.name) === member.id);
-            if (loc) {
-                const tag = locTagContainer.createSpan({ cls: 'group-tag' });
-                const nameLink = tag.createEl('a', { text: loc.name, cls: 'group-member-link' });
-                nameLink.onclick = async (e) => {
-                    e.preventDefault();
-                    const { LocationModal } = await import('./LocationModal');
-                    new LocationModal(this.app, this.plugin, loc, async () => {}).open();
-                };
-                const removeBtn = tag.createSpan({ text: ' ×', cls: 'remove-group-btn' });
-                removeBtn.onclick = async () => {
-                    this.group.members = this.group.members.filter(m => !(m.type === 'location' && m.id === member.id));
-                    if (!this.isNew && this.group.id) {
-                        await this.plugin.removeMemberFromGroup(this.group.id, 'location', member.id);
-                    }
-                    this.renderMemberSelectors(container);
-                };
-            }
-        });
-        locSetting.addButton(btn => {
-            btn.setButtonText(t('add'))
-                .setCta()
-                .onClick(() => {
-                    new LocationSuggestModal(this.app, this.plugin, (selectedLoc) => { void (async () => {
-                        if (selectedLoc && !isMember('location', selectedLoc.id || selectedLoc.name)) {
-                            this.group.members.push({ type: 'location', id: selectedLoc.id || selectedLoc.name, name: selectedLoc.name });
-                            // Only update in settings if group already exists (not new)
-                            if (!this.isNew && this.group.id) {
-                                await this.plugin.addMemberToGroup(this.group.id, 'location', selectedLoc.id || selectedLoc.name);
-                            }
-                            this.renderMemberSelectors(container);
-                        }
-                    })(); }).open();
-                });
-        });
-
-        // --- Events Multi-Select ---
-        const evtSetting = new Setting(container)
-            .setName(t('events'));
-        const evtTagContainer = evtSetting.controlEl.createDiv('group-tag-list');
-        this.group.members.filter(m => m.type === 'event').forEach(member => {
-            const evt = this.allEvents.find(e => (e.id || e.name) === member.id);
-            if (evt) {
-                const tag = evtTagContainer.createSpan({ cls: 'group-tag' });
-                const nameLink = tag.createEl('a', { text: evt.name, cls: 'group-member-link' });
-                nameLink.onclick = async (e) => {
-                    e.preventDefault();
-                    const { EventModal } = await import('./EventModal');
-                    new EventModal(this.app, this.plugin, evt, async updated => {
-                        await this.plugin.saveEvent(updated);
-                        const index = this.allEvents.findIndex(event => (event.id || event.name) === (updated.id || updated.name));
-                        if (index >= 0) this.allEvents[index] = updated;
-                        this.renderMemberSelectors(container);
-                    }).open();
-                };
-                const removeBtn = tag.createSpan({ text: ' ×', cls: 'remove-group-btn' });
-                removeBtn.onclick = async () => {
-                    this.group.members = this.group.members.filter(m => !(m.type === 'event' && m.id === member.id));
-                    if (!this.isNew && this.group.id) {
-                        await this.plugin.removeMemberFromGroup(this.group.id, 'event', member.id);
-                    }
-                    this.renderMemberSelectors(container);
-                };
-            }
-        });
-        evtSetting.addButton(btn => {
-            btn.setButtonText(t('add'))
-                .setCta()
-                .onClick(() => {
-                    new EventSuggestModal(this.app, this.plugin, (selectedEvt) => { void (async () => {
-                        if (selectedEvt && !isMember('event', selectedEvt.id || selectedEvt.name)) {
-                            this.group.members.push({ type: 'event', id: selectedEvt.id || selectedEvt.name, name: selectedEvt.name });
-                            // Only update in settings if group already exists (not new)
-                            if (!this.isNew && this.group.id) {
-                                await this.plugin.addMemberToGroup(this.group.id, 'event', selectedEvt.id || selectedEvt.name);
-                            }
-                            this.renderMemberSelectors(container);
-                        }
-                    })(); }).open();
-                });
-        });
-
-        // --- Items Multi-Select ---
-        const itemSetting = new Setting(container).setName(t('items'));
-        const itemTagContainer = itemSetting.controlEl.createDiv('group-tag-list');
-        this.group.members.filter(m => m.type === 'item').forEach(member => {
-            const item = this.allPlotItems.find(i => (i.id || i.name) === member.id);
-            if (item) {
-                const tag = itemTagContainer.createSpan({ cls: 'group-tag' });
-                const nameLink = tag.createEl('a', { text: item.name, cls: 'group-member-link' });
-                nameLink.onclick = async (e) => {
-                    e.preventDefault();
-                    const { PlotItemModal } = await import('./PlotItemModal');
-                    new PlotItemModal(this.app, this.plugin, item, async () => {}).open();
-                };
-                const removeBtn = tag.createSpan({ text: ' ×', cls: 'remove-group-btn' });
-                removeBtn.onclick = async () => {
-                    this.group.members = this.group.members.filter(m => !(m.type === 'item' && m.id === member.id));
-                    if (!this.isNew && this.group.id) {
-                        await this.plugin.removeMemberFromGroup(this.group.id, 'item', member.id);
-                    }
-                    this.renderMemberSelectors(container);
-                };
-            }
-        });
-        itemSetting.addButton(btn => {
-            btn.setButtonText(t('add')).setCta().onClick(() => {
-                new PlotItemSuggestModal(this.app, this.plugin, (selectedItem) => { void (async () => {
-                    const itemId = selectedItem.id || selectedItem.name;
-                    if (selectedItem && !this.group.members.some(m => m.type === 'item' && m.id === itemId)) {
-                        this.group.members.push({ type: 'item', id: itemId, name: selectedItem.name });
-                        // Only update in settings if group already exists (not new)
+        if (this.shows('memberCharacters')) {
+            // --- Characters Multi-Select ---
+            const charSetting = new Setting(container)
+                .setName(t('characters'));
+            const charTagContainer = charSetting.controlEl.createDiv('group-tag-list');
+            this.group.members.filter(m => m.type === 'character').forEach(member => {
+                const char = this.allCharacters.find(c => (c.id || c.name) === member.id);
+                if (char) {
+                    const tag = charTagContainer.createSpan({ cls: 'group-tag' });
+                    const nameLink = tag.createEl('a', { text: char.name, cls: 'group-member-link' });
+                    nameLink.onclick = async (e) => {
+                        e.preventDefault();
+                        const { CharacterModal } = await import('./CharacterModal');
+                        new CharacterModal(this.app, this.plugin, char, async () => {}).open();
+                    };
+                    const removeBtn = tag.createSpan({ text: ' ×', cls: 'remove-group-btn' });
+                    removeBtn.onclick = async () => {
+                        this.group.members = this.group.members.filter(m => !(m.type === 'character' && m.id === member.id));
                         if (!this.isNew && this.group.id) {
-                            await this.plugin.addMemberToGroup(this.group.id, 'item', itemId);
+                            await this.plugin.removeMemberFromGroup(this.group.id, 'character', member.id);
                         }
                         this.renderMemberSelectors(container);
-                    }
-                })(); }).open();
+                    };
+                }
             });
-        });
+            charSetting.addButton(btn => {
+                btn.setButtonText(t('add'))
+                    .setCta()
+                    .onClick(() => {
+                        new CharacterSuggestModal(this.app, this.plugin, (selectedChar) => { void (async () => {
+                            if (selectedChar && !isMember('character', selectedChar.id || selectedChar.name)) {
+                                this.group.members.push({ type: 'character', id: selectedChar.id || selectedChar.name, name: selectedChar.name });
+                                // Only update in settings if group already exists (not new)
+                                if (!this.isNew && this.group.id) {
+                                    await this.plugin.addMemberToGroup(this.group.id, 'character', selectedChar.id || selectedChar.name);
+                                }
+                                this.renderMemberSelectors(container);
+                            }
+                        })(); }).open();
+                    });
+            });
+        }
+
+        if (this.shows('memberLocations')) {
+            // --- Locations Multi-Select ---
+            const locSetting = new Setting(container)
+                .setName(t('locations'));
+            const locTagContainer = locSetting.controlEl.createDiv('group-tag-list');
+            this.group.members.filter(m => m.type === 'location').forEach(member => {
+                const loc = this.allLocations.find(l => (l.id || l.name) === member.id);
+                if (loc) {
+                    const tag = locTagContainer.createSpan({ cls: 'group-tag' });
+                    const nameLink = tag.createEl('a', { text: loc.name, cls: 'group-member-link' });
+                    nameLink.onclick = async (e) => {
+                        e.preventDefault();
+                        const { LocationModal } = await import('./LocationModal');
+                        new LocationModal(this.app, this.plugin, loc, async () => {}).open();
+                    };
+                    const removeBtn = tag.createSpan({ text: ' ×', cls: 'remove-group-btn' });
+                    removeBtn.onclick = async () => {
+                        this.group.members = this.group.members.filter(m => !(m.type === 'location' && m.id === member.id));
+                        if (!this.isNew && this.group.id) {
+                            await this.plugin.removeMemberFromGroup(this.group.id, 'location', member.id);
+                        }
+                        this.renderMemberSelectors(container);
+                    };
+                }
+            });
+            locSetting.addButton(btn => {
+                btn.setButtonText(t('add'))
+                    .setCta()
+                    .onClick(() => {
+                        new LocationSuggestModal(this.app, this.plugin, (selectedLoc) => { void (async () => {
+                            if (selectedLoc && !isMember('location', selectedLoc.id || selectedLoc.name)) {
+                                this.group.members.push({ type: 'location', id: selectedLoc.id || selectedLoc.name, name: selectedLoc.name });
+                                // Only update in settings if group already exists (not new)
+                                if (!this.isNew && this.group.id) {
+                                    await this.plugin.addMemberToGroup(this.group.id, 'location', selectedLoc.id || selectedLoc.name);
+                                }
+                                this.renderMemberSelectors(container);
+                            }
+                        })(); }).open();
+                    });
+            });
+        }
+
+        if (this.shows('memberEvents')) {
+            // --- Events Multi-Select ---
+            const evtSetting = new Setting(container)
+                .setName(t('events'));
+            const evtTagContainer = evtSetting.controlEl.createDiv('group-tag-list');
+            this.group.members.filter(m => m.type === 'event').forEach(member => {
+                const evt = this.allEvents.find(e => (e.id || e.name) === member.id);
+                if (evt) {
+                    const tag = evtTagContainer.createSpan({ cls: 'group-tag' });
+                    const nameLink = tag.createEl('a', { text: evt.name, cls: 'group-member-link' });
+                    nameLink.onclick = async (e) => {
+                        e.preventDefault();
+                        const { EventModal } = await import('./EventModal');
+                        new EventModal(this.app, this.plugin, evt, async updated => {
+                            await this.plugin.saveEvent(updated);
+                            const index = this.allEvents.findIndex(event => (event.id || event.name) === (updated.id || updated.name));
+                            if (index >= 0) this.allEvents[index] = updated;
+                            this.renderMemberSelectors(container);
+                        }).open();
+                    };
+                    const removeBtn = tag.createSpan({ text: ' ×', cls: 'remove-group-btn' });
+                    removeBtn.onclick = async () => {
+                        this.group.members = this.group.members.filter(m => !(m.type === 'event' && m.id === member.id));
+                        if (!this.isNew && this.group.id) {
+                            await this.plugin.removeMemberFromGroup(this.group.id, 'event', member.id);
+                        }
+                        this.renderMemberSelectors(container);
+                    };
+                }
+            });
+            evtSetting.addButton(btn => {
+                btn.setButtonText(t('add'))
+                    .setCta()
+                    .onClick(() => {
+                        new EventSuggestModal(this.app, this.plugin, (selectedEvt) => { void (async () => {
+                            if (selectedEvt && !isMember('event', selectedEvt.id || selectedEvt.name)) {
+                                this.group.members.push({ type: 'event', id: selectedEvt.id || selectedEvt.name, name: selectedEvt.name });
+                                // Only update in settings if group already exists (not new)
+                                if (!this.isNew && this.group.id) {
+                                    await this.plugin.addMemberToGroup(this.group.id, 'event', selectedEvt.id || selectedEvt.name);
+                                }
+                                this.renderMemberSelectors(container);
+                            }
+                        })(); }).open();
+                    });
+            });
+        }
+
+        if (this.shows('memberItems')) {
+            // --- Items Multi-Select ---
+            const itemSetting = new Setting(container).setName(t('items'));
+            const itemTagContainer = itemSetting.controlEl.createDiv('group-tag-list');
+            this.group.members.filter(m => m.type === 'item').forEach(member => {
+                const item = this.allPlotItems.find(i => (i.id || i.name) === member.id);
+                if (item) {
+                    const tag = itemTagContainer.createSpan({ cls: 'group-tag' });
+                    const nameLink = tag.createEl('a', { text: item.name, cls: 'group-member-link' });
+                    nameLink.onclick = async (e) => {
+                        e.preventDefault();
+                        const { PlotItemModal } = await import('./PlotItemModal');
+                        new PlotItemModal(this.app, this.plugin, item, async () => {}).open();
+                    };
+                    const removeBtn = tag.createSpan({ text: ' ×', cls: 'remove-group-btn' });
+                    removeBtn.onclick = async () => {
+                        this.group.members = this.group.members.filter(m => !(m.type === 'item' && m.id === member.id));
+                        if (!this.isNew && this.group.id) {
+                            await this.plugin.removeMemberFromGroup(this.group.id, 'item', member.id);
+                        }
+                        this.renderMemberSelectors(container);
+                    };
+                }
+            });
+            itemSetting.addButton(btn => {
+                btn.setButtonText(t('add')).setCta().onClick(() => {
+                    new PlotItemSuggestModal(this.app, this.plugin, (selectedItem) => { void (async () => {
+                        const itemId = selectedItem.id || selectedItem.name;
+                        if (selectedItem && !this.group.members.some(m => m.type === 'item' && m.id === itemId)) {
+                            this.group.members.push({ type: 'item', id: itemId, name: selectedItem.name });
+                            // Only update in settings if group already exists (not new)
+                            if (!this.isNew && this.group.id) {
+                                await this.plugin.addMemberToGroup(this.group.id, 'item', itemId);
+                            }
+                            this.renderMemberSelectors(container);
+                        }
+                    })(); }).open();
+                });
+            });
+        }
     }
 
     // THIS is where the extra '}' was, which I removed.

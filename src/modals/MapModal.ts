@@ -12,6 +12,7 @@ import { MapHierarchyManager } from '../utils/MapHierarchyManager';
 import { addImageSelectionButtons } from '../utils/ImageSelectionHelper';
 import { EntityCustomFieldsEditor, customFieldEditorOptions } from './entity/EntityCustomFieldsEditor';
 import { EntityGroupSelector } from './entity/EntityGroupSelector';
+import { isModalFieldVisible } from './entity/ModalFieldVisibility';
 
 export type MapModalSubmitCallback = (map: Map) => Promise<void>;
 export type MapModalDeleteCallback = (map: Map) => Promise<void>;
@@ -73,6 +74,15 @@ export class MapModal extends ResponsiveModal {
         this.onSubmit = onSubmit;
         this.onDelete = onDelete;
         this.modalEl.addClass('storyteller-map-modal');
+    }
+
+    /**
+     * Whether a field is turned on for this vault. A hidden field is simply not
+     * rendered; its stored value rides along untouched on the object that gets
+     * submitted, so turning one off never discards data.
+     */
+    private shows(fieldKey: string): boolean {
+        return isModalFieldVisible(this.plugin.settings.hiddenModalFields, 'map', fieldKey);
     }
 
     onOpen() { void (async () => {
@@ -212,19 +222,21 @@ export class MapModal extends ResponsiveModal {
                 .inputEl.addClass('storyteller-modal-input-large')
             );
 
-        new Setting(contentEl)
-            .setName(t('description'))
-            .setClass('storyteller-modal-setting-vertical')
-            .addTextArea(text => {
-                text
-                    .setPlaceholder('Map description')
-                    .setValue(this.map.description || '')
-                    .onChange(value => {
-                        this.map.description = value || undefined;
-                    });
-                text.inputEl.rows = 4;
-                text.inputEl.addClass('storyteller-modal-textarea');
-            });
+        if (this.shows('description')) {
+            new Setting(contentEl)
+                .setName(t('description'))
+                .setClass('storyteller-modal-setting-vertical')
+                .addTextArea(text => {
+                    text
+                        .setPlaceholder('Map description')
+                        .setValue(this.map.description || '')
+                        .onChange(value => {
+                            this.map.description = value || undefined;
+                        });
+                    text.inputEl.rows = 4;
+                    text.inputEl.addClass('storyteller-modal-textarea');
+                });
+        }
 
         // Map Type
         new Setting(contentEl)
@@ -242,219 +254,235 @@ export class MapModal extends ResponsiveModal {
             });
 
         // Map Scale
-        new Setting(contentEl)
-            .setName('Scale')
-            .setDesc('Map scale/hierarchy level')
-            .addDropdown((dropdown: DropdownComponent) => {
-                dropdown
-                    .addOption('world', 'World')
-                    .addOption('region', 'Region')
-                    .addOption('city', 'City')
-                    .addOption('building', 'Building')
-                    .addOption('custom', 'Custom')
-                    .setValue(this.map.scale || 'custom')
-                    .onChange((value) => {
-                        this.map.scale = value as Map['scale'];
-                    });
-            });
+        if (this.shows('scale')) {
+            new Setting(contentEl)
+                .setName('Scale')
+                .setDesc('Map scale/hierarchy level')
+                .addDropdown((dropdown: DropdownComponent) => {
+                    dropdown
+                        .addOption('world', 'World')
+                        .addOption('region', 'Region')
+                        .addOption('city', 'City')
+                        .addOption('building', 'Building')
+                        .addOption('custom', 'Custom')
+                        .setValue(this.map.scale || 'custom')
+                        .onChange((value) => {
+                            this.map.scale = value as Map['scale'];
+                        });
+                });
+        }
 
         // Corresponding Location
-        contentEl.createEl('h3', { text: 'Corresponding location' });
-        const locationService = new (await import('../services/LocationService')).LocationService(this.plugin);
+        if (this.shows('correspondingLocationId')) {
+            contentEl.createEl('h3', { text: 'Corresponding location' });
+            const locationService = new (await import('../services/LocationService')).LocationService(this.plugin);
         
-        // Get current location name for display
-        let currentLocationName = 'None';
-        if (this.map.correspondingLocationId) {
-            const currentLocation = await locationService.getLocation(this.map.correspondingLocationId);
-            if (currentLocation) {
-                currentLocationName = currentLocation.name;
+            // Get current location name for display
+            let currentLocationName = 'None';
+            if (this.map.correspondingLocationId) {
+                const currentLocation = await locationService.getLocation(this.map.correspondingLocationId);
+                if (currentLocation) {
+                    currentLocationName = currentLocation.name;
+                }
+            }
+        
+            const locationSetting = new Setting(contentEl)
+                .setName('Location')
+                .setDesc(`Every map has a corresponding location. This location represents the area shown on the map. Current: ${currentLocationName}`)
+                .addButton(button => {
+                    button
+                        .setButtonText('Select location')
+                        .setIcon('map-pin')
+                        .onClick(() => {
+                            new LocationSuggestModal(this.app, this.plugin, (selectedLocation) => { void (async () => {
+                                if (selectedLocation) {
+                                    this.map.correspondingLocationId = selectedLocation.id || selectedLocation.name;
+                                    locationSetting.setDesc(`Every map has a corresponding location. This location represents the area shown on the map. Current: ${selectedLocation.name}`);
+                                    new Notice(`Selected "${selectedLocation.name}" as corresponding location`);
+                                } else {
+                                    // Clear selection if null (Shift+Enter)
+                                    this.map.correspondingLocationId = undefined;
+                                    locationSetting.setDesc(`Every map has a corresponding location. This location represents the area shown on the map. Current: None`);
+                                    new Notice('Corresponding location cleared');
+                                }
+                            })(); }).open();
+                        });
+                });
+        }
+
+        if (this.shows('imageMapSettings')) {
+            // Image Map Configuration
+            if (this.map.type === 'image') {
+                contentEl.createEl('h3', { text: 'Image map settings' });
+
+                const backgroundImageSetting = new Setting(contentEl)
+                    .setName('Background image')
+                    .setDesc('')
+                    .then(setting => {
+                        setting.descEl.addClass('storyteller-modal-setting-vertical');
+                    });
+            
+                const imagePathDesc = backgroundImageSetting.descEl.createEl('small', {
+                    text: `Current: ${this.map.backgroundImagePath || this.map.image || 'None'}`
+                });
+            
+                // Add image selection buttons (Gallery, Upload, Vault, Clear)
+                addImageSelectionButtons(
+                    backgroundImageSetting,
+                    this.app,
+                    this.plugin,
+                    {
+                        currentPath: this.map.backgroundImagePath || this.map.image,
+                        onSelect: (path) => {
+                            this.map.backgroundImagePath = path;
+                            this.map.image = path;
+                        },
+                        descriptionEl: imagePathDesc,
+                        enableTileGeneration: true
+                    }
+                );
+
+                new Setting(contentEl)
+                    .setName('Width')
+                    .setDesc('Map width in pixels or percentage')
+                    .addText(text => text
+                        .setValue(this.map.width?.toString() || '')
+                        .onChange(value => {
+                            const num = parseInt(value);
+                            this.map.width = isNaN(num) ? undefined : num;
+                        }));
+
+                new Setting(contentEl)
+                    .setName('Height')
+                    .setDesc('Map height in pixels or percentage')
+                    .addText(text => text
+                        .setValue(this.map.height?.toString() || '')
+                        .onChange(value => {
+                            const num = parseInt(value);
+                            this.map.height = isNaN(num) ? undefined : num;
+                        }));
             }
         }
-        
-        const locationSetting = new Setting(contentEl)
-            .setName('Location')
-            .setDesc(`Every map has a corresponding location. This location represents the area shown on the map. Current: ${currentLocationName}`)
-            .addButton(button => {
-                button
-                    .setButtonText('Select location')
-                    .setIcon('map-pin')
-                    .onClick(() => {
-                        new LocationSuggestModal(this.app, this.plugin, (selectedLocation) => { void (async () => {
-                            if (selectedLocation) {
-                                this.map.correspondingLocationId = selectedLocation.id || selectedLocation.name;
-                                locationSetting.setDesc(`Every map has a corresponding location. This location represents the area shown on the map. Current: ${selectedLocation.name}`);
-                                new Notice(`Selected "${selectedLocation.name}" as corresponding location`);
-                            } else {
-                                // Clear selection if null (Shift+Enter)
-                                this.map.correspondingLocationId = undefined;
-                                locationSetting.setDesc(`Every map has a corresponding location. This location represents the area shown on the map. Current: None`);
-                                new Notice('Corresponding location cleared');
-                            }
-                        })(); }).open();
-                    });
-            });
 
-        // Image Map Configuration
-        if (this.map.type === 'image') {
-            contentEl.createEl('h3', { text: 'Image map settings' });
+        if (this.shows('realWorldSettings')) {
+            // Real-World Map Configuration
+            if (this.map.type === 'real') {
+                contentEl.createEl('h3', { text: 'Real-world map settings' });
 
-            const backgroundImageSetting = new Setting(contentEl)
-                .setName('Background image')
+                new Setting(contentEl)
+                    .setName('Latitude')
+                    .setDesc('Initial latitude (center point)')
+                    .addText(text => text
+                        .setValue(this.map.lat?.toString() || '')
+                        .onChange(value => {
+                            const num = parseFloat(value);
+                            this.map.lat = isNaN(num) ? undefined : num;
+                        }));
+
+                new Setting(contentEl)
+                    .setName('Longitude')
+                    .setDesc('Initial longitude (center point)')
+                    .addText(text => text
+                        .setValue(this.map.long?.toString() || '')
+                        .onChange(value => {
+                            const num = parseFloat(value);
+                            this.map.long = isNaN(num) ? undefined : num;
+                        }));
+
+                new Setting(contentEl)
+                    .setName('Default zoom')
+                    .setDesc('Initial zoom level')
+                    .addText(text => text
+                        .setValue(this.map.defaultZoom?.toString() || '13')
+                        .onChange(value => {
+                            const num = parseInt(value);
+                            this.map.defaultZoom = isNaN(num) ? 13 : num;
+                        }));
+
+                new Setting(contentEl)
+                    .setName('Tile server')
+                    .setDesc('Custom tile server URL (optional)')
+                    .addText(text => text
+                        .setValue(this.map.tileServer || '')
+                        .onChange(value => {
+                            this.map.tileServer = value || undefined;
+                        }));
+
+                new Setting(contentEl)
+                    .setName('Dark mode')
+                    .setDesc('Use dark mode tiles')
+                    .addToggle(toggle => toggle
+                        .setValue(this.map.darkMode || false)
+                        .onChange(value => {
+                            this.map.darkMode = value;
+                        }));
+            }
+        }
+
+        // Common Map Settings
+        if (this.shows('zoomLimits')) {
+            contentEl.createEl('h3', { text: 'Map settings' });
+
+            new Setting(contentEl)
+                .setName('Min zoom')
+                .setDesc('Minimum zoom level')
+                .addText(text => text
+                    .setValue(this.map.minZoom?.toString() || '')
+                    .onChange(value => {
+                        const num = parseInt(value);
+                        this.map.minZoom = isNaN(num) ? undefined : num;
+                    }));
+
+            new Setting(contentEl)
+                .setName('Max zoom')
+                .setDesc('Maximum zoom level')
+                .addText(text => text
+                    .setValue(this.map.maxZoom?.toString() || '')
+                    .onChange(value => {
+                        const num = parseInt(value);
+                        this.map.maxZoom = isNaN(num) ? undefined : num;
+                    }));
+        }
+
+        // Profile Image
+        if (this.shows('profileImage')) {
+            const profileImageSetting = new Setting(contentEl)
+                .setName('Thumbnail image')
                 .setDesc('')
                 .then(setting => {
                     setting.descEl.addClass('storyteller-modal-setting-vertical');
                 });
-            
-            const imagePathDesc = backgroundImageSetting.descEl.createEl('small', {
-                text: `Current: ${this.map.backgroundImagePath || this.map.image || 'None'}`
+        
+            const profileImageDesc = profileImageSetting.descEl.createEl('small', {
+                text: `Current: ${this.map.profileImagePath || 'None'}`
             });
-            
+        
             // Add image selection buttons (Gallery, Upload, Vault, Clear)
             addImageSelectionButtons(
-                backgroundImageSetting,
+                profileImageSetting,
                 this.app,
                 this.plugin,
                 {
-                    currentPath: this.map.backgroundImagePath || this.map.image,
+                    currentPath: this.map.profileImagePath,
                     onSelect: (path) => {
-                        this.map.backgroundImagePath = path;
-                        this.map.image = path;
+                        this.map.profileImagePath = path;
                     },
-                    descriptionEl: imagePathDesc,
-                    enableTileGeneration: true
+                    descriptionEl: profileImageDesc
                 }
             );
-
-            new Setting(contentEl)
-                .setName('Width')
-                .setDesc('Map width in pixels or percentage')
-                .addText(text => text
-                    .setValue(this.map.width?.toString() || '')
-                    .onChange(value => {
-                        const num = parseInt(value);
-                        this.map.width = isNaN(num) ? undefined : num;
-                    }));
-
-            new Setting(contentEl)
-                .setName('Height')
-                .setDesc('Map height in pixels or percentage')
-                .addText(text => text
-                    .setValue(this.map.height?.toString() || '')
-                    .onChange(value => {
-                        const num = parseInt(value);
-                        this.map.height = isNaN(num) ? undefined : num;
-                    }));
         }
-
-        // Real-World Map Configuration
-        if (this.map.type === 'real') {
-            contentEl.createEl('h3', { text: 'Real-world map settings' });
-
-            new Setting(contentEl)
-                .setName('Latitude')
-                .setDesc('Initial latitude (center point)')
-                .addText(text => text
-                    .setValue(this.map.lat?.toString() || '')
-                    .onChange(value => {
-                        const num = parseFloat(value);
-                        this.map.lat = isNaN(num) ? undefined : num;
-                    }));
-
-            new Setting(contentEl)
-                .setName('Longitude')
-                .setDesc('Initial longitude (center point)')
-                .addText(text => text
-                    .setValue(this.map.long?.toString() || '')
-                    .onChange(value => {
-                        const num = parseFloat(value);
-                        this.map.long = isNaN(num) ? undefined : num;
-                    }));
-
-            new Setting(contentEl)
-                .setName('Default zoom')
-                .setDesc('Initial zoom level')
-                .addText(text => text
-                    .setValue(this.map.defaultZoom?.toString() || '13')
-                    .onChange(value => {
-                        const num = parseInt(value);
-                        this.map.defaultZoom = isNaN(num) ? 13 : num;
-                    }));
-
-            new Setting(contentEl)
-                .setName('Tile server')
-                .setDesc('Custom tile server URL (optional)')
-                .addText(text => text
-                    .setValue(this.map.tileServer || '')
-                    .onChange(value => {
-                        this.map.tileServer = value || undefined;
-                    }));
-
-            new Setting(contentEl)
-                .setName('Dark mode')
-                .setDesc('Use dark mode tiles')
-                .addToggle(toggle => toggle
-                    .setValue(this.map.darkMode || false)
-                    .onChange(value => {
-                        this.map.darkMode = value;
-                    }));
-        }
-
-        // Common Map Settings
-        contentEl.createEl('h3', { text: 'Map settings' });
-
-        new Setting(contentEl)
-            .setName('Min zoom')
-            .setDesc('Minimum zoom level')
-            .addText(text => text
-                .setValue(this.map.minZoom?.toString() || '')
-                .onChange(value => {
-                    const num = parseInt(value);
-                    this.map.minZoom = isNaN(num) ? undefined : num;
-                }));
-
-        new Setting(contentEl)
-            .setName('Max zoom')
-            .setDesc('Maximum zoom level')
-            .addText(text => text
-                .setValue(this.map.maxZoom?.toString() || '')
-                .onChange(value => {
-                    const num = parseInt(value);
-                    this.map.maxZoom = isNaN(num) ? undefined : num;
-                }));
-
-        // Profile Image
-        const profileImageSetting = new Setting(contentEl)
-            .setName('Thumbnail image')
-            .setDesc('')
-            .then(setting => {
-                setting.descEl.addClass('storyteller-modal-setting-vertical');
-            });
-        
-        const profileImageDesc = profileImageSetting.descEl.createEl('small', {
-            text: `Current: ${this.map.profileImagePath || 'None'}`
-        });
-        
-        // Add image selection buttons (Gallery, Upload, Vault, Clear)
-        addImageSelectionButtons(
-            profileImageSetting,
-            this.app,
-            this.plugin,
-            {
-                currentPath: this.map.profileImagePath,
-                onSelect: (path) => {
-                    this.map.profileImagePath = path;
-                },
-                descriptionEl: profileImageDesc
-            }
-        );
 
         // Custom Fields
         this.customFieldsEditor.setFields(this.map.customFields);
-        this.customFieldsEditor.renderSection(contentEl);
+        if (this.shows('customFields')) {
+            this.customFieldsEditor.renderSection(contentEl);
+        }
 
         // Groups
-        const groupSelectorContainer = contentEl.createDiv('storyteller-group-selector-container');
-        this.groupSelector.attach(groupSelectorContainer);
+        if (this.shows('groups')) {
+            const groupSelectorContainer = contentEl.createDiv('storyteller-group-selector-container');
+            this.groupSelector.attach(groupSelectorContainer);
+        }
 
         if (!this.isNew && this.onDelete) {
             this.createFooterButton(footerEl, t('delete'), async () => {
