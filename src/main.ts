@@ -300,6 +300,8 @@ const FRONTMATTER_LINK_ONLY_SCALAR_FIELDS = new Set([
     networkGraphZoom?: number;
     /** Network graph view pan position (saved per session) */
     networkGraphPan?: { x: number; y: number };
+    /** Keys of implied-link suggestions the user dismissed in the graph view (see RelationshipSuggestions.ts) */
+    dismissedLinkSuggestions?: string[];
 
     /** Story board settings */
     storyBoardLayout?: 'chapters' | 'timeline' | 'status';
