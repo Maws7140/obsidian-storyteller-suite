@@ -22,15 +22,25 @@ import type { CampaignInterlude, CampaignSession } from '../types';
 import { standingForRelationshipType, threadKindOf, threadStateOf, trackerKindOf } from '../utils/CampaignModel';
 import {
 	createPartylogState,
+	entryTags,
 	formatCampaignHeader,
+	formatEntry,
 	formatInterlude,
+	formatSceneHeader,
 	formatSessionEnd,
 	formatSessionHeader,
 	parsePartylogLine,
 	parsePartylogLog,
 	replayPartylogLog,
 } from './partylog';
-import type { CampaignHeader, FormatStyle, Interlude, PartylogEntry, PartylogState, SessionHeader } from './partylog';
+import type { AdvanceTag, CampaignHeader, FormatStyle, Interlude, MetaEntry, PartylogEntry, PartylogState, SessionHeader } from './partylog';
+import {
+	memberNameOf,
+	partyCharacterNamesOf,
+	standingGroupName,
+	upsertSessionHeaderBlock,
+} from './PartylogSessionBridge';
+import type { PartylogBridgeContext } from './PartylogSessionBridge';
 
 /** One session to export: the model fields plus the stored `## Session Log` body. */
 export interface PartylogExportSession {
@@ -43,6 +53,8 @@ export interface PartylogExportInput {
 	title: string;
 	sessions: PartylogExportSession[];
 	style?: FormatStyle;
+	/** Story groups and characters, used to name legacy records that only hold ids. */
+	context?: PartylogBridgeContext;
 }
 
 export interface PartylogExportResult {
@@ -89,11 +101,11 @@ function gaugeText(key: string, current: number, max: number | undefined): strin
 	return max !== undefined && max > 0 ? `${key} ${current}/${max}` : `${key} ${current}`;
 }
 
-function pcLines(session: CampaignSession, state: PartylogState): string[] {
+function pcLines(session: CampaignSession, state: PartylogState, ctx: PartylogBridgeContext): string[] {
 	const lines: string[] = [];
 	const written = new Set<string>();
 	for (const member of session.partyState ?? []) {
-		const name = cleanTagText(member.characterName);
+		const name = cleanTagText(memberNameOf(member, ctx));
 		if (!name || written.has(name.toLowerCase())) continue;
 		written.add(name.toLowerCase());
 		const conditions = (member.conditions ?? []).map((condition) => cleanTagText(condition)).filter((c) => c.length > 0);
@@ -105,7 +117,7 @@ function pcLines(session: CampaignSession, state: PartylogState): string[] {
 		parts.push(...stale.map((label) => `-${cleanTagText(label)}`));
 		lines.push(tagLine('PC', parts));
 	}
-	for (const raw of session.partyCharacterNames ?? []) {
+	for (const raw of partyCharacterNamesOf(session, ctx)) {
 		const name = cleanTagText(raw);
 		if (!name || written.has(name.toLowerCase())) continue;
 		written.add(name.toLowerCase());
@@ -135,10 +147,10 @@ function partyLine(session: CampaignSession, state: PartylogState, warnings: str
 	return fields.length > 0 ? [tagLine('Party', fields)] : [];
 }
 
-function factionLines(session: CampaignSession, state: PartylogState): string[] {
+function factionLines(session: CampaignSession, state: PartylogState, ctx: PartylogBridgeContext): string[] {
 	const lines: string[] = [];
 	for (const standing of session.groupStandings ?? []) {
-		const name = cleanTagText(standing.groupName ?? standing.groupId ?? '');
+		const name = cleanTagText(standingGroupName(standing, ctx) ?? '');
 		if (!name) continue;
 		const parts = [name];
 		if (standing.tier !== undefined) parts.push(`tier:${Math.trunc(standing.tier)}`);
@@ -229,11 +241,16 @@ function lootLines(session: CampaignSession, state: PartylogState): string[] {
  * The closing snapshot for one session, as Partylog lines, given the state that the log body
  * and interludes already produce.
  */
-export function sessionSnapshotLines(session: CampaignSession, state: PartylogState, warnings: string[] = []): string[] {
+export function sessionSnapshotLines(
+	session: CampaignSession,
+	state: PartylogState,
+	warnings: string[] = [],
+	ctx: PartylogBridgeContext = {},
+): string[] {
 	return [
-		...pcLines(session, state),
+		...pcLines(session, state, ctx),
 		...partyLine(session, state, warnings),
-		...factionLines(session, state),
+		...factionLines(session, state, ctx),
 		...progressLines(session),
 		...threadLines(session),
 		...lootLines(session, state),
@@ -241,7 +258,7 @@ export function sessionSnapshotLines(session: CampaignSession, state: PartylogSt
 }
 
 /** Partylog section 5.1 campaign header. Keys are spelled for the chosen style. */
-function campaignHeader(input: PartylogExportInput, style: FormatStyle): CampaignHeader {
+function campaignHeader(input: PartylogExportInput, style: FormatStyle, ctx: PartylogBridgeContext): CampaignHeader {
 	const dates = input.sessions.map((entry) => entry.session.date).filter((date): date is string => !!date);
 	const players: string[] = [];
 	for (const entry of input.sessions) {
@@ -262,7 +279,7 @@ function campaignHeader(input: PartylogExportInput, style: FormatStyle): Campaig
 	const last = input.sessions[input.sessions.length - 1];
 	const pcs: string[] = [];
 	if (last) {
-		for (const line of pcLines(last.session, createPartylogState())) {
+		for (const line of pcLines(last.session, createPartylogState(), ctx)) {
 			const name = line.slice('[PC:'.length).replace(/\]$/, '').split('|')[0];
 			pcs.push(`${name} ${line}`);
 		}
@@ -319,15 +336,186 @@ function interludeOf(interlude: CampaignInterlude): Interlude {
 	return { title: collapseLine(interlude.title) || 'Interlude', entries };
 }
 
-function sessionChunk(entry: PartylogExportSession, state: PartylogState, style: FormatStyle, warnings: string[]): { text: string; state: PartylogState } {
+const ANALOG_BLOCK_HEADING = /^(#{1,6}\s|=== |--- )/;
+
+/** Lower-case, single-spaced text with trailing punctuation dropped, for comparing stored lines. */
+function normalizeText(text: string): string {
+	return text.replace(/\s+/g, ' ').trim().toLowerCase().replace(/[.!?;:,\s]+(?=\)?$)/, '');
+}
+
+/** Identity of an Advance tag: the same character, summary and gains are the same advancement. */
+function advanceKey(tag: AdvanceTag): string {
+	return normalizeText([tag.name, tag.detail ?? '', ...tag.gains].join('|'));
+}
+
+function metaKey(entry: MetaEntry): string {
+	return `${entry.type}:${normalizeText(entry.text)}`;
+}
+
+/** What the stored log body already holds, so the export writes only the missing blocks and lines. */
+interface StoredLog {
+	/** Lower-case titles of the interludes in the body. */
+	interludeTitles: Set<string>;
+	hasHeader: boolean;
+	hasEnd: boolean;
+	advances: Set<string>;
+	metas: Set<string>;
+	/** Normalised lines of the body's end block. */
+	endLines: Set<string>;
+}
+
+function inspectStoredLog(body: string): StoredLog {
+	const stored: StoredLog = { interludeTitles: new Set(), hasHeader: false, hasEnd: false, advances: new Set(), metas: new Set(), endLines: new Set() };
+	const parsed = parsePartylogLog(body);
+	const noteEntries = (entries: PartylogEntry[]): void => {
+		for (const entry of entries) {
+			if (entry.kind === 'meta') stored.metas.add(metaKey(entry));
+			for (const tag of entryTags(entry)) {
+				if (tag.kind === 'Advance') stored.advances.add(advanceKey(tag));
+			}
+		}
+	};
+	for (const item of parsed.sequence) {
+		switch (item.kind) {
+			case 'session':
+				stored.hasHeader = true;
+				break;
+			case 'interlude':
+				stored.interludeTitles.add(normalizeText(item.interlude.title));
+				noteEntries(item.interlude.entries);
+				break;
+			case 'scene':
+				noteEntries(item.scene.entries);
+				break;
+			case 'session-end':
+				stored.hasEnd = true;
+				noteEntries(item.end.entries);
+				break;
+		}
+	}
+	const span = endBlockSpan(body.split('\n'));
+	if (span) {
+		for (const line of span.content) {
+			const text = normalizeText(line);
+			if (text) stored.endLines.add(text);
+		}
+	}
+	return stored;
+}
+
+/** True when the stored log already has this entry, so exporting it again would duplicate it. */
+function storedAlready(entry: PartylogEntry, stored: StoredLog): boolean {
+	if (entry.kind === 'meta') return stored.metas.has(metaKey(entry));
+	const advances = entryTags(entry).filter((tag): tag is AdvanceTag => tag.kind === 'Advance');
+	if (advances.length > 0) return advances.every(tag => stored.advances.has(advanceKey(tag)));
+	return stored.endLines.has(normalizeText(formatEntry(entry)));
+}
+
+/**
+ * The end block of a stored log: where its content lines are, and the line index at which new
+ * entries go (before a digital closing fence, or at the end of the block).
+ */
+function endBlockSpan(lines: string[]): { insertAt: number; content: string[] } | undefined {
+	const start = lines.findIndex(line => /^(### End of Session\b|--- End of Session\b)/.test(line.trim()));
+	if (start < 0) return undefined;
+	if (/^###/.test(lines[start].trim())) {
+		let first = start + 1;
+		while (first < lines.length && lines[first].trim() === '') first++;
+		if (first < lines.length && lines[first].trim() === '```') {
+			let close = first + 1;
+			while (close < lines.length && lines[close].trim() !== '```') close++;
+			return { insertAt: close, content: lines.slice(first + 1, close) };
+		}
+	}
+	let end = start + 1;
+	while (end < lines.length && !ANALOG_BLOCK_HEADING.test(lines[end].trim())) end++;
+	while (end > start + 1 && lines[end - 1].trim() === '') end--;
+	return { insertAt: end, content: lines.slice(start + 1, end) };
+}
+
+/** Adds entry lines at the end of the stored log's end block. */
+function appendToEndBlock(body: string, lines: string[]): string {
+	const text = body.split('\n');
+	const span = endBlockSpan(text);
+	if (!span) return body;
+	text.splice(span.insertAt, 0, ...lines);
+	return text.join('\n');
+}
+
+/**
+ * Converts the stored log's digital headings to the analog forms: session header fields, scene
+ * headings, `=== Session N ===`, `--- End of Session N ---` and `=== Interlude: title ===`. Fences
+ * under the converted end and interlude headings are dropped, since analog blocks are not fenced.
+ */
+export function analogLogBody(body: string): string {
+	let text = body;
+	const parsed = parsePartylogLog(text);
+	if (parsed.sessionHeader) text = upsertSessionHeaderBlock(text, parsed.sessionHeader, 'analog');
+	const out: string[] = [];
+	let pendingFence = false;
+	let inFence = false;
+	for (const line of text.split('\n')) {
+		const trimmed = line.trim();
+		if (inFence) {
+			if (trimmed === '```') inFence = false;
+			else out.push(line);
+			continue;
+		}
+		if (pendingFence) {
+			if (trimmed === '') continue;
+			pendingFence = false;
+			if (trimmed === '```') {
+				inFence = true;
+				continue;
+			}
+		}
+		let match = /^###\s+End of Session(?:\s+(\d+))?\s*$/.exec(trimmed);
+		if (match) {
+			out.push(`--- End of Session${match[1] ? ` ${match[1]}` : ''} ---`);
+			pendingFence = true;
+			continue;
+		}
+		match = /^##\s+Interlude:\s*(.*?)\s*$/.exec(trimmed);
+		if (match) {
+			out.push(`=== Interlude: ${match[1]} ===`);
+			pendingFence = true;
+			continue;
+		}
+		match = /^##\s+Session(?:\s+(\d+))?\s*$/.exec(trimmed);
+		if (match) {
+			out.push(`=== Session${match[1] ? ` ${match[1]}` : ''} ===`);
+			continue;
+		}
+		match = /^###\s+((?:T\d+-)?S\d+(?:\.\d+|[a-z])?)(?:\s+\*(.*)\*)?\s*$/.exec(trimmed);
+		if (match) {
+			out.push(formatSceneHeader({ id: match[1], context: match[2] ?? '' }, 'analog'));
+			continue;
+		}
+		out.push(line);
+	}
+	return out.join('\n');
+}
+
+function sessionChunk(
+	entry: PartylogExportSession,
+	state: PartylogState,
+	style: FormatStyle,
+	warnings: string[],
+	ctx: PartylogBridgeContext,
+): { text: string; state: PartylogState } {
 	const { session } = entry;
-	const blocks: string[] = [];
-	for (const interlude of session.interludes ?? []) blocks.push(formatInterlude(interludeOf(interlude), style));
-	blocks.push(formatSessionHeader(sessionHeaderOf(session), style));
-	const body = normalizeLogBody(entry.logBody);
-	if (body) blocks.push(body);
-	const prefix = blocks.join('\n\n');
-	let next = replayText(prefix, state);
+	const normalized = normalizeLogBody(entry.logBody);
+	const body = style === 'analog' && normalized ? analogLogBody(normalized) : normalized;
+	const stored = inspectStoredLog(body);
+
+	const leading: string[] = [];
+	for (const interlude of session.interludes ?? []) {
+		if (stored.interludeTitles.has(normalizeText(collapseLine(interlude.title) || 'Interlude'))) continue;
+		leading.push(formatInterlude(interludeOf(interlude), style));
+	}
+	if (!stored.hasHeader) leading.push(formatSessionHeader(sessionHeaderOf(session), style));
+	const prefixBlocks = [...leading, body].filter(block => block.length > 0);
+	const before = replayText(prefixBlocks.join('\n\n'), state);
 
 	const endEntries: PartylogEntry[] = [];
 	for (const summary of session.advancements ?? []) {
@@ -335,17 +523,19 @@ function sessionChunk(entry: PartylogExportSession, state: PartylogState, style:
 		const text = cleanTagText(summary.summary);
 		if (character) endEntries.push(parsePartylogLine(tagLine('Advance', text ? [character, text] : [character])));
 	}
-	for (const line of sessionSnapshotLines(session, next, warnings)) endEntries.push(parsePartylogLine(line));
+	for (const line of sessionSnapshotLines(session, before, warnings, ctx)) endEntries.push(parsePartylogLine(line));
 	if (session.hook && collapseLine(session.hook)) endEntries.push({ kind: 'meta', type: 'hook', text: collapseLine(session.hook) });
 	if (session.endNotes && collapseLine(session.endNotes)) endEntries.push({ kind: 'meta', type: 'note', text: collapseLine(session.endNotes) });
+	const fresh = endEntries.filter(endEntry => !storedAlready(endEntry, stored));
 
-	const parts = [prefix];
-	if (endEntries.length > 0) {
-		const endText = formatSessionEnd({ number: session.sessionNumber, entries: endEntries }, style);
-		parts.push(endText);
-		next = replayText(endText, next);
+	if (fresh.length === 0) return { text: prefixBlocks.join('\n\n'), state: before };
+	const endState = formatSessionEnd({ number: session.sessionNumber, entries: fresh }, style);
+	if (stored.hasEnd) {
+		// The stored log already has an end block: its missing lines go into that block.
+		const blocks = [...leading, appendToEndBlock(body, fresh.map(formatEntry))].filter(block => block.length > 0);
+		return { text: blocks.join('\n\n'), state: replayText(endState, before) };
 	}
-	return { text: parts.join('\n\n'), state: next };
+	return { text: [...prefixBlocks, endState].join('\n\n'), state: replayText(endState, before) };
 }
 
 /**
@@ -354,15 +544,16 @@ function sessionChunk(entry: PartylogExportSession, state: PartylogState, style:
  */
 export function buildPartylogExport(input: PartylogExportInput): PartylogExportResult {
 	const style: FormatStyle = input.style ?? 'digital';
+	const ctx: PartylogBridgeContext = input.context ?? {};
 	const warnings: string[] = [];
 	let state = createPartylogState();
 	const chunks: string[] = [];
 	for (const entry of input.sessions) {
-		const result = sessionChunk(entry, state, style, warnings);
+		const result = sessionChunk(entry, state, style, warnings, ctx);
 		chunks.push(result.text);
 		state = result.state;
 	}
-	const head = [formatCampaignHeader(campaignHeader(input, style), style)];
+	const head = [formatCampaignHeader(campaignHeader(input, style, ctx), style)];
 	if (style === 'digital') head.push(`# ${cleanTagText(input.title) || 'Campaign'}`);
 	return { markdown: [...head, ...chunks].join('\n\n') + '\n', warnings };
 }

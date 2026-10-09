@@ -3,6 +3,7 @@ import { buildPartylogExport, normalizeLogBody, safeFileBase, sessionSnapshotLin
 import type { PartylogExportSession } from '../../src/campaign/PartylogExport';
 import { createPartylogState, parsePartylogLog, replayPartylogLog } from '../../src/campaign/partylog';
 import type { CampaignSession } from '../../src/types';
+import { FELLOWSHIP_SESSION_01, FELLOWSHIP_SESSION_01_LOG, FELLOWSHIP_SESSION_02, FELLOWSHIP_SESSION_02_LOG } from './fixtures/fellowship-sessions';
 
 const SESSION_7_BODY = `- @(Kael) Navigate the tunnels toward the docks
 d: Survival d20+2=14 vs DC 12 -> Success
@@ -216,5 +217,135 @@ describe('helpers', () => {
 		const taken = new Set(['StorytellerSuite/Exports/Log.md', 'StorytellerSuite/Exports/Log (2).md']);
 		expect(uniqueExportPath('StorytellerSuite/Exports', 'Log', (path) => taken.has(path))).toBe('StorytellerSuite/Exports/Log (3).md');
 		expect(uniqueExportPath('StorytellerSuite/Exports', 'Other', () => false)).toBe('StorytellerSuite/Exports/Other.md');
+	});
+});
+
+// ─── Fellowship test campaign: real session data ─────────────────────────────
+
+const fellowshipCount = (md: string, needle: string): number => md.split(needle).length - 1;
+
+describe('buildPartylogExport: blocks already in the stored log are not written twice', () => {
+	const s2 = { session: FELLOWSHIP_SESSION_02, logBody: FELLOWSHIP_SESSION_02_LOG };
+	const md = buildPartylogExport({ title: 'The Fellowship of the Ring', sessions: [s2] }).markdown;
+
+	it('writes the interlude, the session header and the end block exactly once', () => {
+		expect(fellowshipCount(md, '## Interlude: Ten days on the Greenway')).toBe(1);
+		expect(fellowshipCount(md, '\n## Session 2\n')).toBe(1);
+		expect(fellowshipCount(md, '### End of Session 2')).toBe(1);
+		expect(fellowshipCount(md, '*Date: 2026-10-08 | Duration: 3h10')).toBe(1);
+	});
+
+	it('writes each interlude change once', () => {
+		expect(fellowshipCount(md, '[Clock:The Watcher Wakes 1/6]')).toBe(1);
+		expect(fellowshipCount(md, '[Timer:Torches 6]')).toBe(1);
+	});
+
+	it('never emits the same advancement twice', () => {
+		expect(fellowshipCount(md, '[Advance:Aragorn|Ranger 9]')).toBe(1);
+		expect(parsePartylogLog(md).sequence.filter((item) => item.kind === 'session-end')).toHaveLength(1);
+	});
+
+	it('writes the hook and note once, even though the stored note differs only by case and a full stop', () => {
+		expect(fellowshipCount(md, '(hook: the riders of Sauron')).toBe(1);
+		expect(fellowshipCount(md, '(note: strong session, the split worked')).toBe(1);
+		expect(fellowshipCount(md, 'Strong session, the split worked')).toBe(0);
+	});
+
+	it('adds the snapshot lines the stored end block lacked, inside that same end block', () => {
+		const endBlock = md.slice(md.indexOf('### End of Session 2'));
+		expect(endBlock).toContain('[PC:Frodo Baggins|HP 34/38]');
+		expect(endBlock).toContain('[Party:Gold 110|Rations 9');
+		expect(endBlock.indexOf('[Advance:Aragorn|Ranger 9]')).toBeLessThan(endBlock.indexOf('[PC:Frodo Baggins'));
+	});
+
+	it('replays the same session counts as the stored log, with no double count', () => {
+		const state = replayPartylogLog(parsePartylogLog(md));
+		expect(state.advancements).toHaveLength(1);
+		expect(state.clocks['The Watcher Wakes']).toEqual({ name: 'The Watcher Wakes', current: 3, max: 6 });
+		expect(state.party.gauges.Gold).toEqual({ current: 110 });
+	});
+
+	it('exports the same single copy of each block when Session 02 follows Session 01', () => {
+		const both = buildPartylogExport({
+			title: 'The Fellowship of the Ring',
+			sessions: [{ session: FELLOWSHIP_SESSION_01, logBody: FELLOWSHIP_SESSION_01_LOG }, s2],
+		}).markdown;
+		expect(fellowshipCount(both, '## Interlude: Ten days on the Greenway')).toBe(1);
+		expect(fellowshipCount(both, '[Advance:Aragorn|Ranger 9]')).toBe(1);
+		expect(fellowshipCount(both, '### End of Session 2')).toBe(1);
+		expect(fellowshipCount(both, '\n## Session 2\n')).toBe(1);
+	});
+});
+
+describe('buildPartylogExport: analog style converts the stored log headings', () => {
+	const s2 = { session: FELLOWSHIP_SESSION_02, logBody: FELLOWSHIP_SESSION_02_LOG };
+	const md = buildPartylogExport({ title: 'The Fellowship of the Ring', sessions: [s2], style: 'analog' }).markdown;
+
+	it('has no digital headings or fences left', () => {
+		expect(md).not.toMatch(/^###? /m);
+		expect(md).not.toContain('```');
+	});
+
+	it('writes analog session, interlude and end headings', () => {
+		expect(md).toContain('=== Interlude: Ten days on the Greenway ===');
+		expect(md).toContain('=== Session 2 ===\n[Date] 2026-10-08');
+		expect(md).toContain('--- End of Session 2 ---');
+		expect(fellowshipCount(md, '=== Session 2 ===')).toBe(1);
+		expect(fellowshipCount(md, '--- End of Session 2 ---')).toBe(1);
+	});
+
+	it('writes analog scene headings for sequential, flashback, split and montage scenes', () => {
+		expect(md).toContain('S1 *Bree, the Prancing Pony, evening*');
+		expect(md).toContain('S2a *Flashback: Gandalf\'s warning, months before the mines*');
+		expect(md).toContain('T1-S3 *Aragorn and Legolas climb the broken stair*');
+		expect(md).toContain('S4.1 *Gimli: the tomb of the dwarves*');
+		expect(md).not.toContain('### S');
+	});
+
+	it('parses back to the same session, scenes and advancement', () => {
+		const log = parsePartylogLog(md);
+		expect(log.sessionHeader).toMatchObject({ number: 2, date: '2026-10-08', duration: '3h10', scribe: 'Jordan' });
+		expect(log.scenes.map((scene) => scene.id?.text)).toContain('T1-S3');
+		expect(log.interludes.map((interlude) => interlude.title)).toEqual(['Ten days on the Greenway']);
+		expect(replayPartylogLog(log).advancements).toHaveLength(1);
+	});
+});
+
+describe('buildPartylogExport: legacy Session 01 data', () => {
+	const md = buildPartylogExport({ title: 'The Fellowship of the Ring', sessions: [{ session: FELLOWSHIP_SESSION_01, logBody: FELLOWSHIP_SESSION_01_LOG }] }).markdown;
+
+	it('names party members from their character ids when characterName is missing', () => {
+		expect(md).toContain('[PC:Frodo Baggins|HP 38/38]');
+		expect(md).toContain('[PC:Boromir|HP 84/84|Tempted by the Ring]');
+		expect(md).not.toContain('[PC:[[');
+	});
+
+	it('writes faction standings with the group name, not the wikilink', () => {
+		expect(md).toContain('[Faction:The Free Peoples]');
+		expect(md).toContain('[Faction:Forces of Sauron]');
+		expect(md).not.toContain('[Faction:[[');
+	});
+
+	it('replays the party, factions and trackers from the legacy records', () => {
+		const state = replayPartylogLog(parsePartylogLog(md));
+		expect(state.pcs['Frodo Baggins'].gauges.HP).toEqual({ current: 38, max: 38 });
+		expect(state.pcs.Boromir.labels).toEqual(['Tempted by the Ring']);
+		expect(state.factions['The Free Peoples']).toBeDefined();
+		expect(state.factions['Forces of Sauron']).toBeDefined();
+		expect(state.party.labels).toEqual(expect.arrayContaining(['quest-begun', 'left-home', 'ring-used']));
+		expect(state.clocks['The Nine Close on the Ford']).toEqual({ name: 'The Nine Close on the Ford', current: 2, max: 6 });
+	});
+
+	it('uses the context to resolve character and group names from ids', () => {
+		const withContext = buildPartylogExport({
+			title: 'The Fellowship of the Ring',
+			sessions: [{ session: { ...FELLOWSHIP_SESSION_01, partyState: [{ characterId: 'char-frodo', currentHp: 30, maxHp: 38 }], groupStandings: [{ groupId: 'group-free', value: 1 }] }, logBody: '' }],
+			context: {
+				characters: [{ id: 'char-frodo', name: 'Frodo Baggins' }],
+				groups: [{ id: 'group-free', name: 'The Free Peoples' }],
+			},
+		}).markdown;
+		expect(withContext).toContain('[PC:Frodo Baggins|HP 30/38]');
+		expect(withContext).toContain('[Faction:The Free Peoples]');
 	});
 });

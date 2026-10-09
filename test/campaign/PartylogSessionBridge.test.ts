@@ -5,6 +5,7 @@
 import { describe, expect, it } from 'vitest';
 import type { CampaignSession } from '../../src/types';
 import {
+    advancementLinesForSession,
     appendInterludeBlock,
     appendLogLines,
     applyPartylogTagsToSession,
@@ -18,6 +19,7 @@ import {
     upsertSessionHeaderBlock,
 } from '../../src/campaign/PartylogSessionBridge';
 import { parsePartylogLog, parseTag, type Tag } from '../../src/campaign/partylog';
+import { FELLOWSHIP_SESSION_01 } from './fixtures/fellowship-sessions';
 
 function tags(...texts: string[]): Tag[] {
     return texts.map(text => {
@@ -336,5 +338,68 @@ describe('scene headers and plain log lines', () => {
     it('appends plain Partylog lines without list bullets', () => {
         expect(appendLogLines('### S1 *x*', ['@(Kael) hi', '=> done'])).toBe('### S1 *x*\n@(Kael) hi\n=> done\n');
         expect(appendLogLines('', ['! Bells ring'])).toBe('! Bells ring\n');
+    });
+});
+
+describe('legacy session records without characterName or group names', () => {
+    const legacy = (): CampaignSession => JSON.parse(JSON.stringify(FELLOWSHIP_SESSION_01)) as CampaignSession;
+
+    it('derives PC names from characterId wikilinks and group names from groupId wikilinks', () => {
+        const state = partylogStateFromSession(legacy());
+        expect(state.pcs['Frodo Baggins'].gauges.HP).toEqual({ current: 38, max: 38 });
+        expect(state.pcs.Boromir.labels).toEqual(['Tempted by the Ring']);
+        expect(state.factions['The Free Peoples']).toBeDefined();
+        expect(state.factions['Forces of Sauron']).toBeDefined();
+    });
+
+    it('uses injected characters to turn a bare character id into its name', () => {
+        const session = legacy();
+        session.partyState = [{ characterId: 'char-frodo', currentHp: 38, maxHp: 38 }];
+        const state = partylogStateFromSession(session, { characters: [{ id: 'char-frodo', name: 'Frodo Baggins' }] });
+        expect(state.pcs['Frodo Baggins'].gauges.HP).toEqual({ current: 38, max: 38 });
+    });
+
+    it('replays a PC tag onto the legacy party record instead of creating a second one', () => {
+        const session = legacy();
+        const result = applyPartylogTagsToSession(session, tags('[PC:Frodo Baggins|HP 30/38]'));
+        expect(result.changed).toBe(true);
+        expect(session.partyState).toHaveLength(7);
+        expect(session.partyState?.find(member => member.characterId === '[[Frodo Baggins]]')?.currentHp).toBe(30);
+    });
+
+    it('replays a faction tag onto the legacy standing instead of creating a second one', () => {
+        const session = legacy();
+        applyPartylogTagsToSession(session, tags('[Faction:The Free Peoples|tier:2]'));
+        expect(session.groupStandings).toHaveLength(2);
+        expect(session.groupStandings?.find(standing => standing.groupId === '[[The Free Peoples]]')?.tier).toBe(2);
+    });
+});
+
+describe('end block regenerated from the session keeps every advancement of that session', () => {
+    const recorded = session({
+        sessionNumber: 7,
+        advancements: [
+            { character: 'Kael', summary: 'Rogue 6', sessionNumber: 7 },
+            { character: 'Mira', summary: 'Cleric 3', sessionNumber: 6 },
+            { character: 'Sable', summary: 'Ranger 2', sessionNumber: 7 },
+        ],
+    });
+
+    it('writes an Advance line for each advancement of the session number, and no others', () => {
+        expect(advancementLinesForSession(recorded, 7)).toEqual(['[Advance:Kael|Rogue 6]', '[Advance:Sable|Ranger 2]']);
+    });
+
+    it('keeps the advancements when the end block is saved again with no new advancement entered', () => {
+        const first = upsertSessionEndBlock('@(Kael) Hi', sessionEndFromLines(7, [
+            ...advancementLinesForSession(recorded, 7),
+            '(hook: first hook)',
+        ]));
+        const second = upsertSessionEndBlock(first, sessionEndFromLines(7, [
+            ...advancementLinesForSession(recorded, 7),
+            '(hook: second hook)',
+        ]));
+        expect(second.match(/\[Advance:Kael\|Rogue 6\]/g)).toHaveLength(1);
+        expect(second).toContain('[Advance:Sable|Ranger 2]');
+        expect(second).toContain('(hook: second hook)');
     });
 });

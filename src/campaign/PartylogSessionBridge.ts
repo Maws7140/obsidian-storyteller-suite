@@ -25,6 +25,7 @@ import {
     formatSceneHeader,
     formatSessionEnd,
     formatSessionHeader,
+    formatTag,
     nextSceneId,
     parsePartylogLine,
 } from './partylog';
@@ -66,6 +67,8 @@ import type { PartyResourceValue } from '../utils/CampaignModel';
 export interface PartylogBridgeContext {
     /** Story groups. Used to match `[Faction:Name]` to a group id. */
     groups?: ReadonlyArray<{ id: string; name: string }>;
+    /** Story characters. Turns a bare `characterId` into the character's name. */
+    characters?: ReadonlyArray<{ id: string; name: string }>;
 }
 
 export interface PartylogBridgeResult {
@@ -130,21 +133,55 @@ function threadMapOf(state: PartylogState, kind: CampaignThreadKind): Record<str
     return state.threads;
 }
 
-function groupNameFor(standing: CampaignGroupStanding, ctx: PartylogBridgeContext): string | undefined {
-    const group = standing.groupId ? ctx.groups?.find(candidate => candidate.id === standing.groupId) : undefined;
-    return group?.name ?? standing.groupName;
+/** A wiki link or plain reference reduced to its name: `[[Frodo Baggins|Frodo]]` gives `Frodo Baggins`. */
+export function plainRefName(ref: string): string {
+    return ref.trim().replace(/^\[\[|\]\]$/g, '').split('|')[0].trim();
 }
 
-function partyNamesOf(session: CampaignSession): string[] {
+/**
+ * The name of a party member. Legacy records have only `characterId`, so the name comes from
+ * the injected characters when the id is known there, and otherwise from the id itself with
+ * its wiki link brackets removed.
+ */
+export function memberNameOf(member: Pick<PartyMemberState, 'characterId' | 'characterName'>, ctx: PartylogBridgeContext = {}): string {
+    if (typeof member.characterName === 'string' && member.characterName.trim()) return member.characterName.trim();
+    const id = typeof member.characterId === 'string' ? member.characterId.trim() : '';
+    const known = id ? ctx.characters?.find(candidate => candidate.id === id) : undefined;
+    return known?.name ?? plainRefName(id);
+}
+
+/**
+ * Names of the session's party characters. `partyCharacterNames` is used when present; ids are
+ * only resolved to names when the session has no names at all.
+ */
+export function partyCharacterNamesOf(session: CampaignSession, ctx: PartylogBridgeContext = {}): string[] {
+    const idNames = (session.partyCharacterNames ?? []).length > 0
+        ? []
+        : (session.partyCharacterIds ?? []).map(id => memberNameOf({ characterId: id, characterName: '' }, ctx));
     return uniqueNames([
         ...(session.partyCharacterNames ?? []),
-        ...(session.partyState ?? []).map(member => member.characterName),
+        ...idNames,
+        ...(session.partyState ?? []).map(member => memberNameOf(member, ctx)),
+    ]);
+}
+
+/** The name of a faction standing: the group's name, else the standing's own name, else its group id. */
+export function standingGroupName(standing: CampaignGroupStanding, ctx: PartylogBridgeContext = {}): string | undefined {
+    const group = standing.groupId ? ctx.groups?.find(candidate => candidate.id === standing.groupId) : undefined;
+    if (group?.name) return group.name;
+    if (standing.groupName?.trim()) return standing.groupName;
+    return standing.groupId ? plainRefName(standing.groupId) || undefined : undefined;
+}
+
+function partyNamesOf(session: CampaignSession, ctx: PartylogBridgeContext): string[] {
+    return uniqueNames([
+        ...partyCharacterNamesOf(session, ctx),
         ...(session.loot ?? []).filter(item => item.assignedTo?.trim()).map(item => item.assignedTo as string),
     ]);
 }
 
-function findMember(session: CampaignSession, name: string): PartyMemberState | undefined {
-    return (session.partyState ?? []).find(member => sameText(member.characterName, name));
+function findMember(session: CampaignSession, name: string, ctx: PartylogBridgeContext): PartyMemberState | undefined {
+    return (session.partyState ?? []).find(member => sameText(memberNameOf(member, ctx), name));
 }
 
 // ─── Derive state from the session ───────────────────────────────────────────
@@ -165,7 +202,7 @@ export function partylogStateFromSession(session: CampaignSession, ctx: Partylog
     const state = createPartylogState();
 
     for (const member of session.partyState ?? []) {
-        const pc = ensurePc(state, member.characterName);
+        const pc = ensurePc(state, memberNameOf(member, ctx));
         pc.gauges.HP = { current: member.currentHp, max: member.maxHp };
         pc.labels = [...(member.conditions ?? [])];
     }
@@ -186,7 +223,7 @@ export function partylogStateFromSession(session: CampaignSession, ctx: Partylog
     }
 
     for (const standing of session.groupStandings ?? []) {
-        const name = groupNameFor(standing, ctx);
+        const name = standingGroupName(standing, ctx);
         if (!name) continue;
         const faction: FactionState = { ...emptyEntity(name) };
         faction.labels = [...(standing.statusNotes ?? [])];
@@ -230,7 +267,7 @@ function canonicalFieldKeys(field: TagField, keys: readonly string[]): TagField 
 }
 
 function canonicalizeTag(tag: Tag, session: CampaignSession, ctx: PartylogBridgeContext): Tag {
-    const pcNames = partyNamesOf(session);
+    const pcNames = partyNamesOf(session, ctx);
     switch (tag.kind) {
         case 'PC':
             return {
@@ -243,7 +280,7 @@ function canonicalizeTag(tag: Tag, session: CampaignSession, ctx: PartylogBridge
         case 'Faction': {
             const names = uniqueNames([
                 ...(ctx.groups ?? []).map(group => group.name),
-                ...(session.groupStandings ?? []).map(standing => groupNameFor(standing, ctx) ?? ''),
+                ...(session.groupStandings ?? []).map(standing => standingGroupName(standing, ctx) ?? ''),
             ]);
             return { ...tag, name: canonical(tag.name, names) };
         }
@@ -310,7 +347,13 @@ function writePartyResources(session: CampaignSession, before: PartylogState, af
     }
 }
 
-function writeCharacters(session: CampaignSession, before: PartylogState, after: PartylogState, summary: string[]): void {
+function writeCharacters(
+    session: CampaignSession,
+    before: PartylogState,
+    after: PartylogState,
+    ctx: PartylogBridgeContext,
+    summary: string[],
+): void {
     for (const name of Object.keys(after.pcs)) {
         const next = after.pcs[name];
         const prev = own(before.pcs, name);
@@ -321,7 +364,7 @@ function writeCharacters(session: CampaignSession, before: PartylogState, after:
         const conditionsChanged = !sameList(next.labels, prev ? prev.labels : []);
         if (!hpChanged && !conditionsChanged) continue;
 
-        let member = findMember(session, name);
+        let member = findMember(session, name, ctx);
         const maxHp = nextHp?.max ?? member?.maxHp;
         if (maxHp === undefined) {
             // Without a maximum there is no party record to write to yet.
@@ -335,12 +378,12 @@ function writeCharacters(session: CampaignSession, before: PartylogState, after:
         member.maxHp = maxHp;
         if (hpChanged && nextHp?.current !== undefined) {
             member.currentHp = clampHp(nextHp.current, maxHp);
-            summary.push(`HP ${member.characterName} ${member.currentHp}/${maxHp}`);
+            summary.push(`HP ${name} ${member.currentHp}/${maxHp}`);
         }
         if (conditionsChanged) {
             if (next.labels.length > 0) member.conditions = [...next.labels];
             else delete member.conditions;
-            summary.push(`Conditions ${member.characterName}: ${next.labels.join(', ') || 'none'}`);
+            summary.push(`Conditions ${name}: ${next.labels.join(', ') || 'none'}`);
         }
     }
 }
@@ -362,8 +405,8 @@ function writeFactions(
         const prev = own(before.factions, name);
         if (sameFaction(prev, next)) continue;
 
-        let standing = (session.groupStandings ?? []).find(candidate => groupNameFor(candidate, ctx) !== undefined
-            && sameText(groupNameFor(candidate, ctx) as string, name));
+        let standing = (session.groupStandings ?? []).find(candidate => standingGroupName(candidate, ctx) !== undefined
+            && sameText(standingGroupName(candidate, ctx) as string, name));
         if (!standing) {
             const group = ctx.groups?.find(candidate => sameText(candidate.name, name));
             const created: CampaignGroupStanding = { groupName: name, value: 0 };
@@ -520,7 +563,7 @@ export function applyPartylogTagsToSession(
     const after = applyTagUpdates(before, canonicalTags);
     const summary: string[] = [];
     writePartyResources(session, before, after, summary);
-    writeCharacters(session, before, after, summary);
+    writeCharacters(session, before, after, ctx, summary);
     writeFactions(session, before, after, ctx, summary);
     writeTrackers(session, before, after, summary);
     writeThreads(session, before, after, summary);
@@ -649,6 +692,22 @@ export function upsertSessionEndBlock(log: string, end: SessionEnd, style: Forma
     const range = sessionEndRange(lines);
     if (!range) return joinBlocks([log, block]);
     return joinBlocks([lines.slice(0, range.start).join('\n'), block, lines.slice(range.end).join('\n')]);
+}
+
+/**
+ * Advance lines for every advancement recorded for one session number, in record order. The end
+ * block is regenerated from these, so saving it again keeps the advancements written before.
+ */
+export function advancementLinesForSession(session: CampaignSession, sessionNumber: number | undefined = session.sessionNumber): string[] {
+    const lines: string[] = [];
+    for (const record of session.advancements ?? []) {
+        if (record.sessionNumber !== sessionNumber) continue;
+        const character = record.character.replace(/[[\]|\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
+        if (!character) continue;
+        const detail = record.summary.replace(/[[\]|\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
+        lines.push(formatTag({ kind: 'Advance', reference: false, fields: [], name: character, detail: detail || undefined, gains: [] }));
+    }
+    return lines;
 }
 
 /** Appends an interlude block at the end of the log. Interludes are never replaced. */
