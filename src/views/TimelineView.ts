@@ -5,7 +5,7 @@ import { ItemView, WorkspaceLeaf, setIcon, Menu, DropdownComponent, Notice, View
 import StorytellerSuitePlugin from '../main';
 import { t } from '../i18n/strings';
 import { TimelineRenderer, TimelineFilters } from '../utils/NativeTimelineRenderer';
-import { TimelineUIFilters, TimelineUIState } from '../types';
+import { TimelineUIFilters, TimelineUIState, Event as StoryEvent } from '../types';
 import { TimelineTrackManager } from '../utils/TimelineTrackManager';
 import { TimelineControlsBuilder, TimelineControlCallbacks } from '../utils/TimelineControlsBuilder';
 import { TimelineFilterBuilder, TimelineFilterCallbacks } from '../utils/TimelineFilterBuilder';
@@ -542,13 +542,7 @@ export class TimelineView extends ItemView {
             const actions = empty.createDiv('storyteller-timeline-empty-actions');
             const [first] = tally.undated;
             const dateBtn = actions.createEl('button', { cls: 'mod-cta', text: 'Set a date on the first event' });
-            dateBtn.addEventListener('click', () => { void (async () => {
-                const { EventModal } = await import('../modals/EventModal');
-                new EventModal(this.app, this.plugin, first, async updated => {
-                    await this.plugin.saveEvent(updated);
-                    await this.refresh();
-                }).open();
-            })(); });
+            dateBtn.addEventListener('click', () => { void this.openUndatedEvent(first); });
         } else if (tally.hiddenByFilters > 0) {
             const count = tally.hiddenByFilters;
             setIcon(icon, 'filter-x');
@@ -583,6 +577,26 @@ export class TimelineView extends ItemView {
                 }).open();
             })(); });
         }
+    }
+
+    /**
+     * Open an event from the empty-state card. The card was drawn from a
+     * snapshot, so the event is read from the store again first. Saving a stale
+     * copy would overwrite whatever changed since the card was drawn.
+     */
+    async openUndatedEvent(snapshot: StoryEvent): Promise<void> {
+        const events = await this.plugin.listEvents();
+        const current = events.find(event => (snapshot.id && event.id === snapshot.id) || (!snapshot.id && event.filePath === snapshot.filePath));
+        if (!current) {
+            new Notice('That event no longer exists.');
+            await this.refresh();
+            return;
+        }
+        const { EventModal } = await import('../modals/EventModal');
+        new EventModal(this.app, this.plugin, current, async updated => {
+            await this.plugin.saveEvent(updated);
+            await this.refresh();
+        }).open();
     }
 
     private scheduleTimelineRedraw(): void {
@@ -1006,6 +1020,8 @@ export class TimelineView extends ItemView {
         const signature = this.branchSignature();
         if (signature !== this.lastBranchSignature) this.buildToolbar();
         await this.renderer.refresh();
+        // The empty-state card reads the same data, so it must follow every refresh too.
+        this.renderEmptyState();
         this.updateFooterStatus();
         this.updateSearchDropdown();
     }
