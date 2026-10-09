@@ -1,6 +1,61 @@
 import { DateTime } from 'luxon';
 import type { Character, Event, Location, TimelineConflict, ConflictEntity } from '../types';
-import { parseTimelineDate } from './DateParsing';
+import { parseTimelineDate, type ParsedEventDate } from './DateParsing';
+
+/**
+ * Half-open [start, end) range of an event at its precision, as used for overlap checks.
+ */
+interface EventSpan {
+    start: DateTime;
+    end: DateTime;
+    approximate: boolean;
+}
+
+/** Normalize a parsed date into its precision-aware span, or undefined when it has no start. */
+function toSpan(date: ParsedEventDate): EventSpan | undefined {
+    if (!date.start) return undefined;
+    let start = date.start;
+    let end = date.end;
+
+    if (date.precision === 'day') {
+        start = start.startOf('day');
+        end = end ? end.startOf('day').plus({ days: 1 }) : start.plus({ days: 1 });
+    } else if (date.precision === 'month') {
+        start = start.startOf('month');
+        end = end ? end.startOf('month').plus({ months: 1 }) : start.plus({ months: 1 });
+    } else if (date.precision === 'year') {
+        start = start.startOf('year');
+        end = end ? end.startOf('year').plus({ years: 1 }) : start.plus({ years: 1 });
+    } else {
+        // Time precision
+        if (!end) end = start.plus({ hours: 1 });
+    }
+
+    return { start, end, approximate: date.approximate || false };
+}
+
+/**
+ * Memoized date parsing for one detection pass. Parsing (Luxon plus chrono fallbacks) was the
+ * dominant cost of conflict detection because the same strings were re-parsed for every pair of
+ * events. Keyed by the raw string, so each distinct date is parsed once per pass.
+ */
+function createDateCache() {
+    const parsed = new Map<string, ParsedEventDate>();
+    const spans = new Map<string, EventSpan | undefined>();
+    const parse = (raw: string): ParsedEventDate => {
+        let result = parsed.get(raw);
+        if (!result) {
+            result = parseTimelineDate(raw);
+            parsed.set(raw, result);
+        }
+        return result;
+    };
+    const span = (raw: string): EventSpan | undefined => {
+        if (!spans.has(raw)) spans.set(raw, toSpan(parse(raw)));
+        return spans.get(raw);
+    };
+    return { parse, span };
+}
 
 /**
  * Conflict types
@@ -66,6 +121,7 @@ export class ConflictDetector {
             if (location.id) locationNames.set(clean(location.id), location.name);
         }
         const locationName = (value: string): string => locationNames.get(clean(value)) ?? value;
+        const { parse } = createDateCache();
 
         for (const character of characters) {
             const refs = new Set([clean(character.name), character.id ? clean(character.id) : ''].filter(Boolean));
@@ -76,10 +132,10 @@ export class ConflictDetector {
 
             const stays = (character.locationHistory ?? [])
                 .map(entry => {
-                    const end = entry.timeRange?.end ? parseTimelineDate(entry.timeRange.end) : undefined;
+                    const end = entry.timeRange?.end ? parse(entry.timeRange.end) : undefined;
                     return {
                         location: locationName(entry.locationId),
-                        start: parseTimelineDate(entry.timeRange?.start ?? '').start,
+                        start: parse(entry.timeRange?.start ?? '').start,
                         end: end?.end ?? end?.start,
                     };
                 })
@@ -90,7 +146,7 @@ export class ConflictDetector {
                 const spanEnd = stay.end ?? stays[index + 1]?.start;
                 for (const event of characterEvents) {
                     if (clean(locationName(event.location!)) === clean(stay.location)) continue;
-                    const parsed = parseTimelineDate(event.dateTime!);
+                    const parsed = parse(event.dateTime!);
                     if (!parsed.start) continue;
                     const eventEnd = parsed.end ?? parsed.start;
                     const overlaps = spanEnd
@@ -133,30 +189,48 @@ export class ConflictDetector {
             event.characters?.forEach(char => characters.add(char));
         });
 
+        const { parse, span } = createDateCache();
+
         // Check each character
         for (const character of characters) {
             const characterEvents = events.filter(e =>
                 e.characters?.includes(character) && e.dateTime && e.location
             );
 
-            // Sort by date
+            // Sort by date. The comparator is deliberately unchanged (raw parsed starts, undated
+            // events and ties compare as equal), so the resulting order and conflict order stay identical.
             const sortedEvents = characterEvents.sort((a, b) => {
-                const aDate = parseTimelineDate(a.dateTime!);
-                const bDate = parseTimelineDate(b.dateTime!);
-                if (!aDate.start || !bDate.start) return 0;
-                return aDate.start < bDate.start ? -1 : 1;
+                const aStart = parse(a.dateTime!).start;
+                const bStart = parse(b.dateTime!).start;
+                if (!aStart || !bStart) return 0;
+                return aStart < bStart ? -1 : 1;
             });
+
+            const spans = sortedEvents.map(e => span(e.dateTime!));
+
+            // The inner loop can stop early only when every start is known and non-decreasing:
+            // once a later event starts at or after the current event ends, nothing after it can
+            // overlap either. Any NaN or undated entry falls back to checking every pair.
+            let startsSorted = spans.every(Boolean);
+            for (let k = 1; startsSorted && k < spans.length; k++) {
+                if (!(spans[k - 1]!.start.toMillis() <= spans[k]!.start.toMillis())) startsSorted = false;
+            }
 
             // Check for overlapping events with different locations
             for (let i = 0; i < sortedEvents.length; i++) {
+                const span1 = spans[i];
+                if (!span1) continue;
                 for (let j = i + 1; j < sortedEvents.length; j++) {
                     const event1 = sortedEvents[i];
                     const event2 = sortedEvents[j];
+                    const span2 = spans[j];
+                    if (!span2) continue;
+                    if (startsSorted && span2.start.toMillis() >= span1.end.toMillis()) break;
 
                     // Skip if same location
                     if (event1.location === event2.location) continue;
 
-                    const overlap = this.checkEventOverlap(event1, event2);
+                    const overlap = this.checkSpanOverlap(span1, span2);
                     if (overlap) {
                         // Use event IDs or names for stable conflict IDs
                         const id1 = event1.id || event1.name.replace(/[^a-zA-Z0-9]/g, '');
@@ -189,6 +263,7 @@ export class ConflictDetector {
      */
     static detectDeathConflicts(events: Event[]): DetectedConflict[] {
         const conflicts: DetectedConflict[] = [];
+        const { parse } = createDateCache();
 
         // Find characters who have death events
         const characterDeaths = new Map<string, { event: Event; date: DateTime }>();
@@ -204,7 +279,7 @@ export class ConflictDetector {
                           event.tags?.some(tag => tag.toLowerCase().includes('death'));
 
             if (isDeath) {
-                const parsed = parseTimelineDate(event.dateTime);
+                const parsed = parse(event.dateTime);
                 if (parsed.start) {
                     event.characters.forEach(char => {
                         const existing = characterDeaths.get(char);
@@ -224,7 +299,7 @@ export class ConflictDetector {
                 if (!evt.dateTime) return false;
                 if (evt === deathInfo.event) return false; // Skip the death event itself
 
-                const evtDate = parseTimelineDate(evt.dateTime);
+                const evtDate = parse(evt.dateTime);
                 return evtDate.start && evtDate.start > deathInfo.date;
             });
 
@@ -253,6 +328,7 @@ export class ConflictDetector {
      */
     static detectDependencyConflicts(events: Event[]): DetectedConflict[] {
         const conflicts: DetectedConflict[] = [];
+        const { parse } = createDateCache();
         const eventMap = new Map<string, Event>();
         const eventNameMap = new Map<string, Event>();
         const eventLowerNameMap = new Map<string, Event>();
@@ -312,8 +388,8 @@ export class ConflictDetector {
                 const depLabel = depEvent?.name || getDependencyLabel(event, depRef);
                 if (!depEvent || !depEvent.dateTime || !event.dateTime) continue;
 
-                const eventDate = parseTimelineDate(event.dateTime);
-                const depDate = parseTimelineDate(depEvent.dateTime);
+                const eventDate = parse(event.dateTime);
+                const depDate = parse(depEvent.dateTime);
 
                 if (!eventDate.start || !depDate.start) continue;
 
@@ -359,6 +435,7 @@ export class ConflictDetector {
     static detectTemporalConflicts(events: Event[]): DetectedConflict[] {
         const conflicts: DetectedConflict[] = [];
         const milestones = events.filter(e => e.isMilestone && e.dateTime);
+        const { parse } = createDateCache();
 
         // Check for milestones that occur at exactly the same time
         for (let i = 0; i < milestones.length; i++) {
@@ -366,8 +443,8 @@ export class ConflictDetector {
                 const m1 = milestones[i];
                 const m2 = milestones[j];
 
-                const date1 = parseTimelineDate(m1.dateTime!);
-                const date2 = parseTimelineDate(m2.dateTime!);
+                const date1 = parse(m1.dateTime!);
+                const date2 = parse(m2.dateTime!);
 
                 if (!date1.start || !date2.start) continue;
 
@@ -395,67 +472,22 @@ export class ConflictDetector {
     }
 
     /**
-     * Check if two events overlap in time
+     * Check if two precision-normalized event spans overlap in time
      */
-    private static checkEventOverlap(
-        event1: Event,
-        event2: Event
+    private static checkSpanOverlap(
+        span1: EventSpan,
+        span2: EventSpan
     ): {
         overlap: { start: DateTime; end: DateTime };
         approximate: boolean;
     } | null {
-        if (!event1.dateTime || !event2.dateTime) return null;
-
-        const date1 = parseTimelineDate(event1.dateTime);
-        const date2 = parseTimelineDate(event2.dateTime);
-
-        if (!date1.start || !date2.start) return null;
-
-        // Normalize range based on precision
-        const normalizeRange = (date: typeof date1) => {
-            let start = date.start!;
-            let end = date.end;
-
-            if (date.precision === 'day') {
-                start = start.startOf('day');
-                if (!end) {
-                    end = start.plus({ days: 1 });
-                } else {
-                    end = end.startOf('day').plus({ days: 1 });
-                }
-            } else if (date.precision === 'month') {
-                start = start.startOf('month');
-                if (!end) {
-                    end = start.plus({ months: 1 });
-                } else {
-                    end = end.startOf('month').plus({ months: 1 });
-                }
-            } else if (date.precision === 'year') {
-                start = start.startOf('year');
-                if (!end) {
-                    end = start.plus({ years: 1 });
-                } else {
-                    end = end.startOf('year').plus({ years: 1 });
-                }
-            } else {
-                // Time precision
-                if (!end) end = start.plus({ hours: 1 });
-            }
-            
-            return { start, end: end };
-        };
-
-        const range1 = normalizeRange(date1);
-        const range2 = normalizeRange(date2);
-
-        // Check for overlap
-        const overlapStart = DateTime.max(range1.start, range2.start);
-        const overlapEnd = DateTime.min(range1.end, range2.end);
+        const overlapStart = DateTime.max(span1.start, span2.start);
+        const overlapEnd = DateTime.min(span1.end, span2.end);
 
         if (overlapStart < overlapEnd) {
             return {
                 overlap: { start: overlapStart, end: overlapEnd },
-                approximate: date1.approximate || date2.approximate || false
+                approximate: span1.approximate || span2.approximate
             };
         }
 
