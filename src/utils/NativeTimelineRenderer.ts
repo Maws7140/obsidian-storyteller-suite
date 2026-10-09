@@ -3270,42 +3270,7 @@ export class NativeTimelineRenderer {
             dragging.item.start = ghost; dragging.item.end = ghost + duration;
         }
         if ((dragging.kind === 'move' || dragging.kind === 'marker') && dragging.item && dragging.item.start !== dragging.start) {
-            const item = dragging.item;
-            const narrativeMode = this.options.narrativeOrder === true;
-            const oldDate = narrativeMode ? item.event.narrativeMarkers?.narrativeDate : item.event.dateTime;
-            const duration = dragging.end - dragging.start;
-            const startText = this.formatEditDate(item.start);
-            const endText = duration > 0 ? this.formatEditDate(item.end) : '';
-            const nextDate = duration > 0 ? `${startText} to ${endText}` : startText;
-            // The text must read back to the instant it was written from, or the file would hold a
-            // different day than the one dropped. Refuse the write and put the chip back.
-            const readsBack = this.parseDate(startText) === item.start && (duration <= 0 || this.parseDate(endText) === item.end);
-            if (!readsBack) {
-                item.start = dragging.start; item.end = dragging.end;
-                this.scheduleDraw();
-                new Notice(`Could not move “${item.event.name}”: ${nextDate} would not read back as the same date. The event was not changed.`);
-                return;
-            }
-            if (narrativeMode) {
-                item.event.narrativeMarkers ??= {};
-                item.event.narrativeMarkers.narrativeDate = nextDate;
-            } else {
-                item.event.dateTime = nextDate;
-            }
-            // The old date goes in the notice because there is no undo: it is
-            // the only record of where the event came from.
-            try { await this.plugin.saveEvent(item.event); new Notice(`Moved “${item.event.name}” from ${oldDate || 'no date'} to ${nextDate}`); }
-            catch (error) {
-                if (narrativeMode) {
-                    item.event.narrativeMarkers ??= {};
-                    item.event.narrativeMarkers.narrativeDate = oldDate;
-                } else {
-                    item.event.dateTime = oldDate;
-                }
-                item.start = dragging.start; item.end = dragging.end;
-                new Notice(`Could not move event: ${error instanceof Error ? error.message : String(error)}`);
-            }
-            this.rebuild(false);
+            await this.commitMove(dragging.item, { start: dragging.start, end: dragging.end });
         }
     }
 
@@ -3444,13 +3409,62 @@ export class NativeTimelineRenderer {
         return Math.max(0, total - this.root.clientHeight);
     }
 
+    /**
+     * Write a moved item back to its event. Shared by pointer drags and the
+     * keyboard nudge, so both show the same Notice and refuse the same bad dates.
+     * `from` is where the item was before the move, for the revert and the notice.
+     */
+    private async commitMove(item: NativeItem, from: { start: number; end: number }): Promise<void> {
+        const narrativeMode = this.options.narrativeOrder === true;
+        const oldDate = narrativeMode ? item.event.narrativeMarkers?.narrativeDate : item.event.dateTime;
+        const duration = from.end - from.start;
+        const startText = this.formatEditDate(item.start);
+        const endText = duration > 0 ? this.formatEditDate(item.end) : '';
+        const nextDate = duration > 0 ? `${startText} to ${endText}` : startText;
+        // The text must read back to the instant it was written from, or the file would hold a
+        // different day than the one dropped. Refuse the write and put the chip back.
+        const readsBack = this.parseDate(startText) === item.start && (duration <= 0 || this.parseDate(endText) === item.end);
+        if (!readsBack) {
+            item.start = from.start; item.end = from.end;
+            this.scheduleDraw();
+            new Notice(`Could not move “${item.event.name}”: ${nextDate} would not read back as the same date. The event was not changed.`);
+            return;
+        }
+        if (narrativeMode) {
+            item.event.narrativeMarkers ??= {};
+            item.event.narrativeMarkers.narrativeDate = nextDate;
+        } else {
+            item.event.dateTime = nextDate;
+        }
+        // The old date goes in the notice because there is no undo: it is
+        // the only record of where the event came from.
+        try { await this.plugin.saveEvent(item.event); new Notice(`Moved “${item.event.name}” from ${oldDate || 'no date'} to ${nextDate}`); }
+        catch (error) {
+            if (narrativeMode) {
+                item.event.narrativeMarkers ??= {};
+                item.event.narrativeMarkers.narrativeDate = oldDate;
+            } else {
+                item.event.dateTime = oldDate;
+            }
+            item.start = from.start; item.end = from.end;
+            new Notice(`Could not move event: ${error instanceof Error ? error.message : String(error)}`);
+        }
+        this.rebuild(false);
+    }
+
     private onKeyDown(event: KeyboardEvent): void {
         if (!this.selected || !this.options.editMode || !['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
         event.preventDefault();
+        const item = this.selected;
+        // The same write-back rules as a pointer drag: an approximate, scene or watched-note item does not move.
+        if (!this.isDraggable(item)) return;
         // Step the start, then shift the end by the same amount so the event
         // keeps its duration even when the calendar's units are uneven.
-        const delta = this.step(this.selected.start, event.key === 'ArrowLeft' ? -1 : 1) - this.selected.start;
-        this.selected.start += delta; this.selected.end += delta; this.scheduleDraw();
+        const from = { start: item.start, end: item.end };
+        const delta = this.step(item.start, event.key === 'ArrowLeft' ? -1 : 1) - item.start;
+        if (delta === 0) return;
+        item.start += delta; item.end += delta; this.scheduleDraw();
+        void this.commitMove(item, from);
     }
 
     private openAt(x: number, y: number): void {
