@@ -95,6 +95,8 @@ interface Lane {
     color: string;
     /** True when `color` was chosen by the user, not taken from the palette. */
     explicitColor?: boolean;
+    /** Set while drawing when the sidebar name was cut short, so hovering it can show the full name. */
+    labelClipped?: boolean;
     items: NativeItem[];
     /** Running maximum of item ends, parallel to `items`. Non-decreasing. */
     maxEndPrefix?: number[];
@@ -1298,6 +1300,33 @@ export class NativeTimelineRenderer {
         ctx.restore();
     }
 
+    /**
+     * Sidebar name for a lane: a swatch in the lane's colour, then the name in
+     * the theme's normal text colour. Coloured text fell well short of the
+     * contrast needed to read on the sidebar background, so the colour now
+     * lives in the swatch, where it still matches the lane's markers.
+     */
+    private drawLaneLabel(ctx: CanvasRenderingContext2D, lane: Lane, top: number): void {
+        const x = 13;
+        const y = top + 14;
+        const size = 8;
+        ctx.fillStyle = lane.color;
+        ctx.beginPath();
+        ctx.moveTo(x + 2, y);
+        ctx.arcTo(x + size, y, x + size, y + size, 2);
+        ctx.arcTo(x + size, y + size, x, y + size, 2);
+        ctx.arcTo(x, y + size, x, y, 2);
+        ctx.arcTo(x, y, x + size, y, 2);
+        ctx.closePath();
+        ctx.fill();
+        ctx.font = `600 12px ${this.css('--font-interface', 'sans-serif')}`;
+        ctx.fillStyle = this.css('--text-normal', '#e5e7eb');
+        const textX = x + size + 7;
+        const shown = this.truncate(ctx, lane.label, SIDEBAR_WIDTH - textX - 11);
+        lane.labelClipped = shown !== lane.label;
+        ctx.fillText(shown, textX, top + 22);
+    }
+
     private drawLane(ctx: CanvasRenderingContext2D, lane: Lane, width: number, height: number): void {
         if (!this.options.ganttMode) {
             this.drawChronologyLane(ctx, lane, width, height);
@@ -1307,11 +1336,7 @@ export class NativeTimelineRenderer {
         if (top > height || top + lane.height < this.axisHeight()) return;
         ctx.fillStyle = this.css('--background-secondary-alt', '#18202d');
         ctx.fillRect(0, top, SIDEBAR_WIDTH, lane.height);
-        // The lane name takes the lane's colour, so a row in the sidebar can be
-        // matched to its markers out on the timeline without counting rows.
-        ctx.fillStyle = lane.color;
-        ctx.font = `600 12px ${this.css('--font-interface', 'sans-serif')}`;
-        ctx.fillText(this.truncate(ctx, lane.label, SIDEBAR_WIDTH - 24), 13, top + 22);
+        this.drawLaneLabel(ctx, lane, top);
         ctx.strokeStyle = this.css('--background-modifier-border', '#374151');
         ctx.beginPath(); ctx.moveTo(0, top + lane.height); ctx.lineTo(width, top + lane.height); ctx.stroke();
         const rowHeight = this.rowHeight();
@@ -1341,11 +1366,7 @@ export class NativeTimelineRenderer {
         if (top > height || top + lane.height < this.axisHeight()) return;
         ctx.fillStyle = this.css('--background-secondary-alt', '#18202d');
         ctx.fillRect(0, top, SIDEBAR_WIDTH, lane.height);
-        // The lane name takes the lane's colour, so a row in the sidebar can be
-        // matched to its markers out on the timeline without counting rows.
-        ctx.fillStyle = lane.color;
-        ctx.font = `600 12px ${this.css('--font-interface', 'sans-serif')}`;
-        ctx.fillText(this.truncate(ctx, lane.label, SIDEBAR_WIDTH - 24), 13, top + 22);
+        this.drawLaneLabel(ctx, lane, top);
 
         const baselineY = top + 18;
         ctx.strokeStyle = this.css('--background-modifier-border', '#374151');
@@ -2389,6 +2410,24 @@ export class NativeTimelineRenderer {
             this.buildTooltip(item);
         }
         tooltip.show();
+        this.placeTooltip(x, y);
+    }
+
+    /** Full name of a lane whose sidebar label was truncated, shown in the same floating card. */
+    private showLaneTooltip(lane: Lane, x: number, y: number): void {
+        const tooltip = this.tooltipEl;
+        if (!tooltip || !this.root) return;
+        this.hovered = null;
+        tooltip.empty();
+        tooltip.createDiv({ cls: 'sts-native-timeline-tooltip-title', text: lane.label });
+        tooltip.show();
+        this.placeTooltip(x, y);
+    }
+
+    private placeTooltip(x: number, y: number): void {
+        const tooltip = this.tooltipEl;
+        const root = this.root;
+        if (!tooltip || !root) return;
         // Flip to the other side of the cursor when the card would run past the
         // edge, so it never gets clipped by the timeline's own overflow.
         const width = tooltip.offsetWidth;
@@ -2414,7 +2453,17 @@ export class NativeTimelineRenderer {
         if (this.canvas) this.canvas.style.cursor = marker ? (vertical ? 'ns-resize' : 'ew-resize') : '';
         const item = marker ?? this.hit(event.offsetX, event.offsetY);
         if (item) this.showTooltip(item, event.offsetX, event.offsetY);
-        else this.hideTooltip();
+        else {
+            const lane = this.clippedLaneLabelAt(event.offsetX, event.offsetY);
+            if (lane) this.showLaneTooltip(lane, event.offsetX, event.offsetY);
+            else this.hideTooltip();
+        }
+    }
+
+    /** The lane whose sidebar name sits under the pointer, if that name was cut short. */
+    private clippedLaneLabelAt(x: number, y: number): Lane | null {
+        if (this.isTimelineLayout() || x >= SIDEBAR_WIDTH || y < this.axisHeight()) return null;
+        return this.lanes.find(lane => lane.labelClipped && y >= lane.top - this.scrollTop + 4 && y <= lane.top - this.scrollTop + 30) ?? null;
     }
 
     private onPointerMove(event: PointerEvent): void {
