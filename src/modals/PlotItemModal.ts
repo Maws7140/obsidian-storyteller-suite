@@ -25,6 +25,7 @@ import { EntityGroupSelector } from './entity/EntityGroupSelector';
 import { ResponsiveModal } from './ResponsiveModal';
 import { confirmWithModal } from './ui/ConfirmModal';
 import { isModalFieldVisible, seedDefaultCustomFields } from './entity/ModalFieldVisibility';
+import { createCollapsibleModalSection } from './entity/CollapsibleModalSection';
 
 export type PlotItemModalSubmitCallback = (item: PlotItem) => Promise<void>;
 export type PlotItemModalDeleteCallback = (item: PlotItem) => Promise<void>;
@@ -269,7 +270,19 @@ export class PlotItemModal extends ResponsiveModal {
                 text.inputEl.rows = 4;
             });
         
-        if (shows('history')) new Setting(contentEl)
+        // Typed fields come straight after the core fields.
+        this.customFieldsEditor.setFields(this.item.customFields);
+        this.renderDefinedFieldsSection(contentEl);
+
+        const historyBody = shows('history')
+            ? createCollapsibleModalSection(contentEl, {
+                title: 'History',
+                description: 'Where this item came from and what happened to it',
+                icon: 'book-open',
+                open: Boolean(this.item.history),
+            })
+            : null;
+        if (historyBody && shows('history')) new Setting(historyBody)
             .setName(t('history'))
             .setClass('storyteller-modal-setting-vertical')
             .addTextArea(text => {
@@ -279,22 +292,21 @@ export class PlotItemModal extends ResponsiveModal {
                 text.inputEl.rows = 6;
             });
 
-        if (shows('whereToFind')) new Setting(contentEl)
-            .setName(t('whereToFind'))
-            .setClass('storyteller-modal-setting-vertical')
-            .addTextArea(text => {
-                text.setPlaceholder('Where copies of this item can be found, bought, or made')
-                    .setValue(this.item.whereToFind || '')
-                    .onChange(value => this.item.whereToFind = value || undefined);
-                text.inputEl.rows = 4;
-            });
-
-        if (['owners', 'pastOwners', 'associatedEvents', 'associatedCharacters'].some(k => shows(k))) {
-            contentEl.createEl('h3', { text: t('relationships') });
-        }
+        const ownVisible = ['owners', 'creator', 'quantity', 'pastOwners', 'location', 'whereToFind'].some(k => shows(k));
+        const ownBody = ownVisible
+            ? createCollapsibleModalSection(contentEl, {
+                title: 'Ownership and location',
+                description: 'Who holds this item, how many copies exist, and where it is',
+                icon: 'hand-coins',
+                open: Boolean(
+                    this.item.owners?.length || this.item.creator || this.item.quantity !== undefined
+                    || this.item.pastOwners?.length || this.item.currentLocation || this.item.whereToFind
+                ),
+            })
+            : null;
         if (!Array.isArray(this.item.owners)) this.item.owners = [];
-        if (shows('owners') && this.item.owners.length > 0 && this.item.currentLocation) {
-            contentEl.createEl('p', {
+        if (ownBody && shows('owners') && this.item.owners.length > 0 && this.item.currentLocation) {
+            ownBody.createEl('p', {
                 cls: 'storyteller-modal-hint storyteller-item-owner-location-warning',
                 text: `This item has ${this.item.owners.length === 1 ? 'an owner' : 'owners'} ` +
                     `(${this.item.owners.join(', ')}) and a location (${this.item.currentLocation}).`,
@@ -302,13 +314,12 @@ export class PlotItemModal extends ResponsiveModal {
         }
 
         // --- Current owners ---
-        if (shows('owners')) {
-        contentEl.createEl('h3', { text: t('currentOwners') });
-        contentEl.createEl('p', {
+        if (ownBody && shows('owners')) {
+        ownBody.createEl('p', {
             cls: 'storyteller-modal-hint',
             text: 'An item that exists in more than one copy can be held by several characters at once.'
         });
-        const ownersContainer = contentEl.createDiv('storyteller-current-owners-container');
+        const ownersContainer = ownBody.createDiv('storyteller-current-owners-container');
         const renderOwners = () => {
             ownersContainer.empty();
             if (this.item.owners && this.item.owners.length > 0) {
@@ -352,7 +363,7 @@ export class PlotItemModal extends ResponsiveModal {
         }
 
         // --- Creator ---
-        if (shows('creator')) new Setting(contentEl)
+        if (ownBody && shows('creator')) new Setting(ownBody)
             .setName(t('creator'))
             .setDesc(this.item.creator ? `${t('creator')}: ${this.item.creator}` : t('creatorDesc'))
             .addButton(btn => btn
@@ -375,7 +386,7 @@ export class PlotItemModal extends ResponsiveModal {
             );
 
         // --- Quantity ---
-        if (shows('quantity')) new Setting(contentEl)
+        if (ownBody && shows('quantity')) new Setting(ownBody)
             .setName(t('quantity'))
             .setDesc(t('quantityDesc'))
             .addText(text => {
@@ -395,49 +406,9 @@ export class PlotItemModal extends ResponsiveModal {
                             : undefined;
                     });
             });
-        // --- Groups ---
-        if (shows('groups')) {
-            contentEl.createEl('h3', { text: t('groups') });
-            const groupSelectorContainer = contentEl.createDiv('storyteller-group-selector-container');
-            this.groupSelector.attach(groupSelectorContainer);
-        }
-
-
-        // --- Custom Fields ---
-        // The editor is always loaded, hidden or not: getFields() supplies the
-        // value written back on save, and skipping it would drop the item's
-        // existing custom fields.
-        this.customFieldsEditor.setFields(this.item.customFields);
-        this.customFieldsEditor.renderDefinedFields(contentEl);
-        if (shows('customFields')) {
-            this.customFieldsEditor.renderFreeFormSection(contentEl);
-        }
-        if (shows('location')) new Setting(contentEl)
-            .setName(t('currentLocation'))
-            .setDesc(`${t('currentLocation')}: ${this.item.currentLocation || t('none')}`)
-            .addButton(btn => btn
-                .setButtonText(t('selectLocation'))
-                .onClick(() => {
-                    new LocationSuggestModal(this.app, this.plugin, (loc) => {
-                        const owners = this.item.owners ?? [];
-                        if (owners.length > 0 && loc) {
-                            new Notice(
-                                `${this.item.name || 'This item'} is currently owned by ${owners.join(', ')}. ` +
-                                `Assigning a location may conflict with ownership tracking.`,
-                                7000
-                            );
-                        }
-                        this.item.currentLocation = loc ? loc.name : undefined;
-                        void this.onOpen(); // Re-render to update the description
-                    }).open();
-                })
-            );
-            
-
         // --- Past Owners ---
-        if (shows('pastOwners')) {
-        contentEl.createEl('h3', { text: t('pastOwners') });
-        const pastOwnersContainer = contentEl.createDiv('storyteller-past-owners-container');
+        if (ownBody && shows('pastOwners')) {
+        const pastOwnersContainer = ownBody.createDiv('storyteller-past-owners-container');
         const renderPastOwners = () => {
             pastOwnersContainer.empty();
             if (this.item.pastOwners && this.item.pastOwners.length > 0) {
@@ -469,10 +440,51 @@ export class PlotItemModal extends ResponsiveModal {
         renderPastOwners();
         }
 
+        if (ownBody && shows('location')) new Setting(ownBody)
+            .setName(t('currentLocation'))
+            .setDesc(`${t('currentLocation')}: ${this.item.currentLocation || t('none')}`)
+            .addButton(btn => btn
+                .setButtonText(t('selectLocation'))
+                .onClick(() => {
+                    new LocationSuggestModal(this.app, this.plugin, (loc) => {
+                        const owners = this.item.owners ?? [];
+                        if (owners.length > 0 && loc) {
+                            new Notice(
+                                `${this.item.name || 'This item'} is currently owned by ${owners.join(', ')}. ` +
+                                `Assigning a location may conflict with ownership tracking.`,
+                                7000
+                            );
+                        }
+                        this.item.currentLocation = loc ? loc.name : undefined;
+                        void this.onOpen(); // Re-render to update the description
+                    }).open();
+                })
+            );
+            
+
+        if (ownBody && shows('whereToFind')) new Setting(ownBody)
+            .setName(t('whereToFind'))
+            .setClass('storyteller-modal-setting-vertical')
+            .addTextArea(text => {
+                text.setPlaceholder('Where copies of this item can be found, bought, or made')
+                    .setValue(this.item.whereToFind || '')
+                    .onChange(value => this.item.whereToFind = value || undefined);
+                text.inputEl.rows = 4;
+            });
+
+        const storyVisible = shows('associatedEvents') || shows('associatedCharacters');
+        const storyBody = storyVisible
+            ? createCollapsibleModalSection(contentEl, {
+                title: 'Story links',
+                description: 'Events and characters tied to this item beyond its owners',
+                icon: 'link',
+                open: Boolean(this.item.associatedEvents?.length || this.item.linkedCharacters?.length),
+            })
+            : null;
+
         // --- Associated Events ---
-        if (shows('associatedEvents')) {
-        contentEl.createEl('h3', { text: t('associatedEvents') });
-        const assocEventsContainer = contentEl.createDiv('storyteller-assoc-events-container');
+        if (storyBody && shows('associatedEvents')) {
+        const assocEventsContainer = storyBody.createDiv('storyteller-assoc-events-container');
         const renderAssocEvents = () => {
             assocEventsContainer.empty();
             if (this.item.associatedEvents && this.item.associatedEvents.length > 0) {
@@ -505,14 +517,13 @@ export class PlotItemModal extends ResponsiveModal {
         }
 
         // --- Associated Characters (multiple owners/associations) ---
-        if (shows('associatedCharacters')) {
-        contentEl.createEl('h3', { text: 'Associated characters' });
-        contentEl.createEl('p', {
+        if (storyBody && shows('associatedCharacters')) {
+        storyBody.createEl('p', {
             cls: 'storyteller-modal-hint',
             text: 'Characters with a claim or connection to this item beyond the primary bearer.'
         });
         if (!Array.isArray(this.item.linkedCharacters)) this.item.linkedCharacters = [];
-        const charChips = contentEl.createDiv('storyteller-linked-chips');
+        const charChips = storyBody.createDiv('storyteller-linked-chips');
         const renderCharChips = () => {
             charChips.empty();
             for (const name of (this.item.linkedCharacters ?? [])) {
@@ -528,7 +539,7 @@ export class PlotItemModal extends ResponsiveModal {
         };
         renderCharChips();
         const allCharsForItem = await this.plugin.listCharacters();
-        new Setting(contentEl)
+        new Setting(storyBody)
             .setName('Add associated character')
             .addDropdown(dd => {
                 dd.addOption('', '— select character —');
@@ -545,10 +556,19 @@ export class PlotItemModal extends ResponsiveModal {
 
         }
 
+        const magicBody = createCollapsibleModalSection(contentEl, {
+            title: 'Magic and value',
+            description: 'Magic systems, magical properties, and what the item is worth',
+            icon: 'sparkles',
+            open: Boolean(
+                this.item.magicSystems?.length || this.item.magicProperties || this.item.economicValue
+                || this.item.linkedEconomies?.length
+            ),
+        });
         // --- Magic Systems ---
-        contentEl.createEl('h3', { text: 'Magic systems' });
+        magicBody.createEl('h4', { text: 'Magic systems' });
         if (!Array.isArray(this.item.magicSystems)) this.item.magicSystems = [];
-        const magicChips = contentEl.createDiv('storyteller-linked-chips');
+        const magicChips = magicBody.createDiv('storyteller-linked-chips');
         const renderMagicChips = () => {
             magicChips.empty();
             for (const name of (this.item.magicSystems ?? [])) {
@@ -564,7 +584,7 @@ export class PlotItemModal extends ResponsiveModal {
         };
         renderMagicChips();
         const allMagicSystems = await this.plugin.listMagicSystems();
-        new Setting(contentEl)
+        new Setting(magicBody)
             .setName('Add magic system')
             .addDropdown(dd => {
                 dd.addOption('', '— select magic system —');
@@ -580,7 +600,7 @@ export class PlotItemModal extends ResponsiveModal {
             });
 
         // --- Magic Properties ---
-        new Setting(contentEl)
+        new Setting(magicBody)
             .setName('Magic properties')
             .setDesc('Magical effects, abilities, and lore of this item')
             .setClass('storyteller-modal-setting-vertical')
@@ -592,8 +612,7 @@ export class PlotItemModal extends ResponsiveModal {
             });
 
         // --- Economic Value ---
-        contentEl.createEl('h3', { text: 'Economic value' });
-        new Setting(contentEl)
+        new Setting(magicBody)
             .setName('Value')
             .setDesc('Monetary or trade value (e.g. "500gp", "priceless", "worthless")')
             .addText(text => {
@@ -602,7 +621,7 @@ export class PlotItemModal extends ResponsiveModal {
                 text.inputEl.placeholder = '500Gp';
             });
         if (!Array.isArray(this.item.linkedEconomies)) this.item.linkedEconomies = [];
-        const econChips = contentEl.createDiv('storyteller-linked-chips');
+        const econChips = magicBody.createDiv('storyteller-linked-chips');
         const renderEconChips = () => {
             econChips.empty();
             for (const name of (this.item.linkedEconomies ?? [])) {
@@ -618,7 +637,7 @@ export class PlotItemModal extends ResponsiveModal {
         };
         renderEconChips();
         const allEconomies = await this.plugin.listEconomies();
-        new Setting(contentEl)
+        new Setting(magicBody)
             .setName('Traded in economy')
             .addDropdown(dd => {
                 dd.addOption('', '— select economy —');
@@ -633,9 +652,14 @@ export class PlotItemModal extends ResponsiveModal {
                 });
             });
 
+        const worldBody = createCollapsibleModalSection(contentEl, {
+            title: 'World-building',
+            description: 'Cultural meaning and the groups this item belongs to',
+            icon: 'globe',
+            open: Boolean(this.item.culturalSignificance || this.item.linkedCultures?.length || this.item.groups?.length),
+        });
         // --- Cultural Significance ---
-        contentEl.createEl('h3', { text: 'Cultural significance' });
-        new Setting(contentEl)
+        new Setting(worldBody)
             .setName('Significance')
             .setDesc('Cultural importance, symbolism, and meaning')
             .setClass('storyteller-modal-setting-vertical')
@@ -646,7 +670,7 @@ export class PlotItemModal extends ResponsiveModal {
                 text.inputEl.setCssStyles({ width: '100%' });
             });
         if (!Array.isArray(this.item.linkedCultures)) this.item.linkedCultures = [];
-        const cultChips = contentEl.createDiv('storyteller-linked-chips');
+        const cultChips = worldBody.createDiv('storyteller-linked-chips');
         const renderCultChips = () => {
             cultChips.empty();
             for (const name of (this.item.linkedCultures ?? [])) {
@@ -662,7 +686,7 @@ export class PlotItemModal extends ResponsiveModal {
         };
         renderCultChips();
         const allCultures = await this.plugin.listCultures();
-        new Setting(contentEl)
+        new Setting(worldBody)
             .setName('Significant to culture')
             .addDropdown(dd => {
                 dd.addOption('', '— select culture —');
@@ -677,18 +701,31 @@ export class PlotItemModal extends ResponsiveModal {
                 });
             });
 
+        // --- Groups ---
+        if (shows('groups')) {
+            worldBody.createEl('h4', { text: t('groups') });
+            const groupSelectorContainer = worldBody.createDiv('storyteller-group-selector-container');
+            this.groupSelector.attach(groupSelectorContainer);
+        }
+
+
         // --- Campaign Use ---
         if (shows('campaignUse')) {
-        const campaignHdr = contentEl.createDiv('storyteller-campaign-use-header');
-        campaignHdr.createEl('h3', { text: 'Campaign use' });
-        const campaignToggle = campaignHdr.createEl('button', { cls: 'storyteller-campaign-use-toggle' });
-        const campaignBody = contentEl.createDiv('storyteller-campaign-use-body');
         const isCampaignExpanded = !!(
             this.item.itemType || this.item.itemRarity || this.item.consumedOnUse ||
             this.item.campaignEffect || this.item.grantsFlag ||
             this.item.navigatesToScene || this.item.useRequiresLocation || this.item.useRequiresFlag ||
             (this.item.campaignItemEffects?.length ?? 0) > 0
         );
+        const campaignSection = createCollapsibleModalSection(contentEl, {
+            title: 'Campaign use',
+            description: 'What happens when this item is used in a session',
+            icon: 'swords',
+            open: isCampaignExpanded,
+        });
+        const campaignHdr = campaignSection.createDiv('storyteller-campaign-use-header');
+        const campaignToggle = campaignHdr.createEl('button', { cls: 'storyteller-campaign-use-toggle' });
+        const campaignBody = campaignSection.createDiv('storyteller-campaign-use-body');
         if (!isCampaignExpanded) campaignBody.hide();
         campaignToggle.textContent = isCampaignExpanded ? 'Hide' : 'Show';
         campaignToggle.addEventListener('click', () => {
@@ -696,7 +733,7 @@ export class PlotItemModal extends ResponsiveModal {
             else { campaignBody.show(); campaignToggle.textContent = 'Hide'; }
         });
 
-        contentEl.createEl('p', {
+        campaignSection.createEl('p', {
             cls: 'storyteller-modal-hint',
             text: 'Define what happens when this item is used during a campaign session.',
         });
@@ -813,6 +850,21 @@ export class PlotItemModal extends ResponsiveModal {
         });
         }
 
+        // --- Custom Fields ---
+        // The editor is always loaded, hidden or not: getFields() supplies the
+        // value written back on save, and skipping it would drop the item's
+        // existing custom fields.
+        if (shows('customFields')) {
+            const customFieldsBody = createCollapsibleModalSection(contentEl, {
+                title: 'Custom fields',
+                description: 'Additional properties specific to this project',
+                icon: 'list-plus',
+                open: Boolean(Object.keys(this.item.customFields || {}).length),
+            });
+            this.customFieldsEditor.renderFreeFormSection(customFieldsBody);
+            customFieldsBody.querySelectorAll(':scope > h3').forEach(heading => heading.remove());
+        }
+
         // --- Action Buttons at bottom ---
         if (!this.isNew && this.onDelete) {
             this.createFooterButton(footerEl, t('deleteItem'), async () => {
@@ -844,6 +896,24 @@ export class PlotItemModal extends ResponsiveModal {
             this.close();
         }, { cta: true });
     })(); }
+    /**
+     * The "Your fields" section. Only exists when the vault defines typed fields
+     * for items: the editor renders nothing otherwise, and the empty section is
+     * then removed.
+     */
+    private renderDefinedFieldsSection(contentEl: HTMLElement): void {
+        const body = createCollapsibleModalSection(contentEl, {
+            title: 'Your fields',
+            description: 'Typed fields you defined in settings for items',
+            icon: 'list-checks',
+            open: true,
+        });
+        this.customFieldsEditor.renderDefinedFields(body);
+        // The editor adds its own heading; the section title already names it.
+        body.querySelectorAll(':scope > h3').forEach(heading => heading.remove());
+        if (!body.hasChildNodes()) body.parentElement?.remove();
+    }
+
     private createCampaignEffectId(): string {
         return `itemfx-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     }
