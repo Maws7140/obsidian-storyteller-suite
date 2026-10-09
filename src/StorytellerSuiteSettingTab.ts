@@ -691,6 +691,14 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                         if (next.length > 0) map[entityType] = next;
                         else delete map[entityType];
                         this.plugin.settings.sectionFieldsInFrontmatter = map;
+                        // Remember fields switched off, so their property copies move back into
+                        // the body on save; hand-written properties on other fields are untouched.
+                        const released = { ...(this.plugin.settings.sectionFieldsReleasedToBody ?? {}) };
+                        const releasedForType = (released[entityType] ?? []).filter(name => name !== field);
+                        if (!value) releasedForType.push(field);
+                        if (releasedForType.length > 0) released[entityType] = releasedForType;
+                        else delete released[entityType];
+                        this.plugin.settings.sectionFieldsReleasedToBody = released;
                         await this.plugin.saveSettings();
                     })
                 );

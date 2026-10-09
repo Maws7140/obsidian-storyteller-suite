@@ -363,6 +363,8 @@ const FRONTMATTER_LINK_ONLY_SCALAR_FIELDS = new Set([
      * field stays a section, as before. See utils/SectionFieldPlacement.ts.
      */
     sectionFieldsInFrontmatter?: Record<string, string[]>;
+    /** Entity type -> section fields switched back from properties to sections (see SectionFieldPlacement.ts) */
+    sectionFieldsReleasedToBody?: Record<string, string[]>;
 
     /** World-Building */
     enableWorldBuilding?: boolean;
@@ -506,6 +508,7 @@ const FRONTMATTER_LINK_ONLY_SCALAR_FIELDS = new Set([
     mapFolderPath: '',
     hiddenModalFields: {},
     sectionFieldsInFrontmatter: {},
+    sectionFieldsReleasedToBody: {},
     groupFolderPath: '',
     compendiumFolderPath: '',
     bookFolderPath: '',
@@ -4475,6 +4478,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		const sectionPlan = planSectionFieldPlacement({
 			entityType: 'character',
 			settings: this.settings.sectionFieldsInFrontmatter,
+			released: this.settings.sectionFieldsReleasedToBody,
 			entity: charRecord,
 			originalFrontmatter,
 			existingSections,
@@ -4735,6 +4739,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		const sectionPlan = planSectionFieldPlacement({
 			entityType: 'location',
 			settings: this.settings.sectionFieldsInFrontmatter,
+			released: this.settings.sectionFieldsReleasedToBody,
 			entity: location as unknown as Record<string, unknown>,
 			originalFrontmatter,
 			existingSections,
@@ -5022,6 +5027,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		const sectionPlan = planSectionFieldPlacement({
 			entityType: 'map',
 			settings: this.settings.sectionFieldsInFrontmatter,
+			released: this.settings.sectionFieldsReleasedToBody,
 			entity: map as unknown as Record<string, unknown>,
 			originalFrontmatter,
 			existingSections,
@@ -5622,6 +5628,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		const sectionPlan = planSectionFieldPlacement({
 			entityType: 'event',
 			settings: this.settings.sectionFieldsInFrontmatter,
+			released: this.settings.sectionFieldsReleasedToBody,
 			entity: event as unknown as Record<string, unknown>,
 			originalFrontmatter,
 			existingSections,
@@ -5964,6 +5971,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		const sectionPlan = planSectionFieldPlacement({
 			entityType: 'item',
 			settings: this.settings.sectionFieldsInFrontmatter,
+			released: this.settings.sectionFieldsReleasedToBody,
 			entity: item as unknown as Record<string, unknown>,
 			originalFrontmatter,
 			existingSections,
@@ -6156,6 +6164,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		const sectionPlan = planSectionFieldPlacement({
 			entityType: 'reference',
 			settings: this.settings.sectionFieldsInFrontmatter,
+			released: this.settings.sectionFieldsReleasedToBody,
 			entity: reference as unknown as Record<string, unknown>,
 			originalFrontmatter,
 			existingSections,
@@ -6316,6 +6325,7 @@ export default class StorytellerSuitePlugin extends Plugin {
         const sectionPlan = planSectionFieldPlacement({
             entityType: 'chapter',
             settings: this.settings.sectionFieldsInFrontmatter,
+            released: this.settings.sectionFieldsReleasedToBody,
             entity: chapter as unknown as Record<string, unknown>,
             originalFrontmatter,
             existingSections,
@@ -6587,6 +6597,7 @@ export default class StorytellerSuitePlugin extends Plugin {
         const sectionPlan = planSectionFieldPlacement({
             entityType: 'book',
             settings: this.settings.sectionFieldsInFrontmatter,
+            released: this.settings.sectionFieldsReleasedToBody,
             entity: book as unknown as Record<string, unknown>,
             originalFrontmatter,
             existingSections,
@@ -6875,6 +6886,7 @@ export default class StorytellerSuitePlugin extends Plugin {
         const sectionPlan = planSectionFieldPlacement({
             entityType: 'scene',
             settings: this.settings.sectionFieldsInFrontmatter,
+            released: this.settings.sectionFieldsReleasedToBody,
             entity: scene as unknown as Record<string, unknown>,
             originalFrontmatter,
             existingSections,
@@ -7116,6 +7128,7 @@ export default class StorytellerSuitePlugin extends Plugin {
         const sectionPlan = planSectionFieldPlacement({
             entityType: 'culture',
             settings: this.settings.sectionFieldsInFrontmatter,
+            released: this.settings.sectionFieldsReleasedToBody,
             entity: culture as unknown as Record<string, unknown>,
             originalFrontmatter,
             existingSections,
@@ -7275,6 +7288,7 @@ export default class StorytellerSuitePlugin extends Plugin {
         const sectionPlan = planSectionFieldPlacement({
             entityType: 'economy',
             settings: this.settings.sectionFieldsInFrontmatter,
+            released: this.settings.sectionFieldsReleasedToBody,
             entity: economy as unknown as Record<string, unknown>,
             originalFrontmatter,
             existingSections,
@@ -7420,6 +7434,7 @@ export default class StorytellerSuitePlugin extends Plugin {
         const sectionPlan = planSectionFieldPlacement({
             entityType: 'compendiumEntry',
             settings: this.settings.sectionFieldsInFrontmatter,
+            released: this.settings.sectionFieldsReleasedToBody,
             entity: entry as unknown as Record<string, unknown>,
             originalFrontmatter,
             existingSections,
@@ -7580,6 +7595,7 @@ export default class StorytellerSuitePlugin extends Plugin {
         const sectionPlan = planSectionFieldPlacement({
             entityType: 'magicSystem',
             settings: this.settings.sectionFieldsInFrontmatter,
+            released: this.settings.sectionFieldsReleasedToBody,
             entity: magicSystem as unknown as Record<string, unknown>,
             originalFrontmatter,
             existingSections,

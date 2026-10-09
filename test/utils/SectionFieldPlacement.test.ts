@@ -24,7 +24,8 @@ const OFF: SectionFieldSettings = {};
 function saveCharacterNote(
     entity: Record<string, unknown>,
     settings: SectionFieldSettings,
-    existing?: string
+    existing?: string,
+    released?: SectionFieldSettings
 ): string {
     const originalFrontmatter = existing ? parseFrontmatterFromContent(existing) : undefined;
     const existingSections = existing ? parseSectionsFromMarkdown(existing) : {};
@@ -33,6 +34,7 @@ function saveCharacterNote(
     const plan = planSectionFieldPlacement({
         entityType: 'character',
         settings,
+        released,
         entity,
         originalFrontmatter,
         existingSections,
@@ -164,7 +166,7 @@ describe('SectionFieldPlacement', () => {
             const loaded = loadCharacter(onNote, OFF);
             expect(loaded.description).toBe(MULTI_LINE);
 
-            const offNote = saveCharacterNote(loaded, OFF, onNote);
+            const offNote = saveCharacterNote(loaded, OFF, onNote, ON);
             expect(parseFrontmatterFromContent(offNote)).not.toHaveProperty('description');
             expect(parseSectionsFromMarkdown(offNote).Description).toBe(MULTI_LINE);
             expect(parseSectionsFromMarkdown(offNote).Backstory).toBe('Born at sea.');
@@ -172,9 +174,15 @@ describe('SectionFieldPlacement', () => {
 
         it('keeps the property value when the entity arrives without a description', () => {
             const onNote = saveCharacterNote({ name: 'Mara', description: 'Kept safe.', backstory: '' }, ON);
-            const offNote = saveCharacterNote({ name: 'Mara', backstory: '' }, OFF, onNote);
+            const offNote = saveCharacterNote({ name: 'Mara', backstory: '' }, OFF, onNote, ON);
             expect(parseFrontmatterFromContent(offNote)).not.toHaveProperty('description');
             expect(parseSectionsFromMarkdown(offNote).Description).toBe('Kept safe.');
+        });
+
+        it('leaves a hand-written description property alone when the field was never stored as a property', () => {
+            const handWritten = '---\nname: Mara\ndescription: Typed in Properties.\n---\n';
+            const note = saveCharacterNote({ name: 'Mara', description: 'Typed in Properties.', backstory: '' }, OFF, handWritten);
+            expect(parseFrontmatterFromContent(note)).toHaveProperty('description', 'Typed in Properties.');
         });
 
         it('leaves the frontmatter alone when the setting was never on (default vaults)', () => {

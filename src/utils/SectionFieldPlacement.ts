@@ -89,6 +89,13 @@ export interface SectionFieldPlan {
 export interface PlanSectionFieldInput {
     entityType: EntityType;
     settings: SectionFieldSettings;
+    /**
+     * Fields the user switched back to note sections after storing them as
+     * properties (settings `sectionFieldsReleasedToBody`). Only these have a
+     * frontmatter copy moved back into the body; a property the user typed by
+     * hand on a never-configured field is left alone.
+     */
+    released?: SectionFieldSettings;
     /** The entity being saved. Read for each configurable field. */
     entity: Record<string, unknown>;
     /** Frontmatter of the note as it is on disk (undefined for a new note). */
@@ -111,6 +118,7 @@ export function planSectionFieldPlacement(input: PlanSectionFieldInput): Section
     const plan = emptyPlan();
     const { entityType, entity, originalFrontmatter, existingSections = {} } = input;
     const configured = new Set(getFrontmatterSectionFields(input.settings, entityType));
+    const released = new Set(getFrontmatterSectionFields(input.released, entityType));
     const whitelist = getWhitelistKeys(entityType);
     const templateSections = (entity as { _templateSections?: Record<string, string> })._templateSections ?? {};
 
@@ -125,8 +133,9 @@ export function planSectionFieldPlacement(input: PlanSectionFieldInput): Section
             continue;
         }
 
-        // Not configured. Only a copy the plugin would not write itself is moved back.
-        if (hasOriginalKey && !whitelist.has(field)) {
+        // Not configured. Move a frontmatter copy back only when the user had
+        // stored this field as a property and switched it off again.
+        if (hasOriginalKey && released.has(field) && !whitelist.has(field)) {
             plan.removeFrontmatter.push(field);
             plan.sections[sectionName] = resolveFieldValue(field, headings, entity, originalFrontmatter, existingSections, templateSections);
         }
