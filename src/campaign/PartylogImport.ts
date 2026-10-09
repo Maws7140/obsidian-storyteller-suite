@@ -105,10 +105,14 @@ function describeParts(entity: EntityState): string[] {
 	return parts.map((part) => part.trim()).filter((part) => part.length > 0);
 }
 
-/** Adds the parts that a status string does not already list. Returns undefined when nothing is new. */
+/**
+ * Adds the parts that a status string does not already list. Parts are separated by `;` in a status,
+ * and a part may itself contain commas (for example `Allies: Rohan, Gondor`), so whole parts are compared.
+ * Returns undefined when nothing is new.
+ */
 export function mergeStatus(existing: string | undefined, parts: string[]): { value: string; added: string[] } | undefined {
-	const tokens = (existing ?? '').split(/\s*[;,]\s*/).map((token) => token.trim().toLowerCase()).filter((token) => token.length > 0);
-	const added = parts.filter((part) => !tokens.includes(part.toLowerCase()));
+	const listed = (existing ?? '').split(';').map((part) => part.trim().toLowerCase()).filter((part) => part.length > 0);
+	const added = parts.filter((part) => !listed.includes(part.trim().toLowerCase()));
 	if (added.length === 0) return undefined;
 	const base = (existing ?? '').trim();
 	return { value: [base, ...added].filter((part) => part.length > 0).join('; '), added };
