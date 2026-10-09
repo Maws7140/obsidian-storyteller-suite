@@ -718,7 +718,8 @@ export class MapView extends ItemView {
         const clean = normalizeMaplogData({ maplogMarks: next.marks, maplogLines: next.lines, maplogAreas: next.areas });
         // Update the view first: a second mark placed before this write finishes must build on
         // this one, not on the note as it was, or the earlier mark would be overwritten.
-        this.currentMap = { ...map, maplogMarks: clean.marks, maplogLines: clean.lines, maplogAreas: clean.areas };
+        const optimistic = { ...map, maplogMarks: clean.marks, maplogLines: clean.lines, maplogAreas: clean.areas };
+        this.currentMap = optimistic;
         this.leafletRenderer?.getMaplogLayer()?.setData(clean);
         this.maplogWritesPending++;
         const run = async (): Promise<void> => {
@@ -734,7 +735,14 @@ export class MapView extends ItemView {
         };
         const queued = this.maplogSaveQueue.then(run, run).finally(() => { this.maplogWritesPending--; });
         this.maplogSaveQueue = queued.catch(() => undefined);
-        return queued;
+        return queued.catch((error: unknown) => {
+            // The note did not change, so drop the optimistic state, unless a later edit has already replaced it.
+            if (this.currentMap === optimistic) {
+                this.currentMap = map;
+                this.leafletRenderer?.getMaplogLayer()?.setData(normalizeMaplogData(map));
+            }
+            throw error;
+        });
     }
 
     /**

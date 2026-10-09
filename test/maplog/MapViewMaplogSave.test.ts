@@ -45,4 +45,26 @@ describe('MapView.saveMaplog', () => {
         expect(layer.setData.mock.lastCall![0].marks).toHaveLength(1);
     });
 
+    it('restores the previous state and layer when the note write is rejected', async () => {
+        const { view, layer } = harness(async () => { throw new Error('note locked'); });
+        const before = view.currentMap;
+        await expect(view.saveMaplog(markOf(5))).rejects.toThrow('note locked');
+        expect(view.currentMap).toBe(before);
+        expect(view.currentMap.maplogMarks).toEqual([]);
+        expect(layer.setData).toHaveBeenLastCalledWith(normalizeMaplogData({}));
+        expect(view.maplogWritesPending).toBe(0);
+    });
+
+    it('does not roll back over a later successful edit', async () => {
+        let reject!: (e: Error) => void;
+        let call = 0;
+        const { view } = harness(() => (++call === 1 ? new Promise<void>((_, r) => { reject = r; }) : Promise.resolve()));
+        const failing = view.saveMaplog(markOf(1));
+        const ok = view.saveMaplog(markOf(2));
+        await tick();
+        reject(new Error('locked'));
+        await expect(failing).rejects.toThrow('locked');
+        await ok;
+        expect(view.currentMap.maplogMarks.map((m: any) => m.id)).toEqual(['door-2']);
+    });
 });
