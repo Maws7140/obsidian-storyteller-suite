@@ -9,13 +9,17 @@ import {
     ExistingEntityLinkSelections,
     Template,
     TemplateApplicationOptions,
+    TemplateEntitySelection,
     TemplateVariableValue
 } from '../TemplateTypes';
 import { TemplateStorageManager } from '../TemplateStorageManager';
 import { TemplateApplicator } from '../TemplateApplicator';
-import { createCustomizedTemplateCopy } from '../TemplateCustomization';
+import {
+    buildFieldOverridesFromEntityFileNames,
+    createCustomizedTemplateCopy
+} from '../TemplateCustomization';
 import { TemplateEditorModal } from '../../modals/TemplateEditorModal';
-import { TemplateApplicationModal } from '../../modals/TemplateApplicationModal';
+import { EntityFileName, TemplateApplicationModal } from '../../modals/TemplateApplicationModal';
 
 export class StoryTemplateDetailModal extends Modal {
     plugin: StorytellerSuitePlugin;
@@ -345,8 +349,8 @@ export class StoryTemplateDetailModal extends Modal {
             this.app,
             this.plugin,
             this.template,
-            (variableValues, _entityFileNames, linkSelections) => {
-                void this.applyCustomized(mode, variableValues, linkSelections);
+            (variableValues, entityFileNames, linkSelections, includeEntities) => {
+                void this.applyCustomized(mode, variableValues, entityFileNames, linkSelections, includeEntities);
             },
             () => {
                 // Cancelled: return to the detail view
@@ -356,26 +360,34 @@ export class StoryTemplateDetailModal extends Modal {
                     this.templateManager,
                     this.template
                 ).open();
-            }
+            },
+            { allowEntityToggles: true }
         ).open();
     }
 
     private async applyCustomized(
         mode: 'merge' | 'replace',
         variableValues: Record<string, TemplateVariableValue>,
-        linkSelections?: ExistingEntityLinkSelections
+        entityFileNames: EntityFileName[],
+        linkSelections?: ExistingEntityLinkSelections,
+        includeEntities?: TemplateEntitySelection
     ): Promise<void> {
         const customized = createCustomizedTemplateCopy(this.template, variableValues);
         await this.runApplication(customized, mode, {
             variableValues,
-            existingEntityLinkSelections: linkSelections
+            existingEntityLinkSelections: linkSelections,
+            includeEntities,
+            fieldOverrides: buildFieldOverridesFromEntityFileNames(entityFileNames)
         });
     }
 
     private async runApplication(
         template: Template,
         mode: 'merge' | 'replace',
-        extraOptions: Pick<TemplateApplicationOptions, 'variableValues' | 'existingEntityLinkSelections'> = {}
+        extraOptions: Pick<
+            TemplateApplicationOptions,
+            'variableValues' | 'existingEntityLinkSelections' | 'includeEntities' | 'fieldOverrides'
+        > = {}
     ): Promise<void> {
         // Get active story
         const activeStoryId = this.plugin.settings.activeStoryId;

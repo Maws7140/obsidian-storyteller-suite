@@ -5,6 +5,24 @@
  */
 
 import type { Template, TemplateVariableValue } from './TemplateTypes';
+import type { EntityFileName } from '../modals/TemplateApplicationModal';
+
+/**
+ * Convert the file names chosen in the apply modal into applicator field overrides.
+ * The chosen file name becomes the created entity's name, matching the behaviour of
+ * the other apply paths. Entries with an empty name are left out.
+ */
+export function buildFieldOverridesFromEntityFileNames(
+    entityFileNames: readonly EntityFileName[]
+): Map<string, { name: string }> {
+    const overrides = new Map<string, { name: string }>();
+    for (const entityInfo of entityFileNames) {
+        if (entityInfo.fileName) {
+            overrides.set(entityInfo.templateId, { name: entityInfo.fileName });
+        }
+    }
+    return overrides;
+}
 
 /**
  * Return a deep copy of the template whose variable defaults reflect the

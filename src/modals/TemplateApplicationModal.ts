@@ -4,13 +4,14 @@
  * Provides type-appropriate inputs and validation
  */
 
-import { App, Notice, Setting, parseYaml } from 'obsidian';
+import { App, Notice, Setting, ToggleComponent, parseYaml } from 'obsidian';
 import { ResponsiveModal } from './ResponsiveModal';
 import type StorytellerSuitePlugin from '../main';
 import {
     ExistingEntityLinkSelections,
     Template,
     TemplateEntities,
+    TemplateEntitySelection,
     TemplateEntityType,
     TemplateExistingEntityLink,
     TemplateVariable
@@ -22,6 +23,12 @@ import {
     getTemplateEntityLabel,
     getTemplateEntityPluralKey
 } from '../templates/TemplateEntityRegistry';
+import {
+    buildIncludeSelection,
+    describeExcludedReferences,
+    findExcludedReferences,
+    listTemplateEntities
+} from '../templates/TemplateEntitySelection';
 
 /** An existing vault entity offered as a link target */
 interface LinkTargetOption {
@@ -49,19 +56,27 @@ export interface EntityFileName {
     fileName: string; // The name that will become the filename (without .md extension)
 }
 
+export interface TemplateApplicationModalOptions {
+    /** Show a section where each template entity can be unticked before applying */
+    allowEntityToggles?: boolean;
+}
+
 export class TemplateApplicationModal extends ResponsiveModal {
     private plugin: StorytellerSuitePlugin;
     private template: Template;
     private onApply: (
         variableValues: TemplateVariableValues,
         entityFileNames: EntityFileName[],
-        existingEntityLinkSelections?: ExistingEntityLinkSelections
+        existingEntityLinkSelections?: ExistingEntityLinkSelections,
+        includeEntities?: TemplateEntitySelection
     ) => void;
     private onCancel?: () => void;
+    private allowEntityToggles: boolean;
     private variableValues: TemplateVariableValues = {};
     private entityFileNames: EntityFileName[] = [];
     private previewNames: Map<string, string> = new Map(); // templateId -> preview name
     private linkSelections: ExistingEntityLinkSelections = {};
+    private excludedTemplateIds: Set<string> = new Set();
     private didApply = false;
 
     constructor(
@@ -71,15 +86,18 @@ export class TemplateApplicationModal extends ResponsiveModal {
         onApply: (
             variableValues: TemplateVariableValues,
             entityFileNames: EntityFileName[],
-            existingEntityLinkSelections?: ExistingEntityLinkSelections
+            existingEntityLinkSelections?: ExistingEntityLinkSelections,
+            includeEntities?: TemplateEntitySelection
         ) => void,
-        onCancel?: () => void
+        onCancel?: () => void,
+        options: TemplateApplicationModalOptions = {}
     ) {
         super(app);
         this.plugin = plugin;
         this.template = template;
         this.onApply = onApply;
         this.onCancel = onCancel;
+        this.allowEntityToggles = options.allowEntityToggles ?? false;
         
         // Initialize entity file names from template
         this.initializeEntityFileNames();
@@ -128,6 +146,9 @@ export class TemplateApplicationModal extends ResponsiveModal {
             this.renderNoVariablesMessage(contentEl);
         }
 
+        // Entity include section (opt-in, customize flow only)
+        this.renderEntityInclusionSection(contentEl);
+
         // Entity naming section
         this.renderEntityNamingSection(contentEl);
 
@@ -136,6 +157,95 @@ export class TemplateApplicationModal extends ResponsiveModal {
 
         // Footer
         this.renderFooter(contentEl);
+    }
+
+    private entityInclusionContainer: HTMLElement | null = null;
+
+    /**
+     * Render the "Entities to create" section: one checkbox per template entity,
+     * grouped by type, with select all / none per type and a reference warning.
+     */
+    private renderEntityInclusionSection(container: HTMLElement): void {
+        if (!this.allowEntityToggles) return;
+        if (listTemplateEntities(this.template).length === 0) return;
+
+        this.entityInclusionContainer = container.createDiv('template-application-entity-inclusion');
+        this.updatePreviewNames();
+        this.refreshEntityInclusionSection();
+    }
+
+    /**
+     * Rebuild the inclusion section from the current names and exclusions.
+     * Called whenever the variable values or the exclusions change.
+     */
+    private refreshEntityInclusionSection(): void {
+        const container = this.entityInclusionContainer;
+        if (!container) return;
+
+        container.empty();
+        const items = listTemplateEntities(this.template);
+        container.createEl('h3', { text: 'Entities to create' });
+        container.createEl('p', {
+            text: 'Untick any entity you do not want created. Unticked entities are skipped.',
+            cls: 'template-application-instruction'
+        });
+
+        TEMPLATE_ENTITY_TYPES.forEach(entityType => {
+            const typeItems = items.filter(item => item.entityType === entityType);
+            if (typeItems.length === 0) return;
+
+            const group = container.createDiv('template-entity-inclusion-group');
+            const setAll = (include: boolean): void => {
+                typeItems.forEach(item => {
+                    if (include) {
+                        this.excludedTemplateIds.delete(item.templateId);
+                    } else {
+                        this.excludedTemplateIds.add(item.templateId);
+                    }
+                });
+                this.updateEntityNamingSection();
+            };
+
+            new Setting(group)
+                .setName(`${getTemplateEntityLabel(entityType)} (${typeItems.length})`)
+                .setHeading()
+                .addButton(button => button
+                    .setButtonText('Select all')
+                    .onClick(() => setAll(true)))
+                .addButton(button => button
+                    .setButtonText('Select none')
+                    .onClick(() => setAll(false)));
+
+            typeItems.forEach(item => {
+                const displayName = this.previewNames.get(item.templateId) || item.name || 'Unnamed';
+                new Setting(group)
+                    .setName(displayName)
+                    .addToggle((toggle: ToggleComponent) => toggle
+                        .setValue(!this.excludedTemplateIds.has(item.templateId))
+                        .onChange(value => {
+                            if (value) {
+                                this.excludedTemplateIds.delete(item.templateId);
+                            } else {
+                                this.excludedTemplateIds.add(item.templateId);
+                            }
+                            this.updateEntityNamingSection();
+                        })
+                    );
+            });
+        });
+
+        const references = findExcludedReferences(this.template, this.excludedTemplateIds, this.previewNames);
+        if (references.length > 0) {
+            const warning = container.createDiv('template-entity-inclusion-warning');
+            warning.createEl('p', {
+                text: 'Some entities you are keeping refer to entities you excluded:',
+                cls: 'mod-warning'
+            });
+            const list = warning.createEl('ul');
+            describeExcludedReferences(references).forEach(message => {
+                list.createEl('li', { text: message });
+            });
+        }
     }
 
     /**
@@ -549,12 +659,16 @@ export class TemplateApplicationModal extends ResponsiveModal {
      * Update entity naming section with current preview names
      */
     private updateEntityNamingSection(): void {
+        // Exclusions and names feed the inclusion section too
+        this.refreshEntityInclusionSection();
+
         if (!this.entityNamingContainer) return;
 
         // Clear and rebuild
         this.entityNamingContainer.empty();
-        
-        if (this.entityFileNames.length === 0) {
+
+        const namedEntities = this.entityFileNames.filter(entityInfo => !this.excludedTemplateIds.has(entityInfo.templateId));
+        if (namedEntities.length === 0) {
             return;
         }
 
@@ -567,8 +681,8 @@ export class TemplateApplicationModal extends ResponsiveModal {
         // Update preview names based on current variable values
         this.updatePreviewNames();
 
-        // Render input for each entity
-        this.entityFileNames.forEach((entityInfo, index) => {
+        // Render input for each entity that will be created
+        namedEntities.forEach((entityInfo) => {
             const entityContainer = this.entityNamingContainer!.createDiv('template-entity-naming-item');
             const entityTypeLabel = this.getEntityTypeLabel(entityInfo.entityType);
             const previewName = this.previewNames.get(entityInfo.templateId) || 'Unnamed';
@@ -677,9 +791,10 @@ export class TemplateApplicationModal extends ResponsiveModal {
             }
         }
 
-        // Validate entity file names
+        // Validate entity file names (excluded entities are not created, so skip them)
         const nameErrors: string[] = [];
-        this.entityFileNames.forEach(entityInfo => {
+        const includedFileNames = this.entityFileNames.filter(entityInfo => !this.excludedTemplateIds.has(entityInfo.templateId));
+        includedFileNames.forEach(entityInfo => {
             if (!entityInfo.fileName || entityInfo.fileName.trim() === '') {
                 nameErrors.push(`${this.getEntityTypeLabel(entityInfo.entityType)} file name is required`);
             }
@@ -712,7 +827,10 @@ export class TemplateApplicationModal extends ResponsiveModal {
         }
 
         // All validation passed, call the callback
-        this.onApply(this.variableValues, this.entityFileNames, this.linkSelections);
+        const includeEntities = this.excludedTemplateIds.size > 0
+            ? buildIncludeSelection(listTemplateEntities(this.template), this.excludedTemplateIds)
+            : undefined;
+        this.onApply(this.variableValues, includedFileNames, this.linkSelections, includeEntities);
         new Notice(`Applying template "${this.template.name}"...`);
         this.close();
     }
