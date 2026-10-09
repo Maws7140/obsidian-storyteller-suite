@@ -7,7 +7,7 @@ import { TemplatePickerModal } from './TemplatePickerModal';
 import type { Template, TemplateEntity, TemplateVariableValue } from '../templates/TemplateTypes';
 import { t } from '../i18n/strings';
 import { parseSectionsFromMarkdown } from '../yaml/EntitySections';
-import { EntityCustomFieldsEditor } from './entity/EntityCustomFieldsEditor';
+import { EntityCustomFieldsEditor, customFieldEditorOptions } from './entity/EntityCustomFieldsEditor';
 
 export type CultureModalSubmitCallback = (culture: Culture) => Promise<void>;
 export type CultureModalDeleteCallback = (culture: Culture) => Promise<void>;
@@ -66,7 +66,8 @@ export class CultureModal extends ResponsiveModal {
         if (!Array.isArray(this.culture.linkedItems)) this.culture.linkedItems = [];
         if (!this.culture.groups) this.culture.groups = [];
         if (!this.culture.connections) this.culture.connections = [];
-        this.customFieldsEditor = new EntityCustomFieldsEditor(this.app, 'culture', this.culture.customFields);
+        this.customFieldsEditor = new EntityCustomFieldsEditor(this.app, 'culture', this.culture.customFields,
+            customFieldEditorOptions(this.plugin, 'culture', () => this.culture));
 
         this.onSubmit = onSubmit;
         this.onDelete = onDelete;

@@ -11,7 +11,7 @@ import { GroupSuggestModal } from './GroupSuggestModal';
 import { parseSectionsFromMarkdown } from '../yaml/EntitySections';
 import { TemplatePickerModal } from './TemplatePickerModal';
 import type { Template, TemplateEntity, TemplateVariableValue } from '../templates/TemplateTypes';
-import { EntityCustomFieldsEditor } from './entity/EntityCustomFieldsEditor';
+import { EntityCustomFieldsEditor, customFieldEditorOptions } from './entity/EntityCustomFieldsEditor';
 import { ResponsiveModal } from './ResponsiveModal';
 import { confirmWithModal } from './ui/ConfirmModal';
 
@@ -40,7 +40,8 @@ export class ChapterModal extends ResponsiveModal {
         this.isNew = ch == null;
         this.chapter = ch ? { ...ch } : { name: '', tags: [], linkedCharacters: [], linkedLocations: [], linkedEvents: [], linkedItems: [], linkedGroups: [] };
         const chapterFields = this.chapter as ChapterWithCustomFields;
-        this.customFieldsEditor = new EntityCustomFieldsEditor(this.app, 'chapter', chapterFields.customFields || {});
+        this.customFieldsEditor = new EntityCustomFieldsEditor(this.app, 'chapter', chapterFields.customFields || {},
+            customFieldEditorOptions(this.plugin, 'chapter', () => this.chapter));
         this.onSubmit = onSubmit;
         this.onDelete = onDelete;
         this.modalEl.addClass('storyteller-chapter-modal');

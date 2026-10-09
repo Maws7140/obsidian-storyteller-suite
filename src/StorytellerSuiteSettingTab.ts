@@ -14,6 +14,15 @@ import { EditStoryModal } from './modals/EditStoryModal';
 import type { StoryFolderOverrides } from './folders/FolderResolver';
 import type { TimelineGroupMode } from './types';
 import { MODAL_FIELD_SETS, isModalFieldVisible, setModalFieldHidden } from './modals/entity/ModalFieldVisibility';
+import {
+    CUSTOM_FIELD_LINK_TARGETS,
+    CUSTOM_FIELD_TYPE_LABELS,
+    CUSTOM_FIELD_TYPES,
+    CustomFieldDefinition,
+    CustomFieldType,
+    isLinkFieldType,
+    validateCustomFieldKey,
+} from './modals/entity/CustomFieldDefinitions';
 import { FolderSuggestModal } from './modals/FolderSuggestModal';
 import { CustomSheetTemplateModal } from './modals/CustomSheetTemplateModal';
 import { getGettingStartedGuide, renderGuideDocument } from './tutorial/StorytellerGuideContent';
@@ -22,6 +31,7 @@ import { setLocale, t, getAvailableLanguages, getLanguageName, isLanguageAvailab
 import { VIEW_TYPE_DASHBOARD } from './views/DashboardView';
 import { confirmWithModal } from './modals/ui/ConfirmModal';
 import type { TemplateEntityType } from './templates/TemplateTypes';
+import type { EntityType } from './yaml/EntitySections';
 import { CalendarRegistry } from './calendar/CalendarRegistry';
 import { encodeShareCode, makeCalendarDocument, makeThemeDocument } from './calendar/TimelineDocuments';
 import { CalendarManagerModal } from './modals/CalendarManagerModal';
@@ -36,6 +46,23 @@ interface TabDef { id: TabId; icon: string; label: string; }
 
 /** Entity types whose modals honour the section toggles. */
 const MODAL_CUSTOMIZABLE_ENTITY_TYPES = ['character', 'event', 'item'] as const;
+
+/** Entity types whose modal can ask for typed fields (matches the modal editors). */
+const DEFINED_FIELD_ENTITY_TYPES: ReadonlyArray<{ value: EntityType; label: string }> = [
+    { value: 'character', label: 'Character' },
+    { value: 'location', label: 'Location' },
+    { value: 'event', label: 'Event' },
+    { value: 'item', label: 'Item' },
+    { value: 'reference', label: 'Reference' },
+    { value: 'chapter', label: 'Chapter' },
+    { value: 'map', label: 'Map' },
+    { value: 'culture', label: 'Culture' },
+    { value: 'economy', label: 'Economy' },
+    { value: 'magicSystem', label: 'Magic system' },
+    { value: 'compendiumEntry', label: 'Compendium entry' },
+    { value: 'book', label: 'Book' },
+    { value: 'faction', label: 'Group' },
+];
 
 const MODAL_ENTITY_LABELS: Record<(typeof MODAL_CUSTOMIZABLE_ENTITY_TYPES)[number], string> = {
     character: 'Character',
@@ -677,6 +704,163 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                 'Obsidian\'s own Properties panel and queryable from Bases and Dataview.'
             );
         }
+
+        this.renderDefinedFieldsSettings(container);
+    }
+
+    /** Typed fields the entity modals ask for, per entity type (issue #138). */
+    private renderDefinedFieldsSettings(container: HTMLElement): void {
+        new Setting(container).setName('Defined fields').setHeading();
+        container.createEl('p', {
+            text: 'Ask for your own properties with the right input. Text, long text and number work as you expect. A list is comma separated. A link picks one note from the active story, and links picks several. Values are written as top-level properties, for example aliases with a list of names or parents with links. Long text stays on one line in frontmatter.',
+            cls: 'setting-item-description'
+        });
+
+        const host = container.createDiv();
+        let selected: EntityType = 'character';
+        const render = (): void => {
+            host.empty();
+            new Setting(host)
+                .setName('Entity type')
+                .addDropdown(dropdown => {
+                    for (const option of DEFINED_FIELD_ENTITY_TYPES) {
+                        dropdown.addOption(option.value, option.label);
+                    }
+                    dropdown.setValue(selected).onChange(value => {
+                        selected = value as EntityType;
+                        render();
+                    });
+                });
+            this.renderDefinedFieldRows(host, selected, render);
+        };
+        render();
+    }
+
+    private renderDefinedFieldRows(host: HTMLElement, entityType: EntityType, rerender: () => void): void {
+        const current = (): CustomFieldDefinition[] =>
+            [...(this.plugin.settings.customFieldDefinitions?.[entityType] ?? [])];
+        const persist = async (next: CustomFieldDefinition[]): Promise<void> => {
+            const map = { ...(this.plugin.settings.customFieldDefinitions ?? {}) };
+            if (next.length > 0) map[entityType] = next;
+            else delete map[entityType];
+            this.plugin.settings.customFieldDefinitions = map;
+            await this.plugin.saveSettings();
+        };
+        const update = async (index: number, patch: Partial<CustomFieldDefinition>): Promise<void> => {
+            const next = current();
+            if (!next[index]) return;
+            next[index] = { ...next[index], ...patch };
+            await persist(next);
+            rerender();
+        };
+
+        const list = current();
+        if (list.length === 0) {
+            host.createEl('p', { cls: 'setting-item-description', text: 'No defined fields for this entity type yet.' });
+        }
+
+        list.forEach((definition, index) => {
+            const setting = new Setting(host).setName(`Field ${index + 1}`);
+
+            setting.addText(text => {
+                text.setPlaceholder('Property name')
+                    .setValue(definition.key)
+                    .onChange(async (value) => {
+                        const key = value.trim();
+                        const taken = current().filter((_, i) => i !== index).map(d => d.key);
+                        // Only a valid name is saved. The error is shown when the field is left.
+                        if (key !== '' && validateCustomFieldKey(key, entityType, taken) !== null) return;
+                        const next = current();
+                        if (!next[index]) return;
+                        next[index] = { ...next[index], key };
+                        await persist(next);
+                    });
+                text.inputEl.addEventListener('blur', () => {
+                    const key = (current()[index]?.key ?? '');
+                    const taken = current().filter((_, i) => i !== index).map(d => d.key);
+                    const error = validateCustomFieldKey(text.getValue().trim(), entityType, taken);
+                    if (error && text.getValue().trim() !== '') {
+                        new Notice(error);
+                        text.setValue(key);
+                    }
+                });
+            });
+
+            setting.addText(text => text
+                .setPlaceholder('Label (optional)')
+                .setValue(definition.label ?? '')
+                .onChange(async (value) => {
+                    const next = current();
+                    if (!next[index]) return;
+                    const edited: CustomFieldDefinition = { ...next[index] };
+                    delete edited.label;
+                    const label = value.trim();
+                    if (label) edited.label = label;
+                    next[index] = edited;
+                    await persist(next);
+                }));
+
+            setting.addDropdown(dropdown => {
+                for (const type of CUSTOM_FIELD_TYPES) {
+                    dropdown.addOption(type, CUSTOM_FIELD_TYPE_LABELS[type]);
+                }
+                dropdown.setValue(definition.type).onChange(async (value) => {
+                    const type = value as CustomFieldType;
+                    const patch: Partial<CustomFieldDefinition> = { type };
+                    if (isLinkFieldType(type) && !definition.target) patch.target = 'character';
+                    await update(index, patch);
+                });
+            });
+
+            if (isLinkFieldType(definition.type)) {
+                setting.addDropdown(dropdown => {
+                    for (const target of CUSTOM_FIELD_LINK_TARGETS) {
+                        dropdown.addOption(target.value, target.label);
+                    }
+                    dropdown.setValue(definition.target ?? 'character').onChange(async (value) => {
+                        await update(index, { target: value });
+                    });
+                });
+            }
+
+            setting.addExtraButton(button => button
+                .setIcon('arrow-up')
+                .setTooltip('Move up')
+                .setDisabled(index === 0)
+                .onClick(async () => {
+                    const next = current();
+                    [next[index - 1], next[index]] = [next[index], next[index - 1]];
+                    await persist(next);
+                    rerender();
+                }));
+            setting.addExtraButton(button => button
+                .setIcon('arrow-down')
+                .setTooltip('Move down')
+                .setDisabled(index === list.length - 1)
+                .onClick(async () => {
+                    const next = current();
+                    [next[index], next[index + 1]] = [next[index + 1], next[index]];
+                    await persist(next);
+                    rerender();
+                }));
+            setting.addExtraButton(button => button
+                .setIcon('trash')
+                .setTooltip('Remove field')
+                .onClick(async () => {
+                    const next = current().filter((_, i) => i !== index);
+                    await persist(next);
+                    rerender();
+                }));
+        });
+
+        new Setting(host).addButton(button => button
+            .setButtonText('Add field')
+            .setIcon('plus')
+            .onClick(async () => {
+                // A blank row is kept until it is named, and ignored at runtime until then.
+                await persist([...current(), { key: '', type: 'text' }]);
+                rerender();
+            }));
     }
 
     // ─── Tab: Folders ─────────────────────────────────────────────────────────

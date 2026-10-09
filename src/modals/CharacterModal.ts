@@ -12,7 +12,7 @@ import { TemplatePickerModal } from './TemplatePickerModal';
 import type { Template, TemplateEntity, TemplateVariableValue } from '../templates/TemplateTypes';
 import { CharacterSheetPreviewModal } from './CharacterSheetPreviewModal';
 import { getTrackedItemOwner, isSameName } from '../utils/ItemOwnership';
-import { EntityCustomFieldsEditor } from './entity/EntityCustomFieldsEditor';
+import { EntityCustomFieldsEditor, customFieldEditorOptions } from './entity/EntityCustomFieldsEditor';
 import { EntityGroupSelector } from './entity/EntityGroupSelector';
 import { buildEntityNameIndex, getRelationshipTargetRef, resolveEntityRefName } from '../utils/EntityRefUtils';
 import { isModalFieldVisible, seedDefaultCustomFields } from './entity/ModalFieldVisibility';
@@ -89,7 +89,8 @@ export class CharacterModal extends ResponsiveModal {
             });
         }
         this.character = initialCharacter;
-        this.customFieldsEditor = new EntityCustomFieldsEditor(this.app, 'character', this.character.customFields);
+        this.customFieldsEditor = new EntityCustomFieldsEditor(this.app, 'character', this.character.customFields,
+            customFieldEditorOptions(this.plugin, 'character', () => this.character));
         this.groupSelector = new EntityGroupSelector({
             plugin: this.plugin,
             description: t('groupsHelpCharacter'),
