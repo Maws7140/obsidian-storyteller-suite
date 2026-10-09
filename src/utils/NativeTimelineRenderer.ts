@@ -403,6 +403,22 @@ export class NativeTimelineRenderer {
     getVisibleRange(): { start: Date; end: Date } { return { start: new Date(this.viewStart), end: new Date(this.viewEnd) }; }
     getEventCount(): number { return this.events.filter(event => this.shouldInclude(event) && this.matchesFork(event)).length; }
 
+    /**
+     * What the canvas is holding back. getEventCount only sees dated events, so
+     * an empty canvas could mean no events, undated events, or filters hiding
+     * them. The empty state and footer need to say which.
+     */
+    getEventTally(): { total: number; dated: number; undated: Event[]; hiddenByFilters: number } {
+        const inFork = this.events.filter(event => this.matchesFork(event));
+        const passing = inFork.filter(event => this.passesFilters(event));
+        return {
+            total: inFork.length,
+            dated: passing.filter(event => Boolean(event.dateTime)).length,
+            undated: passing.filter(event => !event.dateTime),
+            hiddenByFilters: inFork.length - passing.length
+        };
+    }
+
     getDateRange(): { start: Date; end: Date } | null {
         const events = this.getVisibleEvents();
         if (!events.length) return null;
@@ -2675,7 +2691,11 @@ export class NativeTimelineRenderer {
     }
 
     private shouldInclude(event: Event): boolean {
-        if (!event.dateTime) return false;
+        return Boolean(event.dateTime) && this.passesFilters(event);
+    }
+
+    /** The filter checks alone, so an undated event can still be counted as filtered out or not. */
+    private passesFilters(event: Event): boolean {
         if (this.filters.milestonesOnly && !event.isMilestone) return false;
         if (this.filters.characters?.size && !event.characters?.some(value => this.filters.characters!.has(value))) return false;
         if (this.filters.locations?.size && !this.eventLocations(event).some(value => this.filters.locations!.has(value))) return false;
