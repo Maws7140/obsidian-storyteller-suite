@@ -6,6 +6,8 @@ import { addImageSelectionButtons } from '../utils/ImageSelectionHelper';
 import { EntityCustomFieldsEditor, customFieldEditorOptions } from './entity/EntityCustomFieldsEditor';
 import { confirmWithModal } from './ui/ConfirmModal';
 import { isModalFieldVisible } from './entity/ModalFieldVisibility';
+import { createCollapsibleModalSection } from './entity/CollapsibleModalSection';
+import { sanitizeCustomFieldDefinitions } from './entity/CustomFieldDefinitions';
 
 export type BookModalSubmitCallback = (book: Book) => Promise<void>;
 export type BookModalDeleteCallback = (book: Book) => Promise<void>;
@@ -51,11 +53,17 @@ export class BookModal extends ResponsiveModal {
         return isModalFieldVisible(this.plugin.settings.hiddenModalFields, 'book', fieldKey);
     }
 
+    /** Whether the vault defines any typed fields for books. */
+    private hasDefinedFields(): boolean {
+        return sanitizeCustomFieldDefinitions('book', this.plugin.getCustomFieldDefinitions('book')).length > 0;
+    }
+
     onOpen(): void { void (async () => {
         super.onOpen();
         const { contentEl, footerEl } = this.createStructuredModalLayout();
         contentEl.createEl('h2', { text: this.isNew ? 'New Book' : `Edit: ${this.book.name}` });
 
+        // --- Core fields: flat at the top, always shown unless hidden in settings ---
         // Name
         new Setting(contentEl)
             .setName('Title')
@@ -91,17 +99,6 @@ export class BookModal extends ResponsiveModal {
                      });
                     t.inputEl.type = 'number';
                 });
-        }
-
-        // Genre
-        if (this.shows('genre')) {
-            new Setting(contentEl)
-                .setName('Genre')
-                .addText(t => t
-                    .setPlaceholder('E.g. Dark fantasy')
-                    .setValue(this.book.genre || '')
-                    .onChange(v => { this.book.genre = v || undefined; })
-                );
         }
 
         // Status
@@ -149,9 +146,42 @@ export class BookModal extends ResponsiveModal {
                 });
         }
 
+        // --- Your fields: typed definitions, open whenever any exist ---
+        this.customFieldsEditor.setFields(this.book.customFields);
+        const definedSection = this.hasDefinedFields()
+            ? createCollapsibleModalSection(contentEl, {
+                title: 'Your fields',
+                description: 'Typed fields defined for books in settings',
+                icon: 'list-checks',
+                open: true,
+            })
+            : null;
+        if (definedSection) this.customFieldsEditor.renderDefinedFields(definedSection);
+
+        // --- Genre and synopsis ---
+        const storySection = this.shows('genre') || this.shows('synopsis')
+            ? createCollapsibleModalSection(contentEl, {
+                title: 'Genre and synopsis',
+                description: 'Category, and the back-cover synopsis',
+                icon: 'book-open',
+                open: Boolean(this.book.genre || this.book.synopsis),
+            })
+            : null;
+
+        // Genre
+        if (storySection && this.shows('genre')) {
+            new Setting(storySection)
+                .setName('Genre')
+                .addText(t => t
+                    .setPlaceholder('E.g. Dark fantasy')
+                    .setValue(this.book.genre || '')
+                    .onChange(v => { this.book.genre = v || undefined; })
+                );
+        }
+
         // Synopsis
-        if (this.shows('synopsis')) {
-            new Setting(contentEl)
+        if (storySection && this.shows('synopsis')) {
+            new Setting(storySection)
                 .setName('Synopsis')
                 .setClass('storyteller-modal-setting-vertical')
                 .addTextArea((ta: TextAreaComponent) => {
@@ -162,16 +192,24 @@ export class BookModal extends ResponsiveModal {
                 });
         }
 
-        // Chapters section
-        if (this.shows('linkedChapters')) {
-            contentEl.createEl('h3', { text: 'Chapters' });
+        // --- Chapters ---
+        const chaptersSection = this.shows('linkedChapters')
+            ? createCollapsibleModalSection(contentEl, {
+                title: 'Chapters',
+                description: 'Chapters that belong to this book',
+                icon: 'list-ordered',
+                open: Boolean(this.book.linkedChapters?.length),
+            })
+            : null;
+
+        if (chaptersSection) {
             const allChapters = await this.plugin.listChapters();
             // Only show chapters unassigned or already in this book
             const availableChapters = allChapters.filter(
                 c => !c.bookId || c.bookId === this.book.id
             );
 
-            const chaptersListEl = contentEl.createDiv('storyteller-modal-linked-entities');
+            const chaptersListEl = chaptersSection.createDiv('storyteller-modal-linked-entities');
             const renderChapterChips = () => {
                 chaptersListEl.empty();
                 const linked = this.book.linkedChapters ?? [];
@@ -194,7 +232,7 @@ export class BookModal extends ResponsiveModal {
             };
             renderChapterChips();
 
-            new Setting(contentEl)
+            new Setting(chaptersSection)
                 .setName('Add chapter')
                 .addDropdown((dd: DropdownComponent) => {
                     dd.addOption('', '— select chapter —');
@@ -220,10 +258,15 @@ export class BookModal extends ResponsiveModal {
                 });
         }
 
-        this.customFieldsEditor.setFields(this.book.customFields);
-        this.customFieldsEditor.renderDefinedFields(contentEl);
+        // --- Free-form custom fields ---
         if (this.shows('customFields')) {
-            this.customFieldsEditor.renderFreeFormSection(contentEl);
+            const customFieldsSection = createCollapsibleModalSection(contentEl, {
+                title: 'Custom fields',
+                description: 'Additional properties specific to this project',
+                icon: 'list-plus',
+                open: Boolean(Object.keys(this.book.customFields || {}).length),
+            });
+            this.customFieldsEditor.renderFreeFormSection(customFieldsSection);
         }
 
         if (!this.isNew && this.onDelete) {
