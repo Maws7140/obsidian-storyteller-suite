@@ -10,7 +10,7 @@ import { Location, StoryMap, MapBinding } from '../types';
 import { t } from '../i18n/strings';
 import { LeafletRenderer } from '../leaflet/renderer';
 import { buildMapExportFileName, uniqueExportPath } from '../leaflet/utils/MapImageExport';
-import { BlockParameters } from '../leaflet/types';
+import { mapToBlockParams } from '../leaflet/utils/MapBlockParams';
 import { LocationService, LocationLevel } from '../services/LocationService';
 import { LocationSuggestModal } from '../modals/LocationSuggestModal';
 import { LocationSelectionModal } from '../modals/LocationSelectionModal';
@@ -1873,7 +1873,7 @@ export class MapView extends ItemView {
         leafletContainer.id = `map-view-${mapId.replace(/[^a-zA-Z0-9]/g, '-')}`;
 
         // Convert map entity to block parameters
-        const params = this.mapToBlockParams(this.currentMap);
+        const params = mapToBlockParams(this.currentMap);
         params.id = mapId; // Use map ID so MapEntityRenderer can find map bindings
         params.mapId = mapId; // Also set mapId parameter for entity rendering
 
@@ -2008,56 +2008,6 @@ export class MapView extends ItemView {
                 cls: 'storyteller-map-error'
             });
         }
-    }
-
-    /**
-     * Convert StoryMap entity to BlockParameters for LeafletRenderer
-     */
-    private mapToBlockParams(map: StoryMap): BlockParameters {
-        const params: BlockParameters = {
-            type: map.type || 'image',
-            id: map.id || map.name,
-            persistedMarkers: map.markers ?? []
-        };
-
-        // Image-based map parameters
-        if (map.type === 'image' || !map.type) {
-            if (map.backgroundImagePath || map.image) {
-                params.image = map.backgroundImagePath || map.image;
-            }
-            if (map.width) params.width = map.width;
-            if (map.height) params.height = map.height;
-        }
-
-        // Real-world map parameters
-        if (map.type === 'real') {
-            // Set default coordinates if not provided (London, UK as a reasonable default)
-            params.lat = map.lat !== undefined ? map.lat : 51.5074;
-            params.long = map.long !== undefined ? map.long : -0.1278;
-            if (map.tileServer) params.tileServer = map.tileServer;
-            if (map.darkMode) params.darkMode = map.darkMode;
-            // Set default zoom if not provided
-            if (map.defaultZoom === undefined) params.defaultZoom = 10;
-        }
-
-        // Zoom parameters
-        if (map.defaultZoom !== undefined) params.defaultZoom = map.defaultZoom;
-        if (map.minZoom !== undefined) params.minZoom = map.minZoom;
-        if (map.maxZoom !== undefined) params.maxZoom = map.maxZoom;
-
-        // Grid
-        if (map.gridEnabled) {
-            // Grid parameters would go here if needed
-        }
-
-        // GeoJSON / GPX overlay layers (vault file paths or wikilinks)
-        if (map.geojsonFiles?.length) params.geojson = [...map.geojsonFiles];
-        if (map.gpxFiles?.length) params.gpx = [...map.gpxFiles];
-
-        // Note: Markers are handled differently in the renderer
-        // They're loaded from the map entity's markers array
-
-        return params;
     }
 
     /**
