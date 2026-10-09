@@ -364,16 +364,18 @@ export function parseTypedRelationships(value: unknown[]): ParsedTypedRelationsh
   const out: ParsedTypedRelationship[] = [];
   for (const entry of value) {
     if (entry && typeof entry === 'object' && !Array.isArray(entry)) {
-      const rel = entry as { type?: unknown; target?: unknown; label?: unknown; direction?: unknown; ended?: unknown };
-      if (typeof rel.target === 'string' && rel.target.trim()) {
-        out.push({
-          type: typeof rel.type === 'string' && rel.type.trim() ? rel.type.trim() : 'neutral',
-          target: rel.target.trim(),
-          ...(typeof rel.label === 'string' && rel.label.trim() ? { label: rel.label.trim() } : {}),
-          ...(rel.direction === 'to' || rel.direction === 'mutual' ? { direction: rel.direction } : {}),
-          ...(rel.ended === true ? { ended: true } : {})
-        });
-      }
+      const rel = entry as { type?: unknown; target?: unknown; targetId?: unknown; name?: unknown; label?: unknown; direction?: unknown; ended?: unknown };
+      // Older notes stored the target as `target`, `targetId` or `name`; take the first usable one.
+      const ref = [rel.target, rel.targetId, rel.name]
+        .find((v): v is string => typeof v === 'string' && v.trim() !== '');
+      // With no usable target the entry is kept as a neutral connection so it is not lost on save.
+      out.push({
+        type: typeof rel.type === 'string' && rel.type.trim() ? rel.type.trim() : 'neutral',
+        target: ref ? ref.trim() : '',
+        ...(typeof rel.label === 'string' && rel.label.trim() ? { label: rel.label.trim() } : {}),
+        ...(rel.direction === 'to' || rel.direction === 'mutual' ? { direction: rel.direction } : {}),
+        ...(rel.ended === true ? { ended: true } : {})
+      });
       continue;
     }
     if (typeof entry !== 'string' || !entry.trim()) continue;
