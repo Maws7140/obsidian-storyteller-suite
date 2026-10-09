@@ -9226,6 +9226,15 @@ export default class StorytellerSuitePlugin extends Plugin {
 			if (group.customFields && Object.keys(group.customFields).length) {
 				fm['custom-fields'] = group.customFields;
 			}
+			// Typed fields defined for groups live top-level, like other entities.
+			// Empty values are left out; the file is rewritten whole, so a cleared field disappears.
+			const groupRecord = group as unknown as Record<string, unknown>;
+			for (const definition of this.getCustomFieldDefinitions('faction')) {
+				const value = groupRecord[definition.key];
+				if (value === undefined || value === null || value === '') continue;
+				if (Array.isArray(value) && value.length === 0) continue;
+				if (!(definition.key in fm)) fm[definition.key] = value;
+			}
 
 			// Serialize frontmatter
 
@@ -9430,6 +9439,12 @@ export default class StorytellerSuitePlugin extends Plugin {
 					goals,
 					resources,
 				};
+				const fromFileRecord = fromFile as unknown as Record<string, unknown>;
+				for (const definition of this.getCustomFieldDefinitions('faction')) {
+					if (definition.key in fmr && !(definition.key in fromFileRecord)) {
+						fromFileRecord[definition.key] = fmr[definition.key];
+					}
+				}
 
 				const idx = this.settings.groups.findIndex(g => g.id === id);
 				if (idx !== -1) {
