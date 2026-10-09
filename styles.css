@@ -11638,11 +11638,16 @@ body.mod-rtl .storyteller-group-members {
   padding: 0.4rem 0.5rem;
 }
 
+/* A band wraps its own fields and never wider than the pane, so a narrow
+   pane breaks a band onto two lines rather than running past its edge. */
 .storyteller-toolbar-group {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 0.3rem;
   position: relative;
+  min-width: 0;
+  max-width: 100%;
 }
 
 /* A hairline between bands, rather than a gap the eye has to measure. */
@@ -11667,6 +11672,8 @@ body.mod-rtl .storyteller-group-members {
   display: flex;
   align-items: center;
   gap: 0.3rem;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .storyteller-toolbar-field-label {
@@ -11675,9 +11682,12 @@ body.mod-rtl .storyteller-group-members {
   white-space: nowrap;
 }
 
+/* Dropdowns cap at 11rem but may shrink below that, so the Track picker
+   narrows inside a 400 px pane instead of pushing past its edge. */
 .storyteller-toolbar-field select,
 .storyteller-toolbar-field .dropdown {
-  max-width: 11rem;
+  max-width: min(11rem, 100%);
+  min-width: 0;
 }
 
 /* Top-level view switch plus the orientation switch owned by Timeline. */
