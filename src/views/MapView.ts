@@ -20,6 +20,7 @@ import { PlotItemSuggestModal } from '../modals/PlotItemSuggestModal';
 import { openMapModal } from '../utils/MapModalHelper';
 import { MapHierarchyManager } from '../utils/MapHierarchyManager';
 import { VIEW_TYPE_CAMPAIGN } from './CampaignView';
+import { createPlacementOverlay } from '../leaflet/placementOverlay';
 import { MaplogPalette } from '../leaflet/maplog/MaplogPalette';
 import { MaplogEditor } from '../leaflet/maplog/MaplogEditor';
 import { MAPLOG_FRONTMATTER_KEYS, maplogFrontmatter, normalizeMaplogData, type MaplogData } from '../leaflet/maplog/model';
@@ -781,14 +782,20 @@ export class MapView extends ItemView {
 
         // Create instruction overlay
         if (this.mapContainer) {
-            this.placementOverlay = this.mapContainer.createDiv('storyteller-placement-overlay');
-            const instruction = this.placementOverlay.createDiv('storyteller-placement-instruction');
-
             const entityTypeText = entityType.charAt(0).toUpperCase() + entityType.slice(1);
-            const placementIcon = instruction.createDiv('placement-icon');
-            setIcon(placementIcon, 'map-pin');
-            instruction.createDiv({ text: `Click map to place ${entityTypeText}`, cls: 'placement-text' });
-            instruction.createDiv({ text: 'Press ESC to cancel', cls: 'placement-hint' });
+            this.placementOverlay = createPlacementOverlay(this.mapContainer, {
+                text: `Click map to place ${entityTypeText}`,
+                hint: 'Press ESC to cancel',
+                decorate: instruction => {
+                    const placementIcon = instruction.createDiv('placement-icon');
+                    setIcon(placementIcon, 'map-pin');
+                },
+                // Touch users have no Esc key, so the bar carries its own Cancel button.
+                onCancel: () => {
+                    this.disablePlacementMode();
+                    new Notice('Placement cancelled');
+                },
+            });
         }
 
         // Change cursor to crosshair

@@ -352,3 +352,9 @@ export const point = (x: number, y?: number): Point => {
   }
   return x;
 };
+
+// Event helpers used by Leaflet-facing UI code; no-ops outside a browser.
+export const DomEvent = {
+  disableClickPropagation(_el: unknown) {},
+  disableScrollPropagation(_el: unknown) {},
+};

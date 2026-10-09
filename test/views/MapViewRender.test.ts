@@ -52,6 +52,9 @@ function makeEl(): any {
         querySelector: () => null,
         addEventListener: vi.fn(),
         setAttribute: vi.fn(),
+        appendChild: (c: any) => { el.children.push(c); return c; },
+        textContent: '',
+        ownerDocument: { createElement: () => makeEl() },
     };
     return el;
 }

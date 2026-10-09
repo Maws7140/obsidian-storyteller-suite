@@ -11,6 +11,7 @@ import type StorytellerSuitePlugin from '../main';
 import type { LeafletRendererOptions } from './types';
 import type { Location, MapBinding, EntityRef, Character, Event, PlotItem, StoryMap, Scene, Culture, Economy, MagicSystem, Reference } from '../types';
 import { LocationService } from '../services/LocationService';
+import { createPlacementOverlay } from './placementOverlay';
 import { buildChildLocationDefaults, findChildLocationMaps, noChildMapMessage } from '../utils/MapChildNavigation';
 import { MapHierarchyManager } from '../utils/MapHierarchyManager';
 import { stripWikiLinkToString } from '../utils/WikiLinks';
@@ -1637,18 +1638,25 @@ export class MapEntityRenderer {
         this.isMovingMarker = true;
         new Notice('Click on the map to set the new marker position (esc to cancel).');
 
+        let instruction: HTMLElement | null = null;
+        const endMove = () => {
+            this.map.off('click', onClick);
+            activeDocument.removeEventListener('keydown', onKeyDown);
+            instruction?.remove();
+            instruction = null;
+        };
+        const cancelMove = () => {
+            endMove();
+            this.isMovingMarker = false;
+            new Notice('Marker move cancelled');
+        };
+
         const onKeyDown = (evt: KeyboardEvent) => {
-            if (evt.key === 'Escape') {
-                this.map.off('click', onClick);
-                activeDocument.removeEventListener('keydown', onKeyDown);
-                this.isMovingMarker = false;
-                new Notice('Marker move cancelled');
-            }
+            if (evt.key === 'Escape') cancelMove();
         };
 
         const onClick = (e: L.LeafletMouseEvent) => { void (async () => {
-            this.map.off('click', onClick);
-            activeDocument.removeEventListener('keydown', onKeyDown);
+            endMove();
 
             const newCoords: [number, number] = [e.latlng.lat, e.latlng.lng];
 
@@ -1692,6 +1700,11 @@ export class MapEntityRenderer {
         // Use once-style behaviour but keep explicit off() calls for safety
         this.map.on('click', onClick);
         activeDocument.addEventListener('keydown', onKeyDown);
+        instruction = createPlacementOverlay(this.map.getContainer(), {
+            text: 'Click on the map to set the new marker position',
+            hint: 'Press ESC to cancel',
+            onCancel: cancelMove,
+        });
     }
 
     /**
