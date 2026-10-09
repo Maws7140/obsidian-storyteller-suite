@@ -14,7 +14,7 @@ import type {
     CampaignThreadStatus,
     CampaignTrackerKind,
 } from '../types';
-import { buildFrontmatter } from '../yaml/EntitySections';
+import { buildFrontmatter, getWhitelistKeys } from '../yaml/EntitySections';
 
 // ─── Progress trackers ───────────────────────────────────────────────────────
 
@@ -392,9 +392,18 @@ export function buildCampaignSessionFrontmatter(
         originalFrontmatter?: Record<string, unknown>;
     },
 ): Record<string, unknown> {
+    // Original frontmatter is passed so keys the plugin does not manage survive a save. Session
+    // fields the plugin owns and the user cleared (hook, recap, ...) must not come back from it.
+    const omit = new Set(options?.omitOriginalKeys ?? []);
+    if (options?.originalFrontmatter) {
+        for (const key of getWhitelistKeys('campaignSession')) {
+            const value = source[key];
+            if (value === undefined || value === null) omit.add(key);
+        }
+    }
     return buildFrontmatter('campaignSession', source, undefined, {
         multilineKeys: CAMPAIGN_SESSION_MULTILINE_KEYS,
-        omitOriginalKeys: options?.omitOriginalKeys,
+        omitOriginalKeys: omit,
         originalFrontmatter: options?.originalFrontmatter,
     });
 }

@@ -5,6 +5,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { TFile } from 'obsidian';
 import * as yaml from 'js-yaml';
+import { buildCampaignSessionFrontmatter } from '../../src/utils/CampaignModel';
 
 // main.ts pulls in UI classes (modals, settings tab, views) that extend obsidian bases the shared
 // mock does not define. Unknown names resolve to an inert stub class; saveSession never touches them.
@@ -80,5 +81,15 @@ describe('saveSession keeps foreign frontmatter', () => {
         expect(fm.summary).toBe('Frodo and company reach Moria.');
         expect(fm.summary_hash).toBe('abc123');
         expect(after.slice(after.indexOf('## Session Log')).trimEnd()).toBe(ORIGINAL.slice(ORIGINAL.indexOf('## Session Log')).trimEnd());
+    });
+});
+
+describe('cleared session fields', () => {
+    it('does not bring back a hook the user cleared, while keeping foreign keys', () => {
+        const original = { name: 'S1', hook: 'Old hook', recap: 'Old recap', title: 'Keep me' };
+        const fm = buildCampaignSessionFrontmatter({ name: 'S1', storyId: 's', recap: 'New recap' }, { originalFrontmatter: original });
+        expect(fm).not.toHaveProperty('hook');
+        expect(fm.recap).toBe('New recap');
+        expect(fm.title).toBe('Keep me');
     });
 });
