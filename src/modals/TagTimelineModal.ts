@@ -26,7 +26,7 @@ export class TagTimelineModal extends Modal {
     constructor(app: App, plugin: StorytellerSuitePlugin) {
         super(app);
         this.plugin = plugin;
-        this.generator = new TagTimelineGenerator(app);
+        this.generator = new TagTimelineGenerator(app, () => this.plugin.getReferenceTodayDate());
     }
 
     async onOpen(): Promise<void> {
