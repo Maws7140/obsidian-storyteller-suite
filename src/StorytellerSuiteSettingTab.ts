@@ -678,6 +678,7 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                 );
                 new Setting(container)
                     .setName(field.label)
+                    .setDesc(field.description ?? '')
                     .addToggle(toggle => toggle
                         .setValue(isVisible)
                         .setTooltip(isVisible ? 'Shown' : 'Hidden')
@@ -731,7 +732,7 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
     private renderDefinedFieldsSettings(container: HTMLElement): void {
         new Setting(container).setName('Defined fields').setHeading();
         container.createEl('p', {
-            text: 'Ask for your own properties with the right input. Text, long text and number work as you expect. A list is comma separated. A link picks one note from the active story, and links picks several. Values are written as top-level properties, for example aliases with a list of names or parents with links. Long text stays on one line in frontmatter.',
+            text: 'Ask for your own properties with the right input. Text, long text and number work as you expect. A list is comma separated. A link picks one note from the active story, and links picks several. Values are written as top-level properties, for example aliases with a list of names or parents with links. Long text keeps its line breaks in frontmatter, written as a multi-line YAML value. Clearing a field removes its property from the note.',
             cls: 'setting-item-description'
         });
 

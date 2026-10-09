@@ -58,6 +58,11 @@ export class App {}
 export class Plugin {}
 export class PluginSettingTab {}
 export class Modal {}
+export class FuzzySuggestModal<T> {
+  constructor(public app: unknown) {}
+  open() {}
+  getItems(): T[] { return []; }
+}
 export class Setting {
   setName() { return this; }
   setDesc() { return this; }

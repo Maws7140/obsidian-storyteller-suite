@@ -34,6 +34,7 @@ import {
 import { stringifyYamlWithLogging, validateFrontmatterPreservation } from './utils/YamlSerializer';
 import {
     CustomFieldDefinition,
+    definedFieldSaveOptions,
     sanitizeCustomFieldDefinitions,
     sweepCustomFieldsOnRead,
 } from './modals/entity/CustomFieldDefinitions';
@@ -4325,13 +4326,13 @@ export default class StorytellerSuitePlugin extends Plugin {
         const preserve = new Set<string>(Object.keys(src || {}));
         const mode = this.settings.customFieldsMode ?? 'flatten';
         const prepared = await this.serializeFrontmatterEntityReferences(src);
-        const omitOriginalKeys = extraOmitKeys?.length
-            ? [...prepared.omitOriginalKeys, ...extraOmitKeys]
-            : prepared.omitOriginalKeys;
-        return buildFrontmatter(entityType, prepared.source, preserve, {
+        const defined = definedFieldSaveOptions(this.getCustomFieldDefinitions(entityType), prepared.source);
+        const omitOriginalKeys = [...prepared.omitOriginalKeys, ...(extraOmitKeys ?? []), ...defined.omitKeys];
+        return buildFrontmatter(entityType, defined.source, preserve, {
             customFieldsMode: mode,
             originalFrontmatter,
             omitOriginalKeys,
+            multilineKeys: defined.multilineKeys,
         });
     }
 
@@ -6072,10 +6073,12 @@ export default class StorytellerSuitePlugin extends Plugin {
         const preserveRef = new Set<string>(Object.keys(rest || {}));
         const mode = this.settings.customFieldsMode ?? 'flatten';
         const preparedRef = await this.serializeFrontmatterEntityReferences(rest);
-        const fm: Record<string, unknown> = buildFrontmatter('reference', preparedRef.source, preserveRef, {
+        const definedRef = definedFieldSaveOptions(this.getCustomFieldDefinitions('reference'), preparedRef.source);
+        const fm: Record<string, unknown> = buildFrontmatter('reference', definedRef.source, preserveRef, {
             customFieldsMode: mode,
             originalFrontmatter,
-            omitOriginalKeys: preparedRef.omitOriginalKeys,
+            omitOriginalKeys: [...preparedRef.omitOriginalKeys, ...definedRef.omitKeys],
+            multilineKeys: definedRef.multilineKeys,
         });
 
 		// Validate that we're not losing any fields before serialization
@@ -6220,10 +6223,12 @@ export default class StorytellerSuitePlugin extends Plugin {
         const preserveChap = new Set<string>(Object.keys(chapterSrc));
         const mode = this.settings.customFieldsMode ?? 'flatten';
         const preparedChapter = await this.serializeFrontmatterEntityReferences(chapterSrc);
-        const fm: Record<string, unknown> = buildFrontmatter('chapter', preparedChapter.source, preserveChap, {
+        const definedChapter = definedFieldSaveOptions(this.getCustomFieldDefinitions('chapter'), preparedChapter.source);
+        const fm: Record<string, unknown> = buildFrontmatter('chapter', definedChapter.source, preserveChap, {
             customFieldsMode: mode,
             originalFrontmatter,
-            omitOriginalKeys: preparedChapter.omitOriginalKeys,
+            omitOriginalKeys: [...preparedChapter.omitOriginalKeys, ...definedChapter.omitKeys],
+            multilineKeys: definedChapter.multilineKeys,
         });
 
 		// Validate that we're not losing any fields before serialization

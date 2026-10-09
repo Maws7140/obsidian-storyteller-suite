@@ -409,8 +409,9 @@ export class EconomyModal extends ResponsiveModal {
         }
 
         this.customFieldsEditor.setFields(this.economy.customFields);
+        this.customFieldsEditor.renderDefinedFields(contentEl);
         if (this.shows('customFields')) {
-            this.customFieldsEditor.renderSection(contentEl);
+            this.customFieldsEditor.renderFreeFormSection(contentEl);
         }
 
         if (!this.isNew && this.onDelete) {

@@ -2,12 +2,14 @@ import { describe, it, expect } from 'vitest';
 import {
     CustomFieldDefinition,
     commitDefinedFieldValues,
+    definedFieldSaveOptions,
     displayValueForDefinition,
     linkTargetName,
     normalizeDefinedValue,
     normalizeLinksInput,
     normalizeNumberInput,
     normalizeTextInput,
+    normalizeTextareaInput,
     parseListInput,
     sanitizeCustomFieldDefinitionMap,
     sanitizeCustomFieldDefinitions,
@@ -15,6 +17,7 @@ import {
     toWikiLink,
     validateCustomFieldKey,
 } from '../../src/modals/entity/CustomFieldDefinitions';
+import { EntityCustomFieldsEditor } from '../../src/modals/entity/EntityCustomFieldsEditor';
 import { buildFrontmatter, EntityType } from '../../src/yaml/EntitySections';
 import { parseYaml, stringifyYaml } from 'obsidian';
 
@@ -200,17 +203,21 @@ describe('round trip through frontmatter', () => {
         }
     });
 
-    it('clears a field on an existing note instead of letting the old value survive', () => {
-        const original = { id: 'c1', name: 'Mara', intent: 'Old purpose', parents: ['[[Ann]]'] };
+    it('clears a field on an existing note by removing its property', () => {
+        const original = { id: 'c1', name: 'Mara', intent: 'Old purpose', parents: ['[[Ann]]'], age: 3 };
         const entity: Record<string, unknown> = { id: 'c1', name: 'Mara', customFields: {} };
         commitDefinedFieldValues(entity, definitions, { aliases: '', intent: '', parents: [], age: '' });
+        const { source, omitKeys } = definedFieldSaveOptions(definitions, entity);
 
-        const frontmatter = buildFrontmatter('character', entity as never, new Set(Object.keys(entity)), {
+        const frontmatter = buildFrontmatter('character', source, new Set(Object.keys(entity)), {
             customFieldsMode: 'flatten',
             originalFrontmatter: original,
+            omitOriginalKeys: omitKeys,
         });
-        expect(frontmatter.intent).toBe('');
-        expect(frontmatter.parents).toEqual([]);
+        expect(frontmatter).not.toHaveProperty('intent');
+        expect(frontmatter).not.toHaveProperty('parents');
+        expect(frontmatter).not.toHaveProperty('age');
+        expect(frontmatter.name).toBe('Mara');
     });
 
     it('does not write empty defined fields onto a new note', () => {
@@ -234,5 +241,108 @@ describe('round trip through frontmatter', () => {
         const again: Record<string, unknown> = { id: 'c3', name: 'Cy', intent: 'Legacy' };
         expect(sweepCustomFieldsOnRead('character' as EntityType, again, definitions)).toEqual({});
         expect(again.intent).toBe('Legacy');
+    });
+});
+
+describe('multi-line textarea values', () => {
+    it('keeps line breaks but trims trailing spaces and surrounding blank lines', () => {
+        expect(normalizeTextareaInput('  Protect the city.\n\nKeep the gate.  \r\nAt night  \n\n')).toBe(
+            'Protect the city.\n\nKeep the gate.\nAt night'
+        );
+        expect(normalizeTextareaInput(' \n  ')).toBeUndefined();
+    });
+
+    it('round trips a textarea through buildFrontmatter, stringifyYaml and parseYaml', () => {
+        const defs: CustomFieldDefinition[] = [{ key: 'intent', type: 'textarea' }];
+        const entity: Record<string, unknown> = { id: 'c1', name: 'Mara', customFields: {} };
+        commitDefinedFieldValues(entity, defs, { intent: 'Protect the city.\n\nKeep the gate.  \nAt night' });
+        const { source, multilineKeys } = definedFieldSaveOptions(defs, entity);
+        expect(multilineKeys).toEqual(['intent']);
+
+        const frontmatter = buildFrontmatter('character', source, new Set(Object.keys(entity)), {
+            customFieldsMode: 'flatten',
+            multilineKeys,
+        });
+        const fromDisk = parseYaml(stringifyYaml(frontmatter)) as Record<string, unknown>;
+        expect(fromDisk.intent).toBe('Protect the city.\n\nKeep the gate.\nAt night');
+    });
+
+    it('still drops multi-line strings for keys that were not declared multiline', () => {
+        const entity: Record<string, unknown> = { id: 'c1', name: 'Mara', notes: 'one\ntwo', customFields: {} };
+        const frontmatter = buildFrontmatter('character', entity as never, new Set(['notes']), {
+            customFieldsMode: 'flatten',
+        });
+        expect(frontmatter).not.toHaveProperty('notes');
+    });
+});
+
+describe('clearing and saving defined fields', () => {
+    const defs: CustomFieldDefinition[] = [
+        { key: 'intent', type: 'textarea' },
+        { key: 'aliases', type: 'list' },
+        { key: 'parents', type: 'links', target: 'character' },
+        { key: 'age', type: 'number' },
+    ];
+
+    it('omits cleared defined keys and leaves absent ones untouched', () => {
+        const entity: Record<string, unknown> = { id: 'c1', name: 'Mara', intent: '', parents: [], age: null };
+        const { source, omitKeys } = definedFieldSaveOptions(defs, entity);
+        expect(omitKeys.sort()).toEqual(['age', 'intent', 'parents']);
+        expect(source).not.toHaveProperty('intent');
+
+        // A save path that never carried aliases must not remove it.
+        const original = { id: 'c1', name: 'Mara', aliases: ['Ash'] };
+        const frontmatter = buildFrontmatter('character', source, new Set(Object.keys(entity)), {
+            customFieldsMode: 'flatten',
+            originalFrontmatter: original,
+            omitOriginalKeys: omitKeys,
+        });
+        expect(frontmatter.aliases).toEqual(['Ash']);
+        expect(frontmatter).not.toHaveProperty('intent');
+    });
+
+    it('keeps a defined value that a save path did not touch', () => {
+        const original = { id: 'c1', name: 'Mara', intent: 'Keep me' };
+        const entity: Record<string, unknown> = { id: 'c1', name: 'Mara', customFields: {} };
+        const { source, omitKeys } = definedFieldSaveOptions(defs, entity);
+        expect(omitKeys).toEqual([]);
+        const frontmatter = buildFrontmatter('character', source, new Set(Object.keys(entity)), {
+            customFieldsMode: 'flatten',
+            originalFrontmatter: original,
+            omitOriginalKeys: omitKeys,
+        });
+        expect(frontmatter.intent).toBe('Keep me');
+    });
+});
+
+describe('EntityCustomFieldsEditor without rendering', () => {
+    it('getFields commits defined values from its own state when no section was rendered', () => {
+        const defs: CustomFieldDefinition[] = [
+            { key: 'aliases', type: 'list' },
+            { key: 'intent', type: 'textarea' },
+            { key: 'parents', type: 'links', target: 'character' },
+            { key: 'age', type: 'number' },
+        ];
+        const entity: Record<string, unknown> = {
+            id: 'c1',
+            name: 'Mara',
+            aliases: ['Ash', 'ash', 'Ember'],
+            intent: 'Line one\nLine two  ',
+            parents: ['[[Ann]]'],
+            age: 42,
+        };
+        const editor = new EntityCustomFieldsEditor({} as never, 'character', { notes: 'free' }, {
+            definitions: defs,
+            getEntity: () => entity,
+        });
+
+        const fields = editor.getFields();
+        expect(fields).toEqual({ notes: 'free' });
+        expect(entity).toMatchObject({
+            aliases: ['Ash', 'Ember'],
+            intent: 'Line one\nLine two',
+            parents: ['[[Ann]]'],
+            age: 42,
+        });
     });
 });

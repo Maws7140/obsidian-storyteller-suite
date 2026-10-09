@@ -472,8 +472,9 @@ export class CompendiumEntryModal extends ResponsiveModal {
 
         // --- Custom Fields ---
         this.customFieldsEditor.setFields(this.entry.customFields);
+        this.customFieldsEditor.renderDefinedFields(contentEl);
         if (this.shows('customFields')) {
-            this.customFieldsEditor.renderSection(contentEl);
+            this.customFieldsEditor.renderFreeFormSection(contentEl);
         }
 
         if (!this.isNew && this.onDelete) {

@@ -651,8 +651,9 @@ export class CharacterModal extends ResponsiveModal {
         // value written back on save, and skipping it would drop the entity's
         // existing custom fields.
         this.customFieldsEditor.setFields(this.character.customFields);
+        this.customFieldsEditor.renderDefinedFields(contentEl);
         if (this.shows('customFields')) {
-            this.customFieldsEditor.renderSection(contentEl);
+            this.customFieldsEditor.renderFreeFormSection(contentEl);
         }
 
         // --- D&D Stats (collapsible) ---

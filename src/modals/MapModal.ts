@@ -474,8 +474,9 @@ export class MapModal extends ResponsiveModal {
 
         // Custom Fields
         this.customFieldsEditor.setFields(this.map.customFields);
+        this.customFieldsEditor.renderDefinedFields(contentEl);
         if (this.shows('customFields')) {
-            this.customFieldsEditor.renderSection(contentEl);
+            this.customFieldsEditor.renderFreeFormSection(contentEl);
         }
 
         // Groups

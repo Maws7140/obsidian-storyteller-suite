@@ -1,4 +1,4 @@
-import { App, Notice, Setting } from 'obsidian';
+import { App, FuzzySuggestModal, Notice, Setting } from 'obsidian';
 import { t } from '../../i18n/strings';
 import { EntityType, getWhitelistKeys } from '../../yaml/EntitySections';
 import {
@@ -47,10 +47,36 @@ export function customFieldEditorOptions(
     };
 }
 
+/** Searchable list of entity names. Picking one calls onPick. */
+class EntityNamePicker extends FuzzySuggestModal<string> {
+    constructor(
+        app: App,
+        private readonly names: string[],
+        private readonly onPick: (name: string) => void
+    ) {
+        super(app);
+    }
+
+    getItems(): string[] {
+        return this.names;
+    }
+
+    getItemText(name: string): string {
+        return name;
+    }
+
+    onChooseItem(name: string): void {
+        this.onPick(name);
+    }
+}
+
 export class EntityCustomFieldsEditor {
     private rows: CustomFieldDraft[] = [];
     private rowCounter = 0;
+    /** Free-form rows. Rendered only when the free-form section is shown. */
     private containerEl: HTMLElement | null = null;
+    /** Defined (typed) fields. Rendered whenever the modal calls renderDefinedFields. */
+    private definedEl: HTMLElement | null = null;
     private readonly definitions: CustomFieldDefinition[];
     /** Raw input per defined key, in the shape its widget edits. */
     private definedDrafts: Record<string, unknown> = {};
@@ -91,10 +117,32 @@ export class EntityCustomFieldsEditor {
             }));
     }
 
+    /**
+     * Both parts in one block, for callers that do not need them separately.
+     * Modals that hide the free-form section call renderDefinedFields and
+     * renderFreeFormSection instead, so defined fields stay visible.
+     */
     renderSection(parent: HTMLElement): void {
+        this.renderDefinedFields(parent);
+        this.renderFreeFormSection(parent);
+    }
+
+    /**
+     * The typed fields for this entity type. Renders nothing when the vault has
+     * no definitions for the type, so an unconfigured modal looks as it did.
+     */
+    renderDefinedFields(parent: HTMLElement): void {
+        if (this.definitions.length === 0) return;
+        parent.createEl('h3', { text: 'Defined fields' });
+        this.definedEl = parent.createDiv('storyteller-defined-fields-container');
+        this.ensureTargetNames();
+        this.renderDefined();
+    }
+
+    /** The free-form name and value rows, with an add button. */
+    renderFreeFormSection(parent: HTMLElement): void {
         parent.createEl('h3', { text: t('customFields') });
         this.containerEl = parent.createDiv('storyteller-custom-fields-container');
-        this.ensureTargetNames();
         this.renderRows();
 
         new Setting(parent)
@@ -117,7 +165,9 @@ export class EntityCustomFieldsEditor {
     /**
      * Free-form fields as a customFields map, or null when they are invalid.
      * Also commits the defined fields to the entity from getEntity, so a save
-     * path that already calls this needs no other change.
+     * path that already calls this needs no other change. Defined values come
+     * from the editor's own state, so this works whether or not either section
+     * was rendered.
      */
     getFields(): Record<string, string> | null {
         this.commitDefinedFields();
@@ -180,8 +230,20 @@ export class EntityCustomFieldsEditor {
                 .catch(() => this.targetNames.set(target, []))
                 .finally(() => {
                     this.pendingTargets.delete(target);
-                    this.renderRows();
+                    this.renderDefined();
                 });
+        }
+    }
+
+    /** Redraw the defined fields only. Free-form rows are untouched. */
+    private renderDefined(): void {
+        if (!this.definedEl) {
+            return;
+        }
+
+        this.definedEl.empty();
+        for (const definition of this.definitions) {
+            this.renderDefinedField(this.definedEl, definition);
         }
     }
 
@@ -191,17 +253,11 @@ export class EntityCustomFieldsEditor {
         }
 
         this.containerEl.empty();
-        for (const definition of this.definitions) {
-            this.renderDefinedField(this.containerEl, definition);
-        }
-
         if (this.rows.length === 0) {
-            if (this.definitions.length === 0) {
-                this.containerEl.createEl('p', {
-                    text: t('noCustomFields'),
-                    cls: 'storyteller-modal-list-empty'
-                });
-            }
+            this.containerEl.createEl('p', {
+                text: t('noCustomFields'),
+                cls: 'storyteller-modal-list-empty'
+            });
             return;
         }
 
@@ -263,7 +319,7 @@ export class EntityCustomFieldsEditor {
                 setting.addTextArea(text => {
                     text.setValue(typeof draft === 'string' ? draft : '')
                         .onChange(value => { this.definedDrafts[key] = value; });
-                    text.inputEl.rows = 2;
+                    text.inputEl.rows = 3;
                 });
                 break;
             case 'number':
@@ -288,21 +344,28 @@ export class EntityCustomFieldsEditor {
         }
     }
 
+    /** A single link: a button showing the chosen note, which opens a searchable list. */
     private renderLinkPicker(setting: Setting, definition: CustomFieldDefinition, current: string): void {
         const key = definition.key;
-        const names = this.namesFor(definition);
-        setting.addDropdown(dropdown => {
-            dropdown.addOption('', 'None');
-            for (const name of this.withCurrent(names, current ? [current] : [])) {
-                dropdown.addOption(name, name);
-            }
-            dropdown.setValue(current).onChange(value => {
-                this.definedDrafts[key] = value;
-            });
-        });
+        setting.addButton(button => button
+            .setButtonText(current || 'Choose a note')
+            .onClick(() => this.openPicker(definition, [], name => {
+                this.definedDrafts[key] = name;
+                this.renderDefined();
+            })));
+        if (current) {
+            setting.addExtraButton(button => button
+                .setIcon('x')
+                .setTooltip('Clear')
+                .onClick(() => {
+                    this.definedDrafts[key] = '';
+                    this.renderDefined();
+                }));
+        }
         this.noteIfNoTargets(setting, definition);
     }
 
+    /** Several links: chips with remove buttons, and an add button that opens a searchable list. */
     private renderLinksPicker(
         parent: HTMLElement,
         setting: Setting,
@@ -310,19 +373,13 @@ export class EntityCustomFieldsEditor {
         selected: string[]
     ): void {
         const key = definition.key;
-        const names = this.namesFor(definition);
-        const available = names.filter(name => !selected.includes(name));
-        setting.addDropdown(dropdown => {
-            dropdown.addOption('', 'Add...');
-            for (const name of available) {
-                dropdown.addOption(name, name);
-            }
-            dropdown.setValue('').onChange(value => {
-                if (!value) return;
-                this.definedDrafts[key] = [...selected, value];
-                this.renderRows();
-            });
-        });
+        setting.addButton(button => button
+            .setButtonText('Add')
+            .setIcon('plus')
+            .onClick(() => this.openPicker(definition, selected, name => {
+                this.definedDrafts[key] = [...selected, name];
+                this.renderDefined();
+            })));
         this.noteIfNoTargets(setting, definition);
 
         const chips = parent.createDiv('storyteller-custom-field-chips');
@@ -332,21 +389,32 @@ export class EntityCustomFieldsEditor {
             remove.setAttribute('aria-label', `Remove ${name}`);
             remove.addEventListener('click', () => {
                 this.definedDrafts[key] = selected.filter(item => item !== name);
-                this.renderRows();
+                this.renderDefined();
             });
         }
     }
 
-    private namesFor(definition: CustomFieldDefinition): string[] {
-        return definition.target ? (this.targetNames.get(definition.target) ?? []) : [];
+    /** Open the searchable note list for a link field, leaving out names already chosen. */
+    private openPicker(
+        definition: CustomFieldDefinition,
+        exclude: readonly string[],
+        onPick: (name: string) => void
+    ): void {
+        const target = definition.target;
+        if (target && !this.targetNames.has(target)) {
+            new Notice('Still loading notes for this field.');
+            return;
+        }
+        const names = this.namesFor(definition).filter(name => !exclude.includes(name));
+        if (names.length === 0) {
+            new Notice('No matching notes in the active story yet.');
+            return;
+        }
+        new EntityNamePicker(this.app, names, onPick).open();
     }
 
-    private withCurrent(names: string[], extra: string[]): string[] {
-        const out = [...names];
-        for (const value of extra) {
-            if (value && !out.includes(value)) out.push(value);
-        }
-        return out;
+    private namesFor(definition: CustomFieldDefinition): string[] {
+        return definition.target ? (this.targetNames.get(definition.target) ?? []) : [];
     }
 
     private noteIfNoTargets(setting: Setting, definition: CustomFieldDefinition): void {

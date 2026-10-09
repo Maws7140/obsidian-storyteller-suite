@@ -408,8 +408,9 @@ export class PlotItemModal extends ResponsiveModal {
         // value written back on save, and skipping it would drop the item's
         // existing custom fields.
         this.customFieldsEditor.setFields(this.item.customFields);
+        this.customFieldsEditor.renderDefinedFields(contentEl);
         if (shows('customFields')) {
-            this.customFieldsEditor.renderSection(contentEl);
+            this.customFieldsEditor.renderFreeFormSection(contentEl);
         }
         if (shows('location')) new Setting(contentEl)
             .setName(t('currentLocation'))

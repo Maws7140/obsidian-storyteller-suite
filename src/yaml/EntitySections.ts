@@ -454,6 +454,8 @@ export function buildFrontmatter(
     customFieldsMode?: 'flatten' | 'nested';
     originalFrontmatter?: Record<string, unknown>;
     omitOriginalKeys?: Iterable<string>;
+    /** Keys whose string values may hold line breaks (YAML block scalars). Others drop them. */
+    multilineKeys?: Iterable<string>;
   }
 ): Record<string, unknown> {
   const whitelist = FRONTMATTER_WHITELISTS[entityType];
@@ -462,6 +464,7 @@ export function buildFrontmatter(
   const srcKeys = new Set(Object.keys(source || {}));
   const originalFrontmatter = options?.originalFrontmatter;
   const omitOriginalKeys = new Set(options?.omitOriginalKeys ?? []);
+  const multilineKeys = new Set(options?.multilineKeys ?? []);
   
   // Track all keys that existed in original frontmatter - these must NEVER be deleted
   const originalKeys = originalFrontmatter ? new Set(Object.keys(originalFrontmatter)) : new Set<string>();
@@ -532,7 +535,8 @@ export function buildFrontmatter(
       // Skip new empty strings (do not preserve unless present in original frontmatter)
       if (!existedInOriginal && value === '') continue;
       // Exclude multi-line strings from frontmatter; they belong to sections
-      if (value.includes('\n')) continue;
+      // unless the key was declared multiline (a defined textarea field).
+      if (value.includes('\n') && !multilineKeys.has(key)) continue;
       output[key] = value;
       continue;
     }
