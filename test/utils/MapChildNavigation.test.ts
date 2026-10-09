@@ -6,8 +6,8 @@ const loc=(over:Partial<Location>&{name:string}):Location=>({description:'',hist
 const map=(over:Partial<StoryMap>&{name:string}):StoryMap=>({scale:'city',markers:[],...over} as StoryMap);
 
 describe('child location defaults',()=>{
- it('uses the parent id as the child parent reference',()=>{
-  expect(buildChildLocationDefaults({id:'p1',name:'Kingdom'})).toEqual({parentLocationId:'p1'});
+ it('uses the parent name, as the location modal parent picker does',()=>{
+  expect(buildChildLocationDefaults({id:'p1',name:'Kingdom'})).toEqual({parentLocationId:'Kingdom'});
  });
  it('falls back to the parent name when there is no id',()=>{
   expect(buildChildLocationDefaults({name:'Kingdom'})).toEqual({parentLocationId:'Kingdom'});
@@ -49,13 +49,14 @@ describe('child map lookup',()=>{
   expect(findChildLocationMaps(parent,locations,maps)).toEqual([]);
  });
 
- it('ignores maps linked to the parent itself',()=>{
-  const maps=[map({id:'realm-map',name:'Realm Map',correspondingLocationId:'parent'})];
-  expect(findChildLocationMaps(parent,locations,maps)).toEqual([]);
+ it('lists the map of the location itself before child maps',()=>{
+  const own=map({id:'realm-map',name:'Realm Map',correspondingLocationId:'parent'});
+  const child=map({id:'city-map',name:'City Map',correspondingLocationId:'city'});
+  expect(findChildLocationMaps(parent,locations,[child,own]).map(m=>m.id)).toEqual(['realm-map','city-map']);
  });
 
  it('handles a location without child ids',()=>{
-  expect(findChildLocationMaps({childLocationIds:undefined},locations,[map({name:'X',correspondingLocationId:'city'})])).toEqual([]);
+  expect(findChildLocationMaps({name:'Lonely',childLocationIds:undefined},locations,[map({name:'X',correspondingLocationId:'city'})])).toEqual([]);
  });
 
  it('builds a helpful message without em dashes',()=>{

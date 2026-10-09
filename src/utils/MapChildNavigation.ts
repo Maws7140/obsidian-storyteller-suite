@@ -14,51 +14,56 @@ export function locationRef(location: Pick<Location, 'id' | 'name'>): string {
 /**
  * Field defaults applied to a new location created as a child of `parent`.
  * The caller merges these into the location modal draft before it opens.
+ * Uses the parent's name, matching what the modal's parent picker stores.
  */
-export function buildChildLocationDefaults(parent: Pick<Location, 'id' | 'name'>): Partial<Location> {
+export function buildChildLocationDefaults(parent: Pick<Location, 'name'>): Partial<Location> {
     return {
-        parentLocationId: locationRef(parent),
+        parentLocationId: parent.name,
     };
 }
 
 /**
- * Find the maps that represent the direct child locations of `location`.
+ * Find the maps a location zooms into: first the map that represents the
+ * location itself (its interior), then the maps of its direct child locations.
  *
- * A child map is matched either by `StoryMap.correspondingLocationId` pointing at
- * the child location, or by the child location's `correspondingMapId` pointing at
- * the map. Results are unique and follow the order of `location.childLocationIds`.
+ * A map is matched either by `StoryMap.correspondingLocationId` pointing at the
+ * location, or by the location's `correspondingMapId` pointing at the map.
+ * Results are unique; child maps follow the order of `location.childLocationIds`.
  */
 export function findChildLocationMaps(
-    location: Pick<Location, 'childLocationIds'>,
+    location: Pick<Location, 'id' | 'name' | 'childLocationIds' | 'correspondingMapId'>,
     locations: Location[],
     maps: StoryMap[],
 ): StoryMap[] {
     const found: StoryMap[] = [];
     const seen = new Set<string>();
 
-    for (const childId of location.childLocationIds ?? []) {
-        const childLocation = locations.find(l => l.id === childId || l.name === childId);
-        const keys = new Set([childId, childLocation?.id, childLocation?.name].filter((k): k is string => !!k));
-
+    const collect = (ref: string, target: Pick<Location, 'id' | 'name' | 'correspondingMapId'> | undefined) => {
+        const keys = new Set([ref, target?.id, target?.name].filter((k): k is string => !!k));
         for (const map of maps) {
             const mapKey = map.id || map.name;
             if (seen.has(mapKey)) continue;
 
             const linkedByLocation = !!map.correspondingLocationId && keys.has(map.correspondingLocationId);
-            const linkedByLocationMapId = !!childLocation?.correspondingMapId
-                && (map.id === childLocation.correspondingMapId || map.name === childLocation.correspondingMapId);
+            const linkedByLocationMapId = !!target?.correspondingMapId
+                && (map.id === target.correspondingMapId || map.name === target.correspondingMapId);
 
             if (linkedByLocation || linkedByLocationMapId) {
                 seen.add(mapKey);
                 found.push(map);
             }
         }
+    };
+
+    collect(locationRef(location), location);
+    for (const childId of location.childLocationIds ?? []) {
+        collect(childId, locations.find(l => l.id === childId || l.name === childId));
     }
 
     return found;
 }
 
-/** User-facing message when no child map is linked to any child location. */
+/** User-facing message when neither the location nor its children have a map. */
 export function noChildMapMessage(locationName: string): string {
-    return `No map is linked to the child locations of ${locationName}. Create a map and set its location to one of them.`;
+    return `No map is linked to ${locationName} or its child locations. Create a map and set its location to ${locationName}.`;
 }

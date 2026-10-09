@@ -10,7 +10,7 @@ import { Menu, Notice, TFile, setIcon } from 'obsidian';
 import type StorytellerSuitePlugin from '../main';
 import type { Location, MapBinding, EntityRef, Character, Event, PlotItem, StoryMap, Scene, Culture, Economy, MagicSystem, Reference } from '../types';
 import { LocationService } from '../services/LocationService';
-import { buildChildLocationDefaults, findChildLocationMaps, locationRef, noChildMapMessage } from '../utils/MapChildNavigation';
+import { buildChildLocationDefaults, findChildLocationMaps, noChildMapMessage } from '../utils/MapChildNavigation';
 import { MapHierarchyManager } from '../utils/MapHierarchyManager';
 import { stripWikiLinkToString } from '../utils/WikiLinks';
 import { confirmWithModal } from '../modals/ui/ConfirmModal';
@@ -1517,15 +1517,13 @@ export class MapEntityRenderer {
                 });
         });
 
-        if (location.childLocationIds && location.childLocationIds.length > 0) {
-            menu.addItem(item => {
-                item.setTitle('Zoom to child map')
-                    .setIcon('zoom-in')
-                    .onClick(() => {
-                        void this.zoomToChildMap(location, e.originalEvent);
-                    });
-            });
-        }
+        menu.addItem(item => {
+            item.setTitle('Zoom to child map')
+                .setIcon('zoom-in')
+                .onClick(() => {
+                    void this.zoomToChildMap(location, e.originalEvent);
+                });
+        });
 
         menu.addSeparator();
 
@@ -1788,8 +1786,14 @@ export class MapEntityRenderer {
     private async showCreateChildLocationModal(parent: Location): Promise<void> {
         const { LocationModal } = await import('../modals/LocationModal');
         const modal = new LocationModal(this.plugin.app, this.plugin, null, async (childLocation: Location) => {
-            await this.locationService.createChildLocation(locationRef(parent), childLocation);
-            new Notice(`Location "${childLocation.name}" created under ${parent.name}.`);
+            // Respect a parent the user changed or cleared in the modal.
+            const parentKey = childLocation.parentLocationId;
+            if (parentKey) {
+                await this.locationService.createChildLocation(parentKey, childLocation);
+            } else {
+                await this.plugin.saveLocation(childLocation);
+            }
+            new Notice(`Location "${childLocation.name}" created.`);
             await this.refreshOpenMapView();
         });
         Object.assign(modal.location, buildChildLocationDefaults(parent));
