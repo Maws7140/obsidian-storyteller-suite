@@ -371,7 +371,9 @@ function applyProgress(state: PartylogState, tag: ProgressTag): PartylogState {
 	if (value.delta !== undefined) current = (existing ? existing.current : 0) + value.delta;
 	else if (value.current !== undefined) current = value.current;
 	else current = existing ? existing.current : 0;
-	const max = value.max !== undefined ? value.max : existing ? existing.max : undefined;
+	// A maximum below 1 is not a size: keep the known maximum instead.
+	const given = value.max !== undefined && value.max >= 1 ? value.max : undefined;
+	const max = given !== undefined ? given : existing ? existing.max : undefined;
 	if (max !== undefined && current > max) current = max;
 	if (current < 0) current = 0;
 	const progress: ProgressState = { name: tag.name, current };

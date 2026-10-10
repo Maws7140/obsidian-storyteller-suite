@@ -83,7 +83,7 @@ describe('buildPartylogExport: digital layout', () => {
 		expect(md).toContain('[Party:Gold 150|Rations 10|Wagon:intact|+bribed-barkeep]');
 		expect(md).toContain('[Faction:City Watch|tier:2|standing:suspicious|+owes us a debt]');
 		expect(md).toContain("[Clock:Holt's Search 1/6]");
-		expect(md).toContain('[Timer:Shipment Arrives 4]');
+		expect(md).toContain('[Timer:Shipment Arrives 4/4]');
 		expect(md).toContain('[Thread:Sunstone Shipment|Open]');
 		expect(md).toContain('[Quest:The Sunstone Conspiracy|Main]');
 		expect(md).toContain('[Loot:Silver Ring|to:Mira]');
@@ -128,7 +128,7 @@ describe('buildPartylogExport: digital layout', () => {
 		expect(state.party.labels).toEqual(['bribed-barkeep']);
 		expect(state.factions['City Watch']).toMatchObject({ tier: 2, standing: 'suspicious', labels: ['owes us a debt'] });
 		expect(state.clocks["Holt's Search"]).toEqual({ name: "Holt's Search", current: 1, max: 6 });
-		expect(state.timers['Shipment Arrives']).toEqual({ name: 'Shipment Arrives', current: 4 });
+		expect(state.timers['Shipment Arrives']).toEqual({ name: 'Shipment Arrives', current: 4, max: 4 });
 		expect(state.threads['Sunstone Shipment'].state).toBe('Open');
 		expect(state.quests['The Sunstone Conspiracy'].state).toBe('Main');
 		expect(state.loot.stash).toEqual([{ name: 'Potion of Healing', quantity: 2 }]);

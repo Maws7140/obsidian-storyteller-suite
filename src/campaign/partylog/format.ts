@@ -333,13 +333,30 @@ function formatBody(entries: PartylogEntry[]): string {
 	return entries.map(formatEntry).join('\n');
 }
 
+/**
+ * Fence for a body: longer than any backtick run in it, so a body line such as ``` cannot close it.
+ */
+export function fenceFor(body: string): string {
+	let longest = 0;
+	for (const run of body.match(/`+/g) ?? []) longest = Math.max(longest, run.length);
+	return '`'.repeat(Math.max(3, longest + 1));
+}
+
+/** Length of the backtick fence a line opens or closes (at least three), or 0 when it is not a fence line. */
+export function fenceRunLength(line: string): number {
+	const trimmed = line.trim();
+	return /^`{3,}$/.test(trimmed) ? trimmed.length : 0;
+}
+
 /** Formats a session end block. Digital: `### End of Session N` plus a fenced block. */
 export function formatSessionEnd(end: SessionEnd, style: FormatStyle = 'digital'): string {
 	const suffix = end.number !== undefined ? ` ${end.number}` : '';
 	if (style === 'analog') {
 		return [`--- End of Session${suffix} ---`, formatBody(end.entries)].join('\n');
 	}
-	return [`### End of Session${suffix}`, '', '```', formatBody(end.entries), '```'].join('\n');
+	const body = formatBody(end.entries);
+	const fence = fenceFor(body);
+	return [`### End of Session${suffix}`, '', fence, body, fence].join('\n');
 }
 
 /** Formats an interlude block. Digital: `## Interlude: title` plus a fenced block. */
@@ -347,7 +364,9 @@ export function formatInterlude(interlude: Interlude, style: FormatStyle = 'digi
 	if (style === 'analog') {
 		return [`=== Interlude: ${interlude.title} ===`, formatBody(interlude.entries)].join('\n');
 	}
-	return [`## Interlude: ${interlude.title}`, '', '```', formatBody(interlude.entries), '```'].join('\n');
+	const body = formatBody(interlude.entries);
+	const fence = fenceFor(body);
+	return [`## Interlude: ${interlude.title}`, '', fence, body, fence].join('\n');
 }
 
 /** Formats the campaign header as YAML front matter (digital) or `[Key] value` lines (analog). */
@@ -414,6 +433,8 @@ export function formatEntry(entry: PartylogEntry): string {
 
 /** Formats entries inside a fenced code block, one entry per line. */
 export function formatFence(entries: PartylogEntry[]): string {
-	return ['```', formatBody(entries), '```'].join('\n');
+	const body = formatBody(entries);
+	const fence = fenceFor(body);
+	return [fence, body, fence].join('\n');
 }
 
