@@ -282,10 +282,14 @@ export class CampaignView extends ItemView {
     private flushChain: Promise<void> = Promise.resolve();
     private pendingSessionSave = false;
     private pendingLogEntries: string[] = [];
+    /** Log entries whose write failed, by session file path. They are retried only against that file. */
+    private retainedLogEntries = new Map<string, string[]>();
     private readonly autosaveDebounceMs = 450;
     /** Live section elements, so one part can be re-rendered in place. */
     private sidebarPartEls = new Map<SidebarPart, HTMLElement>();
     private quick: QuickEntryState = createQuickEntryState();
+    /** The main quick entry input currently shown, so a submit can clear and restore its text. */
+    private quickInputEl: HTMLInputElement | null = null;
     /** True from the first submit until its line is written, so repeat submits are ignored. */
     private quickSubmitInFlight = false;
     /** True while a branch choice is being applied. */
@@ -340,6 +344,12 @@ export class CampaignView extends ItemView {
         await this.flushAutosaveNow();
         this.session = { ...session };
         this.sceneHistory = [];
+        // Unsubmitted quick entry text and per-session UI state belong to the session being left.
+        this.quick = createQuickEntryState();
+        this.quickInputEl = null;
+        this.quickNpcs = [];
+        this.partyAmountDrafts.clear();
+        this.lastDiceResult = null;
         this.tagNameCache = null;
         this.selectedBoardLocationId = null;
         this.ensureActiveActor(this.session);
@@ -1552,6 +1562,13 @@ export class CampaignView extends ItemView {
             target = this.resolveSceneName(branch.failSceneId, branch.fail);
         }
         // 'continue' — no navigation
+        if (target && target !== 'continue' && !this.resolveSceneReference(target)) {
+            // Nothing is logged or navigated for a missing target; the outcomes already applied are still saved.
+            new Notice(`Scene "${target}" not found.`);
+            await this.autosave();
+            await this.render();
+            return;
+        }
 
         const logEntries = [
             rollTotal != null
@@ -1640,9 +1657,10 @@ export class CampaignView extends ItemView {
         if (!this.sceneHistory.length || !this.session) return;
         this.navigationInFlight = true;
         try {
-            const prev = this.sceneHistory.pop()!;
+            const prev = this.sceneHistory[this.sceneHistory.length - 1];
             const scene = this.allScenes.find(s => s.name === prev);
-            if (!scene) return;
+            if (!scene) { new Notice(`Scene "${prev}" not found.`); return; }
+            this.sceneHistory.pop();
             this.currentScene = scene;
             await this.loadCurrentScene();
             await this.loadSceneLocation();
@@ -3066,10 +3084,10 @@ export class CampaignView extends ItemView {
      * Rewrites the ## Session Log body through the same queue as autosave, so raw Partylog writes
      * never race a pending session save.
      */
-    private async writeSessionLog(update: (body: string) => string): Promise<void> {
-        if (!this.session) return;
+    private async writeSessionLog(update: (body: string) => string, session: CampaignSession | null = this.session): Promise<void> {
+        if (!session) return;
         await this.flushAutosaveNow();
-        const filePath = this.session.filePath;
+        const filePath = session.filePath;
         if (!filePath) return;
         // A failed link must not poison the chain for later writes, so each one starts after the last settles.
         this.flushChain = this.flushChain.catch(() => undefined).then(() => this.plugin.updateSessionLog(filePath, update));
@@ -3427,6 +3445,7 @@ export class CampaignView extends ItemView {
             attr: { type: 'text', placeholder: quickPlaceholder(q.mode), 'aria-label': 'Partylog entry' },
         });
         input.value = q.draft;
+        this.quickInputEl = input;
         input.addEventListener('input', () => { q.draft = input.value; updatePreview(); });
         input.addEventListener('keydown', (event) => {
             if (event.key === 'Enter' && !event.isComposing) {
@@ -3552,18 +3571,35 @@ export class CampaignView extends ItemView {
             return;
         }
         const line = built.line;
-        // Take the line before the first await: a second submit then sees an empty draft and writes nothing.
+        // Take the text before the first await: a second submit then sees an empty draft and writes nothing,
+        // and text typed while the line saves starts the next entry instead of extending this one.
+        const typed = this.quick.draft;
         this.quick.draft = '';
+        if (this.quickInputEl) this.quickInputEl.value = '';
         this.quickSubmitInFlight = true;
         try {
-            const result = applyPartylogTagsToSession(session, entryTags(parsePartylogLine(line)), this.partylogContext());
+            // The line is written before its tags touch the session, so a failed write never leaves tags applied.
             await this.autosave();
-            await this.writeSessionLog(body => appendLogLines(body, [line]));
-            if (result.changed) new Notice(result.summary.join('\n'));
-            await this.refreshSidebarParts(partsAffectedBy(result.summary));
+            await this.writeSessionLog(body => appendLogLines(body, [line]), session);
+        } catch (error) {
+            // Nothing was written: give the text back for a retry, unless the view has moved to another session.
+            if (this.session?.filePath === session.filePath) {
+                this.quick.draft = this.quick.draft ? `${typed} ${this.quick.draft}` : typed;
+                if (this.quickInputEl) this.quickInputEl.value = this.quick.draft;
+            }
+            throw error;
         } finally {
             this.quickSubmitInFlight = false;
         }
+        const result = applyPartylogTagsToSession(session, entryTags(parsePartylogLine(line)), this.partylogContext());
+        this.flushChain = this.flushChain.catch(() => undefined).then(() => this.plugin.saveSession(session));
+        try {
+            await this.flushChain;
+        } catch (error) {
+            this.notifySaveFailure(error, 'Session not saved');
+        }
+        if (result.changed) new Notice(result.summary.join('\n'));
+        await this.refreshSidebarParts(partsAffectedBy(result.summary));
         this.focusQuickEntry();
     }
 
@@ -3669,7 +3705,13 @@ export class CampaignView extends ItemView {
         this.rejectPendingFlush = null;
 
         const shouldSaveSession = this.pendingSessionSave;
-        const entries = [...this.pendingLogEntries];
+        // Captured now, so the write goes to the session these entries were made in even if the view switches session first.
+        const session = this.session;
+        const filePath = session?.filePath;
+        // Entries kept from a failed write go back to the file they were made for, and only to that file.
+        const retained = filePath ? this.retainedLogEntries.get(filePath) ?? [] : [];
+        if (filePath) this.retainedLogEntries.delete(filePath);
+        const entries = [...retained, ...this.pendingLogEntries];
         this.pendingSessionSave = false;
         this.pendingLogEntries = [];
 
@@ -3678,8 +3720,6 @@ export class CampaignView extends ItemView {
             return;
         }
 
-        // Captured now, so the write goes to the session these entries were made in even if the view switches session first.
-        const session = this.session;
         this.flushChain = this.flushChain.catch(() => undefined).then(async () => {
             if (!session) return;
             await this.plugin.saveSession(session);
@@ -3692,9 +3732,9 @@ export class CampaignView extends ItemView {
             await this.flushChain;
             resolve?.();
         } catch (error) {
-            // Keep the entries (ahead of anything queued meanwhile) so the next flush retries them.
+            // Keep the entries with their own session so the next flush of that session retries them.
             this.pendingSessionSave = this.pendingSessionSave || shouldSaveSession;
-            this.pendingLogEntries = [...entries, ...this.pendingLogEntries];
+            if (filePath && entries.length) this.retainedLogEntries.set(filePath, entries);
             this.notifySaveFailure(error, 'Session not saved; the pending entries will retry on the next save');
             reject?.(error);
         }

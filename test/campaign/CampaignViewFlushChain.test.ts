@@ -59,7 +59,7 @@ describe('campaign view flush chain after a failed save', () => {
         noticeMessages.length = 0;
         await view.autosave('first entry').catch(() => undefined);
         expect(noticeMessages.length).toBeGreaterThan(0);
-        expect(view.pendingLogEntries).toEqual(['first entry']);
+        expect(view.retainedLogEntries.get('Sessions/S.md')).toEqual(['first entry']);
         await view.autosave('second entry');
         expect(appended).toEqual(['first entry', 'second entry']);
         expect(view.pendingLogEntries).toEqual([]);
