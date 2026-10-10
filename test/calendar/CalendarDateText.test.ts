@@ -112,3 +112,53 @@ describe('formatCalendarYear', () => {
     expect(formatCalendarYear({ ...FANTASY, epochLabel: '' }, 342)).toBe('342');
   });
 });
+
+describe('CalendarDateText — named months with a clock in a minute calendar', () => {
+  const MINUTE: CalendarSystem = {
+    schemaVersion: CALENDAR_SCHEMA_VERSION,
+    id: 'text-minute-named',
+    name: 'Minute Named',
+    baseUnit: 'minute',
+    unitsPerDay: 1440,
+    epochAbsoluteDay: 0,
+    epochLabel: 'MC',
+    months: [
+      { name: 'A', days: 30 },
+      { name: 'B', days: 30 },
+      { name: 'C', days: 30 },
+    ],
+  };
+
+  it('reads the "Name day, year EPOCH HH:MM" form that formatInCalendar writes', () => {
+    const parsed = parseInCalendar('B 12, 1 MC 00:00', MINUTE);
+    expect(parsed).not.toBeNull();
+    expect(parsed!.precision).toBe('time');
+    expect(parsed!.date).toMatchObject({ year: 1, month: 1, day: 12 });
+    expect(parsed!.date.unitOfDay ?? 0).toBe(0);
+  });
+
+  it('round-trips every timed date through format and parse', () => {
+    const samples = [
+      { year: 1, month: 1, day: 12, unitOfDay: 0 },
+      { year: 1, month: 1, day: 12, unitOfDay: 605 },
+      { year: 2, month: 0, day: 1, unitOfDay: 1439 },
+      { year: 0, month: 2, day: 30, unitOfDay: 90 },
+    ];
+    for (const date of samples) {
+      const text = formatInCalendar(date, MINUTE, 'time');
+      const parsed = parseInCalendar(text, MINUTE);
+      expect(parsed, text).not.toBeNull();
+      expect(parsed!.precision, text).toBe('time');
+      expect(parsed!.date.year, text).toBe(date.year);
+      expect(parsed!.date.month, text).toBe(date.month);
+      expect(parsed!.date.day, text).toBe(date.day);
+      expect(parsed!.date.unitOfDay ?? 0, text).toBe(date.unitOfDay);
+    }
+  });
+
+  it('still reads the named day form without a clock', () => {
+    const parsed = parseInCalendar('B 12, 1 MC', MINUTE);
+    expect(parsed?.precision).toBe('day');
+    expect(parsed?.date).toMatchObject({ year: 1, month: 1, day: 12 });
+  });
+});

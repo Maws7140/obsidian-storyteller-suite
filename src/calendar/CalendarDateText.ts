@@ -75,10 +75,16 @@ export function parseInCalendar(text: string, cal: CalendarSystem): ParsedCalend
     return { date, precision };
   }
 
+  // A clock may follow the year, as formatInCalendar writes it on minute
+  // calendars: `B 12, 1 MC 00:00`. It sits after the epoch label, so take it
+  // off first and then strip the label from what is left.
+  const clock = raw.match(/^(.*\S)\s+(\d{1,2}):(\d{2})$/);
+  const dayText = clock ? stripEpochLabel(cal, clock[1]) : raw;
+
   // Month name forms.
   const named =
-    raw.match(/^(.+?)\s+(\d+)(?:,)?\s+(-?\d+)$/) || // Name day, year
-    raw.match(/^(\d+)\s+(.+?)\s+(-?\d+)$/); // day Name year
+    dayText.match(/^(.+?)\s+(\d+)(?:,)?\s+(-?\d+)$/) || // Name day, year
+    dayText.match(/^(\d+)\s+(.+?)\s+(-?\d+)$/); // day Name year
   if (named) {
     // Normalise which capture is the name.
     let name: string, day: number, year: number;
@@ -93,9 +99,18 @@ export function parseInCalendar(text: string, cal: CalendarSystem): ParsedCalend
     }
     const month = monthIndexByName(cal, year, name);
     if (month < 0) return null;
-    const date = validate(cal, { year, month, day });
+    if (!clock) {
+      const date = validate(cal, { year, month, day });
+      if (!date) return null;
+      return { date, precision: 'day' };
+    }
+    const hours = parseInt(clock[2], 10);
+    const minutes = parseInt(clock[3], 10);
+    if (hours > 23 || minutes > 59) return null;
+    const unitOfDay = cal.baseUnit === 'minute' ? hours * 60 + minutes : undefined;
+    const date = validate(cal, { year, month, day, unitOfDay });
     if (!date) return null;
-    return { date, precision: 'day' };
+    return { date, precision: 'time' };
   }
 
   // Name year (month precision, e.g. "Frost 342").
