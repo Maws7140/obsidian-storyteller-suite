@@ -23,6 +23,7 @@ import { standingForRelationshipType, threadKindOf, threadStateOf, trackerKindOf
 import {
 	createPartylogState,
 	entryTags,
+	fenceRunLength,
 	formatCampaignHeader,
 	formatEntry,
 	formatInterlude,
@@ -173,8 +174,9 @@ function progressLines(session: CampaignSession): string[] {
 		const name = cleanTagText(clock.name);
 		if (!name) continue;
 		const kind = trackerKindOf(clock);
-		if (kind === 'timer') lines.push(`[Timer:${name} ${Math.trunc(clock.current)}]`);
-		else lines.push(`[${kind === 'track' ? 'Track' : 'Clock'}:${name} ${Math.trunc(clock.current)}/${Math.trunc(clock.segments)}]`);
+		// The maximum is always written, so a re-import keeps the segment count.
+		const label = kind === 'timer' ? 'Timer' : kind === 'track' ? 'Track' : 'Clock';
+		lines.push(`[${label}:${name} ${Math.trunc(clock.current)}/${Math.trunc(clock.segments)}]`);
 	}
 	return lines;
 }
@@ -421,9 +423,11 @@ function endBlockSpan(lines: string[]): { insertAt: number; content: string[] } 
 	if (/^###/.test(lines[start].trim())) {
 		let first = start + 1;
 		while (first < lines.length && lines[first].trim() === '') first++;
-		if (first < lines.length && lines[first].trim() === '```') {
+		const fence = first < lines.length ? fenceRunLength(lines[first]) : 0;
+		if (fence > 0) {
+			const closing = '`'.repeat(fence);
 			let close = first + 1;
-			while (close < lines.length && lines[close].trim() !== '```') close++;
+			while (close < lines.length && lines[close].trim() !== closing) close++;
 			return { insertAt: close, content: lines.slice(first + 1, close) };
 		}
 	}
@@ -453,19 +457,20 @@ export function analogLogBody(body: string): string {
 	if (parsed.sessionHeader) text = upsertSessionHeaderBlock(text, parsed.sessionHeader, 'analog');
 	const out: string[] = [];
 	let pendingFence = false;
-	let inFence = false;
+	let fence = 0;
 	for (const line of text.split('\n')) {
 		const trimmed = line.trim();
-		if (inFence) {
-			if (trimmed === '```') inFence = false;
+		if (fence > 0) {
+			if (trimmed === '`'.repeat(fence)) fence = 0;
 			else out.push(line);
 			continue;
 		}
 		if (pendingFence) {
 			if (trimmed === '') continue;
 			pendingFence = false;
-			if (trimmed === '```') {
-				inFence = true;
+			const opening = fenceRunLength(trimmed);
+			if (opening > 0) {
+				fence = opening;
 				continue;
 			}
 		}

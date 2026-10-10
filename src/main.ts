@@ -1783,6 +1783,19 @@ export default class StorytellerSuitePlugin extends Plugin {
 			})
 		);
 
+		// A session note renamed or moved in Obsidian: the open campaign view keeps pointing at the old
+		// path otherwise, and its next save would split the log into a new note.
+		this.registerEvent(
+			this.app.vault.on('rename', (file, oldPath) => {
+				if (!(file instanceof TFile) || file.extension !== 'md') return;
+				for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE_CAMPAIGN)) {
+					if (!(leaf.view instanceof CampaignView)) continue;
+					const session = leaf.view.getLoadedSession();
+					if (session?.filePath === oldPath) session.filePath = file.path;
+				}
+			})
+		);
+
 		// Auto-add new images dropped into the watch folder
 		this.registerEvent(
 			this.app.vault.on('create', async (file) => {
@@ -6857,12 +6870,22 @@ export default class StorytellerSuitePlugin extends Plugin {
         const safeName = (session.name || 'Untitled Session').replace(/[\\/:"*?<>|]+/g, '');
         const fileName = `${safeName}.md`;
         // The note the session already points at wins, so a rename in Obsidian keeps the log in one file.
-        // The name-based path is used only until the note exists.
+        // Only a session with no linked note gets the name-based path.
         const linkedPath = session.filePath;
-        const linkedFile = linkedPath ? this.app.vault.getAbstractFileByPath(linkedPath) : null;
-        const filePath: string = linkedFile instanceof TFile && linkedPath
-            ? linkedPath
-            : normalizePath(`${folderPath}/${fileName}`);
+        let filePath: string;
+        if (!linkedPath) {
+            filePath = normalizePath(`${folderPath}/${fileName}`);
+        } else if (this.app.vault.getAbstractFileByPath(linkedPath) instanceof TFile) {
+            filePath = linkedPath;
+        } else {
+            // The linked note moved or was deleted. Adopt the note that still has this session's identity;
+            // creating a new note here would split the log.
+            const found = await this.findSessionNoteByIdentity(session, folderPath);
+            if (!found) {
+                throw new Error(`Session note "${linkedPath}" is missing. Restore it, or reopen the session from its note, before saving; saving now would split the log into a new note.`);
+            }
+            filePath = found;
+        }
 
         const now = new Date().toISOString();
         session.modified = now;
@@ -6895,6 +6918,20 @@ export default class StorytellerSuitePlugin extends Plugin {
             await this.app.vault.create(filePath, content);
         }
         session.filePath = filePath;
+    }
+
+    /** Finds the session note of a session whose linked path is gone: by its `id`, else by name within the story. */
+    private async findSessionNoteByIdentity(session: CampaignSession, folderPath: string): Promise<string | undefined> {
+        const { parseFrontmatterFromContent } = await import('./yaml/EntitySections');
+        const prefix = normalizePath(folderPath) + '/';
+        let byName: string | undefined;
+        for (const file of this.app.vault.getMarkdownFiles().filter(f => f.path.startsWith(prefix))) {
+            const frontmatter = parseFrontmatterFromContent(await this.app.vault.cachedRead(file));
+            if (!frontmatter) continue;
+            if (session.id && frontmatter.id === session.id) return file.path;
+            if (!byName && frontmatter.name === session.name && frontmatter.storyId === session.storyId) byName = file.path;
+        }
+        return byName;
     }
 
     /** List all campaign sessions for the active story. */

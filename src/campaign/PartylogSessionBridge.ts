@@ -25,9 +25,11 @@ import {
     formatSceneHeader,
     formatSessionEnd,
     formatSessionHeader,
+    fenceRunLength,
     formatTag,
     nextSceneId,
     parsePartylogLine,
+    parsePartylogLog,
 } from './partylog';
 import type {
     EntityState,
@@ -661,9 +663,11 @@ function sessionEndRange(lines: string[]): LineRange | undefined {
     if (digital) {
         let first = i;
         while (first < lines.length && lines[first].trim() === '') first++;
-        if (first < lines.length && lines[first].trim() === '```') {
+        const fence = first < lines.length ? fenceRunLength(lines[first]) : 0;
+        if (fence > 0) {
+            const closing = '`'.repeat(fence);
             let close = first + 1;
-            while (close < lines.length && lines[close].trim() !== '```') close++;
+            while (close < lines.length && lines[close].trim() !== closing) close++;
             return { start, end: Math.min(close + 1, lines.length) };
         }
     }
@@ -679,8 +683,14 @@ function sessionEndRange(lines: string[]): LineRange | undefined {
  */
 export function upsertSessionHeaderBlock(log: string, header: SessionHeader, style: FormatStyle = 'digital'): string {
     const lines = splitLines(log);
-    const block = formatSessionHeader(header, style);
     const range = sessionHeaderRange(lines);
+    // The header form does not edit the scene range or the Notes paragraph, so the stored ones carry over.
+    const stored = range ? parsePartylogLog(lines.slice(range.start, range.end).join('\n')).sessionHeader : undefined;
+    const block = formatSessionHeader({
+        ...header,
+        scenes: header.scenes ?? stored?.scenes,
+        notes: header.notes ?? stored?.notes,
+    }, style);
     if (!range) return joinBlocks([block, log]);
     return joinBlocks([lines.slice(0, range.start).join('\n'), block, lines.slice(range.end).join('\n')]);
 }
@@ -719,10 +729,17 @@ export function previousSessionEndChangeLines(log: string): string[] {
     const lines = splitLines(log);
     const range = sessionEndRange(lines);
     if (!range) return [];
-    return lines.slice(range.start + 1, range.end)
+    let body = lines.slice(range.start + 1, range.end);
+    // Drop the fence delimiters only; a body line that is itself a fence is a change line.
+    const open = body.findIndex(line => line.trim() !== '');
+    const fence = open >= 0 ? fenceRunLength(body[open]) : 0;
+    if (fence > 0) {
+        const close = body.findIndex((line, index) => index > open && line.trim() === '`'.repeat(fence));
+        body = body.slice(open + 1, close >= 0 ? close : body.length);
+    }
+    return body
         .map(line => line.trim())
         .filter(line => line.length > 0
-            && !line.startsWith('```')
             && !/^(?:---|###|##)\s/.test(line)
             && !/^\[Advance:/i.test(line)
             && !/^\((?:hook|note):/i.test(line));
