@@ -1,3 +1,4 @@
+import type { DateTime } from 'luxon';
 import type { Event, TimelineEra } from '../types';
 import { parseTimelineDate } from './DateParsing';
 import type StorytellerSuitePlugin from '../main';
@@ -6,6 +7,25 @@ function eventBoundaryText(value: string, boundary: 'start' | 'end'): string {
     const parts = value.split(/\s+(?:to|through|until|thru)\s+|\s*\.\.\s*|\s+[–—]\s+/i).map(part => part.trim()).filter(Boolean);
     if (parts.length !== 2) return value;
     return boundary === 'start' ? parts[0] : parts[1];
+}
+
+/**
+ * The last instant an era's end date covers. A year given as the end runs to
+ * the end of that year, so `1420` keeps everything dated in 1420. A month or
+ * day covers its whole span, and a timed end stays at its own instant.
+ * Returns undefined when the end date cannot be read.
+ */
+export function resolveEraEndInstant(endDate: string | undefined): DateTime | undefined {
+    if (!endDate) return undefined;
+    const parsed = parseTimelineDate(eventBoundaryText(endDate, 'end'));
+    if (!parsed.start) return undefined;
+    if (parsed.end) return parsed.end;
+    switch (parsed.precision) {
+        case 'year': return parsed.start.endOf('year');
+        case 'month': return parsed.start.endOf('month');
+        case 'day': return parsed.start.endOf('day');
+        default: return parsed.start;
+    }
 }
 
 /**
@@ -224,14 +244,14 @@ export class EraManager {
 
         return eras.filter(era => {
             const eraStart = parseTimelineDate(era.startDate);
-            const eraEnd = parseTimelineDate(era.endDate);
+            const eraEnd = resolveEraEndInstant(era.endDate);
 
-            if (!eraStart.start || !eraEnd.start) {
+            if (!eraStart.start || !eraEnd) {
                 return false;
             }
 
             // Check for any overlap between the ranges
-            return eraStart.start <= end.start! && eraEnd.start >= start.start!;
+            return eraStart.start <= end.start! && eraEnd >= start.start!;
         });
     }
 
@@ -240,9 +260,9 @@ export class EraManager {
      */
     static getEventsInEra(era: TimelineEra, allEvents: Event[]): Event[] {
         const eraStart = parseTimelineDate(era.startDate);
-        const eraEnd = parseTimelineDate(era.endDate);
+        const eraEnd = resolveEraEndInstant(era.endDate);
 
-        if (!eraStart.start || !eraEnd.start) {
+        if (!eraStart.start || !eraEnd) {
             return [];
         }
 
@@ -256,7 +276,7 @@ export class EraManager {
             const eventStart = eventDate.start;
             const eventEnd = eventDate.end || eventDate.start;
 
-            return eventStart >= eraStart.start! && eventEnd <= eraEnd.start!;
+            return eventStart >= eraStart.start! && eventEnd <= eraEnd;
         });
     }
 
@@ -459,14 +479,14 @@ export class EraManager {
 
         return eras.filter(era => {
             const eraStart = parseTimelineDate(era.startDate);
-            const eraEnd = parseTimelineDate(era.endDate);
+            const eraEnd = resolveEraEndInstant(era.endDate);
 
-            if (!eraStart.start || !eraEnd.start) return false;
+            if (!eraStart.start || !eraEnd) return false;
 
             const eventStart = eventDate.start!;
             const eventEnd = eventDate.end || eventDate.start!;
 
-            return eventStart >= eraStart.start && eventEnd <= eraEnd.start;
+            return eventStart >= eraStart.start && eventEnd <= eraEnd;
         });
     }
 

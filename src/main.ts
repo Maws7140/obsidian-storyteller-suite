@@ -1655,12 +1655,18 @@ export default class StorytellerSuitePlugin extends Plugin {
 		// cache re-reads the one file that changed; it holds no unsaved state
 		// of its own, so a re-read can never clobber anything.
 		this.registerEvent(this.app.metadataCache.on('changed', (file) => { void (async () => {
+			if (this.isEventNotePath(file.path)) this.refreshEventTimelines();
 			if (await this.timelineEntities.syncFile(file)) this.refreshTimelineViews();
 		})(); }));
+		this.registerEvent(this.app.vault.on('create', (file) => {
+			if (file instanceof TFile && this.isEventNotePath(file.path)) this.refreshEventTimelines();
+		}));
 		this.registerEvent(this.app.vault.on('delete', (file) => {
+			if (this.isEventNotePath(file.path)) this.refreshEventTimelines();
 			if (this.timelineEntities.forgetPath(file.path)) this.refreshTimelineViews();
 		}));
 		this.registerEvent(this.app.vault.on('rename', (file, oldPath) => { void (async () => {
+			if (this.isEventNotePath(file.path) || this.isEventNotePath(oldPath)) this.refreshEventTimelines();
 			this.timelineEntities.forgetPath(oldPath);
 			if (file instanceof TFile && await this.timelineEntities.syncFile(file)) this.refreshTimelineViews();
 		})(); }));
@@ -7933,6 +7939,15 @@ export default class StorytellerSuitePlugin extends Plugin {
             if (leaf.view instanceof TimelineView) void leaf.view.refresh();
         });
         for (const surface of this.liveTimelineSurfaces) surface.refreshTimeline();
+    }
+
+    /** Timelines read event notes from the cache, so an edit redraws them once it settles. */
+    private refreshEventTimelines = debounce(() => this.refreshTimelineViews(), 300, true);
+
+    /** Whether a vault path is an event note in the active story's event folder. */
+    private isEventNotePath(path: string): boolean {
+        const folder = this.tryGetEntityFolder('event').path;
+        return !!folder && path.startsWith(folder + '/') && path.endsWith('.md');
     }
 
     /**

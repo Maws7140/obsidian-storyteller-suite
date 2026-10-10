@@ -5,7 +5,7 @@ import { ItemView, WorkspaceLeaf, setIcon, Menu, DropdownComponent, Notice, View
 import StorytellerSuitePlugin from '../main';
 import { t } from '../i18n/strings';
 import { TimelineRenderer, TimelineFilters } from '../utils/NativeTimelineRenderer';
-import { TimelineUIFilters, TimelineUIState, Event as StoryEvent } from '../types';
+import { TimelineConflict, TimelineUIFilters, TimelineUIState, Event as StoryEvent } from '../types';
 import { TimelineTrackManager } from '../utils/TimelineTrackManager';
 import { TimelineControlsBuilder, TimelineControlCallbacks } from '../utils/TimelineControlsBuilder';
 import { TimelineFilterBuilder, TimelineFilterCallbacks } from '../utils/TimelineFilterBuilder';
@@ -556,8 +556,22 @@ export class TimelineView extends ItemView {
             const actions = empty.createDiv('storyteller-timeline-empty-actions');
             const clearBtn = actions.createEl('button', { cls: 'mod-cta', text: 'Clear filters' });
             clearBtn.addEventListener('click', () => { void (async () => {
-                this.currentState.filters = {};
+                // The renderer merges filters into what it already has, so every
+                // filter that is set has to be named here as cleared. The branch
+                // stays selected: clearing filters does not switch timelines.
+                const cleared: TimelineFilters = {
+                    characters: undefined,
+                    locations: undefined,
+                    groups: undefined,
+                    tags: undefined,
+                    eras: undefined,
+                    milestonesOnly: false,
+                    forkId: this.currentState.filters.forkId
+                };
+                this.currentState.filters = { ...cleared };
                 this.currentState.currentTrackId = undefined;
+                this.renderer?.applyFilters(cleared);
+                this.buildFilterToggle();
                 await this.refresh();
             })(); });
         } else {
@@ -613,17 +627,30 @@ export class TimelineView extends ItemView {
         const newConflicts = ConflictDetector.toStorageFormat(conflicts);
         const currentConflicts = this.plugin.getTimelineConflicts();
         
+        // The detector stamps `detected` on every call, so a rebuild always looks
+        // changed. An unchanged conflict keeps its stored stamp instead.
+        const contentKey = (c: TimelineConflict) => JSON.stringify([c.type, c.severity, c.entities, c.events, c.description]);
+
         // Merge to preserve dismissed status
         const mergedConflicts = newConflicts.map(newC => {
             const existing = currentConflicts.find(c => c.id === newC.id);
             if (existing) {
-                return { ...newC, dismissed: existing.dismissed };
+                const unchanged = contentKey(existing) === contentKey(newC);
+                return { ...newC, detected: unchanged ? existing.detected : newC.detected, dismissed: existing.dismissed };
             }
             return newC;
         });
 
-        // Only update if changed
-        if (JSON.stringify(mergedConflicts) !== JSON.stringify(currentConflicts)) {
+        // Only update if changed. Stored entries carry a storyId that the
+        // detector does not, so compare the fields that matter instead of JSON.
+        const changed = mergedConflicts.length !== currentConflicts.length || mergedConflicts.some(merged => {
+            const stored = currentConflicts.find(c => c.id === merged.id);
+            return !stored
+                || contentKey(stored) !== contentKey(merged)
+                || stored.dismissed !== merged.dismissed
+                || stored.detected !== merged.detected;
+        });
+        if (changed) {
             await this.plugin.setTimelineConflicts(mergedConflicts);
             this.buildToolbar();
         }
@@ -1019,9 +1046,13 @@ export class TimelineView extends ItemView {
         // only thing missing was the control that selects one.
         const signature = this.branchSignature();
         if (signature !== this.lastBranchSignature) this.buildToolbar();
-        await this.renderer.refresh();
+        // A rebuild can replace the renderer while this refresh is loading. The
+        // replacement may not have its events yet, so only the renderer that
+        // is still current may draw the empty-state card.
+        const renderer = this.renderer;
+        await renderer.refresh();
         // The empty-state card reads the same data, so it must follow every refresh too.
-        this.renderEmptyState();
+        if (renderer === this.renderer) this.renderEmptyState();
         this.updateFooterStatus();
         this.updateSearchDropdown();
     }

@@ -3,6 +3,7 @@ import StorytellerSuitePlugin from '../main';
 import type { Character, Culture, Event, Location, MagicSystem, PlotItem, Scene, TimelineFork, TimelineGroupMode, TimelineTrack } from '../types';
 import { EventModal } from '../modals/EventModal';
 import { parseEventDate, toMillis } from './DateParsing';
+import { resolveEraEndInstant } from './EraManager';
 import type { DetectedConflict } from './ConflictDetector';
 import { ConflictDetector } from './ConflictDetector';
 import { CalendarRegistry } from '../calendar/CalendarRegistry';
@@ -2672,7 +2673,7 @@ export class NativeTimelineRenderer {
         if (!this.options.showEras) return;
         const eras = this.plugin.getTimelineEras().filter(era => era.visible !== false);
         eras.forEach(era => {
-            const start = this.parseDate(era.startDate); const end = this.parseDate(era.endDate);
+            const start = this.parseDate(era.startDate); const end = this.calendarRegistry.getActiveCalendar().id === GREGORIAN_CALENDAR.id ? resolveEraEndInstant(era.endDate)?.toMillis() ?? NaN : this.parseDate(era.endDate);
             if (!Number.isFinite(start) || !Number.isFinite(end)) return;
             const x1 = this.timeToX(start, width); const x2 = this.timeToX(end, width);
             const axisHeight = this.axisHeight();
