@@ -338,6 +338,8 @@ export class NativeTimelineRenderer {
      */
     private tap: { pointerId: number; item: NativeItem; x: number; y: number; start: number; end: number; wasSelected: boolean } | null = null;
     private referenceDate = new Date();
+    /** Bumped by each refresh so an older, slower load cannot overwrite a newer list. */
+    private refreshGeneration = 0;
     /** The story's "today" in epoch milliseconds, for the now marker and jump. */
     private nowMs(): number { return this.options.getReferenceDate().getTime(); }
     private palette = ['#7c3aed', '#2563eb', '#059669', '#ca8a04', '#dc2626', '#ea580c', '#0ea5e9', '#22c55e', '#d946ef', '#f59e0b'];
@@ -381,14 +383,19 @@ export class NativeTimelineRenderer {
     }
 
     async refresh(): Promise<void> {
-        this.events = await this.plugin.listEvents();
-        if (this.destroyed) return;
-        this.locations = await this.plugin.listLocations();
-        if (this.destroyed) return;
-        this.characters = await this.plugin.listCharacters();
-        if (this.destroyed) return;
+        const gen = ++this.refreshGeneration;
+        const superseded = () => this.destroyed || gen !== this.refreshGeneration;
+        const events = await this.plugin.listEvents();
+        if (superseded()) return;
+        const locations = await this.plugin.listLocations();
+        if (superseded()) return;
+        const characters = await this.plugin.listCharacters();
+        if (superseded()) return;
         await this.loadOptionalSources();
-        if (this.destroyed) return;
+        if (superseded()) return;
+        this.events = events;
+        this.locations = locations;
+        this.characters = characters;
         this.rebuild(false);
     }
 
@@ -703,7 +710,7 @@ export class NativeTimelineRenderer {
         this.canvas.addEventListener('pointerdown', event => this.onPointerDown(event));
         this.canvas.addEventListener('pointermove', event => this.onPointerMove(event));
         this.canvas.addEventListener('pointerup', event => { void this.onPointerUp(event); });
-        this.canvas.addEventListener('pointercancel', event => { void this.onPointerUp(event); });
+        this.canvas.addEventListener('pointercancel', event => this.onPointerCancel(event));
         this.canvas.addEventListener('dblclick', event => this.openAt(event.offsetX, event.offsetY));
         this.canvas.addEventListener('wheel', event => this.onWheel(event), { passive: false });
         this.canvas.addEventListener('pointerleave', event => this.onPointerLeave(event));
@@ -732,11 +739,29 @@ export class NativeTimelineRenderer {
             });
             this.options.onConflictsDetected?.(conflicts);
         }
+        const previousSelected = this.selected;
+        const previousHovered = this.hovered;
         this.lanes = this.buildLanes(sourceEvents);
         this.presence = this.buildPresence();
         this.layoutRows();
+        // Items are new objects after a rebuild. Re-point the highlight and the
+        // keyboard target at the item for the same event, or drop them if it is gone.
+        this.selected = this.sameItem(previousSelected);
+        this.hovered = this.sameItem(previousHovered);
+        if (previousSelected && !this.selected) this.options.onEventSelected?.(null);
+        if (previousHovered && !this.hovered) this.hideTooltip();
         if (fit) this.fitToView(); else this.scheduleDraw();
     }
+
+    /** The item now drawn for the same event as `previous`, preferring the same lane. */
+    private sameItem(previous: NativeItem | null): NativeItem | null {
+        if (!previous) return null;
+        const identity = this.eventIdentity(previous.event);
+        const candidates = this.lanes.flatMap(lane => lane.items).filter(item => this.eventIdentity(item.event) === identity);
+        return candidates.find(item => item.laneId === previous.laneId) ?? candidates[0] ?? null;
+    }
+
+    private eventIdentity(event: Event): string { return event.filePath || this.eventKey(event); }
 
     private collectEvents(): Event[] {
         const result = this.events.filter(event => this.shouldInclude(event) && this.matchesFork(event)).slice();
@@ -3040,7 +3065,7 @@ export class NativeTimelineRenderer {
             // Selection and touch pan still work on a non-draggable item; only the write-back is refused.
             this.dragging = this.options.editMode && this.isDraggable(item)
                 ? { kind: 'move', x: event.clientX, y: event.clientY, start: item.start, end: item.end, item }
-                : event.pointerType === 'touch'
+                : event.pointerType !== 'mouse'
                     ? { kind: 'pan', x: event.clientX, y: event.clientY, start: this.viewStart, end: this.viewEnd }
                     : null;
             this.scheduleDraw();
@@ -3288,6 +3313,32 @@ export class NativeTimelineRenderer {
         this.scheduleDraw();
     }
 
+    /**
+     * The browser took the pointer away (a system gesture, or the page scrolling under it).
+     * That is neither a tap nor a drop: no card or editor opens, and a chip being moved goes
+     * back to where it started without a write.
+     */
+    private onPointerCancel(event: PointerEvent): void {
+        this.activePointers.delete(event.pointerId);
+        this.tap = null;
+        this.canvas?.releasePointerCapture(event.pointerId);
+        if (this.pinch) {
+            this.pinch = null;
+            this.dragging = null;
+            const remaining = Array.from(this.activePointers.values())[0];
+            if (remaining) this.dragging = { kind: 'pan', x: remaining.x, y: remaining.y, start: this.viewStart, end: this.viewEnd };
+            this.scheduleDraw();
+            return;
+        }
+        const dragging = this.dragging;
+        this.dragging = null;
+        this.dragGhost = null;
+        if (dragging?.kind === 'move' && dragging.item) {
+            dragging.item.start = dragging.start; dragging.item.end = dragging.end;
+        }
+        this.scheduleDraw();
+    }
+
     private async onPointerUp(event: PointerEvent): Promise<void> {
         this.activePointers.delete(event.pointerId);
         const tap = this.tap; this.tap = null;
@@ -3298,7 +3349,7 @@ export class NativeTimelineRenderer {
             tap.item.start = tap.start; tap.item.end = tap.end;
             this.dragging = null; this.dragGhost = null;
             this.canvas?.releasePointerCapture(event.pointerId);
-            if (tap.wasSelected) { this.hideTooltip(); this.openItem(tap.item); }
+            if (tap.wasSelected) { this.hideTooltip(); void this.openItem(tap.item); }
             else this.showTooltip(tap.item, tap.x, tap.y);
             this.scheduleDraw();
             return;
@@ -3466,13 +3517,41 @@ export class NativeTimelineRenderer {
     }
 
     /**
+     * The event as the store holds it now. A chip keeps the copy it was built from, and the
+     * note may have been edited since, so anything written back starts from this copy.
+     * Matched by file path, then id, then name.
+     */
+    private async freshEvent(event: Event): Promise<Event | undefined> {
+        const events = await this.plugin.listEvents();
+        return (event.filePath ? events.find(candidate => candidate.filePath === event.filePath) : undefined)
+            ?? (event.id ? events.find(candidate => candidate.id === event.id) : undefined)
+            ?? events.find(candidate => candidate.name === event.name);
+    }
+
+    /**
      * Write a moved item back to its event. Shared by pointer drags and the
      * keyboard nudge, so both show the same Notice and refuse the same bad dates.
      * `from` is where the item was before the move, for the revert and the notice.
      */
     private async commitMove(item: NativeItem, from: { start: number; end: number }): Promise<void> {
         const narrativeMode = this.options.narrativeOrder === true;
-        const oldDate = narrativeMode ? item.event.narrativeMarkers?.narrativeDate : item.event.dateTime;
+        const revert = (): void => { item.start = from.start; item.end = from.end; this.scheduleDraw(); };
+        const fresh = await this.freshEvent(item.event);
+        if (!fresh) {
+            revert();
+            new Notice(`Could not move “${item.event.name}”: the event no longer exists. The event was not changed.`);
+            return;
+        }
+        const oldDate = narrativeMode ? fresh.narrativeMarkers?.narrativeDate : fresh.dateTime;
+        // The stored text has to read back to the instant the chip was drawn at. Otherwise the
+        // app misread the date (a BCE form it cannot parse, say) and writing over it would
+        // replace that text with a different day.
+        const storedStart = (timelineDateForMode(fresh, narrativeMode) ?? '').split(/\s+(?:to|through|until)\s+/i)[0];
+        if (!storedStart || this.parseDate(storedStart) !== from.start) {
+            revert();
+            new Notice(`Could not move “${fresh.name}”: its date “${oldDate || 'none'}” does not read as the date on screen. The event was not changed.`);
+            return;
+        }
         const duration = from.end - from.start;
         const startText = this.formatEditDate(item.start);
         const endText = duration > 0 ? this.formatEditDate(item.end) : '';
@@ -3481,28 +3560,23 @@ export class NativeTimelineRenderer {
         // different day than the one dropped. Refuse the write and put the chip back.
         const readsBack = this.parseDate(startText) === item.start && (duration <= 0 || this.parseDate(endText) === item.end);
         if (!readsBack) {
-            item.start = from.start; item.end = from.end;
-            this.scheduleDraw();
-            new Notice(`Could not move “${item.event.name}”: ${nextDate} would not read back as the same date. The event was not changed.`);
+            revert();
+            new Notice(`Could not move “${fresh.name}”: ${nextDate} would not read back as the same date. The event was not changed.`);
             return;
         }
-        if (narrativeMode) {
-            item.event.narrativeMarkers ??= {};
-            item.event.narrativeMarkers.narrativeDate = nextDate;
-        } else {
-            item.event.dateTime = nextDate;
-        }
+        // Only the date changes; every other field comes from the current note.
+        const next: Event = narrativeMode
+            ? { ...fresh, narrativeMarkers: { ...fresh.narrativeMarkers, narrativeDate: nextDate } }
+            : { ...fresh, dateTime: nextDate };
         // The old date goes in the notice because there is no undo: it is
         // the only record of where the event came from.
-        try { await this.plugin.saveEvent(item.event); new Notice(`Moved “${item.event.name}” from ${oldDate || 'no date'} to ${nextDate}`); }
+        try {
+            await this.plugin.saveEvent(next);
+            this.events = this.events.map(event => event === item.event ? next : event);
+            new Notice(`Moved “${next.name}” from ${oldDate || 'no date'} to ${nextDate}`);
+        }
         catch (error) {
-            if (narrativeMode) {
-                item.event.narrativeMarkers ??= {};
-                item.event.narrativeMarkers.narrativeDate = oldDate;
-            } else {
-                item.event.dateTime = oldDate;
-            }
-            item.start = from.start; item.end = from.end;
+            revert();
             new Notice(`Could not move event: ${error instanceof Error ? error.message : String(error)}`);
         }
         this.rebuild(false);
@@ -3511,7 +3585,7 @@ export class NativeTimelineRenderer {
     private onKeyDown(event: KeyboardEvent): void {
         if (this.selected && event.key === 'Enter') {
             event.preventDefault();
-            this.openItem(this.selected);
+            void this.openItem(this.selected);
             return;
         }
         if (!this.selected || !this.options.editMode || !['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
@@ -3530,11 +3604,11 @@ export class NativeTimelineRenderer {
 
     private openAt(x: number, y: number): void {
         const item = this.hit(x, y);
-        if (item) this.openItem(item);
+        if (item) void this.openItem(item);
     }
 
     /** Open the event behind a chip in the editor, the same way for mouse, touch and keyboard. */
-    private openItem(item: NativeItem): void {
+    private async openItem(item: NativeItem): Promise<void> {
         if (item.event.tags?.includes('watched-note')) return;
         // A scene is not an event. Editing one here would hand EventModal a
         // synthetic object and saveEvent would write it out as a new event note,
@@ -3543,7 +3617,11 @@ export class NativeTimelineRenderer {
             if (item.event.filePath) void this.app.workspace.openLinkText(item.event.filePath, '', false);
             return;
         }
-        new EventModal(this.app, this.plugin, item.event, async updated => { await this.plugin.saveEvent(updated); await this.refresh(); }).open();
+        // Open the store's copy, not the chip's snapshot, so the editor does not start from a
+        // note that has since changed.
+        const fresh = await this.freshEvent(item.event);
+        if (!fresh) { new Notice(`Could not open “${item.event.name}”: the event no longer exists.`); return; }
+        new EventModal(this.app, this.plugin, fresh, async updated => { await this.plugin.saveEvent(updated); await this.refresh(); }).open();
     }
 
     private hit(x: number, y: number): NativeItem | null {
@@ -3755,9 +3833,9 @@ export class NativeTimelineRenderer {
         if (calendar.id !== GREGORIAN_CALENDAR.id) return formatAbsoluteDay(value / DAY_MS + this.unixEpochAbsoluteDay(), calendar, calendar.baseUnit === 'minute' ? 'time' : 'day');
         const date = new Date(value);
         if (date.getUTCFullYear() >= 0) return date.toISOString().replace('T', ' ').replace(/:00\.000Z$/, '');
-        // Years before zero are written as signed six-digit ISO years, which the parser reads back
-        // only without a clock. A midnight is therefore written bare; any other time fails the
-        // round-trip check in onPointerUp rather than being saved as the wrong day.
+        // Years before zero are written as signed six-digit ISO years. A midnight is written bare,
+        // and a clock is kept after it; parseEventDate reads both back, and commitMove's
+        // read-back check refuses the write if a form ever fails to.
         const iso = date.toISOString();
         return value % DAY_MS === 0 ? iso.slice(0, iso.indexOf('T')) : iso.replace('T', ' ').replace(/\.000Z$/, '');
     }

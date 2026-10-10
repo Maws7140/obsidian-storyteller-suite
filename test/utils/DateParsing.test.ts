@@ -416,3 +416,37 @@ describe('DateParsing', () => {
     });
   });
 });
+
+describe('BCE and negative years with a time of day', () => {
+  it.each(['-44-03-15 10:00', '-0044-03-15 10:00', '-000044-03-15 10:00', '-0044-03-15T10:00'])('keeps the sign, month and day of "%s"', text => {
+    const r = parseEventDate(text, { timezone: 'utc' });
+    expect(r.error).toBeUndefined();
+    expect(r.start?.year).toBe(-44);
+    expect(r.start?.month).toBe(3);
+    expect(r.start?.day).toBe(15);
+    expect(r.start?.hour).toBe(10);
+    expect(r.start?.minute).toBe(0);
+    expect(r.precision).toBe('time');
+    expect(r.isBCE).toBe(true);
+  });
+
+  it('reads seconds on a negative ISO time', () => {
+    const r = parseEventDate('-000043-01-01 10:30:15', { timezone: 'utc' });
+    expect(r.start?.toMillis()).toBe(Date.UTC(-43, 0, 1, 10, 30, 15));
+  });
+
+  it('a midnight negative ISO date is unchanged', () => {
+    const r = parseEventDate('-0044-03-15', { timezone: 'utc' });
+    expect(r.start?.toMillis()).toBe(Date.UTC(-44, 2, 15));
+    expect(r.precision).toBe('day');
+  });
+
+  it('"44 BCE 10:00" is Jan 1 of that year at 10:00, like "44 BCE" is Jan 1', () => {
+    const r = parseEventDate('44 BCE 10:00', { timezone: 'utc' });
+    expect(r.error).toBeUndefined();
+    expect(r.start?.toMillis()).toBe(Date.UTC(-43, 0, 1, 10, 0));
+    expect(r.isBCE).toBe(true);
+    expect(r.originalYear).toBe(44);
+    expect(parseEventDate('44 BCE', { timezone: 'utc' }).start?.toMillis()).toBe(Date.UTC(-43, 0, 1));
+  });
+});

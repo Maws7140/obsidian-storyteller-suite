@@ -80,10 +80,12 @@ describe('touch and keyboard users can open an event', () => {
     expect(opened()).toHaveLength(0);
   });
 
-  it('Enter on the selected item opens the event', () => {
+  it('Enter on the selected item opens the event', async () => {
     const r = setup([ev]);
     r.selected = chipItem(r, ev);
     r.onKeyDown({ key: 'Enter', preventDefault() {} });
+    // The editor opens once the store's copy has been read.
+    await new Promise(res => setTimeout(res, 0));
     expect(opened()).toEqual([ev]);
   });
 });

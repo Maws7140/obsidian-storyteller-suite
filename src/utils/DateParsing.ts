@@ -25,7 +25,8 @@ export interface ParsedEventDate {
 const APPROX_RE = /(circa|around|about|approx|~|approx\.)/i;
 const BCE_RE = /\b(\d+)\s*(BC|bce|BCE|B\.C\.|B\.C|B\.C\.E\.|b\.c\.|b\.c\.e\.|bc|b\.c\.e)\b/i;
 const CE_RE = /\b(\d+)\s*(CE|ce|A\.D\.|AD|ad|a\.d\.)\b/i;
-const NEG_ISO_RE = /^-(\d{1,6})(?:-(\d{1,2}))?(?:-(\d{1,2}))?$/;
+const NEG_ISO_RE = /^-(\d{1,6})(?:-(\d{1,2}))?(?:-(\d{1,2}))?(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?$/;
+const BCE_TIME_ONLY_RE = /^(\d{1,2}):(\d{2})(?::(\d{2}))?$/;
 
 function inferPrecisionFromChrono(result: chrono.ParsedResult): ParsedPrecision {
   const start = result.start;
@@ -149,9 +150,15 @@ function splitRange(text: string): [string, string] | null {
     const year = -parseInt(negIso[1], 10);
     const month = negIso[2] != null ? parseInt(negIso[2], 10) : 1;
     const day = negIso[3] != null ? parseInt(negIso[3], 10) : 1;
-    const dt = DateTime.fromObject({ year, month, day }, { zone });
+    const hasTime = negIso[4] != null;
+    const dt = DateTime.fromObject({
+      year, month, day,
+      hour: hasTime ? parseInt(negIso[4], 10) : 0,
+      minute: hasTime ? parseInt(negIso[5], 10) : 0,
+      second: hasTime && negIso[6] != null ? parseInt(negIso[6], 10) : 0,
+    }, { zone });
     if (dt.isValid) {
-      const precision: ParsedPrecision = negIso[3] != null ? 'day' : negIso[2] != null ? 'month' : 'year';
+      const precision: ParsedPrecision = hasTime ? 'time' : negIso[3] != null ? 'day' : negIso[2] != null ? 'month' : 'year';
       return { start: dt, precision, approximate, isBCE: true, originalYear: 1 - year };
     }
   }
@@ -251,6 +258,20 @@ function splitRange(text: string): [string, string] | null {
             isBCE: true,
             originalYear: year
           };
+        }
+      }
+
+      // "44 BCE 10:00": a bare year has no month or day, so it sits on 1 January like "44 BCE",
+      // and the clock is read onto that day rather than the day of the reference date.
+      const bceTimeOnly = text.replace(BCE_RE, '').trim().match(BCE_TIME_ONLY_RE);
+      if (bceTimeOnly) {
+        const withTime = DateTime.fromObject({
+          year: jsYear, month: 1, day: 1,
+          hour: parseInt(bceTimeOnly[1], 10), minute: parseInt(bceTimeOnly[2], 10),
+          second: bceTimeOnly[3] != null ? parseInt(bceTimeOnly[3], 10) : 0,
+        }, { zone });
+        if (withTime.isValid) {
+          return { start: withTime, precision: 'time', approximate, isBCE: true, originalYear: year };
         }
       }
 
