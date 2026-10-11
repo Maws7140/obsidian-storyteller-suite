@@ -17,6 +17,8 @@ import { MapHierarchyManager } from '../utils/MapHierarchyManager';
 import { stripWikiLinkToString } from '../utils/WikiLinks';
 import { locationPinKey } from '../utils/CampaignBoardSelection';
 import { confirmWithModal } from '../modals/ui/ConfirmModal';
+import { tokenHtml, tokenAnchor, tokenIconSize } from './ink/tokens';
+import type { TokenSize } from './ink/tokens';
 
 interface MapViewWithLoadMap {
     loadMap(mapId: string): Promise<void>;
@@ -313,7 +315,8 @@ export class MapEntityRenderer {
         index: number,
         total: number
     ): [number, number] {
-        const radius = total <= 1 ? 28 : 34;
+        // Tokens are centred on the point, so the radius clears a large location token and a large portal token.
+        const radius = total <= 1 ? 38 : 40;
         const startAngle = total <= 1 ? -Math.PI / 4 : -Math.PI / 2;
         const angle = startAngle + ((2 * Math.PI) / Math.max(total, 1)) * index;
         const offsetX = Math.cos(angle) * radius;
@@ -337,26 +340,13 @@ export class MapEntityRenderer {
      * Get portal marker icon
      */
     private getPortalMarkerIcon(): L.DivIcon {
-        const iconHtml = `
-            <svg width="40" height="40" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
-                <defs>
-                    <radialGradient id="portalGradient" cx="50%" cy="50%" r="50%">
-                        <stop offset="0%" style="stop-color:#a855f7;stop-opacity:0.9" />
-                        <stop offset="50%" style="stop-color:#7c3aed;stop-opacity:0.7" />
-                        <stop offset="100%" style="stop-color:#5b21b6;stop-opacity:0.9" />
-                    </radialGradient>
-                </defs>
-                <circle cx="20" cy="20" r="16" fill="url(#portalGradient)" stroke="#fbbf24" stroke-width="3"/>
-                <path d="M20 8 L20 32 M8 20 L32 20" stroke="#fbbf24" stroke-width="2" opacity="0.7"/>
-            </svg>
-        `;
-
+        const size: TokenSize = 'lg';
         return L.divIcon({
-            html: iconHtml,
-            className: 'storyteller-portal-marker',
-            iconSize: [40, 40],
-            iconAnchor: [20, 40],
-            popupAnchor: [0, -40]
+            html: `<div class="storyteller-marker-wrapper ink-token-wrap">${tokenHtml({ type: 'portal', size })}</div>`,
+            className: 'storyteller-portal-marker ink-token-marker',
+            iconSize: tokenIconSize(size),
+            iconAnchor: tokenAnchor(size),
+            popupAnchor: [0, -18]
         });
     }
 
@@ -425,7 +415,8 @@ export class MapEntityRenderer {
     }
 
     private calculateLocationEntityOffset(index: number, total: number): [number, number] {
-        const radius = total <= 1 ? 26 : 24;
+        // Entity tokens sit beside a large location token centred on the point.
+        const radius = total <= 1 ? 36 : 38;
         const startAngle = total <= 1 ? -Math.PI / 3 : -Math.PI / 2;
         const angle = startAngle + ((2 * Math.PI) / Math.max(total, 1)) * index;
         return [
@@ -815,7 +806,7 @@ export class MapEntityRenderer {
         const imagePath = this.getEntityImagePath(entity, entityRef.entityType);
         const imageUrl = imagePath ? this.getImageUrl(imagePath) : null;
 
-        const icon = this.getEntityMarkerIcon(entityRef.entityType, imageUrl, entity.name, stackInfo);
+        const icon = this.getEntityMarkerIcon(entityRef.entityType, imageUrl, stackInfo);
         const markerCoordinates = stackInfo
             ? this.offsetCoordinatesByPixels(coordinates, stackInfo.offset)
             : coordinates;
@@ -895,189 +886,53 @@ export class MapEntityRenderer {
             });
         }
 
-        // Default location icon
-        const color = '#3b82f6';
-        const iconHtml = `
-            <div class="storyteller-marker-wrapper">
-                <svg width="32" height="32" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                    <circle cx="12" cy="10" r="8" fill="${color}" stroke="#fff" stroke-width="2"/>
-                    <circle cx="12" cy="10" r="3" fill="#fff"/>
-                </svg>
-                ${entityBadge}
-            </div>
-        `;
+        // Default location token: a token centred on the point, with the entity count pill.
+        const size: TokenSize = 'lg';
+        const state = {
+            current: stateClasses.includes('is-current'),
+            selected: stateClasses.includes('is-selected'),
+        };
+        const token = tokenHtml({ type: 'location', size, count: entityCount, minCount: 1, state });
 
         return L.divIcon({
-            html: iconHtml,
-            className: `storyteller-location-marker${entityCount > 0 ? ' has-entities' : ''}${stateSuffix}`,
-            iconSize: [32, 32],
-            iconAnchor: [16, 32],
-            popupAnchor: [0, -32]
+            html: `<div class="storyteller-marker-wrapper ink-token-wrap">${token}</div>`,
+            className: `storyteller-location-marker ink-token-marker${entityCount > 0 ? ' has-entities' : ''}${stateSuffix}`,
+            iconSize: tokenIconSize(size),
+            iconAnchor: tokenAnchor(size),
+            popupAnchor: [0, -18]
         });
     }
 
     /**
-     * Get entity marker icon - shows entity image as circular avatar if available
+     * Get entity marker icon: a Token in the entity colour, or a portrait token when an image is known.
      * @param entityType Type of entity (character, event, item)
-     * @param imageUrl Optional image URL to display
-     * @param entityName Entity name for fallback initials
+     * @param imageUrl Optional portrait image URL
      * @param stackInfo Optional stacking information for offset positioning
      */
     private getEntityMarkerIcon(
         entityType: string,
         imageUrl?: string | null,
-        entityName?: string,
         stackInfo?: { stackIndex: number; stackTotal: number; offset: [number, number] }
     ): L.DivIcon {
-        // Uniform color scheme for all entity types with distinct hues
-        const colors: Record<string, { bg: string; border: string }> = {
-            character: { bg: '#ef4444', border: '#dc2626' },      // Red
-            event: { bg: '#f59e0b', border: '#d97706' },          // Orange
-            item: { bg: '#10b981', border: '#059669' },           // Green
-            culture: { bg: '#8b5cf6', border: '#7c3aed' },        // Purple
-            economy: { bg: '#eab308', border: '#ca8a04' },        // Yellow
-            magicsystem: { bg: '#06b6d4', border: '#0891b2' },    // Cyan
-            group: { bg: '#3b82f6', border: '#2563eb' },          // Blue
-            scene: { bg: '#ec4899', border: '#db2777' },          // Pink
-            reference: { bg: '#64748b', border: '#475569' }       // Slate
-        };
-
         const normalizedEntityType = normalizeMapEntityType(entityType);
-        const color = colors[normalizedEntityType] || colors.character;
-        
-        // Show stack badge on first marker only when there are multiple
-        const stackBadge = stackInfo && stackInfo.stackIndex === 0 && stackInfo.stackTotal > 1
-            ? `<span class="storyteller-stack-badge">${stackInfo.stackTotal}</span>`
-            : '';
-        
-        // If we have an image, show it as a circular avatar
-        if (imageUrl) {
-            const iconHtml = `
-                <div class="storyteller-entity-avatar" style="
-                    width: 36px;
-                    height: 36px;
-                    border-radius: 50%;
-                    border: 3px solid ${color.border};
-                    box-shadow: 0 2px 6px rgba(0,0,0,0.3);
-                    overflow: hidden;
-                    background-color: ${color.bg};
-                    position: relative;
-                ">
-                    <span class="storyteller-entity-avatar-fallback">${this.getInitials(entityName)}</span>
-                    <img src="${imageUrl}" alt="" style="
-                        width: 100%;
-                        height: 100%;
-                        object-fit: cover;
-                    " onerror="this.style.display='none'"/>
-                    ${stackBadge}
-                </div>
-            `;
-
-            return L.divIcon({
-                html: iconHtml,
-                className: `storyteller-entity-marker storyteller-entity-${normalizedEntityType} has-image${stackInfo && stackInfo.stackTotal > 1 ? ' stacked' : ''}`,
-                iconSize: [36, 36],
-                iconAnchor: [18, 36],
-                popupAnchor: [0, -36]
-            });
-        }
-
-        // Uniform SVG icons for all entity types
-        const icons: Record<string, string> = {
-            character: `
-                <svg width="28" height="28" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                    <circle cx="12" cy="12" r="11" fill="${color.bg}" stroke="#fff" stroke-width="2"/>
-                    <circle cx="12" cy="9" r="3.5" fill="#fff"/>
-                    <path d="M12 14c-3.5 0-6 1.5-6 3.5v1h12v-1c0-2-2.5-3.5-6-3.5z" fill="#fff"/>
-                </svg>
-                ${stackBadge}
-            `,
-            event: `
-                <svg width="28" height="28" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                    <circle cx="12" cy="12" r="11" fill="${color.bg}" stroke="#fff" stroke-width="2"/>
-                    <path d="M8 7v10M12 5v14M16 8v8" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
-                </svg>
-                ${stackBadge}
-            `,
-            item: `
-                <svg width="28" height="28" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                    <circle cx="12" cy="12" r="11" fill="${color.bg}" stroke="#fff" stroke-width="2"/>
-                    <rect x="8" y="6" width="8" height="12" rx="1" fill="none" stroke="#fff" stroke-width="2"/>
-                    <path d="M10 9h4M10 12h4M10 15h2" stroke="#fff" stroke-width="1.5" stroke-linecap="round"/>
-                </svg>
-                ${stackBadge}
-            `,
-            culture: `
-                <svg width="28" height="28" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                    <circle cx="12" cy="12" r="11" fill="${color.bg}" stroke="#fff" stroke-width="2"/>
-                    <path d="M8 12h8M10 8l2 4 2-4M10 16l2-4 2 4" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
-                ${stackBadge}
-            `,
-            economy: `
-                <svg width="28" height="28" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                    <circle cx="12" cy="12" r="11" fill="${color.bg}" stroke="#fff" stroke-width="2"/>
-                    <circle cx="12" cy="12" r="5" fill="none" stroke="#fff" stroke-width="2"/>
-                    <path d="M12 7v10M8 12h8" stroke="#fff" stroke-width="1.5"/>
-                </svg>
-                ${stackBadge}
-            `,
-            magicsystem: `
-                <svg width="28" height="28" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                    <circle cx="12" cy="12" r="11" fill="${color.bg}" stroke="#fff" stroke-width="2"/>
-                    <path d="M12 5l1.5 4.5h4.5l-3.5 2.5 1.5 4.5-3-2-3 2 1.5-4.5-3.5-2.5h4.5z" fill="#fff"/>
-                </svg>
-                ${stackBadge}
-            `,
-            group: `
-                <svg width="28" height="28" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                    <circle cx="12" cy="12" r="11" fill="${color.bg}" stroke="#fff" stroke-width="2"/>
-                    <circle cx="8" cy="10" r="2" fill="#fff"/>
-                    <circle cx="16" cy="10" r="2" fill="#fff"/>
-                    <circle cx="12" cy="13" r="2" fill="#fff"/>
-                    <path d="M8 15c0-1 1-2 2-2h4c1 0 2 1 2 2v2H8z" fill="#fff"/>
-                </svg>
-                ${stackBadge}
-            `,
-            scene: `
-                <svg width="28" height="28" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                    <circle cx="12" cy="12" r="11" fill="${color.bg}" stroke="#fff" stroke-width="2"/>
-                    <path d="M7 10l5-3 5 3v7H7z" fill="#fff"/>
-                    <rect x="10" y="13" width="4" height="4" fill="${color.bg}"/>
-                </svg>
-                ${stackBadge}
-            `,
-            reference: `
-                <svg width="28" height="28" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                    <circle cx="12" cy="12" r="11" fill="${color.bg}" stroke="#fff" stroke-width="2"/>
-                    <rect x="8" y="6" width="8" height="12" rx="1" fill="none" stroke="#fff" stroke-width="2"/>
-                    <path d="M10 9h4M10 11h4M10 13h3" stroke="#fff" stroke-width="1" stroke-linecap="round"/>
-                </svg>
-                ${stackBadge}
-            `
-        };
-
-        const iconHtml = icons[normalizedEntityType] || icons.character;
+        const stacked = !!stackInfo && stackInfo.stackTotal > 1;
+        // The stack count shows on the first marker of a stack only.
+        const count = stackInfo && stackInfo.stackIndex === 0 ? stackInfo.stackTotal : undefined;
+        const size: TokenSize = imageUrl ? 'lg' : 'md';
+        const token = tokenHtml({
+            type: normalizedEntityType,
+            size,
+            count,
+            imageUrl: imageUrl || undefined,
+        });
 
         return L.divIcon({
-            html: iconHtml,
-            className: `storyteller-entity-marker storyteller-entity-${normalizedEntityType}${stackInfo && stackInfo.stackTotal > 1 ? ' stacked' : ''}`,
-            iconSize: [28, 28],
-            iconAnchor: [14, 28],
-            popupAnchor: [0, -28]
+            html: `<div class="storyteller-marker-wrapper ink-token-wrap">${token}</div>`,
+            className: `storyteller-entity-marker storyteller-entity-${normalizedEntityType} ink-token-marker${imageUrl ? ' has-image' : ''}${stacked ? ' stacked' : ''}`,
+            iconSize: tokenIconSize(size),
+            iconAnchor: tokenAnchor(size),
+            popupAnchor: [0, -18]
         });
-    }
-
-    /**
-     * Get initials from entity name for fallback display
-     */
-    private getInitials(name?: string): string {
-        if (!name) return '?';
-        const words = name.trim().split(/\s+/);
-        if (words.length === 1) {
-            return words[0].substring(0, 2).toUpperCase();
-        }
-        return (words[0][0] + words[words.length - 1][0]).toUpperCase();
     }
 
     /**
