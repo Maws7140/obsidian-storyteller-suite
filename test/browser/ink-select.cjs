@@ -101,11 +101,6 @@ const near = (a, b, tol, msg) => assert.ok(Math.abs(a - b) <= tol, `${msg}: expe
 	await page.addStyleTag({ content: fs.readFileSync(path + 'node_modules/leaflet/dist/leaflet.css', 'utf8') + fs.readFileSync(path + 'styles.css', 'utf8') });
 	await page.addScriptTag({ content: fs.readFileSync(path + 'node_modules/leaflet/dist/leaflet.js', 'utf8') });
 	await page.addScriptTag({ content: bundle.outputFiles[0].text });
-	// Leaflet's CSS sets pointer-events: none on every path directly under a pane svg
-	// (".leaflet-pane > svg path"), which beats the SVG attribute on the ink hit strokes, so
-	// thin paths and areas could not be hit. This override is the workaround used here. The fix
-	// belongs in the layer (W1c): an inline pointer-events style on each .ink-hit path.
-	await page.addStyleTag({ content: '.leaflet-pane > svg path.ink-hit { pointer-events: stroke; }' });
 
 	await page.evaluate(() => {
 		// Minimal InkStore: a document, a selection, a real InkHistory, and the methods the select tool uses.
