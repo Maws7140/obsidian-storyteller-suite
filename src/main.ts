@@ -247,6 +247,8 @@ const FRONTMATTER_LINK_ONLY_SCALAR_FIELDS = new Set([
     calendarSystems?: import('./calendar/types').CalendarSystem[];
     /** User-installed portable timeline appearance themes. */
     timelineThemes?: import('./calendar/TimelineDocuments').TimelineTheme[];
+    /** Map Ink presets the user saved from the drawing inspector. Only the Map Ink host adds or replaces entries. */
+    inkPresets: import('./leaflet/ink/styles').InkPreset[];
     galleryUploadFolder: string; // New setting for uploads
     galleryData: GalleryData; // Store gallery metadata here
     galleryWatchFolder?: string; // Folder to auto-scan for images
@@ -501,6 +503,7 @@ const FRONTMATTER_LINK_ONLY_SCALAR_FIELDS = new Set([
  */
  const DEFAULT_SETTINGS: StorytellerSuiteSettings = {
     stories: [],
+    inkPresets: [],
     activeStoryId: '',
     galleryUploadFolder: 'StorytellerSuite/GalleryUploads',
     galleryData: { images: [] },
@@ -10085,6 +10088,8 @@ export default class StorytellerSuitePlugin extends Plugin {
 		const loaded = loadedRaw ?? {};
         const isFreshInstall = !loadedRaw || Object.keys(loaded).length === 0;
 		this.settings = Object.assign({}, DEFAULT_SETTINGS, loaded);
+		// A fresh array per load, so saved presets never live in the shared defaults.
+		if (!Array.isArray(this.settings.inkPresets)) this.settings.inkPresets = [];
 
 		let settingsUpdated = false;
 
