@@ -40,7 +40,13 @@ const MARQUEE_SLOP = 3;
 const LONG_PRESS_MS = 500;
 const ROTATE_SNAP_DEG = 15;
 const MIN_BOX_PX = 0.5;
-const CHROME = '.leaflet-control, .leaflet-control-container, .leaflet-marker-icon, .leaflet-popup, .leaflet-tooltip';
+// Chrome is what the select tool leaves alone: Leaflet controls and popups, the editor's own
+// panels and inputs, and the text editor. Clicks there never start a gesture on the map.
+const CHROME = [
+	'.leaflet-control', '.leaflet-control-container', '.leaflet-marker-icon', '.leaflet-popup', '.leaflet-tooltip',
+	'.ink-ui', '.ink-legend', '.ink-text-editor',
+	'button', 'input', 'select', 'textarea', '[contenteditable="true"]', '[contenteditable=""]',
+].join(', ');
 const ROTATABLE: readonly string[] = ['stamp', 'text', 'rect', 'ellipse'];
 
 interface GestureBase {
