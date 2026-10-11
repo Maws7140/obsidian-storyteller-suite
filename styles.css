@@ -9904,9 +9904,12 @@ body.mod-rtl .storyteller-group-members {
 .storyteller-campaign-board-map .leaflet-image-layer {
     pointer-events: none;
 }
-.storyteller-campaign-board-map img {
-    max-width: none;
-    max-height: none;
+/* Two classes so this beats Obsidian's `.workspace-leaf-content img:not([width])
+   { max-width: 100% }`. Tile containers are 0px wide, so that rule made every
+   tile 0px wide and the board image vanished. */
+.storyteller-campaign-board-map.leaflet-container img {
+    max-width: none !important;
+    max-height: none !important;
     padding: 0;
     margin: 0;
     border: none;
