@@ -13265,4 +13265,85 @@ body.mod-rtl .storyteller-group-members {
 	.ink-stamp-flyout {
 		width: 200px;
 	}
+/* =================================================================
+   MAP INK: SVG layer, items and selection overlay (src/leaflet/ink)
+   ================================================================= */
+.ink-svg {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 1px;
+    height: 1px;
+    overflow: visible;
+    pointer-events: none;
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+.ink-item .ink-stroke,
+.ink-item .ink-fill,
+.ink-item .ink-pattern {
+    shape-rendering: geometricPrecision;
+}
+
+.ink-item text {
+    font-kerning: normal;
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+.ink-sel {
+    pointer-events: none;
+}
+
+.ink-sel-box {
+    fill: transparent;
+    stroke: var(--interactive-accent, #7c5cff);
+    cursor: move;
+}
+
+.ink-sel-line {
+    stroke: var(--interactive-accent, #7c5cff);
+}
+
+.ink-handle,
+.ink-handle-rot,
+.ink-vertex {
+    fill: var(--background-primary, #ffffff);
+    stroke: var(--interactive-accent, #7c5cff);
+}
+
+.ink-handle[data-ink-handle="nw"],
+.ink-handle[data-ink-handle="se"] {
+    cursor: nwse-resize;
+}
+
+.ink-handle[data-ink-handle="ne"],
+.ink-handle[data-ink-handle="sw"] {
+    cursor: nesw-resize;
+}
+
+.ink-handle[data-ink-handle="n"],
+.ink-handle[data-ink-handle="s"] {
+    cursor: ns-resize;
+}
+
+.ink-handle[data-ink-handle="e"],
+.ink-handle[data-ink-handle="w"] {
+    cursor: ew-resize;
+}
+
+.ink-handle-rot {
+    cursor: grab;
+}
+
+.ink-vertex {
+    cursor: crosshair;
+}
+
+.ink-mid {
+    fill: var(--background-primary, #ffffff);
+    stroke: var(--interactive-accent, #7c5cff);
+    opacity: 0.55;
+    cursor: copy;
 }
