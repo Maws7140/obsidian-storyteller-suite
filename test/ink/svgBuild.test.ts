@@ -118,7 +118,7 @@ describe('every kind', () => {
 			const svg = buildItem(item, opts);
 			expect(svg).toContain('class="ink-hit"');
 			expect(svg).toContain('stroke="transparent" stroke-width="12"');
-			expect(svg).toContain('pointer-events="stroke"');
+			expect(svg).toContain('pointer-events:stroke');
 		}
 	});
 });
@@ -353,13 +353,13 @@ describe('keep-size strokes', () => {
 describe('hit areas and read-only', () => {
 	it('read-only items with no location get no hit areas and take no pointer input', () => {
 		const svg = buildItem(pathItem(), { ...opts, readOnly: true });
-		expect(groupOf(svg)).toContain('pointer-events="none"');
+		expect(groupOf(svg)).toContain('pointer-events:none');
 		expect(svg).not.toContain('class="ink-hit"');
 	});
 
 	it('read-only items with a location keep their hit areas', () => {
 		const svg = buildItem(stampItem({ locationId: 'loc-1' }), { ...opts, readOnly: true });
-		expect(groupOf(svg)).toContain('pointer-events="visiblePainted"');
+		expect(groupOf(svg)).toContain('pointer-events:visiblePainted');
 		expect(svg).toContain('class="ink-hit"');
 	});
 

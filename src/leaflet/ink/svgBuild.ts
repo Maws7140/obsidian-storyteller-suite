@@ -224,7 +224,7 @@ export function buildSelection(items: readonly InkItem[], opts: SelectionOptions
 
 	let inner = `<rect class="ink-sel-box" data-ink-handle="move" x="${fmt(minX)}" y="${fmt(minY)}"`
 		+ ` width="${fmt(maxX - minX)}" height="${fmt(maxY - minY)}" fill="transparent" stroke-width="${sw}"`
-		+ ` stroke-dasharray="${fmt(4 * k)} ${fmt(3 * k)}" pointer-events="all"/>`;
+		+ ` stroke-dasharray="${fmt(4 * k)} ${fmt(3 * k)}" style="pointer-events:all"/>`;
 
 	const handles: Array<[string, number, number]> = [
 		['nw', minX, minY], ['n', cx, minY], ['ne', maxX, minY], ['e', maxX, cy],
@@ -232,13 +232,13 @@ export function buildSelection(items: readonly InkItem[], opts: SelectionOptions
 	];
 	for (const [name, x, y] of handles) {
 		inner += `<rect class="ink-handle" data-ink-handle="${name}" x="${fmt(x - hs)}" y="${fmt(y - hs)}"`
-			+ ` width="${fmt(8 * k)}" height="${fmt(8 * k)}" stroke-width="${sw}" pointer-events="all"/>`;
+			+ ` width="${fmt(8 * k)}" height="${fmt(8 * k)}" stroke-width="${sw}" style="pointer-events:all"/>`;
 	}
 	if (rotatable) {
 		const ry = minY - 20 * k;
 		inner += `<path class="ink-sel-line" d="M${fmt(cx)} ${fmt(minY)}V${fmt(ry)}" fill="none" stroke-width="${sw}"/>`;
 		inner += `<circle class="ink-handle-rot" data-ink-handle="rotate" cx="${fmt(cx)}" cy="${fmt(ry)}"`
-			+ ` r="${fmt(5 * k)}" stroke-width="${sw}" pointer-events="all"/>`;
+			+ ` r="${fmt(5 * k)}" stroke-width="${sw}" style="pointer-events:all"/>`;
 	}
 	const rot = rotation ? ` transform="rotate(${fmt(rotation)} ${fmt(cx)} ${fmt(cy)})"` : '';
 	let out = `<g class="ink-sel"${rot}>${inner}</g>`;
@@ -249,14 +249,14 @@ export function buildSelection(items: readonly InkItem[], opts: SelectionOptions
 		const n = pts.length;
 		for (let i = 0; i < n; i++) {
 			out += `<circle class="ink-vertex" data-ink-vertex="${i}" cx="${fmt(pts[i].x)}" cy="${fmt(pts[i].y)}"`
-				+ ` r="${fmt(4 * k)}" stroke-width="${sw}" pointer-events="all"/>`;
+				+ ` r="${fmt(4 * k)}" stroke-width="${sw}" style="pointer-events:all"/>`;
 		}
 		const segments = closed ? n : n - 1;
 		for (let i = 0; i < segments; i++) {
 			const a = pts[i];
 			const b = pts[(i + 1) % n];
 			out += `<circle class="ink-mid" data-ink-mid="${i + 1}" cx="${fmt((a.x + b.x) / 2)}" cy="${fmt((a.y + b.y) / 2)}"`
-				+ ` r="${fmt(3 * k)}" stroke-width="${sw}" pointer-events="all"/>`;
+				+ ` r="${fmt(3 * k)}" stroke-width="${sw}" style="pointer-events:all"/>`;
 		}
 	}
 	return out;
@@ -302,7 +302,7 @@ function openItem(item: InkItem, ctx: Ctx, cls: string, extra: string): string {
 	const pe = ctx.readOnly && !item.locationId ? 'none' : 'visiblePainted';
 	return `<g class="ink-item ${cls}" data-ink-id="${escapeXml(String(item.id))}"`
 		+ ` data-ink-kind="${escapeXml(String(item.kind))}" data-ink-layer="${escapeXml(String(item.layer))}"`
-		+ ` pointer-events="${pe}"${extra}>`;
+		+ ` style="pointer-events:${pe}"${extra}>`;
 }
 
 function wantsHits(item: InkItem, ctx: Ctx): boolean {
@@ -335,7 +335,7 @@ function stampSvg(item: InkStamp, ctx: Ctx): string {
 	inner += `<g fill="none" stroke="currentColor" stroke-width="${fmt(SYMBOL_STROKE)}"`
 		+ ` stroke-linecap="round" stroke-linejoin="round" color="${escapeXml(color)}">${body}</g>`;
 	if (wantsHits(item, ctx)) {
-		inner += '<rect class="ink-hit" x="0" y="0" width="24" height="24" fill="transparent" pointer-events="all"/>';
+		inner += '<rect class="ink-hit" x="0" y="0" width="24" height="24" fill="transparent" style="pointer-events:all"/>';
 	}
 	inner += '</g>';
 	const label = typeof item.label === 'string' && item.label.trim() ? item.label.trim() : (item.name || title);
@@ -378,7 +378,7 @@ function textSvg(item: InkText, ctx: Ctx): string {
 	let inner = rotOpen + `<text ${attrs}>${tspans}</text>`;
 	if (wantsHits(item, ctx) && lines.join('') !== '') {
 		inner += `<rect class="ink-hit" x="${fmt(m.x0)}" y="${fmt(m.y0)}" width="${fmt(m.width)}" height="${fmt(m.height)}"`
-			+ ' fill="transparent" pointer-events="all"/>';
+			+ ' fill="transparent" style="pointer-events:all"/>';
 	}
 	inner += '</g>';
 	return openItem(item, ctx, 'ink-text', counter) + inner + '</g>';
@@ -557,7 +557,7 @@ function shapeD(pts: Point[], closed: boolean, smooth: boolean): string {
 
 function hitPath(d: string): string {
 	return `<path class="ink-hit" d="${d}" fill="none" stroke="transparent" stroke-width="${HIT_WIDTH}"`
-		+ ' vector-effect="non-scaling-stroke" pointer-events="stroke"/>';
+		+ ' vector-effect="non-scaling-stroke" style="pointer-events:stroke"/>';
 }
 
 // ---- defs: patterns and arrowheads ---------------------------------------------

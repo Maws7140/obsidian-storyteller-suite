@@ -227,6 +227,24 @@ const SHOT = '/home/user/wt/ink-w1c-render.png';
 	});
 	const itemAt = await page.evaluate(([x, y]) => ink.itemAt(x, y), [hit.x, hit.y]);
 	assert.equal(itemAt, 'stamp-linked', 'itemAt finds the linked stamp');
+	// leaflet.css turns off pointer events on every path in a pane's SVG; lines must still be hittable.
+	await page.evaluate(() => { map.setView([300, 230], 1, { animate: false }); });
+	await page.waitForTimeout(50);
+	const onLine = await page.evaluate(() => {
+		const path = document.querySelector('[data-ink-id="route-solid"] path.ink-hit');
+		const m = path.getScreenCTM();
+		const box = document.getElementById('map').getBoundingClientRect();
+		for (let t = 0; t <= 1; t += 0.01) {
+			const p = path.getPointAtLength(path.getTotalLength() * t);
+			const x = m.a * p.x + m.c * p.y + m.e, y = m.b * p.x + m.d * p.y + m.f;
+			if (x > box.left + 20 && x < box.right - 20 && y > box.top + 20 && y < box.bottom - 20) return { x, y };
+		}
+		return { x: -1, y: -1 };
+	});
+	const lineAt = await page.evaluate(([x, y]) => ink.itemAt(x, y), [onLine.x, onLine.y]);
+	assert.equal(lineAt, 'route-solid', 'itemAt finds a line');
+	await page.evaluate(() => { map.setView([360, 640], 2, { animate: false }); });
+	await page.waitForTimeout(50);
 	await page.mouse.click(hit.x, hit.y);
 	await page.waitForTimeout(50);
 	const clicked = await page.evaluate(() => window.clicked.slice());
@@ -240,12 +258,12 @@ const SHOT = '/home/user/wt/ink-w1c-render.png';
 	await page.evaluate(() => { ink.setReadOnly(true); });
 	const ro = await page.evaluate(() => ({
 		overlay: document.querySelectorAll('.ink-overlay > *').length,
-		unlinkedPe: document.querySelector('[data-ink-id="route-solid"]').getAttribute('pointer-events'),
-		linkedPe: document.querySelector('[data-ink-id="stamp-linked"]').getAttribute('pointer-events'),
+		unlinkedPe: document.querySelector('[data-ink-id="route-solid"]').style.pointerEvents,
+		linkedPe: document.querySelector('[data-ink-id="stamp-linked"]').style.pointerEvents.toLowerCase(),
 	}));
 	assert.equal(ro.overlay, 0, 'read-only draws no selection overlay');
 	assert.equal(ro.unlinkedPe, 'none', 'read-only unlinked item takes no pointer input');
-	assert.equal(ro.linkedPe, 'visiblePainted', 'read-only linked item stays clickable');
+	assert.equal(ro.linkedPe, 'visiblepainted', 'read-only linked item stays clickable');
 	await page.evaluate(() => { ink.setReadOnly(false); ink.setSelection(['stamp-door', 'route-smooth-arrow']); });
 
 	// 8. Keep the final state for the screenshot: zoom back to 0 with the selection showing.

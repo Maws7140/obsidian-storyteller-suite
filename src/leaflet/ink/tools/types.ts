@@ -247,7 +247,7 @@ export class Preview {
 		};
 		const defs = new Map<string, string>();
 		let markup = '';
-		for (const item of items) markup += buildItem(item, { project, idPrefix: 'ink-preview-' }, defs);
+		for (const item of items) markup += buildItem(item, { project, idPrefix: 'ink-preview-', readOnly: true }, defs);
 		const ring = fmt(4 / scale);
 		const stroke = fmt(1.5 / scale);
 		for (const mark of marks) {
