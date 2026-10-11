@@ -94,6 +94,11 @@ abstract class PolyTool implements InkTool {
 		return true;
 	}
 
+	/** True while points are placed and not yet finished. */
+	hasDraft(): boolean {
+		return this.points.length > 0;
+	}
+
 	onKey(e: KeyboardEvent): boolean {
 		switch (e.key) {
 			case 'Enter':

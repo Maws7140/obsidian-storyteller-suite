@@ -17,6 +17,8 @@ import type { InkPreset } from './styles';
 import { InkHistory } from './history';
 import type { InkHost } from './host';
 import type { InkStoreLike, InkToolId } from './storeTypes';
+import * as layerOps from './layerOps';
+import type { InkLayerStoreLike } from './layerOps';
 
 /** Quiet time after the last change of a coalesced edit before the save runs. */
 export const SAVE_DELAY_MS = 300;
@@ -79,7 +81,7 @@ function withPreset(item: InkItem, preset: InkPreset): InkItem {
 	return { ...item, style: applyPreset(item.style, preset) };
 }
 
-export class InkStore implements InkStoreLike {
+export class InkStore implements InkStoreLike, InkLayerStoreLike {
 	private current: InkDoc;
 	private selected: ReadonlySet<string> = new Set<string>();
 	private toolId: InkToolId = 'select';
@@ -225,6 +227,46 @@ export class InkStore implements InkStoreLike {
 	redo(): void {
 		const next = this.history.redo(this.current);
 		if (next !== undefined) this.restore(next);
+	}
+
+	// ---- layers ---------------------------------------------------------------
+	// Every layer edit goes through apply, so it is undoable and saved like an item edit.
+
+	/** Adds a layer on top and makes it the active layer. Returns its id. */
+	addLayer(name: string): string {
+		let id = '';
+		this.apply(doc => {
+			const added = layerOps.addLayer(doc, name);
+			id = added.id;
+			return added.doc;
+		});
+		if (id) {
+			this.layerId = id;
+			this.emit();
+		}
+		return id;
+	}
+
+	renameLayer(id: string, name: string): void {
+		this.apply(doc => layerOps.renameLayer(doc, id, name));
+	}
+
+	moveLayer(id: string, toIndex: number): void {
+		this.apply(doc => layerOps.moveLayer(doc, id, toIndex));
+	}
+
+	setLayerVisible(id: string, visible: boolean): void {
+		this.apply(doc => layerOps.setLayerVisible(doc, id, visible));
+	}
+
+	setLayerLocked(id: string, locked: boolean): void {
+		this.apply(doc => layerOps.setLayerLocked(doc, id, locked));
+	}
+
+	/** Deletes a layer. Its items move to the layer below, or above when it is the bottom one. */
+	deleteLayer(id: string): void {
+		if (this.layerId === id) this.layerId = undefined;
+		this.apply(doc => layerOps.deleteLayer(doc, id));
 	}
 
 	// ---- selection ------------------------------------------------------------

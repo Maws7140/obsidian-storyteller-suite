@@ -11,9 +11,8 @@
  */
 import type { InkHost } from '../host';
 import type { InkLayer } from '../InkLayer';
-import type { InkStore } from '../InkStore';
-import type { InkItem, InkPath, InkPoint, InkStyle } from '../model';
-import type { InkToolId } from '../storeTypes';
+import type { InkDoc, InkItem, InkPath, InkPoint, InkStyle } from '../model';
+import type { InkStoreLike, InkToolId } from '../storeTypes';
 import { bounds } from '../geometry';
 import type { Point } from '../geometry';
 import { buildItem, fmt } from '../svgBuild';
@@ -38,7 +37,28 @@ export interface InkLatLngLike {
 	lng: number;
 }
 
-/** The part of Leaflet's Map the tools use. Pass the real map. */
+
+/**
+ * The part of InkStore the tools use. InkStore implements it. The select tool, the
+ * keyboard handler and the draw tools all take this one shape.
+ */
+export interface InkToolStore extends InkStoreLike {
+	/** Replace the selection. */
+	select(ids: Iterable<string>): void;
+	/** Add the id to the selection, or remove it when it is already selected. */
+	toggleSelect(id: string): void;
+	clearSelection(): void;
+	/** Change the document. One undo step per coalesceKey run. Normalises and saves. */
+	apply(change: (doc: InkDoc) => InkDoc, coalesceKey?: string): void;
+	/** Write any pending save now. */
+	flush(): Promise<void>;
+	/** The layer id that new items go to. */
+	activeLayer(): string;
+	/** Add an item on the active layer and select it. Returns its id, or '' when the item is not valid. */
+	addItem(item: Omit<InkItem, 'id' | 'layer'> & Partial<Pick<InkItem, 'id' | 'layer'>>): string;
+}
+
+/** The part of the Leaflet map the tools use. Pass the real map. */
 export interface InkToolMap {
 	options: { crs?: unknown };
 	getZoom(): number;
@@ -55,14 +75,27 @@ export interface InkToolMap {
 	doubleClickZoom: { enabled(): boolean; enable(): unknown; disable(): unknown };
 }
 
+/**
+ * The one context every Map Ink tool gets. InkEditor builds it. Tests can build a
+ * smaller fake when they only drive the store.
+ */
 export interface InkToolContext {
+	/** The Leaflet namespace, passed in so the core never imports Leaflet. */
 	L: InkLeafletNamespace;
 	map: InkToolMap;
-	store: InkStore;
+	store: InkToolStore;
 	layer: InkLayer;
 	host: InkHost;
 	/** An absolutely positioned HTML overlay over the map, the same size as the map. Tools add their own children and remove them. */
 	previewPane: HTMLElement;
+	/**
+	 * The reference zoom the layer projects at. Must match the layer's own choice:
+	 * pass the same refZoom given to createInkLayer, or leave it out to use the default
+	 * (0 for CRS.Simple, else the map's min zoom).
+	 */
+	refZoom?: number;
+	/** Called with the id of a text item the user double-clicked. */
+	onEditText?: (id: string) => void;
 }
 
 export interface InkTool {
@@ -73,6 +106,8 @@ export interface InkTool {
 	onKey?(e: KeyboardEvent): boolean;
 	/** Finish the draft, for a touch Finish button. Only path and area have it. */
 	finish?(): void;
+	/** True while the tool holds an unfinished draft, so the Finish button can show. */
+	hasDraft?(): boolean;
 }
 
 // ---- coordinates -----------------------------------------------------------
@@ -99,6 +134,7 @@ export function distance(a: Point, b: Point): number {
 
 /** The reference zoom the layer uses: 0 for CRS.Simple, otherwise the map's minimum zoom. Keep in step with InkLayer. */
 export function refZoomOf(ctx: InkToolContext): number {
+	if (typeof ctx.refZoom === 'number' && Number.isFinite(ctx.refZoom)) return ctx.refZoom;
 	return ctx.map.options.crs === ctx.L.CRS.Simple ? 0 : ctx.map.getMinZoom();
 }
 
