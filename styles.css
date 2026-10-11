@@ -13347,3 +13347,123 @@ body.mod-rtl .storyteller-group-members {
     opacity: 0.55;
     cursor: copy;
 }
+
+/* ===== ink-tokens ===== */
+/* Map Ink tokens: round entity markers (characters, locations, items, events...). Built by src/leaflet/ink/tokens.ts. */
+
+.ink-token-marker.has-entities {
+    filter: none;
+}
+
+.ink-token-wrap {
+    position: relative;
+    display: inline-block;
+    line-height: 0;
+}
+
+.ink-token {
+    position: relative;
+    display: block;
+    width: var(--ink-token-size, 28px);
+    height: var(--ink-token-size, 28px);
+    color: #ffffff;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.ink-token-disc {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    border-radius: 50%;
+    background: var(--ink-token-color, #6b7280);
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.92), 0 2px 6px rgba(0, 0, 0, 0.38);
+    transition: transform 0.15s ease-out, box-shadow 0.15s ease-out;
+}
+
+.ink-token-glyph {
+    display: block;
+    flex: none;
+    pointer-events: none;
+    filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.35));
+}
+
+.ink-token-portrait {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 50%;
+    pointer-events: none;
+}
+
+.ink-token-count {
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    z-index: 2;
+    min-width: 18px;
+    height: 18px;
+    box-sizing: border-box;
+    padding: 0 5px;
+    border: 2px solid #ffffff;
+    border-radius: 9px;
+    background: #1f2937;
+    color: #ffffff;
+    font: 600 11px/14px system-ui, -apple-system, "Segoe UI", sans-serif;
+    text-align: center;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+    pointer-events: none;
+}
+
+.ink-token-label {
+    position: absolute;
+    top: calc(100% + 3px);
+    left: 50%;
+    transform: translateX(-50%);
+    white-space: nowrap;
+    font: 600 12px/1.2 Georgia, "Times New Roman", serif;
+    color: #2a2118;
+    text-shadow: 0 0 2px #fbf6e9, 0 0 2px #fbf6e9, 0 0 4px #fbf6e9;
+    pointer-events: none;
+}
+
+/* Hover: a slight lift and a brighter ring. */
+.ink-token:hover .ink-token-disc {
+    transform: translateY(-2px);
+    box-shadow: 0 0 0 2px #ffffff, 0 0 0 4px rgba(255, 255, 255, 0.35), 0 6px 12px rgba(0, 0, 0, 0.42);
+}
+
+/* Current (scene location): a soft green glow. */
+.ink-token.is-current .ink-token-disc,
+.leaflet-marker-icon.is-current .ink-token-disc {
+    box-shadow: 0 0 0 2px #ffffff, 0 0 12px 4px rgba(34, 197, 94, 0.55), 0 2px 6px rgba(0, 0, 0, 0.38);
+}
+
+/* Selected: a 2 px accent ring and a 1.15 scale. Listed after current so the selected ring wins. */
+.ink-token.is-selected .ink-token-disc,
+.leaflet-marker-icon.is-selected .ink-token-disc {
+    transform: scale(1.15);
+    box-shadow: 0 0 0 2px var(--interactive-accent, #7c3aed), 0 3px 8px rgba(0, 0, 0, 0.4);
+}
+
+/* The campaign board scales its wrappers for pin state. Tokens carry their own state, so turn that off here. */
+.storyteller-campaign-board-map .storyteller-location-marker.is-current .storyteller-marker-wrapper.ink-token-wrap,
+.storyteller-campaign-board-map .storyteller-location-marker.is-selected .storyteller-marker-wrapper.ink-token-wrap {
+    transform: none;
+    filter: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .ink-token-disc {
+        transition: none;
+    }
+
+    .ink-token:hover .ink-token-disc {
+        transform: none;
+    }
+}
