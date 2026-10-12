@@ -21,10 +21,11 @@ import type {
 	InkText,
 	InkTextStyle,
 } from './model';
-import { PRESETS } from './styles';
+import { PRESETS, withPatch } from './styles';
 import type { InkPreset, InkPresetFit } from './styles';
 import type { InkStoreLike, InkToolId } from './storeTypes';
 import { SYMBOLS, SYMBOL_CATEGORIES } from './symbols';
+import { brushesByCategory, getBrush } from './brushes';
 import { ColorPicker, makeEl, setValueIfIdle } from './ui/ColorPicker';
 import { StrokeStylePicker } from './ui/StrokeStylePicker';
 
@@ -63,6 +64,8 @@ const FILL_PATTERN_OPTIONS: ReadonlyArray<{ value: string; name: string }> = [
 const STAMP_SIZE = { min: 4, max: 400, step: 1 };
 const ANGLE = { min: -360, max: 360, step: 1 };
 const WIDTH = { min: 0, max: 20, step: 0.5 };
+/** Brush scale: spacing and tick size multiplier. 1 is the brush as designed. */
+const BRUSH_SCALE = { min: 0.5, max: 3, step: 0.1 };
 
 /** The value every selected item shares, or undefined when they differ or there are none. */
 function shared<T>(values: readonly T[]): T | undefined {
@@ -112,7 +115,7 @@ function singleFit(items: readonly InkItem[]): InkPresetFit | undefined {
 
 function patchStyle(item: InkItem, patch: Partial<InkStyle>): InkItem {
 	if (!hasStyle(item)) return item;
-	return { ...item, style: { ...item.style, ...patch } };
+	return { ...item, style: withPatch(item.style, patch) };
 }
 
 function withFlag(item: InkItem, key: 'locked' | 'hidden', on: boolean): InkItem {
@@ -410,6 +413,15 @@ export class InkInspector {
 			if (opacity !== null) this.writeStyle({ strokeOpacity: opacity }, 'stroke-opacity');
 		});
 
+		this.brushSelect(this.row(sec, 'Brush', styled), 'Brush');
+		this.check(sec, 'Flip side',
+			() => this.styleFlag('brushFlip', STYLE_KINDS),
+			on => this.writeStyle({ brushFlip: on }, undefined, STYLE_KINDS),
+			() => this.allOneSidedBrush());
+		this.slider(this.row(sec, 'Brush scale', () => this.anyBrush()), 'Brush scale', BRUSH_SCALE,
+			() => shared(this.styleEntries().map(e => e.style.brushScale ?? 1)),
+			value => this.writeStyle({ brushScale: value }, 'brush-scale', STYLE_KINDS));
+
 		const lineRow = this.row(sec, 'Line', styled);
 		const line = new StrokeStylePicker(lineRow, {
 			dash: this.styleShared('dash') ?? null,
@@ -420,6 +432,8 @@ export class InkInspector {
 		});
 		this.disposers.push(() => line.destroy());
 		this.fields.push(() => line.update(this.styleShared('dash') ?? null, this.styleShared('strokeWidth') ?? null));
+		this.fields.push(() => line.setDisabled(this.anyBrush()));
+		this.hint(sec, 'Brush replaces the dash style', () => this.anyBrush());
 
 		this.check(sec, 'Smooth curves',
 			() => this.styleFlag('smooth', SMOOTH_KINDS),
@@ -621,6 +635,62 @@ export class InkInspector {
 		this.writeItems(ALL_KINDS, item => ({ ...item, locationId: picked.id }));
 	}
 
+	/** The brush select: None, then each category's brushes. A mixed selection shows blank. */
+	private brushSelect(parent: HTMLElement, label: string): HTMLSelectElement {
+		const doc = this.doc;
+		const select = makeEl(doc, 'select', 'ink-input ink-select', { 'aria-label': label });
+		const blank = makeEl(doc, 'option', undefined, { value: '', disabled: 'true' });
+		blank.textContent = '';
+		select.appendChild(blank);
+		const none = makeEl(doc, 'option', undefined, { value: 'none' });
+		none.textContent = 'None';
+		select.appendChild(none);
+		for (const group of brushesByCategory()) {
+			if (group.brushes.length === 0) continue;
+			const optgroup = makeEl(doc, 'optgroup', undefined, { label: group.name });
+			for (const brush of group.brushes) {
+				const option = makeEl(doc, 'option', undefined, { value: brush.id });
+				option.textContent = brush.name;
+				optgroup.appendChild(option);
+			}
+			select.appendChild(optgroup);
+		}
+		select.addEventListener('change', () => {
+			if (select.value !== '') this.setBrush(select.value);
+		});
+		parent.appendChild(select);
+		this.fields.push(() => {
+			const shownBrush = shared(this.styleEntries().map(e => e.style.brush ?? 'none'));
+			setValueIfIdle(select, shownBrush ?? '');
+		});
+		return select;
+	}
+
+	/** Sets the brush on the selection (or the tool default). Flip is kept only for one-sided brushes. */
+	private setBrush(value: string): void {
+		if (value === 'none') {
+			this.writeStyle({ brush: undefined, brushFlip: undefined }, undefined, STYLE_KINDS);
+			return;
+		}
+		const patch: Partial<InkStyle> = { brush: value };
+		if (getBrush(value)?.oneSided !== true) patch.brushFlip = undefined;
+		this.writeStyle(patch, undefined, STYLE_KINDS);
+	}
+
+	/** True when any styled entry has a brush, so the dash style does not apply. */
+	private anyBrush(): boolean {
+		return this.styleEntries().some(e => e.style.brush !== undefined);
+	}
+
+	/** True when every styled entry has a brush and each one is one-sided. */
+	private allOneSidedBrush(): boolean {
+		const entries = this.styleEntries();
+		return entries.length > 0 && entries.every(e => {
+			const brush = e.style.brush;
+			return brush !== undefined && getBrush(brush)?.oneSided === true;
+		});
+	}
+
 	private presetSection(items: InkItem[]): void {
 		const sec = this.section('Presets');
 		const doc = this.doc;
@@ -633,17 +703,19 @@ export class InkInspector {
 		if (available.length === 0) {
 			this.hint(sec, 'No presets fit the selected items.');
 		} else {
-			const list = makeEl(doc, 'div', 'ink-preset-list');
+			// Presets without a group come first, then each group under its name.
+			const ungrouped = available.filter(p => !p.group);
+			if (ungrouped.length > 0) sec.appendChild(this.presetList(ungrouped));
+			const groups: string[] = [];
 			for (const preset of available) {
-				const btn = makeEl(doc, 'button', 'ink-preset', {
-					type: 'button',
-					'aria-label': `Apply preset ${preset.name}`,
-				});
-				btn.textContent = preset.name;
-				btn.addEventListener('click', () => this.store.applyPresetToSelection(preset.id));
-				list.appendChild(btn);
+				if (preset.group && !groups.includes(preset.group)) groups.push(preset.group);
 			}
-			sec.appendChild(list);
+			for (const group of groups) {
+				const heading = makeEl(doc, 'h4', 'ink-preset-heading');
+				heading.textContent = group;
+				sec.appendChild(heading);
+				sec.appendChild(this.presetList(available.filter(p => p.group === group)));
+			}
 		}
 
 		const saveRow = makeEl(doc, 'div', 'ink-save-row');
@@ -658,6 +730,21 @@ export class InkInspector {
 		saveRow.appendChild(save);
 		sec.appendChild(saveRow);
 		this.hint(sec, 'Saves the style of the first selected item.');
+	}
+
+	private presetList(presets: readonly InkPreset[]): HTMLElement {
+		const list = makeEl(this.doc, 'div', 'ink-preset-list');
+		for (const preset of presets) {
+			const label = preset.group ? `${preset.group}: ${preset.name}` : preset.name;
+			const btn = makeEl(this.doc, 'button', 'ink-preset', {
+				type: 'button',
+				'aria-label': `Apply preset ${label}`,
+			});
+			btn.textContent = preset.name;
+			btn.addEventListener('click', () => this.store.applyPresetToSelection(preset.id));
+			list.appendChild(btn);
+		}
+		return list;
 	}
 
 	private savePreset(nameInput: HTMLInputElement): void {
@@ -725,7 +812,7 @@ export class InkInspector {
 		return shared(this.styleEntries().filter(e => only.includes(e.kind)).map(e => e.style[key]));
 	}
 
-	private styleFlag(key: 'smooth' | 'arrowStart' | 'arrowEnd', only: readonly InkKind[]): boolean | undefined {
+	private styleFlag(key: 'smooth' | 'arrowStart' | 'arrowEnd' | 'brushFlip', only: readonly InkKind[]): boolean | undefined {
 		return shared(this.styleEntries().filter(e => only.includes(e.kind)).map(e => e.style[key] === true));
 	}
 

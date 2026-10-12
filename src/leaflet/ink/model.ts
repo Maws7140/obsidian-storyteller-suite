@@ -24,6 +24,9 @@ export interface InkStyle {
   smooth?: boolean;        // path/area/freehand: Catmull-Rom
   arrowStart?: boolean;
   arrowEnd?: boolean;
+  brush?: string;          // brush id from brushes.ts; when set it replaces `dash`
+  brushFlip?: boolean;     // one-sided brushes (cliff, ledge, castle wall) draw their marks on the other side
+  brushScale?: number;     // 0.5..3, spacing and tick size multiplier, default 1
 }
 
 export interface InkTextStyle {

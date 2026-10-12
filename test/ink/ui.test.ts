@@ -13,13 +13,15 @@ import { describe, expect, it, vi } from 'vitest';
 import { ColorPicker, RECENT_LIMIT } from '../../src/leaflet/ink/ui/ColorPicker';
 import type { ColorPickerOptions } from '../../src/leaflet/ink/ui/ColorPicker';
 import { StrokeStylePicker } from '../../src/leaflet/ink/ui/StrokeStylePicker';
-import { InkToolbar, INK_TOOLS } from '../../src/leaflet/ink/InkToolbar';
+import { InkToolbar, INK_TOOLS, brushStylePatch } from '../../src/leaflet/ink/InkToolbar';
+import { BRUSHES, brushesByCategory } from '../../src/leaflet/ink/brushes';
 import { InkInspector } from '../../src/leaflet/ink/InkInspector';
 import type { InkHost } from '../../src/leaflet/ink/host';
 import type { InkStoreLike, InkToolId } from '../../src/leaflet/ink/storeTypes';
 import type { InkArea, InkItem, InkKind, InkPath, InkStamp, InkText } from '../../src/leaflet/ink/model';
 import { defaultInkDoc } from '../../src/leaflet/ink/model';
-import { DEFAULT_STYLE, DEFAULT_TEXT_STYLE, PRESETS, SWATCHES } from '../../src/leaflet/ink/styles';
+import type { InkBox } from '../../src/leaflet/ink/model';
+import { DEFAULT_PATH_STYLE, DEFAULT_STYLE, DEFAULT_TEXT_STYLE, HAND_INKED_BRUSHES, HAND_INKED_FILLS, HAND_INKED_GROUP, INK_COLOUR, PRESETS, SWATCHES, withPatch } from '../../src/leaflet/ink/styles';
 
 // ---- fake DOM ----------------------------------------------------------------
 
@@ -860,5 +862,268 @@ describe('InkInspector', () => {
 		store.emit();
 		expect(titles()).toContain('Text');
 		expect(titles()).not.toContain('Stroke');
+	});
+});
+
+// ---- brushes: toolbar flyout ------------------------------------------------------
+
+const brushPath: InkPath = {
+	id: 'bp', kind: 'path', layer: 'routes', scaleWithMap: true,
+	points: [[0, 0], [1, 1]], style: { ...DEFAULT_STYLE, strokeWidth: 3, brush: 'cliff' },
+};
+const plainPath: InkPath = {
+	id: 'pp', kind: 'path', layer: 'routes', scaleWithMap: true,
+	points: [[0, 0], [1, 1]], style: { ...DEFAULT_STYLE, strokeWidth: 3 },
+};
+const rect1: InkBox = {
+	id: 'r1', kind: 'rect', layer: 'terrain', scaleWithMap: true,
+	a: [0, 0], b: [2, 2], rotation: 0, style: { ...DEFAULT_STYLE },
+};
+
+describe('brush width and flip rules', () => {
+	it('a brush sets its default width only while the width is still the kind start width', () => {
+		const path = { ...DEFAULT_PATH_STYLE };
+		expect(brushStylePatch('path', path, 'wall')).toEqual({ brush: 'wall', brushFlip: undefined, strokeWidth: 4 });
+		expect(brushStylePatch('freehand', { ...path, strokeWidth: 7 }, 'wall')).toEqual({ brush: 'wall', brushFlip: undefined });
+		const area = { ...DEFAULT_STYLE };
+		expect(brushStylePatch('area', area, 'wall').strokeWidth).toBe(4);
+		expect(brushStylePatch('area', { ...area, strokeWidth: 5 }, 'wall')).not.toHaveProperty('strokeWidth');
+	});
+
+	it('None clears the brush and the flip', () => {
+		expect(brushStylePatch('path', { ...DEFAULT_PATH_STYLE, brush: 'cliff', brushFlip: true }, null))
+			.toEqual({ brush: undefined, brushFlip: undefined });
+	});
+
+	it('flip is kept only for a one-sided brush, and an unknown brush changes nothing', () => {
+		const flipped = { ...DEFAULT_PATH_STYLE, brush: 'cliff', brushFlip: true };
+		expect(brushStylePatch('path', flipped, 'cliff').brushFlip).toBe(true);
+		expect(brushStylePatch('path', flipped, 'wall').brushFlip).toBeUndefined();
+		expect(brushStylePatch('path', flipped, 'no-such-brush')).toEqual({});
+	});
+
+	it('withPatch removes a key set to undefined and keeps the rest', () => {
+		const out = withPatch({ ...DEFAULT_STYLE, brush: 'cliff' }, { brush: undefined, strokeWidth: 9 });
+		expect('brush' in out).toBe(false);
+		expect(out.strokeWidth).toBe(9);
+	});
+});
+
+describe('InkToolbar brush flyout', () => {
+	it('opens only for the Path, Freehand and Area tools', () => {
+		const { root, store } = toolbar();
+		const flyout = one(root, '.ink-brush-flyout');
+		expect(flyout.hidden).toBe(true);
+		for (const tool of ['path', 'freehand', 'area'] as const) {
+			store.tool = tool;
+			store.emit();
+			expect(flyout.hidden).toBe(false);
+		}
+		store.tool = 'stamp';
+		store.emit();
+		expect(flyout.hidden).toBe(true);
+	});
+
+	it('lists None first, then every brush under its category heading, each with a thumbnail', () => {
+		const { root } = toolbar();
+		const buttons = queryAll(root, 'button.ink-brush-btn');
+		expect(buttons[0].getAttribute('data-brush')).toBe('none');
+		expect(buttons[0].getAttribute('aria-label')).toBe('No brush');
+		expect(buttons.map(b => b.getAttribute('data-brush')).slice(1)).toEqual(
+			brushesByCategory().flatMap(g => g.brushes.map(b => b.id)),
+		);
+		expect(buttons.length).toBe(BRUSHES.length + 1);
+		const headings = queryAll(root, 'h4.ink-brush-heading').map(h => h.textContent);
+		expect(headings).toEqual(brushesByCategory().filter(g => g.brushes.length > 0).map(g => g.name));
+		expect(one(root, '[data-brush="cliff"]').children[0].innerHTML).toContain('<svg');
+		expect(one(root, '[data-brush="cliff"]').getAttribute('aria-label')).toBe('Cliff');
+	});
+
+	it('picking a brush sets it for the active tool; None clears it', () => {
+		const { root, store } = toolbar();
+		store.tool = 'freehand';
+		store.emit();
+		one(root, '[data-brush="cliff"]').dispatch('click');
+		expect(store.setCurrentStyle).toHaveBeenLastCalledWith(expect.objectContaining({ brush: 'cliff' }));
+		one(root, '[data-brush="none"]').dispatch('click');
+		expect(store.setCurrentStyle).toHaveBeenLastCalledWith({ brush: undefined, brushFlip: undefined });
+	});
+
+	it('the brush in use is marked pressed; None is pressed when there is no brush', () => {
+		const { root, store } = toolbar();
+		store.tool = 'path';
+		store.currentStyle.mockImplementation(() => ({ ...DEFAULT_STYLE, brush: 'wall' }));
+		store.emit();
+		expect(one(root, '[data-brush="wall"]').getAttribute('aria-pressed')).toBe('true');
+		expect(one(root, '[data-brush="wall"]').classList.contains('ink-brush-active')).toBe(true);
+		expect(one(root, '[data-brush="none"]').getAttribute('aria-pressed')).toBe('false');
+		store.currentStyle.mockImplementation(() => ({ ...DEFAULT_STYLE }));
+		store.emit();
+		expect(one(root, '[data-brush="none"]').getAttribute('aria-pressed')).toBe('true');
+	});
+
+	it('search filters the brushes by name, and says so when none match', () => {
+		const { root } = toolbar();
+		const search = one(root, '[aria-label="Search brushes"]');
+		search.value = 'river';
+		search.dispatch('input');
+		const found = queryAll(root, 'button.ink-brush-btn').map(b => b.getAttribute('data-brush'));
+		expect(found).toContain('river');
+		expect(found.length).toBeLessThan(BRUSHES.length + 1);
+		expect(queryAll(root, 'h4.ink-brush-heading')).toHaveLength(0);
+		search.value = 'zzqqxx';
+		search.dispatch('input');
+		expect(one(root, '.ink-brush-empty').textContent).toContain('No brushes match');
+	});
+});
+
+// ---- brushes: inspector ------------------------------------------------------------
+
+function optionValues(select: FakeElement): string[] {
+	return queryAll(select, 'option').map(o => o.getAttribute('value') ?? '');
+}
+
+describe('InkInspector brush controls', () => {
+	it('the Brush select lists None and the brushes, and shows the brush of the selection', () => {
+		const { byLabel } = inspector([plainPath], ['pp']);
+		const select = byLabel('Brush');
+		expect(optionValues(select)).toEqual(['', 'none', ...brushesByCategory().flatMap(g => g.brushes.map(b => b.id))]);
+		expect(select.value).toBe('none');
+		const cliffPanel = inspector([brushPath], ['bp']);
+		expect(cliffPanel.byLabel('Brush').value).toBe('cliff');
+	});
+
+	it('choosing a brush writes it, and None removes the brush key', () => {
+		const { byLabel, store } = inspector([plainPath], ['pp']);
+		const select = byLabel('Brush');
+		select.value = 'wall';
+		select.dispatch('change');
+		expect((lastUpdate(store).apply(plainPath) as InkPath).style.brush).toBe('wall');
+
+		const brushed = inspector([brushPath], ['bp']);
+		brushed.byLabel('Brush').value = 'none';
+		brushed.byLabel('Brush').dispatch('change');
+		const cleared = lastUpdate(brushed.store).apply(brushPath) as InkPath;
+		expect('brush' in cleared.style).toBe(false);
+	});
+
+	it('a mixed selection shows a blank brush', () => {
+		const { byLabel } = inspector([brushPath, plainPath], ['bp', 'pp']);
+		expect(byLabel('Brush').value).toBe('');
+	});
+
+	it('Flip side shows only for a one-sided brush and writes brushFlip', () => {
+		const wall = inspector([{ ...brushPath, style: { ...brushPath.style, brush: 'wall' } }], ['bp']);
+		expect(wall.byLabel('Flip side').parentNode?.hidden).toBe(true);
+
+		const cliff = inspector([brushPath], ['bp']);
+		const flip = cliff.byLabel('Flip side');
+		expect(flip.parentNode?.hidden).toBe(false);
+		flip.checked = true;
+		flip.dispatch('change');
+		expect((lastUpdate(cliff.store).apply(brushPath) as InkPath).style.brushFlip).toBe(true);
+	});
+
+	it('Brush scale shows only with a brush, is 0.5 to 3, and coalesces under brush-scale', () => {
+		const none = inspector([plainPath], ['pp']);
+		expect(none.byLabel('Brush scale').parentNode?.parentNode?.hidden).toBe(true);
+
+		const { byLabel, store } = inspector([brushPath], ['bp']);
+		const range = byLabel('Brush scale');
+		expect(range.parentNode?.parentNode?.hidden).toBe(false);
+		expect(range.getAttribute('min')).toBe('0.5');
+		expect(range.getAttribute('max')).toBe('3');
+		range.value = '1.5';
+		range.dispatch('input');
+		const { apply, key } = lastUpdate(store);
+		expect(key).toBe('brush-scale');
+		expect((apply(brushPath) as InkPath).style.brushScale).toBe(1.5);
+	});
+
+	it('the dash picker is disabled, with a hint, while a brush is set', () => {
+		const dashTrigger = (root: FakeElement) => one(root, '.ink-dropdown-trigger');
+		const hint = (root: FakeElement) => queryAll(root, 'p.ink-hint').find(p => p.textContent === 'Brush replaces the dash style');
+
+		const branded = inspector([brushPath], ['bp']);
+		expect(dashTrigger(branded.root).disabled).toBe(true);
+		expect(hint(branded.root)?.hidden).toBe(false);
+
+		const plain = inspector([plainPath], ['pp']);
+		expect(dashTrigger(plain.root).disabled).toBe(false);
+		expect(hint(plain.root)?.hidden).toBe(true);
+	});
+
+	it('brushes apply to areas and rectangles too', () => {
+		const area = inspector([{ ...area1, style: { ...area1.style, brush: 'wall' } }], ['a1']);
+		expect(area.titles()).toContain('Stroke');
+		expect(area.byLabel('Brush').value).toBe('wall');
+		const rect = inspector([rect1], ['r1']);
+		expect(rect.byLabel('Brush')).toBeDefined();
+		expect(rect.byLabel('Brush').value).toBe('none');
+	});
+
+	it('with the Path tool and nothing selected, choosing a brush sets the tool default', () => {
+		const { byLabel, store } = inspector([], [], 'path');
+		byLabel('Brush').value = 'river';
+		byLabel('Brush').dispatch('change');
+		expect(store.setCurrentStyle).toHaveBeenCalledWith({ brush: 'river' });
+		expect(store.updateSelected).not.toHaveBeenCalled();
+	});
+});
+
+// ---- hand-inked presets --------------------------------------------------------------
+
+describe('hand-inked presets', () => {
+	it('the pack has one line preset per planned brush and one terrain fill per symbol', () => {
+		expect(HAND_INKED_BRUSHES).toHaveLength(25);
+		expect(HAND_INKED_FILLS.map(f => f.symbol)).toEqual(['tree', 'hill', 'mountain', 'wave', 'reeds', 'dune']);
+		const pack = PRESETS.filter(p => p.group === HAND_INKED_GROUP);
+		expect(pack).toHaveLength(HAND_INKED_BRUSHES.length + HAND_INKED_FILLS.length);
+		const ids = PRESETS.map(p => p.id);
+		expect(new Set(ids).size).toBe(ids.length);
+		for (const preset of pack) expect(preset.id.startsWith('ink-')).toBe(true);
+	});
+
+	it('line presets are monochrome ink with a brush; terrain fills are ink-only', () => {
+		for (const { brush, width } of HAND_INKED_BRUSHES) {
+			const preset = PRESETS.find(p => p.id === `ink-${brush}`);
+			expect(preset?.fits).toBe('path');
+			expect(preset?.style).toMatchObject({ stroke: INK_COLOUR, brush, strokeWidth: width });
+		}
+		for (const { symbol } of HAND_INKED_FILLS) {
+			const preset = PRESETS.find(p => p.id === `ink-fill-${symbol}`);
+			expect(preset?.fits).toBe('area');
+			expect(preset?.style).toMatchObject({
+				stroke: INK_COLOUR,
+				fillOpacity: 0,
+				fillPattern: `symbol:${symbol}`,
+				patternColor: INK_COLOUR,
+			});
+		}
+	});
+
+	// Passes once W5a's brushes.ts lists the full set; the test-only stub has three.
+	it.skipIf(BRUSHES.length < HAND_INKED_BRUSHES.length)('every hand-inked brush is a registered brush', () => {
+		for (const { brush } of HAND_INKED_BRUSHES) {
+			expect(BRUSHES.map(b => b.id)).toContain(brush);
+		}
+	});
+
+	it('the inspector groups hand-inked presets under their heading', () => {
+		const { root, store } = inspector([plainPath], ['pp']);
+		const headings = queryAll(root, 'h4.ink-preset-heading').map(h => h.textContent);
+		expect(headings).toEqual([HAND_INKED_GROUP]);
+		one(root, '[aria-label="Apply preset Hand-inked: Cliff"]').dispatch('click');
+		expect(store.applyPresetToSelection).toHaveBeenCalledWith('ink-cliff');
+		// The plain River preset is still listed on its own.
+		one(root, '[aria-label="Apply preset River"]').dispatch('click');
+		expect(store.applyPresetToSelection).toHaveBeenLastCalledWith('river');
+	});
+
+	it('an area shows the terrain fills but no line presets', () => {
+		const { root } = inspector([area1], ['a1']);
+		const names = queryAll(root, 'button.ink-preset').map(b => b.textContent);
+		expect(names).toEqual(expect.arrayContaining(['Trees', 'Hills', 'Water']));
+		expect(names).not.toContain('Cliff');
 	});
 });

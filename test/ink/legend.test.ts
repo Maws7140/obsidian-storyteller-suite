@@ -541,3 +541,42 @@ describe('legendEntries', () => {
 		]);
 	});
 });
+
+describe('legend brush lines', () => {
+	const brushed = (id: string, brush: string, stroke: string): InkItem => pathItem(id, {
+		...DEFAULT_STYLE, strokeWidth: 3, dash: 'solid', stroke, brush,
+	});
+
+	it('a line with a brush is named for the brush, with a sample in the item colour', () => {
+		const doc = docOf([brushed('p1', 'cliff', '#7a3b1e')]);
+		const [entry] = legendEntries(doc, PRESETS);
+		expect(entry.section).toBe('lines');
+		expect(entry.name).toBe('Cliff');
+		expect(entry.swatch).toContain('<svg');
+		expect(entry.swatch).toContain('#7a3b1e');
+	});
+
+	it('brushed lines of one brush and colour share a row; a new colour is a new row', () => {
+		const doc = docOf([
+			brushed('p1', 'cliff', '#7a3b1e'),
+			brushed('p2', 'cliff', '#7a3b1e'),
+			brushed('p3', 'cliff', '#2b2b2b'),
+		]);
+		const entries = legendEntries(doc, PRESETS).filter(e => e.name === 'Cliff');
+		expect(entries.map(e => e.count).sort()).toEqual([1, 2]);
+	});
+
+	it('an unknown brush id falls back to the preset or custom name', () => {
+		const doc = docOf([brushed('p1', 'not-a-brush', '#3b82c4')]);
+		const [entry] = legendEntries(doc, PRESETS);
+		expect(entry.name).toBe('Custom line');
+	});
+
+	it('a brushed line counts as the brush, not as a preset with the same colour', () => {
+		const river = { ...withStyle('river'), brush: 'river' };
+		const doc = docOf([pathItem('p1', river)]);
+		const [entry] = legendEntries(doc, PRESETS);
+		expect(entry.name).toBe('River');
+		expect(entry.swatch).toContain(river.stroke);
+	});
+});
