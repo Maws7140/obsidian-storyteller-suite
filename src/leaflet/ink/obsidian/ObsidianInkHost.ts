@@ -10,7 +10,7 @@ import type StorytellerSuitePlugin from '../../../main';
 import type { Location } from '../../../types';
 import { LocationSuggestModal } from '../../../modals/LocationSuggestModal';
 import { confirmWithModal } from '../../../modals/ui/ConfirmModal';
-import type { InkHost, InkMenuItem } from '../host';
+import type { InkDrawDefaults, InkHost, InkMenuItem } from '../host';
 import type { InkDoc, InkPoint } from '../model';
 import type { InkPreset } from '../styles';
 
@@ -105,6 +105,14 @@ export class ObsidianInkHost implements InkHost {
 
 	snapPoint(latlng: InkPoint): InkPoint {
 		return this.opts.snapPoint ? this.opts.snapPoint(latlng) : latlng;
+	}
+
+	drawDefaults(): InkDrawDefaults {
+		const settings = this.opts.plugin.settings;
+		return {
+			scaleWithMap: settings.inkScaleWithMap !== false,
+			textFont: settings.inkTextFont ?? 'serif',
+		};
 	}
 
 	presets(): InkPreset[] {

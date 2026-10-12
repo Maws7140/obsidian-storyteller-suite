@@ -7,7 +7,7 @@
  */
 import type { InkItem, InkStamp } from '../model';
 import type { InkToolId } from '../storeTypes';
-import { eyedropAt, snapLatLng, startDrawSession } from './types';
+import { defaultScaleWithMap, eyedropAt, snapLatLng, startDrawSession } from './types';
 import type { DrawSession, InkTool, InkToolContext } from './types';
 
 export class StampTool implements InkTool {
@@ -25,7 +25,7 @@ export class StampTool implements InkTool {
 				const style = ctx.store.currentStyle('stamp');
 				const stamp: Omit<InkStamp, 'id' | 'layer'> = {
 					kind: 'stamp',
-					scaleWithMap: true,
+					scaleWithMap: defaultScaleWithMap(ctx),
 					at,
 					symbol: ctx.store.currentSymbol(),
 					size: style.strokeWidth,
@@ -59,7 +59,7 @@ export class StampTool implements InkTool {
 			id: 'draft',
 			kind: 'stamp',
 			layer: 'draft',
-			scaleWithMap: true,
+			scaleWithMap: defaultScaleWithMap(ctx),
 			at,
 			symbol: ctx.store.currentSymbol(),
 			size: style.strokeWidth,

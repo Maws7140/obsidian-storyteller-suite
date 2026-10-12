@@ -249,6 +249,10 @@ const FRONTMATTER_LINK_ONLY_SCALAR_FIELDS = new Set([
     timelineThemes?: import('./calendar/TimelineDocuments').TimelineTheme[];
     /** Map Ink presets the user saved from the drawing inspector. Only the Map Ink host adds or replaces entries. */
     inkPresets: import('./leaflet/ink/styles').InkPreset[];
+    /** Map Ink: new items scale with the map (on) or keep their size on screen (off). */
+    inkScaleWithMap: boolean;
+    /** Map Ink: the font for new text. */
+    inkTextFont: 'serif' | 'sans' | 'hand' | 'mono';
     galleryUploadFolder: string; // New setting for uploads
     galleryData: GalleryData; // Store gallery metadata here
     galleryWatchFolder?: string; // Folder to auto-scan for images
@@ -504,6 +508,8 @@ const FRONTMATTER_LINK_ONLY_SCALAR_FIELDS = new Set([
  const DEFAULT_SETTINGS: StorytellerSuiteSettings = {
     stories: [],
     inkPresets: [],
+    inkScaleWithMap: true,
+    inkTextFont: 'serif',
     activeStoryId: '',
     galleryUploadFolder: 'StorytellerSuite/GalleryUploads',
     galleryData: { images: [] },

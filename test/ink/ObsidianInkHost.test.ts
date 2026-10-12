@@ -62,4 +62,12 @@ describe('ObsidianInkHost presets', () => {
         const { host } = hostWith([]);
         expect(host.snapPoint([1, 2])).toEqual([1, 2]);
     });
+
+    it('gives the drawing defaults from settings, with scale on and serif when unset', () => {
+        const { host } = hostWith([]);
+        expect(host.drawDefaults()).toEqual({ scaleWithMap: true, textFont: 'serif' });
+        const plugin: any = { app: {}, settings: { inkPresets: [], inkScaleWithMap: false, inkTextFont: 'hand' }, saveSettings: vi.fn(async () => undefined) };
+        const configured = new ObsidianInkHost({ plugin, load: () => defaultInkDoc(), save: async () => undefined });
+        expect(configured.drawDefaults()).toEqual({ scaleWithMap: false, textFont: 'hand' });
+    });
 });

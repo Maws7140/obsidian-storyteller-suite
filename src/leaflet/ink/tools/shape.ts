@@ -9,6 +9,7 @@ import type { InkToolId } from '../storeTypes';
 import type { Point } from '../geometry';
 import { TINY_DRAG, eyedropAt, snapLatLng, startDrawSession, toContainer, toLatLng, distance } from './types';
 import type { DrawSession, InkTool, InkToolContext } from './types';
+import { defaultScaleWithMap } from './types';
 
 interface Modifiers {
 	shiftKey: boolean;
@@ -95,7 +96,7 @@ abstract class BoxTool implements InkTool {
 			id: 'draft',
 			kind: this.kind,
 			layer: 'draft',
-			scaleWithMap: true,
+			scaleWithMap: defaultScaleWithMap(ctx),
 			a: corners[0],
 			b: corners[1],
 			rotation: 0,
@@ -118,7 +119,7 @@ abstract class BoxTool implements InkTool {
 		if (!ctx || !corners || tiny) return;
 		const box: Omit<InkBox, 'id' | 'layer'> = {
 			kind: this.kind,
-			scaleWithMap: true,
+			scaleWithMap: defaultScaleWithMap(ctx),
 			a: corners[0],
 			b: corners[1],
 			rotation: 0,

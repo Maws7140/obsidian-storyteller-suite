@@ -10,7 +10,7 @@
  */
 import type { InkArea, InkPath, InkPoint } from '../model';
 import type { InkToolId } from '../storeTypes';
-import { SNAP_RADIUS, distance, eyedropAt, pathDraft, snapLatLng, startDrawSession, toContainer } from './types';
+import { defaultScaleWithMap, SNAP_RADIUS, distance, eyedropAt, pathDraft, snapLatLng, startDrawSession, toContainer } from './types';
 import type { DrawSession, InkTool, InkToolContext } from './types';
 import type { Point } from '../geometry';
 
@@ -77,7 +77,7 @@ abstract class PolyTool implements InkTool {
 		if (this.closed) {
 			const area: Omit<InkArea, 'id' | 'layer'> = {
 				kind: 'area',
-				scaleWithMap: true,
+				scaleWithMap: defaultScaleWithMap(ctx),
 				points,
 				style: ctx.store.currentStyle('area'),
 			};
@@ -85,7 +85,7 @@ abstract class PolyTool implements InkTool {
 		} else {
 			const path: Omit<InkPath, 'id' | 'layer'> = {
 				kind: 'path',
-				scaleWithMap: true,
+				scaleWithMap: defaultScaleWithMap(ctx),
 				points,
 				style: ctx.store.currentStyle('path'),
 			};
@@ -141,7 +141,7 @@ abstract class PolyTool implements InkTool {
 		const shape = this.cursor ? [...this.points, this.cursor] : this.points.slice();
 		const style = ctx.store.currentStyle(this.closed ? 'area' : 'path');
 		const draft = this.closed
-			? { id: 'draft', kind: 'area' as const, layer: 'draft', scaleWithMap: true, points: shape, style }
+			? { id: 'draft', kind: 'area' as const, layer: 'draft', scaleWithMap: defaultScaleWithMap(ctx), points: shape, style }
 			: pathDraft(shape, style);
 		session.preview.draw([draft], this.points);
 	}

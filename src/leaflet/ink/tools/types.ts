@@ -468,6 +468,11 @@ export function trackSpace(ctx: InkToolContext, onChange: (held: boolean) => voi
 // ---- small shared helpers ------------------------------------------------------
 
 /** The largest side of the box around these container points, or 0 for no points. */
+/** Whether a new item scales with the map, from the host's drawing defaults. */
+export function defaultScaleWithMap(ctx: InkToolContext): boolean {
+	return ctx.host.drawDefaults?.().scaleWithMap ?? true;
+}
+
 export function extentOf(points: readonly Point[]): number {
 	const b = bounds(points);
 	if (!b) return 0;

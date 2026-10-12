@@ -1627,9 +1627,62 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                     this.plugin.settings.tiling.showProgressNotifications = value;
                     await this.plugin.saveSettings();
                 }));
+        this.renderMapDrawingSettings(container);
     }
 
     // ─── Tab: Templates ───────────────────────────────────────────────────────
+
+    /** Map Ink defaults for new drawing, and the presets saved from the inspector. */
+    private renderMapDrawingSettings(container: HTMLElement): void {
+        new Setting(container).setName('Map drawing').setHeading();
+
+        new Setting(container)
+            .setName('Scale new items with the map')
+            .setDesc('New items grow and shrink with the map, like ink on paper. Turn this off for icons that should keep their size on screen. Each item can still change this.')
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings.inkScaleWithMap !== false)
+                .onChange(async (value) => {
+                    this.plugin.settings.inkScaleWithMap = value;
+                    await this.plugin.saveSettings();
+                }));
+
+        new Setting(container)
+            .setName('Default text font')
+            .setDesc('The font for new text. Applies to maps opened after the change.')
+            .addDropdown(dropdown => dropdown
+                .addOptions({ serif: 'Serif', sans: 'Sans serif', hand: 'Handwritten', mono: 'Monospace' })
+                .setValue(this.plugin.settings.inkTextFont ?? 'serif')
+                .onChange(async (value) => {
+                    this.plugin.settings.inkTextFont = value as 'serif' | 'sans' | 'hand' | 'mono';
+                    await this.plugin.saveSettings();
+                }));
+
+        new Setting(container).setName('Saved presets').setHeading();
+        const presets = this.plugin.settings.inkPresets ?? [];
+        if (presets.length === 0) {
+            new Setting(container)
+                .setName('No saved presets yet')
+                .setDesc('Select an item on a map, open the Map drawing inspector, and save its style as a preset. Presets are listed here.');
+        }
+        for (const preset of presets) {
+            const fit = preset.fits === 'path' ? 'lines' : preset.fits === 'area' ? 'areas' : preset.fits === 'text' ? 'text' : 'stamps';
+            new Setting(container)
+                .setName(preset.name)
+                .setDesc(`For ${fit}`)
+                .addButton(button => button
+                    .setIcon('trash')
+                    .setTooltip(`Delete preset ${preset.name}`)
+                    .onClick(async () => {
+                        // Remove in place, so the settings keep the same array.
+                        const list = this.plugin.settings.inkPresets;
+                        const index = list.findIndex(existing => existing.id === preset.id);
+                        if (index >= 0) list.splice(index, 1);
+                        await this.plugin.saveSettings();
+                        this.display();
+                    }));
+        }
+    }
+
     private renderTemplatesTab(container: HTMLElement): void {
         new Setting(container).setName(t('defaultTemplates')).setHeading();
 

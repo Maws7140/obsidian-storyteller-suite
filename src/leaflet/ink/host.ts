@@ -4,8 +4,16 @@
  *
  * Pure TypeScript: no Obsidian or DOM imports.
  */
-import type { InkDoc, InkPoint } from './model';
+import type { InkDoc, InkPoint, InkTextStyle } from './model';
 import type { InkPreset } from './styles';
+
+/** Defaults for new drawing, from the user's settings. */
+export interface InkDrawDefaults {
+	/** Whether new items scale with the map. */
+	scaleWithMap: boolean;
+	/** The font for new text. */
+	textFont: InkTextStyle['font'];
+}
 
 /** One entry in a context menu opened with showMenu. */
 export interface InkMenuItem {
@@ -35,6 +43,8 @@ export interface InkHost {
 	save(doc: InkDoc): Promise<void>;
 	/** Optional snapping, such as the placement grid. Returns the snapped point. */
 	snapPoint?(latlng: InkPoint): InkPoint;
+	/** Defaults for new drawing. Leave out to use scale with map on and the serif font. */
+	drawDefaults?(): InkDrawDefaults;
 	/** Custom presets the user has saved. */
 	presets(): InkPreset[];
 	/** Store a preset the user created. */

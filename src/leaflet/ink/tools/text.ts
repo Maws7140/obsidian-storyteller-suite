@@ -11,7 +11,7 @@
  */
 import type { InkPoint, InkTextStyle, InkText as InkTextItem } from '../model';
 import type { InkToolId } from '../storeTypes';
-import { eyedropAt, refZoomOf, snapLatLng, startDrawSession, toContainer } from './types';
+import { defaultScaleWithMap, eyedropAt, refZoomOf, snapLatLng, startDrawSession, toContainer } from './types';
 import type { DrawSession, InkTool, InkToolContext } from './types';
 
 /** Font stacks, the same as the ones the layer draws with. Keep in step with svgBuild.ts. */
@@ -189,12 +189,12 @@ export class TextTool implements InkTool {
 				openEditor(ctx, {
 					at,
 					style,
-					scaleWithMap: true,
+					scaleWithMap: defaultScaleWithMap(ctx),
 					initial: '',
 					onCommit: text => {
 						const item: Omit<InkTextItem, 'id' | 'layer'> = {
 							kind: 'text',
-							scaleWithMap: true,
+							scaleWithMap: defaultScaleWithMap(ctx),
 							at,
 							text,
 							rotation: 0,

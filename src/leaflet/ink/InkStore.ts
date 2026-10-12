@@ -100,6 +100,8 @@ export class InkStore implements InkStoreLike, InkLayerStoreLike {
 
 	constructor(private readonly host: InkHost, initial?: InkDoc) {
 		this.current = normalizeInk(initial ?? host.load());
+		const font = host.drawDefaults?.().textFont;
+		if (font) this.textStyle = { ...this.textStyle, font };
 	}
 
 	// ---- reading state --------------------------------------------------------

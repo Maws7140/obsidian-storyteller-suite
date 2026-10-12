@@ -10,6 +10,7 @@ import { simplify } from '../geometry';
 import type { Point } from '../geometry';
 import { FREEHAND_TOLERANCE, TINY_DRAG, eyedropAt, extentOf, startDrawSession, toLatLng } from './types';
 import type { DrawSession, InkTool, InkToolContext } from './types';
+import { defaultScaleWithMap } from './types';
 
 export class FreehandTool implements InkTool {
 	readonly id: InkToolId = 'freehand';
@@ -63,7 +64,7 @@ export class FreehandTool implements InkTool {
 			id: 'draft',
 			kind: 'freehand',
 			layer: 'draft',
-			scaleWithMap: true,
+			scaleWithMap: defaultScaleWithMap(ctx),
 			points,
 			style: ctx.store.currentStyle('freehand'),
 		};
@@ -77,7 +78,7 @@ export class FreehandTool implements InkTool {
 		if (points.length < 2) return;
 		const item: Omit<InkPath, 'id' | 'layer'> = {
 			kind: 'freehand',
-			scaleWithMap: true,
+			scaleWithMap: defaultScaleWithMap(ctx),
 			points,
 			style: ctx.store.currentStyle('freehand'),
 		};
