@@ -27,7 +27,7 @@ import type { InkStoreLike, InkToolId } from './storeTypes';
 import { SYMBOLS, SYMBOL_CATEGORIES } from './symbols';
 import { brushesByCategory, getBrush } from './brushes';
 import { ColorPicker, makeEl, setValueIfIdle } from './ui/ColorPicker';
-import { StrokeStylePicker } from './ui/StrokeStylePicker';
+import { StrokeStylePicker, WIDTH_RANGE } from './ui/StrokeStylePicker';
 
 const ALL_KINDS: InkKind[] = ['stamp', 'text', 'path', 'freehand', 'area', 'rect', 'ellipse'];
 const STYLE_KINDS: InkKind[] = ['path', 'freehand', 'area', 'rect', 'ellipse'];
@@ -60,6 +60,13 @@ const FILL_PATTERN_OPTIONS: ReadonlyArray<{ value: string; name: string }> = [
 		name: `${symbol.name} pattern`,
 	})),
 ];
+
+/**
+ * Collapsed state of sections and groups, kept for the session. Keys are a section
+ * title, or "Section / Group". Anything not listed here starts expanded.
+ */
+const collapsedMemo = new Map<string, boolean>();
+const COLLAPSED_BY_DEFAULT = new Set<string>(['Arrange', 'Link', 'Presets', 'Text / Spacing']);
 
 const STAMP_SIZE = { min: 4, max: 400, step: 1 };
 const ANGLE = { min: -360, max: 360, step: 1 };
@@ -229,13 +236,54 @@ export class InkInspector {
 		}
 	}
 
+	/** A section: a header that folds its body. Returns the body the controls go in. */
 	private section(title: string): HTMLElement {
-		const sec = makeEl(this.doc, 'section', 'ink-section', { 'aria-label': title });
-		const heading = makeEl(this.doc, 'h3', 'ink-section-title');
+		const root = makeEl(this.doc, 'section', 'ink-section', { 'aria-label': title });
+		this.body.appendChild(root);
+		return this.fold(root, title, title, 'ink-section-head', 'h3', 'ink-section-title');
+	}
+
+	/** A small folding group inside a section, for the less used controls. */
+	private group(parent: HTMLElement, sectionTitle: string, title: string): HTMLElement {
+		const root = makeEl(this.doc, 'div', 'ink-group');
+		parent.appendChild(root);
+		return this.fold(root, `${sectionTitle} / ${title}`, title, 'ink-group-head', 'h4', 'ink-group-title');
+	}
+
+	/**
+	 * Adds a header with a fold button to `root` and a body under it. The fold state
+	 * is read from the session memory and written back on each click.
+	 */
+	private fold(root: HTMLElement, key: string, title: string, headClass: string, headTag: 'h3' | 'h4', titleClass: string): HTMLElement {
+		const doc = this.doc;
+		const head = makeEl(doc, 'div', headClass);
+		const heading = makeEl(doc, headTag, titleClass);
 		heading.textContent = title;
-		sec.appendChild(heading);
-		this.body.appendChild(sec);
-		return sec;
+		const toggle = makeEl(doc, 'button', 'ink-fold', { type: 'button' });
+		const slot = makeEl(doc, 'span', 'ink-icon');
+		toggle.appendChild(slot);
+		this.host.icon(slot, 'chevron-down');
+		head.appendChild(heading);
+		head.appendChild(toggle);
+		const body = makeEl(doc, 'div', 'ink-fold-body');
+		root.appendChild(head);
+		root.appendChild(body);
+
+		let collapsed = collapsedMemo.get(key) ?? COLLAPSED_BY_DEFAULT.has(key);
+		const apply = (): void => {
+			root.classList.toggle('ink-folded', collapsed);
+			body.hidden = collapsed;
+			toggle.setAttribute('aria-expanded', String(!collapsed));
+			toggle.setAttribute('aria-label', `${collapsed ? 'Expand' : 'Collapse'} ${title}`);
+		};
+		apply();
+		// The fold button sits inside the head, so one listener on the head covers mouse and keyboard.
+		head.addEventListener('click', () => {
+			collapsed = !collapsed;
+			collapsedMemo.set(key, collapsed);
+			apply();
+		});
+		return body;
 	}
 
 	/** A labelled row. `visible` decides on each sync whether the row shows. */
@@ -249,14 +297,14 @@ export class InkInspector {
 		return row;
 	}
 
+	/** A colour chip with its popover, placed in `row` (which may hold other controls). */
 	private colour(
-		parent: HTMLElement,
+		row: HTMLElement,
 		label: string,
-		opts: { allowNone?: boolean; showOpacity?: boolean; visible?: () => boolean; rowLabel?: string },
+		opts: { allowNone?: boolean; showOpacity?: boolean },
 		read: () => { color: string | null; opacity: number | null },
 		write: (colour: string | null, opacity: number | null) => void,
 	): void {
-		const row = this.row(parent, opts.rowLabel ?? label, opts.visible);
 		const initial = read();
 		const picker = new ColorPicker(row, {
 			label,
@@ -277,11 +325,12 @@ export class InkInspector {
 		read: () => boolean | undefined,
 		write: (on: boolean) => void,
 		visible?: () => boolean,
+		caption?: string,
 	): HTMLInputElement {
 		const wrap = makeEl(this.doc, 'label', 'ink-check');
 		const input = makeEl(this.doc, 'input', undefined, { type: 'checkbox', 'aria-label': label });
 		const name = makeEl(this.doc, 'span');
-		name.textContent = label;
+		name.textContent = caption ?? label;
 		wrap.appendChild(input);
 		wrap.appendChild(name);
 		parent.appendChild(wrap);
@@ -389,6 +438,31 @@ export class InkInspector {
 		return btn;
 	}
 
+	/**
+	 * A compact icon toggle. `read` gives true, false, or undefined for a mixed
+	 * selection. The button announces its state with aria-pressed.
+	 */
+	private toggle(
+		parent: HTMLElement,
+		label: string,
+		icon: string,
+		read: () => boolean | undefined,
+		write: (on: boolean) => void,
+	): HTMLButtonElement {
+		const btn = makeEl(this.doc, 'button', 'ink-toggle', { type: 'button', 'aria-label': label, title: label });
+		const slot = makeEl(this.doc, 'span', 'ink-icon');
+		btn.appendChild(slot);
+		this.host.icon(slot, icon);
+		btn.addEventListener('click', () => write(btn.getAttribute('aria-pressed') !== 'true'));
+		parent.appendChild(btn);
+		this.fields.push(() => {
+			const value = read();
+			btn.setAttribute('aria-pressed', value === undefined ? 'mixed' : String(value));
+			btn.classList.toggle('ink-toggle-mixed', value === undefined);
+		});
+		return btn;
+	}
+
 	private hint(parent: HTMLElement, message: string, visible?: () => boolean): HTMLElement {
 		const p = makeEl(this.doc, 'p', 'ink-hint');
 		p.textContent = message;
@@ -402,17 +476,32 @@ export class InkInspector {
 	private strokeSection(): void {
 		const sec = this.section('Stroke');
 		const styled = () => this.activeKinds().some(k => STYLE_KINDS.includes(k));
-		this.colour(sec, 'Stroke colour', {
-			showOpacity: true,
-			visible: styled,
-			rowLabel: 'Colour',
-		}, () => ({
+
+		// Colour and width share one row. The colour popover keeps the opacity slider.
+		const strokeRow = this.row(sec, 'Stroke', styled);
+		this.colour(strokeRow, 'Stroke colour', { showOpacity: true }, () => ({
 			color: this.styleShared('stroke') ?? null,
 			opacity: this.styleShared('strokeOpacity') ?? null,
 		}), (colour, opacity) => {
 			if (colour !== null) this.writeStyle({ stroke: colour }, 'stroke-colour');
 			if (opacity !== null) this.writeStyle({ strokeOpacity: opacity }, 'stroke-opacity');
 		});
+		this.slider(strokeRow, 'Stroke width', WIDTH_RANGE,
+			() => this.styleShared('strokeWidth'),
+			value => this.writeStyle({ strokeWidth: value }, 'stroke-width'));
+
+		const lineRow = this.row(sec, 'Dash', styled);
+		const line = new StrokeStylePicker(lineRow, {
+			dash: this.styleShared('dash') ?? null,
+			width: null,
+			label: 'Stroke',
+			showWidth: false,
+			onDashChange: dash => this.writeStyle({ dash }),
+		});
+		this.disposers.push(() => line.destroy());
+		this.fields.push(() => line.update(this.styleShared('dash') ?? null, null));
+		this.fields.push(() => line.setDisabled(this.anyBrush()));
+		this.hint(sec, 'Brush replaces the dash style', () => this.anyBrush());
 
 		this.brushSelect(this.row(sec, 'Brush', styled), 'Brush');
 		this.check(sec, 'Flip side',
@@ -423,47 +512,45 @@ export class InkInspector {
 			() => shared(this.styleEntries().map(e => e.style.brushScale ?? 1)),
 			value => this.writeStyle({ brushScale: value }, 'brush-scale', STYLE_KINDS));
 
-		const lineRow = this.row(sec, 'Line', styled);
-		const line = new StrokeStylePicker(lineRow, {
-			dash: this.styleShared('dash') ?? null,
-			width: this.styleShared('strokeWidth') ?? null,
-			label: 'Stroke',
-			onDashChange: dash => this.writeStyle({ dash }),
-			onWidthChange: width => this.writeStyle({ strokeWidth: width }, 'stroke-width'),
-		});
-		this.disposers.push(() => line.destroy());
-		this.fields.push(() => line.update(this.styleShared('dash') ?? null, this.styleShared('strokeWidth') ?? null));
-		this.fields.push(() => line.setDisabled(this.anyBrush()));
-		this.hint(sec, 'Brush replaces the dash style', () => this.anyBrush());
-
 		this.check(sec, 'Smooth curves',
 			() => this.styleFlag('smooth', SMOOTH_KINDS),
 			on => this.writeStyle({ smooth: on }, undefined, SMOOTH_KINDS),
 			() => this.activeKinds().some(k => SMOOTH_KINDS.includes(k)));
-		this.check(sec, 'Arrow at start',
+
+		// Both arrow ends share one row, shown only for lines.
+		const arrowRow = this.row(sec, 'Arrows', () => this.activeKinds().some(k => ARROW_KINDS.includes(k)));
+		const arrowsShown = () => this.activeKinds().some(k => ARROW_KINDS.includes(k));
+		this.check(arrowRow, 'Arrow at start',
 			() => this.styleFlag('arrowStart', ARROW_KINDS),
 			on => this.writeStyle({ arrowStart: on }, undefined, ARROW_KINDS),
-			() => this.activeKinds().some(k => ARROW_KINDS.includes(k)));
-		this.check(sec, 'Arrow at end',
+			arrowsShown, 'Start');
+		this.check(arrowRow, 'Arrow at end',
 			() => this.styleFlag('arrowEnd', ARROW_KINDS),
 			on => this.writeStyle({ arrowEnd: on }, undefined, ARROW_KINDS),
-			() => this.activeKinds().some(k => ARROW_KINDS.includes(k)));
+			arrowsShown, 'End');
 	}
 
 	private fillSection(): void {
 		const sec = this.section('Fill');
 		const filled = () => this.activeKinds().some(k => FILL_KINDS.includes(k));
-		this.colour(sec, 'Fill colour', {
-			allowNone: true,
-			showOpacity: true,
-			visible: filled,
-		}, () => ({
+
+		// Fill colour and its opacity share one row.
+		const fillRow = this.row(sec, 'Fill', filled);
+		this.colour(fillRow, 'Fill colour', { allowNone: true, showOpacity: false }, () => ({
 			color: this.styleShared('fill', FILL_KINDS) ?? null,
-			opacity: this.styleShared('fillOpacity', FILL_KINDS) ?? null,
-		}), (colour, opacity) => {
+			opacity: null,
+		}), colour => {
 			if (colour !== null) this.writeStyle({ fill: colour }, 'fill-colour', FILL_KINDS);
-			if (opacity !== null) this.writeStyle({ fillOpacity: opacity }, 'fill-opacity', FILL_KINDS);
 		});
+		this.slider(fillRow, 'Fill opacity', { min: 0, max: 100, step: 1 },
+			() => {
+				const opacity = shared(this.styleEntries()
+					.filter(e => FILL_KINDS.includes(e.kind))
+					.map(e => e.style.fillOpacity ?? 1));
+				return opacity === undefined ? undefined : Math.round(opacity * 100);
+			},
+			value => this.writeStyle({ fillOpacity: value / 100 }, 'fill-opacity', FILL_KINDS));
+
 		this.select(this.row(sec, 'Pattern', filled), 'Fill pattern', FILL_PATTERN_OPTIONS,
 			() => this.styleShared('fillPattern', FILL_KINDS),
 			value => this.writeStyle({ fillPattern: value as FillPattern }, undefined, FILL_KINDS));
@@ -473,7 +560,7 @@ export class InkInspector {
 		const sec = this.section('Text');
 		const hasText = () => this.selectedItems().some(item => item.kind === 'text');
 
-		const content = makeEl(this.doc, 'textarea', 'ink-textarea', { 'aria-label': 'Text content', rows: '3' });
+		const content = makeEl(this.doc, 'textarea', 'ink-textarea', { 'aria-label': 'Text content', rows: '2' });
 		content.addEventListener('input', () => {
 			const value = content.value;
 			if (value.trim() === '') return;
@@ -489,40 +576,65 @@ export class InkInspector {
 			content.setAttribute('placeholder', value === undefined && texts.length > 1 ? 'Several texts' : '');
 		});
 
-		this.select(this.row(sec, 'Font'), 'Font', FONT_OPTIONS,
+		// Font and size share a row.
+		const fontRow = this.row(sec, 'Font');
+		this.select(fontRow, 'Font', FONT_OPTIONS,
 			() => this.textShared('font'),
 			value => this.writeTextStyle({ font: value as InkTextStyle['font'] }));
-		this.number(this.row(sec, 'Size'), 'Text size', STAMP_SIZE,
+		this.number(fontRow, 'Text size', STAMP_SIZE,
 			() => this.textShared('size'),
 			value => this.writeTextStyle({ size: value }, 'text-size'));
-		this.colour(sec, 'Text colour', { showOpacity: false }, () => ({
+
+		// Text colour, halo colour and halo width share a row.
+		const colourRow = this.row(sec, 'Colour');
+		this.colour(colourRow, 'Text colour', { showOpacity: false }, () => ({
 			color: this.textShared('color') ?? null,
 			opacity: null,
 		}), colour => {
 			if (colour !== null) this.writeTextStyle({ color: colour }, 'text-colour');
 		});
-		this.colour(sec, 'Halo colour', { allowNone: true, showOpacity: false }, () => {
+		this.colour(colourRow, 'Halo colour', { allowNone: true, showOpacity: false }, () => {
 			const halo = this.textShared('halo');
 			return { color: halo === undefined ? null : halo === '' ? 'none' : halo, opacity: null };
 		}, colour => {
 			if (colour !== null) this.writeTextStyle({ halo: colour === 'none' ? '' : colour }, 'halo-colour');
 		});
-		this.number(this.row(sec, 'Halo width'), 'Halo width', WIDTH,
+		const haloCaption = makeEl(this.doc, 'span', 'ink-unit');
+		haloCaption.textContent = 'halo';
+		colourRow.appendChild(haloCaption);
+		this.number(colourRow, 'Halo width', WIDTH,
 			() => this.textShared('haloWidth'),
 			value => this.writeTextStyle({ haloWidth: value }, 'halo-width'));
-		this.check(sec, 'Bold',
+
+		// Bold and italic, then the three alignments, as icon toggles.
+		const styleRow = this.row(sec, 'Style');
+		const styleGroup = makeEl(this.doc, 'div', 'ink-toggle-group', { role: 'group', 'aria-label': 'Text style' });
+		styleRow.appendChild(styleGroup);
+		this.toggle(styleGroup, 'Bold', 'bold',
 			() => shared(this.textEntries().map(style => style.bold === true)),
 			on => this.writeTextStyle({ bold: on }));
-		this.check(sec, 'Italic',
+		this.toggle(styleGroup, 'Italic', 'italic',
 			() => shared(this.textEntries().map(style => style.italic === true)),
 			on => this.writeTextStyle({ italic: on }));
-		this.number(this.row(sec, 'Letter spacing'), 'Letter spacing', { min: -0.2, max: 1, step: 0.01 },
+		const alignGroup = makeEl(this.doc, 'div', 'ink-toggle-group', { role: 'group', 'aria-label': 'Text alignment' });
+		styleRow.appendChild(alignGroup);
+		const aligns: ReadonlyArray<{ value: InkTextStyle['align']; label: string; icon: string }> = [
+			{ value: 'start', label: 'Align left', icon: 'align-left' },
+			{ value: 'middle', label: 'Align centre', icon: 'align-center' },
+			{ value: 'end', label: 'Align right', icon: 'align-right' },
+		];
+		for (const align of aligns) {
+			this.toggle(alignGroup, align.label, align.icon,
+				() => this.textShared('align') === align.value,
+				on => { if (on) this.writeTextStyle({ align: align.value }); });
+		}
+
+		// Less used: letter spacing and rotation, folded by default.
+		const spacing = this.group(sec, 'Text', 'Spacing');
+		this.number(this.row(spacing, 'Letter spacing'), 'Letter spacing', { min: -0.2, max: 1, step: 0.01 },
 			() => this.textShared('letterSpacing'),
 			value => this.writeTextStyle({ letterSpacing: value }, 'letter-spacing'));
-		this.select(this.row(sec, 'Alignment'), 'Text alignment', ALIGN_OPTIONS,
-			() => this.textShared('align'),
-			value => this.writeTextStyle({ align: value as InkTextStyle['align'] }));
-		this.number(this.row(sec, 'Rotation', hasText), 'Text rotation', ANGLE,
+		this.number(this.row(spacing, 'Rotation', hasText), 'Text rotation', ANGLE,
 			() => shared(this.selectedItems().filter((item): item is InkText => item.kind === 'text').map(item => item.rotation)),
 			value => this.writeItems(['text'], item => (item.kind === 'text' ? { ...item, rotation: value } : item), 'text-rotation'));
 	}
@@ -556,25 +668,26 @@ export class InkInspector {
 			setValueIfIdle(select, value);
 		});
 
-		this.colour(sec, 'Stamp colour', {
-			showOpacity: false,
-			visible: placed,
-		}, () => ({ color: this.stampShared('color') ?? null, opacity: null }), colour => {
+		// Colour and opacity share a row.
+		const colourRow = this.row(sec, 'Colour', placed);
+		this.colour(colourRow, 'Stamp colour', { showOpacity: false }, () => ({
+			color: this.stampShared('color') ?? null,
+			opacity: null,
+		}), colour => {
 			if (colour !== null) this.writeStamp({ color: colour }, 'stamp-colour');
 		});
+		this.slider(colourRow, 'Stamp opacity', { min: 0, max: 100, step: 1 },
+			() => {
+				const opacity = this.stampShared('opacity');
+				return opacity === undefined ? undefined : Math.round(opacity * 100);
+			},
+			value => this.writeStamp({ opacity: value / 100 }, 'stamp-opacity'));
 		this.number(this.row(sec, 'Size', placed), 'Stamp size', STAMP_SIZE,
 			() => this.stampShared('size'),
 			value => this.writeStamp({ size: value }, 'stamp-size'));
 		this.number(this.row(sec, 'Rotation', placed), 'Stamp rotation', ANGLE,
 			() => this.stampShared('rotation'),
 			value => this.writeStamp({ rotation: value }, 'stamp-rotation'));
-		const opacityRow = this.row(sec, 'Opacity', placed);
-		this.slider(opacityRow, 'Stamp opacity', { min: 0, max: 100, step: 1 },
-			() => {
-				const opacity = this.stampShared('opacity');
-				return opacity === undefined ? undefined : Math.round(opacity * 100);
-			},
-			value => this.writeStamp({ opacity: value / 100 }, 'stamp-opacity'));
 	}
 
 	private arrangeSection(): void {

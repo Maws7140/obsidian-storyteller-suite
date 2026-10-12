@@ -59,6 +59,9 @@ export interface InkEditorOptions {
 /** Keys that open a tool from the toolbar, by shortcut letter. */
 const TOOL_BY_KEY = new Map(INK_TOOLS.map(tool => [tool.shortcut.toLowerCase(), tool.id] as const));
 
+/** Whether the right-hand panels are folded to a strip of tab icons. Kept for the session. */
+let sidePanelCollapsed = false;
+
 export class InkEditor {
 	readonly store: InkStore;
 	private readonly L: InkEditorLeaflet;
@@ -337,21 +340,42 @@ export class InkEditor {
 		const tabs = makeEl(doc, 'div', 'ink-side-tabs', { role: 'tablist', 'aria-label': 'Map Ink panels' });
 		const propertiesTab = this.tabButton('properties', 'Properties', 'sliders-horizontal');
 		const layersTab = this.tabButton('layers', 'Layers', 'layers');
-		tabs.append(propertiesTab, layersTab);
+		const collapse = makeEl(doc, 'button', 'ink-side-collapse', { type: 'button' });
+		const collapseIcon = makeEl(doc, 'span', 'ink-icon');
+		collapse.appendChild(collapseIcon);
+		tabs.append(propertiesTab, layersTab, collapse);
 		const propertiesPanel = makeEl(doc, 'div', 'ink-side-panel', { 'data-panel': 'properties', role: 'tabpanel' });
 		const layersPanel = makeEl(doc, 'div', 'ink-side-panel', { 'data-panel': 'layers', role: 'tabpanel' });
 		layersPanel.hidden = true;
+		let active: 'properties' | 'layers' = 'properties';
+		// Collapsed: the panels hide and the tabs keep only their icons. Kept for the session.
+		const applyLayout = (): void => {
+			const collapsed = sidePanelCollapsed;
+			side.classList.toggle('ink-side-collapsed', collapsed);
+			right.classList.toggle('ink-dock-collapsed', collapsed);
+			propertiesPanel.hidden = collapsed || active !== 'properties';
+			layersPanel.hidden = collapsed || active !== 'layers';
+			propertiesTab.setAttribute('aria-selected', String(active === 'properties'));
+			layersTab.setAttribute('aria-selected', String(active === 'layers'));
+			propertiesTab.classList.toggle('ink-side-tab-active', active === 'properties');
+			layersTab.classList.toggle('ink-side-tab-active', active === 'layers');
+			collapse.setAttribute('aria-label', collapsed ? 'Expand Map Ink panels' : 'Collapse Map Ink panels');
+			collapse.setAttribute('aria-expanded', String(!collapsed));
+			collapse.setAttribute('title', collapsed ? 'Expand panels' : 'Collapse panels');
+			this.host.icon(collapseIcon, collapsed ? 'chevron-left' : 'chevron-right');
+		};
 		const showTab = (name: 'properties' | 'layers'): void => {
-			const isProperties = name === 'properties';
-			propertiesTab.setAttribute('aria-selected', String(isProperties));
-			layersTab.setAttribute('aria-selected', String(!isProperties));
-			propertiesTab.classList.toggle('ink-side-tab-active', isProperties);
-			layersTab.classList.toggle('ink-side-tab-active', !isProperties);
-			propertiesPanel.hidden = !isProperties;
-			layersPanel.hidden = isProperties;
+			active = name;
+			sidePanelCollapsed = false;
+			applyLayout();
 		};
 		propertiesTab.addEventListener('click', () => showTab('properties'));
 		layersTab.addEventListener('click', () => showTab('layers'));
+		collapse.addEventListener('click', () => {
+			sidePanelCollapsed = !sidePanelCollapsed;
+			applyLayout();
+		});
+		applyLayout();
 
 		this.inspector = new InkInspector(propertiesPanel, this.store, this.host);
 		this.layersPanel = new InkLayersPanel(layersPanel, this.store, this.host);

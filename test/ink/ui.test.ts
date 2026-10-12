@@ -719,14 +719,22 @@ describe('InkInspector', () => {
 		expect(store.updateSelected.mock.calls.length).toBe(count);
 	});
 
-	it('bold writes a style change with no coalesce key', () => {
+	it('bold is an icon toggle that writes a style change with no coalesce key', () => {
 		const { byLabel, store } = inspector([text1], ['t1']);
-		const bold = byLabel('Bold') as FakeElement & { checked: boolean };
-		bold.checked = true;
-		bold.dispatch('change');
+		const bold = byLabel('Bold');
+		expect(bold.getAttribute('aria-pressed')).toBe('false');
+		bold.dispatch('click');
 		const { apply, key } = lastUpdate(store);
 		expect(key).toBeUndefined();
 		expect((apply(text1) as InkText).style.bold).toBe(true);
+	});
+
+	it('alignment toggles show the current value and set it', () => {
+		const { byLabel, store } = inspector([text1], ['t1']);
+		expect(byLabel('Align centre').getAttribute('aria-pressed')).toBe('true');
+		expect(byLabel('Align left').getAttribute('aria-pressed')).toBe('false');
+		byLabel('Align right').dispatch('click');
+		expect((lastUpdate(store).apply(text1) as InkText).style.align).toBe('end');
 	});
 
 	it('text size is clamped, and mixed sizes show blank', () => {
@@ -854,6 +862,27 @@ describe('InkInspector', () => {
 		const before = byLabel('Stroke width');
 		store.emit();
 		expect(byLabel('Stroke width')).toBe(before);
+	});
+
+	it('Arrange, Link and Presets start folded, and a fold choice is kept for the session', () => {
+		const first = inspector([path1], ['p1']);
+		const arrange = one(first.root, '[aria-label="Arrange"]');
+		const body = arrange.children.find(c => c.classes.has('ink-section-body') || c.classes.has('ink-fold-body'));
+		expect(body?.hidden).toBe(true);
+		expect(one(first.root, '[aria-label="Expand Arrange"]').getAttribute('aria-expanded')).toBe('false');
+
+		one(arrange, '.ink-section-head').dispatch('click');
+		expect(arrange.classes.has('ink-folded')).toBe(false);
+		expect(one(first.root, '[aria-label="Collapse Arrange"]').getAttribute('aria-expanded')).toBe('true');
+
+		// A fresh inspector in the same session remembers the choice.
+		const second = inspector([path1], ['p1']);
+		const again = one(second.root, '[aria-label="Arrange"]');
+		expect(again.classes.has('ink-folded')).toBe(false);
+
+		// Put it back so other tests see the default.
+		one(again, '.ink-section-head').dispatch('click');
+		expect(again.classes.has('ink-folded')).toBe(true);
 	});
 
 	it('changing the selection rebuilds the sections', () => {
