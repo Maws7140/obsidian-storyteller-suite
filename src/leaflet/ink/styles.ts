@@ -13,9 +13,17 @@ export interface InkPreset {
 	id: string;
 	name: string;
 	fits: InkPresetFit;
+	/** Presets with the same group are listed together in the inspector under the group name. */
+	group?: string;
 	style?: Partial<InkStyle>;
 	textStyle?: Partial<InkTextStyle>;
 }
+
+/** Group name for the hand-inked pack: monochrome brush lines and ink-only terrain fills. */
+export const HAND_INKED_GROUP = 'Hand-inked';
+
+/** The ink colour of the hand-inked pack: a warm near-black, like brown ink on paper. */
+export const INK_COLOUR = '#2b2118';
 
 /** New shapes and areas: a visible brown edge with a soft tan fill, readable on parchment. */
 export const DEFAULT_STYLE: InkStyle = {
@@ -57,6 +65,69 @@ export const SWATCHES: readonly string[] = [
 
 const LABEL_HALO = '#f4ecd8';
 const LABEL_INK = '#2b1d12';
+
+/** One brush per hand-inked line preset: the brush id, its name and a sensible width. */
+export const HAND_INKED_BRUSHES: ReadonlyArray<{ brush: string; name: string; width: number }> = [
+	{ brush: 'cliff', name: 'Cliff', width: 2 },
+	{ brush: 'ledge', name: 'Ledge', width: 1.5 },
+	{ brush: 'ridge', name: 'Ridge', width: 2 },
+	{ brush: 'chasm', name: 'Chasm', width: 2.5 },
+	{ brush: 'rocky-shore', name: 'Rocky shore', width: 2 },
+	{ brush: 'river', name: 'River', width: 3 },
+	{ brush: 'stream', name: 'Stream', width: 1.5 },
+	{ brush: 'rapids', name: 'Rapids', width: 2 },
+	{ brush: 'treeline', name: 'Treeline', width: 2 },
+	{ brush: 'marsh-edge', name: 'Marsh edge', width: 1.5 },
+	{ brush: 'wall', name: 'Wall', width: 4 },
+	{ brush: 'stone-wall', name: 'Stone wall', width: 4 },
+	{ brush: 'castle-wall', name: 'Castle wall', width: 4 },
+	{ brush: 'palisade', name: 'Palisade', width: 2.5 },
+	{ brush: 'fence', name: 'Fence', width: 1.5 },
+	{ brush: 'bars', name: 'Bars', width: 2.5 },
+	{ brush: 'ditch', name: 'Ditch', width: 2 },
+	{ brush: 'road', name: 'Road', width: 3 },
+	{ brush: 'track', name: 'Track', width: 2 },
+	{ brush: 'trail', name: 'Trail', width: 1.5 },
+	{ brush: 'railway', name: 'Railway', width: 2.5 },
+	{ brush: 'border', name: 'Border', width: 1.5 },
+	{ brush: 'province-line', name: 'Province line', width: 1.5 },
+	{ brush: 'offmap', name: 'Off-map edge', width: 4 },
+	{ brush: 'unexplored', name: 'Unexplored', width: 1.5 },
+];
+
+/** Ink-only terrain fills: no tint, the symbol repeated in the ink colour, an ink outline. */
+export const HAND_INKED_FILLS: ReadonlyArray<{ symbol: string; name: string }> = [
+	{ symbol: 'tree', name: 'Trees' },
+	{ symbol: 'hill', name: 'Hills' },
+	{ symbol: 'mountain', name: 'Mountains' },
+	{ symbol: 'wave', name: 'Waves' },
+	{ symbol: 'reeds', name: 'Reeds' },
+	{ symbol: 'dune', name: 'Dunes' },
+];
+
+const HAND_INKED_PRESETS: readonly InkPreset[] = [
+	...HAND_INKED_BRUSHES.map(({ brush, name, width }): InkPreset => ({
+		id: `ink-${brush}`,
+		name,
+		fits: 'path',
+		group: HAND_INKED_GROUP,
+		style: { stroke: INK_COLOUR, strokeWidth: width, strokeOpacity: 1, brush },
+	})),
+	...HAND_INKED_FILLS.map(({ symbol, name }): InkPreset => ({
+		id: `ink-fill-${symbol}`,
+		name,
+		fits: 'area',
+		group: HAND_INKED_GROUP,
+		style: {
+			stroke: INK_COLOUR,
+			strokeWidth: 1.5,
+			fill: INK_COLOUR,
+			fillOpacity: 0,
+			fillPattern: `symbol:${symbol}`,
+			patternColor: INK_COLOUR,
+		},
+	})),
+];
 
 export const PRESETS: readonly InkPreset[] = [
 	// Areas
@@ -108,11 +179,28 @@ export const PRESETS: readonly InkPreset[] = [
 		textStyle: { font: 'serif', size: 12, color: LABEL_INK, halo: LABEL_HALO, haloWidth: 3, align: 'middle' } },
 	{ id: 'label-water', name: 'Label (water)', fits: 'text',
 		textStyle: { font: 'serif', size: 13, italic: true, color: '#1f5fa8', halo: LABEL_HALO, haloWidth: 3, align: 'middle' } },
+
+	...HAND_INKED_PRESETS,
 ];
 
 /** Look up a built-in preset by id. */
 export function findPreset(id: string): InkPreset | undefined {
 	return PRESETS.find(p => p.id === id);
+}
+
+/**
+ * Copy `patch` over `base`. A key set to undefined in `patch` is removed from the
+ * result, so a patch can clear an optional field such as `brush`. Returns a new
+ * object; neither argument is changed.
+ */
+export function withPatch<T extends object>(base: T, patch: Partial<T>): T {
+	const out: Record<string, unknown> = { ...(base as Record<string, unknown>) };
+	for (const key of Object.keys(patch)) {
+		const value = (patch as Record<string, unknown>)[key];
+		if (value === undefined) delete out[key];
+		else out[key] = value;
+	}
+	return out as T;
 }
 
 /**

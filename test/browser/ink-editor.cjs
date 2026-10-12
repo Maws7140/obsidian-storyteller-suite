@@ -142,6 +142,41 @@ const SHOT = process.env.INK_EDITOR_SHOT || '';
 	await page.evaluate(() => editor.store.flush());
 	assert.equal((await latestArea()).style.fill, DEFAULT_FILL, 'undo restores the fill');
 
+	step('brush');
+	// Freehand with the Cliff brush from the brush flyout, drawn with the mouse, then Flip side in the inspector.
+	await page.click('button[data-tool="freehand"]');
+	await page.click('button[data-brush="cliff"]');
+	assert.equal(await page.evaluate(() => store.currentStyle('freehand').brush), 'cliff', 'brush picked from the flyout');
+	const freehandCount = () => page.evaluate(() => store.doc.items.filter(i => i.kind === 'freehand').length);
+	const before = await freehandCount();
+	const stroke = [[150, 630], [250, 642], [350, 618], [450, 632]];
+	const first = at(stroke[0][0], stroke[0][1]);
+	await page.mouse.move(first.x, first.y);
+	await page.mouse.down();
+	for (const [x, y] of stroke.slice(1)) {
+		const p = at(x, y);
+		await page.mouse.move(p.x, p.y, { steps: 8 });
+	}
+	await page.mouse.up();
+	await page.evaluate(() => editor.store.flush());
+	assert.equal(await freehandCount(), before + 1, 'the drag draws one freehand stroke');
+	const latestFreehand = () => page.evaluate(() => window.saves.at(-1).items.filter(i => i.kind === 'freehand').at(-1));
+	const strokeSaved = await latestFreehand();
+	assert.equal(strokeSaved.style.brush, 'cliff', 'the saved stroke has the cliff brush');
+	assert.ok(!strokeSaved.style.brushFlip, 'the stroke starts unflipped');
+
+	// The new stroke is selected, so the inspector shows Flip side for the one-sided cliff brush.
+	await page.click('label.ink-check:has-text("Flip side")');
+	await page.evaluate(() => editor.store.flush());
+	const flipped = await latestFreehand();
+	assert.equal(flipped.style.brushFlip, true, 'Flip side saves brushFlip true');
+
+	await page.evaluate(() => { if (document.activeElement) document.activeElement.blur(); });
+	await page.keyboard.press('Control+z');
+	await page.evaluate(() => editor.store.flush());
+	assert.ok(!(await latestFreehand()).style.brushFlip, 'undo clears the flip');
+	await page.evaluate(() => store.clearSelection());
+
 	step('layers');
 	// Add a layer from the Layers tab and hide it.
 	await page.click('button[data-tab="layers"]');

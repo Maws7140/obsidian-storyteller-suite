@@ -206,6 +206,17 @@ export class StrokeStylePicker {
 		this.widthOut.textContent = width === null ? 'Mixed' : String(width);
 	}
 
+	/**
+	 * Disables the dropdown (a brush replaces the dash style). The width slider stays
+	 * usable. Closes the list when it is open.
+	 */
+	setDisabled(disabled: boolean): void {
+		if (disabled) this.setOpen(false);
+		this.trigger.disabled = disabled;
+		this.trigger.setAttribute('aria-disabled', String(disabled));
+		this.el.classList.toggle('ink-stroke-style-disabled', disabled);
+	}
+
 	isOpen(): boolean {
 		return this.open;
 	}

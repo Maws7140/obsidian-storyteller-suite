@@ -17,6 +17,7 @@ import { isValidColor } from './model';
 import { PRESETS } from './styles';
 import type { InkPreset } from './styles';
 import { getSymbol, symbolSvg } from './symbols';
+import { brushPreviewSvg, getBrush } from './brushes';
 import { makeEl } from './ui/ColorPicker';
 
 export interface InkLegendOptions {
@@ -146,6 +147,11 @@ function dotsMarkup(colourValue: string): string {
 	return `<g fill="${colourValue}">${dots.join('')}</g>`;
 }
 
+/** A brush sample: the brush's line in the item's colour. */
+function brushSwatch(brushId: string, style: InkStyle): string {
+	return brushPreviewSvg(brushId, { width: 36, height: 14, color: colour(style.stroke, DEFAULT_STROKE) });
+}
+
 /** A small repeated glyph: three copies, the symbol's body in the pattern colour. */
 function symbolPatternMarkup(symbolId: string, colourValue: string): string {
 	const symbol = getSymbol(symbolId);
@@ -211,6 +217,25 @@ export function legendEntries(doc: InkDoc, presets: readonly InkPreset[]): Legen
 		if (!hasStyle(item)) continue;
 
 		const isLine = item.kind === 'path' || item.kind === 'freehand';
+		// A line with a brush is named for the brush, whatever preset its style came from.
+		const brush = isLine && item.style.brush !== undefined ? getBrush(item.style.brush) : undefined;
+		if (brush) {
+			const color = colour(item.style.stroke, DEFAULT_STROKE);
+			const key = `brush:${brush.id}|${color}`;
+			const existing = lines.get(key);
+			if (existing) {
+				existing.count++;
+			} else {
+				lines.set(key, {
+					section: 'lines',
+					key,
+					name: brush.name,
+					count: 1,
+					swatch: brushSwatch(brush.id, item.style),
+				});
+			}
+			continue;
+		}
 		const preset = matchPreset(item, presets);
 		const groups = isLine ? lines : areas;
 		const key = preset ? `preset:${preset.id}` : `custom:${JSON.stringify(item.style)}`;

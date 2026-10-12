@@ -12,7 +12,7 @@
  */
 import { nextInkId, normalizeInk } from './model';
 import type { InkDoc, InkItem, InkKind, InkStyle, InkTextStyle } from './model';
-import { DEFAULT_PATH_STYLE, DEFAULT_STYLE, DEFAULT_TEXT_STYLE, applyPreset, findPreset, mergeStyle } from './styles';
+import { DEFAULT_PATH_STYLE, DEFAULT_STYLE, DEFAULT_TEXT_STYLE, applyPreset, findPreset, mergeStyle, withPatch } from './styles';
 import type { InkPreset } from './styles';
 import { InkHistory } from './history';
 import type { InkHost } from './host';
@@ -322,11 +322,14 @@ export class InkStore implements InkStoreLike, InkLayerStoreLike {
 		return { ...(this.styles.get(kind) ?? defaultStyleFor(kind)) };
 	}
 
-	/** Edit the current style of the active tool's kind. Does nothing for select and pan. */
+	/**
+	 * Edit the current style of the active tool's kind. Does nothing for select and pan.
+	 * A key set to undefined is cleared (for example `brush: undefined` for None).
+	 */
 	setCurrentStyle(patch: Partial<InkStyle>): void {
 		const kind = kindOfTool(this.toolId);
 		if (kind === undefined) return;
-		this.styles.set(kind, mergeStyle(this.currentStyle(kind), patch));
+		this.styles.set(kind, withPatch(this.currentStyle(kind), patch));
 		this.emit();
 	}
 

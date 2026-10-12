@@ -1,12 +1,17 @@
 /**
- * Vertical tool strip for Map Ink: the drawing tools, undo and redo, and a stamp
- * picker flyout that opens while the Stamp tool is active.
+ * Vertical tool strip for Map Ink: the drawing tools, undo and redo, a stamp
+ * picker flyout that opens while the Stamp tool is active, and a brush picker
+ * flyout that opens while the Path, Freehand or Area tool is active.
  *
  * Plain DOM. Icons come from host.icon (Lucide names).
  */
 import type { InkHost } from './host';
 import type { InkStoreLike, InkToolId } from './storeTypes';
 import { searchSymbols, symbolsByCategory, symbolSvg, type InkSymbol } from './symbols';
+import { BRUSHES, brushPreviewSvg, brushesByCategory, getBrush } from './brushes';
+import type { InkBrush } from './brushes';
+import type { InkStyle } from './model';
+import { DEFAULT_PATH_STYLE, DEFAULT_STYLE } from './styles';
 import { makeEl } from './ui/ColorPicker';
 
 export interface InkToolDef {
@@ -31,6 +36,46 @@ export const INK_TOOLS: readonly InkToolDef[] = [
 	{ id: 'ellipse', name: 'Ellipse', shortcut: 'E', icon: 'circle' },
 ];
 
+/** Tools whose style takes a brush, and the item kind each one edits. */
+export type BrushKind = 'path' | 'freehand' | 'area';
+
+const BRUSH_KIND: Partial<Record<InkToolId, BrushKind>> = {
+	path: 'path',
+	freehand: 'freehand',
+	area: 'area',
+};
+
+/** The width a kind starts with. A brush sets its own width only while the width is still this one. */
+function startWidth(kind: BrushKind): number {
+	return kind === 'area' ? DEFAULT_STYLE.strokeWidth : DEFAULT_PATH_STYLE.strokeWidth;
+}
+
+/**
+ * The style patch for picking a brush (or None, when `brushId` is null).
+ * Picking a brush sets its id and its default width, but only while the user has
+ * not changed the width from the kind's start width. Flip is kept only for a
+ * one-sided brush. None clears the brush and the flip.
+ */
+export function brushStylePatch(kind: BrushKind, current: InkStyle, brushId: string | null): Partial<InkStyle> {
+	if (brushId === null) return { brush: undefined, brushFlip: undefined };
+	const brush = getBrush(brushId);
+	if (!brush) return {};
+	const patch: Partial<InkStyle> = {
+		brush: brush.id,
+		brushFlip: brush.oneSided ? current.brushFlip : undefined,
+	};
+	const width = brush.defaultStyle.strokeWidth;
+	if (width !== undefined && current.strokeWidth === startWidth(kind)) patch.strokeWidth = width;
+	return patch;
+}
+
+function matchesBrush(brush: InkBrush, query: string): boolean {
+	const q = query.toLowerCase();
+	return brush.name.toLowerCase().includes(q)
+		|| brush.keywords.some(k => k.toLowerCase().includes(q))
+		|| brush.description.toLowerCase().includes(q);
+}
+
 export class InkToolbar {
 	readonly el: HTMLElement;
 	private readonly doc: Document;
@@ -42,8 +87,13 @@ export class InkToolbar {
 	private readonly flyout: HTMLElement;
 	private readonly search: HTMLInputElement;
 	private readonly grid: HTMLElement;
+	private readonly brushFlyout: HTMLElement;
+	private readonly brushSearch: HTMLInputElement;
+	private readonly brushScroll: HTMLElement;
+	private brushButtons: Array<{ id: string | null; button: HTMLButtonElement }> = [];
 	private symbolButtons: Array<{ id: string; button: HTMLButtonElement }> = [];
 	private query = '';
+	private brushQuery = '';
 	private readonly unsubscribe: () => void;
 
 	constructor(parent: HTMLElement, store: InkStoreLike, host: InkHost) {
@@ -114,6 +164,27 @@ export class InkToolbar {
 		this.el.appendChild(this.flyout);
 		this.renderGrid();
 
+		this.brushFlyout = makeEl(doc, 'div', 'ink-brush-flyout', {
+			role: 'dialog',
+			'aria-label': 'Choose a brush',
+		});
+		this.brushFlyout.hidden = true;
+		this.brushSearch = makeEl(doc, 'input', 'ink-brush-search', {
+			type: 'search',
+			'aria-label': 'Search brushes',
+			placeholder: 'Search brushes',
+			autocomplete: 'off',
+		});
+		this.brushSearch.addEventListener('input', () => {
+			this.brushQuery = this.brushSearch.value.trim();
+			this.renderBrushes();
+		});
+		this.brushFlyout.appendChild(this.brushSearch);
+		this.brushScroll = makeEl(doc, 'div', 'ink-brush-scroll');
+		this.brushFlyout.appendChild(this.brushScroll);
+		this.el.appendChild(this.brushFlyout);
+		this.renderBrushes();
+
 		parent.appendChild(this.el);
 		this.unsubscribe = this.store.on('change', () => this.refresh());
 		this.refresh();
@@ -131,6 +202,8 @@ export class InkToolbar {
 		this.redoButton.disabled = !this.store.canRedo;
 		this.flyout.hidden = tool !== 'stamp';
 		this.syncStamps();
+		this.brushFlyout.hidden = BRUSH_KIND[tool] === undefined;
+		this.syncBrushes();
 	}
 
 	destroy(): void {
@@ -183,6 +256,72 @@ export class InkToolbar {
 			cells.appendChild(btn);
 		}
 		return cells;
+	}
+
+	private renderBrushes(): void {
+		this.brushScroll.replaceChildren();
+		this.brushButtons = [];
+		this.brushScroll.appendChild(this.brushOption(null, 'None', 'No brush'));
+		const query = this.brushQuery;
+		if (query) {
+			const found = BRUSHES.filter(brush => matchesBrush(brush, query));
+			if (found.length === 0) {
+				const none = makeEl(this.doc, 'p', 'ink-brush-empty');
+				none.textContent = `No brushes match "${query}".`;
+				this.brushScroll.appendChild(none);
+			} else {
+				for (const brush of found) this.brushScroll.appendChild(this.brushOption(brush.id, brush.name, brush.name));
+			}
+		} else {
+			for (const group of brushesByCategory()) {
+				if (group.brushes.length === 0) continue;
+				const heading = makeEl(this.doc, 'h4', 'ink-brush-heading');
+				heading.textContent = group.name;
+				this.brushScroll.appendChild(heading);
+				for (const brush of group.brushes) this.brushScroll.appendChild(this.brushOption(brush.id, brush.name, brush.name));
+			}
+		}
+		this.syncBrushes();
+	}
+
+	/** One row of the brush list: a thumbnail and the name. `id` null is None. */
+	private brushOption(id: string | null, name: string, label: string): HTMLButtonElement {
+		const btn = makeEl(this.doc, 'button', 'ink-brush-btn', {
+			type: 'button',
+			'aria-label': label,
+			title: label,
+			'data-brush': id ?? 'none',
+		});
+		if (id === null) {
+			btn.classList.add('ink-brush-none');
+		} else {
+			const thumb = makeEl(this.doc, 'span', 'ink-brush-thumb');
+			thumb.innerHTML = brushPreviewSvg(id, { width: 56, height: 16, color: 'currentColor' });
+			btn.appendChild(thumb);
+		}
+		const text = makeEl(this.doc, 'span', 'ink-brush-name');
+		text.textContent = name;
+		btn.appendChild(text);
+		btn.addEventListener('click', () => this.pickBrush(id));
+		this.brushButtons.push({ id, button: btn });
+		return btn;
+	}
+
+	/** Sets the brush for the active tool's kind. Does nothing for other tools. */
+	private pickBrush(id: string | null): void {
+		const kind = BRUSH_KIND[this.store.tool];
+		if (!kind) return;
+		this.store.setCurrentStyle(brushStylePatch(kind, this.store.currentStyle(kind), id));
+	}
+
+	private syncBrushes(): void {
+		const kind = BRUSH_KIND[this.store.tool];
+		const current = kind ? this.store.currentStyle(kind).brush : undefined;
+		for (const { id, button } of this.brushButtons) {
+			const active = id === null ? current === undefined : id === current;
+			button.setAttribute('aria-pressed', String(active));
+			button.classList.toggle('ink-brush-active', active);
+		}
 	}
 
 	private syncStamps(): void {

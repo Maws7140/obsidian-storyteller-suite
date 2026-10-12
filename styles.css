@@ -13812,3 +13812,145 @@ body.mod-rtl .storyteller-group-members {
 		bottom: 8px;
 	}
 }
+
+/* ===== ink-brushes ===== */
+/* Brush picker flyout (beside the toolbar, while Path, Freehand or Area is active),
+   the brush controls in the inspector, grouped presets and the legend brush rows.
+   Matches the stamp flyout: same panel, search and spacing. */
+.ink-brush-flyout {
+	position: absolute;
+	left: calc(100% + 10px);
+	top: 0;
+	width: 232px;
+	max-height: 420px;
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	padding: 8px;
+	background: var(--ink-bg);
+	border: 1px solid var(--ink-border);
+	border-radius: var(--ink-radius-panel);
+	box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+	box-sizing: border-box;
+	color: var(--ink-text);
+	font-size: var(--font-ui-small, 12px);
+	line-height: 1.3;
+	z-index: 55;
+}
+
+.ink-brush-flyout[hidden] {
+	display: none !important;
+}
+
+.ink-brush-flyout button:focus-visible,
+.ink-brush-flyout input:focus-visible {
+	outline: 2px solid var(--ink-focus);
+	outline-offset: 1px;
+}
+
+.ink-brush-search {
+	height: var(--ink-control-h, 28px);
+	padding: 0 8px;
+	border: 1px solid var(--ink-border);
+	border-radius: var(--ink-radius-control, 6px);
+	background: var(--ink-bg-raised);
+	color: var(--ink-text);
+	box-sizing: border-box;
+	font-size: inherit;
+}
+
+.ink-brush-scroll {
+	overflow-y: auto;
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+
+.ink-brush-heading {
+	margin: 6px 0 2px;
+	font-size: 11px;
+	font-weight: 600;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	color: var(--ink-muted);
+}
+
+.ink-brush-btn {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	width: 100%;
+	min-height: 26px;
+	padding: 2px 6px;
+	border: 1px solid transparent;
+	border-radius: var(--ink-radius-control, 6px);
+	background: transparent;
+	color: var(--ink-text);
+	font-size: inherit;
+	text-align: left;
+	cursor: pointer;
+	box-sizing: border-box;
+}
+
+.ink-brush-btn:hover {
+	background: var(--ink-hover);
+}
+
+.ink-brush-btn.ink-brush-active {
+	border-color: var(--ink-accent);
+	background: var(--ink-hover);
+	color: var(--ink-accent);
+}
+
+.ink-brush-thumb {
+	display: inline-flex;
+	flex: 0 0 56px;
+	align-items: center;
+	justify-content: center;
+	width: 56px;
+	height: 16px;
+}
+
+.ink-brush-thumb svg {
+	display: block;
+	width: 56px;
+	height: 16px;
+}
+
+.ink-brush-name {
+	flex: 1 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.ink-brush-empty {
+	margin: 4px 0;
+	font-size: 11px;
+	color: var(--ink-muted);
+}
+
+.ink-stroke-style-disabled .ink-dropdown-trigger:disabled {
+	opacity: 0.45;
+	cursor: not-allowed;
+}
+
+.ink-preset-heading {
+	margin: 8px 0 4px;
+	font-size: 11px;
+	font-weight: 600;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	color: var(--ink-muted);
+}
+
+.ink-preset-heading:first-child {
+	margin-top: 0;
+}
+
+@media (max-width: 600px) {
+	.ink-brush-flyout {
+		width: 200px;
+	}
+}
