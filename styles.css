@@ -5683,12 +5683,12 @@ body.mod-rtl .storyteller-group-members {
 
 /* Pressed state, such as the Draw button while the Map Ink editor is open. Comes after the
    map toolbar rules above so it wins at the same specificity. */
-.storyteller-toolbar-btn.is-active {
+.storyteller-map-view .storyteller-toolbar-btn.is-active {
     background: var(--interactive-accent);
     color: var(--text-on-accent);
 }
 
-.storyteller-toolbar-btn.is-active:hover {
+.storyteller-map-view .storyteller-toolbar-btn.is-active:hover {
     background: var(--interactive-accent-hover);
 }
 
