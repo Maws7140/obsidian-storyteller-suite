@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyPreset, DEFAULT_STYLE, DEFAULT_TEXT_STYLE, mergeStyle, PRESETS, SWATCHES } from '../../src/leaflet/ink/styles';
+import { applyPreset, DEFAULT_PATH_STYLE, DEFAULT_STYLE, DEFAULT_TEXT_STYLE, mergeStyle, PRESETS, SWATCHES } from '../../src/leaflet/ink/styles';
 import { isValidColor, normalizeInk } from '../../src/leaflet/ink/model';
 
 const REQUIRED = [
@@ -19,6 +19,32 @@ describe('defaults and swatches', () => {
     expect(isValidColor(DEFAULT_STYLE.fill)).toBe(true);
     expect(isValidColor(DEFAULT_TEXT_STYLE.color)).toBe(true);
     expect(isValidColor(DEFAULT_TEXT_STYLE.halo)).toBe(true);
+  });
+
+  it('draws new areas and shapes with a visible brown edge and a soft tan fill', () => {
+    expect(DEFAULT_STYLE.stroke).toBe('#5b4a3a');
+    expect(DEFAULT_STYLE.strokeWidth).toBe(2);
+    expect(DEFAULT_STYLE.fill).toBe('#c9a66b');
+    expect(DEFAULT_STYLE.fillOpacity).toBe(0.25);
+  });
+
+  it('draws new paths three units wide in the same brown', () => {
+    expect(DEFAULT_PATH_STYLE).toEqual({ ...DEFAULT_STYLE, strokeWidth: 3 });
+    expect(DEFAULT_PATH_STYLE.stroke).toBe('#5b4a3a');
+  });
+
+  it('gives new text the label-place look: serif, 14, dark ink, parchment halo of 3', () => {
+    expect(DEFAULT_TEXT_STYLE).toMatchObject({ font: 'serif', size: 14, color: '#2b1d12', halo: '#f4ecd8', haloWidth: 3 });
+    expect(DEFAULT_TEXT_STYLE.bold).toBeUndefined();
+    expect(DEFAULT_TEXT_STYLE.italic).toBeUndefined();
+  });
+
+  it('keeps the place, water and title label presets at map scale', () => {
+    expect(PRESETS.find(p => p.id === 'label-place')?.textStyle?.size).toBe(12);
+    const water = PRESETS.find(p => p.id === 'label-water')?.textStyle;
+    expect(water?.size).toBe(13);
+    expect(water?.italic).toBe(true);
+    expect(PRESETS.find(p => p.id === 'label-title')?.textStyle?.bold).toBe(true);
   });
 
   it('has 24 unique valid swatches', () => {
@@ -103,7 +129,8 @@ describe('applyPreset and mergeStyle', () => {
     const title = PRESETS.find(p => p.id === 'label-title');
     if (!title) throw new Error('missing title');
     const out = applyPreset(DEFAULT_TEXT_STYLE, title);
-    expect(out.size).toBe(56);
+    expect(out.size).toBe(28);
+    expect(out.letterSpacing).toBeGreaterThanOrEqual(0.1);
     expect(out.bold).toBe(true);
     expect(out.font).toBe('serif');
   });

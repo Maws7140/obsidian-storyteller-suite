@@ -40,4 +40,18 @@ describe('drawing defaults from the host', () => {
 		const store = new InkStore(hostWith());
 		expect(store.currentTextStyle().font).toBe('serif');
 	});
+
+	it('new shapes, areas and paths start with the visible defaults', () => {
+		const store = new InkStore(hostWith());
+		expect(store.currentStyle('area')).toMatchObject({ stroke: '#5b4a3a', strokeWidth: 2, fill: '#c9a66b', fillOpacity: 0.25 });
+		expect(store.currentStyle('rect')).toMatchObject({ stroke: '#5b4a3a', strokeWidth: 2, fillOpacity: 0.25 });
+		expect(store.currentStyle('ellipse')).toMatchObject({ stroke: '#5b4a3a', strokeWidth: 2, fillOpacity: 0.25 });
+		expect(store.currentStyle('path')).toMatchObject({ stroke: '#5b4a3a', strokeWidth: 3 });
+		expect(store.currentStyle('freehand')).toMatchObject({ stroke: '#5b4a3a', strokeWidth: 3 });
+	});
+
+	it('new text starts with the label-place look', () => {
+		const store = new InkStore(hostWith());
+		expect(store.currentTextStyle()).toMatchObject({ font: 'serif', size: 14, haloWidth: 3 });
+	});
 });

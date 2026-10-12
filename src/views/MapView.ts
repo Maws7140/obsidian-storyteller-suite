@@ -119,6 +119,8 @@ export class MapView extends ItemView {
     private gridController: GridController | null = null;
     /** The Map Ink editor for the open map. Null while the map is loading or closed. */
     private inkEditor: InkEditor | null = null;
+    /** The Draw toolbar button, so its pressed state follows the editor. Null when the toolbar has none. */
+    private inkButton: HTMLButtonElement | null = null;
     private inkSaveQueue: Promise<void> = Promise.resolve();
     /** Drawing writes queued or running; while any are, the in-memory drawing is newer than the note. */
     private inkWritesPending = 0;
@@ -263,16 +265,20 @@ export class MapView extends ItemView {
         this.toolbarEl.createDiv('storyteller-toolbar-spacer');
 
         // Draw: opens the Map Ink editor (drawing tools, inspector and layers)
+        this.inkButton = null;
         if (this.currentMap) {
             const drawBtn = this.toolbarEl.createEl('button', {
                 cls: 'clickable-icon storyteller-toolbar-btn',
                 attr: {
                     'aria-label': 'Draw on map',
-                    'title': 'Draw on map'
+                    'title': 'Draw on map',
+                    'aria-pressed': 'false'
                 }
             });
             setIcon(drawBtn, 'pen-tool');
             drawBtn.onclick = () => { void this.toggleInk(); };
+            this.inkButton = drawBtn;
+            this.syncInkButton();
         }
 
         // Refresh button
@@ -704,24 +710,38 @@ export class MapView extends ItemView {
             return;
         }
         if (editor.isOpen()) {
-            await editor.close();
+            const closing = editor.close();
+            this.syncInkButton();
+            await closing;
             return;
         }
         if (this.gridController && !await this.gridController.endEditing()) return;
         this.disablePlacementMode();
         editor.open();
+        this.syncInkButton();
     }
 
     /** Close the Map Ink editor when another tool arms. The drawing stays on the map. */
     private closeInk(): void {
         void this.inkEditor?.close();
+        this.syncInkButton();
     }
 
     /** Save the open Map Ink editor and remove it. Its pending save runs first, against the note it was made for. */
     private async destroyInkEditor(): Promise<void> {
         const editor = this.inkEditor;
         this.inkEditor = null;
+        this.syncInkButton();
         if (editor) await editor.destroy();
+    }
+
+    /** Show the Draw button as pressed exactly while the Map Ink editor is open. */
+    private syncInkButton(): void {
+        const btn = this.inkButton;
+        if (!btn) return;
+        const open = this.inkEditor?.isOpen() === true;
+        btn.classList.toggle('is-active', open);
+        btn.setAttribute('aria-pressed', open ? 'true' : 'false');
     }
 
     /**

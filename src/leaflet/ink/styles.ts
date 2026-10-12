@@ -17,19 +17,27 @@ export interface InkPreset {
 	textStyle?: Partial<InkTextStyle>;
 }
 
+/** New shapes and areas: a visible brown edge with a soft tan fill, readable on parchment. */
 export const DEFAULT_STYLE: InkStyle = {
-	stroke: '#2b2b2b',
+	stroke: '#5b4a3a',
 	strokeWidth: 2,
 	strokeOpacity: 1,
 	dash: 'solid',
 	fill: '#c9a66b',
-	fillOpacity: 0,
+	fillOpacity: 0.25,
 	fillPattern: 'none',
 };
 
+/** New paths and freehand lines: the same brown edge, a little heavier, and no fill to show. */
+export const DEFAULT_PATH_STYLE: InkStyle = {
+	...DEFAULT_STYLE,
+	strokeWidth: 3,
+};
+
+/** New text: the label-place look (serif, small, dark ink on a parchment halo). */
 export const DEFAULT_TEXT_STYLE: InkTextStyle = {
 	font: 'serif',
-	size: 24,
+	size: 14,
 	color: '#2b1d12',
 	halo: '#f4ecd8',
 	haloWidth: 3,
@@ -95,11 +103,11 @@ export const PRESETS: readonly InkPreset[] = [
 
 	// Text
 	{ id: 'label-title', name: 'Label (map title)', fits: 'text',
-		textStyle: { font: 'serif', size: 56, bold: true, letterSpacing: 0.08, color: LABEL_INK, halo: LABEL_HALO, haloWidth: 5, align: 'middle' } },
+		textStyle: { font: 'serif', size: 28, bold: true, letterSpacing: 0.15, color: LABEL_INK, halo: LABEL_HALO, haloWidth: 5, align: 'middle' } },
 	{ id: 'label-place', name: 'Label (place)', fits: 'text',
-		textStyle: { font: 'serif', size: 22, color: LABEL_INK, halo: LABEL_HALO, haloWidth: 3, align: 'middle' } },
+		textStyle: { font: 'serif', size: 12, color: LABEL_INK, halo: LABEL_HALO, haloWidth: 3, align: 'middle' } },
 	{ id: 'label-water', name: 'Label (water)', fits: 'text',
-		textStyle: { font: 'serif', size: 20, italic: true, color: '#1f5fa8', halo: LABEL_HALO, haloWidth: 3, align: 'middle' } },
+		textStyle: { font: 'serif', size: 13, italic: true, color: '#1f5fa8', halo: LABEL_HALO, haloWidth: 3, align: 'middle' } },
 ];
 
 /** Look up a built-in preset by id. */

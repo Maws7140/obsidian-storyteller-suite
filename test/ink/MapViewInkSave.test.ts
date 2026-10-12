@@ -197,3 +197,83 @@ describe('MapView drawing editor arming', () => {
         expect(editor.destroy).toHaveBeenCalledTimes(1);
     });
 });
+
+describe('MapView Draw button pressed state', () => {
+    /** A button stand-in with the two parts of the DOM the pressed state uses. */
+    function fakeButton() {
+        const classes = new Set<string>();
+        const attrs: Record<string, string> = { 'aria-pressed': 'false' };
+        return {
+            classes,
+            attrs,
+            classList: {
+                toggle: (name: string, force?: boolean) => {
+                    const on = force ?? !classes.has(name);
+                    if (on) classes.add(name); else classes.delete(name);
+                    return on;
+                },
+            },
+            setAttribute: (name: string, value: string) => { attrs[name] = value; },
+        };
+    }
+
+    /** An editor whose open state changes at once, as the real one does. */
+    function openableEditor() {
+        let open = false;
+        return {
+            isOpen: () => open,
+            open: vi.fn(() => { open = true; }),
+            close: vi.fn(async () => { open = false; }),
+            destroy: vi.fn(async () => { open = false; }),
+        };
+    }
+
+    function pressed(btn: ReturnType<typeof fakeButton>): [boolean, string] {
+        return [btn.classes.has('is-active'), btn.attrs['aria-pressed']];
+    }
+
+    it('is pressed while the editor is open, and released when it closes', async () => {
+        const { view } = harness(async () => undefined);
+        const btn = fakeButton();
+        view.inkButton = btn;
+        view.inkEditor = openableEditor();
+        view.gridController = null;
+        view.disablePlacementMode = vi.fn();
+        await view.toggleInk();
+        expect(pressed(btn)).toEqual([true, 'true']);
+        await view.toggleInk();
+        expect(pressed(btn)).toEqual([false, 'false']);
+    });
+
+    it('is released when grid painting or placement closes the editor', async () => {
+        const { view } = harness(async () => undefined);
+        const btn = fakeButton();
+        view.inkButton = btn;
+        view.inkEditor = openableEditor();
+        view.gridController = null;
+        view.disablePlacementMode = vi.fn();
+        await view.toggleInk();
+        expect(pressed(btn)).toEqual([true, 'true']);
+        view.closeInk();
+        expect(pressed(btn)).toEqual([false, 'false']);
+    });
+
+    it('is released when the editor is destroyed', async () => {
+        const { view } = harness(async () => undefined);
+        const btn = fakeButton();
+        view.inkButton = btn;
+        view.inkEditor = openableEditor();
+        view.gridController = null;
+        view.disablePlacementMode = vi.fn();
+        await view.toggleInk();
+        await view.destroyInkEditor();
+        expect(pressed(btn)).toEqual([false, 'false']);
+    });
+
+    it('does nothing when the toolbar has no Draw button', () => {
+        const { view } = harness(async () => undefined);
+        view.inkButton = null;
+        view.inkEditor = openableEditor();
+        expect(() => view.closeInk()).not.toThrow();
+    });
+});

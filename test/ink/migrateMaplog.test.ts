@@ -31,6 +31,11 @@ function presetFill(id: string): string {
   return preset.style.fill;
 }
 
+/** Two decimals, as the migration rounds coordinates. */
+function round(n: number): number {
+  return Math.round(n * 100) / 100 + 0;
+}
+
 function minimal(overrides: Frontmatter): Frontmatter {
   return { maplogMarks: [], maplogLines: [], maplogAreas: [], ...overrides };
 }
@@ -119,14 +124,28 @@ describe('migrateMaplog: Middle Earth fixture', () => {
     }
   });
 
-  it('draws a label as a text item just right of its stamp, in the labels layer', () => {
+  it('draws a label as a text item below its stamp, in the labels layer', () => {
     const label = textFor(doc, 'mark-bree-inn');
+    const stamp = byId<InkStamp>(doc, 'mark-bree-inn');
     expect(label).toBeDefined();
     expect(label?.layer).toBe('labels');
     expect(label?.text).toBe('Prancing Pony');
-    expect(label?.at).toEqual([730, 484]);
+    // Points are [lat, lng] and lat grows upward, so "below" is a smaller lat.
+    expect(label?.at).toEqual([round(stamp.at[0] - 31.6), stamp.at[1]]);
     expect(label?.style.font).toBe('serif');
-    expect(label?.style.size).toBe(22);
+    expect(label?.style.size).toBe(12);
+  });
+
+  it('puts every mark label clear of a 36 px token: its top is 22 map units under the stamp centre', () => {
+    for (const record of fixture.maplogMarks) {
+      const label = textFor(doc, record.id);
+      if (!label) continue;
+      const stamp = byId<InkStamp>(doc, record.id);
+      expect(label.at[1], record.id).toBe(stamp.at[1]);
+      // The baseline is (stamp lat - label lat) below the stamp; the text box rises 0.8 em above it.
+      const top = (stamp.at[0] - label.at[0]) - 0.8 * label.style.size;
+      expect(top, record.id).toBeCloseTo(22, 5);
+    }
   });
 
   it('draws trails and rivers as paths on the routes layer, and walls and cliffs elsewhere', () => {
@@ -155,6 +174,7 @@ describe('migrateMaplog: Middle Earth fixture', () => {
     expect(label?.at).toEqual([470, 830]);
     expect(label?.style.italic).toBe(true);
     expect(label?.style.color).toBe('#1f5fa8');
+    expect(label?.style.size).toBe(13);
     expect(river.name).toBe('Anduin');
   });
 
@@ -171,6 +191,7 @@ describe('migrateMaplog: Middle Earth fixture', () => {
     const label = textFor(doc, 'area-lothlorien');
     expect(label?.text).toBe('Lothlórien');
     expect(label?.layer).toBe('labels');
+    expect(label?.style.size).toBe(13);
     // Centroid of the quad [575,850] [590,880] [560,900] [545,875] is about [567.5, 876.25].
     expect(label?.at[0]).toBeCloseTo(567.5, 0);
     expect(label?.at[1]).toBeCloseTo(876.25, 0);
@@ -217,6 +238,7 @@ describe('migrateMaplog: water and terrain', () => {
     expect(label?.at).toEqual([50, 50]);
     expect(label?.style.italic).toBe(true);
     expect(label?.style.color).toBe('#1f5fa8');
+    expect(label?.style.size).toBe(13);
   });
 
   it('gives an unlabelled area no text item', () => {
@@ -307,7 +329,8 @@ describe('migrateMaplog: marks', () => {
       }],
     }));
     expect(textFor(doc, 'stairs')?.text).toBe('R3 Prancing Pony (L1, to L3)');
-    expect(textFor(doc, 'stairs')?.at).toEqual([5, 20]);
+    // Stamp at [5, 6]: the label sits 31.6 map units below it (lat drops) and keeps its longitude.
+    expect(textFor(doc, 'stairs')?.at).toEqual([round(5 - 31.6), 6]);
   });
 
   it('gives a level-only or destination-only label a sensible text', () => {
@@ -388,6 +411,7 @@ describe('migrateMaplog: lines', () => {
     expect(label?.at).toEqual([0, 10]);
     expect(label?.text).toBe("King's Road");
     expect(label?.style.italic).toBeUndefined();
+    expect(label?.style.size).toBe(13);
     expect((doc.items[0] as InkPath).name).toBe("King's Road");
   });
 });
