@@ -79,7 +79,7 @@ describe('PRESETS', () => {
     const river = PRESETS.find(p => p.name === 'River');
     expect(river?.fits).toBe('path');
     expect(river?.style?.dash).toBe('wavy');
-    expect(river?.style?.stroke).toBe('#3b82c4');
+    expect(river?.style?.stroke).toBe('#3b6fa8');
     const forest = PRESETS.find(p => p.name === 'Forest');
     expect(forest?.fits).toBe('area');
     expect(forest?.style?.fillPattern).toBe('symbol:tree');

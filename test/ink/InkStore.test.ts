@@ -530,7 +530,7 @@ describe('InkStore', () => {
 			store.select(['a', 's']);
 			store.applyPresetToSelection('river');
 			const path = store.doc.items.find(i => i.id === 'a') as InkPath;
-			expect(path.style.stroke).toBe('#3b82c4');
+			expect(path.style.stroke).toBe('#3b6fa8');
 			expect(path.style.dash).toBe('wavy');
 			expect(store.doc.items.find(i => i.id === 's')).toEqual(docWith(pathItem('a'), stampItem('s')).items[1]);
 		});

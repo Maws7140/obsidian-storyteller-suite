@@ -12,6 +12,7 @@ import { isValidColor } from './model';
 import type { DashStyle, FillPattern, InkArea, InkBox, InkDoc, InkItem, InkPath, InkPoint, InkStamp, InkStyle, InkText, InkTextStyle } from './model';
 import { bounds, offsetPolyline, polylinePath, railwaySegments, rotatePoint, smoothPath, tickSegments, wavePath } from './geometry';
 import type { Bounds, Point } from './geometry';
+import { brushPieceMarkup, brushPieces, getBrush } from './brushes';
 
 export type Projector = (p: InkPoint) => Point;
 
@@ -403,7 +404,7 @@ function pathSvg(item: InkPath, ctx: Ctx): string {
 	const st = readStroke(item.style, item.scaleWithMap === false);
 	const d = shapeD(pts, false, st.smooth);
 	const arrows = arrowAttrs(item.style, ctx, st.color, st.opacity);
-	let out = openItem(item, ctx, 'ink-path', '') + strokeMarkup(pts, false, st, arrows);
+	let out = openItem(item, ctx, 'ink-path', '') + strokeMarkup(pts, false, st, arrows, ctx);
 	if (wantsHits(item, ctx)) out += hitPath(d);
 	return out + '</g>';
 }
@@ -449,7 +450,7 @@ function closedShape(item: InkItem, ctx: Ctx, cls: string, pts: Point[], st: Str
 	let out = openItem(item, ctx, cls, '');
 	const style = (item as InkArea | InkBox).style;
 	out += fillMarkup(ctx, style, d);
-	out += strokeMarkup(pts, true, st, '');
+	out += strokeMarkup(pts, true, st, '', ctx);
 	if (wantsHits(item, ctx)) out += hitPath(d);
 	return out + '</g>';
 }
@@ -474,6 +475,10 @@ interface StrokeOpts {
 	dash: DashStyle;
 	smooth: boolean;
 	vector: boolean;
+	/** A known brush id replaces the dash style. */
+	brush?: string;
+	brushFlip: boolean;
+	brushScale: number;
 }
 
 function readStroke(style: Partial<InkStyle> | undefined, vector: boolean): StrokeOpts {
@@ -486,6 +491,9 @@ function readStroke(style: Partial<InkStyle> | undefined, vector: boolean): Stro
 		dash,
 		smooth: s.smooth === true,
 		vector,
+		brush: typeof s.brush === 'string' && getBrush(s.brush) ? s.brush : undefined,
+		brushFlip: s.brushFlip === true,
+		brushScale: num(s.brushScale, 1, 0.5, 3),
 	};
 }
 
@@ -494,7 +502,61 @@ function readStroke(style: Partial<InkStyle> | undefined, vector: boolean): Stro
  * so offsets and waves scale with the map. Strokes use non-scaling width when the item
  * keeps its screen size.
  */
-function strokeMarkup(pts: Point[], closed: boolean, st: StrokeOpts, arrows: string): string {
+function strokeMarkup(pts: Point[], closed: boolean, st: StrokeOpts, arrows: string, ctx: Ctx): string {
+	let out = st.brush ? brushMarkup(pts, closed, st, ctx) : dashMarkup(pts, closed, st);
+	if (arrows && !closed && pts.length >= 2) {
+		// Invisible carrier: markers scale with stroke-width, so the width stays even though nothing is stroked.
+		const d = shapeD(pts, false, st.smooth);
+		out += `<path d="${d}" fill="none" stroke="none" stroke-width="${fmt(st.width)}"${arrows}/>`;
+	}
+	return out;
+}
+
+/** A brush's pieces in the item's stroke colour, opacity and width. */
+function brushMarkup(pts: Point[], closed: boolean, st: StrokeOpts, ctx: Ctx): string {
+	const line = st.smooth && pts.length >= (closed ? 3 : 2) ? sampleSmooth(pts, closed) : pts;
+	const pieces = brushPieces(String(st.brush), line, { width: st.width, closed, flip: st.brushFlip, scale: st.brushScale });
+	if (pieces.length === 0) return '';
+	const body = pieces
+		.map(piece => brushPieceMarkup(piece, {
+			color: st.color,
+			opacity: st.opacity,
+			vector: st.vector,
+			halo: ctx.stampHalo,
+			lookupSymbol: ctx.lookupSymbol,
+		}))
+		.join('');
+	return `<g class="ink-brush" data-brush="${escapeXml(String(st.brush))}">${body}</g>`;
+}
+
+/** Dense points along the Catmull-Rom curve through pts, so brushes follow smoothed lines. */
+function sampleSmooth(pts: Point[], closed: boolean): Point[] {
+	const n = pts.length;
+	const at = (i: number): Point => (closed ? pts[((i % n) + n) % n] : pts[Math.min(n - 1, Math.max(0, i))]);
+	const segments = closed ? n : n - 1;
+	const out: Point[] = [];
+	for (let i = 0; i < segments; i++) {
+		const p0 = at(i - 1);
+		const p1 = at(i);
+		const p2 = at(i + 1);
+		const p3 = at(i + 2);
+		const c1 = { x: p1.x + (p2.x - p0.x) / 6, y: p1.y + (p2.y - p0.y) / 6 };
+		const c2 = { x: p2.x - (p3.x - p1.x) / 6, y: p2.y - (p3.y - p1.y) / 6 };
+		for (let k = 0; k < 8; k++) {
+			const t = k / 8;
+			const u = 1 - t;
+			out.push({
+				x: u * u * u * p1.x + 3 * u * u * t * c1.x + 3 * u * t * t * c2.x + t * t * t * p2.x,
+				y: u * u * u * p1.y + 3 * u * u * t * c1.y + 3 * u * t * t * c2.y + t * t * t * p2.y,
+			});
+		}
+	}
+	if (!closed) out.push({ ...pts[n - 1] });
+	return out;
+}
+
+/** The dash style of a line. Used when no brush is set. */
+function dashMarkup(pts: Point[], closed: boolean, st: StrokeOpts): string {
 	const w = st.width;
 	const base = `fill="none" stroke="${escapeXml(st.color)}" stroke-opacity="${fmt(st.opacity)}"`
 		+ ' stroke-linecap="round" stroke-linejoin="round"'
@@ -535,10 +597,6 @@ function strokeMarkup(pts: Point[], closed: boolean, st: StrokeOpts, arrows: str
 		}
 		default:
 			out = line(d, w);
-	}
-	if (arrows && !closed && d) {
-		// Invisible carrier: markers scale with stroke-width, so the width stays even though nothing is stroked.
-		out += `<path d="${d}" fill="none" stroke="none" stroke-width="${fmt(w)}"${arrows}/>`;
 	}
 	return out;
 }

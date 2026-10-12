@@ -469,3 +469,74 @@ describe('bounds and selection', () => {
 		expect(buildSelection([], { project, scale: 1 })).toBe('');
 	});
 });
+
+describe('brushes in the item markup', () => {
+	it('draws a brush instead of the dash style, with the hit stroke unchanged', () => {
+		const svg = buildItem(pathItem({ style: style({ dash: 'dotted', brush: 'cliff', stroke: '#5c4a3a' }) }), opts);
+		expect(svg).toContain('class="ink-brush" data-brush="cliff"');
+		expect(svg).not.toContain('class="ink-stroke"');
+		expect(svg).toContain('stroke="#5c4a3a"');
+		expect(svg).toContain('stroke="transparent" stroke-width="12"');
+		expect(svg).toContain('pointer-events:stroke');
+	});
+
+	it('keeps the item id and kind on the group', () => {
+		const svg = buildItem(pathItem({ id: 'road-9', style: style({ brush: 'road' }) }), opts);
+		expect(svg).toContain('data-ink-id="road-9"');
+		expect(svg).toContain('data-ink-kind="path"');
+	});
+
+	it('falls back to the dash style for an unknown brush id', () => {
+		const svg = buildItem(pathItem({ style: style({ dash: 'dashed', brush: 'no-such-brush' }) }), opts);
+		expect(svg).not.toContain('ink-brush');
+		expect(svg).toContain('class="ink-stroke"');
+		expect(svg).toMatch(/stroke-dasharray="[\d.]+ [\d.]+"/);
+	});
+
+	it('changes the markup when the brush flips or the scale changes', () => {
+		const base = buildItem(pathItem({ style: style({ brush: 'cliff' }) }), opts);
+		const flipped = buildItem(pathItem({ style: style({ brush: 'cliff', brushFlip: true }) }), opts);
+		const scaled = buildItem(pathItem({ style: style({ brush: 'cliff', brushScale: 2 }) }), opts);
+		expect(flipped).not.toBe(base);
+		expect(scaled).not.toBe(base);
+	});
+
+	it('uses the item opacity on brush strokes', () => {
+		const svg = buildItem(pathItem({ style: style({ brush: 'wall', strokeOpacity: 0.5 }) }), opts);
+		expect(svg).toContain('stroke-opacity="0.5"');
+	});
+
+	it('outlines an area with its brush and leaves the fill alone', () => {
+		const fillStyle = { fill: '#3b82c4', fillOpacity: 0.4, stroke: '#5c4a3a', fillPattern: 'hatch' as const };
+		const plain = buildItem(areaItem({ style: style(fillStyle) }), opts);
+		const rocky = buildItem(areaItem({ style: style({ ...fillStyle, brush: 'rocky-shore' }) }), opts);
+		expect(rocky).toContain('class="ink-brush" data-brush="rocky-shore"');
+		const fillOf = (svg: string): string | undefined => svg.match(/<path class="ink-fill"[^>]*>/)?.[0];
+		expect(fillOf(rocky)).toBeDefined();
+		expect(fillOf(rocky)).toBe(fillOf(plain));
+		expect(rocky).not.toContain('class="ink-stroke"');
+	});
+
+	it('draws brushes on rectangles and ellipses too', () => {
+		expect(buildItem(boxItem('rect', { style: style({ brush: 'palisade' }) }), opts)).toContain('data-brush="palisade"');
+		expect(buildItem(boxItem('ellipse', { style: style({ brush: 'unexplored' }) }), opts)).toContain('data-brush="unexplored"');
+	});
+
+	it('shows brushes in previews through buildItem and in the scene', () => {
+		const scene = buildScene(defaultInkDoc(), opts);
+		expect(scene.items).toEqual([]);
+		const doc = normalizeInk({ layers: defaultInkDoc().layers, items: [pathItem({ style: style({ brush: 'trail' }) })] });
+		expect(buildScene(doc, opts).items[0].svg).toContain('data-brush="trail"');
+	});
+
+	it('keeps brush strokes non-scaling for keep-size items', () => {
+		const svg = buildItem(pathItem({ scaleWithMap: false, style: style({ brush: 'stream' }) }), opts);
+		expect(svg).toContain('vector-effect="non-scaling-stroke"');
+	});
+
+	it('follows smoothed curves when a brush and smoothing are both set', () => {
+		const smooth = buildItem(pathItem({ points: [[0, 0], [10, 10], [20, 0], [30, 10]], style: style({ brush: 'wall', smooth: true }) }), opts);
+		const sharp = buildItem(pathItem({ points: [[0, 0], [10, 10], [20, 0], [30, 10]], style: style({ brush: 'wall', smooth: false }) }), opts);
+		expect(smooth.length).toBeGreaterThan(sharp.length);
+	});
+});

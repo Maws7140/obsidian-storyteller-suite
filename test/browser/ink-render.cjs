@@ -9,11 +9,12 @@ const { chromium } = require(path + 'node_modules/playwright');
 const esbuild = require(path + 'node_modules/esbuild');
 
 const SHOT = '/home/user/wt/ink-w1c-render.png';
+const SHEET = '/home/user/wt/w5a-brushes.png';
 
 (async () => {
 	const bundle = await esbuild.build({
 		stdin: {
-			contents: "export { createInkLayer } from './src/leaflet/ink/InkLayer'; export { normalizeInk, defaultInkDoc } from './src/leaflet/ink/model';",
+			contents: "export { createInkLayer } from './src/leaflet/ink/InkLayer'; export { normalizeInk, defaultInkDoc } from './src/leaflet/ink/model'; export { buildItem } from './src/leaflet/ink/svgBuild'; export { BRUSHES } from './src/leaflet/ink/brushes'; export { oldLinePieces, oldPieceMarkup } from './test/browser/maplog-old/lines';",
 			resolveDir: path,
 			loader: 'ts',
 		},
@@ -297,6 +298,118 @@ const SHOT = '/home/user/wt/ink-w1c-render.png';
 
 	assert.deepEqual(errors, [], 'no page errors');
 	console.log('screenshot', SHOT);
+
+	// 10. Brush sheet: every brush through the real layer, then old Maplog lines beside the new brushes at two zoom levels.
+	const sheet = await br.newPage({ viewport: { width: 1320, height: 900 } });
+	const sheetErrors = [];
+	sheet.on('pageerror', e => sheetErrors.push(e.message));
+	sheet.on('console', m => { if (m.type() === 'error') sheetErrors.push(m.text()); });
+	await sheet.setContent('<body style="margin:0;padding:20px 24px;background:#f4ecd8;color:#2b1d12;font:14px Georgia,serif">'
+		+ '<h2 style="margin:0 0 6px">Map Ink barrier brushes (W5a)</h2>'
+		+ '<div style="margin-bottom:10px">Left to right: Maplog as it was before removal, then the Map Ink brush of the same name. Zoom 1 shows every brush; zoom 2 doubles the map scale and keeps Maplog at its screen-pixel geometry, as Maplog drew it.</div>'
+		+ '<h3 style="margin:14px 0 6px">Rack, drawn by the Map Ink layer</h3>'
+		+ '<div id="rack" style="width:1000px;height:1200px;position:relative"></div>'
+		+ '<div id="cmp"></div></body>');
+	await sheet.addStyleTag({ content: fs.readFileSync(path + 'node_modules/leaflet/dist/leaflet.css', 'utf8') + fs.readFileSync(path + 'styles.css', 'utf8') });
+	await sheet.addScriptTag({ content: fs.readFileSync(path + 'node_modules/leaflet/dist/leaflet.js', 'utf8') });
+	await sheet.addScriptTag({ content: bundle.outputFiles[0].text });
+	const sheetCheck = await sheet.evaluate(() => {
+		const BR = INK.BRUSHES;
+		const SAMPLE = [0, 1, 2, 3, 4, 5, 6, 7, 8].map(i => ({ x: 20 + i * 27.5, y: 31 + 9 * Math.sin(i * 0.9) }));
+		const COL = 260;
+		const ROW = 62;
+		const LINES = ['wall', 'offmap', 'bars', 'ledge', 'cliff', 'border', 'road', 'track', 'trail', 'river', 'stream'];
+		const brushStyle = (b, extra) => Object.assign({
+			stroke: b.defaultStyle.stroke, strokeWidth: b.defaultStyle.strokeWidth, strokeOpacity: 1,
+			dash: 'solid', fill: '#000000', fillOpacity: 0, fillPattern: 'none', brush: b.id,
+		}, extra || {});
+
+		// 1. Rack: every brush as a real Map Ink path, plus a flipped cliff and a rocky-shore area outline.
+		const rowTop = (i) => 20 + i * 46;
+		// Leaflet's simple CRS has y pointing up, so flip rows to read top-down.
+		const up = (v) => (20 + (BR.length + 2) * 46 + 20) - v;
+		const items = [];
+		BR.forEach((b, i) => {
+			items.push({ id: 'rack-' + b.id, kind: 'path', layer: 'routes', scaleWithMap: true,
+				points: SAMPLE.map(p => [up(rowTop(i) + p.y), p.x]), style: brushStyle(b) });
+			items.push({ id: 'label-' + b.id, kind: 'text', layer: 'labels', scaleWithMap: false,
+				at: [up(rowTop(i) + 36), 270], text: b.name + '  (' + b.id + ')', rotation: 0,
+				style: { font: 'sans', size: 13, color: '#2b1d12', halo: '#f4ecd8', haloWidth: 3, align: 'start' } });
+		});
+		const cliff = BR.find(b => b.id === 'cliff');
+		const flipTop = rowTop(BR.length);
+		items.push({ id: 'rack-cliff-flip', kind: 'path', layer: 'routes', scaleWithMap: true,
+			points: SAMPLE.map(p => [up(flipTop + p.y), p.x]), style: brushStyle(cliff, { brushFlip: true }) });
+		items.push({ id: 'label-cliff-flip', kind: 'text', layer: 'labels', scaleWithMap: false,
+			at: [up(flipTop + 36), 270], text: 'Cliff, flipped', rotation: 0, style: { font: 'sans', size: 13, color: '#2b1d12', halo: '#f4ecd8', haloWidth: 3, align: 'start' } });
+		const areaTop = rowTop(BR.length + 1);
+		items.push({ id: 'rack-area-rocky', kind: 'area', layer: 'terrain', scaleWithMap: true,
+			points: [[up(areaTop), 20], [up(areaTop), 240], [up(areaTop + 40), 240], [up(areaTop + 40), 20]],
+			style: { stroke: '#6b6258', strokeWidth: 1.5, strokeOpacity: 1, dash: 'solid', fill: '#c9a66b', fillOpacity: 0.3, fillPattern: 'none', brush: 'rocky-shore' } });
+		const height = rowTop(BR.length + 2) + 20;
+		const rack = document.getElementById('rack');
+		rack.style.height = height + 'px';
+		window.map = L.map('rack', { crs: L.CRS.Simple, minZoom: -2, maxZoom: 4, attributionControl: false, zoomControl: false }).setView([height / 2, 150], 0);
+		L.rectangle([[0, 0], [height, 300]], { color: '#8a7650', weight: 1, fillColor: '#e8d9b5', fillOpacity: 0.6 }).addTo(map);
+		window.ink = INK.createInkLayer(L, { onItemClick: () => {} }).addTo(map);
+		ink.setDoc(INK.normalizeInk({ layers: INK.defaultInkDoc().layers, items }));
+		const rackNodes = {};
+		for (const b of BR) {
+			rackNodes[b.id] = {
+				brushNodes: document.querySelectorAll(`[data-ink-id="rack-${b.id}"] .ink-brush`).length,
+				pieces: document.querySelectorAll(`[data-ink-id="rack-${b.id}"] .ink-brush > *`).length,
+			};
+		}
+		const flipHtml = document.querySelector('[data-ink-id="rack-cliff-flip"] .ink-brush')?.innerHTML || '';
+		const plainHtml = document.querySelector('[data-ink-id="rack-cliff"] .ink-brush')?.innerHTML || '';
+		rackNodes.areaRocky = document.querySelectorAll('[data-ink-id="rack-area-rocky"] .ink-brush > *').length;
+		rackNodes.flipDiffers = flipHtml !== '' && flipHtml !== plainHtml;
+
+		// 2. Comparison: old Maplog pieces and new brush markup for the same sample line at two zoom levels.
+		const newSvg = (brushId, z) => {
+			const b = BR.find(x => x.id === brushId);
+			const item = { id: 'cell-' + brushId, kind: 'path', layer: 'routes', scaleWithMap: true,
+				points: SAMPLE.map(p => [p.y, p.x]), style: brushStyle(b) };
+			const markup = INK.buildItem(item, { project: p => ({ x: p[1], y: p[0] }), readOnly: true, idPrefix: 'sh-' + brushId + '-' });
+			return `<svg width="${COL * z}" height="${ROW * z}" viewBox="0 0 ${COL} ${ROW}" style="display:block;flex:none">${markup}</svg>`;
+		};
+		const oldSvg = (mark, z) => {
+			const pts = SAMPLE.map(p => ({ x: p.x * z, y: p.y * z }));
+			const markup = INK.oldPieceMarkup(INK.oldLinePieces(mark, pts), '#222222');
+			return `<svg width="${COL * z}" height="${ROW * z}" viewBox="0 0 ${COL * z} ${ROW * z}" style="display:block;flex:none">${markup}</svg>`;
+		};
+		const none = (z) => `<div style="width:${COL * z}px;flex:none;color:#6b5a3e;font-style:italic">No Maplog line of this kind</div>`;
+		const row = (label, left, right) => `<div style="display:flex;align-items:center;gap:16px;margin:0 0 8px">`
+			+ `<div style="width:190px;flex:none"><b>${label.name}</b><br><span style="color:#6b5a3e;font-size:12px">${label.id}</span></div>`
+			+ `${left}${right}</div>`;
+		const head = (z) => `<div style="display:flex;gap:16px;margin:0 0 6px;font-size:12px;color:#6b5a3e"><div style="width:190px;flex:none"></div>`
+			+ `<div style="width:${COL * z}px;flex:none">Maplog (old)</div><div style="width:${COL * z}px;flex:none">Map Ink brush</div></div>`;
+		const panel = (title, z, list) => `<h3 style="margin:18px 0 6px">${title}</h3>${head(z)}`
+			+ list.map(b => row(b, LINES.includes(b.id) ? oldSvg(b.id, z) : none(z), newSvg(b.id, z))).join('');
+		document.getElementById('cmp').innerHTML = panel('Zoom 1: every brush', 1, BR)
+			+ panel('Zoom 2: Maplog lines against their Map Ink brushes', 2, BR.filter(b => LINES.includes(b.id)));
+
+		// 3. Every brush has a markup node in the comparison, with pieces.
+		const cmpNodes = {};
+		for (const b of BR) {
+			const svg = newSvg(b.id, 1);
+			cmpNodes[b.id] = (svg.match(new RegExp('data-brush="' + b.id + '"', 'g')) || []).length;
+		}
+		return { rackNodes, cmpNodes };
+	});
+	for (const b of Object.keys(sheetCheck.rackNodes).filter(k => !['areaRocky', 'flipDiffers'].includes(k))) {
+		assert.equal(sheetCheck.rackNodes[b].brushNodes, 1, `brush ${b} drawn through the Map Ink layer`);
+		assert.ok(sheetCheck.rackNodes[b].pieces > 0, `brush ${b} has pieces in the layer`);
+	}
+	assert.ok(sheetCheck.rackNodes.areaRocky > 0, 'area outlined with rocky-shore draws brush pieces');
+	assert.ok(sheetCheck.rackNodes.flipDiffers, 'flipped cliff draws its marks on the other side');
+	for (const [id, n] of Object.entries(sheetCheck.cmpNodes)) assert.equal(n, 1, `comparison draws ${id}`);
+	await sheet.waitForTimeout(200);
+	await sheet.screenshot({ path: SHEET, fullPage: true });
+	assert.deepEqual(sheetErrors, [], 'brush sheet has no page errors');
+	console.log('brush sheet', SHEET);
+	await sheet.close();
+	assert.deepEqual(errors, [], 'no page errors');
 	console.log('PASS: Map Ink renders every kind, dash style and fill, zoom and pan keep nodes and placement.');
 	await br.close();
 })().catch(e => { console.error(e); process.exit(1); });
