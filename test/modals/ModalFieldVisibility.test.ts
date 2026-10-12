@@ -31,7 +31,7 @@ const ENTITY_PROPERTIES: Record<string, readonly string[]> = {
     event: [
         'dateTime', 'description', 'outcome', 'status', 'characters', 'location', 'narrativeMarkers',
         'narrativeSequence', 'isMilestone', 'dependencies', 'progress', 'sources', 'certainty', 'claimedBy',
-        'disputedBy', 'images', 'tags', 'groups', 'branches', 'customFields',
+        'disputedBy', 'images', 'tags', 'groups', 'branches', 'customFields', 'icon', 'iconColor',
     ],
     location: [
         'profileImagePath', 'description', 'history', 'locationType', 'type', 'region', 'status', 'images',
@@ -65,7 +65,7 @@ const ENTITY_PROPERTIES: Record<string, readonly string[]> = {
     reference: ['category', 'tags', 'profileImagePath', 'content', 'customFields'],
     scene: [
         'chapterId', 'date', 'campaignBoardMapId', 'status', 'priority', 'povCharacter', 'emotion', 'intensity',
-        'synopsis', 'tags', 'profileImagePath', 'content', 'beats', 'linkedCharacters', 'linkedLocations',
+        'synopsis', 'tags', 'profileImagePath', 'icon', 'iconColor', 'content', 'beats', 'linkedCharacters', 'linkedLocations',
         'linkedEvents', 'linkedItems', 'linkedGroups', 'setupScenes', 'payoffScenes', 'filePath',
     ],
     chapter: [
@@ -111,7 +111,7 @@ const FIELD_COVERAGE: Record<string, Record<string, readonly string[]>> = {
         characters: ['characters'], location: ['location'],
         narrative: ['narrativeMarkers', 'narrativeSequence'],
         timeline: ['isMilestone', 'dependencies', 'progress'],
-        provenance: ['sources', 'certainty', 'claimedBy', 'disputedBy'], media: ['images'],
+        provenance: ['sources', 'certainty', 'claimedBy', 'disputedBy'], media: ['images'], icon: ['icon', 'iconColor'],
         organization: ['tags', 'groups', 'branches'], customFields: ['customFields'],
     },
     location: {
@@ -169,7 +169,7 @@ const FIELD_COVERAGE: Record<string, Record<string, readonly string[]>> = {
     scene: {
         chapterId: ['chapterId'], date: ['date'], campaignBoardMapId: ['campaignBoardMapId'],
         status: ['status'], priority: ['priority'], povCharacter: ['povCharacter'], emotion: ['emotion'],
-        intensity: ['intensity'], synopsis: ['synopsis'], tags: ['tags'],
+        intensity: ['intensity'], synopsis: ['synopsis'], tags: ['tags'], icon: ['icon', 'iconColor'],
         profileImage: ['profileImagePath'], content: ['content'], beats: ['beats'],
         linkedCharacters: ['linkedCharacters'], linkedLocations: ['linkedLocations'],
         linkedEvents: ['linkedEvents'], linkedItems: ['linkedItems'], linkedGroups: ['linkedGroups'],
