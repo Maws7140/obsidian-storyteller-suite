@@ -13973,11 +13973,16 @@ body.mod-rtl .storyteller-group-members {
 	display: flex;
 	gap: 3px;
 	flex: 1 1 auto;
-	flex-wrap: wrap;
+	flex-wrap: nowrap;
+}
+/* Brush and stamp previews take the flyout colour, so they show what the next item looks like. */
+.ink-brush-thumb,
+.ink-stamp-btn svg {
+	color: var(--ink-flyout-colour, currentColor);
 }
 .ink-flyout-swatch {
-	width: 16px;
-	height: 16px;
+	width: 13px;
+	height: 13px;
 	min-width: 0;
 	padding: 0;
 	border-radius: 50%;

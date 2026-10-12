@@ -288,8 +288,7 @@ export class InkToolbar {
 			}
 		}
 		// Thumbnails draw in currentColor, so the previews show the colour the next item will have.
-		this.brushScroll.style.color = style.stroke;
-		this.grid.style.color = style.stroke;
+		for (const el of [this.brushScroll, this.grid]) el.style.setProperty?.('--ink-flyout-colour', style.stroke);
 	}
 
 	destroy(): void {
