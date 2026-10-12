@@ -124,7 +124,8 @@ export class TimelineControlsBuilder {
             showEras: false,
             showPresence: false,
             narrativeOrder: false,
-            icons: defaultTimelineIconMode(plugin.settings.timelineShowIcons)
+            icons: defaultTimelineIconMode(plugin.settings.timelineShowIcons),
+            minimal: false
         };
     }
 
@@ -490,6 +491,22 @@ export class TimelineControlsBuilder {
             return { value, btn };
         });
 
+        // Minimal: a Timeline-only toggle that draws each event as just its icon
+        // or image, with the details on hover.
+        const minimal = wrapper.createEl('button', {
+            cls: 'clickable-icon storyteller-toolbar-btn storyteller-minimal-toggle',
+            attr: { 'aria-label': 'Minimal timeline: icons only, details on hover', title: 'Minimal: icons only, details on hover' }
+        });
+        setIcon(minimal.createSpan('storyteller-segment-icon'), 'circle-dot');
+        minimal.createSpan({ cls: 'storyteller-segment-label', text: 'Minimal' });
+        minimal.addEventListener('click', () => {
+            if (this.state.ganttMode || this.state.timelineLayout !== 'timeline') return;
+            this.state.minimal = !this.state.minimal;
+            this.callbacks.getRenderer()?.setMinimal(this.state.minimal);
+            sync();
+            this.callbacks.onStateChange();
+        });
+
         const sync = () => {
             const active = current();
             buttons.forEach(({ mode, btn }) => {
@@ -505,6 +522,10 @@ export class TimelineControlsBuilder {
                 btn.setAttribute('aria-checked', String(on));
                 btn.disabled = !timelineActive;
             });
+            minimal.toggleClass('is-hidden', !timelineActive);
+            minimal.toggleClass('is-active', timelineActive && this.state.minimal === true);
+            minimal.setAttribute('aria-pressed', String(timelineActive && this.state.minimal === true));
+            minimal.disabled = !timelineActive;
         };
         sync();
         return wrapper;
@@ -708,8 +729,7 @@ export class TimelineControlsBuilder {
         [
             { value: 'off', label: 'Off' },
             { value: 'icons', label: 'Icons' },
-            { value: 'images', label: 'Icons and images' },
-            { value: 'nodes', label: 'Icon nodes' }
+            { value: 'images', label: 'Icons and images' }
         ].forEach(opt => {
             const option = select.createEl('option', { value: opt.value, text: opt.label });
             if (opt.value === current) option.selected = true;

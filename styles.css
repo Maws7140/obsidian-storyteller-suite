@@ -11871,6 +11871,24 @@ body.mod-rtl .storyteller-group-members {
   display: none;
 }
 
+/* Minimal toggle: Timeline only, pressed while on. */
+.storyteller-minimal-toggle.is-hidden {
+  display: none;
+}
+
+.storyteller-minimal-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  width: auto;
+  padding: 0 8px;
+}
+
+.storyteller-minimal-toggle.is-active {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
+
 .storyteller-segment {
   display: inline-flex;
   align-items: stretch;

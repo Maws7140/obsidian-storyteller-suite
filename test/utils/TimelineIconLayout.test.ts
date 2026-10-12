@@ -144,11 +144,7 @@ describe('verticalCardWidth for photo card heights', () => {
 
 import { NODE_GAP, NODE_SIZE, nodeGlyphSize, placeIconNodes } from '../../src/utils/TimelineIconLayout';
 
-describe('icon nodes mode', () => {
-    it('parses nodes', () => {
-        expect(parseTimelineIconMode('Nodes')).toBe('nodes');
-    });
-
+describe('minimal timeline nodes', () => {
     it('keeps spread out nodes on the axis', () => {
         expect(placeIconNodes([0, 100, 200])).toEqual([0, 0, 0]);
     });

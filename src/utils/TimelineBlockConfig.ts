@@ -107,7 +107,7 @@ export function parseTimelineBlock(source: string): TimelineBlockConfig {
             case 'icons': {
                 const mode = parseTimelineIconMode(value);
                 if (mode) config.iconMode = mode;
-                else config.errors.push(`Icons "${value}" is not one of: off, icons, images, nodes`);
+                else config.errors.push(`Icons "${value}" is not one of: off, icons, images`);
                 break;
             }
             case 'milestones': config.filters.milestonesOnly = asBoolean(value); break;

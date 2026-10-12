@@ -237,6 +237,7 @@ export class TimelineModal extends Modal {
             showPresence: this.currentState.showPresence,
             narrativeOrder: this.currentState.narrativeOrder,
             iconMode: this.currentState.icons,
+            minimal: this.currentState.minimal === true,
             getReferenceDate: () => this.plugin.getReferenceTodayDate()
         });
 

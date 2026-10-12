@@ -70,6 +70,8 @@ export interface TimelineRendererOptions {
      * Defaults to off when the plugin's timelineShowIcons setting is off, else icons.
      */
     iconMode?: TimelineIconMode;
+    /** Timeline layout only: events draw as bare icon nodes, details on hover. */
+    minimal?: boolean;
 }
 
 /** Shown instead of a PNG export when the canvas holds a web image that blocks reading pixels. */
@@ -411,7 +413,8 @@ export class NativeTimelineRenderer {
             narrativeOrder: false,
             getReferenceDate: () => new Date(),
             ...options,
-            iconMode: options.iconMode ?? defaultTimelineIconMode(plugin.settings.timelineShowIcons)
+            iconMode: options.iconMode ?? defaultTimelineIconMode(plugin.settings.timelineShowIcons),
+            minimal: options.minimal === true
         };
     }
 
@@ -471,6 +474,7 @@ export class NativeTimelineRenderer {
     setNarrativeOrder(value: boolean): void { this.options.narrativeOrder = value; this.rebuild(false); }
     // Icons change what each marker and card draws, not where it sits, so a repaint is enough.
     setIconMode(value: TimelineIconMode): void { this.options.iconMode = value; this.scheduleDraw(); }
+    setMinimal(value: boolean): void { this.options.minimal = value; this.iconSourceMemo.clear(); this.hideTooltip(); this.scheduleDraw(); }
     setShowScenes(value: boolean): void { this.showScenes = value; this.rebuild(false); }
     setShowWatchedNotes(value: boolean): void { this.showWatchedNotes = value; this.rebuild(false); }
     setStackEnabled(value: boolean): void { this.options.stackEnabled = value; this.rebuild(false); }
@@ -1030,8 +1034,6 @@ export class NativeTimelineRenderer {
      * of its neighbour, so both paths read the answer from here.
      */
     private chipWidth(ctx: CanvasRenderingContext2D, item: NativeItem, minimum: number): number {
-        // In "Icon nodes" mode a chip is a round node as tall as its row.
-        if (this.nodesMode()) return this.rowHeight() - 7;
         ctx.font = `11px ${this.css('--font-interface', 'sans-serif')}`;
         const narrativeIconWidth = narrativeDirectionOf(item.event) ? 18 : 0;
         return Math.max(minimum, Math.min(MAX_CHIP_WIDTH, this.text.measure(ctx, this.itemLabel(item)) + 34 + narrativeIconWidth));
@@ -2479,14 +2481,6 @@ export class NativeTimelineRenderer {
             || (item === this.selected ? this.css('--interactive-accent', '#8b5cf6') : item.laneColor);
         // How far a bar's label moves right to clear its icon.
         let barIconShift = 0;
-        if (isPoint && this.nodesMode()) {
-            // A node, no label: the name and details are in the tooltip.
-            ctx.restore();
-            const diameter = Math.min(rect.width, rect.height);
-            this.drawEventNode(ctx, rect.x + rect.width / 2, rect.y + rect.height / 2, item, diameter);
-            this.drawConflictBadge(ctx, rect, this.conflictSeverity(item.event));
-            return;
-        }
         if (isPoint) {
             // Opaque backing in the plot colour under the translucent fill, so
             // a stem behind the chip cannot show through its label.
@@ -2577,7 +2571,7 @@ export class NativeTimelineRenderer {
         // Keep the label clear of the corner badge, which sits over the top
         // few pixels at the right edge.
         const labelAvailable = severity ? available - CONFLICT_BADGE_INSET : available;
-        if (labelAvailable > 18 && !this.nodesMode()) {
+        if (labelAvailable > 18) {
             ctx.fillStyle = isPoint ? this.css('--text-normal', '#e5e7eb') : this.css('--text-on-accent', '#fff');
             ctx.font = `11px ${this.css('--font-interface', 'sans-serif')}`;
             ctx.fillText(this.truncate(ctx, labelOverride || this.itemLabel(item), labelAvailable), labelX, rect.y + rect.height / 2 + 4);
@@ -2839,7 +2833,7 @@ export class NativeTimelineRenderer {
         if (this.iconSourceMemo.has(event)) return this.iconSourceMemo.get(event) ?? null;
         const mode = this.options.iconMode ?? 'off';
         const source = iconForEntity(event, {
-            showIcons: mode !== 'off' && this.plugin.settings.timelineShowIcons !== false,
+            showIcons: (mode !== 'off' || this.nodesMode()) && this.plugin.settings.timelineShowIcons !== false,
             useCoverImage: this.plugin.settings.timelineUseCoverImage !== false
         });
         this.iconSourceMemo.set(event, source);
@@ -2903,9 +2897,7 @@ export class NativeTimelineRenderer {
      */
     private planMarkerIcons(items: readonly NativeItem[], positions: readonly number[]): void {
         this.markerIconItems.clear();
-        // Nodes carry the icons in "Icon nodes" mode; axis markers stay plain dots.
-        const mode = this.options.iconMode ?? 'off';
-        if (mode === 'off' || mode === 'nodes') return;
+        if ((this.options.iconMode ?? 'off') === 'off') return;
         const roomy = markerIconRoom(positions);
         items.forEach((item, index) => {
             if (roomy[index] && this.iconSourceFor(item.event)) this.markerIconItems.add(item);
@@ -2934,8 +2926,8 @@ export class NativeTimelineRenderer {
     }
 
     /**
-     * An icon disc of any size: the axis marker disc and the event nodes of
-     * "Icon nodes" mode. Returns false when nothing is ready.
+     * An icon disc of any size: the axis marker disc and the minimal timeline's
+     * event nodes. Returns false when nothing is ready.
      */
     private drawIconNode(ctx: CanvasRenderingContext2D, x: number, y: number, item: NativeItem, source: EntityIconSource, size: number, glyphSize: number): boolean {
         if (!source) return false;
@@ -2979,7 +2971,7 @@ export class NativeTimelineRenderer {
     }
 
     /**
-     * One event in "Icon nodes" mode: its icon or image, or, without one (or while
+     * One event in the minimal timeline: its icon or image, or, without one (or while
      * it loads), a disc in the event colour with the name's first letter. Hovered
      * and selected nodes get a ring.
      */
@@ -3026,13 +3018,13 @@ export class NativeTimelineRenderer {
         ctx.restore();
     }
 
-    /** Whether the timeline draws events as bare icon nodes. */
+    /** Whether the timeline draws events as bare icon nodes: the minimal Timeline view. */
     private nodesMode(): boolean {
-        return (this.options.iconMode ?? 'off') === 'nodes';
+        return this.options.minimal === true && this.isTimelineLayout();
     }
 
     /**
-     * "Icon nodes" along a straight axis, for the horizontal and vertical timelines.
+     * Minimal timeline nodes along a straight axis, for the horizontal and vertical timelines.
      * Crowded nodes step off the axis in tiers, each on a stem from its true spot.
      */
     private drawAxisNodes(
@@ -3589,7 +3581,7 @@ export class NativeTimelineRenderer {
             // The cover image as a banner above the text, when the note has one.
             const url = this.coverUrl(event.profileImagePath!);
             if (url) tooltip.createEl('img', { cls: 'sts-native-timeline-tooltip-banner', attr: { src: url, alt: '' } });
-        } else if (mode === 'nodes') {
+        } else if (this.nodesMode()) {
             // A node shows its picture small, so the hover card shows it large.
             const url = this.photoUrl(source);
             if (url) tooltip.createEl('img', { cls: 'sts-native-timeline-tooltip-banner', attr: { src: url, alt: '' } });

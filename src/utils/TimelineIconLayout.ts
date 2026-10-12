@@ -4,18 +4,14 @@
  * unit tested. NativeTimelineRenderer applies them while it draws.
  */
 
-/**
- * off: plain dots and bars. icons: icons on markers, bars and cards. images: also
- * cover image strips on cards. nodes: a minimal timeline where each event is only
- * its icon or image, with the details on hover.
- */
-export type TimelineIconMode = 'off' | 'icons' | 'images' | 'nodes';
+/** off: plain dots and bars. icons: icons on markers, bars and cards. images: also cover image strips on cards. */
+export type TimelineIconMode = 'off' | 'icons' | 'images';
 
 /** Parse a stored or block-supplied mode. Returns undefined for anything else. */
 export function parseTimelineIconMode(value: unknown): TimelineIconMode | undefined {
     if (typeof value !== 'string') return undefined;
     const v = value.trim().toLowerCase();
-    if (v === 'off' || v === 'icons' || v === 'images' || v === 'nodes') return v;
+    if (v === 'off' || v === 'icons' || v === 'images') return v;
     return undefined;
 }
 
@@ -97,7 +93,7 @@ export function cardShowsImageStrip(mode: TimelineIconMode, coverPath: string | 
     return mode === 'images' && typeof coverPath === 'string' && coverPath.trim() !== '';
 }
 
-/** Diameter of an event node in "Icon nodes" mode on the timeline axis. */
+/** Diameter of an event node in the minimal timeline. */
 export const NODE_SIZE = 30;
 /** Gap between two nodes in the same tier. */
 export const NODE_GAP = 6;
@@ -107,7 +103,7 @@ export const NODE_MAX_TIERS = 4;
 export const NODE_HOVER_SCALE = 1.2;
 
 /**
- * Tier for each node along an axis, in "Icon nodes" mode. 0 sits on the axis,
+ * Tier for each node along an axis, in the minimal timeline. 0 sits on the axis,
  * negative tiers go before it (above, or left) and positive tiers after it.
  *
  * Greedy, in axis order: a node takes the first tier, trying 0, -1, 1, -2, 2...

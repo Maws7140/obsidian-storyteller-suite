@@ -490,6 +490,7 @@ export class TimelineView extends ItemView {
             showPresence: this.currentState.showPresence,
             narrativeOrder: this.currentState.narrativeOrder,
             iconMode: this.currentState.icons,
+            minimal: this.currentState.minimal === true,
             getReferenceDate: () => this.plugin.getReferenceTodayDate(),
             defaultGanttDuration: this.plugin.settings.ganttDefaultDuration ?? 1,
             showProgressBars: this.plugin.settings.ganttShowProgressBars ?? true,
@@ -937,6 +938,7 @@ export class TimelineView extends ItemView {
             showPresence: this.currentState.showPresence,
             narrativeOrder: this.currentState.narrativeOrder,
             icons: this.currentState.icons,
+            minimal: this.currentState.minimal === true,
             currentTrackId: this.currentState.currentTrackId,
             currentForkId: this.currentState.currentForkId,
             // Layers live on the view rather than in TimelineUIState, but they
@@ -995,6 +997,7 @@ export class TimelineView extends ItemView {
                 showPresence: state.showPresence === true,
                 narrativeOrder: state.narrativeOrder === true,
                 icons: parseTimelineIconMode(state.icons) ?? defaultTimelineIconMode(this.plugin.settings.timelineShowIcons),
+                minimal: state.minimal === true,
                 currentTrackId: typeof state.currentTrackId === 'string' ? state.currentTrackId : undefined,
                 currentForkId: typeof state.currentForkId === 'string' ? state.currentForkId : undefined
             };
