@@ -222,6 +222,26 @@ describe('fills and patterns', () => {
 		expect(svg).not.toContain('url(#');
 	});
 
+	it('draws water as staggered bands of waves on a 32 x 64 tile that follow the zoom only partly', () => {
+		const water = (brushDetail?: number) => buildScene(
+			normalizeInk({
+				layers: [{ id: 'terrain', name: 'T', visible: true, locked: false }],
+				items: [areaItem({ id: 'sea', style: style({ fillPattern: 'waves', patternColor: '#2a6aa8' }) })],
+			}),
+			{ ...opts, brushDetail },
+		);
+		const plain = water();
+		expect(plain.defs).toContain('width="32" height="64"');
+		expect(plain.defs).toContain('stroke="#2a6aa8"');
+		expect((plain.defs.match(/M2 /g) ?? []).length).toBe(3);
+		expect((plain.defs.match(/M18 /g) ?? []).length).toBe(3);
+		expect(plain.defs).not.toContain('patternTransform');
+		const zoomedIn = water(0.66);
+		expect(zoomedIn.defs).toContain('patternTransform="scale(0.66)"');
+		// The fill keeps its pattern id, so only <defs> change on zoom and the area node is kept.
+		expect(zoomedIn.items[0].svg).toBe(plain.items[0].svg);
+	});
+
 	it('reuses one pattern per pattern and colour, and makes a new one per colour', () => {
 		const scene = buildScene(
 			normalizeInk({

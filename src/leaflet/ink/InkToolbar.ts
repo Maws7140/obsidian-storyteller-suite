@@ -64,8 +64,19 @@ export function brushStylePatch(kind: BrushKind, current: InkStyle, brushId: str
 		brush: brush.id,
 		brushFlip: brush.oneSided ? current.brushFlip : undefined,
 	};
+	// Take the brush's own width and colour unless the user picked their own: a value still at the
+	// tool's start value, or at the previous brush's default, counts as not chosen. So a River brush
+	// draws blue straight away, and switching River to Cliff turns blue to brown.
+	const previous = current.brush ? getBrush(current.brush) : undefined;
+	const startStroke = (kind === 'area' ? DEFAULT_STYLE : DEFAULT_PATH_STYLE).stroke;
 	const width = brush.defaultStyle.strokeWidth;
-	if (width !== undefined && current.strokeWidth === startWidth(kind)) patch.strokeWidth = width;
+	if (width !== undefined && (current.strokeWidth === startWidth(kind) || current.strokeWidth === previous?.defaultStyle.strokeWidth)) {
+		patch.strokeWidth = width;
+	}
+	const stroke = brush.defaultStyle.stroke;
+	if (stroke !== undefined && (current.stroke === startStroke || current.stroke === previous?.defaultStyle.stroke)) {
+		patch.stroke = stroke;
+	}
 	return patch;
 }
 

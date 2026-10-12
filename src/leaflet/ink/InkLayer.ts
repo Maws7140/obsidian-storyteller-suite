@@ -97,10 +97,12 @@ interface ZoomAnimEvent {
 	zoom: number;
 }
 
-/** Whether an item draws a known brush, so its look depends on the zoom. */
+/** Whether an item's look depends on the zoom: a known brush, or a patterned fill. */
 function hasBrush(item: InkItem): boolean {
-	const style = (item as { style?: { brush?: string } }).style;
-	return !!style?.brush && getBrush(style.brush) !== undefined;
+	const style = (item as { style?: { brush?: string; fillPattern?: string } }).style;
+	if (!style) return false;
+	if (style.brush && getBrush(style.brush) !== undefined) return true;
+	return !!style.fillPattern && style.fillPattern !== 'none' && style.fillPattern !== 'solid';
 }
 
 /** Holds all the state. The Leaflet class forwards to it. */
@@ -266,7 +268,7 @@ class InkSurface {
 		const detail = brushDetailFor(s);
 		if (detail !== this.brushDetail) {
 			this.brushDetail = detail;
-			// Only brushed items change markup, so render() replaces just those nodes.
+			// Brushed items change markup and patterns change defs; other nodes are kept.
 			if (this.doc.items.some(hasBrush)) {
 				this.render();
 				return;

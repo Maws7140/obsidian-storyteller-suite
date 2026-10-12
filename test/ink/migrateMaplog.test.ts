@@ -228,7 +228,7 @@ describe('migrateMaplog: water and terrain', () => {
     const [r, g, b] = rgb(sea.style.fill);
     expect(b).toBeGreaterThan(r);
     expect(b).toBeGreaterThan(g);
-    expect(sea.style.fillPattern).toBe('symbol:wave');
+    expect(sea.style.fillPattern).toBe('waves');
   });
 
   it('labels water in the italic blue water label style, at the centroid', () => {

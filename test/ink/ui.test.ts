@@ -14,6 +14,7 @@ import { ColorPicker, RECENT_LIMIT } from '../../src/leaflet/ink/ui/ColorPicker'
 import type { ColorPickerOptions } from '../../src/leaflet/ink/ui/ColorPicker';
 import { StrokeStylePicker } from '../../src/leaflet/ink/ui/StrokeStylePicker';
 import { InkToolbar, INK_TOOLS, brushStylePatch } from '../../src/leaflet/ink/InkToolbar';
+import { getBrush } from '../../src/leaflet/ink/brushes';
 import { BRUSHES, brushesByCategory } from '../../src/leaflet/ink/brushes';
 import { InkInspector } from '../../src/leaflet/ink/InkInspector';
 import type { InkHost } from '../../src/leaflet/ink/host';
@@ -883,11 +884,23 @@ const rect1: InkBox = {
 describe('brush width and flip rules', () => {
 	it('a brush sets its default width only while the width is still the kind start width', () => {
 		const path = { ...DEFAULT_PATH_STYLE };
-		expect(brushStylePatch('path', path, 'wall')).toEqual({ brush: 'wall', brushFlip: undefined, strokeWidth: 4 });
-		expect(brushStylePatch('freehand', { ...path, strokeWidth: 7 }, 'wall')).toEqual({ brush: 'wall', brushFlip: undefined });
+		const wallInk = getBrush('wall')?.defaultStyle.stroke;
+		expect(brushStylePatch('path', path, 'wall')).toEqual({ brush: 'wall', brushFlip: undefined, strokeWidth: 4, stroke: wallInk });
+		expect(brushStylePatch('freehand', { ...path, strokeWidth: 7, stroke: '#ff0000' }, 'wall')).toEqual({ brush: 'wall', brushFlip: undefined });
 		const area = { ...DEFAULT_STYLE };
 		expect(brushStylePatch('area', area, 'wall').strokeWidth).toBe(4);
 		expect(brushStylePatch('area', { ...area, strokeWidth: 5 }, 'wall')).not.toHaveProperty('strokeWidth');
+	});
+
+	it('a brush brings its own colour unless the user chose one', () => {
+		const river = getBrush('river')?.defaultStyle.stroke as string;
+		const cliff = getBrush('cliff')?.defaultStyle.stroke as string;
+		const fresh = { ...DEFAULT_PATH_STYLE };
+		expect(brushStylePatch('freehand', fresh, 'river').stroke).toBe(river);
+		// Switching brushes moves from one default colour to the next.
+		expect(brushStylePatch('freehand', { ...fresh, brush: 'river', stroke: river }, 'cliff').stroke).toBe(cliff);
+		// A colour the user picked stays.
+		expect(brushStylePatch('freehand', { ...fresh, stroke: '#7b4fa0' }, 'river')).not.toHaveProperty('stroke');
 	});
 
 	it('None clears the brush and the flip', () => {
@@ -1096,7 +1109,7 @@ describe('hand-inked presets', () => {
 			expect(preset?.style).toMatchObject({
 				stroke: INK_COLOUR,
 				fillOpacity: 0,
-				fillPattern: `symbol:${symbol}`,
+				fillPattern: symbol === 'wave' ? 'waves' : `symbol:${symbol}`,
 				patternColor: INK_COLOUR,
 			});
 		}

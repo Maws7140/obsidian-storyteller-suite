@@ -640,21 +640,50 @@ function hitPath(d: string): string {
 
 // ---- defs: patterns and arrowheads ---------------------------------------------
 
+/**
+ * Rows of broken waves, the hand-drawn water fill. A 32 x 64 tile holds two bands of three short
+ * sine strokes; the second band is shifted half a tile, like brickwork, so the gaps between
+ * strokes do not line up into columns.
+ */
+function waveRow(y: number, x0: number, x1: number): string {
+	const pts: string[] = [];
+	for (let x = x0; x <= x1 + 0.001; x += 0.5) {
+		pts.push(`${fmt(x)} ${fmt(y + Math.sin(((x - x0) / 8) * Math.PI * 2) * 1.5)}`);
+	}
+	return `M${pts.join('L')}`;
+}
+function waveBand(y: number, shift: number): string {
+	let d = '';
+	for (const row of [y, y + 6, y + 12]) {
+		// Each stroke runs 28 units; a shifted stroke wraps, so draw the part past the edge again on the left.
+		d += waveRow(row, 2 + shift, 30 + shift);
+		if (shift > 0) d += waveRow(row, 2 + shift - 32, 30 + shift - 32);
+	}
+	return d;
+}
+const WAVE_ROWS = waveBand(10, 0) + waveBand(42, 16);
+
 function patternRef(ctx: Ctx, pattern: FillPattern, color: string): string | undefined {
 	let body: string;
+	// Pattern tiles follow the zoom only partly, like brushes, so fills stay fine up close.
+	const scale = ctx.brushDetail === 1 ? '' : `scale(${fmt(ctx.brushDetail)}) `;
 	if (pattern === 'hatch') {
-		body = `<pattern width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">`
+		body = `<pattern width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="${scale}rotate(45)">`
 			+ `<path d="M0 0H8" fill="none" stroke="${escapeXml(color)}" stroke-width="1.2"/></pattern>`;
 	} else if (pattern === 'crosshatch') {
-		body = `<pattern width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">`
+		body = `<pattern width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="${scale}rotate(45)">`
 			+ `<path d="M0 0H8M0 0V8" fill="none" stroke="${escapeXml(color)}" stroke-width="1.1"/></pattern>`;
 	} else if (pattern === 'dots') {
-		body = `<pattern width="8" height="8" patternUnits="userSpaceOnUse">`
+		body = `<pattern width="8" height="8" patternUnits="userSpaceOnUse"${scale ? ` patternTransform="${scale.trim()}"` : ''}>`
 			+ `<circle cx="4" cy="4" r="1.2" fill="${escapeXml(color)}"/></pattern>`;
+	} else if (pattern === 'waves') {
+		body = `<pattern width="32" height="64" patternUnits="userSpaceOnUse"${scale ? ` patternTransform="${scale.trim()}"` : ''}>`
+			+ `<path d="${WAVE_ROWS}" fill="none" stroke="${escapeXml(color)}" stroke-width="1.4"`
+			+ ' stroke-linecap="round" stroke-linejoin="round"/></pattern>';
 	} else if (typeof pattern === 'string' && pattern.indexOf('symbol:') === 0) {
 		const symbol = ctx.lookupSymbol(pattern.slice('symbol:'.length));
 		if (!symbol) return undefined;
-		body = `<pattern width="18" height="18" patternUnits="userSpaceOnUse">`
+		body = `<pattern width="18" height="18" patternUnits="userSpaceOnUse"${scale ? ` patternTransform="${scale.trim()}"` : ''}>`
 			+ `<g transform="translate(3 3) scale(0.5)" color="${escapeXml(color)}" fill="none" stroke="currentColor"`
 			+ ` stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">${symbol.body}</g></pattern>`;
 	} else {

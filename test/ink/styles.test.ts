@@ -70,8 +70,8 @@ describe('PRESETS', () => {
     const water = PRESETS.find(p => p.name === 'Water');
     expect(water?.fits).toBe('area');
     expect(water?.style?.fill).toBe('#3b82c4');
-    expect(water?.style?.fillOpacity).toBeCloseTo(0.35);
-    expect(water?.style?.fillPattern).toBe('symbol:wave');
+    expect(water?.style?.fillOpacity).toBeCloseTo(0.16);
+    expect(water?.style?.fillPattern).toBe('waves');
     expect(luminance(water?.style?.stroke as string)).toBeLessThan(luminance('#3b82c4'));
   });
 

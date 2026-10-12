@@ -10,7 +10,7 @@ import { DEFAULT_STYLE, DEFAULT_TEXT_STYLE } from './styles';
 export type InkPoint = [number, number];              // [lat, lng], as Leaflet uses
 export type InkKind = 'stamp' | 'text' | 'path' | 'area' | 'freehand' | 'rect' | 'ellipse';
 export type DashStyle = 'solid' | 'dashed' | 'dotted' | 'double' | 'wavy' | 'ticked' | 'railway';
-export type FillPattern = 'none' | 'solid' | 'hatch' | 'crosshatch' | 'dots' | `symbol:${string}`;
+export type FillPattern = 'none' | 'solid' | 'hatch' | 'crosshatch' | 'dots' | 'waves' | `symbol:${string}`;
 
 export interface InkStyle {
   stroke: string;          // CSS colour, '#rrggbb'
@@ -73,7 +73,7 @@ export interface InkFrontmatter {
 
 const INK_KINDS: readonly InkKind[] = ['stamp', 'text', 'path', 'area', 'freehand', 'rect', 'ellipse'];
 const DASH_STYLES: readonly DashStyle[] = ['solid', 'dashed', 'dotted', 'double', 'wavy', 'ticked', 'railway'];
-const BASIC_PATTERNS: readonly string[] = ['none', 'solid', 'hatch', 'crosshatch', 'dots'];
+const BASIC_PATTERNS: readonly string[] = ['none', 'solid', 'hatch', 'crosshatch', 'dots', 'waves'];
 const TEXT_FONTS: readonly InkTextStyle['font'][] = ['serif', 'sans', 'hand', 'mono'];
 const TEXT_ALIGNS: readonly InkTextStyle['align'][] = ['start', 'middle', 'end'];
 

@@ -100,7 +100,7 @@ export const HAND_INKED_FILLS: ReadonlyArray<{ symbol: string; name: string }> =
 	{ symbol: 'tree', name: 'Trees' },
 	{ symbol: 'hill', name: 'Hills' },
 	{ symbol: 'mountain', name: 'Mountains' },
-	{ symbol: 'wave', name: 'Waves' },
+	{ symbol: 'wave', name: 'Water' },
 	{ symbol: 'reeds', name: 'Reeds' },
 	{ symbol: 'dune', name: 'Dunes' },
 ];
@@ -123,7 +123,8 @@ const HAND_INKED_PRESETS: readonly InkPreset[] = [
 			strokeWidth: 1.5,
 			fill: INK_COLOUR,
 			fillOpacity: 0,
-			fillPattern: `symbol:${symbol}`,
+			// Water uses the continuous wave rows, the old hand-drawn water fill.
+			fillPattern: symbol === 'wave' ? 'waves' : `symbol:${symbol}`,
 			patternColor: INK_COLOUR,
 		},
 	})),
@@ -132,9 +133,9 @@ const HAND_INKED_PRESETS: readonly InkPreset[] = [
 export const PRESETS: readonly InkPreset[] = [
 	// Areas
 	{ id: 'water', name: 'Water', fits: 'area',
-		style: { stroke: '#1f5fa8', strokeWidth: 1.5, fill: '#3b82c4', fillOpacity: 0.35, fillPattern: 'symbol:wave' } },
+		style: { stroke: '#1f5fa8', strokeWidth: 1.5, fill: '#3b82c4', fillOpacity: 0.16, fillPattern: 'waves', patternColor: '#2a6aa8' } },
 	{ id: 'deep-water', name: 'Deep water', fits: 'area',
-		style: { stroke: '#0b3d66', strokeWidth: 2, fill: '#1f5fa8', fillOpacity: 0.45, fillPattern: 'symbol:wave' } },
+		style: { stroke: '#0b3d66', strokeWidth: 2, fill: '#1f5fa8', fillOpacity: 0.3, fillPattern: 'waves', patternColor: '#0b3d66' } },
 	{ id: 'forest', name: 'Forest', fits: 'area',
 		style: { stroke: '#2e5e3a', strokeWidth: 1.5, fill: '#3f7d3a', fillOpacity: 0.3, fillPattern: 'symbol:tree' } },
 	{ id: 'jungle', name: 'Jungle', fits: 'area',
