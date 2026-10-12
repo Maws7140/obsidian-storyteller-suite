@@ -17,8 +17,39 @@ import { MapHierarchyManager } from '../utils/MapHierarchyManager';
 import { stripWikiLinkToString } from '../utils/WikiLinks';
 import { locationPinKey } from '../utils/CampaignBoardSelection';
 import { confirmWithModal } from '../modals/ui/ConfirmModal';
-import { tokenHtml, tokenAnchor, tokenIconSize } from './ink/tokens';
+import { tokenHtml, tokenAnchor, tokenIconSize, tokenSizePx } from './ink/tokens';
 import type { TokenSize } from './ink/tokens';
+import { DENSITY_CLASS, densityCssVars, fanOffset, planTokenLayout, tokenPriority } from './ink/tokenLayout';
+import type { TokenAttachedInput, TokenLocationInput } from './ink/tokenLayout';
+
+/** An entity or portal token fanned out around its location. Positions are re-planned on each zoom. */
+interface AttachedToken {
+    marker: L.Marker;
+    kind: 'entity' | 'portal';
+    locationKey: string;
+    /** Set for entities with a location, so they are kept inside the location's area. */
+    locationId?: string;
+    mapRecord?: StoryMap | null;
+}
+
+/** A token placed directly on the map, stacked with others at the same point. */
+interface StackedToken {
+    marker: L.Marker;
+    base: [number, number];
+    offset: [number, number];
+}
+
+/** True for a marker built with tokenHtml (not a custom location icon). */
+function isTokenMarker(marker: L.Marker): boolean {
+    const icon = marker.options.icon;
+    return icon instanceof L.DivIcon && (icon.options.className ?? '').includes('ink-token-marker');
+}
+
+/** True for a token marker whose token shows a portrait image. */
+function isPortraitMarker(marker: L.Marker): boolean {
+    const icon = marker.options.icon;
+    return icon instanceof L.DivIcon && (icon.options.className ?? '').includes('has-image');
+}
 
 interface MapViewWithLoadMap {
     loadMap(mapId: string): Promise<void>;
@@ -81,11 +112,22 @@ export class MapEntityRenderer {
     private entityMarkers: Map<string, L.Marker> = new Map();
     private portalMarkers: Map<string, L.Marker> = new Map();
     private locationRecords = new Map<string, Location>();
+    /** Attached entity and portal tokens, in the order they were rendered. */
+    private attachedTokens: AttachedToken[] = [];
+    private stackedTokens: StackedToken[] = [];
+    /** Attached entity count per location key, used for token priority and the count pill. */
+    private locationEntityCounts = new Map<string, number>();
     private mapId: string;
     private options: LeafletRendererOptions;
     private isMovingMarker: boolean = false;
 
     private readonly normalizeName = (value: string): string => this.stripWikiLinkValue(value).trim().toLowerCase();
+
+    /**
+     * Re-plan token size, collapse and overlap on zoom. Panning cannot change any of it: the
+     * overlap and the fan are measured in screen pixels, so zoomend, viewreset and resize are enough.
+     */
+    private readonly handleTokenZoom = () => this.applyTokenLayout();
 
     constructor(map: L.Map, plugin: StorytellerSuitePlugin, mapId: string, options: LeafletRendererOptions = {}) {
         this.map = map;
@@ -96,6 +138,7 @@ export class MapEntityRenderer {
         this.options = options;
 
         this.initializeLayers();
+        this.map.on('zoomend viewreset resize', this.handleTokenZoom);
     }
 
     /**
@@ -121,6 +164,7 @@ export class MapEntityRenderer {
         locationsLayer.clearLayers();
         this.locationMarkers.clear();
         this.locationRecords.clear();
+        this.locationEntityCounts.clear();
 
         for (const location of locations) {
             if (removed.has(`location:${location.id || location.name}`)) continue;
@@ -145,6 +189,7 @@ export class MapEntityRenderer {
         // Update visibility on zoom change
         this.map.off('zoomend', this.handleVisibilityZoom);
         this.map.on('zoomend', this.handleVisibilityZoom);
+        this.applyTokenLayout();
     }
 
     /**
@@ -187,6 +232,7 @@ export class MapEntityRenderer {
         const portalsLayer = this.markerLayers.get('portals')!;
         portalsLayer.clearLayers();
         this.portalMarkers.clear();
+        this.attachedTokens = this.attachedTokens.filter(t => t.kind !== 'portal');
 
         // Get all child maps that can be navigated to
         const portalTargets = await this.hierarchyManager.getPortalTargets(mapId);
@@ -218,15 +264,15 @@ export class MapEntityRenderer {
         }
 
         for (const groupedPortals of portalsByLocation.values()) {
-            const total = groupedPortals.length;
-            for (let index = 0; index < groupedPortals.length; index++) {
-                const { map: childMap, location, binding } = groupedPortals[index];
-                const portalCoordinates = this.getPortalMarkerCoordinates(binding.coordinates, index, total);
-                const marker = this.createPortalMarker(childMap, location, portalCoordinates);
+            for (const { map: childMap, location, binding } of groupedPortals) {
+                // Placed on the location point; applyTokenLayout fans it out for the current zoom.
+                const marker = this.createPortalMarker(childMap, location, binding.coordinates);
                 portalsLayer.addLayer(marker);
                 this.portalMarkers.set(childMap.id || childMap.name, marker);
+                this.attachedTokens.push({ marker, kind: 'portal', locationKey: location.id || location.name });
             }
         }
+        this.applyTokenLayout();
     }
 
     /**
@@ -308,20 +354,6 @@ export class MapEntityRenderer {
         });
 
         return marker;
-    }
-
-    private getPortalMarkerCoordinates(
-        coordinates: [number, number],
-        index: number,
-        total: number
-    ): [number, number] {
-        // Tokens are centred on the point, so the radius clears a large location token and a large portal token.
-        const radius = total <= 1 ? 38 : 40;
-        const startAngle = total <= 1 ? -Math.PI / 4 : -Math.PI / 2;
-        const angle = startAngle + ((2 * Math.PI) / Math.max(total, 1)) * index;
-        const offsetX = Math.cos(angle) * radius;
-        const offsetY = Math.sin(angle) * radius;
-        return this.offsetCoordinatesByPixels(coordinates, [offsetX, offsetY]);
     }
 
     private offsetCoordinatesByPixels(
@@ -414,15 +446,9 @@ export class MapEntityRenderer {
         ];
     }
 
+    /** Initial fan offset for an entity token. applyTokenLayout re-plans it for the current zoom. */
     private calculateLocationEntityOffset(index: number, total: number): [number, number] {
-        // Entity tokens sit beside a large location token centred on the point.
-        const radius = total <= 1 ? 36 : 38;
-        const startAngle = total <= 1 ? -Math.PI / 3 : -Math.PI / 2;
-        const angle = startAngle + ((2 * Math.PI) / Math.max(total, 1)) * index;
-        return [
-            Math.cos(angle) * radius,
-            Math.sin(angle) * radius
-        ];
+        return fanOffset(index, total, tokenSizePx('lg'), tokenSizePx('md'));
     }
 
     private stripWikiLinkValue(value: string | null | undefined): string {
@@ -489,6 +515,8 @@ export class MapEntityRenderer {
         scenesLayer.clearLayers();
         referencesLayer.clearLayers();
         this.entityMarkers.clear();
+        this.attachedTokens = this.attachedTokens.filter(t => t.kind !== 'entity');
+        this.stackedTokens = [];
 
         // Group entities by coordinate to detect stacking
         const entityGroups: Map<string, { entityRef: EntityRef; coordinates: [number, number]; location: Location | null }[]> = new Map();
@@ -603,9 +631,21 @@ export class MapEntityRenderer {
                             this.markerLayers.get('custom')?.addLayer(marker);
                     }
                     this.entityMarkers.set(entityRef.entityId, marker);
+                    if (location) {
+                        this.attachedTokens.push({
+                            marker,
+                            kind: 'entity',
+                            locationKey: location.id || location.name,
+                            locationId: location.id || undefined,
+                            mapRecord: location.id && mapRecord ? mapRecord : null,
+                        });
+                    } else if (totalAtLocation > 1) {
+                        this.stackedTokens.push({ marker, base: coordinates, offset });
+                    }
                 }
             }
         }
+        this.applyTokenLayout();
     }
 
     /**
@@ -684,6 +724,7 @@ export class MapEntityRenderer {
         binding: MapBinding
     ): Promise<L.Marker> {
         const effectiveRefs = await this.getEffectiveLocationEntityRefs(location);
+        this.locationEntityCounts.set(location.id || location.name, effectiveRefs.length);
         const marker = L.marker(binding.coordinates, {
             icon: this.getLocationMarkerIcon(binding, effectiveRefs.length, this.pinStateClasses(location)),
             title: location.name
@@ -867,6 +908,87 @@ export class MapEntityRenderer {
             const classes = this.pinStateClasses(location);
             element.classList.toggle('is-current', classes.includes('is-current'));
             element.classList.toggle('is-selected', classes.includes('is-selected'));
+        }
+        // Current and selected tokens win the overlap guard, so the layout depends on them too.
+        this.applyTokenLayout();
+    }
+
+    /** The fit zoom: where the image overlay fits the view. Falls back to the minimum zoom for tile maps. */
+    private fitZoom(): number {
+        const overlays: L.ImageOverlay[] = [];
+        this.map.eachLayer(layer => {
+            if (layer instanceof L.ImageOverlay) overlays.push(layer);
+        });
+        if (overlays.length > 0) {
+            const fit = this.map.getBoundsZoom(overlays[0].getBounds(), false);
+            if (Number.isFinite(fit)) return fit;
+        }
+        return this.map.getMinZoom();
+    }
+
+    /**
+     * Re-plan the tokens for the current zoom. The map container gets one density class and the
+     * scale variables. Location tokens get a dot class, attached entities are hidden or moved to
+     * their fan position. Nothing is rebuilt, so click handlers and popups stay as they are.
+     */
+    private applyTokenLayout(): void {
+        const locations: TokenLocationInput[] = [];
+        for (const [key, marker] of this.locationMarkers) {
+            if (!this.map.hasLayer(marker) || !isTokenMarker(marker)) continue;
+            const point = this.map.latLngToLayerPoint(marker.getLatLng());
+            const location = this.locationRecords.get(key);
+            const state = location ? this.pinStateClasses(location) : [];
+            locations.push({
+                key,
+                x: point.x,
+                y: point.y,
+                priority: tokenPriority({
+                    current: state.includes('is-current'),
+                    selected: state.includes('is-selected'),
+                    entityCount: this.locationEntityCounts.get(key) ?? 0,
+                }),
+            });
+        }
+        const attached: TokenAttachedInput[] = this.attachedTokens.map((t, i) => ({
+            key: String(i),
+            locationKey: t.locationKey,
+            kind: t.kind,
+            portrait: isPortraitMarker(t.marker),
+        }));
+        const plan = planTokenLayout(this.map.getZoom(), this.fitZoom(), locations, attached);
+
+        const container = this.map.getContainer();
+        for (const className of Object.values(DENSITY_CLASS)) container.classList.remove(className);
+        container.classList.add(plan.containerClass);
+        for (const [name, value] of Object.entries(plan.cssVars)) container.style.setProperty(name, value);
+
+        for (const [key, marker] of this.locationMarkers) {
+            if (!isTokenMarker(marker)) continue;
+            marker.getElement()?.classList.toggle('ink-token-dot', plan.dotted.has(key));
+        }
+
+        this.attachedTokens.forEach((token, i) => {
+            const id = String(i);
+            token.marker.getElement()?.classList.toggle('ink-token-collapsed', plan.collapsed.has(id));
+            const offset = plan.offsets.get(id);
+            const anchor = this.locationMarkers.get(token.locationKey);
+            if (!offset || !anchor) return;
+            const basePoint = this.map.latLngToLayerPoint(anchor.getLatLng());
+            const target = this.map.layerPointToLatLng(basePoint.add(L.point(offset[0], offset[1])));
+            let latlng: [number, number] = [target.lat, target.lng];
+            if (token.kind === 'entity' && token.locationId && token.mapRecord) {
+                // Keep the entity inside the location area, as the first render does. 24 px of slack.
+                const padding = this.map.layerPointToLatLng(this.map.latLngToLayerPoint(target).add(L.point(24, 24)));
+                const inset = Math.max(Math.abs(padding.lat - target.lat), Math.abs(padding.lng - target.lng));
+                latlng = containEntityInArea(token.mapRecord, token.locationId, latlng, inset);
+            }
+            token.marker.setLatLng(latlng);
+        });
+
+        for (const stacked of this.stackedTokens) {
+            const point = this.map.latLngToLayerPoint(stacked.base).add(L.point(stacked.offset[0], stacked.offset[1]));
+            const target = this.map.layerPointToLatLng(point);
+            stacked.marker.setLatLng([target.lat, target.lng]);
         }
     }
 
@@ -1767,6 +1889,12 @@ export class MapEntityRenderer {
      * Clean up all markers and layers
      */
     cleanup(): void {
+        this.map.off('zoomend viewreset resize', this.handleTokenZoom);
+        const container = this.map.getContainer();
+        for (const className of Object.values(DENSITY_CLASS)) container.classList.remove(className);
+        for (const name of Object.keys(densityCssVars('z1'))) {
+            container.style.removeProperty(name);
+        }
         for (const layer of this.markerLayers.values()) {
             layer.clearLayers();
             this.map.removeLayer(layer);
@@ -1774,6 +1902,9 @@ export class MapEntityRenderer {
         this.markerLayers.clear();
         this.locationMarkers.clear();
         this.entityMarkers.clear();
+        this.attachedTokens = [];
+        this.stackedTokens = [];
+        this.locationEntityCounts.clear();
     }
 }
 
