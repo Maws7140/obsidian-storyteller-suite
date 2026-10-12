@@ -10,6 +10,7 @@ import { parseSectionsFromMarkdown } from '../yaml/EntitySections';
 import { t } from '../i18n/strings';
 import { GalleryImageSuggestModal } from './GalleryImageSuggestModal';
 import { addImageSelectionButtons } from '../utils/ImageSelectionHelper';
+import { addIconSetting } from './IconPickerModal';
 import { PromptModal } from './ui/PromptModal';
 import { EntityCustomFieldsEditor, customFieldEditorOptions } from './entity/EntityCustomFieldsEditor';
 import { EntityGroupSelector } from './entity/EntityGroupSelector';
@@ -595,15 +596,18 @@ export class EventModal extends ResponsiveModal {
         );
         }
 
-        const mediaSection = isVisible('media')
+        const mediaSection = isVisible('media') || isVisible('icon')
             ? createCollapsibleModalSection(contentEl, {
                 title: 'Media',
                 description: 'Cover image and associated gallery images',
                 icon: 'images',
-                open: Boolean(this.event.profileImagePath || this.event.images?.length),
+                open: Boolean(this.event.profileImagePath || this.event.images?.length || this.event.icon),
             })
             : null;
-        if (mediaSection) {
+        if (mediaSection && isVisible('icon')) {
+            addIconSetting(mediaSection, this.app, this.plugin, this.event);
+        }
+        if (mediaSection && isVisible('media')) {
         const profileImageSetting = new Setting(mediaSection)
             .setName(t('image'))
             .setDesc('')
@@ -713,7 +717,7 @@ export class EventModal extends ResponsiveModal {
         }
 
         // --- Associated Images ---
-        if (mediaSection) {
+        if (mediaSection && isVisible('media')) {
         const imagesSetting = new Setting(mediaSection)
             .setName(t('associatedImages'))
             .setDesc(t('imageGallery'));

@@ -14267,3 +14267,475 @@ body.mod-rtl .storyteller-group-members {
 .storyteller-map-breadcrumb .breadcrumb-item-clickable:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
 .storyteller-map-breadcrumb .breadcrumb-item-clickable:focus-visible { outline: 2px solid var(--interactive-accent); outline-offset: 1px; }
 .storyteller-map-breadcrumb .breadcrumb-item-current { cursor: default; color: var(--text-normal); font-weight: 600; background: color-mix(in srgb, var(--interactive-accent) 16%, transparent); border-color: color-mix(in srgb, var(--interactive-accent) 45%, transparent); }
+
+/* ===== icon-picker ===== */
+.modal.storyteller-icon-picker-modal {
+    width: min(680px, 94vw);
+    max-width: 94vw;
+}
+
+.storyteller-icon-picker {
+    display: flex;
+    flex-direction: column;
+    max-height: min(70vh, 640px);
+    min-height: 0;
+}
+
+.storyteller-icon-picker [hidden] {
+    display: none !important;
+}
+
+/* Tab bar */
+.storyteller-icon-picker-tabs {
+    display: flex;
+    gap: 4px;
+    padding: 0 0 8px;
+    border-bottom: 1px solid var(--background-modifier-border);
+    flex-shrink: 0;
+    overflow-x: auto;
+}
+
+.storyteller-icon-picker .storyteller-icon-picker-tab {
+    padding: 6px 12px;
+    border-radius: var(--radius-m);
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--text-muted);
+    font-size: var(--font-ui-small);
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.storyteller-icon-picker .storyteller-icon-picker-tab:hover {
+    background: var(--background-modifier-hover);
+    color: var(--text-normal);
+}
+
+.storyteller-icon-picker .storyteller-icon-picker-tab.is-active {
+    background: var(--background-secondary-alt, var(--background-secondary));
+    border-color: var(--background-modifier-border);
+    color: var(--text-normal);
+    font-weight: 600;
+}
+
+.storyteller-icon-picker .storyteller-icon-picker-tab:focus-visible,
+.storyteller-icon-picker .storyteller-icon-picker-cell:focus-visible,
+.storyteller-icon-picker .storyteller-icon-picker-swatch:focus-visible,
+.storyteller-icon-picker .storyteller-icon-picker-action:focus-visible,
+.storyteller-icon-picker .storyteller-icon-picker-more:focus-visible {
+    outline: 2px solid var(--interactive-accent);
+    outline-offset: 2px;
+}
+
+/* Scrolling body; the tab bar and footer stay put */
+.storyteller-icon-picker-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 12px 2px;
+}
+
+.storyteller-icon-picker-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.storyteller-icon-picker-sticky {
+    position: sticky;
+    top: -12px;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 0 0 10px;
+    background: var(--background-primary);
+}
+
+.storyteller-icon-picker .storyteller-icon-picker-search,
+.storyteller-icon-picker .storyteller-icon-picker-emoji-input,
+.storyteller-icon-picker .storyteller-icon-picker-url {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 6px 10px;
+    border-radius: var(--radius-m);
+    border: 1px solid var(--background-modifier-border);
+    background: var(--background-primary);
+    color: var(--text-normal);
+    font-size: var(--font-ui-medium);
+}
+
+.storyteller-icon-picker .storyteller-icon-picker-search:focus,
+.storyteller-icon-picker .storyteller-icon-picker-emoji-input:focus,
+.storyteller-icon-picker .storyteller-icon-picker-url:focus,
+.storyteller-icon-picker .storyteller-icon-picker-hex:focus {
+    outline: none;
+    border-color: var(--interactive-accent);
+    box-shadow: 0 0 0 2px var(--background-modifier-border-focus);
+}
+
+/* Colour row */
+.storyteller-icon-picker-colour {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+
+.storyteller-icon-picker-colour-label {
+    color: var(--text-muted);
+    font-size: var(--font-ui-small);
+    min-width: 44px;
+}
+
+.storyteller-icon-picker-swatches {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.storyteller-icon-picker .storyteller-icon-picker-swatch {
+    width: 22px;
+    height: 22px;
+    min-width: 22px;
+    padding: 0;
+    border-radius: 50%;
+    border: 2px solid transparent;
+    background: var(--storyteller-icon-picker-swatch, #888);
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.25);
+    cursor: pointer;
+}
+
+.storyteller-icon-picker .storyteller-icon-picker-swatch:hover {
+    transform: scale(1.08);
+}
+
+.storyteller-icon-picker .storyteller-icon-picker-swatch.is-selected {
+    border-color: var(--text-normal);
+    box-shadow: 0 0 0 2px var(--background-primary), 0 0 0 4px var(--text-normal);
+}
+
+.storyteller-icon-picker .storyteller-icon-picker-hex {
+    width: 96px;
+    padding: 4px 8px;
+    border-radius: var(--radius-m);
+    border: 1px solid var(--background-modifier-border);
+    background: var(--background-primary);
+    color: var(--text-normal);
+    font-family: var(--font-monospace);
+    font-size: var(--font-ui-small);
+}
+
+.storyteller-icon-picker .storyteller-icon-picker-colour-input {
+    width: 32px;
+    height: 28px;
+    padding: 0;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: var(--radius-s);
+    background: transparent;
+    cursor: pointer;
+}
+
+.storyteller-icon-picker .storyteller-icon-picker-none {
+    font-size: var(--font-ui-small);
+}
+
+/* Counts, hints and status lines */
+.storyteller-icon-picker-count,
+.storyteller-icon-picker-hint,
+.storyteller-icon-picker-status,
+.storyteller-icon-picker-help {
+    color: var(--text-muted);
+    font-size: var(--font-ui-small);
+}
+
+.storyteller-icon-picker-hint:empty,
+.storyteller-icon-picker-status:empty {
+    display: none;
+}
+
+.storyteller-icon-picker-empty {
+    color: var(--text-muted);
+    font-style: italic;
+    padding: 24px 8px;
+    text-align: center;
+}
+
+.storyteller-icon-picker-group-title {
+    margin: 10px 0 2px;
+    font-size: var(--font-ui-small);
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+/* Grid of 40px cells */
+.storyteller-icon-picker-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(40px, 1fr));
+    gap: 4px;
+}
+
+.storyteller-icon-picker .storyteller-icon-picker-cell {
+    width: 40px;
+    height: 40px;
+    min-width: 40px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-m);
+    border: 1px solid transparent;
+    background: transparent;
+    cursor: pointer;
+    color: var(--text-normal);
+}
+
+.storyteller-icon-picker .storyteller-icon-picker-cell:hover {
+    background: var(--background-modifier-hover);
+    border-color: var(--background-modifier-border);
+}
+
+.storyteller-icon-picker .storyteller-icon-picker-cell.is-selected {
+    background: var(--background-modifier-active-hover, var(--background-modifier-hover));
+    border-color: var(--interactive-accent);
+    box-shadow: inset 0 0 0 1px var(--interactive-accent);
+}
+
+.storyteller-icon-picker-grid-emoji .storyteller-icon-picker-cell {
+    font-size: 22px;
+}
+
+.storyteller-icon-picker .storyteller-icon-picker-more {
+    align-self: center;
+    margin-top: 4px;
+}
+
+/* Glyphs, shared by cells, the footer and the settings chip */
+.storyteller-icon-picker-glyph,
+.storyteller-icon-picker-preview {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    flex-shrink: 0;
+    line-height: 1;
+}
+
+.storyteller-icon-picker-glyph svg,
+.storyteller-icon-picker-preview svg {
+    width: 22px;
+    height: 22px;
+}
+
+.storyteller-icon-picker-preview-img,
+.storyteller-icon-picker-img,
+.storyteller-icon-picker-preview img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+.storyteller-icon-picker-mask {
+    display: block;
+    width: 100%;
+    height: 100%;
+    -webkit-mask-size: contain;
+    mask-size: contain;
+    -webkit-mask-repeat: no-repeat;
+    mask-repeat: no-repeat;
+    -webkit-mask-position: center;
+    mask-position: center;
+}
+
+.storyteller-icon-picker-emoji {
+    font-size: 20px;
+    line-height: 1;
+}
+
+.storyteller-icon-picker-dot {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--text-faint);
+}
+
+.storyteller-icon-picker-chip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: var(--radius-m);
+    border: 1px solid var(--background-modifier-border);
+    background: var(--background-secondary);
+    margin-right: 8px;
+}
+
+.storyteller-icon-picker-chip .storyteller-icon-picker-preview {
+    width: 24px;
+    height: 24px;
+}
+
+/* Image tab */
+.storyteller-icon-picker-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.storyteller-icon-picker .storyteller-icon-picker-action {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 12px;
+    border-radius: var(--radius-m);
+    border: 1px solid var(--background-modifier-border);
+    background: var(--background-secondary);
+    color: var(--text-normal);
+    cursor: pointer;
+}
+
+.storyteller-icon-picker .storyteller-icon-picker-action:hover {
+    background: var(--background-modifier-hover);
+}
+
+.storyteller-icon-picker .storyteller-icon-picker-action[aria-expanded="true"] {
+    border-color: var(--interactive-accent);
+}
+
+.storyteller-icon-picker .storyteller-icon-picker-action-icon {
+    display: inline-flex;
+    width: 16px;
+    height: 16px;
+}
+
+.storyteller-icon-picker-image-current {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    border-radius: var(--radius-m);
+    background: var(--background-secondary);
+    color: var(--text-muted);
+    font-size: var(--font-ui-small);
+    word-break: break-all;
+}
+
+.storyteller-icon-picker-image-chip {
+    display: inline-flex;
+    width: 40px;
+    height: 40px;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-m);
+    background: var(--background-primary);
+    border: 1px solid var(--background-modifier-border);
+    overflow: hidden;
+}
+
+.storyteller-icon-picker-image-chip .storyteller-icon-picker-preview {
+    width: 36px;
+    height: 36px;
+}
+
+.storyteller-icon-picker-web {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px;
+    border-radius: var(--radius-m);
+    border: 1px dashed var(--background-modifier-border);
+}
+
+.storyteller-icon-picker .storyteller-icon-picker-url-preview {
+    display: flex;
+    justify-content: center;
+    min-height: 0;
+}
+
+.storyteller-icon-picker .storyteller-icon-picker-url-preview:empty {
+    display: none;
+}
+
+.storyteller-icon-picker .storyteller-icon-picker-url-img {
+    max-width: 100%;
+    max-height: 160px;
+    object-fit: contain;
+    border-radius: var(--radius-s);
+    background: var(--background-primary);
+}
+
+.storyteller-icon-picker-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: var(--font-ui-small);
+    cursor: pointer;
+}
+
+/* Footer */
+.storyteller-icon-picker-footer {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding-top: 10px;
+    border-top: 1px solid var(--background-modifier-border);
+    flex-shrink: 0;
+}
+
+.storyteller-icon-picker-current {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    flex: 1 1 200px;
+}
+
+.storyteller-icon-picker-footer-chip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    flex-shrink: 0;
+    border-radius: var(--radius-m);
+    background: var(--background-secondary);
+    border: 1px solid var(--background-modifier-border);
+}
+
+.storyteller-icon-picker-footer-chip .storyteller-icon-picker-preview {
+    width: 28px;
+    height: 28px;
+}
+
+.storyteller-icon-picker-footer-label {
+    color: var(--text-muted);
+    font-size: var(--font-ui-small);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.storyteller-icon-picker-footer-buttons {
+    display: flex;
+    gap: 8px;
+    margin-left: auto;
+}
+
+@media (max-width: 520px) {
+    .storyteller-icon-picker-grid {
+        grid-template-columns: repeat(auto-fill, minmax(40px, 1fr));
+    }
+
+    .storyteller-icon-picker-footer-buttons {
+        width: 100%;
+        justify-content: flex-end;
+    }
+}

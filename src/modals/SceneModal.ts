@@ -9,6 +9,7 @@ import { SceneSuggestModal } from './SceneSuggestModal';
 import { LocationSuggestModal } from './LocationSuggestModal';
 import { EventSuggestModal } from './EventSuggestModal';
 import { addImageSelectionButtons } from '../utils/ImageSelectionHelper';
+import { addIconSetting } from './IconPickerModal';
 import { GroupSuggestModal } from './GroupSuggestModal';
 import { TemplatePickerModal } from './TemplatePickerModal';
 import type { Template, TemplateEntity, TemplateVariableValue } from '../templates/TemplateTypes';
@@ -541,14 +542,19 @@ export class SceneModal extends ResponsiveModal {
         }
 
         // --- Media and tags ---
-        const mediaSection = this.shows('profileImage') || this.shows('tags')
+        const mediaSection = this.shows('profileImage') || this.shows('tags') || this.shows('icon')
             ? createCollapsibleModalSection(contentEl, {
                 title: 'Media and tags',
-                description: 'Cover image and tags for filtering',
+                description: 'Icon, cover image and tags for filtering',
                 icon: 'image',
-                open: Boolean(this.scene.profileImagePath || this.scene.tags?.length),
+                open: Boolean(this.scene.profileImagePath || this.scene.tags?.length || this.scene.icon),
             })
             : null;
+
+        // Icon row, above the cover image
+        if (mediaSection && this.shows('icon')) {
+            addIconSetting(mediaSection, this.app, this.plugin, this.scene);
+        }
 
         // Image block
         if (mediaSection && this.shows('profileImage')) {
