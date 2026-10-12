@@ -12,7 +12,7 @@
  */
 import { nextInkId, normalizeInk } from './model';
 import type { InkDoc, InkItem, InkKind, InkStyle, InkTextStyle } from './model';
-import { DEFAULT_STYLE, DEFAULT_TEXT_STYLE, applyPreset, findPreset, mergeStyle } from './styles';
+import { DEFAULT_PATH_STYLE, DEFAULT_STYLE, DEFAULT_TEXT_STYLE, applyPreset, findPreset, mergeStyle } from './styles';
 import type { InkPreset } from './styles';
 import { InkHistory } from './history';
 import type { InkHost } from './host';
@@ -48,7 +48,9 @@ function kindOfTool(tool: InkToolId): InkKind | undefined {
 }
 
 function defaultStyleFor(kind: InkKind): InkStyle {
-	return kind === 'stamp' ? { ...DEFAULT_STAMP_STYLE } : { ...DEFAULT_STYLE };
+	if (kind === 'stamp') return { ...DEFAULT_STAMP_STYLE };
+	if (kind === 'path' || kind === 'freehand') return { ...DEFAULT_PATH_STYLE };
+	return { ...DEFAULT_STYLE };
 }
 
 function messageOf(err: unknown): string {

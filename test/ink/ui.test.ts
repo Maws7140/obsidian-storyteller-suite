@@ -649,7 +649,7 @@ describe('InkInspector', () => {
 
 	it('the stroke colour swatch writes the colour under its own key', () => {
 		const { root, store } = inspector([path1], ['p1']);
-		one(root, '[aria-label="Stroke colour: #2b2b2b"]').dispatch('click');
+		one(root, '[aria-label="Stroke colour: #5b4a3a"]').dispatch('click');
 		one(root, `[aria-label="Use colour ${SWATCHES[1]}"]`).dispatch('click');
 		const { apply, key } = lastUpdate(store);
 		expect(key).toBe('stroke-colour');

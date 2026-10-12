@@ -69,8 +69,17 @@ const STAMP_COLOURS: Readonly<Record<SymbolCategory, string>> = {
 };
 
 const STAMP_SIZE = 24;
-/** Labels sit this many map units to the right of their stamp. */
-const LABEL_OFFSET_X = 14;
+/**
+ * Stamp labels sit below their stamp. The gap is measured from the stamp's centre
+ * to the top of the text, so a 36 px location token (radius 18) is clear of it.
+ */
+const LABEL_TOP_GAP = 22;
+/** Size of the label text, in map units, for a place label on a stamp. */
+const PLACE_LABEL_SIZE = 12;
+/** Size of line and area labels, in map units. Water labels take their size from the preset (13). */
+const SHAPE_LABEL_SIZE = 13;
+/** Text ascent used to find the top of a label from its baseline anchor. Matches svgBuild. */
+const TEXT_ASCENT = 0.8;
 const COORD_LIMIT = 1e7;
 const ID_LIMIT = 64;
 const TEXT_LIMIT = 200;
@@ -113,7 +122,7 @@ export function migrateMaplog(frontmatter: unknown): InkDoc {
     const name = cleanText(raw.label, TEXT_LIMIT);
     if (name) {
       area.name = name;
-      labels.push({ owner: id, text: name, at: centroid(pts), style: textStyle(mark === 'water' ? 'label-water' : 'label-place') });
+      labels.push({ owner: id, text: name, at: centroid(pts), style: textStyle(mark === 'water' ? 'label-water' : 'label-place', SHAPE_LABEL_SIZE) });
     }
     shapes.push(area);
   });
@@ -133,7 +142,7 @@ export function migrateMaplog(frontmatter: unknown): InkDoc {
     const name = cleanText(raw.label, TEXT_LIMIT);
     if (name) {
       path.name = name;
-      labels.push({ owner: id, text: name, at: midpoint(pts), style: textStyle(rule.labelPreset) });
+      labels.push({ owner: id, text: name, at: midpoint(pts), style: textStyle(rule.labelPreset, SHAPE_LABEL_SIZE) });
     }
     shapes.push(path);
   });
@@ -166,7 +175,7 @@ export function migrateMaplog(frontmatter: unknown): InkDoc {
     shapes.push(stamp);
     const text = markLabelText(raw);
     if (text) {
-      labels.push({ owner: id, text, at: [at[0], round2(at[1] + LABEL_OFFSET_X)], style: textStyle('label-place') });
+      labels.push({ owner: id, text, at: belowStamp(at, PLACE_LABEL_SIZE), style: textStyle('label-place', PLACE_LABEL_SIZE) });
     }
   });
 
@@ -241,9 +250,21 @@ function presetStyle(presetId: string): InkStyle {
   return preset ? applyPreset(DEFAULT_STYLE, preset) : { ...DEFAULT_STYLE };
 }
 
-function textStyle(presetId: string): InkTextStyle {
+function textStyle(presetId: string, size?: number): InkTextStyle {
   const preset = findPreset(presetId);
-  return preset ? applyPreset(DEFAULT_TEXT_STYLE, preset) : { ...DEFAULT_TEXT_STYLE };
+  const style = preset ? applyPreset(DEFAULT_TEXT_STYLE, preset) : { ...DEFAULT_TEXT_STYLE };
+  if (size !== undefined) style.size = size;
+  return style;
+}
+
+/**
+ * Anchor for a label that sits under a stamp. Points are [lat, lng] and lat grows
+ * upward on CRS.Simple, so "below" is a smaller lat. The text is centred on the
+ * stamp and its baseline is placed so its top is LABEL_TOP_GAP map units under the stamp.
+ */
+function belowStamp(at: InkPoint, size: number): InkPoint {
+  const drop = LABEL_TOP_GAP + TEXT_ASCENT * size;
+  return [round2(at[0] - drop), round2(at[1])];
 }
 
 /** Maplog's unconfirmed flag: dashed, unless the preset already has a dash pattern. */
